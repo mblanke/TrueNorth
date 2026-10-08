@@ -28,6 +28,87 @@
         -e tn_app_source_mode=tarball -e tn_app_tarball=/path/to/truenorth.tar.gz
   when: tn_app_source_mode == 'git'
 
+# ── Never roll an upgraded host back silently ──────────────────────────
+# app.json records what the previous run deployed. Going to an OLDER release or commit
+# runs old code against a newer schema and newer data; it is refused unless asked for
+# (-e tn_allow_downgrade=true, after restoring the pre-upgrade backup:
+# docs/runbooks/upgrade.md "Rollback"). roles/tn_migrate also refuses a database whose
+# alembic revision this code does not know, whatever the source mode.
+- name: App source — what was deployed last time
+  ansible.builtin.slurp:
+    src: "{{ tn_state_dir }}/app.json"
+  register: tn_app_prev
+  failed_when: false
+
+- name: App source — previous deployment
+  ansible.builtin.set_fact:
+    tn_app_prev_state: "{{ tn_app_prev.content | default('e30=') | b64decode | from_json }}"
+
+- name: App source — refuse an older release
+  ansible.builtin.assert:
+    that: >-
+      tn_allow_downgrade | bool
+      or (tn_app_prev_state.release | default('') | length == 0)
+      or not ((tn_release_version | regex_replace('^v', '')) is version(
+                (tn_app_prev_state.release | regex_replace('^v', '')), '<', version_type='semver'))
+    fail_msg: >-
+      This host runs {{ tn_app_prev_state.release }}; {{ tn_release_version }} is older.
+      Rolling back is restore-then-install, never install alone (docs/runbooks/upgrade.md
+      "Rollback"): restore the pre-upgrade backup, then re-run with -e tn_allow_downgrade=true.
+    quiet: true
+  when: tn_image_source == 'release'
+
+- name: App source — is the requested commit older than the deployed one? (git)  # noqa command-instead-of-module
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      set -uo pipefail
+      cd {{ tn_app_dir | quote }} || exit 0
+      [ -d .git ] || exit 0
+      git fetch --quiet origin >/dev/null 2>&1 || true
+      new=$(git rev-parse --verify --quiet {{ (tn_app_git_version ~ '^{commit}') | quote }}) || exit 0
+      prev={{ tn_app_prev_state.commit | default('') | quote }}
+      [ -n "$prev" ] && [ "$prev" != unknown ] && [ "$new" != "$prev" ] || exit 0
+      git cat-file -e "$prev^{commit}" 2>/dev/null || exit 0
+      if git merge-base --is-ancestor "$new" "$prev"; then echo "DOWNGRADE $new $prev"; fi
+  register: tn_git_downgrade
+  changed_when: false
+  check_mode: false
+  when:
+    - tn_app_source_mode == 'git'
+    - tn_app_prev_state.commit is defined
+
+- name: App source — is the local checkout older than the deployed commit?  # noqa command-instead-of-module
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      set -uo pipefail
+      cd {{ tn_app_local_path | quote }} || exit 0
+      new=$(git rev-parse HEAD) || exit 0
+      prev={{ tn_app_prev_state.commit | default('') | quote }}
+      [ -n "$prev" ] && [ "$prev" != unknown ] && [ "$new" != "$prev" ] || exit 0
+      git cat-file -e "$prev^{commit}" 2>/dev/null || exit 0
+      if git merge-base --is-ancestor "$new" "$prev"; then echo "DOWNGRADE $new $prev"; fi
+  delegate_to: localhost
+  become: false
+  register: tn_local_downgrade
+  changed_when: false
+  check_mode: false
+  when:
+    - tn_app_source_mode == 'local'
+    - tn_app_prev_state.commit is defined
+
+- name: App source — refuse an older commit
+  vars:
+    _out: "{{ (tn_git_downgrade.stdout | default('')) ~ (tn_local_downgrade.stdout | default('')) }}"
+  ansible.builtin.assert:
+    that: tn_allow_downgrade | bool or 'DOWNGRADE' not in _out
+    fail_msg: >-
+      {{ _out | trim }}: the requested commit is an ancestor of the one this host already
+      runs, i.e. a rollback. Restore the pre-upgrade backup first, then re-run with
+      -e tn_allow_downgrade=true (docs/runbooks/upgrade.md "Rollback").
+    quiet: true
+
 - name: App source — clone or update the repository
   ansible.builtin.git:
     repo: "{{ tn_app_git_repo }}"
@@ -52,8 +133,11 @@
       - "--exclude=__pycache__"
   when: tn_app_source_mode == 'local'
 
-# Re-extracted whenever the tarball differs from the one last deployed, into an emptied
-# directory (an upgrade must not keep files the new release dropped).
+# Tarball (air-gapped). The archive is trusted only if its SHA-256 is the one expected:
+# tn_app_tarball_sha256, or its line in tn_app_tarball_sums (a SHA256SUMS file beside it).
+# It is unpacked into a fresh directory beside the app, checked, and only then swapped in,
+# so a corrupt or partial archive never replaces a working checkout (and an upgrade keeps
+# no file the new release dropped). Re-done only when the tarball differs from the last.
 - name: App source — checksum the release tarball
   ansible.builtin.stat:
     path: "{{ tn_app_tarball }}"
@@ -63,29 +147,75 @@
   register: tn_tarball
   when: tn_app_source_mode == 'tarball'
 
-- name: App source — the tarball deployed last time
-  ansible.builtin.slurp:
-    src: "{{ tn_state_dir }}/app.json"
-  register: tn_app_prev
-  failed_when: false
+- name: App source — the tarball is the one expected
+  vars:
+    # "<sha256>  <name>" or "<sha256> *<name>" (binary mode), normalised to the first.
+    _sums: >-
+      {{ (lookup('ansible.builtin.file', tn_app_tarball_sums).splitlines()
+          if tn_app_tarball_sums | default('') | length > 0 else [])
+         | map('regex_replace', '^(\S+)\s+\*?', '\1  ') | list }}
+    _want_line: "{{ tn_tarball.stat.checksum | default('') }}  {{ tn_app_tarball | basename }}"
+  ansible.builtin.assert:
+    that:
+      - tn_tarball.stat.exists
+      - >-
+        (tn_app_tarball_sha256 | default('') | length > 0
+         and tn_app_tarball_sha256 | lower == tn_tarball.stat.checksum)
+        or _want_line in _sums
+    fail_msg: >-
+      {{ tn_app_tarball }}: missing, or its SHA-256 ({{ tn_tarball.stat.checksum | default('?') }})
+      is not the expected one. Set tn_app_tarball_sha256, or tn_app_tarball_sums to the
+      SHA256SUMS file listing it.
+    quiet: true
   when: tn_app_source_mode == 'tarball'
 
 - name: App source — unpack a release tarball (air-gapped)
   when:
     - tn_app_source_mode == 'tarball'
-    - (tn_app_prev.content | default('e30=') | b64decode | from_json).tarball_sha256 | default('')
-      != tn_tarball.stat.checksum
+    - tn_app_prev_state.tarball_sha256 | default('') != tn_tarball.stat.checksum
+  vars:
+    _new: "{{ tn_app_dir }}.new"
+    _old: "{{ tn_app_dir }}.old"
   block:
-    - name: App source — empty the application directory
-      ansible.builtin.command:
-        argv: [find, "{{ tn_app_dir }}", -mindepth, "1", -delete]
-      changed_when: true
+    - name: App source — a clean staging directory
+      ansible.builtin.file:
+        path: "{{ item.0 }}"
+        state: "{{ item.1 }}"
+        mode: "0755"
+      loop: [["{{ _new }}", absent], ["{{ _old }}", absent], ["{{ _new }}", directory]]
+      loop_control:
+        label: "{{ item.0 }} {{ item.1 }}"
 
-    - name: App source — extract
+    - name: App source — extract into it
       ansible.builtin.unarchive:
         src: "{{ tn_app_tarball }}"
-        dest: "{{ tn_app_dir }}"
+        dest: "{{ _new }}"
         extra_opts: ["--strip-components=1"]
+
+    - name: App source — the extracted tree looks like TrueNorth
+      ansible.builtin.stat:
+        path: "{{ _new }}/infra/platform/docker/compose.prod.yml"
+      register: tn_new_compose
+
+    - name: App source — refuse a tarball without the expected layout
+      ansible.builtin.assert:
+        that: tn_new_compose.stat.exists
+        fail_msg: >-
+          {{ tn_app_tarball }} has no infra/platform/docker/compose.prod.yml under its top
+          directory: not a TrueNorth source archive (built from the repository root?).
+          The deployed application was left as it was.
+        quiet: true
+
+    # Two renames on one filesystem: the old tree stays complete until the new one is in place.
+    - name: App source — swap the new tree in
+      ansible.builtin.shell:
+        executable: /bin/bash
+        cmd: |
+          set -euo pipefail
+          if [ -e {{ tn_app_dir | quote }} ]; then mv -T {{ tn_app_dir | quote }} {{ _old | quote }}; fi
+          mv -T {{ _new | quote }} {{ tn_app_dir | quote }}
+          rm -rf {{ _old | quote }}
+      changed_when: true
 
 - name: App source — the checkout looks like TrueNorth
   ansible.builtin.stat:
@@ -107,6 +237,29 @@
       {{ tn_compose_file }} is missing. The source did not produce the expected
       repository layout — check tn_app_git_version, or that the tarball was built
       from the repository root.
+
+# The installer and the app it deploys must speak the same interface (env variables,
+# mounts, service order): install/COMPAT here == x-truenorth-installer-compat in the
+# deployed compose.prod.yml. Fail now, not halfway through 50-stack-up.
+- name: App source — read the deployed compose file
+  ansible.builtin.slurp:
+    src: "{{ tn_compose_file }}"
+  register: tn_compose_src
+  when: tn_compose_stat.stat.exists
+
+- name: App source — the app is compatible with this installer
+  vars:
+    _mine: "{{ lookup('ansible.builtin.file', inventory_dir ~ '/../COMPAT') | trim }}"
+    _app: "{{ (tn_compose_src.content | b64decode | from_yaml)['x-truenorth-installer-compat'] | default('none') }}"
+  ansible.builtin.assert:
+    that: (_app | string) == (_mine | string)
+    fail_msg: >-
+      This installer speaks compatibility level {{ _mine }} (install/COMPAT); the app it is
+      about to deploy ({{ tn_compose_file }}) declares {{ _app }}. Use the installer from the
+      same commit/release as the app: check out the release's git_sha (or the commit you are
+      deploying) and run install/ from there.
+    success_msg: "installer/app compatibility level {{ _mine }}"
+  when: tn_compose_stat.stat.exists
 
 # noqa command-instead-of-module — the git module clones; it does not read
 # back the resolved SHA, which is what the install manifest records.
@@ -171,6 +324,7 @@
         "ref": "{{ tn_app_git_version if tn_app_source_mode == 'git' else '' }}",
         "commit": "{{ (tn_commit.stdout if tn_app_source_mode == 'git' else tn_commit_local.stdout | default('')) | default('unknown', true) }}",
         "tarball_sha256": "{{ tn_tarball.stat.checksum | default('') if tn_app_source_mode == 'tarball' else '' }}",
+        "compat": "{{ lookup('ansible.builtin.file', inventory_dir ~ '/../COMPAT') | trim }}",
         "path": "{{ tn_app_dir }}",
         "image_source": "{{ tn_image_source }}",
         "release": "{{ tn_release_version if tn_image_source == 'release' else '' }}",

@@ -10,75 +10,125 @@
 # The deployment repo exports the CA as a .cer, which AD CS writes as DER as often as
 # PEM. update-ca-certificates and Keycloak's truststore both read PEM only and skip
 # anything else without a word, so it is normalised to PEM first.
-- name: TLS — stage the AD CS root CA as supplied
-  ansible.builtin.copy:
-    src: "{{ tn_root_ca_file }}"
-    dest: "{{ tn_tls_dir }}/corp-root-ca.supplied"
-    mode: "0644"
+# Required with AD (tn_ldap_enabled); without it, installed only if supplied.
+- name: TLS — is the AD CS root CA supplied?
+  ansible.builtin.stat:
+    path: "{{ tn_root_ca_file }}"
+  delegate_to: localhost
+  become: false
+  register: tn_root_ca_supplied
 
-- name: TLS — install the AD CS root CA (PEM) in the host trust store
-  community.crypto.x509_certificate_convert:
-    src_path: "{{ tn_tls_dir }}/corp-root-ca.supplied"
-    dest_path: /usr/local/share/ca-certificates/corp-root-ca.crt
-    format: pem
-    mode: "0644"
-  become: true
-  notify: Refresh host CA bundle
+- name: TLS — AD needs the AD CS root CA
+  ansible.builtin.assert:
+    that: tn_root_ca_supplied.stat.exists
+    fail_msg: >-
+      {{ tn_root_ca_file }} is missing. Copy certs/corp-root-ca.cer from the deployment repo:
+      Keycloak cannot bind to AD over LDAPS without trusting it.
+    quiet: true
+  when: tn_ldap_enabled | bool
 
-# The bundle must be rebuilt before anything below tries to validate a
-# certificate signed by this CA, so flush rather than waiting for the play end.
-- name: TLS — flush handlers so the CA bundle is current
-  ansible.builtin.meta: flush_handlers
+- name: TLS — the AD CS root CA
+  when: tn_root_ca_supplied.stat.exists
+  block:
+    - name: TLS — stage the AD CS root CA as supplied
+      ansible.builtin.copy:
+        src: "{{ tn_root_ca_file }}"
+        dest: "{{ tn_tls_dir }}/corp-root-ca.supplied"
+        mode: "0644"
 
-# Keycloak 24 (Quarkus) reads a directory of PEM certificates. No keytool, no
-# JKS, no password to manage.
-- name: TLS — place the root CA (PEM) in Keycloak's truststore directory
-  community.crypto.x509_certificate_convert:
-    src_path: "{{ tn_tls_dir }}/corp-root-ca.supplied"
-    dest_path: "{{ tn_tls_dir }}/truststores/corp-root-ca.pem"
-    format: pem
-    mode: "0644"
-  notify: Restart Keycloak if running
+    - name: TLS — install the AD CS root CA (PEM) in the host trust store
+      community.crypto.x509_certificate_convert:
+        src_path: "{{ tn_tls_dir }}/corp-root-ca.supplied"
+        dest_path: /usr/local/share/ca-certificates/corp-root-ca.crt
+        format: pem
+        mode: "0644"
+      become: true
+      notify: Refresh host CA bundle
+
+    # The bundle must be rebuilt before anything below tries to validate a
+    # certificate signed by this CA, so flush rather than waiting for the play end.
+    - name: TLS — flush handlers so the CA bundle is current
+      ansible.builtin.meta: flush_handlers
+
+    # Keycloak 24 (Quarkus) reads a directory of PEM certificates. No keytool, no
+    # JKS, no password to manage.
+    - name: TLS — place the root CA (PEM) in Keycloak's truststore directory
+      community.crypto.x509_certificate_convert:
+        src_path: "{{ tn_tls_dir }}/corp-root-ca.supplied"
+        dest_path: "{{ tn_tls_dir }}/truststores/corp-root-ca.pem"
+        format: pem
+        mode: "0644"
+      notify: Restart Keycloak if running
 
 # Preflight could only probe the port: ldapsearch (tn_base) and this CA did not exist
 # yet. This proves the TLS handshake against the CA Keycloak will use AND that the bind
 # account works, the two things that otherwise surface as a federation failure in 60.
+# The password goes to ldapsearch in a 0600 file (-y), never on its command line, and the
+# file is removed however the bind ends.
 - name: TLS — real LDAPS bind as the Keycloak service account
-  ansible.builtin.command:
-    argv:
-      - ldapsearch
-      - -x
-      - -LLL
-      - -H
-      - "ldaps://{{ tn_dc_host }}:{{ tn_ldap_port }}"
-      - -D
-      - "{{ tn_ldap_bind_dn }}"
-      - -w
-      - "{{ vault_ldap_bind_password }}"
-      - -b
-      - "{{ tn_ldap_base_dn }}"
-      - -s
-      - base
-      - "(objectClass=*)"
-      - dn
-  environment:
-    LDAPTLS_CACERT: "{{ tn_tls_dir }}/truststores/corp-root-ca.pem"
-    LDAPTLS_REQCERT: demand
-  register: tn_ldap_bind
-  changed_when: false
-  failed_when: false
-  check_mode: false
-  no_log: true
+  when: tn_ldap_enabled | bool
+  block:
+    - name: TLS — bind password file
+      ansible.builtin.tempfile:
+        state: file
+        suffix: .ldappw
+      register: tn_ldap_pwfile
+      check_mode: false
+      changed_when: false # scratch, removed below
 
-- name: TLS — assert the LDAPS bind succeeded
-  ansible.builtin.assert:
-    that: tn_ldap_bind.rc == 0
-    fail_msg: >-
-      LDAPS bind to {{ tn_dc_host }} failed (rc={{ tn_ldap_bind.rc }}). rc 255 is
-      usually TLS: is {{ tn_root_ca_file }} the CA that issued the DC's certificate,
-      and does the certificate name {{ tn_dc_host }}? rc 49 is the credentials: check
-      vault_ldap_bind_password and that the account is not locked out.
-    success_msg: "LDAPS bind OK as {{ tn_ldap_bind_dn | regex_search('^CN=[^,]+') }}"
+    - name: TLS — write the bind password (0600)
+      ansible.builtin.copy:
+        dest: "{{ tn_ldap_pwfile.path }}"
+        content: "{{ vault_ldap_bind_password }}"
+        mode: "0600"
+      check_mode: false
+      changed_when: false
+      no_log: true
+
+    - name: TLS — ldapsearch the base DN over LDAPS
+      ansible.builtin.command:
+        argv:
+          - ldapsearch
+          - -x
+          - -LLL
+          - -H
+          - "ldaps://{{ tn_dc_host }}:{{ tn_ldap_port }}"
+          - -D
+          - "{{ tn_ldap_bind_dn }}"
+          - -y
+          - "{{ tn_ldap_pwfile.path }}"
+          - -b
+          - "{{ tn_ldap_base_dn }}"
+          - -s
+          - base
+          - "(objectClass=*)"
+          - dn
+      environment:
+        LDAPTLS_CACERT: "{{ tn_tls_dir }}/truststores/corp-root-ca.pem"
+        LDAPTLS_REQCERT: demand
+      register: tn_ldap_bind
+      changed_when: false
+      failed_when: false
+      check_mode: false
+
+    - name: TLS — assert the LDAPS bind succeeded
+      ansible.builtin.assert:
+        that: tn_ldap_bind.rc == 0
+        fail_msg: >-
+          LDAPS bind to {{ tn_dc_host }} failed (rc={{ tn_ldap_bind.rc }}). rc 255 is
+          usually TLS: is {{ tn_root_ca_file }} the CA that issued the DC's certificate,
+          and does the certificate name {{ tn_dc_host }}? rc 49 is the credentials: check
+          vault_ldap_bind_password and that the account is not locked out.
+        success_msg: "LDAPS bind OK as {{ tn_ldap_bind_dn | regex_search('^CN=[^,]+') }}"
+
+  always:
+    - name: TLS — remove the bind password file
+      ansible.builtin.file:
+        path: "{{ tn_ldap_pwfile.path }}"
+        state: absent
+      when: tn_ldap_pwfile.path is defined
+      check_mode: false
+      changed_when: false
 
 - name: TLS — check for an operator-supplied certificate pair
   ansible.builtin.stat:

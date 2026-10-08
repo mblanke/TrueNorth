@@ -1,0 +1,15 @@
+---
+# Recreate, not restart: a restarted container keeps the environment it was created
+# with. Notified only when the env file actually changed, so a clean re-run changes nothing.
+- name: Recreate the API with the new environment
+  community.docker.docker_compose_v2:
+    project_src: "{{ tn_app_dir }}/infra/platform/docker"
+    files: [compose.prod.yml]
+    env_files: ["{{ tn_env_file }}"]
+    services: [api]
+    state: present
+    recreate: always
+    build: never
+    pull: never
+    wait: true
+    wait_timeout: 300

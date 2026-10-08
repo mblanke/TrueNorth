@@ -16,13 +16,38 @@
   ansible.builtin.include_vars:
     file: "{{ role_path }}/../tn_keycloak/defaults/main.yml"
 
+# Who the claim-contract check signs in as. With AD: an AD account you name
+# (-e tn_smoke_username=<upn> -e tn_smoke_password=...). Without AD: the local bootstrap
+# administrator 60-keycloak created, whose password is a persisted secret.
+- name: Smoke — the identity to sign in as
+  ansible.builtin.set_fact:
+    tn_smoke_user_effective: "{{ tn_smoke_username | default(tn_bootstrap_admin_upn, true) }}"
+    tn_smoke_password_effective: >-
+      {{ tn_smoke_password | default('', true)
+         or ('' if tn_ldap_enabled | bool else tn_secrets['bootstrap_admin_password']) }}
+  no_log: true
+
+# Mandatory: "the services are up" is not an installed platform. The claim contract is
+# the only check that proves sign-in, the token claims and registration are joined.
+- name: Smoke — the claim-contract check has credentials
+  ansible.builtin.assert:
+    that: tn_smoke_password_effective | length > 0
+    fail_msg: |
+      No tn_smoke_password. The claim-contract check is mandatory: re-run with
+        ansible-playbook playbooks/95-smoke-test.yml -e tn_smoke_username=<AD upn> -e tn_smoke_password=<password>
+      (an AD account in a TN-* group; --ask-vault-pass as usual). Put the password in a
+      vaulted file and pass -e @file rather than typing it on the command line.
+    quiet: true
+
+# -a: an exited container (crashed, or a one-shot that should not be there) is invisible
+# to a plain `ps`, and the check below would pass with a service missing.
 - name: Smoke — container health
   ansible.builtin.shell:
     executable: /bin/bash
     cmd: |
       set -euo pipefail
-      docker compose -f {{ tn_compose_file }} --env-file {{ tn_env_file }} ps --format json \
-        | jq -rs 'flatten | map({name: .Service, state: .State, health: (.Health // "n/a")})'
+      docker compose -f {{ tn_compose_file }} --env-file {{ tn_env_file }} ps -a --format json \
+        | jq -rs 'flatten | map({name: .Service, state: .State, health: (.Health // "n/a"), exit: (.ExitCode // 0)})'
     chdir: "{{ tn_app_dir }}/infra/platform/docker"
   register: tn_ps
   changed_when: false
@@ -40,7 +65,7 @@
          + (_svcs | rejectattr('state', 'in', ['running']) | list) }}
   ansible.builtin.assert:
     that: _bad | length == 0
-    fail_msg: "Unhealthy or stopped services: {{ _bad }}"
+    fail_msg: "Unhealthy, stopped or exited services: {{ _bad }}"
     success_msg: "{{ _svcs | length }} services running"
 
 - name: Smoke — API health through nginx
@@ -61,6 +86,28 @@
       - tn_health.json.redis | default(false)
     fail_msg: "API reports degraded dependencies: {{ tn_health.json }}"
     success_msg: "API healthy: {{ tn_health.json }}"
+
+# /health reports the database and Redis; readiness adds OpenSearch (telemetry, scoring
+# evidence), which the API treats as critical whenever it is configured.
+- name: Smoke — readiness, including OpenSearch
+  ansible.builtin.uri:
+    url: "https://{{ tn_domain_fqdn }}/api/health/ready"
+    validate_certs: "{{ tn_tls_mode != 'selfsigned' }}"
+    status_code: [200, 503]
+    timeout: 20
+  register: tn_ready
+
+- name: Smoke — assert the database, Redis and OpenSearch are healthy
+  vars:
+    _comp: "{{ tn_ready.json.components | default([]) | items2dict(key_name='name', value_name='status') }}"
+    _need: [database, redis, opensearch]
+  ansible.builtin.assert:
+    that:
+      - tn_ready.status == 200
+      - _need | reject('in', _comp) | list | length == 0
+      - _need | map('extract', _comp) | reject('equalto', 'healthy') | list | length == 0
+    fail_msg: "Readiness: {{ tn_ready.json | default(tn_ready.msg | default('')) }}"
+    success_msg: "ready: {{ _comp }}"
 
 - name: Smoke — deep health
   ansible.builtin.uri:
@@ -99,7 +146,6 @@
 # dedicated truenorth-smoke client (roles/tn_keycloak), which is disabled except for the
 # few seconds below: enabled, one token request, disabled again whatever happened.
 - name: Smoke — token through the smoke-test client
-  when: tn_smoke_password | default('') | length > 0
   block:
     - name: Smoke — Keycloak admin token (loopback)
       ansible.builtin.uri:
@@ -110,7 +156,7 @@
           grant_type: password
           client_id: admin-cli
           username: "{{ vault_keycloak_admin_user | default('admin') }}"
-          password: "{{ vault_keycloak_admin_password }}"
+          password: "{{ tn_secrets['keycloak_admin_password'] }}"
         status_code: 200
       register: tn_smoke_admin
       no_log: true
@@ -151,8 +197,8 @@
           client_id: "{{ tn_kc_smoke_client }}"
           # Confidential: without its secret Keycloak answers 401.
           client_secret: "{{ tn_secrets['keycloak_smoke_client_secret'] }}"
-          username: "{{ tn_smoke_username | default(tn_bootstrap_admin_upn) }}"
-          password: "{{ tn_smoke_password | default('') }}"
+          username: "{{ tn_smoke_user_effective }}"
+          password: "{{ tn_smoke_password_effective }}"
           scope: "openid profile email"
         validate_certs: "{{ tn_tls_mode != 'selfsigned' }}"
         status_code: [200] # a 400/401 is a failed check, not a skipped one
@@ -176,16 +222,14 @@
 - name: Smoke — decode the access token claims
   ansible.builtin.set_fact:
     tn_claims: >-
-      {{ (tn_smoke_token.json.access_token.split('.')[1] ~ '==') | b64decode | from_json }}
-  when:
-    - tn_smoke_token is defined
-    - tn_smoke_token.json is defined
-    - tn_smoke_token.json.access_token is defined
+      {{ (tn_smoke_token.json.access_token.split('.')[1] | replace('-', '+') | replace('_', '/') ~ '==')
+         | b64decode | from_json }}
   no_log: true
 
 - name: Smoke — assert the AD claim contract holds
   ansible.builtin.assert:
     that:
+      - tn_claims is defined
       - tn_claims.groups is defined
       - tn_claims.groups | length > 0
       - tn_claims.email is defined
@@ -204,9 +248,8 @@
       Re-run: ansible-playbook playbooks/60-keycloak.yml
     success_msg: >-
       Claim contract OK — groups={{ tn_claims.groups | default([]) | join(',') }}
-  when: tn_claims is defined
 
-- name: Smoke — /auth/me answers for a real AD identity
+- name: Smoke — /auth/me answers for that identity
   ansible.builtin.uri:
     url: "https://{{ tn_domain_fqdn }}/api/auth/me"
     headers:
@@ -215,27 +258,13 @@
     status_code: 200
     timeout: 20
   register: tn_authme
-  when:
-    - tn_smoke_token is defined
-    - tn_smoke_token.json is defined
-    - tn_smoke_token.json.access_token is defined
   no_log: true
 
 - name: Smoke — report the identity state
   ansible.builtin.debug:
     msg: >-
-      /auth/me for {{ tn_smoke_username | default(tn_bootstrap_admin_upn) }}:
-      status={{ tn_authme.json.status }}
+      /auth/me for {{ tn_smoke_user_effective }}:
+      status={{ tn_authme.json.status | default('?') }}
       {{ '(the bootstrap admin is registered, as expected)'
-         if tn_authme.json.status == 'registered'
-         else '(an unregistered AD identity is offered the registration form rather than a 403 — this is the fix working)' }}
-  when: tn_authme is defined and tn_authme.json is defined
-
-- name: Smoke — end-to-end identity check skipped
-  ansible.builtin.debug:
-    msg: >-
-      Claim-contract check SKIPPED: no tn_smoke_password supplied. Run with
-      -e tn_smoke_username=<upn> -e tn_smoke_password=<password> to prove the
-      AD federation, the token claims and the registration flow are joined.
-      Without it the install is verified only as far as "the services are up".
-  when: tn_smoke_password | default('') | length == 0
+         if tn_authme.json.status | default('') == 'registered'
+         else '(an unregistered identity is offered the registration form rather than a 403 — this is the fix working)' }}

@@ -9,25 +9,40 @@
 # ("ACME Corp", "Wayne Enterprises"). That has no place in a range that will
 # hold CAF curriculum, so it is opt-in.
 
-- name: Seed — verify reference data landed
-  ansible.builtin.uri:
-    url: "https://{{ tn_domain_fqdn }}/api/{{ item.path }}"
-    validate_certs: "{{ tn_tls_mode != 'selfsigned' }}"
-    status_code: [200, 401, 403]
-    timeout: 15
+# Counted in the database: the API routes need a token, and a 401 proved only that nginx
+# answered (the check used to accept it, so an empty table passed).
+- name: Seed — load the secret map
+  ansible.builtin.include_role:
+    name: tn_config
+    tasks_from: secrets
+
+- name: Seed — count the reference data
+  ansible.builtin.command:
+    cmd: >-
+      docker compose -f {{ tn_compose_file }} --env-file {{ tn_env_file }}
+      exec -T postgres psql -U {{ vault_postgres_user | default('forge') }}
+      -d {{ vault_postgres_db | default('forge') }} -v ON_ERROR_STOP=1 -tAc
+      "SELECT count(*) FROM {{ item.table }}"
+    chdir: "{{ tn_app_dir }}/infra/platform/docker"
   register: tn_seed_checks
+  changed_when: false
+  failed_when: false
   loop:
-    - { path: "directory/nations", what: "nations" }
-    - { path: "auth-zones", what: "auth zones" }
+    - { table: nations, what: "nations" }
+    - { table: auth_zone_policies, what: "auth zones" }
   loop_control:
     label: "{{ item.what }}"
-  failed_when: false
 
-- name: Seed — report reference data
-  ansible.builtin.debug:
-    msg: >-
-      {{ item.item.what }}: HTTP {{ item.status | default('unreachable') }}
-      {{ '(auth required — reachable, contents unverified)' if item.status | default(0) in [401, 403] else '' }}
+- name: Seed — reference data is present
+  ansible.builtin.assert:
+    that:
+      - item.rc == 0
+      - (item.stdout | trim | int) > 0
+    fail_msg: >-
+      {{ item.item.what }} ({{ item.item.table }}): {{ item.stdout | default('') | trim or item.stderr | default('') }}.
+      The API's startup seeders only WARN on failure (app/main.py): read
+      `docker compose logs api` for "seed", fix it, and restart the api.
+    success_msg: "{{ item.item.what }}: {{ item.stdout | trim }} rows"
   loop: "{{ tn_seed_checks.results }}"
   loop_control:
     label: "{{ item.item.what }}"
@@ -63,9 +78,10 @@
     chdir: "{{ tn_app_dir }}/infra/platform/docker"
   # Passed through from this environment (`-e NAME` with no value), so the password is
   # never on a command line and the task's output can be shown when it fails.
+  # The master admin reaches this one-shot container only; the api service never has it.
   environment:
     KEYCLOAK_ADMIN_USER: "{{ vault_keycloak_admin_user | default('admin') }}"
-    KEYCLOAK_ADMIN_PASSWORD: "{{ vault_keycloak_admin_password }}"
+    KEYCLOAK_ADMIN_PASSWORD: "{{ tn_secrets['keycloak_admin_password'] }}"
   register: tn_bootstrap
   # app.bootstrap_admin logs to stderr.
   changed_when: "'created' in (tn_bootstrap.stdout ~ tn_bootstrap.stderr)"

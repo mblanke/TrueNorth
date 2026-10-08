@@ -1,0 +1,35 @@
+---
+# TrueNorth Range — staging inventory (tn-staging, 192.168.1.240).
+#
+#   ansible-playbook -i inventory/staging.yml site.yml -K --ask-vault-pass \
+#     -e tn_ai_base_url=http://<litellm-host>:4000/v1
+#
+# Same group_vars as the TN lab (inventory/group_vars/all/ sits beside this file); only
+# what differs is here. This host cannot reach TN-DC01, so AD/LDAPS is off: Keycloak gets
+# local TN-* groups and a local bootstrap administrator (install/README.md "Without
+# Active Directory"). No signed release exists yet, so the images are built from the
+# checkout (tn_image_source=build: lab only).
+all:
+  children:
+    platform:
+      hosts:
+        tn-staging:
+          ansible_host: 192.168.1.240
+          ansible_user: soadmin
+          tn_domain_fqdn: tn-staging.corp.tnrange.lab
+          tn_ldap_enabled: false
+          # Nothing resolves tn-staging.corp.tnrange.lab for the host itself (no AD DNS).
+          tn_manage_etc_hosts: true
+          tn_image_source: build
+          tn_tls_mode: selfsigned
+          # A local Keycloak account, created by 60-keycloak (no AD here).
+          tn_bootstrap_admin_upn: tnadmin@tn-staging.local
+          # Staging attests its secrets are escrowed elsewhere (they are generated on the
+          # host and are disposable). A platform Students use sets tn_backup_escrow_pubkey.
+          tn_backup_escrow: out-of-band
+          # Staging disk is small: keep the free-space floor low, and the backups capped.
+          tn_min_free_gb: 40
+          tn_backup_min_free_gb: 5
+          tn_backup_max_total_gb: 30
+          # vCenter's VMCA chain is not trusted by the worker image yet (as on TN-MGMT01).
+          tn_vsphere_verify_ssl: false

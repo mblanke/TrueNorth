@@ -148,6 +148,151 @@
   changed_when: false
   failed_when: tn_images_present.rc != 0 or tn_images_present.stdout | trim != 'ok'
 
+# ── Upgrade: back up, then stop the old code before the schema changes ──
+# An upgrade is a running stack whose database is behind the new release's migrations.
+# Before alembic touches it: a backup (the rollback point; -e tn_pre_upgrade_backup=false
+# to skip), and the api, workers, beat and flower stopped, so no OLD code ever runs on the
+# NEW schema. tn_migrate then migrates and phase 2 starts the new code.
+- name: Compose — is a stack already running here?
+  ansible.builtin.command:
+    cmd: docker compose -f {{ tn_compose_file }} --env-file {{ tn_env_file }} ps -q --status running postgres
+    chdir: "{{ tn_app_dir }}/infra/platform/docker"
+  register: tn_pg_running
+  changed_when: false
+  check_mode: false
+
+- name: Compose — upgrade check
+  when: tn_pg_running.stdout | trim | length > 0
+  block:
+    - name: Compose — the database's revision
+      ansible.builtin.command:
+        cmd: >-
+          docker compose -f {{ tn_compose_file }} --env-file {{ tn_env_file }}
+          exec -T postgres psql -U {{ vault_postgres_user | default('forge') }}
+          -d {{ vault_postgres_db | default('forge') }} -tAc
+          "SELECT version_num FROM alembic_version"
+        chdir: "{{ tn_app_dir }}/infra/platform/docker"
+      register: tn_db_rev
+      changed_when: false
+      failed_when: false
+      check_mode: false
+
+    # `alembic heads` and `history` read the migration scripts only; they do not connect.
+    - name: Compose — the new release's migration heads and history
+      ansible.builtin.command:
+        argv:
+          - docker
+          - compose
+          - -f
+          - "{{ tn_compose_file }}"
+          - --env-file
+          - "{{ tn_env_file }}"
+          - run
+          - --rm
+          - --no-deps
+          - --entrypoint
+          - ""
+          - api
+          - sh
+          - -c
+          - alembic -c alembic.ini heads && echo ---HISTORY--- && alembic -c alembic.ini history
+        chdir: "{{ tn_app_dir }}/infra/platform/docker"
+      register: tn_code_revs
+      changed_when: false
+      check_mode: false
+
+    - name: Compose — classify
+      vars:
+        _heads_out: "{{ tn_code_revs.stdout.split('---HISTORY---')[0] }}"
+        _history: "{{ tn_code_revs.stdout.split('---HISTORY---')[1] | default('') }}"
+        _rev: "{{ tn_db_rev.stdout | trim }}"
+      ansible.builtin.set_fact:
+        tn_code_heads: "{{ _heads_out | regex_findall('^(\\w+)', multiline=True) }}"
+        tn_db_rev_known: "{{ _rev | length == 0 or (_rev in _history) }}"
+        tn_is_upgrade: >-
+          {{ tn_db_rev.rc == 0 and (_rev | length > 0)
+             and _rev not in (_heads_out | regex_findall('^(\\w+)', multiline=True)) }}
+
+    # Checked here, before anything is stopped: an older release on a newer schema.
+    # -e tn_allow_downgrade=true is the deliberate code rollback (schema kept), which
+    # docs/runbooks/upgrade.md allows only when the rollback rehearsal passed.
+    - name: Compose — refuse a database newer than this release
+      ansible.builtin.assert:
+        that: tn_db_rev_known | bool or tn_allow_downgrade | bool
+        fail_msg: >-
+          The database is at revision {{ tn_db_rev.stdout | trim }}, which this release's
+          migrations do not contain: it was migrated by a NEWER TrueNorth. Nothing was
+          stopped. Rolling back is deliberate: restore the pre-upgrade backup, or (code
+          rollback, schema kept) -e tn_allow_downgrade=true (docs/runbooks/upgrade.md "Roll back").
+        quiet: true
+
+    - name: Compose — report
+      ansible.builtin.debug:
+        msg: >-
+          {{ ('UPGRADE: database at ' ~ (tn_db_rev.stdout | trim) ~ ', release head '
+              ~ (tn_code_heads | join(',')) ~ '. '
+              ~ ('Backing up first, then ' if tn_pre_upgrade_backup | bool else 'NO pre-upgrade backup (tn_pre_upgrade_backup=false), then ')
+              ~ 'stopping the application services (in-flight tasks: ' ~ tn_upgrade_inflight ~ ').')
+             if tn_is_upgrade | bool else 'Schema is at the release head: no migration, nothing stopped.' }}
+
+- name: Compose — prepare the upgrade
+  when:
+    - tn_is_upgrade | default(false) | bool
+    - not ansible_check_mode
+  block:
+    - name: Compose — the in-flight policy is one we know
+      ansible.builtin.assert:
+        that: tn_upgrade_inflight in ['drain', 'abandon']
+        fail_msg: "tn_upgrade_inflight must be drain or abandon (got {{ tn_upgrade_inflight }})"
+        quiet: true
+
+    # backup.sh needs postgres and minio up, which they are: this is the old stack.
+    - name: Compose — pre-upgrade backup (the rollback point)
+      ansible.builtin.shell:
+        executable: /bin/bash
+        cmd: |
+          set -euo pipefail
+          set -a; . {{ tn_config_dir }}/backup.env; set +a
+          BACKUP_ROOT="$BACKUP_DIR" BACKUP_DIR="$BACKUP_DIR/pre-upgrade" BACKUP_RETENTION_DAYS=0 \
+            {{ tn_app_dir }}/scripts/backup/backup.sh
+      register: tn_pre_backup
+      changed_when: true
+      when: tn_pre_upgrade_backup | bool
+
+    - name: Compose — tasks running on the workers now
+      ansible.builtin.shell:
+        executable: /bin/bash
+        cmd: |
+          set -o pipefail
+          docker compose -f {{ tn_compose_file }} --env-file {{ tn_env_file }} exec -T worker-provision \
+            celery -A worker.celery_app inspect active --json 2>/dev/null \
+            | python3 -c 'import json,sys; d=json.load(sys.stdin); print(sum(len(v or []) for v in d.values()))' \
+            || echo unknown
+        chdir: "{{ tn_app_dir }}/infra/platform/docker"
+      register: tn_inflight
+      changed_when: false
+
+    - name: Compose — in-flight work
+      ansible.builtin.debug:
+        msg: >-
+          {{ tn_inflight.stdout | trim }} task(s) running on the workers.
+          {{ 'drain: waiting for them to finish (worker-provision allows up to 3600 s for a range build).'
+             if tn_upgrade_inflight == 'drain' else
+             'ABANDON: workers get 60 s, then running tasks are killed. Interrupted ranges must be '
+             ~ 'torn down and rebuilt; their tasks are redelivered after the broker visibility '
+             ~ 'timeout (3600 s) unless purged (docs/runbooks/upgrade.md).' }}
+
+    # Old code must not run on the new schema: everything that talks to the database
+    # stops before alembic and starts again (as the new release) in tn_migrate's phase 2.
+    - name: Compose — stop the application services
+      ansible.builtin.command:
+        argv: >-
+          {{ ['docker', 'compose', '-f', tn_compose_file, '--env-file', tn_env_file, 'stop']
+             + (['--timeout', '60'] if tn_upgrade_inflight == 'abandon' else [])
+             + ['api', 'web', 'nginx', 'worker-provision', 'worker-scenario', 'worker-telemetry', 'beat', 'flower'] }}
+        chdir: "{{ tn_app_dir }}/infra/platform/docker"
+      changed_when: true
+
 - name: Compose — phase 1, datastores only
   community.docker.docker_compose_v2:
     project_src: "{{ tn_app_dir }}/infra/platform/docker"

@@ -59,11 +59,49 @@ when none is active.
    Do this in a quiet period.
 3. Test one launch from each registered platform.
 
+## First-start secrets: `playbooks/rotate-secret.yml`
+
+Some passwords are read only when their service **first** initialises: the PostgreSQL roles
+(`postgres_password`, `keycloak_db_password`, `lrs_db_password`), Keycloak's master admin
+(`keycloak_admin_password`), OpenSearch's internal users (`opensearch_admin_password`,
+`opensearch_dashboards_password`) and Grafana's admin (`grafana_admin_password`). Changing
+only the vault would change the env file but not the service, and lock the platform out of
+it — so `30-config` **refuses** a vault value that differs from the persisted one
+(`/srv/truenorth/config/secrets/<name>`) for exactly these, and names this playbook.
+
+```bash
+# in install/: put the new value in the vault (vault_<name>), or leave it empty to have one generated
+ansible-playbook playbooks/rotate-secret.yml -K --ask-vault-pass -e tn_rotate=postgres_password
+```
+
+What it does, per secret:
+
+| Secret | In the service | Then |
+|---|---|---|
+| `postgres_password`, `keycloak_db_password`, `lrs_db_password` | `ALTER ROLE ... WITH PASSWORD` through `psql` on the postgres container's local socket (no old password needed; the new one on stdin) | persist, re-render the env file, recreate what changed (pgbouncer, api, workers, keycloak, lrs) |
+| `keycloak_admin_password` | Admin REST: token with the old password, `reset-password` on the master admin | persist, re-render, recreate keycloak |
+| `grafana_admin_password` | `grafana cli admin reset-admin-password --password-from-stdin` | persist, re-render, recreate grafana |
+| `opensearch_admin_password`, `opensearch_dashboards_password` | persist, rebuild `internal_users.yml` (bcrypt), load it with `securityadmin.sh` and the admin certificate | re-render, recreate the api, workers and Dashboards |
+
+Then take a backup: older backups' escrow holds the old value. A restore of an older backup
+resets the role passwords to that backup's (`globals.sql`); restore its escrowed secrets with
+it (`scripts/backup/restore-secrets.sh`, backup-restore.md).
+
+The other generated secrets (Redis, MinIO, JWT/CSRF, the LRS keys, Keycloak client secrets,
+the bootstrap admin's password) are not first-start: change the vault value and re-run
+`30-config` and `50-stack-up` (Keycloak client secrets and the local bootstrap admin's
+password: `60-keycloak`); the installer updates the persisted value.
+
+The API never holds the Keycloak master admin: it calls the Admin API (`/ad-sync`) as the
+`truenorth-api-admin` service account (`KEYCLOAK_ADMIN_CLIENT_ID`/`_SECRET`, realm-management
+`view-realm` + `manage-users` only). Rotate its secret like any other client secret
+(`vault_keycloak_api_admin_client_secret`, then `60-keycloak` and `50-stack-up`).
+
 ## Other secrets
 
 | Secret | Where | How |
 |---|---|---|
-| `POSTGRES_PASSWORD`, `KEYCLOAK_DB_PASSWORD`, `LRS_DB_PASSWORD` | env + vault | `ALTER ROLE <role> PASSWORD '<new>'` via `dc exec -T postgres psql`, update env, `dc up -d` the dependants (pgbouncer, api, workers, keycloak, lrs). Note: a restore of an older backup resets role passwords to that backup's (see backup-restore.md). |
+| `POSTGRES_PASSWORD`, `KEYCLOAK_DB_PASSWORD`, `LRS_DB_PASSWORD` | persisted secret (+ vault) | `playbooks/rotate-secret.yml` (above). By hand without the installer: `ALTER ROLE <role> PASSWORD '<new>'` via `dc exec -T postgres psql`, update env, `dc up -d` the dependants. |
 | `MINIO_ACCESS_KEY` / `MINIO_SECRET_KEY` | env + vault | root credentials: update env, `dc up -d minio api worker-*`. Backups read them from the env file, nothing else to change. |
 | `REDIS_PASSWORD` | env + vault | update env, `dc up -d redis api worker-* flower` (Redis content is transient). |
 | `JWT_SECRET`, `CSRF_SECRET` | env + vault | update env, `dc up -d api`; users are logged out. |

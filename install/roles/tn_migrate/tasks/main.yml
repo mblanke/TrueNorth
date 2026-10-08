@@ -84,17 +84,55 @@
       vault_postgres_db | default('forge') }}
   no_log: true
 
+# The URL (with the postgres password) is never a process argument: `-e DATABASE_URL`
+# without a value makes compose take it from its own environment, which only this task's
+# process (and root) can read. It used to be `-e DATABASE_URL=postgresql://forge:<pw>@...`,
+# visible to every user in `ps` for as long as the migration ran.
+- name: Migrate — the database's current revision is one this code knows
+  ansible.builtin.command:
+    cmd: >-
+      docker compose -f {{ tn_compose_file }} --env-file {{ tn_env_file }}
+      run --rm --no-deps --entrypoint "" -e DATABASE_URL
+      api alembic -c alembic.ini current
+    chdir: "{{ tn_app_dir }}/infra/platform/docker"
+  environment:
+    DATABASE_URL: "{{ tn_direct_db_url }}"
+  register: tn_alembic_current
+  changed_when: false
+  failed_when: false
+  when: tn_schema == 'managed'
+
+# An unknown revision means the database was migrated by NEWER code than this release:
+# running it would be old code on a new schema. Never roll back silently; with
+# -e tn_allow_downgrade=true (a deliberate code rollback, schema kept) the migration is
+# skipped, since this code's alembic cannot place the newer head.
+- name: Migrate — refuse a database newer than this code
+  ansible.builtin.assert:
+    that: tn_alembic_current.rc == 0 or tn_allow_downgrade | bool
+    fail_msg: |
+      alembic cannot place the database's revision in this release's migration history:
+      {{ (tn_alembic_current.stderr | default('')) | regex_findall("Can't locate revision[^\n]*")
+         | first | default(tn_alembic_current.stderr | default('') | trim) }}
+
+      The database was migrated by a newer TrueNorth than the one being installed. A
+      rollback is restore-then-install: restore the pre-upgrade backup
+      (scripts/backup/restore.sh), then install the previous release with
+      -e tn_allow_downgrade=true (docs/runbooks/upgrade.md "Rollback").
+    quiet: true
+  when: tn_schema == 'managed'
+
 - name: Migrate — alembic upgrade head
   ansible.builtin.command:
     cmd: >-
       docker compose -f {{ tn_compose_file }} --env-file {{ tn_env_file }}
-      run --rm --no-deps --entrypoint ""
-      -e DATABASE_URL={{ tn_direct_db_url }}
+      run --rm --no-deps --entrypoint "" -e DATABASE_URL
       api alembic -c alembic.ini upgrade head
     chdir: "{{ tn_app_dir }}/infra/platform/docker"
+  environment:
+    DATABASE_URL: "{{ tn_direct_db_url }}"
   register: tn_alembic
   changed_when: "'Running upgrade' in tn_alembic.stdout or 'Running upgrade' in tn_alembic.stderr"
-  no_log: true
+  when: tn_schema != 'managed' or tn_alembic_current.rc | default(0) == 0
 
 - name: Migrate — record the applied head
   ansible.builtin.command:

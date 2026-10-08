@@ -10,125 +10,135 @@
 #
 # Made even with tn_opensearch_disable_security (the lab override): the files are bind
 # mounts, and turning security back on must not need another run of this role.
+#
+# Everything below runs as root (become): the CA directory is root's, and the node/admin
+# material and internal_users.yml belong to uid 1000 (the opensearch image's user), which
+# the install user can neither create files as nor read back. Without root a re-run could
+# not read internal_users.yml, re-hashed every password and reported a change each time.
 
+# Outside the become block: the secret files belong to the install user.
 - name: TLS — OpenSearch passwords (the generated secret map)
   ansible.builtin.include_role:
     name: tn_config
     tasks_from: secrets
 
-- name: TLS — OpenSearch directories
-  ansible.builtin.file:
-    path: "{{ item.path }}"
-    state: directory
-    owner: "{{ item.owner }}"
-    group: "{{ item.owner }}"
-    mode: "{{ item.mode }}"
-  loop:
-    - { path: "{{ tn_opensearch_ca_dir }}", owner: "0", mode: "0700" }
-    # uid 1000: the user the opensearch image runs as.
-    - { path: "{{ tn_opensearch_certs_dir }}", owner: "1000", mode: "0750" }
-    - { path: "{{ tn_opensearch_internal_users | dirname }}", owner: "1000", mode: "0750" }
-  loop_control:
-    label: "{{ item.path }}"
+- name: TLS — OpenSearch certificates and internal users (as root)
+  become: true
+  block:
+    - name: TLS — OpenSearch directories
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: directory
+        owner: "{{ item.owner }}"
+        group: "{{ item.owner }}"
+        mode: "{{ item.mode }}"
+      loop:
+        - { path: "{{ tn_opensearch_ca_dir }}", owner: "0", mode: "0700" }
+        # uid 1000: the user the opensearch image runs as.
+        - { path: "{{ tn_opensearch_certs_dir }}", owner: "1000", mode: "0750" }
+        - { path: "{{ tn_opensearch_internal_users | dirname }}", owner: "1000", mode: "0750" }
+      loop_control:
+        label: "{{ item.path }}"
 
-- name: TLS — OpenSearch CA key
-  community.crypto.openssl_privatekey:
-    path: "{{ tn_opensearch_ca_dir }}/ca-key.pem"
-    size: 3072
-    mode: "0600"
+    - name: TLS — OpenSearch CA key
+      community.crypto.openssl_privatekey:
+        path: "{{ tn_opensearch_ca_dir }}/ca-key.pem"
+        size: 3072
+        owner: "0"
+        group: "0"
+        mode: "0600"
 
-- name: TLS — OpenSearch CA request
-  community.crypto.openssl_csr:
-    path: "{{ tn_opensearch_ca_dir }}/ca.csr"
-    privatekey_path: "{{ tn_opensearch_ca_dir }}/ca-key.pem"
-    subject_ordered:
-      - O: TrueNorth
-      - CN: TrueNorth OpenSearch CA
-    use_common_name_for_san: false
-    basic_constraints: ["CA:TRUE"]
-    basic_constraints_critical: true
-    key_usage: [keyCertSign, cRLSign]
-    key_usage_critical: true
-    mode: "0644"
+    - name: TLS — OpenSearch CA request
+      community.crypto.openssl_csr:
+        path: "{{ tn_opensearch_ca_dir }}/ca.csr"
+        privatekey_path: "{{ tn_opensearch_ca_dir }}/ca-key.pem"
+        subject_ordered:
+          - O: TrueNorth
+          - CN: TrueNorth OpenSearch CA
+        use_common_name_for_san: false
+        basic_constraints: ["CA:TRUE"]
+        basic_constraints_critical: true
+        key_usage: [keyCertSign, cRLSign]
+        key_usage_critical: true
+        mode: "0644"
 
-- name: TLS — OpenSearch CA certificate
-  community.crypto.x509_certificate:
-    path: "{{ tn_opensearch_certs_dir }}/ca.pem"
-    privatekey_path: "{{ tn_opensearch_ca_dir }}/ca-key.pem"
-    csr_path: "{{ tn_opensearch_ca_dir }}/ca.csr"
-    provider: selfsigned
-    selfsigned_not_after: "+3650d"
-    mode: "0644"
+    # Readable by everyone: the api and workers mount it to verify OpenSearch.
+    - name: TLS — OpenSearch CA certificate
+      community.crypto.x509_certificate:
+        path: "{{ tn_opensearch_certs_dir }}/ca.pem"
+        privatekey_path: "{{ tn_opensearch_ca_dir }}/ca-key.pem"
+        csr_path: "{{ tn_opensearch_ca_dir }}/ca.csr"
+        provider: selfsigned
+        selfsigned_not_after: "+3650d"
+        owner: "1000"
+        group: "1000"
+        mode: "0644"
 
-# The security plugin reads PKCS#8 keys only.
-- name: TLS — OpenSearch node and admin keys
-  community.crypto.openssl_privatekey:
-    path: "{{ tn_opensearch_certs_dir }}/{{ item }}-key.pem"
-    size: 2048
-    format: pkcs8
-    owner: "1000"
-    group: "1000"
-    mode: "0600"
-  loop: [node, admin]
+    # The security plugin reads PKCS#8 keys only.
+    - name: TLS — OpenSearch node and admin keys
+      community.crypto.openssl_privatekey:
+        path: "{{ tn_opensearch_certs_dir }}/{{ item }}-key.pem"
+        size: 2048
+        format: pkcs8
+        owner: "1000"
+        group: "1000"
+        mode: "0600"
+      loop: [node, admin]
 
-- name: TLS — OpenSearch node and admin requests
-  community.crypto.openssl_csr:
-    path: "{{ tn_opensearch_ca_dir }}/{{ item.name }}.csr"
-    privatekey_path: "{{ tn_opensearch_certs_dir }}/{{ item.name }}-key.pem"
-    # CN only: compose passes nodes_dn/admin_dn as -E settings, which split on commas,
-    # so a multi-RDN DN (CN=..,O=..) could never match.
-    subject_ordered:
-      - CN: "{{ item.cn }}"
-    use_common_name_for_san: false
-    subject_alt_name: "{{ item.san }}"
-    key_usage: [digitalSignature, keyEncipherment]
-    extended_key_usage: "{{ item.eku }}"
-    mode: "0644"
-  loop:
-    # The CN must match plugins.security.nodes_dn and authcz.admin_dn in compose.prod.yml.
-    - { name: node, cn: opensearch, san: ["DNS:opensearch", "DNS:localhost", "IP:127.0.0.1"],
-        eku: [serverAuth, clientAuth] }
-    - { name: admin, cn: tn-opensearch-admin, san: ["DNS:tn-opensearch-admin"], eku: [clientAuth] }
-  loop_control:
-    label: "{{ item.name }}"
+    - name: TLS — OpenSearch node and admin requests
+      community.crypto.openssl_csr:
+        path: "{{ tn_opensearch_ca_dir }}/{{ item.name }}.csr"
+        privatekey_path: "{{ tn_opensearch_certs_dir }}/{{ item.name }}-key.pem"
+        # CN only: compose passes nodes_dn/admin_dn as -E settings, which split on commas,
+        # so a multi-RDN DN (CN=..,O=..) could never match.
+        subject_ordered:
+          - CN: "{{ item.cn }}"
+        use_common_name_for_san: false
+        subject_alt_name: "{{ item.san }}"
+        key_usage: [digitalSignature, keyEncipherment]
+        extended_key_usage: "{{ item.eku }}"
+        mode: "0644"
+      loop:
+        # The CN must match plugins.security.nodes_dn and authcz.admin_dn in compose.prod.yml.
+        - { name: node, cn: opensearch, san: ["DNS:opensearch", "DNS:localhost", "IP:127.0.0.1"],
+            eku: [serverAuth, clientAuth] }
+        - { name: admin, cn: tn-opensearch-admin, san: ["DNS:tn-opensearch-admin"], eku: [clientAuth] }
+      loop_control:
+        label: "{{ item.name }}"
 
-- name: TLS — OpenSearch node and admin certificates
-  community.crypto.x509_certificate:
-    path: "{{ tn_opensearch_certs_dir }}/{{ item }}.pem"
-    csr_path: "{{ tn_opensearch_ca_dir }}/{{ item }}.csr"
-    provider: ownca
-    ownca_path: "{{ tn_opensearch_certs_dir }}/ca.pem"
-    ownca_privatekey_path: "{{ tn_opensearch_ca_dir }}/ca-key.pem"
-    ownca_not_after: "+825d"
-    owner: "1000"
-    group: "1000"
-    mode: "0644"
-  loop: [node, admin]
+    - name: TLS — OpenSearch node and admin certificates
+      community.crypto.x509_certificate:
+        path: "{{ tn_opensearch_certs_dir }}/{{ item }}.pem"
+        csr_path: "{{ tn_opensearch_ca_dir }}/{{ item }}.csr"
+        provider: ownca
+        ownca_path: "{{ tn_opensearch_certs_dir }}/ca.pem"
+        ownca_privatekey_path: "{{ tn_opensearch_ca_dir }}/ca-key.pem"
+        ownca_not_after: "+825d"
+        owner: "1000"
+        group: "1000"
+        mode: "0644"
+      loop: [node, admin]
 
-- name: TLS — OpenSearch internal_users.yml helper
-  ansible.builtin.copy:
-    src: opensearch_internal_users.py
-    dest: "{{ tn_state_dir }}/opensearch_internal_users.py"
-    mode: "0700"
+    - name: TLS — OpenSearch internal_users.yml helper
+      ansible.builtin.copy:
+        src: opensearch_internal_users.py
+        dest: "{{ tn_opensearch_ca_dir }}/opensearch_internal_users.py"
+        owner: "0"
+        group: "0"
+        mode: "0700"
 
-# Passwords go in on stdin, never on a command line. A hash that still matches its
-# password is kept, so a re-run reports no change.
-- name: TLS — OpenSearch internal_users.yml
-  ansible.builtin.command:
-    cmd: "python3 {{ tn_state_dir }}/opensearch_internal_users.py"
-    stdin: >-
-      {{ {'path': tn_opensearch_internal_users, 'users': {
-            'admin': {'password': tn_secrets['opensearch_admin_password'], 'backend_roles': ['admin'],
-                      'description': 'TrueNorth platform account (API, workers, telemetry bootstrap)'},
-            'kibanaserver': {'password': tn_secrets['opensearch_dashboards_password'], 'backend_roles': [],
-                             'description': 'OpenSearch Dashboards server'}}} | to_json }}
-  register: tn_os_users
-  changed_when: tn_os_users.stdout == 'changed'
-  no_log: true
-
-- name: TLS — OpenSearch internal_users.yml ownership
-  ansible.builtin.file:
-    path: "{{ tn_opensearch_internal_users }}"
-    owner: "1000"
-    group: "1000"
-    mode: "0600"
+    # Passwords go in on stdin, never on a command line. A hash that still verifies
+    # against its password (bcrypt) is kept, so a re-run reports no change; the file keeps
+    # uid/gid 1000 and mode 0600 (the helper sets them).
+    - name: TLS — OpenSearch internal_users.yml
+      ansible.builtin.command:
+        cmd: "python3 {{ tn_opensearch_ca_dir }}/opensearch_internal_users.py"
+        stdin: >-
+          {{ {'path': tn_opensearch_internal_users, 'uid': 1000, 'gid': 1000, 'users': {
+                'admin': {'password': tn_secrets['opensearch_admin_password'], 'backend_roles': ['admin'],
+                          'description': 'TrueNorth platform account (API, workers, telemetry bootstrap)'},
+                'kibanaserver': {'password': tn_secrets['opensearch_dashboards_password'], 'backend_roles': [],
+                                 'description': 'OpenSearch Dashboards server'}}} | to_json }}
+      register: tn_os_users
+      changed_when: tn_os_users.stdout == 'changed'
+      no_log: true

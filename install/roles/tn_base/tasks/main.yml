@@ -29,45 +29,80 @@
       - python3-cryptography # community.crypto (self-signed TLS, CA conversion)
       - python3-bcrypt # OpenSearch internal_users.yml password hashes (tn_tls)
       - acl # become_user on a non-root target
+      - logrotate # {{ tn_data_root }}/logs (below)
     state: present
   become: true
 
 # Resolve corp.tnrange.lab through AD (tn_dns_servers). A global systemd-resolved
 # server is listed first in /run/systemd/resolve/resolv.conf, which is what Docker hands
 # containers, so Keycloak resolves the DC as the host does. The DC forwards other names.
-- name: Base — systemd-resolved drop-in directory
-  ansible.builtin.file:
-    path: /etc/systemd/resolved.conf.d
-    state: directory
-    mode: "0755"
-  become: true
-
+# Only with AD (tn_ldap_enabled): a site without TN-DC01 keeps its own resolver.
 - name: Base — resolve the AD domain through its DNS
+  when: tn_ldap_enabled | bool
+  block:
+    - name: Base — systemd-resolved drop-in directory
+      ansible.builtin.file:
+        path: /etc/systemd/resolved.conf.d
+        state: directory
+        mode: "0755"
+      become: true
+
+    - name: Base — resolver drop-in for the AD domain
+      ansible.builtin.copy:
+        dest: /etc/systemd/resolved.conf.d/90-truenorth-ad.conf
+        mode: "0644"
+        content: |
+          # Managed by the TrueNorth installer (roles/tn_base).
+          [Resolve]
+          DNS={{ tn_dns_servers | join(' ') }}
+          Domains={{ tn_domain }}
+      become: true
+      notify: Restart systemd-resolved
+
+    # The check below needs the new resolver now, not at the end of the play.
+    - name: Base — apply the resolver change
+      ansible.builtin.meta: flush_handlers
+
+    - name: Base — the host now resolves the DC
+      ansible.builtin.command: "getent hosts {{ tn_dc_host }}"
+      register: tn_dc_resolves
+      changed_when: false
+      retries: 5
+      delay: 2
+      until: tn_dc_resolves.rc == 0
+
+# Without AD DNS (tn_manage_etc_hosts): the seed and smoke checks call the service name
+# from this host, where nginx answers on 443.
+- name: Base — pin the service name to this host in /etc/hosts
+  ansible.builtin.lineinfile:
+    path: /etc/hosts
+    regexp: '^\S+\s+{{ tn_domain_fqdn | regex_escape }}(\s|$)'
+    line: "127.0.0.1 {{ tn_domain_fqdn }}"
+    mode: "0644"
+  become: true
+  when: tn_manage_etc_hosts | bool
+
+# nginx writes its access/error logs into {{ tn_data_root }}/logs (the nginx-logs bind
+# volume), as does the backup cron. Unrotated, they fill the data disk. copytruncate:
+# nginx keeps its file descriptors, nothing needs a signal.
+- name: Base — rotate the platform logs
   ansible.builtin.copy:
-    dest: /etc/systemd/resolved.conf.d/90-truenorth-ad.conf
+    dest: /etc/logrotate.d/truenorth
     mode: "0644"
     content: |
       # Managed by the TrueNorth installer (roles/tn_base).
-      [Resolve]
-      DNS={{ tn_dns_servers | join(' ') }}
-      Domains={{ tn_domain }}
+      {{ tn_data_root }}/logs/*.log {{ tn_data_root }}/logs/*/*.log {
+          daily
+          rotate {{ tn_logrotate_days }}
+          maxsize 500M
+          missingok
+          notifempty
+          compress
+          delaycompress
+          copytruncate
+          su root root
+      }
   become: true
-  register: tn_resolved_conf
-
-- name: Base — apply the resolver change
-  ansible.builtin.systemd_service:
-    name: systemd-resolved
-    state: restarted
-  become: true
-  when: tn_resolved_conf is changed
-
-- name: Base — the host now resolves the DC
-  ansible.builtin.command: "getent hosts {{ tn_dc_host }}"
-  register: tn_dc_resolves
-  changed_when: false
-  retries: 5
-  delay: 2
-  until: tn_dc_resolves.rc == 0
 
 # OpenSearch sets bootstrap.memory_lock=true and mmaps its indices. The Ubuntu
 # default (65530) is far below what it needs, and the container exits during

@@ -12,11 +12,20 @@ tn_app_source_mode: git # git | local | tarball
 # git.guapo613.beer/soadmin/truenorth, has no `main` branch.) TN-MGMT01 needs HTTPS out
 # to github.com for this; preflight checks it. Without it, use `local` mode.
 tn_app_git_repo: "https://github.com/mblanke/TrueNorth.git"
-# Pin a commit SHA. A branch name makes re-runs non-deterministic: the same playbook
-# would deploy different code on different days. 083aeb7 is main on 2026-10-05.
-tn_app_git_version: "083aeb750bbf8ff1c25c6efb0ac03489e708af99"
+# Empty (the default): the commit THIS INSTALLER is checked out at, so the installer and
+# the app it deploys are always the same revision (roles/tn_release resolves it on the
+# control node). In release mode the manifest's git_sha replaces it. Set a SHA only to
+# deploy something else deliberately; a branch name makes re-runs non-deterministic.
+# Either way the app's compose.prod.yml must carry this installer's compatibility level
+# (install/COMPAT), and a commit older than the one already deployed is refused unless
+# -e tn_allow_downgrade=true (docs/runbooks/upgrade.md, "Rollback").
+tn_app_git_version: ""
+tn_allow_downgrade: false
 tn_app_local_path: "" # air-gapped: rsync a checkout from the control node
-tn_app_tarball: "" # air-gapped: a release archive
+tn_app_tarball: "" # air-gapped: a source archive of the release's commit (control node)
+# One of these is required with a tarball: its SHA-256, or a SHA256SUMS file listing it.
+tn_app_tarball_sha256: ""
+tn_app_tarball_sums: ""
 
 # ── Which images run (deploy by digest; install/README.md "Images") ────
 # release: the images a release published, by digest, from its release-manifest.json
@@ -66,6 +75,11 @@ tn_opensearch_internal_users: "{{ tn_config_dir }}/opensearch/internal_users.yml
 tn_opensearch_disable_security: false
 
 # ── Identity: Active Directory on TN-DC01 ─────────────────────────────
+# AD/LDAPS integration (resolver drop-in, LDAPS bind, Keycloak federation, the AD import
+# check). Off by default: a site without TN-DC01 gets local Keycloak groups and a local
+# bootstrap administrator instead (install/README.md "Without Active Directory").
+# inventory/hosts.yml turns it on for TN-MGMT01.
+tn_ldap_enabled: false
 tn_domain: corp.tnrange.lab
 tn_dc_host: tn-dc01.corp.tnrange.lab
 tn_dc_ip: 10.30.30.10
@@ -98,6 +112,14 @@ tn_keycloak_issuer: "{{ tn_keycloak_base }}/realms/{{ tn_keycloak_realm }}"
 tn_keycloak_admin_port: 8180
 tn_keycloak_web_client: truenorth-web
 tn_keycloak_api_client: truenorth-api
+# The API's own confidential service account for Keycloak's Admin API (/ad-sync): client
+# credentials, holding only the realm-management roles the API calls need
+# (roles/tn_keycloak). The master-realm admin is never in the API's environment.
+tn_keycloak_api_admin_client: truenorth-api-admin
+# The service hostname must resolve on the platform host itself (the seed and smoke
+# checks call https://<tn_domain_fqdn>/ from there). true: pin it to 127.0.0.1 in
+# /etc/hosts, for a site whose DNS does not know the name yet.
+tn_manage_etc_hosts: false
 # AD security groups. These are the groups the Keycloak group mapper exposes as
 # the `groups` claim, which registration reads to suggest a role.
 tn_ad_groups:
@@ -142,10 +164,10 @@ tn_vsphere_datastore: esx04-local
 tn_vsphere_network: ""
 # Range VMs are refused on these networks (comma-separated).
 tn_vsphere_mgmt_network: dPG-TN-MGMT
-# Rendered as VSPHERE_VERIFY_SSL (compose.prod.yml defaults to true). Kept false here,
-# as before, for this lab; set true once vCenter's certificate chains to a CA the worker
-# image trusts. A production site should not run with false.
-tn_vsphere_verify_ssl: false
+# Rendered as VSPHERE_VERIFY_SSL. Verify vCenter's certificate. A lab whose vCenter
+# still serves the VMCA's self-signed chain overrides this per host (inventory/hosts.yml
+# says why); a production site never does.
+tn_vsphere_verify_ssl: true
 # Empty: clone the inventory VM templates (tmpl-*). Set once a Content Library exists.
 tn_vsphere_content_library: ""
 tn_vsphere_concurrency: 4
@@ -185,7 +207,10 @@ tn_software_install_timeout: 1800
 tn_fail_on_missing_vsphere_privs: false
 
 # ── AI ────────────────────────────────────────────────────────────────
-tn_ai_base_url: "http://133.1.14.240:4000/v1"
+# The OpenAI-compatible endpoint (LiteLLM) the AI orchestrator calls, e.g.
+# http://<litellm-host>:4000/v1. REQUIRED: there is no default, and preflight stops
+# without it. Its key is vault_openai_api_key (empty only for an unauthenticated endpoint).
+tn_ai_base_url: ""
 
 # ── TLS ───────────────────────────────────────────────────────────────
 # provided  — you issue the cert from AD CS out of band and drop the pair in
@@ -203,6 +228,30 @@ tn_tls_mode: selfsigned
 tn_min_free_gb: 200
 tn_min_docker_version: "24.0.0"
 tn_min_compose_version: "2.20.0"
+
+# ── Backups (scripts/backup; docs/runbooks/backup-restore.md) ─────────
+# The secrets escrow is REQUIRED; the install stops without one of:
+#   tn_backup_escrow_pubkey: an RSA public key (PEM) ON THE CONTROL NODE. Each backup
+#     encrypts the env file and /srv/truenorth/config/secrets/ to it. Keep the private key
+#     offline (scripts/backup/restore-secrets.sh needs it).
+#   tn_backup_escrow: out-of-band — you attest the secrets are escrowed elsewhere (the
+#     vault, a safe); backups then hold no secrets at all.
+tn_backup_escrow_pubkey: ""
+tn_backup_escrow: ""
+# Backups never fill the disk: a backup does not start with less than this free, and the
+# oldest are pruned (never the newest) while all backups together exceed the cap.
+tn_backup_min_free_gb: 20
+tn_backup_max_total_gb: 200
+# Upgrades (50-stack-up): a backup before migrating, and what happens to in-flight
+# Celery tasks when the workers stop. drain: wait for them (worker-provision can take up
+# to an hour while a range builds). abandon: stop after 60 s; interrupted ranges must be
+# torn down and rebuilt (docs/runbooks/upgrade.md).
+tn_pre_upgrade_backup: true
+tn_upgrade_inflight: drain # drain | abandon
+
+# ── Logs ──────────────────────────────────────────────────────────────
+# /srv/truenorth/logs (nginx, backup.log) is rotated by logrotate (roles/tn_base).
+tn_logrotate_days: 14
 
 # ── Behaviour switches ────────────────────────────────────────────────
 # Demo content ("ACME Corp", "Wayne Enterprises") has no place in a range that
