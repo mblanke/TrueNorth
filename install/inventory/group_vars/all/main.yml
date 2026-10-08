@@ -211,6 +211,10 @@ tn_fail_on_missing_vsphere_privs: false
 # http://<litellm-host>:4000/v1. REQUIRED: there is no default, and preflight stops
 # without it. Its key is vault_openai_api_key (empty only for an unauthenticated endpoint).
 tn_ai_base_url: ""
+# The model ids the endpoint serves (its /models list). The defaults are LiteLLM aliases;
+# another server (Open WebUI, vLLM, Ollama) names its models differently.
+tn_ai_default_model: agent
+tn_ai_embed_model: embed
 
 # ── TLS ───────────────────────────────────────────────────────────────
 # provided  — you issue the cert from AD CS out of band and drop the pair in
