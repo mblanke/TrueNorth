@@ -36,6 +36,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+from .. import safe_yaml
 from ..arc2_studio_schemas import RunDetail, RunFile, RunList
 from ..auth import CurrentUser
 from ..rbac import Permission, require_permission
@@ -299,22 +300,13 @@ def _safe_text(path: Path, limit: int = 4000) -> str | None:
     return data.decode(errors="replace")[:limit] if data is not None else None
 
 
-class _NoAliasLoader(yaml.SafeLoader):
-    """SafeLoader without anchors/aliases: a few hundred bytes of nested aliases expand to
-    gigabytes when the result is serialised. The engine's YAML never needs them."""
-
-    def compose_node(self, parent, index):
-        if self.check_event(yaml.AliasEvent):
-            raise yaml.YAMLError("YAML aliases are not accepted in run files")
-        return super().compose_node(parent, index)
-
-
 def _safe_yaml(path: Path):
+    """A run file's YAML, parsed without aliases (app/safe_yaml.py); None if unreadable."""
     data = _read_bytes(path)
     if data is None or len(data) >= MAX_READ_BYTES:
         return None
     try:
-        return yaml.load(data, Loader=_NoAliasLoader)  # noqa: S506 - SafeLoader subclass
+        return safe_yaml.load(data, max_bytes=MAX_READ_BYTES)
     except yaml.YAMLError:
         return None
 
