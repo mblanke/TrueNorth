@@ -19,6 +19,7 @@ describe('LoginComponent', () => {
     });
     router = TestBed.inject(Router);
     spyOn(router, 'navigate').and.resolveTo(true);
+    spyOn(router, 'navigateByUrl').and.resolveTo(true);
     const fixture = TestBed.createComponent(LoginComponent);
     fixture.detectChanges();
     return fixture;
@@ -52,6 +53,34 @@ describe('LoginComponent', () => {
     create();
     expect(router.navigate).toHaveBeenCalledWith(['/dashboard']);
   });
+
+  it('passes a safe returnUrl to SSO so the Student comes back to their lab', () => {
+    const fixture = create({ returnUrl: '/labs/lab-42' });
+    (fixture.nativeElement.querySelector('button.sso-btn') as HTMLButtonElement).click();
+    expect(auth.login).toHaveBeenCalledWith(`${window.location.origin}/labs/lab-42`);
+  });
+
+  it('sends a signed-in user straight to a safe returnUrl', () => {
+    auth.isAuthenticated.and.returnValue(true);
+    create({ returnUrl: '/labs/lab-42' });
+    expect(router.navigateByUrl).toHaveBeenCalledWith('/labs/lab-42');
+    expect(router.navigate).not.toHaveBeenCalled();
+  });
+
+  for (const hostile of ['https://evil.test/labs/1', '//evil.test', '/\\evil.test', 'javascript:alert(1)']) {
+    it(`ignores an unsafe returnUrl (${hostile})`, () => {
+      const fixture = create({ returnUrl: hostile });
+      (fixture.nativeElement.querySelector('button.sso-btn') as HTMLButtonElement).click();
+      expect(auth.login).toHaveBeenCalledWith(undefined);
+    });
+
+    it(`sends a signed-in user to the dashboard, not to ${hostile}`, () => {
+      auth.isAuthenticated.and.returnValue(true);
+      create({ returnUrl: hostile });
+      expect(router.navigate).toHaveBeenCalledWith(['/dashboard']);
+      expect(router.navigateByUrl).not.toHaveBeenCalled();
+    });
+  }
 
   it('stays put for a signed-in user with ?preview', () => {
     auth.isAuthenticated.and.returnValue(true);
