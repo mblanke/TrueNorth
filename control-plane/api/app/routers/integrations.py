@@ -6,6 +6,7 @@ and custom LTI/API platforms. Handles external activity sync and LTI 1.3 flows.
 
 from __future__ import annotations
 
+import asyncio
 import hmac
 import logging
 import os
@@ -17,7 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
-from .. import moodle_sso
+from .. import moodle_sso, net_guard
 from ..auth import CurrentUser, get_current_user
 from ..course_publishing.models import CoursePublication
 from ..db import get_db
@@ -213,21 +214,30 @@ async def test_connectivity(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_permission(Permission.INTEGRATION_WRITE)),
 ):
-    """Test connectivity to an external platform."""
-    import httpx
+    """Test connectivity to an external platform.
 
+    The probe goes through app.net_guard (http(s) only, internal addresses refused unless
+    INTEGRATION_ALLOW_PRIVATE_URLS is on, pinned, no redirects) and a failure reads as one
+    fixed message per outcome. Before (PR #112 review), it fetched the stored base_url
+    unguarded and returned the exception text: an SSRF and a port/host oracle.
+    """
     p = get_owned(db, ExternalPlatform, platform_id, user)
     if not p:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Platform not found")
 
+    url = get_platform_adapter(p.platform_type).health_url(p.base_url or "")
+    allow_private = os.getenv("INTEGRATION_ALLOW_PRIVATE_URLS", "false").strip().lower() in ("1", "true", "yes", "on")
     try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.get(get_platform_adapter(p.platform_type).health_url(p.base_url))
-            reachable = resp.status_code < 500
-    except Exception as e:
-        return {"platform_id": str(p.id), "reachable": False, "error": str(e)}
+        code = await asyncio.to_thread(net_guard.probe, url, allow_private=allow_private, timeout=10.0)
+    except net_guard.DestinationRefusedError:
+        return {"platform_id": str(p.id), "reachable": False, "error": PROBE_REFUSED}
+    except net_guard.GuardError:
+        return {"platform_id": str(p.id), "reachable": False, "error": PROBE_UNREACHABLE}
+    return {"platform_id": str(p.id), "reachable": code < 500, "status_code": code}
 
-    return {"platform_id": str(p.id), "reachable": reachable, "status_code": resp.status_code}
+
+PROBE_REFUSED = "The platform URL must be http(s) and point at an allowed address"
+PROBE_UNREACHABLE = "The platform could not be reached"
 
 
 # ══════════════════════════════════════════════════════════════════════════

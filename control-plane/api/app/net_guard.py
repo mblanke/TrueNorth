@@ -13,8 +13,10 @@ network. ``fetch`` is the one way to do that:
 - the connection is pinned to a vetted address (``PinnedBackend``), so a DNS answer that
   changes between the check and the connect (rebinding) cannot steer it; the URL is left as
   it is, so the Host header, TLS SNI and certificate verification use the real hostname;
-- redirects are not followed (a redirect is how a vetted public host points the fetch at
-  an internal one) and ``trust_env=False`` ignores HTTP(S)_PROXY / NO_PROXY / .netrc;
+- redirects are not followed by the client (a redirect is how a vetted public host points
+  the fetch at an internal one); a caller may allow a few (``max_redirects``), and each
+  hop is then vetted and pinned again from scratch. ``trust_env=False`` ignores
+  HTTP(S)_PROXY / NO_PROXY / .netrc;
 - the body is capped at ``max_bytes``;
 - failures raise one of three exception types carrying no detail of their own, so callers
   report one fixed message per outcome and the endpoint cannot be used to tell open ports
@@ -76,6 +78,14 @@ def check_destination(url: str, *, allow_private: bool) -> str:
     if parts.scheme.lower() not in ("http", "https") or not parts.hostname:
         raise DestinationRefusedError()
     try:
+        literal = ipaddress.ip_address(parts.hostname.split("%", 1)[0])
+    except ValueError:
+        literal = None
+    if literal is not None:  # an address, not a name: nothing to resolve
+        if refused(literal, allow_private=allow_private):
+            raise DestinationRefusedError()
+        return str(literal)
+    try:
         port = parts.port or (443 if parts.scheme.lower() == "https" else 80)
         infos = _resolve(parts.hostname, port, type=socket.SOCK_STREAM)
     except (socket.gaierror, UnicodeError, ValueError) as exc:
@@ -128,32 +138,58 @@ class Fetched:
     content_type: str
 
 
-def fetch(url: str, *, max_bytes: int, allow_private: bool = False, timeout: float = 10.0,
-          accept: str = "*/*") -> Fetched:
-    """GET ``url`` under every rule in the module docstring. Synchronous: call it from a
-    thread (``asyncio.to_thread``) in async code."""
+def _client(url: str, *, allow_private: bool, timeout: float) -> httpx.Client:
+    """A client for one vetted hop: pinned, no redirects, no environment proxies."""
     address = check_destination(url, allow_private=allow_private)
     try:
         host = httpx.URL(url).raw_host.decode("ascii").lower()  # what httpcore will dial for
     except (httpx.InvalidURL, UnicodeError) as exc:
         raise DestinationRefusedError() from exc
+    return httpx.Client(
+        timeout=timeout, follow_redirects=False, trust_env=False, transport=PinnedTransport(host, address)
+    )
+
+
+def fetch(url: str, *, max_bytes: int, allow_private: bool = False, timeout: float = 10.0,
+          accept: str = "*/*", max_redirects: int = 0) -> Fetched:
+    """GET ``url`` under every rule in the module docstring. Synchronous: call it from a
+    thread (``asyncio.to_thread``) in async code.
+
+    ``max_redirects`` > 0 follows that many redirects, each hop a new fetch under the same
+    rules: its target is resolved, vetted and pinned again (a refused target raises
+    ``DestinationRefusedError``). One redirect more than that is ``UnreachableError``.
+    """
+    for hop in range(max_redirects + 1):
+        try:
+            with (
+                _client(url, allow_private=allow_private, timeout=timeout) as client,
+                client.stream("GET", url, headers={"Accept": accept}) as resp,
+            ):
+                location = resp.headers.get("location")
+                if resp.is_redirect and location and hop < max_redirects:
+                    url = str(resp.url.join(location))
+                    continue
+                if resp.status_code >= 300:
+                    raise UnreachableError()
+                body = bytearray()
+                for chunk in resp.iter_bytes():
+                    body.extend(chunk)
+                    if len(body) > max_bytes:
+                        raise TooLargeError()
+                return Fetched(bytes(body), resp.headers.get("content-type", ""))
+        except (httpx.HTTPError, httpx.InvalidURL) as exc:
+            raise UnreachableError() from exc
+    raise UnreachableError()  # unreachable: the last hop returns or raises
+
+
+def probe(url: str, *, allow_private: bool = False, timeout: float = 10.0) -> int:
+    """The HTTP status ``url`` answers a guarded GET with (redirects not followed, body not
+    read). For reachability checks; failures raise the same detail-free errors as fetch."""
     try:
         with (
-            httpx.Client(
-                timeout=timeout,
-                follow_redirects=False,
-                trust_env=False,
-                transport=PinnedTransport(host, address),
-            ) as client,
-            client.stream("GET", url, headers={"Accept": accept}) as resp,
+            _client(url, allow_private=allow_private, timeout=timeout) as client,
+            client.stream("GET", url) as resp,
         ):
-            if resp.is_redirect or resp.status_code >= 300:  # redirects are not followed
-                raise UnreachableError()
-            body = bytearray()
-            for chunk in resp.iter_bytes():
-                body.extend(chunk)
-                if len(body) > max_bytes:
-                    raise TooLargeError()
-            return Fetched(bytes(body), resp.headers.get("content-type", ""))
-    except httpx.HTTPError as exc:
+            return resp.status_code
+    except (httpx.HTTPError, httpx.InvalidURL) as exc:
         raise UnreachableError() from exc

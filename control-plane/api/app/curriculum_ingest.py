@@ -138,6 +138,9 @@ def _html_to_text(html: str) -> str:
 # applies the same rules as threat-intel feeds; refusals and failures read the same.
 URL_REFUSED = "the URL must be http(s) and point at a public address"
 URL_UNREACHABLE = "the URL could not be fetched"
+# Pages move (http -> https, a trailing slash): a few redirects are followed, each hop
+# re-vetted by net_guard, so a public page cannot redirect the fetch inside.
+URL_MAX_REDIRECTS = 3
 
 
 def _url_max_bytes() -> int:
@@ -158,7 +161,7 @@ async def fetch_url_text(url: str) -> tuple[str, str]:
     try:
         fetched = await asyncio.to_thread(
             net_guard.fetch, url, max_bytes=limit, allow_private=_allow_private_urls(), timeout=30.0,
-            accept="text/html, application/pdf, text/plain",
+            accept="text/html, application/pdf, text/plain", max_redirects=URL_MAX_REDIRECTS,
         )
     except net_guard.DestinationRefusedError:
         raise ValueError(URL_REFUSED) from None

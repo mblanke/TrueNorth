@@ -98,8 +98,72 @@ def test_a_redirect_to_metadata_is_not_followed(monkeypatch, network):
     with pytest.raises(ValueError) as failed:
         _fetch("https://docs.example.org/course")
 
-    assert str(failed.value) == curriculum_ingest.URL_UNREACHABLE
+    # The hop is re-vetted like a first fetch, and refused before any connect.
+    assert str(failed.value) == curriculum_ingest.URL_REFUSED
     assert record["connects"] == [(PUBLIC_IP, 443)]  # one connect, to the vetted host only
+
+
+class _Hops(httpcore.NetworkBackend):
+    """Answers each connect with the next reply, recording (dialled address, port).
+    net_guard builds one backend per hop, so the record and the replies are shared."""
+
+    def __init__(self, record, replies: list[bytes]):
+        self.record, self.replies = record, replies
+        record.setdefault("connects", [])
+
+    def connect_tcp(self, host, port, timeout=None, local_address=None, socket_options=None):
+        self.record["connects"].append((host, port))
+        return _Stream(self.record, self.replies.pop(0))
+
+    def sleep(self, seconds):
+        pass
+
+
+def _by_host(table: dict[str, str]):
+    def fake(host, port, type=0, **_):  # noqa: A002 - socket.getaddrinfo's own name
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (table[host], port))]
+
+    return fake
+
+
+def test_redirects_are_followed_and_each_hop_is_vetted_and_pinned(monkeypatch):
+    record: dict = {}
+    replies = [
+        _http("301 Moved Permanently", headers="Location: https://docs.example.org/course\r\n"),
+        _http("302 Found", headers="Location: https://cdn.example.net/course/\r\n"),
+        _http("200 OK", b"<title>Moved</title>here"),
+    ]
+    monkeypatch.setattr(net_guard, "_network_backend", lambda: _Hops(record, replies))
+    monkeypatch.setattr(net_guard, "_resolve", _by_host({"docs.example.org": PUBLIC_IP, "cdn.example.net": "93.184.216.35"}))
+
+    assert _fetch("http://docs.example.org/course")[0] == "Moved"
+    assert record["connects"] == [(PUBLIC_IP, 80), (PUBLIC_IP, 443), ("93.184.216.35", 443)]
+
+
+def test_a_redirect_whose_host_resolves_inside_is_refused(monkeypatch):
+    record: dict = {}
+    replies = [_http("302 Found", headers="Location: http://intranet.example.org/\r\n"), _http("200 OK", b"secret")]
+    monkeypatch.setattr(net_guard, "_network_backend", lambda: _Hops(record, replies))
+    monkeypatch.setattr(net_guard, "_resolve", _by_host({"docs.example.org": PUBLIC_IP, "intranet.example.org": "10.1.2.3"}))
+
+    with pytest.raises(ValueError) as refused:
+        _fetch("https://docs.example.org/")
+
+    assert str(refused.value) == curriculum_ingest.URL_REFUSED
+    assert record["connects"] == [(PUBLIC_IP, 443)]
+
+
+def test_more_than_three_redirects_are_not_followed(monkeypatch):
+    record: dict = {}
+    loop = _http("302 Found", headers="Location: https://docs.example.org/again\r\n")
+    monkeypatch.setattr(net_guard, "_network_backend", lambda: _Hops(record, [loop] * 5))
+    monkeypatch.setattr(net_guard, "_resolve", _resolve_to(PUBLIC_IP))
+
+    with pytest.raises(ValueError) as failed:
+        _fetch("https://docs.example.org/")
+
+    assert str(failed.value) == curriculum_ingest.URL_UNREACHABLE
+    assert len(record["connects"]) == 1 + curriculum_ingest.URL_MAX_REDIRECTS
 
 
 def test_failures_read_the_same_whatever_the_cause(monkeypatch, network):

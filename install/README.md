@@ -189,6 +189,13 @@ exists; once a second tenant exists nobody is, and the api logs an error at star
 until it is set. Set, it must be a tenant UUID or production refuses to start. A
 single-tenant install needs nothing.
 
+URLs someone else chose are fetched through `app/net_guard.py`: loopback, link-local and
+cloud-metadata addresses are always refused, and private (RFC 1918) addresses unless the
+feature's flag is on: `INTEGRATION_ALLOW_PRIVATE_URLS` (an LMS platform's connectivity
+test), `CURRICULUM_ALLOW_PRIVATE_URLS` (curriculum pages, up to 3 redirects, each hop
+re-checked), `THREAT_INTEL_ALLOW_PRIVATE_FEEDS`. An LMS on the platform network needs the
+first, or its "Test" button reports the URL as refused.
+
 ## OpenSearch
 
 The security plugin is **on**. `40-tls` (`roles/tn_tls/tasks/opensearch.yml`) makes:
