@@ -5074,6 +5074,35 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/ranges/{range_id}/lease/force-release": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Force Release Range Lease
+         * @description DANGEROUS. Delete an abandoned operation's lease tombstone, so the range can be acted
+         *     on at once instead of when that operation's worker finishes (a hung worker can hold it
+         *     for about 1 h 55 min).
+         *
+         *     Only after checking vCenter: if that worker is still running, its in-flight work
+         *     (clones, port groups, a teardown) continues beside whatever runs on the range next,
+         *     and what it builds is no longer discarded. Only a tombstone (``abandoned:...``) is
+         *     released: a live task's lease is refused with 409. ``confirm_range_id`` must repeat
+         *     the range's id; ``reason`` is recorded in the audit log.
+         *     **Permission: range:lease_force_release** (admin only)
+         */
+        post: operations["force_release_range_lease_ranges__range_id__lease_force_release_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/ranges/{range_id}/network-reservations": {
         parameters: {
             query?: never;
@@ -5146,7 +5175,10 @@ export interface paths {
          * @description Give up on an in-flight operation that will not finish (a lost task, a dead worker).
          *
          *     Check the hypervisor first: the API cannot see whether work is still running there.
-         *     The range goes to ``failed``, from where it can be destroyed or provisioned again.
+         *     The range goes to ``failed``, from where it can be destroyed or provisioned again. The
+         *     lease held by the operation's task becomes a short tombstone: a worker still running
+         *     that task stops acting on the range and keeps it blocked only until its in-flight
+         *     hypervisor work ends; a dead worker's range is free within ``RANGE_LEASE_SECONDS``.
          *     **Permission: range:destroy**
          */
         post: operations["abandon_range_operation_ranges__range_id__operations__operation_id__abandon_post"];
@@ -9206,6 +9238,33 @@ export interface components {
             node_name: string;
             /** Url */
             url: string;
+        };
+        /**
+         * ForceReleaseIn
+         * @description A deliberate act: the caller repeats the range's id and says why.
+         */
+        ForceReleaseIn: {
+            /**
+             * Confirm Range Id
+             * Format: uuid
+             */
+            confirm_range_id: string;
+            /** Reason */
+            reason: string;
+        };
+        /** ForceReleaseOut */
+        ForceReleaseOut: {
+            /**
+             * Range Id
+             * Format: uuid
+             */
+            range_id: string;
+            /** Released Holder */
+            released_holder: string;
+            /** Warning */
+            warning: string;
+            /** Was Expired */
+            was_expired: boolean;
         };
         /** ForgeIndicatorIn */
         ForgeIndicatorIn: {
@@ -23320,6 +23379,41 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    force_release_range_lease_ranges__range_id__lease_force_release_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                range_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ForceReleaseIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ForceReleaseOut"];
+                };
             };
             /** @description Validation Error */
             422: {

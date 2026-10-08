@@ -1,0 +1,16 @@
+[
+  {"t": "2026-10-05T03:12:06+00:00", "step": "journey.provision.accepted", "status": 202, "op": "dispatched"},
+  {"t": "2026-10-05T03:12:08+00:00", "step": "journey.provision.done", "state": "ready", "secs": 2.7, "op": "succeeded"},
+  {"t": "2026-10-05T03:12:08+00:00", "step": "journey.destroy.accepted", "status": 202},
+  {"t": "2026-10-05T03:12:09+00:00", "step": "journey.destroy.done", "state": "destroyed", "op": "succeeded"},
+  {"t": "2026-10-05T03:12:10+00:00", "step": "broker.down.accepted", "status": 202, "op": "pending", "error": "broker_unavailable"},
+  {"t": "2026-10-05T03:12:14+00:00", "step": "broker.down.still_pending", "op": "pending", "state": "provisioning"},
+  {"t": "2026-10-05T03:12:28+00:00", "step": "broker.back.done", "state": "ready", "op": "succeeded", "attempts": 2, "secs_after_broker_back": 13.1},
+  {"t": "2026-10-05T03:12:33+00:00", "step": "worker.killed", "state": "provisioning", "op": "dispatched"},
+  {"t": "2026-10-05T03:12:50+00:00", "step": "worker.killed.no_outcome", "op": "dispatched", "error": "no_outcome", "conflicting_destroy": 409},
+  {"t": "2026-10-05T03:12:50+00:00", "step": "worker.killed.abandoned", "op": "failed", "state": "failed"},
+  {"t": "2026-10-05T03:12:52+00:00", "step": "worker.killed.reprovisioned", "state": "ready", "op": "succeeded", "generations": [2, 1]},
+  {"t": "2026-10-05T03:12:54+00:00", "step": "partial.retrying", "state": "provisioning"},
+  {"t": "2026-10-05T03:13:11+00:00", "step": "partial.last_attempt", "state": "failed", "op": "failed", "error": "range_failed", "message": "Simulated provision failure"},
+  {"t": "2026-10-05T03:13:14+00:00", "step": "partial.healthy_retry", "state": "ready", "op": "succeeded"}
+]

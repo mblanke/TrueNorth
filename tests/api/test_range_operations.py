@@ -358,6 +358,158 @@ def test_no_new_operation_while_a_worker_still_holds_the_range(client, db_sessio
     assert client.post(f"/ranges/{rid}/destroy").status_code == 202, "a destroy waits for the lease itself"
 
 
+def _lease(db_session, rid: str, holder: str, seconds: float):
+    from app.range_leases import RangeLease
+
+    db_session.add(
+        RangeLease(range_id=uuid.UUID(rid), holder=holder, expires_at=datetime.now(UTC) + timedelta(seconds=seconds))
+    )
+    db_session.commit()
+
+
+def _leases(db_session, rid: str) -> list[str]:
+    from app.range_leases import RangeLease
+
+    db_session.expire_all()
+    return [h for (h,) in db_session.query(RangeLease.holder).filter(RangeLease.range_id == uuid.UUID(rid))]
+
+
+def test_abandon_fences_the_lease_and_the_range_is_free_once_the_tombstone_expires(
+    client, db_session, no_real_broker, monkeypatch
+):
+    """The s7 interruption exercise: a worker killed mid-provision left its lease, and after
+    the abandon every new provision was refused for up to an hour. The abandon now turns the
+    lease into a tombstone of one lease length (here 1 s), not the lease's remaining life;
+    it is not deleted, because a worker that is in fact alive may still have vCenter work in
+    flight that a new build would collide with (#95 review)."""
+    import time
+
+    from app.models import AuditLog
+
+    monkeypatch.setenv("RANGE_LEASE_SECONDS", "1")
+    rid = _range(client, db_session)
+    op_id = client.post(f"/ranges/{rid}/provision").headers["Operation-Id"]
+    _lease(db_session, rid, "provision:killed-worker", 3600)  # what the dead task left
+    op = client.post(f"/ranges/{rid}/operations/{op_id}/abandon").json()
+    assert op["status"] == "failed" and "lease on the range was fenced" in op["error"]["message"]
+    assert _leases(db_session, rid) == ["abandoned:provision:killed-worker"]
+    audit = db_session.query(AuditLog).filter(AuditLog.action == "abandon_operation", AuditLog.resource_id == rid).one()
+    assert "worker lease fenced" in audit.detail
+    assert audit.tenant_id == db_session.get(Range, uuid.UUID(rid)).tenant_id
+    resp = client.post(f"/ranges/{rid}/provision")
+    assert resp.status_code == 409 and "abandoned operation's worker" in resp.json()["detail"]
+    time.sleep(2.1)  # the tombstone's life (SQLite compares to the whole second)
+    assert client.post(f"/ranges/{rid}/provision").status_code == 202, "refused although the worker is gone"
+
+
+def test_abandon_fences_only_the_lease_of_the_operations_own_action(client, db_session, no_real_broker):
+    """A restore's lease (or a superseded build's, under a destroy) belongs to work the
+    abandoned operation did not start: it is left to its own task."""
+    rid = _range(client, db_session)
+    op_id = client.post(f"/ranges/{rid}/provision").headers["Operation-Id"]
+    _lease(db_session, rid, "restore:running", 180)
+    op = client.post(f"/ranges/{rid}/operations/{op_id}/abandon").json()
+    assert op["status"] == "failed" and "lease" not in op["error"]["message"]
+    assert _leases(db_session, rid) == ["restore:running"]
+    resp = client.post(f"/ranges/{rid}/provision")
+    assert resp.status_code == 409 and "worker is still acting" in resp.json()["detail"]
+
+
+def test_abandon_fences_a_legacy_lease_only_when_its_operation_is_the_only_one_in_flight(
+    client, db_session, no_real_broker
+):
+    """Leases written before holders named their action (a bare token). One can only be the
+    abandoned operation's task's when no other operation of the range is in flight."""
+    rid = _range(client, db_session)
+    op_id = client.post(f"/ranges/{rid}/provision").headers["Operation-Id"]
+    _lease(db_session, rid, "3f2c" * 8, 3600)
+    client.post(f"/ranges/{rid}/operations/{op_id}/abandon")
+    assert _leases(db_session, rid) == ["abandoned:" + "3f2c" * 8]
+
+    rid = _range(client, db_session)
+    stop = RangeOperation(
+        id=uuid.uuid4(), tenant_id=db_session.get(Range, uuid.UUID(rid)).tenant_id, range_id=uuid.UUID(rid),
+        action="stop", generation=1, request_hash="x", status="dispatched", dispatch_attempts=1,
+    )
+    db_session.add(stop)
+    db_session.commit()
+    provision = RangeOperation(
+        id=uuid.uuid4(), tenant_id=stop.tenant_id, range_id=stop.range_id, action="provision", generation=2,
+        request_hash="y", status="dispatched", dispatch_attempts=1,
+    )
+    db_session.add(provision)
+    db_session.commit()
+    _lease(db_session, rid, "9a" * 16, 3600)
+    client.post(f"/ranges/{rid}/operations/{provision.id}/abandon")
+    assert _leases(db_session, rid) == ["9a" * 16], "a legacy lease that may be the stop's was fenced"
+
+
+def test_a_dead_workers_lease_stops_blocking_once_it_expires(client, db_session, no_real_broker):
+    """Without an abandon: nothing renews a dead worker's lease, and a lease is minutes."""
+    rid = _range(client, db_session, "failed")
+    _lease(db_session, rid, "provision:killed-worker", -1)  # its last renewal, LEASE_SECONDS ago
+    assert client.post(f"/ranges/{rid}/provision").status_code == 202
+
+
+def _force_release(client, rid: str, **overrides):
+    body = {"confirm_range_id": rid, "reason": "worker host lost; vCenter checked, no tasks", **overrides}
+    return client.post(f"/ranges/{rid}/lease/force-release", json=body)
+
+
+def test_a_hung_workers_tombstone_says_its_worst_case_and_an_admin_can_force_release_it(
+    client, db_session, no_real_broker
+):
+    """A live but hung worker renews its tombstone until its time limit and then keeps it
+    for an hour: about 1 h 55 min. The 409 and the abandon say so, and an admin can
+    release it, audited with the reason."""
+    from app.models import AuditLog
+
+    rid = _range(client, db_session)
+    op_id = client.post(f"/ranges/{rid}/provision").headers["Operation-Id"]
+    _lease(db_session, rid, "provision:hung", 3600)
+    op = client.post(f"/ranges/{rid}/operations/{op_id}/abandon").json()
+    assert "1 h 55 min" in op["error"]["message"]
+    refused = client.post(f"/ranges/{rid}/provision")
+    assert refused.status_code == 409 and "1 h 55 min" in refused.json()["detail"]
+    assert "force-release" in refused.json()["detail"]
+
+    resp = _force_release(client, rid)
+    assert resp.status_code == 200, resp.text
+    out = resp.json()
+    assert out["released_holder"] == "abandoned:provision:hung" and out["was_expired"] is False
+    assert "still running" in out["warning"]
+    assert _leases(db_session, rid) == []
+    audit = db_session.query(AuditLog).filter(AuditLog.action == "force_release_lease", AuditLog.resource_id == rid).one()
+    assert "abandoned:provision:hung" in audit.detail and "vCenter checked" in audit.detail
+    assert audit.tenant_id == db_session.get(Range, uuid.UUID(rid)).tenant_id
+    assert client.post(f"/ranges/{rid}/provision").status_code == 202
+
+
+def test_force_release_takes_only_a_tombstone_and_a_deliberate_request(client, db_session, no_real_broker):
+    rid = _range(client, db_session)
+    assert _force_release(client, rid).status_code == 404, "no lease at all"
+    _lease(db_session, rid, "provision:running", 180)
+    resp = _force_release(client, rid)
+    assert resp.status_code == 409 and "Abandon its operation first" in resp.json()["detail"]
+    assert _leases(db_session, rid) == ["provision:running"], "a live task's lease was released"
+    assert _force_release(client, rid, confirm_range_id=str(uuid.uuid4())).status_code == 422
+    assert _force_release(client, rid, reason="because").status_code == 422
+
+
+def test_force_release_is_admin_only_and_tenant_scoped(client, db_session, no_real_broker):
+    from _shared import OTHER_TENANT, acting_as
+    from app.models import UserRole
+
+    rid = _range(client, db_session)
+    _lease(db_session, rid, "abandoned:provision:hung", 3600)
+    for role in (UserRole.range_ops, UserRole.instructor):
+        with acting_as(role):
+            assert _force_release(client, rid).status_code == 403, role
+    with acting_as(UserRole.admin, OTHER_TENANT):
+        assert _force_release(client, rid).status_code == 404, "another tenant's admin released the tombstone"
+    assert _leases(db_session, rid) == ["abandoned:provision:hung"]
+
+
 def test_on_postgres_refused_requests_do_not_stall_the_api_process(postgres_engine, no_real_broker):
     """Acceptance row-locks the range. In async handlers a refused request held the lock
     until its teardown, which needs the event loop, while a second request for the same

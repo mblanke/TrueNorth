@@ -668,7 +668,20 @@ blocks the range until someone abandons it.
 **Permission: `range:destroy`.** An operator gives up on an in-flight operation that will
 not finish (a lost task, a dead worker). Check the hypervisor first. The operation becomes
 `failed` (`abandoned`), and the range goes to `failed`, from where it can be destroyed or
-provisioned again.
+provisioned again. The task's lease becomes a tombstone that blocks the range for up to
+`RANGE_LEASE_SECONDS` if the worker is dead, or until its in-flight work ends if it is
+alive (at worst about 1 h 55 min for a hung worker). See docs/operations.md, "Range
+Leases, Abandon and Recovery".
+
+### `POST /ranges/{range_id}/lease/force-release`
+
+**Permission: `range:lease_force_release` (admin only). Dangerous.** Deletes an abandoned
+operation's lease tombstone so the range can be acted on at once. Body:
+`{"confirm_range_id": "<range id again>", "reason": "<10-500 characters>"}`. Returns
+`{range_id, released_holder, was_expired, warning}`. 404 when the range (in your tenant)
+has no lease; 409 when the lease is a live task's, not a tombstone; 422 when
+`confirm_range_id` differs. Audited as `force_release_lease`. If the abandoned worker is
+in fact still running, its work continues beside whatever runs next.
 
 ---
 
@@ -1240,6 +1253,7 @@ The auto-generated OpenAPI specification is available at:
 | 30 | `POST` | `/ranges/{id}/stop` | `range:provision` | Stop range (power off) |
 | 30a | `POST` | `/ranges/{id}/start` | `range:provision` | Start range (power on) |
 | 31 | `POST` | `/ranges/batch-provision` | `range:batch_provision` | Batch provision |
+| 31a | `POST` | `/ranges/{id}/lease/force-release` | `range:lease_force_release` | Force-release an abandoned operation's lease tombstone (admin) |
 | 32 | `POST` | `/exercises` | `exercise:create` | Create exercise |
 | 33 | `GET` | `/exercises` | `exercise:read` | List exercises |
 | 34 | `GET` | `/exercises/{id}` | `exercise:read` | Get exercise |

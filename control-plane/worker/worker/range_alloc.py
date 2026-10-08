@@ -102,10 +102,13 @@ def reserve_for_build(session, range_id: str, provisioner, template: dict) -> di
     needs = declare(range_id, template) if declare else []
     if not needs:
         return {}
+    from .fencing import ensure_held  # fencing imports this module
+
     allocations: dict = {}
     with session() as db:
         if not db_ops.lock_range_in_state(db, range_id, "provisioning"):
             raise AllocationError(f"range {range_id} is no longer provisioning; nothing reserved")
+        ensure_held(db, range_id)  # an abandoned build reserves nothing for the range's next one
         for need in sorted(needs, key=lambda n: lock_key(n.domain, n.kind)):
             got = reserve_values(
                 db, range_id, domain=need.domain, kind=need.kind, pool=need.pool, holders=need.holders, prune=True

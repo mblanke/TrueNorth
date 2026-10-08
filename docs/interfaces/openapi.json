@@ -5242,6 +5242,57 @@
         "title": "FleetNodeCreateIn",
         "type": "object"
       },
+      "ForceReleaseIn": {
+        "description": "A deliberate act: the caller repeats the range's id and says why.",
+        "properties": {
+          "confirm_range_id": {
+            "format": "uuid",
+            "title": "Confirm Range Id",
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 500,
+            "minLength": 10,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "confirm_range_id",
+          "reason"
+        ],
+        "title": "ForceReleaseIn",
+        "type": "object"
+      },
+      "ForceReleaseOut": {
+        "properties": {
+          "range_id": {
+            "format": "uuid",
+            "title": "Range Id",
+            "type": "string"
+          },
+          "released_holder": {
+            "title": "Released Holder",
+            "type": "string"
+          },
+          "warning": {
+            "title": "Warning",
+            "type": "string"
+          },
+          "was_expired": {
+            "title": "Was Expired",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "range_id",
+          "released_holder",
+          "was_expired",
+          "warning"
+        ],
+        "title": "ForceReleaseOut",
+        "type": "object"
+      },
       "ForgeIndicatorIn": {
         "properties": {
           "description": {
@@ -31972,6 +32023,65 @@
         ]
       }
     },
+    "/ranges/{range_id}/lease/force-release": {
+      "post": {
+        "description": "DANGEROUS. Delete an abandoned operation's lease tombstone, so the range can be acted\non at once instead of when that operation's worker finishes (a hung worker can hold it\nfor about 1 h 55 min).\n\nOnly after checking vCenter: if that worker is still running, its in-flight work\n(clones, port groups, a teardown) continues beside whatever runs on the range next,\nand what it builds is no longer discarded. Only a tombstone (``abandoned:...``) is\nreleased: a live task's lease is refused with 409. ``confirm_range_id`` must repeat\nthe range's id; ``reason`` is recorded in the audit log.\n**Permission: range:lease_force_release** (admin only)",
+        "operationId": "force_release_range_lease_ranges__range_id__lease_force_release_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "range_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Range Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ForceReleaseIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForceReleaseOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Force Release Range Lease",
+        "tags": [
+          "ranges"
+        ]
+      }
+    },
     "/ranges/{range_id}/network-reservations": {
       "get": {
         "description": "Addresses and VLANs this range holds on shared networks (app/network_inventory/).\n**Permission: range:read**",
@@ -32138,7 +32248,7 @@
     },
     "/ranges/{range_id}/operations/{operation_id}/abandon": {
       "post": {
-        "description": "Give up on an in-flight operation that will not finish (a lost task, a dead worker).\n\nCheck the hypervisor first: the API cannot see whether work is still running there.\nThe range goes to ``failed``, from where it can be destroyed or provisioned again.\n**Permission: range:destroy**",
+        "description": "Give up on an in-flight operation that will not finish (a lost task, a dead worker).\n\nCheck the hypervisor first: the API cannot see whether work is still running there.\nThe range goes to ``failed``, from where it can be destroyed or provisioned again. The\nlease held by the operation's task becomes a short tombstone: a worker still running\nthat task stops acting on the range and keeps it blocked only until its in-flight\nhypervisor work ends; a dead worker's range is free within ``RANGE_LEASE_SECONDS``.\n**Permission: range:destroy**",
         "operationId": "abandon_range_operation_ranges__range_id__operations__operation_id__abandon_post",
         "parameters": [
           {
