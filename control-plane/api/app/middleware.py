@@ -187,8 +187,11 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         tenant = getattr(request.state, "tenant_id", None)
         if tenant:
             return f"rl:tenant:{tenant}:{bucket}"
-        forwarded = request.headers.get("x-forwarded-for")
-        ip = forwarded.split(",")[0].strip() if forwarded else (request.client.host if request.client else "unknown")
+        from .client_address import client_ip
+
+        # X-Forwarded-For only from a trusted proxy: otherwise every request could name a
+        # fresh address and never reach a limit.
+        ip = client_ip(request) or "unknown"
         return f"rl:ip:{ip}:{bucket}"
 
     async def _check_rate_limit(self, key: str, limit: int, now: float) -> tuple[bool, int, int]:

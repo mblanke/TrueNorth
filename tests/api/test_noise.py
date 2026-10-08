@@ -404,8 +404,16 @@ class TestAgentChannel:
         monkeypatch.setenv("NOISE_AGENT_CIDRS", "10.255.0.0/24")
         outside = {**_hdr(tokens["ws01"]), "X-Forwarded-For": "10.10.20.5"}
         inside = {**_hdr(tokens["ws01"]), "X-Forwarded-For": "10.255.0.9"}
-        assert client.get("/noise/agent/plan", headers=outside).status_code == 403
-        assert client.get("/noise/agent/plan", headers=inside).status_code == 200
+        # Through nginx (a trusted proxy on loopback), the forwarded address decides.
+        from fastapi.testclient import TestClient
+
+        via_proxy = TestClient(client.app, client=("127.0.0.1", 40000))
+        assert via_proxy.get("/noise/agent/plan", headers=outside).status_code == 403
+        assert via_proxy.get("/noise/agent/plan", headers=inside).status_code == 200
+        # Straight from an untrusted peer, a forwarded header claiming to be inside is ignored.
+        assert client.get("/noise/agent/plan", headers=inside).status_code == 403
+        direct = TestClient(client.app, client=("10.255.0.7", 40000))
+        assert direct.get("/noise/agent/plan", headers=_hdr(tokens["ws01"])).status_code == 200
 
 
 # ── Who may see it ─────────────────────────────────────────────────────
