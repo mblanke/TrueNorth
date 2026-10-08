@@ -5513,11 +5513,12 @@ export interface paths {
         put?: never;
         /**
          * Execute Scenario
-         * @description Run a scenario's timeline against a ready range.  **Permission: exercise:start**
+         * @description Run a scenario's timeline against a ready range.  **Permission: scenario:update + exercise:start**
          *
-         *     202: queued. 404: scenario or range not in your tenant. 409: the range is not ready.
-         *     422: the YAML is not a mapping or its timeline is not a list. 503: the worker broker is
-         *     down (the execution is recorded ``failed``).
+         *     202: queued. 403: not staff. 404: scenario or range not in your tenant. 409: the range
+         *     is not ready, or it belongs to a Student's lab session. 422: the YAML is not a mapping
+         *     or its timeline is not a list. 503: the worker broker is down (the execution is
+         *     recorded ``failed``).
          */
         post: operations["execute_scenario_scenarios_execute_post"];
         delete?: never;
@@ -5556,6 +5557,10 @@ export interface paths {
         /**
          * Get Execution Timeline
          * @description Each timeline event with its recorded outcome (``pending`` until the worker reaches it).
+         *
+         *     Staff (``scenario:update``) see the whole entry. Anyone else sees only ``seq``, ``t``
+         *     and ``status`` of recorded events: the action, detail and technique are the answer
+         *     key (ADR 0005 §5), and a pending event's ``action`` comes straight from the playbook.
          */
         get: operations["get_execution_timeline_scenarios_executions__execution_id__timeline_get"];
         put?: never;
