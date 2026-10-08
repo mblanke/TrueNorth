@@ -13,9 +13,13 @@ tn_kc_mapper_type: org.keycloak.storage.ldap.mappers.LDAPStorageMapper
 # infra/keycloak/realm-truenorth.json is a development realm: its web client knows only
 # localhost and example hosts, and the api client's secret is CHANGE_ME_IN_PRODUCTION.
 tn_kc_client_settings:
+  # This host only: the realm file's dev/itest/example origins are replaced. The other
+  # client attributes (PKCE S256) stay: Keycloak sets only the attributes sent.
   truenorth-web:
     redirectUris: ["https://{{ tn_domain_fqdn }}/*"]
     webOrigins: ["https://{{ tn_domain_fqdn }}"]
+    attributes:
+      post.logout.redirect.uris: "https://{{ tn_domain_fqdn }}/*"
   truenorth-api:
     redirectUris: []
     webOrigins: []

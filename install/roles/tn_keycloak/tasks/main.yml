@@ -112,7 +112,7 @@
   loop_control:
     label: "{{ item }}"
 
-- name: Keycloak — set the clients' redirect URIs and web origins
+- name: Keycloak — set the clients' redirect URIs, web origins and post-logout URIs
   vars:
     _want: "{{ tn_kc_client_settings[item.item] | default({}) }}"
     _have: "{{ item.json[0] }}"
@@ -130,6 +130,7 @@
     - item.json | length > 0
     - (_want.redirectUris | default(_have.redirectUris)) | sort != (_have.redirectUris | default([])) | sort
       or (_want.webOrigins | default(_have.webOrigins)) | sort != (_have.webOrigins | default([])) | sort
+      or (_have.attributes | default({})) | combine(_want.attributes | default({})) != (_have.attributes | default({}))
   changed_when: true
 
 - name: Keycloak — read the api client's secret
