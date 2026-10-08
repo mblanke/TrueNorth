@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import time
 import uuid
 from datetime import UTC, datetime
@@ -220,9 +221,10 @@ def update_model_route(route_id: uuid.UUID, payload: AIModelRouteUpdate, db: Ses
 # -- Known Fleet Nodes (legacy Ollama LAN discovery) -----------------------
 # NOTE: this deployment serves models via vLLM behind LiteLLM (OpenAI-compatible,
 # host :4000), not Ollama. This discovery path is dormant; the entry below
-# describes the real R7725 GPU node for reference only.
+# describes the R7725 GPU node for reference only. The host comes from the
+# environment (LLM_NODE_HOST) so no site address is committed.
 KNOWN_OLLAMA_NODES = [
-    {"node_name": "r7725", "host": "133.1.14.240", "port": 11434, "gpu_model": "2x NVIDIA H200 NVL (144GB ea)", "gpu_vram_gb": 288},
+    {"node_name": "r7725", "host": os.getenv("LLM_NODE_HOST", "llm.example.internal"), "port": 11434, "gpu_model": "2x NVIDIA H200 NVL (144GB ea)", "gpu_vram_gb": 288},
 ]
 
 

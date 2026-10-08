@@ -33,7 +33,10 @@ explicitly-authorized step — never autonomous.
 - Confirm Windows XP/7 licensing + EO justification before enabling those templates.
 
 ## QSP sources
-`qsp_source/` contains the four Qualification Standards (+ Pte QS) behind `crosswalk.csv`. Taz reads them for exact PO/EO detail. CAF documents — keep on-box.
+`qsp_source/` is where the four Qualification Standards (+ Pte QS) behind `crosswalk.csv` live
+on the accredited host; Taz reads them for exact PO/EO detail. They are CAF documents and are
+not in the repository (gitignored) — copy them in on-box only. `qsp_source/INDEX.md` lists the
+expected filenames.
 
 ## Start-of-project checklist
 See `TODO.md` for the full ordered task list (accreditation, crosswalk completion, images, generation, validation, LMS, provisioning).
