@@ -2,6 +2,7 @@
 
 import base64
 import json
+import re
 import uuid
 from unittest.mock import AsyncMock, MagicMock
 
@@ -156,11 +157,24 @@ class TestRateLimit:
             ("POST", "/quizzes/generate", "POST:quiz-generate"),
             ("POST", "/curricula/abc/search", "POST:curriculum-ai"),
             ("POST", "/exercises/e1/objectives/o1/detections", "POST:detections"),
+            ("POST", "/exercises/e1/aar/ai-enhance", "POST:aar-ai"),
+            ("POST", "/collective-exercises/c1/mesl/generate", "POST:mesl-ai"),
         ],
     )
     def test_ai_and_detection_routes_have_their_own_limits(self, method, path, bucket):
         limit, got = _match_route_limit(method, path, 100)
         assert got == bucket and limit <= 30
+
+    def test_the_ai_patterns_match_the_real_routes(self):
+        """A pattern for a path no route serves limits nothing: check against the app."""
+        from app.main import app
+        from app.middleware import _PATTERN_LIMITS
+
+        posts = [path for path, ops in app.openapi()["paths"].items() if "post" in ops]
+        for bucket in ("POST:aar-ai", "POST:mesl-ai"):
+            pattern = next(p for _, p, _, b in _PATTERN_LIMITS if b == bucket)
+            concrete = [re.sub(r"\{[^}]+\}", "x", path) for path in posts]
+            assert any(pattern.match(path) for path in concrete), bucket
 
     def test_client_key_falls_back_to_ip_and_still_scopes(self):
         from types import SimpleNamespace

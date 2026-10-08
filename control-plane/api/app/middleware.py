@@ -159,6 +159,9 @@ _PATTERN_LIMITS: list[tuple[str, re.Pattern[str], int, str]] = [
     ("POST", re.compile(r"^/exercise-forge(/|$)"), 10, "POST:exercise-forge"),
     ("POST", re.compile(r"^/quizzes/generate$"), 10, "POST:quiz-generate"),
     ("POST", re.compile(r"^/curricula/[^/]+/(search|generate-course)$"), 30, "POST:curriculum-ai"),
+    # AI-written AAR narrative and MESL timeline (PR #112 review: missing from the list).
+    ("POST", re.compile(r"^/exercises/[^/]+/aar/ai-enhance$"), 10, "POST:aar-ai"),
+    ("POST", re.compile(r"^/collective-exercises/[^/]+/mesl/generate$"), 10, "POST:mesl-ai"),
     ("POST", re.compile(r"^/exercises/[^/]+/objectives/[^/]+/detections$"), 30, "POST:detections"),
 ]
 # A client is a user (the token's subject) at an address. Every user behind one address
