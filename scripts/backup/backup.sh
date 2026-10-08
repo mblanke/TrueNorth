@@ -12,6 +12,10 @@
 #                               the env file (holds TN_SECRETS_KEY and every
 #                               credential a restore needs), AES-256 encrypted to
 #                               the escrow RSA public key. Never stored in plain text.
+#   secrets/secrets.tar.enc     SECRETS_DIR (the installer's config/secrets/: every
+#                               persisted secret, one file each), tarred and encrypted
+#                               with the same data key. restore-secrets.sh writes them
+#                               back before the installer is re-run on a rebuilt host.
 #   manifest.json, SHA256SUMS
 #
 # Not backed up, on purpose (docs/runbooks/backup-restore.md):
@@ -31,10 +35,21 @@
 #   BACKUP_ESCROW_PUBKEY     RSA public key (PEM) the env file is encrypted to.
 #   BACKUP_ESCROW            set to "out-of-band" to attest that TN_SECRETS_KEY
 #                            is escrowed elsewhere (then no key file is needed).
+#   SECRETS_DIR              the installer's persisted secrets (config/secrets/);
+#                            escrowed with the env file when set. Unset: env file only.
+#   BACKUP_MIN_FREE_GB       refuse to start with less free on BACKUP_DIR's disk, or
+#                            less than the previous backup's size (default 10).
+#   BACKUP_MAX_TOTAL_GB      after a backup, prune the oldest (never the newest) while
+#                            everything under BACKUP_ROOT exceeds this; 0 = no cap.
+#   BACKUP_ROOT              where that cap is measured (default BACKUP_DIR; the cron
+#                            wrapper and the installer's pre-upgrade backup pass the
+#                            parent of their daily/, weekly/, pre-upgrade/ directories).
 #   OPENSEARCH_SNAPSHOT_REPO optional, see above. OPENSEARCH_URL (inside the
-#                            opensearch container, default http://localhost:9200)
-#                            and OPENSEARCH_SNAPSHOT_AUTH (user:pass, read from the
-#                            env file) when the security plugin is on.
+#                            opensearch container, default https://localhost:9200),
+#                            OPENSEARCH_SNAPSHOT_AUTH (user:pass, read from the env
+#                            file) and OPENSEARCH_SNAPSHOT_CACERT (the internal CA, path
+#                            inside the container; default config/certs/ca.pem). The
+#                            certificate is verified: no `curl -k`.
 #   OPENSSL                  default: openssl
 #
 # Exit codes: 0 ok; 1 failed (no backup kept); 3 data backed up but secrets NOT
@@ -52,8 +67,13 @@ BACKUP_DIR="${BACKUP_DIR:-/srv/truenorth/backups}"
 BACKUP_RETENTION_DAYS="${BACKUP_RETENTION_DAYS:-${RETENTION_DAYS:-30}}"
 BACKUP_ESCROW_PUBKEY="${BACKUP_ESCROW_PUBKEY:-}"
 BACKUP_ESCROW="${BACKUP_ESCROW:-}"
+SECRETS_DIR="${SECRETS_DIR:-}"
+BACKUP_MIN_FREE_GB="${BACKUP_MIN_FREE_GB:-10}"
+BACKUP_MAX_TOTAL_GB="${BACKUP_MAX_TOTAL_GB:-0}"
+BACKUP_ROOT="${BACKUP_ROOT:-${BACKUP_DIR}}"
 OPENSEARCH_SNAPSHOT_REPO="${OPENSEARCH_SNAPSHOT_REPO:-}"
-OPENSEARCH_URL="${OPENSEARCH_URL:-http://localhost:9200}"
+OPENSEARCH_URL="${OPENSEARCH_URL:-https://localhost:9200}"
+OPENSEARCH_SNAPSHOT_CACERT="${OPENSEARCH_SNAPSHOT_CACERT:-config/certs/ca.pem}"
 OPENSSL="${OPENSSL:-openssl}"
 
 TIMESTAMP="$(date -u +"%Y%m%dT%H%M%SZ")"
@@ -86,6 +106,23 @@ if ! mkdir "${LOCK_DIR}" 2>/dev/null; then
     die "another backup holds ${LOCK_DIR}; remove it if no backup is running"
 fi
 LOCKED=1
+
+# ── 0. Room for it ───────────────────────────────────────────────────────────
+# A backup that fills the disk takes the database down with it. Need the floor, and at
+# least as much as the previous backup took.
+CURRENT_STEP="disk"
+[[ "${BACKUP_MIN_FREE_GB}" =~ ^[0-9]+$ ]] || die "BACKUP_MIN_FREE_GB must be a whole number of GB"
+FREE_KB="$(free_kb "${BACKUP_DIR}")"
+LAST_BACKUP="$(all_backups "${BACKUP_ROOT}" | tail -n 1)"
+NEED_KB=$(( BACKUP_MIN_FREE_GB * 1024 * 1024 ))
+if [[ -n "${LAST_BACKUP}" ]]; then
+    LAST_KB="$(size_kb "${LAST_BACKUP}")"
+    (( LAST_KB > NEED_KB )) && NEED_KB="${LAST_KB}"
+fi
+if (( FREE_KB < NEED_KB )); then
+    die "only $(( FREE_KB / 1024 )) MB free on ${BACKUP_DIR}; need $(( NEED_KB / 1024 )) MB (BACKUP_MIN_FREE_GB=${BACKUP_MIN_FREE_GB}, or the previous backup's size). Free space or lower BACKUP_MAX_TOTAL_GB."
+fi
+
 mkdir -p "${WORK_PATH}/postgres" "${WORK_PATH}/minio" "${WORK_PATH}/secrets"
 log "INFO" "Backup ${BACKUP_NAME} → ${BACKUP_DIR}"
 
@@ -142,9 +179,15 @@ CURRENT_STEP="opensearch"
 if [[ -n "${OPENSEARCH_SNAPSHOT_REPO}" ]]; then
     snap="tn-$(printf '%s' "${TIMESTAMP}" | tr '[:upper:]' '[:lower:]')"
     auth="$(env_get OPENSEARCH_SNAPSHOT_AUTH)"
-    curl_auth=(-s)
-    if [[ -n "$auth" ]]; then curl_auth=(-u "$auth"); fi
-    dc exec -T opensearch curl -sfk "${curl_auth[@]}" -X PUT \
+    # The internal CA verifies the node certificate (CN=opensearch, SAN localhost).
+    curl_opts=(-sf)
+    if [[ "${OPENSEARCH_URL}" == https:* ]]; then curl_opts+=(--cacert "${OPENSEARCH_SNAPSHOT_CACERT}"); fi
+    # Credentials go to curl in a netrc-style config on stdin (-K -), not on its command line.
+    curl_cfg=""
+    if [[ -n "$auth" ]]; then
+        curl_cfg="user = \"${auth//\"/\\\"}\""
+    fi
+    printf '%s\n' "${curl_cfg}" | dc exec -T opensearch curl "${curl_opts[@]}" -K - -X PUT \
         "${OPENSEARCH_URL}/_snapshot/${OPENSEARCH_SNAPSHOT_REPO}/${snap}?wait_for_completion=true" >/dev/null
     OS_JSON="{\"status\":\"snapshot\",\"repository\":$(json_str "${OPENSEARCH_SNAPSHOT_REPO}"),\"snapshot\":$(json_str "$snap")}"
     log "INFO" "  opensearch: snapshot ${snap} in repository ${OPENSEARCH_SNAPSHOT_REPO}"
@@ -163,12 +206,25 @@ if [[ -n "${BACKUP_ESCROW_PUBKEY}" ]]; then
     export TN_ESCROW_DATA_KEY
     "${OPENSSL}" enc -aes-256-cbc -pbkdf2 -iter 200000 -md sha256 -salt \
         -pass env:TN_ESCROW_DATA_KEY -in "${ENV_FILE}" -out "${WORK_PATH}/secrets/env.enc"
+    ESCROW_FILES='"secrets/env.enc","secrets/env.key.enc"'
+    # The persisted secrets, one file each (the installer's config/secrets/): tarred
+    # straight into the cipher, never written to disk in clear.
+    if [[ -n "${SECRETS_DIR}" ]]; then
+        [[ -d "${SECRETS_DIR}" && -r "${SECRETS_DIR}" ]] || die "SECRETS_DIR not a readable directory: ${SECRETS_DIR}"
+        n_secrets="$(find "${SECRETS_DIR}" -mindepth 1 -maxdepth 1 -type f | grep -c . || true)"
+        (( n_secrets > 0 )) || die "SECRETS_DIR ${SECRETS_DIR} holds no secrets"
+        tar -C "${SECRETS_DIR}" -cf - . \
+            | "${OPENSSL}" enc -aes-256-cbc -pbkdf2 -iter 200000 -md sha256 -salt \
+                -pass env:TN_ESCROW_DATA_KEY -out "${WORK_PATH}/secrets/secrets.tar.enc"
+        ESCROW_FILES+=',"secrets/secrets.tar.enc"'
+        log "INFO" "  escrow: ${n_secrets} persisted secrets from ${SECRETS_DIR}"
+    fi
     printf '%s' "${TN_ESCROW_DATA_KEY}" | "${OPENSSL}" pkeyutl -encrypt -pubin \
         -inkey "${BACKUP_ESCROW_PUBKEY}" -pkeyopt rsa_padding_mode:oaep \
         -pkeyopt rsa_oaep_md:sha256 -out "${WORK_PATH}/secrets/env.key.enc"
     unset TN_ESCROW_DATA_KEY
     fp="$("${OPENSSL}" pkey -pubin -in "${BACKUP_ESCROW_PUBKEY}" -outform DER | "${OPENSSL}" dgst -sha256 -r | cut -d' ' -f1)"
-    ESCROW_JSON="{\"status\":\"encrypted\",\"files\":[\"secrets/env.enc\",\"secrets/env.key.enc\"],\"recipient_sha256\":\"${fp}\"}"
+    ESCROW_JSON="{\"status\":\"encrypted\",\"files\":[${ESCROW_FILES}],\"recipient_sha256\":\"${fp}\"}"
     if [[ -z "$(env_get TN_SECRETS_KEY)" ]]; then
         log "WARN" "  escrow: ${ENV_FILE} has no TN_SECRETS_KEY (fine before PR #90 lands)"
     fi
@@ -222,6 +278,8 @@ if [[ "${BACKUP_RETENTION_DAYS}" =~ ^[0-9]+$ ]] && (( BACKUP_RETENTION_DAYS > 0 
 fi
 # Leftovers of runs that were killed hard (SIGKILL skips the trap).
 find "${BACKUP_DIR}" -mindepth 1 -maxdepth 1 -type d -name '.partial-*' -mtime +1 -exec rm -rf {} +
+# The size cap, across every backup under BACKUP_ROOT. Never this one.
+prune_to_size "${BACKUP_ROOT}" "${BACKUP_MAX_TOTAL_GB}" "${FINAL_PATH}"
 
 CURRENT_STEP="done"
 log "INFO" "Backup complete: ${FINAL_PATH} ($(du -sh "${FINAL_PATH}" | cut -f1))"

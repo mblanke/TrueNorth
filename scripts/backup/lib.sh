@@ -161,6 +161,52 @@ sha256_check() {
     fi
 }
 
+# free_kb <dir> — kilobytes available to an unprivileged writer on <dir>'s filesystem.
+free_kb() {
+    df -Pk "$1" | awk 'NR == 2 { print $4 }'
+}
+
+# size_kb <path> — kilobytes used under <path> (0 if missing).
+size_kb() {
+    if [[ -e "$1" ]]; then du -sk "$1" | awk '{ print $1 }'; else echo 0; fi
+}
+
+# all_backups <root> — every complete backup under <root> (at most one level of type
+# directories: daily/, weekly/, pre-upgrade/ ...), oldest first by its UTC timestamp name.
+all_backups() {
+    find "$1" -mindepth 1 -maxdepth 2 -type d -name 'truenorth-backup-*' 2>/dev/null \
+        | awk -F/ '{ print $NF "\t" $0 }' | sort | cut -f2-
+}
+
+# prune_to_size <root> <max_gb> [<keep>...] — delete the oldest backups under <root> while
+# all of them together exceed <max_gb> GB. Never deletes a <keep> path, nor the newest
+# backup. 0 or empty = no cap.
+prune_to_size() {
+    local root="$1" max_gb="${2:-0}" b total newest
+    shift 2 || true
+    [[ "${max_gb}" =~ ^[0-9]+$ ]] && (( max_gb > 0 )) || return 0
+    local max_kb=$(( max_gb * 1024 * 1024 ))
+    newest="$(all_backups "$root" | tail -n 1)"
+    total="$(size_kb "$root")"
+    while (( total > max_kb )); do
+        b=""
+        while IFS= read -r cand; do
+            [[ "$cand" == "$newest" ]] && continue
+            local k skip=0
+            for k in "$@"; do [[ "$cand" == "$k" ]] && skip=1; done
+            (( skip )) && continue
+            b="$cand"; break
+        done < <(all_backups "$root")
+        if [[ -z "$b" ]]; then
+            log "WARN" "backups under ${root} use $(( total / 1024 / 1024 )) GB, over the ${max_gb} GB cap, and only the newest is left" >&2
+            return 0
+        fi
+        log "INFO" "  pruning $(basename "$b") (backups over the ${max_gb} GB cap)"
+        rm -rf "$b"
+        total="$(size_kb "$root")"
+    done
+}
+
 json_str() {
     local s="$1"
     s="${s//\\/\\\\}"; s="${s//\"/\\\"}"

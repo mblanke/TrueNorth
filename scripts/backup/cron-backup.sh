@@ -68,7 +68,10 @@ BACKUP_START=$(date +%s)
 # Age-based pruning inside backup.sh is off here: this wrapper rotates by count per
 # type, and a 30-day age limit would silently delete every monthly backup.
 BACKUP_RC=0
-BACKUP_DIR="${TYPE_DIR}" BACKUP_RETENTION_DAYS=0 bash "${SCRIPT_DIR}/backup.sh" || BACKUP_RC=$?
+# BACKUP_ROOT: the free-space and size-cap checks see every type directory, not just this one.
+ROOT_DIR="${BACKUP_DIR}"
+BACKUP_ROOT="${ROOT_DIR}" BACKUP_DIR="${TYPE_DIR}" BACKUP_RETENTION_DAYS=0 \
+    bash "${SCRIPT_DIR}/backup.sh" || BACKUP_RC=$?
 if (( BACKUP_RC != 0 && BACKUP_RC != 3 )); then
     DURATION=$(( $(date +%s) - BACKUP_START ))
     send_notification "failure" "Backup type: ${BACKUP_TYPE}. Failed (exit ${BACKUP_RC}) after ${DURATION}s."
@@ -118,6 +121,9 @@ rotate_backups() {
 rotate_backups "${BACKUP_DIR}/daily"   "${DAILY_KEEP}"   "daily"
 rotate_backups "${BACKUP_DIR}/weekly"  "${WEEKLY_KEEP}"  "weekly"
 rotate_backups "${BACKUP_DIR}/monthly" "${MONTHLY_KEEP}" "monthly"
+# The size cap (BACKUP_MAX_TOTAL_GB) over daily/weekly/monthly/pre-upgrade together:
+# count-based rotation alone lets big backups fill the disk.
+prune_to_size "${BACKUP_DIR}" "${BACKUP_MAX_TOTAL_GB:-0}" "${LATEST_BACKUP}"
 
 # ── Summary ──────────────────────────────────────────────────────────────────
 DAILY_COUNT=$(find "${BACKUP_DIR}/daily"   -maxdepth 1 -type d -name "truenorth-backup-*" 2>/dev/null | wc -l)
