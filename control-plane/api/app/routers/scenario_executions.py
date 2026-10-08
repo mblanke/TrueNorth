@@ -8,10 +8,16 @@ reported, never scored: an execution has no Students and no evidence review, so 
 =================================================  ==========================
 Endpoint                                           Permission(s)
 =================================================  ==========================
-POST   /scenarios/execute                          EXERCISE_START
+POST   /scenarios/execute                          SCENARIO_UPDATE + EXERCISE_START
 GET    /scenarios/executions/{id}/results          EXERCISE_READ
-GET    /scenarios/executions/{id}/timeline         EXERCISE_READ
+GET    /scenarios/executions/{id}/timeline         EXERCISE_READ (answer key: staff)
 =================================================  ==========================
+
+Executing fires host-affecting injects, so it is staff-only (``scenario:update``; Students
+hold ``exercise:start`` for their own exercises) and refuses a lab session's range, which
+only its session drives. The timeline's ``action`` / ``detail`` / ``execution_mode`` /
+``mitre_technique`` are the answer key (ADR 0005 §5): anyone else sees ``seq``, ``t`` and
+``status`` of events already recorded, and nothing of pending ones.
 """
 
 from __future__ import annotations
@@ -23,8 +29,10 @@ import yaml
 from fastapi import APIRouter, Depends, HTTPException, Path
 from sqlalchemy.orm import Session
 
+from .. import range_lifecycle
 from ..auth import CurrentUser
 from ..db import get_db
+from ..detections.redaction import sees_answer_key
 from ..models import AuditLog, Range, RangeState, Scenario
 from ..rbac import Permission, require_permission
 from ..scenario_runs import InjectRecord, ScenarioExecution
@@ -75,18 +83,21 @@ def _definition(sc: Scenario) -> dict:
 def execute_scenario(
     body: ScenarioExecuteIn,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission(Permission.EXERCISE_START)),
+    user: CurrentUser = Depends(require_permission(Permission.SCENARIO_UPDATE, Permission.EXERCISE_START)),
 ) -> ScenarioExecution:
-    """Run a scenario's timeline against a ready range.  **Permission: exercise:start**
+    """Run a scenario's timeline against a ready range.  **Permission: scenario:update + exercise:start**
 
-    202: queued. 404: scenario or range not in your tenant. 409: the range is not ready.
-    422: the YAML is not a mapping or its timeline is not a list. 503: the worker broker is
-    down (the execution is recorded ``failed``).
+    202: queued. 403: not staff. 404: scenario or range not in your tenant. 409: the range
+    is not ready, or it belongs to a Student's lab session. 422: the YAML is not a mapping
+    or its timeline is not a list. 503: the worker broker is down (the execution is
+    recorded ``failed``).
     """
     sc = get_owned(db, Scenario, body.scenario_id, user, not_found="Scenario not found")
     rng = get_owned(db, Range, body.range_id, user, not_found="Range not found")
     if rng.state not in RUNNABLE_RANGE_STATES:
         raise HTTPException(409, f"Range is {rng.state.value}; a scenario runs on a ready or running range")
+    if range_lifecycle.is_lab_range(db, rng.id):
+        raise HTTPException(409, "This range belongs to a student's lab session; run the scenario on another range")
     definition = _definition(sc)
     x = ScenarioExecution(
         tenant_id=uuid.UUID(user.tenant_id),
@@ -163,8 +174,18 @@ def get_execution_timeline(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_permission(Permission.EXERCISE_READ)),
 ) -> list[TimelineEntryOut]:
-    """Each timeline event with its recorded outcome (``pending`` until the worker reaches it)."""
-    return _timeline(db, _owned_execution(db, execution_id, user))
+    """Each timeline event with its recorded outcome (``pending`` until the worker reaches it).
+
+    Staff (``scenario:update``) see the whole entry. Anyone else sees only ``seq``, ``t``
+    and ``status`` of recorded events: the action, detail and technique are the answer
+    key (ADR 0005 §5), and a pending event's ``action`` comes straight from the playbook.
+    """
+    entries = _timeline(db, _owned_execution(db, execution_id, user))
+    if sees_answer_key(user):
+        return entries
+    return [
+        TimelineEntryOut(seq=e.seq, t=e.t, action="", status=e.status) for e in entries if e.status != "pending"
+    ]
 
 
 @router.get(

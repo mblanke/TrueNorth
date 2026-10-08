@@ -16,6 +16,7 @@ def run_by_id(publication_id: uuid.UUID) -> None:
 
     db = SessionLocal()
     try:
+        # tenant-safe: an id this process queued after creating it (service.request).
         pub = db.get(CoursePublication, publication_id)
         if pub is not None:
             service.run(db, pub)
@@ -40,6 +41,7 @@ def run_waiting(publication_id: uuid.UUID) -> None:
     for _ in range(10):  # each pass publishes or supersedes one waiting job
         db = SessionLocal()
         try:
+            # tenant-safe: the publication that just ran, an id this process queued.
             done = db.get(CoursePublication, publication_id)
             nxt = service.waiting(db, done.course_id, done.platform_id) if done is not None else None
             if nxt is None:

@@ -78,3 +78,30 @@ def test_model_backend_down_surfaces_as_502(client, orchestrator_in_process, mon
     r = client.post("/exercise-forge/preview", json={"learning_objectives": ["Detect phishing"]})
     assert r.status_code == 502
     assert "failed to generate" in r.json()["detail"]
+
+
+def test_the_control_plane_presents_the_service_token(client, orchestrator_in_process, monkeypatch):
+    # The orchestrator demands AI_SERVICE_TOKEN; the API sends the same value it is given.
+    token = "shared-service-token-0123456789abcdefghij"
+    monkeypatch.setattr(orch, "AI_SERVICE_TOKEN", token)
+    body = {"learning_objectives": ["Detect phishing"]}
+    monkeypatch.delenv("AI_SERVICE_TOKEN", raising=False)
+    assert client.post("/exercise-forge/preview", json=body).status_code == 502  # refused: 401 upstream
+    monkeypatch.setenv("AI_SERVICE_TOKEN", token)
+    r = client.post("/exercise-forge/preview", json=body)
+    assert r.status_code == 200, r.text
+
+
+def test_every_orchestrator_caller_sends_the_token():
+    """Each API/worker module that talks to AI_ORCHESTRATOR_URL passes orchestrator_headers()."""
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[2] / "control-plane"
+    missing = []
+    for path in [*root.glob("api/app/**/*.py"), *root.glob("worker/worker/**/*.py")]:
+        text = path.read_text()
+        if path.name in ("health.py", "base.py"):  # GET /health is public; base.py only names it
+            continue
+        if "AI_ORCHESTRATOR_URL" in text and "orchestrator_headers" not in text:
+            missing.append(str(path.relative_to(root)))
+    assert not missing, missing

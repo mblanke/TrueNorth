@@ -24,7 +24,7 @@ from datetime import UTC, datetime
 
 from celery import group
 
-from . import db_ops, greyspace, range_alloc, secretbox
+from . import ai_client, db_ops, greyspace, range_alloc, secretbox
 from .base_tasks import ReliableTask, _get_backend, db_connect_args
 from .celery_app import app
 from .fencing import FINAL_ERRORS, fenced, guarded_range_update, run_async, snapshot_back_to_ready
@@ -667,7 +667,7 @@ def forge_exercise(self, request_id: str, tenant_id: str, indicators: list, conf
 
     try:
         with httpx.Client(timeout=120) as client:
-            resp = client.post(f"{AI_ORCHESTRATOR_URL}/ai/exercise-forge", json=payload)
+            resp = client.post(f"{AI_ORCHESTRATOR_URL}/ai/exercise-forge", json=payload, headers=ai_client.orchestrator_headers())
             resp.raise_for_status()
             data = resp.json()
     except Exception as e:
@@ -885,7 +885,7 @@ def generate_learning_recommendation(self, user_id: str, target_role: str = ""):
 
     try:
         with httpx.Client(timeout=120) as client:
-            resp = client.post(f"{AI_ORCHESTRATOR_URL}/ai/learning-recommendation", json=payload)
+            resp = client.post(f"{AI_ORCHESTRATOR_URL}/ai/learning-recommendation", json=payload, headers=ai_client.orchestrator_headers())
             resp.raise_for_status()
             data = resp.json()
     except Exception as e:

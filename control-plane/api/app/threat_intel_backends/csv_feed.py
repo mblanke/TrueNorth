@@ -14,17 +14,20 @@ is not UTF-8 CSV, is refused whole (``FeedMalformedError``).
 
 Fetching a URL from the API server is a server-side request on an author's behalf, so:
 only http(s); redirects are not followed; the response is capped (THREAT_INTEL_MAX_BYTES,
-default 5 MiB); and a host that resolves to a loopback, link-local, multicast or reserved
-address is refused, as is a private one unless THREAT_INTEL_ALLOW_PRIVATE_FEEDS=true (an
-air-gapped range serving its own feed). Rejection reasons never echo row content, so a
-refused page cannot be read back through them.
+default 5 MiB); a host that resolves to a loopback, link-local, multicast, reserved or
+IPv4-mapped IPv6 address is refused, as is any other non-global one (private, carrier-grade
+NAT 100.64.0.0/10) unless THREAT_INTEL_ALLOW_PRIVATE_FEEDS=true (an air-gapped range serving
+its own feed); and every refusal, and every fetch failure, has one fixed message, so the
+endpoint cannot be used to tell open ports from closed ones. Rejection reasons never echo
+row content, so a refused page cannot be read back through them.
 
-The host is resolved once, every address it resolves to is vetted, and the connection is
-then pinned to the first of them (``_PinnedBackend``): the request never asks DNS again,
-so an answer that changes between the check and the connect (DNS rebinding) cannot steer
-it elsewhere. The URL is left as it is, so the Host header, TLS SNI and certificate
-verification still use the feed's own hostname. Because the connection is pinned, the
-fetch goes direct and ignores HTTP(S)_PROXY from the environment.
+The host is resolved once, every address it resolves to is vetted by those rules, and the
+connection is then pinned to the first of them (``_PinnedBackend``): the address dialled
+is always one that passed the checks, and the request never asks DNS again, so an answer
+that changes between the check and the connect (DNS rebinding) cannot steer it elsewhere.
+The URL is left as it is, so the Host header, TLS SNI and certificate verification still
+use the feed's own hostname. Because the connection is pinned (and ``trust_env=False``),
+the fetch goes direct and ignores HTTP(S)_PROXY / NO_PROXY / .netrc from the environment.
 """
 
 from __future__ import annotations
@@ -214,27 +217,50 @@ def parse_csv(content: bytes) -> FeedPull:
 
 
 # -- fetching ------------------------------------------------------------------------------
+# One text per outcome, whatever the cause: a message that told "did not resolve" from
+# "refused connection" from "answered 404" would make the API a probe of internal hosts
+# and ports for anyone who may set a feed URL.
+REFUSED = (
+    "the feed URL must be http(s) and point at a public address "
+    "(THREAT_INTEL_ALLOW_PRIVATE_FEEDS=true allows private ones)"
+)
+UNREACHABLE = "the feed could not be fetched"
+SHARED_ADDRESS_SPACE = ipaddress.ip_network("100.64.0.0/10")  # carrier-grade NAT, RFC 6598
+
+
+def _refused(addr: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    if isinstance(addr, ipaddress.IPv6Address) and addr.ipv4_mapped is not None:
+        return True  # ::ffff:127.0.0.1 is 127.0.0.1 to the socket
+    if addr.is_loopback or addr.is_link_local or addr.is_multicast or addr.is_unspecified or addr.is_reserved:
+        return True  # never, even with private feeds allowed
+    if addr.is_global:
+        return False
+    # private, shared (100.64.0.0/10) and other non-global space: an air-gapped range only
+    return not _allow_private()
+
+
 def _check_destination(url: str) -> str:
-    """The vetted address to connect to for ``url``. Raises ``FeedSourceError`` / ``FeedUnreachableError``."""
+    """The vetted address to connect to for ``url``: every address the host resolves to
+    must pass ``_refused``, and the fetch is pinned to one of them. Raises
+    ``FeedSourceError`` / ``FeedUnreachableError``."""
     parts = urlsplit(url)
     if parts.scheme.lower() not in ("http", "https") or not parts.hostname:
-        raise FeedSourceError("the feed URL must be http:// or https:// with a host")
-    port = parts.port or (443 if parts.scheme.lower() == "https" else 80)
+        raise FeedSourceError(REFUSED)
     try:
+        port = parts.port or (443 if parts.scheme.lower() == "https" else 80)
         infos = _resolve(parts.hostname, port, type=socket.SOCK_STREAM)
-    except (socket.gaierror, UnicodeError) as exc:
-        raise FeedUnreachableError(f"the feed host could not be resolved: {exc}") from exc
+    except (socket.gaierror, UnicodeError, ValueError) as exc:
+        raise FeedUnreachableError(UNREACHABLE) from exc
     if not infos:
-        raise FeedUnreachableError("the feed host could not be resolved: no addresses")
+        raise FeedUnreachableError(UNREACHABLE)
+    vetted = []
     for info in infos:
         addr = ipaddress.ip_address(info[4][0].split("%", 1)[0])
-        if addr.is_loopback or addr.is_link_local or addr.is_multicast or addr.is_unspecified or addr.is_reserved:
-            raise FeedSourceError("the feed URL points at a loopback, link-local or reserved address")
-        if addr.is_private and not _allow_private():
-            raise FeedSourceError(
-                "the feed URL points at a private address (set THREAT_INTEL_ALLOW_PRIVATE_FEEDS=true to allow)"
-            )
-    return str(ipaddress.ip_address(infos[0][4][0].split("%", 1)[0]))
+        if _refused(addr):
+            raise FeedSourceError(REFUSED)
+        vetted.append(addr)
+    # The pin dials exactly an address that just passed _refused (never re-resolved).
+    return str(vetted[0])
 
 
 class _PinnedBackend(httpcore.NetworkBackend):
@@ -278,19 +304,22 @@ def fetch_url(url: str) -> bytes:
     try:
         host = httpx.URL(url).raw_host.decode("ascii").lower()  # what httpcore will dial for
     except (httpx.InvalidURL, UnicodeError) as exc:
-        raise FeedSourceError("the feed URL is not a valid http(s) URL") from exc
+        raise FeedSourceError(REFUSED) from exc
     limit = max_bytes()
     try:
         with (
+            # Pinned to the vetted address; trust_env=False: no HTTP(S)_PROXY / NO_PROXY /
+            # .netrc from the API's environment.
             httpx.Client(
-                timeout=FETCH_TIMEOUT, follow_redirects=False, transport=_PinnedTransport(host, address)
+                timeout=FETCH_TIMEOUT,
+                follow_redirects=False,
+                trust_env=False,
+                transport=_PinnedTransport(host, address),
             ) as client,
             client.stream("GET", url, headers={"Accept": "text/csv, text/plain"}) as resp,
         ):
-            if resp.is_redirect:
-                raise FeedUnreachableError(f"the feed answered HTTP {resp.status_code} (redirects are not followed)")
-            if resp.status_code >= 400:
-                raise FeedUnreachableError(f"the feed answered HTTP {resp.status_code}")
+            if resp.is_redirect or resp.status_code >= 400:  # redirects are not followed
+                raise FeedUnreachableError(UNREACHABLE)
             body = bytearray()
             for chunk in resp.iter_bytes():
                 body.extend(chunk)
@@ -298,7 +327,7 @@ def fetch_url(url: str) -> bytes:
                     raise FeedSourceError(f"the feed is larger than {limit} bytes")
             return bytes(body)
     except httpx.HTTPError as exc:
-        raise FeedUnreachableError(f"the feed could not be fetched: {type(exc).__name__}") from exc
+        raise FeedUnreachableError(UNREACHABLE) from exc
 
 
 class CsvFeedBackend(BaseFeedBackend):

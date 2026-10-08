@@ -1,4 +1,4 @@
-import { isAppPath, renderMarkdown } from './markdown';
+import { isAppPath, isSameOrigin, renderMarkdown } from './markdown';
 
 /** Wiki pages and ticket text are written by users and read by everyone in the tenant. */
 describe('renderMarkdown', () => {
@@ -49,6 +49,30 @@ describe('renderMarkdown', () => {
     expect(isAppPath('/\\evil.example')).toBeFalse();
     // Markdown links percent-encode the backslash; a raw <a> tag keeps it.
     expect(renderMarkdown('<a href="/\\evil.example">x</a>')).toContain('rel="noopener noreferrer"');
+  });
+
+  it('loads images only from this origin, so a page cannot beacon its readers', () => {
+    const remote = renderMarkdown(
+      '![x](https://tracker.example/p.gif)\n\n<img src="//tracker.example/q.gif">\n\n' +
+      '<img src="data:image/svg+xml,<svg/>">\n\n<img src="/ok.png" srcset="https://tracker.example/r.gif 2x">',
+    );
+    expect(remote).not.toContain('tracker.example');
+    expect(remote).not.toContain('data:');
+    expect(remote).not.toContain('srcset');
+    expect(remote).toContain('src="/ok.png"');
+
+    expect(renderMarkdown('![diagram](/api/wiki/files/abc.png)')).toContain('src="/api/wiki/files/abc.png"');
+    expect(renderMarkdown('![rel](images/a.png)')).toContain('src="images/a.png"');
+    expect(renderMarkdown(`<img src="${window.location.origin}/a.png">`)).toContain(`${window.location.origin}/a.png`);
+  });
+
+  it('isSameOrigin resolves relative URLs against the page', () => {
+    expect(isSameOrigin('/a')).toBeTrue();
+    expect(isSameOrigin('a/b.png')).toBeTrue();
+    expect(isSameOrigin('//evil.example/a')).toBeFalse();
+    expect(isSameOrigin('https://evil.example/a')).toBeFalse();
+    expect(isSameOrigin('javascript:alert(1)')).toBeFalse();
+    expect(isSameOrigin('')).toBeFalse();
   });
 
   it('tolerates empty input', () => {

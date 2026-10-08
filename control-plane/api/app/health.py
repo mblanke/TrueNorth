@@ -1,8 +1,10 @@
 """TrueNorth Range - Deep health check system.
 
-Three tiers:
-  - /health          - Fast liveness probe (always 200 unless process dying)
-  - /health/ready    - Readiness probe (checks DB + Redis connectivity)
+Tiers (served from app/main.py):
+  - /health/live     - Liveness probe: 200 while the process serves; no dependency touched
+  - /health          - Backward-compatible flags; 503 when the database is down
+  - /health/ready    - Readiness probe: 503 unless DB, Redis and (when OPENSEARCH_URL is
+                       set) OpenSearch answer
   - /health/deep     - Full dependency check (DB, Redis, OpenSearch, MinIO, Celery, AI)
 """
 
@@ -59,7 +61,9 @@ class HealthChecker:
 
     def __init__(self) -> None:
         self._start_time = time.monotonic()
-        self._version = os.getenv("APP_VERSION", "0.1.0")
+        from .settings import app_version
+
+        self._version = app_version()
 
     @property
     def uptime(self) -> float:
@@ -75,12 +79,13 @@ class HealthChecker:
         }
 
     async def readiness(self) -> SystemHealth:
-        """Check critical dependencies for readiness (DB + Redis)."""
-        results = await asyncio.gather(
-            self._check_database(),
-            self._check_redis(),
-            return_exceptions=True,
-        )
+        """Check critical dependencies for readiness: DB, Redis, and OpenSearch when configured."""
+        from .search_backends import opensearch
+
+        checks = [self._check_database(), self._check_redis()]
+        if opensearch.configured():
+            checks.append(self._check_opensearch())
+        results = await asyncio.gather(*checks, return_exceptions=True)
         components = self._resolve_results(results)
         return self._build_system_health(components)
 

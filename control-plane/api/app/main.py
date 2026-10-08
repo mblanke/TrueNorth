@@ -18,7 +18,7 @@ import uuid
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 
-from fastapi import Depends, FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, HTTPException, Query, Response, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -42,6 +42,7 @@ from .scheduler import clock as scheduler_clock
 from .schemas import HealthOut
 from .search_backends import get_search_backend
 from .search_backends.query import MAX_QUERY_LENGTH, QueryError, parse_query
+from .settings import app_version, check_startup, docs_urls, env_flag
 from .telemetry_mitre import tag_event
 from .tenancy import get_owned
 from .versioning import SERVER_PREFIX, VersionPrefixMiddleware
@@ -49,7 +50,10 @@ from .versioning import SERVER_PREFIX, VersionPrefixMiddleware
 logger = logging.getLogger("truenorth.api")
 configure_logging()  # LOG_FORMAT=json for JSON lines; default text, as before
 
-APP_VERSION = "0.1.0"
+# The running build (TN_VERSION, set by the release pipeline; "dev" otherwise). The OpenAPI
+# document carries the contract version instead, so a release build does not drift it.
+APP_VERSION = app_version()
+API_CONTRACT_VERSION = "0.1.0"
 
 
 # -- Lifecycle -------------------------------------------------------------
@@ -62,16 +66,21 @@ async def lifespan(app: FastAPI):
     environments (tests, CI).  They start lazily on first use, or call
     ``/admin/startup`` in production bootstrap scripts.
     """
-    logger.info("Starting TrueNorth Range API v%s", APP_VERSION)
+    # TN_ENV=production refuses to start on unsafe or missing settings (app/settings.py).
+    logger.info("Starting TrueNorth Range API v%s (TN_ENV=%s)", APP_VERSION, check_startup())
     # Production sets both false (compose.prod.yml, the installer): Alembic owns the
     # schema there, and the hardcoded dev admin must not exist. Until 2026-09-27
     # neither flag was read, so both ran in production regardless of the setting.
-    if _env_flag("DB_AUTO_CREATE"):
+    # Unset, both default off under TN_ENV=production and on otherwise.
+    if env_flag("DB_AUTO_CREATE"):
         Base.metadata.create_all(bind=engine)
-    _seed_dev_data(dev_account=_env_flag("SEED_DEV_DATA"))
+    _seed_dev_data(dev_account=env_flag("SEED_DEV_DATA"))
     # Build the auth backend now so a bad AUTH_BACKEND / OIDC_* setting stops the
     # process at boot instead of turning every authenticated request into a 500.
     logger.info("Auth backend: %s", type(get_auth_backend()).__name__)
+    from .scheduler.feed import warn_if_unconfigured
+
+    warn_if_unconfigured()  # calendar-feed URLs need a fixed public origin in production
     # Course publications a previous process left mid-way resume in the background
     # (app/course_publishing); a Moodle that is down only delays them.
     if os.getenv("COURSE_PUBLISH_RESUME", "true").lower() == "true":
@@ -188,7 +197,9 @@ def _seed_dev_data(dev_account: bool = True) -> None:
 # -- App creation ----------------------------------------------------------
 app = FastAPI(
     title="TrueNorth Range API",
-    version=APP_VERSION,
+    version=API_CONTRACT_VERSION,
+    # Off in production unless DOCS_ENABLED=true (app/settings.py).
+    **docs_urls(),
     description="Control-plane API for the TrueNorth Range cyber training platform",
     lifespan=lifespan,
     # The published base path. Unversioned paths remain as aliases (app/versioning.py).
@@ -386,9 +397,18 @@ app.add_middleware(VersionPrefixMiddleware)
 
 
 # -- Health check (backwards-compatible format) ----------------------------
-@app.get("/health", response_model=HealthOut, tags=["health"])
-def health_check(db: Session = Depends(get_db)):
-    """Quick health check - liveness + dependency flags."""
+@app.get(
+    "/health",
+    response_model=HealthOut,
+    tags=["health"],
+    responses={503: {"model": HealthOut, "description": "The database is unreachable"}},
+)
+def health_check(response: Response, db: Session = Depends(get_db)):
+    """Health with dependency flags. 503 (``status: "unavailable"``) when the database is down.
+
+    Redis is reported but does not fail this check; ``/health/ready`` fails on either.
+    Probes: ``/health/live`` for liveness, ``/health/ready`` for readiness.
+    """
     db_ok = True
     try:
         db.execute(text("SELECT 1"))
@@ -408,8 +428,10 @@ def health_check(db: Session = Depends(get_db)):
     except Exception:
         pass
 
+    if not db_ok:
+        response.status_code = 503
     return HealthOut(
-        status="ok",
+        status="ok" if db_ok else "unavailable",
         version=APP_VERSION,
         app="truenorth-range",
         db=db_ok,
@@ -418,17 +440,25 @@ def health_check(db: Session = Depends(get_db)):
 
 
 # -- Deep health checks (readiness + full dependency audit) ----------------
-from .health import HealthChecker
+from .health import HealthChecker, HealthStatus
 
 _checker = HealthChecker()
 
 
+@app.get("/health/live", tags=["health"], summary="Liveness probe")
+async def liveness():
+    """Liveness probe: 200 while the process serves requests. Touches no dependency."""
+    return await _checker.liveness()
+
+
 @app.get("/health/ready", tags=["health"], summary="Readiness probe")
-async def readiness():
-    """Readiness probe - checks DB + Redis connectivity."""
+async def readiness(response: Response):
+    """Readiness probe: DB and Redis (and OpenSearch when OPENSEARCH_URL is set). 503 if any is down."""
     from dataclasses import asdict
 
     result = await _checker.readiness()
+    if result.status == HealthStatus.UNHEALTHY:
+        response.status_code = 503
     return asdict(result)
 
 

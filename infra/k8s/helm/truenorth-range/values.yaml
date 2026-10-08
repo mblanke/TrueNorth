@@ -304,6 +304,9 @@ config:
   keycloakRealm: truenorth
   provisionerBackend: terraform
   logLevel: INFO
+  # Peers whose X-Forwarded-For the API believes: your ingress controller's pod CIDR
+  # (e.g. "10.244.0.0/16"). Empty keeps the API default (loopback + 172.16.0.0/12).
+  trustedProxyCidrs: ""
 
 # ---------------------------------------------------------------------------
 # Secrets — Sensitive values (base64-encoded at render time)

@@ -307,6 +307,66 @@ class TestUnreachable:
         assert resp.status_code == 422, resp.text
         assert client.get(f"/threat-intel/feeds/{feed['id']}").json()["last_poll_status"] == "error: refused"
 
+    @pytest.mark.parametrize(
+        ("ip", "allow_private"),
+        [
+            ("::ffff:127.0.0.1", False),  # IPv4-mapped loopback
+            ("::ffff:93.184.216.34", False),  # mapped at all, even a public address
+            ("::ffff:10.0.0.1", True),
+            ("100.64.0.1", False),  # carrier-grade NAT is not public
+            ("127.0.0.1", True),  # the private-feeds flag never opens loopback ...
+            ("169.254.169.254", True),  # ... or link-local (cloud metadata)
+            ("::1", True),
+        ],
+    )
+    def test_mapped_shared_and_local_addresses_are_refused(self, client, monkeypatch, ip, allow_private):
+        """Security sweep L1."""
+        monkeypatch.setenv("THREAT_INTEL_ALLOW_PRIVATE_FEEDS", "true" if allow_private else "false")
+        monkeypatch.setattr(csv_feed, "_resolve", _resolve_to(ip))
+        feed = _feed(client, url="http://intel.example/iocs.csv")
+        with respx.mock:
+            resp = client.post(f"/threat-intel/feeds/{feed['id']}/pull")
+        assert resp.status_code == 422, resp.text
+        assert resp.json()["detail"] == csv_feed.REFUSED
+
+    def test_every_fetch_failure_reads_the_same(self, client, monkeypatch, public_dns):
+        """No port or host oracle: closed port, timeout, 404, redirect and no DNS all say one thing."""
+        details = set()
+        for answer in (
+            httpx.ConnectError("connection refused"),
+            httpx.ReadTimeout("slow"),
+            httpx.Response(404),
+            httpx.Response(302, headers={"Location": "http://127.0.0.1/"}),
+        ):
+            with respx.mock:
+                route = respx.get(FEED_URL)
+                route.mock(side_effect=answer) if isinstance(answer, Exception) else route.mock(return_value=answer)
+                feed = _feed(client)
+                resp = client.post(f"/threat-intel/feeds/{feed['id']}/pull")
+            assert resp.status_code == 502
+            details.add(resp.json()["detail"])
+
+        def no_dns(*_a, **_k):
+            raise socket.gaierror("Name or service not known")
+
+        monkeypatch.setattr(csv_feed, "_resolve", no_dns)
+        details.add(client.post(f"/threat-intel/feeds/{_feed(client)['id']}/pull").json()["detail"])
+        assert details == {csv_feed.UNREACHABLE}
+
+    def test_the_fetch_ignores_proxy_settings_from_the_environment(self, monkeypatch, public_dns):
+        seen = {}
+        real = httpx.Client
+
+        def spy(*a, **k):
+            seen.update(k)
+            return real(*a, **k)
+
+        monkeypatch.setattr(csv_feed.httpx, "Client", spy)
+        with respx.mock:
+            respx.get(FEED_URL).mock(return_value=httpx.Response(200, content=CSV))
+            csv_feed.fetch_url(FEED_URL)
+        assert seen.get("trust_env") is False
+
     @respx.mock
     def test_a_private_feed_host_is_allowed_when_the_range_says_so(self, client, monkeypatch):
         monkeypatch.setenv("THREAT_INTEL_ALLOW_PRIVATE_FEEDS", "true")
@@ -410,9 +470,24 @@ class TestPinnedConnection:
 
     def test_the_first_answer_being_private_is_refused_before_any_connect(self, monkeypatch, network):
         monkeypatch.setattr(csv_feed, "_resolve", _rebinding_dns("127.0.0.1", PUBLIC_IP))
-        with pytest.raises(FeedSourceError, match="loopback"):
+        with pytest.raises(FeedSourceError) as refused:
             csv_feed.fetch_url(FEED_URL)
+        assert str(refused.value) == csv_feed.REFUSED  # one text for every refusal (sweep L1)
         assert network == {}  # no backend was even built
+
+    @pytest.mark.parametrize("first", ["::ffff:127.0.0.1", "::ffff:93.184.216.34", "100.64.0.9", "192.0.2.10"])
+    def test_mapped_shared_and_non_global_answers_are_never_pinned(self, monkeypatch, network, first):
+        """The sweep-L1 address rules vet the very address the pin dials."""
+        monkeypatch.setattr(csv_feed, "_resolve", _rebinding_dns(first, PUBLIC_IP))
+        with pytest.raises(FeedSourceError):
+            csv_feed.fetch_url(FEED_URL)
+        assert network == {}
+
+    def test_the_pin_dials_the_vetted_address_even_with_private_feeds_allowed(self, monkeypatch, network):
+        monkeypatch.setenv("THREAT_INTEL_ALLOW_PRIVATE_FEEDS", "true")
+        monkeypatch.setattr(csv_feed, "_resolve", _rebinding_dns("100.64.0.9", "127.0.0.1"))
+        assert csv_feed.fetch_url(FEED_URL) == CSV
+        assert network["connects"] == [("100.64.0.9", 443)]
 
     def test_every_address_is_vetted_not_just_the_one_connected_to(self, monkeypatch, network):
         def two(host, port, type=0, **_):  # noqa: A002
@@ -422,7 +497,7 @@ class TestPinnedConnection:
             ]
 
         monkeypatch.setattr(csv_feed, "_resolve", two)
-        with pytest.raises(FeedSourceError, match="private"):
+        with pytest.raises(FeedSourceError, match="public address"):
             csv_feed.fetch_url(FEED_URL)
         assert network == {}
 
@@ -445,8 +520,9 @@ class TestPinnedConnection:
 
         monkeypatch.setattr(csv_feed, "_resolve", _resolve_to(PUBLIC_IP))
         monkeypatch.setattr(csv_feed, "_network_backend", lambda: Redirecting(record))
-        with pytest.raises(FeedUnreachableError, match="redirects are not followed"):
+        with pytest.raises(FeedUnreachableError) as unreachable:
             csv_feed.fetch_url(FEED_URL)
+        assert str(unreachable.value) == csv_feed.UNREACHABLE  # no status oracle (sweep L1)
         assert record["connects"] == [(PUBLIC_IP, 443)]
 
     def test_environment_proxies_are_not_used(self, monkeypatch, network):

@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, status
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
-from .. import course_content_ingest, programme_ingest, qsp_paths
+from .. import course_content_ingest, moodle_sso, programme_ingest, qsp_paths
 from ..auth import CurrentUser, get_current_user
 from ..course_publishing.models import CoursePublication
 from ..course_releases.models import CourseRelease
@@ -229,6 +229,9 @@ def course_outline(
     it, and the performance objective it satisfies.
 
     Own tenant or global; a draft is 404 without ``course:author``.
+
+    ``moodle_available`` says whether "Open in Moodle" can work for the caller: their
+    tenant has an active Moodle with an LTI issuer and this course is published to it.
     """
     course = _visible(db, Course, course_id, user, "Course not found")
 
@@ -340,6 +343,9 @@ def course_outline(
         "status": meta.get("content_status") or meta.get("status") or "",
         "tags": _course_tags(course),
         "modules": out_modules,
+        # Whether "Open in Moodle" can work: the tenant has a usable Moodle and this course
+        # is published to it. Readable by every role, unlike /integrations/platforms.
+        "moodle_available": moodle_sso.course_available(db, user, course.id),
     }
 
 

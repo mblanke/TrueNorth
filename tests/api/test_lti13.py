@@ -81,7 +81,7 @@ def _launch(db, platform: ExternalPlatform, *, aud="client-1", deployment="dep-1
             lti13.CLAIM_MESSAGE_TYPE: "LtiResourceLinkRequest",
             **(extra or {}),
         },
-        key.private_key_pem,
+        lti13.signing_pem(key),
         algorithm="RS256",
         headers={"kid": key.kid},
     )

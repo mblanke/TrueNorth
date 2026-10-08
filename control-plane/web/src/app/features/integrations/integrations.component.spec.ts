@@ -3,7 +3,10 @@ import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { provideRouter } from '@angular/router';
 import { of, throwError } from 'rxjs';
 
+import { MatDialog } from '@angular/material/dialog';
 import { ApiService } from '@core/services/api.service';
+import { NotificationService } from '@core/services/notification.service';
+import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog/confirm-dialog.component';
 import { IntegrationsComponent } from './integrations.component';
 
 describe('IntegrationsComponent', () => {
@@ -13,6 +16,14 @@ describe('IntegrationsComponent', () => {
   let api: jasmine.SpyObj<ApiService>;
   let alertSpy: jasmine.Spy;
   let confirmSpy: jasmine.Spy;
+  let notify: jasmine.SpyObj<NotificationService>;
+  let dialogOpen: jasmine.Spy;
+  let dialogResult: boolean;
+
+  afterEach(() => {
+    expect(alertSpy).not.toHaveBeenCalled();
+    expect(confirmSpy).not.toHaveBeenCalled();
+  });
 
   const PLATFORMS = [
     {
@@ -33,12 +44,21 @@ describe('IntegrationsComponent', () => {
     api.post.and.returnValue(of({}));
     api.patch.and.returnValue(of({}));
     api.delete.and.returnValue(of(undefined));
+    // Native dialogs must never be used; spy so a regression fails loudly instead of blocking.
     alertSpy = spyOn(window, 'alert');
     confirmSpy = spyOn(window, 'confirm').and.returnValue(true);
+    notify = jasmine.createSpyObj('NotificationService', ['success', 'error', 'info']);
+    dialogResult = true;
+    dialogOpen = jasmine.createSpy('open').and.callFake(() => ({ afterClosed: () => of(dialogResult) }));
 
     await TestBed.configureTestingModule({
       imports: [IntegrationsComponent, NoopAnimationsModule],
-      providers: [provideRouter([]), { provide: ApiService, useValue: api }],
+      providers: [
+        provideRouter([]),
+        { provide: ApiService, useValue: api },
+        { provide: NotificationService, useValue: notify },
+        { provide: MatDialog, useValue: { open: dialogOpen } },
+      ],
     }).compileComponents();
 
     fixture = TestBed.createComponent(IntegrationsComponent);
@@ -86,11 +106,11 @@ describe('IntegrationsComponent', () => {
     expect(api.get).toHaveBeenCalledTimes(2);
   });
 
-  it('alerts the server detail when creating a platform fails', async () => {
+  it('shows the server detail in a snackbar when creating a platform fails', async () => {
     await render();
     api.post.and.returnValue(throwError(() => ({ error: { detail: 'Slug already exists' } })));
     component.addPlatform();
-    expect(alertSpy).toHaveBeenCalledWith('Slug already exists');
+    expect(notify.error).toHaveBeenCalledWith('Slug already exists');
   });
 
   it('edits a platform with PATCH to its id and resets the form', async () => {
@@ -111,14 +131,14 @@ describe('IntegrationsComponent', () => {
     expect(api.get).toHaveBeenCalledTimes(2);
   });
 
-  it('keeps the edit open and alerts when PATCH fails', async () => {
+  it('keeps the edit open and reports when PATCH fails', async () => {
     await render();
     component.startEditPlatform(PLATFORMS[1]);
     api.patch.and.returnValue(throwError(() => ({ error: {} })));
     component.updatePlatform();
     expect(component.editingPlatformId).toBe('p2');
     expect(component.platformSaving).toBeFalse();
-    expect(alertSpy).toHaveBeenCalledWith('Failed to update platform');
+    expect(notify.error).toHaveBeenCalledWith('Failed to update platform');
   });
 
   it('tests a connection via POST /integrations/platforms/:id/test and reports the outcome', async () => {
@@ -126,40 +146,45 @@ describe('IntegrationsComponent', () => {
     api.post.and.returnValue(of({ reachable: true, status_code: 200 }));
     component.testConnection(PLATFORMS[0]);
     expect(api.post).toHaveBeenCalledWith('/integrations/platforms/p1/test', {});
-    expect(alertSpy).toHaveBeenCalledWith('Connection OK: Status 200');
+    expect(notify.success).toHaveBeenCalledWith('Connection OK: Status 200');
 
     api.post.and.returnValue(of({ reachable: false, error: 'timeout' }));
     component.testConnection(PLATFORMS[0]);
-    expect(alertSpy).toHaveBeenCalledWith('Connection Failed: timeout');
+    expect(notify.error).toHaveBeenCalledWith('Connection Failed: timeout');
   });
 
   it('reports a failed connection test request', async () => {
     await render();
     api.post.and.returnValue(throwError(() => ({ error: { detail: 'Platform not found' } })));
     component.testConnection(PLATFORMS[0]);
-    expect(alertSpy).toHaveBeenCalledWith('Test failed: Platform not found');
+    expect(notify.error).toHaveBeenCalledWith('Test failed: Platform not found');
   });
 
-  it('deletes a platform after confirmation and reloads', async () => {
+  it('deletes a platform after Material confirmation and reloads', async () => {
     await render();
     component.deletePlatform(PLATFORMS[1]);
-    expect(confirmSpy).toHaveBeenCalledWith('Remove OffSec?');
+    expect(dialogOpen).toHaveBeenCalledWith(ConfirmDialogComponent, jasmine.objectContaining({
+      data: jasmine.objectContaining({ title: 'Remove platform', confirmText: 'Remove' }),
+    }));
+    expect(dialogOpen.calls.mostRecent().args[1].data.message).toContain('Remove OffSec?');
     expect(api.delete).toHaveBeenCalledWith('/integrations/platforms/p2');
+    expect(notify.success).toHaveBeenCalledWith('OffSec removed');
     expect(api.get).toHaveBeenCalledTimes(2);
   });
 
   it('does not delete when the confirmation is declined', async () => {
     await render();
-    confirmSpy.and.returnValue(false);
+    dialogResult = false;
     component.deletePlatform(PLATFORMS[1]);
+    expect(dialogOpen).toHaveBeenCalled();
     expect(api.delete).not.toHaveBeenCalled();
   });
 
-  it('alerts when delete fails', async () => {
+  it('reports when delete fails', async () => {
     await render();
     api.delete.and.returnValue(throwError(() => ({ error: { detail: 'In use' } })));
     component.deletePlatform(PLATFORMS[0]);
-    expect(alertSpy).toHaveBeenCalledWith('In use');
+    expect(notify.error).toHaveBeenCalledWith('In use');
     expect(api.get).toHaveBeenCalledTimes(1);
   });
 });

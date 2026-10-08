@@ -453,6 +453,67 @@ class TestAfterActionReports:
         assert out["aar_id"] == str(existing.id)
         assert (row.report_json, row.report_html) == (api_report, "<p>api</p>")
 
+    def _completed(self, world):
+        ex = world.exercise
+        ex.state, ex.total_score, ex.max_score = m.ExerciseState.completed, 30, 100
+        world.db.commit()
+        _add(world.db, _objective(ex, "o1", 30, achieved=True, evidence="alert 42"))
+        return ex
+
+    def test_generate_aar_calls_the_real_orchestrator_route_and_stores_its_analysis(self, world, monkeypatch):
+        import httpx
+        import respx
+
+        monkeypatch.setenv("AI_ORCHESTRATOR_URL", "http://orch.test:6000")
+        monkeypatch.setenv("AI_SERVICE_TOKEN", "svc-token-0123456789abcdef0123456789")
+        ex = self._completed(world)
+        seen = {}
+
+        def _orchestrator(request: httpx.Request) -> httpx.Response:  # the AARAnalysisRequest contract
+            seen["auth"] = request.headers.get("authorization")
+            seen["body"] = json.loads(request.content)
+            return httpx.Response(200, json={"output": "**Strong** detection, slow containment.", "model_used": "agent"})
+
+        with respx.mock(assert_all_called=True) as mock:
+            mock.post("http://orch.test:6000/ai/aar-analysis").mock(side_effect=_orchestrator)
+            tasks.generate_aar(str(ex.id))
+
+        assert seen["auth"] == "Bearer svc-token-0123456789abcdef0123456789"
+        assert set(seen["body"]) == {"report_data", "context"}
+        assert json.loads(seen["body"]["report_data"])["exercise"]["name"] == "e1"
+        assert seen["body"]["context"] == {"exercise_id": str(ex.id)}
+        aar = world.db.scalars(select(m.AfterActionReport)).one()
+        ai = json.loads(aar.report_json)["ai_analysis"]
+        assert ai["status"] == "available" and ai["model"] == "agent" and "slow containment" in ai["summary"]
+        assert 'id="ai-analysis"' in aar.report_html and "slow containment" in aar.report_html
+
+    @pytest.mark.parametrize("fault", ["down", "500", "empty"])
+    def test_a_failed_analysis_is_logged_and_marked_unavailable(self, world, monkeypatch, caplog, fault):
+        import httpx
+        import respx
+
+        monkeypatch.setenv("AI_ORCHESTRATOR_URL", "http://orch.test:6000")
+        ex = self._completed(world)
+        response = {
+            "down": httpx.ConnectError("refused"),
+            "500": httpx.Response(500, json={"detail": "boom"}),
+            "empty": httpx.Response(200, json={"output": "", "model_used": "agent"}),
+        }[fault]
+        with respx.mock() as mock, caplog.at_level("WARNING", logger="truenorth.worker"):
+            route = mock.post("http://orch.test:6000/ai/aar-analysis")
+            if isinstance(response, Exception):
+                route.mock(side_effect=response)
+            else:
+                route.mock(return_value=response)
+            out = tasks.generate_aar(str(ex.id))
+
+        assert out["status"] == "generated"  # the report itself still lands
+        aar = world.db.scalars(select(m.AfterActionReport)).one()
+        ai = json.loads(aar.report_json)["ai_analysis"]
+        assert ai["status"] == "unavailable" and ai["reason"] and "summary" not in ai
+        assert 'id="ai-analysis"' not in aar.report_html
+        assert any("AI analysis unavailable" in r.getMessage() and r.levelname == "WARNING" for r in caplog.records)
+
     def test_generate_aar_for_a_missing_exercise_fails(self, world, notify):
         with pytest.raises(ValueError, match="not found"):
             tasks.generate_aar(str(uuid.uuid4()))

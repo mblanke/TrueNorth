@@ -106,7 +106,10 @@ suggestion has never worked".
 
 By default the Keycloak backend checks signature, `kid`, algorithm (RS256) and
 time claims, but **not** `aud` or `iss`: a token issued to any client in the realm
-is accepted. Two settings on the API tighten that. Both are off when unset.
+is accepted. Two settings on the API tighten that. Both are off when unset, except
+that with `TN_ENV=production` the API refuses to start without `KEYCLOAK_AUDIENCE`
+(`OIDC_AUDIENCE` for `AUTH_BACKEND=generic_oidc`) and always verifies `aud`
+(`app/settings.py`). Add the mapper below before setting `TN_ENV=production`.
 
 | Setting | Effect | Prerequisite |
 |---|---|---|

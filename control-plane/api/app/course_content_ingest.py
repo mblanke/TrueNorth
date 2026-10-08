@@ -229,7 +229,9 @@ def _remove_placeholder(db: Session, course: Course, superseded_by: str, meta: d
     stats["placeholders_deleted"] = stats.get("placeholders_deleted", 0) + 1
 
 
-def _claim_po(db: Session, module: CourseModule, course_code: str, ordinal: int, stats: dict) -> None:
+def _claim_po(
+    db: Session, module: CourseModule, course_code: str, ordinal: int, stats: dict, *, tenant_id
+) -> None:
     """Make this module the one that delivers its PO.
 
     ``qsp_progress`` takes the first module it finds for a performance objective, so a
@@ -238,9 +240,17 @@ def _claim_po(db: Session, module: CourseModule, course_code: str, ordinal: int,
     content existed; authored content supersedes them and the placeholder releases its
     claim. Two *authored* courses claiming the same PO is an error, not a race.
     """
-    others = db.query(CourseModule).filter(CourseModule.po_id == module.po_id, CourseModule.id != module.id).all()
+    # Within the importing course's tenant. The spine is platform-global, so by po_id
+    # alone this found other tenants' modules: an import deleted another tenant's
+    # placeholder course, or failed naming another tenant's authored one.
+    others = (
+        db.query(CourseModule)
+        .join(Course, Course.id == CourseModule.course_id)
+        .filter(CourseModule.po_id == module.po_id, CourseModule.id != module.id, Course.tenant_id == tenant_id)
+        .all()
+    )
     for other in others:
-        course = db.query(Course).filter_by(id=other.course_id).one_or_none()
+        course = db.query(Course).filter_by(id=other.course_id, tenant_id=tenant_id).one_or_none()
         meta = {}
         if course is not None:
             try:
@@ -355,6 +365,7 @@ def _build_module_content(
     an empty shell next to a placeholder.
     """
     teach = _content_row(db, module, ContentKind.teach, 0)
+    # tenant-safe: the lesson this module's own teach row points at (created by this import).
     lesson = db.query(Lesson).filter_by(id=teach.lesson_id).one_or_none() if teach.lesson_id else None
     if lesson is None:
         # title is NOT NULL, and the row is flushed to get its id — so it has to be set
@@ -403,7 +414,7 @@ def _current_quiz(db: Session, module: CourseModule) -> Quiz | None:
         .first()
     )
     if check is not None and check.quiz_id:
-        quiz = db.get(Quiz, check.quiz_id)
+        quiz = db.get(Quiz, check.quiz_id)  # tenant-safe: the module's own check row's quiz
         if quiz is not None:
             return quiz
     return db.query(Quiz).filter_by(module_id=module.id).order_by(Quiz.created_at.desc()).first()
@@ -485,7 +496,7 @@ def import_course_content(
         module.pass_threshold = m["pass_threshold"]
         module.po_id = _resolve_po(db, m["po"], doc["course_code"], m["ordinal"])
         if module.po_id is not None:
-            _claim_po(db, module, doc["course_code"], m["ordinal"], stats)
+            _claim_po(db, module, doc["course_code"], m["ordinal"], stats, tenant_id=course.tenant_id)
             stats["modules_bound_to_po"] += 1
         module.content_ref = json.dumps(
             {

@@ -14,8 +14,10 @@ Configuration (env vars):
                          realm's PUBLIC URL as browsers see it, which differs from
                          KEYCLOAK_URL when the API reaches Keycloak internally.
 
-Both checks are off when unset, which is the historical behaviour: any client
-in the realm can call the API.
+Outside production both checks are off when unset, which is the historical
+behaviour: any client in the realm can call the API. Under TN_ENV=production the
+audience is required (the backend refuses to build without it, and app/settings.py
+refuses to start) and always verified.
 """
 
 from __future__ import annotations
@@ -29,6 +31,7 @@ from fastapi import HTTPException, status
 
 from .. import jwks as jwks_verify
 from ..circuit_breaker import CircuitOpenError, keycloak_breaker
+from ..settings import is_production
 from .base import BaseAuthBackend
 from .jwks_cache import JWKSCache
 
@@ -50,6 +53,9 @@ class KeycloakOIDCBackend(BaseAuthBackend):
         self._jwks_url = f"{self._url}/realms/{self._realm}/protocol/openid-connect/certs"
         self._audience = audience or os.getenv("KEYCLOAK_AUDIENCE", "").strip() or None
         self._issuer = issuer or os.getenv("KEYCLOAK_ISSUER", "").strip() or None
+        self._require_aud = is_production()
+        if self._require_aud and not self._audience:
+            raise ValueError("KEYCLOAK_AUDIENCE is required when TN_ENV=production (docs/identity.md)")
         self._jwks_cache = JWKSCache(self._fetch_jwks)
 
     # ------------------------------------------------------------------
@@ -87,7 +93,7 @@ class KeycloakOIDCBackend(BaseAuthBackend):
                 algorithms=["RS256"],
                 audience=self._audience,
                 issuer=self._issuer,
-                verify_aud=self._audience is not None,
+                verify_aud=self._require_aud or self._audience is not None,
             )
         except jwt.PyJWTError as exc:
             raise HTTPException(

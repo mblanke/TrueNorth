@@ -126,9 +126,7 @@ SIGN_IN_ONLY: dict[str, str] = {
 
 # Sign-in-only today, fixed on another branch. Not checked for staleness, so this file
 # keeps passing on both sides of that merge; delete the entry once it has landed.
-PENDING_ELSEWHERE: dict[str, str] = {
-    "POST /curricula/{curriculum_id}/generate-course": "claude/web-polish (PR #98) gates it on course:author",
-}
+PENDING_ELSEWHERE: dict[str, str] = {}
 
 
 def _qualnames(route) -> set[str]:

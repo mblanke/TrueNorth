@@ -22,6 +22,7 @@ WORKER = ROOT / "control-plane/worker"
 DOCKERFILE = WORKER / "Dockerfile"
 COMPOSE_FILES = sorted((ROOT / "infra/platform/docker").glob("compose*.yml"))
 CI = ROOT / ".github/workflows/ci.yml"
+RELEASE = ROOT / ".github/workflows/release.yml"
 
 
 def _stages(text: str) -> set[str]:
@@ -93,9 +94,36 @@ def test_every_compose_worker_build_supplies_the_named_contexts(compose, service
         assert (path / name / "__init__.py").is_file(), f"{compose.name}:{service} {name} -> {path} has no package"
 
 
-def test_ci_builds_the_worker_with_the_named_contexts():
-    doc = yaml.safe_load(CI.read_text())
-    matrix = doc["jobs"]["build-docker"]["strategy"]["matrix"]["service"]
+def _matrix_worker(workflow: Path, job: str) -> dict:
+    doc = yaml.safe_load(workflow.read_text())
+    matrix = doc["jobs"][job]["strategy"]["matrix"]["service"]
     [worker] = [s for s in matrix if s.get("context") == "control-plane/worker"]
-    given = dict(item.split("=", 1) for item in str(worker.get("build_contexts", "")).split(",") if "=" in item)
+    return worker
+
+
+def _given_contexts(worker: dict) -> dict[str, str]:
+    return dict(item.split("=", 1) for item in str(worker.get("build_contexts", "")).split(",") if "=" in item)
+
+
+def test_ci_builds_the_worker_with_the_named_contexts():
+    given = _given_contexts(_matrix_worker(CI, "build-docker"))
     assert required_contexts() <= set(given)
+
+
+def test_release_builds_the_worker_with_the_named_contexts():
+    """release.yml publishes the worker image; a missing context would fail the build at
+    tag time, after CI was green."""
+    given = _given_contexts(_matrix_worker(RELEASE, "image"))
+    assert required_contexts() <= set(given)
+    for name in required_contexts():
+        assert (ROOT / given[name] / name / "__init__.py").is_file(), f"release.yml {name} -> {given[name]}"
+
+
+def test_release_and_ci_build_the_same_images():
+    """Every image CI builds and scans is the set release.yml publishes, from the same contexts."""
+
+    def images(workflow: Path, job: str) -> dict[str, str]:
+        doc = yaml.safe_load(workflow.read_text())
+        return {s["name"]: s["context"] for s in doc["jobs"][job]["strategy"]["matrix"]["service"]}
+
+    assert images(RELEASE, "image") == images(CI, "build-docker")

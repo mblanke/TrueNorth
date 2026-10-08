@@ -709,9 +709,9 @@ class TestBoundaries:
         key = lti13.get_tool_key(db_session)
         now = int(datetime.now(UTC).timestamp())
         base = {"iss": "truenorth", "aud": "truenorth-lab", "sub": str(a.id), "iat": now, "exp": now + 60}
-        untyped = pyjwt.encode({**base, "uid": str(s.id)}, key.private_key_pem, algorithm="RS256")
+        untyped = pyjwt.encode({**base, "uid": str(s.id)}, lti13.signing_pem(key), algorithm="RS256")
         stranger = pyjwt.encode(
-            {**base, "typ": "lab", "uid": str(uuid.uuid4())}, key.private_key_pem, algorithm="RS256"
+            {**base, "typ": "lab", "uid": str(uuid.uuid4())}, lti13.signing_pem(key), algorithm="RS256"
         )
         assert client.get(f"/lab-access/{a.id}", headers={"X-Lab-Token": untyped}).status_code == 401
         assert client.get(f"/lab-access/{a.id}", headers={"X-Lab-Token": stranger}).status_code == 404

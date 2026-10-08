@@ -19,6 +19,7 @@ import uuid
 
 import httpx
 
+from .ai_orchestrator_client import orchestrator_headers
 from .vector_backends import get_vector_store
 
 logger = logging.getLogger("truenorth.api.curriculum")
@@ -184,6 +185,7 @@ async def embed_text(text: str) -> tuple[list[float] | None, str]:
             resp = await client.post(
                 f"{AI_ORCHESTRATOR_URL}/ai/embedding",
                 json={"text": text[:8000]},
+                headers=orchestrator_headers(),
             )
             resp.raise_for_status()
             data = resp.json()

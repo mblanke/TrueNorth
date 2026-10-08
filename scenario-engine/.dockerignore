@@ -1,0 +1,22 @@
+# scenario-engine/.dockerignore
+__pycache__
+*.pyc
+*.pyo
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.venv
+venv
+.env
+.env.*
+tests
+test_*
+*_test.py
+*.md
+*.log
+.git
+.gitignore
+.vscode
+.idea
+Dockerfile
+.dockerignore
