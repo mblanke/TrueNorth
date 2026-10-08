@@ -72,12 +72,47 @@ describe('CompetencyHeatmapComponent', () => {
     expect(api.getCompetencyHeatmap).toHaveBeenCalledWith('individual');
   });
 
-  it('falls back to sample data instead of crashing when the API fails', async () => {
+  it('shows an error state, not invented numbers, when the API fails', async () => {
     api.getCompetencyHeatmap.and.returnValue(throwError(() => ({ status: 500 })));
     await create();
+    fixture.detectChanges();
+    expect(component.status()).toBe('error');
+    // Nothing is plotted: no sample series sneaks onto the chart.
     const opt = chartOption();
-    expect(opt.xAxis[0].data).toContain('SOC Analyst');
-    expect(opt.yAxis[0].data.length).toBe(7);
+    expect(opt.series ?? []).toEqual([]);
+    const alert: HTMLElement = fixture.nativeElement.querySelector('[role="alert"]');
+    expect(alert.textContent).toContain('could not be loaded');
+    expect(fixture.nativeElement.querySelector('.chart-container').classList).toContain('chart-hidden');
+  });
+
+  it('retries from the error state', async () => {
+    api.getCompetencyHeatmap.and.returnValue(throwError(() => ({ status: 500 })));
+    await create();
+    fixture.detectChanges();
+    api.getCompetencyHeatmap.and.returnValue(of(DATA));
+    (fixture.nativeElement.querySelector('[role="alert"] button') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    expect(component.status()).toBe('ready');
+    expect(chartOption().xAxis[0].data).toEqual(DATA.work_roles);
+  });
+
+  it('shows an empty state when there are no assessments', async () => {
+    api.getCompetencyHeatmap.and.returnValue(of({ categories: [], work_roles: [], values: [] }));
+    await create();
+    fixture.detectChanges();
+    expect(component.status()).toBe('empty');
+    expect(fixture.nativeElement.textContent).toContain('No competency assessments recorded yet');
+  });
+
+  it('disconnects its ResizeObserver and disposes the chart on destroy', async () => {
+    const disconnect = spyOn(ResizeObserver.prototype, 'disconnect').and.callThrough();
+    api.getCompetencyHeatmap.and.returnValue(of(DATA));
+    await create();
+    const chart = (component as any).chartInstance;
+    const dispose = spyOn(chart, 'dispose').and.callThrough();
+    fixture.destroy();
+    expect(disconnect).toHaveBeenCalled();
+    expect(dispose).toHaveBeenCalled();
   });
 
   it('does nothing before the chart is initialised', () => {
