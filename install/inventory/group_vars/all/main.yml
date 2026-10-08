@@ -30,6 +30,16 @@ tn_state_dir: "{{ tn_data_root }}/state"
 tn_env_file: "{{ tn_config_dir }}/.env.production"
 tn_compose_file: "{{ tn_app_dir }}/infra/platform/docker/compose.prod.yml"
 
+# ── OpenSearch ────────────────────────────────────────────────────────
+# Security plugin on: roles/tn_tls makes an internal CA, the node and admin
+# certificates, and internal_users.yml (bcrypt hashes of the generated passwords).
+tn_opensearch_certs_dir: "{{ tn_tls_dir }}/opensearch" # mounted into the opensearch container
+tn_opensearch_ca_dir: "{{ tn_tls_dir }}/opensearch-ca" # the CA key: never mounted
+tn_opensearch_internal_users: "{{ tn_config_dir }}/opensearch/internal_users.yml"
+# LAB/DEV OVERRIDE ONLY. true = no security plugin: no auth, plain http on tn-backend.
+# Never on a platform students use (install/README.md, "OpenSearch").
+tn_opensearch_disable_security: false
+
 # ── Identity: Active Directory on TN-DC01 ─────────────────────────────
 tn_domain: corp.tnrange.lab
 tn_dc_host: tn-dc01.corp.tnrange.lab

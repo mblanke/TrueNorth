@@ -160,3 +160,7 @@
       makes) needs it trusted explicitly. Fine for bring-up; issue a real
       certificate from corp-TN-DC01-CA before a cohort uses this.
   when: tn_tls_mode == 'selfsigned'
+
+# ── OpenSearch: internal CA, node/admin certificates, internal users ──
+- name: TLS — OpenSearch security material
+  ansible.builtin.include_tasks: opensearch.yml

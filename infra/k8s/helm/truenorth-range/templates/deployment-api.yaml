@@ -72,6 +72,10 @@ spec:
             - name: DATABASE_URL
               value: {{ include "truenorth-range.databaseUrl" . | quote }}
       {{- end }}
+      {{- with (include "truenorth-range.opensearchCaVolumes" .) }}
+      volumes:
+        {{- . | trim | nindent 8 }}
+      {{- end }}
       containers:
         - name: api
           image: {{ include "truenorth-range.image" (dict "image" .Values.api.image "global" .Values.global "appVersion" .Chart.AppVersion) }}
@@ -93,6 +97,10 @@ spec:
             {{- with .Values.api.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
+          {{- with (include "truenorth-range.opensearchCaVolumeMounts" .) }}
+          volumeMounts:
+            {{- . | trim | nindent 12 }}
+          {{- end }}
           readinessProbe:
             httpGet:
               path: /health

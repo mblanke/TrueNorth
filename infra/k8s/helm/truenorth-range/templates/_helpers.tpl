@@ -129,3 +129,34 @@ prometheus.io/port: {{ .port | quote }}
 prometheus.io/path: {{ .Values.monitoring.prometheus.path | default "/metrics" }}
 {{- end }}
 {{- end }}
+
+{{/*
+OpenSearch CA bundle (opensearch.caSecret, key ca.pem): the pod volume and the container
+mount every OpenSearch client gets. Empty caSecret: nothing (the image's system trust).
+*/}}
+{{- define "truenorth-range.opensearchCaVolumes" -}}
+{{- if .Values.opensearch.caSecret }}
+- name: opensearch-ca
+  secret:
+    secretName: {{ .Values.opensearch.caSecret }}
+{{- end }}
+{{- end }}
+
+{{- define "truenorth-range.opensearchCaVolumeMounts" -}}
+{{- if .Values.opensearch.caSecret }}
+- name: opensearch-ca
+  mountPath: /etc/truenorth/opensearch
+  readOnly: true
+{{- end }}
+{{- end }}
+
+{{/*
+OPENSEARCH_VERIFY_SSL: the mounted CA bundle, else opensearch.verifySSL.
+*/}}
+{{- define "truenorth-range.opensearchVerifySSL" -}}
+{{- if .Values.opensearch.caSecret -}}
+/etc/truenorth/opensearch/ca.pem
+{{- else -}}
+{{- .Values.opensearch.verifySSL | toString -}}
+{{- end -}}
+{{- end }}

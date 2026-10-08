@@ -197,12 +197,31 @@ services:
       - cluster.name=tn-production
       - node.name=os-node-1
       - discovery.type=single-node
-      # Security plugin OFF by default: OpenSearch is reachable only on tn-backend
-      # (internal: true), and everything here talks plain http to it. With the plugin
-      # on, 2.12+ refuses to start without OPENSEARCH_INITIAL_ADMIN_PASSWORD and every
-      # client would need TLS and credentials. Turning it on is a separate change.
-      - DISABLE_SECURITY_PLUGIN=${OPENSEARCH_DISABLE_SECURITY:-true}
-      - DISABLE_INSTALL_DEMO_CONFIG=${OPENSEARCH_DISABLE_SECURITY:-true}
+      # Security plugin ON: TLS on HTTP and transport with the installer's internal CA
+      # (OPENSEARCH_CERTS_DIR: ca.pem, node.pem, node-key.pem, admin*.pem), and basic
+      # auth against internal_users.yml (OPENSEARCH_INTERNAL_USERS: bcrypt hashes of the
+      # installer-generated passwords). Never the demo certificates or demo users.
+      # OPENSEARCH_DISABLE_SECURITY=true is a lab/dev override only (install/README.md,
+      # "OpenSearch"): plain http, no auth; the clients' OPENSEARCH_URL/USER must follow.
+      - DISABLE_SECURITY_PLUGIN=${OPENSEARCH_DISABLE_SECURITY:-false}
+      - DISABLE_INSTALL_DEMO_CONFIG=true
+      - plugins.security.ssl.transport.pemcert_filepath=certs/node.pem
+      - plugins.security.ssl.transport.pemkey_filepath=certs/node-key.pem
+      - plugins.security.ssl.transport.pemtrustedcas_filepath=certs/ca.pem
+      - plugins.security.ssl.transport.enforce_hostname_verification=false
+      - plugins.security.ssl.http.enabled=true
+      - plugins.security.ssl.http.pemcert_filepath=certs/node.pem
+      - plugins.security.ssl.http.pemkey_filepath=certs/node-key.pem
+      - plugins.security.ssl.http.pemtrustedcas_filepath=certs/ca.pem
+      # The security index is created from the mounted config on first start; later
+      # changes (a password rotation) go through securityadmin.sh with the admin cert.
+      - plugins.security.allow_default_init_securityindex=true
+      # Single-RDN DNs: an -E list setting splits on commas (install/roles/tn_tls/tasks/opensearch.yml).
+      - plugins.security.nodes_dn=CN=opensearch
+      - plugins.security.authcz.admin_dn=CN=tn-opensearch-admin
+      # For the healthcheck only.
+      - OPENSEARCH_USER=${OPENSEARCH_USER-admin}
+      - OPENSEARCH_PASS=${OPENSEARCH_PASS:-}
       - OPENSEARCH_JAVA_OPTS=-Xms${OPENSEARCH_HEAP:-4g} -Xmx${OPENSEARCH_HEAP:-4g}
       - bootstrap.memory_lock=true
     ulimits:
@@ -214,8 +233,10 @@ services:
         hard: 65536
     volumes:
       - os-data:/usr/share/opensearch/data
+      - ${OPENSEARCH_CERTS_DIR:-./opensearch/certs}:/usr/share/opensearch/config/certs:ro
+      - ${OPENSEARCH_INTERNAL_USERS:-./opensearch/internal_users.yml}:/usr/share/opensearch/config/opensearch-security/internal_users.yml:ro
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health || exit 1"]
+      test: ["CMD-SHELL", "if [ \"$$DISABLE_SECURITY_PLUGIN\" = true ]; then curl -sf http://localhost:9200/_cluster/health; else curl -sf --cacert config/certs/ca.pem -u \"$$OPENSEARCH_USER:$$OPENSEARCH_PASS\" https://localhost:9200/_cluster/health; fi >/dev/null || exit 1"]
       interval: 15s
       timeout: 10s
       retries: 5
@@ -240,13 +261,21 @@ services:
     image: opensearchproject/opensearch-dashboards:2.13.0
     restart: always
     environment:
-      - OPENSEARCH_HOSTS=["http://opensearch:9200"]
-      - DISABLE_SECURITY_DASHBOARDS_PLUGIN=${OPENSEARCH_DISABLE_SECURITY:-true}
+      - OPENSEARCH_HOSTS=["${OPENSEARCH_URL:-https://opensearch:9200}"]
+      - DISABLE_SECURITY_DASHBOARDS_PLUGIN=${OPENSEARCH_DISABLE_SECURITY:-false}
+      # The reserved kibanaserver account (internal_users.yml), its own password.
+      - OPENSEARCH_USERNAME=kibanaserver
+      - OPENSEARCH_PASSWORD=${OPENSEARCH_DASHBOARDS_PASS:-}
+      - OPENSEARCH_SSL_VERIFICATIONMODE=full
+      - OPENSEARCH_SSL_CERTIFICATEAUTHORITIES=["/usr/share/opensearch-dashboards/config/certs/ca.pem"]
+    volumes:
+      - ${OPENSEARCH_CERTS_DIR:-./opensearch/certs}/ca.pem:/usr/share/opensearch-dashboards/config/certs/ca.pem:ro
     depends_on:
       opensearch:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:5601/api/status || exit 1"]
+      # 401: up, behind the security plugin's login.
+      test: ["CMD-SHELL", "curl -s -o /dev/null -w '%{http_code}' http://localhost:5601/api/status | grep -qE '^(200|401)$$' || exit 1"]
       interval: 20s
       timeout: 10s
       retries: 3
@@ -343,7 +372,12 @@ services:
       MINIO_ENDPOINT: http://minio:9000
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
-      OPENSEARCH_URL: http://opensearch:9200
+      # TLS + basic auth (the security plugin); the CA is mounted below. The lab
+      # override (OPENSEARCH_DISABLE_SECURITY=true) sets an http URL and an empty user.
+      OPENSEARCH_URL: ${OPENSEARCH_URL:-https://opensearch:9200}
+      OPENSEARCH_USER: ${OPENSEARCH_USER-admin}
+      OPENSEARCH_PASS: ${OPENSEARCH_PASS:-}
+      OPENSEARCH_VERIFY_SSL: ${OPENSEARCH_VERIFY_SSL:-/etc/truenorth/opensearch-ca.pem}
       # Keycloak serves under /auth (KC_HTTP_RELATIVE_PATH). Without it the JWKS URL
       # 404s and every authenticated request fails.
       KEYCLOAK_URL: http://keycloak:8080/auth
@@ -403,6 +437,8 @@ services:
       # GET /software-catalogue (Range Designer autocomplete) reads the same file the
       # provisioning worker installs from.
       - ../../../content/catalogue:/app/content/catalogue:ro
+      # The internal CA OpenSearch's certificate chains to (OPENSEARCH_VERIFY_SSL).
+      - ${OPENSEARCH_CERTS_DIR:-./opensearch/certs}/ca.pem:/etc/truenorth/opensearch-ca.pem:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -456,7 +492,12 @@ services:
     environment: &worker-env
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@pgbouncer:5432/${POSTGRES_DB}
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
-      OPENSEARCH_URL: http://opensearch:9200
+      # TLS + basic auth (the security plugin); the CA is mounted below. The lab
+      # override (OPENSEARCH_DISABLE_SECURITY=true) sets an http URL and an empty user.
+      OPENSEARCH_URL: ${OPENSEARCH_URL:-https://opensearch:9200}
+      OPENSEARCH_USER: ${OPENSEARCH_USER-admin}
+      OPENSEARCH_PASS: ${OPENSEARCH_PASS:-}
+      OPENSEARCH_VERIFY_SSL: ${OPENSEARCH_VERIFY_SSL:-/etc/truenorth/opensearch-ca.pem}
       # See the api service: "proxmox" is not a registry key. vSphere is "vsphere_api".
       PROVISIONER_BACKEND: ${PROVISIONER_BACKEND:-mock}
       CELERY_WORKER: "true"
@@ -510,6 +551,7 @@ services:
     volumes:
       # Deploy-time software installs resolve node services against this (software_catalogue.py).
       - ../../../content/catalogue:/app/content/catalogue:ro
+      - ${OPENSEARCH_CERTS_DIR:-./opensearch/certs}/ca.pem:/etc/truenorth/opensearch-ca.pem:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -554,6 +596,8 @@ services:
         --max-tasks-per-child=1000
         --without-heartbeat
     environment: *worker-env
+    volumes:
+      - ${OPENSEARCH_CERTS_DIR:-./opensearch/certs}/ca.pem:/etc/truenorth/opensearch-ca.pem:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -597,6 +641,8 @@ services:
         --max-tasks-per-child=2000
         --without-heartbeat
     environment: *worker-env
+    volumes:
+      - ${OPENSEARCH_CERTS_DIR:-./opensearch/certs}/ca.pem:/etc/truenorth/opensearch-ca.pem:ro
     depends_on:
       redis:
         condition: service_healthy

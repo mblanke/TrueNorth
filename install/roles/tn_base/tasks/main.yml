@@ -27,6 +27,7 @@
       - git # ansible.builtin.git (tn_app_source, git mode)
       - ldap-utils # the LDAPS bind check in 40-tls
       - python3-cryptography # community.crypto (self-signed TLS, CA conversion)
+      - python3-bcrypt # OpenSearch internal_users.yml password hashes (tn_tls)
       - acl # become_user on a non-root target
     state: present
   become: true

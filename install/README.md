@@ -152,10 +152,48 @@ expect it to be granted.
 
 - Keycloak's port is also published on `127.0.0.1:8180` (`tn_keycloak_admin_port`),
   for this installer's Admin REST calls only. Users reach it through nginx (`/auth/`).
-- OpenSearch runs **without its security plugin** (`OPENSEARCH_DISABLE_SECURITY=true`):
-  it is only on `tn-backend`, and every client speaks plain http to it. Turning the
-  plugin on needs an admin password, TLS and credentials in the API, workers and
-  telemetry pipeline; that is a separate change.
+- OpenSearch publishes no port; it is only on `tn-backend`, and it still requires TLS and
+  a password (next section).
+
+## OpenSearch
+
+The security plugin is **on**. `40-tls` (`roles/tn_tls/tasks/opensearch.yml`) makes:
+
+| What | Where | Used by |
+|---|---|---|
+| Internal CA (key) | `/srv/truenorth/tls/opensearch-ca/ca-key.pem`, root 0600 | signing only; never mounted |
+| CA certificate | `/srv/truenorth/tls/opensearch/ca.pem` | OpenSearch, Dashboards, and every client (`/etc/truenorth/opensearch-ca.pem` in the api and worker containers) |
+| Node certificate `CN=opensearch` | `…/opensearch/node.pem`, `node-key.pem` (PKCS#8, uid 1000) | TLS on HTTP and transport (`plugins.security.nodes_dn`) |
+| Admin certificate `CN=tn-opensearch-admin` | `…/opensearch/admin.pem`, `admin-key.pem` | `securityadmin.sh` (`plugins.security.authcz.admin_dn`) |
+| `internal_users.yml` | `/srv/truenorth/config/opensearch/internal_users.yml`, uid 1000 0600 | `admin` and `kibanaserver`, bcrypt hashes |
+
+The two passwords are `vault_opensearch_admin_password` and
+`vault_opensearch_dashboards_password`; left empty, they are generated on the target and
+kept under `/srv/truenorth/config/secrets/` like every other secret. The env file then
+carries `OPENSEARCH_URL=https://opensearch:9200`, `OPENSEARCH_USER=admin`,
+`OPENSEARCH_PASS`, `OPENSEARCH_VERIFY_SSL=/etc/truenorth/opensearch-ca.pem`, and
+Dashboards logs in as `kibanaserver` (`OPENSEARCH_DASHBOARDS_PASS`) with full certificate
+verification. No demo certificates or demo users are installed
+(`DISABLE_INSTALL_DEMO_CONFIG=true`).
+
+The security index is created from these files the **first** time OpenSearch starts.
+Changing a password afterwards: set the new one in the vault (or the secrets file),
+re-run `40-tls` and `30-config`, then load it into the running cluster and restart the
+clients:
+
+```bash
+cd /srv/truenorth/app/infra/platform/docker
+docker compose -f compose.prod.yml --env-file /srv/truenorth/config/.env.production exec opensearch \
+  plugins/opensearch-security/tools/securityadmin.sh -f /usr/share/opensearch/config/opensearch-security/internal_users.yml \
+  -t internalusers -icl -nhnv -cacert config/certs/ca.pem -cert config/certs/admin.pem -key config/certs/admin-key.pem
+docker compose -f compose.prod.yml --env-file /srv/truenorth/config/.env.production up -d
+```
+
+**Lab/dev override only:** `-e tn_opensearch_disable_security=true` renders
+`OPENSEARCH_DISABLE_SECURITY=true`, `OPENSEARCH_URL=http://opensearch:9200` and an empty
+`OPENSEARCH_USER`: no authentication, plain http on `tn-backend`. Never on a platform
+Students use. The dev and integration compose files (`compose.dev.yml`, `compose.itest.yml`)
+run OpenSearch this way.
 
 ## Backups
 
@@ -191,6 +229,7 @@ actually change:
 | `tn_app_git_version` | a pinned SHA of `main` | **Pin a tag or SHA.** A branch makes re-runs non-deterministic. |
 | `tn_bootstrap_admin_upn` | *(empty — required)* | The named AD account that admits everyone else. |
 | `tn_tls_mode` | `selfsigned` | `provided` once the AD CS certificate is in `files/tls/` |
+| `tn_opensearch_disable_security` | `false` | Lab/dev override only: OpenSearch without auth or TLS ("OpenSearch" above). |
 | `tn_provisioner_backend` | `vsphere_api` | **Not** `vsphere` — that is not a registry key and raises `ValueError`. |
 | `tn_seed_demo_data` | `false` | Demo tenants have no place in a range holding CAF curriculum. |
 | `tn_default_progression` | `DP1` | Developmental progression a new trainee joins (DP1 → DP2). |

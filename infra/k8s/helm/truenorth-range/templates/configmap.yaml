@@ -13,6 +13,7 @@ data:
   REDIS_PORT: {{ .Values.config.redisPort | quote }}
   REDIS_DB: {{ .Values.config.redisDB | quote }}
   OPENSEARCH_URL: {{ .Values.config.opensearchUrl | quote }}
+  OPENSEARCH_VERIFY_SSL: {{ include "truenorth-range.opensearchVerifySSL" . | quote }}
   MINIO_ENDPOINT: {{ include "truenorth-range.minioEndpoint" . | quote }}
   MINIO_PORT: {{ .Values.config.minioPort | quote }}
   MINIO_BUCKET: {{ .Values.config.minioBucket | quote }}

@@ -162,9 +162,12 @@ class HealthChecker:
         try:
             import httpx
 
-            url = os.getenv("OPENSEARCH_URL", "http://localhost:9200")
-            async with httpx.AsyncClient(timeout=3) as client:
+            from .search_backends import connection  # URL, credentials, TLS verification
+
+            url = connection.opensearch_url("http://localhost:9200")
+            async with httpx.AsyncClient(**connection.client_kwargs(3)) as client:
                 resp = await client.get(f"{url}/_cluster/health")
+                resp.raise_for_status()  # 401/403: wrong credentials, not a cluster status
             elapsed = (time.monotonic() - start) * 1000
             data = resp.json()
             cluster_status = data.get("status", "red")
