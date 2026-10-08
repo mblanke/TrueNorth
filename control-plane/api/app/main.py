@@ -45,6 +45,7 @@ from .search_backends import get_search_backend
 from .search_backends.detection_query import hide_labels, is_label
 from .search_backends.query import MAX_QUERY_LENGTH, QueryError, parse_query
 from .settings import app_version, check_startup, docs_urls, env_flag
+from .telemetry_access import readable_telemetry_range
 from .telemetry_mitre import tag_event
 from .tenancy import get_owned
 from .versioning import SERVER_PREFIX, VersionPrefixMiddleware
@@ -604,13 +605,17 @@ async def search_telemetry(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ):
-    """Search a range's telemetry. The range must belong to the caller's tenant (404 otherwise).
+    """Search a range's telemetry (404 for a range the caller may not read).
+
+    Staff (telemetry:read) read their tenant's ranges; a Student reads only their own lab
+    session's range and the range of a running exercise they take part in
+    (app/telemetry_access.py).
 
     ``q`` is a small closed grammar (app/search_backends/query.py), never OpenSearch
     ``query_string``: no regex, fuzzy, leading wildcards or ``_``-prefixed fields.
     A query outside it is a 422.
     """
-    get_owned(db, Range, range_id, user, not_found="Range not found")
+    readable_telemetry_range(db, range_id, user)
     try:
         parsed = parse_query(q)
     except QueryError as exc:

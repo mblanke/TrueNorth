@@ -6290,7 +6290,11 @@ export interface paths {
         };
         /**
          * Search Telemetry
-         * @description Search a range's telemetry. The range must belong to the caller's tenant (404 otherwise).
+         * @description Search a range's telemetry (404 for a range the caller may not read).
+         *
+         *     Staff (telemetry:read) read their tenant's ranges; a Student reads only their own lab
+         *     session's range and the range of a running exercise they take part in
+         *     (app/telemetry_access.py).
          *
          *     ``q`` is a small closed grammar (app/search_backends/query.py), never OpenSearch
          *     ``query_string``: no regex, fuzzy, leading wildcards or ``_``-prefixed fields.

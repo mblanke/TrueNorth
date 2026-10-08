@@ -101,12 +101,21 @@ class TestIngest:
 
 
 class TestSearch:
-    def test_student_can_search_their_tenants_range(self, client, db_session, backend):
+    def test_staff_can_search_their_tenants_range(self, client, db_session, backend):
         r = _range(db_session, DEV_TENANT)
-        with acting_as(UserRole.student):
+        with acting_as(UserRole.observer):
             resp = client.get(f"/telemetry/{r.id}/search", params={"q": "*"})
         assert resp.status_code == 200, resp.text
         assert backend.searched == [f"range-{r.id}"]
+
+    def test_a_student_cannot_search_a_range_they_are_not_on(self, client, db_session, backend):
+        """Security sweep M2: tenant membership alone is not enough for a Student
+        (tests/api/test_telemetry_participation.py has the cases that are)."""
+        r = _range(db_session, DEV_TENANT)
+        with acting_as(UserRole.student):
+            resp = client.get(f"/telemetry/{r.id}/search", params={"q": "*"})
+        assert resp.status_code == 404
+        assert backend.searched == []
 
     def test_cannot_read_another_tenants_telemetry(self, client, db_session, backend):
         foreign = _range(db_session, OTHER_TENANT)
@@ -160,7 +169,7 @@ class TestSearchANeverIngestedRange:
                 json={"error": {"type": "index_not_found_exception", "reason": "no such index"}, "status": 404},
             )
         )
-        with acting_as(UserRole.student):
+        with acting_as(UserRole.instructor):
             resp = client.get(f"/telemetry/{r.id}/search", params={"q": "*"})
         assert resp.status_code == 200, resp.text
         assert resp.json()["hits"]["hits"] == []
@@ -173,7 +182,7 @@ class TestSearchANeverIngestedRange:
         respx_mock.post(f"http://mock-os:9200/range-{r.id}/_search").mock(
             return_value=httpx.Response(503, json={"error": {"type": "cluster_block_exception"}})
         )
-        with acting_as(UserRole.student):
+        with acting_as(UserRole.instructor):
             resp = client.get(f"/telemetry/{r.id}/search", params={"q": "*"})
         assert resp.status_code == 502
 
