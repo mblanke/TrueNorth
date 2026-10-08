@@ -11,9 +11,10 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
+from ..attack_catalogue import CatalogueUnavailableError
 from ..auth import CurrentUser
 from ..db import get_db, not_deleted
-from ..mitre import unknown_attack_ids
+from ..mitre import attack_id_problems
 from ..models import AuditLog, DetectionRule
 from ..rbac import Permission, require_permission
 from ..schemas import (
@@ -69,13 +70,28 @@ def _validate_sigma_yaml(raw_yaml: str) -> SigmaValidationResult:
 
 
 def _check_attack_ids(ids: list[str] | None) -> None:
-    """422 for any MITRE id that is not an ATT&CK technique, sub-technique or tactic id."""
-    if bad := unknown_attack_ids(ids or []):
+    """422 for any MITRE id the ATT&CK Enterprise catalogue does not know or has revoked.
+
+    ``invalid_ids`` lists the offending ids as sent. 503 when the catalogue cannot be
+    read: a rule is never stored with ids nobody checked.
+    """
+    if not ids:
+        return
+    try:
+        problems = attack_id_problems(ids)
+    except CatalogueUnavailableError as exc:
+        logger.error("detection rule refused: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="The MITRE ATT&CK catalogue is unavailable; MITRE ids cannot be checked",
+        ) from exc
+    if problems:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail={
                 "message": "Unknown MITRE ATT&CK id",
-                "errors": [f"{i!r} is not of the form T1234, T1234.001 or TA0001" for i in bad],
+                "invalid_ids": list(problems),
+                "errors": [f"{i!r} {reason}" for i, reason in problems.items()],
             },
         )
 

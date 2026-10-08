@@ -37,6 +37,13 @@ describe('AdminComponent', () => {
     fixture.detectChanges();
   });
 
+  it('builds Services links from the environment, never a hardcoded localhost Keycloak', () => {
+    const names = component.serviceLinks.map((l) => l.name);
+    expect(names[0]).toBe('Keycloak');
+    expect(component.serviceLinks[0].url).toMatch(/\/admin\/$/);
+    expect(component.serviceLinks.every((l) => /^(https?:\/\/|\/)/.test(l.url))).toBeTrue();
+  });
+
   it('creates and loads health and tenants', () => {
     expect(component).toBeTruthy();
     expect(component.health()?.status).toBe('ok');

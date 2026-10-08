@@ -1,7 +1,10 @@
 FROM python:3.11-slim
 WORKDIR /app
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# setuptools and wheel are build tooling the base image ships; nothing imports them at
+# runtime, and they carry CVEs (Trivy).
+RUN pip install --no-cache-dir -r requirements.txt \
+    && pip uninstall -y setuptools wheel
 # Inject dispatch (worker/inject_dispatch.py) runs scenario_engine's injectors; the worker
 # no longer scores detections (ADR 0005). The engine lives outside this build context, so
 # it arrives as a named context and only the package is copied:
@@ -16,4 +19,13 @@ COPY --from=scenario_engine scenario_engine /app/scenario_engine
 # "No module named 'scenario_engine'" in the running worker.
 ENV PYTHONPATH=/app
 COPY . .
+# Run as an unprivileged user (Trivy DS-0002). Dependencies and code stay root-owned,
+# so a compromised process cannot rewrite the app it is running. Pre-created and owned
+# by it: the Terraform workspace root (provisioners/terraform.py, TERRAFORM_WORKSPACE_ROOT)
+# and /data, where flower (same image, compose) keeps --db=/data/flower.db; a fresh named
+# volume takes this directory's owner.
+RUN useradd --system --uid 10001 --create-home --home-dir /home/app app \
+    && mkdir -p /opt/truenorth/terraform/workspaces /data \
+    && chown app:app /opt/truenorth/terraform/workspaces /data
+USER app
 CMD ["celery","-A","worker.celery_app","worker","--loglevel=INFO"]

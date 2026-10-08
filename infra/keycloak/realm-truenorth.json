@@ -123,17 +123,19 @@
       "baseUrl": "/",
       "redirectUris": [
         "http://localhost:4200/*",
+        "http://localhost:14200/*",
         "https://range.truenorth.local/*",
-        "https://*.truenorth.io/*"
+        "https://tn-mgmt01.corp.tnrange.lab/*"
       ],
       "webOrigins": [
         "http://localhost:4200",
+        "http://localhost:14200",
         "https://range.truenorth.local",
-        "https://*.truenorth.io"
+        "https://tn-mgmt01.corp.tnrange.lab"
       ],
       "attributes": {
         "pkce.code.challenge.method": "S256",
-        "post.logout.redirect.uris": "http://localhost:4200/*##https://range.truenorth.local/*##https://*.truenorth.io/*"
+        "post.logout.redirect.uris": "http://localhost:4200/*##http://localhost:14200/*##https://range.truenorth.local/*##https://tn-mgmt01.corp.tnrange.lab/*"
       },
       "defaultClientScopes": [
         "web-origins",

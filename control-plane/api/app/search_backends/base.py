@@ -45,7 +45,8 @@ class BaseSearchBackend(ABC):
 
         Never pass *query* to a backend's own free-form parser (OpenSearch
         ``query_string``): build the request from ``parse_query(query)``.
-        Returns the raw search response dict (hits, total, etc.).
+        Returns the raw search response dict (hits, total, etc.). A missing index (a range
+        that has never ingested anything) is an empty result, not an error.
         Raises fastapi.HTTPException(422) for a query outside the grammar and
         HTTPException(502) on backend errors.
         """

@@ -278,11 +278,16 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         "Referrer-Policy": "strict-origin-when-cross-origin",
         "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
     }
+    # A route may send its own value for these; every other route gets the default above.
+    # Only routes that serve a whole document need it (``GET /exercises/{id}/aar/html``).
+    ROUTE_OVERRIDABLE = frozenset({"Content-Security-Policy", "X-Frame-Options"})
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         response = await call_next(request)
 
         for header, value in self.HEADERS.items():
+            if header in self.ROUTE_OVERRIDABLE and header in response.headers:
+                continue  # the route set its own, tighter-scoped policy (e.g. the AAR page)
             response.headers[header] = value
 
         # HSTS only when the connection is (or was) over TLS
