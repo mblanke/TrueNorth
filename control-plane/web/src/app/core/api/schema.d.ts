@@ -2139,6 +2139,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/exercises/{exercise_id}/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resume Exercise
+         * @description Resume a paused exercise.  **Permission: exercise:pause**
+         *
+         *     The scenario run continues from the next event it has not fired: a new worker task
+         *     takes over the run (app/scenario_runs/runs.py), so no inject fires twice. Only a
+         *     paused exercise can be resumed (409 otherwise, e.g. once completed or cancelled).
+         */
+        post: operations["resume_exercise_exercises__exercise_id__resume_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/exercises/{exercise_id}/run": {
         parameters: {
             query?: never;
@@ -17824,6 +17848,37 @@ export interface operations {
         };
     };
     pause_exercise_exercises__exercise_id__pause_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                exercise_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExerciseOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resume_exercise_exercises__exercise_id__resume_post: {
         parameters: {
             query?: never;
             header?: never;

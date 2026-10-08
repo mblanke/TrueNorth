@@ -20,9 +20,14 @@ down_revision: str | None = "e8f9a0b1c2d3"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
+def _keyed(name: str, target: str):
+    # Named as Postgres names an added column's key, so batch mode (SQLite) can find it.
+    return lambda: sa.Column(name, GUID(), sa.ForeignKey(target, name=f"scheduled_events_{name}_fkey"), nullable=True)
+
+
 COLUMNS = (
-    ("scenario_id", lambda: sa.Column("scenario_id", GUID(), sa.ForeignKey("scenarios.id"), nullable=True)),
-    ("exercise_id", lambda: sa.Column("exercise_id", GUID(), sa.ForeignKey("exercises.id"), nullable=True)),
+    ("scenario_id", _keyed("scenario_id", "scenarios.id")),
+    ("exercise_id", _keyed("exercise_id", "exercises.id")),
     ("auto_exercise", lambda: sa.Column("auto_exercise", sa.Boolean(), nullable=False, server_default=sa.false())),
 )
 
@@ -33,13 +38,21 @@ def _have() -> set[str]:
 
 def upgrade() -> None:
     have = _have()
-    for name, column in COLUMNS:
-        if name not in have:
-            op.add_column("scheduled_events", column())
+    missing = [column for name, column in COLUMNS if name not in have]
+    if not missing:
+        return
+    # Batch mode: SQLite cannot add a column with a foreign key in place.
+    with op.batch_alter_table("scheduled_events") as batch:
+        for column in missing:
+            batch.add_column(column())
 
 
 def downgrade() -> None:
     have = _have()
-    for name, _ in reversed(COLUMNS):
-        if name in have:
-            op.drop_column("scheduled_events", name)
+    gone = [name for name, _ in reversed(COLUMNS) if name in have]
+    if not gone:
+        return
+    # SQLite cannot drop a column with a foreign key in place; batch mode rebuilds the table.
+    with op.batch_alter_table("scheduled_events") as batch:
+        for name in gone:
+            batch.drop_column(name)

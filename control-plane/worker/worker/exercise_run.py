@@ -127,7 +127,7 @@ def _fire_event(exercise_id: str, idx: int, event, *, run_id: str) -> dict:
 
 # -- Scenario Execution (enhanced) ----------------------------------------
 @app.task(base=ReliableTask, bind=True, name="worker.tasks.run_scenario_v2")
-def run_scenario_v2(self, exercise_id: str, scenario_definition: dict):
+def run_scenario_v2(self, exercise_id: str, scenario_definition: dict, lease: str | None = None):
     """Run an exercise's timeline: one inject per event, through ``inject_dispatch``.
 
     Every event is dispatched, on every backend; on the mock backend the dispatch runs only
@@ -136,6 +136,13 @@ def run_scenario_v2(self, exercise_id: str, scenario_definition: dict):
     as the exercise is no longer running (paused, completed or cancelled by an
     instructor), and completes or cancels it only if it is still running, so a late retry
     cannot overwrite a newer state. A retry skips the events this run already recorded.
+
+    Pause and resume: ``lease`` (issued by the API's start, replay and resume, stored in
+    ``exercise_runs``) names the one task allowed to fire this run's events. A paused run
+    stops; resume issues a new lease and dispatches this task again, which continues the
+    same run from the event after the last one claimed, and a task whose lease has been
+    handed on stops at its next event (``superseded``). Without a lease (a message from
+    before exercise_runs) the run is the Celery task id, as before.
 
     After the timeline (ADR 0005 §6): on a real backend the exercise stays running, for
     Students to submit detections, and nothing is achieved here; on the mock backend every
@@ -148,7 +155,15 @@ def run_scenario_v2(self, exercise_id: str, scenario_definition: dict):
     timeline = definition.get("timeline") if isinstance(definition.get("timeline"), list) else []
     objectives = definition.get("objectives") if isinstance(definition.get("objectives"), list) else []
 
+    resume_from = 0
     with _db_session() as db:
+        if lease:
+            run = db_ops.exercise_run(db, exercise_id)
+            if run is None or run[1] != lease:
+                state = db_ops.exercise_state(db, exercise_id)
+                logger.info(f"[scenario_v2] Exercise {exercise_id}: lease handed on; this delivery is superseded")
+                return {"status": "skipped", "exercise_id": exercise_id, "state": state, "superseded": True}
+            run_id, resume_from = str(run[0]), int(run[2] or 0)
         started = db_ops.start_exercise(db, exercise_id)
         state = db_ops.exercise_state(db, exercise_id)
         done = db_ops.recorded_seqs(db, run_id) if started else set()
@@ -156,6 +171,7 @@ def run_scenario_v2(self, exercise_id: str, scenario_definition: dict):
     if not started:
         logger.warning(f"[scenario_v2] Exercise {exercise_id} is {state or 'missing'}; not run")
         return {"status": "skipped", "exercise_id": exercise_id, "state": state}
+    done |= set(range(resume_from))  # claimed by the task this one took over from
     _notify_api("exercise", {"id": exercise_id, "state": "running", "phase": "starting"})
 
     try:
@@ -167,9 +183,13 @@ def run_scenario_v2(self, exercise_id: str, scenario_definition: dict):
                 executed += 1
                 continue
             with _db_session() as db:
+                claimed = db_ops.claim_event(db, exercise_id, lease, idx) if lease else 1
                 current = db_ops.exercise_state(db, exercise_id)
             if current != "running":
                 halted_state = current
+                break
+            if not claimed:  # a resume or replay handed the run to another task
+                halted_state = "superseded"
                 break
             result = _fire_event(exercise_id, idx, event, run_id=run_id)
             executed += 1

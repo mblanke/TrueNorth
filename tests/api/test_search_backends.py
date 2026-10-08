@@ -188,6 +188,42 @@ class TestOpenSearchBackend:
         assert exc_info.value.status_code == 502
 
     @pytest.mark.asyncio
+    async def test_search_of_a_never_ingested_range_is_an_empty_page(self, respx_mock):
+        """No events ingested yet means no index: OpenSearch says index_not_found (404).
+        That is zero results, not a 502."""
+        respx_mock.post("http://mock-os:9200/range-1/_search").mock(
+            return_value=httpx.Response(
+                404,
+                json={
+                    "error": {
+                        "root_cause": [{"type": "index_not_found_exception", "reason": "no such index [range-1]"}],
+                        "type": "index_not_found_exception",
+                        "reason": "no such index [range-1]",
+                    },
+                    "status": 404,
+                },
+            )
+        )
+        result = await self._make_backend().search("range-1", "event_type:login")
+        assert result["hits"]["total"]["value"] == 0
+        assert result["hits"]["hits"] == []
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "response",
+        [
+            httpx.Response(404, text="<html>not found</html>"),  # e.g. a misrouted proxy
+            httpx.Response(404, json={"error": {"type": "resource_not_found_exception"}}),
+            httpx.Response(503, json={"error": {"type": "index_not_found_exception"}}),
+        ],
+    )
+    async def test_other_errors_than_index_not_found_are_still_502(self, respx_mock, response):
+        respx_mock.post("http://mock-os:9200/range-1/_search").mock(return_value=response)
+        with pytest.raises(HTTPException) as exc_info:
+            await self._make_backend().search("range-1", "*")
+        assert exc_info.value.status_code == 502
+
+    @pytest.mark.asyncio
     async def test_search_network_error_raises_502(self, respx_mock):
         respx_mock.post("http://mock-os:9200/range-1/_search").mock(side_effect=httpx.ConnectError("refused"))
         with pytest.raises(HTTPException) as exc_info:
