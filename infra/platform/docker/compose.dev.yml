@@ -191,6 +191,8 @@ services:
     build:
       context: ../../../control-plane/api
       dockerfile: Dockerfile
+      additional_contexts:
+        content: ../../../content  # catalogue + mitre -> /app/content
     restart: unless-stopped
     ports:
       # Loopback only. This host sits on a routable LAN and the API runs with
@@ -262,6 +264,7 @@ services:
       dockerfile: Dockerfile
       additional_contexts:
         scenario_engine: ../../../scenario-engine  # worker/inject_dispatch.py
+        content: ../../../content  # catalogue + mitre -> /app/content
     restart: unless-stopped
     command: celery -A worker.celery_app worker -Q provision,destroy -c 4 --loglevel=info -n provision@%h
     volumes:
@@ -296,6 +299,7 @@ services:
       dockerfile: Dockerfile
       additional_contexts:
         scenario_engine: ../../../scenario-engine  # worker/inject_dispatch.py
+        content: ../../../content  # catalogue + mitre -> /app/content
     restart: unless-stopped
     command: celery -A worker.celery_app worker -Q scenario,default -c 8 --loglevel=info -n scenario@%h
     environment: *worker-env
@@ -316,6 +320,7 @@ services:
       dockerfile: Dockerfile
       additional_contexts:
         scenario_engine: ../../../scenario-engine  # worker/inject_dispatch.py
+        content: ../../../content  # catalogue + mitre -> /app/content
     restart: unless-stopped
     command: celery -A worker.celery_app worker -Q telemetry -c 4 --loglevel=info -n telemetry@%h
     environment: *worker-env
@@ -332,6 +337,7 @@ services:
       dockerfile: Dockerfile
       additional_contexts:
         scenario_engine: ../../../scenario-engine  # worker/inject_dispatch.py
+        content: ../../../content  # catalogue + mitre -> /app/content
     restart: unless-stopped
     command: celery -A worker.celery_app flower --port=5555 --broker_api=redis://redis:6379/0
     ports:

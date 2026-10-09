@@ -29,6 +29,12 @@ _REPLICAS = os.getenv("OPENSEARCH_REPLICAS", "").strip()
 REPLICA_SETTINGS: dict = {"number_of_replicas": int(_REPLICAS)} if _REPLICAS else {"auto_expand_replicas": "0-1"}
 ISM_CONFIG_INDEX = ".opendistro-ism-config"
 
+# The filesystem snapshot repository scripts/backup/backup.sh snapshots into. The location is
+# the node's path.repo (compose.prod.yml: the os-snapshots bind under TN_DATA_ROOT). No
+# OPENSEARCH_SNAPSHOT_REPO: none is registered and telemetry is not backed up.
+SNAPSHOT_REPO = os.getenv("OPENSEARCH_SNAPSHOT_REPO", "").strip()
+SNAPSHOT_LOCATION = os.getenv("OPENSEARCH_SNAPSHOT_LOCATION", "/usr/share/opensearch/snapshots").strip()
+
 # ═══════════════════════════════════════════════════════════════════
 #  ILM (ISM) Policies
 # ═══════════════════════════════════════════════════════════════════
@@ -545,6 +551,27 @@ def apply_replica_settings(client: httpx.Client) -> None:
         logger.info("Replica settings on '%s': %s", pattern, resp.status_code)
 
 
+def register_snapshot_repository(client: httpx.Client, name: str = "", location: str = "") -> bool:
+    """Register (or re-register: PUT is an upsert) the fs snapshot repository; False if none.
+
+    Unlike the steps above, a failure raises: the nightly backup snapshots into this
+    repository, and finding out at 02:17 that it was never registered fails the whole backup.
+    OpenSearch verifies a repository when it is registered (the node writes a test blob), so
+    a location outside path.repo or not writable by the opensearch user fails here.
+    """
+    name = name or SNAPSHOT_REPO
+    location = location or SNAPSHOT_LOCATION
+    if not name:
+        logger.info("Snapshot repository: none (OPENSEARCH_SNAPSHOT_REPO unset)")
+        return False
+    body = {"type": "fs", "settings": {"location": location, "compress": True}}
+    resp = client.put(f"/_snapshot/{name}", json=body)
+    if not resp.is_success:
+        raise RuntimeError(f"snapshot repository '{name}' at {location}: HTTP {resp.status_code} {resp.text[:300]}")
+    logger.info("Snapshot repository '%s' at %s: %s", name, location, resp.status_code)
+    return True
+
+
 def create_dashboards(client: httpx.Client) -> None:
     """Import saved objects into OpenSearch Dashboards."""
     for obj in DASHBOARD_OBJECTS:
@@ -571,6 +598,7 @@ def bootstrap(opensearch_url: str | None = None) -> None:
         create_index_templates(client)
         create_initial_indices(client)
         apply_replica_settings(client)
+        register_snapshot_repository(client)
         try:
             create_dashboards(client)
         except Exception as exc:

@@ -2,9 +2,9 @@
 
 The data is ``content/mitre/enterprise-attack-techniques.json``, generated from MITRE's
 STIX bundle by ``scripts/update_attack_catalogue.py`` (terms of use and attribution in
-``content/mitre/README.md``). Neither image is built with content/ in its context, so the
-file is found through ``TN_ATTACK_CATALOGUE``, then ``/app/content/mitre`` (the compose
-mount), then the repository checkout this module sits in.
+``content/mitre/README.md``). Both images copy content/mitre to ``/app/content/mitre``
+(a named ``content`` build context), so the file is found through ``TN_ATTACK_CATALOGUE``,
+then ``/app/content/mitre`` (the image), then the repository checkout this module sits in.
 
 What "known" means depends on who is asking:
 

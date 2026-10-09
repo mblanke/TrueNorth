@@ -121,17 +121,17 @@ typecheck: ## Run mypy
 
 # ── Docker Builds ──────────────────────────────────────────
 build: ## Build all docker images
-	docker build -t truenorth-api:latest       control-plane/api/
-	docker build -t truenorth-worker:latest    --build-context scenario_engine=scenario-engine control-plane/worker/
+	docker build -t truenorth-api:latest       --build-context content=content control-plane/api/
+	docker build -t truenorth-worker:latest    --build-context scenario_engine=scenario-engine --build-context content=content control-plane/worker/
 	docker build -t truenorth-ai:latest        ai-orchestrator/
 	docker build -t truenorth-web:latest       control-plane/web/
 	@echo "✓ All images built"
 
 build-api: ## Build API image only
-	docker build -t truenorth-api:latest control-plane/api/
+	docker build -t truenorth-api:latest --build-context content=content control-plane/api/
 
 build-worker: ## Build worker image only
-	docker build -t truenorth-worker:latest --build-context scenario_engine=scenario-engine control-plane/worker/
+	docker build -t truenorth-worker:latest --build-context scenario_engine=scenario-engine --build-context content=content control-plane/worker/
 
 build-web: ## Build web image only
 	docker build -t truenorth-web:latest control-plane/web/

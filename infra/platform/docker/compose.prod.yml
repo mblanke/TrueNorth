@@ -298,6 +298,10 @@ services:
       - OPENSEARCH_PASS=${OPENSEARCH_PASS:-}
       - OPENSEARCH_JAVA_OPTS=-Xms${OPENSEARCH_HEAP:-4g} -Xmx${OPENSEARCH_HEAP:-4g}
       - bootstrap.memory_lock=true
+      # Filesystem snapshot repositories may live only here: the os-snapshots bind
+      # ($TN_DATA_ROOT/opensearch-snapshots). The installer registers tn_snapshots in it
+      # (telemetry.pipelines.bootstrap) and scripts/backup/backup.sh snapshots into it.
+      - path.repo=/usr/share/opensearch/snapshots
     ulimits:
       memlock:
         soft: -1
@@ -307,6 +311,7 @@ services:
         hard: 65536
     volumes:
       - os-data:/usr/share/opensearch/data
+      - os-snapshots:/usr/share/opensearch/snapshots
       - ${OPENSEARCH_CERTS_DIR:-./opensearch/certs}:/usr/share/opensearch/config/certs:ro
       - ${OPENSEARCH_INTERNAL_USERS:-./opensearch/internal_users.yml}:/usr/share/opensearch/config/opensearch-security/internal_users.yml:ro
     healthcheck:
@@ -542,10 +547,8 @@ services:
       # Matches SCENARIO_ENGINE_DIR above. The engine is not part of the api
       # build context, so without this mount it is simply absent at runtime.
       - ../../../scenario-engine:/opt/scenario-engine:ro
-      # GET /software-catalogue (Range Designer autocomplete) reads the same file the
-      # provisioning worker installs from.
-      - ../../../content/catalogue:/app/content/catalogue:ro
-      - ../../../content/mitre:/app/content/mitre:ro  # attack_catalogue.py (ATT&CK id checks)
+      # content/catalogue and content/mitre (GET /software-catalogue, ATT&CK id checks) are
+      # in the image at /app/content (control-plane/api/Dockerfile), as under Helm.
       # The internal CA OpenSearch's certificate chains to (OPENSEARCH_VERIFY_SSL).
       - ${OPENSEARCH_CERTS_DIR:-./opensearch/certs}/ca.pem:/etc/truenorth/opensearch-ca.pem:ro
     depends_on:
@@ -677,8 +680,7 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-info}
       LOG_FORMAT: ${LOG_FORMAT:-json} # worker/celery_app.py: JSON lines
     volumes:
-      # Deploy-time software installs resolve node services against this (software_catalogue.py).
-      - ../../../content/catalogue:/app/content/catalogue:ro
+      # The software catalogue (software_catalogue.py) is in the image at /app/content.
       - ${OPENSEARCH_CERTS_DIR:-./opensearch/certs}/ca.pem:/etc/truenorth/opensearch-ca.pem:ro
     depends_on:
       postgres:
@@ -770,7 +772,7 @@ services:
     environment: *worker-env
     volumes:
       - ${OPENSEARCH_CERTS_DIR:-./opensearch/certs}/ca.pem:/etc/truenorth/opensearch-ca.pem:ro
-      - ../../../content/mitre:/app/content/mitre:ro  # attack_catalogue.py (ATT&CK id checks)
+      # The ATT&CK catalogue (attack_catalogue.py) is in the image at /app/content.
     depends_on:
       redis:
         condition: service_healthy
@@ -1386,6 +1388,13 @@ volumes:
       type: none
       o: bind
       device: ${TN_DATA_ROOT:-/srv/truenorth}/opensearch
+  # OpenSearch snapshot repository (path.repo). Beside the data, not inside it.
+  os-snapshots:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${TN_DATA_ROOT:-/srv/truenorth}/opensearch-snapshots
   prometheus-data:
     driver: local
   alertmanager-data:

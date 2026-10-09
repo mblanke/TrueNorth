@@ -130,7 +130,7 @@ is always safe on its own.
 | `40-tls` | Installs the AD CS root CA (DER or PEM, normalised to PEM; required with AD, optional without) into the host trust store *and* Keycloak's truststore; with AD, a **real LDAPS bind** as the Keycloak service account (password in a 0600 temp file, `ldapsearch -y`); the certificate nginx serves; the OpenSearch CA, certificates and `internal_users.yml` (as root). |
 | `50-stack-up` | Pulls the release's images **by digest** (or loads the air-gapped archives), stops unless every image resolves to the digest compose names. On an **upgrade**: a pre-upgrade backup, then the old application services stopped ("Upgrades"). Then datastores → **alembic** (with the new api image; refuses a database newer than the code) → everything else. Builds nothing unless `tn_image_source=build`. See "Images" and "The migration hazard" below. |
 | `60-keycloak` | Realm (imported without the development realm's sample users, with this host's redirect URIs and generated client secrets), token/session/password rules and client grants (enforced on every run, written only when they differ; "Identity hardening"), the API's least-privilege service account (`truenorth-api-admin`), AD user federation over LDAPS (or, without AD, local groups and the local bootstrap administrator), and the token claim mappers. **This is the join between the installer and the application** — see below. |
-| `70-telemetry` | OpenSearch index templates, ISM policies, ingest pipelines. |
+| `70-telemetry` | OpenSearch index templates, ISM policies, ingest pipelines, and the backup's snapshot repository ("Backups"). |
 | `80-seed` | Counts the reference data in the database (fails on none), creates the tenant and the bootstrap administrator. |
 | `90-vsphere` | Provider wiring, and detects the unassigned vCenter role. |
 | `95-smoke-test` | Every container running and healthy (`ps -a`: an exited one fails it), API health and readiness (database, Redis **and OpenSearch**), and the claim-contract check, which is **mandatory**: with AD pass `-e tn_smoke_username=<upn> -e tn_smoke_password=<password>`; without AD it signs in as the local bootstrap administrator. The token comes from the `truenorth-smoke` client, enabled only for that one request. |
@@ -294,8 +294,17 @@ pruned while all backups exceed `tn_backup_max_total_gb` (never the newest). On 
 host: `scripts/backup/restore-secrets.sh` first, then the installer, then
 `scripts/backup/restore.sh` (docs/runbooks/backup-restore.md "Rebuilt host").
 
-Not in the backup set: OpenSearch telemetry (no snapshot repository is configured; scores
-and outcomes are in PostgreSQL), and Redis (a transient broker).
+OpenSearch telemetry is snapshotted by each backup into the filesystem repository
+`tn_snapshots` at `/srv/truenorth/opensearch-snapshots` (OpenSearch's `path.repo`;
+`10-base` makes the directory for uid 1000, `70-telemetry` registers it and fails if
+OpenSearch cannot write there). The manifest names the snapshot and `restore.sh` restores
+it. The snapshots stay in that directory, not in `backups/`, so copy both off the host.
+The newest `tn_opensearch_snapshot_keep` (14) are kept. A failed snapshot never costs the
+rest of the backup: it is kept, the manifest records the failure, an alert is raised and the
+backup exits 5. Set `tn_opensearch_snapshot_repo: ""`
+to leave telemetry out (scores and outcomes are in PostgreSQL either way).
+
+Not in the backup set: Redis (a transient broker).
 
 ## Upgrades
 
@@ -488,6 +497,7 @@ actually change:
 | `tn_ai_base_url` | *(empty — required)* | The LiteLLM endpoint; no committed default. Key: `vault_openai_api_key`. |
 | `tn_backup_escrow_pubkey` / `tn_backup_escrow` | *(empty — one required)* | "Backups". |
 | `tn_backup_min_free_gb` / `tn_backup_max_total_gb` | `20` / `200` | Backup disk floor and cap. |
+| `tn_opensearch_snapshot_repo` / `tn_opensearch_snapshot_keep` | `tn_snapshots` / `14` | Telemetry snapshots per backup ("Backups"); `""` = none. |
 | `tn_upgrade_inflight` / `tn_pre_upgrade_backup` | `drain` / `true` | "Upgrades". |
 | `tn_vsphere_verify_ssl` | `true` | TN-MGMT01 overrides it to `false` in `hosts.yml` (VMCA chain not yet trusted). |
 | `tn_image_source` | `release` | `build` only for a lab ("Images") |

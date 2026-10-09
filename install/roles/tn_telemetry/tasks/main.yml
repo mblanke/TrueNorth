@@ -13,9 +13,13 @@
       run --rm --no-deps --entrypoint ""
       -v {{ tn_app_dir }}:/opt/truenorth:ro
       -w /opt/truenorth
+      -e OPENSEARCH_SNAPSHOT_REPO={{ tn_opensearch_snapshot_repo | default('') }}
+      -e OPENSEARCH_SNAPSHOT_LOCATION=/usr/share/opensearch/snapshots
       api python -m telemetry.pipelines.bootstrap
     # URL, credentials and CA come from the api service (OPENSEARCH_URL / _USER / _PASS /
-    # _VERIFY_SSL and the CA mount), as for the API itself.
+    # _VERIFY_SSL and the CA mount), as for the API itself. It also registers the backup's
+    # snapshot repository (tn_opensearch_snapshot_repo; backup.env names the same one) at
+    # path.repo (compose.prod.yml) and fails if OpenSearch cannot write there.
     chdir: "{{ tn_app_dir }}/infra/platform/docker"
   register: tn_os_bootstrap
   changed_when: true

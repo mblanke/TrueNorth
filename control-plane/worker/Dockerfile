@@ -22,6 +22,12 @@ COPY --from=scenario_engine scenario_engine /app/scenario_engine
 ENV PYTHONPATH=/app
 # Allowlist: the worker package only (2026-10 audit P0-7).
 COPY worker ./worker
+# Data the workers read at run time, from the repository's content/ (a named context too:
+# --build-context content=content): the software catalogue vSphere installs resolve node
+# services against (worker/software_catalogue.py) and the ATT&CK catalogue telemetry maps
+# technique ids with (worker/attack_catalogue.py). Both look in /app/content/... first.
+COPY --from=content catalogue /app/content/catalogue
+COPY --from=content mitre /app/content/mitre
 ARG TN_VERSION=dev
 ENV TN_VERSION=${TN_VERSION}
 LABEL org.opencontainers.image.title="truenorth-worker" \

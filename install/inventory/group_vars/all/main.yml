@@ -73,6 +73,14 @@ tn_opensearch_internal_users: "{{ tn_config_dir }}/opensearch/internal_users.yml
 # LAB/DEV OVERRIDE ONLY. true = no security plugin: no auth, plain http on tn-backend.
 # Never on a platform students use (install/README.md, "OpenSearch").
 tn_opensearch_disable_security: false
+# Telemetry backups: a filesystem snapshot repository at {{ tn_data_root }}/opensearch-snapshots
+# (path.repo in compose.prod.yml), registered by 70-telemetry and snapshotted by the nightly
+# backup. Empty = no snapshot repository: telemetry is then not backed up.
+tn_opensearch_snapshot_repo: tn_snapshots
+# How many of the newest backup snapshots it keeps (0 = all). Each pins the indices it holds, so a long
+# tail keeps telemetry the 90-day ISM policy already deleted. Older backups then restore
+# without telemetry (restore.sh says so before it stops anything).
+tn_opensearch_snapshot_keep: 14
 
 # ── Identity: Active Directory on TN-DC01 ─────────────────────────────
 # AD/LDAPS integration (resolver drop-in, LDAPS bind, Keycloak federation, the AD import

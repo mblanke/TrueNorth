@@ -78,14 +78,14 @@ worker pings, `helm test`).
   limited to DNS, the release and `networkPolicy.egress.to`.
 - **Beat** is one replica with the `Recreate` strategy: two would double every periodic
   task. **Flower** is off; when on, reach it with `kubectl port-forward`.
+- The api and worker images carry `content/catalogue` and `content/mitre` at
+  `/app/content` (a named `content` build context), so the software catalogue and ATT&CK
+  id checks work without a checkout; compose runs the same copy.
 - The **scenario-engine** image is not a service: an init container copies it into the
   api pod's `SCENARIO_ENGINE_DIR`.
 
 ## Known gaps
 
-- compose.prod.yml mounts `content/catalogue` and `content/mitre` into the api and
-  workers; no image contains them, so the software catalogue and ATT&CK id checks are
-  empty under Helm until the images ship that content.
 - The ingress is written for ingress-nginx (`rewrite-target`, `use-regex`). The compose
   edge also hides `/api/docs`, `/api/metrics` and `/api/health/deep`; here the api's own
   controls apply (docs off in production, `/metrics` needs the token).

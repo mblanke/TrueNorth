@@ -3,9 +3,10 @@
 GET /software-catalogue   any authenticated user
 
 The catalogue is ``content/catalogue/software_catalogue.yaml``; the provisioning worker
-reads it to turn a node's ``services`` names into installs. The API image is built
-from control-plane/api alone, so the file is found through ``TN_SOFTWARE_CATALOGUE``,
-then ``/app/content/catalogue`` (a compose mount), then the repository checkout. This
+reads it to turn a node's ``services`` names into installs. The API image copies
+content/catalogue in (a named ``content`` build context), so the file is found through
+``TN_SOFTWARE_CATALOGUE``, then ``/app/content/catalogue`` (the image), then the
+repository checkout. This
 is a deliberately small loader: it reports names, aliases, OS families and whether the
 Windows install is offline-ready, and never
 resolves installs, which stay the worker's business.

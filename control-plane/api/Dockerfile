@@ -18,6 +18,14 @@ RUN pip install --no-cache-dir -r requirements.txt \
 COPY alembic.ini ./
 COPY alembic ./alembic
 COPY app ./app
+# Data the API reads at run time, from the repository's content/ (outside this build
+# context, so it arrives as a named context):
+#   docker build --build-context content=content control-plane/api
+# GET /software-catalogue (app/routers/software_catalogue.py) and ATT&CK id checks
+# (app/attack_catalogue.py) look in /app/content/... first. Shipped in the image so that
+# Helm/k8s, which mounts no checkout, has them; compose no longer mounts them either.
+COPY --from=content catalogue /app/content/catalogue
+COPY --from=content mitre /app/content/mitre
 # Release version (release.yml passes the git tag). The API's APP_VERSION constant
 # does not read it yet; TN_VERSION is the interface for that.
 ARG TN_VERSION=dev

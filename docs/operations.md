@@ -264,7 +264,7 @@ The full procedure, including what the operator must configure, is
 | PostgreSQL — every database on the server (app `${POSTGRES_DB}`, `keycloak`, `lrs`, ...) | `pg_dump -Fc` per database + `pg_dumpall --globals-only` (roles) | Nightly (`cron-backup.sh`) | 7 daily / 4 weekly / 12 monthly |
 | MinIO — every bucket | `mc mirror` from a container of the stack's pinned MinIO image | Nightly | same |
 | Env file (holds `TN_SECRETS_KEY` and every credential) | AES-256, data key wrapped to the escrow RSA public key | Nightly | same |
-| OpenSearch (telemetry) | Snapshot, only if `OPENSEARCH_SNAPSHOT_REPO` is registered | Nightly | per repository |
+| OpenSearch (telemetry indices) | Snapshot into the `tn_snapshots` filesystem repository (`/srv/truenorth/opensearch-snapshots`), set up by the installer | Nightly | newest 14 snapshots (`tn_opensearch_snapshot_keep`) |
 | Redis | Not backed up: broker, cache, rate limits. Restoring it would replay stale tasks | — | — |
 | Configuration | Git repository (the manifest records the commit) | Every commit | indefinite |
 
@@ -281,20 +281,28 @@ set -a; . /etc/truenorth/backup.env; set +a      # COMPOSE_FILE, ENV_FILE, BACKU
 scripts/backup/restore.sh "$BACKUP_DIR/daily/truenorth-backup-20261008T021700Z"
 ```
 
-`restore.sh` verifies the checksums, asks for the compose project name, stops every
-service except `postgres` and `minio`, re-creates roles, drops and re-creates each
+`restore.sh` verifies the checksums (and that the backup's OpenSearch snapshot still
+exists), asks for the compose project name, stops every service except `postgres`,
+`minio` and (for a snapshot) `opensearch`, re-creates roles, drops and re-creates each
 database from its dump (`pg_restore --create`), re-creates each bucket and mirrors its
-objects back, then starts the stopped services again. Verify with the row counts in the
+objects back, replaces the telemetry indices from the snapshot, then starts the stopped
+services again. Verify with the row counts in the
 runbook. If the code is newer than the backup, run migrations
 ([runbooks/upgrade.md](runbooks/upgrade.md)).
 
 ### OpenSearch
 
-`compose.prod.yml` sets no `path.repo`, so there is nowhere to snapshot to by default and
-telemetry is **not** in the nightly backup (the manifest says so). Scores, AARs and course
-records live in PostgreSQL and MinIO and are backed up; raw telemetry lost with the
-OpenSearch volume is gone. To include it, register a repository and set
-`OPENSEARCH_SNAPSHOT_REPO` — see [runbooks/backup-restore.md](runbooks/backup-restore.md#opensearch).
+`compose.prod.yml` sets `path.repo` on a bind of `$TN_DATA_ROOT/opensearch-snapshots`;
+the installer registers the repository `tn_snapshots` there (`70-telemetry`) and names it
+in `backup.env`, so each nightly backup snapshots the telemetry indices and the manifest
+names the snapshot. The snapshots stay in that directory, not in the backup directory:
+copy it off the host with the backups. A failed snapshot does not cost the rest of the
+backup: the database dumps, buckets and escrow are kept, the manifest records
+`"status":"failed"`, an alert is raised and `backup.sh` / `cron-backup.sh` exit **5**;
+`restore.sh` restores such a backup without its telemetry. Set
+`tn_opensearch_snapshot_repo: ""` to leave telemetry out (scores, AARs and course records
+are in PostgreSQL and MinIO either way). Details:
+[runbooks/backup-restore.md](runbooks/backup-restore.md#opensearch).
 
 ---
 
