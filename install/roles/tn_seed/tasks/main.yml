@@ -90,6 +90,31 @@
   ansible.builtin.debug:
     msg: "{{ (tn_bootstrap.stdout_lines + tn_bootstrap.stderr_lines) | default(['(no output)'], true) }}"
 
+# The shipped curriculum, VM catalogue, range templates, scenarios and detection rules
+# (content/), loaded through the API as the bootstrap administrator
+# (scripts/load_content_inprocess.py: no token or password, the API's own validation).
+# Off by default: a site loads its own content. Imports are drafts unless
+# tn_publish_shipped_content; staging and demo hosts turn both on.
+- name: Seed — load the shipped content
+  ansible.builtin.command:
+    cmd: >-
+      docker compose -f {{ tn_compose_file }} --env-file {{ tn_env_file }}
+      run --rm --no-deps -T -w /app -e PYTHONPATH=/app
+      -v {{ tn_app_dir }}:/srcapp:ro --entrypoint python
+      api /srcapp/scripts/load_content_inprocess.py
+      --admin {{ tn_bootstrap_admin_upn | quote }}
+      {{ '--publish' if tn_publish_shipped_content | bool else '' }}
+      {{ '--demo' if tn_load_shipped_demo | bool else '' }}
+    chdir: "{{ tn_app_dir }}/infra/platform/docker"
+  register: tn_shipped_content
+  changed_when: "'  ok   ' in tn_shipped_content.stdout or 'published now' in tn_shipped_content.stdout"
+  when: tn_load_shipped_content | bool
+
+- name: Seed — shipped content result
+  ansible.builtin.debug:
+    msg: "{{ tn_shipped_content.stdout_lines | select('search', '^(\\S|  (ok|FAIL)|  \\w+: )') | list }}"
+  when: tn_load_shipped_content | bool
+
 - name: Seed — optional demo content
   ansible.builtin.debug:
     msg: >-

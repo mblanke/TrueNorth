@@ -329,6 +329,13 @@ tn_logrotate_days: 14
 # Demo content ("ACME Corp", "Wayne Enterprises") has no place in a range that
 # will hold CAF curriculum. Opt in deliberately.
 tn_seed_demo_data: false
+# The shipped content/ (curriculum, VM catalogue, range templates, scenarios, Sigma rules),
+# loaded through the API by 80-seed. Off: a site loads its own. Imports are drafts unless
+# tn_publish_shipped_content. tn_load_shipped_demo adds demo people (roster only, no
+# sign-in) and demo ranges/exercises (not provisioned). For staging and demo hosts.
+tn_load_shipped_content: false
+tn_publish_shipped_content: false
+tn_load_shipped_demo: false
 # `alembic stamp` papers over a schema that was created by create_all() instead
 # of by migrations. Never do it silently.
 tn_allow_alembic_stamp: false

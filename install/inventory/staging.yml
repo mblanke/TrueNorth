@@ -45,6 +45,10 @@ all:
           tn_tls_mode: selfsigned
           # A local Keycloak account, created by 60-keycloak (no AD here).
           tn_bootstrap_admin_upn: tnadmin@tn-staging.local
+          # A populated staging: the shipped curriculum, published, plus the demo layer.
+          tn_load_shipped_content: true
+          tn_publish_shipped_content: true
+          tn_load_shipped_demo: true
           # Staging attests its secrets are escrowed elsewhere (they are generated on the
           # host and are disposable). A platform Students use sets tn_backup_escrow_pubkey.
           tn_backup_escrow: out-of-band
