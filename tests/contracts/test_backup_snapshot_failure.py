@@ -100,7 +100,11 @@ def stack(tmp_path: Path) -> dict:
 def _run(script: str, env: dict, *args: str) -> subprocess.CompletedProcess:
     return subprocess.run(
         ["bash", str(BACKUP / script), *args],
-        env=env, capture_output=True, text=True, stdin=subprocess.DEVNULL, timeout=120,
+        env=env,
+        capture_output=True,
+        text=True,
+        stdin=subprocess.DEVNULL,
+        timeout=120,
     )
 
 
@@ -167,3 +171,17 @@ def test_restore_of_a_backup_whose_snapshot_failed_restores_the_rest(stack):
     assert "opensearch curl" not in calls
     # opensearch is stopped with the rest: it is not being restored.
     assert any(ln.endswith(" stop opensearch api") for ln in calls.splitlines()), calls
+
+
+def test_the_pre_upgrade_backup_accepts_a_failed_telemetry_snapshot() -> None:
+    """Upgrading to the first release with snapshots: the old OpenSearch has no path.repo
+    and 70-telemetry has not registered the repository, so the pre-upgrade backup exits 5
+    with the data safe. That must not stop the upgrade (staging rc3 -> rc4, 2026-10-09)."""
+    import yaml
+
+    tasks = yaml.safe_load((ROOT / "install/roles/tn_compose/tasks/main.yml").read_text())
+    blocks = [t for t in tasks if "block" in t]
+    task = next(
+        t for b in blocks for t in b["block"] if t.get("name") == "Compose — pre-upgrade backup (the rollback point)"
+    )
+    assert task["failed_when"] == "tn_pre_backup.rc not in [0, 5]"
