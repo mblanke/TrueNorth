@@ -63,9 +63,16 @@ fi
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/tn-drill.XXXXXX")"
 WORK="$(cd "${WORK}" && pwd -P)"
 mkdir -p "${WORK}/backups" "${WORK}/seed" "${WORK}/os-snapshots" "${WORK}/os-certs"
-# The opensearch image runs as uid 1000; the installer chowns the real directory to it.
+# The opensearch image runs as uid 1000; the installer chowns the real directories to it.
+# Here they belong to whoever runs the drill (uid 1001 on a GitHub runner) and umask 077
+# makes them private, so open them up. Every bind into config/ must be readable: OpenSearch
+# walks the whole config tree at startup (LogConfigurator), and an unreadable certs/ fails it
+# with AccessDeniedException; restart: always then crash-loops it. Docker Desktop's bind
+# mounts hide this on a Mac. Nothing secret is in these: the drill runs without the plugin.
 chmod 0777 "${WORK}/os-snapshots"
+chmod 0755 "${WORK}/os-certs"
 : >"${WORK}/os-internal_users.yml"
+chmod 0644 "${WORK}/os-internal_users.yml"
 
 export COMPOSE_PROJECT_NAME="${DRILL_PROJECT}"
 export COMPOSE_FILE="${ROOT}/infra/platform/docker/compose.prod.yml:${WORK}/drill.override.yml"
@@ -88,8 +95,32 @@ fi
 source "${HERE}/lib.sh"
 TN_LOG_TAG="truenorth-drill"
 
+# On failure, before anything is torn down: each container's state and its last log lines,
+# so a CI failure ("opensearch did not come up") says why without a re-run.
+dump_containers() {
+    local cid
+    echo "── drill diagnostics (project ${DRILL_PROJECT}) ──" >&2
+    for cid in $(docker ps -aq --filter "label=com.docker.compose.project=${DRILL_PROJECT}" 2>/dev/null); do
+        docker inspect --format \
+            '{{index .Config.Labels "com.docker.compose.service"}}: status={{.State.Status}} exit={{.State.ExitCode}} oom_killed={{.State.OOMKilled}} restarts={{.RestartCount}} error={{.State.Error}}' \
+            "$cid" >&2 2>/dev/null || true
+    done
+    for cid in $(docker ps -aq --filter "label=com.docker.compose.project=${DRILL_PROJECT}" \
+                    --filter "label=com.docker.compose.service=opensearch" 2>/dev/null); do
+        echo "── opensearch logs (last 80 lines) ──" >&2
+        docker logs --tail 80 "$cid" >&2 2>&1 || true
+    done
+    if command -v sysctl >/dev/null 2>&1; then
+        echo "host: vm.max_map_count=$(sysctl -n vm.max_map_count 2>/dev/null || echo '?')" >&2
+    fi
+    docker info --format 'docker: {{.ServerVersion}} cpus={{.NCPU}} mem={{.MemTotal}}' >&2 2>/dev/null || true
+}
+
 teardown() {
     local rc=$?
+    if (( rc != 0 )); then
+        dump_containers
+    fi
     if [[ "${DRILL_KEEP}" == "1" ]]; then
         log "INFO" "DRILL_KEEP=1: leaving project ${DRILL_PROJECT} and ${WORK}"
     else
