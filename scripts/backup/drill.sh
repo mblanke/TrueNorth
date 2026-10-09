@@ -30,7 +30,8 @@
 # start as the installer's 70-telemetry does. Telemetry indices and aliases are part of the
 # compared state, backups snapshot into it, restores bring it back, and a backup beyond
 # OPENSEARCH_SNAPSHOT_KEEP prunes the oldest snapshot, after which restore.sh refuses that
-# backup before stopping anything. Security plugin OFF here (plain http, no auth): the
+# backup before stopping anything. A backup whose snapshot fails exits 5 and keeps the
+# data, and restores without --skip-opensearch. Security plugin OFF here (plain http, no auth): the
 # drill has no internal CA; the TLS + basic-auth path is the installer's.
 #
 # Usage: drill.sh             DRILL_PROJECT=<name> to choose the project name,
@@ -434,7 +435,9 @@ if [[ "${DRILL_OPENSEARCH}" == "1" ]]; then
     first_snap="$(sed -nE 's/.*"snapshot":"(tn-[^"]+)".*/\1/p' "${BACKUP}/manifest.json")"
     [[ -n "${first_snap}" ]] || die "the first backup's manifest names no OpenSearch snapshot"
     sleep 1
-    "${HERE}/backup.sh" >/dev/null
+    third_rc=0
+    "${HERE}/backup.sh" >/dev/null || third_rc=$?
+    (( third_rc == 0 )) || die "third backup exited ${third_rc} (5: its snapshot failed; is opensearch still up? $(dc ps --services --status running | paste -sd, -))"
     snaps="$(os_curl "${OPENSEARCH_URL}/_cat/snapshots/${OPENSEARCH_SNAPSHOT_REPO}?h=id" | tr -d ' \r')"
     [[ "$(printf '%s\n' "${snaps}" | grep -c .)" == 2 ]] || die "expected 2 snapshots after pruning, got: ${snaps}"
     if printf '%s\n' "${snaps}" | grep -qx "${first_snap}"; then
@@ -450,7 +453,28 @@ if [[ "${DRILL_OPENSEARCH}" == "1" ]]; then
     fi
     [[ "$(dc ps --services --status running | sort | paste -sd, -)" == "${running_before}" ]] \
         || die "restore.sh stopped services before refusing a pruned snapshot"
-    OS_SUMMARY="snapshot ${first_snap} restored twice; pruned at KEEP=2, after which restore.sh refuses that backup up front"
+    # A snapshot that fails (here: a repository nobody registered) must not cost the data:
+    # exit 5, the backup kept with the failure in its manifest, and it restores without
+    # --skip-opensearch, leaving telemetry alone.
+    sleep 1
+    set +e
+    OPENSEARCH_SNAPSHOT_REPO=tn_unregistered "${HERE}/backup.sh" >/dev/null 2>"${WORK}/os-fail.err"
+    os_fail_rc=$?
+    set -e
+    (( os_fail_rc == 5 )) || die "backup.sh with a failing snapshot exited ${os_fail_rc}, not 5"
+    grep -q 'ALERT.*OpenSearch telemetry snapshot' "${WORK}/os-fail.err" || die "a failed snapshot raised no alert"
+    FAILED_SNAP_BACKUP="$(find "${BACKUP_DIR}" -mindepth 1 -maxdepth 1 -type d -name 'truenorth-backup-*' | sort | tail -n 1)"
+    grep -q '"opensearch": {"status":"failed"' "${FAILED_SNAP_BACKUP}/manifest.json" \
+        || die "the manifest of ${FAILED_SNAP_BACKUP} does not record the failed snapshot"
+    "${HERE}/restore.sh" "${FAILED_SNAP_BACKUP}" --force --no-restart >"${WORK}/os-fail-restore.log" 2>&1
+    grep -q 'WARN.*snapshot FAILED' "${WORK}/os-fail-restore.log" || die "restore.sh gave no warning about the failed snapshot"
+    # Not restoring telemetry, restore.sh stopped opensearch with the rest (--no-restart
+    # leaves it down); bring it back before comparing state.
+    start_stack
+    snapshot >"${WORK}/after-failed-snapshot.txt"
+    diff -u "${WORK}/before.txt" "${WORK}/after-failed-snapshot.txt" >&2 \
+        || die "restoring the backup whose snapshot failed did not give back the seeded state"
+    OS_SUMMARY="snapshot ${first_snap} restored twice; pruned at KEEP=2, after which restore.sh refuses that backup up front; a failed snapshot exits 5 and its backup restores the rest"
     log "INFO" "OpenSearch: ${OS_SUMMARY}"
 fi
 

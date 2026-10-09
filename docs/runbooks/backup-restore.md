@@ -89,7 +89,11 @@ The manifest records `recipient_sha256` so you can tell which key a backup was s
 Every failure goes to stderr (captured in `backup.log` / cron mail) and to syslog with tag
 `truenorth-backup` (`journalctl -t truenorth-backup`), plus the webhook if set. Monitor for:
 non-zero exit, no new `truenorth-backup-*` directory in 26 h, or a `[ALERT]` line.
-Exit codes: `1` failed (nothing kept), `3` data kept but no escrow, `4` offsite upload failed.
+Exit codes: `1` failed (nothing kept), `3` data kept but no escrow, `4` offsite upload failed,
+`5` data and secrets kept but the OpenSearch telemetry snapshot (or its pruning) failed — the
+manifest's `opensearch` entry says `"status":"failed"` and why. `3` wins when both apply; both
+alert. `cron-backup.sh` treats `3` and `5` alike: it uploads and rotates the backup and passes
+the code through.
 
 ## Run a backup by hand
 
@@ -165,7 +169,8 @@ scripts/backup/restore.sh $BACKUP_DIR/daily/truenorth-backup-20261008T021700Z
 What it does: verifies `SHA256SUMS` → if the manifest names an OpenSearch snapshot, checks
 that it is in its repository, and **refuses before stopping anything** if it is not (pruned
 beyond `OPENSEARCH_SNAPSHOT_KEEP`, or the repository directory was not copied back; re-run
-with `--skip-opensearch` to restore without telemetry) → stops every running service except
+with `--skip-opensearch` to restore without telemetry; a backup whose snapshot had *failed*
+(`backup.sh` exit 5) restores everything else with a warning, no flag needed) → stops every running service except
 `postgres`, `minio` and (for a snapshot) `opensearch` → applies `globals.sql` (existing roles
 are kept; their attributes and password hashes are reset to the backup's) → for each
 `postgres/<db>.dump`: `DROP DATABASE … WITH (FORCE)` then `pg_restore --create
@@ -208,11 +213,19 @@ Installed by default (single-node compose):
 Each `backup.sh` takes snapshot `tn-<timestamp>` of the telemetry indices (names not
 starting with `.`; no global state, no security index) inside the opensearch container,
 against `https://localhost:9200`, verifying the node certificate against the internal CA
-(`OPENSEARCH_SNAPSHOT_CACERT`); there is no `curl -k`. The credentials reach curl on stdin. A snapshot that
-is not `SUCCESS` fails the backup. Then it deletes all but the newest `OPENSEARCH_SNAPSHOT_KEEP`
-(14) `tn-*` snapshots: every snapshot pins the indices it holds, so without a cap the
-repository would keep telemetry the 90-day ISM policy has already deleted. An older backup
-whose snapshot was pruned restores without telemetry (`--skip-opensearch`).
+(`OPENSEARCH_SNAPSHOT_CACERT`); there is no `curl -k`. The credentials reach curl on stdin.
+Then it deletes all but the newest `OPENSEARCH_SNAPSHOT_KEEP` (14) `tn-*` snapshots: every
+snapshot pins the indices it holds, so without a cap the repository would keep telemetry the
+90-day ISM policy has already deleted. An older backup whose snapshot was pruned restores
+without telemetry (`--skip-opensearch`).
+
+**A failed snapshot never costs the data.** If OpenSearch is down, the snapshot is not
+`SUCCESS`, or pruning fails, the database dumps, buckets and escrow are still completed and
+kept; the manifest records `{"status":"failed", …, "error": …}` (or, when only pruning failed,
+the good snapshot), an `[ALERT]` is raised, and `backup.sh` exits `5`. `restore.sh` restores
+such a backup in full except telemetry, with a warning; no flag is needed. Look at the
+OpenSearch container and the error in the manifest, then let the next night's backup take a
+snapshot (or run `backup.sh` by hand).
 
 **Off the host.** Snapshots live in `/srv/truenorth/opensearch-snapshots`, not in the backup
 directory, and `cron-backup.sh`'s S3 upload ships only the backup directory. Copy the
@@ -257,7 +270,9 @@ outlives `down -v`, like the host directory), registered on every start as `70-t
 does. A per-range index and a rollover index behind its write alias are part of the compared
 state; an index written after the backup must be gone after the restore. Finally a third
 backup with `OPENSEARCH_SNAPSHOT_KEEP=2` must prune the first snapshot, and `restore.sh` of
-the first backup must then refuse without stopping any service. The drill runs OpenSearch
+the first backup must then refuse without stopping any service. Last, a backup into a
+repository nobody registered must exit `5` with an alert and keep its data, and restoring it
+must give back the seeded state without `--skip-opensearch`. The drill runs OpenSearch
 **without** its security plugin (it has no internal CA), so the TLS and basic-auth path is
 exercised on an installed host, not here.
 
@@ -265,6 +280,9 @@ Drill result 2026-10-09 with OpenSearch (macOS, Docker 29.8, OpenSearch 2.13.0, 
 `tn-drill-osnap-1`): PASS — `range-drill-0001` 37 documents, `exercise-events-000001` 12
 documents behind alias `exercise-events`, identical before backup, after restore and after
 the reinstall restore (shards 2/2, 0 failed); pruned at KEEP=2; the pruned backup refused.
+Re-run the same day with the failed-snapshot step (project `tn-drill-osnap-5`): PASS — the
+backup into an unregistered repository exited 5 with an alert, its manifest recorded the
+failure, and restoring it gave back the seeded state with a warning.
 
 Drill result 2026-10-08 with the reinstall step (macOS, project `tn-drill-installer-v1`):
 PASS — same counts as below, before backup == after restore == after the reinstall restore.

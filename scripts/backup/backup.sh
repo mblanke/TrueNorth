@@ -52,14 +52,17 @@
 #                            file) and OPENSEARCH_SNAPSHOT_CACERT (the internal CA, path
 #                            inside the container; default config/certs/ca.pem). The
 #                            certificate is verified: no `curl -k`. A snapshot that is
-#                            not SUCCESS fails the backup.
+#                            not SUCCESS is recorded as "failed" in the manifest and
+#                            alerted; the rest of the backup is kept (exit 5).
 #   OPENSEARCH_SNAPSHOT_KEEP keep the newest N tn-* snapshots in the repository and
 #                            delete older ones after a successful snapshot (default 14;
 #                            0 = keep all).
 #   OPENSSL                  default: openssl
 #
 # Exit codes: 0 ok; 1 failed (no backup kept); 3 data backed up but secrets NOT
-# escrowed (configure BACKUP_ESCROW_PUBKEY or BACKUP_ESCROW=out-of-band).
+# escrowed (configure BACKUP_ESCROW_PUBKEY or BACKUP_ESCROW=out-of-band); 5 data and
+# secrets backed up, but the OpenSearch snapshot (or its pruning) failed: the manifest
+# says which, and restore.sh restores everything else. 3 wins when both apply (both alert).
 # Every failure also raises an alert (stderr + syslog, webhook if configured).
 # =============================================================================
 set -euo pipefail
@@ -88,6 +91,7 @@ WORK_PATH="${BACKUP_DIR}/.partial-${BACKUP_NAME}"
 LOCK_DIR="${BACKUP_DIR}/.lock"
 CURRENT_STEP="setup"
 EXIT_CODE=0
+OS_FAILED=0
 LOCKED=0
 
 on_exit() {
@@ -117,6 +121,7 @@ LOCKED=1
 # least as much as the previous backup took.
 CURRENT_STEP="disk"
 [[ "${BACKUP_MIN_FREE_GB}" =~ ^[0-9]+$ ]] || die "BACKUP_MIN_FREE_GB must be a whole number of GB"
+[[ "${OPENSEARCH_SNAPSHOT_KEEP}" =~ ^[0-9]+$ ]] || die "OPENSEARCH_SNAPSHOT_KEEP must be a whole number"
 FREE_KB="$(free_kb "${BACKUP_DIR}")"
 LAST_BACKUP="$(all_backups "${BACKUP_ROOT}" | tail -n 1)"
 NEED_KB=$(( BACKUP_MIN_FREE_GB * 1024 * 1024 ))
@@ -180,37 +185,67 @@ fi
 log "INFO" "  minio: ${BUCKETS} buckets, ${BAK_OBJECTS} objects"
 
 # ── 3. OpenSearch (optional) ─────────────────────────────────────────────────
-CURRENT_STEP="opensearch"
-if [[ -n "${OPENSEARCH_SNAPSHOT_REPO}" ]]; then
-    [[ "${OPENSEARCH_SNAPSHOT_KEEP}" =~ ^[0-9]+$ ]] || die "OPENSEARCH_SNAPSHOT_KEEP must be a whole number"
-    snap="tn-$(printf '%s' "${TIMESTAMP}" | tr '[:upper:]' '[:lower:]')"
+# Telemetry must never cost the backup of the data: a failed snapshot (or prune) is recorded
+# in the manifest, alerted, and turns the exit code into 5; postgres, minio and the escrow
+# are completed and kept regardless. Called from `if`, where errexit is off, so every step
+# below checks its own status.
+OS_ERROR=""
+os_snapshot() { # sets OS_ERROR on failure
+    local out="${WORK_PATH}/.os-snapshot.json" ours n_ours old_snaps="" old
     # os_curl (lib.sh): inside the container, CA-verified, credentials on stdin.
     # The repository's own security/system indices are left out: a restore never replaces them.
-    os_curl -X PUT -H 'Content-Type: application/json' \
+    if ! os_curl -X PUT -H 'Content-Type: application/json' \
         "${OPENSEARCH_URL}/_snapshot/${OPENSEARCH_SNAPSHOT_REPO}/${snap}?wait_for_completion=true" \
-        -d '{"indices":"*,-.*","include_global_state":false}' >"${WORK_PATH}/.os-snapshot.json"
+        -d '{"indices":"*,-.*","include_global_state":false}' >"${out}" 2>"${out}.err"; then
+        OS_ERROR="snapshot request failed: $(cat "${out}.err" "${out}" 2>/dev/null | head -c 300 | tr -d '\r' | tr '\n\t' '  ')"
+        rm -f "${out}" "${out}.err"
+        return 1
+    fi
     # wait_for_completion answers 200 for a PARTIAL or FAILED snapshot too.
-    grep -q '"state":"SUCCESS"' "${WORK_PATH}/.os-snapshot.json" \
-        || die "OpenSearch snapshot ${snap} did not succeed: $(head -c 400 "${WORK_PATH}/.os-snapshot.json")"
-    rm -f "${WORK_PATH}/.os-snapshot.json"
-    OS_JSON="{\"status\":\"snapshot\",\"repository\":$(json_str "${OPENSEARCH_SNAPSHOT_REPO}"),\"snapshot\":$(json_str "$snap")}"
+    if ! grep -q '"state":"SUCCESS"' "${out}"; then
+        OS_ERROR="snapshot did not succeed: $(head -c 300 "${out}" | tr -d '\r' | tr '\n\t' '  ')"
+        rm -f "${out}" "${out}.err"
+        return 1
+    fi
+    rm -f "${out}" "${out}.err"
     log "INFO" "  opensearch: snapshot ${snap} in repository ${OPENSEARCH_SNAPSHOT_REPO}"
     # Each snapshot pins the indices it holds, so the repository would otherwise keep every
     # telemetry index ever written. Names sort by time (tn-<UTC timestamp>); only ours are pruned.
-    if (( OPENSEARCH_SNAPSHOT_KEEP > 0 )); then
-        CURRENT_STEP="opensearch:prune"
-        ours="$(os_curl "${OPENSEARCH_URL}/_cat/snapshots/${OPENSEARCH_SNAPSHOT_REPO}?h=id" \
-            | tr -d '\r ' | grep -E '^tn-[0-9]{8}t[0-9]{6}z$' | sort || true)"
-        n_ours="$(printf '%s\n' "${ours}" | grep -c . || true)"
-        old_snaps=""
-        if (( n_ours > OPENSEARCH_SNAPSHOT_KEEP )); then
-            old_snaps="$(printf '%s\n' "${ours}" | head -n "$(( n_ours - OPENSEARCH_SNAPSHOT_KEEP ))")"
+    (( OPENSEARCH_SNAPSHOT_KEEP > 0 )) || return 0
+    if ! ours="$(os_curl "${OPENSEARCH_URL}/_cat/snapshots/${OPENSEARCH_SNAPSHOT_REPO}?h=id")"; then
+        OS_ERROR="snapshot ${snap} taken, but listing the repository to prune it failed"
+        return 2
+    fi
+    ours="$(printf '%s\n' "${ours}" | tr -d '\r ' | grep -E '^tn-[0-9]{8}t[0-9]{6}z$' | sort || true)"
+    n_ours="$(printf '%s\n' "${ours}" | grep -c . || true)"
+    if (( n_ours > OPENSEARCH_SNAPSHOT_KEEP )); then
+        old_snaps="$(printf '%s\n' "${ours}" | head -n "$(( n_ours - OPENSEARCH_SNAPSHOT_KEEP ))")"
+    fi
+    for old in ${old_snaps}; do
+        [[ "$old" == "$snap" ]] && continue
+        log "INFO" "  opensearch: deleting snapshot ${old} (keeping the newest ${OPENSEARCH_SNAPSHOT_KEEP})"
+        if ! os_curl -X DELETE "${OPENSEARCH_URL}/_snapshot/${OPENSEARCH_SNAPSHOT_REPO}/${old}" >/dev/null; then
+            OS_ERROR="snapshot ${snap} taken, but deleting the old snapshot ${old} failed"
+            return 2
         fi
-        for old in ${old_snaps}; do
-            [[ "$old" == "$snap" ]] && continue
-            log "INFO" "  opensearch: deleting snapshot ${old} (keeping the newest ${OPENSEARCH_SNAPSHOT_KEEP})"
-            os_curl -X DELETE "${OPENSEARCH_URL}/_snapshot/${OPENSEARCH_SNAPSHOT_REPO}/${old}" >/dev/null
-        done
+    done
+}
+
+CURRENT_STEP="opensearch"
+if [[ -n "${OPENSEARCH_SNAPSHOT_REPO}" ]]; then
+    snap="tn-$(printf '%s' "${TIMESTAMP}" | tr '[:upper:]' '[:lower:]')"
+    os_rc=0
+    os_snapshot || os_rc=$?
+    (( os_rc == 0 )) || OS_FAILED=1
+    os_ref="\"repository\":$(json_str "${OPENSEARCH_SNAPSHOT_REPO}"),\"snapshot\":$(json_str "$snap")"
+    if (( os_rc == 1 )); then
+        # Same shape as a snapshot entry, so restore.sh can tell it apart and skip it.
+        OS_JSON="{\"status\":\"failed\",${os_ref},\"error\":$(json_str "${OS_ERROR}")}"
+        log "WARN" "  opensearch: snapshot ${snap} FAILED (${OS_ERROR}); continuing without telemetry"
+    else
+        # rc 2: the snapshot is good; only pruning failed (the repository keeps growing).
+        OS_JSON="{\"status\":\"snapshot\",${os_ref}}"
+        if (( os_rc == 2 )); then log "WARN" "  opensearch: ${OS_ERROR}"; fi
     fi
 else
     OS_JSON='{"status":"not-backed-up","reason":"no OPENSEARCH_SNAPSHOT_REPO registered; telemetry is not part of this backup"}'
@@ -306,7 +341,13 @@ CURRENT_STEP="done"
 log "INFO" "Backup complete: ${FINAL_PATH} ($(du -sh "${FINAL_PATH}" | cut -f1))"
 # Exit only on the non-zero path. An unconditional `exit` as the last statement makes
 # ShellCheck 0.9-0.11 report the EXIT-trap handler above as unreachable (SC2317/SC2329).
+if (( OS_FAILED )); then
+    alert "backup ${BACKUP_NAME} completed, but the OpenSearch telemetry snapshot step failed: ${OS_ERROR}"
+fi
 if (( EXIT_CODE == 3 )); then
     alert "backup ${BACKUP_NAME} completed WITHOUT secrets escrow; TN_SECRETS_KEY is not recoverable from it"
     exit 3
+fi
+if (( OS_FAILED )); then
+    exit 5
 fi

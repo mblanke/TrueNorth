@@ -299,7 +299,9 @@ OpenSearch telemetry is snapshotted by each backup into the filesystem repositor
 `10-base` makes the directory for uid 1000, `70-telemetry` registers it and fails if
 OpenSearch cannot write there). The manifest names the snapshot and `restore.sh` restores
 it. The snapshots stay in that directory, not in `backups/`, so copy both off the host.
-The newest `tn_opensearch_snapshot_keep` (14) are kept. Set `tn_opensearch_snapshot_repo: ""`
+The newest `tn_opensearch_snapshot_keep` (14) are kept. A failed snapshot never costs the
+rest of the backup: it is kept, the manifest records the failure, an alert is raised and the
+backup exits 5. Set `tn_opensearch_snapshot_repo: ""`
 to leave telemetry out (scores and outcomes are in PostgreSQL either way).
 
 Not in the backup set: Redis (a transient broker).

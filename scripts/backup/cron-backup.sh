@@ -21,7 +21,9 @@
 #   WEEKLY_KEEP      — Number of weekly backups to keep (default: 4)
 #   MONTHLY_KEEP     — Number of monthly backups to keep (default: 12)
 #
-# Exits non-zero whenever backup.sh does (1 = failed, 3 = no secrets escrow).
+# Exits non-zero whenever backup.sh does (1 = failed, 3 = no secrets escrow, 5 = data
+# backed up but the OpenSearch telemetry snapshot failed), or 4 when only the offsite
+# upload failed. On 3 and 5 the backup is kept, uploaded and rotated like a good one.
 # =============================================================================
 set -euo pipefail
 IFS=$'\n\t'
@@ -72,7 +74,9 @@ BACKUP_RC=0
 ROOT_DIR="${BACKUP_DIR}"
 BACKUP_ROOT="${ROOT_DIR}" BACKUP_DIR="${TYPE_DIR}" BACKUP_RETENTION_DAYS=0 \
     bash "${SCRIPT_DIR}/backup.sh" || BACKUP_RC=$?
-if (( BACKUP_RC != 0 && BACKUP_RC != 3 )); then
+# 3 (secrets not escrowed) and 5 (telemetry snapshot failed) mean the data WAS backed up:
+# upload, rotation and the summary still run; backup.sh has already alerted.
+if (( BACKUP_RC != 0 && BACKUP_RC != 3 && BACKUP_RC != 5 )); then
     DURATION=$(( $(date +%s) - BACKUP_START ))
     send_notification "failure" "Backup type: ${BACKUP_TYPE}. Failed (exit ${BACKUP_RC}) after ${DURATION}s."
     exit "${BACKUP_RC}"
@@ -80,6 +84,10 @@ fi
 
 DURATION=$(( $(date +%s) - BACKUP_START ))
 log "INFO" "Backup completed in ${DURATION}s"
+case "${BACKUP_RC}" in
+    3) log "WARN" "data backed up, secrets NOT escrowed (exit 3)" ;;
+    5) log "WARN" "data backed up, OpenSearch telemetry snapshot FAILED (exit 5; see the manifest)" ;;
+esac
 
 # ── Find the latest backup just created ──────────────────────────────────────
 LATEST_BACKUP=$(find "${TYPE_DIR}" -maxdepth 1 -type d -name "truenorth-backup-*" | sort | tail -1)
@@ -143,7 +151,7 @@ log "INFO" "${SUMMARY}"
 
 log "INFO" "=== Cron backup complete ==="
 if (( BACKUP_RC != 0 )); then
-    exit "${BACKUP_RC}"   # 3: data backed up, secrets not escrowed (already alerted)
+    exit "${BACKUP_RC}"   # 3: secrets not escrowed; 5: telemetry snapshot failed (both already alerted)
 fi
 if (( ${OFFSITE_FAILED:-0} )); then
     exit 4

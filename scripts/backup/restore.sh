@@ -90,6 +90,9 @@ if (( DO_OS )); then
         os_curl "${OPENSEARCH_URL}/_snapshot/${OS_REPO}/${OS_SNAP}" >/dev/null \
             || die "snapshot ${OS_SNAP} is not in OpenSearch repository ${OS_REPO} (pruned, or the repository directory was not copied back; docs/runbooks/backup-restore.md). Re-run with --skip-opensearch to restore without telemetry."
         CURRENT_STEP="validate"
+    elif grep -q '"opensearch": {"status":"failed"' "${BACKUP_PATH}/manifest.json"; then
+        # backup.sh exit 5: the data and secrets are complete, the telemetry snapshot is not.
+        log "WARN" "OpenSearch: this backup's telemetry snapshot FAILED when it was taken; restoring databases and buckets only, telemetry is left as it is"
     else
         log "INFO" "OpenSearch: this backup holds no snapshot; telemetry is left as it is"
     fi
@@ -180,6 +183,9 @@ fi
 
 CURRENT_STEP="done"
 log "INFO" "Restore complete from ${BACKUP_PATH}"
+if grep -q '"opensearch": {"status":"failed"' "${BACKUP_PATH}/manifest.json"; then
+    log "WARN" "OpenSearch: NOT restored (the backup's snapshot had failed); telemetry is as it was before this restore"
+fi
 if (( ! DO_OS )) && grep -q '"opensearch": {"status":"snapshot"' "${BACKUP_PATH}/manifest.json"; then
     log "INFO" "OpenSearch: --skip-opensearch, so the backup's snapshot was not restored (runbook)"
 fi
