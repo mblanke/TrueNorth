@@ -1,0 +1,117 @@
+# {{ ansible_managed }} (install/roles/tn_arc2). Edits here are overwritten.
+#
+# ARC² Course Studio runner: turns the api's queued Studio jobs (<runs>/_queue) into
+# headless /arc2 runs (tools/arc2/runner.py; docs/arc2-course-studio.md "Deployment").
+# Every job runs in its own bubblewrap sandbox (arc2/confine.py). This unit is the outer
+# wall around the runner and, since bubblewrap builds each sandbox from it, around every job.
+#
+# Hardening that is deliberately NOT set, because bubblewrap must mount a fresh /proc in
+# the job's PID namespace and the kernel refuses that while parts of /proc are overmounted:
+# ProtectKernelTunables, ProtectKernelLogs, ProtectHostname, ProcSubset=pid. Likewise
+# RestrictNamespaces allows the namespaces bwrap creates, and SystemCallFilter keeps @mount.
+# PrivateUsers is off: the job's user namespace is bubblewrap's own.
+
+[Unit]
+Description=TrueNorth ARC2 Course Studio runner
+Documentation=file://{{ tn_app_dir }}/docs/arc2-course-studio.md
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=10min
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User={{ tn_arc2_user }}
+Group={{ tn_arc2_user }}
+SupplementaryGroups={{ tn_arc2_runs_group }}
+WorkingDirectory={{ tn_app_dir }}
+UMask=0027
+
+# The key (ANTHROPIC_API_KEY), root:root 0600, read by systemd before the sandbox exists.
+EnvironmentFile={{ tn_arc2_env_file }}
+Environment=HOME={{ tn_arc2_home }}
+Environment=LANG=C.UTF-8
+Environment=PATH={{ tn_arc2_prefix }}/bin:{{ tn_arc2_claude_dir }}/node_modules/.bin:/usr/local/bin:/usr/bin:/bin
+Environment=PYTHONPATH={{ tn_app_dir }}/tools
+Environment=ARC2_RUNS_DIR={{ tn_arc2_repo_runs }}
+Environment=ARC2_CLAUDE={{ tn_arc2_claude_bin }}
+Environment=ARC2_JOB_HOMES={{ tn_arc2_home }}/jobs
+# Fail closed: no usable sandbox, no runner (exit 2). Never `none` on a shared platform.
+Environment=ARC2_CONFINE=auto
+# Jobs reach the internet only through the runner's proxy, and it only to this host:443.
+Environment=ARC2_EGRESS=proxy
+Environment=ARC2_EGRESS_ALLOW={{ tn_arc2_egress_allow }}
+# No local-model fallback on the platform host (there is no Ollama here).
+Environment=ARC2_FALLBACK=off
+# What each job may see besides the runner's defaults (arc2/runner.py JOB_ENV): no
+# self-update of the pinned Claude Code, and git may read the checkout another account owns.
+Environment=DISABLE_AUTOUPDATER=1
+Environment=GIT_CONFIG_COUNT=1
+Environment=GIT_CONFIG_KEY_0=safe.directory
+Environment=GIT_CONFIG_VALUE_0={{ tn_app_dir }}
+{% if tn_arc2_anthropic_base_url | default('') | length > 0 %}
+Environment=ANTHROPIC_BASE_URL={{ tn_arc2_anthropic_base_url }}
+Environment=ARC2_JOB_ENV=DISABLE_AUTOUPDATER,GIT_CONFIG_COUNT,GIT_CONFIG_KEY_0,GIT_CONFIG_VALUE_0,ANTHROPIC_BASE_URL
+{% else %}
+Environment=ARC2_JOB_ENV=DISABLE_AUTOUPDATER,GIT_CONFIG_COUNT,GIT_CONFIG_KEY_0,GIT_CONFIG_VALUE_0
+{% endif %}
+
+# claude --version inside a job's sandbox, with this unit's hardening: no tokens spent.
+# Without a usable sandbox it exits 2 and the runner never starts; systemd retries it
+# (StartLimitBurst times in StartLimitIntervalSec), then leaves the unit failed.
+ExecStartPre={{ tn_arc2_venv }}/bin/python -m arc2.runner --self-test
+ExecStart={{ tn_arc2_venv }}/bin/python -m arc2.runner --timeout {{ tn_arc2_job_timeout }}
+Restart=on-failure
+RestartSec=15
+# The runner itself: 2, no sandbox (fail closed); 3, another runner holds the runs root.
+# Neither heals by retrying.
+RestartPreventExitStatus=2 3
+TimeoutStartSec=180
+TimeoutStopSec=60
+SyslogIdentifier={{ tn_arc2_service }}
+
+# ── Filesystem ──────────────────────────────────────────────────────────
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+StateDirectory={{ tn_arc2_home | basename }}
+StateDirectoryMode=0700
+ReadWritePaths={{ tn_arc2_runs_dir }}
+# Where /arc2 expects them in the read-only checkout: <repo>/build/arc2 and <repo>/.venv.
+BindPaths={{ tn_arc2_runs_dir }}:{{ tn_arc2_repo_runs }}
+BindReadOnlyPaths={{ tn_arc2_venv }}:{{ tn_arc2_repo_venv }}
+InaccessiblePaths={% for p in tn_arc2_inaccessible_paths %}-{{ p }}{{ ' ' if not loop.last else '' }}{% endfor %}
+
+# ── Privilege, kernel, processes ────────────────────────────────────────
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictRealtime=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectProc=invisible
+PrivateIPC=yes
+RemoveIPC=yes
+KeyringMode=private
+RestrictNamespaces=user pid net ipc uts mnt
+SystemCallArchitectures=native
+SystemCallFilter=@system-service @mount
+SystemCallFilter=~@clock @cpu-emulation @debug @module @obsolete @raw-io @reboot @swap
+
+# ── Network ─────────────────────────────────────────────────────────────
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+{% if tn_arc2_ip_deny | length > 0 %}
+IPAddressDeny={{ tn_arc2_ip_deny | join(' ') }}
+{% endif %}
+
+# ── Resources: one cgroup for the runner and every job ──────────────────
+MemoryMax={{ tn_arc2_memory_max }}
+CPUWeight={{ tn_arc2_cpu_weight }}
+TasksMax={{ tn_arc2_tasks_max }}
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,7 @@
+---
+- name: Restart the ARC² runner
+  ansible.builtin.systemd_service:
+    name: "{{ tn_arc2_service }}"
+    state: restarted
+    daemon_reload: true
+  become: true

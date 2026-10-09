@@ -231,6 +231,33 @@ tn_ai_base_url: ""
 tn_ai_default_model: agent
 tn_ai_embed_model: embed
 
+# ── ARC² Course Studio (optional; install/README.md "ARC² Course Studio (optional)") ──
+# Off by default. true: playbooks/55-arc2.yml installs the course-authoring runner on this
+# host (a dedicated tn-arc2 account, a bubblewrap sandbox per job, Node and Claude Code at
+# the versions below, a hardened systemd service) and the api serves /api/arc2 from the
+# runs directory it shares with the runner. Needs vault_arc2_anthropic_api_key and HTTPS
+# out to the model endpoint. Course requests and generated content go to that endpoint:
+# read docs/arc2-course-studio.md "Deployment" before turning it on where CUI is held.
+tn_arc2_enabled: false
+tn_arc2_runs_dir: "{{ tn_data_root }}/arc2/runs"
+# The runs directory's group id; the api container joins it (compose group_add). Must be
+# free on the host, or already be tn-arc2-runs (preflight checks).
+tn_arc2_runs_gid: 10010
+# Claude Code, exactly. Bump with roles/tn_arc2/files/claude-code/package*.json (README).
+tn_arc2_claude_code_version: "2.1.286"
+# Node.js, only to install Claude Code. Bump with tn_arc2_node_sha256 (roles/tn_arc2).
+tn_arc2_node_version: "24.21.0"
+# Empty: api.anthropic.com. Or an Anthropic-compatible gateway, https on port 443 only
+# (Claude Code reads ANTHROPIC_BASE_URL; the jobs' egress proxy tunnels 443 to this host).
+tn_arc2_anthropic_base_url: ""
+# Free space preflight requires when ARC² is on: for runs on tn_data_root's disk, and for
+# /opt/truenorth-arc2 (Node, Claude Code, the venv: about 1.5 GB) on the root disk.
+tn_arc2_min_free_gb: 5
+tn_arc2_min_free_system_gb: 3
+# Air-gapped mirrors (empty: the public registries; the Node mirror is tn_arc2_node_mirror).
+tn_arc2_pip_index_url: ""
+tn_arc2_npm_registry: ""
+
 # ── TLS ───────────────────────────────────────────────────────────────
 # provided  — you issue the cert from AD CS out of band and drop the pair in
 #             install/files/tls/ as truenorth.crt / truenorth.key

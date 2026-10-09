@@ -1,0 +1,7 @@
+{
+  "name": "truenorth-arc2-claude-code",
+  "private": true,
+  "dependencies": {
+    "@anthropic-ai/claude-code": "2.1.286"
+  }
+}

@@ -304,6 +304,114 @@
       {{ 'reachable (HTTP ' ~ tn_ai_probe.status ~ ')' if (tn_ai_probe.status | default(-1) | int) > 0
          else 'UNREACHABLE — the AI orchestrator will start but every generation will fail.' }}
 
+# ── ARC² Course Studio (only with tn_arc2_enabled) ────────────────────
+# What 55-arc2 needs before it installs anything. That playbook then probes bubblewrap as
+# the runner's own account (it needs root to switch to it; preflight changes nothing) and
+# the service's self-test checks the sandbox again under the unit's hardening.
+- name: Preflight — ARC² Course Studio
+  when: tn_arc2_enabled | default(false) | bool
+  block:
+    - name: Preflight — ARC² has a model API key
+      ansible.builtin.assert:
+        that:
+          - vault_arc2_anthropic_api_key | default('') | string | trim | length > 0
+          - vault_arc2_anthropic_api_key | default('') is not search('CHANGE_ME')
+        fail_msg: >-
+          tn_arc2_enabled is true but vault_arc2_anthropic_api_key is empty. There is no default:
+          set an Anthropic API key issued for this host (ansible-vault edit
+          inventory/group_vars/all/vault.yml), or set tn_arc2_enabled: false.
+        quiet: true
+
+    - name: Preflight — ARC² model endpoint is https on port 443
+      ansible.builtin.assert:
+        that: >-
+          tn_arc2_anthropic_base_url | default('') | length == 0
+          or tn_arc2_anthropic_base_url is match('^https://[A-Za-z0-9.-]+(:443)?(/.*)?$')
+        fail_msg: >-
+          tn_arc2_anthropic_base_url={{ tn_arc2_anthropic_base_url }}: the jobs' egress proxy
+          tunnels https to one host on port 443 only. Use https://host[/path], or leave it empty
+          for api.anthropic.com.
+        quiet: true
+
+    - name: Preflight — ARC² runs gid
+      ansible.builtin.command: "getent group {{ tn_arc2_runs_gid }}"
+      register: tn_arc2_gid_owner
+      changed_when: false
+      failed_when: tn_arc2_gid_owner.rc not in [0, 2]
+
+    - name: Preflight — ARC² runs gid is free, or already the runs group
+      ansible.builtin.assert:
+        that: tn_arc2_gid_owner.rc == 2 or tn_arc2_gid_owner.stdout.split(':')[0] == 'tn-arc2-runs'
+        fail_msg: >-
+          gid {{ tn_arc2_runs_gid }} belongs to {{ tn_arc2_gid_owner.stdout.split(':')[0] }} on this
+          host; the api container would join that group. Set tn_arc2_runs_gid to a free gid.
+        quiet: true
+
+    - name: Preflight — ARC² kernel user namespaces
+      ansible.builtin.command: cat /proc/sys/user/max_user_namespaces
+      register: tn_arc2_userns
+      changed_when: false
+
+    - name: Preflight — ARC² user namespaces are enabled (bubblewrap needs them)
+      ansible.builtin.assert:
+        that: tn_arc2_userns.stdout | int > 0
+        fail_msg: >-
+          user.max_user_namespaces is {{ tn_arc2_userns.stdout }}: no job sandbox can be built and
+          the runner would refuse to start. Raise it (sysctl user.max_user_namespaces) or set
+          tn_arc2_enabled: false.
+        quiet: true
+
+    - name: Preflight — ARC² AppArmor user-namespace restriction
+      ansible.builtin.command: cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns
+      register: tn_arc2_aa_userns
+      changed_when: false
+      failed_when: false
+
+    - name: Preflight — report the restriction (kept on; 55-arc2 scopes an exception)
+      ansible.builtin.debug:
+        msg: >-
+          kernel.apparmor_restrict_unprivileged_userns={{ tn_arc2_aa_userns.stdout | default('n/a') | trim }}.
+          It stays as it is: 55-arc2 installs an AppArmor profile that lets only the runner's own
+          copy of bwrap create user namespaces.
+
+    - name: Preflight — ARC² free space
+      vars:
+        _root: >-
+          {{ ansible_mounts | selectattr('mount', 'in', ['/', '/opt']) | sort(attribute='mount') | list | last }}
+      ansible.builtin.assert:
+        that:
+          - (tn_data_mount.size_available / 1073741824) >= (tn_arc2_min_free_gb | int)
+          - (_root.size_available / 1073741824) >= (tn_arc2_min_free_system_gb | int)
+        fail_msg: >-
+          ARC² needs {{ tn_arc2_min_free_gb }} GB free for runs on {{ tn_data_mount.mount }}
+          ({{ (tn_data_mount.size_available / 1073741824) | round(1) }} GB) and
+          {{ tn_arc2_min_free_system_gb }} GB on {{ _root.mount }} for /opt/truenorth-arc2
+          ({{ (_root.size_available / 1073741824) | round(1) }} GB).
+        quiet: true
+
+    # The runner's proxy connects straight to the endpoint: there is no upstream proxy.
+    - name: Preflight — ARC² model endpoint reachable
+      vars:
+        _host: >-
+          {{ (tn_arc2_anthropic_base_url | ansible.builtin.urlsplit('hostname'))
+             if tn_arc2_anthropic_base_url | default('') | length > 0 else 'api.anthropic.com' }}
+      ansible.builtin.uri:
+        url: "https://{{ _host | trim }}/"
+        method: GET
+        status_code: [200, 301, 302, 400, 401, 403, 404, 405]
+        timeout: 10
+      register: tn_arc2_endpoint
+      failed_when: false
+
+    - name: Preflight — assert the model endpoint is reachable
+      ansible.builtin.assert:
+        that: tn_arc2_endpoint.status | default(-1) | int > 0
+        fail_msg: >-
+          {{ tn_arc2_endpoint.msg | default('no answer') }}: the ARC² runner reaches the model
+          endpoint directly over HTTPS (its jobs only through the runner). Allow HTTPS out to it
+          from {{ inventory_hostname }}, or set tn_arc2_enabled: false.
+        quiet: true
+
 # ── Ports we are about to bind ────────────────────────────────────────
 - name: Preflight — 80/443 are free
   ansible.builtin.wait_for:
@@ -327,3 +435,4 @@
       - "ldaps port      : {{ 'open (the bind itself is checked in 40-tls)' if tn_ldap_enabled | bool else 'n/a (AD/LDAPS disabled)' }}"
       - "backup escrow   : {{ tn_backup_escrow_pubkey if tn_backup_escrow_pubkey | length > 0 else tn_backup_escrow }}"
       - "app source      : {{ tn_app_source_mode }} ({{ tn_app_git_repo if tn_app_source_mode == 'git' else (tn_app_local_path or tn_app_tarball) }})"
+      - "arc2 studio     : {{ 'enabled (55-arc2 installs the runner)' if tn_arc2_enabled | default(false) | bool else 'off' }}"

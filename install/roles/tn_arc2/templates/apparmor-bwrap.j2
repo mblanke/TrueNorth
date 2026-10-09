@@ -1,0 +1,53 @@
+# {{ ansible_managed }} (install/roles/tn_arc2). Edits here are overwritten.
+#
+# The ARC² Course Studio runner sandboxes each job with bubblewrap, which needs an
+# unprivileged user namespace. Ubuntu 24.04 denies those to unconfined programs
+# (kernel.apparmor_restrict_unprivileged_userns=1). That setting stays on for the host.
+# This profile lets exactly one binary create them: the copy of bwrap at
+# {{ tn_arc2_bwrap }}, which only root and {{ tn_arc2_user }} may execute
+# (root:{{ tn_arc2_user }} 0750). Everything bwrap runs is stacked under
+# {{ tn_arc2_apparmor_profile }}-job, which may create no further user namespace and holds no
+# capability, so a job cannot reuse what bwrap was allowed.
+#
+# bwrap sets no_new_privs before it runs the job, so the job's profile is stacked onto
+# this one (&a//&b) rather than switched to: a stack is the only transition no_new_privs
+# permits, and the intersection of the two is what the job gets.
+
+abi <abi/4.0>,
+include <tunables/global>
+
+profile {{ tn_arc2_apparmor_profile }} {{ tn_arc2_bwrap }} flags=(attach_disconnected,mediate_deleted) {
+  allow capability,
+  allow file rwlkm /{**,},
+  allow network,
+  allow unix,
+  allow ptrace,
+  allow signal,
+  allow mqueue,
+  allow io_uring,
+  allow userns,
+  allow mount,
+  allow umount,
+  allow pivot_root,
+  allow dbus,
+
+  # The job: claude, its tools, git, python. pix, not px: on Ubuntu 24.04 (AppArmor 4.0)
+  # px with this stacked target is refused ("profile transition not found"); pix stacks it.
+  allow pix /** -> &{{ tn_arc2_apparmor_profile }}//&{{ tn_arc2_apparmor_profile }}-job,
+
+  include if exists <local/{{ tn_arc2_apparmor_profile }}>
+}
+
+profile {{ tn_arc2_apparmor_profile }}-job flags=(attach_disconnected,mediate_deleted) {
+  allow file rwlkmix /{**,},
+  allow network,
+  allow unix,
+  allow ptrace,
+  allow signal,
+  allow mqueue,
+  allow io_uring,
+  allow dbus,
+  # Not allowed: userns (no nested user namespace), capability, mount, change_profile.
+
+  include if exists <local/{{ tn_arc2_apparmor_profile }}-job>
+}

@@ -36,7 +36,8 @@ edits to the job's run and Bash to the few commands ``/arc2`` needs. If Claude c
 re-run on a local Ollama through its Anthropic-compatible API (see ``Fallback``); the job
 record's ``engine`` says which ran.
 
-Usage: ``PYTHONPATH=tools .venv/bin/python -m arc2.runner [--once]``
+Usage: ``PYTHONPATH=tools .venv/bin/python -m arc2.runner [--once | --self-test]``
+(``--self-test`` runs ``claude --version`` in a job's sandbox and exits; it spends nothing.)
 """
 
 from __future__ import annotations
@@ -614,6 +615,87 @@ def reap(jobs: Path) -> None:
             write_record(path, record)
 
 
+def start_egress(confinement: Confinement, fallback: Fallback | None) -> tuple[EgressProxy | None, list[LocalForward]]:
+    """The egress proxy confined jobs use (arc2/egress.py), and on Linux the Unix-socket
+    forwards into each job's own network namespace. None when unconfined or ARC2_EGRESS=open
+    (the sandbox still applies). The caller closes both."""
+    if confinement.name == "none" or os.environ.get("ARC2_EGRESS", "proxy").lower() == "open":
+        return None, []
+    if confinement.name != "bubblewrap":
+        return EgressProxy().start(), []
+    # Linux jobs get a network namespace of their own; the proxy and the local fallback
+    # reach them as Unix sockets (arc2/netbridge.py) in a private directory.
+    import tempfile
+
+    sockets = Path(tempfile.mkdtemp(prefix="arc2-net-"))
+    egress = EgressProxy(unix_path=str(sockets / "egress.sock")).start()
+    egress.bridges = [(egress.port, sockets / "egress.sock")]
+    forwards = []
+    for port in _local_ports(fallback):
+        forwards.append(LocalForward(str(sockets / f"local-{port}.sock"), port))
+        egress.bridges.append((port, sockets / f"local-{port}.sock"))
+    return egress, forwards
+
+
+def self_test(runs: Path, claude: str, timeout: int = 120) -> int:
+    """``--self-test``: whether a job could run here now, spending nothing.
+
+    The sandbox is selected as for a job (none usable: status 2, as at start), and
+    ``claude --version`` runs inside it the way a job's engine runs: a fresh home, the job's
+    allow-listed environment, the egress proxy and, on Linux, a network namespace of its
+    own. No model is called; no run, queue entry or job record is read or written. Prints
+    one line and returns 0 when the engine ran, 2 otherwise. A service manager can run it
+    before the runner starts (install/roles/tn_arc2).
+    """
+    try:
+        confinement = select()
+    except ConfinementError as exc:
+        print(f"arc2 runner: self-test failed: {exc}", file=sys.stderr, flush=True)
+        return 2
+    egress, forwards = start_egress(confinement, None)
+    home = None
+    try:
+        if isinstance(confinement, Unconfined):
+            env = {k: v for k, v in os.environ.items() if k not in ("AUTH_DISABLED", "DATABASE_URL")}
+        else:
+            home = job_homes() / f"self-test-{os.getpid()}"
+            shutil.rmtree(home, ignore_errors=True)
+            for sub in (".claude", "tmp", ".config", ".cache"):
+                (home / sub).mkdir(parents=True, exist_ok=True)
+            home.chmod(0o700)
+            env = job_env(home)
+            if egress:
+                env.update(egress.env(), CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC="1")
+        jail = Jail(
+            repo=REPO_ROOT, runs=runs, home=Path.home(), writable=(home,) if home else (),
+            readable=_claude_install(claude),
+            egress_port=egress.port if egress else None,
+            bridges=tuple(egress.bridges) if egress else (),
+        )
+        try:
+            done = subprocess.run(confinement.wrap([claude, "--version"], jail), cwd=REPO_ROOT, env=env,
+                                  stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=timeout)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            print(f"arc2 runner: self-test failed: could not run {claude} in the sandbox: {exc}",
+                  file=sys.stderr, flush=True)
+            return 2
+        words = " ".join((done.stdout or done.stderr or "").split())[:300]
+        if done.returncode != 0:
+            print(f"arc2 runner: self-test failed: {claude} --version exited {done.returncode} in the "
+                  f"{confinement.name} sandbox: {words}", file=sys.stderr, flush=True)
+            return 2
+        print(f"arc2 runner: self-test passed (confinement: {confinement.name}; "
+              f"egress: {','.join(egress.allow) if egress else 'open'}; claude: {words})", flush=True)
+        return 0
+    finally:
+        if home is not None:
+            shutil.rmtree(home, ignore_errors=True)
+        if egress:
+            egress.close()
+        for forward in forwards:
+            forward.close()
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="arc2.runner", description=__doc__.split("\n\n")[0])
     ap.add_argument("--runs", type=Path, default=Path(os.environ.get("ARC2_RUNS_DIR", REPO_ROOT / "build" / "arc2")))
@@ -621,8 +703,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--timeout", type=int, default=DEFAULT_TIMEOUT)
     ap.add_argument("--once", action="store_true", help="run whatever is queued, then exit")
     ap.add_argument("--poll", type=float, default=2.0)
+    ap.add_argument("--self-test", action="store_true",
+                    help="run `claude --version` in a job's sandbox, then exit (0 ok, 2 not); spends nothing")
     args = ap.parse_args(argv)
     claude = shutil.which(args.claude) or args.claude
+    if args.self_test:
+        return self_test(args.runs, claude)
     try:
         confinement = select()
     except ConfinementError as exc:  # fail closed: no job runs without its sandbox
@@ -641,22 +727,7 @@ def main(argv: list[str] | None = None) -> int:
     owner = {"pid": os.getpid(), "host": os.uname().nodename, "started_at": now()}
     # Confined jobs reach the internet only through this allow-listing proxy (arc2/egress.py).
     # ARC2_EGRESS=open leaves egress unrestricted (the sandbox still applies).
-    egress = None
-    forwards: list[LocalForward] = []
-    if confinement.name != "none" and os.environ.get("ARC2_EGRESS", "proxy").lower() != "open":
-        if confinement.name == "bubblewrap":
-            # Linux jobs get a network namespace of their own; the proxy and the local
-            # fallback reach them as Unix sockets (arc2/netbridge.py) in a private directory.
-            import tempfile
-
-            sockets = Path(tempfile.mkdtemp(prefix="arc2-net-"))
-            egress = EgressProxy(unix_path=str(sockets / "egress.sock")).start()
-            egress.bridges = [(egress.port, sockets / "egress.sock")]
-            for port in _local_ports(fallback):
-                forwards.append(LocalForward(str(sockets / f"local-{port}.sock"), port))
-                egress.bridges.append((port, sockets / f"local-{port}.sock"))
-        else:
-            egress = EgressProxy().start()
+    egress, forwards = start_egress(confinement, fallback)
     recover(queue, jobs)
     print(f"arc2 runner: watching {queue} (claude: {claude}; fallback: "
           f"{fallback.label + ' at ' + fallback.url if fallback else 'off'}; confinement: {confinement.name})",

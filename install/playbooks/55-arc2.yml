@@ -1,0 +1,15 @@
+---
+# ARC² Course Studio runner — OPTIONAL, off by default (tn_arc2_enabled: false).
+#
+# On, the course-authoring runner is installed on the platform host as a hardened systemd
+# service, and the api (rendered by 30-config/50-stack-up) serves /api/arc2 from the
+# runs directory it shares with the runner. Off, nothing here runs.
+# install/README.md "ARC² Course Studio (optional)".
+#
+# Re-runnable on its own:  ansible-playbook playbooks/55-arc2.yml -K
+- name: "ARC² Course Studio runner (optional)"
+  hosts: platform
+  gather_facts: true
+  roles:
+    - role: tn_arc2
+      tags: [arc2]

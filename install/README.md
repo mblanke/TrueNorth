@@ -123,12 +123,13 @@ is always safe on its own.
 | Playbook | What it does |
 |---|---|
 | `00-docker` | With `tn_install_docker` (default on Ubuntu 24.04): Docker from its apt repository (key fingerprint pinned), at pinned versions, held; `daemon.json` log rotation and the containerd image store; chrony; the install user in the `docker` group. Otherwise nothing ("Prerequisites"). |
-| `00-preflight` | No `CHANGE_ME` left in the vault, the AI endpoint and the backup escrow set; OS, Docker/Compose versions, disk, NTP, vCenter reachability, the app repository; with AD, forward+reverse DNS through AD and the LDAPS port; without AD, that the service name resolves (or `tn_manage_etc_hosts`). Read-only, and runs for real under `--check`; fails loudly with the fix in the message. |
+| `00-preflight` | No `CHANGE_ME` left in the vault, the AI endpoint and the backup escrow set; OS, Docker/Compose versions, disk, NTP, vCenter reachability, the app repository; with AD, forward+reverse DNS through AD and the LDAPS port; without AD, that the service name resolves (or `tn_manage_etc_hosts`); with ARC² on, its key, model endpoint (https, reachable), runs gid, user namespaces and disk. Read-only, and runs for real under `--check`; fails loudly with the fix in the message. |
 | `10-base` | Packages, `vm.max_map_count` (OpenSearch will not start without it), the `/srv/truenorth` tree with the uids each image runs as, logrotate for `/srv/truenorth/logs`; with AD, the resolver drop-in for AD DNS. |
 | `20-fetch-app` | Release mode: verifies `release-manifest.json`'s **cosign signature** against the release workflow's identity, checks it against `SHA256SUMS`, then fetches the app at the release's commit (`git_sha`) and refuses any other. Build mode: the installer's own commit. Refuses an older release/commit than the one deployed (rollback is explicit, `tn_allow_downgrade`) and an app whose compose file declares another compatibility level than `install/COMPAT`. `local` and `tarball` (checksum-verified, unpacked beside the app and swapped in) for air-gapped installs. Records what was deployed. |
 | `30-config` | Persists every secret under `/srv/truenorth/config/secrets/` (the vault's value, or one generated **once**; an empty file is regenerated), refuses a vault value that differs for a first-start secret ("Secrets"), asserts all are ≥ 32 characters, renders `.env.production` and the backup environment, and stops without a backup escrow. |
 | `40-tls` | Installs the AD CS root CA (DER or PEM, normalised to PEM; required with AD, optional without) into the host trust store *and* Keycloak's truststore; with AD, a **real LDAPS bind** as the Keycloak service account (password in a 0600 temp file, `ldapsearch -y`); the certificate nginx serves; the OpenSearch CA, certificates and `internal_users.yml` (as root). |
 | `50-stack-up` | Pulls the release's images **by digest** (or loads the air-gapped archives), stops unless every image resolves to the digest compose names. On an **upgrade**: a pre-upgrade backup, then the old application services stopped ("Upgrades"). Then datastores → **alembic** (with the new api image; refuses a database newer than the code) → everything else. Builds nothing unless `tn_image_source=build`. See "Images" and "The migration hazard" below. |
+| `55-arc2` | **Optional, off by default** (`tn_arc2_enabled`). The ARC² Course Studio runner: a `tn-arc2` account, the runs directory the api shares, bubblewrap with an AppArmor profile scoped to the runner, Node and Claude Code at pinned versions, a hardened systemd service whose self-test must pass. Off: nothing. "ARC² Course Studio (optional)". |
 | `60-keycloak` | Realm (imported without the development realm's sample users, with this host's redirect URIs and generated client secrets), token/session/password rules and client grants (enforced on every run, written only when they differ; "Identity hardening"), the API's least-privilege service account (`truenorth-api-admin`), AD user federation over LDAPS (or, without AD, local groups and the local bootstrap administrator), and the token claim mappers. **This is the join between the installer and the application** — see below. |
 | `70-telemetry` | OpenSearch index templates, ISM policies, ingest pipelines, and the backup's snapshot repository ("Backups"). |
 | `80-seed` | Counts the reference data in the database (fails on none), creates the tenant and the bootstrap administrator. |
@@ -480,6 +481,107 @@ confidential client, `truenorth-smoke`, with a generated secret. It is **disable
 smoke test enables it for its one token request and disables it again, however that
 request ends.
 
+## ARC² Course Studio (optional)
+
+**Off by default** (`tn_arc2_enabled: false`): nothing is installed, the api gets no `ARC2_*`
+setting and no host mount, and `/api/arc2` answers 404. On, `55-arc2` installs the runner
+that turns Course Studio requests (`/arc2` in the web app) into headless `/arc2` runs of the
+seven ARC² agents in Claude Code, and the api serves the Studio from the runs directory it
+shares with the runner. Read docs/arc2-course-studio.md §13 first: course requests, feedback
+and generated content go to the model endpoint (Anthropic's API unless you set a gateway),
+so decide whether that is acceptable for what this platform holds.
+
+**What you provide**
+
+| | |
+|---|---|
+| `tn_arc2_enabled: true` | inventory (group_vars or the host) |
+| `vault_arc2_anthropic_api_key` | vault; **required**, no default (preflight stops without it). Issue a key for this host alone, with a spending limit: every job can read it (it can reach only the model endpoint) |
+| HTTPS out to `api.anthropic.com` | from the platform host (preflight checks). Or `tn_arc2_anthropic_base_url`: an Anthropic-compatible gateway, `https://` on port 443 only; Claude Code reads `ANTHROPIC_BASE_URL` and the jobs' proxy then allows that host instead |
+| At install time: PyPI, the npm registry, nodejs.org | or mirrors: `tn_arc2_pip_index_url`, `tn_arc2_npm_registry`, `tn_arc2_node_mirror` |
+| A free gid | `tn_arc2_runs_gid` (`10010`; preflight checks) |
+| Disk | `tn_arc2_min_free_gb` (5) for runs; `tn_arc2_min_free_system_gb` (3) for `/opt/truenorth-arc2` (about 0.8 GB) |
+
+Then `ansible-playbook site.yml`, or on a running platform `30-config`, `50-stack-up` (the
+api picks up the setting and the mount) and `55-arc2`.
+
+**What `55-arc2` installs**
+
+| | |
+|---|---|
+| `tn-arc2` | system account: no login shell, no password, no sudo, not in `docker`; home `/var/lib/tn-arc2` (0700: per-job homes, deleted after each job) |
+| `{{ tn_data_root }}/arc2/runs` | the runs root, `tn-arc2:tn-arc2-runs` 2750; `_queue/` and `_studio/` 2770 (the api writes them); `_jobs/`, `_history/` and each run 2750 (the runner's). The api container joins `tn-arc2-runs` by gid (`group_add`) and mounts the directory at `/srv/arc2/runs` |
+| `/opt/truenorth-arc2/` | root-owned: `node` (pinned, SHA-256-checked tarball), `claude-code` (pinned, `npm ci` from `roles/tn_arc2/files/claude-code/package-lock.json`), `venv` (the engine's Python: the api's requirements, pytest, ruff), `bin/bwrap` (a copy, `root:tn-arc2 0750`) |
+| `/etc/truenorth-arc2/runner.env` | `ANTHROPIC_API_KEY` only, `root:root 0600`, read by systemd (`EnvironmentFile`). Never on a command line, never in `.env.production` |
+| `/etc/apparmor.d/truenorth-arc2-bwrap` | see "Sandbox" below |
+| `truenorth-arc2-runner.service` | the runner, from the deployed checkout (read-only), as `tn-arc2` |
+
+**Sandbox.** Every job runs in a bubblewrap sandbox (`tools/arc2/confine.py`): its own PID,
+network, IPC and mount namespaces; writes only to its own run; internet only through the
+runner's proxy, to the model endpoint on 443 (`ARC2_EGRESS_ALLOW`). The runner fails closed
+(`ARC2_CONFINE=auto`): no sandbox, no runner. Ubuntu 24.04 forbids unprivileged user
+namespaces to unconfined programs (`kernel.apparmor_restrict_unprivileged_userns=1`), which
+stock bubblewrap needs. The installer leaves that on for the host. Instead it lets one binary
+create them: the runner's own copy of `bwrap`, which only root and `tn-arc2` can execute,
+attached to an AppArmor profile. Everything that bwrap starts is stacked under a second profile
+that may create no user namespace and holds no capability, so a job cannot reuse the
+permission. Re-run `55-arc2` after a `bubblewrap` package update: it refreshes the copy.
+
+The service adds the outer wall, which bubblewrap builds every job from: `NoNewPrivileges`,
+an empty capability bounding set, `ProtectSystem=strict` (writable: the runs directory and
+its own state directory), `ProtectHome`, `PrivateTmp`, `PrivateDevices`, `PrivateIPC`,
+`ProtectProc=invisible`, a system-call filter, only the namespaces bubblewrap creates, the
+platform's config, TLS, state and datastore directories and `/var/lib/docker` made
+inaccessible, no private-network addresses (`tn_arc2_ip_deny`; empty it only for an internal
+gateway), and memory, CPU and task limits. `ProtectKernelTunables`, `ProtectKernelLogs`,
+`ProtectHostname` and `ProcSubset=pid` are deliberately off: each overmounts part of
+`/proc`, and bubblewrap then cannot mount the job's own `/proc`.
+
+**Health.** Before the runner starts, the unit runs `arc2.runner --self-test`: `claude
+--version` inside a job's sandbox, under the unit's hardening, with the egress proxy and the
+job's network namespace. It calls no model and spends nothing. `55-arc2` probes bubblewrap as
+`tn-arc2` before starting the service, then requires the self-test to have passed with
+`confinement: bubblewrap` and the pinned Claude Code, and the runner to be watching the
+queue; `99-validate` reports the service state. Without a sandbox the self-test exits 2 and
+the runner never starts; systemd retries five times in ten minutes, then leaves the unit
+failed (`55-arc2` clears that when it next runs).
+
+```bash
+journalctl -u truenorth-arc2-runner            # self-test, jobs started and finished
+sudo systemctl restart truenorth-arc2-runner   # re-runs the self-test
+```
+
+**Runs started outside the Studio, or before ownership was recorded,** are listed to nobody.
+Assign them (docs/arc2-course-studio.md §11):
+
+```bash
+sudo -u tn-arc2 env PYTHONPATH=/srv/truenorth/app/tools /opt/truenorth-arc2/venv/bin/python \
+  -m arc2.assign_owner --runs /srv/truenorth/arc2/runs --tenant <tenant-uuid> --all-unowned --dry-run
+```
+
+**Backups** do not include the runs directory. A course becomes durable when its release is
+uploaded into TrueNorth (database and MinIO, which are backed up; docs/arc2-course-studio.md §14).
+
+**Bumping the pinned versions.** Claude Code: pick the `stable` dist-tag, then
+
+```bash
+npm view @anthropic-ai/claude-code dist-tags
+cd install/roles/tn_arc2/files/claude-code
+# package.json: "@anthropic-ai/claude-code": "<version>" (exact, no ^ or ~)
+rm package-lock.json && npm install --package-lock-only --ignore-scripts
+```
+
+and set `tn_arc2_claude_code_version` to the same version (`tests/contracts/test_installer_arc2.py`
+checks they agree, and `55-arc2` checks what `claude --version` reports). Node.js: set
+`tn_arc2_node_version`, and `tn_arc2_node_sha256` in `roles/tn_arc2/defaults/main.yml` from that
+release's `SHASUMS256.txt`, after checking `SHASUMS256.txt.asc` with a key from
+github.com/nodejs/release-keys. Then re-run `55-arc2`.
+
+**Turning it off.** Set `tn_arc2_enabled: false` and re-run `30-config` and `50-stack-up`: the
+api loses the setting and the mount. `55-arc2` then does nothing, so stop the runner yourself
+(`sudo systemctl disable --now truenorth-arc2-runner`); the runs stay in
+`{{ tn_data_root }}/arc2/runs`.
+
 ## Key variables
 
 `inventory/group_vars/all/main.yml` is commented throughout. The ones you will
@@ -510,6 +612,8 @@ actually change:
 | `tn_provisioner_backend` | `vsphere_api` | **Not** `vsphere` — that is not a registry key and raises `ValueError`. |
 | `tn_seed_demo_data` | `false` | Demo tenants have no place in a range holding CAF curriculum. |
 | `tn_default_progression` | `DP1` | Developmental progression a new trainee joins (DP1 → DP2). |
+| `tn_arc2_enabled` | `false` | ARC² Course Studio; with `vault_arc2_anthropic_api_key` ("ARC² Course Studio (optional)"). |
+| `tn_arc2_claude_code_version` / `tn_arc2_node_version` | `2.1.286` / `24.21.0` | Pinned; bump with the lockfile and checksums. |
 
 ## After the install
 
