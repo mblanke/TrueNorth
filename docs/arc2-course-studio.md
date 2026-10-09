@@ -418,3 +418,20 @@ Still open:
   engine, runner and API to agree.
 - A descendant that calls `setsid()` survives the job's process-group kill. It stays
   confined to that run.
+
+## 12. When the Studio is off (2026-10-09)
+
+The Studio is off unless the API has `ARC2_STUDIO_ENABLED` set (the installer setting
+`tn_arc2_enabled`). While it is off every `/arc2/runs…` route answers 404, as before.
+`GET /arc2/status` always answers, to any signed-in account, with the feature flag and
+nothing else: `{"enabled": false, "reason": "ARC² Course Studio is not enabled on this
+server."}` when off, `{"enabled": true, "reason": null}` when on. No runs, paths or runner
+activity are exposed; the run routes still need `course:author`.
+
+The web app asks it first. When it is off the Authoring hub hides the Course Studio tab,
+and `/arc2` opened directly shows "ARC² Course Studio isn't enabled on this server" (with
+the setting and this document named for administrators), no New Project button, and no
+other API call. When it is on nothing changes, except that a failed project list now shows
+the server's message. Tests: `tests/api/test_arc2_studio.py`,
+`control-plane/web/src/app/shared/hub-shell.component.spec.ts`,
+`control-plane/web/src/app/features/arc2-studio/arc2-studio.component.spec.ts`.

@@ -107,6 +107,9 @@ SIGN_IN_ONLY: dict[str, str] = {
     # Courses and learning paths: own tenant + global; drafts only with course:author
     # (courses._catalogue_scope / _visible; tests/api/test_course_catalogue_visibility.py).
     "GET /courses": "catalogue: the course catalogue Students browse",
+    # Server feature flag only (enabled + a fixed reason); the web app hides the ARC²
+    # menu for everyone when it is off. Every run route still needs course:author.
+    "GET /arc2/status": "catalogue: whether ARC² Course Studio is enabled on this server",
     "GET /courses/{course_id}": "catalogue: a course and its module list",
     "GET /courses/{course_id}/outline": "catalogue: what a course teaches",
     "GET /learning-paths": "catalogue: learning paths Students browse",

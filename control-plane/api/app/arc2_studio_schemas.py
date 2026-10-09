@@ -12,6 +12,13 @@ from typing import Any
 from pydantic import BaseModel
 
 
+class Arc2Status(BaseModel):
+    """GET /arc2/status: is the Studio on, and if not, why (for the empty state)."""
+
+    enabled: bool
+    reason: str | None = None
+
+
 class StageView(BaseModel):
     key: str
     name: str
