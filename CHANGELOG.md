@@ -10,8 +10,8 @@ Optional features for staging and demo hosts, and CI that survives registry limi
 - **ARC² Course Studio on an installed host** (`tn_arc2_enabled`, off by default): the
   runner as a sandboxed systemd service (dedicated user, bubblewrap with a scoped AppArmor
   profile, egress to the model endpoint only, fails closed), pinned Claude Code and Node
-  (#124). Signs in with a Claude subscription token (`vault_arc2_claude_oauth_token`) or an
-  API key, exactly one. When the Studio is off, the web app hides it and says why instead
+  (#124). Signs in with a Claude subscription token (`vault_arc2_claude_oauth_token`, from
+  `claude setup-token`) or an API key, exactly one, enforced at preflight (#128). When the Studio is off, the web app hides it and says why instead
   of failing with "Not Found" (`GET /arc2/status`, #123).
 - **Moodle on an installed host** (`tn_moodle_enabled`, off by default): the TrueNorth Moodle
   image released by digest, scanned, signed and in `release-manifest.json`; its own edge on
