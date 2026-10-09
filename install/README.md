@@ -323,6 +323,8 @@ ansible-playbook -i inventory/staging.yml site.yml -K --ask-vault-pass \
   -e tn_release_version=v1.0.0-rc1
 ```
 
+Staging has no vCenter: `tn_provisioner_backend: mock` makes `tn_uses_vcenter` false, so
+preflight skips the vCenter checks, `90-vsphere` does nothing and ranges are simulated.
 Its AI endpoint is an Open WebUI (`tn_ai_base_url: https://…/api`), so set
 `tn_ai_default_model` and `tn_ai_embed_model` to ids from that server's `/api/models`.
 

@@ -25,6 +25,9 @@ all:
           # (tn_install_docker defaults true). If an earlier hand install left a
           # docker.list for Docker's repository, it stops and names the file: remove it,
           # or set tn_install_docker: false here to keep the Docker already there.
+          # No vCenter on this network: an install test of TrueNorth on Ubuntu. Ranges are
+          # simulated (mock provisioner); 90-vsphere does nothing.
+          tn_provisioner_backend: mock
           # Open WebUI's OpenAI-compatible API is under /api (key: Settings > Account >
           # API keys, into vault_openai_api_key). Its model ids are what /api/models lists.
           tn_ai_base_url: https://ai.guapo613.beer/api
