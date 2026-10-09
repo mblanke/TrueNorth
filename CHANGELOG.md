@@ -6,11 +6,41 @@ All notable changes to TrueNorth Range. Versions are git tags on `main`
 ## v1.0.0 — unreleased
 
 First production release. Covers everything merged to `main` after the
-2026-10-06 reconciliation (`7120eaa`) up to `83d7d43`: PRs #44–#107. All 17
-modules are at stage 4.
+2026-10-06 reconciliation (`7120eaa`) up to `e015d27` (`v1.0.0-rc3`): PRs #44–#117,
+plus #118 once merged. All 17 modules are at stage 4. Release candidates are listed
+under "Release candidates" below; what does not work yet is under "Known limitations
+in v1.0.0" and, with the staging record, in
+[`docs/release-notes/v1.0.0.md`](docs/release-notes/v1.0.0.md).
 
 ### Security
 
+- Final pre-release security review, every finding fixed with behaviour tests (#112):
+  **C1** an approver cannot grant a role above their own; **H1** curriculum URL ingest
+  goes through a shared SSRF guard (`app/net_guard.py`, size cap, private URLs off,
+  vetted redirects), as does the LMS platform connectivity test; **H3** Students see when an
+  inject ran, not what it was; **H4** Students' detection queries are a closed grammar
+  and inject labels moved under unindexed `tn_ground_truth` (ADR 0005); **H5** tenant
+  admins stay in their tenant, only the platform admin (`PLATFORM_TENANT_ID`) crosses,
+  and unset fails closed; **H6** the worker builds a range with its own tenant's
+  hypervisor connection, never another tenant's; **M1** quiz attempts counted, key only
+  on the final attempt, server-side time limit; **M2** Students search only telemetry of
+  ranges they take part in; **M3** Students cannot start, close or replay team
+  exercises; **M4** YAML without anchors/aliases and with a 1 MiB cap; **M5** noise
+  deploy validates every Ansible input; **M6** Proxmox VM routes tenant-scoped, TLS
+  verified by default.
+- CSRF (release blocker): exactly four self-authenticated cross-site POSTs are exempt
+  (`/lti/login`, `/lti/launch`, `/lti/deeplink/finish`, `/noise/agent/report`). LTI binds
+  each launch to the browser that began it (state cookie) and links an existing account
+  by email only for Students (#112).
+- Every API YAML parse goes through `safe_yaml`; an AST test forbids raw PyYAML loaders
+  in `app/` (#114).
+- Keycloak: 5-minute access tokens, 30 min idle / 10 h sessions, password policy,
+  password grant off on `truenorth-web`, `truenorth-api` and `truenorth-cli`, PKCE S256
+  on the public clients; a dedicated, normally disabled `truenorth-smoke` client (#109).
+  The API uses a least-privilege `truenorth-api-admin` service account, not the master
+  admin (#111).
+- Secrets out of process arguments; no committed AI endpoint or key defaults (#110,
+  #111).
 - Credentials at rest sealed with `TN_SECRETS_KEY` (Fernet, `new,old` rotation); LTI and
   JWKS signing keys sealed and rotatable; non-root images (#90, #103).
 - Production fail-fast settings: with `TN_ENV=production` the API refuses to start on
@@ -35,8 +65,10 @@ modules are at stage 4.
 - Controlled and vendor documents removed from the tree; contract test blocks committed
   site keys, the AI node address and private-key PEM blocks.
 
-### Platform
+### Platform / modules
 
+- All 17 modules at stage 4 (section modules under `control-plane/api/app/<module>/`;
+  status per module in `docs/current-state.md`).
 - R-series hardening stack (R0–R3, `/ws` scoped to the signed-in tenant) (#55, #61, #71).
 - Stage-4 foundations: real integration CI, `worker/tasks.py` split, web specs and e2e
   (#72); worker import cycle fixed (#65).
@@ -71,13 +103,49 @@ modules are at stage 4.
 - Telemetry: one ingest path, MITRE tags, constrained search (#78); empty-range handling
   (#101).
 
-### Ops / Release
+### Installer
+
+- Installer v1: app version follows the installer's commit (or the manifest's
+  `git_sha`), compatibility and downgrade guards, `become` where ownership changes,
+  LDAP/AD optional (local groups and bootstrap admin when off), install refuses without
+  backup escrow, secret drift refused with `rotate-secret.yml`, upgrades back up and drain
+  first, logrotate, preflight rejects `CHANGE_ME` (#111).
+- **Signed releases**: tags must be on `main`; cosign keyless signatures of every image,
+  `release-manifest.json` and `SHA256SUMS`, with provenance and SBOM attestations; the
+  installer verifies the manifest signature before trusting any digest (#111;
+  `docs/release.md`).
+- Deploy by digest: `compose.prod.yml` has no `build:`; the `tn_release` role checks
+  `release-manifest.json` against `SHA256SUMS` and `50-stack-up` refuses mismatched
+  images (#109). Staging installs the signed release; AI model ids configurable
+  (`tn_ai_default_model`, `tn_ai_embed_model`) (#113).
+- `tn_docker` role installs a pinned, held Docker Engine on Ubuntu 24.04 before preflight
+  (verified repository key, containerd snapshotter, log rotation); compose floor 2.24
+  (#115).
+- Sites without vCenter: `tn_provisioner_backend: mock` skips every vCenter step, and a
+  read-only simulated vCenter (`tools/vcenter-sim`, `playbooks/lab-vcenter-sim.yml`) gives
+  the hypervisor dashboards an inventory; `tn_vcenter_port` (#116).
+- Fresh-install fixes found installing rc2 on staging: downgrade-guard message crashed
+  every first release install; redis-exporter healthcheck could never pass; smoke test
+  misread services without a healthcheck; single-node OpenSearch stayed yellow (replicas
+  now `auto_expand_replicas: 0-1`, `OPENSEARCH_REPLICAS` pins a count) (#117).
+- Earlier: fixes from #35, lab plane, `tn-egress` network, Windows Server roles (#94).
+
+### Operations
 
 - Release pipeline: images pushed by digest, blocking Trivy scan, per-image SBOMs,
   `release-manifest.json`; every action SHA-pinned; broken deploy workflows removed (#105).
 - Backups that work: every database, MinIO, escrowed secrets, restore drill in CI,
-  runbooks (#100).
-- Installer: fixes from #35, lab plane, `tn-egress` network, Windows Server roles (#94).
+  runbooks (#100); persisted secrets escrowed, `restore-secrets.sh`, disk floor and size
+  cap (#111). The nightly wrapper no longer reports a good backup as failed on a host's
+  first nights, before `weekly/` and `monthly/` exist (#118, open at the time of writing).
+- Runtime: Redis `noeviction`, Celery beat service, task time limits, read-only and
+  capability-dropped containers, third-party images pinned by digest,
+  `PROVISIONER_BACKEND` required, JSON logs (#109).
+- Monitoring: Prometheus alerts route through Alertmanager (null receiver by default,
+  webhook by file); all 19 rules load (#109).
+- Helm chart is a supported target: migration hook Job, hardened `securityContext`,
+  required secrets, images by digest from `release-manifest.json`, HPA/PDBs, and a kind
+  smoke install in CI (`helm-kind.yml`) (#108; `infra/k8s/README.md`).
 - Hardening evidence: populated-upgrade test, dispatch black-box, rehearsal scripts (#93);
   reversible migrations (#101).
 - Tests deflaked; k6 suite rewritten for the current API and **load-smoke is blocking**
@@ -96,6 +164,37 @@ modules are at stage 4.
   templates unless a library is set); installer `tn_vsphere_network` default empty (was
   `dPG-TN-MGMT`) (#81, #94).
 - `X-Forwarded-For` is ignored unless the peer is in `TRUSTED_PROXY_CIDRS` (#102).
+- The OAuth password grant is off on every user client; scripts use the
+  `truenorth-cli` device grant (`docs/api.md`) (#109).
+- `compose.prod.yml` no longer builds; the installer defaults to release mode
+  (`tn_release_version`, or `-e tn_image_source=build`) (#109).
+- `KEYCLOAK_ISSUER`, `PROVISIONER_BACKEND` and `tn_ai_base_url` have no defaults; the
+  installer refuses to finish without backup escrow (#109, #111).
+- On an install with more than one tenant, nobody is platform admin until
+  `PLATFORM_TENANT_ID` is set (#112).
+
+### Known limitations in v1.0.0
+
+Details and workarounds: [`docs/release-notes/v1.0.0.md`](docs/release-notes/v1.0.0.md).
+
+- **LTI and staff emails.** A launch whose email matches a staff (non-Student) account in
+  the same tenant is refused, so an instructor whose LMS email is their TrueNorth email
+  cannot use LTI deep linking.
+- **Telemetry indices from before the upgrade.** On range indices created before #112,
+  a Student's free-text telemetry search can still match inject events (labels are
+  stripped from results, but the matching events are returned). Fresh installs are
+  unaffected; re-run the telemetry bootstrap and recreate those indices.
+- **Per-tenant hypervisor credentials (H6).** The worker selects the range's own
+  tenant's connection, but the `vsphere_api` backend ignores it and uses the worker's
+  `VSPHERE_*` environment (one vCenter per install).
+- **Multi-tenant installs need `PLATFORM_TENANT_ID`**, or there is no platform admin.
+- **OpenSearch telemetry is not backed up** unless `OPENSEARCH_SNAPSHOT_REPO` is
+  configured.
+- **LTI requires HTTPS** for its state cookie; `LTI_REQUIRE_STATE_COOKIE=false` for
+  iframe / third-party-cookie-blocking setups.
+- **No live vCenter run yet.** `lab.yml` has not been executed against a real vCenter;
+  provisioning is validated against vcsim in CI and the hypervisor dashboards against a
+  simulated, read-only vCenter on staging.
 
 ## Upgrade notes (v1.0.0)
 
@@ -131,6 +230,38 @@ Operator actions before upgrading an existing site:
     hand (realm import does not overwrite them).
 14. **Images by digest**: pull the images named in the release's
     `release-manifest.json` by digest, not by tag.
-15. **AI node credentials**: the LiteLLM master key that used to be committed as a
+15. **`PLATFORM_TENANT_ID`** on multi-tenant installs: the operator's tenant id.
+16. **Telemetry indices**: re-run `telemetry/pipelines/bootstrap.py` so range templates
+    carry `tn_ground_truth` unindexed; recreate range indices made before the upgrade
+    (see Known limitations).
+17. **LTI over HTTPS**: the launch state cookie is `Secure; SameSite=None`. Set
+    `LTI_REQUIRE_STATE_COOKIE=false` only where the tool runs in an iframe whose browsers
+    block third-party cookies.
+18. **AI node credentials**: the LiteLLM master key that used to be committed as a
     default is compromised; rotate it on the AI node and set `OPENAI_BASE_URL` /
     `OPENAI_API_KEY` from your site values; do not rely on a compose default.
+
+## Release candidates
+
+Pre-releases of v1.0.0, each a signed GitHub release (`docs/release.md`). Entries list
+what changed since the previous candidate. Dates are GitHub release dates (UTC).
+
+### v1.0.0-rc3 — 2026-10-09 (`e015d27`)
+
+- Fresh-install fixes from the rc2 staging install: downgrade-guard message, redis-exporter
+  healthcheck, smoke health parsing, single-node OpenSearch replicas (#117).
+- Installed on staging as an upgrade from rc2 (`docs/release-notes/v1.0.0.md`).
+
+### v1.0.0-rc2 — 2026-10-09 (`32a8bed`)
+
+- Every API YAML parse through `safe_yaml` (#114).
+- `tn_docker` role: pinned, held Docker before preflight (#115).
+- Sites without vCenter; read-only simulated vCenter for staging (#116).
+- First clean install on staging from the signed release; it found the four bugs fixed
+  in rc3.
+
+### v1.0.0-rc1 — 2026-10-08 (`d9e04dc`)
+
+- First candidate: everything through #112 (final security review), including the Helm
+  chart (#108), runtime hardening and deploy by digest (#109), release housekeeping
+  (#110), installer v1 with signed releases (#111) and configurable AI model ids (#113).

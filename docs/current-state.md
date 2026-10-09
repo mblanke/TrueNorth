@@ -1,8 +1,10 @@
 # TrueNorth — Current State
 
 **2026-10-08, measured on `github/main` (`6d7b530`: #90, #97, #99 and #101 merged);
-status lines updated at `83d7d43` (#107).** All 17 modules are at stage 4; v1.0.0
-release hardening is in progress (`CHANGELOG.md`).
+status lines updated at `83d7d43` (#107); release status updated 2026-10-09 at
+`e015d27` (`v1.0.0-rc3`, #117).** All 17 modules are at stage 4. `v1.0.0-rc3` is the
+latest signed pre-release and runs on staging; `v1.0.0` is not tagged
+(`CHANGELOG.md`; limitations and staging record in `docs/release-notes/v1.0.0.md`).
 This replaces the 2026-08-18 reconstruction. That document's defects are fixed: the
 duplicate Alembic tree is gone, the dead injector tree is gone, ranges are tenant-scoped,
 and CI is real. Trust order is unchanged: code > configuration > running services >
@@ -27,10 +29,15 @@ tests > docs. Labels: `IMPLEMENTED` `PARTIAL` `UNTESTED` `PLANNED`.
 
 ## Release and deployment: `PARTIAL`
 
-Tags `v*` publish five images by digest, gated by Trivy (fixable HIGH/CRITICAL), with
-SBOMs and `release-manifest.json` (`docs/release.md`). **Not done:** the installer does
-not consume the manifest yet (`compose.prod.yml` still builds on the target). The API
-reports `TN_VERSION` (#103). No workflow deploys. The old deploy workflows were deleted because they could not work.
+Tags `v*` on `main` publish five images by digest, gated by Trivy (fixable
+HIGH/CRITICAL), with SBOMs and `release-manifest.json`, all cosign-signed
+(`docs/release.md`). The installer verifies the manifest signature and installs by
+digest (`compose.prod.yml` has no `build:`; #109, #111). The API reports `TN_VERSION`
+(#103). No workflow deploys. The old deploy workflows were deleted because they could not work.
+Staging (`tn-staging`, Ubuntu 24.04, no vCenter, no AD): clean install of rc2 from the
+signed release and upgrade rc2 → rc3, as reported by the staging session and recorded
+in `docs/release-notes/v1.0.0.md`. **Not done:** a run against real vCenter; Helm is
+exercised only by the CI kind smoke install.
 
 ## Tests
 
@@ -44,6 +51,7 @@ from CI runs, not from this count.
 
 ## Open
 
-1. Installer: install by digest from `release-manifest.json` (PR #109).
+1. v1.0.0 known limitations: `docs/release-notes/v1.0.0.md` (and #118, the nightly
+   backup wrapper on a new host, open).
 2. Live vSphere lab evidence pending (credentials, self-hosted runner).
 3. Content authoring remains the binding constraint (about 2,600 build hours).
