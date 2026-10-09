@@ -44,11 +44,13 @@ jobs:
           python -m venv "$RUNNER_TEMP/venv"
           "$RUNNER_TEMP/venv/bin/pip" install -q -r requirements-test.txt
       # The test wants an empty, disposable PostgreSQL. One container per run, loopback
-      # only, removed in the last step.
+      # only, removed in the last step. Pulled from mirror.gcr.io (Google's Docker Hub
+      # cache) by name: this runner is a shared host, so the dockerhub-mirror action, which
+      # rewrites daemon.json and restarts dockerd, is not used here.
       - name: Disposable PostgreSQL
         run: |
           docker run -d --name "$LAB_PG_NAME" -e POSTGRES_USER=lab -e POSTGRES_PASSWORD=lab \
-            -e POSTGRES_DB=lab -p "127.0.0.1:${LAB_PG_PORT}:5432" postgres:16
+            -e POSTGRES_DB=lab -p "127.0.0.1:${LAB_PG_PORT}:5432" mirror.gcr.io/library/postgres:16
           for _ in $(seq 1 60); do
             if docker exec "$LAB_PG_NAME" pg_isready -U lab -d lab >/dev/null 2>&1; then exit 0; fi
             sleep 2

@@ -12,6 +12,7 @@ on:
       - "infra/platform/docker/compose.prod.yml"
       - "infra/platform/docker/postgres-init/**"
       - ".github/workflows/backup-drill.yml"
+      - ".github/actions/dockerhub-mirror/**"
   schedule:
     - cron: "41 3 * * *"   # nightly, 03:41 UTC
   workflow_dispatch:
@@ -29,6 +30,8 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+      # Docker Hub through mirror.gcr.io (docs/release.md "Docker Hub pulls in CI").
+      - uses: ./.github/actions/dockerhub-mirror
 
       # Pinned: the runner's apt shellcheck (0.9 on ubuntu-24.04) and newer releases
       # disagree on some checks. Locally: the same docker command.

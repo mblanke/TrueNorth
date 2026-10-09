@@ -44,9 +44,12 @@ jobs:
     # PostgreSQL for the tests whose claim SQLite cannot prove: row locks, partial unique
     # indexes under concurrency, the real migration chain (tests/conftest.py
     # postgres_engine). Without TEST_POSTGRES_ADMIN_URL they skip.
+    # Service containers start before any step, so the dockerhub-mirror action cannot
+    # reach them (and its dockerd restart would stop them): both images are named on
+    # mirror.gcr.io, Google's Docker Hub cache, directly (docs/release.md).
     services:
       postgres:
-        image: postgres:16
+        image: mirror.gcr.io/library/postgres:16
         env:
           POSTGRES_USER: tn_ci
           POSTGRES_PASSWORD: tn_ci
@@ -56,7 +59,7 @@ jobs:
       # OpenSearch for detection credit against real mapping and analysis
       # (tests/api/test_detection_opensearch.py; TEST_OPENSEARCH_URL).
       opensearch:
-        image: opensearchproject/opensearch:2.13.0
+        image: mirror.gcr.io/opensearchproject/opensearch:2.13.0
         env:
           discovery.type: single-node
           DISABLE_SECURITY_PLUGIN: "true"
@@ -273,7 +276,14 @@ jobs:
       TRIVY_SHA256: "2ae6fe3ee734b7fdf11335663e18c75ea12dccc76062f09f164a3b0f8be4371a"
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      # Docker Hub through mirror.gcr.io: the daemon (buildx's builder image) and
+      # BuildKit (base images), which does not read the daemon's mirror.
+      - uses: ./.github/actions/dockerhub-mirror
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+        with:
+          buildkitd-config-inline: |
+            [registry."docker.io"]
+              mirrors = ["mirror.gcr.io"]
       # Built, not pushed; loaded into the runner's Docker so Trivy scans this exact image.
       # Images are published only by release.yml.
       - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
@@ -357,6 +367,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      # Keycloak is on quay.io; the mirror keeps every docker job alike (contract test).
+      - uses: ./.github/actions/dockerhub-mirror
       - run: bash scripts/check_keycloak_realm.sh
 
   # Integration lanes. Each one starts real services, and each one fails when no test
@@ -376,6 +388,7 @@ jobs:
       ITEST_OUT: ${{ github.workspace }}/build/itest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: ./.github/actions/dockerhub-mirror
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: ${{ env.PYTHON_VERSION }}
@@ -409,6 +422,7 @@ jobs:
       ITEST_WEB: "1"
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: ./.github/actions/dockerhub-mirror
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -458,6 +472,7 @@ jobs:
       K6_IMAGE: grafana/k6@sha256:23f2279054c3e01535455c4d92914a625df12aeb631ea0e3ea7a43f96bcbc843
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: ./.github/actions/dockerhub-mirror
       - name: Start the stack (build, migrate, wait for health)
         run: bash scripts/itest.sh up
       - name: k6 smoke (1 VU, 30 s per scenario)
@@ -511,6 +526,7 @@ jobs:
       MOODLE_COMPOSE: docker compose -p tn-moodle-test -f infra/platform/docker/compose.moodle-test.yml
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: ./.github/actions/dockerhub-mirror
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: ${{ env.PYTHON_VERSION }}
@@ -566,6 +582,7 @@ jobs:
       VCSIM_COMPOSE: docker compose -p tn-vcsim -f infra/platform/docker/compose.vcsim.yml
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: ./.github/actions/dockerhub-mirror
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: ${{ env.PYTHON_VERSION }}
@@ -618,6 +635,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: ./.github/actions/dockerhub-mirror
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: ${{ env.PYTHON_VERSION }}
