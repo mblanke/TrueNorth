@@ -541,9 +541,11 @@ def activity_stats(
 def _template_dict(rng: Range) -> dict:
     import yaml
 
+    from .. import safe_yaml
+
     raw = rng.template.yaml if rng.template else ""
     try:
-        loaded = yaml.safe_load(raw or "") or {}
+        loaded = safe_yaml.load(raw or "") or {}
     except yaml.YAMLError as exc:
         raise HTTPException(422, f"range template is not valid YAML: {exc}") from exc
     return loaded if isinstance(loaded, dict) else {}

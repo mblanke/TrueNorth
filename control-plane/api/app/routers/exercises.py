@@ -39,7 +39,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Path, Qu
 from fastapi.responses import HTMLResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
-from .. import scenario_objectives
+from .. import safe_yaml, scenario_objectives
 from ..aar_html import RESPONSE_HEADERS as AAR_PAGE_HEADERS
 from ..aar_html import pdf_text
 from ..aar_html import render_html as render_aar_html
@@ -109,7 +109,7 @@ def _scenario_definition(db: Session, ex: Exercise, user: CurrentUser) -> dict:
     scenario = get_owned(db, Scenario, ex.scenario_id, user)
     if scenario and scenario.yaml:
         try:
-            parsed = yaml.safe_load(scenario.yaml) or {}
+            parsed = safe_yaml.load(scenario.yaml) or {}
             if isinstance(parsed, dict) and isinstance(parsed.get("timeline"), list):
                 definition["timeline"] = parsed["timeline"]
         except yaml.YAMLError:
@@ -250,7 +250,7 @@ def scenario_detail(
     parsed: dict = {}
     if scenario and scenario.yaml:
         try:
-            parsed = yaml.safe_load(scenario.yaml) or {}
+            parsed = safe_yaml.load(scenario.yaml) or {}
         except yaml.YAMLError:
             parsed = {}
     objectives = db.query(Objective).filter(Objective.exercise_id == ex.id).order_by(Objective.ref_id).all()

@@ -27,6 +27,7 @@ from fastapi import HTTPException
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
+from .. import safe_yaml
 from ..auth import CurrentUser
 from ..models import AuditLog, Range, RangeState
 from ..rbac import Permission, user_has_permission
@@ -143,7 +144,7 @@ def template_block(rng: Range) -> GreyspaceBlock | None:
     if not raw:
         return None
     try:
-        doc = yaml.safe_load(raw)
+        doc = safe_yaml.load(raw)
     except yaml.YAMLError:
         return None
     if not isinstance(doc, dict) or not isinstance(doc.get("greyspace"), dict):

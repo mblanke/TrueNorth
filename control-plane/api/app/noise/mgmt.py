@@ -18,7 +18,7 @@ import uuid
 import yaml
 from sqlalchemy.orm import Session
 
-from .. import network_inventory
+from .. import network_inventory, safe_yaml
 from ..models import Range
 from ..network_inventory import NetworkReservation
 from . import topology
@@ -48,7 +48,7 @@ def range_template(rng: Range) -> dict:
     """The range's template as a dict; {} when it is missing or not valid YAML (the
     worker reports that when it provisions; it has no noise either way)."""
     try:
-        loaded = yaml.safe_load(rng.template.yaml if rng.template else "") or {}
+        loaded = safe_yaml.load(rng.template.yaml if rng.template else "") or {}
     except yaml.YAMLError:
         return {}
     return loaded if isinstance(loaded, dict) else {}

@@ -27,6 +27,7 @@ import yaml
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from . import safe_yaml
 from .detections.models import DetectionSubmission
 from .models import Exercise, ExerciseState, Objective, Scenario, User
 
@@ -115,7 +116,7 @@ def close(db: Session, exercise_id: uuid.UUID, background_tasks: Any, closer: Pa
 def duration(scenario_yaml: str | None) -> timedelta | None:
     """The scenario's planned length, or None when it sets none (or a nonsense one)."""
     try:
-        doc = yaml.safe_load(scenario_yaml or "") or {}
+        doc = safe_yaml.load(scenario_yaml or "") or {}
     except yaml.YAMLError:
         return None
     if not isinstance(doc, dict):

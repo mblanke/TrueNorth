@@ -19,6 +19,7 @@ from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from .. import safe_yaml
 from ..course_content_ingest import find_catalogue_course, import_course_content
 from ..models import Course, Enrollment
 from . import bundle as bundle_mod
@@ -164,7 +165,7 @@ def accept(
 def _as_catalogue_course(parsed: bundle_mod.Bundle) -> str:
     """The release's course file with its catalogue identity: ARC² runs carry an ARC2-…
     code, the course they deliver is the catalogue one."""
-    doc = yaml.safe_load(parsed.files["platform"][parsed.meta["course_yaml"]].decode("utf-8"))
+    doc = safe_yaml.load(parsed.files["platform"][parsed.meta["course_yaml"]].decode("utf-8"))
     doc["course_code"] = parsed.meta["catalogue_code"]
     return yaml.safe_dump(doc, sort_keys=False, allow_unicode=True)
 

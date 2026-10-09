@@ -19,6 +19,7 @@ from typing import Any
 import yaml
 from sqlalchemy.orm import Session
 
+from . import safe_yaml
 from .models import (
     AnalystAnnotation,
     AuditLog,
@@ -56,7 +57,7 @@ def _scenario_injects(scenario: Scenario | None) -> list[dict[str, Any]]:
     if scenario is None or not scenario.yaml:
         return []
     try:
-        parsed = yaml.safe_load(scenario.yaml) or {}
+        parsed = safe_yaml.load(scenario.yaml) or {}
     except yaml.YAMLError:
         return []
     timeline = parsed.get("timeline") if isinstance(parsed, dict) else None

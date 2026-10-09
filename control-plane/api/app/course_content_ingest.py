@@ -35,10 +35,9 @@ from __future__ import annotations
 
 import json
 
-import yaml
 from sqlalchemy.orm import Session
 
-from . import qsp_paths
+from . import qsp_paths, safe_yaml
 from .models import (
     ContentKind,
     Course,
@@ -101,7 +100,7 @@ def _po_ref(raw) -> dict | None:
 
 def parse_course_content(yaml_text: str) -> dict:
     """Parse an authored course file into a normalized dict. Pure (no DB)."""
-    doc = yaml.safe_load(yaml_text) or {}
+    doc = safe_yaml.load(yaml_text) or {}
     course_code = str(doc.get("course_code") or "").strip()
     if not course_code:
         raise ValueError("course file has no course_code")

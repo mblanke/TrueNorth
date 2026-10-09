@@ -29,7 +29,7 @@ import yaml
 from fastapi import APIRouter, Depends, HTTPException, Path
 from sqlalchemy.orm import Session
 
-from .. import range_lifecycle
+from .. import range_lifecycle, safe_yaml
 from ..auth import CurrentUser
 from ..db import get_db
 from ..detections.redaction import sees_answer_key
@@ -62,7 +62,7 @@ def _dispatch(task_name: str, *args) -> str | None:
 def _definition(sc: Scenario) -> dict:
     """{"timeline": [...], "objectives": [...]} from the scenario YAML; 422 if it is not a mapping."""
     try:
-        parsed = yaml.safe_load(sc.yaml or "") or {}
+        parsed = safe_yaml.load(sc.yaml or "") or {}
     except yaml.YAMLError as exc:
         raise HTTPException(422, f"Scenario YAML does not parse: {exc}") from exc
     if not isinstance(parsed, dict):

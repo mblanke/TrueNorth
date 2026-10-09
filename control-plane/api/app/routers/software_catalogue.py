@@ -21,6 +21,7 @@ import yaml
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
+from .. import safe_yaml
 from ..auth import CurrentUser, get_current_user
 
 router = APIRouter(prefix="/software-catalogue", tags=["software-catalogue"])
@@ -101,7 +102,7 @@ def summarise(doc: object) -> SoftwareCatalogueOut:
 @functools.lru_cache(maxsize=4)
 def _load(path: str, mtime: float) -> SoftwareCatalogueOut:
     with open(path, encoding="utf-8") as fh:
-        return summarise(yaml.safe_load(fh) or {})
+        return summarise(safe_yaml.load(fh.read()) or {})
 
 
 @router.get("", response_model=SoftwareCatalogueOut)

@@ -23,6 +23,7 @@ from typing import Any
 import yaml
 from sqlalchemy.orm import Session
 
+from . import safe_yaml
 from .detections.names import canonical_validator
 from .models import Objective, ObjectiveType
 
@@ -73,7 +74,7 @@ def parse_objectives(items: Any) -> list[dict[str, Any]]:
 def parse(scenario_yaml: str | None) -> list[dict[str, Any]]:
     """The scenario YAML's objectives as row values; [] when there are none or it is unreadable."""
     try:
-        doc = yaml.safe_load(scenario_yaml or "") or {}
+        doc = safe_yaml.load(scenario_yaml or "") or {}
     except yaml.YAMLError:
         return []
     return parse_objectives(doc.get("objectives") if isinstance(doc, dict) else None)

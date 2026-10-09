@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
+from .. import safe_yaml
 from ..attack_catalogue import CatalogueUnavailableError
 from ..auth import CurrentUser
 from ..db import get_db, not_deleted
@@ -37,7 +38,7 @@ def _validate_sigma_yaml(raw_yaml: str) -> SigmaValidationResult:
     warnings: list[str] = []
 
     try:
-        doc = yaml.safe_load(raw_yaml)
+        doc = safe_yaml.load(raw_yaml)
     except yaml.YAMLError as exc:
         return SigmaValidationResult(valid=False, errors=[f"Invalid YAML: {exc}"])
 

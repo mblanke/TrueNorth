@@ -23,6 +23,7 @@ from typing import Any
 
 import yaml
 
+from .. import safe_yaml
 from ..search_backends import BaseSearchBackend
 from ..search_backends.detection_query import parse_detection, references_labels
 from .names import QUERY, canonical_validator
@@ -72,7 +73,7 @@ def _params(raw: str | None) -> dict[str, Any]:
 
 def _scenario(scenario_yaml: str | None) -> dict[str, Any]:
     try:
-        doc = yaml.safe_load(scenario_yaml or "") or {}
+        doc = safe_yaml.load(scenario_yaml or "") or {}
     except yaml.YAMLError:
         return {}
     return doc if isinstance(doc, dict) else {}
