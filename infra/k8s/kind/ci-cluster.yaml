@@ -1,0 +1,11 @@
+# kind cluster for .github/workflows/helm-kind.yml. The node's containerd pulls the
+# Docker Hub images of deps.yaml and the chart's helm test itself, so it reads registry
+# hosts from /etc/containerd/certs.d; the workflow then writes docker.io/hosts.toml in
+# each node (mirror.gcr.io first, Docker Hub as fallback). kind's node image does not set
+# config_path by default. docs/release.md "Docker Hub pulls in CI".
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+containerdConfigPatches:
+  - |-
+    [plugins."io.containerd.grpc.v1.cri".registry]
+      config_path = "/etc/containerd/certs.d"

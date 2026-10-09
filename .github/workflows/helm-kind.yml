@@ -22,6 +22,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      # Docker Hub through mirror.gcr.io (the buildx builder and kind node images).
+      - uses: ./.github/actions/dockerhub-mirror
 
       - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
         with:
@@ -38,7 +40,12 @@ jobs:
           done
           helm template tn infra/k8s/helm/truenorth-range -n truenorth "${args[@]}" > /dev/null
 
+      # BuildKit's own registry config: it does not read the daemon's mirror.
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+        with:
+          buildkitd-config-inline: |
+            [registry."docker.io"]
+              mirrors = ["mirror.gcr.io"]
 
       # The five release images, built as ci.yml's build-docker builds them (same
       # contexts; content/ is a named context of the api and worker, scenario-engine of
@@ -91,7 +98,27 @@ jobs:
         with:
           version: v0.33.0
           cluster_name: tn-helm-smoke
+          config: infra/k8s/kind/ci-cluster.yaml
           wait: 120s
+
+      # deps.yaml and the helm test pull from Docker Hub inside the node, through its
+      # containerd: the same mirror, with Docker Hub as the fallback. containerd reads
+      # hosts.toml on each pull, so no restart.
+      - name: kind nodes pull Docker Hub through mirror.gcr.io
+        run: |
+          set -euo pipefail
+          for node in $(kind get nodes --name tn-helm-smoke); do
+            docker exec "$node" mkdir -p /etc/containerd/certs.d/docker.io
+            printf '%s\n' 'server = "https://registry-1.docker.io"' '' \
+              '[host."https://mirror.gcr.io"]' '  capabilities = ["pull", "resolve"]' |
+              docker exec -i "$node" tee /etc/containerd/certs.d/docker.io/hosts.toml
+            # containerd 2 migrates the patch to the cri.v1.images plugin.
+            if ! docker exec "$node" containerd config dump 2>/dev/null |
+                grep -A1 "cri.v1.images'.registry]" | grep -qF "config_path = '/etc/containerd/certs.d'"; then
+              echo "::error::$node containerd does not read /etc/containerd/certs.d"
+              exit 1
+            fi
+          done
 
       - name: Install, migrate, roll out, /health/ready, helm test, uninstall
         env:

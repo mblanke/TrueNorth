@@ -1,0 +1,49 @@
+# Docker Hub pulls on GitHub-hosted runners go through Google's public Docker Hub cache,
+# mirror.gcr.io, instead of anonymous registry-1.docker.io: the runners share egress IPs,
+# so anonymous Docker Hub pulls hit "toomanyrequests" and intermittent 500s (PR #124).
+# No credentials. The mirror serves Docker Hub's content by the same digests, and dockerd
+# falls back to Docker Hub when the mirror fails.
+#
+# This configures the runner's Docker daemon (docker run/pull/build, docker compose,
+# kind's node image, and the buildx builder image). It restarts dockerd, so it must run
+# before anything starts a container, and never in a job with `services:` (their
+# containers would be stopped; those jobs reference mirror.gcr.io images directly).
+# BuildKit's docker-container builder does not read daemon.json: every
+# docker/setup-buildx-action step sets buildkitd-config-inline with the same mirror.
+# kind's containerd is configured in helm-kind.yml. tests/contracts/test_ci_dockerhub_mirror.py
+# keeps every job on it; docs/release.md "Docker Hub pulls in CI".
+name: Docker Hub mirror
+description: Route the runner's Docker daemon pulls from Docker Hub through mirror.gcr.io.
+inputs:
+  mirror:
+    description: Registry mirror URL for docker.io.
+    required: false
+    default: https://mirror.gcr.io
+runs:
+  using: composite
+  steps:
+    - name: Docker Hub pulls through ${{ inputs.mirror }}
+      shell: bash
+      env:
+        MIRROR: ${{ inputs.mirror }}
+      run: |
+        set -euo pipefail
+        conf=/etc/docker/daemon.json
+        current='{}'
+        if sudo test -s "$conf"; then current="$(sudo cat "$conf")"; fi
+        # Merge: the runner image ships its own daemon.json (cgroup settings); keep it.
+        jq --arg m "$MIRROR" '."registry-mirrors" = (((."registry-mirrors" // []) + [$m]) | unique)' \
+          <<<"$current" > "$RUNNER_TEMP/daemon.json"
+        sudo install -m 0644 "$RUNNER_TEMP/daemon.json" "$conf"
+        echo "$conf:" && cat "$conf"
+        sudo systemctl restart docker
+        for _ in $(seq 1 30); do
+          if docker info >/dev/null 2>&1; then break; fi
+          sleep 1
+        done
+        mirrors="$(docker info --format '{{range .RegistryConfig.Mirrors}}{{println .}}{{end}}')"
+        echo "Registry mirrors: $mirrors"
+        if ! grep -qF "${MIRROR%/}" <<<"$mirrors"; then
+          echo "::error::dockerd does not list $MIRROR as a registry mirror"
+          exit 1
+        fi

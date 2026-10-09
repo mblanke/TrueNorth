@@ -186,6 +186,35 @@ v0.69.4, and hijacked `trivy-action`/`setup-trivy` tags). Rules when bumping any
 - for Trivy, verify the cosign bundle of the checksums file, then update
   `TRIVY_VERSION` and `TRIVY_SHA256` in **both** workflows.
 
+## Docker Hub pulls in CI
+
+GitHub-hosted runners share egress addresses, so anonymous Docker Hub pulls fail on its
+rate limit (`toomanyrequests`) and on intermittent 500s. On PR #124 that failed
+build-docker, integration, e2e, load-smoke, moodle, greyspace, helm-kind and the backup
+drill. CI pulls Docker Hub images through Google's public cache, `mirror.gcr.io`, instead.
+It needs no credentials and serves the same content by the same digests. Digest-pinned
+references stay pinned and resolve to identical bytes.
+
+| Pull path | How it uses the mirror |
+|---|---|
+| Docker daemon (`docker run`/`pull`/`build`, compose, kind's node image, the buildx builder image) | `.github/actions/dockerhub-mirror`, the first step after checkout: merges `registry-mirrors` into the runner's `/etc/docker/daemon.json`, restarts dockerd and fails unless `docker info` lists the mirror. dockerd falls back to Docker Hub if the mirror fails |
+| `services:` (ci.yml `test-python`) | They start before any step, and a dockerd restart would stop them, so the images are named `mirror.gcr.io/library/postgres:16` and so on |
+| BuildKit (`docker/setup-buildx-action`, docker-container driver), which does not read daemon.json | `buildkitd-config-inline` with `[registry."docker.io"] mirrors = ["mirror.gcr.io"]` in ci.yml `build-docker`, helm-kind and release.yml `image`. Unlike dockerd, BuildKit did not fall back to Docker Hub when the mirror was unreachable (tested locally with an unresolvable mirror host), so these builds depend on `mirror.gcr.io` being up |
+| kind's node containerd (helm-kind: `deps.yaml`, the helm test image) | `infra/k8s/kind/ci-cluster.yaml` sets containerd's `config_path`. A step then writes `certs.d/docker.io/hosts.toml` in each node, with the mirror first and Docker Hub as the fallback |
+| Self-hosted runner (lab.yml) | The host's dockerd is shared and is not reconfigured. The image is named on `mirror.gcr.io` |
+
+`tests/contracts/test_ci_dockerhub_mirror.py` fails when a hosted job that runs
+docker/compose/buildx/kind lacks the action, when a service image or a buildx builder
+uses Docker Hub directly, or when the kind configuration drifts. A new job that pulls
+images only needs `- uses: ./.github/actions/dockerhub-mirror` after its checkout.
+
+A release builds with `pull: true` from base-image *tags*. Through the mirror, a tag can
+briefly resolve to an older digest than Docker Hub's while the cache refreshes. The
+release Trivy gate scans what was actually built, and the provenance attestation records
+the base digest. To force a fresh base, rerun after the cache catches up. You can also
+check the tag with `docker buildx imagetools inspect` against `docker.io` and
+`mirror.gcr.io`.
+
 ## Image scanning in PR CI
 
 `ci.yml` `build-docker` builds each image (no push) and scans it with the same pinned
