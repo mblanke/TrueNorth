@@ -21,9 +21,11 @@
 # Not backed up, on purpose (docs/runbooks/backup-restore.md):
 #   Redis      — Celery broker, cache and rate-limit counters. Restoring a stale
 #                queue would replay provisioning tasks.
-#   OpenSearch — telemetry. Snapshotted only when OPENSEARCH_SNAPSHOT_REPO names
-#                a repository the operator registered (prod compose sets no
-#                path.repo); otherwise recorded as "not backed up" in the manifest.
+#   OpenSearch — telemetry is not copied into the backup directory. When
+#                OPENSEARCH_SNAPSHOT_REPO is set (the installer sets tn_snapshots, a
+#                filesystem repository at $TN_DATA_ROOT/opensearch-snapshots that
+#                70-telemetry registers) a snapshot is taken there and named in the
+#                manifest; otherwise the manifest records "not backed up".
 #
 # Usage: backup.sh            (all settings from the environment)
 #
@@ -49,7 +51,11 @@
 #                            OPENSEARCH_SNAPSHOT_AUTH (user:pass, read from the env
 #                            file) and OPENSEARCH_SNAPSHOT_CACERT (the internal CA, path
 #                            inside the container; default config/certs/ca.pem). The
-#                            certificate is verified: no `curl -k`.
+#                            certificate is verified: no `curl -k`. A snapshot that is
+#                            not SUCCESS fails the backup.
+#   OPENSEARCH_SNAPSHOT_KEEP keep the newest N tn-* snapshots in the repository and
+#                            delete older ones after a successful snapshot (default 14;
+#                            0 = keep all).
 #   OPENSSL                  default: openssl
 #
 # Exit codes: 0 ok; 1 failed (no backup kept); 3 data backed up but secrets NOT
@@ -72,8 +78,7 @@ BACKUP_MIN_FREE_GB="${BACKUP_MIN_FREE_GB:-10}"
 BACKUP_MAX_TOTAL_GB="${BACKUP_MAX_TOTAL_GB:-0}"
 BACKUP_ROOT="${BACKUP_ROOT:-${BACKUP_DIR}}"
 OPENSEARCH_SNAPSHOT_REPO="${OPENSEARCH_SNAPSHOT_REPO:-}"
-OPENSEARCH_URL="${OPENSEARCH_URL:-https://localhost:9200}"
-OPENSEARCH_SNAPSHOT_CACERT="${OPENSEARCH_SNAPSHOT_CACERT:-config/certs/ca.pem}"
+OPENSEARCH_SNAPSHOT_KEEP="${OPENSEARCH_SNAPSHOT_KEEP:-14}"
 OPENSSL="${OPENSSL:-openssl}"
 
 TIMESTAMP="$(date -u +"%Y%m%dT%H%M%SZ")"
@@ -177,20 +182,36 @@ log "INFO" "  minio: ${BUCKETS} buckets, ${BAK_OBJECTS} objects"
 # ── 3. OpenSearch (optional) ─────────────────────────────────────────────────
 CURRENT_STEP="opensearch"
 if [[ -n "${OPENSEARCH_SNAPSHOT_REPO}" ]]; then
+    [[ "${OPENSEARCH_SNAPSHOT_KEEP}" =~ ^[0-9]+$ ]] || die "OPENSEARCH_SNAPSHOT_KEEP must be a whole number"
     snap="tn-$(printf '%s' "${TIMESTAMP}" | tr '[:upper:]' '[:lower:]')"
-    auth="$(env_get OPENSEARCH_SNAPSHOT_AUTH)"
-    # The internal CA verifies the node certificate (CN=opensearch, SAN localhost).
-    curl_opts=(-sf)
-    if [[ "${OPENSEARCH_URL}" == https:* ]]; then curl_opts+=(--cacert "${OPENSEARCH_SNAPSHOT_CACERT}"); fi
-    # Credentials go to curl in a netrc-style config on stdin (-K -), not on its command line.
-    curl_cfg=""
-    if [[ -n "$auth" ]]; then
-        curl_cfg="user = \"${auth//\"/\\\"}\""
-    fi
-    printf '%s\n' "${curl_cfg}" | dc exec -T opensearch curl "${curl_opts[@]}" -K - -X PUT \
-        "${OPENSEARCH_URL}/_snapshot/${OPENSEARCH_SNAPSHOT_REPO}/${snap}?wait_for_completion=true" >/dev/null
+    # os_curl (lib.sh): inside the container, CA-verified, credentials on stdin.
+    # The repository's own security/system indices are left out: a restore never replaces them.
+    os_curl -X PUT -H 'Content-Type: application/json' \
+        "${OPENSEARCH_URL}/_snapshot/${OPENSEARCH_SNAPSHOT_REPO}/${snap}?wait_for_completion=true" \
+        -d '{"indices":"*,-.*","include_global_state":false}' >"${WORK_PATH}/.os-snapshot.json"
+    # wait_for_completion answers 200 for a PARTIAL or FAILED snapshot too.
+    grep -q '"state":"SUCCESS"' "${WORK_PATH}/.os-snapshot.json" \
+        || die "OpenSearch snapshot ${snap} did not succeed: $(head -c 400 "${WORK_PATH}/.os-snapshot.json")"
+    rm -f "${WORK_PATH}/.os-snapshot.json"
     OS_JSON="{\"status\":\"snapshot\",\"repository\":$(json_str "${OPENSEARCH_SNAPSHOT_REPO}"),\"snapshot\":$(json_str "$snap")}"
     log "INFO" "  opensearch: snapshot ${snap} in repository ${OPENSEARCH_SNAPSHOT_REPO}"
+    # Each snapshot pins the indices it holds, so the repository would otherwise keep every
+    # telemetry index ever written. Names sort by time (tn-<UTC timestamp>); only ours are pruned.
+    if (( OPENSEARCH_SNAPSHOT_KEEP > 0 )); then
+        CURRENT_STEP="opensearch:prune"
+        ours="$(os_curl "${OPENSEARCH_URL}/_cat/snapshots/${OPENSEARCH_SNAPSHOT_REPO}?h=id" \
+            | tr -d '\r ' | grep -E '^tn-[0-9]{8}t[0-9]{6}z$' | sort || true)"
+        n_ours="$(printf '%s\n' "${ours}" | grep -c . || true)"
+        old_snaps=""
+        if (( n_ours > OPENSEARCH_SNAPSHOT_KEEP )); then
+            old_snaps="$(printf '%s\n' "${ours}" | head -n "$(( n_ours - OPENSEARCH_SNAPSHOT_KEEP ))")"
+        fi
+        for old in ${old_snaps}; do
+            [[ "$old" == "$snap" ]] && continue
+            log "INFO" "  opensearch: deleting snapshot ${old} (keeping the newest ${OPENSEARCH_SNAPSHOT_KEEP})"
+            os_curl -X DELETE "${OPENSEARCH_URL}/_snapshot/${OPENSEARCH_SNAPSHOT_REPO}/${old}" >/dev/null
+        done
+    fi
 else
     OS_JSON='{"status":"not-backed-up","reason":"no OPENSEARCH_SNAPSHOT_REPO registered; telemetry is not part of this backup"}'
     log "WARN" "  opensearch: not backed up (OPENSEARCH_SNAPSHOT_REPO unset)"

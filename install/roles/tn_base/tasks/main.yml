@@ -149,6 +149,8 @@
     - { path: "{{ tn_data_root }}/redis", owner: "999", group: "999" }
     - { path: "{{ tn_data_root }}/minio", owner: "1000", group: "1000" }
     - { path: "{{ tn_data_root }}/opensearch", owner: "1000", group: "1000" }
+    # path.repo: OpenSearch writes its snapshots here (the backup's telemetry).
+    - { path: "{{ tn_data_root }}/opensearch-snapshots", owner: "1000", group: "1000", mode: "0750" }
     - { path: "{{ tn_data_root }}/logs" }
     - { path: "{{ tn_data_root }}/reports" }
     - { path: "{{ tn_data_root }}/artifacts" }

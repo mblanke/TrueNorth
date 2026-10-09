@@ -17,6 +17,8 @@
 #   MC_IMAGE       image that provides `mc`. Default: the stack's pinned MinIO
 #                  image, which ships mc of the same release.
 #   BACKUP_WEBHOOK_URL (or WEBHOOK_URL)  optional extra alert channel.
+#   OPENSEARCH_URL / OPENSEARCH_SNAPSHOT_CACERT  how os_curl reaches the node from inside
+#                  the opensearch container (https://localhost:9200, config/certs/ca.pem).
 # shellcheck shell=bash
 
 TN_BACKUP_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -25,6 +27,8 @@ ENV_FILE="${ENV_FILE:-${TN_BACKUP_ROOT}/infra/platform/docker/.env.production}"
 MC_IMAGE="${MC_IMAGE:-pgsty/minio:RELEASE.2026-08-04T00-00-00Z}"
 BACKUP_WEBHOOK_URL="${BACKUP_WEBHOOK_URL:-${WEBHOOK_URL:-}}"
 TN_LOG_TAG="${TN_LOG_TAG:-truenorth-backup}"
+OPENSEARCH_URL="${OPENSEARCH_URL:-https://localhost:9200}"
+OPENSEARCH_SNAPSHOT_CACERT="${OPENSEARCH_SNAPSHOT_CACERT:-config/certs/ca.pem}"
 
 log() {
     local level="$1"; shift
@@ -141,6 +145,21 @@ mc_run() {
             set -eu
             mc alias set tn http://minio:9000 "$TN_MC_USER" "$TN_MC_PASS" >/dev/null
             exec mc "$@"' mc "$@"
+}
+
+# os_curl <curl args...> — curl run inside the opensearch container against
+# OPENSEARCH_URL<path>. The node certificate is verified against the internal CA (no
+# `curl -k`); OPENSEARCH_SNAPSHOT_AUTH (user:pass, read from the env file) reaches curl
+# in a netrc-style config on stdin (-K -), never on a command line. Fails on HTTP >= 400.
+os_curl() {
+    local auth cfg=""
+    local -a opts=(-sS --fail --max-time 3600)
+    auth="$(env_get OPENSEARCH_SNAPSHOT_AUTH)"
+    if [[ "${OPENSEARCH_URL}" == https:* ]]; then opts+=(--cacert "${OPENSEARCH_SNAPSHOT_CACERT}"); fi
+    if [[ -n "$auth" ]]; then
+        cfg="user = \"${auth//\"/\\\"}\""
+    fi
+    printf '%s\n' "${cfg}" | dc exec -T opensearch curl "${opts[@]}" -K - "$@"
 }
 
 sha256_file_list() {

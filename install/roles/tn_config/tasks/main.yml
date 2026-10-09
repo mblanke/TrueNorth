@@ -144,6 +144,16 @@
       BACKUP_MAX_TOTAL_GB={{ tn_backup_max_total_gb }}
       # OpenSearch snapshots (only with OPENSEARCH_SNAPSHOT_REPO) verify the internal CA.
       OPENSEARCH_SNAPSHOT_CACERT=config/certs/ca.pem
+      {% if tn_opensearch_snapshot_repo | default('') | length > 0 %}
+      # Telemetry: a snapshot per backup into the repository 70-telemetry registered
+      # ({{ tn_data_root }}/opensearch-snapshots); the oldest beyond KEEP are deleted.
+      OPENSEARCH_SNAPSHOT_REPO={{ tn_opensearch_snapshot_repo }}
+      OPENSEARCH_SNAPSHOT_KEEP={{ tn_opensearch_snapshot_keep | default(14) }}
+      {% endif %}
+      {% if tn_opensearch_disable_security | bool %}
+      # tn_opensearch_disable_security: the node answers plain http, without auth.
+      OPENSEARCH_URL=http://localhost:9200
+      {% endif %}
 
 - name: Config — nightly backup timer
   ansible.builtin.cron:

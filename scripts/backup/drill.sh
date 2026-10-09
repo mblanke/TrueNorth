@@ -24,9 +24,19 @@
 #      restored DB passwords authenticate over TCP while the fresh ones do not;
 #   9. tear down (always, via trap).
 #
+# OpenSearch (DRILL_OPENSEARCH=1, the default): opensearch joins postgres and minio, with
+# the snapshot repository bind-mounted from the work dir as compose.prod.yml binds it from
+# TN_DATA_ROOT (so it survives `down -v`, as the host directory does), registered on every
+# start as the installer's 70-telemetry does. Telemetry indices and aliases are part of the
+# compared state, backups snapshot into it, restores bring it back, and a backup beyond
+# OPENSEARCH_SNAPSHOT_KEEP prunes the oldest snapshot, after which restore.sh refuses that
+# backup before stopping anything. Security plugin OFF here (plain http, no auth): the
+# drill has no internal CA; the TLS + basic-auth path is the installer's.
+#
 # Usage: drill.sh             DRILL_PROJECT=<name> to choose the project name,
 #                             DRILL_REPORT=<file> to also write the summary there,
-#                             DRILL_KEEP=1 to leave the project up for inspection.
+#                             DRILL_KEEP=1 to leave the project up for inspection,
+#                             DRILL_OPENSEARCH=0 to leave OpenSearch out.
 # Needs: docker with compose v2.24+ (for !reset), openssl 3.
 # =============================================================================
 set -euo pipefail
@@ -38,6 +48,7 @@ ROOT="$(cd "${HERE}/../.." && pwd)"
 DRILL_PROJECT="${DRILL_PROJECT:-tn-drill-$(date +%s)-$$}"
 DRILL_REPORT="${DRILL_REPORT:-}"
 DRILL_KEEP="${DRILL_KEEP:-0}"
+DRILL_OPENSEARCH="${DRILL_OPENSEARCH:-1}"
 OPENSSL="${OPENSSL:-openssl}"
 
 case "${DRILL_PROJECT}" in
@@ -50,7 +61,10 @@ fi
 
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/tn-drill.XXXXXX")"
 WORK="$(cd "${WORK}" && pwd -P)"
-mkdir -p "${WORK}/backups" "${WORK}/seed"
+mkdir -p "${WORK}/backups" "${WORK}/seed" "${WORK}/os-snapshots" "${WORK}/os-certs"
+# The opensearch image runs as uid 1000; the installer chowns the real directory to it.
+chmod 0777 "${WORK}/os-snapshots"
+: >"${WORK}/os-internal_users.yml"
 
 export COMPOSE_PROJECT_NAME="${DRILL_PROJECT}"
 export COMPOSE_FILE="${ROOT}/infra/platform/docker/compose.prod.yml:${WORK}/drill.override.yml"
@@ -60,6 +74,14 @@ export BACKUP_ESCROW_PUBKEY="${WORK}/escrow.pub"
 # The drill's backups are a few MB; the free-space floor is for real hosts.
 export BACKUP_MIN_FREE_GB="${BACKUP_MIN_FREE_GB:-1}"
 export OPENSSL
+DRILL_SERVICES=(postgres minio)
+if [[ "${DRILL_OPENSEARCH}" == "1" ]]; then
+    DRILL_SERVICES+=(opensearch)
+    # What the installer's backup.env says (security off: plain http inside the container).
+    export OPENSEARCH_SNAPSHOT_REPO=tn_snapshots
+    export OPENSEARCH_SNAPSHOT_KEEP=2
+    export OPENSEARCH_URL=http://localhost:9200
+fi
 
 # shellcheck source=scripts/backup/lib.sh
 source "${HERE}/lib.sh"
@@ -140,6 +162,12 @@ TN_IMAGE_AI_ORCHESTRATOR=drill.invalid/ai-orchestrator:unused
 OPENAI_BASE_URL=http://drill.invalid:4000/v1
 OPENAI_API_KEY=
 KEYCLOAK_ISSUER=https://drill.invalid/auth/realms/truenorth
+# OpenSearch: small, and without the security plugin (no internal CA in the drill).
+OPENSEARCH_DISABLE_SECURITY=true
+OPENSEARCH_HEAP=512m
+OPENSEARCH_USER=
+OPENSEARCH_CERTS_DIR=${WORK}/os-certs
+OPENSEARCH_INTERNAL_USERS=${WORK}/os-internal_users.yml
 EOF
 }
 make_env
@@ -152,11 +180,18 @@ services:
     deploy: !reset {}
   minio:
     deploy: !reset {}
+  opensearch:
+    deploy: !reset {}
 volumes:
   pg-data:
     driver_opts: !reset {}
   minio-data:
     driver_opts: !reset {}
+  os-data:
+    driver_opts: !reset {}
+  os-snapshots:
+    driver_opts:
+      device: ${WORK}/os-snapshots
 networks:
   tn-backend:
     name: ${DRILL_PROJECT}-backend
@@ -174,7 +209,7 @@ PG_USER="$(env_get POSTGRES_USER)"
 PG_DB="$(env_get POSTGRES_DB)"
 
 start_stack() {
-    dc up -d --quiet-pull postgres minio >/dev/null
+    dc up -d --quiet-pull "${DRILL_SERVICES[@]}" >/dev/null
     # pg_isready answers during initdb's temporary server; wait for the real one.
     local i
     for i in $(seq 1 90); do
@@ -186,10 +221,23 @@ start_stack() {
     done
     dc exec -T postgres pg_isready -q -U "${PG_USER}" -d "${PG_DB}" || die "postgres did not come up"
     for i in $(seq 1 60); do
-        if mc_run "${WORK}/seed" ls tn >/dev/null 2>&1; then return 0; fi
+        if mc_run "${WORK}/seed" ls tn >/dev/null 2>&1; then break; fi
         sleep 2
     done
-    die "minio did not come up"
+    mc_run "${WORK}/seed" ls tn >/dev/null 2>&1 || die "minio did not come up"
+    [[ "${DRILL_OPENSEARCH}" == "1" ]] || return 0
+    for i in $(seq 1 90); do
+        if os_curl "${OPENSEARCH_URL}/_cluster/health?wait_for_status=yellow&timeout=2s" >/dev/null 2>&1; then break; fi
+        sleep 2
+    done
+    os_curl "${OPENSEARCH_URL}/_cluster/health?wait_for_status=yellow&timeout=5s" >/dev/null || die "opensearch did not come up"
+    # What 70-telemetry does (telemetry.pipelines.bootstrap.register_snapshot_repository).
+    os_put "_snapshot/${OPENSEARCH_SNAPSHOT_REPO}" \
+        '{"type":"fs","settings":{"location":"/usr/share/opensearch/snapshots","compress":true}}'
+}
+
+os_put() { # os_put <path> <json body>
+    os_curl -X PUT -H 'Content-Type: application/json' "${OPENSEARCH_URL}/$1" -d "$2" >/dev/null
 }
 
 psql_as() { # psql_as <role> <db> <sql>
@@ -215,6 +263,13 @@ snapshot() {
         "select datname from pg_database where not datistemplate order by 1" | tr -d '\r')
     printf 'minio buckets %s\n' "$(mc_run "${WORK}/seed" ls tn | awk '{print $NF}' | tr -d '/' | sort | paste -sd, -)"
     printf 'minio objects %s\n' "$(mc_run "${WORK}/seed" ls --recursive tn | grep -c . || true)"
+    if [[ "${DRILL_OPENSEARCH}" == "1" ]]; then
+        os_curl "${OPENSEARCH_URL}/_refresh" >/dev/null
+        os_curl "${OPENSEARCH_URL}/_cat/indices?h=index,docs.count&s=index" | tr -s ' ' | grep -v '^\.' \
+            | sed 's/^/opensearch index /' || true
+        os_curl "${OPENSEARCH_URL}/_cat/aliases?h=alias,index&s=alias" | tr -s ' ' | grep -v '^\.' \
+            | sed 's/^/opensearch alias /' || true
+    fi
 }
 
 # ── 1. Up ────────────────────────────────────────────────────────────────────
@@ -247,6 +302,21 @@ done
 mc_run "${WORK}/seed" mirror --quiet /backup/truenorth-artifacts tn/truenorth-artifacts >/dev/null
 mc_run "${WORK}/seed" mirror --quiet /backup/truenorth-uploads tn/truenorth-uploads >/dev/null
 
+# Telemetry: a per-range index and a rollover family behind its write alias, as in production.
+if [[ "${DRILL_OPENSEARCH}" == "1" ]]; then
+    os_put "exercise-events-000001" '{"aliases":{"exercise-events":{"is_write_index":true}}}'
+    os_bulk() { # os_bulk <index> <count>
+        local body="" i
+        for i in $(seq 1 "$2"); do
+            body+="{\"index\":{\"_index\":\"$1\"}}"$'\n'"{\"@timestamp\":\"2026-10-09T00:00:00Z\",\"n\":${i}}"$'\n'
+        done
+        os_curl -X POST -H 'Content-Type: application/x-ndjson' "${OPENSEARCH_URL}/_bulk?refresh=true" \
+            --data-binary "${body}" | grep -q '"errors":false' || die "seeding $1 failed"
+    }
+    os_bulk range-drill-0001 37
+    os_bulk exercise-events 12
+fi
+
 snapshot >"${WORK}/before.txt"
 
 # ── 3. Backup ────────────────────────────────────────────────────────────────
@@ -259,6 +329,8 @@ BACKUP="$(find "${BACKUP_DIR}" -mindepth 1 -maxdepth 1 -type d -name 'truenorth-
 log "INFO" "Wipe (down -v) and bring up empty..."
 dc down -v >/dev/null 2>&1
 start_stack
+# Telemetry written after the backup: a restore replaces the indices, so this must go.
+if [[ "${DRILL_OPENSEARCH}" == "1" ]]; then os_bulk range-drill-late 5; fi
 snapshot >"${WORK}/wiped.txt"
 if cmp -s "${WORK}/before.txt" "${WORK}/wiped.txt"; then
     die "wipe did not change anything; the drill would prove nothing"
@@ -354,6 +426,34 @@ for spec in "${PG_USER}:${PG_DB}:postgres_password" "keycloak:keycloak:keycloak_
 done
 log "INFO" "Reinstalled host: secrets restored, data restored, restored passwords authenticate"
 
+# ── OpenSearch snapshot retention ────────────────────────────────────────────
+# Two snapshots so far (the first backup's and the second's). A third backup with KEEP=2
+# deletes the first; restore.sh must then refuse the first backup before stopping anything.
+OS_SUMMARY="not drilled (DRILL_OPENSEARCH=0)"
+if [[ "${DRILL_OPENSEARCH}" == "1" ]]; then
+    first_snap="$(sed -nE 's/.*"snapshot":"(tn-[^"]+)".*/\1/p' "${BACKUP}/manifest.json")"
+    [[ -n "${first_snap}" ]] || die "the first backup's manifest names no OpenSearch snapshot"
+    sleep 1
+    "${HERE}/backup.sh" >/dev/null
+    snaps="$(os_curl "${OPENSEARCH_URL}/_cat/snapshots/${OPENSEARCH_SNAPSHOT_REPO}?h=id" | tr -d ' \r')"
+    [[ "$(printf '%s\n' "${snaps}" | grep -c .)" == 2 ]] || die "expected 2 snapshots after pruning, got: ${snaps}"
+    if printf '%s\n' "${snaps}" | grep -qx "${first_snap}"; then
+        die "OPENSEARCH_SNAPSHOT_KEEP=2 did not prune the oldest snapshot ${first_snap}"
+    fi
+    running_before="$(dc ps --services --status running | sort | paste -sd, -)"
+    set +e
+    "${HERE}/restore.sh" "${BACKUP}" --force --no-restart >/dev/null 2>"${WORK}/os-pruned.err"
+    pruned_rc=$?
+    set -e
+    if (( pruned_rc == 0 )) || ! grep -q -- '--skip-opensearch' "${WORK}/os-pruned.err"; then
+        die "restore.sh of a backup whose snapshot was pruned did not refuse (rc ${pruned_rc})"
+    fi
+    [[ "$(dc ps --services --status running | sort | paste -sd, -)" == "${running_before}" ]] \
+        || die "restore.sh stopped services before refusing a pruned snapshot"
+    OS_SUMMARY="snapshot ${first_snap} restored twice; pruned at KEEP=2, after which restore.sh refuses that backup up front"
+    log "INFO" "OpenSearch: ${OS_SUMMARY}"
+fi
+
 # ── Report ───────────────────────────────────────────────────────────────────
 {
     echo "TrueNorth backup drill — PASS"
@@ -365,5 +465,6 @@ log "INFO" "Reinstalled host: secrets restored, data restored, restored password
     echo "second backup after restore: ok; failure path: exit ${fail_rc} with alert"
     echo "reinstalled host: escrowed secrets restored over fresh ones (refused without --force),"
     echo "  data restored, restored DB passwords authenticate over TCP and the fresh ones do not"
+    echo "opensearch: ${OS_SUMMARY}"
 } | tee "${WORK}/report.txt"
 if [[ -n "${DRILL_REPORT}" ]]; then cp "${WORK}/report.txt" "${DRILL_REPORT}"; fi
