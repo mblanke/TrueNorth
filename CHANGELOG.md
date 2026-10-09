@@ -3,6 +3,28 @@
 All notable changes to TrueNorth Range. Versions are git tags on `main`
 (`docs/release.md`).
 
+## v1.1.0 — unreleased
+
+Optional features for staging and demo hosts, and CI that survives registry limits.
+
+- **ARC² Course Studio on an installed host** (`tn_arc2_enabled`, off by default): the
+  runner as a sandboxed systemd service (dedicated user, bubblewrap with a scoped AppArmor
+  profile, egress to the model endpoint only, fails closed), pinned Claude Code and Node
+  (#124). Signs in with a Claude subscription token (`vault_arc2_claude_oauth_token`) or an
+  API key, exactly one. When the Studio is off, the web app hides it and says why instead
+  of failing with "Not Found" (`GET /arc2/status`, #123).
+- **Moodle on an installed host** (`tn_moodle_enabled`, off by default): the TrueNorth Moodle
+  image released by digest, scanned, signed and in `release-manifest.json`; its own edge on
+  `:8443`; database and moodledata in the backups; platform registration and a smoke check
+  in the role (#125).
+- **Shipped content** (`tn_load_shipped_content`, `tn_publish_shipped_content`,
+  `tn_load_shipped_demo`, off by default): the curriculum, VM catalogue, range templates,
+  scenarios and Sigma rules loaded through the API as the bootstrap administrator, no token
+  involved (#127).
+- **CI pulls Docker Hub images through `mirror.gcr.io`**, anonymously, so the runners' rate
+  limits no longer fail required checks (#126).
+- Staging turns all three features on.
+
 ## v1.0.0 — 2026-10-09
 
 First production release. Covers everything merged to `main` after the
