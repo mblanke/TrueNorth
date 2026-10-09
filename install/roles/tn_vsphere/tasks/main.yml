@@ -12,7 +12,7 @@
 
 - name: vSphere — authenticate to vCenter
   ansible.builtin.uri:
-    url: "https://{{ tn_vcenter_host }}/api/session"
+    url: "https://{{ tn_vcenter_address }}/api/session"
     method: POST
     url_username: "{{ tn_vcenter_user }}"
     url_password: "{{ vault_vsphere_password }}"
@@ -30,7 +30,7 @@
 
 - name: vSphere — confirm the datacenter and cluster exist
   ansible.builtin.uri:
-    url: "https://{{ tn_vcenter_host }}/api/vcenter/{{ item.kind }}?names={{ item.name | urlencode }}"
+    url: "https://{{ tn_vcenter_address }}/api/vcenter/{{ item.kind }}?names={{ item.name | urlencode }}"
     headers: "{{ tn_vc_headers }}"
     validate_certs: "{{ tn_vsphere_verify_ssl | bool }}"
     status_code: 200
@@ -57,7 +57,7 @@
 # tn_vsphere_network is only the fallback for a VM with no VLAN; check it when set.
 - name: vSphere — is the fallback network present?
   ansible.builtin.uri:
-    url: "https://{{ tn_vcenter_host }}/api/vcenter/network?names={{ tn_vsphere_network | urlencode }}"
+    url: "https://{{ tn_vcenter_address }}/api/vcenter/network?names={{ tn_vsphere_network | urlencode }}"
     headers: "{{ tn_vc_headers }}"
     validate_certs: "{{ tn_vsphere_verify_ssl | bool }}"
     status_code: 200
@@ -78,7 +78,7 @@
 # no distributed switching at all while vds mode is configured.
 - name: vSphere — distributed port groups exist (vds mode)
   ansible.builtin.uri:
-    url: "https://{{ tn_vcenter_host }}/api/vcenter/network?types=DISTRIBUTED_PORTGROUP"
+    url: "https://{{ tn_vcenter_address }}/api/vcenter/network?types=DISTRIBUTED_PORTGROUP"
     headers: "{{ tn_vc_headers }}"
     validate_certs: "{{ tn_vsphere_verify_ssl | bool }}"
     status_code: 200
@@ -102,7 +102,7 @@
 #   400 -> permission granted, spec rejected, which is what we want
 - name: vSphere — probe for provisioning privilege
   ansible.builtin.uri:
-    url: "https://{{ tn_vcenter_host }}/api/vcenter/vm"
+    url: "https://{{ tn_vcenter_address }}/api/vcenter/vm"
     method: POST
     headers: "{{ tn_vc_headers }}"
     body: { "spec": {} }
@@ -154,7 +154,7 @@
     content: |
       {
         "backend": "{{ tn_provisioner_backend }}",
-        "vcenter": "{{ tn_vcenter_host }}",
+        "vcenter": "{{ tn_vcenter_address }}",
         "account": "{{ tn_vcenter_user }}",
         "datacenter": "{{ tn_vsphere_datacenter }}",
         "cluster": "{{ tn_vsphere_cluster }}",
@@ -171,7 +171,7 @@
 
 - name: vSphere — close the session
   ansible.builtin.uri:
-    url: "https://{{ tn_vcenter_host }}/api/session"
+    url: "https://{{ tn_vcenter_address }}/api/session"
     method: DELETE
     headers: "{{ tn_vc_headers }}"
     validate_certs: "{{ tn_vsphere_verify_ssl | bool }}"

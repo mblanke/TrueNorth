@@ -1,4 +1,4 @@
-"""A site with no vCenter (mock provisioner) installs without touching vSphere.
+"""A site with no vCenter installs: without vSphere (mock) or against a simulator.
 
 tn_uses_vcenter derives from tn_provisioner_backend. When it is false, preflight skips
 the vCenter reachability check and lets vault_vsphere_password stay a placeholder,
@@ -53,7 +53,18 @@ def test_env_file_renders_no_vcenter_password_without_vcenter() -> None:
     assert "VSPHERE_PASSWORD={{ vault_vsphere_password if tn_uses_vcenter | bool else '' }}" in env
 
 
-def test_staging_has_no_vcenter() -> None:
+def test_vcenter_port_reaches_every_vcenter_url() -> None:
+    defaults = _yaml("inventory/group_vars/all/main.yml")
+    assert defaults["tn_vcenter_port"] == 443
+    env = (INSTALL / "roles/tn_config/templates/env.production.j2").read_text()
+    assert "VSPHERE_URL=https://{{ tn_vcenter_address }}" in env
+    role = (INSTALL / "roles/tn_vsphere/tasks/main.yml").read_text()
+    assert "https://{{ tn_vcenter_host }}" not in role
+    assert _preflight_task("Preflight — vCenter API reachable")["ansible.builtin.wait_for"]["port"] == "{{ tn_vcenter_port }}"
+
+
+def test_staging_points_at_the_simulated_vcenter() -> None:
     inv = _yaml("inventory/staging.yml")
     host = inv["all"]["children"]["platform"]["hosts"]["tn-staging"]
-    assert host["tn_provisioner_backend"] == "mock"
+    assert (host["tn_vcenter_host"], host["tn_vcenter_port"]) == (host["ansible_host"], 8989)
+    assert (INSTALL / "playbooks/lab-vcenter-sim.yml").exists()

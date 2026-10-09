@@ -1,0 +1,80 @@
+---
+# A simulated vCenter on the platform host, for a site with no vCenter that still wants
+# the hypervisor dashboards populated. Lab and staging only: it is read-only (builds no
+# VM, refuses provisioning with 403) and accepts any username/password. Not in site.yml.
+#
+#   ansible-playbook -i inventory/staging.yml playbooks/lab-vcenter-sim.yml -K
+#
+# It serves the vCenter REST endpoints TrueNorth reads (tools/vcenter-sim/vcenter_sim.py;
+# govmomi's vcsim has no /api/vcenter/host). Point the install at it as
+# inventory/staging.yml does: tn_vcenter_host = this host, tn_vcenter_port: 8989,
+# tn_vsphere_verify_ssl: false, datacenter DC0, cluster DC0_C0, datastore LocalDS_0.
+- name: "Simulated vCenter for a site with no vCenter"
+  hosts: platform
+  gather_facts: false
+  become: true
+  vars:
+    tn_vcenter_sim_dir: /srv/truenorth-vcenter-sim
+    tn_vcenter_sim_port: 8989
+    # python:3.12-slim on 2026-10-08. The script needs only the standard library.
+    tn_vcenter_sim_image: python@sha256:05cda9777409a9c3ffddd94a4c476b79f0769a0b4857f0c7ed9226b6800b0d6f
+  tasks:
+    - name: vcenter-sim — directory
+      ansible.builtin.file:
+        path: "{{ tn_vcenter_sim_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: vcenter-sim — script
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../../tools/vcenter-sim/vcenter_sim.py"
+        dest: "{{ tn_vcenter_sim_dir }}/vcenter_sim.py"
+        mode: "0644"
+      register: tn_vcenter_sim_script
+
+    - name: vcenter-sim — TLS key
+      community.crypto.openssl_privatekey:
+        path: "{{ tn_vcenter_sim_dir }}/key.pem"
+        mode: "0644" # the container runs as an unprivileged user; this key guards nothing real
+
+    - name: vcenter-sim — TLS CSR
+      community.crypto.openssl_csr_pipe:
+        privatekey_path: "{{ tn_vcenter_sim_dir }}/key.pem"
+        common_name: "{{ ansible_host }}"
+        subject_alt_name: ["IP:{{ ansible_host }}", "DNS:localhost"]
+      register: tn_vcenter_sim_csr
+      changed_when: false
+
+    - name: vcenter-sim — self-signed certificate
+      community.crypto.x509_certificate:
+        path: "{{ tn_vcenter_sim_dir }}/cert.pem"
+        csr_content: "{{ tn_vcenter_sim_csr.csr }}"
+        privatekey_path: "{{ tn_vcenter_sim_dir }}/key.pem"
+        provider: selfsigned
+        mode: "0644"
+
+    - name: vcenter-sim — container running
+      community.docker.docker_container:
+        name: tn-vcenter-sim
+        image: "{{ tn_vcenter_sim_image }}"
+        command: >-
+          python3 /sim/vcenter_sim.py --cert /sim/cert.pem --key /sim/key.pem
+          --port {{ tn_vcenter_sim_port }}
+        user: "65534:65534"
+        volumes: ["{{ tn_vcenter_sim_dir }}:/sim:ro"]
+        published_ports: ["{{ tn_vcenter_sim_port }}:{{ tn_vcenter_sim_port }}"]
+        read_only: true
+        cap_drop: [ALL]
+        security_opts: ["no-new-privileges:true"]
+        restart_policy: unless-stopped
+        recreate: "{{ tn_vcenter_sim_script is changed }}"
+        state: started
+
+    - name: vcenter-sim — answers
+      ansible.builtin.uri:
+        url: "https://127.0.0.1:{{ tn_vcenter_sim_port }}/about"
+        validate_certs: false
+      register: tn_vcenter_sim_about
+      until: tn_vcenter_sim_about.status == 200
+      retries: 15
+      delay: 2
