@@ -154,6 +154,12 @@
       # tn_opensearch_disable_security: the node answers plain http, without auth.
       OPENSEARCH_URL=http://localhost:9200
       {% endif %}
+      {% if tn_moodle_enabled | default(false) | bool %}
+      # Moodle (roles/tn_moodle): its database is dumped with the others; this adds its
+      # moodledata, and stops and restores it with the platform (restore.sh).
+      MOODLE_COMPOSE_FILE={{ tn_moodle_compose_file }}
+      MOODLE_ENV_FILE={{ tn_moodle_env_file }}
+      {% endif %}
 
 - name: Config — nightly backup timer
   ansible.builtin.cron:

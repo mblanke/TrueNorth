@@ -269,6 +269,8 @@ jobs:
             context: scenario-engine
           - name: ai-orchestrator
             context: ai-orchestrator
+          - name: moodle
+            context: infra/platform/moodle
     env:
       IMAGE: truenorth-range/${{ matrix.service.name }}:${{ github.sha }}
       # Same checksum-pinned Trivy as release.yml (docs/release.md "Pins").

@@ -158,7 +158,10 @@ scripts/moodle-farm.sh remove <node> [--purge]
   registers or updates platform `moodle-<node>` in that tenant. It does not push
   courses: publish releases to the new platform. `remove` marks the platform inactive;
   data stays unless `--purge`.
-- **Not yet:** production hostnames and TLS (pass `--site-url https://…` behind nginx);
+- **Production:** the installer runs one node itself, with TLS, by digest, backed up
+  (`tn_moodle_enabled`; `infra/platform/docker/compose.moodle-prod.yml`,
+  `docs/runbooks/moodle.md`). This script stays the dev farm.
+- **Not yet:** production hostnames and TLS for farm nodes (pass `--site-url https://…` behind nginx);
   one tenant should have one Moodle (SSO picks the oldest active one).
 
 ## Multi-tenancy, which decides the farm's shape

@@ -91,6 +91,33 @@ dc() {
     docker compose "${TN_COMPOSE_ARGS[@]}" "$@"
 }
 
+# Moodle (optional; install/roles/tn_moodle): its own compose project,
+# MOODLE_COMPOSE_FILE (compose.moodle-prod.yml) with MOODLE_ENV_FILE. Its database is in
+# the platform's PostgreSQL, so dc's dumps hold it; moodle_dc reaches its files.
+# moodle_state prints: off (MOODLE_COMPOSE_FILE unset), absent (set, but no env file yet:
+# the node is not installed), or on.
+moodle_state() {
+    if [[ -z "${MOODLE_COMPOSE_FILE:-}" ]]; then
+        echo off
+    elif [[ -n "${MOODLE_ENV_FILE:-}" && -r "${MOODLE_ENV_FILE}" ]]; then
+        echo on
+    else
+        echo absent
+    fi
+}
+
+moodle_dc() {
+    local f
+    f="$(_resolve "${MOODLE_COMPOSE_FILE}")"
+    [[ -f "$f" ]] || die "Moodle compose file not found: $f (MOODLE_COMPOSE_FILE)"
+    docker compose -f "$f" --env-file "${MOODLE_ENV_FILE}" "$@"
+}
+
+# The moodledata paths a backup leaves out: Moodle rebuilds them (caches, sessions, temp).
+# shellcheck disable=SC2034 # used by backup.sh, which sources this file
+MOODLE_DATA_EXCLUDES=(--exclude=./cache --exclude=./localcache --exclude=./sessions
+    --exclude=./temp --exclude=./trashdir --exclude=./lock)
+
 # env_get KEY [default] — the last KEY=value in ENV_FILE, quotes stripped.
 # The file is parsed, not sourced: nothing in it is executed.
 env_get() {

@@ -133,6 +133,7 @@ is always safe on its own.
 | `60-keycloak` | Realm (imported without the development realm's sample users, with this host's redirect URIs and generated client secrets), token/session/password rules and client grants (enforced on every run, written only when they differ; "Identity hardening"), the API's least-privilege service account (`truenorth-api-admin`), AD user federation over LDAPS (or, without AD, local groups and the local bootstrap administrator), and the token claim mappers. **This is the join between the installer and the application** — see below. |
 | `70-telemetry` | OpenSearch index templates, ISM policies, ingest pipelines, and the backup's snapshot repository ("Backups"). |
 | `80-seed` | Counts the reference data in the database (fails on none), creates the tenant and the bootstrap administrator. |
+| `85-moodle` | Only with `tn_moodle_enabled` (off by default): TrueNorth's Moodle, its database and its registration as the tenant's Moodle ("Moodle (optional)"). |
 | `90-vsphere` | Provider wiring, and detects the unassigned vCenter role. |
 | `95-smoke-test` | Every container running and healthy (`ps -a`: an exited one fails it), API health and readiness (database, Redis **and OpenSearch**), and the claim-contract check, which is **mandatory**: with AD pass `-e tn_smoke_username=<upn> -e tn_smoke_password=<password>`; without AD it signs in as the local bootstrap administrator. The token comes from the `truenorth-smoke` client, enabled only for that one request. |
 | `99-validate` | Final report, including accepted warnings. |
@@ -599,6 +600,38 @@ api loses the setting and the mount. `55-arc2` then does nothing, so stop the ru
 (`sudo systemctl disable --now truenorth-arc2-runner`); the runs stay in
 `{{ tn_data_root }}/arc2/runs`.
 
+## Moodle (optional)
+
+`tn_moodle_enabled: true` (default `false`) makes `85-moodle` run TrueNorth's Moodle
+(Moodle 5.2.3 with `local_truenorth`) for the tenant `tn_tenant_slug`, so accepted ARC²
+course releases can be published into it and Students enter it from TrueNorth, signed in.
+The walkthrough (install, publish, take a course as a Student, restore, remove) is
+docs/runbooks/moodle.md.
+
+- **Image:** `images.moodle` of the release's `release-manifest.json`, by digest (built,
+  Trivy-scanned, SBOM'd and cosign-signed by `release.yml` like the others). Releases
+  before it have none: the stage stops and says so (`-e tn_moodle_image=<ref@sha256>`
+  pins one deliberately). Build mode builds `truenorth-moodle:local`. Air-gapped: add it
+  to the archive directory (`docker save` of the manifest's moodle ref, tagged).
+- **Address:** `https://<tn_domain_fqdn>:<tn_moodle_port>` (8443), served by its own nginx
+  (`moodle-edge`) with the platform's certificate: no DNS record or certificate name to
+  add, but open the port where 443 is open. Its own origin, so HTML authored in Moodle
+  cannot reach TrueNorth's session.
+- **Data:** database `moodle` (role `moodle`) in the platform's PostgreSQL, so every backup
+  already dumps it; moodledata under `/srv/truenorth/moodle/<node>/`, which backups archive
+  and `restore.sh` restores when `30-config` has rendered `MOODLE_COMPOSE_FILE` into
+  `backup.env` (it does when Moodle is enabled).
+- **Credentials:** `moodle_db_password` and `moodle_admin_password`, generated once into
+  `/srv/truenorth/config/secrets/` (escrowed with the rest) unless the vault sets
+  `vault_moodle_*`; never on a command line.
+- **Wiring:** no manual steps. The node fetches TrueNorth's tool public key from the api,
+  serves only this tenant's tickets, and is registered as platform `moodle-<node>`
+  through `python -m app.moodle_backends.install_cli` in the api container. The stage's
+  smoke check: the login page through the edge, the hand-off to TrueNorth, and a signed
+  `describe_course` from TrueNorth's own publishing backend.
+- **One tenant.** Further tenants get one node each (the farm model); the role takes a node
+  name but loops over one (docs/runbooks/moodle.md, "More than one tenant").
+
 ## Key variables
 
 `inventory/group_vars/all/main.yml` is commented throughout. The ones you will
@@ -631,6 +664,7 @@ actually change:
 | `tn_default_progression` | `DP1` | Developmental progression a new trainee joins (DP1 → DP2). |
 | `tn_arc2_enabled` | `false` | ARC² Course Studio; with `vault_arc2_anthropic_api_key` ("ARC² Course Studio (optional)"). |
 | `tn_arc2_claude_code_version` / `tn_arc2_node_version` | `2.1.286` / `24.21.0` | Pinned; bump with the lockfile and checksums. |
+| `tn_moodle_enabled` / `tn_moodle_port` | `false` / `8443` | "Moodle (optional)". |
 
 ## After the install
 

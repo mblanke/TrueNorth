@@ -70,6 +70,11 @@ vault_opensearch_dashboards_password: "" # generated on target if empty
 # MEANS ALERTS GO NOWHERE: the null receiver (install/README.md "Alerting").
 vault_alertmanager_webhook_url: ""
 
+# ── Moodle (only with tn_moodle_enabled) ──────────────────────────────
+# 32+ characters of A-Z a-z 0-9 . _ - ; generated on target if empty.
+vault_moodle_db_password: ""
+vault_moodle_admin_password: ""
+
 # ── Release images (only if the GHCR packages are private) ────────────
 # A read:packages token for ghcr.io; leave empty for public images.
 vault_ghcr_username: ""

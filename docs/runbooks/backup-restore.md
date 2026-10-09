@@ -17,7 +17,8 @@ written by the installer before it migrates; [upgrade.md](upgrade.md))
 | `minio/<bucket>/` | every bucket, `mc mirror` (empty buckets kept as empty directories) |
 | `secrets/env.enc`, `secrets/env.key.enc` | the stack's env file — which holds `TN_SECRETS_KEY` and every credential — AES-256 encrypted with a fresh data key, that key RSA-OAEP-wrapped to the escrow public key |
 | `secrets/secrets.tar.enc` | `SECRETS_DIR` (the installer's `/srv/truenorth/config/secrets/`, one file per persisted secret), tarred straight into the same cipher with the same data key; never on disk in clear. `restore-secrets.sh` writes it back. |
-| `manifest.json` | databases and sizes, bucket/object counts, the OpenSearch snapshot's repository and name (or `not-backed-up`), escrow status, compose project, git commit |
+| `moodle/moodledata.tar` | only with the installer's Moodle (`tn_moodle_enabled`; `MOODLE_COMPOSE_FILE` in backup.env): its files, without caches, sessions and temp, archived through a throwaway container of its image. Its database is one of the `postgres/<db>.dump` files (`moodle`). See [moodle.md](moodle.md). |
+| `manifest.json` | databases and sizes, bucket/object counts, the OpenSearch snapshot's repository and name (or `not-backed-up`), Moodle's files (`backed-up`, `not-installed` or `not-configured`), escrow status, compose project, git commit |
 | `SHA256SUMS` | checksums of everything above; verified at the end of the backup and before any restore |
 
 Not included, on purpose:
@@ -56,6 +57,8 @@ OPENSEARCH_SNAPSHOT_CACERT=config/certs/ca.pem
 OPENSEARCH_SNAPSHOT_REPO=tn_snapshots   # tn_opensearch_snapshot_repo; absent when that is ""
 OPENSEARCH_SNAPSHOT_KEEP=14             # tn_opensearch_snapshot_keep
 # OPENSEARCH_URL=http://localhost:9200  # only with tn_opensearch_disable_security (lab)
+# MOODLE_COMPOSE_FILE=.../compose.moodle-prod.yml   # only with tn_moodle_enabled
+# MOODLE_ENV_FILE=/srv/truenorth/config/moodle-default.env
 
 # Optional, add by hand
 # DAILY_KEEP=7 WEEKLY_KEEP=4 MONTHLY_KEEP=12
@@ -163,8 +166,12 @@ set -a; . /srv/truenorth/config/backup.env; set +a
 scripts/backup/restore.sh $BACKUP_DIR/daily/truenorth-backup-20261008T021700Z
 #   [--force]          skip the "type the project name" prompt
 #   [--no-restart]     leave the app services stopped afterwards
-#   [--skip-postgres | --skip-minio | --skip-opensearch]
+#   [--skip-postgres | --skip-minio | --skip-opensearch | --skip-moodle]
 ```
+
+With Moodle (`MOODLE_COMPOSE_FILE` set and the backup holding `moodle/moodledata.tar`), the
+Moodle node is stopped with the rest, its database comes back with the others, moodledata
+is replaced by the archive's, and the node starts after the platform.
 
 What it does: verifies `SHA256SUMS` → if the manifest names an OpenSearch snapshot, checks
 that it is in its repository, and **refuses before stopping anything** if it is not (pruned

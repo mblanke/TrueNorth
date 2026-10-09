@@ -1,0 +1,337 @@
+---
+# TrueNorth's Moodle, single tenant: the node of tn_tenant_slug (docs/runbooks/moodle.md).
+#
+#   1. the image, by digest (release-manifest.json images.moodle), present on the host
+#   2. its credentials, persisted and escrowed like the installer's others
+#   3. its database and role in the platform's PostgreSQL
+#   4. moodledata under tn_data_root, the env file, the node up (compose.moodle-prod.yml)
+#   5. registered in TrueNorth as platform moodle-<node> of the tenant
+#   6. smoke: the login page through the edge, the TrueNorth hand-off, and a signed
+#      describe_course from the API's own publishing backend
+#
+# Idempotent: a second run reports no change. Run only with tn_moodle_enabled
+# (playbooks/85-moodle.yml); turning it off later stops managing Moodle, it does not
+# remove it.
+
+- name: Moodle — the images this release runs
+  ansible.builtin.include_role:
+    name: tn_release
+    public: true
+
+- name: Moodle — the platform it joins is up (api and postgres)
+  ansible.builtin.command:
+    cmd: docker compose -f {{ tn_compose_file }} --env-file {{ tn_env_file }} ps -q --status running api postgres
+    chdir: "{{ tn_app_dir }}/infra/platform/docker"
+  register: tn_moodle_platform_ps
+  changed_when: false
+  failed_when: tn_moodle_platform_ps.stdout_lines | length < 2
+
+# ── 1. Image ──────────────────────────────────────────────────────────
+- name: Moodle — the release publishes a Moodle image
+  ansible.builtin.assert:
+    that:
+      - tn_release_manifest.images.moodle is defined
+      - tn_release_manifest.images.moodle.ref | default('') is match('^[^@\s]+@sha256:[0-9a-f]{64}$')
+    fail_msg: >-
+      release-manifest.json of {{ tn_release_version }} has no moodle image by digest:
+      releases before Moodle joined release.yml do not publish one. Install a release that
+      does, or pin one deliberately with -e tn_moodle_image=<image@sha256:...>.
+    quiet: true
+  when:
+    - tn_image_source == 'release'
+    - tn_moodle_image | length == 0
+
+- name: Moodle — which image
+  ansible.builtin.set_fact:
+    tn_moodle_image_ref: >-
+      {{ tn_moodle_image if tn_moodle_image | length > 0
+         else (tn_release_manifest.images.moodle.ref if tn_image_source == 'release'
+               else 'truenorth-moodle:local') }}
+
+# Lab only, like the other images in build mode: what runs is then not what release.yml
+# scanned. Reports a change only when the image's layers or config changed: with the
+# containerd image store the image id is the index digest, which BuildKit's provenance
+# attestation (it records the build) changes on every build, cached or not.
+- name: Moodle — build the image from the checkout (tn_image_source=build)
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      set -euo pipefail
+      content() {
+        docker image inspect --format '{{ "{{" }}json .RootFS.Layers{{ "}}" }} {{ "{{" }}json .Config{{ "}}" }}' "$1" 2>/dev/null \
+          || echo missing
+      }
+      before=$(content {{ tn_moodle_image_ref | quote }})
+      docker build --quiet -t {{ tn_moodle_image_ref | quote }} {{ (tn_app_dir ~ '/infra/platform/moodle') | quote }} >/dev/null
+      [ "$before" = "$(content {{ tn_moodle_image_ref | quote }})" ] || echo IMAGE_CHANGED
+  register: tn_moodle_build
+  changed_when: "'IMAGE_CHANGED' in tn_moodle_build.stdout"
+  when:
+    - tn_image_source == 'build'
+    - tn_moodle_image | length == 0
+
+# The same gate as tn_compose: pulled (or loaded from tn_image_archive_dir by tn_compose)
+# and present at exactly the digest its ref names.
+- name: Moodle — pull the image by digest
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      set -euo pipefail
+      img={{ tn_moodle_image_ref | quote }}
+      docker image inspect "$img" >/dev/null 2>&1 && exit 0
+      docker pull --quiet "$img" >/dev/null
+      echo IMAGE_PULLED
+  register: tn_moodle_pull
+  changed_when: "'IMAGE_PULLED' in tn_moodle_pull.stdout"
+  when: tn_moodle_image_ref is search('@sha256:')
+
+- name: Moodle — the image is present at the digest it names
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      set -euo pipefail
+      img={{ tn_moodle_image_ref | quote }}
+      docker image inspect "$img" >/dev/null
+      if [[ "$img" == *@sha256:* ]]; then
+        want="${img%%@*}"; want="${want%:*}@${img##*@}"
+        docker image inspect --format '{{ "{{" }}json .RepoDigests{{ "}}" }}' "$img" | grep -qF "\"$want\""
+      fi
+  changed_when: false
+
+# ── 2. Credentials ────────────────────────────────────────────────────
+# As roles/tn_config/tasks/secrets.yml: the vault's value arrives on stdin, never on a
+# command line; empty in the vault and absent on disk -> generated once; an empty file
+# counts as absent. Only [A-Za-z0-9._-]: the image's start scripts put both into
+# config.php with sed and expand them unquoted.
+- name: Moodle — persist its credentials (generate any the vault leaves empty)
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      set -euo pipefail
+      umask 077
+      f="{{ tn_config_dir }}/secrets/{{ item.name }}"
+      want="$(cat)"
+      have=""
+      if [ -s "$f" ]; then have="$(cat "$f")"; fi
+      if [ -n "$want" ]; then
+        if [[ ! "$want" =~ ^[A-Za-z0-9._-]{32,}$ ]]; then echo BAD; exit 0; fi
+        if [ "$want" != "$have" ]; then
+          printf '%s' "$want" > "$f.tmp" && mv "$f.tmp" "$f"
+          echo WRITTEN
+        fi
+        exit 0
+      fi
+      if [ -z "$have" ]; then
+        printf '%s' "$(head -c 48 /dev/urandom | base64 | tr -d '=+/' | cut -c1-32)" > "$f.tmp"
+        mv "$f.tmp" "$f"
+        echo GENERATED
+      fi
+    stdin: "{{ item.value | default('') }}"
+    stdin_add_newline: false
+  register: tn_moodle_secret_persist
+  loop: "{{ tn_moodle_secrets }}"
+  loop_control:
+    label: "{{ item.name }}"
+  changed_when: tn_moodle_secret_persist.stdout | default('') in ['GENERATED', 'WRITTEN']
+  no_log: true
+
+- name: Moodle — refuse a vault value it cannot use
+  vars:
+    _bad: >-
+      {{ tn_moodle_secret_persist.results | default([]) | selectattr('stdout', 'defined')
+         | selectattr('stdout', 'equalto', 'BAD') | map(attribute='item.name') | list }}
+  ansible.builtin.assert:
+    that: _bad | length == 0
+    fail_msg: >-
+      The vault sets {{ _bad | map('regex_replace', '^', 'vault_') | join(', ') }} shorter than 32
+      characters or with characters other than A-Z a-z 0-9 . _ - (not persisted). Use such a
+      value, or empty it so one is generated.
+    quiet: true
+
+- name: Moodle — read its credentials back
+  ansible.builtin.slurp:
+    src: "{{ tn_config_dir }}/secrets/{{ item.name }}"
+  register: tn_moodle_secret_files
+  loop: "{{ tn_moodle_secrets }}"
+  loop_control:
+    label: "{{ item.name }}"
+  no_log: true
+
+- name: Moodle — the credential map
+  ansible.builtin.set_fact:
+    tn_moodle_creds: >-
+      {{ dict(tn_moodle_secret_files.results | map(attribute='item.name')
+              | zip(tn_moodle_secret_files.results | map(attribute='content') | map('b64decode'))) }}
+  no_log: true
+
+# ── 3. Database ───────────────────────────────────────────────────────
+# Its own role and database in the platform's PostgreSQL. SQL on stdin (the password is
+# never an argument); the role's password is set on every run, so a vault change applies.
+- name: Moodle — database and role
+  ansible.builtin.command:
+    cmd: >-
+      docker compose -f {{ tn_compose_file }} --env-file {{ tn_env_file }}
+      exec -T postgres psql -U {{ vault_postgres_user | default('forge') }}
+      -d {{ vault_postgres_db | default('forge') }} -v ON_ERROR_STOP=1
+    chdir: "{{ tn_app_dir }}/infra/platform/docker"
+    stdin: "{{ lookup('ansible.builtin.template', 'moodle-db.sql.j2') }}"
+  register: tn_moodle_db
+  changed_when: "'CREATE ' in tn_moodle_db.stdout"
+  no_log: true
+
+# ── 4. The node ───────────────────────────────────────────────────────
+- name: Moodle — the TrueNorth tenant it serves
+  ansible.builtin.command:
+    cmd: >-
+      docker compose -f {{ tn_compose_file }} --env-file {{ tn_env_file }}
+      exec -T api python -m app.moodle_backends.install_cli tenant {{ tn_tenant_slug }}
+    chdir: "{{ tn_app_dir }}/infra/platform/docker"
+  register: tn_moodle_tenant
+  changed_when: false
+  failed_when: false
+
+- name: Moodle — the tenant exists and this release can wire Moodle
+  ansible.builtin.assert:
+    that: tn_moodle_tenant.rc == 0 and tn_moodle_tenant.stdout | trim is match('^[0-9a-f-]{36}$')
+    fail_msg: >-
+      Could not read tenant {{ tn_tenant_slug }}'s id from the api:
+      {{ (tn_moodle_tenant.stderr | default('') | trim) or (tn_moodle_tenant.stdout | default('') | trim) }}.
+      "No module named app.moodle_backends.install_cli": the deployed api predates Moodle in
+      the installer; install a release that has it. "no tenant": run playbooks/80-seed.yml first.
+    quiet: true
+
+- name: Moodle — moodledata directory
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner | default(omit) }}"
+    group: "{{ item.owner | default(omit) }}"
+    mode: "{{ item.mode | default(omit) }}"
+  loop:
+    - { path: "{{ tn_data_root }}/moodle", mode: "0755" }
+    # Closed to other local users: Moodle makes its dataroot 02777 (directorypermissions)
+    # on every start, so the protection is this parent, not moodledata's own mode.
+    - { path: "{{ tn_moodle_data_dir }}", mode: "0750" }
+    # nobody: the image's user. Its mode is Moodle's (above), so it is not managed here.
+    - { path: "{{ tn_moodle_data_dir }}/moodledata", owner: "65534" }
+  loop_control:
+    label: "{{ item.path }}"
+  become: true
+
+- name: Moodle — render its env file
+  ansible.builtin.template:
+    src: moodle.env.j2
+    dest: "{{ tn_moodle_env_file }}"
+    mode: "0600"
+    owner: "{{ ansible_user }}"
+  vars:
+    tn_moodle_tenant_id: "{{ tn_moodle_tenant.stdout | trim }}"
+  no_log: true
+
+# The edge reads the certificate and its own config only when it starts or reloads;
+# record what it was given, and reload it when either changes (roles/tn_tls replaces the
+# certificate; a release can change moodle.conf).
+- name: Moodle — what the edge serves
+  ansible.builtin.stat:
+    path: "{{ item }}"
+    checksum_algorithm: sha256
+  loop:
+    - "{{ tn_tls_dir }}/truenorth.crt"
+    - "{{ tn_tls_dir }}/truenorth.key"
+    - "{{ tn_app_dir }}/infra/platform/nginx/moodle-edge/moodle.conf"
+  register: tn_moodle_edge_inputs
+  become: true
+
+- name: Moodle — record it
+  ansible.builtin.copy:
+    dest: "{{ tn_state_dir }}/moodle-{{ tn_moodle_node }}-edge.sha256"
+    content: "{{ tn_moodle_edge_inputs.results | map(attribute='stat.checksum', default='absent') | join('\n') }}\n"
+    mode: "0644"
+  notify: Reload the Moodle edge
+
+- name: Moodle — bring the node up (a first install takes minutes)
+  community.docker.docker_compose_v2:
+    project_src: "{{ tn_app_dir }}/infra/platform/docker"
+    files: [compose.moodle-prod.yml]
+    env_files: ["{{ tn_moodle_env_file }}"]
+    state: present
+    build: never
+    pull: never # present and digest-checked above
+    wait: true
+    wait_timeout: "{{ tn_moodle_start_timeout }}"
+
+- name: Moodle — make a changed certificate take effect
+  ansible.builtin.meta: flush_handlers
+
+# ── 5. Registration in TrueNorth ──────────────────────────────────────
+# What TrueNorth's platform registration needs, as the node wrote it at start-up.
+- name: Moodle — the node's registration values
+  ansible.builtin.command:
+    cmd: >-
+      docker compose -f compose.moodle-prod.yml --env-file {{ tn_moodle_env_file }}
+      exec -T moodle cat /var/www/moodledata/truenorth-registration.json
+    chdir: "{{ tn_app_dir }}/infra/platform/docker"
+  register: tn_moodle_registration
+  changed_when: false
+
+- name: Moodle — register it as the tenant's platform moodle-{{ tn_moodle_node }}
+  ansible.builtin.command:
+    cmd: >-
+      docker compose -f {{ tn_compose_file }} --env-file {{ tn_env_file }}
+      exec -T api python -m app.moodle_backends.install_cli register
+      {{ tn_tenant_slug }} {{ tn_moodle_node }} http://moodle-{{ tn_moodle_node }}:8080
+    chdir: "{{ tn_app_dir }}/infra/platform/docker"
+    stdin: "{{ tn_moodle_registration.stdout }}"
+  register: tn_moodle_register
+  changed_when: (tn_moodle_register.stdout | from_json).action != 'unchanged'
+
+# ── 6. Smoke ──────────────────────────────────────────────────────────
+- name: Moodle — the login page answers through the edge
+  ansible.builtin.uri:
+    url: "{{ tn_moodle_site_url }}/login/index.php?loginredirect=0"
+    validate_certs: "{{ tn_tls_mode != 'selfsigned' }}"
+    status_code: 200
+    return_content: true
+    timeout: 30
+  register: tn_moodle_login
+  retries: 6
+  delay: 10
+  until: tn_moodle_login.status == 200
+  failed_when: tn_moodle_login.status != 200 or 'logintoken' not in tn_moodle_login.content
+
+- name: Moodle — its sign-in sends people to TrueNorth
+  ansible.builtin.uri:
+    url: "{{ tn_moodle_site_url }}/login/index.php"
+    validate_certs: "{{ tn_tls_mode != 'selfsigned' }}"
+    follow_redirects: none
+    status_code: [303]
+    timeout: 30
+  register: tn_moodle_handoff
+  failed_when: >-
+    tn_moodle_handoff.status != 303
+    or (tn_moodle_handoff.location | default('')) != tn_moodle_login_url
+
+# The API's own publishing backend, a signed sync ticket for this tenant: proves the
+# internal address, the Host routing, local_truenorth, and Moodle's trust in this
+# TrueNorth's key and tenant. (The admin UI's platform "Test" probes base_url through
+# net_guard, which refuses internal addresses unless INTEGRATION_ALLOW_PRIVATE_URLS.)
+- name: Moodle — TrueNorth can publish to it
+  ansible.builtin.command:
+    cmd: >-
+      docker compose -f {{ tn_compose_file }} --env-file {{ tn_env_file }}
+      exec -T api python -m app.moodle_backends.install_cli check {{ tn_tenant_slug }} {{ tn_moodle_node }}
+    chdir: "{{ tn_app_dir }}/infra/platform/docker"
+  register: tn_moodle_check
+  changed_when: false
+  retries: 3
+  delay: 10
+  until: tn_moodle_check.rc == 0
+
+- name: Moodle — report
+  ansible.builtin.debug:
+    msg:
+      - "Moodle ({{ tn_moodle_node }}): {{ tn_moodle_site_url }}  image {{ tn_moodle_image_ref }}"
+      - "TrueNorth platform moodle-{{ tn_moodle_node }} ({{ (tn_moodle_register.stdout | from_json).action }}), tenant {{ tn_tenant_slug }}"
+      - "Administrator: {{ tn_moodle_site_url }}/login/index.php?loginredirect=0  user admin,
+         password in {{ tn_config_dir }}/secrets/moodle_admin_password"
+      - "Courses arrive by publishing an accepted release to it (docs/runbooks/moodle.md)."

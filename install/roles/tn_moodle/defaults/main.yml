@@ -1,0 +1,45 @@
+---
+# TrueNorth's Moodle (install/README.md "Moodle (optional)", docs/runbooks/moodle.md).
+# tn_moodle_enabled, tn_moodle_node, tn_moodle_port and the two file paths live in
+# group_vars (the backup environment, rendered by tn_config, needs them too).
+
+# Where browsers reach it: its own origin on the platform's name and certificate, so no
+# DNS record or certificate name is needed. Open tn_moodle_port wherever 443 is open.
+tn_moodle_site_url: "https://{{ tn_domain_fqdn }}:{{ tn_moodle_port }}"
+# Moodle's login page sends people to the TrueNorth app: Students and staff enter Moodle
+# signed in, through "Open in Moodle" on a course (local_truenorth sso.php). The Moodle
+# administrator keeps /login/index.php?loginredirect=0.
+tn_moodle_login_url: "https://{{ tn_domain_fqdn }}/learning/courses"
+# The TrueNorth API as browsers reach it (LTI launch and login URLs Moodle registers).
+tn_moodle_tool_url: "https://{{ tn_domain_fqdn }}/api"
+# No spaces: the image's CLI bootstrap expands it as one shell argument.
+tn_moodle_sitename: TrueNorth
+tn_moodle_admin_email: "moodle-admin@{{ tn_domain_fqdn }}"
+# Outbound mail. The default goes nowhere (nothing leaves the box); set a site relay to
+# let Moodle send notifications.
+tn_moodle_smtp_host: localhost
+tn_moodle_smtp_port: 25
+
+# The image. Empty: release-manifest.json images.moodle in release mode (by digest,
+# scanned and signed by release.yml), truenorth-moodle:local built from the checkout in
+# build mode. Set an image@sha256 ref only to run something else deliberately.
+tn_moodle_image: ""
+
+# Its database in the platform's PostgreSQL, owned by its own role. Every backup dumps
+# every database, so it is backed up and restored with the rest.
+tn_moodle_db_name: moodle
+tn_moodle_db_user: moodle
+
+# moodledata (course files, submissions) lives here, owned by the image's user (nobody).
+tn_moodle_data_dir: "{{ tn_data_root }}/moodle/{{ tn_moodle_node }}"
+
+# A first install creates Moodle's ~500 tables: minutes, not seconds.
+tn_moodle_start_timeout: 1500
+
+# The two generated credentials, persisted under {{ tn_config_dir }}/secrets/ like the
+# installer's others (so backups escrow them). The vault may set either; the vault then
+# wins. Neither is first_start: the role sets the database role's password on every run,
+# and the image resets the admin password from the environment on every start.
+tn_moodle_secrets:
+  - { name: moodle_db_password, value: "{{ vault_moodle_db_password | default('') }}" }
+  - { name: moodle_admin_password, value: "{{ vault_moodle_admin_password | default('') }}" }

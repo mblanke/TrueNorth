@@ -16,6 +16,9 @@
 #                               persisted secret, one file each), tarred and encrypted
 #                               with the same data key. restore-secrets.sh writes them
 #                               back before the installer is re-run on a rebuilt host.
+#   moodle/moodledata.tar       only with MOODLE_COMPOSE_FILE (the installer's Moodle,
+#                               tn_moodle_enabled): Moodle's files, without its caches.
+#                               Its database is one of the postgres dumps above.
 #   manifest.json, SHA256SUMS
 #
 # Not backed up, on purpose (docs/runbooks/backup-restore.md):
@@ -58,6 +61,12 @@
 #                            delete older ones after a successful snapshot (default 14;
 #                            0 = keep all).
 #   OPENSSL                  default: openssl
+#   MOODLE_COMPOSE_FILE      optional: the Moodle node's compose file
+#   MOODLE_ENV_FILE          (compose.moodle-prod.yml) and its env file. Set: moodledata is
+#                            archived through a throwaway container of the node's image, as
+#                            its user, running or not; a failure fails the backup like a
+#                            database dump would. Set but the env file absent (the node is
+#                            not installed yet): recorded as "not-installed".
 #
 # Exit codes: 0 ok; 1 failed (no backup kept); 3 data backed up but secrets NOT
 # escrowed (configure BACKUP_ESCROW_PUBKEY or BACKUP_ESCROW=out-of-band); 5 data and
@@ -183,6 +192,29 @@ if (( BAK_OBJECTS < SRC_OBJECTS )); then
     die "MinIO mirror incomplete: ${BAK_OBJECTS} files for ${SRC_OBJECTS} objects"
 fi
 log "INFO" "  minio: ${BUCKETS} buckets, ${BAK_OBJECTS} objects"
+
+# ── 2b. Moodle files (optional) ──────────────────────────────────────────────
+CURRENT_STEP="moodle"
+case "$(moodle_state)" in
+    on)
+        mkdir -p "${WORK_PATH}/moodle"
+        moodle_dc run --rm --no-deps -T --entrypoint tar moodle \
+            -C /var/www/moodledata "${MOODLE_DATA_EXCLUDES[@]}" -cf - . \
+            >"${WORK_PATH}/moodle/moodledata.tar" </dev/null
+        # An archive tar cannot list is not a backup.
+        tar -tf "${WORK_PATH}/moodle/moodledata.tar" >/dev/null || die "moodledata archive is unreadable"
+        size="$(wc -c <"${WORK_PATH}/moodle/moodledata.tar" | tr -d ' ')"
+        MOODLE_JSON="{\"status\":\"backed-up\",\"moodledata\":\"moodle/moodledata.tar\",\"bytes\":${size}}"
+        log "INFO" "  moodle: moodledata ${size} bytes (its database is among the postgres dumps)"
+        ;;
+    absent)
+        MOODLE_JSON='{"status":"not-installed","reason":"MOODLE_COMPOSE_FILE is set but MOODLE_ENV_FILE does not exist yet"}'
+        log "WARN" "  moodle: configured but not installed yet (no ${MOODLE_ENV_FILE:-MOODLE_ENV_FILE}); no files backed up"
+        ;;
+    *)
+        MOODLE_JSON='{"status":"not-configured"}'
+        ;;
+esac
 
 # ── 3. OpenSearch (optional) ─────────────────────────────────────────────────
 # Telemetry must never cost the backup of the data: a failed snapshot (or prune) is recorded
@@ -312,6 +344,7 @@ cat >"${WORK_PATH}/manifest.json" <<EOF
   "postgres": {"server_version": $(json_str "${PG_VERSION}"), "globals": "postgres/globals.sql", "databases": [${DB_JSON}]},
   "minio": {"buckets": ${BUCKETS}, "objects": ${BAK_OBJECTS}, "dir": "minio"},
   "opensearch": ${OS_JSON},
+  "moodle": ${MOODLE_JSON},
   "redis": {"status": "not-backed-up", "reason": "transient broker/cache; restoring would replay tasks"},
   "escrow": ${ESCROW_JSON}
 }

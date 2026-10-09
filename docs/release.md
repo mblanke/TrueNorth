@@ -18,7 +18,8 @@ e.g. [`v1.0.0.md`](release-notes/v1.0.0.md); the change list is `CHANGELOG.md`.
 ## What a release produces
 
 For each of the five services, `api`, `worker`, `web`, `scenario-engine` and
-`ai-orchestrator`, release.yml:
+`ai-orchestrator`, and for `moodle` (TrueNorth's Moodle, `infra/platform/moodle`, which the
+installer runs only with `tn_moodle_enabled`), release.yml:
 
 1. builds from the tagged commit with a fresh base image (`pull: true`) and no layer
    cache, with `TN_VERSION=<tag>` as a build arg. The tag becomes the `TN_VERSION` env var
@@ -146,7 +147,8 @@ The installer consumes it (`install/roles/tn_release`; install/README.md "Images
     "api":             {"image": "ghcr.io/mblanke/truenorth-api", "digest": "sha256:…",
                         "ref": "ghcr.io/mblanke/truenorth-api@sha256:…",
                         "tag": "ghcr.io/mblanke/truenorth-api:v1.2.3"},
-    "worker":          {…}, "web": {…}, "scenario-engine": {…}, "ai-orchestrator": {…}
+    "worker":          {…}, "web": {…}, "scenario-engine": {…}, "ai-orchestrator": {…},
+    "moodle":          {…}
   }
 }
 ```
@@ -166,6 +168,9 @@ Rules for consumers:
   installer renders from `ref`, and pins every third-party image by digest.
   `compose.build.yml` adds the builds back for a lab. The `scenario-engine` image is
   published but not run by compose (the api mounts the engine from the source at `git_sha`).
+  The `moodle` image runs from `compose.moodle-prod.yml` as `${TN_IMAGE_MOODLE}`
+  (install/roles/tn_moodle); releases before it have no `moodle` entry, and the installer
+  then refuses to enable Moodle rather than run an unscanned image.
 
 ## Pins
 
