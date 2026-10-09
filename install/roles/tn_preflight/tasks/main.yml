@@ -311,15 +311,39 @@
 - name: Preflight — ARC² Course Studio
   when: tn_arc2_enabled | default(false) | bool
   block:
-    - name: Preflight — ARC² has a model API key
+    # Exactly one credential, so it is never ambiguous which account is billed. The
+    # messages name the variables and whether each is set, never their values.
+    - name: Preflight — ARC² has exactly one model credential
       ansible.builtin.assert:
         that:
-          - vault_arc2_anthropic_api_key | default('') | string | trim | length > 0
+          - >-
+            (vault_arc2_claude_oauth_token | default('') | string | trim | length > 0)
+            != (vault_arc2_anthropic_api_key | default('') | string | trim | length > 0)
+          - vault_arc2_claude_oauth_token | default('') is not search('CHANGE_ME')
           - vault_arc2_anthropic_api_key | default('') is not search('CHANGE_ME')
         fail_msg: >-
-          tn_arc2_enabled is true but vault_arc2_anthropic_api_key is empty. There is no default:
-          set an Anthropic API key issued for this host (ansible-vault edit
-          inventory/group_vars/all/vault.yml), or set tn_arc2_enabled: false.
+          tn_arc2_enabled is true, so ARC² needs exactly one model credential, and
+          {{ 'both vault_arc2_claude_oauth_token and vault_arc2_anthropic_api_key are set'
+          if (vault_arc2_claude_oauth_token | default('') | string | trim | length > 0)
+          and (vault_arc2_anthropic_api_key | default('') | string | trim | length > 0)
+          else 'neither vault_arc2_claude_oauth_token nor vault_arc2_anthropic_api_key is set (or one is still CHANGE_ME)' }}.
+          Either a Claude subscription: run `claude setup-token` on a machine signed in to it
+          and put the token in vault_arc2_claude_oauth_token; or a pay-per-use Anthropic API
+          key issued for this host, in vault_arc2_anthropic_api_key. Leave the other empty
+          (ansible-vault edit inventory/group_vars/all/vault.yml), or set tn_arc2_enabled: false.
+        quiet: true
+
+    # Claude Code reads CLAUDE_CODE_OAUTH_TOKEN as a subscription token and
+    # ANTHROPIC_API_KEY as an API key: one in the other's variable fails every job.
+    - name: Preflight — ARC² credential is in the right variable
+      ansible.builtin.assert:
+        that:
+          - vault_arc2_claude_oauth_token | default('') | string | trim is not match('sk-ant-api')
+          - vault_arc2_anthropic_api_key | default('') | string | trim is not match('sk-ant-oat')
+        fail_msg: >-
+          An Anthropic API key (sk-ant-api...) is in vault_arc2_claude_oauth_token, or a
+          subscription token (sk-ant-oat..., from `claude setup-token`) is in
+          vault_arc2_anthropic_api_key. Move it to the other variable.
         quiet: true
 
     - name: Preflight — ARC² model endpoint is https on port 443

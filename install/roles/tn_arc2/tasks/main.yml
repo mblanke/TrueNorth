@@ -5,7 +5,7 @@
 #
 # On, it installs the runner that turns Course Studio requests into /arc2 runs:
 #   install.yml  the account, the runs directory, bubblewrap and its AppArmor profile,
-#                Node and Claude Code at pinned versions, the engine's venv, the key's
+#                Node and Claude Code at pinned versions, the engine's venv, the credential's
 #                EnvironmentFile, the hardened systemd service, and its health check.
 
 - name: ARC² — Course Studio is off

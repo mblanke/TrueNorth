@@ -513,14 +513,37 @@ so decide whether that is acceptable for what this platform holds.
 | | |
 |---|---|
 | `tn_arc2_enabled: true` | inventory (group_vars or the host) |
-| `vault_arc2_anthropic_api_key` | vault; **required**, no default (preflight stops without it). Issue a key for this host alone, with a spending limit: every job can read it (it can reach only the model endpoint) |
+| One model credential | vault; **exactly one** of `vault_arc2_claude_oauth_token` or `vault_arc2_anthropic_api_key`, no default (preflight stops with neither, and with both, so it is never ambiguous which account is billed). See "Model credential" below |
 | HTTPS out to `api.anthropic.com` | from the platform host (preflight checks). Or `tn_arc2_anthropic_base_url`: an Anthropic-compatible gateway, `https://` on port 443 only; Claude Code reads `ANTHROPIC_BASE_URL` and the jobs' proxy then allows that host instead |
 | At install time: PyPI, the npm registry, nodejs.org | or mirrors: `tn_arc2_pip_index_url`, `tn_arc2_npm_registry`, `tn_arc2_node_mirror` |
 | A free gid | `tn_arc2_runs_gid` (`10010`; preflight checks) |
 | Disk | `tn_arc2_min_free_gb` (5) for runs; `tn_arc2_min_free_system_gb` (3) for `/opt/truenorth-arc2` (about 0.8 GB) |
 
+**Model credential.** Set one, leave the other empty (`ansible-vault edit
+inventory/group_vars/all/vault.yml`; `vault.yml.example` documents both):
+
+- **Claude subscription (recommended if you already have one).** Run `claude setup-token`
+  on any machine signed in to the subscription and put the token in
+  `vault_arc2_claude_oauth_token`. It is the operator's own credential, and usage counts
+  against that subscription's limits: a job that hits a limit stops with Claude Code's
+  usage-limit message and is not retried (the runner's local-model fallback stays off on
+  the platform host), so send it again once the limit resets. The token is long-lived:
+  revoke it and issue a new one if the host is rebuilt or decommissioned, or if the token
+  may have been exposed. A subscription token is for Anthropic's own endpoint; with
+  `tn_arc2_anthropic_base_url` (a gateway) use whatever credential that gateway accepts.
+- **Pay-per-use API key.** Put it in `vault_arc2_anthropic_api_key`. Issue a key for this
+  host alone, with a spending limit.
+
+Either way it reaches only the runner: `/etc/truenorth-arc2/runner.env` (`root:root 0600`,
+written with `no_log`), as `CLAUDE_CODE_OAUTH_TOKEN` or `ANTHROPIC_API_KEY`. Every job can
+read it, and can use it only against the model endpoint (the jobs' egress proxy allows
+nothing else). Preflight also refuses an API key (`sk-ant-api…`) in the token's variable
+and a token (`sk-ant-oat…`) in the key's.
+
 Then `ansible-playbook site.yml`, or on a running platform `30-config`, `50-stack-up` (the
-api picks up the setting and the mount) and `55-arc2`.
+api picks up the setting and the mount) and `55-arc2`. Switching between the two
+credentials later: change the vault and re-run `55-arc2` (it rewrites the file and restarts
+the runner).
 
 **What `55-arc2` installs**
 
@@ -529,7 +552,7 @@ api picks up the setting and the mount) and `55-arc2`.
 | `tn-arc2` | system account: no login shell, no password, no sudo, not in `docker`; home `/var/lib/tn-arc2` (0700: per-job homes, deleted after each job) |
 | `{{ tn_data_root }}/arc2/runs` | the runs root, `tn-arc2:tn-arc2-runs` 2750; `_queue/` and `_studio/` 2770 (the api writes them); `_jobs/`, `_history/` and each run 2750 (the runner's). The api container joins `tn-arc2-runs` by gid (`group_add`) and mounts the directory at `/srv/arc2/runs` |
 | `/opt/truenorth-arc2/` | root-owned: `node` (pinned, SHA-256-checked tarball), `claude-code` (pinned, `npm ci` from `roles/tn_arc2/files/claude-code/package-lock.json`), `venv` (the engine's Python: the api's requirements, pytest, ruff), `bin/bwrap` (a copy, `root:tn-arc2 0750`) |
-| `/etc/truenorth-arc2/runner.env` | `ANTHROPIC_API_KEY` only, `root:root 0600`, read by systemd (`EnvironmentFile`). Never on a command line, never in `.env.production` |
+| `/etc/truenorth-arc2/runner.env` | the credential only (`CLAUDE_CODE_OAUTH_TOKEN` or `ANTHROPIC_API_KEY`), `root:root 0600`, read by systemd (`EnvironmentFile`). Never on a command line, never in `.env.production` |
 | `/etc/apparmor.d/truenorth-arc2-bwrap` | see "Sandbox" below |
 | `truenorth-arc2-runner.service` | the runner, from the deployed checkout (read-only), as `tn-arc2` |
 
@@ -629,7 +652,7 @@ actually change:
 | `tn_provisioner_backend` | `vsphere_api` | **Not** `vsphere` — that is not a registry key and raises `ValueError`. |
 | `tn_seed_demo_data` | `false` | Demo tenants have no place in a range holding CAF curriculum. |
 | `tn_default_progression` | `DP1` | Developmental progression a new trainee joins (DP1 → DP2). |
-| `tn_arc2_enabled` | `false` | ARC² Course Studio; with `vault_arc2_anthropic_api_key` ("ARC² Course Studio (optional)"). |
+| `tn_arc2_enabled` | `false` | ARC² Course Studio; with exactly one of `vault_arc2_claude_oauth_token` or `vault_arc2_anthropic_api_key` ("ARC² Course Studio (optional)"). |
 | `tn_arc2_claude_code_version` / `tn_arc2_node_version` | `2.1.286` / `24.21.0` | Pinned; bump with the lockfile and checksums. |
 
 ## After the install

@@ -494,9 +494,26 @@ because bubblewrap must mount a fresh `/proc` for the job's PID namespace.
 tunnels `CONNECT` to `ARC2_EGRESS_ALLOW` (`api.anthropic.com`, or the gateway's host) on 443.
 The local-model fallback is off (`ARC2_FALLBACK=off`): there is no Ollama on the platform host.
 
-**Credential.** `ANTHROPIC_API_KEY` reaches the runner through a root 0600 `EnvironmentFile`,
-and from there each job's environment (`runner.AUTH_ENV`). A job can read it, and can use it
-only against the allowed endpoint. Issue a key for this host alone, with a spending limit.
+**Credential.** Exactly one of two vault variables; preflight and `55-arc2` refuse neither
+and both, so it is never ambiguous which account is billed.
+
+- **Claude subscription (recommended if you already have one):** run `claude setup-token` on
+  any machine signed in to the subscription and put the token in
+  `vault_arc2_claude_oauth_token`. This is the same token the Mac runner reads from
+  `~/.arc2/oauth-token` ("Runner account" above). It is the operator's own credential, and
+  usage counts against the subscription's limits. A job that hits a limit fails with Claude
+  Code's usage-limit message and is not retried: the runner's local-model fallback stays off
+  on the platform host (`ARC2_FALLBACK=off`). Send it again once the limit resets. The token
+  is long-lived: revoke it and issue a new one when the host is rebuilt or decommissioned.
+- **Pay-per-use API key:** `vault_arc2_anthropic_api_key`. Issue a key for this host alone,
+  with a spending limit.
+
+Whichever is set reaches the runner as `CLAUDE_CODE_OAUTH_TOKEN` or `ANTHROPIC_API_KEY`
+through a root 0600 `EnvironmentFile` (written with `no_log`), never a command line or
+`.env.production`. From there it goes into each job's environment the same way on Linux as
+on macOS: both names are in `runner.AUTH_ENV`, which `job_env` always forwards and the
+runner's re-exec scrub (`RUNNER_ENV`) always keeps, so neither needs `ARC2_JOB_ENV`. A job
+can read it, and can use it only against the allowed endpoint.
 
 **Self-test.** `python -m arc2.runner --self-test` (new) selects the sandbox exactly as for a
 job and runs `claude --version` in it, with the job's environment, home, egress proxy and
@@ -515,6 +532,10 @@ executable by other users; with the profile unloaded the self-test exits 2 and n
 and the next `55-arc2` restores it; the runner comes back confined after a reboot; preflight
 stops without a key and on a non-https gateway. **Not verified:** a real `/arc2` run with a
 real key, the real api image serving `/api/arc2` from the mount, x86_64, and the staging host.
+The subscription-token option (`vault_arc2_claude_oauth_token`, added after that run) is
+covered by contract and unit tests only (`tests/contracts/test_installer_arc2.py`,
+`tests/arc2/test_arc2_runner_self_test.py`); no job has yet run on the platform host with a
+real subscription token.
 
 ## 14. Authoring with Claude Code on a Mac, then importing into a TrueNorth install
 
