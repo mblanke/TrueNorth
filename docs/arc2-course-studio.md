@@ -415,7 +415,8 @@ Evidence:
 
 Still open:
 - `/arc2` always uses `<repo>/build/arc2`, so `ARC2_RUNS_DIR` must point there for the
-  engine, runner and API to agree.
+  engine, runner and API to agree. (The installer meets this with a bind mount in the
+  service's own namespace, §13.)
 - A descendant that calls `setsid()` survives the job's process-group kill. It stays
   confined to that run.
 
@@ -435,3 +436,122 @@ other API call. When it is on nothing changes, except that a failed project list
 the server's message. Tests: `tests/api/test_arc2_studio.py`,
 `control-plane/web/src/app/shared/hub-shell.component.spec.ts`,
 `control-plane/web/src/app/features/arc2-studio/arc2-studio.component.spec.ts`.
+
+## 13. Deployment: the runner on a platform host (2026-10-09)
+
+The Ansible installer can run the runner on the Linux platform host, as an optional
+feature, off by default (`tn_arc2_enabled`; `install/roles/tn_arc2`,
+`install/playbooks/55-arc2.yml`). Operator steps, variables and version bumps are in
+install/README.md, "ARC² Course Studio (optional)". This section records the design.
+
+**Data leaves the host.** With the installer's defaults, every Studio request, all feedback
+and the content the agents generate go to Anthropic's API (or to the gateway in
+`tn_arc2_anthropic_base_url`). §10 correction 5 still applies: the content-pack rule (no
+external or cloud API; CUI stays on-box) rules this out for an enclave holding CUI. Enable
+it only where sending course material to that endpoint is acceptable. An on-premises,
+Anthropic-compatible endpoint can be used through `tn_arc2_anthropic_base_url`
+(https on 443).
+
+**Processes and paths.** The service `truenorth-arc2-runner` runs
+`/opt/truenorth-arc2/venv/bin/python -m arc2.runner` as `tn-arc2`, with the deployed
+checkout (`/srv/truenorth/app`) as its repository, read-only. `/arc2` hard-codes
+`<repo>/build/arc2` and `<repo>/.venv/bin/python`, so the unit binds the runs directory
+(`/srv/truenorth/arc2/runs`) and the venv onto those two paths inside its own mount
+namespace (`BindPaths`, `BindReadOnlyPaths`). The checkout on disk only gains two empty
+mount points, which systemd recreates if an upgrade replaces the tree. `ARC2_RUNS_DIR` is
+`/srv/truenorth/app/build/arc2` for the runner and `/srv/arc2/runs` in the api container;
+both are the same directory.
+
+**Ownership.** Worked out from `app/routers/arc2_studio.py` and `runner.py`:
+
+| Path under the runs root | Writer | Mode (`tn-arc2:tn-arc2-runs`, setgid) | Why |
+|---|---|---|---|
+| `.` | runner (run dirs, `<slug>.request.txt`, `_runner.lock`) | 2750 | the api lists it |
+| `_queue/` | api (temp file + rename); runner renames claimed jobs out | 2770 | both write; no sticky bit, or the runner could not rename the api's files |
+| `_studio/` | api (metadata by exclusive create, chat appends); `assign_owner` | 2770 | the runner never writes it |
+| `_jobs/`, `_history/`, `<slug>/` | runner and its jobs | 2750, files 0640 (`UMask=0027`) | the api reads them through the group |
+
+The api container runs as uid 10001 and joins gid `tn_arc2_runs_gid` (`group_add`,
+`ARC2_RUNS_GID`). Disabled, compose mounts an empty volume of its own and adds the image's
+own group, so nothing reaches the host.
+
+**Sandbox and AppArmor.** Ubuntu 24.04 sets `kernel.apparmor_restrict_unprivileged_userns=1`,
+so stock bubblewrap cannot create the user namespace a job's sandbox needs, and the runner
+would fail closed. Turning the sysctl off would give every local program that kernel attack
+surface. Instead the installer copies `bwrap` to `/opt/truenorth-arc2/bin/bwrap`
+(`root:tn-arc2 0750`, first on the service's `PATH`) and loads a profile that allows user
+namespaces for that path only. bwrap sets `no_new_privs` before it starts the job, so the job
+is stacked (`&truenorth-arc2-bwrap//&truenorth-arc2-bwrap-job`) under a profile that allows no
+user namespace and no capability: a job cannot create a nested namespace with the permission
+bwrap was given. The systemd unit is the outer layer, and bubblewrap builds every job from
+it: no capabilities, `NoNewPrivileges`, `ProtectSystem=strict`, private `/tmp`, devices and
+IPC, the platform's config, secrets, TLS, state and datastore directories inaccessible, no
+private-network addresses, and resource limits. Settings that overmount `/proc`
+(`ProtectKernelTunables`, `ProtectKernelLogs`, `ProtectHostname`, `ProcSubset`) stay off,
+because bubblewrap must mount a fresh `/proc` for the job's PID namespace.
+
+**Egress.** Jobs have their own network namespace and reach only the runner's proxy, which
+tunnels `CONNECT` to `ARC2_EGRESS_ALLOW` (`api.anthropic.com`, or the gateway's host) on 443.
+The local-model fallback is off (`ARC2_FALLBACK=off`): there is no Ollama on the platform host.
+
+**Credential.** `ANTHROPIC_API_KEY` reaches the runner through a root 0600 `EnvironmentFile`,
+and from there each job's environment (`runner.AUTH_ENV`). A job can read it, and can use it
+only against the allowed endpoint. Issue a key for this host alone, with a spending limit.
+
+**Self-test.** `python -m arc2.runner --self-test` (new) selects the sandbox exactly as for a
+job and runs `claude --version` in it, with the job's environment, home, egress proxy and
+network namespace. It calls no model. The unit runs it as `ExecStartPre`, so a host that
+cannot build a sandbox fails at install time, not on the first job.
+
+**Verified (2026-10-09), on a disposable Lima VM (Ubuntu 24.04.4, kernel 6.8, aarch64,
+AppArmor restriction on), with a fake key:** `00-docker`, `00-preflight` and `55-arc2` pass, and
+a second `55-arc2` run changes nothing; the unit's self-test passes in bubblewrap; a job
+queued by an api-shaped container (uid 10001, `group_add` 10010, read-only root) is claimed and
+runs the real Claude Code 2.1.286 in the sandbox, which reaches Anthropic through the proxy and
+stops at "Invalid API key" (HTTP 401, no tokens); the container reads the job record and log
+back; a job's label is `truenorth-arc2-bwrap//&truenorth-arc2-bwrap-job` and a nested user
+namespace is denied; stock `bwrap` stays restricted for `tn-arc2`, and the runner's copy is not
+executable by other users; with the profile unloaded the self-test exits 2 and no runner starts,
+and the next `55-arc2` restores it; the runner comes back confined after a reboot; preflight
+stops without a key and on a non-https gateway. **Not verified:** a real `/arc2` run with a
+real key, the real api image serving `/api/arc2` from the mount, x86_64, and the staging host.
+
+## 14. Authoring with Claude Code on a Mac, then importing into a TrueNorth install
+
+The Studio is not required to make a course. The same engine runs in Claude Code on an
+author's Mac, and its output reaches a TrueNorth install as a **course release**: a tarball
+built by `tools/arc2/release.py` and uploaded to `POST /api/course-releases`
+(`app/routers/course_releases.py`), which is what Authoring → Courses in the web app does.
+
+1. **Set up once.** A checkout of this repository with a native venv:
+   `uv venv .venv --python 3.11`, then
+   `uv pip install --python .venv/bin/python -r requirements-test.txt "ruff==0.16.3"`.
+   Open Claude Code in the checkout.
+2. **Author.** `/arc2 <free-text course request>` runs stage 1 and stops at the outline.
+   `/arc2 --resume <slug> accept` (or feedback text) moves through the outline and preview
+   gates; the package builder writes `build/arc2/<slug>/07-bundle/`. Seatbelt confines the
+   agents' tools on macOS only when the runner runs them; interactively, Claude Code's own
+   permission prompts apply.
+3. **Build the release.** Only an accepted, packaged run with a catalogue identity can be
+   released (`release.readiness`): `course.catalogue_code` set, QA `pass`, both gates accepted
+   and unchanged since, the package builder done.
+
+   ```bash
+   PYTHONPATH=tools .venv/bin/python -m arc2.release build build/arc2/<slug>
+   # build/arc2/<slug>-<digest>.tar.gz  release <digest>  <catalogue code>  (learner n, platform n, instructor n)
+   ```
+
+   Open human actions are printed; they travel with the release.
+4. **Upload.** In TrueNorth, Authoring → Courses (`/authoring/courses`) → **Upload release**
+   (permission `course:author`). The API recomputes every digest and refuses a mismatch, a
+   release over 64 MB, or a catalogue code this tenant does not have ("import the programme
+   catalogue first"). Uploading the same release again returns the existing candidate.
+5. **Accept.** **Accept** on the candidate (permission `course:release`), acknowledging each
+   open action by id. Its content becomes the course's, the previous release is superseded,
+   and new enrolments pin to it. Publishing to an LMS is a separate step
+   (`POST /api/course-releases/{id}/publications`; docs/moodle-primer.md).
+
+A run made by an installed Studio (§13) is released the same way, from the host:
+`sudo -u tn-arc2 env PYTHONPATH=/srv/truenorth/app/tools /opt/truenorth-arc2/venv/bin/python
+-m arc2.release build /srv/truenorth/arc2/runs/<slug>` writes the tarball beside the run; copy it
+to a workstation and upload it as in step 4.

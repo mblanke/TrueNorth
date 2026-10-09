@@ -1,0 +1,98 @@
+---
+# ARC² Course Studio runner (install/README.md "ARC² Course Studio (optional)",
+# docs/arc2-course-studio.md "Deployment"). The operator's settings (tn_arc2_enabled, the
+# pinned versions, the endpoint) are in group_vars; these are the role's internals.
+
+# ── Accounts ──────────────────────────────────────────────────────────
+# The runner's own account: no login shell, no sudo, not in the docker group. It owns the
+# runs directory and its home, and nothing else on the host.
+tn_arc2_user: tn-arc2
+tn_arc2_home: /var/lib/tn-arc2
+# The runs directory's group. The api container joins it by number (compose group_add,
+# ARC2_RUNS_GID = tn_arc2_runs_gid) to read runs and to write _queue/ and _studio/.
+tn_arc2_runs_group: tn-arc2-runs
+
+# ── What the runner runs, root-owned and read-only to it ──────────────
+tn_arc2_prefix: /opt/truenorth-arc2
+tn_arc2_venv: "{{ tn_arc2_prefix }}/venv"
+tn_arc2_node_dir: "{{ tn_arc2_prefix }}/node"
+tn_arc2_claude_dir: "{{ tn_arc2_prefix }}/claude-code"
+tn_arc2_claude_bin: "{{ tn_arc2_claude_dir }}/node_modules/.bin/claude"
+# A copy of /usr/bin/bwrap that only root and tn_arc2_user may execute (root:tn-arc2 0750),
+# and the only binary the AppArmor profile below lets create user namespaces. It is first
+# on the service's PATH, which is where arc2/confine.py looks for `bwrap`.
+tn_arc2_bwrap: "{{ tn_arc2_prefix }}/bin/bwrap"
+tn_arc2_apparmor_profile: truenorth-arc2-bwrap
+
+# ── Service ───────────────────────────────────────────────────────────
+tn_arc2_service: truenorth-arc2-runner
+tn_arc2_etc: /etc/truenorth-arc2
+# The model API key, and only that: root:root 0600, read by systemd (EnvironmentFile),
+# never on a command line and never in the stack's .env.production.
+tn_arc2_env_file: "{{ tn_arc2_etc }}/runner.env"
+# /arc2 works in <repo>/build/arc2 and runs <repo>/.venv/bin/python, relative to the
+# checkout it runs in (.claude/commands/arc2.md). The service runs from the deployed app
+# checkout, read-only, and its own mount namespace puts the runs directory and the venv at
+# those two paths (BindPaths); the checkout on disk keeps no runner state.
+tn_arc2_repo_runs: "{{ tn_app_dir }}/build/arc2"
+tn_arc2_repo_venv: "{{ tn_app_dir }}/.venv"
+# A job's deadline (runner --timeout default; arc2/runner.py DEFAULT_TIMEOUT).
+tn_arc2_job_timeout: 14400
+# The runner and its jobs share one cgroup: they may not starve the platform's stack.
+tn_arc2_memory_max: 4G
+tn_arc2_cpu_weight: 50
+tn_arc2_tasks_max: 1024
+
+# The only host the jobs' egress proxy tunnels to (ARC2_EGRESS_ALLOW): the model endpoint.
+tn_arc2_egress_allow: >-
+  {{ (tn_arc2_anthropic_base_url | ansible.builtin.urlsplit('hostname'))
+     if tn_arc2_anthropic_base_url | default('') | length > 0 else 'api.anthropic.com' }}
+
+# Host data the runner never needs, masked in its mount namespace (InaccessiblePaths), and
+# so in every job's, which bubblewrap builds from it. `-`: a missing path is not an error.
+tn_arc2_inaccessible_paths:
+  - "{{ tn_config_dir }}"
+  - "{{ tn_tls_dir }}"
+  - "{{ tn_state_dir }}"
+  - "{{ tn_data_root }}/postgres"
+  - "{{ tn_data_root }}/redis"
+  - "{{ tn_data_root }}/minio"
+  - "{{ tn_data_root }}/opensearch"
+  - "{{ tn_data_root }}/opensearch-snapshots"
+  - "{{ tn_data_root }}/backups"
+  - "{{ tn_data_root }}/reports"
+  - "{{ tn_data_root }}/artifacts"
+  - "{{ tn_data_root }}/logs"
+  - /var/lib/docker
+  - /run/docker.sock
+  - /run/containerd
+# The runner and its jobs reach no private network: not the LAN, vCenter, the domain
+# controller or the Docker bridges (cgroup IP filtering, IPAddressDeny). Loopback stays
+# reachable: the host resolver (127.0.0.53) and each Linux job's own netbridge. Empty this
+# only if tn_arc2_anthropic_base_url is an internal gateway.
+tn_arc2_ip_deny:
+  - 10.0.0.0/8
+  - 172.16.0.0/12
+  - 192.168.0.0/16
+  - 169.254.0.0/16
+  - 100.64.0.0/10
+  - fc00::/7
+  - fe80::/10
+
+# ── Node.js (only to install Claude Code; the claude binary is native) ─
+# The official tarball, checked against nodejs.org's SHASUMS256.txt for the version in
+# group_vars (tn_arc2_node_version). Bump both together; install/README.md says how.
+# Air-gapped: a mirror with the same layout (<mirror>/v<version>/<name>.tar.xz).
+tn_arc2_node_mirror: https://nodejs.org/dist
+tn_arc2_node_sha256:
+  x64: fd8e59d5a511510f6a298afb548f18c7d2b1be404d8b4a27d94fbe49f56cb2d6
+  arm64: 6ad1325edbdb5649c379b75a237147a666c95d4f9ae8d340fef2d1575d289ad2
+tn_arc2_node_arch: "{{ {'x86_64': 'x64', 'aarch64': 'arm64'}[ansible_facts['architecture']] | default('unsupported') }}"
+tn_arc2_node_name: "node-v{{ tn_arc2_node_version }}-linux-{{ tn_arc2_node_arch }}"
+
+# ── The engine's Python (.claude/commands/arc2.md step 1) ─────────────
+# control-plane/api/requirements.txt (QA imports the API's parsers), plus pytest and ruff
+# at the versions the test environment pins (requirements-test.txt, scripts/dod.sh).
+tn_arc2_venv_extra:
+  - pytest==8.3.3
+  - ruff==0.16.3

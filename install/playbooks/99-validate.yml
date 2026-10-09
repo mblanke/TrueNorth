@@ -67,6 +67,13 @@
         # The summaries need a token this play does not have: only assert on an answer.
         - tn_summaries.results[0].status | default(0) == 200
 
+    - name: Validate — ARC² Course Studio runner
+      ansible.builtin.systemd_service:
+        name: truenorth-arc2-runner
+      register: tn_arc2_state
+      failed_when: false
+      when: tn_arc2_enabled | default(false) | bool
+
     - name: Validate — REPORT
       ansible.builtin.debug:
         msg:
@@ -87,6 +94,9 @@
           - " provisioner   : {{ tn_prov_state.backend | default(tn_provisioner_backend) }}"
           - " vcenter       : {{ tn_prov_state.vcenter | default(tn_vcenter_address) if tn_uses_vcenter | bool else 'none' }}"
           - " can provision : {{ tn_prov_state.can_provision | default('unknown') }}"
+          - >-
+            {{ ' arc2 studio   : on, runner ' ~ (tn_arc2_state.status.ActiveState | default('unknown'))
+               if tn_arc2_enabled | default(false) | bool else ' arc2 studio   : off' }}
           - " env file      : {{ tn_env_file }}"
           - " data root     : {{ tn_data_root }}"
           - "──────────────────────────────────────────────────────────────"

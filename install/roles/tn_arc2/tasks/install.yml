@@ -1,0 +1,396 @@
+---
+# ARC² Course Studio runner, installed. tasks/main.yml includes this only with
+# tn_arc2_enabled. Everything here changes the host as root, so the block escalates.
+#
+# Layout (docs/arc2-course-studio.md "Deployment"):
+#   tn-arc2 (system account, nologin)      runs tools/arc2/runner.py as a systemd service
+#   {{ tn_arc2_runs_dir }}                 the runs root; the api mounts it at /srv/arc2/runs
+#   /opt/truenorth-arc2/                    root-owned: bin/bwrap (0750 root:tn-arc2), node,
+#                                           claude-code (pinned), venv
+#   /etc/truenorth-arc2/runner.env          the model key, root 0600 (EnvironmentFile)
+#   /etc/apparmor.d/truenorth-arc2-bwrap    user namespaces for that one bwrap copy only
+
+- name: ARC² — install
+  become: true
+  block:
+    # ── What it needs from the deployed app and the operator ──────────────
+    - name: ARC² — the deployed app carries the runner and the /arc2 command
+      ansible.builtin.stat:
+        path: "{{ tn_app_dir }}/{{ item }}"
+      loop:
+        - tools/arc2/runner.py
+        - tools/arc2/confine.py
+        - .claude/commands/arc2.md
+        - control-plane/api/requirements.txt
+      register: tn_arc2_app_files
+
+    - name: ARC² — read the deployed runner and compose file
+      ansible.builtin.slurp:
+        src: "{{ item }}"
+      loop:
+        - "{{ tn_app_dir }}/tools/arc2/runner.py"
+        - "{{ tn_compose_file }}"
+      register: tn_arc2_app_src
+      when: tn_arc2_app_files.results | rejectattr('stat.exists') | list | length == 0
+
+    # This installer may deploy an older app (same compatibility level, no ARC² wiring):
+    # its compose file would ignore ARC2_* and its runner has no --self-test.
+    - name: ARC² — the deployed app supports an installed Course Studio
+      vars:
+        _missing: "{{ tn_arc2_app_files.results | rejectattr('stat.exists') | map(attribute='item') | list }}"
+      ansible.builtin.assert:
+        that:
+          - _missing | length == 0
+          - "'--self-test' in (tn_arc2_app_src.results[0].content | b64decode)"
+          - "'ARC2_RUNS_HOST_DIR' in (tn_arc2_app_src.results[1].content | b64decode)"
+        fail_msg: >-
+          The app in {{ tn_app_dir }} predates this installer's ARC² support
+          ({{ ('missing: ' ~ (_missing | join(', '))) if _missing else 'no runner --self-test or no ARC2_RUNS_HOST_DIR in compose.prod.yml' }}).
+          Deploy the app from the same commit as the installer, or set tn_arc2_enabled: false.
+        quiet: true
+
+    - name: ARC² — the model API key and endpoint are usable
+      ansible.builtin.assert:
+        that:
+          - vault_arc2_anthropic_api_key | default('') | string | trim | length > 0
+          - vault_arc2_anthropic_api_key | default('') is not search('CHANGE_ME')
+          - >-
+            tn_arc2_anthropic_base_url | default('') | length == 0
+            or tn_arc2_anthropic_base_url is match('^https://[A-Za-z0-9.-]+(:443)?(/.*)?$')
+          - tn_arc2_node_arch in tn_arc2_node_sha256
+        fail_msg: >-
+          ARC² needs vault_arc2_anthropic_api_key (no default), tn_arc2_anthropic_base_url empty
+          or https://host[:443]/... (the jobs' egress proxy tunnels port 443 only), and an
+          x86_64 or aarch64 host (found {{ ansible_facts['architecture'] }}).
+        quiet: true
+
+    # ── Packages ──────────────────────────────────────────────────────────
+    # bubblewrap: arc2/confine.py's Linux sandbox. git: /arc2's preflight and the per-course
+    # history. python3-venv: the engine's venv. xz-utils: the Node tarball.
+    - name: ARC² — packages
+      ansible.builtin.apt:
+        name: [bubblewrap, git, python3-venv, xz-utils, apparmor]
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+        install_recommends: false
+
+    # ── Accounts ──────────────────────────────────────────────────────────
+    - name: ARC² — the runs group, at the gid the api container joins
+      ansible.builtin.group:
+        name: "{{ tn_arc2_runs_group }}"
+        gid: "{{ tn_arc2_runs_gid }}"
+        system: true
+
+    - name: ARC² — the runner's own group
+      ansible.builtin.group:
+        name: "{{ tn_arc2_user }}"
+        system: true
+
+    - name: ARC² — the runner's account (no login, no sudo, not in docker)
+      ansible.builtin.user:
+        name: "{{ tn_arc2_user }}"
+        group: "{{ tn_arc2_user }}"
+        groups: ["{{ tn_arc2_runs_group }}"]
+        append: false
+        system: true
+        home: "{{ tn_arc2_home }}"
+        create_home: false
+        shell: /usr/sbin/nologin
+        password: "!"
+        comment: TrueNorth ARC2 Course Studio runner
+
+    # ── Directories ───────────────────────────────────────────────────────
+    # The runs root and everything the runner creates under it (setgid, UMask 0027) are
+    # tn-arc2:tn-arc2-runs, 2750/0640: the api reads them through the group. _queue/ and
+    # _studio/ are 2770 because the api writes there (queued jobs; run ownership and chat).
+    # No sticky bit: the runner renames the api's queue files into _jobs/.
+    - name: ARC² — the runner's home, the runs directory and the install prefix
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: directory
+        owner: "{{ item.owner | default('root') }}"
+        group: "{{ item.group | default('root') }}"
+        mode: "{{ item.mode | default('0755') }}"
+      loop:
+        - { path: "{{ tn_arc2_home }}", owner: "{{ tn_arc2_user }}", group: "{{ tn_arc2_user }}", mode: "0700" }
+        - { path: "{{ tn_arc2_runs_dir | dirname }}" }
+        - { path: "{{ tn_arc2_runs_dir }}", owner: "{{ tn_arc2_user }}", group: "{{ tn_arc2_runs_group }}", mode: "02750" }
+        - { path: "{{ tn_arc2_runs_dir }}/_queue", owner: "{{ tn_arc2_user }}", group: "{{ tn_arc2_runs_group }}", mode: "02770" }
+        - { path: "{{ tn_arc2_runs_dir }}/_studio", owner: "{{ tn_arc2_user }}", group: "{{ tn_arc2_runs_group }}", mode: "02770" }
+        - { path: "{{ tn_arc2_runs_dir }}/_jobs", owner: "{{ tn_arc2_user }}", group: "{{ tn_arc2_runs_group }}", mode: "02750" }
+        - { path: "{{ tn_arc2_runs_dir }}/_history", owner: "{{ tn_arc2_user }}", group: "{{ tn_arc2_runs_group }}", mode: "02750" }
+        - { path: "{{ tn_arc2_etc }}", mode: "0700" }
+        - { path: "{{ tn_arc2_prefix }}" }
+        - { path: "{{ tn_arc2_prefix }}/bin" }
+        - { path: "{{ tn_arc2_prefix }}/downloads" }
+        - { path: "{{ tn_arc2_claude_dir }}" }
+      loop_control:
+        label: "{{ item.path }}"
+
+    # ── bubblewrap, and user namespaces for the runner only ──────────────
+    # Ubuntu 24.04 denies unprivileged user namespaces to unconfined programs
+    # (kernel.apparmor_restrict_unprivileged_userns=1), so stock bwrap cannot build a job's
+    # sandbox and the runner would fail closed. The sysctl stays on for the host; instead
+    # one copy of bwrap, executable by root and tn-arc2 only, gets an AppArmor profile that
+    # allows it, and stacks everything it runs under a profile that allows no further user
+    # namespace and no capability (templates/apparmor-bwrap.j2). Re-run this playbook after
+    # a bubblewrap package update: the copy is refreshed here.
+    - name: ARC² — the runner's copy of bwrap
+      ansible.builtin.copy:
+        src: /usr/bin/bwrap
+        dest: "{{ tn_arc2_bwrap }}"
+        remote_src: true
+        owner: root
+        group: "{{ tn_arc2_user }}"
+        mode: "0750"
+
+    - name: ARC² — the AppArmor profile for it
+      ansible.builtin.template:
+        src: apparmor-bwrap.j2
+        dest: "/etc/apparmor.d/{{ tn_arc2_apparmor_profile }}"
+        owner: root
+        group: root
+        mode: "0644"
+      register: tn_arc2_aa_profile
+
+    - name: ARC² — is AppArmor on?
+      ansible.builtin.command: cat /sys/module/apparmor/parameters/enabled
+      register: tn_arc2_aa_enabled
+      changed_when: false
+      failed_when: false
+      check_mode: false
+
+    - name: ARC² — is the profile loaded?
+      ansible.builtin.command:
+        argv: [grep, -qF, "{{ tn_arc2_apparmor_profile }} (enforce)", /sys/kernel/security/apparmor/profiles]
+      register: tn_arc2_aa_loaded
+      changed_when: false
+      failed_when: false
+      check_mode: false
+      when: tn_arc2_aa_enabled.stdout | default('') | trim == 'Y'
+
+    - name: ARC² — load the profile
+      ansible.builtin.command:
+        argv: [apparmor_parser, --replace, --write-cache, "/etc/apparmor.d/{{ tn_arc2_apparmor_profile }}"]
+      changed_when: true
+      when:
+        - tn_arc2_aa_enabled.stdout | default('') | trim == 'Y'
+        - tn_arc2_aa_profile.changed or tn_arc2_aa_loaded.rc | default(1) != 0
+
+    # ── Node.js and Claude Code, pinned ───────────────────────────────────
+    # Node only installs Claude Code (npm ci); the `claude` it installs is a native binary.
+    - name: ARC² — download Node.js, checked against its SHA-256, version {{ tn_arc2_node_version }}
+      ansible.builtin.get_url:
+        url: "{{ tn_arc2_node_mirror }}/v{{ tn_arc2_node_version }}/{{ tn_arc2_node_name }}.tar.xz"
+        dest: "{{ tn_arc2_prefix }}/downloads/{{ tn_arc2_node_name }}.tar.xz"
+        checksum: "sha256:{{ tn_arc2_node_sha256[tn_arc2_node_arch] }}"
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: ARC² — unpack Node.js
+      ansible.builtin.unarchive:
+        src: "{{ tn_arc2_prefix }}/downloads/{{ tn_arc2_node_name }}.tar.xz"
+        dest: "{{ tn_arc2_prefix }}"
+        remote_src: true
+        owner: root
+        group: root
+        creates: "{{ tn_arc2_prefix }}/{{ tn_arc2_node_name }}/bin/node"
+
+    - name: ARC² — the Node.js in use
+      ansible.builtin.file:
+        src: "{{ tn_arc2_prefix }}/{{ tn_arc2_node_name }}"
+        dest: "{{ tn_arc2_node_dir }}"
+        state: link
+        force: true
+
+    # The version is pinned twice on purpose: group_vars says what to expect, and the
+    # lockfile (files/claude-code/package-lock.json) holds the exact tarballs and their
+    # sha512 integrity, so npm ci installs nothing else. A bump changes both (README).
+    - name: ARC² — Claude Code's pinned manifest and lockfile
+      ansible.builtin.copy:
+        src: "claude-code/{{ item }}"
+        dest: "{{ tn_arc2_claude_dir }}/{{ item }}"
+        owner: root
+        group: root
+        mode: "0644"
+      loop: [package.json, package-lock.json]
+      register: tn_arc2_claude_lock
+
+    - name: ARC² — the Claude Code installed now
+      ansible.builtin.command:
+        argv: ["{{ tn_arc2_claude_bin }}", --version]
+      register: tn_arc2_claude_have
+      changed_when: false
+      failed_when: false
+      check_mode: false
+
+    - name: ARC² — install Claude Code from the lockfile (npm ci), version {{ tn_arc2_claude_code_version }}
+      ansible.builtin.command:
+        argv: >-
+          {{ [tn_arc2_node_dir ~ '/bin/npm', 'ci', '--omit=dev', '--no-audit', '--no-fund']
+             + (['--registry', tn_arc2_npm_registry] if tn_arc2_npm_registry | default('') | length > 0 else []) }}
+        chdir: "{{ tn_arc2_claude_dir }}"
+      environment:
+        PATH: "{{ tn_arc2_node_dir }}/bin:/usr/bin:/bin"
+        npm_config_update_notifier: "false"
+      changed_when: true
+      when: >-
+        tn_arc2_claude_lock.changed
+        or not (tn_arc2_claude_have.stdout | default('')).startswith(tn_arc2_claude_code_version ~ ' ')
+      notify: Restart the ARC² runner
+
+    - name: ARC² — Claude Code version
+      ansible.builtin.command:
+        argv: ["{{ tn_arc2_claude_bin }}", --version]
+      register: tn_arc2_claude_now
+      changed_when: false
+      check_mode: false
+
+    - name: ARC² — Claude Code is the pinned version
+      ansible.builtin.assert:
+        that: tn_arc2_claude_now.stdout.startswith(tn_arc2_claude_code_version ~ ' ')
+        fail_msg: >-
+          {{ tn_arc2_claude_bin }} reports "{{ tn_arc2_claude_now.stdout }}", not
+          {{ tn_arc2_claude_code_version }}. tn_arc2_claude_code_version and
+          roles/tn_arc2/files/claude-code/package*.json must name the same version.
+        quiet: true
+
+    # ── The engine's Python ───────────────────────────────────────────────
+    - name: ARC² — the engine's venv, with the API's requirements (QA imports its parsers)
+      ansible.builtin.pip:
+        requirements: "{{ tn_app_dir }}/control-plane/api/requirements.txt"
+        virtualenv: "{{ tn_arc2_venv }}"
+        virtualenv_command: python3 -m venv
+        extra_args: "{{ ('--index-url ' ~ tn_arc2_pip_index_url) if tn_arc2_pip_index_url | default('') | length > 0 else omit }}"
+      notify: Restart the ARC² runner
+
+    - name: ARC² — pytest and ruff, as the test environment pins them
+      ansible.builtin.pip:
+        name: "{{ tn_arc2_venv_extra }}"
+        virtualenv: "{{ tn_arc2_venv }}"
+        virtualenv_command: python3 -m venv
+        extra_args: "{{ ('--index-url ' ~ tn_arc2_pip_index_url) if tn_arc2_pip_index_url | default('') | length > 0 else omit }}"
+      notify: Restart the ARC² runner
+
+    # ── The key, and the service ──────────────────────────────────────────
+    - name: ARC² — the model key, for systemd only (root 0600)
+      ansible.builtin.template:
+        src: runner.env.j2
+        dest: "{{ tn_arc2_env_file }}"
+        owner: root
+        group: root
+        mode: "0600"
+      no_log: true
+      notify: Restart the ARC² runner
+
+    - name: ARC² — the runner service
+      ansible.builtin.template:
+        src: truenorth-arc2-runner.service.j2
+        dest: "/etc/systemd/system/{{ tn_arc2_service }}.service"
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Restart the ARC² runner
+
+    # A new app (tools/arc2, .claude/agents, the /arc2 command) takes effect on restart.
+    - name: ARC² — what app the runner runs
+      ansible.builtin.slurp:
+        src: "{{ tn_state_dir }}/app.json"
+      register: tn_arc2_app_state
+      failed_when: false
+
+    - name: ARC² — restart the runner when the app changes
+      ansible.builtin.copy:
+        dest: "{{ tn_arc2_etc }}/deployed-app.json"
+        content: "{{ tn_arc2_app_state.content | default('e30=') | b64decode }}"
+        owner: root
+        group: root
+        mode: "0600"
+      notify: Restart the ARC² runner
+
+    # Before the service starts: can the runner's account build a sandbox at all? The
+    # service's own ExecStartPre self-test then checks the real thing, under its hardening.
+    - name: ARC² — bubblewrap works for {{ tn_arc2_user }}
+      ansible.builtin.command:
+        argv: [runuser, -u, "{{ tn_arc2_user }}", --, "{{ tn_arc2_bwrap }}", --ro-bind, /, /, --dev, /dev,
+               --proc, /proc, --unshare-pid, --unshare-net, --, /bin/true]
+      register: tn_arc2_probe
+      changed_when: false
+      failed_when: false
+      check_mode: false
+
+    - name: ARC² — the sandbox can be built
+      ansible.builtin.assert:
+        that: tn_arc2_probe.rc == 0
+        fail_msg: >-
+          {{ tn_arc2_user }} cannot build a bubblewrap sandbox ({{ tn_arc2_probe.stderr | default('') | trim }}).
+          The runner would refuse to start (it fails closed). Check that unprivileged user
+          namespaces are enabled (user.max_user_namespaces > 0) and that AppArmor profile
+          {{ tn_arc2_apparmor_profile }} is loaded (aa-status).
+        quiet: true
+
+    - name: ARC² — systemd sees the unit
+      ansible.builtin.systemd_service:
+        daemon_reload: true
+
+    - name: ARC² — the runner's state before this run
+      ansible.builtin.systemd_service:
+        name: "{{ tn_arc2_service }}"
+      register: tn_arc2_unit
+      check_mode: false
+
+    # A runner that failed its self-test (no sandbox) is retried five times in ten minutes
+    # and then left failed, past systemd's start limit: clear that so this run can start it.
+    - name: ARC² — clear an earlier failed start  # noqa command-instead-of-module
+      ansible.builtin.command: systemctl reset-failed {{ tn_arc2_service }}
+      changed_when: true
+      when: tn_arc2_unit.status.ActiveState | default('') == 'failed'
+
+    - name: ARC² — apply restarts now
+      ansible.builtin.meta: flush_handlers
+
+    - name: ARC² — the runner starts at boot and is running
+      ansible.builtin.systemd_service:
+        name: "{{ tn_arc2_service }}"
+        enabled: true
+        state: started
+
+    # ── Health: self-test passed in the service's own sandbox, runner watching ─
+    # ExecStartPre runs `arc2.runner --self-test` (claude --version inside a job's sandbox,
+    # no model call, no tokens); then the runner logs "watching ... confinement: ...".
+    - name: ARC² — the runner's log since it last started
+      ansible.builtin.shell:
+        executable: /bin/bash
+        cmd: |
+          set -uo pipefail
+          unit={{ tn_arc2_service | quote }}
+          echo "state: $(systemctl show -p ActiveState --value "$unit")"
+          id=$(systemctl show -p InvocationID --value "$unit")
+          [ -n "$id" ] && journalctl --no-pager -o cat _SYSTEMD_INVOCATION_ID="$id" | tail -n 40
+          exit 0
+      register: tn_arc2_health
+      changed_when: false
+      check_mode: false
+      until: >-
+        ('state: active' in tn_arc2_health.stdout and 'arc2 runner: watching' in tn_arc2_health.stdout)
+        or 'state: failed' in tn_arc2_health.stdout
+      retries: 12
+      delay: 5
+
+    - name: ARC² — the runner is healthy
+      ansible.builtin.assert:
+        that:
+          - "'state: active' in tn_arc2_health.stdout"
+          - "'self-test passed (confinement: bubblewrap' in tn_arc2_health.stdout"
+          - "('claude: ' ~ tn_arc2_claude_code_version) in tn_arc2_health.stdout"
+          - "'arc2 runner: watching' in tn_arc2_health.stdout"
+          - "'confinement: bubblewrap)' in tn_arc2_health.stdout"
+        fail_msg: |
+          {{ tn_arc2_service }} is not running confined. Its log since it last started:
+          {{ tn_arc2_health.stdout }}
+        success_msg: >-
+          {{ tn_arc2_service }}: self-test passed in its bubblewrap sandbox (Claude Code
+          {{ tn_arc2_claude_code_version }}, no model call), watching {{ tn_arc2_runs_dir }};
+          egress only to {{ tn_arc2_egress_allow }}.

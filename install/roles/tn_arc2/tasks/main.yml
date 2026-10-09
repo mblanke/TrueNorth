@@ -1,0 +1,20 @@
+---
+# ARC² Course Studio runner. Optional and off by default (tn_arc2_enabled). Off, this role
+# changes nothing on the host, and the api runs without ARC2_STUDIO_ENABLED, so /api/arc2
+# answers 404 (roles/tn_config renders no ARC2_* line; compose.prod.yml defaults them off).
+#
+# On, it installs the runner that turns Course Studio requests into /arc2 runs:
+#   install.yml  the account, the runs directory, bubblewrap and its AppArmor profile,
+#                Node and Claude Code at pinned versions, the engine's venv, the key's
+#                EnvironmentFile, the hardened systemd service, and its health check.
+
+- name: ARC² — Course Studio is off
+  ansible.builtin.debug:
+    msg: >-
+      tn_arc2_enabled is false: ARC² Course Studio is not installed and /api/arc2 is off.
+      install/README.md "ARC² Course Studio (optional)" says how to turn it on.
+  when: not (tn_arc2_enabled | bool)
+
+- name: ARC² — install the Course Studio runner
+  ansible.builtin.include_tasks: install.yml
+  when: tn_arc2_enabled | bool

@@ -543,6 +543,12 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-info}
       # One JSON object per line (app/log_format.py), for a log shipper.
       LOG_FORMAT: ${LOG_FORMAT:-json}
+      # ARC² Course Studio (/api/arc2), optional: off unless the installer enables it
+      # (tn_arc2_enabled; install/roles/tn_arc2, docs/arc2-course-studio.md "Deployment").
+      # On, the runs directory the host's runner works in is mounted below and the api
+      # joins its group (group_add) to read runs and write _queue/ and _studio/.
+      ARC2_STUDIO_ENABLED: ${ARC2_STUDIO_ENABLED:-false}
+      ARC2_RUNS_DIR: /srv/arc2/runs
     volumes:
       # Matches SCENARIO_ENGINE_DIR above. The engine is not part of the api
       # build context, so without this mount it is simply absent at runtime.
@@ -551,6 +557,13 @@ services:
       # in the image at /app/content (control-plane/api/Dockerfile), as under Helm.
       # The internal CA OpenSearch's certificate chains to (OPENSEARCH_VERIFY_SSL).
       - ${OPENSEARCH_CERTS_DIR:-./opensearch/certs}/ca.pem:/etc/truenorth/opensearch-ca.pem:ro
+      # ARC² runs: the host directory (ARC2_RUNS_HOST_DIR) when the Studio is on; otherwise
+      # an empty volume of its own, so no host path is mounted.
+      - ${ARC2_RUNS_HOST_DIR:-arc2-runs-unused}:/srv/arc2/runs
+    # The runs directory's group (ARC2_RUNS_GID) when the Studio is on; otherwise the
+    # image's own group (app), which adds nothing.
+    group_add:
+      - ${ARC2_RUNS_GID:-app}
     depends_on:
       postgres:
         condition: service_healthy
@@ -1409,6 +1422,10 @@ volumes:
       type: none
       o: bind
       device: ${TN_DATA_ROOT:-/srv/truenorth}/logs
+  # The api's /srv/arc2/runs while ARC² Course Studio is off (ARC2_RUNS_HOST_DIR unset):
+  # empty and unused. On, the api mounts the runner's host directory there instead.
+  arc2-runs-unused:
+    driver: local
 
 # ================================================================
 #  NETWORKS

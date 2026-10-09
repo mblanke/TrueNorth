@@ -22,6 +22,8 @@
 - import_playbook: playbooks/30-config.yml
 - import_playbook: playbooks/40-tls.yml
 - import_playbook: playbooks/50-stack-up.yml
+# Optional (tn_arc2_enabled, off by default): the ARC² Course Studio runner.
+- import_playbook: playbooks/55-arc2.yml
 - import_playbook: playbooks/60-keycloak.yml
 - import_playbook: playbooks/70-telemetry.yml
 - import_playbook: playbooks/80-seed.yml

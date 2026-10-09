@@ -79,3 +79,10 @@ vault_ghcr_token: ""
 # The LiteLLM master key. Empty is acceptable if the endpoint is unauthenticated
 # on a closed network.
 vault_openai_api_key: ""
+
+# ── ARC² Course Studio (only with tn_arc2_enabled) ────────────────────
+# An Anthropic API key for the course-authoring runner. REQUIRED when ARC² is on: there is
+# no default and preflight stops without it. It reaches only the runner (a root 0600
+# systemd EnvironmentFile), never the stack's env file. Use a key issued for this host
+# alone, with a spending limit: each job can read it, and reach only the model endpoint.
+vault_arc2_anthropic_api_key: ""
