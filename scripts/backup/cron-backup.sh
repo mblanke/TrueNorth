@@ -126,9 +126,16 @@ rotate_backups "${BACKUP_DIR}/monthly" "${MONTHLY_KEEP}" "monthly"
 prune_to_size "${BACKUP_DIR}" "${BACKUP_MAX_TOTAL_GB:-0}" "${LATEST_BACKUP}"
 
 # ── Summary ──────────────────────────────────────────────────────────────────
-DAILY_COUNT=$(find "${BACKUP_DIR}/daily"   -maxdepth 1 -type d -name "truenorth-backup-*" 2>/dev/null | wc -l)
-WEEKLY_COUNT=$(find "${BACKUP_DIR}/weekly"  -maxdepth 1 -type d -name "truenorth-backup-*" 2>/dev/null | wc -l)
-MONTHLY_COUNT=$(find "${BACKUP_DIR}/monthly" -maxdepth 1 -type d -name "truenorth-backup-*" 2>/dev/null | wc -l)
+# A type directory exists only once that type has run (weekly/monthly not in a host's
+# first week): find on it fails, and under pipefail + errexit that failed a backup that
+# had succeeded (exit 1, failure alert) every night until then.
+count_backups() {
+    [[ -d "$1" ]] || { echo 0; return 0; }
+    find "$1" -maxdepth 1 -type d -name "truenorth-backup-*" | wc -l
+}
+DAILY_COUNT=$(count_backups "${BACKUP_DIR}/daily")
+WEEKLY_COUNT=$(count_backups "${BACKUP_DIR}/weekly")
+MONTHLY_COUNT=$(count_backups "${BACKUP_DIR}/monthly")
 TOTAL_SIZE=$(du -sh "${BACKUP_DIR}" 2>/dev/null | cut -f1)
 
 SUMMARY="Type: ${BACKUP_TYPE} | Duration: ${DURATION}s | Daily: ${DAILY_COUNT}/${DAILY_KEEP} | Weekly: ${WEEKLY_COUNT}/${WEEKLY_KEEP} | Monthly: ${MONTHLY_COUNT}/${MONTHLY_KEEP} | Total: ${TOTAL_SIZE}"
