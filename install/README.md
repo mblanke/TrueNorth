@@ -342,6 +342,23 @@ does, so the hypervisor dashboards have an inventory. It builds no VM.
 Its AI endpoint is an Open WebUI (`tn_ai_base_url: https://…/api`), so set
 `tn_ai_default_model` and `tn_ai_embed_model` to ids from that server's `/api/models`.
 
+## Shipped content (optional)
+
+A production install starts with an empty catalogue: a site loads its own curriculum.
+Staging and demo hosts can load the repository's `content/` instead (the programme
+catalogue and course files, the VM catalogue, range templates, scenarios and Sigma rules):
+
+| Variable | Default | Effect |
+|---|---|---|
+| `tn_load_shipped_content` | `false` | 80-seed loads `content/` through the API |
+| `tn_publish_shipped_content` | `false` | publish every course, quiz and learning path (imports are drafts) |
+| `tn_load_shipped_demo` | `false` | demo people (roster only, no sign-in), ranges and exercises (not provisioned) |
+
+The load runs `scripts/load_content_inprocess.py` in a one-off api container as the
+bootstrap administrator: the API's routes, permissions, CSRF and validation all apply,
+and no token or password is used. Re-running is safe. `inventory/staging.yml` turns all
+three on.
+
 ## Images: deploy by digest
 
 `compose.prod.yml` builds nothing. The four TrueNorth images run as `${TN_IMAGE_API}`,
