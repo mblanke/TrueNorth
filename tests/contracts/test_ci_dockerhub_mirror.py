@@ -174,6 +174,9 @@ def test_the_action_merges_daemon_json_restarts_and_verifies():
     assert '"registry-mirrors"' in run and "jq" in run  # merged into the runner's own file
     assert "systemctl restart docker" in run
     assert ".RegistryConfig.Mirrors" in run and "exit 1" in run  # fails when not applied
+    # dockerd sends a docker.io login to the mirror, which rejects it, and falls back to
+    # Docker Hub; the runner image ships one (account githubactions).
+    assert "docker logout" in run
 
 
 def test_kind_nodes_pull_docker_hub_through_the_mirror():

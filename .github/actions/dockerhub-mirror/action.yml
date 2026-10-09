@@ -1,8 +1,9 @@
 # Docker Hub pulls on GitHub-hosted runners go through Google's public Docker Hub cache,
 # mirror.gcr.io, instead of anonymous registry-1.docker.io: the runners share egress IPs,
 # so anonymous Docker Hub pulls hit "toomanyrequests" and intermittent 500s (PR #124).
-# No credentials. The mirror serves Docker Hub's content by the same digests, and dockerd
-# falls back to Docker Hub when the mirror fails.
+# No credentials: the runner's own Docker Hub login is removed, because dockerd sends it
+# to the mirror, which rejects it. The mirror serves Docker Hub's content by the same
+# digests, and dockerd falls back to Docker Hub (anonymously) when the mirror fails.
 #
 # This configures the runner's Docker daemon (docker run/pull/build, docker compose,
 # kind's node image, and the buildx builder image). It restarts dockerd, so it must run
@@ -45,5 +46,15 @@ runs:
         echo "Registry mirrors: $mirrors"
         if ! grep -qF "${MIRROR%/}" <<<"$mirrors"; then
           echo "::error::dockerd does not list $MIRROR as a registry mirror"
+          exit 1
+        fi
+        # The runner image logs the docker client in to Docker Hub (account githubactions).
+        # dockerd presents that docker.io credential to the mirror, which answers
+        # "unauthorized: authentication failed", and silently falls back to Docker Hub: the
+        # mirror is never used (PR #126, first run). Pull anonymously instead.
+        docker logout >/dev/null 2>&1 || true
+        cfg="${DOCKER_CONFIG:-$HOME/.docker}/config.json"
+        if [[ -s "$cfg" ]] && jq -e '(.auths // {}) | has("https://index.docker.io/v1/")' "$cfg" >/dev/null; then
+          echo "::error::$cfg still holds a Docker Hub credential; dockerd would send it to the mirror"
           exit 1
         fi
