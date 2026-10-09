@@ -6,8 +6,8 @@ All notable changes to TrueNorth Range. Versions are git tags on `main`
 ## v1.0.0 — unreleased
 
 First production release. Covers everything merged to `main` after the
-2026-10-06 reconciliation (`7120eaa`) up to `e015d27` (`v1.0.0-rc3`): PRs #44–#117,
-plus #118 once merged. All 17 modules are at stage 4. Release candidates are listed
+2026-10-06 reconciliation (`7120eaa`) up to `5a0da1d`: PRs #44–#118 (`v1.0.0-rc3` is
+`e015d27`, #117). All 17 modules are at stage 4. Release candidates are listed
 under "Release candidates" below; what does not work yet is under "Known limitations
 in v1.0.0" and, with the staging record, in
 [`docs/release-notes/v1.0.0.md`](docs/release-notes/v1.0.0.md).
@@ -136,8 +136,8 @@ in v1.0.0" and, with the staging record, in
   `release-manifest.json`; every action SHA-pinned; broken deploy workflows removed (#105).
 - Backups that work: every database, MinIO, escrowed secrets, restore drill in CI,
   runbooks (#100); persisted secrets escrowed, `restore-secrets.sh`, disk floor and size
-  cap (#111). The nightly wrapper no longer reports a good backup as failed on a host's
-  first nights, before `weekly/` and `monthly/` exist (#118, open at the time of writing).
+  cap (#111). The nightly wrapper (`cron-backup.sh`) no longer reports a good backup as
+  failed on a host's first nights, before `weekly/` and `monthly/` exist (#118).
 - Runtime: Redis `noeviction`, Celery beat service, task time limits, read-only and
   capability-dropped containers, third-party images pinned by digest,
   `PROVISIONER_BACKEND` required, JSON logs (#109).

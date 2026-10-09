@@ -35,8 +35,8 @@ HIGH/CRITICAL), with SBOMs and `release-manifest.json`, all cosign-signed
 digest (`compose.prod.yml` has no `build:`; #109, #111). The API reports `TN_VERSION`
 (#103). No workflow deploys. The old deploy workflows were deleted because they could not work.
 Staging (`tn-staging`, Ubuntu 24.04, no vCenter, no AD): clean install of rc2 from the
-signed release and upgrade rc2 → rc3, as reported by the staging session and recorded
-in `docs/release-notes/v1.0.0.md`. **Not done:** a run against real vCenter; Helm is
+signed release and upgrade rc2 → rc3, verified by the operator on 2026-10-09
+(`docs/release-notes/v1.0.0.md`). **Not done:** a run against real vCenter; Helm is
 exercised only by the CI kind smoke install.
 
 ## Tests
@@ -51,7 +51,6 @@ from CI runs, not from this count.
 
 ## Open
 
-1. v1.0.0 known limitations: `docs/release-notes/v1.0.0.md` (and #118, the nightly
-   backup wrapper on a new host, open).
+1. v1.0.0 known limitations: `docs/release-notes/v1.0.0.md`.
 2. Live vSphere lab evidence pending (credentials, self-hosted runner).
 3. Content authoring remains the binding constraint (about 2,600 build hours).

@@ -16,10 +16,10 @@ Releasing: `docs/release.md`.
   the staging record: `docs/release-notes/v1.0.0.md`. The section modules live under
   `control-plane/api/app/<module>/`: scheduler + capacity, range leases and range ops,
   lab sessions, network inventory, noise, greyspace, detections, scenario runs, course
-  releases/publishing, LMS, wiki/support tickets/notifications. Everything up to #117
+  releases/publishing, LMS, wiki/support tickets/notifications. Everything up to #118
   is merged (R-series, final security review #112, installer v1 #111, Helm #108).
-- **Open PRs** (2026-10-09): #118 (nightly backup wrapper on a new host; found on
-  staging), #92 (session coordinator). #3–#51 predate the re-land on main. Check each
+- **Open PRs** (2026-10-09): #92 (session coordinator). #118 (nightly backup wrapper
+  on a new host) merged after rc3. #3–#51 predate the re-land on main. Check each
   against main before acting on it, and do not merge them as they are.
 
 ## The gate and the CI lanes
