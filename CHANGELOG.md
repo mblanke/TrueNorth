@@ -3,11 +3,11 @@
 All notable changes to TrueNorth Range. Versions are git tags on `main`
 (`docs/release.md`).
 
-## v1.0.0 — unreleased
+## v1.0.0 — 2026-10-09
 
 First production release. Covers everything merged to `main` after the
-2026-10-06 reconciliation (`7120eaa`) up to `5a0da1d`: PRs #44–#118 (`v1.0.0-rc3` is
-`e015d27`, #117). All 17 modules are at stage 4. Release candidates are listed
+2026-10-06 reconciliation (`7120eaa`): PRs #44–#121. `v1.0.0` is `v1.0.0-rc4` plus #121
+(an installer-only fix). All 17 modules are at stage 4. Release candidates are listed
 under "Release candidates" below; what does not work yet is under "Known limitations
 in v1.0.0" and, with the staging record, in
 [`docs/release-notes/v1.0.0.md`](docs/release-notes/v1.0.0.md).
@@ -138,6 +138,12 @@ in v1.0.0" and, with the staging record, in
   runbooks (#100); persisted secrets escrowed, `restore-secrets.sh`, disk floor and size
   cap (#111). The nightly wrapper (`cron-backup.sh`) no longer reports a good backup as
   failed on a host's first nights, before `weekly/` and `monthly/` exist (#118).
+- OpenSearch telemetry is backed up: the installer registers a filesystem snapshot
+  repository (`tn_snapshots`), backups snapshot the telemetry indices and keep the newest
+  14, restore brings them back. A failed snapshot keeps the data backup and exits 5 with an
+  alert (#120); an upgrade's pre-upgrade backup accepts that exit (#121).
+- The api and worker images carry `content/catalogue` and `content/mitre`, so the software
+  catalogue and ATT&CK lookups work under Helm; `tools/cli/requirements.txt` is pinned (#120).
 - Runtime: Redis `noeviction`, Celery beat service, task time limits, read-only and
   capability-dropped containers, third-party images pinned by digest,
   `PROVISIONER_BACKEND` required, JSON logs (#109).
@@ -194,7 +200,8 @@ Details and workarounds: [`docs/release-notes/v1.0.0.md`](docs/release-notes/v1.
   iframe / third-party-cookie-blocking setups.
 - **No live vCenter run yet.** `lab.yml` has not been executed against a real vCenter;
   provisioning is validated against vcsim in CI and the hypervisor dashboards against a
-  simulated, read-only vCenter on staging.
+  simulated, read-only vCenter on staging. The live run on TN-MGMT01 is planned for
+  v1.0.1.
 
 ## Upgrade notes (v1.0.0)
 
@@ -245,6 +252,14 @@ Operator actions before upgrading an existing site:
 
 Pre-releases of v1.0.0, each a signed GitHub release (`docs/release.md`). Entries list
 what changed since the previous candidate. Dates are GitHub release dates (UTC).
+
+### v1.0.0-rc4 — 2026-10-09 (`ceb0d32`)
+
+- Nightly backup wrapper on a new host (#118); release notes and docs (#119); OpenSearch
+  telemetry snapshots in backups, content in the images for Helm, pinned CLI (#120).
+- Installed on staging as an upgrade from rc3, which needed #121 (pre-upgrade backup
+  accepts exit 5). Staging also came back unattended after an unplanned power cycle, and
+  a nightly backup snapshotted telemetry from the secured OpenSearch (11/11 shards).
 
 ### v1.0.0-rc3 — 2026-10-09 (`e015d27`)
 
