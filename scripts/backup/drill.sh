@@ -126,7 +126,14 @@ teardown() {
     else
         log "INFO" "Tearing down ${DRILL_PROJECT}"
         docker compose -p "${DRILL_PROJECT}" down -v --remove-orphans >/dev/null 2>&1 || true
-        rm -rf "${WORK}"
+        # OpenSearch (uid 1000) wrote the snapshot repository; on Linux the drill's own user
+        # cannot delete those files, so a container empties it first (the stack's MinIO image,
+        # already pulled). Cleanup never changes the drill's result.
+        if [[ -d "${WORK}/os-snapshots" ]]; then
+            docker run --rm --user 0 -v "${WORK}/os-snapshots:/s" --entrypoint /bin/sh "${MC_IMAGE}" \
+                -c 'rm -rf /s/* /s/.[!.]* 2>/dev/null; true' >/dev/null 2>&1 || true
+        fi
+        rm -rf "${WORK}" 2>/dev/null || log "WARN" "could not remove ${WORK} entirely; delete it by hand"
     fi
     if (( rc != 0 )); then
         echo "DRILL FAILED (exit ${rc})" >&2
