@@ -40,14 +40,15 @@
     quiet: true
 
 # -a: an exited container (crashed, or a one-shot that should not be there) is invisible
-# to a plain `ps`, and the check below would pass with a service missing.
+# to a plain `ps`, and the check below would pass with a service missing. A service with
+# no healthcheck reports Health "" (not null), so "" is "n/a" too, as in tn_migrate.
 - name: Smoke — container health
   ansible.builtin.shell:
     executable: /bin/bash
     cmd: |
       set -euo pipefail
       docker compose -f {{ tn_compose_file }} --env-file {{ tn_env_file }} ps -a --format json \
-        | jq -rs 'flatten | map({name: .Service, state: .State, health: (.Health // "n/a"), exit: (.ExitCode // 0)})'
+        | jq -rs 'flatten | map({name: .Service, state: .State, health: (if (.Health // "") == "" then "n/a" else .Health end), exit: (.ExitCode // 0)})'
     chdir: "{{ tn_app_dir }}/infra/platform/docker"
   register: tn_ps
   changed_when: false

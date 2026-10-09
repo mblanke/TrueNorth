@@ -52,7 +52,7 @@
       or not ((tn_release_version | regex_replace('^v', '')) is version(
                 (tn_app_prev_state.release | regex_replace('^v', '')), '<', version_type='semver'))
     fail_msg: >-
-      This host runs {{ tn_app_prev_state.release }}; {{ tn_release_version }} is older.
+      This host runs {{ tn_app_prev_state.release | default('an unknown release') }}; {{ tn_release_version }} is older.
       Rolling back is restore-then-install, never install alone (docs/runbooks/upgrade.md
       "Rollback"): restore the pre-upgrade backup, then re-run with -e tn_allow_downgrade=true.
     quiet: true
