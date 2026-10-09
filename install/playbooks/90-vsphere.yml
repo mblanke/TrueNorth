@@ -5,6 +5,15 @@
 - name: "vSphere provider wiring and the provisioning-privilege check."
   hosts: platform
   gather_facts: true
+  pre_tasks:
+    - name: No vCenter at this site
+      ansible.builtin.debug:
+        msg: >-
+          tn_provisioner_backend is {{ tn_provisioner_backend }}: no vCenter, so nothing to
+          wire. Ranges are simulated; no lab VM is built.
+      when: not tn_uses_vcenter | bool
+      tags: [vsphere]
   roles:
     - role: tn_vsphere
       tags: [vsphere]
+      when: tn_uses_vcenter | bool

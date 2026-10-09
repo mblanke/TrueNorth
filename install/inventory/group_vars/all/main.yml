@@ -152,7 +152,14 @@ tn_bootstrap_admin_upn: ""
 # worker/provisioners/__init__.py are mock | proxmox_api | vsphere_api |
 # hyperv | terraform | terraform_{proxmox,vsphere,hyperv}.
 tn_provisioner_backend: vsphere_api
+# Whether this site has a vCenter. False with the mock provisioner (an install test with
+# no hypervisor): preflight skips the vCenter checks and 90-vsphere does nothing, and
+# vault_vsphere_password may stay a placeholder. Ranges are then simulated, not built.
+tn_uses_vcenter: "{{ 'vsphere' in tn_provisioner_backend }}"
 tn_vcenter_host: 192.168.1.10
+# 443 for a real vCenter. A simulator (playbooks/lab-vcenter-sim.yml) listens on 8989.
+tn_vcenter_port: 443
+tn_vcenter_address: "{{ tn_vcenter_host }}{{ '' if tn_vcenter_port | int == 443 else ':' ~ tn_vcenter_port }}"
 tn_vcenter_user: "svc-truenorth@vsphere.local"
 tn_vsphere_datacenter: DC-Lab
 tn_vsphere_cluster: CL-Lab

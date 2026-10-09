@@ -25,6 +25,16 @@ all:
           # (tn_install_docker defaults true). If an earlier hand install left a
           # docker.list for Docker's repository, it stops and names the file: remove it,
           # or set tn_install_docker: false here to keep the Docker already there.
+          # No vCenter on this network: a simulated, read-only one (tools/vcenter-sim) on
+          # this host, started by playbooks/lab-vcenter-sim.yml, so the hypervisor
+          # dashboards have an inventory. vault_vsphere_password: any non-placeholder.
+          tn_vcenter_host: 192.168.1.240
+          tn_vcenter_port: 8989
+          tn_vcenter_user: staging@vsphere.local
+          tn_vsphere_datacenter: DC0
+          tn_vsphere_cluster: DC0_C0
+          tn_vsphere_datastore: LocalDS_0
+          tn_vsphere_mgmt_network: VM Network
           # Open WebUI's OpenAI-compatible API is under /api (key: Settings > Account >
           # API keys, into vault_openai_api_key). Its model ids are what /api/models lists.
           tn_ai_base_url: https://ai.guapo613.beer/api
@@ -38,5 +48,5 @@ all:
           tn_min_free_gb: 40
           tn_backup_min_free_gb: 5
           tn_backup_max_total_gb: 30
-          # vCenter's VMCA chain is not trusted by the worker image yet (as on TN-MGMT01).
+          # vcsim serves a self-signed certificate.
           tn_vsphere_verify_ssl: false

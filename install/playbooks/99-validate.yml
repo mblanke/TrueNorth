@@ -85,7 +85,7 @@
           - " realm         : {{ tn_keycloak_realm }} (AD: {{ tn_domain }})"
           - " ldap component: {{ tn_keycloak_ldap_component_id | default('not set') }}"
           - " provisioner   : {{ tn_prov_state.backend | default(tn_provisioner_backend) }}"
-          - " vcenter       : {{ tn_prov_state.vcenter | default(tn_vcenter_host) }}"
+          - " vcenter       : {{ tn_prov_state.vcenter | default(tn_vcenter_address) if tn_uses_vcenter | bool else 'none' }}"
           - " can provision : {{ tn_prov_state.can_provision | default('unknown') }}"
           - " env file      : {{ tn_env_file }}"
           - " data root     : {{ tn_data_root }}"

@@ -28,7 +28,9 @@
 # becomes a real (and published) password: LDAP bind, vCenter, Keycloak.
 - name: Preflight — no vault value is still a CHANGE_ME placeholder
   vars:
-    _skip: "{{ [] if tn_ldap_enabled | bool else ['vault_ldap_bind_password'] }}"
+    _skip: >-
+      {{ ([] if tn_ldap_enabled | bool else ['vault_ldap_bind_password'])
+         + ([] if tn_uses_vcenter | bool else ['vault_vsphere_password']) }}
     _placeholders: >-
       {%- set out = [] -%}
       {%- for n in query('ansible.builtin.varnames', '^vault_') | reject('in', _skip) -%}
@@ -251,8 +253,9 @@
 - name: Preflight — vCenter API reachable
   ansible.builtin.wait_for:
     host: "{{ tn_vcenter_host }}"
-    port: 443
+    port: "{{ tn_vcenter_port }}"
     timeout: 10
+  when: tn_uses_vcenter | bool
 
 - name: Preflight — LDAPS port open on the domain controller
   ansible.builtin.wait_for:
@@ -320,7 +323,7 @@
       - "free space      : {{ ((tn_data_mount.size_available) / 1073741824) | round(1) }} GB"
       - "vm.max_map_count: {{ tn_max_map_count.stdout }}"
       - "ntp             : {{ tn_ntp.stdout | trim }}"
-      - "vcenter         : {{ tn_vcenter_host }}:443 reachable"
+      - "vcenter         : {{ (tn_vcenter_address ~ ' reachable') if tn_uses_vcenter | bool else 'none (mock: ranges simulated)' }}"
       - "ldaps port      : {{ 'open (the bind itself is checked in 40-tls)' if tn_ldap_enabled | bool else 'n/a (AD/LDAPS disabled)' }}"
       - "backup escrow   : {{ tn_backup_escrow_pubkey if tn_backup_escrow_pubkey | length > 0 else tn_backup_escrow }}"
       - "app source      : {{ tn_app_source_mode }} ({{ tn_app_git_repo if tn_app_source_mode == 'git' else (tn_app_local_path or tn_app_tarball) }})"

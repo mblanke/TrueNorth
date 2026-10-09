@@ -323,6 +323,12 @@ ansible-playbook -i inventory/staging.yml site.yml -K --ask-vault-pass \
   -e tn_release_version=v1.0.0-rc1
 ```
 
+A site with no vCenter has two options. `tn_provisioner_backend: mock` makes
+`tn_uses_vcenter` false: preflight skips the vCenter checks, `90-vsphere` does nothing and
+ranges are simulated. Or run a simulated, read-only vCenter on the host first
+(`ansible-playbook -i inventory/staging.yml playbooks/lab-vcenter-sim.yml -K`,
+`tools/vcenter-sim/`) and point `tn_vcenter_host`/`tn_vcenter_port` at it, as staging
+does, so the hypervisor dashboards have an inventory. It builds no VM.
 Its AI endpoint is an Open WebUI (`tn_ai_base_url: https://…/api`), so set
 `tn_ai_default_model` and `tn_ai_embed_model` to ids from that server's `/api/models`.
 
