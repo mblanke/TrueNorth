@@ -38,6 +38,10 @@ all:
           # Open WebUI's OpenAI-compatible API is under /api (key: Settings > Account >
           # API keys, into vault_openai_api_key). Its model ids are what /api/models lists.
           tn_ai_base_url: https://ai.guapo613.beer/api
+          # Router models that never leave the home lab (no hosted fallback): qwen2.5 14b on
+          # wile + roadrunner, and mxbai-embed-large.
+          tn_ai_default_model: sovereign-chat
+          tn_ai_embed_model: sovereign-embed
           tn_tls_mode: selfsigned
           # A local Keycloak account, created by 60-keycloak (no AD here).
           tn_bootstrap_admin_upn: tnadmin@tn-staging.local

@@ -267,6 +267,10 @@ services:
       - cluster.name=tn-production
       - node.name=os-node-1
       - discovery.type=single-node
+      # One node holds no replica: with the default (1) every index the plugins create
+      # (ISM config/history, job-scheduler lock) stays yellow and /health/deep "degraded".
+      - cluster.default_number_of_replicas=0
+      - plugins.index_state_management.history.number_of_replicas=0
       # Security plugin ON: TLS on HTTP and transport with the installer's internal CA
       # (OPENSEARCH_CERTS_DIR: ca.pem, node.pem, node-key.pem, admin*.pem), and basic
       # auth against internal_users.yml (OPENSEARCH_INTERNAL_USERS: bcrypt hashes of the
@@ -1330,11 +1334,11 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+    # The image is the static binary alone (no shell, no wget), so no in-container probe
+    # can run: a wget check was "unhealthy" forever and stopped the install's
+    # `up --wait`. Prometheus scrapes it, so a dead exporter is up{job="redis"} == 0.
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9121/metrics"]
-      interval: 15s
-      timeout: 5s
-      retries: 3
+      disable: true
     deploy:
       resources:
         limits:

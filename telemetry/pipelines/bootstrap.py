@@ -22,6 +22,13 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(message)s")
 
 OPENSEARCH_URL = os.getenv("OPENSEARCH_URL", "http://localhost:9200")
 
+# Replicas: a fixed count from OPENSEARCH_REPLICAS, else auto_expand_replicas "0-1" (none on
+# a single node, one when a second joins). A fixed 1 on the default single-node install
+# left every index unassignable-replica "yellow", and the API's deep health "degraded".
+_REPLICAS = os.getenv("OPENSEARCH_REPLICAS", "").strip()
+REPLICA_SETTINGS: dict = {"number_of_replicas": int(_REPLICAS)} if _REPLICAS else {"auto_expand_replicas": "0-1"}
+ISM_CONFIG_INDEX = ".opendistro-ism-config"
+
 # ═══════════════════════════════════════════════════════════════════
 #  ILM (ISM) Policies
 # ═══════════════════════════════════════════════════════════════════
@@ -46,7 +53,8 @@ ISM_POLICY: dict[str, Any] = {
             {
                 "name": "warm",
                 "actions": [
-                    {"replica_count": {"number_of_replicas": 1}},
+                    # Warm keeps the hot-phase replica settings (REPLICA_SETTINGS); a fixed
+                    # replica_count here would turn a single node yellow again after 7 days.
                     {"force_merge": {"max_num_segments": 1}},
                 ],
                 "transitions": [{"state_name": "cold", "conditions": {"min_index_age": "30d"}}],
@@ -113,7 +121,7 @@ RANGE_TEMPLATE: dict[str, Any] = {
     "index_patterns": ["range-*"],
     "priority": 10,
     "template": {
-        "settings": {"index.final_pipeline": INGESTED_AT_PIPELINE, "index.refresh_interval": "5s"},
+        "settings": {"index.final_pipeline": INGESTED_AT_PIPELINE, "index.refresh_interval": "5s", **REPLICA_SETTINGS},
         "mappings": {
             "dynamic_templates": [
                 {
@@ -147,7 +155,7 @@ TEMPLATES: dict[str, dict[str, Any]] = {
         "template": {
             "settings": {
                 "number_of_shards": 2,
-                "number_of_replicas": 1,
+                **REPLICA_SETTINGS,
                 "index.refresh_interval": "5s",
                 "plugins.index_state_management.rollover_alias": "range-events",
             },
@@ -185,7 +193,7 @@ TEMPLATES: dict[str, dict[str, Any]] = {
         "template": {
             "settings": {
                 "number_of_shards": 2,
-                "number_of_replicas": 1,
+                **REPLICA_SETTINGS,
                 "index.refresh_interval": "5s",
                 "plugins.index_state_management.rollover_alias": "exercise-events",
             },
@@ -205,7 +213,7 @@ TEMPLATES: dict[str, dict[str, Any]] = {
         "template": {
             "settings": {
                 "number_of_shards": 3,
-                "number_of_replicas": 1,
+                **REPLICA_SETTINGS,
                 "index.refresh_interval": "5s",
                 "plugins.index_state_management.rollover_alias": "security-events",
             },
@@ -230,7 +238,7 @@ TEMPLATES: dict[str, dict[str, Any]] = {
         "template": {
             "settings": {
                 "number_of_shards": 3,
-                "number_of_replicas": 1,
+                **REPLICA_SETTINGS,
                 "index.refresh_interval": "5s",
                 "plugins.index_state_management.rollover_alias": "network-events",
             },
@@ -264,7 +272,7 @@ TEMPLATES: dict[str, dict[str, Any]] = {
         "template": {
             "settings": {
                 "number_of_shards": 1,
-                "number_of_replicas": 1,
+                **REPLICA_SETTINGS,
                 "index.refresh_interval": "10s",
                 "plugins.index_state_management.rollover_alias": "system-events",
             },
@@ -522,6 +530,21 @@ def create_initial_indices(client: httpx.Client) -> None:
             logger.info("Initial index '%s' already exists, skipping", index)
 
 
+def apply_replica_settings(client: httpx.Client) -> None:
+    """Bring indices created before a template change to REPLICA_SETTINGS.
+
+    A template applies only to new indices; an existing single-node install would otherwise
+    stay yellow until its indices roll over. The ISM plugin's own config index is created
+    with one replica too, and on a single node it alone keeps the cluster yellow.
+    """
+    patterns = [p for t in TEMPLATES.values() for p in t["index_patterns"]] + [ISM_CONFIG_INDEX]
+    for pattern in patterns:
+        resp = client.put(
+            f"/{pattern}/_settings", params={"allow_no_indices": "true"}, json={"index": REPLICA_SETTINGS}
+        )
+        logger.info("Replica settings on '%s': %s", pattern, resp.status_code)
+
+
 def create_dashboards(client: httpx.Client) -> None:
     """Import saved objects into OpenSearch Dashboards."""
     for obj in DASHBOARD_OBJECTS:
@@ -547,6 +570,7 @@ def bootstrap(opensearch_url: str | None = None) -> None:
         create_ingest_pipelines(client)  # first: the range template names one as its final pipeline
         create_index_templates(client)
         create_initial_indices(client)
+        apply_replica_settings(client)
         try:
             create_dashboards(client)
         except Exception as exc:
