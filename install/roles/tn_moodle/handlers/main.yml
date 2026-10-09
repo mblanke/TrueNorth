@@ -1,0 +1,16 @@
+---
+# On a first install the edge is not up yet when this is notified; `up` starts it with the
+# new files and the reload is then a no-op. On a re-run it makes a new certificate (or a
+# new moodle.conf) take effect without dropping Moodle.
+- name: Reload the Moodle edge
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      set -euo pipefail
+      dc() { docker compose -f compose.moodle-prod.yml --env-file {{ tn_moodle_env_file }} "$@"; }
+      if [ -n "$(dc ps -q --status running moodle-edge 2>/dev/null)" ]; then
+        dc exec -T moodle-edge nginx -t -q
+        dc exec -T moodle-edge nginx -s reload
+      fi
+    chdir: "{{ tn_app_dir }}/infra/platform/docker"
+  changed_when: true

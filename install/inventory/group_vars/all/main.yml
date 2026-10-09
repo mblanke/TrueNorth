@@ -321,6 +321,17 @@ tn_backup_max_total_gb: 200
 tn_pre_upgrade_backup: true
 tn_upgrade_inflight: drain # drain | abandon
 
+# ── Moodle (optional; install/README.md "Moodle (optional)") ──────────
+# true: 85-moodle runs TrueNorth's Moodle for tn_tenant_slug at
+# https://<tn_domain_fqdn>:<tn_moodle_port>, registers it as the tenant's Moodle platform
+# and backs it up nightly. false: nothing Moodle is installed or touched. The rest of its
+# settings: roles/tn_moodle/defaults/main.yml.
+tn_moodle_enabled: false
+tn_moodle_node: default
+tn_moodle_port: 8443
+tn_moodle_compose_file: "{{ tn_app_dir }}/infra/platform/docker/compose.moodle-prod.yml"
+tn_moodle_env_file: "{{ tn_config_dir }}/moodle-{{ tn_moodle_node }}.env"
+
 # ── Logs ──────────────────────────────────────────────────────────────
 # /srv/truenorth/logs (nginx, backup.log) is rotated by logrotate (roles/tn_base).
 tn_logrotate_days: 14

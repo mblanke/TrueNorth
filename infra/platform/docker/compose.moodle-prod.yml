@@ -1,0 +1,157 @@
+# TrueNorth's Moodle as the installer runs it (install/roles/tn_moodle, tn_moodle_enabled).
+# One node per TrueNorth tenant, each its own compose project; the installer runs one,
+# for tn_tenant_slug. Do not run this by hand: the role renders the env file
+# ($TN_CONFIG_DIR/moodle-<node>.env), creates the database and registers the node.
+#
+#   docker compose -f compose.moodle-prod.yml --env-file /srv/truenorth/config/moodle-default.env up -d
+#
+# Shape (docs/runbooks/moodle.md):
+#   moodle       the TrueNorth Moodle image (infra/platform/moodle), BY DIGEST from the
+#                release's release-manifest.json (images.moodle). Its database is `moodle`
+#                in the platform's PostgreSQL (role `moodle`), so every backup's per-database
+#                dump already holds it; moodledata is a bind mount under $TN_DATA_ROOT that
+#                scripts/backup/backup.sh archives when MOODLE_COMPOSE_FILE is set.
+#                On tn-backend (internal: no route out) as moodle-<node>: the API's
+#                server-side address for publishing, LTI keys and grades, and where this
+#                node fetches TrueNorth's public key (http://api:8080/lti/public-key.pem).
+#   moodle-edge  TLS for browsers: https://<DOMAIN>:<MOODLE_PUBLIC_PORT>/ with the platform's
+#                certificate. Its own origin on purpose: Moodle serves HTML authored in
+#                Moodle, which must not run on TrueNorth's origin (the SPA's tokens).
+#
+# Not compose.moodle-node.yml (scripts/moodle-farm.sh, dev farm: own Postgres, plain http,
+# image by tag) and not compose.moodle-test.yml (CI). tests/contracts/test_installer_moodle.py
+# holds this file's rules.
+name: truenorth-moodle-${MOODLE_NODE:?set MOODLE_NODE}
+
+services:
+  moodle:
+    image: ${TN_IMAGE_MOODLE:?set TN_IMAGE_MOODLE to the moodle image@sha256 from release-manifest.json}
+    restart: always
+    # Not read-only: the image's start hooks rewrite /etc/nginx/nginx.conf (public port,
+    # router) and its code sync and composer write /var/www/html (a volume). It runs as
+    # nobody (the image's USER) and needs no capability.
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      DB_TYPE: pgsql
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: ${MOODLE_DB_NAME:-moodle}
+      DB_USER: ${MOODLE_DB_USER:-moodle}
+      DB_PASS: ${MOODLE_DB_PASSWORD:?set MOODLE_DB_PASSWORD}
+      MOODLE_USERNAME: admin
+      MOODLE_PASSWORD: ${MOODLE_ADMIN_PASSWORD:?set MOODLE_ADMIN_PASSWORD}
+      # Moodle's installer refuses an address without a dotted domain.
+      MOODLE_EMAIL: ${MOODLE_ADMIN_EMAIL:-moodle-admin@example.invalid}
+      # Expanded by the image's CLI bootstrap as one shell argument: no spaces.
+      MOODLE_SITENAME: ${MOODLE_SITENAME:-TrueNorth}
+      SITE_URL: ${MOODLE_SITE_URL:?set MOODLE_SITE_URL to https://<DOMAIN>:<MOODLE_PUBLIC_PORT>}
+      # TLS ends at moodle-edge; Moodle itself speaks http. With sslproxy Moodle treats
+      # every request as https, so the API's internal http calls (Host = the public
+      # host:port) are accepted too. 99-public-port.sh makes SERVER_PORT the public port.
+      SSLPROXY: "true"
+      REVERSEPROXY: "false"
+      MOODLE_PUBLIC_PORT: ${MOODLE_PUBLIC_PORT:?set MOODLE_PUBLIC_PORT}
+      # Nothing leaves the box: the image's default relay is smtp.gmail.com:587.
+      SMTP_HOST: ${MOODLE_SMTP_HOST:-localhost}
+      SMTP_PORT: ${MOODLE_SMTP_PORT:-25}
+      SMTP_USER: ""
+      SMTP_PASSWORD: ""
+      SMTP_PROTOCOL: ""
+      MOODLE_MAIL_NOREPLY_ADDRESS: ${MOODLE_NOREPLY_ADDRESS:-noreply@example.invalid}
+      # Code and plugin come from the image (04-truenorth-bootstrap.sh, 016-truenorth-plugin.sh).
+      AUTO_UPDATE_MOODLE: "true"
+      TN_TOOL_URL: ${TN_TOOL_URL:?set TN_TOOL_URL to https://<DOMAIN>/api}
+      TN_PUBLIC_KEY_URL: ${TN_PUBLIC_KEY_URL:-http://api:8080/lti/public-key.pem}
+      TN_LOGIN_URL: ${TN_LOGIN_URL:-}
+      # The tenant this node serves: local_truenorth refuses tickets for any other.
+      TN_TENANT_ID: ${TN_TENANT_ID:?set TN_TENANT_ID}
+    volumes:
+      - html:/var/www/html
+      - ${TN_DATA_ROOT:-/srv/truenorth}/moodle/${MOODLE_NODE}/moodledata:/var/www/moodledata
+    # The image's own healthcheck (php-fpm ping) answers only once the start hooks have
+    # installed or upgraded Moodle; a first install takes minutes.
+    healthcheck:
+      test: ["CMD-SHELL", "curl --silent --fail http://127.0.0.1:8080/fpm-ping || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 1200s
+    stop_grace_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: "4"
+          memory: 4G
+        reservations:
+          cpus: "1"
+          memory: 1G
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+    networks:
+      edge: {}
+      tn-backend:
+        aliases: ["moodle-${MOODLE_NODE}"]
+
+  moodle-edge:
+    # The platform edge's image, pinned to the same digest as compose.prod.yml's nginx.
+    image: nginx:1.30-alpine@sha256:0985e772fb9f729e6fa0980da05fca5d9c468e870eed43071545afa9d2e27d94
+    restart: always
+    read_only: true
+    cap_drop: [ALL]
+    # The master starts as root, hands /var/cache/nginx to the nginx user and drops to it.
+    # DAC_OVERRIDE: the certificate key belongs to the install user, mode 0600 (roles/tn_tls).
+    # 8443 is not a privileged port: no NET_BIND_SERVICE.
+    cap_add: [CHOWN, SETUID, SETGID, DAC_OVERRIDE]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs:
+      - /var/cache/nginx
+      - /var/run
+      - /tmp
+    ports:
+      - "${MOODLE_PUBLIC_PORT}:8443"
+    volumes:
+      # The edge's own nginx.conf, TLS parameters, header snippets and certificate; only
+      # the server block (../nginx/moodle-edge/moodle.conf) is Moodle's.
+      - ../nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ../nginx/moodle-edge:/etc/nginx/conf.d:ro
+      - ../nginx/conf.d/ssl-params.conf:/etc/nginx/tn/ssl-params.conf:ro
+      - ../nginx/conf.d/edge-access.conf:/etc/nginx/tn/edge-access.conf:ro
+      - ../nginx/snippets:/etc/nginx/snippets:ro
+      - ${SSL_CERT_PATH:-/etc/ssl/truenorth}:/etc/nginx/ssl:ro
+    depends_on:
+      moodle:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:8081/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 256M
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+    networks:
+      - edge
+
+networks:
+  # This node's own bridge: the edge publishes its port here and reaches moodle:8080.
+  edge: {}
+  # The platform's internal network (compose.prod.yml): postgres and the api.
+  tn-backend:
+    external: true
+    name: tn-backend
+
+volumes:
+  # Moodle's code tree, re-synced from the image on every start (regenerable).
+  html:

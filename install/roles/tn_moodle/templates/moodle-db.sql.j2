@@ -1,0 +1,10 @@
+-- Moodle's role and database in the platform's PostgreSQL (roles/tn_moodle). Fed to psql
+-- on stdin: the password is never an argument. Idempotent; psql echoes CREATE ROLE /
+-- CREATE DATABASE only when it made one, which is how the task reports a change.
+SELECT 'CREATE ROLE {{ tn_moodle_db_user }} LOGIN'
+  WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '{{ tn_moodle_db_user }}')\gexec
+ALTER ROLE {{ tn_moodle_db_user }} WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE PASSWORD '{{ tn_moodle_creds['moodle_db_password'] }}';
+SELECT 'CREATE DATABASE {{ tn_moodle_db_name }} OWNER {{ tn_moodle_db_user }} ENCODING ''UTF8'' TEMPLATE template0'
+  WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = '{{ tn_moodle_db_name }}')\gexec
+REVOKE ALL ON DATABASE {{ tn_moodle_db_name }} FROM PUBLIC;
+GRANT ALL ON DATABASE {{ tn_moodle_db_name }} TO {{ tn_moodle_db_user }};

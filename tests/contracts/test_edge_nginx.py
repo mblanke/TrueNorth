@@ -316,6 +316,13 @@ def test_spa_policy_allows_no_inline_script_but_the_hashed_ones(edge):
     assert "'unsafe-hashes'" in script and f"'sha256-{onload}'" in script
 
 
+def test_spa_forms_post_only_to_this_host_its_moodle_included(edge):
+    """"Open in Moodle" POSTs the sign-in ticket to the installer's Moodle, which has its own
+    origin on this host (https://<host>:<tn_moodle_port>); 'self' alone blocked it."""
+    csp = headers_for(edge, route(edge, "/"))["content-security-policy"]
+    assert _directive(csp, "form-action") == ["'self'", "https://$host:*"]
+
+
 def test_silent_sso_page_and_previews_can_be_framed_by_the_spa(edge):
     sso = headers_for(edge, route(edge, "/assets/silent-check-sso.html"))
     assert sso["x-frame-options"] == "SAMEORIGIN"

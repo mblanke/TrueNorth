@@ -1,7 +1,8 @@
 # ------------------------------------------------------------------
 # TrueNorth Range — Release (tag v*)
 # ------------------------------------------------------------------
-# Builds the five service images from the tagged commit, pushes each to GHCR BY DIGEST,
+# Builds the six images (five services and TrueNorth's Moodle) from the tagged commit,
+# pushes each to GHCR BY DIGEST,
 # scans the pushed digest with Trivy (blocking on fixable HIGH/CRITICAL), writes an SBOM
 # per image, and only then gives the digest the version tag. The GitHub release carries
 # release-manifest.json (service -> digest), the SBOMs, the scan reports and SHA256SUMS.
@@ -111,6 +112,10 @@ jobs:
             context: scenario-engine
           - name: ai-orchestrator
             context: ai-orchestrator
+          # TrueNorth's Moodle (local_truenorth baked in); the installer runs it only with
+          # tn_moodle_enabled (install/roles/tn_moodle, compose.moodle-prod.yml).
+          - name: moodle
+            context: infra/platform/moodle
     env:
       VERSION: ${{ needs.version.outputs.version }}
       IMAGE: ghcr.io/mblanke/truenorth-${{ matrix.service.name }}
@@ -297,7 +302,7 @@ jobs:
           cd assets/out
           python3 - <<'EOF'
           import datetime, glob, json, os
-          services = ["api", "worker", "web", "scenario-engine", "ai-orchestrator"]
+          services = ["api", "worker", "web", "scenario-engine", "ai-orchestrator", "moodle"]
           images = {}
           for path in sorted(glob.glob("*.entry.json")):
               with open(path) as f:

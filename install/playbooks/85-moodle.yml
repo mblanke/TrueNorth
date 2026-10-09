@@ -1,0 +1,21 @@
+---
+# TrueNorth's Moodle (optional, tn_moodle_enabled; off by default): the node, its
+# database, its registration as the tenant's Moodle platform, and its smoke check.
+# After the stack, Keycloak and the seed: it needs the api running and the tenant made.
+#
+# Re-runnable on its own:  ansible-playbook playbooks/85-moodle.yml -K
+- name: "Moodle (optional): the node, its database and its registration in TrueNorth."
+  hosts: platform
+  gather_facts: true
+  pre_tasks:
+    - name: Moodle is off
+      ansible.builtin.debug:
+        msg: >-
+          tn_moodle_enabled is false: no Moodle is installed or changed. (Turning it off
+          after an install leaves the node running; docs/runbooks/moodle.md "Removing".)
+      when: not tn_moodle_enabled | bool
+      tags: [moodle]
+  roles:
+    - role: tn_moodle
+      tags: [moodle]
+      when: tn_moodle_enabled | bool

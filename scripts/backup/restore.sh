@@ -19,6 +19,10 @@
 #   5. opensearch: delete every non-system index (names not starting with "."), then
 #      restore the snapshot's (include_global_state=false: templates, pipelines and the
 #      security index stay as the installer made them);
+#   5b. moodle (when the backup holds moodle/moodledata.tar and MOODLE_COMPOSE_FILE /
+#      MOODLE_ENV_FILE name the node here): its services are stopped in step 2 with the
+#      rest, its database comes back in step 3 like every other, and moodledata is
+#      replaced by the archive's (through a throwaway container of its image, as its user);
 #   6. start the services stopped in step 2 again (unless --no-restart).
 #
 # It does NOT restore the env file: if it was lost, recover it from the escrow
@@ -33,10 +37,10 @@ umask 077
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 TN_LOG_TAG="truenorth-restore"
 
-usage() { echo "Usage: $0 <backup-dir> [--force] [--no-restart] [--skip-postgres] [--skip-minio] [--skip-opensearch]" >&2; exit 2; }
+usage() { echo "Usage: $0 <backup-dir> [--force] [--no-restart] [--skip-postgres] [--skip-minio] [--skip-opensearch] [--skip-moodle]" >&2; exit 2; }
 [[ $# -ge 1 ]] || usage
 BACKUP_PATH="$1"; shift
-FORCE=0; RESTART=1; DO_PG=1; DO_MINIO=1; DO_OS=1
+FORCE=0; RESTART=1; DO_PG=1; DO_MINIO=1; DO_OS=1; DO_MOODLE=1
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --force) FORCE=1 ;;
@@ -44,6 +48,7 @@ while [[ $# -gt 0 ]]; do
         --skip-postgres) DO_PG=0 ;;
         --skip-minio) DO_MINIO=0 ;;
         --skip-opensearch) DO_OS=0 ;;
+        --skip-moodle) DO_MOODLE=0 ;;
         *) usage ;;
     esac
     shift
@@ -51,12 +56,16 @@ done
 
 CURRENT_STEP="validate"
 STOPPED=()
+MOODLE_STOPPED=()
 on_exit() {
     local rc=$?
     if (( rc != 0 )); then
         alert "restore FAILED at step '${CURRENT_STEP}' (exit ${rc}) from ${BACKUP_PATH}"
         if (( ${#STOPPED[@]} > 0 )); then
             log "WARN" "services left stopped: ${STOPPED[*]}" >&2
+        fi
+        if (( ${#MOODLE_STOPPED[@]} > 0 )); then
+            log "WARN" "Moodle services left stopped: ${MOODLE_STOPPED[*]}" >&2
         fi
     fi
 }
@@ -98,8 +107,20 @@ if (( DO_OS )); then
     fi
 fi
 
+# Moodle's files come back only where its node is configured (its database comes back
+# with the others either way).
+MOODLE_TAR=""
+MOODLE_HERE="$(moodle_state)"
+if (( DO_MOODLE )) && [[ -f "${BACKUP_PATH}/moodle/moodledata.tar" ]]; then
+    if [[ "${MOODLE_HERE}" == on ]]; then
+        MOODLE_TAR="${BACKUP_PATH}/moodle/moodledata.tar"
+    else
+        log "WARN" "Moodle: this backup holds moodledata, but no Moodle node is configured here (MOODLE_COMPOSE_FILE / MOODLE_ENV_FILE): its files are NOT restored; its database is, with the others"
+    fi
+fi
+
 if (( ! FORCE )); then
-    echo "This OVERWRITES the databases and buckets${OS_SNAP:+ and telemetry indices} of compose project '${PROJECT}' with:"
+    echo "This OVERWRITES the databases and buckets${OS_SNAP:+ and telemetry indices}${MOODLE_TAR:+ and the Moodle files} of compose project '${PROJECT}' with:"
     echo "  ${BACKUP_PATH}"
     read -rp "Type the project name (${PROJECT}) to proceed: " answer
     [[ "${answer}" == "${PROJECT}" ]] || { log "INFO" "Restore cancelled"; exit 0; }
@@ -117,6 +138,16 @@ done < <(dc ps --services --status running)
 if (( ${#STOPPED[@]} > 0 )); then
     log "INFO" "Stopping: ${STOPPED[*]}"
     dc stop "${STOPPED[@]}"
+fi
+# Moodle holds connections to its database (dropped below) and writes moodledata.
+if [[ "${MOODLE_HERE}" == on ]] && { (( DO_PG )) || [[ -n "${MOODLE_TAR}" ]]; }; then
+    while IFS= read -r svc; do
+        [[ -n "$svc" ]] && MOODLE_STOPPED+=("$svc")
+    done < <(moodle_dc ps --services --status running)
+    if (( ${#MOODLE_STOPPED[@]} > 0 )); then
+        log "INFO" "Stopping Moodle: ${MOODLE_STOPPED[*]}"
+        moodle_dc stop "${MOODLE_STOPPED[@]}"
+    fi
 fi
 
 psql_admin() {
@@ -173,12 +204,29 @@ if [[ -n "${OS_SNAP}" ]]; then
     log "INFO" "  opensearch: $(printf '%s' "${os_out}" | grep -o '"shards":{[^}]*}' || true)"
 fi
 
+# ── Moodle files ─────────────────────────────────────────────────────────────
+# Replaced, not merged: files written after the backup belong to rows the database
+# restore just removed. Caches were never in the backup; Moodle rebuilds them.
+if [[ -n "${MOODLE_TAR}" ]]; then
+    CURRENT_STEP="moodle:moodledata"
+    log "INFO" "Restoring Moodle files (moodledata)..."
+    moodle_dc run --rm --no-deps -T --entrypoint sh moodle -c \
+        'set -eu; find /var/www/moodledata -mindepth 1 -maxdepth 1 -exec rm -rf {} +; tar -C /var/www/moodledata -xf -' \
+        <"${MOODLE_TAR}"
+fi
+
 # ── Restart ──────────────────────────────────────────────────────────────────
 CURRENT_STEP="restart"
 if (( RESTART )) && (( ${#STOPPED[@]} > 0 )); then
     log "INFO" "Starting: ${STOPPED[*]}"
     dc start "${STOPPED[@]}"
     STOPPED=()
+fi
+# After the platform: on start the node fetches TrueNorth's key from the api.
+if (( RESTART )) && (( ${#MOODLE_STOPPED[@]} > 0 )); then
+    log "INFO" "Starting Moodle: ${MOODLE_STOPPED[*]}"
+    moodle_dc start "${MOODLE_STOPPED[@]}"
+    MOODLE_STOPPED=()
 fi
 
 CURRENT_STEP="done"
