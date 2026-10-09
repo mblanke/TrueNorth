@@ -1,9 +1,9 @@
 """Deploy-time software catalogue: a node's ``services`` names -> install specs per OS family.
 
-The catalogue is ``content/catalogue/software_catalogue.yaml``. The worker image is
-built from control-plane/worker only, so the file is found through
-``TN_SOFTWARE_CATALOGUE``, then ``/app/content/catalogue`` (the compose mount), then the
-repository checkout this module sits in. Pure apart from reading that file.
+The catalogue is ``content/catalogue/software_catalogue.yaml``. The worker image copies
+content/catalogue to ``/app/content/catalogue`` (a named ``content`` build context), so
+the file is found through ``TN_SOFTWARE_CATALOGUE``, then ``/app/content/catalogue`` (the
+image), then the repository checkout this module sits in. Pure apart from reading that file.
 """
 
 from __future__ import annotations

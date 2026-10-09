@@ -95,11 +95,16 @@ jobs:
       fail-fast: true
       matrix:
         service:
+          # build_contexts: one name=path per line (build-push-action does not split on commas).
           - name: api
             context: control-plane/api
+            build_contexts: |
+              content=content
           - name: worker
             context: control-plane/worker
-            build_contexts: scenario_engine=scenario-engine
+            build_contexts: |
+              scenario_engine=scenario-engine
+              content=content
           - name: web
             context: control-plane/web
           - name: scenario-engine

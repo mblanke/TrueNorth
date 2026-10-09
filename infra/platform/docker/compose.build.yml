@@ -18,12 +18,15 @@ x-worker-build: &worker-build
   dockerfile: Dockerfile
   additional_contexts:
     scenario_engine: ../../../scenario-engine # worker/inject_dispatch.py
+    content: ../../../content # catalogue + mitre, copied into /app/content
 
 services:
   api:
     build:
       context: ../../../control-plane/api
       dockerfile: Dockerfile
+      additional_contexts:
+        content: ../../../content # catalogue + mitre, copied into /app/content
   # One worker image for five services, all tagged TN_IMAGE_WORKER; the layer cache makes
   # the repeats cheap.
   worker-scenario:

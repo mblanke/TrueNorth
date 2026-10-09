@@ -41,11 +41,14 @@ jobs:
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
 
       # The five release images, built as ci.yml's build-docker builds them (same
-      # contexts; the worker gets scenario-engine as a named context), read from its
-      # layer cache, loaded into the runner's Docker and then into kind.
+      # contexts; content/ is a named context of the api and worker, scenario-engine of
+      # the worker), read from its layer cache, loaded into the runner's Docker and then
+      # into kind.
       - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
           context: control-plane/api
+          build-contexts: |
+            content=content
           build-args: TN_VERSION=ci-${{ github.sha }}
           load: true
           tags: tn-local/api:ci
@@ -53,7 +56,9 @@ jobs:
       - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
           context: control-plane/worker
-          build-contexts: scenario_engine=scenario-engine
+          build-contexts: |
+            scenario_engine=scenario-engine
+            content=content
           build-args: TN_VERSION=ci-${{ github.sha }}
           load: true
           tags: tn-local/worker:ci
