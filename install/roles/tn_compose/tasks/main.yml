@@ -257,7 +257,23 @@
             {{ tn_app_dir }}/scripts/backup/backup.sh
       register: tn_pre_backup
       changed_when: true
+      # 5: the data, files and secrets are backed up and only the OpenSearch telemetry
+      # snapshot failed. On the first upgrade to a release that adds snapshots it always
+      # does: the old OpenSearch has no path.repo and 70-telemetry has not registered the
+      # repository yet. The rollback point is intact, so warn and go on.
+      failed_when: tn_pre_backup.rc not in [0, 5]
       when: tn_pre_upgrade_backup | bool
+
+    - name: Compose — pre-upgrade backup without a telemetry snapshot
+      ansible.builtin.debug:
+        msg: >-
+          The pre-upgrade backup holds the databases, object storage and secrets, but no
+          OpenSearch telemetry snapshot ({{ (tn_pre_backup.stderr | default('')) | regex_search('snapshot[^\n]*') | default('see the backup log', true) }}).
+          Expected on the first upgrade to snapshot support; 70-telemetry registers the
+          repository and the nightly backup snapshots telemetry from then on.
+      when:
+        - tn_pre_upgrade_backup | bool
+        - tn_pre_backup.rc | default(0) == 5
 
     - name: Compose — tasks running on the workers now
       ansible.builtin.shell:
