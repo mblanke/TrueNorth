@@ -3,6 +3,10 @@ import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { environment } from '@env/environment';
 import { RunDetail, RunList } from '@core/arc2/studio';
+import type { components } from '../api/schema';
+
+/** GET /arc2/status: whether the Studio is on, and why not. */
+export type Arc2Status = components['schemas']['Arc2Status'];
 
 /** The ARC² Course Studio API (control-plane/api/app/routers/arc2_studio.py). */
 @Injectable({ providedIn: 'root' })
@@ -10,6 +14,10 @@ export class Arc2StudioApiService {
   private readonly http = inject(HttpClient);
   private readonly base = `${environment.apiUrl}/arc2`;
 
+  /** Answers whether or not the Studio is enabled; every other route is 404 while it is off. */
+  status(): Observable<Arc2Status> {
+    return this.http.get<Arc2Status>(`${this.base}/status`);
+  }
   list(): Observable<RunList> {
     return this.http.get<RunList>(`${this.base}/runs`);
   }

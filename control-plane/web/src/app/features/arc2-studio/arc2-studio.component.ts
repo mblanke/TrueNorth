@@ -8,6 +8,7 @@ import {
   ASK_LABEL, Message, RunDetail, RunSummary, authorTodo, canReply, pageRef, pollMs, primaryAction, runnerLooksIdle, shortTime, stageDots,
 } from '@core/arc2/studio';
 import { Arc2StudioApiService } from '@core/services/arc2-studio-api.service';
+import { Arc2AvailabilityService } from '@core/arc2/arc2-availability.service';
 
 type Tab = 'files' | 'outline' | 'quiz' | 'preview' | 'code' | 'lab' | 'validation';
 interface Draft { name: string }
@@ -26,6 +27,20 @@ const MARKING = 'Dynamic page · highest possible classification: UNCLASSIFIED (
   imports: [NgTemplateOutlet, RouterLink],
   template: `
     <div class="banner">{{ marking }}</div>
+    @if (availability() === 'off') {
+      <main class="off-state" aria-labelledby="arc2-off-title">
+        <div class="brand"><div class="logo" aria-hidden="true">A²</div><h1>ARC²</h1><p>AI Rapid Course Creator</p></div>
+        <h2 id="arc2-off-title">ARC² Course Studio isn’t enabled on this server</h2>
+        <p class="muted">{{ offReason() }}</p>
+        @if (auth.isAdmin()) {
+          <p class="small muted admin-hint">Administrators: turn it on with the installer setting <code>tn_arc2_enabled</code>
+            (<code>ARC2_STUDIO_ENABLED</code> on the API); see <code>docs/arc2-course-studio.md</code>.</p>
+        }
+        <p><a routerLink="/authoring" class="linkbtn">← Back to TrueNorth</a></p>
+      </main>
+    } @else if (availability() === 'checking') {
+      <p class="small muted pad" role="status">Checking ARC² Course Studio…</p>
+    } @else {
     <div class="app">
       <!-- Projects -->
       <aside class="side" aria-label="Projects">
@@ -53,7 +68,7 @@ const MARKING = 'Dynamic page · highest possible classification: UNCLASSIFIED (
           } @empty {
             @if (!draft()) { <p class="small muted pad">No courses yet. Name one above to start.</p> }
           }
-          @if (listError()) { <p class="small err pad">Couldn’t load projects. <button type="button" class="linkbtn" (click)="refreshList()">Try again</button></p> }
+          @if (listError(); as e) { <p class="small err pad" role="alert">Couldn’t load projects: {{ e }} <button type="button" class="linkbtn" (click)="refreshList()">Try again</button></p> }
         </div>
         <div class="side-foot">
           <a routerLink="/authoring" class="linkbtn">← TrueNorth</a>
@@ -212,6 +227,7 @@ const MARKING = 'Dynamic page · highest possible classification: UNCLASSIFIED (
       <span class="sep"></span><span class="lbl">Agents:</span>
       @for (s of dots(); track s.key) { <span class="who" [class.done]="s.state === 'done'"><span [class]="'dot ' + s.state"></span>{{ s.name }}</span> }
     </div>
+    }
     <div class="banner">{{ marking }}</div>
 
     <ng-template #none><div class="card"><h3>Not generated yet</h3><p class="small muted">{{ notYet[tab()] }}</p></div></ng-template>
@@ -243,6 +259,10 @@ const MARKING = 'Dynamic page · highest possible classification: UNCLASSIFIED (
     .side-foot { display:flex; justify-content:space-between; border-top:1px solid var(--tn-line); padding:12px 14px; font-size:13px; }
     .linkbtn { background:none; border:0; color:var(--tn-accent); cursor:pointer; font:inherit; padding:0; text-decoration:none; }
     .pad { padding:8px 12px; } .err { color:var(--tn-accent); }
+    .off-state { flex:1; max-width:560px; margin:48px auto; padding:0 20px; text-align:center; }
+    .off-state .brand { border:0; }
+    .off-state h2 { font-size:20px; margin:8px 0; }
+    .off-state code { font:12px ui-monospace,Menlo,monospace; }
     .chat { background:var(--tn-bg); border-right:1px solid var(--tn-line); display:flex; flex-direction:column; min-height:0; }
     .chat-mode { display:flex; gap:16px; padding:8px 14px; border-bottom:1px solid var(--tn-line); font-size:11px; }
     .chat-mode .off { color:var(--tn-muted); }
@@ -301,6 +321,7 @@ const MARKING = 'Dynamic page · highest possible classification: UNCLASSIFIED (
 })
 export class Arc2StudioComponent implements OnInit {
   private readonly api = inject(Arc2StudioApiService);
+  private readonly studio = inject(Arc2AvailabilityService);
   readonly auth = inject(AuthService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly sanitizer = inject(DomSanitizer);
@@ -328,7 +349,11 @@ export class Arc2StudioComponent implements OnInit {
 
   readonly runs = signal<RunSummary[]>([]);
   readonly runnerSeen = signal<string | null>(null);
-  readonly listError = signal(false);
+  /** The server's reason the project list failed, or null. */
+  readonly listError = signal<string | null>(null);
+  /** Off: the server has the Studio disabled, so the page makes no other call. */
+  readonly availability = signal<'checking' | 'on' | 'off'>('checking');
+  readonly offReason = computed(() => this.studio.status()?.reason || 'ARC² Course Studio is not enabled on this server.');
   readonly selected = signal<string | null>(null);
   readonly run = signal<RunDetail | null>(null);
   readonly draft = signal<Draft | null>(null);
@@ -351,19 +376,25 @@ export class Arc2StudioComponent implements OnInit {
   private destroyed = false;
 
   ngOnInit(): void {
-    this.refreshList(true);
     this.destroyRef.onDestroy(() => { this.destroyed = true; clearTimeout(this.timer); });
+    // A failed check (an older API, say) falls back to loading the list, which then shows
+    // the server's own error.
+    this.studio.load(true, s => {
+      if (this.destroyed) return;
+      this.availability.set(s && !s.enabled ? 'off' : 'on');
+      if (this.availability() === 'on') this.refreshList(true);
+    });
   }
 
   refreshList(selectFirst = false): void {
     this.api.list().subscribe({
       next: l => {
-        this.listError.set(false);
+        this.listError.set(null);
         this.runs.set(l.runs);
         this.runnerSeen.set(l.runner_seen);
         if (selectFirst && !this.selected() && !this.draft() && l.runs.length) this.select(l.runs[0].slug);
       },
-      error: () => this.listError.set(true),
+      error: (err: HttpErrorResponse) => this.listError.set(this.message(err)),
     });
   }
 

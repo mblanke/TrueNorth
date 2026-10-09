@@ -303,6 +303,7 @@ from .routers import (
     admin_router,
     ai_authoring_router,
     ai_config_router,
+    arc2_status_router,
     arc2_studio_router,
     auth_zones_router,
     certifications_router,
@@ -387,7 +388,9 @@ app.include_router(lti_router)
 app.include_router(hypervisors_router)
 app.include_router(golden_images_router)
 app.include_router(ai_config_router)
-# ARC² Course Studio; answers 404 unless ARC2_STUDIO_ENABLED is set.
+# ARC² Course Studio; answers 404 unless ARC2_STUDIO_ENABLED is set. GET /arc2/status
+# always answers, so the web app can hide the Studio rather than show it failing.
+app.include_router(arc2_status_router)
 app.include_router(arc2_studio_router)
 app.include_router(directory_router)
 app.include_router(ad_sync_router)

@@ -69,8 +69,9 @@ export const routes: Routes = [
     data: {
       title: 'Authoring Studio',
       tabs: [
-        // Full screen, so the tab hands over to /arc2 (see the redirect below).
-        { label: 'Course Studio', path: 'studio' },
+        // Full screen, so the tab hands over to /arc2 (see the redirect below). Hidden
+        // unless the server has ARC² enabled (GET /arc2/status).
+        { label: 'Course Studio', path: 'studio', requires: 'arc2' },
         { label: 'Ranges', path: 'ranges' },
         { label: 'Scenarios', path: 'scenarios' },
         { label: 'Detections', path: 'detections' },

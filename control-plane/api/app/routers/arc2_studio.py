@@ -37,8 +37,8 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from .. import safe_yaml
-from ..arc2_studio_schemas import RunDetail, RunFile, RunList
-from ..auth import CurrentUser
+from ..arc2_studio_schemas import Arc2Status, RunDetail, RunFile, RunList
+from ..auth import CurrentUser, get_current_user
 from ..rbac import Permission, require_permission
 from ..tenancy import tenant_uuid
 
@@ -52,8 +52,21 @@ def _require_enabled() -> None:
         raise HTTPException(404, "Not Found")
 
 
+NOT_ENABLED = "ARC² Course Studio is not enabled on this server."
+
 router = APIRouter(prefix="/arc2", tags=["ARC² Course Studio"], dependencies=[Depends(_require_enabled)])
+# Mounted whether or not the Studio is on, so the web app can hide it instead of failing.
+status_router = APIRouter(prefix="/arc2", tags=["ARC² Course Studio"])
 author = require_permission(Permission.COURSE_AUTHOR)
+
+
+@status_router.get("/status", response_model=Arc2Status, operation_id="get_arc2_status")
+def get_status(user: CurrentUser = Depends(get_current_user)):
+    """Whether the Studio is on. Any signed-in account may ask: it is the server's feature
+    flag and nothing else (no runs, no paths, no runner activity), so the menu can be
+    hidden for everyone when it is off. Every other /arc2 route stays 404 while off."""
+    on = enabled()
+    return {"enabled": on, "reason": None if on else NOT_ENABLED}
 
 SLUG_RE = re.compile(r"^arc2-[a-z0-9-]{1,60}$")
 # Request and feedback text goes on /arc2's argument line after the caller's own slug. A

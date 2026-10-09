@@ -90,6 +90,31 @@ def write_run(runs: Path, slug: str, outline: str = "pending", preview: str = "n
 def test_off_unless_enabled(client, runs, monkeypatch):
     monkeypatch.delenv("ARC2_STUDIO_ENABLED")
     assert client.get("/arc2/runs").status_code == 404
+    assert client.post("/arc2/runs", json={"name": "x", "request": REQUEST}).status_code == 404
+    assert client.get("/arc2/runs/arc2-anything").status_code == 404
+    assert not (runs / "_queue").exists()
+
+
+@pytest.mark.parametrize("value", ["", "false", "0"])
+def test_status_says_off_and_why(client, runs, monkeypatch, value):
+    monkeypatch.setenv("ARC2_STUDIO_ENABLED", value)
+    r = client.get("/arc2/status")
+    assert r.status_code == 200
+    assert r.json() == {"enabled": False, "reason": "ARC² Course Studio is not enabled on this server."}
+    assert str(runs) not in r.text
+
+
+def test_status_says_on(client, runs):
+    r = client.get("/arc2/status")
+    assert r.status_code == 200
+    assert r.json() == {"enabled": True, "reason": None}
+
+
+@pytest.mark.parametrize("role", [UserRole.student, UserRole.observer])
+def test_any_signed_in_account_may_read_status_but_not_runs(client, runs, role):
+    with acting_as(role):
+        assert client.get("/arc2/status").json()["enabled"] is True
+        assert client.get("/arc2/runs").status_code == 403
 
 
 @pytest.mark.parametrize("role", [UserRole.student, UserRole.observer, UserRole.range_ops])

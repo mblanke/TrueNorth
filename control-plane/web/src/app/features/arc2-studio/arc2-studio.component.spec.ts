@@ -4,6 +4,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { provideRouter } from '@angular/router';
 import { environment } from '@env/environment';
 import { RunDetail } from '@core/arc2/studio';
+import { signal } from '@angular/core';
 import { AuthService } from '@core/services/auth.service';
 import { Arc2StudioComponent } from './arc2-studio.component';
 
@@ -29,17 +30,27 @@ describe('Arc2StudioComponent', () => {
   let fixture: ComponentFixture<Arc2StudioComponent>;
   let http: HttpTestingController;
   let el: HTMLElement;
+  const isAdmin = signal(false);
 
   beforeEach(async () => {
+    isAdmin.set(false);
     await TestBed.configureTestingModule({
       imports: [Arc2StudioComponent],
       providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([]),
-        { provide: AuthService, useValue: { logout: () => undefined } }],
+        { provide: AuthService, useValue: { logout: () => undefined, isAdmin: isAdmin.asReadonly() } }],
     }).compileComponents();
     fixture = TestBed.createComponent(Arc2StudioComponent);
     http = TestBed.inject(HttpTestingController);
     el = fixture.nativeElement;
   });
+
+  /** Open the page; the server says whether the Studio is on before anything else is asked. */
+  function open(enabled = true): void {
+    fixture.detectChanges();
+    http.expectOne(`${API}/status`).flush(
+      enabled ? { enabled: true, reason: null } : { enabled: false, reason: 'ARC² Course Studio is not enabled on this server.' });
+    fixture.detectChanges();
+  }
 
   /** Stop polling (the page clears its timer on destroy) and drain what is left. */
   function finish(): void {
@@ -49,7 +60,7 @@ describe('Arc2StudioComponent', () => {
   }
 
   it('Send on a new project starts the course with the name and the description', fakeAsync(() => {
-    fixture.detectChanges();
+    open();
     http.expectOne(`${API}/runs`).flush({ runs: [], runner_seen: null });
     fixture.detectChanges();
 
@@ -77,7 +88,7 @@ describe('Arc2StudioComponent', () => {
   }));
 
   it('shows the outline and Accept Outline resumes the run', fakeAsync(() => {
-    fixture.detectChanges();
+    open();
     http.expectOne(`${API}/runs`).flush({ runs: [detail()], runner_seen: null });
     http.expectOne(`${API}/runs/arc2-wireshark`).flush(detail());
     fixture.detectChanges();
@@ -94,7 +105,7 @@ describe('Arc2StudioComponent', () => {
   }));
 
   it('shows the engine’s refusal instead of failing silently', fakeAsync(() => {
-    fixture.detectChanges();
+    open();
     http.expectOne(`${API}/runs`).flush({ runs: [detail()], runner_seen: null });
     http.expectOne(`${API}/runs/arc2-wireshark`).flush(detail());
     fixture.detectChanges();
@@ -104,6 +115,44 @@ describe('Arc2StudioComponent', () => {
       { detail: 'ARC² is still working on this run. Wait for it to stop at a review.' }, { status: 409, statusText: 'Conflict' });
     fixture.detectChanges();
     expect(el.textContent).toContain('still working on this run');
+    finish();
+  }));
+
+  it('when the server has it off: says so, offers no New Project and calls nothing else', fakeAsync(() => {
+    open(false);
+    expect(el.textContent).toContain('ARC² Course Studio isn’t enabled on this server');
+    expect(el.textContent).toContain('ARC² Course Studio is not enabled on this server.');
+    expect(el.querySelector('.btn-new')).toBeNull();
+    expect(el.querySelector('.send')).toBeNull();
+    expect(el.textContent).not.toContain('tn_arc2_enabled');
+    http.expectNone(`${API}/runs`);
+    http.verify();
+    fixture.destroy();
+  }));
+
+  it('tells an administrator how to turn it on', fakeAsync(() => {
+    isAdmin.set(true);
+    open(false);
+    expect(el.querySelector('.admin-hint')!.textContent).toContain('tn_arc2_enabled');
+    expect(el.textContent).toContain('docs/arc2-course-studio.md');
+    http.verify();
+    fixture.destroy();
+  }));
+
+  it('when on, shows the projects and New Project as before', fakeAsync(() => {
+    open();
+    http.expectOne(`${API}/runs`).flush({ runs: [], runner_seen: null });
+    fixture.detectChanges();
+    expect(el.querySelector('.btn-new')).not.toBeNull();
+    expect(el.textContent).not.toContain('isn’t enabled');
+    finish();
+  }));
+
+  it('a failed project list shows the server’s message', fakeAsync(() => {
+    open();
+    http.expectOne(`${API}/runs`).flush({ detail: 'Not Found' }, { status: 404, statusText: 'Not Found' });
+    fixture.detectChanges();
+    expect(el.querySelector('[role="alert"]')!.textContent).toContain('Couldn’t load projects: Not Found');
     finish();
   }));
 });

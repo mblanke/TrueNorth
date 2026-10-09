@@ -741,6 +741,31 @@
         "title": "AnnotationOut",
         "type": "object"
       },
+      "Arc2Status": {
+        "description": "GET /arc2/status: is the Studio on, and if not, why (for the empty state).",
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "required": [
+          "enabled"
+        ],
+        "title": "Arc2Status",
+        "type": "object"
+      },
       "AttachObjectives": {
         "properties": {
           "po_ids": {
@@ -18199,6 +18224,33 @@
           }
         ],
         "summary": "Retry",
+        "tags": [
+          "ARC\u00b2 Course Studio"
+        ]
+      }
+    },
+    "/arc2/status": {
+      "get": {
+        "description": "Whether the Studio is on. Any signed-in account may ask: it is the server's feature\nflag and nothing else (no runs, no paths, no runner activity), so the menu can be\nhidden for everyone when it is off. Every other /arc2 route stays 404 while off.",
+        "operationId": "get_arc2_status",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Arc2Status"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Status",
         "tags": [
           "ARC\u00b2 Course Studio"
         ]

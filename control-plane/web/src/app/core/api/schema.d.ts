@@ -551,6 +551,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/arc2/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Status
+         * @description Whether the Studio is on. Any signed-in account may ask: it is the server's feature
+         *     flag and nothing else (no runs, no paths, no runner activity), so the menu can be
+         *     hidden for everyone when it is off. Every other /arc2 route stays 404 while off.
+         */
+        get: operations["get_arc2_status"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/audit-log": {
         parameters: {
             query?: never;
@@ -7490,6 +7512,16 @@ export interface components {
              * Format: uuid
              */
             user_id: string;
+        };
+        /**
+         * Arc2Status
+         * @description GET /arc2/status: is the Studio on, and if not, why (for the empty state).
+         */
+        Arc2Status: {
+            /** Enabled */
+            enabled: boolean;
+            /** Reason */
+            reason?: string | null;
         };
         /** AttachObjectives */
         AttachObjectives: {
@@ -14983,6 +15015,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_arc2_status: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Arc2Status"];
                 };
             };
         };

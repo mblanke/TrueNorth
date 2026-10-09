@@ -6,6 +6,7 @@ import {
   RouterOutlet,
 } from '@angular/router';
 import { AuthService } from '@core/services/auth.service';
+import { Arc2AvailabilityService } from '@core/arc2/arc2-availability.service';
 import { QuietStylesComponent } from './quiet-styles.component';
 
 interface HubTab {
@@ -14,6 +15,8 @@ interface HubTab {
   /** Shown only to instructors and admins. The route must still carry its own guard;
    * hiding the tab is presentation, not access control. */
   instructorOnly?: boolean;
+  /** Shown only when the server has this optional feature on (GET /arc2/status). */
+  requires?: 'arc2';
 }
 
 /**
@@ -92,8 +95,14 @@ export class HubShellComponent {
     ? 'Your programme, courses, and progress. One continuing development record.'
     : 'Build the content and environments behind a purposeful training experience.';
   readonly tabs: HubTab[] = this.route.snapshot.data['tabs'] ?? [];
+  private readonly arc2 = inject(Arc2AvailabilityService);
 
   readonly visibleTabs = computed(() =>
-    this.tabs.filter(tab => !tab.instructorOnly || this.auth.isInstructor()),
+    this.tabs.filter(tab => (!tab.instructorOnly || this.auth.isInstructor())
+      && (tab.requires !== 'arc2' || this.arc2.enabled())),
   );
+
+  constructor() {
+    if (this.tabs.some(tab => tab.requires === 'arc2')) this.arc2.load();
+  }
 }
