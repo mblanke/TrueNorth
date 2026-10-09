@@ -1,0 +1,16 @@
+---
+# Container runtime. Runs before preflight, which then checks the result the same way it
+# checks a Docker someone installed by hand.
+#
+# tn_install_docker=false (the default off Ubuntu 24.04): nothing here runs.
+
+- name: Docker — not managed by the installer
+  ansible.builtin.debug:
+    msg: >-
+      tn_install_docker=false: Docker is not installed or changed here. Preflight still
+      requires Docker {{ tn_min_docker_version }}+ and Compose {{ tn_min_compose_version }}+.
+  when: not (tn_install_docker | bool)
+
+- name: Docker — install and configure
+  ansible.builtin.include_tasks: install.yml
+  when: tn_install_docker | bool

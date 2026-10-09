@@ -1,0 +1,50 @@
+---
+# Role-internal settings for tn_docker. The switches and versions an operator changes
+# (tn_install_docker, tn_docker_version, tn_compose_version, ...) are in
+# inventory/group_vars/all/main.yml.
+
+# Docker's apt repository and its signing key. The key is used only if its primary
+# fingerprint is this one (Docker's published "Docker Release (CE deb)" key); anything
+# else is deleted and the install stops.
+tn_docker_apt_repo_url: https://download.docker.com/linux/ubuntu
+tn_docker_apt_key_url: "{{ tn_docker_apt_repo_url }}/gpg"
+tn_docker_apt_key_fingerprint: 9DC858229FC7DD38854AE2D88D81803C0EBFCD88
+# The same paths Docker's own install guide uses, so a host that followed the guide by
+# hand ends up with one source, not two with conflicting Signed-By values.
+tn_docker_apt_keyring: /etc/apt/keyrings/docker.asc
+tn_docker_apt_source: /etc/apt/sources.list.d/docker.sources
+
+# Package → version as apt names it (docker-ce and its CLI carry Docker's "5:" epoch).
+# Each is installed as "<package>=<version>-*", so the distro suffix
+# ("-1~ubuntu.24.04~noble") is not pinned twice, and then held.
+tn_docker_packages:
+  docker-ce: "5:{{ tn_docker_version }}"
+  docker-ce-cli: "5:{{ tn_docker_version }}"
+  containerd.io: "{{ tn_containerd_version }}"
+  docker-buildx-plugin: "{{ tn_buildx_version }}"
+  docker-compose-plugin: "{{ tn_compose_version }}"
+# Ubuntu's own packaging of the same software. docker-ce conflicts with them, and apt
+# would resolve that by removing a running engine; the role stops instead.
+tn_docker_conflicting_packages:
+  - docker.io
+  - docker-compose
+  - docker-compose-v2
+  - docker-doc
+  - podman-docker
+  - containerd
+  - runc
+
+# What the role writes into /etc/docker/daemon.json (merged over the operator's own
+# keys; tn_docker_manage_daemon_json=false leaves the file alone).
+#   - json-file logs rotated at 50 MB x 5 per container: the default never rotates, and
+#     a chatty container fills /var/lib/docker.
+#   - the containerd image store: `docker save`/`docker load` keep image digests only
+#     with it, and the air-gapped install checks every image by digest
+#     (install/README.md "Air-gapped installs").
+tn_docker_daemon_settings:
+  log-driver: json-file
+  log-opts:
+    max-size: 50m
+    max-file: "5"
+  features:
+    containerd-snapshotter: true

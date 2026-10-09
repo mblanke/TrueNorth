@@ -1,0 +1,13 @@
+---
+# Container runtime — Docker Engine from Docker's apt repository at pinned, held
+# versions; daemon.json (log rotation, containerd image store); chrony; the install
+# user in the docker group. Runs before preflight, which checks the result.
+#
+# Off by default except on Ubuntu 24.04 (tn_install_docker). Re-runnable on its own:
+#   ansible-playbook playbooks/00-docker.yml -K
+- name: "Container runtime"
+  hosts: platform
+  gather_facts: true
+  roles:
+    - role: tn_docker
+      tags: [docker]

@@ -87,25 +87,29 @@
          ~ ' local TN-* groups and a local bootstrap administrator (' ~ tn_bootstrap_admin_upn ~ ') instead.' }}
 
 # ── Container runtime ─────────────────────────────────────────────────
+# roles/tn_docker (playbooks/00-docker.yml) installs it on Ubuntu 24.04 unless
+# tn_install_docker=false; these checks apply either way. The registers are named
+# tn_preflight_* because tn_docker_version / tn_compose_version are the pinned versions
+# in group_vars, and a register would shadow them for the rest of the run.
 - name: Preflight — docker present
   ansible.builtin.command: docker version --format '{{ "{{" }}.Server.Version{{ "}}" }}'
-  register: tn_docker_version
+  register: tn_preflight_docker
   changed_when: false
-  failed_when: tn_docker_version.rc != 0
+  failed_when: tn_preflight_docker.rc != 0
 
 - name: Preflight — docker compose v2 present
   ansible.builtin.command: docker compose version --short
-  register: tn_compose_version
+  register: tn_preflight_compose
   changed_when: false
-  failed_when: tn_compose_version.rc != 0
+  failed_when: tn_preflight_compose.rc != 0
 
 # Version strings are extracted with a regex rather than compared raw: the
 # deployment repo records "Docker 29.7.2" and "Compose v5.5.0", which match no
 # released version, and a raw comparison would blow up rather than report.
 - name: Preflight — docker/compose meet the version floor
   vars:
-    _docker: "{{ tn_docker_version.stdout | regex_search('[0-9]+\\.[0-9]+\\.[0-9]+') }}"
-    _compose: "{{ tn_compose_version.stdout | regex_search('[0-9]+\\.[0-9]+\\.[0-9]+') }}"
+    _docker: "{{ tn_preflight_docker.stdout | regex_search('[0-9]+\\.[0-9]+\\.[0-9]+') }}"
+    _compose: "{{ tn_preflight_compose.stdout | regex_search('[0-9]+\\.[0-9]+\\.[0-9]+') }}"
   ansible.builtin.assert:
     that:
       - _docker is not none
@@ -115,7 +119,9 @@
     fail_msg: >-
       Docker {{ _docker | default('?') }} / Compose {{ _compose | default('?') }}
       is below the floor ({{ tn_min_docker_version }} / {{ tn_min_compose_version }}).
-      Re-run scripts/install-docker-tnmgmt01.sh from the deployment repo.
+      On Ubuntu 24.04 run playbooks/00-docker.yml (tn_install_docker=true, the
+      default there; bump tn_docker_version / tn_compose_version); otherwise upgrade
+      Docker by hand (install/README.md "Prerequisites").
     success_msg: "Docker {{ _docker }}, Compose {{ _compose }}"
 
 - name: Preflight — current user can reach the docker socket
@@ -310,7 +316,7 @@
     msg:
       - "host            : {{ inventory_hostname }} ({{ ansible_host }})"
       - "os              : {{ ansible_distribution }} {{ ansible_distribution_version }}"
-      - "docker          : {{ tn_docker_version.stdout }} / compose {{ tn_compose_version.stdout }}"
+      - "docker          : {{ tn_preflight_docker.stdout }} / compose {{ tn_preflight_compose.stdout }}"
       - "free space      : {{ ((tn_data_mount.size_available) / 1073741824) | round(1) }} GB"
       - "vm.max_map_count: {{ tn_max_map_count.stdout }}"
       - "ntp             : {{ tn_ntp.stdout | trim }}"

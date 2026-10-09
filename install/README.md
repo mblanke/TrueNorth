@@ -1,7 +1,7 @@
 # TrueNorth Range — installer
 
-Takes the platform host from *"Docker installed, `/srv/truenorth` empty"* to a
-running, AD-federated TrueNorth with a working trainee registration path. AD is optional
+Takes the platform host from *"bare Ubuntu 24.04, `/srv/truenorth` empty"* (Docker is
+installed by `00-docker`) to a running, AD-federated TrueNorth with a working trainee registration path. AD is optional
 (`tn_ldap_enabled`): a site without a domain controller gets local Keycloak groups and a
 local bootstrap administrator ("Without Active Directory").
 
@@ -33,10 +33,47 @@ pip install ansible-core
 ansible-galaxy collection install -r requirements.yml
 ```
 
-On the **platform host** (TN-MGMT01): Ubuntu 24.04, Docker ≥ 24, Compose ≥ 2.20,
-and your SSH key in `~tnadmin/.ssh/authorized_keys` (the inventory expects
-`~/.ssh/id_ed25519_lab` on the control node). In `git` mode it also needs HTTPS out to
-github.com; without it, use `local` mode (below). Preflight checks both.
+On the **platform host** (TN-MGMT01): Ubuntu 24.04 and your SSH key in
+`~tnadmin/.ssh/authorized_keys` (the inventory expects `~/.ssh/id_ed25519_lab` on the
+control node). In `git` mode it also needs HTTPS out to github.com; without it, use
+`local` mode (below). Preflight checks both.
+
+**Docker is not a manual prerequisite on Ubuntu 24.04.** `00-docker` (roles/tn_docker,
+first in `site.yml`) installs it, when `tn_install_docker` is true (the default on
+Ubuntu 24.04, false elsewhere):
+
+- Docker's apt repository (`/etc/apt/sources.list.d/docker.sources`), with its signing key
+  in `/etc/apt/keyrings/docker.asc` used only if its fingerprint is
+  `9DC8 5822 9FC7 DD38 854A E2D8 8D81 803C 0EBF CD88`; otherwise the key is deleted and the
+  install stops.
+- `docker-ce`, `docker-ce-cli`, `containerd.io`, `docker-buildx-plugin` and
+  `docker-compose-plugin` at the versions in `group_vars/all/main.yml`
+  (`tn_docker_version`, `tn_compose_version`, `tn_containerd_version`, `tn_buildx_version`),
+  **held** (`apt-mark hold`) so unattended-upgrades cannot move them. To bump: check
+  `apt-cache madison docker-ce docker-compose-plugin` on the host, change the variables,
+  run `playbooks/00-docker.yml -K` (the daemon, and so the stack, restarts), then `site.yml`.
+- `/etc/docker/daemon.json`: json-file logs rotated at 50 MB × 5 per container, and the
+  **containerd image store** ("Air-gapped installs" depends on it). The keys are merged
+  over the file's own (a registry mirror, `data-root`, … survive; the old file is kept as a
+  timestamped backup) and Docker restarts only when the file changes. Switching an existing
+  engine to the containerd store hides the images it pulled before: `50-stack-up` pulls them
+  again. `tn_docker_manage_daemon_json: false` leaves the file alone.
+- chrony (preflight asserts the clock is synchronised), and the install user in the
+  `docker` group (the connection is reset so the next play has it).
+
+It stops rather than fight a Docker installed another way: Ubuntu's `docker.io`/`containerd`
+packages, or a second apt source for Docker's repository (an older `docker.list`). Remove
+those, or **opt out** with `tn_install_docker: false` (group_vars or host vars); then Docker
+must already be there, and preflight still requires Docker ≥ 24 and Compose ≥ 2.24 (the
+backup drill uses compose's `!reset`) either way.
+
+Air-gapped, Docker's repository is unreachable: point `tn_docker_apt_repo_url` at an internal
+mirror of it (the same key signs it), or set `tn_install_docker: false` and preinstall Docker
+from Docker's `.deb` files, with the containerd image store enabled and the same versions.
+chrony then needs a reachable time source (the DC) in `/etc/chrony/sources.d/`.
+
+`--check` on a host without Docker reports what `00-docker` would do, then stops at
+preflight's "docker present": nothing is installed in check mode.
 
 With AD (`tn_ldap_enabled: true`, the TN lab) you need `certs/corp-root-ca.cer` from the
 deployment repo — copy it to `install/files/`. Keycloak cannot bind to AD over LDAPS
@@ -85,6 +122,7 @@ is always safe on its own.
 
 | Playbook | What it does |
 |---|---|
+| `00-docker` | With `tn_install_docker` (default on Ubuntu 24.04): Docker from its apt repository (key fingerprint pinned), at pinned versions, held; `daemon.json` log rotation and the containerd image store; chrony; the install user in the `docker` group. Otherwise nothing ("Prerequisites"). |
 | `00-preflight` | No `CHANGE_ME` left in the vault, the AI endpoint and the backup escrow set; OS, Docker/Compose versions, disk, NTP, vCenter reachability, the app repository; with AD, forward+reverse DNS through AD and the LDAPS port; without AD, that the service name resolves (or `tn_manage_etc_hosts`). Read-only, and runs for real under `--check`; fails loudly with the fix in the message. |
 | `10-base` | Packages, `vm.max_map_count` (OpenSearch will not start without it), the `/srv/truenorth` tree with the uids each image runs as, logrotate for `/srv/truenorth/logs`; with AD, the resolver drop-in for AD DNS. |
 | `20-fetch-app` | Release mode: verifies `release-manifest.json`'s **cosign signature** against the release workflow's identity, checks it against `SHA256SUMS`, then fetches the app at the release's commit (`git_sha`) and refuses any other. Build mode: the installer's own commit. Refuses an older release/commit than the one deployed (rollback is explicit, `tn_allow_downgrade`) and an app whose compose file declares another compatibility level than `install/COMPAT`. `local` and `tarball` (checksum-verified, unpacked beside the app and swapped in) for air-gapped installs. Records what was deployed. |
@@ -356,7 +394,9 @@ done
 ```
 
 Copy the directory to the control node and run with `-e tn_image_archive_dir=<dir>`. The
-target needs the containerd image store too. `50-stack-up` copies the tarballs, `docker
+target needs the containerd image store too: `00-docker` enables it, but it also needs
+Docker's apt repository. Without a mirror of it, set `tn_install_docker: false` and
+preinstall Docker with the store enabled ("Prerequisites"). `50-stack-up` copies the tarballs, `docker
 load`s the ones that changed, and runs the same digest check instead of pulling.
 
 ## Alerting
@@ -432,6 +472,9 @@ actually change:
 
 | Variable | Default | Note |
 |---|---|---|
+| `tn_install_docker` | `true` on Ubuntu 24.04, else `false` | `00-docker`; `false` to manage Docker yourself ("Prerequisites"). |
+| `tn_docker_version` / `tn_compose_version` | `29.9.0` / `5.6.0` | Pinned and held; with `tn_containerd_version`, `tn_buildx_version`. |
+| `tn_docker_manage_daemon_json` | `true` | `false`: `/etc/docker/daemon.json` is left alone. |
 | `tn_app_git_repo` | `github.com/mblanke/TrueNorth` (public) | |
 | `tn_app_git_version` | *(empty: the installer's own commit)* | The installer and the app stay the same revision. In release mode the manifest's `git_sha` replaces it. |
 | `tn_allow_downgrade` | `false` | Deliberate rollback only (docs/runbooks/upgrade.md). |
