@@ -241,6 +241,9 @@ jobs:
         working-directory: control-plane/web
 
   build-docker:
+    # One clean name per image: the matrix's multi-line build_contexts would otherwise end
+    # up in the check name, which branch protection matches exactly.
+    name: build-docker (${{ matrix.service.name }})
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: [test-python, build-angular]
