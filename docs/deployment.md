@@ -465,61 +465,27 @@ services:
 
 ## Keycloak Realm Configuration
 
-### Step-by-Step Setup
+The realm is not built by hand. `infra/keycloak/realm-truenorth.json` is imported on a
+fresh install, and `install/playbooks/60-keycloak.yml` (`roles/tn_keycloak`) enforces the
+security settings on every run; `tests/contracts/test_keycloak_hardening.py` keeps the two
+equal. The settings are tabulated in `install/README.md` ("Identity hardening").
 
-1. **Access Admin Console:** Navigate to `http://localhost:8180/admin/`
-2. **Create Realm:** Click "Create Realm" and name it `truenorth`
-3. **Create API Client:**
-   - Client ID: `truenorth-api`
-   - Client type: Confidential
-   - Valid redirect URIs: `http://localhost:8080/*`
-   - Client authentication: On
-4. **Create Web Client:**
-   - Client ID: `truenorth-web`
-   - Client type: Public
-   - Valid redirect URIs: `http://localhost:4200/*`
-   - Web Origins: `http://localhost:4200`
-5. **Create Roles:** `admin`, `instructor`, `student`, `observer`, `range_ops`
-6. **Add Custom Claim:**
-   - Create a Client Scope named `tenant_id`
-   - Add a User Attribute Mapper for `tenant_id`
-   - Assign scope to clients
-7. **Create Users and Assign Roles**
+| Client | Type | Sign-in flow |
+|---|---|---|
+| `truenorth-web` | public | Authorization code + PKCE (S256). This is how people sign in. |
+| `truenorth-cli` | public | OAuth device authorization grant |
+| `truenorth-api` | confidential | No user flow; service account only. Tokens carry it as audience (`KEYCLOAK_AUDIENCE`). |
+| `truenorth-smoke` | confidential, **disabled** | Password grant, for `95-smoke-test` only: `roles/tn_smoke` enables it for one token request and disables it again |
 
-### Keycloak JSON Export
+The password grant (direct access grants) is off on `truenorth-web`, `truenorth-api` and
+`truenorth-cli`. Access tokens last 5 minutes; browser sessions 30 minutes idle, 10 hours
+maximum. Roles are `admin`, `instructor`, `student`, `observer`, `range_ops`; the
+installer's `truenorth-identity` client scope adds the `groups` and AD identity claims
+and the API audience (`roles/tn_keycloak/defaults/main.yml`, `tn_kc_protocol_mappers`).
 
-```json
-{
-  "realm": "truenorth",
-  "enabled": true,
-  "sslRequired": "external",
-  "roles": {
-    "realm": [
-      { "name": "admin" },
-      { "name": "instructor" },
-      { "name": "student" },
-      { "name": "observer" },
-      { "name": "range_ops" }
-    ]
-  },
-  "clients": [
-    {
-      "clientId": "truenorth-api",
-      "enabled": true,
-      "clientAuthenticatorType": "client-secret",
-      "redirectUris": ["*"],
-      "webOrigins": ["*"]
-    },
-    {
-      "clientId": "truenorth-web",
-      "enabled": true,
-      "publicClient": true,
-      "redirectUris": ["*"],
-      "webOrigins": ["*"]
-    }
-  ]
-}
-```
+An existing realm keeps its own redirect URIs and web origins on re-import; update the
+`truenorth-web` client's by hand (`CHANGELOG.md`, upgrade notes). The Keycloak admin
+console is 404 at the edge unless the client is in `management-cidrs.conf`.
 
 ---
 
@@ -796,7 +762,7 @@ curl -s http://localhost:9200/_cluster/health | python -m json.tool
 # Check Celery worker status
 celery -A worker.celery_app inspect active
 
-# Test Keycloak token endpoint
-curl -X POST "http://localhost:8180/realms/truenorth/protocol/openid-connect/token" \
-  -d "grant_type=password&client_id=truenorth-api&username=admin&password=admin"
+# Check Keycloak's realm is up (OIDC discovery; no credentials needed).
+# Do not test with grant_type=password: the password grant is off on every user client.
+curl -s "https://<site>/auth/realms/truenorth/.well-known/openid-configuration" | python -m json.tool
 ```

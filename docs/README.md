@@ -194,6 +194,8 @@ Core_Docs/
 | [User Guide](user-guide.md) | End-user guide for ranges, exercises, and AAR |
 | [Content Library](content-library.md) | Catalog of templates, scenarios, detections, datasets |
 | [Build Reference](BUILD.md) | CI/CD, Docker builds, Packer, Terraform, releases |
+| [Releasing](release.md) | Tagging, signed release assets, verifying a release |
+| [v1.0.0 release notes](release-notes/v1.0.0.md) | Known limitations and the staging verification record |
 
 ---
 

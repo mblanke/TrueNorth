@@ -12,6 +12,9 @@ have worked: dev triggered on a `develop` branch that does not exist, prod retag
 migrations after `up -d`, and bound both blue/green slots to 80/443. Prod also kept the
 production SSH key in a third-party action.
 
+Per-release notes (known limitations, staging record) live in `docs/release-notes/`,
+e.g. [`v1.0.0.md`](release-notes/v1.0.0.md); the change list is `CHANGELOG.md`.
+
 ## What a release produces
 
 For each of the five services, `api`, `worker`, `web`, `scenario-engine` and

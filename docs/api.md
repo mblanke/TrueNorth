@@ -51,33 +51,47 @@ and is checked against the code on every `scripts/dod.sh` run (ADR 0002).
 
 All endpoints (except `GET /health`) require authentication via Bearer token.
 
-**Token Acquisition:**
+**Token acquisition.** The OAuth password grant (direct access grants) is **off** on
+every client people use: `truenorth-web`, `truenorth-api` and `truenorth-cli`
+(`infra/keycloak/realm-truenorth.json`; `install/playbooks/60-keycloak.yml` enforces it on
+every run). Do not script `grant_type=password`; Keycloak refuses it.
+
+| Client | Flow | Used by |
+|---|---|---|
+| `truenorth-web` (public) | Authorization code + PKCE (S256) | The web app. Sign in through the browser; the SPA refreshes its 5-minute access token silently. |
+| `truenorth-cli` (public) | OAuth device authorization grant | Scripts and terminals: approve the device code in a browser. |
+| `truenorth-api` (confidential) | None for people (service account only) | The API's own token audience (`KEYCLOAK_AUDIENCE`). |
+| `truenorth-smoke` (confidential) | Password grant | `install/playbooks/95-smoke-test.yml` only. The client is **disabled**; the smoke test (`install/roles/tn_smoke`) enables it for its one token request and disables it again. |
+
+Token from a terminal with the device grant (`<issuer>` is `KEYCLOAK_ISSUER`, by default
+`https://<site>/auth/realms/truenorth`):
 
 ```bash
-# 1. Get token from Keycloak
-curl -X POST "http://keycloak:8180/realms/truenorth/protocol/openid-connect/token" \
-  -d "grant_type=password" \
-  -d "client_id=truenorth-api" \
-  -d "client_secret=<secret>" \
-  -d "username=admin@truenorth.local" \
-  -d "password=<password>"
+# 1. Ask for a device code; open verification_uri_complete in a browser and sign in
+curl -s -X POST "<issuer>/protocol/openid-connect/auth/device" \
+  -d "client_id=truenorth-cli"
+
+# 2. Poll for the token with the device_code from step 1
+curl -s -X POST "<issuer>/protocol/openid-connect/token" \
+  -d "grant_type=urn:ietf:params:oauth:grant-type:device_code" \
+  -d "client_id=truenorth-cli" \
+  -d "device_code=<device_code>"
 ```
 
-**Response:**
+**Response (abridged):**
 ```json
 {
   "access_token": "eyJhbGciOiJSUzI1NiIs...",
   "refresh_token": "eyJhbGciOiJSUzI1NiIs...",
   "token_type": "Bearer",
-  "expires_in": 300,
-  "refresh_expires_in": 1800
+  "expires_in": 300
 }
 ```
 
 **Using the Token:**
 ```bash
 curl -H "Authorization: Bearer eyJhbGciOiJSUzI1NiIs..." \
-  http://localhost:8080/ranges
+  https://<site>/api/v1/ranges
 ```
 
 **JWT Claims Used:**
@@ -91,6 +105,8 @@ curl -H "Authorization: Bearer eyJhbGciOiJSUzI1NiIs..." \
 
 **Development Mode:**
 Set `AUTH_DISABLED=true` to bypass authentication. All requests will use a default admin user.
+With `TN_ENV=production` the API refuses to start if `AUTH_DISABLED=true`
+(`control-plane/api/app/settings.py`).
 
 ---
 

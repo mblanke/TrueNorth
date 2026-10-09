@@ -135,41 +135,65 @@ Note over SPA,KC: Refresh token used to renew access token
 
 ### Keycloak Realm Configuration
 
+Excerpt of `infra/keycloak/realm-truenorth.json` (the maintained source; the installer's
+`60-keycloak` enforces the token, session, password and client settings on every run,
+and `tests/contracts/test_keycloak_hardening.py` keeps the two equal):
+
 ```json
 {
   "realm": "truenorth",
   "enabled": true,
-  "sslRequired": "all",
+  "sslRequired": "external",
   "bruteForceProtected": true,
   "permanentLockout": false,
-  "maxFailureWaitSeconds": 900,
+  "failureFactor": 5,
+  "maxFailureWaitSeconds": 300,
   "minimumQuickLoginWaitSeconds": 60,
   "waitIncrementSeconds": 60,
-  "maxDeltaTimeSeconds": 43200,
-  "failureFactor": 5,
-  "passwordPolicy": "length(12) and digits(1) and upperCase(1) and lowerCase(1) and specialChars(1) and notUsername and passwordHistory(5)",
-  "accessTokenLifespan": 3600,
-  "refreshTokenMaxReuse": 0,
+  "maxDeltaTimeSeconds": 3600,
+  "passwordPolicy": "length(12) and notUsername(undefined) and passwordHistory(5)",
+  "accessTokenLifespan": 300,
   "ssoSessionIdleTimeout": 1800,
+  "ssoSessionMaxLifespan": 36000,
+  "offlineSessionIdleTimeout": 604800,
   "clients": [
     {
-      "clientId": "truenorth-api",
-      "protocol": "openid-connect",
-      "publicClient": false,
+      "clientId": "truenorth-web",
+      "publicClient": true,
       "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "attributes": { "pkce.code.challenge.method": "S256" }
+    },
+    {
+      "clientId": "truenorth-api",
+      "publicClient": false,
+      "standardFlowEnabled": false,
       "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": true
     },
     {
-      "clientId": "truenorth-spa",
-      "protocol": "openid-connect",
+      "clientId": "truenorth-cli",
       "publicClient": true,
-      "standardFlowEnabled": true,
-      "pkceCodeChallengeMethod": "S256"
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "attributes": {
+        "oauth2.device.authorization.grant.enabled": "true",
+        "pkce.code.challenge.method": "S256"
+      }
+    },
+    {
+      "clientId": "truenorth-smoke",
+      "enabled": false,
+      "publicClient": false,
+      "directAccessGrantsEnabled": true
     }
   ]
 }
 ```
+
+`truenorth-smoke` exists only for the installer's smoke test, which enables it for one
+token request and disables it again (`install/roles/tn_smoke`). Sign-in flows:
+`docs/api.md` ("Authentication").
 
 ### API JWT Validation
 

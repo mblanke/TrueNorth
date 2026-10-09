@@ -1,4 +1,4 @@
-# Resume — 2026-10-08
+# Resume — 2026-10-09
 
 Read this first after a restart. It describes the current state. History is in
 `git log` and `docs/hardening/`. Product state, module by module: `docs/current-state.md`.
@@ -10,16 +10,17 @@ Releasing: `docs/release.md`.
   runs on PRs into it, and releases are tags on it. Local `main` and `github/main` have
   diverged before, so check `git rev-list --left-right --count main...github/main` before
   branching "from main". `feat/aar-pdf-designer-xapi` is an old line, not the base.
-- **All 17 modules are at stage 4; v1.0.0 release hardening is in progress**
-  (`CHANGELOG.md`). The section modules live under
+- **All 17 modules are at stage 4. Release status: `v1.0.0-rc3` (`e015d27`, #117) is
+  the latest signed pre-release and is installed on staging** (`tn-staging`, an upgrade
+  from rc2). `v1.0.0` is not tagged yet. Changes: `CHANGELOG.md`. Known limitations and
+  the staging record: `docs/release-notes/v1.0.0.md`. The section modules live under
   `control-plane/api/app/<module>/`: scheduler + capacity, range leases and range ops,
   lab sessions, network inventory, noise, greyspace, detections, scenario runs, course
-  releases/publishing, LMS, wiki/support tickets/notifications. The hardening R-series
-  (#55–#68) is merged, and so is everything up to #107.
-- **Open PRs** (2026-10-08): #108 (Helm chart production-ready, `infra/k8s/`), #109
-  (runtime hardening, deploy by digest), #92 (session coordinator). #3–#51 predate the
-  re-land on main. Check each against main before acting on it, and do not merge them
-  as they are.
+  releases/publishing, LMS, wiki/support tickets/notifications. Everything up to #118
+  is merged (R-series, final security review #112, installer v1 #111, Helm #108).
+- **Open PRs** (2026-10-09): #92 (session coordinator). #118 (nightly backup wrapper
+  on a new host) merged after rc3. #3–#51 predate the re-land on main. Check each
+  against main before acting on it, and do not merge them as they are.
 
 ## The gate and the CI lanes
 
@@ -108,12 +109,14 @@ Scripts in `/opt/llm-stack/`: `to-fleet.sh`, `to-glm.sh`, `taz-status.sh`,
 
 ## Still open (product)
 
-1. **Installing by digest.** The installer still fetches source and
-   `compose.prod.yml` still `build:`s, ignoring `IMAGE_TAG`. Consuming
-   `release-manifest.json` is the installer work package (interface: `docs/release.md`;
-   PR #109 in flight).
+1. **v1.0.0 known limitations** (`docs/release-notes/v1.0.0.md`): LTI refuses staff
+   emails (no deep linking for them), pre-upgrade telemetry indices, `vsphere_api`
+   ignores per-tenant credentials, `PLATFORM_TENANT_ID` on multi-tenant installs,
+   OpenSearch backups need `OPENSEARCH_SNAPSHOT_REPO`, LTI needs HTTPS.
+   (Installing by digest is done: #109, #111.)
 2. **Live vSphere evidence** needs the self-hosted lab runner and its credentials
    (`lab.yml`, `docs/runbooks/lab-runner.md`). The Taz box cannot reach that LAN.
+   Staging has no vCenter (simulated, read-only).
 3. **Content is the real bottleneck:** about 2,600 build hours, about 57% of them gated
    on cleared humans and purchased courseware. The four Red Analyst crosswalk rows still
    carry `DCWF-TODO`.
