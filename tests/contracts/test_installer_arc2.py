@@ -23,6 +23,8 @@ INSTALL = ROOT / "install"
 ROLE = INSTALL / "roles/tn_arc2"
 DOCKER = ROOT / "infra/platform/docker"
 KEY = "vault_arc2_anthropic_api_key"
+TOKEN = "vault_arc2_claude_oauth_token"  # a Claude subscription (`claude setup-token`)
+CREDENTIALS = (KEY, TOKEN)
 
 
 def _yaml(path: Path):
@@ -237,6 +239,8 @@ def test_the_key_reaches_the_runner_only_through_a_root_0600_environment_file():
     assert (tmpl["dest"], tmpl["owner"], tmpl["group"], tmpl["mode"]) == ("{{ tn_arc2_env_file }}", "root", "root", "0600")
     assert write["no_log"] is True
     assert f"ANTHROPIC_API_KEY={{{{ {KEY} " in (ROLE / "templates/runner.env.j2").read_text()
+    assert f"CLAUDE_CODE_OAUTH_TOKEN={{{{ {TOKEN} " in (ROLE / "templates/runner.env.j2").read_text()
+    assert not any("CLAUDE_CODE_OAUTH_TOKEN" in v for v in unit.get("Environment", []))
     assert _defaults()["tn_arc2_etc"] == "/etc/truenorth-arc2"
     etc = next(t for t in _tasks() if _module(t, "file") and t.get("loop") and
                any(i.get("path") == "{{ tn_arc2_etc }}" for i in t["loop"]))
@@ -246,15 +250,134 @@ def test_the_key_reaches_the_runner_only_through_a_root_0600_environment_file():
 def test_the_key_is_nowhere_else():
     allowed = {ROLE / "templates/runner.env.j2", ROLE / "tasks/install.yml", INSTALL / "roles/tn_preflight/tasks/main.yml",
                INSTALL / "inventory/group_vars/all/vault.yml.example", ROLE / "templates/truenorth-arc2-runner.service.j2"}
-    for path in [*INSTALL.rglob("*.yml"), *INSTALL.rglob("*.j2"), *DOCKER.glob("*.yml")]:
-        if path not in allowed:
-            assert KEY not in _code(path.read_text()), path
-    # In the role it is only asserted on and templated, never on a command line.
-    for task in _tasks():
-        if KEY in str(task) and "block" not in task:
-            assert set(task) & {"ansible.builtin.assert", "ansible.builtin.template"}, task.get("name")
-    assert re.search(rf"^{KEY}: \"\"$", (INSTALL / "inventory/group_vars/all/vault.yml.example").read_text(), re.M)
-    assert KEY not in _group_vars(), "no default key"
+    for cred in CREDENTIALS:
+        for path in [*INSTALL.rglob("*.yml"), *INSTALL.rglob("*.j2"), *DOCKER.glob("*.yml")]:
+            if path not in allowed:
+                assert cred not in _code(path.read_text()), (cred, path)
+        # In the role it is only asserted on and templated, never on a command line.
+        for task in _tasks():
+            if cred in str(task) and "block" not in task:
+                assert set(task) & {"ansible.builtin.assert", "ansible.builtin.template"}, task.get("name")
+        assert re.search(rf"^{cred}: \"\"$", (INSTALL / "inventory/group_vars/all/vault.yml.example").read_text(), re.M)
+        assert cred not in _group_vars(), f"no default {cred}"
+        assert cred not in _code((ROLE / "templates/truenorth-arc2-runner.service.j2").read_text())
+
+
+# ── Exactly one credential: a subscription token or an API key ───────
+def _env_file(**vault) -> str:
+    """runner.env.j2 rendered as Ansible's template module does (trim_blocks)."""
+    env = _jinja()
+    env.trim_blocks = True
+    ctx = {"ansible_managed": "Ansible managed", "tn_arc2_service": "truenorth-arc2-runner",
+           "tn_arc2_egress_allow": "api.anthropic.com", **vault}
+    return env.from_string((ROLE / "templates/runner.env.j2").read_text()).render(ctx)
+
+
+def _settings(text: str) -> dict[str, str]:
+    return dict(line.split("=", 1) for line in text.splitlines() if line and not line.startswith("#"))
+
+
+def test_the_env_file_carries_exactly_the_credential_that_is_set():
+    sub = _env_file(**{TOKEN: " sk-ant-oat01-subscription\n", KEY: ""})
+    assert _settings(sub) == {"CLAUDE_CODE_OAUTH_TOKEN": "sk-ant-oat01-subscription"}
+    api = _env_file(**{KEY: "sk-ant-api03-paid"})  # the token undefined, as in an older vault
+    assert _settings(api) == {"ANTHROPIC_API_KEY": "sk-ant-api03-paid"}
+    assert "sk-ant" not in "".join(line for line in sub.splitlines() if line.startswith("#"))
+
+
+def _conditions(task: dict) -> list[str]:
+    that = task["ansible.builtin.assert"]["that"]
+    return [that] if isinstance(that, str) else that
+
+
+def _holds(task: dict, **vault) -> bool:
+    """Evaluate an assert's conditions as Ansible would (Jinja expressions, `is search`/`is match`)."""
+    env = _jinja()
+    env.tests.update(search=lambda v, p: re.search(p, str(v)) is not None,
+                     match=lambda v, p: re.match(p, str(v)) is not None)
+    return all(env.compile_expression(c.strip())(**vault) for c in _conditions(task))
+
+
+def _fail_msg(task: dict, **vault) -> str:
+    return _jinja().from_string(task["ansible.builtin.assert"]["fail_msg"]).render(**vault)
+
+
+def _credential_asserts() -> list[dict]:
+    pre = next(t for t in _yaml(INSTALL / "roles/tn_preflight/tasks/main.yml")
+               if t.get("name") == "Preflight — ARC² Course Studio")["block"]
+    role = next(t for t in _tasks() if t.get("name") == "ARC² — one model credential, and the endpoint, are usable")
+    return [
+        next(t for t in pre if t.get("name") == "Preflight — ARC² has exactly one model credential"),
+        next(t for t in pre if t.get("name") == "Preflight — ARC² credential is in the right variable"),
+        role,
+    ]
+
+
+VAULTS = {
+    "subscription": ({TOKEN: "sk-ant-oat01-aaaa", KEY: ""}, True),
+    "api key": ({TOKEN: "", KEY: "sk-ant-api03-bbbb"}, True),
+    "api key, older vault without the token": ({KEY: "sk-ant-api03-bbbb"}, True),
+    "both": ({TOKEN: "sk-ant-oat01-aaaa", KEY: "sk-ant-api03-bbbb"}, False),
+    "neither": ({TOKEN: "", KEY: ""}, False),
+    "neither, whitespace": ({TOKEN: "  ", KEY: "\n"}, False),
+    "undefined": ({}, False),
+    "placeholder token": ({TOKEN: "CHANGE_ME", KEY: ""}, False),
+    "placeholder key": ({TOKEN: "", KEY: "CHANGE_ME"}, False),
+    "api key in the token's variable": ({TOKEN: "sk-ant-api03-bbbb", KEY: ""}, False),
+    "token in the key's variable": ({TOKEN: "", KEY: "sk-ant-oat01-aaaa"}, False),
+}
+
+
+def test_preflight_requires_exactly_one_credential():
+    one, slot, role = _credential_asserts()
+    host = {"tn_arc2_anthropic_base_url": "", "tn_arc2_node_arch": "x64", "tn_arc2_node_sha256": {"x64": "0"}}
+    for case, (vault, ok) in VAULTS.items():
+        preflight_ok = _holds(one, **vault) and _holds(slot, **vault)
+        assert preflight_ok is ok, case
+        # 55-arc2 re-checks exactly-one on its own (it can run without preflight).
+        if "variable" not in case:
+            assert _holds(role, **vault, **host) is ok, case
+    # The refusal says which case it is, and never echoes a value.
+    both = _fail_msg(one, **VAULTS["both"][0])
+    assert "both vault_arc2_claude_oauth_token and vault_arc2_anthropic_api_key are set" in both
+    assert "neither" in _fail_msg(one, **VAULTS["neither"][0]) and "claude setup-token" in both
+    for task in (one, slot):
+        for vault, _ in VAULTS.values():
+            assert not any(v.strip() and v.strip() in _fail_msg(task, **vault) for v in vault.values() if v != "CHANGE_ME")
+
+
+def test_the_subscription_token_is_written_only_with_no_log():
+    """The env file task is the only task that writes a credential, and it logs nothing; the
+    asserts that read them print only their own fixed message."""
+    tasks = [*_tasks(), *_yaml(INSTALL / "roles/tn_preflight/tasks/main.yml")]
+    for task in _walk(tasks):
+        if "block" in task or not any(c in str(task) for c in CREDENTIALS):
+            continue
+        if _module(task, "template"):
+            assert task["ansible.builtin.template"]["src"] == "runner.env.j2"
+            assert task["no_log"] is True and task["ansible.builtin.template"]["mode"] == "0600"
+        else:
+            assert _module(task, "assert"), task.get("name")
+            # A message may say whether a credential is set, never print it, whichever branch
+            # it takes (both set, one set, or one set in the wrong variable).
+            for secret in ({TOKEN: "sk-ant-oat01-SECRET-T", KEY: "sk-ant-api03-SECRET-K"},
+                           {TOKEN: "sk-ant-oat01-SECRET-T", KEY: ""}, {TOKEN: "", KEY: "sk-ant-api03-SECRET-K"},
+                           {TOKEN: "sk-ant-api03-SECRET-K", KEY: ""}, {TOKEN: "", KEY: "sk-ant-oat01-SECRET-T"}):
+                msg = _fail_msg(task, **secret, ansible_facts={"architecture": "x86_64"})
+                assert "SECRET" not in msg, task.get("name")
+    # The unit never names the token; the runner forwards it to jobs itself (runner.AUTH_ENV).
+    unit = _unit()
+    assert not any("CLAUDE_CODE_OAUTH_TOKEN" in v for vs in unit.values() for v in vs)
+    assert "CLAUDE_CODE_OAUTH_TOKEN" not in _envs(unit)["ARC2_JOB_ENV"].split(",")
+
+
+def test_the_example_vault_documents_both_credentials():
+    text = (INSTALL / "inventory/group_vars/all/vault.yml.example").read_text()
+    block = text[text.index("# ── ARC² Course Studio"):]
+    block = block[: block.index(f'{KEY}: ""')]
+    for needle in ("EXACTLY ONE", "claude setup-token", "subscription", "operator's own credential",
+                   "limits", "revoke", f'{TOKEN}: ""', "pay-per-use"):
+        assert needle in block, needle
 
 
 def test_preflight_requires_the_key_and_checks_the_host_when_enabled():

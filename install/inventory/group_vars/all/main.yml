@@ -235,7 +235,8 @@ tn_ai_embed_model: embed
 # Off by default. true: playbooks/55-arc2.yml installs the course-authoring runner on this
 # host (a dedicated tn-arc2 account, a bubblewrap sandbox per job, Node and Claude Code at
 # the versions below, a hardened systemd service) and the api serves /api/arc2 from the
-# runs directory it shares with the runner. Needs vault_arc2_anthropic_api_key and HTTPS
+# runs directory it shares with the runner. Needs exactly one of vault_arc2_claude_oauth_token
+# (a Claude subscription) or vault_arc2_anthropic_api_key (vault.yml.example), and HTTPS
 # out to the model endpoint. Course requests and generated content go to that endpoint:
 # read docs/arc2-course-studio.md "Deployment" before turning it on where CUI is held.
 tn_arc2_enabled: false

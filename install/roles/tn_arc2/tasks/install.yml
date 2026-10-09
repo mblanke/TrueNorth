@@ -7,7 +7,7 @@
 #   {{ tn_arc2_runs_dir }}                 the runs root; the api mounts it at /srv/arc2/runs
 #   /opt/truenorth-arc2/                    root-owned: bin/bwrap (0750 root:tn-arc2), node,
 #                                           claude-code (pinned), venv
-#   /etc/truenorth-arc2/runner.env          the model key, root 0600 (EnvironmentFile)
+#   /etc/truenorth-arc2/runner.env          the model credential, root 0600 (EnvironmentFile)
 #   /etc/apparmor.d/truenorth-arc2-bwrap    user namespaces for that one bwrap copy only
 
 - name: ARC² — install
@@ -49,19 +49,26 @@
           Deploy the app from the same commit as the installer, or set tn_arc2_enabled: false.
         quiet: true
 
-    - name: ARC² — the model API key and endpoint are usable
+    # Exactly one credential: a Claude subscription token or a pay-per-use API key, never
+    # both, so it is never ambiguous which account is billed. The message names the
+    # variables, never their values.
+    - name: ARC² — one model credential, and the endpoint, are usable
       ansible.builtin.assert:
         that:
-          - vault_arc2_anthropic_api_key | default('') | string | trim | length > 0
+          - >-
+            (vault_arc2_claude_oauth_token | default('') | string | trim | length > 0)
+            != (vault_arc2_anthropic_api_key | default('') | string | trim | length > 0)
+          - vault_arc2_claude_oauth_token | default('') is not search('CHANGE_ME')
           - vault_arc2_anthropic_api_key | default('') is not search('CHANGE_ME')
           - >-
             tn_arc2_anthropic_base_url | default('') | length == 0
             or tn_arc2_anthropic_base_url is match('^https://[A-Za-z0-9.-]+(:443)?(/.*)?$')
           - tn_arc2_node_arch in tn_arc2_node_sha256
         fail_msg: >-
-          ARC² needs vault_arc2_anthropic_api_key (no default), tn_arc2_anthropic_base_url empty
-          or https://host[:443]/... (the jobs' egress proxy tunnels port 443 only), and an
-          x86_64 or aarch64 host (found {{ ansible_facts['architecture'] }}).
+          ARC² needs exactly one of vault_arc2_claude_oauth_token (a Claude subscription,
+          from `claude setup-token`) or vault_arc2_anthropic_api_key (no default for either),
+          tn_arc2_anthropic_base_url empty or https://host[:443]/... (the jobs' egress proxy
+          tunnels port 443 only), and an x86_64 or aarch64 host (found {{ ansible_facts['architecture'] }}).
         quiet: true
 
     # ── Packages ──────────────────────────────────────────────────────────
@@ -274,8 +281,9 @@
         extra_args: "{{ ('--index-url ' ~ tn_arc2_pip_index_url) if tn_arc2_pip_index_url | default('') | length > 0 else omit }}"
       notify: Restart the ARC² runner
 
-    # ── The key, and the service ──────────────────────────────────────────
-    - name: ARC² — the model key, for systemd only (root 0600)
+    # ── The credential, and the service ───────────────────────────────────
+    # CLAUDE_CODE_OAUTH_TOKEN (subscription) or ANTHROPIC_API_KEY, whichever is set.
+    - name: ARC² — the model credential, for systemd only (root 0600)
       ansible.builtin.template:
         src: runner.env.j2
         dest: "{{ tn_arc2_env_file }}"

@@ -27,7 +27,9 @@ SupplementaryGroups={{ tn_arc2_runs_group }}
 WorkingDirectory={{ tn_app_dir }}
 UMask=0027
 
-# The key (ANTHROPIC_API_KEY), root:root 0600, read by systemd before the sandbox exists.
+# The credential (CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_API_KEY), root:root 0600, read by
+# systemd before the sandbox exists. The runner forwards either to each job (runner.AUTH_ENV);
+# neither belongs in ARC2_JOB_ENV.
 EnvironmentFile={{ tn_arc2_env_file }}
 Environment=HOME={{ tn_arc2_home }}
 Environment=LANG=C.UTF-8

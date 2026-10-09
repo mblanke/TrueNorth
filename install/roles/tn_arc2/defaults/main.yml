@@ -27,7 +27,8 @@ tn_arc2_apparmor_profile: truenorth-arc2-bwrap
 # ── Service ───────────────────────────────────────────────────────────
 tn_arc2_service: truenorth-arc2-runner
 tn_arc2_etc: /etc/truenorth-arc2
-# The model API key, and only that: root:root 0600, read by systemd (EnvironmentFile),
+# The model credential (CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_API_KEY, exactly one), and
+# only that: root:root 0600, read by systemd (EnvironmentFile),
 # never on a command line and never in the stack's .env.production.
 tn_arc2_env_file: "{{ tn_arc2_etc }}/runner.env"
 # /arc2 works in <repo>/build/arc2 and runs <repo>/.venv/bin/python, relative to the

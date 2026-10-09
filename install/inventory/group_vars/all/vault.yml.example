@@ -86,8 +86,19 @@ vault_ghcr_token: ""
 vault_openai_api_key: ""
 
 # ── ARC² Course Studio (only with tn_arc2_enabled) ────────────────────
-# An Anthropic API key for the course-authoring runner. REQUIRED when ARC² is on: there is
-# no default and preflight stops without it. It reaches only the runner (a root 0600
-# systemd EnvironmentFile), never the stack's env file. Use a key issued for this host
-# alone, with a spending limit: each job can read it, and reach only the model endpoint.
+# The course-authoring runner's model credential. When ARC² is on, set EXACTLY ONE of the
+# two below: there is no default, and preflight stops with neither or both (so it is never
+# ambiguous which account is billed). Whichever is set reaches only the runner (a root 0600
+# systemd EnvironmentFile), never a command line or the stack's env file. Each job can read
+# it, and can reach only the model endpoint with it.
+#
+# Claude subscription (recommended if you already have one): run `claude setup-token` on
+# any machine signed in to the subscription and paste the token (sk-ant-oat...) here. It is
+# the operator's own credential: usage counts against that subscription's limits. A job that
+# hits a limit stops with Claude Code's usage-limit message and is not retried (the local-model
+# fallback stays off on the platform host); send it again once the limit resets. The token
+# is long-lived: revoke it and issue a new one if this host is rebuilt or decommissioned.
+vault_arc2_claude_oauth_token: ""
+# Or a pay-per-use Anthropic API key (sk-ant-api...), billed per token. Issue it for this
+# host alone, with a spending limit.
 vault_arc2_anthropic_api_key: ""
