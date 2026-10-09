@@ -25,10 +25,9 @@ all:
           # (tn_install_docker defaults true). If an earlier hand install left a
           # docker.list for Docker's repository, it stops and names the file: remove it,
           # or set tn_install_docker: false here to keep the Docker already there.
-          # No vCenter on this network: a simulated one (tools/vcenter-sim) on this host,
-          # started by
-          # playbooks/lab-vcenter-sim.yml, so the hypervisor dashboards have an inventory. It
-          # builds no VM. vault_vsphere_password: any non-placeholder (it accepts any).
+          # No vCenter on this network: a simulated, read-only one (tools/vcenter-sim) on
+          # this host, started by playbooks/lab-vcenter-sim.yml, so the hypervisor
+          # dashboards have an inventory. vault_vsphere_password: any non-placeholder.
           tn_vcenter_host: 192.168.1.240
           tn_vcenter_port: 8989
           tn_vcenter_user: staging@vsphere.local
