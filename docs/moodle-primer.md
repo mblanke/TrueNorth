@@ -174,13 +174,14 @@ that tenant's `ExternalPlatform`.
 
 ## cmi5
 
-Packaging only for now: see `docs/cmi5-packaging-decision.md`. Plugins considered for
-later:
+TrueNorth runs cmi5 itself (`docs/cmi5.md`). Both community plugins were installed on the
+farm image (Moodle 5.2.3) on 2026-10-09 and neither is in the image; a Moodle course
+reaches a TrueNorth cmi5 module through an LTI link instead (`docs/cmi5.md`, "Moodle").
 
-| Plugin | Fit |
+| Plugin (commit tested) | Result |
 |---|---|
-| [ByLightSDC `mod_cmi5`](https://github.com/ByLightSDC/moodle-mod_cmi5) | GPLv3, Moodle 4.1+, built-in LRS, forward or LRS-only mode, backup/restore, gradebook. **Fits an air-gapped farm.** Not yet tested on 5.2 |
-| [adlnet `mod_cmi5launch`](https://github.com/adlnet/Moodle-mod_cmi5launch) | Needs an external CATAPULT player plus an LRS. Poor fit |
+| [ByLightSDC `mod_cmi5`](https://github.com/ByLightSDC/moodle-mod_cmi5) `7485551` (0.2.0, alpha) | GPLv3; installs on 5.2.3. Not a conformant cmi5 LMS: the runtime activityId is the publisher id (cmi5 8.1.5.0-3), the actor is the Moodle email, no `launched` statement, `satisfied` for AUs and with publisher ids and no activity type. |
+| [adlnet `mod_cmi5launch`](https://github.com/adlnet/Moodle-mod_cmi5launch) `9c7d90d` (1.1.0) | Apache-2.0 (GPLv3-compatible); installs on 5.2.3. The LMS side is ADL's CATAPULT player, a prototype service with its own MySQL, to run next to every farm node. Poor fit |
 
 ## Moodle 5.x notes
 

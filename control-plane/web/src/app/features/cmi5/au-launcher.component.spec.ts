@@ -24,16 +24,20 @@ describe('Cmi5LauncherComponent', () => {
   let api: jasmine.SpyObj<Cmi5ApiService>;
   let opened: string[];
 
-  function setUp(s: Cmi5Structure): void {
+  function setUp(s: Cmi5Structure, query: Record<string, string> = {}): void {
     api = jasmine.createSpyObj('Cmi5ApiService', ['structure', 'launch']);
     api.structure.and.returnValue(of(s));
+    api.launch.and.returnValue(of({ url: 'https://tn/au/releases/rel-1/1?endpoint=x', session_id: 's', registration: 'r', launch_mode: 'Normal', launch_method: 'OwnWindow' }));
     opened = [];
     Cmi5LauncherComponent.open = url => opened.push(url);
     TestBed.configureTestingModule({
       imports: [Cmi5LauncherComponent, NoopAnimationsModule],
       providers: [
         { provide: Cmi5ApiService, useValue: api },
-        { provide: ActivatedRoute, useValue: { snapshot: { paramMap: convertToParamMap({ releaseId: 'rel-1' }) } } },
+        {
+          provide: ActivatedRoute,
+          useValue: { snapshot: { paramMap: convertToParamMap({ releaseId: 'rel-1' }), queryParamMap: convertToParamMap(query) } },
+        },
       ],
     });
     fixture = TestBed.createComponent(Cmi5LauncherComponent);
@@ -74,5 +78,24 @@ describe('Cmi5LauncherComponent', () => {
     setUp(structure(false));
     expect(el('launch-0')).toBeNull();
     expect(fixture.nativeElement.textContent).toContain('not enrolled on this version');
+  });
+
+  it('goes straight into the module an LTI link names (?launch=n)', () => {
+    setUp(structure(), { launch: '1' });
+    expect(api.launch).toHaveBeenCalledWith('rel-1', 1);
+    expect(opened).toEqual(['https://tn/au/releases/rel-1/1?endpoint=x']);
+  });
+
+  it('does not launch for someone not enrolled, and says so', () => {
+    setUp(structure(false), { launch: '1' });
+    expect(api.launch).not.toHaveBeenCalled();
+    expect(fixture.nativeElement.textContent).toContain('not enrolled on this version');
+  });
+
+  it('names a module that does not exist', () => {
+    setUp(structure(), { launch: '9' });
+    fixture.detectChanges();
+    expect(api.launch).not.toHaveBeenCalled();
+    expect(fixture.nativeElement.textContent).toContain('This course has no module 10.');
   });
 });

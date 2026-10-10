@@ -282,6 +282,9 @@ statements identify people by email. Decide whether to leave them, or to void an
 
 1. ~~**The LTI session hand-off (gap #1):** an exchangeable single-use token, or Keycloak federation of LTI users?~~ Decided 2026-10-09: the exchangeable single-use code (see gap #1).
 2. **Which Moodle cmi5 plugin to standardise on.** Choose on CATAPULT LTS results, not the feature list.
+   *2026-10-09:* neither candidate for now (ByLight `mod_cmi5` 0.2.0 breaks cmi5 MUSTs; ADL
+   `mod_cmi5launch` needs the CATAPULT player per node). Moodle links into TrueNorth's own
+   cmi5 launch instead: `docs/cmi5.md`, "Moodle".
 3. **A custom `local_truenorth` Moodle plugin** would only be needed to sync TrueNorth's catalogue (courses, a section per PO, competencies) into Moodle automatically. Deep Linking covers placing individual activities without it.
 4. **Machine-to-machine auth, if Moodle ever calls TrueNorth:** a Keycloak `client_credentials` client mapped to a tenant-scoped service user, or a new API-key scheme.
 5. **Existing email-identified LRS statements** when the actor changes (see 2d).

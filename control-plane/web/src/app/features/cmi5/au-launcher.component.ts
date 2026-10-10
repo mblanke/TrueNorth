@@ -78,8 +78,21 @@ export class Cmi5LauncherComponent implements OnInit {
 
   ngOnInit(): void {
     this.releaseId = this.route.snapshot.paramMap.get('releaseId') ?? '';
+    // `?launch=<n>`: go straight into module n. This is the target of an LTI link from
+    // Moodle (docs/cmi5.md, "Moodle"): the Student arrives signed in and the module opens,
+    // with TrueNorth as its cmi5 LMS.
+    const wanted = this.route.snapshot.queryParamMap?.get('launch') ?? null;
+    const autoLaunch = wanted !== null && /^\d+$/.test(wanted) ? Number(wanted) : null;
     this.api.structure(this.releaseId).subscribe({
-      next: s => this.structure.set(s),
+      next: s => {
+        this.structure.set(s);
+        const au = autoLaunch === null ? undefined : s.aus.find(a => a.index === autoLaunch);
+        if (autoLaunch !== null && !au) {
+          this.problem.set(`This course has no module ${autoLaunch + 1}.`);
+        } else if (au && s.enrolled) {
+          this.launch(au);
+        }
+      },
       error: err => this.problem.set(err?.error?.detail ?? 'This course could not be loaded.'),
     });
   }

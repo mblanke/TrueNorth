@@ -140,6 +140,56 @@ to its endpoint with its token. Two things it needs from TrueNorth's side:
   needs its origin added to `connect-src` in `infra/platform/nginx/snippets/security-headers.conf`,
   and its LRS must allow TrueNorth's origin in CORS.
 
+## Moodle
+
+**Decision (2026-10-09): no cmi5 activity plugin in the farm image.** A Moodle course reaches
+a TrueNorth cmi5 module through a link into TrueNorth, and TrueNorth is the cmi5 LMS for it.
+
+Both community plugins were installed on the farm image (`infra/platform/moodle`, Moodle
+5.2.3, PostgreSQL 16) in a throwaway compose project; both install cleanly. What decided it is
+how each behaves as a cmi5 LMS:
+
+| | ByLightSDC `mod_cmi5` | adlnet `mod_cmi5launch` |
+|---|---|---|
+| Commit tested | `7485551cb42b39efb52ca205860a10676de673a6` (0.2.0, maturity alpha) | `9c7d90da44035839a239380fcc2e0c7aa6910a85` (1.1.0) |
+| Licence | GPL-3.0-or-later | Apache-2.0 (GPLv3-compatible) |
+| Moodle 5.2.3 | installs (`mod_cmi5` 2026092400) | installs (`mod_cmi5launch` 2025070116) |
+| LMS side | its own, in Moodle | ADL's CATAPULT player: a separate Node service with its own MySQL, called by the plugin |
+| Conformance | fails cmi5 MUSTs (below) | the player is ADL's reference prototype |
+| Fit for the farm | no | no: a prototype service and database per farm node, its own tenant/token setup |
+
+`mod_cmi5` at that commit, read in its source:
+
+- the launch `activityId` is the AU's publisher id (`classes/launch_manager.php`, `'activityId' => $au->auid`;
+  `auid` is the course structure's `id`, `classes/cmi5_package.php`): cmi5 8.1.5.0-3 says it MUST NOT be;
+- the actor's account name is the Moodle user's email (`classes/xapi_statement.php`, `get_actor`),
+  which TrueNorth's identity rules forbid (docs/xapi-conformance.md);
+- no `launched` statement is recorded (only a Moodle event, `launch.php`);
+- `satisfied` is issued for AUs as well as blocks, with the publisher id as the object, no
+  `…/activitytype/block|course` type and a session id of `"LMS-generated"`
+  (`classes/xapi_statement.php`, `build_satisfied_statement`).
+
+Revisit when those are fixed upstream (it is the plugin closest to PCTE's tooling, and it is
+active); then bake it into the image with an install hook pinned by commit, and run CATAPULT's
+LMS test suite against it before relying on it.
+
+**The path instead (an LTI-wrapped AU).** The Moodle activity opens
+`<web>/au/releases/<release>?launch=<n>`. The launcher starts module *n* for the signed-in
+Student with TrueNorth as the LMS: registration (their enrolment), `launched`, the AU, moveOn
+and `satisfied`, all in TrueNorth's LRS. What works today and what does not:
+
+| | |
+|---|---|
+| A Moodle **URL** resource to `<web>/au/releases/<release>?launch=<n>` | Works now. The Student arrives signed in through the farm's single sign-on; an unenrolled Student is told so and nothing launches. No grade in Moodle. |
+| A Moodle **External tool** (LTI 1.3) activity | Needs the LTI launch to send `/au/...` targets on: `lti13.parse_resource_target` and `routers/integrations.py` `_resource_link_redirect` know `lab`, `quiz`, `exercise` and `course` only. Next dependency (their owners): a `cmi5` resource kind (`<release>:<n>`) redirecting to `<web>/au/releases/<release>?launch=<n>&lti=1`. |
+| Moodle gradebook | Next dependency: AGS pass-back of the AU's `passed`/`failed` score for an LTI-launched registration. |
+
+To repeat the plugin evaluation: build `infra/platform/moodle`, then an image `FROM` it that
+copies each plugin (at the commits above) into `/var/www/html/public/mod/<name>` from a
+`/docker-entrypoint-init.d/` hook running before `02-configure-moodle.sh`, start it with
+`compose.moodle-test.yml`'s settings, and read
+`php admin/cli/cfg.php --component=mod_cmi5 --name=version`.
+
 ## LRS configuration (2e)
 
 - **lrsql on PostgreSQL** (`compose.prod.yml` `lrs`), with xAPI 1.0.3 enabled (the default,
