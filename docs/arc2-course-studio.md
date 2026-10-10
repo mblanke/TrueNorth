@@ -339,8 +339,8 @@ where file writes are denied by default (`tools/arc2/confine.py`: Seatbelt via `
 | Read other runs, `_studio/`, `_queue/`, `_jobs/`, anything else in the runner's home (other jobs' sessions, `~/.ssh`, `~/.docker`), including through symlinks | no |
 | Read `build/arc2/` or `.claude/worktrees/` anywhere in the repository (other checkouts' runs) | no |
 | Signal processes outside the sandbox | no |
-| Unix sockets (Docker) and localhost (API, Redis, Postgres) | no, except the local model fallback's port |
-| Internet | only through the runner's egress proxy, which tunnels to `api.anthropic.com:443` and nothing else (`ARC2_EGRESS_ALLOW`; `tools/arc2/egress.py`) |
+| Unix sockets (Docker) and localhost (API, Redis, Postgres) | no, except a local model endpoint's port (the Ollama fallback, or a gateway on localhost) |
+| Internet | only through the runner's egress proxy, which tunnels to `api.anthropic.com:443` and nothing else (`ARC2_EGRESS_ALLOW`; `tools/arc2/egress.py`). In `ARC2_MODE=local`, to the gateway's host only (§13, "Model mode") |
 
 A job can still read the original arguments and environment of any process in the same
 account (`sysctl KERN_PROCARGS2`); Seatbelt has no rule for it. So neither may hold
@@ -491,8 +491,65 @@ private-network addresses, and resource limits. Settings that overmount `/proc`
 because bubblewrap must mount a fresh `/proc` for the job's PID namespace.
 
 **Egress.** Jobs have their own network namespace and reach only the runner's proxy, which
-tunnels `CONNECT` to `ARC2_EGRESS_ALLOW` (`api.anthropic.com`, or the gateway's host) on 443.
-The local-model fallback is off (`ARC2_FALLBACK=off`): there is no Ollama on the platform host.
+tunnels `CONNECT` to `ARC2_EGRESS_ALLOW` on 443: `api.anthropic.com` (or the
+`tn_arc2_anthropic_base_url` gateway's host) in `subscription` mode, the local gateway's host
+alone in `local` mode, both in `subscription_with_local_fallback` (`tn_arc2_egress_allow`,
+built from `tn_arc2_mode`). The legacy local-Ollama fallback is off (`ARC2_FALLBACK=off`):
+there is no Ollama on the platform host.
+
+**Model mode (2026-10-09).** `ARC2_MODE` (installer: `tn_arc2_mode`) chooses what runs a job
+(`tools/arc2/runner.py`, `ModelConfig`):
+
+| `ARC2_MODE` | Engine | Needs | Jobs may reach |
+|---|---|---|---|
+| `subscription` (default) | Claude | exactly one of `CLAUDE_CODE_OAUTH_TOKEN` / `ANTHROPIC_API_KEY` (installer: the two vault variables below) | `api.anthropic.com` (or `ARC2_EGRESS_ALLOW`) |
+| `local` | an Anthropic-compatible gateway, e.g. a LiteLLM router exposing `/v1/messages` | `ARC2_LOCAL_URL` (https), `ARC2_LOCAL_MODEL`, `ARC2_LOCAL_TOKEN` (installer: `tn_arc2_local_url`, `tn_arc2_local_model`, `vault_arc2_local_token`) | the gateway's host only, whatever `ARC2_EGRESS_ALLOW` says: a job never reaches `api.anthropic.com`, and no Anthropic credential is written for it |
+| `subscription_with_local_fallback` | Claude; a step Claude could not run at all (signed out, usage limit, overloaded, unreachable: `FALLBACK_ERRORS`) is re-run on the gateway, never after a STOP, a refused merge or a timeout | both of the above | both hosts |
+
+On the gateway the runner points Claude Code at `ARC2_LOCAL_URL` (`ANTHROPIC_BASE_URL`), passes
+the token as `ANTHROPIC_AUTH_TOKEN` (bearer), clears `ANTHROPIC_API_KEY` and
+`CLAUDE_CODE_OAUTH_TOKEN`, and sets `ARC2_LOCAL_MODEL` for every model alias and subagent.
+`ARC2_LOCAL_TOKEN` itself is never forwarded to a job. Before falling back, the runner checks
+the gateway cheaply: `GET /v1/models` with the bearer token (3 s), or a `HEAD` of the base URL
+when the gateway has no model list; it spends no tokens. The runner refuses to start (exit 2)
+on an unknown mode, a missing URL or model, a remote gateway without https or without a token.
+A gateway on `localhost` may be plain http without a token and is reached directly (its port
+opened in the sandbox, bridged on Linux) rather than through the proxy. Each job record carries
+`mode` and `engine` (`claude` or `local:<model>`).
+
+`ARC2_MODE` unset keeps the behaviour from before it existed, for runners on a Mac: Claude,
+re-run on a local Ollama (`ARC2_FALLBACK_URL`, default `http://127.0.0.1:11434`;
+`ARC2_FALLBACK_MODEL`; reachability by its `/api/tags`; engine `ollama:<model>`) unless
+`ARC2_FALLBACK=off`. Once `ARC2_MODE` is set, `ARC2_FALLBACK*` are ignored. To use Ollama
+through the new settings: `ARC2_MODE=subscription_with_local_fallback`,
+`ARC2_LOCAL_URL=http://127.0.0.1:11434`, `ARC2_LOCAL_MODEL=<model>`.
+
+Preflight and `55-arc2` check each mode: `local` needs the URL (`https://host[:443]/...`),
+the model and the token; `subscription` needs exactly one Anthropic credential (#128's rules);
+the fallback mode needs both sets. In `local` mode an Anthropic credential left in the vault
+is ignored and not written. An internal gateway on a private address also needs that address
+out of `tn_arc2_ip_deny`. `55-arc2` refuses a deployed runner that predates `ARC2_MODE` when a
+mode other than `subscription` is asked for (it would silently use Claude).
+Tests: `tests/arc2/test_arc2_runner_modes.py`, `tests/contracts/test_installer_arc2.py`.
+
+**Test-host auto-accept (2026-10-09).** On a test host (staging) nobody reviews generated
+course content. With `ARC2_AUTO_ACCEPT_GATES=1` (installer: `tn_arc2_auto_accept: true`; set
+in `install/inventory/staging.yml`, default false), when a job finishes cleanly and the run is
+waiting at the outline gate, or at the preview gate with stages 1-5 complete and QA `pass`,
+the runner queues the same `accept` resume that the Studio's Accept button would
+(`runner.maybe_auto_accept`). It never accepts after a failed job, a STOP (a failed stage), a
+QA `human_takeover` or failing QA, when a person has already queued something for the run, or
+more than `AUTO_ACCEPT_LIMIT` (6) times per run. The acceptance is auditable and visibly not a
+person's: the queued job has `requested_by: "auto (test host)"` and
+`auto_accept: {gate, accepted_by, at, after_job}`; the finished job records
+`auto_accept_queued`; the engine's `gate … accept` records `accepted_by: "auto (test host)"` on
+the gate in `manifest.json` (the runner sets `ARC2_GATE_ACCEPTED_BY` for that job only, and a
+person's later acceptance removes it). The Studio API returns `auto_accepted` per run and a
+pipeline message per automatic acceptance; the web Studio shows "TEST CONTENT — gates
+auto-accepted, not reviewed" on the run and in the project list. A release built from such a
+run (§14) is not marked by this; do not release test content to Students.
+Tests: `tests/arc2/test_arc2_runner_auto_accept.py`, `tests/api/test_arc2_studio.py`,
+`arc2-studio.component.spec.ts`.
 
 **Credential.** Exactly one of two vault variables; preflight and `55-arc2` refuse neither
 and both, so it is never ambiguous which account is billed.

@@ -289,8 +289,9 @@ def _summary(slug: str) -> dict:
         "phase_text": words,
         "stages": _stage_view(manifest),
         "gates": {g: {k: v for k, v in ((manifest or {}).get("gates") or {}).get(g, {}).items()
-                      if k in ("state", "ts", "accepted_sha256", "rework_count")}
+                      if k in ("state", "ts", "accepted_sha256", "rework_count", "accepted_by")}
                   for g in ("outline", "preview")},
+        "auto_accepted": _auto_accepted(manifest, jobs),
         "qa": {k: ((manifest or {}).get("qa") or {}).get(k) for k in ("result", "cycle", "rework_stage", "checked_at")},
         "actions_open": len(open_actions),
         "actions_blocking": sum(1 for a in open_actions if a.get("blocks_promotion")),
@@ -299,6 +300,19 @@ def _summary(slug: str) -> dict:
         "updated_at": max(filter(None, [meta.get("created_at"), job and (job.get("finished_at") or job.get("created_at")),
                                         _mtime(run / "manifest.json")]), default=None),
     }
+
+
+AUTO_ACCEPTED_BY = "auto (test host)"  # tools/arc2/runner.py AUTO_ACCEPTED_BY
+
+
+def _auto_accepted(manifest: dict | None, jobs: list[dict]) -> bool:
+    """True once the runner has accepted a gate of this run by itself (a test host,
+    ARC2_AUTO_ACCEPT_GATES): its content was not reviewed by a person. Either record is
+    enough: the runner's accept job, or the gate's ``accepted_by`` in the manifest."""
+    if any(j.get("auto_accept") for j in jobs):
+        return True
+    gates = (manifest or {}).get("gates") or {}
+    return any((gates.get(g) or {}).get("accepted_by") == AUTO_ACCEPTED_BY for g in ("outline", "preview"))
 
 
 def _mtime(path: Path) -> str | None:
@@ -351,6 +365,12 @@ def _messages(slug: str, manifest: dict | None) -> list[dict]:
     """The pipeline conversation: what people sent, and what each runner job reported."""
     msgs = [{"role": "user", "text": c.get("text", ""), "ts": c.get("ts")} for c in _chat(slug)]
     for job in _jobs(slug):
+        auto = job.get("auto_accept")
+        if isinstance(auto, dict):
+            gate = "Outline" if auto.get("gate") == "outline" else "Preview"
+            msgs.append({"role": "pipeline", "auto": True, "ts": auto.get("at") or job.get("created_at"),
+                         "text": f"{gate} accepted automatically by the runner (test host). "
+                                 "Not reviewed by a person."})
         if job.get("state") in ("done", "failed") and (job.get("result") or job.get("error")):
             msgs.append({"role": "pipeline", "text": job.get("result") or job.get("error"),
                          "ts": job.get("finished_at"), "error": job.get("state") == "failed"})

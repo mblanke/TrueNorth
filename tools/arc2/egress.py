@@ -8,7 +8,10 @@ connection except to this proxy, which the runner runs outside the sandbox on
 refuses everything else with 403. By default that is the model API
 (``api.anthropic.com``); Claude Code with ``CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1``
 asks for nothing else (measured). ``ARC2_EGRESS_ALLOW`` replaces the list (comma
-separated); the local model fallback is reached directly, not through the proxy.
+separated). The runner builds the list from its model mode (arc2/runner.py
+``ModelConfig.egress_hosts``): in ``local`` mode it is the gateway's host alone, so a job
+never reaches api.anthropic.com. A model endpoint on this host is reached directly, not
+through the proxy.
 
 What it does not do: inspect TLS. A job can still put text in its own model requests;
 it cannot send them to anyone but the model provider.
@@ -45,7 +48,9 @@ class EgressProxy:
         ports: tuple[int, ...] = (443,),
         unix_path: str | None = None,
     ):
-        self.allow = tuple(h.lower() for h in (allow or allowed_hosts()))
+        # None: ARC2_EGRESS_ALLOW (or the default). An empty tuple allows nothing, which is
+        # what a job whose only model is on this host (arc2/runner.py ModelConfig) needs.
+        self.allow = tuple(h.lower() for h in (allowed_hosts() if allow is None else allow))
         self.ports = ports
         self.refused: list[str] = []  # "host:port" refused, for the job record and tests
         self.bridges: list = []  # Linux: (port, unix socket) the job's namespace forwards (runner sets)

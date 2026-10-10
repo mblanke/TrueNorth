@@ -102,3 +102,8 @@ vault_arc2_claude_oauth_token: ""
 # Or a pay-per-use Anthropic API key (sk-ant-api...), billed per token. Issue it for this
 # host alone, with a spending limit.
 vault_arc2_anthropic_api_key: ""
+# With tn_arc2_mode local (leave both above empty) or subscription_with_local_fallback (plus
+# one of the above): the bearer token of the gateway at tn_arc2_local_url, for example a
+# LiteLLM virtual key issued for this host alone. It reaches only the runner's 0600
+# EnvironmentFile (as ARC2_LOCAL_TOKEN), and each job only as Claude Code's own setting.
+vault_arc2_local_token: ""

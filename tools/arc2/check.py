@@ -34,6 +34,7 @@ import argparse
 import csv
 import hashlib
 import json
+import os
 import re
 import subprocess
 import sys
@@ -1299,8 +1300,21 @@ def gate(
             if manifest.get("qa"):
                 manifest["qa"].update({"cycle": 0, "result": "not_run", "rework_stage": None})
             reset_from(manifest, routed_to, through="package-builder")
+    if action == "accept":
+        _record_acceptor(g)
     save_manifest(run, manifest)
     return manifest
+
+
+def _record_acceptor(g: dict[str, Any]) -> None:
+    """``accepted_by`` on an accepted gate, only when the Course Studio runner accepted it
+    itself on a test host (runner.maybe_auto_accept sets ARC2_GATE_ACCEPTED_BY for that job
+    only). A person's acceptance removes any earlier automatic one."""
+    by = " ".join(os.environ.get("ARC2_GATE_ACCEPTED_BY", "").split())[:120]
+    if by:
+        g["accepted_by"] = by
+    else:
+        g.pop("accepted_by", None)
 
 
 def _add_feedback(g: dict[str, Any], text: str | None, routed_to: str | None = None) -> None:

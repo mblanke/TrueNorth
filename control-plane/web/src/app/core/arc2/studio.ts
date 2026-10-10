@@ -13,11 +13,14 @@ export interface Job {
 export interface RunSummary {
   slug: string; name: string; title: string | null; code: string | null; request: string | null;
   phase: Phase; phase_text: string; stages: StageView[];
-  gates: { outline: { state?: string; ts?: string; accepted_sha256?: string }; preview: { state?: string; ts?: string; accepted_sha256?: string; rework_count?: number } };
+  gates: { outline: { state?: string; ts?: string; accepted_sha256?: string; accepted_by?: string }; preview: { state?: string; ts?: string; accepted_sha256?: string; rework_count?: number; accepted_by?: string } };
   qa: { result: string | null; cycle: number | null; rework_stage: string | null; checked_at: string | null };
   actions_open: number; actions_blocking: number; job: Job | null; updated_at: string | null;
+  /** A test host's runner accepted a gate itself (ARC2_AUTO_ACCEPT_GATES): nobody reviewed the content. */
+  auto_accepted?: boolean;
 }
-export interface Message { role: 'user' | 'pipeline'; text: string; ts: string | null; error?: boolean }
+/** `auto`: the runner's own acceptance on a test host, not a person's. */
+export interface Message { role: 'user' | 'pipeline'; text: string; ts: string | null; error?: boolean; auto?: boolean }
 export interface QuizQuestion { question: string; options: string[]; answer: string }
 export interface RunDetail extends RunSummary {
   messages: Message[];

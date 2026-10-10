@@ -38,35 +38,57 @@
     - name: ARC² — the deployed app supports an installed Course Studio
       vars:
         _missing: "{{ tn_arc2_app_files.results | rejectattr('stat.exists') | map(attribute='item') | list }}"
+        _old_runner: >-
+          no runner --self-test, no ARC2_RUNS_HOST_DIR in compose.prod.yml, or a runner without
+          ARC2_MODE (tn_arc2_mode) or ARC2_AUTO_ACCEPT_GATES (tn_arc2_auto_accept)
       ansible.builtin.assert:
         that:
           - _missing | length == 0
           - "'--self-test' in (tn_arc2_app_src.results[0].content | b64decode)"
           - "'ARC2_RUNS_HOST_DIR' in (tn_arc2_app_src.results[1].content | b64decode)"
+          # An older runner ignores ARC2_MODE and would send a local-mode job to Claude.
+          - >-
+            tn_arc2_mode | default('subscription') == 'subscription'
+            or 'ARC2_LOCAL_TOKEN' in (tn_arc2_app_src.results[0].content | b64decode)
+          - >-
+            not (tn_arc2_auto_accept | default(false) | bool)
+            or 'ARC2_AUTO_ACCEPT_GATES' in (tn_arc2_app_src.results[0].content | b64decode)
         fail_msg: >-
           The app in {{ tn_app_dir }} predates this installer's ARC² support
-          ({{ ('missing: ' ~ (_missing | join(', '))) if _missing else 'no runner --self-test or no ARC2_RUNS_HOST_DIR in compose.prod.yml' }}).
+          ({{ ('missing: ' ~ (_missing | join(', '))) if _missing else _old_runner }}).
           Deploy the app from the same commit as the installer, or set tn_arc2_enabled: false.
         quiet: true
 
-    # Exactly one credential: a Claude subscription token or a pay-per-use API key, never
-    # both, so it is never ambiguous which account is billed. The message names the
-    # variables, never their values.
+    # Per tn_arc2_mode: subscription, exactly one credential (a Claude subscription token or
+    # a pay-per-use API key, never both, so it is never ambiguous which account is billed);
+    # local, the gateway's URL, model and token; the fallback mode, both. The message names
+    # the variables, never their values.
     - name: ARC² — one model credential, and the endpoint, are usable
       ansible.builtin.assert:
         that:
+          - tn_arc2_mode | default('subscription') in ['subscription', 'local', 'subscription_with_local_fallback']
           - >-
-            (vault_arc2_claude_oauth_token | default('') | string | trim | length > 0)
+            tn_arc2_mode | default('subscription') == 'local'
+            or (vault_arc2_claude_oauth_token | default('') | string | trim | length > 0)
             != (vault_arc2_anthropic_api_key | default('') | string | trim | length > 0)
           - vault_arc2_claude_oauth_token | default('') is not search('CHANGE_ME')
           - vault_arc2_anthropic_api_key | default('') is not search('CHANGE_ME')
+          - >-
+            tn_arc2_mode | default('subscription') == 'subscription'
+            or (tn_arc2_local_url | default('') is match('^https://[A-Za-z0-9.-]+(:443)?(/.*)?$')
+                and tn_arc2_local_model | default('') | string | trim | length > 0
+                and vault_arc2_local_token | default('') | string | trim | length > 0
+                and vault_arc2_local_token | default('') is not search('CHANGE_ME'))
           - >-
             tn_arc2_anthropic_base_url | default('') | length == 0
             or tn_arc2_anthropic_base_url is match('^https://[A-Za-z0-9.-]+(:443)?(/.*)?$')
           - tn_arc2_node_arch in tn_arc2_node_sha256
         fail_msg: >-
-          ARC² needs exactly one of vault_arc2_claude_oauth_token (a Claude subscription,
-          from `claude setup-token`) or vault_arc2_anthropic_api_key (no default for either),
+          ARC² (tn_arc2_mode {{ tn_arc2_mode | default('subscription') }}) needs: with subscription or
+          subscription_with_local_fallback, exactly one of vault_arc2_claude_oauth_token (a Claude
+          subscription, from `claude setup-token`) or vault_arc2_anthropic_api_key (no default for
+          either); with local or subscription_with_local_fallback, tn_arc2_local_url
+          (https://host[:443]/...), tn_arc2_local_model and vault_arc2_local_token;
           tn_arc2_anthropic_base_url empty or https://host[:443]/... (the jobs' egress proxy
           tunnels port 443 only), and an x86_64 or aarch64 host (found {{ ansible_facts['architecture'] }}).
         quiet: true
@@ -282,7 +304,8 @@
       notify: Restart the ARC² runner
 
     # ── The credential, and the service ───────────────────────────────────
-    # CLAUDE_CODE_OAUTH_TOKEN (subscription) or ANTHROPIC_API_KEY, whichever is set.
+    # Per tn_arc2_mode: CLAUDE_CODE_OAUTH_TOKEN (subscription) or ANTHROPIC_API_KEY,
+    # whichever is set, and/or ARC2_LOCAL_TOKEN (the local gateway's).
     - name: ARC² — the model credential, for systemd only (root 0600)
       ansible.builtin.template:
         src: runner.env.j2

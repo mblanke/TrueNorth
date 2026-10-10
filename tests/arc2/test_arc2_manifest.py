@@ -631,6 +631,24 @@ class TestGates:
         assert m["gates"]["outline"]["feedback"][0]["round"] == 1
         assert m["stages"]["content-architect"]["state"] == "pending"
 
+    def test_a_test_hosts_automatic_acceptance_is_recorded_and_a_persons_clears_it(self, tmp_path, repo, monkeypatch):
+        """runner.maybe_auto_accept sets ARC2_GATE_ACCEPTED_BY for its own accept job only."""
+        run = init_run(tmp_path, repo)
+        (run / "01-blueprint" / "outline.yaml").write_text("modules: []\n")
+        (run / "01-blueprint" / "fragment.json").write_text(json.dumps(architect_fragment()))
+        check.merge_fragment(run, "content-architect")
+        monkeypatch.setenv("ARC2_GATE_ACCEPTED_BY", "auto (test host)")
+        m = check.gate(run, "outline", "accept")
+        assert m["gates"]["outline"]["accepted_by"] == "auto (test host)"
+        assert not check.schema_errors(check.load_manifest(run))
+
+        (run / "01-blueprint" / "outline.yaml").write_text("modules: [changed]\n")
+        assert check.gate_verify(run) == ["outline"]
+        monkeypatch.delenv("ARC2_GATE_ACCEPTED_BY")
+        m = check.gate(run, "outline", "accept")
+        assert m["gates"]["outline"]["state"] == "accepted"
+        assert "accepted_by" not in m["gates"]["outline"]
+
     def test_an_outline_that_is_not_yaml_cannot_be_accepted(self, tmp_path, repo):
         run = init_run(tmp_path, repo)
         (run / "01-blueprint" / "outline.yaml").write_text("course: C205 Lab: Hardened Lab Network\n")

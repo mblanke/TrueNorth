@@ -50,6 +50,9 @@ class RunSummary(BaseModel):
     qa: dict[str, Any]
     actions_open: int
     actions_blocking: int
+    # A test host's runner accepted a gate by itself (ARC2_AUTO_ACCEPT_GATES): the content
+    # was not reviewed by a person. The gate's ``accepted_by`` says which.
+    auto_accepted: bool = False
     job: JobView | None = None
     updated_at: str | None = None
 

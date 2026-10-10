@@ -32,9 +32,18 @@ Job records (the runner writes, the API reads):
 Nothing here commits, provisions or imports; ``/arc2``'s own hard rules apply. Each job
 runs in an OS sandbox that confines it to its own run (``arc2/confine.py``, chosen by
 ``ARC2_CONFINE``). Without one the runner does not start. Tool rules additionally limit
-edits to the job's run and Bash to the few commands ``/arc2`` needs. If Claude cannot be used (signed out, usage limit, overloaded), the same step is
-re-run on a local Ollama through its Anthropic-compatible API (see ``Fallback``); the job
-record's ``engine`` says which ran.
+edits to the job's run and Bash to the few commands ``/arc2`` needs.
+
+Which model runs a job is ``ARC2_MODE`` (see ``ModelConfig``): ``subscription`` (Claude),
+``local`` (an Anthropic-compatible gateway, ``ARC2_LOCAL_*``; jobs never reach
+api.anthropic.com) or ``subscription_with_local_fallback`` (Claude; if Claude cannot be
+used at all, the same step is re-run on the gateway). Unset, the older ``ARC2_FALLBACK*``
+settings decide, as before: Claude with a local Ollama fallback. The job record's
+``engine`` says which ran.
+
+On a test host, ``ARC2_AUTO_ACCEPT_GATES`` makes the runner accept the outline and preview
+gates itself when a job stops at one with nothing failing (``maybe_auto_accept``); the
+acceptance is recorded as ``accepted_by: "auto (test host)"``.
 
 Usage: ``PYTHONPATH=tools .venv/bin/python -m arc2.runner [--once | --self-test]``
 (``--self-test`` runs ``claude --version`` in a job's sandbox and exits; it spends nothing.)
@@ -51,6 +60,7 @@ import queue
 import re
 import shutil
 import signal
+import stat
 import subprocess
 import sys
 import threading
@@ -179,11 +189,25 @@ def command_for(job: dict, claude: str, model: str | None = None) -> list[str]:
     return cmd + (["--model", model] if model else [])
 
 
-# ── Local fallback ──────────────────────────────────────────────────────
-# When Claude cannot be used at all (signed out, usage limit, overloaded, unreachable),
-# the same /arc2 step is re-run through Claude Code pointed at a local Ollama, which
-# serves the Anthropic Messages API. Same agents, same contract, a local model.
-# ARC2_FALLBACK=off disables it; ARC2_FALLBACK_URL / ARC2_FALLBACK_MODEL choose where.
+# ── Model backends ──────────────────────────────────────────────────────
+# Claude Code speaks the Anthropic Messages API, so any endpoint that serves it can run
+# the same /arc2 step: same agents, same contract, another model. ARC2_MODE picks:
+#
+#   subscription                      Claude (CLAUDE_CODE_OAUTH_TOKEN, ANTHROPIC_API_KEY or
+#                                     the token file). The default.
+#   local                             only the gateway at ARC2_LOCAL_URL (ARC2_LOCAL_MODEL,
+#                                     ARC2_LOCAL_TOKEN): a LiteLLM router exposing
+#                                     /v1/messages, say. Jobs never reach api.anthropic.com.
+#   subscription_with_local_fallback  Claude; when Claude cannot be used at all (signed out,
+#                                     usage limit, overloaded, unreachable: FALLBACK_ERRORS)
+#                                     the step is re-run on the gateway.
+#
+# With ARC2_MODE unset the older settings decide, unchanged: Claude, with a local Ollama
+# fallback (ARC2_FALLBACK_URL, default http://127.0.0.1:11434; ARC2_FALLBACK_MODEL) unless
+# ARC2_FALLBACK=off. ARC2_FALLBACK* are ignored once ARC2_MODE is set.
+
+MODES = ("subscription", "local", "subscription_with_local_fallback")
+LOOPBACK = ("localhost", "127.0.0.1", "::1")
 
 FALLBACK_ERRORS = (
     "failed to authenticate", "oauth", "not logged in", "invalid api key", "invalid x-api-key",
@@ -192,35 +216,85 @@ FALLBACK_ERRORS = (
 )
 
 
-class Fallback:
-    def __init__(self, url: str, model: str):
-        self.url, self.model = url.rstrip("/"), model
+class ModelConfigError(ValueError):
+    """ARC2_MODE and ARC2_LOCAL_* do not describe a usable backend."""
+
+
+class LocalModel:
+    """An Anthropic-compatible endpoint that is not Anthropic's own.
+
+    ``kind`` is ``ollama`` (the legacy fallback: no credential, models listed at
+    /api/tags) or ``gateway`` (ARC2_LOCAL_*: a bearer token, models at /v1/models).
+    """
+
+    def __init__(self, url: str, model: str, token: str = "", kind: str = "ollama"):
+        self.url, self.model, self.token, self.kind = url.rstrip("/"), model, token, kind
 
     @classmethod
-    def from_env(cls) -> Fallback | None:
-        if os.environ.get("ARC2_FALLBACK", "on").lower() in ("off", "0", "false", "no"):
+    def from_env(cls, environ: dict | None = None) -> LocalModel | None:
+        """The legacy Ollama fallback (ARC2_FALLBACK*), or None when it is off."""
+        environ = os.environ if environ is None else environ
+        if environ.get("ARC2_FALLBACK", "on").lower() in ("off", "0", "false", "no"):
             return None
-        return cls(os.environ.get("ARC2_FALLBACK_URL", "http://127.0.0.1:11434"),
-                   os.environ.get("ARC2_FALLBACK_MODEL", "qwen3.6:35b-a3b"))
+        return cls(environ.get("ARC2_FALLBACK_URL", "http://127.0.0.1:11434"),
+                   environ.get("ARC2_FALLBACK_MODEL", "qwen3.6:35b-a3b"))
 
     @property
     def label(self) -> str:
-        return f"ollama:{self.model}"
+        return f"{'ollama' if self.kind == 'ollama' else 'local'}:{self.model}"
+
+    @property
+    def host(self) -> str:
+        from urllib.parse import urlparse
+        return (urlparse(self.url).hostname or "").lower()
+
+    @property
+    def port(self) -> int:
+        from urllib.parse import urlparse
+        url = urlparse(self.url)
+        return url.port or (443 if url.scheme == "https" else 80)
+
+    @property
+    def loopback(self) -> bool:
+        return self.host in LOOPBACK
 
     def reachable(self, timeout: float = 3.0) -> bool:
+        """Cheap: one small request, a few seconds at most, no tokens spent."""
+        import urllib.error
         import urllib.request
+        if self.kind == "ollama":
+            try:
+                with urllib.request.urlopen(f"{self.url}/api/tags", timeout=timeout) as resp:
+                    names = [m.get("name") for m in json.loads(resp.read()).get("models", [])]
+            except (OSError, ValueError):
+                return False
+            return self.model in names
+        # A gateway: its model list with the job's own credential. A gateway without
+        # /v1/models answers 404/405; then a HEAD of the base URL says whether it is up.
+        auth = {"Authorization": f"Bearer {self.token}", "x-api-key": self.token, "anthropic-version": "2023-06-01"}
         try:
-            with urllib.request.urlopen(f"{self.url}/api/tags", timeout=timeout) as resp:
-                names = [m.get("name") for m in json.loads(resp.read()).get("models", [])]
+            with urllib.request.urlopen(urllib.request.Request(f"{self.url}/v1/models", headers=auth), timeout=timeout):
+                return True
+        except urllib.error.HTTPError as exc:
+            if exc.code not in (404, 405):
+                return False
         except (OSError, ValueError):
             return False
-        return self.model in names
+        try:
+            with urllib.request.urlopen(urllib.request.Request(self.url, method="HEAD", headers=auth), timeout=timeout):
+                return True
+        except urllib.error.HTTPError as exc:
+            return exc.code < 500 and exc.code not in (401, 403)
+        except (OSError, ValueError):
+            return False
 
     def env(self, base: dict) -> dict:
-        env = {k: v for k, v in base.items() if k not in ("ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN")}
+        """``base`` pointed at this endpoint, with no Anthropic credential left in it."""
+        env = {k: v for k, v in base.items()
+               if k not in ("ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "ARC2_LOCAL_TOKEN")}
         env.update({
             "ANTHROPIC_BASE_URL": self.url,
-            "ANTHROPIC_AUTH_TOKEN": "ollama",
+            "ANTHROPIC_AUTH_TOKEN": self.token or "ollama",
             "ANTHROPIC_API_KEY": "",
             "ANTHROPIC_MODEL": self.model,
             "ANTHROPIC_DEFAULT_OPUS_MODEL": self.model,
@@ -230,6 +304,93 @@ class Fallback:
             "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
         })
         return env
+
+
+Fallback = LocalModel  # the name before ARC2_MODE; ``Fallback.from_env()`` is the legacy fallback
+
+
+class ModelConfig:
+    """Which backend runs a job (``primary``: None means Claude) and which one, if any,
+    re-runs it when Claude is unavailable (``fallback``)."""
+
+    def __init__(self, mode: str, local: LocalModel | None = None, legacy: bool = False):
+        self.mode, self.local, self.legacy = mode, local, legacy
+
+    @property
+    def primary(self) -> LocalModel | None:
+        return self.local if self.mode == "local" else None
+
+    @property
+    def fallback(self) -> LocalModel | None:
+        return self.local if self.mode == "subscription_with_local_fallback" else None
+
+    @classmethod
+    def from_env(cls, environ: dict | None = None) -> ModelConfig:
+        """Raises ModelConfigError for a mode it cannot run; the runner then does not start."""
+        environ = os.environ if environ is None else environ
+        mode = environ.get("ARC2_MODE", "").strip().lower()
+        if not mode:
+            legacy = LocalModel.from_env(environ)
+            return cls("subscription_with_local_fallback" if legacy else "subscription", legacy, legacy=True)
+        if mode not in MODES:
+            raise ModelConfigError(f"ARC2_MODE={mode!r}: use one of {', '.join(MODES)}")
+        if mode == "subscription":
+            return cls(mode)
+        from urllib.parse import urlparse
+        url = environ.get("ARC2_LOCAL_URL", "").strip()
+        model = environ.get("ARC2_LOCAL_MODEL", "").strip()
+        token = environ.get("ARC2_LOCAL_TOKEN", "").strip()
+        if not url or not model:
+            raise ModelConfigError(f"ARC2_MODE={mode} needs ARC2_LOCAL_URL and ARC2_LOCAL_MODEL")
+        parsed = urlparse(url)
+        if parsed.scheme not in ("https", "http") or not parsed.hostname:
+            raise ModelConfigError("ARC2_LOCAL_URL must be an http(s) URL")
+        local = LocalModel(url, model, token, kind="gateway")
+        # The token travels in every request: off this host it goes over TLS, and a remote
+        # gateway without one would be an open relay for anyone who can reach it.
+        if not local.loopback and parsed.scheme != "https":
+            raise ModelConfigError("ARC2_LOCAL_URL must be https unless it is on this host (localhost)")
+        if not local.loopback and not token:
+            raise ModelConfigError("ARC2_LOCAL_URL is a remote gateway: set ARC2_LOCAL_TOKEN")
+        return cls(mode, local)
+
+    def egress_hosts(self) -> tuple[str, ...]:
+        """What the jobs' egress proxy tunnels to. A loopback gateway is reached directly
+        (``local_ports``), not through the proxy. ``local``: the gateway only, whatever
+        ARC2_EGRESS_ALLOW says, so a job never reaches api.anthropic.com."""
+        from arc2.egress import allowed_hosts
+        gateway = () if self.local is None or self.local.loopback else (self.local.host,)
+        if self.mode == "local":
+            return gateway
+        if self.mode == "subscription_with_local_fallback" and not self.legacy:
+            return tuple(dict.fromkeys((*allowed_hosts(), *gateway)))
+        return allowed_hosts()
+
+    def egress_ports(self) -> tuple[int, ...]:
+        if self.local is None or self.local.loopback or self.legacy:
+            return (443,)
+        return (self.local.port,) if self.mode == "local" else tuple(sorted({443, self.local.port}))
+
+    def local_ports(self) -> tuple[int, ...]:
+        """Ports on this host a job may reach directly: a loopback model endpoint's."""
+        return (self.local.port,) if self.local is not None and self.local.loopback else ()
+
+    def describe(self) -> str:
+        if self.mode == "subscription":
+            return "subscription"
+        where = f"{self.local.label} at {self.local.url}" if self.local else "?"
+        if self.mode == "local":
+            return f"local ({where})"
+        return f"subscription, falling back to {where}" + (" (ARC2_FALLBACK*)" if self.legacy else "")
+
+
+def _models(models: ModelConfig | LocalModel | None) -> ModelConfig:
+    """Callers before ARC2_MODE passed the fallback alone."""
+    if isinstance(models, ModelConfig):
+        return models
+    if isinstance(models, LocalModel):
+        return ModelConfig("subscription_with_local_fallback", models, legacy=models.kind == "ollama")
+    return ModelConfig("subscription")
 
 
 def should_fall_back(record: dict) -> bool:
@@ -317,32 +478,30 @@ def _claude_install(claude: str) -> tuple[Path, ...]:
     return tuple(sorted(paths))
 
 
-def _local_ports(fallback: Fallback | None) -> tuple[int, ...]:
-    if not fallback:
-        return ()
-    from urllib.parse import urlparse
-    url = urlparse(fallback.url)
-    if url.hostname in ("localhost", "127.0.0.1", "::1"):
-        return (url.port or (443 if url.scheme == "https" else 80),)
-    return ()
+def _local_ports(models: ModelConfig | LocalModel | None) -> tuple[int, ...]:
+    return _models(models).local_ports()
 
 
 def run_job(record: dict, path: Path, claude: str, timeout: int = DEFAULT_TIMEOUT,
-            fallback: Fallback | None = None, confinement: Confinement | None = None,
+            models: ModelConfig | LocalModel | None = None, confinement: Confinement | None = None,
             runs: Path | None = None, egress: EgressProxy | None = None) -> dict:
-    """Run one job on Claude; if Claude is unavailable, run it again on the local fallback.
+    """Run one job on its backend (``ModelConfig``): Claude, or the local gateway in
+    ``local`` mode; with a fallback, a step Claude could not run is run again on it.
 
-    Both attempts run inside ``confinement`` (arc2/confine.py). Confined, a job gets a
+    Every attempt runs inside ``confinement`` (arc2/confine.py). Confined, a job gets a
     fresh home of its own (Claude config, sessions, temp), deleted afterwards, and an
     allow-listed environment. ``none`` keeps the runner's own environment and config.
     Callers other than ``main`` (tests) may omit ``confinement`` to run unconfined.
     """
+    models = _models(models)
     confinement = confinement or Unconfined()
     runs = runs or path.parent.parent
-    record["engine"] = "claude"
+    primary, fallback = models.primary, models.fallback
+    record["engine"] = primary.label if primary else "claude"
+    record["mode"] = models.mode
     record["confinement"] = confinement.name
     if isinstance(confinement, Unconfined):
-        env = {k: v for k, v in os.environ.items() if k not in ("AUTH_DISABLED", "DATABASE_URL")}
+        env = {k: v for k, v in os.environ.items() if k not in ("AUTH_DISABLED", "DATABASE_URL", "ARC2_LOCAL_TOKEN")}
         env.update(PYTHONPATH="tools", PYTHONDONTWRITEBYTECODE="1")
         home = None
     else:
@@ -355,16 +514,23 @@ def run_job(record: dict, path: Path, claude: str, timeout: int = DEFAULT_TIMEOU
         if egress:
             env.update(egress.env(), CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC="1")
             record["egress"] = list(egress.allow)
+    # Who accepts a gate in this job, for the engine's gate record (check.py gate): set
+    # only for the runner's own test-host acceptance, never inherited from the runner.
+    env.pop(GATE_ACCEPTED_BY_ENV, None)
+    if record.get("auto_accept"):
+        env[GATE_ACCEPTED_BY_ENV] = AUTO_ACCEPTED_BY
     jail = Jail(
         repo=REPO_ROOT, runs=runs, home=Path.home(),
         writable=tuple(p for p in (runs / record["slug"], home) if p is not None),
         writable_files=(runs / f"{record['slug']}.request.txt",),
-        readable=_claude_install(claude), local_ports=_local_ports(fallback),
+        readable=_claude_install(claude), local_ports=models.local_ports(),
         egress_port=egress.port if egress and not isinstance(confinement, Unconfined) else None,
         bridges=tuple(getattr(egress, "bridges", ())) if egress else (),
     )
     try:
-        record = _attempt(record, path, confinement.wrap(command_for(record, claude), jail), env, timeout,
+        record = _attempt(record, path,
+                          confinement.wrap(command_for(record, claude, primary.model if primary else None), jail),
+                          primary.env(env) if primary else env, timeout,
                           append=False, stdin_text=prompt_for(record))
         if fallback and should_fall_back(record) and fallback.reachable():
             record.update(fallback_from=record["error"], engine=fallback.label, state="running", error=None,
@@ -615,23 +781,126 @@ def reap(jobs: Path) -> None:
             write_record(path, record)
 
 
-def start_egress(confinement: Confinement, fallback: Fallback | None) -> tuple[EgressProxy | None, list[LocalForward]]:
-    """The egress proxy confined jobs use (arc2/egress.py), and on Linux the Unix-socket
-    forwards into each job's own network namespace. None when unconfined or ARC2_EGRESS=open
-    (the sandbox still applies). The caller closes both."""
+# ── Test-host auto-accept ───────────────────────────────────────────────
+# On a test host (staging) nobody reviews generated course content. With
+# ARC2_AUTO_ACCEPT_GATES on, when a job stops at the outline gate, or at the preview gate
+# with QA passing, the runner queues the same `accept` resume the Studio's Accept button
+# would. The job carries ``auto_accept`` and ``requested_by: "auto (test host)"``, and its
+# engine records ``accepted_by`` on the gate in manifest.json (check.py gate, from
+# ARC2_GATE_ACCEPTED_BY), so an automatic acceptance is auditable and never looks like a
+# person's. It never accepts past a failure, a STOP or a QA HUMAN-TAKEOVER, never when
+# someone has already queued work for the run, and at most AUTO_ACCEPT_LIMIT times a run.
+
+AUTO_ACCEPTED_BY = "auto (test host)"
+GATE_ACCEPTED_BY_ENV = "ARC2_GATE_ACCEPTED_BY"
+AUTO_ACCEPT_LIMIT = 6
+COMPLETE = ("done", "not_applicable")
+MAX_MANIFEST_BYTES = 2 * 1024 * 1024
+
+
+def auto_accept_on(environ: dict | None = None) -> bool:
+    environ = os.environ if environ is None else environ
+    return environ.get("ARC2_AUTO_ACCEPT_GATES", "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def read_manifest(runs: Path, slug: str) -> dict | None:
+    """A run's manifest.json, written inside a job's sandbox: not followed through a link,
+    a regular file, bounded. None when it is anything else."""
+    run = runs / slug
+    if run.is_symlink() or not run.is_dir():
+        return None
+    try:
+        fd = os.open(run / "manifest.json", os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except OSError:
+        return None
+    with os.fdopen(fd, "rb") as f:
+        if not stat.S_ISREG(os.fstat(f.fileno()).st_mode):
+            return None
+        data = f.read(MAX_MANIFEST_BYTES + 1)
+    if len(data) > MAX_MANIFEST_BYTES:
+        return None
+    try:
+        manifest = json.loads(data)
+    except ValueError:
+        return None
+    return manifest if isinstance(manifest, dict) else None
+
+
+def pending_gate(manifest: dict | None) -> str | None:
+    """The gate a run is waiting at with nothing failing ("outline" or "preview"), else None."""
+    if not manifest:
+        return None
+    stages = manifest.get("stages") or {}
+    gates = manifest.get("gates") or {}
+    qa = manifest.get("qa") or {}
+    if any((s or {}).get("state") == "failed" for s in stages.values()):
+        return None  # a STOP or a refused merge: a person decides
+    if qa.get("result") == "human_takeover":
+        return None
+    if (gates.get("outline") or {}).get("state") == "pending":
+        return "outline"
+    first_five = ("content-architect", "code-generator", "range-engineer", "artifact-creator", "sensor-gateway")
+    if ((gates.get("preview") or {}).get("state") == "pending" and qa.get("result") == "pass"
+            and all((stages.get(k) or {}).get("state") in COMPLETE for k in first_five)):
+        return "preview"
+    return None
+
+
+def maybe_auto_accept(runs: Path, record: dict) -> dict | None:
+    """After a job: on a test host, queue ``accept`` for the gate it stopped at. Returns
+    what was queued (``auto_accept`` plus the new job's id), or None."""
+    if not auto_accept_on() or record.get("state") != "done" or record.get("error"):
+        return None
+    slug = record.get("slug")
+    if not isinstance(slug, str) or not SLUG_RE.match(slug):
+        return None
+    gate = pending_gate(read_manifest(runs, slug))
+    if gate is None:
+        return None
+    queue, jobs = dirs(runs)
+    for path in queue.glob("*.json"):  # a person got there first: theirs wins
+        with contextlib.suppress(OSError, ValueError):
+            if json.loads(path.read_text()).get("slug") == slug:
+                return None
+    earlier = 0
+    for path in jobs.glob("*.json"):
+        with contextlib.suppress(OSError, ValueError):
+            job = json.loads(path.read_text())
+            earlier += bool(job.get("slug") == slug and job.get("auto_accept"))
+    if earlier >= AUTO_ACCEPT_LIMIT:
+        return None
+    import secrets
+    stamp = now()
+    auto = {"gate": gate, "accepted_by": AUTO_ACCEPTED_BY, "at": stamp, "after_job": record.get("id")}
+    job = {"id": secrets.token_hex(8), "action": "resume", "slug": slug, "text": "accept", "created_at": stamp,
+           "requested_by": AUTO_ACCEPTED_BY, "tenant_id": record.get("tenant_id"), "auto_accept": auto}
+    tmp = queue / f".{job['id']}.tmp"
+    tmp.write_text(json.dumps(job))
+    tmp.replace(queue / f"{stamp.replace(':', '')}-{job['id']}.json")
+    return {**auto, "job": job["id"]}
+
+
+def start_egress(confinement: Confinement, models: ModelConfig | LocalModel | None = None
+                 ) -> tuple[EgressProxy | None, list[LocalForward]]:
+    """The egress proxy confined jobs use (arc2/egress.py), allowing what the model mode
+    needs (``ModelConfig.egress_hosts``), and on Linux the Unix-socket forwards into each
+    job's own network namespace. None when unconfined or ARC2_EGRESS=open (the sandbox
+    still applies). The caller closes both."""
+    models = _models(models)
     if confinement.name == "none" or os.environ.get("ARC2_EGRESS", "proxy").lower() == "open":
         return None, []
+    allow, ports = models.egress_hosts(), models.egress_ports()
     if confinement.name != "bubblewrap":
-        return EgressProxy().start(), []
-    # Linux jobs get a network namespace of their own; the proxy and the local fallback
-    # reach them as Unix sockets (arc2/netbridge.py) in a private directory.
+        return EgressProxy(allow=allow, ports=ports).start(), []
+    # Linux jobs get a network namespace of their own; the proxy and a loopback model
+    # endpoint reach them as Unix sockets (arc2/netbridge.py) in a private directory.
     import tempfile
 
     sockets = Path(tempfile.mkdtemp(prefix="arc2-net-"))
-    egress = EgressProxy(unix_path=str(sockets / "egress.sock")).start()
+    egress = EgressProxy(allow=allow, ports=ports, unix_path=str(sockets / "egress.sock")).start()
     egress.bridges = [(egress.port, sockets / "egress.sock")]
     forwards = []
-    for port in _local_ports(fallback):
+    for port in models.local_ports():
         forwards.append(LocalForward(str(sockets / f"local-{port}.sock"), port))
         egress.bridges.append((port, sockets / f"local-{port}.sock"))
     return egress, forwards
@@ -649,10 +918,11 @@ def self_test(runs: Path, claude: str, timeout: int = 120) -> int:
     """
     try:
         confinement = select()
-    except ConfinementError as exc:
+        models = ModelConfig.from_env()
+    except (ConfinementError, ModelConfigError) as exc:
         print(f"arc2 runner: self-test failed: {exc}", file=sys.stderr, flush=True)
         return 2
-    egress, forwards = start_egress(confinement, None)
+    egress, forwards = start_egress(confinement, models)
     home = None
     try:
         if isinstance(confinement, Unconfined):
@@ -668,7 +938,7 @@ def self_test(runs: Path, claude: str, timeout: int = 120) -> int:
                 env.update(egress.env(), CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC="1")
         jail = Jail(
             repo=REPO_ROOT, runs=runs, home=Path.home(), writable=(home,) if home else (),
-            readable=_claude_install(claude),
+            readable=_claude_install(claude), local_ports=models.local_ports(),
             egress_port=egress.port if egress else None,
             bridges=tuple(egress.bridges) if egress else (),
         )
@@ -684,7 +954,7 @@ def self_test(runs: Path, claude: str, timeout: int = 120) -> int:
             print(f"arc2 runner: self-test failed: {claude} --version exited {done.returncode} in the "
                   f"{confinement.name} sandbox: {words}", file=sys.stderr, flush=True)
             return 2
-        print(f"arc2 runner: self-test passed (confinement: {confinement.name}; "
+        print(f"arc2 runner: self-test passed (confinement: {confinement.name}; model: {models.describe()}; "
               f"egress: {','.join(egress.allow) if egress else 'open'}; claude: {words})", flush=True)
         return 0
     finally:
@@ -711,11 +981,12 @@ def main(argv: list[str] | None = None) -> int:
         return self_test(args.runs, claude)
     try:
         confinement = select()
-    except ConfinementError as exc:  # fail closed: no job runs without its sandbox
+        models = ModelConfig.from_env()
+    except (ConfinementError, ModelConfigError) as exc:  # fail closed: no sandbox or no usable model, no runner
         print(f"arc2 runner: not starting: {exc}", file=sys.stderr, flush=True)
         return 2
-    fallback = Fallback.from_env()
-    if confinement.name != "none" and not any(os.environ.get(k) for k in AUTH_ENV) and not token_file().is_file():
+    if (models.mode != "local" and confinement.name != "none" and not any(os.environ.get(k) for k in AUTH_ENV)
+            and not token_file().is_file()):
         print(f"arc2 runner: warning: no CLAUDE_CODE_OAUTH_TOKEN, ANTHROPIC_API_KEY or {token_file()}; "
               "confined jobs start with an empty Claude config and cannot sign in", file=sys.stderr, flush=True)
     queue, jobs = dirs(args.runs)
@@ -727,22 +998,28 @@ def main(argv: list[str] | None = None) -> int:
     owner = {"pid": os.getpid(), "host": os.uname().nodename, "started_at": now()}
     # Confined jobs reach the internet only through this allow-listing proxy (arc2/egress.py).
     # ARC2_EGRESS=open leaves egress unrestricted (the sandbox still applies).
-    egress, forwards = start_egress(confinement, fallback)
+    egress, forwards = start_egress(confinement, models)
     recover(queue, jobs)
-    print(f"arc2 runner: watching {queue} (claude: {claude}; fallback: "
-          f"{fallback.label + ' at ' + fallback.url if fallback else 'off'}; confinement: {confinement.name})",
-          flush=True)
+    print(f"arc2 runner: watching {queue} (claude: {claude}; model: {models.describe()}; "
+          f"confinement: {confinement.name}"
+          + ("; gates auto-accepted: TEST HOST" if auto_accept_on() else "") + ")", flush=True)
     try:
         while True:
             claimed = claim(queue, jobs, owner)
             if claimed:
                 record, path = claimed
                 print(f"{now()} {record['action']} {record['slug']}: running", flush=True)
-                record = run_job(record, path, claude, args.timeout, fallback, confinement, args.runs, egress)
+                record = run_job(record, path, claude, args.timeout, models, confinement, args.runs, egress)
                 commit = snapshot(args.runs, record, path.with_suffix(".log"), confinement)
                 if commit:
                     record["history_commit"] = commit
                     write_record(path, record)
+                auto = maybe_auto_accept(args.runs, record)
+                if auto:
+                    record["auto_accept_queued"] = auto
+                    write_record(path, record)
+                    print(f"{now()} resume {record['slug']}: {auto['gate']} gate accepted by the runner "
+                          f"({AUTO_ACCEPTED_BY})", flush=True)
                 print(f"{now()} {record['action']} {record['slug']}: {record['state']} on {record.get('engine')}"
                       + (f" ({record['error']})" if record.get("error") else ""), flush=True)
                 continue

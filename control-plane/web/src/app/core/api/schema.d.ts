@@ -11940,6 +11940,11 @@ export interface components {
             actions_blocking: number;
             /** Actions Open */
             actions_open: number;
+            /**
+             * Auto Accepted
+             * @default false
+             */
+            auto_accepted?: boolean;
             /** Code */
             code?: string | null;
             /** Files */
@@ -12020,6 +12025,11 @@ export interface components {
             actions_blocking: number;
             /** Actions Open */
             actions_open: number;
+            /**
+             * Auto Accepted
+             * @default false
+             */
+            auto_accepted?: boolean;
             /** Code */
             code?: string | null;
             /** Gates */

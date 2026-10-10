@@ -104,6 +104,43 @@ describe('Arc2StudioComponent', () => {
     finish();
   }));
 
+  it('marks a run whose gates a test host accepted by itself as test content, in the list and the run', fakeAsync(() => {
+    const auto = detail({
+      phase: 'preview', phase_text: 'Preview ready for your review', auto_accepted: true,
+      gates: { outline: { state: 'accepted', accepted_by: 'auto (test host)' }, preview: { state: 'pending' } },
+      messages: [
+        { role: 'user', text: '60 min beginner course', ts: null },
+        { role: 'pipeline', text: 'Outline accepted automatically by the runner (test host). Not reviewed by a person.', ts: null, auto: true },
+      ],
+    });
+    open();
+    http.expectOne(`${API}/runs`).flush({ runs: [auto], runner_seen: null });
+    http.expectOne(`${API}/runs/arc2-wireshark`).flush(auto);
+    fixture.detectChanges();
+    tick();
+    fixture.detectChanges();
+    expect(el.querySelector('.proj .tag.test')!.textContent).toContain('TEST CONTENT');
+    const badge = el.querySelector('.testbadge[role="note"]')!;
+    expect(badge.textContent).toContain('TEST CONTENT — gates auto-accepted, not reviewed');
+    const note = el.querySelector('.msg.pipe.auto')!;
+    expect(note.textContent).toContain('AUTO-ACCEPTED (TEST HOST)');
+    expect(note.textContent).toContain('Not reviewed by a person');
+    finish();
+  }));
+
+  it('a run a person reviewed carries no test-content badge', fakeAsync(() => {
+    open();
+    http.expectOne(`${API}/runs`).flush({ runs: [detail()], runner_seen: null });
+    http.expectOne(`${API}/runs/arc2-wireshark`).flush(detail({ auto_accepted: false }));
+    fixture.detectChanges();
+    tick();
+    fixture.detectChanges();
+    expect(el.querySelector('.testbadge')).toBeNull();
+    expect(el.querySelector('.proj .tag.test')).toBeNull();
+    expect(el.textContent).not.toContain('TEST CONTENT');
+    finish();
+  }));
+
   it('shows the engine’s refusal instead of failing silently', fakeAsync(() => {
     open();
     http.expectOne(`${API}/runs`).flush({ runs: [detail()], runner_seen: null });

@@ -27,9 +27,10 @@ SupplementaryGroups={{ tn_arc2_runs_group }}
 WorkingDirectory={{ tn_app_dir }}
 UMask=0027
 
-# The credential (CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_API_KEY), root:root 0600, read by
-# systemd before the sandbox exists. The runner forwards either to each job (runner.AUTH_ENV);
-# neither belongs in ARC2_JOB_ENV.
+# The credentials, root:root 0600, read by systemd before the sandbox exists: per
+# tn_arc2_mode, CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_API_KEY, and/or ARC2_LOCAL_TOKEN. The
+# runner forwards the first two to each job (runner.AUTH_ENV) and hands the gateway token
+# over as Claude Code's own ANTHROPIC_AUTH_TOKEN; none belongs in ARC2_JOB_ENV.
 EnvironmentFile={{ tn_arc2_env_file }}
 Environment=HOME={{ tn_arc2_home }}
 Environment=LANG=C.UTF-8
@@ -40,11 +41,23 @@ Environment=ARC2_CLAUDE={{ tn_arc2_claude_bin }}
 Environment=ARC2_JOB_HOMES={{ tn_arc2_home }}/jobs
 # Fail closed: no usable sandbox, no runner (exit 2). Never `none` on a shared platform.
 Environment=ARC2_CONFINE=auto
-# Jobs reach the internet only through the runner's proxy, and it only to this host:443.
+# Which model runs a job (tn_arc2_mode; arc2/runner.py ModelConfig). The runner refuses to
+# start (exit 2) on a mode it cannot run.
+Environment=ARC2_MODE={{ tn_arc2_mode | default('subscription') }}
+{% if tn_arc2_mode | default('subscription') != 'subscription' %}
+Environment=ARC2_LOCAL_URL={{ tn_arc2_local_url }}
+Environment=ARC2_LOCAL_MODEL={{ tn_arc2_local_model }}
+{% endif %}
+# Jobs reach the internet only through the runner's proxy, and it only to these hosts:443.
 Environment=ARC2_EGRESS=proxy
 Environment=ARC2_EGRESS_ALLOW={{ tn_arc2_egress_allow }}
-# No local-model fallback on the platform host (there is no Ollama here).
+# The legacy local-Ollama fallback stays off (there is no Ollama here; ARC2_MODE decides).
 Environment=ARC2_FALLBACK=off
+{% if tn_arc2_auto_accept | default(false) | bool %}
+# TEST HOST: the runner accepts the outline and preview gates itself (tn_arc2_auto_accept),
+# recorded as accepted_by "auto (test host)". Nobody reviews this host's course content.
+Environment=ARC2_AUTO_ACCEPT_GATES=1
+{% endif %}
 # What each job may see besides the runner's defaults (arc2/runner.py JOB_ENV): no
 # self-update of the pinned Claude Code, and git may read the checkout another account owns.
 Environment=DISABLE_AUTOUPDATER=1
