@@ -446,7 +446,9 @@
           - "'self-test passed (confinement: bubblewrap' in tn_arc2_health.stdout"
           - "('claude: ' ~ tn_arc2_claude_code_version) in tn_arc2_health.stdout"
           - "'arc2 runner: watching' in tn_arc2_health.stdout"
-          - "'confinement: bubblewrap)' in tn_arc2_health.stdout"
+          # The watching line names its confinement among other fields (model, auto-accept),
+          # so match the field, not a closing parenthesis (staging v1.2.0-rc2).
+          - "tn_arc2_health.stdout is search('arc2 runner: watching [^\\n]*confinement: bubblewrap[;)]')"
         fail_msg: |
           {{ tn_arc2_service }} is not running confined. Its log since it last started:
           {{ tn_arc2_health.stdout }}
