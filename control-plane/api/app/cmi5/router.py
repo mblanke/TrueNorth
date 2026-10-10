@@ -23,7 +23,7 @@ import os
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Path, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Path, Request, Response
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
@@ -34,8 +34,8 @@ from ..db import get_db
 from ..models import Course, Enrollment
 from ..rbac import Permission, require_permission, user_has_permission
 from ..tenancy import get_owned
+from . import ags, lms
 from . import content as content_mod
-from . import lms
 from . import structure as structure_mod
 from .models import Cmi5Grade, Cmi5Registration, Cmi5Session
 from .rules import RuleViolationError
@@ -294,7 +294,9 @@ def cmi5_session_credential(
         raise HTTPException(exc.status, exc.message, headers=XAPI_VERSION) from exc
 
 
-async def _proxied(request: Request, resource: str, session: Cmi5Session, db: Session) -> Response:
+async def _proxied(
+    request: Request, resource: str, session: Cmi5Session, db: Session, background: BackgroundTasks | None = None
+) -> Response:
     params = dict(request.query_params)
     body = await request.body()
     try:
@@ -305,6 +307,10 @@ async def _proxied(request: Request, resource: str, session: Cmi5Session, db: Se
         err = _http(exc)
         return JSONResponse({"error": err.detail}, status_code=err.status_code, headers=XAPI_VERSION)
     db.commit()
+    if background is not None and resource.strip("/") == "statements" and resp.status in (200, 204):
+        # A result may now be due at an LMS gradebook (ags.py): sent after this response,
+        # so the AU never waits on the LMS. The retry loop sends whatever this misses.
+        background.add_task(ags.deliver_registration, session.registration_id)
     headers = {**XAPI_VERSION, **{k: v for k, v in resp.headers.items() if k in ("etag", "last-modified")}}
     return Response(
         content=resp.body,
@@ -329,22 +335,24 @@ async def cmi5_lrs_get(
 async def cmi5_lrs_post(
     request: Request,
     resource: str,
+    background: BackgroundTasks,
     session: Cmi5Session = Depends(cmi5_session_credential),
     db: Session = Depends(get_db),
 ):
     """The AU's xAPI endpoint (statements, State documents), checked against the cmi5 rules."""
-    return await _proxied(request, resource, session, db)
+    return await _proxied(request, resource, session, db, background)
 
 
 @router.put("/lrs/{resource:path}")
 async def cmi5_lrs_put(
     request: Request,
     resource: str,
+    background: BackgroundTasks,
     session: Cmi5Session = Depends(cmi5_session_credential),
     db: Session = Depends(get_db),
 ):
     """The AU's xAPI endpoint (a statement by id, State documents)."""
-    return await _proxied(request, resource, session, db)
+    return await _proxied(request, resource, session, db, background)
 
 
 @router.delete("/lrs/{resource:path}")

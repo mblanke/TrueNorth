@@ -285,7 +285,8 @@ def parse_resource_target(claims: dict) -> tuple[str, str]:
     resource = str(custom.get("resource", ""))
     if ":" in resource:
         kind, _, rid = resource.partition(":")
-        if kind in ("quiz", "exercise", "course", "lab"):  # lab: "<course uuid>:mod_NNN"
+        # lab: "<course uuid>:mod_NNN"; cmi5: "<release uuid>:<AU index>" (app/cmi5/lti.py)
+        if kind in ("quiz", "exercise", "course", "lab", "cmi5"):
             return kind, rid
     return "", ""
 
@@ -398,6 +399,54 @@ async def _ags_access_token(db: Session, platform: ExternalPlatform) -> str:
         return resp.json()["access_token"]
 
 
+class AGSError(Exception):
+    """A score the platform did not take. ``transient``: worth sending again later (the
+    platform or the network was unavailable, or asked us to slow down)."""
+
+    def __init__(self, message: str, *, transient: bool):
+        super().__init__(message)
+        self.transient = transient
+
+
+def _transient_status(code: int) -> bool:
+    return code in (408, 425, 429) or code >= 500
+
+
+def scores_url_for(lineitem_url: str) -> str:
+    """The AGS scores endpoint of a lineitem: ``/scores`` goes before any query string."""
+    if "?" in lineitem_url:
+        base, _, query = lineitem_url.partition("?")
+        return f"{base}/scores?{query}"
+    return f"{lineitem_url}/scores"
+
+
+async def send_score(db: Session, platform: ExternalPlatform, lineitem_url: str, user_sub: str, score: dict) -> None:
+    """POST one AGS score (``score``: the Score fields without ``userId``) to a lineitem of
+    ``platform`` for the platform's user ``user_sub``. Raises AGSError for anything the
+    platform or the network did."""
+    try:
+        token = await _ags_access_token(db, platform)
+        scores_url, route_headers = platform_route(platform, scores_url_for(lineitem_url))
+        async with httpx.AsyncClient(timeout=20) as client:
+            resp = await client.post(
+                scores_url,
+                json={**score, "userId": user_sub},
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "application/vnd.ims.lis.v1.score+json",
+                    **route_headers,
+                },
+            )
+            resp.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        code = exc.response.status_code
+        raise AGSError(f"the platform answered {code}", transient=_transient_status(code)) from exc
+    except httpx.TransportError as exc:
+        raise AGSError(f"the platform could not be reached: {type(exc).__name__}", transient=True) from exc
+    except (ValueError, KeyError, TypeError) as exc:  # no token URL, or a token answer without a token
+        raise AGSError(f"no AGS access token: {exc}", transient=False) from exc
+
+
 async def push_score(
     db: Session,
     launch: LTILaunch,
@@ -412,40 +461,20 @@ async def push_score(
     platform = db.get(ExternalPlatform, launch.platform_id)  # tenant-safe: the launch's own platform
     if not platform:
         return False
+    payload = {
+        "timestamp": datetime.now(UTC).isoformat(),
+        "scoreGiven": score,
+        "scoreMaximum": max_score,
+        "activityProgress": activity_progress,
+        "gradingProgress": grading_progress,
+    }
     try:
-        token = await _ags_access_token(db, platform)
-        scores_url = launch.ags_lineitem_url
-        # Per AGS spec the /scores segment goes before any query string.
-        if "?" in scores_url:
-            base, _, query = scores_url.partition("?")
-            scores_url = f"{base}/scores?{query}"
-        else:
-            scores_url = f"{scores_url}/scores"
-        scores_url, route_headers = platform_route(platform, scores_url)
-        payload = {
-            "timestamp": datetime.now(UTC).isoformat(),
-            "scoreGiven": score,
-            "scoreMaximum": max_score,
-            "activityProgress": activity_progress,
-            "gradingProgress": grading_progress,
-            "userId": launch.lti_user_sub,
-        }
-        async with httpx.AsyncClient(timeout=20) as client:
-            resp = await client.post(
-                scores_url,
-                json=payload,
-                headers={
-                    "Authorization": f"Bearer {token}",
-                    "Content-Type": "application/vnd.ims.lis.v1.score+json",
-                    **route_headers,
-                },
-            )
-            resp.raise_for_status()
-        logger.info("AGS score pushed: %s %s/%s", launch.id, score, max_score)
-        return True
-    except Exception as exc:
+        await send_score(db, platform, launch.ags_lineitem_url, launch.lti_user_sub, payload)
+    except Exception as exc:  # advisory, as before: never fails the caller's path
         logger.warning("AGS score push failed for launch %s: %s", launch.id, exc)
         return False
+    logger.info("AGS score pushed: %s %s/%s", launch.id, score, max_score)
+    return True
 
 
 async def push_score_for_resource(

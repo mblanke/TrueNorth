@@ -49,7 +49,7 @@ from ..course_releases.service import pinned_release
 from ..lms import LRSResponse, LRSUnavailableError, get_lms_backend
 from ..models import Course, Enrollment, EnrollmentStatus, User
 from ..rbac import ROLE_PERMISSIONS, Permission
-from . import rules
+from . import ags, rules
 from . import structure as structure_mod
 from .content import package
 from .models import (
@@ -594,6 +594,7 @@ def proxy(
     resource = resource.strip("/")
     forward = {k: v for k, v in headers.items() if k.lower() in ("content-type", "if-match", "if-none-match")}
     accepted: list[str] = []
+    graded: float | None = None
     marks = {"launch_data": False, "prefs": False}
 
     if resource == "about" and method == "GET":
@@ -646,7 +647,7 @@ def proxy(
         if marks["launch_data"]:
             session.launch_data_fetched = True
         if accepted:
-            _after_statements(db, session, reg, release, accepted)
+            _after_statements(db, session, reg, release, accepted, graded)
     if marks["prefs"] and resp.status in (200, 404):
         session.prefs_fetched = True
     db.flush()
@@ -756,12 +757,22 @@ def _still_entitled(db: Session, reg: Cmi5Registration, release: CourseRelease) 
 
 
 def _after_statements(
-    db: Session, session: Cmi5Session, reg: Cmi5Registration, release: CourseRelease, accepted: list[str]
+    db: Session,
+    session: Cmi5Session,
+    reg: Cmi5Registration,
+    release: CourseRelease,
+    accepted: list[str],
+    graded: float | None = None,
 ) -> None:
+    """Record what the accepted cmi5-defined statements mean. A passed/failed records
+    TrueNorth's mark (``graded``: the rules refused any other score) as the AU's score, and
+    a result goes on to the gradebook of an LMS that launched the AU over LTI (ags.py)."""
     sent = json.loads(session.sent or "[]")
     data = progress(reg)
     state = data["aus"].setdefault(str(session.au_index), {})
     judged = False
+    if graded is not None and (rules.PASSED in accepted or rules.FAILED in accepted):
+        state["score"] = graded
     for verb in accepted:
         sent.append(verb)
         if verb == rules.INITIALIZED:
@@ -782,3 +793,5 @@ def _after_statements(
     _save(reg, data)
     if judged:
         evaluate(db, reg, release, str(session.id))
+    if any(verb in rules.JUDGED for verb in accepted):
+        ags.enqueue(db, reg, release, session.au_index, state)

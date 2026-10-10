@@ -65,6 +65,49 @@ class Cmi5Grade(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
+AGS_PENDING = "pending"
+AGS_SENT = "sent"
+AGS_FAILED = "failed"
+
+
+class Cmi5AgsScore(Base):
+    """One LMS gradebook cell an AU result goes to (app/cmi5/ags.py): the Student's AGS line
+    item from an LTI launch of the AU, and the latest result TrueNorth recorded for it.
+
+    An outbox: written in the transaction that recorded ``passed``/``failed``/``completed``,
+    sent after it commits, re-sent on transient failure. ``cell_key`` (SHA-256 of platform,
+    line item and the platform's user id) keeps one row per cell, so a retry or a second
+    statement never posts a second, different score. ``score_given`` is TrueNorth's own
+    mark out of 100 (``cmi5_grades``), never what the AU reported."""
+
+    __tablename__ = "cmi5_ags_scores"
+    __table_args__ = (
+        Index("ix_cmi5_ags_due", "state", "next_attempt_at"),
+        Index("ix_cmi5_ags_reg", "registration_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
+    cell_key: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    tenant_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("tenants.id"), nullable=True)
+    platform_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("external_platforms.id"), nullable=False)
+    registration_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("cmi5_registrations.id"), nullable=False)
+    user_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("users.id"), nullable=False)
+    release_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("course_releases.id"), nullable=False)
+    au_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    lineitem_url: Mapped[str] = mapped_column(Text, nullable=False)
+    lti_user_sub: Mapped[str] = mapped_column(String(255), nullable=False)
+    score_given: Mapped[float | None] = mapped_column(Float, nullable=True)  # of 100; None: no mark yet
+    activity_progress: Mapped[str] = mapped_column(String(16), nullable=False)
+    grading_progress: Mapped[str] = mapped_column(String(16), nullable=False)
+    result_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)  # the Score timestamp
+    state: Mapped[str] = mapped_column(String(8), nullable=False, default=AGS_PENDING)
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_error: Mapped[str] = mapped_column(String(500), nullable=False, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class Cmi5Session(Base):
     __tablename__ = "cmi5_sessions"
     __table_args__ = (Index("ix_cmi5_session_reg_state", "registration_id", "state"),)

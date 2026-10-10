@@ -6,9 +6,12 @@
 #   TN_PUBLIC_KEY="$(cat tool-public.pem)" \
 #     docker compose -p tn-moodle-test -f infra/platform/docker/compose.moodle-test.yml up -d
 #   MOODLE_TEST_URL=http://localhost:8093 MOODLE_TEST_KEY=tool-private.pem \
-#     .venv/bin/python -m pytest tests/integration/test_moodle_publish.py
+#     .venv/bin/python -m pytest tests/integration/test_moodle_publish.py \
+#       tests/integration/test_moodle_cmi5_lti.py
 #
 # TN_PUBLIC_KEY is the public half of the key the test signs sync tickets with.
+# MOODLE_TEST_PORT (default 8093) moves the loopback port, for a second copy alongside one
+# already running: give it its own project too (-p), and MOODLE_TEST_URL/CONTAINER to match.
 name: tn-moodle-test
 
 services:
@@ -39,11 +42,11 @@ services:
       MOODLE_USERNAME: admin
       MOODLE_PASSWORD: TrueNorth-Test1
       MOODLE_SITENAME: TrueNorth_Test
-      SITE_URL: http://localhost:8093
-      MOODLE_PUBLIC_PORT: "8093"
+      SITE_URL: http://localhost:${MOODLE_TEST_PORT:-8093}
+      MOODLE_PUBLIC_PORT: "${MOODLE_TEST_PORT:-8093}"
       TN_TOOL_URL: http://localhost:8081
       TN_PUBLIC_KEY: ${TN_PUBLIC_KEY:?set TN_PUBLIC_KEY to the test tool public key (PEM)}
       # The TrueNorth tenant this Moodle serves; sync tickets for any other tenant are refused.
       TN_TENANT_ID: ${TN_TENANT_ID:-7e57e57e-0000-4000-8000-000000000001}
     ports:
-      - "127.0.0.1:8093:8080"
+      - "127.0.0.1:${MOODLE_TEST_PORT:-8093}:8080"

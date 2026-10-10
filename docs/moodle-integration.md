@@ -178,6 +178,44 @@ threat cases (email collision, another staff member or a Student confirming, ano
 tenant, another browser, a replayed or expired code, the same subject on another tenant's
 platform) are tests in `tests/api/test_lti_staff_link.py`.
 
+### cmi5 modules over LTI (2026-10-10)
+
+A module of a released course (a cmi5 AU, `docs/cmi5.md`) is added to a Moodle course as an
+**External tool** activity, chosen by deep linking. TrueNorth is the AU's cmi5 LMS; Moodle
+launches it and keeps the grade.
+
+Prerequisites: the TrueNorth Range tool registered in Moodle as above (the farm image does it,
+`infra/platform/moodle/bootstrap/truenorth_lti_tool.php`: deep linking on, *Accept grades*
+always, *IMS LTI Assignment and Grade Services* "Use this service for grade sync and column
+management"); the platform registered in TrueNorth with `lti_token_url`; the course published
+in TrueNorth with an accepted release; cmi5 configured (`CMI5_LRS_AUTH`).
+
+1. As the teacher, in the Moodle course: *Add an activity or resource → TrueNorth Range →
+   Select content*. Moodle sends a deep-linking launch; TrueNorth shows its picker. Under
+   the quizzes and courses it lists each module of the tenant's published courses as
+   `<release title>: <module title>` (the newest accepted release of each, up to 20
+   courses). Tick the modules (one activity each) and *Add selected to course*.
+   A teacher whose Moodle email belongs to a TrueNorth staff account links it once first
+   (*Staff deep linking*, above).
+2. Moodle creates the activities with the custom parameter `resource=cmi5:<release>:<n>` and
+   a grade item out of 100. Keep *Launch container: New window* (the state cookie).
+3. A Student opens the activity. TrueNorth checks the module (this tenant, published,
+   accepted release, the AU exists) and that **the Student is enrolled in the course in
+   TrueNorth on that release**: the launch never enrols (403 if not enrolled). Enrol in
+   TrueNorth; the farm puts the Student in the Moodle course. A Student whose account the
+   launch created is handed a session (gap #1); the module opens and starts at once.
+4. When the Student passes or fails the module's quiz, TrueNorth sends its own mark (never
+   the score the browser reported) to the activity's grade item over AGS, and resends it
+   if Moodle was unreachable. A module with no quiz reports completion without a grade.
+
+Details, refusals and the Score sent: `docs/cmi5.md`, "Moodle over LTI 1.3". When a new
+release of the course is accepted, Students already enrolled stay on theirs (their launch
+of an activity linked to another release is 409); add the new release's modules as new
+activities for new Students.
+
+Tested against a real Moodle 5.2.3: `tests/integration/test_moodle_cmi5_lti.py` (CI job
+`moodle`).
+
 ### Acceptance
 
 1. `compose.moodle.yml` up; register Moodle through the API with `lti_auth_login_url`. A student token gets 403 on the same call.

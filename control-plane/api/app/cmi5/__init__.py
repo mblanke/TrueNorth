@@ -3,6 +3,6 @@
 Importing this package registers its tables on ``Base.metadata``.
 """
 
-from .models import Cmi5Grade, Cmi5Registration, Cmi5Session
+from .models import Cmi5AgsScore, Cmi5Grade, Cmi5Registration, Cmi5Session
 
-__all__ = ["Cmi5Grade", "Cmi5Registration", "Cmi5Session"]
+__all__ = ["Cmi5AgsScore", "Cmi5Grade", "Cmi5Registration", "Cmi5Session"]

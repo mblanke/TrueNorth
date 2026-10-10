@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 
 from .. import moodle_sso, net_guard
 from ..auth import CurrentUser, get_current_user
+from ..cmi5.models import Cmi5AgsScore
 from ..course_publishing.models import CoursePublication
 from ..db import get_db
 from ..delete_guard import commit_delete, refuse_if
@@ -223,6 +224,8 @@ def deregister_platform(
     db.query(LTIUserLink).filter(LTIUserLink.platform_id == p.id).delete(synchronize_session=False)
     db.query(LTINonce).filter(LTINonce.platform_id == p.id).delete(synchronize_session=False)
     db.query(LTILaunch).filter(LTILaunch.platform_id == p.id).delete(synchronize_session=False)
+    # Results waiting for (or sent to) its gradebook: the gradebook is the record there.
+    db.query(Cmi5AgsScore).filter(Cmi5AgsScore.platform_id == p.id).delete(synchronize_session=False)
     db.flush()
     db.delete(p)
     commit_delete(db, "Platform")
@@ -468,6 +471,8 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel as _BaseModel
 
 from .. import lti13
+from ..cmi5 import lms as cmi5_lms
+from ..cmi5 import lti as cmi5_lti
 from ..lti_identity import links as lti_links
 from ..lti_identity import session as lti_session
 from ..models import Course, Quiz, UserRole
@@ -667,6 +672,13 @@ def _resource_link_redirect(db: Session, platform, user: User, claims: dict, *, 
     sign-in of their own) goes through the session hand-off first (lti_identity.session);
     anyone else lands on the page and signs in with Keycloak as usual."""
     kind, rid = lti13.parse_resource_target(claims)
+    if kind == "cmi5":
+        # Checked before the launch is recorded: a refused launch leaves no line item that
+        # a later result could be sent to (app/cmi5/ags.py).
+        try:
+            rid = cmi5_lti.launch_target(db, platform.tenant_id, user, rid)
+        except cmi5_lms.Cmi5Error as exc:  # every check precedes the one write (the registration)
+            raise HTTPException(exc.status, exc.message) from exc
     lti13.record_launch(db, platform, user.id, claims, kind, rid)
 
     if kind == "lab" and rid:
@@ -701,6 +713,8 @@ def _launch_path(db: Session, platform, user: User, claims: dict, kind: str, rid
         return f"/exercises/{quote(rid, safe='')}?lti=1"  # the Student's own exercise page
     if kind == "course" and rid:
         return f"/training?course={quote(rid, safe='')}&lti=1"
+    if kind == "cmi5" and rid:
+        return cmi5_lti.spa_path(rid)  # rid was checked and made canonical before the launch was recorded
     return "/training?lti=1"
 
 
@@ -855,6 +869,13 @@ def _deep_link_picker(db: Session, platform, claims: dict) -> HTMLResponse:
         rows.append(
             f'<label><input type="checkbox" name="item" value="course:{course.id}:{_html_escape(course.name)}"> '
             f"&#x1F393; {_html_escape(course.name)}</label>"
+        )
+    # cmi5 modules (one content item per AU): launched with TrueNorth as the cmi5 LMS, graded
+    # back to this platform over AGS (app/cmi5/lti.py, app/cmi5/ags.py).
+    for value, label in cmi5_lti.picker_items(db, platform.tenant_id):
+        rows.append(
+            f'<label><input type="checkbox" name="item" value="{_html_escape(value)}"> '
+            f"&#x1F4D8; {_html_escape(label)}</label>"
         )
     items_html = "<br>".join(rows) or "<em>No published quizzes or courses yet.</em>"
 
@@ -1022,6 +1043,13 @@ async def lti_deep_link_finish(
     content_items = []
     for sel in selections:
         kind, _, rest = sel.partition(":")
+        if kind == "cmi5":
+            # "<release>:<n>" (any ":<title>" after it is ignored): checked against the
+            # platform's tenant and titled by the server, never by what the browser posted.
+            picked = cmi5_lti.content_item(db, platform.tenant_id, ":".join(rest.split(":", 2)[:2]))
+            if picked is not None:
+                content_items.append(lti13.content_item_for("cmi5", picked[0], picked[1]))
+            continue
         rid, _, title = rest.partition(":")
         if kind in ("quiz", "course", "exercise") and rid:
             content_items.append(lti13.content_item_for(kind, rid, title or kind))
