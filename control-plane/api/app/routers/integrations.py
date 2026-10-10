@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 
 from .. import moodle_sso, net_guard
 from ..auth import CurrentUser, get_current_user
+from ..cmi5.models import Cmi5AgsScore
 from ..course_publishing.models import CoursePublication
 from ..db import get_db
 from ..delete_guard import commit_delete, refuse_if
@@ -35,6 +36,7 @@ from ..models import (
     User,
 )
 from ..moodle_backends import MoodleError, supported_moodle_types
+from ..moodle_farm import service as moodle_farm
 from ..moodle_results import service as results_service
 from ..moodle_results.models import MoodleResultCursor, MoodleResultRecord
 from ..moodle_results.schemas import MoodleResultsPullIn, MoodleResultsPullOut, MoodleResultsStatusOut
@@ -177,8 +179,13 @@ def update_platform(
                 status.HTTP_403_FORBIDDEN, "Only a platform administrator can re-point a Moodle at another site"
             )
         _check_issuer(db, user, changes["lti_issuer"])
+    moved = [f for f in moodle_farm.IDENTITY_FIELDS if f in changes and changes[f] != getattr(p, f)]
     for field, value in changes.items():
         setattr(p, field, value)
+    if moved and moodle_farm.unmark(db, p.id):
+        # A farm node is what the installer registered; an address or LTI identity set
+        # through the API is not, so its farm privileges end until the installer re-marks it.
+        logger.warning("Platform %s is no longer a farm node: %s changed through the API", p.id, ", ".join(moved))
     db.commit()
     db.refresh(p)
     return p
@@ -223,6 +230,9 @@ def deregister_platform(
     db.query(LTIUserLink).filter(LTIUserLink.platform_id == p.id).delete(synchronize_session=False)
     db.query(LTINonce).filter(LTINonce.platform_id == p.id).delete(synchronize_session=False)
     db.query(LTILaunch).filter(LTILaunch.platform_id == p.id).delete(synchronize_session=False)
+    # Results waiting for (or sent to) its gradebook: the gradebook is the record there.
+    db.query(Cmi5AgsScore).filter(Cmi5AgsScore.platform_id == p.id).delete(synchronize_session=False)
+    moodle_farm.unmark(db, p.id)
     db.flush()
     db.delete(p)
     commit_delete(db, "Platform")
@@ -468,6 +478,8 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel as _BaseModel
 
 from .. import lti13
+from ..cmi5 import lms as cmi5_lms
+from ..cmi5 import lti as cmi5_lti
 from ..lti_identity import links as lti_links
 from ..lti_identity import session as lti_session
 from ..models import Course, Quiz, UserRole
@@ -591,6 +603,11 @@ def _jit_user(db: Session, platform, claims: dict) -> User:
     linked = lti_links.linked_user(db, platform, sub) if sub else None
     if linked is not None:
         return linked
+    # A TrueNorth farm node's account made by TrueNorth's sign-in: bound to its Student by
+    # the locked TrueNorth id and its tn-<id> username, never by email (app/moodle_farm).
+    farm_student = moodle_farm.bind_farm_account(db, platform, claims)
+    if farm_student is not None:
+        return farm_student
     user = db.query(User).filter(User.keycloak_id == lti_kc_id).first()
     if user is None:
         user = db.query(User).filter(User.email == email).first()
@@ -667,7 +684,17 @@ def _resource_link_redirect(db: Session, platform, user: User, claims: dict, *, 
     sign-in of their own) goes through the session hand-off first (lti_identity.session);
     anyone else lands on the page and signs in with Keycloak as usual."""
     kind, rid = lti13.parse_resource_target(claims)
-    lti13.record_launch(db, platform, user.id, claims, kind, rid)
+    if kind == "cmi5":
+        # Checked before the launch is recorded: a refused launch leaves no line item that
+        # a later result could be sent to (app/cmi5/ags.py).
+        try:
+            rid = cmi5_lti.launch_target(db, platform.tenant_id, user, rid)
+        except cmi5_lms.Cmi5Error as exc:  # every check precedes the one write (the registration)
+            raise HTTPException(exc.status, exc.message) from exc
+    # Grades go back only to an LMS account bound to this user, never to one that merely
+    # asserted this user's email: that would hand it their grade (review of #140).
+    bound = lti_links.is_bound(db, platform.id, str(claims.get("sub", "")), user)
+    lti13.record_launch(db, platform, user.id, claims, kind, rid, grade_passback=bound)
 
     if kind == "lab" and rid:
         return RedirectResponse(_launch_lab(db, user, rid), status_code=302)  # the lab page has its own token
@@ -701,6 +728,8 @@ def _launch_path(db: Session, platform, user: User, claims: dict, kind: str, rid
         return f"/exercises/{quote(rid, safe='')}?lti=1"  # the Student's own exercise page
     if kind == "course" and rid:
         return f"/training?course={quote(rid, safe='')}&lti=1"
+    if kind == "cmi5" and rid:
+        return cmi5_lti.spa_path(rid)  # rid was checked and made canonical before the launch was recorded
     return "/training?lti=1"
 
 
@@ -805,6 +834,8 @@ def _launch_lab(db: Session, user: User, rid: str) -> str:
 # The tool key also signs the LtiDeepLinkingResponse and AGS client assertions; this
 # audience means only a picker session is accepted back at /deeplink/finish.
 DEEP_LINK_SESSION_AUDIENCE = "truenorth:lti-deeplink-session"
+# Items one deep-linking response may carry: each cmi5 item is checked against its release.
+DEEP_LINK_MAX_ITEMS = 50
 
 
 def _deep_link_picker(db: Session, platform, claims: dict) -> HTMLResponse:
@@ -855,6 +886,13 @@ def _deep_link_picker(db: Session, platform, claims: dict) -> HTMLResponse:
         rows.append(
             f'<label><input type="checkbox" name="item" value="course:{course.id}:{_html_escape(course.name)}"> '
             f"&#x1F393; {_html_escape(course.name)}</label>"
+        )
+    # cmi5 modules (one content item per AU): launched with TrueNorth as the cmi5 LMS, graded
+    # back to this platform over AGS (app/cmi5/lti.py, app/cmi5/ags.py).
+    for value, label in cmi5_lti.picker_items(db, platform.tenant_id):
+        rows.append(
+            f'<label><input type="checkbox" name="item" value="{_html_escape(value)}"> '
+            f"&#x1F4D8; {_html_escape(label)}</label>"
         )
     items_html = "<br>".join(rows) or "<em>No published quizzes or courses yet.</em>"
 
@@ -1019,9 +1057,18 @@ async def lti_deep_link_finish(
     if not platform:
         raise HTTPException(404, "Platform not found")
 
+    if len(selections) > DEEP_LINK_MAX_ITEMS:
+        raise HTTPException(422, f"Select at most {DEEP_LINK_MAX_ITEMS} items at a time")
     content_items = []
     for sel in selections:
         kind, _, rest = sel.partition(":")
+        if kind == "cmi5":
+            # "<release>:<n>" (any ":<title>" after it is ignored): checked against the
+            # platform's tenant and titled by the server, never by what the browser posted.
+            picked = cmi5_lti.content_item(db, platform.tenant_id, ":".join(rest.split(":", 2)[:2]))
+            if picked is not None:
+                content_items.append(lti13.content_item_for("cmi5", picked[0], picked[1]))
+            continue
         rid, _, title = rest.partition(":")
         if kind in ("quiz", "course", "exercise") and rid:
             content_items.append(lti13.content_item_for(kind, rid, title or kind))

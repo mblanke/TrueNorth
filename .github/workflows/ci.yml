@@ -550,11 +550,13 @@ jobs:
           done
           echo "Moodle did not answer within 15 minutes" >&2
           exit 1
-      - name: Moodle publish test
+      # test_moodle_cmi5_lti.py: a Moodle LTI 1.3 launch of a TrueNorth cmi5 AU, its grade
+      # back in Moodle's gradebook over AGS (the same key pair is TrueNorth's LTI tool key).
+      - name: Moodle publish and cmi5-over-LTI tests
         run: |
           rc=0
-          pytest tests/integration/test_moodle_publish.py -m integration -rs --tb=short \
-            --junitxml=build/moodle/junit.xml || rc=$?
+          pytest tests/integration/test_moodle_publish.py tests/integration/test_moodle_cmi5_lti.py \
+            -m integration -rs --tb=short --junitxml=build/moodle/junit.xml || rc=$?
           python scripts/junit_require_pass.py build/moodle/junit.xml || rc=1
           exit $rc
         env:

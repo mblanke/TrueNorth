@@ -173,10 +173,79 @@ The email claim is the LMS's assertion, so it never makes a launch a staff accou
    lists your links; `DELETE /lti/links/{id}` removes one (the holder, or an
    `integration:write` admin of the tenant). Deregistering the platform removes its links.
 
-Students are unchanged: their email links an existing Student account, as before. The
+Students are unchanged: their email links an existing Student account, as before, for
+signing in. It does not bind the LMS account for grades: since 2026-10-10 a launch matched
+only by email keeps no AGS line item, and no grade is pushed to it (`lti_identity.links.is_bound`,
+`lti13.record_launch`, `push_score_for_resource`). The
 threat cases (email collision, another staff member or a Student confirming, another
 tenant, another browser, a replayed or expired code, the same subject on another tenant's
 platform) are tests in `tests/api/test_lti_staff_link.py`.
+
+### cmi5 modules over LTI (2026-10-10)
+
+A module of a released course (a cmi5 AU, `docs/cmi5.md`) is added to a Moodle course as an
+**External tool** activity, chosen by deep linking. TrueNorth is the AU's cmi5 LMS; Moodle
+launches it and keeps the grade.
+
+Prerequisites: the TrueNorth Range tool registered in Moodle as above (the farm image does it,
+`infra/platform/moodle/bootstrap/truenorth_lti_tool.php`: deep linking on, *Accept grades*
+always, *IMS LTI Assignment and Grade Services* "Use this service for grade sync and column
+management"); the platform registered in TrueNorth with `lti_token_url`; the course published
+in TrueNorth with an accepted release; cmi5 configured (`CMI5_LRS_AUTH`).
+
+1. As the teacher, in the Moodle course: *Add an activity or resource → TrueNorth Range →
+   Select content*. Moodle sends a deep-linking launch; TrueNorth shows its picker. Under
+   the quizzes and courses it lists each module of the tenant's published courses as
+   `<release title>: <module title>` (the newest accepted release of each, up to 20
+   courses). Tick the modules (one activity each) and *Add selected to course*.
+   A teacher whose Moodle email belongs to a TrueNorth staff account links it once first
+   (*Staff deep linking*, above).
+2. Moodle creates the activities with the custom parameter `resource=cmi5:<release>:<n>` and
+   a grade item out of 100. Keep *Launch container: New window* (the state cookie).
+3. A Student opens the activity. TrueNorth checks the module (this tenant, published,
+   accepted release, the AU exists) and that **the Student is enrolled in the course in
+   TrueNorth on that release**: the launch never enrols (403 if not enrolled). Enrol in
+   TrueNorth; the farm puts the Student in the Moodle course. A Student whose account the
+   launch created is handed a session (gap #1); the module opens and starts at once.
+4. When the Student passes or fails the module's quiz, TrueNorth sends its own best mark
+   (never the score the browser reported) to the activity's grade item over AGS, and resends
+   it if Moodle was unreachable. A module with no quiz reports completion without a grade.
+   Grades go only to the Moodle account bound to the Student: the one whose launch created
+   their TrueNorth account, one linked explicitly, or (on a farm node, below) the account
+   TrueNorth's sign-in made for them. **A Moodle account matched to a TrueNorth Student only
+   by email gets no grade** (any LMS account can assert any email).
+
+**Farm nodes (2026-10-10, `app/moodle_farm`).** A Moodle TrueNorth runs itself is marked a
+farm node by the installer, never through the API: `install_cli register` (the `tn_moodle`
+role) marks the node it registers, and `scripts/moodle-farm.sh add` runs
+`install_cli manage <tenant> <node>` in the api container after registering through the API.
+Changing a farm node's address or LTI identity through the API (`PATCH`) ends its farm status
+until the installer runs again; deregistering removes it. On a farm node only:
+
+- **Students' farm accounts are bound for grades.** TrueNorth's sign-in (`sso.php`) creates a
+  Student's Moodle account as username `tn-<TrueNorth user id>` with idnumber the TrueNorth
+  user id, and locks the idnumber (#132). Moodle 5.2.3 sends both in every LTI launch
+  (`lis.person_sourcedid` and `ext.user_username`; `sub` is Moodle's own user id), checked
+  against the real Moodle. When both name the same Student of the platform's tenant, the
+  launch is that Student and an `lti_user_links` row binds the Moodle account to them, so
+  grades go back. Both must agree: a self-chosen username has no idnumber, and the Student
+  cannot change the idnumber (the integration test submits Moodle's own profile form with
+  another idnumber: the form is accepted, the idnumber is not changed). Never on another
+  platform, never from email, never across tenants, not for staff (they link explicitly). An
+  existing link of that Moodle account or Student to something else is never re-pointed (a
+  re-created Moodle account: an integration admin removes the old link,
+  `DELETE /lti/links/{id}`).
+- **Grade traffic may reach the node's private address** (e.g. `http://moodle-default:8080`)
+  without `INTEGRATION_ALLOW_PRIVATE_URLS`. That setting still governs every other platform;
+  loopback is never allowed (`app/net_guard.py`).
+
+Details, refusals and the Score sent: `docs/cmi5.md`, "Moodle over LTI 1.3". When a new
+release of the course is accepted, Students already enrolled stay on theirs (their launch
+of an activity linked to another release is 409); add the new release's modules as new
+activities for new Students.
+
+Tested against a real Moodle 5.2.3: `tests/integration/test_moodle_cmi5_lti.py` (CI job
+`moodle`).
 
 ### Acceptance
 

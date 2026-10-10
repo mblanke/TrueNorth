@@ -11,6 +11,11 @@ installer needs no admin token and no Keycloak account to wire Moodle up:
         wrote at start-up (moodledata/truenorth-registration.json); prints one JSON line
         {"action": "created" | "updated" | "unchanged", "platform_id": ...}
 
+    python -m app.moodle_backends.install_cli manage <tenant slug or id> <node>
+        marks platform ``moodle-<node>`` (one scripts/moodle-farm.sh registered through the
+        API) as a TrueNorth farm node; ``register`` marks its node itself
+        (app/moodle_farm/service.py: what being a farm node allows)
+
     python -m app.moodle_backends.install_cli check <tenant slug> <node>
         asks that Moodle, through the publishing backend and a signed sync ticket, to
         describe a course that never exists: proves the address, the Host routing, the
@@ -109,9 +114,43 @@ def register(db: Session, tenant_slug: str, node: str, base_url: str, registrati
         for k, v in changed.items():
             setattr(platform, k, v)
         action = "updated" if changed else "unchanged"
+    db.flush()
+    # The installer runs this Moodle: it is a farm node (app/moodle_farm/service.py).
+    from ..moodle_farm import service as farm
+
+    if farm.mark(db, platform, node, "install_cli register") and action == "unchanged":
+        action = "updated"
     db.commit()
     db.refresh(platform)
     return {"action": action, "platform_id": str(platform.id), "tenant_id": str(tid), "slug": slug}
+
+
+def manage(db: Session, tenant: str, node: str) -> dict[str, str]:
+    """Mark platform ``moodle-<node>`` (registered through the API by scripts/moodle-farm.sh)
+    a farm node. ``tenant``: its slug or id. Run only by whoever runs the api container."""
+    import uuid as _uuid
+
+    from ..models import ExternalPlatform, Tenant
+    from ..moodle_farm import service as farm
+
+    try:
+        tid = _uuid.UUID(tenant)
+        if db.get(Tenant, tid) is None:
+            raise InstallError(f"no tenant {tenant}", 3)
+    except ValueError:
+        tid = tenant_id(db, tenant)
+    platform = (
+        db.query(ExternalPlatform)
+        .filter(ExternalPlatform.tenant_id == tid, ExternalPlatform.slug == platform_slug(node))
+        .one_or_none()
+    )
+    if platform is None:
+        raise InstallError(f"no platform {platform_slug(node)} in tenant {tenant!r}", 3)
+    if platform.platform_type != "moodle":
+        raise InstallError(f"{platform_slug(node)} is not a Moodle", 2)
+    action = "marked" if farm.mark(db, platform, node, "install_cli manage") else "unchanged"
+    db.commit()
+    return {"action": action, "platform_id": str(platform.id)}
 
 
 def check(db: Session, tenant_slug: str, node: str, backend: Any = None) -> dict[str, Any]:
@@ -155,6 +194,9 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("check")
     p.add_argument("tenant_slug")
     p.add_argument("node")
+    p = sub.add_parser("manage")
+    p.add_argument("tenant")
+    p.add_argument("node")
     args = parser.parse_args(argv)
 
     from ..db import SessionLocal
@@ -171,6 +213,8 @@ def main(argv: list[str] | None = None) -> int:
             if not isinstance(registration, dict):
                 raise InstallError("registration on stdin is not a JSON object", 2)
             print(json.dumps(register(db, args.tenant_slug, args.node, args.base_url, registration)))
+        elif args.cmd == "manage":
+            print(json.dumps(manage(db, args.tenant, args.node)))
         else:
             print(json.dumps(check(db, args.tenant_slug, args.node)))
     except InstallError as exc:

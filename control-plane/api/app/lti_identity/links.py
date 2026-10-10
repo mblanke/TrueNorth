@@ -65,6 +65,24 @@ def linked_user(db: Session, platform: ExternalPlatform, sub: str) -> User | Non
     return user
 
 
+def is_bound(db: Session, platform_id: uuid.UUID, sub: str, user: User) -> bool:
+    """Whether the LMS account ``sub`` on this platform IS ``user``: the account its own launch
+    created (``lti:<platform>:<sub>``) or one a staff member linked explicitly. An account
+    matched by the LMS's asserted email is not: any LMS account can assert any email, so a
+    grade sent for it could land in another LMS account's gradebook cell (review of #140)."""
+    if not sub:
+        return False
+    if user.keycloak_id == f"lti:{platform_id}:{sub}":
+        return True
+    # tenant-safe: one platform's link of this subject to this very user, nothing read from it.
+    return (
+        db.query(LTIUserLink.id)
+        .filter(LTIUserLink.platform_id == platform_id, LTIUserLink.lti_sub == sub, LTIUserLink.user_id == user.id)
+        .first()
+        is not None
+    )
+
+
 def request_link(db: Session, platform: ExternalPlatform, claims: dict, *, bind: str) -> str:
     """Store a link request for this launch; returns its code. Always browser-bound: an
     unbound code could be sent to a staff member to confirm (a phished privilege grant)."""

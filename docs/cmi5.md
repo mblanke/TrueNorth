@@ -229,8 +229,96 @@ and `satisfied`, all in TrueNorth's LRS. What works today and what does not:
 | | |
 |---|---|
 | A Moodle **URL** resource to `<web>/au/releases/<release>?launch=<n>` | Works now. The Student arrives signed in through the farm's single sign-on; an unenrolled Student is told so and nothing launches. No grade in Moodle. |
-| A Moodle **External tool** (LTI 1.3) activity | Needs the LTI launch to send `/au/...` targets on: `lti13.parse_resource_target` and `routers/integrations.py` `_resource_link_redirect` know `lab`, `quiz`, `exercise` and `course` only. Next dependency (their owners): a `cmi5` resource kind (`<release>:<n>`) redirecting to `<web>/au/releases/<release>?launch=<n>&lti=1`. |
-| Moodle gradebook | Next dependency: AGS pass-back of the AU's `passed`/`failed` score for an LTI-launched registration. |
+| A Moodle **External tool** (LTI 1.3) activity | **Built (2026-10-10).** Resource kind `cmi5`, id `<release>:<n>`, picked by deep linking (one content item per AU). The launch sends the Student to `<web>/au/releases/<release>?launch=<n>&lti=1`. Below. |
+| Moodle gradebook | **Built (2026-10-10).** TrueNorth's own mark goes to the activity's AGS line item when the AU reports `passed`/`failed`; `completed` reports progress with no score. Below. |
+
+### Moodle over LTI 1.3: launch and grade (app/cmi5/lti.py, app/cmi5/ags.py)
+
+Setting up the activity in Moodle is in `docs/moodle-integration.md`, "cmi5 modules over LTI".
+
+**Launch.** `POST /lti/launch` with custom `resource=cmi5:<release id>:<AU index>`:
+
+| Case | Answer |
+|---|---|
+| The release is the platform's tenant's, accepted or superseded, of a published course, and has that AU; the account (in the same tenant) is enrolled in the course on this release | `302` to `<web>/au/releases/<release>?launch=<n>&lti=1`. An account the LTI launch created goes through the session hand-off first (`/lti/session#code=…`, docs/moodle-integration.md gap #1); anyone else signs in as usual. The enrolment's cmi5 registration is created or reused (its id is the enrolment id), and the launch is recorded with its AGS line item. The SPA then launches the AU for the Student (`POST /cmi5/releases/{id}/aus/{n}/launch`). |
+| Not enrolled, or the enrolment is withdrawn | `403`, nothing recorded. **The launch never enrols.** A `course` LTI launch does not enrol either; TrueNorth stays the source of enrolment (the farm syncs it to Moodle). The `lab` launch's auto-enrolment is not extended to cmi5. |
+| Enrolled on another release of the course | `409` (the deep link names a release; relink the activity to the release Students are on) |
+| Another tenant's release, an unpublished course, a candidate release, no such AU | `404`, nothing recorded |
+| A malformed id (`<release>:<n>` with `n` a plain non-negative integer) | `400` |
+| cmi5 not configured (`CMI5_LRS_AUTH`) | `503`, as for any cmi5 launch |
+
+Every check runs before the launch is recorded, so a refused launch leaves no line item a
+result could later be sent to.
+
+**Deep linking.** The picker (`/lti/launch` with `LtiDeepLinkingRequest`) lists every AU of
+the newest accepted releases of the tenant's published courses that have a cmi5 package (at
+most 20 such releases, out of the newest 200; a release without one is skipped and not
+counted, and each bundle's AU titles, or its lack of a package, are cached by blob). It sits
+beside quizzes and courses. `/lti/deeplink/finish` takes at most 50 items (422 otherwise),
+re-checks each `cmi5:` selection against the platform's tenant, accepts only the course's
+current (accepted) release (a superseded one stays launchable for the Students pinned to
+it, but is no new activity), and titles it from the release (`<release title>: <AU
+title>`), ignoring any title the browser posted. Each becomes an `ltiResourceLink` with
+`custom.resource = "cmi5:<release>:<n>"` and `lineItem.scoreMaximum = 100`.
+
+**Grade pass-back (AGS).** When TrueNorth, as the AU's cmi5 LMS, accepts a `passed`,
+`failed` or `completed` (cmi5-defined, so with the cmi5 category and through every rule
+above), it writes the AU's result for each of the Student's gradebook cells in the same
+transaction (`cmi5_ags_scores`, one row per platform, line item and the platform's user),
+and sends it after the statement's response:
+
+| AU state | Score sent |
+|---|---|
+| `passed` or `failed` accepted | `scoreGiven` = TrueNorth's mark x 100 (`cmi5_grades`, `POST .../grade`), `scoreMaximum` 100, `activityProgress` Completed, `gradingProgress` FullyGraded. The rules already refuse a statement whose score is not that mark (TN-GRADE); the number in the statement is never what is sent. **The best mark of the registration is sent**: a later, lower `failed` (a retake) never replaces an earlier, higher result, as moveOn never takes back a pass (and cmi5 refuses `failed` after `passed` in a registration). |
+| `completed` only | No `scoreGiven`; `activityProgress` Completed, `gradingProgress` Pending. Once a mark exists it is always included, so a later `completed` never clears a grade. |
+
+- **Which launches.** An LTI launch of this AU by an LMS account **bound to the Student**:
+  the account its own launch created (`lti:<platform>:<sub>`) or one linked explicitly
+  (`lti_user_links`; on a TrueNorth farm node, the account TrueNorth's sign-in made is linked
+  at its first launch by its locked TrueNorth id: docs/moodle-integration.md, "Farm nodes"). An LMS account matched to the Student by the email it asserted still
+  signs in as them, but its launch keeps no line item and gets no grade: any LMS account
+  can assert any email, and would otherwise receive that Student's grade in its own
+  gradebook cell (review of #140; the same rule now applies to
+  `lti13.push_score_for_resource`, quizzes and exercises). Further, the AGS claim must carry
+  a line item and the score scope, the platform must still be active and in the release's
+  tenant, and the line item on the platform's own origin (issuer or `base_url`). Results
+  after a TrueNorth-side launch of the same AU also go to that cell: it is the Student's
+  grade for the AU.
+- **Network.** The token and score requests go through `app/net_guard.py` (vetted and pinned
+  address, no redirects, answer size capped), with private addresses only to a TrueNorth farm
+  node (`app/moodle_farm`) or where `INTEGRATION_ALLOW_PRIVATE_URLS` is on (as for the
+  platform probe); loopback never. The
+  access token is cached per platform until a minute before it expires, and dropped on a
+  401.
+- **Not sent:** cmi5-allowed statements (no cmi5 category; they may carry no result,
+  TN-RESULT), anything the rules refused (a forged pass), waivers (`waive` is a records
+  holder's act, not a result).
+- **Idempotent.** The row holds the latest result; it is sent again only when it changes, with
+  the timestamp of when it was recorded, so a retry is the same Score.
+- **Retries.** Network failures, 408, 425, 429 and 5xx are retried with backoff (30 s,
+  doubling, at most an hour) up to `CMI5_AGS_MAX_ATTEMPTS`; a retry loop runs every
+  `CMI5_AGS_RETRY_SECONDS`. Anything else (400, 401, 403, 404, 409, for example a Score the
+  platform considers stale; a refused address; an error nobody foresaw) is `failed`, with
+  the reason in `last_error`; the next result for that cell tries again. One row's failure
+  never stops the others in a batch. Two first results for one cell at once: one insert
+  wins, the other updates it. Deregistering the platform deletes its rows, also one being
+  sent at that moment.
+
+Example: Student marked 4 of 5, AU reports `passed` with `score.scaled` 0.8:
+
+```
+POST <lineitem>/scores?type_id=1           (Authorization: Bearer <client_credentials token>)
+Content-Type: application/vnd.ims.lis.v1.score+json
+{"timestamp": "2026-10-10T12:00:00.000Z", "activityProgress": "Completed",
+ "gradingProgress": "FullyGraded", "scoreGiven": 80.0, "scoreMaximum": 100, "userId": "<lms sub>"}
+```
+
+Verified against a real Moodle 5.2.3 (`tests/integration/test_moodle_cmi5_lti.py`, CI job
+`moodle`): Moodle's OIDC login and signed id_token through `/lti/login` and `/lti/launch`,
+the hand-off session, the AU launched and passed with it, and 80/100 in Moodle's gradebook.
+The activity there is created with the custom parameter a deep-linked item sets; Moodle's
+deep-linking UI round trip itself is covered by the API tests (`tests/api/test_cmi5_lti.py`),
+not driven through Moodle.
 
 To repeat the plugin evaluation: build `infra/platform/moodle`, then an image `FROM` it that
 copies each plugin (at the commits above) into `/var/www/html/public/mod/<name>` from a
@@ -263,6 +351,8 @@ copies each plugin (at the commits above) into `/var/www/html/public/mod/<name>`
 | `CMI5_FETCH_HOURS` | `0.25` | How long after launch the fetch URL works. |
 | `CMI5_LRS_AUTH` | none (cmi5 off) | The AU traffic's LRS credential; must differ from `LRS_AUTH`. |
 | `CMI5_GRADE_ATTEMPTS` | `3` | Quiz marks per Student per AU per 24 hours. |
+| `CMI5_AGS_RETRY_SECONDS` | `60` | How often results an LMS gradebook did not take are resent (`0`: only right after the statement). |
+| `CMI5_AGS_MAX_ATTEMPTS` | `10` | Sends of one result before it is `failed`. |
 | `TN_SECRETS_KEY` | (required in production) | Also keys TrueNorth's cmi5 statement ids. |
 
 ## Conformance

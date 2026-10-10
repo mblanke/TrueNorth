@@ -12,6 +12,7 @@ Spec references: IMS LTI 1.3 Core, LTI-DL 2.0, LTI-AGS 2.0.
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
 import logging
@@ -29,7 +30,8 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from sqlalchemy.orm import Session
 
 from . import jwks as jwks_verify
-from .models import ExternalPlatform, LTILaunch, LTINonce, LTIToolKey
+from . import net_guard
+from .models import ExternalPlatform, LTILaunch, LTINonce, LTIToolKey, User
 from .secretbox import seal, unseal
 
 logger = logging.getLogger("truenorth.api.lti13")
@@ -285,7 +287,8 @@ def parse_resource_target(claims: dict) -> tuple[str, str]:
     resource = str(custom.get("resource", ""))
     if ":" in resource:
         kind, _, rid = resource.partition(":")
-        if kind in ("quiz", "exercise", "course", "lab"):  # lab: "<course uuid>:mod_NNN"
+        # lab: "<course uuid>:mod_NNN"; cmi5: "<release uuid>:<AU index>" (app/cmi5/lti.py)
+        if kind in ("quiz", "exercise", "course", "lab", "cmi5"):
             return kind, rid
     return "", ""
 
@@ -297,8 +300,13 @@ def record_launch(
     claims: dict,
     resource_kind: str,
     resource_id: str,
+    *,
+    grade_passback: bool = True,
 ) -> LTILaunch:
-    ags = claims.get(CLAIM_AGS) or {}
+    """Record a resource-link launch. ``grade_passback`` False (the account was matched by
+    email, not bound to this LMS account: ``lti_identity.links.is_bound``) drops the AGS
+    claim, so no grade is ever sent to that LMS account's gradebook cell."""
+    ags = (claims.get(CLAIM_AGS) or {}) if grade_passback else {}
     resource_link = claims.get(CLAIM_RESOURCE_LINK) or {}
     context = claims.get(CLAIM_CONTEXT) or {}
     launch = LTILaunch(
@@ -362,11 +370,69 @@ def content_item_for(kind: str, resource_id: str, title: str, max_score: int = 1
 # ── AGS grade pass-back ──────────────────────────────────────────────────
 
 
+class AGSError(Exception):
+    """A score the platform did not take. ``transient``: worth sending again later (the
+    platform or the network was unavailable, or asked us to slow down)."""
+
+    def __init__(self, message: str, *, transient: bool):
+        super().__init__(message)
+        self.transient = transient
+
+
+def _transient_status(code: int) -> bool:
+    return code in (408, 425, 429) or code >= 500
+
+
+def _allow_private(db: Session, platform: ExternalPlatform) -> bool:
+    """Server-side calls to a platform may reach a private address if it is one of
+    TrueNorth's own farm nodes (the installer registered it: app/moodle_farm), or where the
+    platform test probe may (``INTEGRATION_ALLOW_PRIVATE_URLS``, for every platform).
+    Loopback and link-local never (app/net_guard)."""
+    if os.getenv("INTEGRATION_ALLOW_PRIVATE_URLS", "false").strip().lower() in ("1", "true", "yes", "on"):
+        return True
+    from .moodle_farm.service import is_managed
+
+    return is_managed(db, platform)
+
+
+async def _guarded_post(db: Session, platform: ExternalPlatform, url: str, **kw) -> net_guard.Answer:
+    """POST to one of the platform's URLs through app.net_guard (vetted, pinned, no redirects),
+    rerouted to its internal address as ``platform_route`` says. AGSError on failure."""
+    target, route_headers = platform_route(platform, url)
+    headers = {**kw.pop("headers", {}), **route_headers}
+    allow_private = _allow_private(db, platform)
+    try:
+        return await asyncio.to_thread(
+            net_guard.post, target, headers=headers, allow_private=allow_private, timeout=20.0, **kw
+        )
+    except net_guard.DestinationRefusedError as exc:
+        raise AGSError("the platform's address is not one TrueNorth may call", transient=False) from exc
+    except net_guard.TooLargeError as exc:
+        raise AGSError("the platform's answer was too large", transient=False) from exc
+    except net_guard.GuardError as exc:
+        raise AGSError("the platform could not be reached", transient=True) from exc
+
+
+# Access tokens per (platform, token URL, client, signing key), until shortly before they
+# expire: one token request per platform and hour, not one per score.
+_TOKENS: dict[tuple[str, str, str, str], tuple[str, float]] = {}
+_TOKEN_MARGIN = 60.0
+
+
+def _forget_token(platform: ExternalPlatform) -> None:
+    for k in [k for k in _TOKENS if k[0] == str(platform.id)]:
+        _TOKENS.pop(k, None)
+
+
 async def _ags_access_token(db: Session, platform: ExternalPlatform) -> str:
-    """client_credentials grant with a private_key_jwt assertion."""
+    """client_credentials grant with a private_key_jwt assertion (cached until it expires)."""
     if not platform.lti_token_url:
-        raise ValueError("Platform has no token URL configured")
+        raise AGSError("the platform has no token URL configured", transient=False)
     key = get_tool_key(db)
+    cache_key = (str(platform.id), platform.lti_token_url, platform.lti_client_id or "", key.kid)
+    cached = _TOKENS.get(cache_key)
+    if cached and cached[1] > time.time():
+        return cached[0]
     now = int(time.time())
     assertion = jwt.encode(
         {
@@ -382,20 +448,53 @@ async def _ags_access_token(db: Session, platform: ExternalPlatform) -> str:
         headers={"kid": key.kid},
     )
     # The assertion's aud stays the public token URL: that is what the platform checks.
-    token_url, token_headers = platform_route(platform, platform.lti_token_url)
-    async with httpx.AsyncClient(timeout=20) as client:
-        resp = await client.post(
-            token_url,
-            headers=token_headers,
-            data={
-                "grant_type": "client_credentials",
-                "client_assertion_type": "urn:ietf:params:oauth:client-assertion-type:jwt-bearer",
-                "client_assertion": assertion,
-                "scope": AGS_SCORE_SCOPE,
-            },
-        )
-        resp.raise_for_status()
-        return resp.json()["access_token"]
+    answer = await _guarded_post(
+        db,
+        platform,
+        platform.lti_token_url,
+        data={
+            "grant_type": "client_credentials",
+            "client_assertion_type": "urn:ietf:params:oauth:client-assertion-type:jwt-bearer",
+            "client_assertion": assertion,
+            "scope": AGS_SCORE_SCOPE,
+        },
+    )
+    if not 200 <= answer.status < 300:
+        raise AGSError(f"the token endpoint answered {answer.status}", transient=_transient_status(answer.status))
+    try:
+        body = json.loads(answer.body)
+        token = str(body["access_token"])
+        lifetime = float(body.get("expires_in") or 3600)
+    except (ValueError, KeyError, TypeError) as exc:
+        raise AGSError("the token endpoint gave no access token", transient=False) from exc
+    _TOKENS[cache_key] = (token, time.time() + max(lifetime - _TOKEN_MARGIN, 0.0))
+    return token
+
+
+def scores_url_for(lineitem_url: str) -> str:
+    """The AGS scores endpoint of a lineitem: ``/scores`` goes before any query string."""
+    if "?" in lineitem_url:
+        base, _, query = lineitem_url.partition("?")
+        return f"{base}/scores?{query}"
+    return f"{lineitem_url}/scores"
+
+
+async def send_score(db: Session, platform: ExternalPlatform, lineitem_url: str, user_sub: str, score: dict) -> None:
+    """POST one AGS score (``score``: the Score fields without ``userId``) to a lineitem of
+    ``platform`` for the platform's user ``user_sub``. Raises AGSError for anything the
+    platform or the network did. Both requests go through app.net_guard."""
+    token = await _ags_access_token(db, platform)
+    answer = await _guarded_post(
+        db,
+        platform,
+        scores_url_for(lineitem_url),
+        json_body={**score, "userId": user_sub},
+        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/vnd.ims.lis.v1.score+json"},
+    )
+    if answer.status == 401:
+        _forget_token(platform)  # revoked or rotated: the next attempt asks for a new one
+    if not 200 <= answer.status < 300:
+        raise AGSError(f"the platform answered {answer.status}", transient=_transient_status(answer.status))
 
 
 async def push_score(
@@ -412,47 +511,33 @@ async def push_score(
     platform = db.get(ExternalPlatform, launch.platform_id)  # tenant-safe: the launch's own platform
     if not platform:
         return False
+    payload = {
+        "timestamp": datetime.now(UTC).isoformat(),
+        "scoreGiven": score,
+        "scoreMaximum": max_score,
+        "activityProgress": activity_progress,
+        "gradingProgress": grading_progress,
+    }
     try:
-        token = await _ags_access_token(db, platform)
-        scores_url = launch.ags_lineitem_url
-        # Per AGS spec the /scores segment goes before any query string.
-        if "?" in scores_url:
-            base, _, query = scores_url.partition("?")
-            scores_url = f"{base}/scores?{query}"
-        else:
-            scores_url = f"{scores_url}/scores"
-        scores_url, route_headers = platform_route(platform, scores_url)
-        payload = {
-            "timestamp": datetime.now(UTC).isoformat(),
-            "scoreGiven": score,
-            "scoreMaximum": max_score,
-            "activityProgress": activity_progress,
-            "gradingProgress": grading_progress,
-            "userId": launch.lti_user_sub,
-        }
-        async with httpx.AsyncClient(timeout=20) as client:
-            resp = await client.post(
-                scores_url,
-                json=payload,
-                headers={
-                    "Authorization": f"Bearer {token}",
-                    "Content-Type": "application/vnd.ims.lis.v1.score+json",
-                    **route_headers,
-                },
-            )
-            resp.raise_for_status()
-        logger.info("AGS score pushed: %s %s/%s", launch.id, score, max_score)
-        return True
-    except Exception as exc:
+        await send_score(db, platform, launch.ags_lineitem_url, launch.lti_user_sub, payload)
+    except Exception as exc:  # advisory, as before: never fails the caller's path
         logger.warning("AGS score push failed for launch %s: %s", launch.id, exc)
         return False
+    logger.info("AGS score pushed: %s %s/%s", launch.id, score, max_score)
+    return True
 
 
 async def push_score_for_resource(
     db: Session, user_id: uuid.UUID, resource_kind: str, resource_id: str, score: float, max_score: float
 ) -> bool:
-    """Find the most recent LTI launch for this user+resource and push the grade."""
-    launch = (
+    """Find the most recent LTI launch for this user+resource, by an LMS account bound to
+    this user (never one matched by email: lti_identity.links.is_bound), and push the grade."""
+    from .lti_identity.links import is_bound
+
+    user = db.get(User, user_id)  # tenant-safe: the caller's own subject; only compared below
+    if user is None:
+        return False
+    launches = (
         db.query(LTILaunch)
         .filter(
             LTILaunch.user_id == user_id,
@@ -461,8 +546,10 @@ async def push_score_for_resource(
             LTILaunch.ags_lineitem_url != "",
         )
         .order_by(LTILaunch.created_at.desc())
-        .first()
+        .limit(20)
+        .all()
     )
+    launch = next((la for la in launches if is_bound(db, la.platform_id, la.lti_user_sub, user)), None)
     if not launch:
         return False
     return await push_score(db, launch, score, max_score)

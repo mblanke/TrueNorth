@@ -102,6 +102,10 @@ async def lifespan(app: FastAPI):
     from .moodle_results.runner import loop as results_loop
 
     results_pull = asyncio.create_task(results_loop())
+    # cmi5 results an LMS gradebook did not take yet are re-sent (app/cmi5/ags.py).
+    from .cmi5.ags import loop as cmi5_ags_loop
+
+    cmi5_ags = asyncio.create_task(cmi5_ags_loop())
     # Real-backend exercises end when their scenario's duration runs out (ADR 0005 §6).
     exercise_clock = None
     if os.getenv("EXERCISE_CLOCK", "true").lower() == "true":
@@ -126,7 +130,7 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    for sweep in (range_resend, lab_sweep, exercise_clock, clock_task, results_pull):
+    for sweep in (range_resend, lab_sweep, exercise_clock, clock_task, results_pull, cmi5_ags):
         if sweep is not None:
             sweep.cancel()
 
