@@ -67,3 +67,10 @@ all:
           # itself (accepted_by "auto (test host)"; the Studio marks such runs TEST CONTENT).
           # Only matters once tn_arc2_enabled is on.
           tn_arc2_auto_accept: true
+          # Claude subscription first; the home-lab router's local model (atl-coder, qwen3.6
+          # 35B on wile/roadrunner) when the subscription is unavailable. The router is
+          # tailnet-only HTTPS on atlas (Tailscale Serve :4443); its key is
+          # vault_arc2_local_token, limited to atl-coder (no cost, nothing leaves home).
+          tn_arc2_mode: subscription_with_local_fallback
+          tn_arc2_local_url: https://atlas.tail8d54ec.ts.net:4443
+          tn_arc2_local_model: atl-coder
