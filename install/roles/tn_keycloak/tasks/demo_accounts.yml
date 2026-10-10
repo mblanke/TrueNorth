@@ -11,6 +11,9 @@
 # request bodies (no_log), never on a command line. 80-seed then points each demo roster
 # row at its account (app.link_demo_accounts).
 
+- name: Keycloak — a fresh admin token for the demo accounts
+  ansible.builtin.include_tasks: admin_token.yml
+
 - name: Keycloak — do the demo accounts exist?
   ansible.builtin.uri:
     url: "{{ tn_kc_realm_url }}/users?username={{ item.email | urlencode }}&exact=true"
@@ -95,6 +98,9 @@
   loop_control:
     label: "{{ item.email }}"
   no_log: true
+
+- name: Keycloak — a fresh admin token before the groups (setting passwords can outlast one)
+  ansible.builtin.include_tasks: admin_token.yml
 
 - name: Keycloak — the demo accounts' groups
   ansible.builtin.uri:
