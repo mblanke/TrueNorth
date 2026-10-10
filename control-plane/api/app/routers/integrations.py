@@ -17,6 +17,7 @@ from urllib.parse import parse_qs, urlsplit
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import Response
+from pydantic import BaseModel as _PydanticModel
 from sqlalchemy.orm import Session
 
 from .. import moodle_sso, net_guard
@@ -24,6 +25,7 @@ from ..auth import CurrentUser, get_current_user
 from ..course_publishing.models import CoursePublication
 from ..db import get_db
 from ..delete_guard import commit_delete, refuse_if
+from ..lti_identity.models import ExerciseLearner, LTIHandoff
 from ..models import (
     ExternalActivity,
     ExternalPlatform,
@@ -209,7 +211,13 @@ def deregister_platform(
         db.query(MoodleResultRecord.id).filter(MoodleResultRecord.platform_id == p.id),
         "Platform has {n} Student result record(s) pulled from it and is kept as part of their history",
     )
+    refuse_if(
+        db.query(ExerciseLearner.id).filter(ExerciseLearner.platform_id == p.id),
+        "Platform launched {n} exercise learner(s) and is kept as part of their history",
+    )
+    # Talking-to-the-platform state goes with it: the results cursor, unspent sign-in codes.
     db.query(MoodleResultCursor).filter(MoodleResultCursor.platform_id == p.id).delete(synchronize_session=False)
+    db.query(LTIHandoff).filter(LTIHandoff.platform_id == p.id).delete(synchronize_session=False)
     db.query(LTINonce).filter(LTINonce.platform_id == p.id).delete(synchronize_session=False)
     db.query(LTILaunch).filter(LTILaunch.platform_id == p.id).delete(synchronize_session=False)
     db.flush()
@@ -247,6 +255,37 @@ async def test_connectivity(
 
 PROBE_REFUSED = "The platform URL must be http(s) and point at an allowed address"
 PROBE_UNREACHABLE = "The platform could not be reached"
+
+
+class LtiToolConfigOut(_PydanticModel):
+    """What a platform admin types into the LMS's tool registration (all real routes)."""
+
+    tool_url: str
+    initiate_login_url: str
+    redirection_uris: list[str]
+    public_keyset_url: str
+    deep_linking_url: str
+    public_key_pem_url: str
+
+
+@router.get("/lti/tool-config", response_model=LtiToolConfigOut)
+def lti_tool_config(user: CurrentUser = Depends(require_permission(Permission.INTEGRATION_READ))):
+    """TrueNorth's LTI 1.3 tool URLs, from ``LTI_TOOL_BASE_URL`` (gap #5).
+
+    Deep linking has no route of its own: the LMS sends the deep-linking request to the
+    launch URL, which shows the content picker."""
+    from .. import lti13 as _lti
+
+    base = _lti.TOOL_BASE_URL.rstrip("/")
+    launch = f"{base}/lti/launch"
+    return LtiToolConfigOut(
+        tool_url=launch,
+        initiate_login_url=f"{base}/lti/login",
+        redirection_uris=[launch],
+        public_keyset_url=f"{base}/lti/jwks",
+        deep_linking_url=launch,
+        public_key_pem_url=f"{base}/lti/public-key.pem",
+    )
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -416,6 +455,7 @@ def record_external_activity(
 # LTI 1.3 Endpoints (Tool Provider — lets Moodle/OffSec launch TrueNorth)
 # ══════════════════════════════════════════════════════════════════════════
 
+import secrets
 import time as _time
 from html import escape as _html_escape
 
@@ -425,6 +465,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel as _BaseModel
 
 from .. import lti13
+from ..lti_identity import session as lti_session
 from ..models import Course, Quiz, UserRole
 
 WEB_BASE_URL = __import__("os").getenv("LTI_WEB_BASE_URL", "http://localhost:4200")
@@ -587,27 +628,116 @@ async def lti_launch(
     if message_type == "LtiDeepLinkingRequest":
         response = _deep_link_picker(db, platform, claims)
     else:
-        response = _resource_link_redirect(db, platform, user, claims)
+        response = _resource_link_redirect(db, platform, user, claims, bind_cookie=cookie_required)
     if cookie_required:  # this launch is spent; another tab's cookie is left alone
         response.delete_cookie(lti_state_cookie_name(state), path="/", secure=True, httponly=True, samesite="none")
     return response
 
 
-def _resource_link_redirect(db: Session, platform, user: User, claims: dict) -> RedirectResponse:
+def _resource_link_redirect(db: Session, platform, user: User, claims: dict, *, bind_cookie: bool) -> RedirectResponse:
+    """Send the browser to what was launched. A Student the launch created (no TrueNorth
+    sign-in of their own) goes through the session hand-off first (lti_identity.session);
+    anyone else lands on the page and signs in with Keycloak as usual."""
     kind, rid = lti13.parse_resource_target(claims)
     lti13.record_launch(db, platform, user.id, claims, kind, rid)
 
     if kind == "lab" and rid:
-        target = _launch_lab(db, user, rid)
-    elif kind == "quiz" and rid:
-        target = f"{WEB_BASE_URL}/training?quiz={rid}&lti=1"
-    elif kind == "exercise" and rid:
-        target = f"{WEB_BASE_URL}/exercises?exercise={rid}&lti=1"
-    elif kind == "course" and rid:
-        target = f"{WEB_BASE_URL}/training?course={rid}&lti=1"
-    else:
-        target = f"{WEB_BASE_URL}/training?lti=1"
-    return RedirectResponse(target, status_code=302)
+        return RedirectResponse(_launch_lab(db, user, rid), status_code=302)  # the lab page has its own token
+    path = _launch_path(db, platform, user, claims, kind, rid)
+    if not lti_session.needs_handoff(user):
+        return RedirectResponse(f"{WEB_BASE_URL}{path}", status_code=302)
+    bind = secrets.token_urlsafe(32) if bind_cookie else ""
+    code = lti_session.mint_handoff(db, user, platform, path, bind=bind)
+    response = RedirectResponse(f"{WEB_BASE_URL}/lti/session#code={code}", status_code=302)
+    if bind:
+        # SameSite=Lax: set by this cross-site navigation, sent only on the SPA's own
+        # same-site call to /lti/session, never on a request another site makes.
+        response.set_cookie(
+            lti_session.HANDOFF_COOKIE, bind, max_age=lti_session.HANDOFF_SECONDS, httponly=True, secure=True,
+            samesite="lax", path="/",
+        )
+    return response
+
+
+def _launch_path(db: Session, platform, user: User, claims: dict, kind: str, rid: str) -> str:
+    """The SPA route for a launched resource (gaps #3 and #4)."""
+    from urllib.parse import quote
+
+    if kind == "quiz" and rid:
+        return f"/quiz-player?quiz={quote(rid, safe='')}&lti=1"  # the route that reads ?quiz=
+    if kind == "exercise" and rid:
+        _link_exercise_learner(db, platform, user, claims, rid)
+        return f"/exercises/{quote(rid, safe='')}?lti=1"  # the Student's own exercise page
+    if kind == "course" and rid:
+        return f"/training?course={quote(rid, safe='')}&lti=1"
+    return "/training?lti=1"
+
+
+def _link_exercise_learner(db: Session, platform, user: User, claims: dict, rid: str) -> None:
+    """Record who launched this exercise run from the LMS (gap #4). The exercise must be the
+    platform's tenant's; a launch naming another tenant's exercise is refused."""
+    from ..models import Exercise
+
+    try:
+        exercise_id = uuid.UUID(rid)
+    except ValueError as exc:
+        raise HTTPException(400, "malformed exercise link") from exc
+    exercise = db.get(Exercise, exercise_id)  # tenant-safe: compared with the platform's tenant below
+    if exercise is None or exercise.deleted_at is not None or exercise.tenant_id != platform.tenant_id:
+        raise HTTPException(404, "Exercise not found")
+    exists_ = db.query(ExerciseLearner.id).filter_by(exercise_id=exercise.id, user_id=user.id).first()
+    if exists_ is None:
+        link = (claims.get(lti13.CLAIM_RESOURCE_LINK) or {}).get("id", "")
+        db.add(ExerciseLearner(exercise_id=exercise.id, user_id=user.id, platform_id=platform.id,
+                               resource_link_id=str(link)[:255]))
+        db.commit()
+
+
+class LtiSessionIn(_BaseModel):
+    code: str
+
+
+class LtiSessionUserOut(_BaseModel):
+    id: uuid.UUID
+    display_name: str
+    role: str
+
+
+class LtiSessionOut(_BaseModel):
+    access_token: str
+    token_type: str = "Bearer"
+    expires_in: int
+    target: str
+    user: LtiSessionUserOut
+
+
+@lti_router.post("/session", response_model=LtiSessionOut)
+def lti_session_exchange(body: LtiSessionIn, request: Request, db: Session = Depends(get_db)):
+    """Exchange a launch's hand-off code for a TrueNorth session (gap #1).
+
+    Only for a Student the LTI launch created; the code is single use, lives two minutes
+    and, with ``LTI_REQUIRE_STATE_COOKIE`` on, works only in the browser that launched.
+    401 otherwise. The session lasts ``LTI_SESSION_SECONDS`` (2 h) and is not renewable.
+
+    ```
+    POST /lti/session {"code": "<from /lti/session#code=…>"}
+    200 {"access_token": "<JWT>", "token_type": "Bearer", "expires_in": 7200,
+         "target": "/quiz-player?quiz=<id>&lti=1",
+         "user": {"id": "<uuid>", "display_name": "…", "role": "student"}}
+    ```
+    """
+    try:
+        token, lifetime, user, target = lti_session.exchange(
+            db, body.code, request.cookies.get(lti_session.HANDOFF_COOKIE, "")
+        )
+    except lti_session.HandoffError as exc:
+        raise HTTPException(401, str(exc)) from exc
+    return LtiSessionOut(
+        access_token=token,
+        expires_in=lifetime,
+        target=target,
+        user=LtiSessionUserOut(id=user.id, display_name=user.display_name, role=user.role.value),
+    )
 
 
 def _launch_lab(db: Session, user: User, rid: str) -> str:

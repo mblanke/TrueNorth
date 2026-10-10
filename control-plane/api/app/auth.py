@@ -62,6 +62,8 @@ class TokenPayload(BaseModel):
     # Authentication context, used for auth-zone MFA policy.
     amr: list[str] = []
     acr: str = ""
+    # "lti" for an LTI session hand-off (app/lti_identity/session.py); "" for an IdP token.
+    tn_session: str = ""
 
 
 class CurrentUser(BaseModel):
@@ -87,8 +89,14 @@ def _dev_identity() -> TokenPayload:
 
 async def get_token_identity(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
+    db: Session = Depends(get_db),
 ) -> TokenPayload:
-    """Validate the bearer token and return its claims. Never touches the DB.
+    """Validate the bearer token and return its claims.
+
+    An IdP token never touches the DB. The one exception is an LTI session hand-off
+    (app/lti_identity/session.py), signed with the tool key and re-checked against its
+    account on every request: it only ever names an active, LTI-created Student who has a
+    users row, so it can never register or act as staff.
 
     Raises 401 — and only 401 — for anything wrong with the token itself, so a
     client can treat 401 as "refresh or re-login" without ambiguity.
@@ -98,6 +106,14 @@ async def get_token_identity(
 
     if credentials is None:
         raise HTTPException(status_code=401, detail="Not authenticated")
+
+    from .lti_identity import session as lti_session
+
+    if lti_session.is_session_token(credentials.credentials):
+        try:
+            return TokenPayload(**lti_session.verify(db, credentials.credentials))
+        except lti_session.SessionTokenError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
 
     raw_payload = await get_auth_backend().validate_token(credentials.credentials)
     return TokenPayload(**raw_payload)

@@ -16,6 +16,7 @@ from app import (  # noqa: F401
     course_releases,
     detections,
     lab_sessions,
+    lti_identity,
     models,
     models_tickets,
     models_wiki,

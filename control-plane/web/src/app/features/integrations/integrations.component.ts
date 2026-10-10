@@ -11,7 +11,7 @@ import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatDialog } from '@angular/material/dialog';
-import { ApiService } from '@core/services/api.service';
+import { ApiService, LtiToolConfig } from '@core/services/api.service';
 import { NotificationService } from '@core/services/notification.service';
 import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog/confirm-dialog.component';
 import { EmptyStateComponent } from '../../shared/components/empty-state/empty-state.component';
@@ -90,7 +90,6 @@ interface ExternalPlatform {
                         <mat-option value="moodle">Moodle</mat-option>
                         <mat-option value="immersive_labs">Immersive Labs</mat-option>
                         <mat-option value="offsec">OffSec</mat-option>
-                        <mat-option value="lti_generic">Generic LTI</mat-option>
                         <mat-option value="custom">Custom</mat-option>
                       </mat-select>
                     </mat-form-field>
@@ -168,13 +167,20 @@ interface ExternalPlatform {
                 <mat-card-subtitle>Provide these values when registering TrueNorth as a tool in external platforms</mat-card-subtitle>
               </mat-card-header>
               <mat-card-content>
-                <table class="config-table">
-                  <tr><td>OIDC Login URL</td><td><code>/api/v1/lti/login</code></td></tr>
-                  <tr><td>Launch URL</td><td><code>/api/v1/lti/launch</code></td></tr>
-                  <tr><td>JWKS URL</td><td><code>/api/v1/lti/jwks</code></td></tr>
-                  <tr><td>Deep Linking URL</td><td><code>/api/v1/lti/deeplink</code></td></tr>
-                  <tr><td>Grade Callback</td><td><code>/api/v1/lti/grades</code></td></tr>
-                </table>
+                @if (toolConfig(); as c) {
+                  <table class="config-table">
+                    <tr><td>Tool URL</td><td><code>{{ c.tool_url }}</code></td></tr>
+                    <tr><td>Initiate login URL</td><td><code>{{ c.initiate_login_url }}</code></td></tr>
+                    <tr><td>Redirection URI(s)</td><td><code>{{ c.redirection_uris.join(' ') }}</code></td></tr>
+                    <tr><td>Public keyset URL</td><td><code>{{ c.public_keyset_url }}</code></td></tr>
+                    <tr><td>Deep Linking</td><td>Supported, at the tool URL: <code>{{ c.deep_linking_url }}</code></td></tr>
+                  </table>
+                  <p class="sync-info">Grades go back to the LMS through its own Assignment and Grade Services; the LMS registers no TrueNorth grade URL.</p>
+                } @else if (toolConfigError()) {
+                  <p class="sync-info">{{ toolConfigError() }}</p>
+                } @else {
+                  <div class="tn-skeleton tn-skeleton-card" aria-busy="true"></div>
+                }
               </mat-card-content>
             </mat-card>
           </div>
@@ -208,6 +214,9 @@ export class IntegrationsComponent implements OnInit {
 
   platforms = signal<ExternalPlatform[]>([]);
   loading = signal(true);
+  /** The real tool URLs, from the API (LTI_TOOL_BASE_URL), never hard-coded here. */
+  toolConfig = signal<LtiToolConfig | null>(null);
+  toolConfigError = signal('');
   showAdd = false;
   editingPlatformId: string | null = null;
   platformSaving = false;
@@ -215,12 +224,15 @@ export class IntegrationsComponent implements OnInit {
 
   ngOnInit() {
     this.loadPlatforms();
+    this.api.getLtiToolConfig().subscribe({
+      next: c => this.toolConfig.set(c),
+      error: () => this.toolConfigError.set('The tool configuration could not be loaded.'),
+    });
   }
 
   platformIcon(type: string): string {
     const icons: Record<string, string> = {
-      moodle: 'school', immersive_labs: 'security', offsec: 'hacking',
-      lti_generic: 'extension', custom: 'settings',
+      moodle: 'school', immersive_labs: 'security', offsec: 'hacking', custom: 'settings',
     };
     return icons[type] || 'hub';
   }

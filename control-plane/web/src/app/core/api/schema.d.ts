@@ -2724,6 +2724,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/integrations/lti/tool-config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Lti Tool Config
+         * @description TrueNorth's LTI 1.3 tool URLs, from ``LTI_TOOL_BASE_URL`` (gap #5).
+         *
+         *     Deep linking has no route of its own: the LMS sends the deep-linking request to the
+         *     launch URL, which shows the content picker.
+         */
+        get: operations["lti_tool_config_integrations_lti_tool_config_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/integrations/moodle/sso": {
         parameters: {
             query?: never;
@@ -3372,6 +3395,37 @@ export interface paths {
         get: operations["lti_public_key_pem_lti_public_key_pem_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/lti/session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Lti Session Exchange
+         * @description Exchange a launch's hand-off code for a TrueNorth session (gap #1).
+         *
+         *     Only for a Student the LTI launch created; the code is single use, lives two minutes
+         *     and, with ``LTI_REQUIRE_STATE_COOKIE`` on, works only in the browser that launched.
+         *     401 otherwise. The session lasts ``LTI_SESSION_SECONDS`` (2 h) and is not renewable.
+         *
+         *     ```
+         *     POST /lti/session {"code": "<from /lti/session#code=…>"}
+         *     200 {"access_token": "<JWT>", "token_type": "Bearer", "expires_in": 7200,
+         *          "target": "/quiz-player?quiz=<id>&lti=1",
+         *          "user": {"id": "<uuid>", "display_name": "…", "role": "student"}}
+         *     ```
+         */
+        post: operations["lti_session_exchange_lti_session_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -10396,6 +10450,56 @@ export interface components {
             is_published: boolean;
             /** Title */
             title: string;
+        };
+        /** LtiSessionIn */
+        LtiSessionIn: {
+            /** Code */
+            code: string;
+        };
+        /** LtiSessionOut */
+        LtiSessionOut: {
+            /** Access Token */
+            access_token: string;
+            /** Expires In */
+            expires_in: number;
+            /** Target */
+            target: string;
+            /**
+             * Token Type
+             * @default Bearer
+             */
+            token_type?: string;
+            user: components["schemas"]["LtiSessionUserOut"];
+        };
+        /** LtiSessionUserOut */
+        LtiSessionUserOut: {
+            /** Display Name */
+            display_name: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Role */
+            role: string;
+        };
+        /**
+         * LtiToolConfigOut
+         * @description What a platform admin types into the LMS's tool registration (all real routes).
+         */
+        LtiToolConfigOut: {
+            /** Deep Linking Url */
+            deep_linking_url: string;
+            /** Initiate Login Url */
+            initiate_login_url: string;
+            /** Public Key Pem Url */
+            public_key_pem_url: string;
+            /** Public Keyset Url */
+            public_keyset_url: string;
+            /** Redirection Uris */
+            redirection_uris: string[];
+            /** Tool Url */
+            tool_url: string;
         };
         /** MeslEventPatch */
         MeslEventPatch: {
@@ -19211,6 +19315,26 @@ export interface operations {
             };
         };
     };
+    lti_tool_config_integrations_lti_tool_config_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LtiToolConfigOut"];
+                };
+            };
+        };
+    };
     moodle_sso_ticket_integrations_moodle_sso_post: {
         parameters: {
             query?: never;
@@ -20362,6 +20486,39 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    lti_session_exchange_lti_session_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LtiSessionIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LtiSessionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
             };
         };
     };

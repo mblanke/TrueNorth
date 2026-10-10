@@ -38,9 +38,19 @@ describe('IntegrationsComponent', () => {
     },
   ];
 
-  async function render(list: unknown = of(PLATFORMS)): Promise<void> {
-    api = jasmine.createSpyObj('ApiService', ['get', 'post', 'patch', 'delete']);
+  const TOOL_CONFIG = {
+    tool_url: 'https://tn.example.test/api/lti/launch',
+    initiate_login_url: 'https://tn.example.test/api/lti/login',
+    redirection_uris: ['https://tn.example.test/api/lti/launch'],
+    public_keyset_url: 'https://tn.example.test/api/lti/jwks',
+    deep_linking_url: 'https://tn.example.test/api/lti/launch',
+    public_key_pem_url: 'https://tn.example.test/api/lti/public-key.pem',
+  };
+
+  async function render(list: unknown = of(PLATFORMS), toolConfig: unknown = of(TOOL_CONFIG)): Promise<void> {
+    api = jasmine.createSpyObj('ApiService', ['get', 'post', 'patch', 'delete', 'getLtiToolConfig']);
     api.get.and.returnValue(list as any);
+    api.getLtiToolConfig.and.returnValue(toolConfig as any);
     api.post.and.returnValue(of({}));
     api.patch.and.returnValue(of({}));
     api.delete.and.returnValue(of(undefined));
@@ -178,6 +188,47 @@ describe('IntegrationsComponent', () => {
     component.deletePlatform(PLATFORMS[1]);
     expect(dialogOpen).toHaveBeenCalled();
     expect(api.delete).not.toHaveBeenCalled();
+  });
+
+  describe('LTI 1.3 tool configuration (gap #5)', () => {
+    async function openConfigTab(): Promise<void> {
+      component.toolConfig();  // loaded on init
+      const tabs = el.querySelectorAll<HTMLElement>('[role="tab"]');
+      tabs[1].click();
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+    }
+
+    it('shows only the real routes, from the API', async () => {
+      await render();
+      await openConfigTab();
+      expect(api.getLtiToolConfig).toHaveBeenCalled();
+      const text = el.textContent ?? '';
+      expect(text).toContain('https://tn.example.test/api/lti/login');
+      expect(text).toContain('https://tn.example.test/api/lti/jwks');
+      expect(text).not.toContain('/api/v1/');
+      expect(text).not.toContain('/lti/deeplink');
+      expect(text).not.toContain('/lti/grades');
+    });
+
+    it('says so when the configuration cannot be loaded', async () => {
+      await render(of(PLATFORMS), throwError(() => ({ status: 403 })));
+      await openConfigTab();
+      expect(el.textContent).toContain('could not be loaded');
+    });
+
+    it('offers no platform type the API rejects (lti_generic)', async () => {
+      await render();
+      component.showAdd = true;
+      fixture.detectChanges();
+      const selects = el.querySelectorAll<HTMLElement>('.add-form mat-select .mat-mdc-select-trigger');
+      selects[selects.length - 1].click();  // Platform Type
+      fixture.detectChanges();
+      await fixture.whenStable();
+      const options = Array.from(document.querySelectorAll('mat-option')).map(o => o.textContent?.trim());
+      expect(options).toEqual(['Moodle', 'Immersive Labs', 'OffSec', 'Custom']);
+    });
   });
 
   it('reports when delete fails', async () => {

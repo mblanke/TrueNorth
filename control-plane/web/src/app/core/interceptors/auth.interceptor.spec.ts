@@ -4,6 +4,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import Keycloak from 'keycloak-js';
 import { environment } from '@env/environment';
 import { authInterceptorProvider } from './auth.interceptor';
+import { clearLtiSession, storeLtiSession } from '../auth/lti-session';
 
 /** Resolve pending microtasks (the interceptor awaits the adapter's token refresh). */
 const settle = () => new Promise<void>(resolve => setTimeout(resolve));
@@ -58,6 +59,27 @@ describe('AuthInterceptor', () => {
       const req = backend.expectOne('/api/ranges');
       expect(req.request.headers.has('Authorization')).toBeFalse();
       req.flush([]);
+    });
+
+    it('carries an LTI session for a Student launched from their LMS', async () => {
+      keycloak.authenticated = false;
+      storeLtiSession('lti-session-token', 3600);
+      http.get('/api/quizzes/q1').subscribe();
+      await settle();
+      const req = backend.expectOne('/api/quizzes/q1');
+      expect(req.request.headers.get('Authorization')).toBe('Bearer lti-session-token');
+      req.flush({});
+      clearLtiSession();
+    });
+
+    it('prefers a Keycloak sign-in over an LTI session', async () => {
+      storeLtiSession('lti-session-token', 3600);
+      http.get('/api/ranges').subscribe();
+      await settle();
+      const req = backend.expectOne('/api/ranges');
+      expect(req.request.headers.get('Authorization')).toBe('Bearer kc-access-token');
+      req.flush([]);
+      clearLtiSession();
     });
 
     it('leaves static assets alone', () => {
