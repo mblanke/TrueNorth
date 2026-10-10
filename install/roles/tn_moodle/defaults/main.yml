@@ -10,8 +10,9 @@ tn_moodle_site_url: "https://{{ tn_domain_fqdn }}:{{ tn_moodle_port }}"
 # signed in, through "Open in Moodle" on a course (local_truenorth sso.php). The Moodle
 # administrator keeps /login/index.php?loginredirect=0.
 tn_moodle_login_url: "https://{{ tn_domain_fqdn }}/learning/courses"
-# The TrueNorth API as browsers reach it (LTI launch and login URLs Moodle registers).
-tn_moodle_tool_url: "https://{{ tn_domain_fqdn }}/api"
+# The TrueNorth API as browsers reach it (LTI launch and login URLs Moodle registers):
+# the api's own LTI_TOOL_BASE_URL (group_vars tn_lti_tool_base_url), so they agree.
+tn_moodle_tool_url: "{{ tn_lti_tool_base_url }}"
 # No spaces: the image's CLI bootstrap expands it as one shell argument.
 tn_moodle_sitename: TrueNorth
 tn_moodle_admin_email: "moodle-admin@{{ tn_domain_fqdn }}"

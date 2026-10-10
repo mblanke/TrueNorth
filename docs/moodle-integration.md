@@ -135,8 +135,8 @@ both complete; each is cleared when its launch succeeds. Two caveats:
 
 ### Gaps to close before Phase 1 works end to end
 
-Status 2026-10-09: #1, #3, #4, #5 and #7 are closed (branch `claude/moodle-loop`); #2
-follows from #1; #6 is open (installer and compose, not this change).
+Status 2026-10-09: #1, #3, #4, #5, #6 and #7 are closed (branch `claude/moodle-loop`);
+#2 follows from #1.
 
 | # | Gap | Evidence | Fix |
 |---|---|---|---|
@@ -145,7 +145,7 @@ follows from #1; #6 is open (installer and compose, not this change).
 | 3 | **Launch redirects go to `/training?quiz=` and `/exercises?exercise=`.** `/training` is now a redirect that drops `quiz=`; only `/quiz-player?quiz=` reads it. | `lti_launch` target URLs; `app.routes.ts` | **Closed:** quizzes land on `/quiz-player?quiz=<id>&lti=1`. Course launches already worked: `/training?course=` lands on the course page (commit `c5f4a5b`). |
 | 4 | **Exercises aren't attributable to a trainee.** `Exercise` has no learner column, so exercise statements and grades name the instructor who clicked. | `models.py` `Exercise`; `routers/exercises.py` emit sites | **Closed for launches:** an exercise launch records `exercise_learners` (exercise, Student, platform, resource link; one per Student per run; another tenant's exercise is 404) and lands on the Student's page `/exercises/<id>`. Credit and grades still come from the Student's own detections (ADR 0005, `exercise_completion.participants`), not from launching. |
 | 5 | **The web UI advertises the wrong tool URLs**: `/api/v1/lti/*` (routes have no `/v1`) and a nonexistent `/lti/deeplink`. It also offers `platform_type` `lti_generic`, which the schema rejects. | `features/integrations/integrations.component.ts:91,170-174` | **Closed:** the UI shows `GET /integrations/lti/tool-config` (built from `LTI_TOOL_BASE_URL`: tool, login, redirection, keyset; deep linking at the tool URL). `lti_generic` is gone. |
-| 6 | **Prod sets no `LTI_TOOL_BASE_URL` or `LTI_WEB_BASE_URL`**, so both fall back to localhost. The dev defaults also disagree: `.env.example` and the Moodle harness's tool URLs use :8980, but `compose.dev.yml` exposes the API on :8081. | `infra/platform/docker/compose.prod.yml`; `.env.example` | Add both to prod compose and `env.production.j2`; pick one dev port. |
+| 6 | **Prod sets no `LTI_TOOL_BASE_URL` or `LTI_WEB_BASE_URL`**, so both fall back to localhost. The dev defaults also disagree: `.env.example` and the Moodle harness's tool URLs use :8980, but `compose.dev.yml` exposes the API on :8081. | `infra/platform/docker/compose.prod.yml`; `.env.example` | **Closed:** one source, group_vars `tn_lti_tool_base_url` (`https://<fqdn>/api`) and `tn_lti_web_base_url` (`https://<fqdn>`), rendered into `.env.production` and passed by `compose.prod.yml` to the api; the Moodle role registers its tool at the same base (`tn_moodle_tool_url`); the chart sets `<origin>/api` and `<origin>`. Dev uses :8081 throughout (`compose.windows-ports.yml` still maps :8980 for Windows hosts; set `LTI_TOOL_BASE_URL` to match there). Contract: `tests/contracts/test_lti_base_urls.py`. |
 | 7 | **The quiz export link sends no bearer token**, so it fails once auth is on. | `curriculum-forge.component.ts` (`<a href>` to `/quizzes/{id}/export`) | **Closed:** downloaded through `ApiService.exportQuiz` as a blob. |
 
 ### Staff deep linking (2026-10-09)

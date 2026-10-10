@@ -110,6 +110,15 @@ tn_root_ca_file: "{{ tn_files_dir }}/corp-root-ca.cer"
 # The service hostname the platform is reached on.
 tn_domain_fqdn: tn-mgmt01.corp.tnrange.lab
 
+# ── LTI 1.3 ───────────────────────────────────────────────────────────
+# The public URLs learning platforms are given: the API as browsers reach it (the edge
+# strips /api, so <tool base>/lti/launch is the API's /lti/launch) and the web app. One
+# source for the api's LTI_TOOL_BASE_URL / LTI_WEB_BASE_URL (tn_config) and the Moodle
+# node's tool registration (tn_moodle_tool_url), so GET /integrations/lti/tool-config,
+# Moodle's registered tool and the routes agree.
+tn_lti_tool_base_url: "https://{{ tn_domain_fqdn }}/api"
+tn_lti_web_base_url: "https://{{ tn_domain_fqdn }}"
+
 # ── Keycloak ──────────────────────────────────────────────────────────
 tn_keycloak_realm: truenorth
 tn_keycloak_base: "https://{{ tn_domain_fqdn }}/auth"
