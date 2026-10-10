@@ -573,6 +573,94 @@ jobs:
         if: always()
         run: TN_PUBLIC_KEY=unused $MOODLE_COMPOSE down -v
 
+  # cmi5 conformance (docs/cmi5.md, "Conformance"). ADL's CATAPULT Content Test Suite
+  # (compose.catapult.yml: CTS, the cmi5 player, MySQL and an LRS, built from CATAPULT's
+  # source at a pinned commit) imports the cmi5.xml TrueNorth serves for C105 and launches
+  # its AUs into Chromium; TrueNorth's AU runtime must come out conformant with no violated
+  # requirement, and a deliberately broken AU must be caught (tests/e2e/cmi5). TrueNorth's
+  # own LMS side is checked against a real lrsql (tests/integration/test_cmi5_lrs.py).
+  # CATAPULT's LMS test suite does not apply: it imports its own packages, and TrueNorth
+  # launches only its accepted releases.
+  cmi5:
+    runs-on: ubuntu-latest
+    needs: lint-python
+    timeout-minutes: 60
+    env:
+      PY: python
+      ITEST_WEB: "1"
+      ITEST_LRS: "1"
+      ITEST_OUT: ${{ github.workspace }}/build/cmi5
+      CATAPULT_COMPOSE: docker compose -p tn-catapult -f infra/platform/docker/compose.catapult.yml
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: ./.github/actions/dockerhub-mirror
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: pip install -r requirements-test.txt
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: tests/e2e/package-lock.json
+      - name: Start TrueNorth (itest stack with web, keycloak and the LRS)
+        run: bash scripts/itest.sh up
+      - name: Start CATAPULT (CTS, player, MySQL, LRS)
+        run: |
+          $CATAPULT_COMPOSE up -d --build --wait --wait-timeout 900
+          # The CTS answers 401 to an anonymous ping once it is up.
+          for _ in $(seq 1 120); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:13399/api/v1/ping || true)
+            if [[ "$code" == "401" || "$code" == "200" ]]; then exit 0; fi
+            sleep 5
+          done
+          echo "CATAPULT CTS did not answer on :13399" >&2
+          exit 1
+      - name: TrueNorth's LMS side against the real LRS
+        run: |
+          mkdir -p build/cmi5
+          rc=0
+          pytest tests/integration/test_cmi5_lrs.py -m integration -rs --tb=short \
+            --junitxml=build/cmi5/junit.xml || rc=$?
+          python scripts/junit_require_pass.py build/cmi5/junit.xml || rc=1
+          exit $rc
+        env:
+          API_BASE_URL: http://127.0.0.1:18081
+          INTEGRATION_REQUIRE_API: "1"
+          CMI5_REQUIRE_LRS: "1"
+      - name: Install Playwright (chromium)
+        working-directory: tests/e2e
+        run: |
+          npm ci --no-audit --no-fund
+          npx playwright install --with-deps chromium
+      - name: CATAPULT CTS against TrueNorth's AU runtime
+        working-directory: tests/e2e
+        run: npx playwright test -c playwright.cmi5.config.ts
+        env:
+          CI: "true"
+          BASE_URL: http://localhost:14200
+          API_BASE_URL: http://localhost:18081
+          CATAPULT_CTS_URL: http://localhost:13399
+      - name: Logs
+        if: failure()
+        run: |
+          bash scripts/itest.sh logs
+          $CATAPULT_COMPOSE logs --no-color --tail=500
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: cmi5-conformance
+          path: |
+            build/cmi5
+            tests/e2e/test-results
+            tests/e2e/playwright-report-cmi5
+          if-no-files-found: ignore
+      - name: Tear down
+        if: always()
+        run: |
+          $CATAPULT_COMPOSE down -v
+          bash scripts/itest.sh down
+
   # govmomi's vCenter simulator (compose.vcsim.yml) for provisioner tests marked `vcsim`
   # (tests/integration/test_vsphere_sim.py: the vsphere_api provisioner end to end). As in
   # every other lane, nothing collected (exit 5) or nothing passed is a failure.

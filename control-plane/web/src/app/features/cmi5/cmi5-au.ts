@@ -290,7 +290,10 @@ export class Cmi5Au {
       keepalive: !!opts.keepalive,
       credentials: 'omit',
     });
-    if (opts.allow404 && r.status === 404) return null;
+    if (opts.allow404 && r.status === 404) {
+      await r.text().catch(() => ''); // read it, so the browser does not report the request aborted
+      return null;
+    }
     if (!r.ok) throw new Cmi5Error(`${method} ${resource}: HTTP ${r.status} ${await r.text()}`);
     const text = await r.text();
     let out: unknown = null;

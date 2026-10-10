@@ -213,6 +213,47 @@ copies each plugin (at the commits above) into `/var/www/html/public/mod/<name>`
 | `CMI5_SESSION_HOURS` | `12` | A session token's lifetime. |
 | `CMI5_FETCH_HOURS` | `0.25` | How long after launch the fetch URL works. |
 
+## Conformance
+
+CI job **`cmi5`** (`.github/workflows/ci.yml`, blocking) runs two things against a fresh
+stack: the itest stack with web, Keycloak and the LRS (`ITEST_WEB=1 ITEST_LRS=1
+scripts/itest.sh up`), and ADL's CATAPULT (`infra/platform/docker/compose.catapult.yml`:
+the Content Test Suite, the cmi5 player as its LMS, MySQL and an lrsql, built from
+CATAPULT's source at commit `31a83baf0e4dad34233cc34d76818199fd60e83b`; upstream's newer
+`806c0baa` does not build, its player lockfile no longer matching its manifest).
+
+1. **The AU runtime, judged by CATAPULT's CTS** (`tests/e2e/cmi5/catapult-cts.spec.ts`,
+   `playwright.cmi5.config.ts`). The CTS imports the `cmi5.xml` TrueNorth serves for C105 and
+   launches AUs into Chromium; the SPA's runtime plays them for real (pages, quiz, Exit) while
+   the CTS checks every request against the cmi5 requirements. It must report: AU 0 (passed)
+   **conformant**, AU 1 (failed) attempted with nothing violated, AU 2 in Browse mode nothing
+   violated, and no violated requirement in any session. A negative control sends a
+   cmi5-defined statement before `initialized` through the same CTS and requires it to be
+   caught (`9.3.0.0-4`), so a green run cannot be a vacuous one.
+2. **TrueNorth's LMS side, against a real lrsql** (`tests/integration/test_cmi5_lrs.py`):
+   the statements are read back from the LRS with its own credential: `LMS.LaunchData`;
+   `launched` first, with the cmi5 category and the launchmode, launchurl, moveon,
+   masteryscore and launchparameters extensions; a once-only fetch; `satisfied` for the block
+   with a runtime id, `…/activitytype/block` and the publisher id in grouping; a refused
+   statement absent from the LRS; `abandoned` on relaunch; and the legacy re-issue round trip
+   (idempotent copies, voiding).
+
+CATAPULT's **LMS** test suite (LTS) does not apply as it stands: it imports its own test
+packages (ZIPs, 1000-AU structures, invalid packages to reject) into the LMS under test, and
+TrueNorth launches only its own releases. The LMS-side requirements those packages exercise
+for a launched AU are the ones in step 2 and in `tests/api/test_cmi5_lms.py`, which asserts
+each refusal by requirement id.
+
+Locally (Docker; on Apple silicon the amd64 images run emulated):
+
+```bash
+ITEST_WEB=1 ITEST_LRS=1 bash scripts/itest.sh up
+docker compose -p tn-catapult -f infra/platform/docker/compose.catapult.yml up -d --build --wait
+API_BASE_URL=http://127.0.0.1:18081 CMI5_REQUIRE_LRS=1 .venv/bin/python -m pytest tests/integration/test_cmi5_lrs.py -m integration
+cd tests/e2e && npm ci && npx playwright test -c playwright.cmi5.config.ts
+docker compose -p tn-catapult -f infra/platform/docker/compose.catapult.yml down -v; bash scripts/itest.sh down
+```
+
 ## Limits (2026-10-09)
 
 - TrueNorth launches only its own accepted releases; it does not import arbitrary cmi5

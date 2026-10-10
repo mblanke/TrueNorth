@@ -12,7 +12,8 @@
 # (ITEST_PROJECT, default truenorth-itest) and on its own host ports, so a developer's dev
 # stack on 8081 is neither touched nor tested by mistake. `down` removes only this
 # project's volumes. ITEST_WEB=1 also starts keycloak + web (http://localhost:14200) for
-# the Playwright lane. ITEST_KEEP=1 leaves the stack up after `all`.
+# the Playwright lane. ITEST_LRS=1 also starts the xAPI LRS (lrsql, http://127.0.0.1:18001)
+# for the cmi5 lane. ITEST_KEEP=1 leaves the stack up after `all`.
 #
 # Environment: PY (python with requirements-test.txt; default .venv/bin/python),
 # ITEST_OUT (report directory; default build/itest).
@@ -57,6 +58,12 @@ up() {
   "${COMPOSE[@]}" run --rm --no-deps \
     -e DATABASE_URL=postgresql+psycopg://forge:forge@postgres:5432/forge \
     api alembic upgrade head
+  if [[ "${ITEST_LRS:-0}" == "1" ]]; then
+    # lrsql has no probe tool in its image; readiness is its own /health, from the host.
+    say "lrs"
+    "${COMPOSE[@]}" up -d lrs
+    wait_http "http://127.0.0.1:18001/health" 60
+  fi
   say "app: ${APP[*]}"
   "${COMPOSE[@]}" up -d --build --wait --wait-timeout 300 "${APP[@]}"
   if [[ "${ITEST_WEB:-0}" == "1" ]]; then

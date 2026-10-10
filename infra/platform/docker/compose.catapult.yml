@@ -1,0 +1,104 @@
+# ADL CATAPULT, the cmi5 conformance suite, for the CI `cmi5` job (docs/cmi5.md,
+# "Conformance"): the Content Test Suite (CTS) and the cmi5 player it drives as the LMS,
+# their MySQL, and an LRS. Built from CATAPULT's source at a pinned commit (Apache-2.0):
+# 31a83baf, the last before upstream's 806c0baa ("Upgraded tar"), whose player package.json
+# no longer matches its package-lock.json, so its `npm ci` refuses to build.
+# Throwaway: its own project, loopback ports only, no volumes.
+#
+#   docker compose -p tn-catapult -f infra/platform/docker/compose.catapult.yml up -d --build --wait
+#   (then tests/e2e/cmi5/catapult-cts.spec.ts, against the itest stack's web on :14200)
+#
+# The AU under test is TrueNorth's SPA on http://localhost:14200; the CTS answers on
+# http://localhost:13399 through `cts-cors`. The CTS (and the player behind it) assume
+# content on their own origin and send no CORS headers, so an AU on another origin cannot
+# read its fetch URL or LRS replies; the shim adds them for that one origin and answers
+# preflights. It changes no request or response body, so nothing the CTS judges is touched.
+name: tn-catapult
+
+services:
+  rdbms:
+    # CATAPULT's own pin (cts/docker-compose.yml), by digest.
+    image: mysql:8.0.17@sha256:6d95fa56e008425121e24d2c01b76ebbf51ca1df0bafb1edbe1a46937f4a149d
+    platform: linux/amd64
+    environment:
+      MYSQL_ROOT_PASSWORD: catapult-ci-root
+    command:
+      - mysqld
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --default-authentication-plugin=mysql_native_password
+    volumes:
+      - ./catapult/mysql-init.sql:/docker-entrypoint-initdb.d/10-catapult.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -pcatapult-ci-root --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+
+  lrs:
+    # The player's LRS: the same pinned lrsql as TrueNorth's, on SQLite (nothing to keep).
+    image: yetanalytics/lrsql:v0.9.9@sha256:d0054b96ebbb41b10b371e815e326918b70f0d1788e8d24afc60af465b8f41cd
+    platform: linux/amd64
+    command: /lrsql/bin/run_sqlite.sh
+    environment:
+      LRSQL_API_KEY_DEFAULT: catapult-lrs-key
+      LRSQL_API_SECRET_DEFAULT: catapult-lrs-secret
+      LRSQL_ADMIN_USER_DEFAULT: lrsadmin
+      LRSQL_ADMIN_PASS_DEFAULT: catapult-ci-admin
+      LRSQL_SUPPORTED_VERSIONS: "1.0.3,2.0.0"
+
+  player:
+    build:
+      context: https://github.com/adlnet/CATAPULT.git#31a83baf0e4dad34233cc34d76818199fd60e83b:player
+    depends_on:
+      rdbms:
+        condition: service_healthy
+      lrs:
+        condition: service_started
+    environment:
+      DB_HOST: rdbms
+      DB_NAME: catapult_player
+      DB_USERNAME: catapult
+      DB_PASSWORD: quartz
+      RUN_MIGRATIONS: "1"
+      CONTENT_URL: http://localhost:13398/content
+      LRS_ENDPOINT: http://lrs:8080/xapi/
+      LRS_USERNAME: catapult-lrs-key
+      LRS_PASSWORD: catapult-lrs-secret
+      LRS_XAPI_VERSION: "1.0.3"
+      TOKEN_SECRET: catapult-ci-token-secret
+      API_KEY: cts
+      API_SECRET: catapult-ci-player-secret
+
+  cts:
+    build:
+      context: https://github.com/adlnet/CATAPULT.git#31a83baf0e4dad34233cc34d76818199fd60e83b:cts
+    depends_on:
+      rdbms:
+        condition: service_healthy
+      player:
+        condition: service_started
+    environment:
+      DB_HOST: rdbms
+      DB_NAME: catapult_cts
+      DB_USERNAME: catapult
+      DB_PASSWORD: quartz
+      RUN_MIGRATIONS: "1"
+      PLAYER_BASE_URL: http://player:3398
+      PLAYER_KEY: cts
+      PLAYER_SECRET: catapult-ci-player-secret
+      LRS_ENDPOINT: http://lrs:8080/xapi/
+      LRS_USERNAME: catapult-lrs-key
+      LRS_PASSWORD: catapult-lrs-secret
+      LRS_XAPI_VERSION: "1.0.3"
+      CTS_SESSION_COOKIE_PASSWORD: catapult-ci-cookie-password-0123456789
+
+  cts-cors:
+    image: nginx:1.30-alpine@sha256:0985e772fb9f729e6fa0980da05fca5d9c468e870eed43071545afa9d2e27d94
+    depends_on:
+      cts:
+        condition: service_started
+    volumes:
+      - ./catapult/cts-cors.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - "127.0.0.1:13399:8080"

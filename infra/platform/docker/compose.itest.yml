@@ -77,6 +77,13 @@ services:
       retries: 30
       start_period: 5s
 
+  # The xAPI LRS (lrsql), started only with ITEST_LRS=1 (the cmi5 lane): the API's cmi5
+  # launches write to it, and tests/integration/test_cmi5_lrs.py reads it back on 18001
+  # (compose.dev.yml's 8001 would collide with a developer's dev stack).
+  lrs:
+    ports: !override
+      - "127.0.0.1:18001:8080"
+
   # Only the e2e lane starts these two (scripts/itest.sh with ITEST_WEB=1).
   keycloak:
     ports: !override
