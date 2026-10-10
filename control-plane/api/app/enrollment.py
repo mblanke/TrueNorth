@@ -90,10 +90,14 @@ def complete_enrollment(db: Session, enrollment: Enrollment) -> Enrollment:
     from datetime import UTC, datetime
 
     progress_rows = db.query(ModuleProgress).filter(ModuleProgress.enrollment_id == enrollment.id).all()
-    total_score = sum(p.score or 0 for p in progress_rows)
-    max_score = sum(p.max_score or 0 for p in progress_rows) or 1
-    pct = (total_score / max_score) * 100
-    grade = next((letter for floor, letter in ((90, "A"), (80, "B"), (70, "C"), (60, "D")) if pct >= floor), "F")
+    # A module with max_score 0 was completed with nothing to grade: it counts toward
+    # neither total. A course with nothing graded at all has no letter grade.
+    total_score = sum(p.score or 0 for p in progress_rows if p.max_score)
+    max_score = sum(p.max_score or 0 for p in progress_rows)
+    grade = None
+    if max_score:
+        pct = (total_score / max_score) * 100
+        grade = next((letter for floor, letter in ((90, "A"), (80, "B"), (70, "C"), (60, "D")) if pct >= floor), "F")
     enrollment.status = EnrollmentStatus.completed
     enrollment.completed_at = datetime.now(UTC)
     enrollment.final_score = total_score

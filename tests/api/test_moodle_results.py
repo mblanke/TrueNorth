@@ -170,11 +170,18 @@ class TestRecording:
         assert course.enrollment.status == EnrollmentStatus.completed
         assert course.enrollment.final_grade == "A" and course.enrollment.completed_at is not None
 
-    def test_a_moodle_course_completion_completes_the_enrolment(self, course, db_session):
+    def test_moodle_course_completions_are_not_taken(self, course, db_session):
+        """Moodle's cron writes timecompleted earlier than the row, which a time cursor
+        steps over; TrueNorth completes an enrolment from its modules instead."""
         fake.record_result(course.platform, kind="course_completion", user=str(course.student.id), course=str(course.id))
-        assert _pull(course).json()["applied"] == 1
+        assert _pull(course).json()["skipped"] == {"unknown_kind": 1}
         db_session.refresh(course.enrollment)
-        assert course.enrollment.status == EnrollmentStatus.completed
+        assert course.enrollment.status == EnrollmentStatus.enrolled
+
+    def _complete_without_grade(self, course, module="mod_001"):
+        _view(course, module)
+        fake.record_result(course.platform, kind="completion", user=str(course.student.id), course=str(course.id),
+                           activity=course.first("quiz", module), modname="quiz", state=2)
 
     def test_pages_alone_complete_a_module_once_every_activity_is_complete(self, course, db_session):
         _view(course)
@@ -185,6 +192,53 @@ class TestRecording:
         _pull(course)
         assert _progress(db_session, course).status == ModuleProgressStatus.completed
 
+    def test_a_module_completed_without_a_grade_is_not_scored_and_not_a_fail(self, course, db_session):
+        from app.qsp_progress import COMPLETED, _resolve_state
+
+        self._complete_without_grade(course)
+        _pull(course)
+        progress = _progress(db_session, course)
+        assert progress.status == ModuleProgressStatus.completed
+        assert (progress.score, progress.max_score) == (0, 0)  # not scored, rather than 0/100
+        assert _resolve_state(progress, course.enrollment, _module(db_session, course)) == COMPLETED
+        _grade(course, grade=90)  # a grade arriving later scores it
+        _pull(course)
+        progress = _progress(db_session, course)
+        assert (progress.score, progress.max_score) == (90, 100)
+
+    def test_ungraded_modules_do_not_drag_the_course_grade(self, course, db_session):
+        _grade(course, module="mod_001", grade=95)
+        for ordinal in range(2, 7):
+            self._complete_without_grade(course, f"mod_{ordinal:03d}")
+        _pull(course)
+        db_session.refresh(course.enrollment)
+        assert course.enrollment.status == EnrollmentStatus.completed
+        assert course.enrollment.final_grade == "A"  # 95/100, the readings neither help nor hurt
+        assert (course.enrollment.final_score, course.enrollment.max_score) == (95, 100)
+
+    def test_a_course_with_nothing_graded_completes_without_a_letter_grade(self, course, db_session):
+        for ordinal in range(1, 7):
+            self._complete_without_grade(course, f"mod_{ordinal:03d}")
+        _pull(course)
+        db_session.refresh(course.enrollment)
+        assert course.enrollment.status == EnrollmentStatus.completed and course.enrollment.final_grade is None
+
+    def test_a_mirrored_attempt_does_not_use_up_truenorth_attempts(self, course, db_session):
+        from _shared import act_as
+        from app.auth import CurrentUser
+
+        _grade(course)
+        _pull(course)
+        quiz = db_session.query(Quiz).filter_by(module_id=_module(db_session, course).id).first()
+        quiz.max_attempts, quiz.is_published = 1, True
+        db_session.commit()
+        s = course.student
+        act_as(CurrentUser(id=str(s.id), email=s.email, display_name="S", role=UserRole.student,
+                           tenant_id=str(s.tenant_id), keycloak_id=s.keycloak_id))
+        first = course.client.post(f"/quizzes/{quiz.id}/attempts")
+        assert first.status_code in (200, 201), first.text  # the Moodle attempt did not count
+        assert course.client.post(f"/quizzes/{quiz.id}/attempts").status_code == 409  # this one did
+
     def test_pages_are_paged_and_the_cursor_persists_between_pages(self, course, db_session, monkeypatch):
         monkeypatch.setattr(service, "PAGE_SIZE", 1)
         _view(course)
@@ -193,6 +247,63 @@ class TestRecording:
         assert (body["pages"], body["rows"], body["cursor"], body["applied"]) == (2, 2, "2", 2)
         status = course.client.get(f"/integrations/platforms/{course.platform.id}/moodle-results").json()
         assert status["rows_seen"] == 2 and status["rows_applied"] == 2
+
+
+class TestTwoCourses:
+    """Release module ids are mod_NNN in every course, so activity idnumbers repeat across
+    courses: every fact is keyed by its course too (review blocker, 2026-10-09)."""
+
+    @pytest.fixture
+    def two(self, course, tmp_path_factory, db_session):
+        rid = accepted(course.client, build(tmp_path_factory.mktemp("b"), catalogue_code="C101", slug="arc2-b"))
+        assert publish(course.client, rid, course.platform).json()["state"] == "published"
+        other = db_session.get(CourseRelease, uuid.UUID(rid)).course_id
+        assert other != course.id
+        acts_b = live(course.platform, db_session, rid)["activities"]
+        assert set(acts_b) & set(course.acts)  # the collision this guards against is real
+        enrollment_b = ensure_enrollment(db_session, user_id=course.student.id, course_id=other, tenant_id=DEV_TENANT)
+        db_session.commit()
+        return other, enrollment_b
+
+    def _progress_in(self, db, enrollment, course_id, ordinal=1):
+        module = db.query(CourseModule).filter_by(course_id=course_id, ordinal=ordinal).one()
+        return db.query(ModuleProgress).filter_by(enrollment_id=enrollment.id, module_id=module.id).one()
+
+    def test_a_page_viewed_in_one_course_completes_nothing_in_the_other(self, course, two, db_session):
+        other, enrollment_b = two
+        fake.record_result(course.platform, kind="completion", user=str(course.student.id), course=str(course.id),
+                           activity=course.first("page"), modname="page", state=1)
+        fake.record_result(course.platform, kind="completion", user=str(course.student.id), course=str(course.id),
+                           activity=course.first("quiz"), modname="quiz", state=2)
+        assert _pull(course).json()["applied"] == 2
+        assert _progress(db_session, course).status == ModuleProgressStatus.completed
+        assert self._progress_in(db_session, enrollment_b, other).status == ModuleProgressStatus.not_started
+        # The same activity idnumber in course B is its own fact, applied, not "unchanged".
+        fake.record_result(course.platform, kind="completion", user=str(course.student.id), course=str(other),
+                           activity=course.first("page"), modname="page", state=1)
+        body = _pull(course).json()
+        assert (body["applied"], body["unchanged"]) == (1, 0)
+        assert self._progress_in(db_session, enrollment_b, other).status == ModuleProgressStatus.in_progress
+
+    def test_the_same_quiz_idnumber_in_two_courses_keeps_two_grades(self, course, two, db_session):
+        other, enrollment_b = two
+        _grade(course, grade=100)
+        _grade(course, grade=40, course=other)
+        body = _pull(course).json()
+        assert (body["applied"], body["unchanged"]) == (2, 0)
+        assert _progress(db_session, course).score == 100
+        assert self._progress_in(db_session, enrollment_b, other).score == 40
+        assert db_session.query(QuizAttempt).filter_by(user_id=course.student.id).count() == 2
+
+    def test_completing_one_course_does_not_complete_the_other(self, course, two, db_session):
+        other, enrollment_b = two
+        for ordinal in range(1, 7):
+            _grade(course, module=f"mod_{ordinal:03d}")
+        _pull(course)
+        db_session.refresh(course.enrollment)
+        db_session.refresh(enrollment_b)
+        assert course.enrollment.status == EnrollmentStatus.completed
+        assert enrollment_b.status == EnrollmentStatus.enrolled
 
 
 class TestOnlyThePlatformsOwnBusiness:

@@ -159,6 +159,25 @@ class TestConfirmation:
         db_session.commit()
         assert _confirm(client, staff, code, bind).status_code == 410
 
+    def test_without_a_browser_binding_no_staff_link_is_offered(self, launch, platform, staff, db_session,
+                                                                 monkeypatch):
+        """LTI_REQUIRE_STATE_COOKIE=false (iframe deployments): an unbound code could be
+        phished (sent to the staff member to confirm), so staff linking is off there."""
+        monkeypatch.setenv("LTI_REQUIRE_STATE_COOKIE", "false")
+        assert launch(platform, email=staff.email).status_code == 403
+        assert db_session.query(LTILinkRequest).count() == 0
+
+    def test_an_unbound_request_can_never_be_confirmed(self, client, platform, staff, db_session):
+        db_session.add(LTILinkRequest(code_hash=links._hash("unbound-code"), bind_hash="", platform_id=platform.id,
+                                      lti_sub="m-1", email_hash=links.email_hash(staff.email),
+                                      expires_at=datetime.now(UTC) + timedelta(minutes=5)))
+        db_session.commit()
+        assert _confirm(client, staff, "unbound-code", "").status_code == 403
+        assert _confirm(client, staff, "unbound-code", None).status_code == 403
+        assert db_session.query(LTIUserLink).count() == 0
+        with pytest.raises(ValueError):
+            links.request_link(db_session, platform, {"sub": "x", "email": staff.email}, bind="")
+
     def test_an_unknown_code_is_404(self, client, staff):
         assert _confirm(client, staff, "made-up", "x").status_code == 404
 

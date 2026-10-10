@@ -25,6 +25,7 @@ from app import auth, lti13
 from app.lti_identity import session as lti_session
 from app.lti_identity.models import ExerciseLearner, LTIHandoff
 from app.models import ExternalPlatform, IntegrationAuthType, User, UserRole
+from app.routers import integrations
 from app.routers.integrations import lti_state_cookie_name
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
@@ -133,6 +134,32 @@ class TestHandoff:
         resp = launch()
         assert not any(c.startswith(lti_session.HANDOFF_COOKIE) for c in resp.headers.get_list("set-cookie"))
         assert _exchange(client, _code(resp), None).status_code == 200
+
+    def test_an_lms_account_asserting_another_launched_students_email_gets_no_session(
+        self, client, launch, db_session
+    ):
+        """Review finding (2026-10-09): the email match found the other account, and the
+        hand-off then gave the asserting LMS account a 2 h session as that Student."""
+        first = launch(sub="lms-7", email="learner@lms.example.test")
+        assert "/lti/session#code=" in first.headers["location"]  # the account's own LMS account
+        before = db_session.query(LTIHandoff).count()
+        resp = launch(sub="someone-else", email="learner@lms.example.test")
+        assert resp.status_code == 302
+        assert "/lti/session" not in resp.headers["location"]
+        assert db_session.query(LTIHandoff).count() == before
+
+    def test_the_same_subject_from_another_platform_gets_no_session(self, client, launch, db_session, platform):
+        launch(sub="lms-7", email="learner2@lms.example.test")
+        other = ExternalPlatform(id=uuid.uuid4(), name="Moodle 2", slug=f"m2-{uuid.uuid4().hex[:6]}",
+                                 platform_type="moodle", base_url="https://m2.example.test",
+                                 auth_type=IntegrationAuthType.lti13, tenant_id=platform.tenant_id,
+                                 lti_issuer="https://m2.example.test", lti_client_id="c2", lti_deployment_id="d2")
+        db_session.add(other)
+        db_session.commit()
+        user = db_session.query(User).filter(User.keycloak_id == f"lti:{platform.id}:lms-7").one()
+        claims = {"sub": "lms-7", "email": user.email}
+        response = integrations._resource_link_redirect(db_session, other, user, claims, bind_cookie=True)
+        assert "/lti/session" not in response.headers["location"]
 
     def test_a_student_with_a_truenorth_sign_in_is_not_handed_a_session(self, client, launch, db_session, platform):
         """A Student linked by email signs in with Keycloak (so does linked staff, see

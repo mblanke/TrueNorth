@@ -14,19 +14,29 @@ use moodle_exception;
  * What students did in TrueNorth's courses, for TrueNorth to record (op `pull_results`).
  *
  * TrueNorth asks with a signed sync ticket (see {@see ticket}); this answers with the
- * activity completions, quiz grades and course completions changed since TrueNorth's
- * cursor, signed with this site's LTI key, which TrueNorth already trusts for LTI
- * launches (it fetches the public half from /mod/lti/certs.php). The answer names the
- * ticket it answers (`req` = the ticket's jti), so an old answer cannot be replayed.
+ * activity completions and quiz grades changed since TrueNorth's cursor, signed with
+ * this site's LTI key, which TrueNorth already trusts for LTI launches (it fetches the
+ * public half from /mod/lti/certs.php). The answer names the ticket it answers
+ * (`req` = the ticket's jti), so an old answer cannot be replayed.
  *
  * Only TrueNorth's own data leaves: courses whose idnumber is a TrueNorth course UUID
- * (never a `tn-stage:` course), activities whose idnumber starts `tn:`, and users whose
- * idnumber is a TrueNorth user UUID (the accounts TrueNorth sign-in created, see
- * {@see sso}). A person is named only by that TrueNorth id: no name, email or username.
+ * (never a `tn-stage:` course), activities whose idnumber starts `tn:`, and the accounts
+ * TrueNorth sign-in created (see {@see sso}): idnumber a TrueNorth user UUID AND username
+ * `tn-<that UUID>`. The username is what ties the row to the person: a Student cannot
+ * change it (and the idnumber field is locked for them, db/install.php), so nobody can
+ * report work under another Student's TrueNorth id. A person is named only by that
+ * TrueNorth id: no name, email or username leaves.
+ *
+ * Course completions are not reported: TrueNorth gives its courses no completion
+ * criteria and completes an enrolment from its modules, and Moodle's completion cron
+ * writes `timecompleted` earlier than the time it writes the row, which a time cursor
+ * would step over.
  *
  * The cursor is the last row read, `<time>.<source>.<id>`, so paging is exact even when
- * many rows share one second. Rows newer than `settle` seconds are left for the next
- * pull, so a write still committing is not stepped over.
+ * many rows share one second. Both sources' times are the time of the write
+ * (completion_info::update_state and the quiz grade calculator set `timemodified` to
+ * time()). Rows newer than `settle` seconds are left for the next pull, so a write still
+ * committing is not stepped over.
  *
  * @package    local_truenorth
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
@@ -41,7 +51,6 @@ class results {
     /** Sources, in cursor order. */
     const COMPLETION = 1;
     const QUIZ_GRADE = 2;
-    const COURSE_COMPLETION = 3;
 
     /** A TrueNorth UUID (user or course idnumber). */
     const UUID = '/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/';
@@ -63,8 +72,7 @@ class results {
 
         $scanned = array_merge(
             self::completions($t, $source, $id, $upto, $limit + 1),
-            self::quiz_grades($t, $source, $id, $upto, $limit + 1),
-            self::course_completions($t, $source, $id, $upto, $limit + 1)
+            self::quiz_grades($t, $source, $id, $upto, $limit + 1)
         );
         usort($scanned, fn($a, $b) => [$a['t'], $a['source'], $a['id']] <=> [$b['t'], $b['source'], $b['id']]);
         $more = count($scanned) > $limit;
@@ -88,7 +96,7 @@ class results {
      * @return int[] [time, source, id]
      */
     private static function parse_cursor(string $cursor): array {
-        if (!preg_match('/^(\d{1,12})\.([1-3])\.(\d{1,18})$/', $cursor, $m)) {
+        if (!preg_match('/^(\d{1,12})\.([12])\.(\d{1,18})$/', $cursor, $m)) {
             return [0, 0, 0];
         }
         return [(int) $m[1], (int) $m[2], (int) $m[3]];
@@ -132,7 +140,7 @@ class results {
         global $DB;
         [$where, $params] = self::after('cmc.timemodified', 'cmc.id', self::COMPLETION, $t, $source, $id);
         $sql = "SELECT cmc.id, cmc.timemodified AS t, cmc.completionstate AS state, u.idnumber AS useridnumber,
-                       c.idnumber AS courseidnumber, cm.idnumber AS cmidnumber, m.name AS modname
+                       u.username, c.idnumber AS courseidnumber, cm.idnumber AS cmidnumber, m.name AS modname
                   FROM {course_modules_completion} cmc
                   JOIN {course_modules} cm ON cm.id = cmc.coursemoduleid
                   JOIN {modules} m ON m.id = cm.module
@@ -144,8 +152,8 @@ class results {
         $out = [];
         foreach ($DB->get_records_sql($sql, $params + ['upto' => $upto, 'tn' => 'tn:%'], 0, $limit) as $r) {
             $out[] = ['source' => self::COMPLETION, 'id' => (int) $r->id, 't' => (int) $r->t, 'kind' => 'completion',
-                'user' => $r->useridnumber, 'course' => $r->courseidnumber, 'activity' => $r->cmidnumber,
-                'modname' => $r->modname, 'state' => (int) $r->state];
+                'user' => $r->useridnumber, 'username' => $r->username, 'course' => $r->courseidnumber,
+                'activity' => $r->cmidnumber, 'modname' => $r->modname, 'state' => (int) $r->state];
         }
         return $out;
     }
@@ -159,7 +167,8 @@ class results {
         global $DB;
         [$where, $params] = self::after('qg.timemodified', 'qg.id', self::QUIZ_GRADE, $t, $source, $id);
         $sql = "SELECT qg.id, qg.timemodified AS t, qg.grade, q.grade AS grademax, gi.gradepass,
-                       u.idnumber AS useridnumber, c.idnumber AS courseidnumber, cm.idnumber AS cmidnumber,
+                       u.idnumber AS useridnumber, u.username, c.idnumber AS courseidnumber,
+                       cm.idnumber AS cmidnumber,
                        (SELECT COUNT(1) FROM {quiz_attempts} qa
                          WHERE qa.quiz = q.id AND qa.userid = qg.userid AND qa.state = 'finished' AND qa.preview = 0
                        ) AS attempts
@@ -177,31 +186,9 @@ class results {
         $out = [];
         foreach ($DB->get_records_sql($sql, $params + ['upto' => $upto, 'tn' => 'tn:%'], 0, $limit) as $r) {
             $out[] = ['source' => self::QUIZ_GRADE, 'id' => (int) $r->id, 't' => (int) $r->t, 'kind' => 'quiz_grade',
-                'user' => $r->useridnumber, 'course' => $r->courseidnumber, 'activity' => $r->cmidnumber,
-                'modname' => 'quiz', 'grade' => (float) $r->grade, 'grademax' => (float) $r->grademax,
+                'user' => $r->useridnumber, 'username' => $r->username, 'course' => $r->courseidnumber,
+                'activity' => $r->cmidnumber, 'modname' => 'quiz', 'grade' => (float) $r->grade, 'grademax' => (float) $r->grademax,
                 'gradepass' => (float) ($r->gradepass ?? 0), 'attempts' => (int) $r->attempts];
-        }
-        return $out;
-    }
-
-    /**
-     * Course completions (only where the course has completion criteria).
-     *
-     * @return array[]
-     */
-    private static function course_completions(int $t, int $source, int $id, int $upto, int $limit): array {
-        global $DB;
-        [$where, $params] = self::after('cc.timecompleted', 'cc.id', self::COURSE_COMPLETION, $t, $source, $id);
-        $sql = "SELECT cc.id, cc.timecompleted AS t, u.idnumber AS useridnumber, c.idnumber AS courseidnumber
-                  FROM {course_completions} cc
-                  JOIN {course} c ON c.id = cc.course
-                  JOIN {user} u ON u.id = cc.userid
-                 WHERE cc.timecompleted IS NOT NULL AND $where AND cc.timecompleted <= :upto AND u.deleted = 0
-              ORDER BY cc.timecompleted, cc.id";
-        $out = [];
-        foreach ($DB->get_records_sql($sql, $params + ['upto' => $upto], 0, $limit) as $r) {
-            $out[] = ['source' => self::COURSE_COMPLETION, 'id' => (int) $r->id, 't' => (int) $r->t,
-                'kind' => 'course_completion', 'user' => $r->useridnumber, 'course' => $r->courseidnumber];
         }
         return $out;
     }
@@ -212,13 +199,17 @@ class results {
      * @param array $r a scanned row
      * @return array|null
      */
-    private static function row(array $r): ?array {
-        if (!preg_match(self::UUID, (string) $r['user']) || !preg_match(self::UUID, (string) $r['course'])) {
+    public static function row(array $r): ?array {
+        $user = (string) $r['user'];
+        if (!preg_match(self::UUID, $user) || !preg_match(self::UUID, (string) $r['course'])) {
             return null;  // not a TrueNorth account, or a staging / non-TrueNorth course
+        }
+        if ((string) $r['username'] !== 'tn-' . $user) {
+            return null;  // an idnumber not set by TrueNorth sign-in for this account
         }
         $row = $r;
         $row['time'] = $r['t'];
-        unset($row['source'], $row['id'], $row['t']);
+        unset($row['source'], $row['id'], $row['t'], $row['username']);
         return $row;
     }
 

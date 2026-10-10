@@ -6,8 +6,9 @@ account), and staff whose LMS email is their TrueNorth email could not deep-link
 
 1. A deep-linking launch that would have been refused that way stores a link request:
    the platform, the LMS subject, a hash of the asserted email, single use, ten minutes,
-   bound (with ``LTI_REQUIRE_STATE_COOKIE`` on) to an HttpOnly cookie on the launching
-   browser. The LMS shows a page that opens TrueNorth at ``/lti/link#code=…``.
+   always bound to an HttpOnly cookie on the launching browser (with
+   ``LTI_REQUIRE_STATE_COOKIE=false`` no request is made at all: an unbound code could be
+   phished). The LMS shows a page that opens TrueNorth at ``/lti/link#code=…``.
 2. The staff member, signed in to TrueNorth with their own (Keycloak) sign-in in that
    browser, sees which LMS account and site it is and confirms. TrueNorth checks: the code
    is live and theirs (same browser), the platform is their tenant's and active, they are
@@ -64,14 +65,17 @@ def linked_user(db: Session, platform: ExternalPlatform, sub: str) -> User | Non
     return user
 
 
-def request_link(db: Session, platform: ExternalPlatform, claims: dict, *, bind: str = "") -> str:
-    """Store a link request for this launch; returns its code."""
+def request_link(db: Session, platform: ExternalPlatform, claims: dict, *, bind: str) -> str:
+    """Store a link request for this launch; returns its code. Always browser-bound: an
+    unbound code could be sent to a staff member to confirm (a phished privilege grant)."""
+    if not bind:
+        raise ValueError("a staff link request must be bound to the launching browser")
     code = secrets.token_urlsafe(32)
     name = str(claims.get("name") or " ".join(filter(None, (claims.get("given_name"), claims.get("family_name")))))
     db.add(
         LTILinkRequest(
             code_hash=_hash(code),
-            bind_hash=_hash(bind) if bind else "",
+            bind_hash=_hash(bind),
             platform_id=platform.id,
             lti_sub=str(claims.get("sub", ""))[:255],
             email_hash=email_hash(str(claims.get("email") or "")),
@@ -92,7 +96,7 @@ def _live_request(db: Session, code: str, bind: str) -> LTILinkRequest:
     expires = row.expires_at if row.expires_at.tzinfo else row.expires_at.replace(tzinfo=UTC)
     if expires <= now:
         raise LinkError(410, "This link request has expired; deep-link again from your course")
-    if row.bind_hash and (not bind or not secrets.compare_digest(row.bind_hash, _hash(bind))):
+    if not row.bind_hash or not bind or not secrets.compare_digest(row.bind_hash, _hash(bind)):
         raise LinkError(403, "Confirm the link in the browser you launched from")
     return row
 

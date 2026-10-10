@@ -15,7 +15,12 @@
 defined('MOODLE_INTERNAL') || die();
 
 $string['pluginname'] = 'TrueNorth integration';
-$string['privacy:metadata'] = 'Stores only one-time ticket identifiers, which hold no personal data. When TrueNorth asks, it sends TrueNorth the activity completions, quiz grades and course completions of accounts TrueNorth created, in TrueNorth courses, identified only by the TrueNorth user id.';
+$string['privacy:metadata'] = 'Stores only one-time ticket identifiers, which hold no personal data.';
+$string['privacy:metadata:truenorth'] = 'When TrueNorth asks, the activity completions and quiz grades of accounts TrueNorth created, in TrueNorth courses, are sent to TrueNorth, which records them on the person\'s learning record.';
+$string['privacy:metadata:truenorth:idnumber'] = 'The TrueNorth user id of the account (its ID number).';
+$string['privacy:metadata:truenorth:completionstate'] = 'Whether an activity is complete, passed or failed.';
+$string['privacy:metadata:truenorth:grade'] = 'The quiz grade, its maximum and pass mark, and the number of attempts.';
+$string['privacy:metadata:truenorth:timemodified'] = 'When the completion or grade changed.';
 $string['resultsnokey'] = 'This Moodle has no LTI site key to sign results with.';
 $string['ssocoursemissing'] = 'This course is not available in Moodle yet. Ask your instructor.';
 $string['ssodenied'] = 'TrueNorth sign-in was refused. Open the course again from the TrueNorth app.';

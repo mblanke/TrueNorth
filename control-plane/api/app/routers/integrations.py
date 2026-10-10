@@ -643,10 +643,12 @@ async def lti_launch(
     try:
         user = _jit_user(db, platform, claims)
     except StaffEmailRefusedError:
-        if message_type != "LtiDeepLinkingRequest":
+        # Without the browser binding a link code could be phished: sent to a staff member
+        # to confirm in their own session. So no staff link is offered then (still a 403).
+        if message_type != "LtiDeepLinkingRequest" or not cookie_required:
             raise
         # Staff deep linking: never bound by email; the staff member confirms it, signed in.
-        response = _link_request_page(db, platform, claims, bind_cookie=cookie_required)
+        response = _link_request_page(db, platform, claims)
         if cookie_required:
             response.delete_cookie(lti_state_cookie_name(state), path="/", secure=True, httponly=True, samesite="none")
         return response
@@ -670,7 +672,10 @@ def _resource_link_redirect(db: Session, platform, user: User, claims: dict, *, 
     if kind == "lab" and rid:
         return RedirectResponse(_launch_lab(db, user, rid), status_code=302)  # the lab page has its own token
     path = _launch_path(db, platform, user, claims, kind, rid)
-    if not lti_session.needs_handoff(user):
+    # Only the account this very LMS account created: one matched by an asserted email
+    # (another LMS account, or another site) must not get a session for it.
+    own = user.keycloak_id == f"lti:{platform.id}:{claims.get('sub', '')}"
+    if not own or not lti_session.needs_handoff(user):
         return RedirectResponse(f"{WEB_BASE_URL}{path}", status_code=302)
     bind = secrets.token_urlsafe(32) if bind_cookie else ""
     code = lti_session.mint_handoff(db, user, platform, path, bind=bind)
@@ -867,10 +872,11 @@ h1{{font-size:20px}}</style></head><body>
     return HTMLResponse(html)
 
 
-def _link_request_page(db: Session, platform, claims: dict, *, bind_cookie: bool) -> HTMLResponse:
+def _link_request_page(db: Session, platform, claims: dict) -> HTMLResponse:
     """A staff member's LMS account asked to deep-link: offer the one-time link, which
-    they confirm signed in to TrueNorth (lti_identity.links). Nothing is bound here."""
-    bind = secrets.token_urlsafe(32) if bind_cookie else ""
+    they confirm signed in to TrueNorth (lti_identity.links), in this browser only (the
+    request is always bound to the cookie set here). Nothing is bound here."""
+    bind = secrets.token_urlsafe(32)
     code = lti_links.request_link(db, platform, claims, bind=bind)
     url = f"{WEB_BASE_URL}/lti/link#code={code}"
     html = f"""<!doctype html><html><head><title>TrueNorth — link your account</title>
@@ -884,11 +890,10 @@ The link expires in ten minutes. Then choose <em>Select content</em> again.</p>
 <a class="button" href="{_html_escape(url)}" target="_blank" rel="noopener noreferrer">Open TrueNorth to confirm</a>
 </body></html>"""
     response = HTMLResponse(html, headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"})
-    if bind:
-        response.set_cookie(
-            lti_links.LINK_COOKIE, bind, max_age=lti_links.REQUEST_SECONDS, httponly=True, secure=True,
-            samesite="lax", path="/",
-        )
+    response.set_cookie(
+        lti_links.LINK_COOKIE, bind, max_age=lti_links.REQUEST_SECONDS, httponly=True, secure=True,
+        samesite="lax", path="/",
+    )
     return response
 
 

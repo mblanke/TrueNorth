@@ -61,10 +61,9 @@ class BaseMoodleBackend(ABC):
             {"kind": "completion", "user", "course", "activity", "modname", "state", "time"}
             {"kind": "quiz_grade", "user", "course", "activity", "grade", "grademax",
              "gradepass", "attempts", "time"}
-            {"kind": "course_completion", "user", "course", "time"}
 
         ``user`` is the TrueNorth user id (the Moodle account's idnumber, set by TrueNorth
-        sign-in), ``course`` the TrueNorth course id, ``activity`` the ``tn:`` idnumber;
+        sign-in, locked, and checked against its ``tn-<id>`` username), ``course`` the TrueNorth course id, ``activity`` the ``tn:`` idnumber;
         ``state`` is Moodle's completion state (0 incomplete, 1 complete, 2 passed, 3 failed).
         Rows are in change order; pulling again from an earlier cursor repeats rows, so the
         caller records them idempotently."""

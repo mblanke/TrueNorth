@@ -41,7 +41,8 @@ class MoodleResultCursor(Base):
 class MoodleResultRecord(Base):
     __tablename__ = "moodle_result_records"
     __table_args__ = (
-        UniqueConstraint("platform_id", "user_id", "ref", name="uq_moodle_result_record"),
+        # Activity idnumbers (tn:mod_NNN:...) repeat across courses: the course is part of the fact.
+        UniqueConstraint("platform_id", "user_id", "course_id", "ref", name="uq_moodle_result_record"),
         Index("ix_moodle_result_records_course", "platform_id", "course_id", "user_id"),
     )
 
@@ -49,7 +50,7 @@ class MoodleResultRecord(Base):
     platform_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("external_platforms.id"), nullable=False)
     user_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("users.id"), nullable=False)
     course_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("courses.id"), nullable=False)
-    # "completion:<activity idnumber>" | "quiz_grade:<activity idnumber>" | "course_completion"
+    # "completion:<activity idnumber>" | "quiz_grade:<activity idnumber>" (within course_id)
     ref: Mapped[str] = mapped_column(String(200), nullable=False)
     state: Mapped[int] = mapped_column(Integer, nullable=False, default=0)  # Moodle completion state
     grade: Mapped[float | None] = mapped_column(Float, nullable=True)

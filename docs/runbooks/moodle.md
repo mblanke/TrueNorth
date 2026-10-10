@@ -93,7 +93,10 @@ course is published to the tenant's Moodle.
 Completions and quiz grades a Student earns in Moodle are pulled into their TrueNorth
 record: module progress (score, completed), a quiz attempt mirroring Moodle's grade for
 the module's quiz, and the enrolment (in progress, then completed with its letter grade
-once every module is complete). The API pulls every active Moodle every 10 minutes
+once every module is complete). A module completed in Moodle with nothing graded (say,
+readings) is recorded as not scored (`max_score` 0): a pass that neither helps nor drags
+the course grade. Moodle course completions are not used. A mirrored attempt does not use
+up the quiz's TrueNorth `max_attempts`. The API pulls every active Moodle every 10 minutes
 (`MOODLE_RESULTS_PULL_SECONDS`, `0` turns it off) and an admin can pull now:
 
 ```http
@@ -110,7 +113,10 @@ answers with a JWT signed by the Moodle's **LTI site key**, which TrueNorth veri
 the platform's registered `lti_jwks_url`, issuer `lti_issuer`, the platform's tenant and
 the jti of the ticket it answers. An unsigned, re-signed or replayed answer is refused
 (502, kept in `last_error`) and nothing is recorded. Only TrueNorth's courses, `tn:`
-activities and TrueNorth-created accounts are reported, named by their TrueNorth id only.
+activities and TrueNorth-created accounts are reported, named by their TrueNorth id only;
+an account counts as TrueNorth-created only when its username is `tn-<that id>`, and the
+plugin locks the ID number field (`auth_manual` `field_lock_idnumber`) so a Student
+cannot change it. Every fact is recorded per course.
 TrueNorth then records a row only for a user of the platform's tenant, enrolled in
 TrueNorth on a course published to that Moodle; Moodle never creates or reopens an
 enrolment. Recording is idempotent (`reset: true` re-reads from the start safely).

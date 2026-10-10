@@ -6,17 +6,18 @@
 // either version 3 of the License, or (at your option) any later version.
 
 /**
- * TrueNorth integration: single sign-on and course sync from TrueNorth.
+ * Install steps for local_truenorth.
  *
  * @package    local_truenorth
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-defined('MOODLE_INTERNAL') || die();
-
-$plugin->component = 'local_truenorth';
-$plugin->version   = 2026100901;
-$plugin->requires  = 2025041400; // Moodle 5.0.
-$plugin->maturity  = MATURITY_ALPHA;
-$plugin->release   = '0.4.0';
-$plugin->dependencies = ['mod_lti' => ANY_VERSION]; // Its site key signs pull_results answers.
+/**
+ * Lock the idnumber of TrueNorth-created accounts (results are reported under it).
+ *
+ * @return bool
+ */
+function xmldb_local_truenorth_install() {
+    \local_truenorth\sso::lock_profile_fields();
+    return true;
+}

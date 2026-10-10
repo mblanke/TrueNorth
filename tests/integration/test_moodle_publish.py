@@ -276,6 +276,56 @@ def test_a_students_moodle_results_come_back_to_truenorth(world):
     assert world.db.query(QuizAttempt).filter(QuizAttempt.user_id == uid).count() == 1
 
 
+def moodle_php(php: str) -> str:
+    subprocess.run(["docker", "exec", "-i", CONTAINER, "sh", "-c", "cat > /tmp/tn_check.php"], input=php, text=True,
+                   check=True)
+    return subprocess.run(["docker", "exec", CONTAINER, "php", "/tmp/tn_check.php"], capture_output=True, text=True,
+                          check=True).stdout.strip()
+
+
+def test_results_page_exactly_and_name_only_truenorth_accounts(world):
+    """The plugin's keyset paging returns the same rows one at a time as in one page, and a
+    Moodle account that merely carries a TrueNorth id in its idnumber (not the account
+    sign-in created, username tn-<id>) is never reported under it. The idnumber field is
+    locked for the accounts sign-in creates."""
+    import time
+
+    from _release_kit import build
+    from app.models import User, UserRole
+
+    rel = release(world, build(world.tmp.mktemp("p"), title_suffix=" (paging)"))
+    assert publish(world, rel).state == "published"
+    uid = uuid.uuid4()
+    person = User(id=uid, keycloak_id=f"kc-{uid}", email=f"page-{uid.hex[:8]}@example.test",
+                  display_name="Paging Student", role=UserRole.student, tenant_id=world.tenant.id)
+    world.db.add(person)
+    world.db.commit()
+    sso_into_moodle(world, person, str(rel.course_id))  # the real account: no quiz taken
+    assert moodle_php(  # sign-in keeps the idnumber field locked for these accounts
+        "<?php define('CLI_SCRIPT', true); require('/var/www/html/config.php');"
+        "echo get_config('auth_manual', 'field_lock_idnumber');"
+    ) == "locked"
+    impostor = f"impostor{uuid.uuid4().hex[:6]}"
+    student(str(rel.course_id), impostor)  # passes a quiz ...
+    moodle_php(  # ... then claims the real Student's TrueNorth id
+        "<?php define('CLI_SCRIPT', true); require('/var/www/html/config.php');"
+        f"$DB->set_field('user', 'idnumber', '{uid}', ['username' => '{impostor}']);"
+    )
+    time.sleep(7)
+
+    whole = world.backend.pull_results(world.platform, "", 1000)
+    assert not whole["more"]
+    paged, cursor = [], ""
+    for _ in range(5000):
+        page = world.backend.pull_results(world.platform, cursor, 1)
+        paged += page["rows"]
+        cursor = page["cursor"]
+        if not page["more"]:
+            break
+    assert paged == whole["rows"] and cursor == whole["cursor"]
+    assert not [r for r in whole["rows"] if r["user"] == str(uid) and r["kind"] == "quiz_grade"]
+
+
 def test_a_ticket_for_another_tenant_is_refused(world):
     """Every tenant's Moodle trusts the same TrueNorth key: the tenant in the ticket is what
     stops one tenant's job being replayed into another tenant's Moodle."""

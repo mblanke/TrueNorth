@@ -55,7 +55,7 @@ def upgrade() -> None:
             sa.Column("quiz_attempt_id", GUID(), sa.ForeignKey("quiz_attempts.id"), nullable=True),
             sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
             sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
-            sa.UniqueConstraint("platform_id", "user_id", "ref", name="uq_moodle_result_record"),
+            sa.UniqueConstraint("platform_id", "user_id", "course_id", "ref", name="uq_moodle_result_record"),
         )
         op.create_index(
             "ix_moodle_result_records_course", "moodle_result_records", ["platform_id", "course_id", "user_id"]

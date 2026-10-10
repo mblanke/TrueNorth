@@ -31,7 +31,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import or_, update
+from sqlalchemy import or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -315,7 +315,7 @@ def _apply(ctx: _Context, row: dict[str, Any]) -> str:
     """Record one row: "applied", "unchanged", or the reason it was skipped."""
     db, platform = ctx.db, ctx.platform
     kind = row.get("kind")
-    if kind not in ("completion", "quiz_grade", "course_completion"):
+    if kind not in ("completion", "quiz_grade"):
         return "unknown_kind"
     user_id, course_id = _uuid(row.get("user")), _uuid(row.get("course"))
     if user_id is None or course_id is None:
@@ -336,7 +336,8 @@ def _apply(ctx: _Context, row: dict[str, Any]) -> str:
         return "withdrawn"
 
     activity = str(row.get("activity") or "")
-    ref = f"{kind}:{activity}" if kind != "course_completion" else kind
+    # Activity idnumbers (tn:mod_NNN:...) repeat in every course: a fact is per course.
+    ref = f"{kind}:{activity}"[:200]
     content = {k: row.get(k) for k in ("state", "grade", "grademax", "gradepass", "attempts")}
     fingerprint = hashlib.sha256(json.dumps(content, sort_keys=True, default=str).encode()).hexdigest()
     record = (
@@ -344,30 +345,23 @@ def _apply(ctx: _Context, row: dict[str, Any]) -> str:
         .filter(
             MoodleResultRecord.platform_id == platform.id,
             MoodleResultRecord.user_id == user_id,
-            MoodleResultRecord.ref == ref[:200],
+            MoodleResultRecord.course_id == course_id,
+            MoodleResultRecord.ref == ref,
         )
         .first()
     )
     if record is not None and record.fingerprint == fingerprint:
         return "unchanged"
 
-    module = None
-    if kind != "course_completion":
-        module = _module(db, info, course_id, activity)
-        if module is None:
-            return "unknown_activity"
+    module = _module(db, info, course_id, activity)
+    if module is None:
+        return "unknown_activity"
     if record is None:
-        record = MoodleResultRecord(platform_id=platform.id, user_id=user_id, course_id=course_id, ref=ref[:200])
+        record = MoodleResultRecord(platform_id=platform.id, user_id=user_id, course_id=course_id, ref=ref)
         db.add(record)
     record.fingerprint = fingerprint
     record.source_time = int(row.get("time") or 0)
     when = _when(row)
-
-    if kind == "course_completion":
-        if enrollment.status != EnrollmentStatus.completed:
-            complete_enrollment(db, enrollment)
-        db.flush()
-        return "applied"
 
     progress = _progress(db, enrollment, module)
     seen = progress.last_accessed_at
@@ -387,7 +381,11 @@ def _apply(ctx: _Context, row: dict[str, Any]) -> str:
     else:
         record.state = int(row.get("state") or 0)
         db.flush()
-        if _all_activities_complete(db, platform.id, user_id, info, activity):
+        if _all_activities_complete(db, platform.id, user_id, course_id, info, activity):
+            if not progress.score and not _graded(db, platform.id, user_id, course_id, activity):
+                # Completed with no grade (a reading module): not scored, rather than
+                # 0/100, which would read as a fail (qsp_progress) and drag the course grade.
+                progress.score, progress.max_score = 0, 0
             _complete(progress, when)
     if progress.status == ModuleProgressStatus.not_started:
         progress.status = ModuleProgressStatus.in_progress
@@ -437,9 +435,9 @@ def _complete(progress: ModuleProgress, when: datetime) -> None:
 
 
 def _all_activities_complete(
-    db: Session, platform_id: uuid.UUID, user_id: uuid.UUID, info: dict[str, Any], activity: str
+    db: Session, platform_id: uuid.UUID, user_id: uuid.UUID, course_id: uuid.UUID, info: dict[str, Any], activity: str
 ) -> bool:
-    """Every TrueNorth activity Moodle holds for this module is complete for this person."""
+    """Every TrueNorth activity Moodle holds for this module of this course is complete."""
     m = _MODULE.match(activity)
     wanted = info["activities"].get(m.group(1) if m else "", [])
     if not wanted:
@@ -448,10 +446,33 @@ def _all_activities_complete(
         db.query(MoodleResultRecord.ref, MoodleResultRecord.state).filter(
             MoodleResultRecord.platform_id == platform_id,
             MoodleResultRecord.user_id == user_id,
+            MoodleResultRecord.course_id == course_id,
             MoodleResultRecord.ref.in_([f"completion:{a}" for a in wanted]),
         )
     )
     return all(states.get(f"completion:{a}") in COMPLETE_STATES for a in wanted)
+
+
+def _graded(db: Session, platform_id: uuid.UUID, user_id: uuid.UUID, course_id: uuid.UUID, activity: str) -> bool:
+    """Whether Moodle has reported a grade in this module of this course for this person."""
+    m = _MODULE.match(activity)
+    return (
+        db.query(MoodleResultRecord.id)
+        .filter(
+            MoodleResultRecord.platform_id == platform_id,
+            MoodleResultRecord.user_id == user_id,
+            MoodleResultRecord.course_id == course_id,
+            MoodleResultRecord.ref.like(f"quiz_grade:tn:{m.group(1) if m else ''}:%"),
+        )
+        .first()
+        is not None
+    )
+
+
+def mirrored_attempt_ids():
+    """A subquery of the quiz attempts that mirror a Moodle grade (they are not attempts
+    taken in TrueNorth, so they do not count against a quiz's max_attempts)."""
+    return select(MoodleResultRecord.quiz_attempt_id).where(MoodleResultRecord.quiz_attempt_id.isnot(None))
 
 
 def _record_quiz(
