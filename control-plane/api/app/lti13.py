@@ -383,20 +383,27 @@ def _transient_status(code: int) -> bool:
     return code in (408, 425, 429) or code >= 500
 
 
-def _allow_private() -> bool:
-    """Server-side calls to a platform may reach private addresses only where the platform
-    test probe may (``INTEGRATION_ALLOW_PRIVATE_URLS``): a farm's internal Moodle."""
-    return os.getenv("INTEGRATION_ALLOW_PRIVATE_URLS", "false").strip().lower() in ("1", "true", "yes", "on")
+def _allow_private(db: Session, platform: ExternalPlatform) -> bool:
+    """Server-side calls to a platform may reach a private address if it is one of
+    TrueNorth's own farm nodes (the installer registered it: app/moodle_farm), or where the
+    platform test probe may (``INTEGRATION_ALLOW_PRIVATE_URLS``, for every platform).
+    Loopback and link-local never (app/net_guard)."""
+    if os.getenv("INTEGRATION_ALLOW_PRIVATE_URLS", "false").strip().lower() in ("1", "true", "yes", "on"):
+        return True
+    from .moodle_farm.service import is_managed
+
+    return is_managed(db, platform)
 
 
-async def _guarded_post(platform: ExternalPlatform, url: str, **kw) -> net_guard.Answer:
+async def _guarded_post(db: Session, platform: ExternalPlatform, url: str, **kw) -> net_guard.Answer:
     """POST to one of the platform's URLs through app.net_guard (vetted, pinned, no redirects),
     rerouted to its internal address as ``platform_route`` says. AGSError on failure."""
     target, route_headers = platform_route(platform, url)
     headers = {**kw.pop("headers", {}), **route_headers}
+    allow_private = _allow_private(db, platform)
     try:
         return await asyncio.to_thread(
-            net_guard.post, target, headers=headers, allow_private=_allow_private(), timeout=20.0, **kw
+            net_guard.post, target, headers=headers, allow_private=allow_private, timeout=20.0, **kw
         )
     except net_guard.DestinationRefusedError as exc:
         raise AGSError("the platform's address is not one TrueNorth may call", transient=False) from exc
@@ -442,6 +449,7 @@ async def _ags_access_token(db: Session, platform: ExternalPlatform) -> str:
     )
     # The assertion's aud stays the public token URL: that is what the platform checks.
     answer = await _guarded_post(
+        db,
         platform,
         platform.lti_token_url,
         data={
@@ -477,6 +485,7 @@ async def send_score(db: Session, platform: ExternalPlatform, lineitem_url: str,
     platform or the network did. Both requests go through app.net_guard."""
     token = await _ags_access_token(db, platform)
     answer = await _guarded_post(
+        db,
         platform,
         scores_url_for(lineitem_url),
         json_body={**score, "userId": user_sub},

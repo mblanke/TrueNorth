@@ -274,7 +274,8 @@ and sends it after the statement's response:
 
 - **Which launches.** An LTI launch of this AU by an LMS account **bound to the Student**:
   the account its own launch created (`lti:<platform>:<sub>`) or one linked explicitly
-  (`lti_user_links`). An LMS account matched to the Student by the email it asserted still
+  (`lti_user_links`; on a TrueNorth farm node, the account TrueNorth's sign-in made is linked
+  at its first launch by its locked TrueNorth id: docs/moodle-integration.md, "Farm nodes"). An LMS account matched to the Student by the email it asserted still
   signs in as them, but its launch keeps no line item and gets no grade: any LMS account
   can assert any email, and would otherwise receive that Student's grade in its own
   gradebook cell (review of #140; the same rule now applies to
@@ -284,8 +285,9 @@ and sends it after the statement's response:
   after a TrueNorth-side launch of the same AU also go to that cell: it is the Student's
   grade for the AU.
 - **Network.** The token and score requests go through `app/net_guard.py` (vetted and pinned
-  address, no redirects, answer size capped), with private addresses only where
-  `INTEGRATION_ALLOW_PRIVATE_URLS` is on (as for the platform probe); loopback never. The
+  address, no redirects, answer size capped), with private addresses only to a TrueNorth farm
+  node (`app/moodle_farm`) or where `INTEGRATION_ALLOW_PRIVATE_URLS` is on (as for the
+  platform probe); loopback never. The
   access token is cached per platform until a minute before it expires, and dropped on a
   401.
 - **Not sent:** cmi5-allowed statements (no cmi5 category; they may carry no result,

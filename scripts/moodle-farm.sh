@@ -25,6 +25,7 @@
 #   TN_LOGIN_URL       Moodle's login page goes here                 (http://localhost:4200/learning/courses)
 #   TN_PUBLIC_KEY_URL  where the node fetches TrueNorth's key        (http://api:8080/lti/public-key.pem)
 #   TN_NETWORK         TrueNorth's docker network                    (truenorth_default)
+#   TN_API_CONTAINER   the api container, to mark the node a farm node (found on TN_NETWORK)
 #   MOODLE_FARM_STATE  per-node secrets and settings, mode 600       (~/.truenorth/moodle-farm)
 set -euo pipefail
 
@@ -164,6 +165,21 @@ PY
       "$(python3 -c 'import json,sys; b=json.loads(sys.argv[1]); [b.pop(k) for k in ("slug","platform_type")]; print(json.dumps(b))' "$body")" >/dev/null
   else
     tn POST /integrations/platforms "$body" >/dev/null
+  fi
+
+  # A farm node (app/moodle_farm): its Students' Moodle accounts are bound by their locked
+  # TrueNorth id for grades, and TrueNorth may reach its private address. Only the api
+  # container can mark one; the API cannot.
+  local api_container="${TN_API_CONTAINER:-}"
+  [[ -n "$api_container" ]] || api_container="$(docker ps -q --filter "network=$TN_NETWORK" \
+    --filter "label=com.docker.compose.service=api" | head -n1)"
+  if [[ -n "$api_container" ]]; then
+    docker exec "$api_container" python -m app.moodle_backends.install_cli manage "$tenant" "$node" >/dev/null \
+      || die "could not mark moodle-$node as a farm node"
+    say "marked moodle-$node as a TrueNorth farm node"
+  else
+    echo "moodle-farm: no api container on $TN_NETWORK; mark the node yourself:" \
+      "docker exec <api> python -m app.moodle_backends.install_cli manage $tenant $node" >&2
   fi
 
   cat <<EOF

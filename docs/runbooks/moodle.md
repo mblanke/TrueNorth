@@ -46,7 +46,12 @@ and TrueNorth's own publishing backend gets a signed answer from `local_truenort
 
 The platform's **Integrations → Test** button reports this Moodle as refused unless
 `INTEGRATION_ALLOW_PRIVATE_URLS` is on: it probes the internal address through
-`net_guard`. Publishing does not depend on it.
+`net_guard`. Publishing does not depend on it, and neither do grades sent back to this
+Moodle (cmi5 over LTI): `install_cli register` marks the node a TrueNorth farm node
+(`app/moodle_farm`), which may reach its private address and binds Students' farm accounts
+by their locked TrueNorth id (docs/moodle-integration.md, "Farm nodes"). A node registered
+before 2026-10-10 is marked on the installer's next run; one added with
+`scripts/moodle-farm.sh` is marked by the script (`install_cli manage`).
 
 Break-glass administrator: `https://<fqdn>:8443/login/index.php?loginredirect=0`, user
 `admin`, password in `/srv/truenorth/config/secrets/moodle_admin_password`. Nobody else

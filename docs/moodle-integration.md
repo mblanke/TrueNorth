@@ -211,13 +211,33 @@ in TrueNorth with an accepted release; cmi5 configured (`CMI5_LRS_AUTH`).
    (never the score the browser reported) to the activity's grade item over AGS, and resends
    it if Moodle was unreachable. A module with no quiz reports completion without a grade.
    Grades go only to the Moodle account bound to the Student: the one whose launch created
-   their TrueNorth account, or one linked explicitly. **A Moodle account matched to a
-   TrueNorth Student only by email gets no grade** (any LMS account can assert any email).
-   A Moodle account that reaches its TrueNorth Student only through that email match (for
-   example one created in Moodle by other means, with the same address) gets no grade back
-   until it is bound; binding such accounts is not built.
-   With Moodle on a private address (the farm), set `INTEGRATION_ALLOW_PRIVATE_URLS=true`
-   on the api: grade traffic goes through `app/net_guard.py`.
+   their TrueNorth account, one linked explicitly, or (on a farm node, below) the account
+   TrueNorth's sign-in made for them. **A Moodle account matched to a TrueNorth Student only
+   by email gets no grade** (any LMS account can assert any email).
+
+**Farm nodes (2026-10-10, `app/moodle_farm`).** A Moodle TrueNorth runs itself is marked a
+farm node by the installer, never through the API: `install_cli register` (the `tn_moodle`
+role) marks the node it registers, and `scripts/moodle-farm.sh add` runs
+`install_cli manage <tenant> <node>` in the api container after registering through the API.
+Changing a farm node's address or LTI identity through the API (`PATCH`) ends its farm status
+until the installer runs again; deregistering removes it. On a farm node only:
+
+- **Students' farm accounts are bound for grades.** TrueNorth's sign-in (`sso.php`) creates a
+  Student's Moodle account as username `tn-<TrueNorth user id>` with idnumber the TrueNorth
+  user id, and locks the idnumber (#132). Moodle 5.2.3 sends both in every LTI launch
+  (`lis.person_sourcedid` and `ext.user_username`; `sub` is Moodle's own user id), checked
+  against the real Moodle. When both name the same Student of the platform's tenant, the
+  launch is that Student and an `lti_user_links` row binds the Moodle account to them, so
+  grades go back. Both must agree: a self-chosen username has no idnumber, and the Student
+  cannot change the idnumber (the integration test submits Moodle's own profile form with
+  another idnumber: the form is accepted, the idnumber is not changed). Never on another
+  platform, never from email, never across tenants, not for staff (they link explicitly). An
+  existing link of that Moodle account or Student to something else is never re-pointed (a
+  re-created Moodle account: an integration admin removes the old link,
+  `DELETE /lti/links/{id}`).
+- **Grade traffic may reach the node's private address** (e.g. `http://moodle-default:8080`)
+  without `INTEGRATION_ALLOW_PRIVATE_URLS`. That setting still governs every other platform;
+  loopback is never allowed (`app/net_guard.py`).
 
 Details, refusals and the Score sent: `docs/cmi5.md`, "Moodle over LTI 1.3". When a new
 release of the course is accepted, Students already enrolled stay on theirs (their launch

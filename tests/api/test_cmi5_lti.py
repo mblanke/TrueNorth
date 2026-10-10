@@ -40,6 +40,8 @@ from app.enrollment import ensure_enrollment
 from app.lti_identity.models import LTIUserLink
 from app.main import app as fastapi_app
 from app.models import Course, Enrollment, ExternalPlatform, IntegrationAuthType, LTILaunch, User, UserRole
+from app.moodle_backends import install_cli
+from app.moodle_farm import service as farm
 from app.routers.integrations import lti_state_cookie_name
 from httpx import ConnectError, Response
 
@@ -653,3 +655,180 @@ class TestDeepLinkLimits:
         assert cmi5_lti.picker_items(db_session, platform.tenant_id) == []
         assert cmi5_lti.picker_items(db_session, platform.tenant_id) == []
         assert len(calls) == 1
+
+
+# -- TrueNorth's own Moodle farm (app/moodle_farm) ---------------------------------------------
+def _farm_claims(tn_id, username: str | None = None) -> dict:
+    """What Moodle 5.2.3 sends for an account TrueNorth's sign-in made (checked against the
+    real Moodle): idnumber as lis.person_sourcedid, username as ext.user_username."""
+    return {
+        farm.CLAIM_LIS: {"person_sourcedid": str(tn_id), "course_section_sourcedid": "c"},
+        farm.CLAIM_EXT: {"user_username": f"tn-{tn_id}" if username is None else username, "lms": "moodle-2"},
+    }
+
+
+def _tn_student(db, release, tenant=DEV_TENANT, role=UserRole.student, enrol=True) -> User:
+    """A TrueNorth account with its own sign-in (Keycloak), as farm Students have."""
+    u = User(id=uuid.uuid4(), keycloak_id=f"kc-{uuid.uuid4()}", email=f"farm-{uuid.uuid4().hex[:6]}@x.test",
+             display_name="Farm Student", role=role, tenant_id=tenant)
+    db.add(u)
+    db.flush()
+    if enrol:
+        ensure_enrollment(db, user_id=u.id, course_id=uuid.UUID(release["course_id"]), tenant_id=tenant)
+    db.commit()
+    return u
+
+
+def _links(db, platform) -> list[tuple[str, uuid.UUID]]:
+    return [(link.lti_sub, link.user_id) for link in db.query(LTIUserLink).filter_by(platform_id=platform.id)]
+
+
+class TestFarmAccounts:
+    def test_a_farm_account_is_bound_by_its_locked_id_and_gets_the_grade(
+        self, client, lti, platform, release, db_session, moodle
+    ):
+        farm.mark(db_session, platform, "default", "test")
+        db_session.commit()
+        student = _tn_student(db_session, release)
+        # The email is not the Student's: the binding is the locked id and username, not email.
+        resp = lti(platform, f"cmi5:{release['id']}:0", sub="4", email="someone@else.test",
+                   **AGS_CLAIM, **_farm_claims(student.id))
+        assert resp.status_code == 302
+        assert resp.headers["location"].endswith(f"/au/releases/{release['id']}?launch=0&lti=1")
+        assert _links(db_session, platform) == [("4", student.id)]
+        launch = db_session.query(LTILaunch).filter_by(lti_user_sub="4").one()
+        assert launch.user_id == student.id and launch.ags_lineitem_url == LINEITEM
+
+        au = _spa_launch(client, student, release)
+        au.initialized()
+        assert au.scored(0.8).status_code == 200
+        assert [(s["userId"], s["scoreGiven"]) for s in _sent(moodle)] == [("4", 80.0)]
+        assert lti(platform, f"cmi5:{release['id']}:0", sub="4", **_farm_claims(student.id)).status_code == 302
+        assert _links(db_session, platform) == [("4", student.id)]  # once
+
+    def test_the_same_claims_from_a_platform_that_is_not_a_farm_node_bind_nothing(
+        self, client, lti, platform, release, db_session, moodle
+    ):
+        student = _tn_student(db_session, release)
+        resp = lti(platform, f"cmi5:{release['id']}:0", sub="4", email=student.email,
+                   **AGS_CLAIM, **_farm_claims(student.id))
+        assert resp.status_code == 302  # signed in by the email match, as before
+        assert _links(db_session, platform) == []
+        assert db_session.query(LTILaunch).filter_by(lti_user_sub="4").one().ags_lineitem_url == ""
+        au = _spa_launch(client, student, release)
+        au.initialized()
+        au.scored(0.8)
+        assert _sent(moodle) == []
+
+    @pytest.mark.parametrize("case", ["other username", "no username", "other id", "no id", "id not a uuid"])
+    def test_the_locked_id_and_the_username_must_agree(self, lti, platform, release, db_session, case):
+        farm.mark(db_session, platform, "default", "test")
+        db_session.commit()
+        student = _tn_student(db_session, release)
+        claims = _farm_claims(student.id)
+        if case == "other username":  # a self-chosen username names another Student
+            claims[farm.CLAIM_EXT]["user_username"] = f"tn-{uuid.uuid4()}"
+        elif case == "no username":
+            claims[farm.CLAIM_EXT].pop("user_username")
+        elif case == "other id":  # the username is this Student's, the locked id someone else's
+            claims[farm.CLAIM_LIS]["person_sourcedid"] = str(uuid.uuid4())
+        elif case == "no id":  # self-registered as tn-<id>: no idnumber, and the Student cannot set it
+            claims[farm.CLAIM_LIS]["person_sourcedid"] = ""
+        else:
+            claims[farm.CLAIM_LIS]["person_sourcedid"] = "not-a-uuid"
+            claims[farm.CLAIM_EXT]["user_username"] = "tn-not-a-uuid"
+        lti(platform, f"cmi5:{release['id']}:0", sub="4", **AGS_CLAIM, **claims)
+        assert _links(db_session, platform) == []
+        assert db_session.query(LTILaunch).filter_by(user_id=student.id).count() == 0
+
+    def test_another_tenants_student_is_not_bound(self, lti, platform, release, db_session):
+        farm.mark(db_session, platform, "default", "test")
+        theirs = _tn_student(db_session, release, tenant=real_tenant(db_session).id, enrol=False)
+        lti(platform, f"cmi5:{release['id']}:0", sub="4", **AGS_CLAIM, **_farm_claims(theirs.id))
+        assert _links(db_session, platform) == []
+
+    def test_staff_are_not_bound_by_it(self, lti, platform, release, db_session):
+        farm.mark(db_session, platform, "default", "test")
+        teacher = _tn_student(db_session, release, role=UserRole.instructor, enrol=False)
+        lti(platform, f"course:{release['course_id']}", sub="4", **_farm_claims(teacher.id))
+        assert _links(db_session, platform) == []  # staff link explicitly, signed in
+
+    def test_an_existing_link_is_never_repointed(self, lti, platform, release, db_session):
+        farm.mark(db_session, platform, "default", "test")
+        student = _tn_student(db_session, release)
+        db_session.add(LTIUserLink(platform_id=platform.id, lti_sub="old", user_id=student.id, lms_name="x"))
+        db_session.commit()
+        lti(platform, f"cmi5:{release['id']}:0", sub="4", **AGS_CLAIM, **_farm_claims(student.id))
+        assert _links(db_session, platform) == [("old", student.id)]
+
+    def test_a_farm_node_on_a_private_address_gets_its_grade(self, monkeypatch, launched, moodle, platform, db_session):
+        monkeypatch.delenv("INTEGRATION_ALLOW_PRIVATE_URLS", raising=False)
+        monkeypatch.setattr(
+            net_guard, "_resolve",
+            lambda host, port, **kw: [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("10.0.0.5", port))],
+        )
+        farm.mark(db_session, platform, "default", "test")
+        db_session.commit()
+        launched.scored(0.8)
+        [row] = db_session.query(Cmi5AgsScore).all()
+        assert row.state == AGS_SENT and moodle.called
+
+    def test_not_even_a_farm_node_reaches_loopback(self, monkeypatch, launched, moodle, platform, db_session):
+        monkeypatch.setattr(
+            net_guard, "_resolve",
+            lambda host, port, **kw: [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("127.0.0.1", port))],
+        )
+        farm.mark(db_session, platform, "default", "test")
+        db_session.commit()
+        launched.scored(0.8)
+        [row] = db_session.query(Cmi5AgsScore).all()
+        assert row.state == AGS_FAILED and not moodle.called
+
+
+class TestFarmMarker:
+    REG = {
+        "lti_issuer": "https://farm.example.test", "lti_client_id": "c1", "lti_deployment_id": "1",
+        "lti_auth_login_url": "https://farm.example.test/mod/lti/auth.php",
+        "lti_token_url": "https://farm.example.test/mod/lti/token.php",
+        "lti_jwks_url": "https://farm.example.test/mod/lti/certs.php",
+    }
+
+    def test_the_installer_marks_the_node_it_registers(self, db_session):
+        out = install_cli.register(db_session, "default", "farm1", "http://moodle-farm1:8080", self.REG)
+        p = db_session.get(ExternalPlatform, uuid.UUID(out["platform_id"]))
+        assert farm.is_managed(db_session, p)
+        again = install_cli.register(db_session, "default", "farm1", "http://moodle-farm1:8080", self.REG)
+        assert again["action"] == "unchanged"
+
+    def test_manage_marks_a_node_the_farm_script_registered(self, db_session):
+        p = _platform(db_session, DEV_TENANT, issuer="https://farm2.example.test")
+        p.slug = "moodle-farm2"
+        db_session.commit()
+        assert not farm.is_managed(db_session, p)
+        assert install_cli.manage(db_session, str(DEV_TENANT), "farm2")["action"] == "marked"
+        assert install_cli.manage(db_session, "default", "farm2")["action"] == "unchanged"
+        assert farm.is_managed(db_session, p)
+        with pytest.raises(install_cli.InstallError) as e:
+            install_cli.manage(db_session, "default", "nope")
+        assert e.value.code == 3
+
+    def test_the_api_cannot_mark_one_and_a_changed_address_ends_it(self, client, platform, db_session):
+        from app.schemas import ExternalPlatformIn, ExternalPlatformUpdate
+
+        assert not {"managed", "farm"} & (set(ExternalPlatformIn.model_fields) | set(ExternalPlatformUpdate.model_fields))
+        farm.mark(db_session, platform, "default", "test")
+        db_session.commit()
+        assert client.patch(f"/integrations/platforms/{platform.id}", json={"name": "Renamed"}).status_code == 200
+        assert client.patch(f"/integrations/platforms/{platform.id}", json={"base_url": ISSUER}).status_code == 200
+        assert farm.is_managed(db_session, platform)  # same address: still the installer's
+        r = client.patch(f"/integrations/platforms/{platform.id}", json={"base_url": "http://10.9.9.9:8080"})
+        assert r.status_code == 200
+        assert not farm.is_managed(db_session, platform)
+
+    def test_deregistering_the_platform_removes_the_marker(self, client, platform, db_session):
+        from app.moodle_farm.models import ManagedMoodleNode
+
+        farm.mark(db_session, platform, "default", "test")
+        db_session.commit()
+        assert client.delete(f"/integrations/platforms/{platform.id}").status_code == 204
+        assert db_session.query(ManagedMoodleNode).count() == 0

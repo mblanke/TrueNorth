@@ -36,6 +36,7 @@ from ..models import (
     User,
 )
 from ..moodle_backends import MoodleError, supported_moodle_types
+from ..moodle_farm import service as moodle_farm
 from ..moodle_results import service as results_service
 from ..moodle_results.models import MoodleResultCursor, MoodleResultRecord
 from ..moodle_results.schemas import MoodleResultsPullIn, MoodleResultsPullOut, MoodleResultsStatusOut
@@ -178,8 +179,13 @@ def update_platform(
                 status.HTTP_403_FORBIDDEN, "Only a platform administrator can re-point a Moodle at another site"
             )
         _check_issuer(db, user, changes["lti_issuer"])
+    moved = [f for f in moodle_farm.IDENTITY_FIELDS if f in changes and changes[f] != getattr(p, f)]
     for field, value in changes.items():
         setattr(p, field, value)
+    if moved and moodle_farm.unmark(db, p.id):
+        # A farm node is what the installer registered; an address or LTI identity set
+        # through the API is not, so its farm privileges end until the installer re-marks it.
+        logger.warning("Platform %s is no longer a farm node: %s changed through the API", p.id, ", ".join(moved))
     db.commit()
     db.refresh(p)
     return p
@@ -226,6 +232,7 @@ def deregister_platform(
     db.query(LTILaunch).filter(LTILaunch.platform_id == p.id).delete(synchronize_session=False)
     # Results waiting for (or sent to) its gradebook: the gradebook is the record there.
     db.query(Cmi5AgsScore).filter(Cmi5AgsScore.platform_id == p.id).delete(synchronize_session=False)
+    moodle_farm.unmark(db, p.id)
     db.flush()
     db.delete(p)
     commit_delete(db, "Platform")
@@ -596,6 +603,11 @@ def _jit_user(db: Session, platform, claims: dict) -> User:
     linked = lti_links.linked_user(db, platform, sub) if sub else None
     if linked is not None:
         return linked
+    # A TrueNorth farm node's account made by TrueNorth's sign-in: bound to its Student by
+    # the locked TrueNorth id and its tn-<id> username, never by email (app/moodle_farm).
+    farm_student = moodle_farm.bind_farm_account(db, platform, claims)
+    if farm_student is not None:
+        return farm_student
     user = db.query(User).filter(User.keycloak_id == lti_kc_id).first()
     if user is None:
         user = db.query(User).filter(User.email == email).first()

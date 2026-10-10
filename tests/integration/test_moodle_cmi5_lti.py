@@ -54,32 +54,66 @@ pytestmark = [
 ]
 
 
-class _Form(HTMLParser):
-    """The first form of a page: its action and its inputs."""
+class _Form:
+    def __init__(self, action: str):
+        self.action = action
+        self.fields: dict[str, str] = {}
+
+
+class _Forms(HTMLParser):
+    """Every form of a page and what a browser submits with its default button: named inputs
+    (checkboxes and radios only when checked; no other submit button), each select's
+    selected option, textareas."""
 
     def __init__(self):
         super().__init__()
-        self.action: str | None = None
-        self.fields: dict[str, str] = {}
+        self.forms: list[_Form] = []
         self._in = False
+        self._select: str | None = None
+        self._textarea: str | None = None
 
     def handle_starttag(self, tag, attrs):
         a = dict(attrs)
-        if tag == "form" and self.action is None:
-            self.action, self._in = a.get("action", ""), True
-        elif tag == "input" and self._in and a.get("name"):
-            self.fields[a["name"]] = a.get("value") or ""
+        if tag == "form":
+            self.forms.append(_Form(a.get("action") or ""))
+            self._in = True
+        elif not self._in:
+            return
+        elif tag == "input" and a.get("name"):
+            kind = a.get("type") or "text"
+            if kind in ("checkbox", "radio") and "checked" not in a:
+                return
+            if kind == "submit" and a["name"] != "submitbutton":
+                return  # e.g. "cancel": a browser sends only the button pressed
+            self.forms[-1].fields[a["name"]] = a.get("value") or ""
+        elif tag == "select" and a.get("name"):
+            self._select = a["name"]
+            self.forms[-1].fields.setdefault(self._select, "")
+        elif tag == "option" and self._select and "selected" in a:
+            self.forms[-1].fields[self._select] = a.get("value") or ""
+        elif tag == "textarea" and a.get("name"):
+            self._textarea = a["name"]
+            self.forms[-1].fields[self._textarea] = ""
+
+    def handle_data(self, data):
+        if self._in and self._textarea:
+            self.forms[-1].fields[self._textarea] += data
 
     def handle_endtag(self, tag):
         if tag == "form":
             self._in = False
+        elif tag == "select":
+            self._select = None
+        elif tag == "textarea":
+            self._textarea = None
 
 
-def form_of(html: str) -> _Form:
-    f = _Form()
-    f.feed(html)
-    assert f.action, html[:2000]
-    return f
+def form_of(html: str, action_has: str = "") -> _Form:
+    parser = _Forms()
+    parser.feed(html)
+    found = [f for f in parser.forms if action_has in f.action]
+    assert found and found[0].action, html[:2000]
+    return found[0]
 
 
 def docker(*args: str, stdin: str | None = None) -> str:
@@ -113,14 +147,17 @@ def world(tmp_path_factory):
     from app import programme_ingest, qsp_ingest
     from app.course_releases import service
     from app.db import Base
-    from app.models import Course, ExternalPlatform, IntegrationAuthType, LTIToolKey, Tenant
+    from app.models import Course, ExternalPlatform, LTIToolKey, Tenant
+    from app.moodle_backends import install_cli
+    from app.moodle_farm import service as farm
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
 
     engine = create_engine(f"sqlite:///{tmp_path_factory.mktemp('db') / 'tn.db'}")
     Base.metadata.create_all(engine)
     db = sessionmaker(bind=engine)()
-    db.add(Tenant(id=TENANT, name="t", slug=f"t-{uuid.uuid4().hex[:6]}"))
+    tenant_slug = f"t-{uuid.uuid4().hex[:6]}"
+    db.add(Tenant(id=TENANT, name="t", slug=tenant_slug))
     db.commit()
     qsp_ingest.import_crosswalk(db, CROSSWALK.read_text(encoding="utf-8"))
     programme_ingest.import_programme(db, CATALOGUE.read_text(encoding="utf-8"), tenant_id=TENANT)
@@ -131,18 +168,14 @@ def world(tmp_path_factory):
     private, public = _key_pair(pathlib.Path(KEY).read_text())
     db.query(LTIToolKey).update({"is_active": False})
     db.add(LTIToolKey(kid="test-key", private_key_pem=private, public_key_pem=public, is_active=True))
+    db.commit()
+    # Registered the way the installer registers the Moodle it runs (a farm node).
     reg = json.loads(docker("exec", CONTAINER, "cat", "/var/www/moodledata/truenorth-registration.json"))
     assert reg["lti_issuer"].rstrip("/") == URL, reg
-    platform = ExternalPlatform(
-        name="Moodle test", slug=f"moodle-{uuid.uuid4().hex[:6]}", platform_type="moodle", base_url=URL,
-        auth_type=IntegrationAuthType.lti13, tenant_id=TENANT, lti_issuer=reg["lti_issuer"],
-        lti_client_id=reg["lti_client_id"], lti_deployment_id=reg["lti_deployment_id"],
-        lti_auth_login_url=reg["lti_auth_login_url"], lti_token_url=reg["lti_token_url"],
-        lti_jwks_url=reg["lti_jwks_url"],
-    )
-    db.add(platform)
-    db.commit()
-    return SimpleNamespace(db=db, release=rel, platform=platform)
+    out = install_cli.register(db, tenant_slug, f"it{uuid.uuid4().hex[:6]}", URL, reg)
+    platform = db.get(ExternalPlatform, uuid.UUID(out["platform_id"]))
+    assert farm.is_managed(db, platform)
+    return SimpleNamespace(db=db, release=rel, platform=platform, pem=private)
 
 
 @pytest.fixture
@@ -203,8 +236,11 @@ def moodle_login(username: str, password: str) -> httpx.Client:
     return browser
 
 
-def lti_launch(api, browser: httpx.Client, cmid: int) -> dict:
-    """Open the activity in Moodle and carry each form to where it posts, as a browser does."""
+def lti_launch_raw(api, browser: httpx.Client, cmid: int) -> tuple[httpx.Response, dict]:
+    """Open the activity in Moodle and carry each form to where it posts, as a browser does.
+    Returns TrueNorth's answer to the launch and the claims Moodle signed (read, not trusted)."""
+    import jwt
+
     login = form_of(browser.get(f"/mod/lti/launch.php?id={cmid}").text)
     assert login.action.endswith("/lti/login"), login.action
     r = api.post(_path(login.action), data=login.fields, follow_redirects=False)
@@ -212,8 +248,15 @@ def lti_launch(api, browser: httpx.Client, cmid: int) -> dict:
     assert r.headers["location"].startswith(f"{URL}/mod/lti/auth.php"), r.headers["location"]
     launch = form_of(browser.get(r.headers["location"]).text)  # Moodle signs the id_token
     assert launch.action.endswith("/lti/launch") and "id_token" in launch.fields, launch.fields.keys()
+    claims = jwt.decode(launch.fields["id_token"], options={"verify_signature": False})
     r = api.post(_path(launch.action), data=launch.fields, follow_redirects=False)
     assert r.status_code == 302, r.text
+    return r, claims
+
+
+def lti_launch(api, browser: httpx.Client, cmid: int) -> dict:
+    """A launch by an account the LTI launch created: the hand-off session it is given."""
+    r, _ = lti_launch_raw(api, browser, cmid)
     code = r.headers["location"].split("/lti/session#code=", 1)[1]
     r = api.post("/lti/session", json={"code": code})
     assert r.status_code == 200, r.text
@@ -270,4 +313,94 @@ def test_a_moodle_student_launches_a_cmi5_au_and_the_grade_lands_in_moodle(world
     assert asyncio.run(deliver_due(world.db)) == 0
     grade = moodle_script("--grade", f"--course={m['course']}", f"--instance={m['instance']}",
                           f"--userid={m['userid']}")
+    assert grade == {"grademax": 100.0, "grade": 80.0}
+
+
+def sso_browser(world, user, course_idnumber: str) -> httpx.Client:
+    """A browser signed in to Moodle the way TrueNorth's "Open in Moodle" does it (app.moodle_sso):
+    a one-minute ticket POSTed to local_truenorth's sso.php, which creates the farm account
+    (username tn-<id>, idnumber the TrueNorth id, locked) and enrols it on the course."""
+    import time
+
+    import jwt
+
+    now = int(time.time())
+    claims = {
+        "iss": "truenorth", "typ": "sso", "aud": URL, "tid": str(TENANT), "sub": str(user.id), "email": user.email,
+        "given_name": "Farm", "family_name": "Student", "role": "student", "course": course_idnumber,
+        "iat": now, "exp": now + 60, "jti": uuid.uuid4().hex,
+    }
+    token = jwt.encode(claims, world.pem, algorithm="RS256", headers={"kid": "test-key"})
+    browser = httpx.Client(base_url=URL, follow_redirects=True, timeout=60)
+    r = browser.post("/local/truenorth/sso.php", data={"token": token}, follow_redirects=False)
+    assert r.status_code in (302, 303), r.text[:500]
+    assert "MoodleSession" in browser.cookies
+    return browser
+
+
+def test_a_farm_students_account_from_truenorth_sign_in_launches_and_gets_the_grade(world, api):
+    """The farm's main case: the Student opens Moodle from TrueNorth (SSO), then the cmi5
+    activity. Their Moodle account reaches their TrueNorth account by its locked TrueNorth id
+    and tn-<id> username (app/moodle_farm), not by email, so the grade goes back."""
+    from _cmi5_kit import AU
+    from app.auth import CurrentUser, get_current_user
+    from app.cmi5.models import AGS_SENT, Cmi5AgsScore
+    from app.enrollment import ensure_enrollment
+    from app.lti_identity.models import LTIUserLink
+    from app.main import app
+    from app.models import LTILaunch, User, UserRole
+
+    rel = world.release
+    course_idnumber = f"tn-it-{uuid.uuid4().hex[:8]}"
+    m = moodle_script("--setup", f"--resource=cmi5:{rel.id}:1", f"--course-idnumber={course_idnumber}")
+    # A TrueNorth Student with their own TrueNorth sign-in, enrolled in TrueNorth.
+    student = User(id=uuid.uuid4(), keycloak_id=f"kc-{uuid.uuid4()}", email=f"farm-{uuid.uuid4().hex[:8]}@x.test",
+                   display_name="Farm Student", role=UserRole.student, tenant_id=TENANT)
+    world.db.add(student)
+    world.db.flush()
+    ensure_enrollment(world.db, user_id=student.id, course_id=rel.course_id, tenant_id=TENANT)
+    world.db.commit()
+
+    browser = sso_browser(world, student, course_idnumber)
+    who = moodle_script("--whois", f"--idnumber={student.id}")
+    assert who["username"] == f"tn-{student.id}" and who["idnumber_lock"] == "locked"
+
+    # The Student cannot change the id their grades are bound by: Moodle's own profile form,
+    # submitted with another idnumber and a new city, takes the city and keeps the idnumber.
+    edit = form_of(browser.get(f"/user/edit.php?id={who['userid']}").text, "user/edit.php")
+    fields = {**edit.fields, "idnumber": str(uuid.uuid4()), "city": "Spoofville"}
+    browser.post(_path(edit.action) if edit.action.startswith("http") else edit.action, data=fields)
+    after = moodle_script("--whois", f"--idnumber={student.id}")
+    assert after["city"] == "Spoofville", "the profile form was not accepted; the lock was not exercised"
+    assert after["idnumber"] == str(student.id) and after["userid"] == who["userid"]
+
+    # The launch: Moodle's claims for a farm account, as TrueNorth binds them.
+    resp, claims = lti_launch_raw(api, browser, m["cmid"])
+    assert claims["sub"] == str(who["userid"])
+    assert claims["https://purl.imsglobal.org/spec/lti/claim/lis"]["person_sourcedid"] == str(student.id)
+    assert claims["https://purl.imsglobal.org/spec/lti/claim/ext"]["user_username"] == f"tn-{student.id}"
+    assert claims["email"] == student.email  # also matches, but is not what binds it
+    assert resp.headers["location"].endswith(f"/au/releases/{rel.id}?launch=1&lti=1")  # no hand-off: own sign-in
+    [link] = world.db.query(LTIUserLink).filter_by(platform_id=world.platform.id, user_id=student.id).all()
+    assert link.lti_sub == str(who["userid"])
+    [launch] = world.db.query(LTILaunch).filter_by(user_id=student.id).all()
+    assert launch.ags_lineitem_url.startswith(f"{URL}/mod/lti/services.php/{m['course']}/lineitems/")
+
+    # The Student, signed in to TrueNorth, launches and passes the module (TrueNorth marks it).
+    who_tn = CurrentUser(id=str(student.id), email=student.email, display_name=student.display_name,
+                         role=student.role, tenant_id=str(TENANT), keycloak_id=student.keycloak_id)
+    app.dependency_overrides[get_current_user] = lambda: who_tn
+    try:
+        r = api.post(f"/cmi5/releases/{rel.id}/aus/1/launch", json={})
+        assert r.status_code == 200, r.text
+    finally:
+        app.dependency_overrides.pop(get_current_user, None)
+    au = AU(api, r.json()["url"], student).start()
+    assert au.initialized().status_code == 200
+    assert au.scored(0.8).status_code == 200
+    [row] = world.db.query(Cmi5AgsScore).filter_by(user_id=student.id).all()
+    world.db.refresh(row)
+    assert row.state == AGS_SENT, row.last_error
+    grade = moodle_script("--grade", f"--course={m['course']}", f"--instance={m['instance']}",
+                          f"--userid={who['userid']}")
     assert grade == {"grademax": 100.0, "grade": 80.0}
