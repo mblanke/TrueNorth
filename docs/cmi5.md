@@ -251,10 +251,14 @@ Every check runs before the launch is recorded, so a refused launch leaves no li
 result could later be sent to.
 
 **Deep linking.** The picker (`/lti/launch` with `LtiDeepLinkingRequest`) lists every AU of
-the newest accepted releases of the tenant's published courses (at most 20 releases) beside
-quizzes and courses. `/lti/deeplink/finish` re-checks each `cmi5:` selection against the
-platform's tenant and titles it from the release (`<release title>: <AU title>`), ignoring
-any title the browser posted. Each becomes an `ltiResourceLink` with
+the newest accepted releases of the tenant's published courses that have a cmi5 package (at
+most 20 such releases, out of the newest 200; a release without one is skipped and not
+counted, and each bundle's AU titles, or its lack of a package, are cached by blob). It sits
+beside quizzes and courses. `/lti/deeplink/finish` takes at most 50 items (422 otherwise),
+re-checks each `cmi5:` selection against the platform's tenant, accepts only the course's
+current (accepted) release (a superseded one stays launchable for the Students pinned to
+it, but is no new activity), and titles it from the release (`<release title>: <AU
+title>`), ignoring any title the browser posted. Each becomes an `ltiResourceLink` with
 `custom.resource = "cmi5:<release>:<n>"` and `lineItem.scoreMaximum = 100`.
 
 **Grade pass-back (AGS).** When TrueNorth, as the AU's cmi5 LMS, accepts a `passed`,
@@ -265,14 +269,25 @@ and sends it after the statement's response:
 
 | AU state | Score sent |
 |---|---|
-| `passed` or `failed` accepted | `scoreGiven` = TrueNorth's mark x 100 (`cmi5_grades`, `POST .../grade`), `scoreMaximum` 100, `activityProgress` Completed, `gradingProgress` FullyGraded. The rules already refuse a statement whose score is not that mark (TN-GRADE); the number in the statement is never what is sent. |
+| `passed` or `failed` accepted | `scoreGiven` = TrueNorth's mark x 100 (`cmi5_grades`, `POST .../grade`), `scoreMaximum` 100, `activityProgress` Completed, `gradingProgress` FullyGraded. The rules already refuse a statement whose score is not that mark (TN-GRADE); the number in the statement is never what is sent. **The best mark of the registration is sent**: a later, lower `failed` (a retake) never replaces an earlier, higher result, as moveOn never takes back a pass (and cmi5 refuses `failed` after `passed` in a registration). |
 | `completed` only | No `scoreGiven`; `activityProgress` Completed, `gradingProgress` Pending. Once a mark exists it is always included, so a later `completed` never clears a grade. |
 
-- **Which launches.** An LTI launch of this AU by this Student whose AGS claim carries a line
-  item and the score scope, from a platform that is still active and in the release's
-  tenant, and whose line item is on the platform's own origin (issuer or `base_url`). The
-  access token goes nowhere else. Results after a TrueNorth-side launch of the same AU also
-  go to that cell: it is the Student's grade for the AU.
+- **Which launches.** An LTI launch of this AU by an LMS account **bound to the Student**:
+  the account its own launch created (`lti:<platform>:<sub>`) or one linked explicitly
+  (`lti_user_links`). An LMS account matched to the Student by the email it asserted still
+  signs in as them, but its launch keeps no line item and gets no grade: any LMS account
+  can assert any email, and would otherwise receive that Student's grade in its own
+  gradebook cell (review of #140; the same rule now applies to
+  `lti13.push_score_for_resource`, quizzes and exercises). Further, the AGS claim must carry
+  a line item and the score scope, the platform must still be active and in the release's
+  tenant, and the line item on the platform's own origin (issuer or `base_url`). Results
+  after a TrueNorth-side launch of the same AU also go to that cell: it is the Student's
+  grade for the AU.
+- **Network.** The token and score requests go through `app/net_guard.py` (vetted and pinned
+  address, no redirects, answer size capped), with private addresses only where
+  `INTEGRATION_ALLOW_PRIVATE_URLS` is on (as for the platform probe); loopback never. The
+  access token is cached per platform until a minute before it expires, and dropped on a
+  401.
 - **Not sent:** cmi5-allowed statements (no cmi5 category; they may carry no result,
   TN-RESULT), anything the rules refused (a forged pass), waivers (`waive` is a records
   holder's act, not a result).
@@ -281,8 +296,11 @@ and sends it after the statement's response:
 - **Retries.** Network failures, 408, 425, 429 and 5xx are retried with backoff (30 s,
   doubling, at most an hour) up to `CMI5_AGS_MAX_ATTEMPTS`; a retry loop runs every
   `CMI5_AGS_RETRY_SECONDS`. Anything else (400, 401, 403, 404, 409, for example a Score the
-  platform considers stale) is `failed`, with the reason in `last_error`; the next
-  result for that cell tries again. Deregistering the platform deletes its rows.
+  platform considers stale; a refused address; an error nobody foresaw) is `failed`, with
+  the reason in `last_error`; the next result for that cell tries again. One row's failure
+  never stops the others in a batch. Two first results for one cell at once: one insert
+  wins, the other updates it. Deregistering the platform deletes its rows, also one being
+  sent at that moment.
 
 Example: Student marked 4 of 5, AU reports `passed` with `score.scaled` 0.8:
 

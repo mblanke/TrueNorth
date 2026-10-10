@@ -173,7 +173,10 @@ The email claim is the LMS's assertion, so it never makes a launch a staff accou
    lists your links; `DELETE /lti/links/{id}` removes one (the holder, or an
    `integration:write` admin of the tenant). Deregistering the platform removes its links.
 
-Students are unchanged: their email links an existing Student account, as before. The
+Students are unchanged: their email links an existing Student account, as before, for
+signing in. It does not bind the LMS account for grades: since 2026-10-10 a launch matched
+only by email keeps no AGS line item, and no grade is pushed to it (`lti_identity.links.is_bound`,
+`lti13.record_launch`, `push_score_for_resource`). The
 threat cases (email collision, another staff member or a Student confirming, another
 tenant, another browser, a replayed or expired code, the same subject on another tenant's
 platform) are tests in `tests/api/test_lti_staff_link.py`.
@@ -204,9 +207,17 @@ in TrueNorth with an accepted release; cmi5 configured (`CMI5_LRS_AUTH`).
    TrueNorth on that release**: the launch never enrols (403 if not enrolled). Enrol in
    TrueNorth; the farm puts the Student in the Moodle course. A Student whose account the
    launch created is handed a session (gap #1); the module opens and starts at once.
-4. When the Student passes or fails the module's quiz, TrueNorth sends its own mark (never
-   the score the browser reported) to the activity's grade item over AGS, and resends it
-   if Moodle was unreachable. A module with no quiz reports completion without a grade.
+4. When the Student passes or fails the module's quiz, TrueNorth sends its own best mark
+   (never the score the browser reported) to the activity's grade item over AGS, and resends
+   it if Moodle was unreachable. A module with no quiz reports completion without a grade.
+   Grades go only to the Moodle account bound to the Student: the one whose launch created
+   their TrueNorth account, or one linked explicitly. **A Moodle account matched to a
+   TrueNorth Student only by email gets no grade** (any LMS account can assert any email).
+   A Moodle account that reaches its TrueNorth Student only through that email match (for
+   example one created in Moodle by other means, with the same address) gets no grade back
+   until it is bound; binding such accounts is not built.
+   With Moodle on a private address (the farm), set `INTEGRATION_ALLOW_PRIVATE_URLS=true`
+   on the api: grade traffic goes through `app/net_guard.py`.
 
 Details, refusals and the Score sent: `docs/cmi5.md`, "Moodle over LTI 1.3". When a new
 release of the course is accepted, Students already enrolled stay on theirs (their launch

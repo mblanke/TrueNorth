@@ -679,7 +679,10 @@ def _resource_link_redirect(db: Session, platform, user: User, claims: dict, *, 
             rid = cmi5_lti.launch_target(db, platform.tenant_id, user, rid)
         except cmi5_lms.Cmi5Error as exc:  # every check precedes the one write (the registration)
             raise HTTPException(exc.status, exc.message) from exc
-    lti13.record_launch(db, platform, user.id, claims, kind, rid)
+    # Grades go back only to an LMS account bound to this user, never to one that merely
+    # asserted this user's email: that would hand it their grade (review of #140).
+    bound = lti_links.is_bound(db, platform.id, str(claims.get("sub", "")), user)
+    lti13.record_launch(db, platform, user.id, claims, kind, rid, grade_passback=bound)
 
     if kind == "lab" and rid:
         return RedirectResponse(_launch_lab(db, user, rid), status_code=302)  # the lab page has its own token
@@ -819,6 +822,8 @@ def _launch_lab(db: Session, user: User, rid: str) -> str:
 # The tool key also signs the LtiDeepLinkingResponse and AGS client assertions; this
 # audience means only a picker session is accepted back at /deeplink/finish.
 DEEP_LINK_SESSION_AUDIENCE = "truenorth:lti-deeplink-session"
+# Items one deep-linking response may carry: each cmi5 item is checked against its release.
+DEEP_LINK_MAX_ITEMS = 50
 
 
 def _deep_link_picker(db: Session, platform, claims: dict) -> HTMLResponse:
@@ -1040,6 +1045,8 @@ async def lti_deep_link_finish(
     if not platform:
         raise HTTPException(404, "Platform not found")
 
+    if len(selections) > DEEP_LINK_MAX_ITEMS:
+        raise HTTPException(422, f"Select at most {DEEP_LINK_MAX_ITEMS} items at a time")
     content_items = []
     for sel in selections:
         kind, _, rest = sel.partition(":")

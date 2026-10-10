@@ -12,6 +12,7 @@ Spec references: IMS LTI 1.3 Core, LTI-DL 2.0, LTI-AGS 2.0.
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
 import logging
@@ -29,7 +30,8 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from sqlalchemy.orm import Session
 
 from . import jwks as jwks_verify
-from .models import ExternalPlatform, LTILaunch, LTINonce, LTIToolKey
+from . import net_guard
+from .models import ExternalPlatform, LTILaunch, LTINonce, LTIToolKey, User
 from .secretbox import seal, unseal
 
 logger = logging.getLogger("truenorth.api.lti13")
@@ -298,8 +300,13 @@ def record_launch(
     claims: dict,
     resource_kind: str,
     resource_id: str,
+    *,
+    grade_passback: bool = True,
 ) -> LTILaunch:
-    ags = claims.get(CLAIM_AGS) or {}
+    """Record a resource-link launch. ``grade_passback`` False (the account was matched by
+    email, not bound to this LMS account: ``lti_identity.links.is_bound``) drops the AGS
+    claim, so no grade is ever sent to that LMS account's gradebook cell."""
+    ags = (claims.get(CLAIM_AGS) or {}) if grade_passback else {}
     resource_link = claims.get(CLAIM_RESOURCE_LINK) or {}
     context = claims.get(CLAIM_CONTEXT) or {}
     launch = LTILaunch(
@@ -363,11 +370,62 @@ def content_item_for(kind: str, resource_id: str, title: str, max_score: int = 1
 # ── AGS grade pass-back ──────────────────────────────────────────────────
 
 
+class AGSError(Exception):
+    """A score the platform did not take. ``transient``: worth sending again later (the
+    platform or the network was unavailable, or asked us to slow down)."""
+
+    def __init__(self, message: str, *, transient: bool):
+        super().__init__(message)
+        self.transient = transient
+
+
+def _transient_status(code: int) -> bool:
+    return code in (408, 425, 429) or code >= 500
+
+
+def _allow_private() -> bool:
+    """Server-side calls to a platform may reach private addresses only where the platform
+    test probe may (``INTEGRATION_ALLOW_PRIVATE_URLS``): a farm's internal Moodle."""
+    return os.getenv("INTEGRATION_ALLOW_PRIVATE_URLS", "false").strip().lower() in ("1", "true", "yes", "on")
+
+
+async def _guarded_post(platform: ExternalPlatform, url: str, **kw) -> net_guard.Answer:
+    """POST to one of the platform's URLs through app.net_guard (vetted, pinned, no redirects),
+    rerouted to its internal address as ``platform_route`` says. AGSError on failure."""
+    target, route_headers = platform_route(platform, url)
+    headers = {**kw.pop("headers", {}), **route_headers}
+    try:
+        return await asyncio.to_thread(
+            net_guard.post, target, headers=headers, allow_private=_allow_private(), timeout=20.0, **kw
+        )
+    except net_guard.DestinationRefusedError as exc:
+        raise AGSError("the platform's address is not one TrueNorth may call", transient=False) from exc
+    except net_guard.TooLargeError as exc:
+        raise AGSError("the platform's answer was too large", transient=False) from exc
+    except net_guard.GuardError as exc:
+        raise AGSError("the platform could not be reached", transient=True) from exc
+
+
+# Access tokens per (platform, token URL, client, signing key), until shortly before they
+# expire: one token request per platform and hour, not one per score.
+_TOKENS: dict[tuple[str, str, str, str], tuple[str, float]] = {}
+_TOKEN_MARGIN = 60.0
+
+
+def _forget_token(platform: ExternalPlatform) -> None:
+    for k in [k for k in _TOKENS if k[0] == str(platform.id)]:
+        _TOKENS.pop(k, None)
+
+
 async def _ags_access_token(db: Session, platform: ExternalPlatform) -> str:
-    """client_credentials grant with a private_key_jwt assertion."""
+    """client_credentials grant with a private_key_jwt assertion (cached until it expires)."""
     if not platform.lti_token_url:
-        raise ValueError("Platform has no token URL configured")
+        raise AGSError("the platform has no token URL configured", transient=False)
     key = get_tool_key(db)
+    cache_key = (str(platform.id), platform.lti_token_url, platform.lti_client_id or "", key.kid)
+    cached = _TOKENS.get(cache_key)
+    if cached and cached[1] > time.time():
+        return cached[0]
     now = int(time.time())
     assertion = jwt.encode(
         {
@@ -383,33 +441,26 @@ async def _ags_access_token(db: Session, platform: ExternalPlatform) -> str:
         headers={"kid": key.kid},
     )
     # The assertion's aud stays the public token URL: that is what the platform checks.
-    token_url, token_headers = platform_route(platform, platform.lti_token_url)
-    async with httpx.AsyncClient(timeout=20) as client:
-        resp = await client.post(
-            token_url,
-            headers=token_headers,
-            data={
-                "grant_type": "client_credentials",
-                "client_assertion_type": "urn:ietf:params:oauth:client-assertion-type:jwt-bearer",
-                "client_assertion": assertion,
-                "scope": AGS_SCORE_SCOPE,
-            },
-        )
-        resp.raise_for_status()
-        return resp.json()["access_token"]
-
-
-class AGSError(Exception):
-    """A score the platform did not take. ``transient``: worth sending again later (the
-    platform or the network was unavailable, or asked us to slow down)."""
-
-    def __init__(self, message: str, *, transient: bool):
-        super().__init__(message)
-        self.transient = transient
-
-
-def _transient_status(code: int) -> bool:
-    return code in (408, 425, 429) or code >= 500
+    answer = await _guarded_post(
+        platform,
+        platform.lti_token_url,
+        data={
+            "grant_type": "client_credentials",
+            "client_assertion_type": "urn:ietf:params:oauth:client-assertion-type:jwt-bearer",
+            "client_assertion": assertion,
+            "scope": AGS_SCORE_SCOPE,
+        },
+    )
+    if not 200 <= answer.status < 300:
+        raise AGSError(f"the token endpoint answered {answer.status}", transient=_transient_status(answer.status))
+    try:
+        body = json.loads(answer.body)
+        token = str(body["access_token"])
+        lifetime = float(body.get("expires_in") or 3600)
+    except (ValueError, KeyError, TypeError) as exc:
+        raise AGSError("the token endpoint gave no access token", transient=False) from exc
+    _TOKENS[cache_key] = (token, time.time() + max(lifetime - _TOKEN_MARGIN, 0.0))
+    return token
 
 
 def scores_url_for(lineitem_url: str) -> str:
@@ -423,28 +474,18 @@ def scores_url_for(lineitem_url: str) -> str:
 async def send_score(db: Session, platform: ExternalPlatform, lineitem_url: str, user_sub: str, score: dict) -> None:
     """POST one AGS score (``score``: the Score fields without ``userId``) to a lineitem of
     ``platform`` for the platform's user ``user_sub``. Raises AGSError for anything the
-    platform or the network did."""
-    try:
-        token = await _ags_access_token(db, platform)
-        scores_url, route_headers = platform_route(platform, scores_url_for(lineitem_url))
-        async with httpx.AsyncClient(timeout=20) as client:
-            resp = await client.post(
-                scores_url,
-                json={**score, "userId": user_sub},
-                headers={
-                    "Authorization": f"Bearer {token}",
-                    "Content-Type": "application/vnd.ims.lis.v1.score+json",
-                    **route_headers,
-                },
-            )
-            resp.raise_for_status()
-    except httpx.HTTPStatusError as exc:
-        code = exc.response.status_code
-        raise AGSError(f"the platform answered {code}", transient=_transient_status(code)) from exc
-    except httpx.TransportError as exc:
-        raise AGSError(f"the platform could not be reached: {type(exc).__name__}", transient=True) from exc
-    except (ValueError, KeyError, TypeError) as exc:  # no token URL, or a token answer without a token
-        raise AGSError(f"no AGS access token: {exc}", transient=False) from exc
+    platform or the network did. Both requests go through app.net_guard."""
+    token = await _ags_access_token(db, platform)
+    answer = await _guarded_post(
+        platform,
+        scores_url_for(lineitem_url),
+        json_body={**score, "userId": user_sub},
+        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/vnd.ims.lis.v1.score+json"},
+    )
+    if answer.status == 401:
+        _forget_token(platform)  # revoked or rotated: the next attempt asks for a new one
+    if not 200 <= answer.status < 300:
+        raise AGSError(f"the platform answered {answer.status}", transient=_transient_status(answer.status))
 
 
 async def push_score(
@@ -480,8 +521,14 @@ async def push_score(
 async def push_score_for_resource(
     db: Session, user_id: uuid.UUID, resource_kind: str, resource_id: str, score: float, max_score: float
 ) -> bool:
-    """Find the most recent LTI launch for this user+resource and push the grade."""
-    launch = (
+    """Find the most recent LTI launch for this user+resource, by an LMS account bound to
+    this user (never one matched by email: lti_identity.links.is_bound), and push the grade."""
+    from .lti_identity.links import is_bound
+
+    user = db.get(User, user_id)  # tenant-safe: the caller's own subject; only compared below
+    if user is None:
+        return False
+    launches = (
         db.query(LTILaunch)
         .filter(
             LTILaunch.user_id == user_id,
@@ -490,8 +537,10 @@ async def push_score_for_resource(
             LTILaunch.ags_lineitem_url != "",
         )
         .order_by(LTILaunch.created_at.desc())
-        .first()
+        .limit(20)
+        .all()
     )
+    launch = next((la for la in launches if is_bound(db, la.platform_id, la.lti_user_sub, user)), None)
     if not launch:
         return False
     return await push_score(db, launch, score, max_score)

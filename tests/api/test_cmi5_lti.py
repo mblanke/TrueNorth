@@ -13,24 +13,31 @@ and a retry that must not post twice.
 
 from __future__ import annotations
 
+import asyncio
 import html
 import json
 import re
+import socket
 import uuid
 from datetime import UTC, datetime, timedelta
 from urllib.parse import parse_qs, urlsplit
 
+import httpx
 import jwt
 import pytest
 import respx
 from _cmi5_kit import AU, BUNDLE, CATALOGUE, CROSSWALK, MemoryLRS
 from _shared import real_tenant
-from app import lti13
+from app import lti13, net_guard
 from app.auth import CurrentUser, get_current_user
 from app.cmi5 import ags, lms
+from app.cmi5 import content as content_mod
+from app.cmi5 import lti as cmi5_lti
 from app.cmi5.models import AGS_FAILED, AGS_PENDING, AGS_SENT, Cmi5AgsScore, Cmi5Registration
+from app.course_releases.models import SUPERSEDED
 from app.db import get_db
 from app.enrollment import ensure_enrollment
+from app.lti_identity.models import LTIUserLink
 from app.main import app as fastapi_app
 from app.models import Course, Enrollment, ExternalPlatform, IntegrationAuthType, LTILaunch, User, UserRole
 from app.routers.integrations import lti_state_cookie_name
@@ -74,6 +81,21 @@ class _Borrowed:
 @pytest.fixture(autouse=True)
 def _delivery_session(monkeypatch, db_session):
     monkeypatch.setattr(ags, "open_session", lambda: _Borrowed(db_session))
+
+
+PUBLIC_IP = "93.184.216.34"
+
+
+@pytest.fixture(autouse=True)
+def _platform_dns(monkeypatch):
+    """The fake platform's host resolves to a public address (AGS goes through net_guard),
+    and no access token is cached from another test."""
+    monkeypatch.setattr(
+        net_guard, "_resolve", lambda host, port, **kw: [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (PUBLIC_IP, port))]
+    )
+    lti13._TOKENS.clear()
+    yield
+    lti13._TOKENS.clear()
 
 
 @pytest.fixture
@@ -300,8 +322,10 @@ class TestDeepLinking:
 def moodle():
     """The platform's token and score endpoints; ``scores`` lists what it was sent."""
     with respx.mock(assert_all_called=False) as mock:
-        mock.post(TOKEN_URL).mock(return_value=Response(200, json={"access_token": "tok", "expires_in": 3600}))
+        token = mock.post(TOKEN_URL).mock(return_value=Response(200, json={"access_token": "tok", "expires_in": 3600}))
         route = mock.post(SCORES).mock(return_value=Response(200, json={}))
+        route.token_route = token
+        route.mock_router = mock
         yield route
 
 
@@ -443,3 +467,189 @@ def test_the_au_url_the_spa_opens_carries_the_registration_of_the_lti_launch(cli
     q = {k: v[0] for k, v in parse_qs(urlsplit(launched.url).query).items()}
     reg = db_session.get(Cmi5Registration, uuid.UUID(q["registration"]))
     assert reg is not None and db_session.get(Enrollment, reg.enrollment_id) is not None
+
+
+# -- review of #140 -----------------------------------------------------------------------------
+ATTACKER_LINEITEM = f"{ISSUER}/mod/lti/services.php/2/lineitems/8/lineitem?type_id=1"
+ATTACKER_SCORES = f"{ISSUER}/mod/lti/services.php/2/lineitems/8/lineitem/scores?type_id=1"
+
+
+class TestOnlyBoundAccountsGetGrades:
+    """An LMS account that asserts a Student's email is signed in as that Student (the
+    existing rule), but is not that Student's gradebook: no line item is kept for it, and no
+    grade is ever sent to it, by the cmi5 outbox or by push_score_for_resource."""
+
+    def test_two_lms_accounts_one_email_only_the_bound_one_gets_the_grade(
+        self, client, lti, platform, release, db_session, moodle
+    ):
+        attacker_scores = moodle.mock_router.post(ATTACKER_SCORES).mock(return_value=Response(200, json={}))
+        victim = _lti_student(db_session, platform, release, sub="victim-sub")
+        assert lti(platform, f"cmi5:{release['id']}:0", sub="victim-sub", **AGS_CLAIM).status_code == 302
+        attacker_claim = {lti13.CLAIM_AGS: {"lineitem": ATTACKER_LINEITEM, "scope": [lti13.AGS_SCORE_SCOPE]}}
+        resp = lti(platform, f"cmi5:{release['id']}:0", sub="attacker", email=victim.email, **attacker_claim)
+        assert resp.status_code == 302  # signed in as the Student by email, as before
+        attacker_launch = db_session.query(LTILaunch).filter_by(lti_user_sub="attacker").one()
+        assert attacker_launch.user_id == victim.id and attacker_launch.ags_lineitem_url == ""
+        # A row recorded before this fix still names the attacker's line item: not used either.
+        db_session.add(LTILaunch(platform_id=platform.id, user_id=victim.id, lti_user_sub="attacker",
+                                 resource_kind="cmi5", resource_id=f"{release['id']}:0",
+                                 ags_lineitem_url=ATTACKER_LINEITEM, ags_scopes=json.dumps([lti13.AGS_SCORE_SCOPE])))
+        db_session.commit()
+
+        au = _spa_launch(client, victim, release)
+        au.initialized()
+        assert au.scored(0.8).status_code == 200
+        assert [(s["userId"], s["scoreGiven"]) for s in _sent(moodle)] == [("victim-sub", 80.0)]
+        assert not attacker_scores.called
+        assert db_session.query(Cmi5AgsScore).count() == 1
+
+    def test_push_score_for_resource_skips_a_launch_matched_by_email(self, platform, release, db_session, moodle):
+        attacker_scores = moodle.mock_router.post(ATTACKER_SCORES).mock(return_value=Response(200, json={}))
+        victim = _lti_student(db_session, platform, release, sub="victim-sub")
+        quiz = str(uuid.uuid4())
+        now = datetime.now(UTC)
+        db_session.add_all([
+            LTILaunch(platform_id=platform.id, user_id=victim.id, lti_user_sub="victim-sub", resource_kind="quiz",
+                      resource_id=quiz, ags_lineitem_url=LINEITEM, ags_scopes="[]", created_at=now - timedelta(hours=1)),
+            LTILaunch(platform_id=platform.id, user_id=victim.id, lti_user_sub="attacker", resource_kind="quiz",
+                      resource_id=quiz, ags_lineitem_url=ATTACKER_LINEITEM, ags_scopes="[]", created_at=now),
+        ])
+        db_session.commit()
+        assert asyncio.run(lti13.push_score_for_resource(db_session, victim.id, "quiz", quiz, 8, 10)) is True
+        assert not attacker_scores.called and [s["userId"] for s in _sent(moodle)] == ["victim-sub"]
+        # Only the email-matched launch left: nothing is sent at all.
+        db_session.query(LTILaunch).filter_by(lti_user_sub="victim-sub").delete()
+        db_session.commit()
+        assert asyncio.run(lti13.push_score_for_resource(db_session, victim.id, "quiz", quiz, 8, 10)) is False
+        assert not attacker_scores.called
+
+    def test_an_explicitly_linked_lms_account_is_bound(self, client, lti, platform, release, db_session, moodle):
+        student = _lti_student(db_session, platform, release, sub="own-sub")
+        db_session.add(LTIUserLink(platform_id=platform.id, lti_sub="linked-sub", user_id=student.id, lms_name="S"))
+        db_session.commit()
+        assert lti(platform, f"cmi5:{release['id']}:0", sub="linked-sub", **AGS_CLAIM).status_code == 302
+        au = _spa_launch(client, student, release)
+        au.initialized()
+        au.scored(0.8)
+        assert [s["userId"] for s in _sent(moodle)] == ["linked-sub"]
+
+
+async def _no_background_delivery(registration_id):
+    return None
+
+
+class TestDeliveryRobustness:
+    def test_an_unforeseen_error_fails_the_row_and_the_batch_goes_on(self, monkeypatch, launched, moodle, db_session):
+        monkeypatch.setattr(ags, "deliver_registration", _no_background_delivery)
+        launched.scored(0.8)
+        [row] = db_session.query(Cmi5AgsScore).all()
+        copy = {c.name: getattr(row, c.name) for c in Cmi5AgsScore.__table__.columns if c.name not in ("id", "cell_key")}
+        db_session.add(Cmi5AgsScore(**copy, cell_key="0" * 64))
+        db_session.commit()
+        real_send = lti13.send_score
+        calls = []
+
+        async def flaky(db, platform, lineitem, sub, score):
+            calls.append(lineitem)
+            if len(calls) == 1:
+                raise httpx.InvalidURL("bad")  # not one of the errors send_score classifies
+            return await real_send(db, platform, lineitem, sub, score)
+
+        monkeypatch.setattr(lti13, "send_score", flaky)
+        assert asyncio.run(ags.deliver_due(db_session)) == 1
+        states = sorted((r.state, r.last_error) for r in db_session.query(Cmi5AgsScore).all())
+        assert states == [(AGS_FAILED, "unexpected failure: InvalidURL"), (AGS_SENT, "")]
+
+    def test_a_row_deleted_while_it_is_sent_is_left_alone(self, monkeypatch, launched, moodle, db_session):
+        monkeypatch.setattr(ags, "deliver_registration", _no_background_delivery)
+        launched.scored(0.8)
+        [row] = db_session.query(Cmi5AgsScore).all()
+        row_id = row.id
+
+        async def deregistered_meanwhile(db, platform, lineitem, sub, score):
+            db.query(Cmi5AgsScore).filter(Cmi5AgsScore.id == row_id).delete(synchronize_session=False)
+
+        monkeypatch.setattr(lti13, "send_score", deregistered_meanwhile)
+        assert asyncio.run(ags.deliver(db_session, row_id)) is None
+
+    def test_a_platform_on_a_private_address_is_refused_without_the_setting(
+        self, monkeypatch, launched, moodle, db_session
+    ):
+        monkeypatch.delenv("INTEGRATION_ALLOW_PRIVATE_URLS", raising=False)
+        monkeypatch.setattr(
+            net_guard, "_resolve",
+            lambda host, port, **kw: [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("10.0.0.5", port))],
+        )
+        launched.scored(0.8)
+        [row] = db_session.query(Cmi5AgsScore).all()
+        assert row.state == AGS_FAILED and "address" in row.last_error
+        assert not moodle.token_route.called and not moodle.called
+
+    def test_the_access_token_is_reused_until_it_expires(self, launched, moodle):
+        launched.completed()
+        launched.scored(0.8)
+        assert len(_sent(moodle)) == 2 and moodle.token_route.call_count == 1
+
+    def test_a_first_result_racing_another_insert_updates_that_row(self, monkeypatch, launched, moodle, db_session):
+        launched.completed()  # the cell exists now
+        real_cell = ags._cell
+        seen = []
+
+        def racing(db, key):
+            seen.append(key)
+            return None if len(seen) == 1 else real_cell(db, key)  # as if another insert had won
+
+        monkeypatch.setattr(ags, "_cell", racing)
+        assert launched.scored(0.8).status_code == 200
+        [row] = db_session.query(Cmi5AgsScore).all()
+        assert row.score_given == 80.0 and row.state == AGS_SENT
+
+
+def test_a_later_lower_fail_never_replaces_the_best_mark(client, lti, platform, release, db_session, moodle):
+    student = _lti_student(db_session, platform, release)
+    assert lti(platform, f"cmi5:{release['id']}:0", **AGS_CLAIM).status_code == 302
+    first = _spa_launch(client, student, release)
+    first.initialized()
+    assert first.scored(0.6).status_code == 200  # failed (mastery 0.7)
+    first.terminated()
+    second = _spa_launch(client, student, release)
+    second.initialized()
+    assert second.scored(0.2).status_code == 200  # failed again, lower
+    assert [s["scoreGiven"] for s in _sent(moodle)] == [60.0]  # the lower one is not sent
+    [row] = db_session.query(Cmi5AgsScore).all()
+    assert row.score_given == 60.0
+
+
+class TestDeepLinkLimits:
+    def test_more_than_fifty_items_are_refused(self, client, lti, platform, release):
+        page = _picker(lti, platform)
+        session = html.unescape(re.search(r'name="session" value="([^"]+)"', page).group(1))
+        items = [f"cmi5:{release['id']}:0"] * 51
+        assert client.post("/lti/deeplink/finish", data={"session": session, "item": items}).status_code == 422
+
+    def test_a_superseded_release_is_no_new_content_item_but_its_students_still_launch(
+        self, lti, platform, release, db_session
+    ):
+        from app.course_releases.models import CourseRelease
+
+        student = _lti_student(db_session, platform, release)
+        db_session.get(CourseRelease, uuid.UUID(release["id"])).state = SUPERSEDED
+        db_session.commit()
+        assert cmi5_lti.content_item(db_session, platform.tenant_id, f"{release['id']}:0") is None
+        assert lti(platform, f"cmi5:{release['id']}:0").status_code == 302
+        assert db_session.query(Cmi5Registration).filter_by(user_id=student.id).count() == 1
+
+    def test_releases_without_a_cmi5_package_are_parsed_once_and_skipped(
+        self, monkeypatch, platform, release, db_session
+    ):
+        monkeypatch.setattr(cmi5_lti, "_TITLES", type(cmi5_lti._TITLES)())
+        calls = []
+
+        def no_package(db, rel):
+            calls.append(rel.id)
+            raise content_mod.ContentError("no cmi5")
+
+        monkeypatch.setattr(content_mod, "package", no_package)
+        assert cmi5_lti.picker_items(db_session, platform.tenant_id) == []
+        assert cmi5_lti.picker_items(db_session, platform.tenant_id) == []
+        assert len(calls) == 1

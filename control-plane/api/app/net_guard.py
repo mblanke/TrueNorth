@@ -182,6 +182,37 @@ def fetch(url: str, *, max_bytes: int, allow_private: bool = False, timeout: flo
     raise UnreachableError()  # unreachable: the last hop returns or raises
 
 
+@dataclass(frozen=True)
+class Answer:
+    status: int
+    body: bytes
+    content_type: str
+
+
+def post(url: str, *, data: dict | None = None, json_body: object = None, headers: dict | None = None,
+         allow_private: bool = False, timeout: float = 20.0, max_bytes: int = 1_000_000) -> Answer:
+    """POST to ``url`` under the same rules (vetted, pinned, no redirects, body capped). The
+    status is returned, not raised, so a caller can tell a refusal from a busy server; a
+    failure to connect raises ``UnreachableError``. For server-to-server calls to an
+    address an admin registered (an LMS's token and grade services). Synchronous."""
+    try:
+        with _client(url, allow_private=allow_private, timeout=timeout) as client:
+            kwargs: dict = {"headers": headers or {}}
+            if data is not None:
+                kwargs["data"] = data
+            if json_body is not None:
+                kwargs["json"] = json_body
+            with client.stream("POST", url, **kwargs) as resp:
+                body = bytearray()
+                for chunk in resp.iter_bytes():
+                    body.extend(chunk)
+                    if len(body) > max_bytes:
+                        raise TooLargeError()
+                return Answer(resp.status_code, bytes(body), resp.headers.get("content-type", ""))
+    except (httpx.HTTPError, httpx.InvalidURL) as exc:
+        raise UnreachableError() from exc
+
+
 def probe(url: str, *, allow_private: bool = False, timeout: float = 10.0) -> int:
     """The HTTP status ``url`` answers a guarded GET with (redirects not followed, body not
     read). For reachability checks; failures raise the same detail-free errors as fetch."""

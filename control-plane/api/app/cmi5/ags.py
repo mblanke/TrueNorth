@@ -14,13 +14,19 @@ result for every gradebook cell of that Student and AU, in the same transaction:
 * A cell is (platform, line item, the platform's user id). One row each, holding the latest
   result, so a retried request or a second statement never posts something else. The
   result is resent only when it changes.
-* Only a launch whose platform is active, in the release's tenant, granted the AGS score
-  scope, and whose line item is on the platform's own origin. Nothing else gets a token.
+* Only a launch by an LMS account bound to the Student (the account its own launch created,
+  or an explicit staff link: ``lti_identity.links.is_bound``), never one matched by an email
+  it asserted; whose platform is active, in the release's tenant, granted the AGS score
+  scope; and whose line item is on the platform's own origin. Nothing else gets a token.
+* passed/failed keep the best mark in the registration (lms.py), so a later, lower fail
+  never replaces an earlier, higher result in the gradebook.
 
 Delivery is after commit (:func:`deliver_registration`, a background task of the AU's
 statement request) and again from :func:`loop` (``CMI5_AGS_RETRY_SECONDS``, default 60):
 a transient failure (network, 408/425/429, 5xx) is retried with backoff up to
-``CMI5_AGS_MAX_ATTEMPTS`` (default 10); anything else is ``failed`` with the reason.
+``CMI5_AGS_MAX_ATTEMPTS`` (default 10); anything else, including an error nobody foresaw,
+is ``failed`` with the reason. The token and score requests go through app.net_guard
+(private addresses only with ``INTEGRATION_ALLOW_PRIVATE_URLS``, as the platform probe).
 """
 
 from __future__ import annotations
@@ -35,11 +41,13 @@ from datetime import UTC, datetime, timedelta
 from urllib.parse import urlsplit
 
 from sqlalchemy import or_, update
+from sqlalchemy.exc import IntegrityError, InvalidRequestError
 from sqlalchemy.orm import Session
 
 from .. import lti13
 from ..course_releases.models import CourseRelease
-from ..models import ExternalPlatform, LTILaunch
+from ..lti_identity.links import is_bound
+from ..models import ExternalPlatform, LTILaunch, User
 from .models import AGS_FAILED, AGS_PENDING, AGS_SENT, Cmi5AgsScore, Cmi5Registration
 
 logger = logging.getLogger("truenorth.cmi5.ags")
@@ -109,11 +117,16 @@ def enqueue(db: Session, reg: Cmi5Registration, release: CourseRelease, au_index
     now = _now()
     due = 0
     seen: set[str] = set()
+    user = db.get(User, reg.user_id)  # tenant-safe: the registration's own Student
     for launch in launches:
         key = _cell_key(launch.platform_id, launch.ags_lineitem_url, launch.lti_user_sub)
         if key in seen:
             continue
         seen.add(key)
+        # Only an LMS account bound to the Student (their own LTI account, or an explicit
+        # link), never one matched by an email it asserted (review of #140).
+        if user is None or not is_bound(db, launch.platform_id, launch.lti_user_sub, user):
+            continue
         platform = db.get(ExternalPlatform, launch.platform_id)  # tenant-safe: compared with the release below
         if platform is None or not platform.is_active or platform.tenant_id != release.tenant_id:
             continue
@@ -126,37 +139,43 @@ def enqueue(db: Session, reg: Cmi5Registration, release: CourseRelease, au_index
         if not _own_lineitem(platform, launch.ags_lineitem_url):
             logger.warning("cmi5 AGS: launch %s names a line item off its platform's origin; not used", launch.id)
             continue
-        # tenant-safe: the cell key is derived from this tenant's platform id.
-        row = db.query(Cmi5AgsScore).filter(Cmi5AgsScore.cell_key == key).with_for_update().one_or_none()
+        desired = {
+            "score_given": score, "activity_progress": activity, "grading_progress": grading,
+            "registration_id": reg.id, "result_at": now, "state": AGS_PENDING, "attempts": 0,
+            "next_attempt_at": now, "last_error": "",
+        }
+        row = _cell(db, key)
         if row is None:
-            row = Cmi5AgsScore(
-                cell_key=key,
-                tenant_id=release.tenant_id,
-                platform_id=platform.id,
-                registration_id=reg.id,
-                user_id=reg.user_id,
-                release_id=release.id,
-                au_index=au_index,
-                lineitem_url=launch.ags_lineitem_url,
-                lti_user_sub=launch.lti_user_sub,
-                attempts=0,
-                last_error="",
-            )
-            db.add(row)
-        elif (row.score_given, row.activity_progress, row.grading_progress) == (score, activity, grading) and (
+            try:
+                with db.begin_nested():  # two first results at once: one insert wins
+                    db.add(
+                        Cmi5AgsScore(
+                            cell_key=key, tenant_id=release.tenant_id, platform_id=platform.id, user_id=reg.user_id,
+                            release_id=release.id, au_index=au_index, lineitem_url=launch.ags_lineitem_url,
+                            lti_user_sub=launch.lti_user_sub, **desired,
+                        )
+                    )
+                    db.flush()
+                due += 1
+                continue
+            except IntegrityError:
+                row = _cell(db, key)  # the other insert's row, now locked: update it below
+                if row is None:
+                    raise
+        if (row.score_given, row.activity_progress, row.grading_progress) == (score, activity, grading) and (
             row.state in (AGS_SENT, AGS_PENDING)
         ):
             continue  # already sent, or on its way: nothing new for this cell
-        row.score_given, row.activity_progress, row.grading_progress = score, activity, grading
-        row.registration_id = reg.id
-        row.result_at = now
-        row.state = AGS_PENDING
-        row.attempts = 0
-        row.next_attempt_at = now
-        row.last_error = ""
+        for name, value in desired.items():
+            setattr(row, name, value)
         due += 1
     db.flush()
     return due
+
+
+def _cell(db: Session, key: str) -> Cmi5AgsScore | None:
+    # tenant-safe: the cell key is derived from a platform id the caller checked.
+    return db.query(Cmi5AgsScore).filter(Cmi5AgsScore.cell_key == key).with_for_update().one_or_none()
 
 
 def _payload(row: Cmi5AgsScore) -> dict:
@@ -194,6 +213,8 @@ async def deliver(db: Session, row_id: uuid.UUID) -> str | None:
     if claimed != 1:
         return None
     row = db.get(Cmi5AgsScore, row_id)  # tenant-safe: an outbox row, sent to its own platform only
+    if row is None:  # deleted between the claim and now (the platform was deregistered)
+        return None
     db.refresh(row)
     sent_result = row.result_at
     platform = db.get(ExternalPlatform, row.platform_id)  # tenant-safe: the row's own platform
@@ -205,7 +226,13 @@ async def deliver(db: Session, row_id: uuid.UUID) -> str | None:
             await lti13.send_score(db, platform, row.lineitem_url, row.lti_user_sub, _payload(row))
         except lti13.AGSError as exc:
             error = exc
-    db.refresh(row, with_for_update=True)
+        except Exception as exc:  # noqa: BLE001 — anything unforeseen ends this row, with the reason
+            logger.exception("cmi5 AGS: unexpected failure sending %s", row_id)
+            error = lti13.AGSError(f"unexpected failure: {type(exc).__name__}", transient=False)
+    try:
+        db.refresh(row, with_for_update=True)
+    except InvalidRequestError:  # the row went with its platform while it was being sent
+        return None
     if row.result_at != sent_result:  # a newer result arrived meanwhile: it goes next
         db.commit()
         return row.state
@@ -238,8 +265,12 @@ async def deliver_due(db: Session, *, registration_id: uuid.UUID | None = None, 
     ids = [r for (r,) in q.order_by(Cmi5AgsScore.next_attempt_at).limit(limit).all()]
     sent = 0
     for row_id in ids:
-        if await deliver(db, row_id) == AGS_SENT:
-            sent += 1
+        try:  # one row's trouble never stops the rest of the batch
+            if await deliver(db, row_id) == AGS_SENT:
+                sent += 1
+        except Exception:  # noqa: BLE001 — logged; the row's lease runs out and it is retried
+            logger.exception("cmi5 AGS: delivering %s failed", row_id)
+            db.rollback()
     return sent
 
 

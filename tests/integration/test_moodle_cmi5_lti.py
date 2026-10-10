@@ -31,6 +31,7 @@ import json
 import os
 import pathlib
 import re
+import socket
 import subprocess
 import sys
 import uuid
@@ -167,6 +168,19 @@ def api(world, monkeypatch):
     monkeypatch.setattr(lms, "get_lms_backend", lambda m=MemoryLRS(): m)
     monkeypatch.setattr(ags, "open_session", lambda: Borrowed())
     monkeypatch.setattr(auth, "AUTH_DISABLED", False)
+    # AGS goes through app.net_guard, which never calls loopback; this disposable Moodle is
+    # published on loopback only, so allow exactly that here (every other rule stays).
+    from app import net_guard
+
+    vetted = net_guard.refused
+    monkeypatch.setattr(
+        net_guard, "refused", lambda addr, *, allow_private: not addr.is_loopback and vetted(addr, allow_private=allow_private)
+    )
+    # The guard pins the first address a name resolves to; "localhost" may be ::1 first,
+    # and the compose file publishes on 127.0.0.1 only.
+    monkeypatch.setattr(
+        net_guard, "_resolve", lambda host, port, **kw: socket.getaddrinfo(host, port, socket.AF_INET, **kw)
+    )
     app.dependency_overrides[get_db] = lambda: world.db
     try:
         yield TestClient(app, base_url="https://testserver")

@@ -765,14 +765,17 @@ def _after_statements(
     graded: float | None = None,
 ) -> None:
     """Record what the accepted cmi5-defined statements mean. A passed/failed records
-    TrueNorth's mark (``graded``: the rules refused any other score) as the AU's score, and
+    TrueNorth's mark (``graded``: the rules refused any other score), the best so far, and
     a result goes on to the gradebook of an LMS that launched the AU over LTI (ags.py)."""
     sent = json.loads(session.sent or "[]")
     data = progress(reg)
     state = data["aus"].setdefault(str(session.au_index), {})
     judged = False
     if graded is not None and (rules.PASSED in accepted or rules.FAILED in accepted):
-        state["score"] = graded
+        # The best mark the registration has had, as moveOn keeps a pass: a later, lower
+        # fail never replaces it in an LMS gradebook (ags.py).
+        best = state.get("score")
+        state["score"] = graded if not isinstance(best, int | float) else max(float(best), graded)
     for verb in accepted:
         sent.append(verb)
         if verb == rules.INITIALIZED:
