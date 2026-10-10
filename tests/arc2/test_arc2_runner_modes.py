@@ -248,11 +248,32 @@ def test_the_egress_proxy_allows_what_the_mode_needs(monkeypatch, mode, egress_a
         egress.close()
 
 
-def test_a_gateway_on_another_port_is_the_only_port_in_local_mode(monkeypatch):
-    gateway_env(monkeypatch, "local", url="https://llm-gw.example.org:8443/anthropic")
-    assert runner.ModelConfig.from_env().egress_ports() == (8443,)
-    gateway_env(monkeypatch, "subscription_with_local_fallback", url="https://llm-gw.example.org:8443")
-    assert runner.ModelConfig.from_env().egress_ports() == (443, 8443)
+def test_a_gateway_on_another_port_is_allowed_as_exactly_that_host_and_port(monkeypatch):
+    """Staging's gateway is Tailscale Serve on :4443 (443 is taken on that host)."""
+    gateway_env(monkeypatch, "local", url="https://atlas.tail8d54ec.ts.net:4443")
+    m = runner.ModelConfig.from_env()
+    assert m.egress_hosts() == ("atlas.tail8d54ec.ts.net:4443",) and m.egress_ports() == (443,)
+    egress, _ = runner.start_egress(_Sandboxed(), m)
+    try:
+        assert egress.permits("atlas.tail8d54ec.ts.net", 4443)
+        assert not egress.permits("atlas.tail8d54ec.ts.net", 443), "only the configured port"
+        assert not egress.permits("api.anthropic.com", 443) and not egress.permits("api.anthropic.com", 4443)
+    finally:
+        egress.close()
+    gateway_env(monkeypatch, "subscription_with_local_fallback", url="https://atlas.tail8d54ec.ts.net:4443")
+    egress, _ = runner.start_egress(_Sandboxed(), runner.ModelConfig.from_env())
+    try:
+        assert egress.allow == ("api.anthropic.com", "atlas.tail8d54ec.ts.net:4443")
+        assert egress.permits("api.anthropic.com", 443) and egress.permits("atlas.tail8d54ec.ts.net", 4443)
+        assert not egress.permits("api.anthropic.com", 4443), "the gateway's port is not opened to other hosts"
+    finally:
+        egress.close()
+
+
+def test_a_remote_gateway_on_any_port_must_still_be_https(monkeypatch):
+    gateway_env(monkeypatch, "local", url="http://atlas.tail8d54ec.ts.net:4443")
+    with pytest.raises(runner.ModelConfigError, match="must be https"):
+        runner.ModelConfig.from_env()
 
 
 def test_a_loopback_gateway_allows_nothing_through_the_proxy(monkeypatch):

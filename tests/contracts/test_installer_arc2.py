@@ -508,9 +508,44 @@ def _egress_allow(**vars_) -> str:
     env.filters["ansible.builtin.urlsplit"] = lambda url, part: getattr(urlsplit(url), part)
     d = _defaults()
     ctx = {"tn_arc2_anthropic_base_url": "", "tn_arc2_local_url": "", **vars_}
-    for name in ("tn_arc2_anthropic_host", "tn_arc2_local_host", "tn_arc2_egress_allow"):
+    for name in ("tn_arc2_anthropic_host", "tn_arc2_local_hostname", "tn_arc2_local_port", "tn_arc2_local_endpoint",
+                 "tn_arc2_egress_allow"):
         ctx[name] = env.from_string(d[name]).render(ctx).strip()
     return ctx["tn_arc2_egress_allow"]
+
+
+STAGING_GATEWAY = {"tn_arc2_local_url": "https://atlas.tail8d54ec.ts.net:4443", "tn_arc2_local_model": "qwen3-coder"}
+
+
+def test_a_gateway_on_its_own_https_port_is_allowed_as_exactly_that_host_and_port():
+    """Staging's gateway: Tailscale Serve on :4443 (443 is taken on that host)."""
+    assert _egress_allow(tn_arc2_mode="local", **STAGING_GATEWAY) == "atlas.tail8d54ec.ts.net:4443"
+    assert _egress_allow(tn_arc2_mode="subscription_with_local_fallback", **STAGING_GATEWAY) \
+        == "api.anthropic.com,atlas.tail8d54ec.ts.net:4443"
+    assert _egress_allow(tn_arc2_mode="local", tn_arc2_local_url="https://atlas.tail8d54ec.ts.net:443/x") \
+        == "atlas.tail8d54ec.ts.net"
+
+
+def test_the_gateways_resolved_addresses_and_only_they_are_let_through_the_ip_deny_list():
+    d = _defaults()
+    assert "100.64.0.0/10" in d["tn_arc2_ip_deny"], "the tailnet range stays denied by default"
+    assert d["tn_arc2_local_ips"] == []
+    ips = ["100.101.102.103", "fd7a:115c:a1e0::1"]
+    unit = _unit(tn_arc2_mode="local", tn_arc2_local_ips=ips, tn_arc2_local_endpoint="atlas.tail8d54ec.ts.net:4443",
+                 tn_arc2_ip_deny=["10.0.0.0/8", "100.64.0.0/10"], **STAGING_GATEWAY)
+    assert _one(unit, "IPAddressAllow") == "100.101.102.103/32 fd7a:115c:a1e0::1/128"
+    assert _one(unit, "IPAddressDeny") == "10.0.0.0/8 100.64.0.0/10"
+    assert "IPAddressAllow" not in _unit(), "subscription: nothing is opened"
+    # 55-arc2 resolves the gateway's host on the platform host and refuses one that does not resolve.
+    tasks = _tasks()
+    resolve = next(t for t in tasks if t.get("name") == "ARC² — resolve the local gateway's addresses")
+    assert _argv(resolve) == ["getent", "ahosts", "{{ tn_arc2_local_hostname }}"] and resolve["changed_when"] is False
+    facts = next(t for t in tasks if t.get("name") == "ARC² — the local gateway's addresses")
+    assert "tn_arc2_local_ips" in facts["ansible.builtin.set_fact"]
+    check = next(t for t in tasks if t.get("name") == "ARC² — the local gateway resolves on this host")
+    assert "tn_arc2_local_ips | length > 0" in check["ansible.builtin.assert"]["that"]
+    names = [t.get("name") for t in tasks]
+    assert names.index("ARC² — the local gateway resolves on this host") < names.index("ARC² — the runner service")
 
 
 def test_the_mode_defaults_to_the_subscription_and_auto_accept_is_off():
@@ -595,7 +630,11 @@ MODES = {
     "local, placeholder token": ({"tn_arc2_mode": "local", **NONE, **GW, LOCAL: "CHANGE_ME"}, False),
     "local, no model": ({"tn_arc2_mode": "local", **NONE, **GW, "tn_arc2_local_model": " "}, False),
     "local, http": ({"tn_arc2_mode": "local", **NONE, **GW, "tn_arc2_local_url": "http://llm-gw.example.org"}, False),
-    "local, not 443": ({"tn_arc2_mode": "local", **NONE, **GW, "tn_arc2_local_url": "https://gw.example.org:4000"}, False),
+    "local, its own https port": ({"tn_arc2_mode": "local", **NONE, **GW, **STAGING_GATEWAY}, True),
+    "local, http on its own port": ({"tn_arc2_mode": "local", **NONE, **GW,
+                                     "tn_arc2_local_url": "http://atlas.tail8d54ec.ts.net:4443"}, False),
+    "local, a port that is not a number": ({"tn_arc2_mode": "local", **NONE, **GW,
+                                            "tn_arc2_local_url": "https://gw.example.org:x443"}, False),
     "local, no url": ({"tn_arc2_mode": "local", **NONE, LOCAL: "gw-key-1234", "tn_arc2_local_model": "m"}, False),
     "fallback, both": ({"tn_arc2_mode": "subscription_with_local_fallback", **ONE, **GW}, True),
     "fallback, no Anthropic credential": ({"tn_arc2_mode": "subscription_with_local_fallback", **NONE, **GW}, False),

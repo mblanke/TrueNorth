@@ -122,6 +122,12 @@ RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
 {% if tn_arc2_ip_deny | length > 0 %}
 IPAddressDeny={{ tn_arc2_ip_deny | join(' ') }}
 {% endif %}
+{% if tn_arc2_mode | default('subscription') != 'subscription' and tn_arc2_local_ips | default([]) | length > 0 %}
+# The local gateway ({{ tn_arc2_local_endpoint }}) and only it, by the addresses its host
+# resolved to at install time; IPAddressAllow takes precedence over IPAddressDeny.
+IPAddressAllow={% for ip in tn_arc2_local_ips %}{{ ip }}{{ '/128' if ':' in ip else '/32' }}{{ ' ' if not loop.last else '' }}{% endfor %}
+
+{% endif %}
 
 # ── Resources: one cgroup for the runner and every job ──────────────────
 MemoryMax={{ tn_arc2_memory_max }}

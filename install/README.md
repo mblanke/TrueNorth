@@ -544,11 +544,16 @@ and a token (`sk-ant-oat…`) in the key's.
 
 **Model mode.** `tn_arc2_mode: local` runs every job on an Anthropic-compatible gateway
 (for example a LiteLLM router exposing `/v1/messages`) instead of Claude: set
-`tn_arc2_local_url` (`https://host[/path]`, port 443), `tn_arc2_local_model` (the model id the
-gateway serves) and, in the vault, `vault_arc2_local_token` (its bearer token; issue one for
-this host alone). The jobs' proxy then allows the gateway's host and nothing else, and no
-Anthropic credential is written to the runner's environment file. An internal gateway on a
-private address also needs that address removed from `tn_arc2_ip_deny`.
+`tn_arc2_local_url` (`https://host[:port][/path]`, any https port, never http; staging's is
+`https://atlas.tail8d54ec.ts.net:4443`), `tn_arc2_local_model` (the model id the gateway
+serves) and, in the vault, `vault_arc2_local_token` (its bearer token; issue one for this host
+alone). The jobs' proxy then allows exactly that host:port and nothing else, and no Anthropic
+credential is written to the runner's environment file. A tailnet or internal gateway sits in
+a range `tn_arc2_ip_deny` denies (Tailscale: `100.64.0.0/10`): leave the list as it is.
+`55-arc2` resolves the gateway's host on the platform host (it must resolve there: for a
+tailnet name, the host must be on the tailnet) and the unit allows exactly those addresses
+(`IPAddressAllow`); the rest of the range stays denied. Re-run `55-arc2` if the gateway's
+address changes.
 `subscription_with_local_fallback` needs both an Anthropic credential and the gateway: Claude
 runs each step, and a step Claude could not run at all (signed out, usage limit, overloaded)
 is re-run on the gateway. Preflight and `55-arc2` check what each mode needs; the token goes
@@ -593,8 +598,8 @@ an empty capability bounding set, `ProtectSystem=strict` (writable: the runs dir
 its own state directory), `ProtectHome`, `PrivateTmp`, `PrivateDevices`, `PrivateIPC`,
 `ProtectProc=invisible`, a system-call filter, only the namespaces bubblewrap creates, the
 platform's config, TLS, state and datastore directories and `/var/lib/docker` made
-inaccessible, no private-network addresses (`tn_arc2_ip_deny`; empty it only for an internal
-gateway), and memory, CPU and task limits. `ProtectKernelTunables`, `ProtectKernelLogs`,
+inaccessible, no private-network addresses (`tn_arc2_ip_deny`; a local gateway's own resolved
+addresses are let through, nothing else), and memory, CPU and task limits. `ProtectKernelTunables`, `ProtectKernelLogs`,
 `ProtectHostname` and `ProcSubset=pid` are deliberately off: each overmounts part of
 `/proc`, and bubblewrap then cannot mount the job's own `/proc`.
 

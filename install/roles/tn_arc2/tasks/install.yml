@@ -75,7 +75,7 @@
           - vault_arc2_anthropic_api_key | default('') is not search('CHANGE_ME')
           - >-
             tn_arc2_mode | default('subscription') == 'subscription'
-            or (tn_arc2_local_url | default('') is match('^https://[A-Za-z0-9.-]+(:443)?(/.*)?$')
+            or (tn_arc2_local_url | default('') is match('^https://[A-Za-z0-9.-]+(:[0-9]{1,5})?(/.*)?$')
                 and tn_arc2_local_model | default('') | string | trim | length > 0
                 and vault_arc2_local_token | default('') | string | trim | length > 0
                 and vault_arc2_local_token | default('') is not search('CHANGE_ME'))
@@ -88,7 +88,7 @@
           subscription_with_local_fallback, exactly one of vault_arc2_claude_oauth_token (a Claude
           subscription, from `claude setup-token`) or vault_arc2_anthropic_api_key (no default for
           either); with local or subscription_with_local_fallback, tn_arc2_local_url
-          (https://host[:443]/...), tn_arc2_local_model and vault_arc2_local_token;
+          (https://host[:port]/..., never http), tn_arc2_local_model and vault_arc2_local_token;
           tn_arc2_anthropic_base_url empty or https://host[:443]/... (the jobs' egress proxy
           tunnels port 443 only), and an x86_64 or aarch64 host (found {{ ansible_facts['architecture'] }}).
         quiet: true
@@ -315,6 +315,35 @@
         mode: "0600"
       no_log: true
       notify: Restart the ARC² runner
+
+    # The unit denies private and CGNAT ranges (tn_arc2_ip_deny), which a tailnet or internal
+    # gateway sits in (Tailscale: 100.64.0.0/10). Allow exactly the gateway host's own
+    # addresses, as this host resolves them now (IPAddressAllow wins over IPAddressDeny);
+    # the rest of each range stays denied. Re-run 55-arc2 if the gateway's address changes.
+    - name: ARC² — resolve the local gateway's addresses
+      ansible.builtin.command:
+        argv: [getent, ahosts, "{{ tn_arc2_local_hostname }}"]
+      register: tn_arc2_local_resolved
+      changed_when: false
+      check_mode: false
+      failed_when: false
+      when: tn_arc2_mode | default('subscription') != 'subscription'
+
+    # getent ahosts prints "<address> <socktype> [name]" per line.
+    - name: ARC² — the local gateway's addresses
+      ansible.builtin.set_fact:
+        tn_arc2_local_ips: "{{ tn_arc2_local_resolved.stdout_lines | map('split') | map('first') | unique | list }}"
+      when: tn_arc2_mode | default('subscription') != 'subscription'
+
+    - name: ARC² — the local gateway resolves on this host
+      ansible.builtin.assert:
+        that: tn_arc2_local_resolved.rc == 0 and tn_arc2_local_ips | length > 0
+        fail_msg: >-
+          tn_arc2_local_url's host {{ tn_arc2_local_hostname }} does not resolve on this host
+          (getent ahosts exited {{ tn_arc2_local_resolved.rc }}). A tailnet name needs this host on the
+          tailnet (MagicDNS); an internal one needs its DNS. The runner could never reach it.
+        quiet: true
+      when: tn_arc2_mode | default('subscription') != 'subscription'
 
     - name: ARC² — the runner service
       ansible.builtin.template:

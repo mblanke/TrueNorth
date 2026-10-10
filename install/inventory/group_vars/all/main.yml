@@ -260,8 +260,10 @@ tn_arc2_anthropic_base_url: ""
 #   subscription_with_local_fallback  Claude; a step Claude cannot run at all (signed out,
 #                                     usage limit, overloaded) is re-run on the gateway; needs both
 tn_arc2_mode: subscription
-# The gateway, https on port 443 (the jobs' egress proxy tunnels 443), and the model id it
-# serves. An internal gateway also needs its address out of tn_arc2_ip_deny (roles/tn_arc2).
+# The gateway, https on any port (https://host[:port][/path]; never http), and the model id
+# it serves. The jobs' egress proxy allows exactly that host:port, and 55-arc2 lets the
+# runner reach exactly the addresses the host resolves to, even inside tn_arc2_ip_deny
+# (a tailnet's 100.64.0.0/10, a private LAN); the rest of those ranges stays denied.
 tn_arc2_local_url: ""
 tn_arc2_local_model: ""
 # TEST HOSTS ONLY. true: when a job stops at the outline gate, or at the preview gate with

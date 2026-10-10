@@ -357,9 +357,13 @@ class ModelConfig:
     def egress_hosts(self) -> tuple[str, ...]:
         """What the jobs' egress proxy tunnels to. A loopback gateway is reached directly
         (``local_ports``), not through the proxy. ``local``: the gateway only, whatever
-        ARC2_EGRESS_ALLOW says, so a job never reaches api.anthropic.com."""
+        ARC2_EGRESS_ALLOW says, so a job never reaches api.anthropic.com. A gateway on a
+        port other than 443 is listed as exactly ``host:port`` (arc2/egress.py)."""
         from arc2.egress import allowed_hosts
-        gateway = () if self.local is None or self.local.loopback else (self.local.host,)
+        gateway: tuple[str, ...] = ()
+        if self.local is not None and not self.local.loopback:
+            port = self.local.port
+            gateway = (self.local.host if port == 443 else f"{self.local.host}:{port}",)
         if self.mode == "local":
             return gateway
         if self.mode == "subscription_with_local_fallback" and not self.legacy:
@@ -367,9 +371,9 @@ class ModelConfig:
         return allowed_hosts()
 
     def egress_ports(self) -> tuple[int, ...]:
-        if self.local is None or self.local.loopback or self.legacy:
-            return (443,)
-        return (self.local.port,) if self.mode == "local" else tuple(sorted({443, self.local.port}))
+        """Ports a bare host in ``egress_hosts`` may be reached on; a gateway on another
+        port is allowed by its exact ``host:port`` entry instead."""
+        return (443,)
 
     def local_ports(self) -> tuple[int, ...]:
         """Ports on this host a job may reach directly: a loopback model endpoint's."""

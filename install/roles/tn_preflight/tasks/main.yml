@@ -322,18 +322,19 @@
         quiet: true
 
     # local and subscription_with_local_fallback: an Anthropic-compatible gateway, https on
-    # 443 (the jobs' egress proxy tunnels 443 only), the model it serves, and its token.
+    # any port (the jobs' egress proxy then allows exactly that host:port), the model it
+    # serves, and its token. Never plain http: the token travels in every request.
     - name: Preflight — ARC² local gateway is complete
       when: tn_arc2_mode | default('subscription') != 'subscription'
       ansible.builtin.assert:
         that:
-          - tn_arc2_local_url | default('') is match('^https://[A-Za-z0-9.-]+(:443)?(/.*)?$')
+          - tn_arc2_local_url | default('') is match('^https://[A-Za-z0-9.-]+(:[0-9]{1,5})?(/.*)?$')
           - tn_arc2_local_model | default('') | string | trim | length > 0
           - vault_arc2_local_token | default('') | string | trim | length > 0
           - vault_arc2_local_token | default('') is not search('CHANGE_ME')
         fail_msg: >-
           tn_arc2_mode is {{ tn_arc2_mode | default('subscription') }}, so ARC² needs the local gateway: tn_arc2_local_url
-          {{ 'set' if tn_arc2_local_url | default('') | length > 0 else 'NOT set' }} (https://host[:443][/path]),
+          {{ 'set' if tn_arc2_local_url | default('') | length > 0 else 'NOT set' }} (https://host[:port][/path], never http),
           tn_arc2_local_model {{ 'set' if tn_arc2_local_model | default('') | string | trim | length > 0 else 'NOT set' }},
           vault_arc2_local_token {{ 'set' if (vault_arc2_local_token | default('') | string | trim | length > 0)
           and (vault_arc2_local_token | default('') is not search('CHANGE_ME')) else 'NOT set (or still CHANGE_ME)' }}.

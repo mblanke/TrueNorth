@@ -491,10 +491,13 @@ private-network addresses, and resource limits. Settings that overmount `/proc`
 because bubblewrap must mount a fresh `/proc` for the job's PID namespace.
 
 **Egress.** Jobs have their own network namespace and reach only the runner's proxy, which
-tunnels `CONNECT` to `ARC2_EGRESS_ALLOW` on 443: `api.anthropic.com` (or the
-`tn_arc2_anthropic_base_url` gateway's host) in `subscription` mode, the local gateway's host
+tunnels `CONNECT` to `ARC2_EGRESS_ALLOW`: `api.anthropic.com` (or the
+`tn_arc2_anthropic_base_url` gateway's host) on 443 in `subscription` mode, the local gateway
 alone in `local` mode, both in `subscription_with_local_fallback` (`tn_arc2_egress_allow`,
-built from `tn_arc2_mode`). The legacy local-Ollama fallback is off (`ARC2_FALLBACK=off`):
+built from `tn_arc2_mode`). A bare host in the list means port 443 only; a local gateway on
+another https port is listed as exactly `host:port` (staging:
+`atlas.tail8d54ec.ts.net:4443`, Tailscale Serve), which opens that port on that host and no
+other. The legacy local-Ollama fallback is off (`ARC2_FALLBACK=off`):
 there is no Ollama on the platform host.
 
 **Model mode (2026-10-09).** `ARC2_MODE` (installer: `tn_arc2_mode`) chooses what runs a job
@@ -524,11 +527,16 @@ re-run on a local Ollama (`ARC2_FALLBACK_URL`, default `http://127.0.0.1:11434`;
 through the new settings: `ARC2_MODE=subscription_with_local_fallback`,
 `ARC2_LOCAL_URL=http://127.0.0.1:11434`, `ARC2_LOCAL_MODEL=<model>`.
 
-Preflight and `55-arc2` check each mode: `local` needs the URL (`https://host[:443]/...`),
-the model and the token; `subscription` needs exactly one Anthropic credential (#128's rules);
-the fallback mode needs both sets. In `local` mode an Anthropic credential left in the vault
-is ignored and not written. An internal gateway on a private address also needs that address
-out of `tn_arc2_ip_deny`. `55-arc2` refuses a deployed runner that predates `ARC2_MODE` when a
+Preflight and `55-arc2` check each mode: `local` needs the URL (`https://host[:port][/path]`,
+any port, never http), the model and the token; `subscription` needs exactly one Anthropic
+credential (#128's rules); the fallback mode needs both sets. In `local` mode an Anthropic
+credential left in the vault is ignored and not written. The unit denies private and CGNAT
+ranges (`tn_arc2_ip_deny`, including Tailscale's `100.64.0.0/10`), and a tailnet or internal
+gateway sits in one: `55-arc2` resolves the gateway's host on the platform host
+(`getent ahosts`; it stops if the name does not resolve, for a tailnet name that means the
+host is not on the tailnet) and the unit allows exactly those addresses (`IPAddressAllow`,
+`/32` or `/128`, which systemd applies before `IPAddressDeny`). The rest of each range stays
+denied. Re-run `55-arc2` if the gateway's address changes. `55-arc2` refuses a deployed runner that predates `ARC2_MODE` when a
 mode other than `subscription` is asked for (it would silently use Claude).
 Tests: `tests/arc2/test_arc2_runner_modes.py`, `tests/contracts/test_installer_arc2.py`.
 
