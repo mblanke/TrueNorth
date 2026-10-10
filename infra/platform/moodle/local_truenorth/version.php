@@ -15,7 +15,8 @@
 defined('MOODLE_INTERNAL') || die();
 
 $plugin->component = 'local_truenorth';
-$plugin->version   = 2026100504;
+$plugin->version   = 2026100900;
 $plugin->requires  = 2025041400; // Moodle 5.0.
 $plugin->maturity  = MATURITY_ALPHA;
-$plugin->release   = '0.3.2';
+$plugin->release   = '0.4.0';
+$plugin->dependencies = ['mod_lti' => ANY_VERSION]; // Its site key signs pull_results answers.

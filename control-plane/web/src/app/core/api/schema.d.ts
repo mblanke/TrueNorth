@@ -2813,6 +2813,55 @@ export interface paths {
         patch: operations["update_platform_integrations_platforms__platform_id__patch"];
         trace?: never;
     };
+    "/integrations/platforms/{platform_id}/moodle-results": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Moodle Results Status
+         * @description Where TrueNorth is in this Moodle's results: cursor, last run, last error, totals.
+         *
+         *     **Permission: integration:read**. 404 for another tenant's platform; 422 for a
+         *     platform that is not a Moodle with the TrueNorth plugin.
+         */
+        get: operations["moodle_results_status_integrations_platforms__platform_id__moodle_results_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/integrations/platforms/{platform_id}/moodle-results/pull": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Moodle Results Pull
+         * @description Pull completions and quiz grades from this Moodle now and record them.
+         *
+         *     **Permission: integration:write** (admins). The scheduled pull
+         *     (``MOODLE_RESULTS_PULL_SECONDS``) does the same. The Moodle's answer must be signed by
+         *     its registered LTI key and answer this request, or nothing is recorded (502). 409 while
+         *     another pull of the same Moodle is running. ``reset`` reads from the beginning again;
+         *     recording is idempotent, so that only re-checks.
+         */
+        post: operations["moodle_results_pull_integrations_platforms__platform_id__moodle_results_pull_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/integrations/platforms/{platform_id}/test": {
         parameters: {
             query?: never;
@@ -10423,6 +10472,75 @@ export interface components {
             score: number;
             /** Status */
             status: string;
+        };
+        /** MoodleResultsPullIn */
+        MoodleResultsPullIn: {
+            /**
+             * Reset
+             * @default false
+             */
+            reset?: boolean;
+        };
+        /** MoodleResultsPullOut */
+        MoodleResultsPullOut: {
+            /** Applied */
+            applied: number;
+            /** Cursor */
+            cursor: string;
+            /** More */
+            more: boolean;
+            /** Pages */
+            pages: number;
+            /**
+             * Platform Id
+             * Format: uuid
+             */
+            platform_id: string;
+            /** Rows */
+            rows: number;
+            /** Skipped */
+            skipped: {
+                [key: string]: number;
+            };
+            /** Unchanged */
+            unchanged: number;
+        };
+        /** MoodleResultsStatusOut */
+        MoodleResultsStatusOut: {
+            /**
+             * Cursor
+             * @default
+             */
+            cursor?: string;
+            /**
+             * Last Error
+             * @default
+             */
+            last_error?: string;
+            /** Last Run At */
+            last_run_at?: string | null;
+            /** Last Success At */
+            last_success_at?: string | null;
+            /**
+             * Platform Id
+             * Format: uuid
+             */
+            platform_id: string;
+            /**
+             * Rows Applied
+             * @default 0
+             */
+            rows_applied?: number;
+            /**
+             * Rows Seen
+             * @default 0
+             */
+            rows_seen?: number;
+            /**
+             * Running
+             * @default false
+             */
+            running?: boolean;
         };
         /** MoodleSsoIn */
         MoodleSsoIn: {
@@ -19261,6 +19379,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ExternalPlatformOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    moodle_results_status_integrations_platforms__platform_id__moodle_results_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                platform_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MoodleResultsStatusOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    moodle_results_pull_integrations_platforms__platform_id__moodle_results_pull_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                platform_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["MoodleResultsPullIn"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MoodleResultsPullOut"];
                 };
             };
             /** @description Validation Error */

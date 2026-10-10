@@ -12,7 +12,7 @@ import hmac
 import logging
 import os
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from urllib.parse import parse_qs, urlsplit
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -32,7 +32,10 @@ from ..models import (
     LTINonce,
     User,
 )
-from ..moodle_backends import supported_moodle_types
+from ..moodle_backends import MoodleError, supported_moodle_types
+from ..moodle_results import service as results_service
+from ..moodle_results.models import MoodleResultCursor, MoodleResultRecord
+from ..moodle_results.schemas import MoodleResultsPullIn, MoodleResultsPullOut, MoodleResultsStatusOut
 from ..platforms import get_platform_adapter
 from ..rbac import Permission, is_platform_admin, require_permission, user_has_permission
 from ..schemas import (
@@ -202,6 +205,11 @@ def deregister_platform(
         db.query(CoursePublication.id).filter(CoursePublication.platform_id == p.id),
         "Platform has {n} course publication(s) on record and is kept as part of their history",
     )
+    refuse_if(
+        db.query(MoodleResultRecord.id).filter(MoodleResultRecord.platform_id == p.id),
+        "Platform has {n} Student result record(s) pulled from it and is kept as part of their history",
+    )
+    db.query(MoodleResultCursor).filter(MoodleResultCursor.platform_id == p.id).delete(synchronize_session=False)
     db.query(LTINonce).filter(LTINonce.platform_id == p.id).delete(synchronize_session=False)
     db.query(LTILaunch).filter(LTILaunch.platform_id == p.id).delete(synchronize_session=False)
     db.flush()
@@ -263,6 +271,66 @@ def moodle_sso_ticket(
         return moodle_sso.mint_ticket(db, user, body.course_id)
     except moodle_sso.NotAvailableError as exc:
         raise HTTPException(exc.status, exc.detail) from exc
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# Moodle results (completions and quiz grades pulled back; app/moodle_results)
+# ══════════════════════════════════════════════════════════════════════════
+
+
+def _results_platform(db: Session, platform_id: uuid.UUID, user: CurrentUser) -> ExternalPlatform:
+    p = get_owned(db, ExternalPlatform, platform_id, user)
+    if not p:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Platform not found")
+    if p.platform_type not in supported_moodle_types():
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "This platform does not report Moodle results")
+    return p
+
+
+@router.get("/platforms/{platform_id}/moodle-results", response_model=MoodleResultsStatusOut)
+def moodle_results_status(
+    platform_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_permission(Permission.INTEGRATION_READ)),
+):
+    """Where TrueNorth is in this Moodle's results: cursor, last run, last error, totals.
+
+    **Permission: integration:read**. 404 for another tenant's platform; 422 for a
+    platform that is not a Moodle with the TrueNorth plugin."""
+    p = _results_platform(db, platform_id, user)
+    row = db.get(MoodleResultCursor, p.id)  # tenant-safe: p came from get_owned()
+    if row is None:
+        return MoodleResultsStatusOut(platform_id=p.id)
+    out = MoodleResultsStatusOut.model_validate(row)
+    lease = row.lease_until if row.lease_until is None or row.lease_until.tzinfo else row.lease_until.replace(tzinfo=UTC)
+    out.running = lease is not None and lease > datetime.now(UTC)
+    return out
+
+
+@router.post("/platforms/{platform_id}/moodle-results/pull", response_model=MoodleResultsPullOut)
+def moodle_results_pull(
+    platform_id: uuid.UUID,
+    body: MoodleResultsPullIn | None = None,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_permission(Permission.INTEGRATION_WRITE)),
+):
+    """Pull completions and quiz grades from this Moodle now and record them.
+
+    **Permission: integration:write** (admins). The scheduled pull
+    (``MOODLE_RESULTS_PULL_SECONDS``) does the same. The Moodle's answer must be signed by
+    its registered LTI key and answer this request, or nothing is recorded (502). 409 while
+    another pull of the same Moodle is running. ``reset`` reads from the beginning again;
+    recording is idempotent, so that only re-checks."""
+    p = _results_platform(db, platform_id, user)
+    try:
+        summary = results_service.pull(db, p, reset=bool(body and body.reset))
+    except results_service.PullBusyError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    except results_service.LeaseLostError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    except MoodleError as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc)) from exc
+    return MoodleResultsPullOut(**summary.as_dict())
 
 
 # ══════════════════════════════════════════════════════════════════════════

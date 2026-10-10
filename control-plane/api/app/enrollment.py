@@ -81,6 +81,28 @@ def ensure_enrollment(
     return enrollment
 
 
+def complete_enrollment(db: Session, enrollment: Enrollment) -> Enrollment:
+    """Mark an enrollment completed with its final score and letter grade, computed from
+    its recorded module progress (never supplied by a caller). Flushes, does not commit.
+
+    One rule for every path that completes a course: ``POST /courses/{id}/complete`` and
+    the results pulled back from Moodle (app/moodle_results)."""
+    from datetime import UTC, datetime
+
+    progress_rows = db.query(ModuleProgress).filter(ModuleProgress.enrollment_id == enrollment.id).all()
+    total_score = sum(p.score or 0 for p in progress_rows)
+    max_score = sum(p.max_score or 0 for p in progress_rows) or 1
+    pct = (total_score / max_score) * 100
+    grade = next((letter for floor, letter in ((90, "A"), (80, "B"), (70, "C"), (60, "D")) if pct >= floor), "F")
+    enrollment.status = EnrollmentStatus.completed
+    enrollment.completed_at = datetime.now(UTC)
+    enrollment.final_score = total_score
+    enrollment.max_score = max_score
+    enrollment.final_grade = grade
+    db.flush()
+    return enrollment
+
+
 def courses_for_learning_path(
     db: Session, learning_path_id: uuid.UUID, *, tenant_id: uuid.UUID | str
 ) -> list[Course]:

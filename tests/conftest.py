@@ -24,6 +24,7 @@ os.environ.setdefault("RATE_LIMIT_ENABLED", "false")
 os.environ.setdefault("TN_SECRETS_KEY", "test-only-secrets-key-0123456789abcdef")  # app/secretbox.py
 os.environ.setdefault("COURSE_PUBLISH_RESUME", "false")
 os.environ.setdefault("LAB_SESSIONS_SWEEP", "false")
+os.environ.setdefault("MOODLE_RESULTS_PULL_SECONDS", "0")  # tests pull with app.moodle_results.service
 os.environ.setdefault("RANGE_OP_REDISPATCH_SECONDS", "0")  # tests call redispatch_pending themselves
 
 from app.db import Base, get_db

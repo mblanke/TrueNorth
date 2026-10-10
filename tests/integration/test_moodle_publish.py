@@ -16,7 +16,10 @@ What it proves, end to end through app.course_publishing and local_truenorth:
      page and the quiz record completion and the grade;
   3. publishing the same release again changes nothing in Moodle;
   4. a second release with a changed question keeps the attempted quiz (hidden, with
-     its grade) and adds the new one.
+     its grade) and adds the new one;
+  5. a TrueNorth Student signed in through local_truenorth's SSO passes a quiz in Moodle,
+     and TrueNorth's results pull (signed by the Moodle's own LTI key) records the pass on
+     their module progress and quiz attempts, once.
 """
 
 from __future__ import annotations
@@ -72,6 +75,8 @@ def world(tmp_path_factory):
         platform_type="moodle",
         base_url=URL,
         lti_issuer=URL,
+        # Results come back signed by this Moodle's LTI site key, published here.
+        lti_jwks_url=f"{URL}/mod/lti/certs.php",
         auth_type=IntegrationAuthType.lti13,
         tenant_id=tenant.id,
     )
@@ -79,7 +84,7 @@ def world(tmp_path_factory):
     db.commit()
     pem = pathlib.Path(KEY).read_text()
     backend = LocalTrueNorthMoodle(key_provider=lambda: (pem, "test-key"))
-    return SimpleNamespace(db=db, tenant=tenant, platform=platform, backend=backend, tmp=tmp_path_factory)
+    return SimpleNamespace(db=db, tenant=tenant, platform=platform, backend=backend, tmp=tmp_path_factory, pem=pem)
 
 
 def release(world, data: bytes):
@@ -189,6 +194,86 @@ def test_publish_learn_republish_and_revise(world):
         if a["type"] == "quiz" and a["visible"] and k.startswith("tn:mod_001:")
     ]
     assert len(new) == 1 and new[0] != attempted
+
+
+def sso_into_moodle(world, user, course_id: str) -> None:
+    """Sign a TrueNorth user into Moodle the way the app does (app.moodle_sso): a one-minute
+    ticket POSTed to sso.php, which creates their account (idnumber = TrueNorth id) and
+    enrols them on the course."""
+    import time
+
+    import httpx
+    import jwt
+
+    now = int(time.time())
+    claims = {
+        "iss": "truenorth", "typ": "sso", "aud": URL, "tid": str(world.tenant.id), "sub": str(user.id),
+        "email": user.email, "given_name": "Results", "family_name": "Student", "role": "student",
+        "course": course_id, "iat": now, "exp": now + 60, "jti": uuid.uuid4().hex,
+    }
+    token = jwt.encode(claims, world.pem, algorithm="RS256", headers={"kid": "test-key"})
+    resp = httpx.post(f"{URL}/local/truenorth/sso.php", data={"token": token}, follow_redirects=False, timeout=60)
+    assert resp.status_code in (302, 303), resp.text[:500]
+
+
+def test_a_students_moodle_results_come_back_to_truenorth(world):
+    import time
+
+    from _release_kit import build
+    from app.enrollment import ensure_enrollment
+    from app.models import (
+        CourseModule,
+        Enrollment,
+        EnrollmentStatus,
+        ModuleProgress,
+        ModuleProgressStatus,
+        Quiz,
+        QuizAttempt,
+        User,
+        UserRole,
+    )
+    from app.moodle_results import service as results
+    from app.moodle_results.models import MoodleResultCursor
+
+    # Its own release (a distinct digest), so this test does not depend on the one above.
+    rel = release(world, build(world.tmp.mktemp("r"), range_ordinals=frozenset({6}), title_suffix=" (results)"))
+    assert publish(world, rel).state == "published"
+    course_id = rel.course_id
+    uid = uuid.uuid4()
+    person = User(id=uid, keycloak_id=f"kc-{uid}", email=f"results-{uid.hex[:8]}@example.test",
+                  display_name="Results Student", role=UserRole.student, tenant_id=world.tenant.id)
+    world.db.add(person)
+    world.db.flush()
+    enrollment = ensure_enrollment(world.db, user_id=uid, course_id=course_id, tenant_id=world.tenant.id)
+    world.db.commit()
+
+    sso_into_moodle(world, person, str(course_id))
+    done = student(str(course_id), f"tn-{uid}")
+    assert done["attempt_state"] == "finished" and done["quiz_complete"] and done["page_complete"]
+
+    time.sleep(7)  # the plugin leaves rows younger than its settle window for the next pull
+    cursor = world.db.get(MoodleResultCursor, world.platform.id)
+    page = world.backend.pull_results(world.platform, cursor.cursor if cursor else "", 1000)
+    mine = [r for r in page["rows"] if r["user"] == str(uid)]
+    assert {r["kind"] for r in mine} >= {"completion", "quiz_grade"}
+    for row in page["rows"]:  # no one is named but by their TrueNorth id
+        assert not {"email", "username", "firstname", "lastname"} & set(row)
+        uuid.UUID(row["user"])
+        uuid.UUID(row["course"])
+
+    summary = results.pull(world.db, world.platform, backend=world.backend)
+    assert summary.applied >= 2, summary.as_dict()
+    module = world.db.query(CourseModule).filter_by(course_id=course_id, ordinal=1).one()
+    progress = world.db.query(ModuleProgress).filter_by(enrollment_id=enrollment.id, module_id=module.id).one()
+    assert progress.status == ModuleProgressStatus.completed and progress.score == 100
+    quizzes = [q.id for q in world.db.query(Quiz).filter_by(module_id=module.id)]
+    [attempt] = world.db.query(QuizAttempt).filter(QuizAttempt.user_id == uid, QuizAttempt.quiz_id.in_(quizzes)).all()
+    assert attempt.passed is True and attempt.score == 100
+    assert world.db.get(Enrollment, enrollment.id).status == EnrollmentStatus.in_progress
+
+    again = results.pull(world.db, world.platform, backend=world.backend, reset=True)
+    assert again.applied == 0 and again.unchanged >= 2  # idempotent
+    assert world.db.query(QuizAttempt).filter(QuizAttempt.user_id == uid).count() == 1
 
 
 def test_a_ticket_for_another_tenant_is_refused(world):

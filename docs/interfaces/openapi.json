@@ -7719,6 +7719,132 @@
         "title": "ModuleProgressOut",
         "type": "object"
       },
+      "MoodleResultsPullIn": {
+        "properties": {
+          "reset": {
+            "default": false,
+            "title": "Reset",
+            "type": "boolean"
+          }
+        },
+        "title": "MoodleResultsPullIn",
+        "type": "object"
+      },
+      "MoodleResultsPullOut": {
+        "properties": {
+          "applied": {
+            "title": "Applied",
+            "type": "integer"
+          },
+          "cursor": {
+            "title": "Cursor",
+            "type": "string"
+          },
+          "more": {
+            "title": "More",
+            "type": "boolean"
+          },
+          "pages": {
+            "title": "Pages",
+            "type": "integer"
+          },
+          "platform_id": {
+            "format": "uuid",
+            "title": "Platform Id",
+            "type": "string"
+          },
+          "rows": {
+            "title": "Rows",
+            "type": "integer"
+          },
+          "skipped": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Skipped",
+            "type": "object"
+          },
+          "unchanged": {
+            "title": "Unchanged",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "platform_id",
+          "cursor",
+          "pages",
+          "rows",
+          "applied",
+          "unchanged",
+          "skipped",
+          "more"
+        ],
+        "title": "MoodleResultsPullOut",
+        "type": "object"
+      },
+      "MoodleResultsStatusOut": {
+        "properties": {
+          "cursor": {
+            "default": "",
+            "title": "Cursor",
+            "type": "string"
+          },
+          "last_error": {
+            "default": "",
+            "title": "Last Error",
+            "type": "string"
+          },
+          "last_run_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Run At"
+          },
+          "last_success_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Success At"
+          },
+          "platform_id": {
+            "format": "uuid",
+            "title": "Platform Id",
+            "type": "string"
+          },
+          "rows_applied": {
+            "default": 0,
+            "title": "Rows Applied",
+            "type": "integer"
+          },
+          "rows_seen": {
+            "default": 0,
+            "title": "Rows Seen",
+            "type": "integer"
+          },
+          "running": {
+            "default": false,
+            "title": "Running",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "platform_id"
+        ],
+        "title": "MoodleResultsStatusOut",
+        "type": "object"
+      },
       "MoodleSsoIn": {
         "properties": {
           "course_id": {
@@ -25263,6 +25389,121 @@
           }
         ],
         "summary": "Update Platform",
+        "tags": [
+          "integrations"
+        ]
+      }
+    },
+    "/integrations/platforms/{platform_id}/moodle-results": {
+      "get": {
+        "description": "Where TrueNorth is in this Moodle's results: cursor, last run, last error, totals.\n\n**Permission: integration:read**. 404 for another tenant's platform; 422 for a\nplatform that is not a Moodle with the TrueNorth plugin.",
+        "operationId": "moodle_results_status_integrations_platforms__platform_id__moodle_results_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "platform_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Platform Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MoodleResultsStatusOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Moodle Results Status",
+        "tags": [
+          "integrations"
+        ]
+      }
+    },
+    "/integrations/platforms/{platform_id}/moodle-results/pull": {
+      "post": {
+        "description": "Pull completions and quiz grades from this Moodle now and record them.\n\n**Permission: integration:write** (admins). The scheduled pull\n(``MOODLE_RESULTS_PULL_SECONDS``) does the same. The Moodle's answer must be signed by\nits registered LTI key and answer this request, or nothing is recorded (502). 409 while\nanother pull of the same Moodle is running. ``reset`` reads from the beginning again;\nrecording is idempotent, so that only re-checks.",
+        "operationId": "moodle_results_pull_integrations_platforms__platform_id__moodle_results_pull_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "platform_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Platform Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/MoodleResultsPullIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MoodleResultsPullOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Moodle Results Pull",
         "tags": [
           "integrations"
         ]

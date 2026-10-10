@@ -19,6 +19,8 @@ How the two trust each other: TrueNorth's LTI tool key lives in TrueNorth's data
 node fetches its public half from `http://api:8080/lti/public-key.pem` on every start and
 trusts it for LTI launches, sign-in tickets and course sync; it accepts tickets for its own
 tenant only (`TN_TENANT_ID`). TrueNorth stores no Moodle token, and Moodle calls nothing.
+The other way, TrueNorth trusts the node's LTI site key (its `/mod/lti/certs.php`): for
+LTI launches, and for the results the node signs when TrueNorth pulls them (section 4).
 
 ## 1. Install
 
@@ -85,6 +87,39 @@ previous release until then.
 
 Staff open the same course as Moodle teachers. **Open in Moodle** appears only once the
 course is published to the tenant's Moodle.
+
+## 4. Results come back to TrueNorth
+
+Completions and quiz grades a Student earns in Moodle are pulled into their TrueNorth
+record: module progress (score, completed), a quiz attempt mirroring Moodle's grade for
+the module's quiz, and the enrolment (in progress, then completed with its letter grade
+once every module is complete). The API pulls every active Moodle every 10 minutes
+(`MOODLE_RESULTS_PULL_SECONDS`, `0` turns it off) and an admin can pull now:
+
+```http
+POST /api/integrations/platforms/{platform_id}/moodle-results/pull   {"reset": false}
+→ 200 {"platform_id": "…", "cursor": "1760001234.2.88", "pages": 1, "rows": 14,
+       "applied": 12, "unchanged": 0, "skipped": {"not_enrolled": 2}, "more": false}
+GET  /api/integrations/platforms/{platform_id}/moodle-results
+→ 200 {"cursor": "…", "last_run_at": "…", "last_success_at": "…", "last_error": "",
+       "rows_seen": 14, "rows_applied": 12, "running": false}
+```
+
+How it is trusted: TrueNorth asks with a sync ticket (as for publishing); `local_truenorth`
+answers with a JWT signed by the Moodle's **LTI site key**, which TrueNorth verifies against
+the platform's registered `lti_jwks_url`, issuer `lti_issuer`, the platform's tenant and
+the jti of the ticket it answers. An unsigned, re-signed or replayed answer is refused
+(502, kept in `last_error`) and nothing is recorded. Only TrueNorth's courses, `tn:`
+activities and TrueNorth-created accounts are reported, named by their TrueNorth id only.
+TrueNorth then records a row only for a user of the platform's tenant, enrolled in
+TrueNorth on a course published to that Moodle; Moodle never creates or reopens an
+enrolment. Recording is idempotent (`reset: true` re-reads from the start safely).
+
+| Symptom | Look at |
+|---|---|
+| `last_error`: "not signed by its registered key" | The platform's `lti_jwks_url` must be the node's `/mod/lti/certs.php`, reached through `base_url`. |
+| `skipped.not_enrolled` | The Student opened the Moodle course without a TrueNorth enrolment (staff previewing, or an enrolment removed). |
+| `skipped.course_not_published_here` | Grades in a Moodle course TrueNorth did not publish to this platform: ignored by design. |
 
 ## Backups, restore, upgrades
 

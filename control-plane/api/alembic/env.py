@@ -19,6 +19,7 @@ from app import (  # noqa: F401
     models,
     models_tickets,
     models_wiki,
+    moodle_results,
     network_inventory,
     noise,
     range_leases,
