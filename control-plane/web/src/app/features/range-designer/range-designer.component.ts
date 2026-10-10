@@ -23,6 +23,8 @@ import * as joint from '@joint/core';
 import { FilterCategoryPipe } from './filter-category.pipe';
 import { GraphHistory } from './graph-history';
 import { upgradeDiagramJson } from './diagram-compat';
+import { importTemplateYaml, YamlImportOutcome } from './range-designer-yaml-import';
+import { YamlImportErrorsDialogComponent, YamlImportErrorsData } from './yaml-import-errors-dialog.component';
 import { ApiService, RoleSpecs, WindowsRole, WindowsRoleCatalogue } from '@core/services/api.service';
 import { RangeNotesComponent } from '../../shared/components/range-notes/range-notes.component';
 import { RangeSummary, TemplateSummary } from '@core/models';
@@ -375,8 +377,9 @@ export class TextPromptDialogComponent {
                   matTooltip="Download the provisionable template as JSON">
             <mat-icon>data_object</mat-icon> Export JSON
           </button>
-          <button mat-stroked-button (click)="importYaml()">
-            <mat-icon>upload</mat-icon> Import YAML
+          <button mat-stroked-button (click)="importYaml()" [disabled]="importingYaml()"
+                  matTooltip="Load a range template YAML (such as an exported one) onto the canvas">
+            <mat-icon>upload</mat-icon> {{ importingYaml() ? 'Validating…' : 'Import YAML' }}
           </button>
           <button mat-stroked-button (click)="importNmap()" class="nmap-btn">
             <mat-icon>radar</mat-icon> Import Nmap
@@ -1978,6 +1981,14 @@ export class RangeDesignerComponent implements AfterViewInit, OnDestroy {
     });
   }
 
+  /** Importing a template file; the button is disabled until the outcome is known. */
+  importingYaml = signal(false);
+
+  /**
+   * Load a template YAML (e.g. one this designer exported) onto the canvas. The file is
+   * checked by POST /templates/validate first; on any error nothing is loaded and every
+   * reason is listed. A successful import replaces the canvas as one undoable edit.
+   */
   importYaml(): void {
     const input = document.createElement('input');
     input.type = 'file';
@@ -1986,12 +1997,62 @@ export class RangeDesignerComponent implements AfterViewInit, OnDestroy {
       const file = (e.target as HTMLInputElement).files?.[0];
       if (!file) return;
       const reader = new FileReader();
-      reader.onload = () => {
-        this.snack.open('Imported ' + file.name + ' - parsing not yet implemented', '', { duration: 3000 });
-      };
+      reader.onerror = () => this.showImportErrors(file.name, 'Could not read the file', [String(reader.error?.message || 'read failed')]);
+      reader.onload = () => this.importYamlText(String(reader.result ?? ''), file.name);
       reader.readAsText(file);
     };
     input.click();
+  }
+
+  importYamlText(text: string, fileName: string): void {
+    this.importingYaml.set(true);
+    importTemplateYaml(text, yaml => this.api.validateTemplate(yaml)).subscribe(outcome => {
+      this.importingYaml.set(false);
+      if (!outcome.ok) {
+        this.showImportErrors(fileName, outcome.title, outcome.messages);
+        return;
+      }
+      if (this.graph.getElements().length === 0) {
+        this.applyImport(outcome, fileName);
+        return;
+      }
+      this.confirm(
+        'Replace diagram',
+        `Replace the current diagram with ${outcome.nodeCount} node(s) from ${fileName}? The change is undoable until you save.`,
+        'Replace',
+      ).subscribe(ok => { if (ok) this.applyImport(outcome, fileName); });
+    });
+  }
+
+  private showImportErrors(fileName: string, title: string, messages: string[]): void {
+    this.importingYaml.set(false);
+    this.dialog.open(YamlImportErrorsDialogComponent, {
+      width: '560px',
+      data: { title, fileName, messages } as YamlImportErrorsData,
+    });
+  }
+
+  private applyImport(outcome: Extract<YamlImportOutcome, { ok: true }>, fileName: string): void {
+    this.suppressHistory = true;
+    try {
+      this.graph.fromJSON(upgradeDiagramJson(outcome.diagram) as any);
+    } catch (err) {
+      this.showImportErrors(fileName, 'Could not draw the template', [(err as Error).message]);
+      return;
+    } finally {
+      this.suppressHistory = false;
+    }
+    this.clearSelection();
+    try { this.updateCounts(); } catch { /* ignore */ }
+    try { this.paper.scaleContentToFit({ padding: 40, maxScale: 1.5 }); } catch { /* ignore */ }
+    this.scheduleSnapshot(0);
+    const extra = [...outcome.warnings, ...outcome.notes];
+    this.snack.open(
+      `Imported ${outcome.nodeCount} node(s) in ${outcome.zoneCount} zone(s) from ${fileName}` +
+        (extra.length ? ` — ${extra.length} note(s): ${extra[0]}` : ''),
+      extra.length ? 'Dismiss' : '',
+      { duration: extra.length ? 8000 : 3000, panelClass: extra.length ? '' : 'snack-success' },
+    );
   }
 
   /* --- Nmap XML Import --- */
