@@ -403,7 +403,7 @@ def test_null_lms(monkeypatch):
     from app.xapi import build_statement
 
     backend = _build(SEAMS["lms"], SEAMS["lms"].null_key, monkeypatch)
-    stmt = build_statement("launched", "s@example.mil", "Student", "exercise", "ex-1", "Drill")
+    stmt = build_statement("launched", "6a1d0c4e-2b3f-4a5e-8d9c-0e1f2a3b4c5d", "exercise", "ex-1", "Drill")
 
     assert _run(backend.emit_statement(stmt)) is True
     accepted = _run(backend.emit_statements([stmt, stmt]))

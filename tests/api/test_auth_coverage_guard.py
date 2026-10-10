@@ -76,6 +76,11 @@ AUTH_MARKERS = (
     # per-node token (X-Noise-Agent-Token). Named here rather than exempted by prefix,
     # so a future /noise/agent route without it still fails this guard.
     "noise_agent_identity",
+    # cmi5 (app/cmi5/router.py): the AU's fetch URL is authenticated by the one-time secret
+    # in its path, and the AU's xAPI endpoint by the session's auth token (Basic). Each
+    # dependency checks its credential; named here so a new /cmi5 route without one fails.
+    "cmi5_fetch_credential",
+    "cmi5_session_credential",
 )
 
 

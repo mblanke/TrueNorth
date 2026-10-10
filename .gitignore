@@ -64,6 +64,7 @@ build/moodle/
 build/vcsim/
 build/greyspace/
 tests/e2e/playwright-report/
+tests/e2e/playwright-report-cmi5/
 tests/e2e/test-results/
 
 # Site-specific CA certificates and TLS material the installer reads (install/files/README.txt)

@@ -187,8 +187,10 @@ platform) are tests in `tests/api/test_lti_staff_link.py`.
 
 ## Phase 2: cmi5
 
-> **Deferred to stage 5 (2026-10-07):** cmi5 stays packaging-only; nothing below is
-> stage-4 scope. See `docs/cmi5-packaging-decision.md`.
+> **Built (2026-10-09):** 2a (served `cmi5.xml` per release), 2b (the AU runtime, `/au/...`),
+> 2d (conformant xAPI) and 2e (LRS configuration), plus TrueNorth's own LMS side. Status,
+> routes and limits: [`docs/cmi5.md`](cmi5.md). 2c (range exercises as AUs) is not built.
+> (Deferred on 2026-10-07 in `docs/cmi5-packaging-decision.md`; that is superseded.)
 
 TrueNorth becomes a cmi5 **content provider**. Moodle and a cmi5 activity plugin act as the
 LMS: they launch AUs and issue `launched` / `satisfied` / `abandoned` / `waived`. TrueNorth's AUs
@@ -233,7 +235,15 @@ exercise run. Range-side statements carry the cmi5 context template. This depend
 
 ### 2d. Make `app/xapi.py` conformant
 
-| Today (`app/xapi.py`) | Required |
+> **Done (2026-10-09):** account actor (`users.id`, no email), IRIs under `XAPI_IRI_BASE`,
+> `context.registration` on every learning statement, course-locale language maps,
+> per-activity pass marks, durations, and the legacy-identity migration with a
+> leave/re-issue/void policy for statements already in the LRS. See
+> [`docs/xapi-conformance.md`](xapi-conformance.md). The table below is the original gap list.
+> The publisher IDs still follow ARC²'s `https://ccoe.forces.gc.ca/xapi/arc2/...` scheme,
+> not the MITE scheme, until Standards binds courses to POs.
+
+| Before (`app/xapi.py`) | Required |
 |---|---|
 | `actor.mbox = mailto:<email>` plus `name` (line 35) | `account {homePage: <TrueNorth identity authority>, name: <users.id>}`, no name. Emails are forbidden as the cmi5 actor, and hashing them is not anonymisation (KB §13.1). |
 | Object IDs `http://truenorthrange.local/...` (line 51) | The MITE scheme from `xapi_mapping.md` for publisher IDs; the LMS-issued `activityId` at runtime. |
@@ -272,6 +282,9 @@ statements identify people by email. Decide whether to leave them, or to void an
 
 1. ~~**The LTI session hand-off (gap #1):** an exchangeable single-use token, or Keycloak federation of LTI users?~~ Decided 2026-10-09: the exchangeable single-use code (see gap #1).
 2. **Which Moodle cmi5 plugin to standardise on.** Choose on CATAPULT LTS results, not the feature list.
+   *2026-10-09:* neither candidate for now (ByLight `mod_cmi5` 0.2.0 breaks cmi5 MUSTs; ADL
+   `mod_cmi5launch` needs the CATAPULT player per node). Moodle links into TrueNorth's own
+   cmi5 launch instead: `docs/cmi5.md`, "Moodle".
 3. **A custom `local_truenorth` Moodle plugin** would only be needed to sync TrueNorth's catalogue (courses, a section per PO, competencies) into Moodle automatically. Deep Linking covers placing individual activities without it.
 4. **Machine-to-machine auth, if Moodle ever calls TrueNorth:** a Keycloak `client_credentials` client mapped to a tenant-scoped service user, or a new API-key scheme.
 5. **Existing email-identified LRS statements** when the actor changes (see 2d).

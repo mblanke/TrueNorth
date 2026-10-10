@@ -23,12 +23,15 @@ from __future__ import annotations
 
 import os
 
-from .base import BaseLMSBackend
+from .base import BaseLMSBackend, LRSResponse, LRSUnavailableError, LRSUnsupportedError
 from .null import NullLMSBackend
 from .xapi_lrs import XAPILRSBackend
 
 __all__ = [
     "BaseLMSBackend",
+    "LRSResponse",
+    "LRSUnavailableError",
+    "LRSUnsupportedError",
     "NullLMSBackend",
     "XAPILRSBackend",
     "get_lms_backend",
@@ -57,9 +60,7 @@ def get_lms_backend() -> BaseLMSBackend:
         cls = _REGISTRY.get(name)
         if cls is None:
             valid = ", ".join(sorted(_REGISTRY))
-            raise ValueError(
-                f"Unknown LMS_BACKEND={name!r}. Valid options: {valid}"
-            )
+            raise ValueError(f"Unknown LMS_BACKEND={name!r}. Valid options: {valid}")
         _instance = cls()
     return _instance
 

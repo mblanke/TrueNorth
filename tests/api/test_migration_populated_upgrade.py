@@ -8,7 +8,9 @@ exercise with objectives and a scheduled event is upgraded to head with
 
 * every pre-existing row survives unchanged, except the one documented data migration
   (``d2f3a4b5c6d7`` rewrites objective validator spellings to canonical names);
-* every table the newer migrations add exists and is empty (they are additive);
+* every table the newer migrations add exists and is empty (they are additive), except
+  ``xapi_legacy_identities``, which ``5a1e9c3d7b20`` fills from ``users`` by design (the
+  legacy xAPI identity of every existing user, docs/xapi-conformance.md);
 * columns added to populated tables take their defaults on the old rows;
 * the new code works on rows that existed before the upgrade (a range operation, a
   network reservation, a power transition on the native ``rangestate`` enum);
@@ -69,7 +71,10 @@ EXPECTED_NEW_TABLES = {
     "range_greyspace",
     "detection_submissions",
     "exercise_runs",
+    "xapi_legacy_identities",
 }
+# New tables a migration fills on purpose (a documented data migration), and with what.
+BACKFILLED_TABLES = {"xapi_legacy_identities"}
 
 # b0c1d2e3f4a5 builds its frozen list of tables from the *live* ORM, so until 2026-10-08 a
 # database taken to DEPLOYED_HEAD already had the columns the scheduler migrations after it
@@ -299,10 +304,13 @@ def test_a_populated_deployed_database_upgrades_to_head_without_loss():
         with engine.connect() as conn:
             populated = {
                 table: n
-                for table in sorted(added)
+                for table in sorted(added - BACKFILLED_TABLES)
                 if (n := conn.execute(sa.text(f'SELECT count(*) FROM "{table}"')).scalar())
             }
             assert not populated, f"additive migrations backfilled rows: {populated}"
+            # 5a1e9c3d7b20: each existing user's pre-switch xAPI identity, and nothing else.
+            legacy = conn.execute(sa.text("SELECT user_id, legacy_mbox FROM xapi_legacy_identities")).all()
+            assert [(str(u), m) for u, m in legacy] == [(str(user_id), "mailto:i@example.test")]
             # The one data migration: objective validators are now canonical.
             validators = dict(conn.execute(sa.text("SELECT ref_id, validator FROM objectives")).all())
             assert sorted(validators.values()) == sorted(VALIDATOR_SPELLINGS.values())

@@ -23,13 +23,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from . import (  # noqa: F401 — network_inventory, noise, range_leases, range_ops, scenario_runs: register tables
+from . import (  # noqa: F401 — every module here but ws_auth only registers its tables
     network_inventory,
     noise,
     range_leases,
     range_ops,
     scenario_runs,
     ws_auth,
+    xapi_identity,
 )
 from .auth import CurrentUser, get_current_user
 from .auth_backends import get_auth_backend
@@ -301,6 +302,7 @@ ws_manager = WebSocketManager(redis_url=os.getenv("REDIS_URL"))
 app.state.ws_manager = ws_manager
 
 # -- Routers (fine-grained RBAC via require_permission) --------------------
+from .cmi5.router import router as cmi5_router  # noqa: E402 (also registers the cmi5 tables)
 from .routers import (
     ad_sync_router,
     adaptive_learning_router,
@@ -381,6 +383,7 @@ app.include_router(scheduling_me_router)  # your own sessions and feed link
 app.include_router(courses_router)
 app.include_router(course_releases_router)
 app.include_router(course_publications_router)
+app.include_router(cmi5_router)  # app/cmi5 (docs/cmi5.md)
 app.include_router(lab_sessions_router)
 app.include_router(learning_paths_router)
 app.include_router(transcript_router)

@@ -42,7 +42,7 @@ from ..rbac import Permission, require_permission, user_has_permission
 from ..search_backends import BaseSearchBackend, SearchBackendError, SearchQueryError, get_search_backend
 from ..search_backends.query import QueryError
 from ..tenancy import get_owned
-from ..xapi import emit_lifecycle
+from ..xapi import emit_lifecycle, objective_result
 
 router = APIRouter(prefix="/exercises", tags=["detections"])
 STALE_PENDING = timedelta(minutes=5)
@@ -199,13 +199,13 @@ async def submit_detection(
         emit_lifecycle(
             background_tasks,
             verb_key="passed",
-            user_email=user.email or f"{user.id}@truenorth.local",
-            user_name=user.display_name,
+            user_id=user.id,
             activity_type="objective",
             activity_id=str(obj.id),
             activity_name=obj.description or obj.ref_id,
-            result={"score": {"raw": obj.points}, "success": True},
+            result=objective_result(obj.points),
             context_extensions={"exercise_id": str(ex.id), "ref_id": obj.ref_id, "submission_id": str(row.id)},
+            registration=ex.id,  # the exercise run
         )
     return _out(row, user, attempts_left=attempts_left)
 

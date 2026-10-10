@@ -389,6 +389,22 @@ export const routes: Routes = [
     title: 'Link a learning-platform account - TrueNorth Range',
   },
   {
+    // cmi5 (docs/cmi5.md): a released course's assignable units, launched with TrueNorth as
+    // the LMS. An AU's returnURL brings the Student back here.
+    path: 'au/releases/:releaseId',
+    canActivate: [authGuard],
+    loadComponent: () => import('./features/cmi5/au-launcher.component').then(m => m.Cmi5LauncherComponent),
+    title: 'Course modules - TrueNorth Range',
+  },
+  {
+    // One AU, launched by an LMS (TrueNorth, Moodle, PCTE) with the cmi5 launch parameters
+    // in the query. authGuard keeps them through sign-in: returnUrl carries the query.
+    path: 'au/releases/:releaseId/:auIndex',
+    canActivate: [authGuard],
+    loadComponent: () => import('./features/cmi5/au-runtime.component').then(m => m.Cmi5AuRuntimeComponent),
+    title: 'Module - TrueNorth Range',
+  },
+  {
     // A student's lab. No guard: a Moodle launch arrives with a token for this one lab
     // (URL fragment); without one the page itself asks the student to sign in.
     path: 'labs/:id',

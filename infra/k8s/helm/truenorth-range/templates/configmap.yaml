@@ -47,6 +47,11 @@ data:
   CORS_ORIGINS: {{ .Values.config.corsOrigins | default $origin | quote }}
   LTI_TOOL_BASE_URL: {{ printf "%s/api" $origin | quote }}
   LTI_WEB_BASE_URL: {{ $origin | quote }}
+  # xAPI identity authority and IRI root (docs/xapi-conformance.md); production refuses
+  # to start without them (app/settings.py). Both follow the public origin; fix it before
+  # the first statement, since changing either later splits every Student's record.
+  XAPI_ACCOUNT_HOMEPAGE: {{ $origin | quote }}
+  XAPI_IRI_BASE: {{ printf "%s/xapi" $origin | quote }}
   PROVISIONER_BACKEND: {{ .Values.config.provisionerBackend | quote }}
   # The api reads the scenario engine from here (app/engine_bridge.py); an init
   # container copies it out of the scenario-engine image (deployment-api.yaml).

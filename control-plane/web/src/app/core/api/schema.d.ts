@@ -678,6 +678,205 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/cmi5/fetch/{secret}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Fetch Cmi5 Auth Token
+         * @description cmi5 fetch URL: the session's auth token, once. Errors are HTTP 200 with
+         *     ``error-code`` 1 (already returned or expired) or 2 (unknown), as cmi5 8.2 requires.
+         */
+        post: operations["fetch_cmi5_auth_token_cmi5_fetch__secret__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cmi5/lrs/{resource}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Cmi5 Lrs Get
+         * @description The AU's xAPI endpoint (read): LMS.LaunchData, learner preferences, its own State.
+         */
+        get: operations["cmi5_lrs_get_cmi5_lrs__resource__get"];
+        /**
+         * Cmi5 Lrs Put
+         * @description The AU's xAPI endpoint (a statement by id, State documents).
+         */
+        put: operations["cmi5_lrs_put_cmi5_lrs__resource__put"];
+        /**
+         * Cmi5 Lrs Post
+         * @description The AU's xAPI endpoint (statements, State documents), checked against the cmi5 rules.
+         */
+        post: operations["cmi5_lrs_post_cmi5_lrs__resource__post"];
+        /**
+         * Cmi5 Lrs Delete
+         * @description The AU's xAPI endpoint (its own State documents).
+         */
+        delete: operations["cmi5_lrs_delete_cmi5_lrs__resource__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cmi5/registrations/{registration_id}/aus/{au_index}/waive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Waive Cmi5 Au
+         * @description Waive an AU for a Student's registration (``waived`` with the reason), then moveOn.
+         */
+        post: operations["waive_cmi5_au_cmi5_registrations__registration_id__aus__au_index__waive_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cmi5/releases/{release_id}/aus/{au_index}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Cmi5 Au Content
+         * @description Pages and quiz questions for TrueNorth's AU runtime. Never the answers.
+         */
+        get: operations["get_cmi5_au_content_cmi5_releases__release_id__aus__au_index__content_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cmi5/releases/{release_id}/aus/{au_index}/grade": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Grade Cmi5 Au Quiz
+         * @description Mark the AU's quiz on the server, record the mark, and return only the totals (no
+         *     per-question result). A Student needs an enrolment on the release and gets
+         *     CMI5_GRADE_ATTEMPTS marks per AU per 24 hours (default 3). In a TrueNorth session the
+         *     AU's passed/failed must then report this mark (TN-GRADE); an AU launched by another LMS
+         *     reports to that LMS, which TrueNorth cannot vouch for (docs/cmi5.md).
+         */
+        post: operations["grade_cmi5_au_quiz_cmi5_releases__release_id__aus__au_index__grade_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cmi5/releases/{release_id}/aus/{au_index}/launch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Launch Cmi5 Au
+         * @description Launch an AU for the caller (TrueNorth as the cmi5 LMS): records ``launched`` and
+         *     ``LMS.LaunchData`` in the LRS and returns the AU URL with the cmi5 launch parameters.
+         */
+        post: operations["launch_cmi5_au_cmi5_releases__release_id__aus__au_index__launch_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cmi5/releases/{release_id}/cmi5.xml": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Cmi5 Course Structure
+         * @description The release's cmi5 course structure for another LMS (PCTE, Moodle): every AU URL
+         *     absolute (TrueNorth's AU runtime), ``launchMethod="OwnWindow"``.
+         */
+        get: operations["get_cmi5_course_structure_cmi5_releases__release_id__cmi5_xml_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cmi5/releases/{release_id}/structure": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Cmi5 Structure
+         * @description The AUs of a release, with the caller's own progress when they have a registration.
+         */
+        get: operations["get_cmi5_structure_cmi5_releases__release_id__structure_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cmi5/sessions/{session_id}/abandon": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Abandon Cmi5 Session
+         * @description End an open session abnormally (``abandoned``): its Student, or a records holder in the tenant.
+         */
+        post: operations["abandon_cmi5_session_cmi5_sessions__session_id__abandon_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/collective-exercises": {
         parameters: {
             query?: never;
@@ -8323,6 +8522,172 @@ export interface components {
              */
             target_node: string;
         };
+        /** Cmi5AuOut */
+        Cmi5AuOut: {
+            /**
+             * Completed
+             * @default false
+             */
+            completed?: boolean;
+            /** Description */
+            description: string;
+            /** Index */
+            index: number;
+            /** Mastery Score */
+            mastery_score: number | null;
+            /** Move On */
+            move_on: string;
+            /**
+             * Passed
+             * @default false
+             */
+            passed?: boolean;
+            /** Publisher Id */
+            publisher_id: string;
+            /**
+             * Satisfied
+             * @default false
+             */
+            satisfied?: boolean;
+            /** Title */
+            title: string;
+            /** Url */
+            url: string;
+            /** Waived */
+            waived?: string | null;
+        };
+        /** Cmi5ContentOut */
+        Cmi5ContentOut: {
+            /** Index */
+            index: number;
+            /** Lang */
+            lang: string | null;
+            /** Mastery Score */
+            mastery_score: number | null;
+            /** Move On */
+            move_on: string;
+            /** Pages */
+            pages: components["schemas"]["Cmi5PageOut"][];
+            quiz: components["schemas"]["Cmi5QuizOut"] | null;
+            /** Title */
+            title: string;
+        };
+        /**
+         * Cmi5FetchOut
+         * @description The fetch URL's answer (cmi5 8.2): the token, or an error code. Always HTTP 200.
+         */
+        Cmi5FetchOut: {
+            /** Auth-Token */
+            "auth-token"?: string | null;
+            /** Error-Code */
+            "error-code"?: string | null;
+            /** Error-Text */
+            "error-text"?: string | null;
+        };
+        /** Cmi5GradeIn */
+        Cmi5GradeIn: {
+            /**
+             * Answers
+             * @description option letter (A, B, ...) per question id
+             */
+            answers?: {
+                [key: string]: string;
+            };
+        };
+        /** Cmi5GradeOut */
+        Cmi5GradeOut: {
+            /** Correct */
+            correct: number;
+            /** Scaled */
+            scaled: number;
+            /** Total */
+            total: number;
+        };
+        /** Cmi5LaunchIn */
+        Cmi5LaunchIn: {
+            /** Launch Mode */
+            launch_mode?: ("Normal" | "Browse" | "Review") | null;
+        };
+        /** Cmi5LaunchOut */
+        Cmi5LaunchOut: {
+            /** Launch Method */
+            launch_method: string;
+            /** Launch Mode */
+            launch_mode: string;
+            /**
+             * Registration
+             * Format: uuid
+             */
+            registration: string;
+            /**
+             * Session Id
+             * Format: uuid
+             */
+            session_id: string;
+            /** Url */
+            url: string;
+        };
+        /** Cmi5PageOut */
+        Cmi5PageOut: {
+            /** Html */
+            html: string;
+            /** Path */
+            path: string;
+        };
+        /** Cmi5QuestionOut */
+        Cmi5QuestionOut: {
+            /** Id */
+            id: string;
+            /** Options */
+            options: string[];
+            /** Stem */
+            stem: string;
+        };
+        /** Cmi5QuizOut */
+        Cmi5QuizOut: {
+            /** Questions */
+            questions: components["schemas"]["Cmi5QuestionOut"][];
+            /** Title */
+            title: string;
+        };
+        /** Cmi5SatisfiedOut */
+        Cmi5SatisfiedOut: {
+            /** Satisfied */
+            satisfied: string[];
+        };
+        /** Cmi5StructureOut */
+        Cmi5StructureOut: {
+            /** Aus */
+            aus: components["schemas"]["Cmi5AuOut"][];
+            /**
+             * Course Id
+             * Format: uuid
+             */
+            course_id: string;
+            /** Course Satisfied */
+            course_satisfied: boolean;
+            /** Enrolled */
+            enrolled: boolean;
+            /** Publisher Id */
+            publisher_id: string;
+            /** Registration */
+            registration: string | null;
+            /**
+             * Release Id
+             * Format: uuid
+             */
+            release_id: string;
+            /** Title */
+            title: string;
+        };
+        /** Cmi5WaiveIn */
+        Cmi5WaiveIn: {
+            /**
+             * Reason
+             * @enum {string}
+             */
+            reason: "Tested Out" | "Equivalent AU" | "Equivalent Outside Activity" | "Administrative";
+        };
         /** CoalitionOut */
         CoalitionOut: {
             /**
@@ -15680,6 +16045,398 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["CertificationOut"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    fetch_cmi5_auth_token_cmi5_fetch__secret__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                secret: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Cmi5FetchOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cmi5_lrs_get_cmi5_lrs__resource__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                resource: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cmi5_lrs_put_cmi5_lrs__resource__put: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                resource: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cmi5_lrs_post_cmi5_lrs__resource__post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                resource: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cmi5_lrs_delete_cmi5_lrs__resource__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                resource: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    waive_cmi5_au_cmi5_registrations__registration_id__aus__au_index__waive_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                registration_id: string;
+                au_index: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Cmi5WaiveIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Cmi5SatisfiedOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_cmi5_au_content_cmi5_releases__release_id__aus__au_index__content_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                release_id: string;
+                au_index: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Cmi5ContentOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    grade_cmi5_au_quiz_cmi5_releases__release_id__aus__au_index__grade_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                release_id: string;
+                au_index: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Cmi5GradeIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Cmi5GradeOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    launch_cmi5_au_cmi5_releases__release_id__aus__au_index__launch_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                release_id: string;
+                au_index: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Cmi5LaunchIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Cmi5LaunchOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_cmi5_course_structure_cmi5_releases__release_id__cmi5_xml_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                release_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_cmi5_structure_cmi5_releases__release_id__structure_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                release_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Cmi5StructureOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    abandon_cmi5_session_cmi5_sessions__session_id__abandon_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

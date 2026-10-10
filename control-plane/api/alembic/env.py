@@ -12,6 +12,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 # Imported to register their tables on Base.metadata.
 from app import (  # noqa: F401
+    cmi5,
     course_publishing,
     course_releases,
     detections,
@@ -26,6 +27,7 @@ from app import (  # noqa: F401
     range_leases,
     range_ops,
     scenario_runs,
+    xapi_identity,
 )
 from app.db import Base
 from app.greyspace import models as greyspace_models  # noqa: F401

@@ -103,6 +103,23 @@ SIGN_IN_ONLY: dict[str, str] = {
     "POST /lab-sessions/{session_id}/evidence": (
         "in-body: _session_for(learning_record:write); Students may only add kind 'submission'"
     ),
+    # ── cmi5 modules (app/cmi5): the AU runtime and TrueNorth's own launch ──
+    # Tenant-scoped (get_owned(CourseRelease)); a candidate release is 404 without course:author.
+    "GET /cmi5/releases/{release_id}/structure": (
+        "in-body: the release's AUs and the caller's own registration; candidates need course:author"
+    ),
+    "GET /cmi5/releases/{release_id}/aus/{au_index}/content": (
+        "in-body: the caller's enrolment on this release of a published course (no answers), or course:author"
+    ),
+    "POST /cmi5/releases/{release_id}/aus/{au_index}/grade": (
+        "in-body: marks the caller's own answers on their enrolment, attempt-limited, totals only; or course:author"
+    ),
+    "POST /cmi5/releases/{release_id}/aus/{au_index}/launch": (
+        "own: launches for the caller only, on the caller's enrolment pinned to this release (403 otherwise)"
+    ),
+    "POST /cmi5/sessions/{session_id}/abandon": (
+        "in-body: the caller's own session, or one in the tenant with learning_record:write"
+    ),
     # ── The Student quiz flow ───────────────────────────────────────────
     "GET /quizzes": "in-body: published quizzes only, unless the caller holds course:author",
     "GET /quizzes/{quiz_id}": "in-body: drafts are 404 without course:author; no answer key in this view",

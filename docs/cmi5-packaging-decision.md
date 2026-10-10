@@ -1,5 +1,10 @@
 # cmi5: packaging only until stage 5
 
+> **Superseded (2026-10-09).** TrueNorth now runs cmi5: an AU runtime in the SPA for every
+> module of an accepted release, a served `cmi5.xml` per release, and its own LMS side
+> (launch, fetch, the AU's checked xAPI endpoint, moveOn and `satisfied`). See
+> [`docs/cmi5.md`](cmi5.md). The record below is kept as the decision of its day.
+
 **Decision (2026-10-07, stage-4 programme):** cmi5 in TrueNorth stays a **packaging
 format**. ARC² builds a cmi5 package per course (`build/arc2/<slug>/07-bundle/cmi5/`:
 `cmi5.xml` plus the AU files) so a course can be handed to an external cmi5 LMS such as
