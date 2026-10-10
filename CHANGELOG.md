@@ -3,7 +3,64 @@
 All notable changes to TrueNorth Range. Versions are git tags on `main`
 (`docs/release.md`).
 
-## v1.1.0 — unreleased
+## v1.2.0 — unreleased
+
+Everything switched on and working on staging: the full Moodle loop, cmi5 with conformant
+xAPI, Greyspace on vSphere (proven on vcsim and the T0 stack, not real vSphere), ARC² batch
+course production with a local-model fallback, and the cleanup of unsupported surfaces.
+
+### Learning records and LMS
+- **cmi5 and conformant xAPI** (#139): xAPI `account` actors (no email), configurable IRIs,
+  `context.registration`, course-locale language maps, per-activity pass marks; reversible
+  migration recording legacy `mailto:` identities, `xapi_reissue` (dry run by default) for
+  LRS history. TrueNorth is a cmi5 LMS: served `cmi5.xml` per release, an AU runtime in the
+  SPA, a checked xAPI endpoint for AUs (statements bound to the session's AU, server-marked
+  passes, separate AU LRS credential, read-only profiles), moveOn/satisfied/abandon/waive.
+  CI lane `cmi5`: ADL CATAPULT judges the runtime. Moodle cmi5 plugins evaluated and
+  rejected; Moodle launches TrueNorth AUs instead.
+- **cmi5 over LTI 1.3** (#140): Moodle launches TrueNorth AUs and receives TrueNorth's mark
+  over AGS (never the AU's number), only for the exact LTI-linked account.
+- **Moodle loop** (#132): completions and quiz grades flow back to TrueNorth per course;
+  LTI hand-off session for LTI-created Students; quiz/exercise launch targets; tool-config
+  endpoint; staff deep linking after an explicit, browser-bound one-time link (closes the
+  v1.0.0 limitation); LTI base URLs from one source (gap #6).
+
+### ARC² Course Studio
+- Test-host gate auto-accept, recorded as `accepted_by: auto (test host)` and badged
+  "TEST CONTENT" (#130).
+- Local / gateway model: `subscription | local | subscription_with_local_fallback`, any
+  Anthropic-compatible gateway over HTTPS on any port, egress pinned to that host:port (#130);
+  staging falls back to `atl-coder` on the home-lab router (#137).
+- Batch driver: catalogue course → run → release → accepted → published (#136).
+- Fix: the Studio read `ARC2_RUNS_DIR` after an image-incompatible repo default and 500'd on
+  every call on installed hosts (#134).
+
+### Ranges
+- **Greyspace on vSphere** (#133): gs-core VM in the range build, `configure_range` stage,
+  mail/NTP/HTTPS, NPC traffic, `greyspace_breadcrumb` inject, designer stencil, corpus ingest.
+  Proven on vcsim and the T0 Docker stack only.
+- Per-tenant vCenter credentials for every vSphere operation; VyOS and OPNsense get the
+  range's rendered config; template `vm_count` corrected; Range Designer YAML import (#131).
+
+### Platform
+- Terraform provisioners removed; Proxmox and Hyper-V behind `EXPERIMENTAL_PROVISIONERS`
+  (#131).
+- Demo people can sign in on staging/demo hosts (local Keycloak accounts, passwords in
+  `config/secrets`) (#131).
+- **Behaviour change:** Student detection submissions are limited to exercise participants
+  (`DETECTION_SUBMIT_PARTICIPANTS_ONLY`, default on) (#131).
+- Fix: `alembic heads`/`history` crashed in the image on revisions importing `app`
+  (`prepend_sys_path`) — the v1.2.0-rc1 upgrade blocker (#135).
+- CI: `junit_require_pass` also fails on failing or erroring tests (#138).
+
+### Known limitations in v1.2.0
+- Greyspace, VyOS/OPNsense configs and per-tenant vCenter are proven on vcsim/fakes, not on
+  a real vCenter (the live run on TN-MGMT01 is still pending).
+- ARC² test-host content is auto-accepted and unreviewed; never release it to Students.
+- cmi5 Moodle activities are tied to one release; LTI cmi5 launches do not enrol.
+- WebSockets do not accept the LTI hand-off session.
+
+## v1.1.0 — 2026-10-09
 
 Optional features for staging and demo hosts, and CI that survives registry limits.
 
