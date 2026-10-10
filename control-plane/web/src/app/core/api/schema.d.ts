@@ -2724,6 +2724,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/integrations/lti/tool-config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Lti Tool Config
+         * @description TrueNorth's LTI 1.3 tool URLs, from ``LTI_TOOL_BASE_URL`` (gap #5).
+         *
+         *     Deep linking has no route of its own: the LMS sends the deep-linking request to the
+         *     launch URL, which shows the content picker.
+         */
+        get: operations["lti_tool_config_integrations_lti_tool_config_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/integrations/moodle/sso": {
         parameters: {
             query?: never;
@@ -2811,6 +2834,55 @@ export interface paths {
          *     that issuer.
          */
         patch: operations["update_platform_integrations_platforms__platform_id__patch"];
+        trace?: never;
+    };
+    "/integrations/platforms/{platform_id}/moodle-results": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Moodle Results Status
+         * @description Where TrueNorth is in this Moodle's results: cursor, last run, last error, totals.
+         *
+         *     **Permission: integration:read**. 404 for another tenant's platform; 422 for a
+         *     platform that is not a Moodle with the TrueNorth plugin.
+         */
+        get: operations["moodle_results_status_integrations_platforms__platform_id__moodle_results_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/integrations/platforms/{platform_id}/moodle-results/pull": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Moodle Results Pull
+         * @description Pull completions and quiz grades from this Moodle now and record them.
+         *
+         *     **Permission: integration:write** (admins). The scheduled pull
+         *     (``MOODLE_RESULTS_PULL_SECONDS``) does the same. The Moodle's answer must be signed by
+         *     its registered LTI key and answer this request, or nothing is recorded (502). 409 while
+         *     another pull of the same Moodle is running. ``reset`` reads from the beginning again;
+         *     recording is idempotent, so that only re-checks.
+         */
+        post: operations["moodle_results_pull_integrations_platforms__platform_id__moodle_results_pull_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/integrations/platforms/{platform_id}/test": {
@@ -3281,6 +3353,99 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/lti/links": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Lti Links Mine
+         * @description The learning-platform accounts linked to the caller's own account.
+         */
+        get: operations["lti_links_mine_lti_links_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/lti/links/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Lti Link Confirm
+         * @description Link the LMS account of a deep-linking launch to the signed-in staff account (once).
+         *
+         *     ```
+         *     POST /lti/links/confirm {"code": "<from /lti/link#code=…>"}
+         *     201 {"id": "…", "platform_id": "…", "platform_name": "Moodle (default)",
+         *          "lms_name": "Ada Lovelace", "confirmed_at": "…"}
+         *     ```
+         *     Must be the browser that launched (cookie), a staff account of the platform's tenant,
+         *     signed in with its own sign-in (not an LTI session), whose email the LMS asserted.
+         *     409 if either side is already linked on that platform.
+         */
+        post: operations["lti_link_confirm_lti_links_confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/lti/links/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Lti Link Preview
+         * @description What a staff member is about to link: the platform and the LMS account's name.
+         *
+         *     Same checks as confirm, nothing changed. 404 unknown, spent or another tenant's;
+         *     410 expired; 403 another browser, a Student, an LTI session, or an email that is not
+         *     the caller's.
+         */
+        post: operations["lti_link_preview_lti_links_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/lti/links/{link_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Lti Link Remove
+         * @description Unlink: the account holder, or an integration admin of the same tenant. 404 otherwise.
+         */
+        delete: operations["lti_link_remove_lti_links__link_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/lti/login": {
         parameters: {
             query?: never;
@@ -3323,6 +3488,37 @@ export interface paths {
         get: operations["lti_public_key_pem_lti_public_key_pem_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/lti/session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Lti Session Exchange
+         * @description Exchange a launch's hand-off code for a TrueNorth session (gap #1).
+         *
+         *     Only for a Student the LTI launch created; the code is single use, lives two minutes
+         *     and, with ``LTI_REQUIRE_STATE_COOKIE`` on, works only in the browser that launched.
+         *     401 otherwise. The session lasts ``LTI_SESSION_SECONDS`` (2 h) and is not renewable.
+         *
+         *     ```
+         *     POST /lti/session {"code": "<from /lti/session#code=…>"}
+         *     200 {"access_token": "<JWT>", "token_type": "Bearer", "expires_in": 7200,
+         *          "target": "/quiz-player?quiz=<id>&lti=1",
+         *          "user": {"id": "<uuid>", "display_name": "…", "role": "student"}}
+         *     ```
+         */
+        post: operations["lti_session_exchange_lti_session_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -10348,6 +10544,95 @@ export interface components {
             /** Title */
             title: string;
         };
+        /** LtiLinkCodeIn */
+        LtiLinkCodeIn: {
+            /** Code */
+            code: string;
+        };
+        /** LtiLinkOut */
+        LtiLinkOut: {
+            /** Confirmed At */
+            confirmed_at?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Lms Name */
+            lms_name: string;
+            /**
+             * Platform Id
+             * Format: uuid
+             */
+            platform_id: string;
+            /**
+             * Platform Name
+             * @default
+             */
+            platform_name?: string;
+        };
+        /** LtiLinkPreviewOut */
+        LtiLinkPreviewOut: {
+            /** Lms Name */
+            lms_name: string;
+            /**
+             * Platform Id
+             * Format: uuid
+             */
+            platform_id: string;
+            /** Platform Name */
+            platform_name: string;
+        };
+        /** LtiSessionIn */
+        LtiSessionIn: {
+            /** Code */
+            code: string;
+        };
+        /** LtiSessionOut */
+        LtiSessionOut: {
+            /** Access Token */
+            access_token: string;
+            /** Expires In */
+            expires_in: number;
+            /** Target */
+            target: string;
+            /**
+             * Token Type
+             * @default Bearer
+             */
+            token_type?: string;
+            user: components["schemas"]["LtiSessionUserOut"];
+        };
+        /** LtiSessionUserOut */
+        LtiSessionUserOut: {
+            /** Display Name */
+            display_name: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Role */
+            role: string;
+        };
+        /**
+         * LtiToolConfigOut
+         * @description What a platform admin types into the LMS's tool registration (all real routes).
+         */
+        LtiToolConfigOut: {
+            /** Deep Linking Url */
+            deep_linking_url: string;
+            /** Initiate Login Url */
+            initiate_login_url: string;
+            /** Public Key Pem Url */
+            public_key_pem_url: string;
+            /** Public Keyset Url */
+            public_keyset_url: string;
+            /** Redirection Uris */
+            redirection_uris: string[];
+            /** Tool Url */
+            tool_url: string;
+        };
         /** MeslEventPatch */
         MeslEventPatch: {
             /** Attack Technique */
@@ -10423,6 +10708,75 @@ export interface components {
             score: number;
             /** Status */
             status: string;
+        };
+        /** MoodleResultsPullIn */
+        MoodleResultsPullIn: {
+            /**
+             * Reset
+             * @default false
+             */
+            reset?: boolean;
+        };
+        /** MoodleResultsPullOut */
+        MoodleResultsPullOut: {
+            /** Applied */
+            applied: number;
+            /** Cursor */
+            cursor: string;
+            /** More */
+            more: boolean;
+            /** Pages */
+            pages: number;
+            /**
+             * Platform Id
+             * Format: uuid
+             */
+            platform_id: string;
+            /** Rows */
+            rows: number;
+            /** Skipped */
+            skipped: {
+                [key: string]: number;
+            };
+            /** Unchanged */
+            unchanged: number;
+        };
+        /** MoodleResultsStatusOut */
+        MoodleResultsStatusOut: {
+            /**
+             * Cursor
+             * @default
+             */
+            cursor?: string;
+            /**
+             * Last Error
+             * @default
+             */
+            last_error?: string;
+            /** Last Run At */
+            last_run_at?: string | null;
+            /** Last Success At */
+            last_success_at?: string | null;
+            /**
+             * Platform Id
+             * Format: uuid
+             */
+            platform_id: string;
+            /**
+             * Rows Applied
+             * @default 0
+             */
+            rows_applied?: number;
+            /**
+             * Rows Seen
+             * @default 0
+             */
+            rows_seen?: number;
+            /**
+             * Running
+             * @default false
+             */
+            running?: boolean;
         };
         /** MoodleSsoIn */
         MoodleSsoIn: {
@@ -19100,6 +19454,26 @@ export interface operations {
             };
         };
     };
+    lti_tool_config_integrations_lti_tool_config_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LtiToolConfigOut"];
+                };
+            };
+        };
+    };
     moodle_sso_ticket_integrations_moodle_sso_post: {
         parameters: {
             query?: never;
@@ -19268,6 +19642,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ExternalPlatformOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    moodle_results_status_integrations_platforms__platform_id__moodle_results_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                platform_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MoodleResultsStatusOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    moodle_results_pull_integrations_platforms__platform_id__moodle_results_pull_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                platform_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["MoodleResultsPullIn"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MoodleResultsPullOut"];
                 };
             };
             /** @description Validation Error */
@@ -20130,6 +20570,121 @@ export interface operations {
             };
         };
     };
+    lti_links_mine_lti_links_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LtiLinkOut"][];
+                };
+            };
+        };
+    };
+    lti_link_confirm_lti_links_confirm_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LtiLinkCodeIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LtiLinkOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    lti_link_preview_lti_links_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LtiLinkCodeIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LtiLinkPreviewOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    lti_link_remove_lti_links__link_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                link_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     lti_oidc_login_get: {
         parameters: {
             query?: never;
@@ -20185,6 +20740,39 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    lti_session_exchange_lti_session_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LtiSessionIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LtiSessionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
             };
         };
     };

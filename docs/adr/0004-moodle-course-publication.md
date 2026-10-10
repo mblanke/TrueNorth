@@ -59,3 +59,10 @@ TrueNorth LTI tool key.
   client-side); it is not how Moodle receives a course.
 - Live verification: `tests/integration/test_moodle_publish.py` against
   `infra/platform/docker/compose.moodle-test.yml`.
+- Results flow back (2026-10-09): the same seam gained `pull_results`. TrueNorth pulls
+  completions and quiz grades with a sync ticket; the plugin answers signed by the Moodle's
+  LTI site key (verified against the platform's `lti_jwks_url`, bound to the ticket's jti
+  and the tenant), and `app/moodle_results` records them idempotently on enrolments,
+  module progress and quiz attempts. The schedule runs in the API next to the lab sweep:
+  the worker image holds neither the Moodle seam nor the models it writes.
+  Runbook: `docs/runbooks/moodle.md` section 4.

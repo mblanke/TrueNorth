@@ -7569,6 +7569,196 @@
         "title": "LessonBrief",
         "type": "object"
       },
+      "LtiLinkCodeIn": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code"
+        ],
+        "title": "LtiLinkCodeIn",
+        "type": "object"
+      },
+      "LtiLinkOut": {
+        "properties": {
+          "confirmed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmed At"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "lms_name": {
+            "title": "Lms Name",
+            "type": "string"
+          },
+          "platform_id": {
+            "format": "uuid",
+            "title": "Platform Id",
+            "type": "string"
+          },
+          "platform_name": {
+            "default": "",
+            "title": "Platform Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "platform_id",
+          "lms_name"
+        ],
+        "title": "LtiLinkOut",
+        "type": "object"
+      },
+      "LtiLinkPreviewOut": {
+        "properties": {
+          "lms_name": {
+            "title": "Lms Name",
+            "type": "string"
+          },
+          "platform_id": {
+            "format": "uuid",
+            "title": "Platform Id",
+            "type": "string"
+          },
+          "platform_name": {
+            "title": "Platform Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "platform_id",
+          "platform_name",
+          "lms_name"
+        ],
+        "title": "LtiLinkPreviewOut",
+        "type": "object"
+      },
+      "LtiSessionIn": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code"
+        ],
+        "title": "LtiSessionIn",
+        "type": "object"
+      },
+      "LtiSessionOut": {
+        "properties": {
+          "access_token": {
+            "title": "Access Token",
+            "type": "string"
+          },
+          "expires_in": {
+            "title": "Expires In",
+            "type": "integer"
+          },
+          "target": {
+            "title": "Target",
+            "type": "string"
+          },
+          "token_type": {
+            "default": "Bearer",
+            "title": "Token Type",
+            "type": "string"
+          },
+          "user": {
+            "$ref": "#/components/schemas/LtiSessionUserOut"
+          }
+        },
+        "required": [
+          "access_token",
+          "expires_in",
+          "target",
+          "user"
+        ],
+        "title": "LtiSessionOut",
+        "type": "object"
+      },
+      "LtiSessionUserOut": {
+        "properties": {
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "display_name",
+          "role"
+        ],
+        "title": "LtiSessionUserOut",
+        "type": "object"
+      },
+      "LtiToolConfigOut": {
+        "description": "What a platform admin types into the LMS's tool registration (all real routes).",
+        "properties": {
+          "deep_linking_url": {
+            "title": "Deep Linking Url",
+            "type": "string"
+          },
+          "initiate_login_url": {
+            "title": "Initiate Login Url",
+            "type": "string"
+          },
+          "public_key_pem_url": {
+            "title": "Public Key Pem Url",
+            "type": "string"
+          },
+          "public_keyset_url": {
+            "title": "Public Keyset Url",
+            "type": "string"
+          },
+          "redirection_uris": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Redirection Uris",
+            "type": "array"
+          },
+          "tool_url": {
+            "title": "Tool Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tool_url",
+          "initiate_login_url",
+          "redirection_uris",
+          "public_keyset_url",
+          "deep_linking_url",
+          "public_key_pem_url"
+        ],
+        "title": "LtiToolConfigOut",
+        "type": "object"
+      },
       "MeslEventPatch": {
         "properties": {
           "attack_technique": {
@@ -7717,6 +7907,132 @@
           "attempts"
         ],
         "title": "ModuleProgressOut",
+        "type": "object"
+      },
+      "MoodleResultsPullIn": {
+        "properties": {
+          "reset": {
+            "default": false,
+            "title": "Reset",
+            "type": "boolean"
+          }
+        },
+        "title": "MoodleResultsPullIn",
+        "type": "object"
+      },
+      "MoodleResultsPullOut": {
+        "properties": {
+          "applied": {
+            "title": "Applied",
+            "type": "integer"
+          },
+          "cursor": {
+            "title": "Cursor",
+            "type": "string"
+          },
+          "more": {
+            "title": "More",
+            "type": "boolean"
+          },
+          "pages": {
+            "title": "Pages",
+            "type": "integer"
+          },
+          "platform_id": {
+            "format": "uuid",
+            "title": "Platform Id",
+            "type": "string"
+          },
+          "rows": {
+            "title": "Rows",
+            "type": "integer"
+          },
+          "skipped": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Skipped",
+            "type": "object"
+          },
+          "unchanged": {
+            "title": "Unchanged",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "platform_id",
+          "cursor",
+          "pages",
+          "rows",
+          "applied",
+          "unchanged",
+          "skipped",
+          "more"
+        ],
+        "title": "MoodleResultsPullOut",
+        "type": "object"
+      },
+      "MoodleResultsStatusOut": {
+        "properties": {
+          "cursor": {
+            "default": "",
+            "title": "Cursor",
+            "type": "string"
+          },
+          "last_error": {
+            "default": "",
+            "title": "Last Error",
+            "type": "string"
+          },
+          "last_run_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Run At"
+          },
+          "last_success_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Success At"
+          },
+          "platform_id": {
+            "format": "uuid",
+            "title": "Platform Id",
+            "type": "string"
+          },
+          "rows_applied": {
+            "default": 0,
+            "title": "Rows Applied",
+            "type": "integer"
+          },
+          "rows_seen": {
+            "default": 0,
+            "title": "Rows Seen",
+            "type": "integer"
+          },
+          "running": {
+            "default": false,
+            "title": "Running",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "platform_id"
+        ],
+        "title": "MoodleResultsStatusOut",
         "type": "object"
       },
       "MoodleSsoIn": {
@@ -25002,6 +25318,33 @@
         ]
       }
     },
+    "/integrations/lti/tool-config": {
+      "get": {
+        "description": "TrueNorth's LTI 1.3 tool URLs, from ``LTI_TOOL_BASE_URL`` (gap #5).\n\nDeep linking has no route of its own: the LMS sends the deep-linking request to the\nlaunch URL, which shows the content picker.",
+        "operationId": "lti_tool_config_integrations_lti_tool_config_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LtiToolConfigOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Lti Tool Config",
+        "tags": [
+          "integrations"
+        ]
+      }
+    },
     "/integrations/moodle/sso": {
       "post": {
         "description": "A one-minute, single-use ticket that signs the caller into their unit's Moodle.\n\nThe browser POSTs ``token`` to ``action``. Students need an active enrolment in\nthe course; staff (``learning_record:write``) enter as teachers. A course in\nanother tenant is 404. Never put the ticket in a URL: it would land in Moodle's\naccess log and browser history.",
@@ -25266,6 +25609,121 @@
           }
         ],
         "summary": "Update Platform",
+        "tags": [
+          "integrations"
+        ]
+      }
+    },
+    "/integrations/platforms/{platform_id}/moodle-results": {
+      "get": {
+        "description": "Where TrueNorth is in this Moodle's results: cursor, last run, last error, totals.\n\n**Permission: integration:read**. 404 for another tenant's platform; 422 for a\nplatform that is not a Moodle with the TrueNorth plugin.",
+        "operationId": "moodle_results_status_integrations_platforms__platform_id__moodle_results_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "platform_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Platform Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MoodleResultsStatusOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Moodle Results Status",
+        "tags": [
+          "integrations"
+        ]
+      }
+    },
+    "/integrations/platforms/{platform_id}/moodle-results/pull": {
+      "post": {
+        "description": "Pull completions and quiz grades from this Moodle now and record them.\n\n**Permission: integration:write** (admins). The scheduled pull\n(``MOODLE_RESULTS_PULL_SECONDS``) does the same. The Moodle's answer must be signed by\nits registered LTI key and answer this request, or nothing is recorded (502). 409 while\nanother pull of the same Moodle is running. ``reset`` reads from the beginning again;\nrecording is idempotent, so that only re-checks.",
+        "operationId": "moodle_results_pull_integrations_platforms__platform_id__moodle_results_pull_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "platform_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Platform Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/MoodleResultsPullIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MoodleResultsPullOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Moodle Results Pull",
         "tags": [
           "integrations"
         ]
@@ -26596,6 +27054,173 @@
         ]
       }
     },
+    "/lti/links": {
+      "get": {
+        "description": "The learning-platform accounts linked to the caller's own account.",
+        "operationId": "lti_links_mine_lti_links_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/LtiLinkOut"
+                  },
+                  "title": "Response Lti Links Mine Lti Links Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Lti Links Mine",
+        "tags": [
+          "lti"
+        ]
+      }
+    },
+    "/lti/links/confirm": {
+      "post": {
+        "description": "Link the LMS account of a deep-linking launch to the signed-in staff account (once).\n\n```\nPOST /lti/links/confirm {\"code\": \"<from /lti/link#code=\u2026>\"}\n201 {\"id\": \"\u2026\", \"platform_id\": \"\u2026\", \"platform_name\": \"Moodle (default)\",\n     \"lms_name\": \"Ada Lovelace\", \"confirmed_at\": \"\u2026\"}\n```\nMust be the browser that launched (cookie), a staff account of the platform's tenant,\nsigned in with its own sign-in (not an LTI session), whose email the LMS asserted.\n409 if either side is already linked on that platform.",
+        "operationId": "lti_link_confirm_lti_links_confirm_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LtiLinkCodeIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LtiLinkOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Lti Link Confirm",
+        "tags": [
+          "lti"
+        ]
+      }
+    },
+    "/lti/links/preview": {
+      "post": {
+        "description": "What a staff member is about to link: the platform and the LMS account's name.\n\nSame checks as confirm, nothing changed. 404 unknown, spent or another tenant's;\n410 expired; 403 another browser, a Student, an LTI session, or an email that is not\nthe caller's.",
+        "operationId": "lti_link_preview_lti_links_preview_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LtiLinkCodeIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LtiLinkPreviewOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Lti Link Preview",
+        "tags": [
+          "lti"
+        ]
+      }
+    },
+    "/lti/links/{link_id}": {
+      "delete": {
+        "description": "Unlink: the account holder, or an integration admin of the same tenant. 404 otherwise.",
+        "operationId": "lti_link_remove_lti_links__link_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "link_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Link Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Lti Link Remove",
+        "tags": [
+          "lti"
+        ]
+      }
+    },
     "/lti/login": {
       "get": {
         "description": "LTI 1.3 OIDC initiation: validate issuer, mint state+nonce, redirect.",
@@ -26644,6 +27269,48 @@
           }
         },
         "summary": "Lti Public Key Pem",
+        "tags": [
+          "lti"
+        ]
+      }
+    },
+    "/lti/session": {
+      "post": {
+        "description": "Exchange a launch's hand-off code for a TrueNorth session (gap #1).\n\nOnly for a Student the LTI launch created; the code is single use, lives two minutes\nand, with ``LTI_REQUIRE_STATE_COOKIE`` on, works only in the browser that launched.\n401 otherwise. The session lasts ``LTI_SESSION_SECONDS`` (2 h) and is not renewable.\n\n```\nPOST /lti/session {\"code\": \"<from /lti/session#code=\u2026>\"}\n200 {\"access_token\": \"<JWT>\", \"token_type\": \"Bearer\", \"expires_in\": 7200,\n     \"target\": \"/quiz-player?quiz=<id>&lti=1\",\n     \"user\": {\"id\": \"<uuid>\", \"display_name\": \"\u2026\", \"role\": \"student\"}}\n```",
+        "operationId": "lti_session_exchange_lti_session_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LtiSessionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LtiSessionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Lti Session Exchange",
         "tags": [
           "lti"
         ]

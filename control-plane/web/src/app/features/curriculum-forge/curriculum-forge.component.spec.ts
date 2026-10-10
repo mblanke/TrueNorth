@@ -3,8 +3,9 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { provideRouter } from '@angular/router';
 import { MatSnackBar } from '@angular/material/snack-bar';
+import { HttpHeaders, HttpResponse } from '@angular/common/http';
 import { of, throwError } from 'rxjs';
-import { CurriculumForgeComponent } from './curriculum-forge.component';
+import { CurriculumForgeComponent, attachmentName } from './curriculum-forge.component';
 import { ApiService } from '@core/services/api.service';
 import { AuthService } from '@core/services/auth.service';
 
@@ -19,12 +20,11 @@ describe('CurriculumForgeComponent', () => {
 
   beforeEach(async () => {
     api = jasmine.createSpyObj('ApiService', [
-      'listCurricula', 'getCurriculum', 'listQuizzes', 'generateCourseFromCurriculum', 'quizExportUrl',
+      'listCurricula', 'getCurriculum', 'listQuizzes', 'generateCourseFromCurriculum', 'exportQuiz',
     ]);
     snack = jasmine.createSpyObj('MatSnackBar', ['open']);
     api.listCurricula.and.returnValue(of([ready]));
     api.listQuizzes.and.returnValue(of([]));
-    api.quizExportUrl.and.callFake((id: string, f: string) => `/api/v1/quizzes/${id}/export?format=${f}`);
     canAuthor = signal(true);
 
     await TestBed.configureTestingModule({
@@ -120,6 +120,47 @@ describe('CurriculumForgeComponent', () => {
       expect(texts.some(t => t.includes('Publish'))).toBeFalse();
       expect(texts.some(t => t.includes('GIFT') || t.includes('Moodle XML'))).toBeFalse();
       expect(texts.some(t => t.includes('Take'))).toBeTrue();
+    });
+  });
+
+  describe('quiz export (gap #7: through the API client, so the bearer token goes)', () => {
+    it('downloads through ApiService and names the file from Content-Disposition', () => {
+      const body = new Blob(['::Q1:: x {=a ~b}'], { type: 'text/plain' });
+      api.exportQuiz.and.returnValue(of(new HttpResponse({
+        body, headers: new HttpHeaders({ 'Content-Disposition': 'attachment; filename="Live-quiz.gift.txt"' }),
+      })));
+      const clicked: string[] = [];
+      spyOn(HTMLAnchorElement.prototype, 'click').and.callFake(function (this: HTMLAnchorElement) {
+        clicked.push(this.download);
+      });
+      spyOn(URL, 'createObjectURL').and.returnValue('blob:quiz');
+
+      component.exportQuiz({ id: 'q-live', title: 'Live quiz' }, 'gift');
+
+      expect(api.exportQuiz).toHaveBeenCalledWith('q-live', 'gift');
+      expect(URL.createObjectURL).toHaveBeenCalledWith(body);
+      expect(clicked).toEqual(['Live-quiz.gift.txt']);
+    });
+
+    it('renders no plain export link that would go without the token', () => {
+      api.listQuizzes.and.returnValue(of([{ id: 'q-live', title: 'Live quiz', is_published: true }]));
+      fixture.detectChanges();
+      component.select(ready);
+      fixture.detectChanges();
+      const links = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('a'));
+      expect(links.some(a => (a.getAttribute('href') ?? '').includes('/export'))).toBeFalse();
+    });
+
+    it('says so when the quiz has no questions', () => {
+      api.exportQuiz.and.returnValue(throwError(() => ({ status: 409 })));
+      component.exportQuiz({ id: 'q-empty' }, 'moodlexml');
+      expect(snack.open.calls.mostRecent().args[0]).toBe('This quiz has no questions yet');
+    });
+
+    it('takes only a plain file name from the header', () => {
+      expect(attachmentName('attachment; filename="a.xml"')).toBe('a.xml');
+      expect(attachmentName('attachment; filename="../etc/passwd"')).toBeNull();
+      expect(attachmentName(null)).toBeNull();
     });
   });
 });

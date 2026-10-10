@@ -2,6 +2,7 @@ import { Injectable, computed, inject, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import Keycloak from 'keycloak-js';
 import { freshToken } from '../auth/keycloak-init';
+import { clearLtiSession, hasLtiSession, ltiSessionToken } from '../auth/lti-session';
 import { ReplaySubject, firstValueFrom } from 'rxjs';
 import { environment } from '@env/environment';
 
@@ -94,11 +95,15 @@ export class AuthService {
   });
   readonly userId = computed(() => this.userSignal()?.id ?? null);
   readonly onboardingState = computed(() => this.userSignal()?.onboarding_state ?? 'not_started');
+  /** Signed in through an LTI launch's session hand-off rather than Keycloak. */
+  private ltiSignal = signal(false);
+  readonly isLtiSession = this.ltiSignal.asReadonly();
   readonly needsOnboarding = computed(() => {
     // Only trainees are gated on first-run. Trapping an admin behind a profile
-    // wizard on their first login is the wrong trade.
+    // wizard on their first login is the wrong trade. A Student launched from their
+    // LMS came for one activity, which the wizard would stand in front of.
     const u = this.userSignal();
-    return !!u && u.role === 'student' && this.onboardingState() !== 'complete';
+    return !!u && u.role === 'student' && !this.ltiSignal() && this.onboardingState() !== 'complete';
   });
 
   /**
@@ -140,7 +145,9 @@ export class AuthService {
       return this.meSignal();
     }
 
-    if (!this.keycloak.authenticated) {
+    const lti = !this.keycloak.authenticated && hasLtiSession();
+    this.ltiSignal.set(lti);
+    if (!this.keycloak.authenticated && !lti) {
       this.userSignal.set(null);
       this.stateSignal.set(null);
       this.finishBootstrap();
@@ -153,7 +160,7 @@ export class AuthService {
       this.stateSignal.set(me.status);
       if (me.status === 'registered' && me.user) {
         this.userSignal.set({
-          sub: this.keycloak.subject ?? '',
+          sub: lti ? String(me.user['keycloak_id'] ?? '') : (this.keycloak.subject ?? ''),
           id: String(me.user['id']),
           email: String(me.user['email'] ?? ''),
           display_name: String(me.user['display_name'] ?? ''),
@@ -192,14 +199,24 @@ export class AuthService {
     this.stateSignal.set(null);
     this.meSignal.set(null);
     this.bootstrapped = false;
+    const lti = this.ltiSignal();
+    clearLtiSession();
+    this.ltiSignal.set(false);
     if (environment.authDisabled) {
+      return;
+    }
+    if (lti && !this.keycloak.authenticated) {
+      window.location.assign('/');  // an LTI session has no Keycloak session to end
       return;
     }
     void this.keycloak.logout({ redirectUri: window.location.origin });
   }
 
   getToken(): Promise<string> {
-    return environment.authDisabled ? Promise.resolve('') : freshToken(this.keycloak);
+    if (environment.authDisabled) {
+      return Promise.resolve('');
+    }
+    return freshToken(this.keycloak).then(token => token || ltiSessionToken());
   }
 
   /** Test seam and dev-mode helper. */

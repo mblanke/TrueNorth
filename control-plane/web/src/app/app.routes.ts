@@ -372,6 +372,23 @@ export const routes: Routes = [
     title: 'Ops Center - TrueNorth Range',
   },
   {
+    // An LMS launch of a Student with no TrueNorth sign-in: exchanges the code in the
+    // fragment for a TrueNorth session, then goes on to what was launched. No guard: this
+    // page is the sign-in (control-plane/api/app/lti_identity/session.py).
+    path: 'lti/session',
+    loadComponent: () =>
+      import('./features/lti-session/lti-session.component').then(m => m.LtiSessionComponent),
+    title: 'Opening your activity - TrueNorth Range',
+  },
+  {
+    // Staff deep linking: confirm, signed in as yourself, that an LMS account is yours
+    // (control-plane/api/app/lti_identity/links.py). The page sends you to sign in first.
+    path: 'lti/link',
+    loadComponent: () =>
+      import('./features/lti-session/lti-link.component').then(m => m.LtiLinkComponent),
+    title: 'Link a learning-platform account - TrueNorth Range',
+  },
+  {
     // A student's lab. No guard: a Moodle launch arrives with a token for this one lab
     // (URL fragment); without one the page itself asks the student to sign in.
     path: 'labs/:id',

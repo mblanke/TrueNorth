@@ -64,7 +64,8 @@ cmi5 `moveOn` of `Passed` expresses, so the two agree without new logic.
 | Platform registry and learning records | `ExternalPlatform`, `ExternalActivity`, `LTILaunch`, `LTINonce`, `LTIToolKey` (`models.py`) | Built |
 | xAPI emitter and pluggable LRS backend | `app/xapi.py`, `app/lms/` (`xapi_lrs`, `null`) | Built. **Not cmi5-conformant** (see below) |
 | Local Moodle for testing | `infra/platform/docker/compose.moodle.yml` (Moodle 4.4 on :8083) | Built |
-| Quiz export to Moodle | `GET /quizzes/{id}/export?format=gift\|moodlexml` | Built. The UI link sends no bearer token |
+| Quiz export to Moodle | `GET /quizzes/{id}/export?format=gift\|moodlexml` | Built. The UI downloads it through `ApiService` (bearer token sent) |
+| Results back from Moodle | `app/moodle_results`, `local_truenorth` `pull_results` | Built 2026-10-09: completions and quiz grades signed by the Moodle's LTI key, recorded on enrolments, progress and quiz attempts (`docs/runbooks/moodle.md` section 4) |
 | cmi5 AU with no dependencies, tested 9/9 | KB `au/cmi5-au.js` | Reference code to adopt |
 | LRS smoke test, cmi5 session simulator | KB `scripts/lrs-smoke-test.sh`, `scripts/cmi5-session-sim.sh` | Reference tooling |
 
@@ -134,15 +135,48 @@ both complete; each is cleared when its launch succeeds. Two caveats:
 
 ### Gaps to close before Phase 1 works end to end
 
+Status 2026-10-09: #1, #3, #4, #5, #6 and #7 are closed (branch `claude/moodle-loop`);
+#2 follows from #1.
+
 | # | Gap | Evidence | Fix |
 |---|---|---|---|
-| 1 | **An LTI-created user can't sign in to the web app.** `/lti/launch` JIT-creates a user whose `keycloak_id` is `lti:<platform>:<sub>`, then redirects into an SPA that Keycloak guards. That user has no Keycloak identity. | `routers/integrations.py` `_jit_user`, `lti_launch` | Make an LTI session hand-off: a short-lived, single-use launch token that the SPA exchanges for a session. Or federate: create or link the Keycloak user during the launch. Decide per tenant; see Open decisions. |
+| 1 | **An LTI-created user can't sign in to the web app.** `/lti/launch` JIT-creates a user whose `keycloak_id` is `lti:<platform>:<sub>`, then redirects into an SPA that Keycloak guards. That user has no Keycloak identity. | `routers/integrations.py` `_jit_user`, `lti_launch` | **Closed: session hand-off** (`app/lti_identity/session.py`). The launch stores a single-use, two-minute code (hash only), bound to an HttpOnly `SameSite=Lax` cookie on the launching browser, and redirects to `/lti/session#code=…`; the SPA exchanges it at `POST /lti/session` for a TrueNorth-signed session token (`typ` `lti-session`, at most `LTI_SESSION_SECONDS`, 2 h, not renewable). `get_token_identity` accepts it and re-checks the account on every request: an active Student created by an LTI launch, from a platform still registered and active. Staff, and Students with a Keycloak sign-in, never get one; nor does a launch matched to an account by its asserted email (only the account this very platform and LMS subject created, `lti:<platform>:<sub>`). Keycloak federation was not chosen: signing a credential-less Keycloak user in needs impersonation or token exchange, a wider privilege than the API's `manage-users` service account has. |
 | 2 | **AGS passback identifies the learner by `users.id`**, taken from the launch. It only reaches the right gradebook row if the person who submits is the same user row. | `lti13.push_score_for_resource` | This falls out of #1. Once the launched user is the one who submits, the ids agree. |
-| 3 | **Launch redirects go to `/training?quiz=` and `/exercises?exercise=`.** `/training` is now a redirect that drops `quiz=`; only `/quiz-player?quiz=` reads it. | `lti_launch` target URLs; `app.routes.ts` | Point quizzes at `/quiz-player?quiz=<id>`. Course launches already work: `/training?course=` now lands on the course page (commit `c5f4a5b`). |
-| 4 | **Exercises aren't attributable to a trainee.** `Exercise` has no learner column, so exercise statements and grades name the instructor who clicked. | `models.py` `Exercise`; `routers/exercises.py` emit sites | Add a participant or learner link (per trainee per run, KB §13.3 and §17). This also blocks Phase 2 for exercises. |
-| 5 | **The web UI advertises the wrong tool URLs**: `/api/v1/lti/*` (routes have no `/v1`) and a nonexistent `/lti/deeplink`. It also offers `platform_type` `lti_generic`, which the schema rejects. | `features/integrations/integrations.component.ts:91,170-174` | Show the real paths; drop `lti_generic` or add it to the schema. |
-| 6 | **Prod sets no `LTI_TOOL_BASE_URL` or `LTI_WEB_BASE_URL`**, so both fall back to localhost. The dev defaults also disagree: `.env.example` and the Moodle harness's tool URLs use :8980, but `compose.dev.yml` exposes the API on :8081. | `infra/platform/docker/compose.prod.yml`; `.env.example` | Add both to prod compose and `env.production.j2`; pick one dev port. |
-| 7 | **The quiz export link sends no bearer token**, so it fails once auth is on. | `curriculum-forge.component.ts` (`<a href>` to `/quizzes/{id}/export`) | Download through `ApiService` as a blob. |
+| 3 | **Launch redirects go to `/training?quiz=` and `/exercises?exercise=`.** `/training` is now a redirect that drops `quiz=`; only `/quiz-player?quiz=` reads it. | `lti_launch` target URLs; `app.routes.ts` | **Closed:** quizzes land on `/quiz-player?quiz=<id>&lti=1`. Course launches already worked: `/training?course=` lands on the course page (commit `c5f4a5b`). |
+| 4 | **Exercises aren't attributable to a trainee.** `Exercise` has no learner column, so exercise statements and grades name the instructor who clicked. | `models.py` `Exercise`; `routers/exercises.py` emit sites | **Closed for launches:** an exercise launch records `exercise_learners` (exercise, Student, platform, resource link; one per Student per run; another tenant's exercise is 404) and lands on the Student's page `/exercises/<id>`. Credit and grades still come from the Student's own detections (ADR 0005, `exercise_completion.participants`), not from launching. |
+| 5 | **The web UI advertises the wrong tool URLs**: `/api/v1/lti/*` (routes have no `/v1`) and a nonexistent `/lti/deeplink`. It also offers `platform_type` `lti_generic`, which the schema rejects. | `features/integrations/integrations.component.ts:91,170-174` | **Closed:** the UI shows `GET /integrations/lti/tool-config` (built from `LTI_TOOL_BASE_URL`: tool, login, redirection, keyset; deep linking at the tool URL). `lti_generic` is gone. |
+| 6 | **Prod sets no `LTI_TOOL_BASE_URL` or `LTI_WEB_BASE_URL`**, so both fall back to localhost. The dev defaults also disagree: `.env.example` and the Moodle harness's tool URLs use :8980, but `compose.dev.yml` exposes the API on :8081. | `infra/platform/docker/compose.prod.yml`; `.env.example` | **Closed:** one source, group_vars `tn_lti_tool_base_url` (`https://<fqdn>/api`) and `tn_lti_web_base_url` (`https://<fqdn>`), rendered into `.env.production` and passed by `compose.prod.yml` to the api; the Moodle role registers its tool at the same base (`tn_moodle_tool_url`); the chart sets `<origin>/api` and `<origin>`. Dev uses :8081 throughout (`compose.windows-ports.yml` still maps :8980 for Windows hosts; set `LTI_TOOL_BASE_URL` to match there). Contract: `tests/contracts/test_lti_base_urls.py`. |
+| 7 | **The quiz export link sends no bearer token**, so it fails once auth is on. | `curriculum-forge.component.ts` (`<a href>` to `/quizzes/{id}/export`) | **Closed:** downloaded through `ApiService.exportQuiz` as a blob. |
+
+### Staff deep linking (2026-10-09)
+
+The email claim is the LMS's assertion, so it never makes a launch a staff account
+(`_jit_user`). Instead a staff member links their LMS account once, explicitly
+(`app/lti_identity/links.py`):
+
+1. A **deep-linking** launch whose email is a staff account's in the platform's tenant
+   gets a page, not a 403: "link this account". It stores a request (platform, LMS
+   subject, a hash of the asserted email; single use; ten minutes) bound to an HttpOnly
+   `SameSite=Lax` cookie on that browser. The binding is required: with
+   `LTI_REQUIRE_STATE_COOKIE=false` no link is offered (still a 403), since an unbound code
+   could be sent to a staff member to confirm. A resource launch asserting a staff email
+   is still a 403.
+2. The button opens `/lti/link#code=…` in TrueNorth. The staff member signs in as
+   themselves (Keycloak; an LTI session cannot link), sees which LMS account and site it
+   is (`POST /lti/links/preview`), and confirms (`POST /lti/links/confirm`).
+3. TrueNorth binds `(platform, sub) -> user` (`lti_user_links`) only if: the code is live
+   and from this browser; the platform is the caller's tenant's and active; the caller is
+   staff; the email the LMS asserted is the caller's own; and neither side is linked on
+   that platform already (409). Otherwise 403/404/410 and nothing changes.
+4. From then on that LMS account's launches are that staff member: deep linking shows the
+   picker. Staff are never handed an LTI session (they use Keycloak). `GET /lti/links`
+   lists your links; `DELETE /lti/links/{id}` removes one (the holder, or an
+   `integration:write` admin of the tenant). Deregistering the platform removes its links.
+
+Students are unchanged: their email links an existing Student account, as before. The
+threat cases (email collision, another staff member or a Student confirming, another
+tenant, another browser, a replayed or expired code, the same subject on another tenant's
+platform) are tests in `tests/api/test_lti_staff_link.py`.
 
 ### Acceptance
 
@@ -236,7 +270,7 @@ statements identify people by email. Decide whether to leave them, or to void an
 
 ## Open decisions
 
-1. **The LTI session hand-off (gap #1):** an exchangeable single-use token, or Keycloak federation of LTI users? Federation keeps one identity model but couples Moodle onboarding to Keycloak.
+1. ~~**The LTI session hand-off (gap #1):** an exchangeable single-use token, or Keycloak federation of LTI users?~~ Decided 2026-10-09: the exchangeable single-use code (see gap #1).
 2. **Which Moodle cmi5 plugin to standardise on.** Choose on CATAPULT LTS results, not the feature list.
 3. **A custom `local_truenorth` Moodle plugin** would only be needed to sync TrueNorth's catalogue (courses, a section per PO, competencies) into Moodle automatically. Deep Linking covers placing individual activities without it.
 4. **Machine-to-machine auth, if Moodle ever calls TrueNorth:** a Keycloak `client_credentials` client mapped to a tenant-scoped service user, or a new API-key scheme.

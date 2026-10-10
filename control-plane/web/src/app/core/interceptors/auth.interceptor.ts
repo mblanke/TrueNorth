@@ -3,6 +3,7 @@ import { HttpInterceptor, HttpRequest, HttpHandler, HttpEvent, HTTP_INTERCEPTORS
 import { Observable, from, switchMap } from 'rxjs';
 import Keycloak from 'keycloak-js';
 import { freshToken } from '../auth/keycloak-init';
+import { ltiSessionToken } from '../auth/lti-session';
 import { environment } from '@env/environment';
 
 function getCookie(name: string): string | null {
@@ -33,8 +34,11 @@ export class AuthInterceptor implements HttpInterceptor {
     // The token comes from the Keycloak adapter, which refreshes it as needed.
     // This previously read localStorage.getItem('access_token') — a key nothing
     // in the app ever wrote, so every authenticated request went out bare.
+    // Without a Keycloak sign-in, a Student launched from Moodle carries their LTI
+    // session (core/auth/lti-session.ts); a Keycloak token always wins.
     return from(freshToken(this.keycloak)).pipe(
-      switchMap((token) => {
+      switchMap((kcToken) => {
+        const token = kcToken || ltiSessionToken();
         const headers = { ...csrfHeaders };
         if (token) {
           headers['Authorization'] = `Bearer ${token}`;

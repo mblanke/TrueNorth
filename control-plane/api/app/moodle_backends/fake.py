@@ -18,12 +18,24 @@ STAGE_PREFIX = "tn-stage:"
 _SITES: dict[str, dict[str, dict[str, Any]]] = defaultdict(dict)
 _FAIL_NEXT: dict[str, int] = defaultdict(int)
 _CALLS: list[tuple[str, str]] = []
+_RESULTS: dict[str, list[dict[str, Any]]] = defaultdict(list)  # per site, in change order
 
 
 def reset() -> None:
     _SITES.clear()
     _FAIL_NEXT.clear()
     _CALLS.clear()
+    _RESULTS.clear()
+
+
+def record_result(platform: Any, **row: Any) -> None:
+    """What a student did in this Moodle, as ``pull_results`` will report it (see base)."""
+    row.setdefault("time", 1_760_000_000 + len(_RESULTS[_key(platform)]))
+    _RESULTS[_key(platform)].append(row)
+
+
+def _key(platform: Any) -> str:
+    return (platform.lti_issuer or platform.base_url or "").rstrip("/")
 
 
 def fail_next(op: str, times: int = 1) -> None:
@@ -35,7 +47,7 @@ def calls() -> list[tuple[str, str]]:
 
 
 def site(platform: Any) -> dict[str, dict[str, Any]]:
-    return _SITES[(platform.lti_issuer or platform.base_url or "").rstrip("/")]
+    return _SITES[_key(platform)]
 
 
 def record_attempt(platform: Any, course_idnumber: str, activity_idnumber: str) -> None:
@@ -141,3 +153,15 @@ class FakeMoodle(BaseMoodleBackend):
         if not idnumber.startswith(STAGE_PREFIX):
             raise MoodleError("Moodle refused delete_stage: syncnotstage")
         return {"deleted": site(platform).pop(idnumber, None) is not None}
+
+    def pull_results(self, platform: Any, cursor: str, limit: int = 500) -> dict[str, Any]:
+        """The cursor is the count of rows already read ('' = none)."""
+        self._enter("pull_results", cursor)
+        rows = _RESULTS[_key(platform)]
+        start = int(cursor) if cursor.isdigit() else 0
+        page = rows[start : start + limit]
+        return {
+            "rows": copy.deepcopy(page),
+            "cursor": str(start + len(page)) if (start or page) else cursor,
+            "more": start + len(page) < len(rows),
+        }

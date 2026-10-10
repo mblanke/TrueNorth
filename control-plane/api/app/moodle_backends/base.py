@@ -15,6 +15,9 @@ Payload (``upsert_course``)::
          {"idnumber": "tn:<module>:file:<hash>", "type": "resource", "name", "intro",
           "filename", "content_b64", "sha1"},
          {"idnumber": "tn:<module>:lab", "type": "lti", "name", "resource", "grade"}]}]}
+
+Results flow back the other way (``pull_results``): TrueNorth asks, Moodle answers with
+completions and quiz grades signed by its own LTI key, which TrueNorth already trusts.
 """
 
 from __future__ import annotations
@@ -47,3 +50,20 @@ class BaseMoodleBackend(ABC):
     @abstractmethod
     def delete_stage(self, platform: Any, idnumber: str) -> dict[str, Any]:
         """Delete a ``tn-stage:`` course; any other idnumber is refused."""
+
+    @abstractmethod
+    def pull_results(self, platform: Any, cursor: str, limit: int = 500) -> dict[str, Any]:
+        """What students did in TrueNorth's courses since ``cursor`` ('' = the beginning).
+
+        Returns ``{"rows": [...], "cursor": str, "more": bool}``, already verified as this
+        Moodle's own answer to this request (MoodleError otherwise). A row is one of::
+
+            {"kind": "completion", "user", "course", "activity", "modname", "state", "time"}
+            {"kind": "quiz_grade", "user", "course", "activity", "grade", "grademax",
+             "gradepass", "attempts", "time"}
+
+        ``user`` is the TrueNorth user id (the Moodle account's idnumber, set by TrueNorth
+        sign-in, locked, and checked against its ``tn-<id>`` username), ``course`` the TrueNorth course id, ``activity`` the ``tn:`` idnumber;
+        ``state`` is Moodle's completion state (0 incomplete, 1 complete, 2 passed, 3 failed).
+        Rows are in change order; pulling again from an earlier cursor repeats rows, so the
+        caller records them idempotently."""

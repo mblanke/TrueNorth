@@ -148,7 +148,11 @@ def _resolve_state(
     if progress is not None:
         if progress.status == ModuleProgressStatus.completed:
             # `completed` records the attempt, not the verdict — the module's own
-            # pass_threshold decides whether it counts as a pass.
+            # pass_threshold decides whether it counts as a pass. A module completed with
+            # nothing to grade (max_score 0, e.g. readings completed in Moodle,
+            # app/moodle_results) is a pass: completion is its verdict.
+            if progress.max_score == 0:
+                return COMPLETED
             pass_mark = (progress.max_score or 100) * ((module.pass_threshold or 70) / 100)
             return FAILED if progress.score < pass_mark else COMPLETED
         if progress.status == ModuleProgressStatus.in_progress:

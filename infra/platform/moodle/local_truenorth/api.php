@@ -15,7 +15,10 @@
  * Request:  POST, JSON {"op": "upsert_course", "course": {...}}
  *                      or {"op": "hide_course" | "describe_course" | "delete_stage", "idnumber": "..."}
  *                      or {"op": "set_visible", "idnumber": "...", "visible": true|false}
+ *                      or {"op": "pull_results", "cursor": "...", "limit": 500, "settle": 5}
  * Response: JSON {"ok": true, ...} or {"ok": false, "error": "..."} with a 4xx/5xx status.
+ *           pull_results answers {"ok": true, "signed": "<JWT>"}: the results, signed with
+ *           this site's LTI key and naming this ticket's jti (classes/results.php).
  *
  * @package    local_truenorth
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
@@ -82,6 +85,11 @@ try {
             break;
         case 'delete_stage':
             $result = \local_truenorth\course_sync::delete_stage((string) ($request['idnumber'] ?? ''));
+            break;
+        case 'pull_results':
+            // The answer is signed with this site's LTI key and names this ticket.
+            $result = \local_truenorth\results::pull((string) ($request['cursor'] ?? ''),
+                (int) ($request['limit'] ?? 500), (int) ($request['settle'] ?? 5), (string) $claims->jti);
             break;
         default:
             local_truenorth_reply(400, ['ok' => false, 'error' => 'unknown op']);

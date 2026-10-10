@@ -9,7 +9,6 @@ from __future__ import annotations
 import json
 import logging
 import uuid
-from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, status
 from fastapi.responses import Response
@@ -21,13 +20,12 @@ from ..course_publishing.models import CoursePublication
 from ..course_releases.models import CourseRelease
 from ..db import get_db
 from ..delete_guard import commit_delete, refuse_if
-from ..enrollment import ensure_enrollment, ensure_path_enrollment
+from ..enrollment import complete_enrollment, ensure_enrollment, ensure_path_enrollment
 from ..models import (
     ContentKind,
     Course,
     CourseModule,
     Enrollment,
-    EnrollmentStatus,
     ExternalActivity,
     ExternalPlatform,
     LearningPath,
@@ -603,33 +601,10 @@ def complete_course(
     if not enrollment:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Enrollment not found")
 
-    # Calculate final score from module progress
-    progress_rows = db.query(ModuleProgress).filter(ModuleProgress.enrollment_id == enrollment.id).all()
-    total_score = sum(p.score for p in progress_rows)
-    max_score = sum(p.max_score for p in progress_rows) or 1
-    pct = (total_score / max_score) * 100
-
-    # Letter grade
-    if pct >= 90:
-        grade = "A"
-    elif pct >= 80:
-        grade = "B"
-    elif pct >= 70:
-        grade = "C"
-    elif pct >= 60:
-        grade = "D"
-    else:
-        grade = "F"
-
-    enrollment.status = EnrollmentStatus.completed
-    enrollment.completed_at = datetime.now(UTC)
-    enrollment.final_score = total_score
-    enrollment.max_score = max_score
-    enrollment.final_grade = grade
-
+    complete_enrollment(db, enrollment)  # final score and letter grade from module progress
     db.commit()
     db.refresh(enrollment)
-    logger.info("Course %s completed for user %s — grade %s", course_id, user_id, grade)
+    logger.info("Course %s completed for user %s — grade %s", course_id, user_id, enrollment.final_grade)
     return enrollment
 
 

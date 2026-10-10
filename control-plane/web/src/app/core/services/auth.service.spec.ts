@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import Keycloak from 'keycloak-js';
 import { freshToken } from '../auth/keycloak-init';
+import { clearLtiSession, storeLtiSession } from '../auth/lti-session';
 import { AuthService, CurrentUser } from './auth.service';
 import { environment } from '@env/environment';
 import { provideHttpClient, withInterceptorsFromDi } from '@angular/common/http';
@@ -150,6 +151,23 @@ describe('AuthService', () => {
       await pending;
       expect(service.user()?.sub).toBe('kc-sub');
       expect(service.userId()).toBe('db-1');
+    });
+
+    it('bootstrap() resolves a launched Student through their LTI session, without onboarding', async () => {
+      storeLtiSession('lti-token', 3600);
+      const http = TestBed.inject(HttpTestingController);
+      const pending = service.bootstrap(true);
+      http.expectOne(`${environment.apiUrl}/auth/me`).flush({
+        status: 'registered',
+        user: { id: 'db-9', email: 'l@lms', display_name: 'L', role: 'student', keycloak_id: 'lti:p:7',
+                onboarding_state: 'not_started' },
+      });
+      await pending;
+      expect(service.isLtiSession()).toBeTrue();
+      expect(service.userId()).toBe('db-9');
+      expect(service.needsOnboarding()).toBeFalse();  // came for one activity
+      expect(await service.getToken()).toBe('lti-token');
+      clearLtiSession();
     });
 
     it('login() and logout() hand off to Keycloak with this origin', () => {

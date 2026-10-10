@@ -225,12 +225,12 @@ import { EnterStaggerDirective, HoverLiftDirective } from '../../shared/motion';
                 }
                 @if (canAuthor()) {
                   <!-- Exports contain the answer key: course:author only. -->
-                  <a mat-button [href]="exportUrl(q.id, 'gift')" target="_blank">
+                  <button mat-button type="button" (click)="exportQuiz(q, 'gift')">
                     <mat-icon>download</mat-icon> GIFT
-                  </a>
-                  <a mat-button [href]="exportUrl(q.id, 'moodlexml')" target="_blank">
+                  </button>
+                  <button mat-button type="button" (click)="exportQuiz(q, 'moodlexml')">
                     <mat-icon>download</mat-icon> Moodle XML
-                  </a>
+                  </button>
                 }
               </div>
             </mat-card>
@@ -480,8 +480,20 @@ export class CurriculumForgeComponent implements OnInit, OnDestroy {
     });
   }
 
-  exportUrl(quizId: string, format: 'gift' | 'moodlexml'): string {
-    return this.api.quizExportUrl(quizId, format);
+  /**
+   * Download through the shared API client, so the bearer token is sent (gap #7 in
+   * docs/moodle-integration.md: a plain link carried none and failed with auth on).
+   */
+  exportQuiz(quiz: { id: string; title?: string }, format: 'gift' | 'moodlexml'): void {
+    this.api.exportQuiz(quiz.id, format).subscribe({
+      next: resp => {
+        const fallback = `${(quiz.title || 'quiz').replace(/[^A-Za-z0-9_-]+/g, '-')}${format === 'gift' ? '.gift.txt' : '.xml'}`;
+        saveBlob(resp.body, attachmentName(resp.headers.get('Content-Disposition')) || fallback);
+      },
+      error: err => this.snack.open(err.status === 409 ? 'This quiz has no questions yet' : 'Export failed', 'OK', {
+        duration: 4000,
+      }),
+    });
   }
 
   statusClass(status: string): string {
@@ -491,4 +503,21 @@ export class CurriculumForgeComponent implements OnInit, OnDestroy {
       error: 'failed',
     }[status] || 'draft';
   }
+}
+
+/** The file name from `Content-Disposition: attachment; filename="…"`, or null. */
+export function attachmentName(header: string | null): string | null {
+  const match = header?.match(/filename="?([^";]+)"?/i);
+  const name = match?.[1]?.trim();
+  return name && !/[\\/]/.test(name) ? name : null;
+}
+
+function saveBlob(blob: Blob | null, name: string): void {
+  if (!blob) return;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url));
 }

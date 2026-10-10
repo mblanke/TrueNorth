@@ -376,7 +376,7 @@ def start_attempt(
         db.query(Quiz.id).filter(Quiz.id == quiz.id).with_for_update().first()
         prior = (
             db.query(QuizAttempt)
-            .filter(QuizAttempt.quiz_id == quiz.id, QuizAttempt.user_id == uuid.UUID(user.id))
+            .filter(QuizAttempt.quiz_id == quiz.id, QuizAttempt.user_id == uuid.UUID(user.id), _not_mirrored())
             .count()
         )
         if prior >= quiz.max_attempts:
@@ -566,9 +566,19 @@ def _final_attempt(db: Session, quiz: Quiz, attempt: QuizAttempt) -> bool:
     may its result carry the answer key. An unlimited quiz never reveals it."""
     if not quiz.max_attempts:
         return False
-    mine = db.query(QuizAttempt).filter(QuizAttempt.quiz_id == quiz.id, QuizAttempt.user_id == attempt.user_id)
+    mine = db.query(QuizAttempt).filter(
+        QuizAttempt.quiz_id == quiz.id, QuizAttempt.user_id == attempt.user_id, _not_mirrored()
+    )
     others_open = mine.filter(QuizAttempt.id != attempt.id, QuizAttempt.submitted_at.is_(None)).count()
     return mine.count() >= quiz.max_attempts and others_open == 0
+
+
+def _not_mirrored():
+    """Attempts taken here, not the ones mirroring a Moodle grade (app/moodle_results): a
+    Student's Moodle attempts never use up their TrueNorth attempts or reveal the key."""
+    from ..moodle_results.service import mirrored_attempt_ids
+
+    return QuizAttempt.id.not_in(mirrored_attempt_ids())
 
 
 async def _push_lti_grade(user_id: uuid.UUID, quiz_id: uuid.UUID, score: int, max_score: int) -> None:

@@ -83,6 +83,15 @@ SIGN_IN_ONLY: dict[str, str] = {
     "POST /integrations/moodle/sso": (
         "in-body: moodle_sso.mint_ticket — Students need an active enrolment; staff need learning_record:write"
     ),
+    # ── Staff deep linking (app/lti_identity/links.py): the caller's own LMS account ──
+    "POST /lti/links/preview": (
+        "in-body: links._check — staff of the platform's tenant, own sign-in, the email the LMS asserted"
+    ),
+    "POST /lti/links/confirm": (
+        "in-body: links._check — staff of the platform's tenant, own sign-in, the email the LMS asserted"
+    ),
+    "GET /lti/links": "own: the caller's own LMS account links",
+    "DELETE /lti/links/{link_id}": "own: the holder's link; anyone else's needs integration:write in the tenant",
     # ── A Student's own lab (app/lab_sessions): owner, or staff with learning_record:* ──
     "GET /lab-sessions": "in-body: the caller's labs; all_students needs learning_record:read",
     "POST /lab-sessions": "in-body: launches the caller's own lab; auto-enrol only with learning_record:write",

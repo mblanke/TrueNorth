@@ -1,5 +1,5 @@
 ﻿import { Injectable, inject } from '@angular/core';
-import { HttpClient, HttpParams } from '@angular/common/http';
+import { HttpClient, HttpParams, HttpResponse } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { environment } from '@env/environment';
 import {
@@ -26,6 +26,13 @@ export interface InjectorInfo {
 
 /** GET /ranges/stats. `by_state` may be absent. */
 export type RangeStats = components['schemas']['RangeStatsOut'];
+/** POST /lti/session: a launched Student's TrueNorth session (core/auth/lti-session.ts). */
+export type LtiSession = components['schemas']['LtiSessionOut'];
+/** GET /integrations/lti/tool-config. */
+export type LtiToolConfig = components['schemas']['LtiToolConfigOut'];
+/** POST /lti/links/preview and /lti/links/confirm (staff deep linking). */
+export type LtiLinkPreview = components['schemas']['LtiLinkPreviewOut'];
+export type LtiLink = components['schemas']['LtiLinkOut'];
 /** One detection attempt (POST/GET .../detections). */
 export type Detection = components['schemas']['DetectionOut'];
 
@@ -641,8 +648,35 @@ export class ApiService {
   submitQuizAttempt(attemptId: string, answers: Record<string, number[]>): Observable<any> {
     return this.http.post<any>(`${this.base}/quizzes/attempts/${attemptId}/submit`, { answers });
   }
-  quizExportUrl(quizId: string, format: 'gift' | 'moodlexml'): string {
-    return `${this.base}/quizzes/${quizId}/export?format=${format}`;
+  /**
+   * A quiz's question bank as GIFT or Moodle XML, through this client so the bearer token
+   * goes with it (a plain link sent none, so it failed once auth was on). The response
+   * carries the file name in Content-Disposition.
+   */
+  exportQuiz(quizId: string, format: 'gift' | 'moodlexml'): Observable<HttpResponse<Blob>> {
+    return this.http.get(`${this.base}/quizzes/${quizId}/export`, {
+      params: { format },
+      observe: 'response',
+      responseType: 'blob',
+    });
+  }
+
+  // ── LTI 1.3 ──────────────────────────────────────────────
+  /** POST /lti/session: spend a launch's hand-off code for a TrueNorth session. */
+  exchangeLtiSession(code: string): Observable<LtiSession> {
+    return this.http.post<LtiSession>(`${this.base}/lti/session`, { code });
+  }
+  /** POST /lti/links/preview: which LMS account a staff link request would bind. */
+  previewLtiLink(code: string): Observable<LtiLinkPreview> {
+    return this.http.post<LtiLinkPreview>(`${this.base}/lti/links/preview`, { code });
+  }
+  /** POST /lti/links/confirm: bind it to the signed-in staff account (once). */
+  confirmLtiLink(code: string): Observable<LtiLink> {
+    return this.http.post<LtiLink>(`${this.base}/lti/links/confirm`, { code });
+  }
+  /** GET /integrations/lti/tool-config: the real tool URLs to register in an LMS. */
+  getLtiToolConfig(): Observable<LtiToolConfig> {
+    return this.http.get<LtiToolConfig>(`${this.base}/integrations/lti/tool-config`);
   }
 
   // ── Adaptive learning / competency profile ──────────────

@@ -50,6 +50,12 @@ class sso {
         global $CFG, $DB;
         require_once($CFG->dirroot . '/user/lib.php');
 
+        // A fresh site install applies auth defaults after this plugin's install step, so
+        // the lock is (re)asserted here, where every TrueNorth account is made.
+        if (get_config('auth_manual', 'field_lock_idnumber') !== 'locked') {
+            self::lock_profile_fields();
+        }
+
         $matches = $DB->get_records('user', [
             'idnumber' => $claims->sub,
             'deleted' => 0,
@@ -141,6 +147,16 @@ class sso {
             }
         }
         return $course;
+    }
+
+    /**
+     * Lock the idnumber profile field of the accounts sign-in creates (auth `manual`), so a
+     * Student cannot edit the TrueNorth id their results are reported under. Run on
+     * install and upgrade (db/install.php, db/upgrade.php) and asserted at every sign-in
+     * (user_for), since a fresh site install resets auth defaults after plugin installs.
+     */
+    public static function lock_profile_fields(): void {
+        set_config('field_lock_idnumber', 'locked', 'auth_manual');
     }
 
     /**
