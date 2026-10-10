@@ -426,3 +426,54 @@ def test_a_noise_agent_gets_its_management_nic(env, si, range_id, monkeypatch):
         pg = _named(si, vim.dvs.DistributedVirtualPortgroup, noise_pg)
         if pg is not None:
             _wait(si, pg.Destroy_Task())
+
+
+def test_a_tenants_connection_replaces_the_environment(env, si, range_id, monkeypatch):
+    """H6: the range's own tenant's HypervisorConnection (as worker.base_tasks passes it)
+    is what the provisioner logs in to, for the build and the teardown. The environment
+    here points at nothing, so a call that fell back to it would fail."""
+    monkeypatch.setattr(mod, "VSPHERE_URL", "https://127.0.0.1:9")
+    monkeypatch.setattr(mod, "VSPHERE_PASSWORD", "env-password-not-used")
+    endpoint = urlparse(URL)
+    creds = {"host": f"{endpoint.hostname}:{endpoint.port}", "username": USER, "password": PASSWORD,
+             "verify_ssl": False, "datacenter": DC}
+    prov = mod.VsphereAPIProvisioner(credentials=creds)
+    template = _template(range_id)
+    built = _run(prov.provision(range_id, template, _reserve(prov, range_id, template)))
+    assert built.status == "ok", built.errors
+    output = {"vms": built.vms, "networks": built.networks}
+    assert _run(mod.VsphereAPIProvisioner(credentials=creds).health_check(range_id, output)).healthy
+    gone = _run(mod.VsphereAPIProvisioner(credentials=creds).destroy(range_id, output))
+    assert gone.status == "ok", gone.errors
+    assert _portgroups(si, f"tn-{range_id[:8]}-") == {}
+
+
+def test_a_vyos_router_gets_its_config_in_cloud_init_guestinfo(env, si, range_id):
+    """vsphere_api's TODO(appliance): a VyOS router's per-range commands reach its VM's
+    extraConfig before power-on, read back from the simulator."""
+    import base64
+
+    import yaml
+    from worker import vyos_config
+
+    topo = {**RANGE, "nodes": [*RANGE["nodes"], {
+        "id": "rtr", "role": "router", "os": "vyos", "vlan": "red", "ip": "10.10.10.1",
+        "specs": {"cores": 1, "memory_mb": 512, "disk_gb": 1}, "interfaces": [{"vlan": "red"}, {"vlan": "blue"}]}]}
+    out = render.render_topology(topo, range_id, lambda alias: TEMPLATE_VM)
+    template = {"name": "sim", "vms": out["vm_definitions"], "networks": out["network_definitions"]}
+    prov = mod.VsphereAPIProvisioner()
+    built = _run(prov.provision(range_id, template, _reserve(prov, range_id, template)))
+    assert built.status == "ok", built.errors
+    rtr = next(v for v in built.vms if v["node_id"] == "rtr")
+    assert rtr["vyos"]["delivery"] == "cloud-init guestinfo"
+    vm = vim.VirtualMachine(rtr["vm_id"], si._stub)
+    extra = {o.key: o.value for o in vm.config.extraConfig}
+    cmds = vyos_config.commands_of(extra)
+    macs = [c.macAddress.lower() for c in infra.nic_cards(vm.config.hardware.device)]
+    assert cmds[:2] == [f"set interfaces ethernet eth{i} hw-id '{m}'" for i, m in enumerate(macs)]
+    assert any(c.startswith("set interfaces ethernet eth0 address '10.10.10.") for c in cmds)
+    assert "set firewall ipv4 forward filter default-action 'drop'" in cmds
+    meta = yaml.safe_load(base64.b64decode(extra["guestinfo.metadata"]))
+    assert meta["instance-id"].startswith(rtr["name"])
+    assert _run(mod.VsphereAPIProvisioner().destroy(range_id, {"vms": built.vms, "networks": built.networks})
+                ).status == "ok"
