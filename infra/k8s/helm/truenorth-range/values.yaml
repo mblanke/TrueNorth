@@ -415,7 +415,8 @@ config:
   publicOrigin: ""
   corsOrigins: ""
   schedulerFeedBaseUrl: ""
-  # worker/provisioners registry key: vsphere_api, mock, terraform, ...
+  # worker/provisioners registry key: vsphere_api or mock. proxmox_api and hyperv are
+  # experimental: refused unless extraEnv sets EXPERIMENTAL_PROVISIONERS: "true".
   provisionerBackend: vsphere_api
   # Any other non-secret variable for the api, workers and beat (VSPHERE_*, LRS_URL,
   # LMS_BACKEND, LDAP_*, REGISTRATION_*, ...), as in compose.prod.yml.

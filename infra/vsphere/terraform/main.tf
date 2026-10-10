@@ -1,9 +1,9 @@
 # TrueNorth Range - vSphere Terraform Configuration
 # Clones VMs from a template in a vCenter-managed cluster.
 #
-# This module is NOT the range provisioning path. PROVISIONER_BACKEND=terraform_vsphere
-# expects its root module at TERRAFORM_VSPHERE_DIR, which nothing in this repo points at
-# this directory, and it has no per-range port groups or VLAN reservations. vsphere_api
+# This module is NOT the range provisioning path. There is no Terraform provisioner
+# backend any more (removed 2026-10, ADR 0009), and this module has no per-range port
+# groups or VLAN reservations. vsphere_api
 # (control-plane/worker/worker/provisioners/vsphere_api.py) is the canonical runtime
 # provisioner for vSphere; this module is kept for one-off reference environments.
 # See docs/adr/0009-vsphere-provisioning-path.md.

@@ -8,7 +8,7 @@ description: |
   Zeek, Suricata). Designed for blue-team analyst skill development.
 author: TrueNorth Range
 difficulty: intermediate
-vm_count: 25
+vm_count: 23  # = the VMs the nodes build (tests/contracts/test_template_vm_count.py)
 
 network:
   vlans:

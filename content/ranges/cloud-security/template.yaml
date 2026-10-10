@@ -8,7 +8,7 @@ description: |
   integration for detection and response exercises.
 author: TrueNorth Range
 difficulty: intermediate
-vm_count: 20
+vm_count: 16  # = the VMs the nodes build (tests/contracts/test_template_vm_count.py)
 
 inputs:
   range_id: string

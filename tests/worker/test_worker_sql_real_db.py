@@ -166,7 +166,7 @@ class TestRanges:
                                    password_encrypted="pw", is_primary=True, is_active=True, datacenter="DC1"),
         )
         backend = _fake_backend(provision=ProvisionResult(status="ok", vms=[{"name": "web"}], networks=[]))
-        monkeypatch.setattr(tasks, "_get_backend", lambda name=None: backend)
+        monkeypatch.setattr(tasks, "_get_backend", lambda name=None, range_id=None: backend)
 
         out = tasks.provision_range(str(world.range.id))
 
@@ -185,7 +185,7 @@ class TestRanges:
         world.range.state = m.RangeState.provisioning
         world.db.commit()
         backend = _fake_backend(provision=ProvisionResult(status="failed", errors=["no capacity"]))
-        monkeypatch.setattr(tasks, "_get_backend", lambda name=None: backend)
+        monkeypatch.setattr(tasks, "_get_backend", lambda name=None, range_id=None: backend)
         with pytest.raises(RuntimeError, match="no capacity"):
             tasks.provision_range(str(world.range.id))
         r = _fresh(world.db, world.range)
@@ -197,7 +197,7 @@ class TestRanges:
         world.db.commit()
         backend = _fake_backend(destroy=DestroyResult(status="ok", resources_removed=1))
         seen = []
-        monkeypatch.setattr(tasks, "_get_backend", lambda name=None: seen.append(name) or backend)
+        monkeypatch.setattr(tasks, "_get_backend", lambda name=None, range_id=None: seen.append(name) or backend)
 
         assert tasks.destroy_range(str(world.range.id))["status"] == "destroyed"
         assert seen == ["mock"]
@@ -212,7 +212,7 @@ class TestRanges:
         _add(db, stopped)
         before = _fresh(db, world.range).updated_at
         backend = _fake_backend(health_check=HealthResult(healthy=False, status="degraded", vm_statuses=[{}]))
-        monkeypatch.setattr(tasks, "_get_backend", lambda name=None: backend)
+        monkeypatch.setattr(tasks, "_get_backend", lambda name=None, range_id=None: backend)
 
         summary = tasks.health_check_ranges()
         assert summary["checked"] == 1
@@ -540,7 +540,7 @@ class TestSnapshots:
             snapshot=SnapshotResult(status="ok", vms_snapped=1),
             delete_snapshot=SnapshotDeleteResult(status="ok"),
         )
-        monkeypatch.setattr(tasks, "_get_backend", lambda name=None: backend)
+        monkeypatch.setattr(tasks, "_get_backend", lambda name=None, range_id=None: backend)
 
         out = tasks.snapshot_range(str(world.range.id), str(snap.id))
 
@@ -568,7 +568,7 @@ class TestSnapshots:
         world.range.state, world.range.error_message = m.RangeState.failed, "old failure"
         world.db.commit()
         backend = _fake_backend(restore=RestoreResult(status="ok", vms_reverted=1, vms_restored=1))
-        monkeypatch.setattr(tasks, "_get_backend", lambda name=None: backend)
+        monkeypatch.setattr(tasks, "_get_backend", lambda name=None, range_id=None: backend)
 
         assert tasks.restore_snapshot(str(world.range.id), str(snap.id))["status"] == "restored"
         assert backend.restore.await_args.args[2] == "tnabc"
@@ -581,7 +581,7 @@ class TestSnapshots:
         world.range.state = m.RangeState.destroyed
         world.db.commit()
         backend = _fake_backend()
-        monkeypatch.setattr(tasks, "_get_backend", lambda name=None: backend)
+        monkeypatch.setattr(tasks, "_get_backend", lambda name=None, range_id=None: backend)
 
         assert tasks.restore_snapshot(str(world.range.id), str(snap.id))["status"] == "skipped"
         assert _fresh(world.db, world.range).state == m.RangeState.destroyed
@@ -591,7 +591,7 @@ class TestSnapshots:
         snap.snapshot_state, snap.snapshot_data = "ready", '{"snapshot_name": "tnabc"}'
         world.db.commit()
         backend = _fake_backend(delete_snapshot=SnapshotDeleteResult(status="ok"))
-        monkeypatch.setattr(tasks, "_get_backend", lambda name=None: backend)
+        monkeypatch.setattr(tasks, "_get_backend", lambda name=None, range_id=None: backend)
 
         assert tasks.delete_snapshot(str(world.range.id), str(snap.id))["status"] == "deleted"
         assert backend.delete_snapshot.await_args.args[2] == "tnabc"

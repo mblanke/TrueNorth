@@ -234,12 +234,15 @@ def test_the_task_time_limit_ends_a_task_before_the_broker_redelivers_it():
 
 
 def test_the_soft_limit_is_final_not_retried():
+    from worker.provisioners import ExperimentalProvisionerError
     from worker.range_alloc import AllocationError
     from worker.windows_roles import RoleError
 
     # and a full VLAN/address pool (worker/range_alloc.py): retrying does not empty it;
-    # and Windows Server roles that cannot share a VM: retrying does not separate them
-    assert tasks.ReliableTask.dont_autoretry_for == (SoftTimeLimitExceeded, AllocationError, RoleError)
+    # and Windows Server roles that cannot share a VM: retrying does not separate them;
+    # and a switched-off experimental backend: retrying does not switch it on
+    assert tasks.ReliableTask.dont_autoretry_for == (
+        SoftTimeLimitExceeded, AllocationError, RoleError, ExperimentalProvisionerError)
 
 
 class _CutOffCall:

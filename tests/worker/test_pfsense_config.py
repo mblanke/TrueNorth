@@ -226,8 +226,13 @@ class TestGuestinfo:
 
     def test_boot_script_uses_the_same_keys_and_command(self):
         text = SCRIPT.read_text()
-        assert f"'{pf.GUESTINFO_CONFIG}'" in text and f"'{pf.GUESTINFO_IFMAP}'" in text
-        assert f"'{pf.BOOT_COMMAND}'" in text
+        # The script composes its keys and boot command from the product (pfsense | opnsense).
+        assert "define('KEY_CONFIG', 'guestinfo.tn.' . PRODUCT . '.config');" in text
+        assert "define('KEY_IFMAP', 'guestinfo.tn.' . PRODUCT . '.ifmap');" in text
+        assert pf.GUESTINFO_CONFIG == "guestinfo.tn.pfsense.config" and pf.GUESTINFO_IFMAP == "guestinfo.tn.pfsense.ifmap"
+        assert "define('TN_SCRIPT', '/usr/local/sbin/tn-' . PRODUCT . '-config');" in text
+        assert "define('BOOT_COMMAND', '/usr/local/bin/php -q ' . TN_SCRIPT . ' boot');" in text
+        assert pf.BOOT_COMMAND == "/usr/local/bin/php -q /usr/local/sbin/tn-pfsense-config boot"
         assert f"<earlyshellcmd>{pf.BOOT_COMMAND}</earlyshellcmd>" in TEMPLATE_CONFIG.read_text()
         assert os.access(SCRIPT, os.X_OK)
 

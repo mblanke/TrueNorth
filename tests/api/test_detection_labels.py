@@ -34,6 +34,13 @@ def _labelled(minutes=5, **labels):
             "truenorth": {"ingested_at": _at(minutes)}, **labels}
 
 
+@pytest.fixture(autouse=True)
+def _any_tenant_student(monkeypatch):
+    """These tests are about the query grammar, not who takes part: exercises here have no
+    roster (participation: tests/api/test_detection_participants.py)."""
+    monkeypatch.setenv("DETECTION_SUBMIT_PARTICIPANTS_ONLY", "false")
+
+
 @pytest.fixture
 def store():
     s = FakeStore()

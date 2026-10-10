@@ -503,12 +503,13 @@ services:
       # token from another realm or host must not be accepted (the installer renders it).
       KEYCLOAK_ISSUER: ${KEYCLOAK_ISSUER:?set KEYCLOAK_ISSUER to https://<DOMAIN>/auth/realms/<realm>}
       AUTH_DISABLED: "false"
-      # Valid values come from worker/provisioners/__init__.py: mock, proxmox_api,
-      # vsphere_api, hyperv, terraform, terraform_{proxmox,vsphere,hyperv}.
+      # Valid values come from worker/provisioners/__init__.py: mock, vsphere_api, and the
+      # experimental proxmox_api, hyperv (refused unless EXPERIMENTAL_PROVISIONERS=true).
       # "proxmox" is NOT a registry key — it raised ValueError at first provision.
       # vSphere is "vsphere_api", not "vsphere". Required: a production stack that
       # silently fell back to `mock` reported every range built while building nothing.
       PROVISIONER_BACKEND: ${PROVISIONER_BACKEND:?set PROVISIONER_BACKEND explicitly (vsphere_api; mock only for a lab)}
+      EXPERIMENTAL_PROVISIONERS: ${EXPERIMENTAL_PROVISIONERS:-false}
       # The API image is built from control-plane/api alone; the scenario engine
       # is read from this bind mount. Missing here, every engine call failed.
       SCENARIO_ENGINE_DIR: /opt/scenario-engine
@@ -637,6 +638,7 @@ services:
       OPENSEARCH_VERIFY_SSL: ${OPENSEARCH_VERIFY_SSL:-/etc/truenorth/opensearch-ca.pem}
       # See the api service: "proxmox" is not a registry key. vSphere is "vsphere_api".
       PROVISIONER_BACKEND: ${PROVISIONER_BACKEND:?set PROVISIONER_BACKEND explicitly (vsphere_api; mock only for a lab)}
+      EXPERIMENTAL_PROVISIONERS: ${EXPERIMENTAL_PROVISIONERS:-false}
       CELERY_WORKER: "true"
       # Every task without its own limits (worker/celery_app.py). Hard must stay below the
       # broker's visibility timeout (3600 s); the worker refuses to start otherwise.

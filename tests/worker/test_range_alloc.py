@@ -274,7 +274,7 @@ def test_provision_reserves_first_and_stores_uplink_mirrors_warnings(task_env, m
                                    uplink={"ip": "10.30.32.100"}, mirrors=[{"name": "tn-x-mon"}], warnings=["w"])
 
     monkeypatch.setattr(tasks.range_alloc, "reserve_for_build", reserve)
-    monkeypatch.setattr(tasks, "_get_backend", lambda b: Prov())
+    monkeypatch.setattr(tasks, "_get_backend", lambda b, range_id=None: Prov())
     assert tasks.provision_range.run("r-1")["status"] == "ready"
     assert task_env["order"] == ["reserve", "provision"]
     assert seen["allocations"] == {"physical_vlans": {"200": "101"}}
@@ -290,7 +290,7 @@ def test_a_full_pool_fails_the_range_at_once_without_building(task_env, monkeypa
         raise ra.PoolExhaustedError("vlan pool for vsphere:vlans has 0 free of 100; this range needs 3 more")
 
     monkeypatch.setattr(tasks.range_alloc, "reserve_for_build", reserve)
-    monkeypatch.setattr(tasks, "_get_backend", lambda b: SimpleNamespace(provision=pytest.fail))
+    monkeypatch.setattr(tasks, "_get_backend", lambda b, range_id=None: SimpleNamespace(provision=pytest.fail))
     monkeypatch.setattr(tasks, "_last_attempt", lambda task: False)  # final anyway: no retry
     with pytest.raises(ra.PoolExhaustedError):
         tasks.provision_range.run("r-1")
@@ -308,7 +308,7 @@ def test_destroy_releases_after_recording_destroyed(task_env, monkeypatch):
             return DestroyResult(status="ok", resources_removed=1)
 
     monkeypatch.setattr(tasks.range_alloc, "release_after_destroy", release)
-    monkeypatch.setattr(tasks, "_get_backend", lambda b: Prov())
+    monkeypatch.setattr(tasks, "_get_backend", lambda b, range_id=None: Prov())
     assert tasks.destroy_range.run("r-1")["status"] == "destroyed"
     assert task_env["order"] == [("release", ["destroying", "destroyed"])]  # the claim, then destroyed
 
@@ -319,7 +319,7 @@ def test_a_failed_destroy_releases_nothing(task_env, monkeypatch):
             return DestroyResult(status="failed", errors=["VM vm-1: busy"])
 
     monkeypatch.setattr(tasks.range_alloc, "release_after_destroy", lambda *a: pytest.fail("released"))
-    monkeypatch.setattr(tasks, "_get_backend", lambda b: Prov())
+    monkeypatch.setattr(tasks, "_get_backend", lambda b, range_id=None: Prov())
     monkeypatch.setattr(tasks, "_last_attempt", lambda task: True)
     with pytest.raises(RuntimeError, match="busy"):
         tasks.destroy_range.run("r-1")

@@ -23,6 +23,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from .. import exercise_completion as completion
+from .. import exercise_participants as participants
 from ..auth import CurrentUser
 from ..db import get_db
 from ..detections import credit
@@ -117,6 +118,7 @@ def _attempts(db: Session, exercise_id: uuid.UUID, ref_id: str, user_id: uuid.UU
     response_model=DetectionOut,
     status_code=status.HTTP_201_CREATED,
     responses={
+        403: {"description": "The Student is not a participant of the exercise (ADR 0005)"},
         409: {"description": "Exercise not running, objective already achieved, or not a detection objective"},
         429: {"description": "No attempts left for this objective"},
         503: {"description": "The event store could not answer; the attempt was not counted"},
@@ -133,6 +135,8 @@ async def submit_detection(
 ) -> DetectionOut:
     """Submit a detection for an objective; it is credited if it finds the attack.  **Permission: detection:submit**"""
     ex = get_owned(db, Exercise, exercise_id, user, not_found="Exercise not found")
+    if not participants.may_submit(db, user, ex):  # ADR 0005 (M3): participants only
+        raise HTTPException(403, "You are not a participant of this exercise (enrol in its booked course)")
     if ex.state != ExerciseState.running or ex.started_at is None:
         raise HTTPException(409, f"Exercise is {ex.state.value}; detections are accepted while it is running")
     obj = db.query(Objective).filter(Objective.exercise_id == ex.id, Objective.ref_id == ref_id).first()

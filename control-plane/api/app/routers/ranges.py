@@ -32,7 +32,6 @@ from __future__ import annotations
 
 import contextlib
 import logging
-import os
 import uuid
 from typing import Any
 
@@ -54,6 +53,7 @@ from ..models import (
     Template,
 )
 from ..network_inventory import NetworkReservation, NetworkReservationOut
+from ..provisioner_choice import configured_backend
 from ..range_ops import service as ops
 from ..rbac import Permission, require_permission, user_has_permission
 from ..scheduler import service as scheduler
@@ -203,7 +203,7 @@ def create_range(
         template_id=body.template_id,
         tenant_id=uuid.UUID(user.tenant_id),
         state=RangeState.created,
-        provisioner_backend=os.getenv("PROVISIONER_BACKEND", "mock"),
+        provisioner_backend=configured_backend(),  # 409 for a switched-off experimental backend
     )
     db.add(rng)
     db.commit()

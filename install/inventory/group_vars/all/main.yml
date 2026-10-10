@@ -157,9 +157,11 @@ tn_bootstrap_admin_upn: ""
 
 # ── vSphere ───────────────────────────────────────────────────────────
 # NOTE: vsphere_api, NOT "vsphere" — the registry keys in
-# worker/provisioners/__init__.py are mock | proxmox_api | vsphere_api |
-# hyperv | terraform | terraform_{proxmox,vsphere,hyperv}.
+# worker/provisioners/__init__.py are mock | vsphere_api | proxmox_api | hyperv.
+# proxmox_api and hyperv are experimental: preflight, the API and the workers refuse
+# them unless tn_experimental_provisioners is true (EXPERIMENTAL_PROVISIONERS).
 tn_provisioner_backend: vsphere_api
+tn_experimental_provisioners: false
 # Whether this site has a vCenter. False with the mock provisioner (an install test with
 # no hypervisor): preflight skips the vCenter checks and 90-vsphere does nothing, and
 # vault_vsphere_password may stay a placeholder. Ranges are then simulated, not built.
@@ -363,11 +365,28 @@ tn_logrotate_days: 14
 tn_seed_demo_data: false
 # The shipped content/ (curriculum, VM catalogue, range templates, scenarios, Sigma rules),
 # loaded through the API by 80-seed. Off: a site loads its own. Imports are drafts unless
-# tn_publish_shipped_content. tn_load_shipped_demo adds demo people (roster only, no
-# sign-in) and demo ranges/exercises (not provisioned). For staging and demo hosts.
+# tn_publish_shipped_content. tn_load_shipped_demo adds demo people and demo
+# ranges/exercises (not provisioned); without AD each demo person also gets a local
+# Keycloak account with a generated password (config/secrets/demo_*_password). For
+# staging and demo hosts only: never turn it on where Students train.
 tn_load_shipped_content: false
 tn_publish_shipped_content: false
 tn_load_shipped_demo: false
+# The shipped demo people: the same emails and roles as DEMO_PEOPLE in
+# scripts/load_content.py (tests/contracts/test_installer_demo_signin.py keeps them in
+# step). `group` is the local Keycloak group (a tn_ad_groups entry), `secret` the
+# tn_demo_secrets entry holding the password.
+tn_demo_people:
+  - { email: instructor.demo@truenorth.test, first_name: Demo, last_name: Instructor,
+      group: TN-Instructors, secret: demo_instructor_password }
+  - { email: trainee1.demo@truenorth.test, first_name: Demo, last_name: Trainee 1,
+      group: TN-Students, secret: demo_trainee1_password }
+  - { email: trainee2.demo@truenorth.test, first_name: Demo, last_name: Trainee 2,
+      group: TN-Students, secret: demo_trainee2_password }
+  - { email: trainee3.demo@truenorth.test, first_name: Demo, last_name: Trainee 3,
+      group: TN-Students, secret: demo_trainee3_password }
+  - { email: observer.demo@truenorth.test, first_name: Demo, last_name: Observer,
+      group: TN-Observers, secret: demo_observer_password }
 # `alembic stamp` papers over a schema that was created by create_all() instead
 # of by migrations. Never do it silently.
 tn_allow_alembic_stamp: false

@@ -80,6 +80,13 @@ def _reachable(url: str) -> bool:
     return True
 
 
+@pytest.fixture(autouse=True)
+def _any_tenant_student(monkeypatch):
+    """The exercise here has no booked course; participation is tested in
+    tests/api/test_detection_participants.py."""
+    monkeypatch.setenv("DETECTION_SUBMIT_PARTICIPANTS_ONLY", "false")
+
+
 @pytest.fixture
 def event_store(monkeypatch):
     """The API's own OpenSearch backend, against the real cluster."""

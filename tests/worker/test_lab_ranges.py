@@ -139,7 +139,7 @@ def test_vms_built_for_a_range_torn_down_mid_build_are_destroyed(monkeypatch, le
     monkeypatch.setattr(tasks, "_update_range_state", state)
     monkeypatch.setattr(tasks, "_notify_api", lambda *a, **k: None)
     monkeypatch.setattr(tasks, "_db_session", lambda: Db())
-    monkeypatch.setattr(tasks, "_get_backend", lambda b: Prov())
+    monkeypatch.setattr(tasks, "_get_backend", lambda b, range_id=None: Prov())
     result = tasks.provision_range.run("r-1")
     assert result == {"status": "discarded", "range_id": "r-1", "vm_count": 1}
     assert destroyed == {"r-1": [{"vm_id": "vm-9", "name": "r-host"}]}
@@ -150,7 +150,7 @@ def test_destroying_a_destroyed_range_is_a_no_op(monkeypatch, lease_always_free)
     from worker import tasks
 
     monkeypatch.setattr(tasks, "_update_range_state", lambda *a, **k: 0)
-    monkeypatch.setattr(tasks, "_get_backend", lambda b: pytest.fail("must not touch the hypervisor"))
+    monkeypatch.setattr(tasks, "_get_backend", lambda b, range_id=None: pytest.fail("must not touch the hypervisor"))
     assert tasks.destroy_range.run("r-1") == {"status": "skipped", "range_id": "r-1"}
 
 

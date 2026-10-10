@@ -24,18 +24,31 @@
  * config is kept as /conf/config.xml.tn-previous, the new one is written atomically, and
  * the firewall reboots once into it. Any problem: log it, change nothing, exit 1.
  * Log: /conf/tn-pfsense-config.log (and syslog).
+ *
+ * OPNsense: the same script, installed in the OPNsense template as
+ * /usr/local/sbin/tn-opnsense-config (the name selects the product). It reads
+ * guestinfo.tn.opnsense.*, works on /conf/config.xml (root <opnsense>), and `install`
+ * adds the boot hook /usr/local/etc/rc.syshook.d/early/50-tn-opnsense-config instead of
+ * an earlyshellcmd (OPNsense has none). The worker renders that config with
+ * pfsense_config.build_config(product="opnsense").
  */
 
-const KEY_CONFIG = 'guestinfo.tn.pfsense.config';
-const KEY_IFMAP = 'guestinfo.tn.pfsense.ifmap';
+// pfsense | opnsense: from the name the script was run as (TN_FIREWALL_PRODUCT in tests).
+define('PRODUCT', getenv('TN_FIREWALL_PRODUCT') !== false ? (string)getenv('TN_FIREWALL_PRODUCT')
+	: (strpos(basename(isset($argv[0]) ? $argv[0] : ''), 'opnsense') !== false ? 'opnsense' : 'pfsense'));
+define('TN_SCRIPT', '/usr/local/sbin/tn-' . PRODUCT . '-config');
+define('KEY_CONFIG', 'guestinfo.tn.' . PRODUCT . '.config');
+define('KEY_IFMAP', 'guestinfo.tn.' . PRODUCT . '.ifmap');
 // Test seam only (tests/worker/test_pfsense_config.py): a directory holding conf/,
 // guestinfo/<key> files and ifconfig.txt, in place of the firewall. Never set on pfSense.
 define('TEST_ROOT', (string)getenv('TN_PFSENSE_TEST_ROOT'));
-define('CONF_DIR', TEST_ROOT !== '' ? TEST_ROOT . '/conf' : '/cf/conf');
+define('CONF_DIR', TEST_ROOT !== '' ? TEST_ROOT . '/conf' : (PRODUCT === 'opnsense' ? '/conf' : '/cf/conf'));
 define('CONF', CONF_DIR . '/config.xml');
 define('STAMP', CONF_DIR . '/tn-guestinfo.sha256');
-define('LOGFILE', CONF_DIR . '/tn-pfsense-config.log');
-const BOOT_COMMAND = '/usr/local/bin/php -q /usr/local/sbin/tn-pfsense-config boot';
+define('LOGFILE', CONF_DIR . '/tn-' . PRODUCT . '-config.log');
+define('BOOT_COMMAND', '/usr/local/bin/php -q ' . TN_SCRIPT . ' boot');
+// OPNsense runs every executable in rc.syshook.d/early before the network comes up.
+define('OPNSENSE_HOOK', '/usr/local/etc/rc.syshook.d/early/50-tn-opnsense-config');
 // Taken from the config being replaced, never from guestinfo.
 const KEEP = array('version', 'system/user', 'system/group', 'system/nextuid', 'system/nextgid',
                    'system/webgui', 'system/ssh', 'system/enablesshd', 'cert', 'ca', 'sshdata');
@@ -44,10 +57,10 @@ function tnlog($msg) {
 	$line = gmdate('Y-m-d\TH:i:s\Z') . " $msg\n";
 	@file_put_contents(LOGFILE, $line, FILE_APPEND);
 	if (function_exists('syslog')) {
-		@openlog('tn-pfsense-config', LOG_PID, LOG_USER);
+		@openlog('tn-' . PRODUCT . '-config', LOG_PID, LOG_USER);
 		@syslog(LOG_NOTICE, $msg);
 	}
-	echo "tn-pfsense-config: $msg\n";
+	echo 'tn-' . PRODUCT . "-config: $msg\n";
 }
 
 function fail($msg) {
@@ -95,15 +108,15 @@ function local_macs() {
 	return $macs;
 }
 
-/* Replace /pfsense/<path> in $new with the same nodes from $cur (when $cur has them). */
+/* Replace /<product>/<path> in $new with the same nodes from $cur (when $cur has them). */
 function carry_over($new, $cur, $path) {
 	$nx = new DOMXPath($new);
 	$cx = new DOMXPath($cur);
-	$src = $cx->query("/pfsense/$path");
+	$src = $cx->query('/' . PRODUCT . "/$path");
 	if ($src === false || $src->length === 0) {
 		return;
 	}
-	foreach (iterator_to_array($nx->query("/pfsense/$path")) as $old) {
+	foreach (iterator_to_array($nx->query('/' . PRODUCT . "/$path")) as $old) {
 		$old->parentNode->removeChild($old);
 	}
 	$parts = explode('/', $path);
@@ -122,6 +135,19 @@ function carry_over($new, $cur, $path) {
 }
 
 function install() {
+	if (PRODUCT === 'opnsense') {
+		$hook = "#!/bin/sh\n# TrueNorth: apply the per-range config from guestinfo (tn-opnsense-config)\n" . BOOT_COMMAND . "\n";
+		if (is_file(OPNSENSE_HOOK) && file_get_contents(OPNSENSE_HOOK) === $hook) {
+			echo "already installed\n";
+			return 0;
+		}
+		@mkdir(dirname(OPNSENSE_HOOK), 0755, true);
+		if (@file_put_contents(OPNSENSE_HOOK, $hook) !== strlen($hook) || !@chmod(OPNSENSE_HOOK, 0755)) {
+			fail('cannot write ' . OPNSENSE_HOOK);
+		}
+		echo 'installed: ' . OPNSENSE_HOOK . ' -> ' . BOOT_COMMAND . "\n";
+		return 0;
+	}
 	require_once('config.inc');
 	require_once('util.inc');
 	$cmds = config_get_path('system/earlyshellcmd', array());
@@ -167,8 +193,8 @@ function apply($mode) {
 	$new = new DOMDocument();
 	$new->preserveWhiteSpace = false;
 	$new->formatOutput = true;
-	if (!@$new->loadXML($xml) || $new->documentElement->nodeName !== 'pfsense') {
-		fail(KEY_CONFIG . ' is not a pfSense config.xml');
+	if (!@$new->loadXML($xml) || $new->documentElement->nodeName !== PRODUCT) {
+		fail(KEY_CONFIG . ' is not a ' . PRODUCT . ' config.xml');
 	}
 
 	// vmxN in vSphere NIC order -> the name this guest gave the NIC with that MAC.
@@ -186,7 +212,7 @@ function apply($mode) {
 		$rename[$kv[0]] = $macs[$mac];
 	}
 	$nx = new DOMXPath($new);
-	foreach ($nx->query('/pfsense/interfaces/*/if') as $node) {
+	foreach ($nx->query('/' . PRODUCT . '/interfaces/*/if') as $node) {
 		$name = trim($node->textContent);
 		if (isset($rename[$name])) {
 			$node->textContent = $rename[$name];
@@ -200,7 +226,7 @@ function apply($mode) {
 	if (!@$cur->load(CONF)) {
 		fail('cannot read the current ' . CONF);
 	}
-	if ((new DOMXPath($cur))->query('/pfsense/system/user')->length === 0) {
+	if ((new DOMXPath($cur))->query('/' . PRODUCT . '/system/user')->length === 0) {
 		fail('the current config has no users to carry over; refusing to lock the firewall');
 	}
 	foreach (KEEP as $path) {
@@ -234,7 +260,7 @@ function apply($mode) {
 		tnlog('rebooting into the per-range config');
 		exec('/sbin/shutdown -r now "TrueNorth per-range config applied"');
 	} else {
-		exec('/etc/rc.reload_all');
+		exec(PRODUCT === 'opnsense' ? '/usr/local/etc/rc.reload_all' : '/etc/rc.reload_all');
 	}
 	return 0;
 }
@@ -249,6 +275,6 @@ switch ($mode) {
 	case 'status':
 		exit(status());
 	default:
-		fwrite(STDERR, "usage: tn-pfsense-config install|boot|apply|status\n");
+		fwrite(STDERR, 'usage: tn-' . PRODUCT . "-config install|boot|apply|status\n");
 		exit(2);
 }

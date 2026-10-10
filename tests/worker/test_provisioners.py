@@ -16,7 +16,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "control-plane", "worker"))
 
-from worker.provisioners import MockProvisioner, TerraformProvisioner, get_provisioner
+from worker.provisioners import ExperimentalProvisionerError, MockProvisioner, get_provisioner
 from worker.provisioners.results import (
     DestroyResult,
     HealthResult,
@@ -138,10 +138,31 @@ class TestProvisionerRegistry:
         prov = get_provisioner("mock")
         assert isinstance(prov, MockProvisioner)
 
-    def test_provisioner_registry_terraform(self):
-        """Registry should return TerraformProvisioner for 'terraform' backend."""
-        prov = get_provisioner("terraform")
-        assert isinstance(prov, TerraformProvisioner)
+    @pytest.mark.parametrize("name", ["terraform", "terraform_proxmox", "terraform_vsphere", "terraform_hyperv"])
+    def test_terraform_backends_are_gone(self, name):
+        """ADR 0009: no Terraform backend builds ranges (and the worker image has no terraform)."""
+        with pytest.raises(ValueError, match="Unknown provisioner backend"):
+            get_provisioner(name)
+
+    @pytest.mark.parametrize("name", ["proxmox_api", "hyperv"])
+    def test_experimental_backend_refused_without_flag(self, name, monkeypatch):
+        monkeypatch.delenv("EXPERIMENTAL_PROVISIONERS", raising=False)
+        with pytest.raises(ExperimentalProvisionerError, match="EXPERIMENTAL_PROVISIONERS=true"):
+            get_provisioner(name)
+        monkeypatch.setenv("EXPERIMENTAL_PROVISIONERS", "false")
+        with pytest.raises(ExperimentalProvisionerError):
+            get_provisioner(name)
+
+    def test_supported_backends_need_no_flag(self, monkeypatch):
+        monkeypatch.delenv("EXPERIMENTAL_PROVISIONERS", raising=False)
+        assert isinstance(get_provisioner("mock"), MockProvisioner)
+        get_provisioner("vsphere_api")
+
+    def test_experimental_refusal_is_final(self):
+        """A switched-off backend fails the task at once instead of retrying three times."""
+        from worker.fencing import FINAL_ERRORS
+
+        assert issubclass(ExperimentalProvisionerError, FINAL_ERRORS)
 
     def test_unknown_backend_raises(self):
         """Unknown backend should raise ValueError."""
@@ -197,20 +218,10 @@ class TestRegistryMultiHypervisor:
             prov = get_provisioner("hyperv")
         assert isinstance(prov, HypervProvisioner)
 
-    def test_terraform_proxmox_in_registry(self):
-        prov = get_provisioner("terraform_proxmox")
-        assert isinstance(prov, TerraformProvisioner)
-        assert prov._hypervisor_type == "proxmox"
+    def test_proxmox_api_in_registry(self):
+        from worker.provisioners import ProxmoxAPIProvisioner
 
-    def test_terraform_vsphere_in_registry(self):
-        prov = get_provisioner("terraform_vsphere")
-        assert isinstance(prov, TerraformProvisioner)
-        assert prov._hypervisor_type == "vsphere"
-
-    def test_terraform_hyperv_in_registry(self):
-        prov = get_provisioner("terraform_hyperv")
-        assert isinstance(prov, TerraformProvisioner)
-        assert prov._hypervisor_type == "hyperv"
+        assert isinstance(get_provisioner("proxmox_api"), ProxmoxAPIProvisioner)
 
 
 class TestVsphereAPIProvisioner:

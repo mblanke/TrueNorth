@@ -22,8 +22,20 @@ import pytest
 os.environ.setdefault("MOCK_PROVISION_DELAY", "0")
 os.environ.setdefault("MOCK_FAILURE_RATE", "0")
 
-from worker.provisioners import MockProvisioner, TerraformProvisioner
+from worker.provisioners import MockProvisioner
+from worker.provisioners.base import BaseProvisioner
 from worker.provisioners.results import RestoreResult, SnapshotDeleteResult, SnapshotResult, outcome
+
+
+class _NoSnapshots(BaseProvisioner):
+    """A backend that implements only the abstract operations (no restore, no delete)."""
+
+    async def provision(self, range_id, template, allocations): ...
+    async def destroy(self, range_id, provision_output): ...
+    async def stop(self, range_id, provision_output): ...
+    async def start(self, range_id, provision_output): ...
+    async def snapshot(self, range_id, provision_output, snapshot_name): ...
+    async def health_check(self, range_id, provision_output): ...
 
 
 def _run(coro):
@@ -43,16 +55,12 @@ class TestContract:
 
     def test_backend_without_support_fails_instead_of_raising(self):
         """No more AttributeError: an unsupporting backend returns a failed result."""
-        prov = TerraformProvisioner()
+        prov = _NoSnapshots()
         restored = _run(prov.restore("r1", {"vms": [{"name": "a"}]}, "tnx", power_on=True))
         deleted = _run(prov.delete_snapshot("r1", {"vms": [{"name": "a"}]}, "tnx"))
         assert isinstance(restored, RestoreResult) and restored.status == "failed"
         assert "does not support snapshot restore" in restored.errors[0]
         assert isinstance(deleted, SnapshotDeleteResult) and deleted.status == "failed"
-
-    def test_terraform_snapshot_no_longer_claims_success(self):
-        result = _run(TerraformProvisioner().snapshot("r1", {"vms": [{"name": "a"}]}, "tnx"))
-        assert result.status == "failed"
 
 
 class TestMock:
@@ -464,7 +472,7 @@ class TestSnapshotRangeTask:
         with patch.object(tasks, "_db_session", _rows()):
             assert tasks.snapshot_range(range_id="r1", snapshot_id=SNAP_ID)["status"] == "ready"
 
-        spies.get_backend.assert_called_once_with("proxmox")  # not PROVISIONER_BACKEND
+        spies.get_backend.assert_called_once_with("proxmox", "r1")  # not PROVISIONER_BACKEND; its connection
         backend.snapshot.assert_awaited_once_with("r1", PROV, NAME)
         args, kwargs = spies.snapshot_state.call_args
         assert args == (SNAP_ID, "ready") and kwargs["only_from"] == tasks._SNAPSHOT_PENDING
@@ -528,7 +536,7 @@ class TestRestoreSnapshotTask:
         with patch.object(tasks, "_db_session", self._rows()):
             assert tasks.restore_snapshot(range_id="r1", snapshot_id=SNAP_ID)["status"] == "restored"
 
-        spies.get_backend.assert_called_once_with("proxmox")
+        spies.get_backend.assert_called_once_with("proxmox", "r1")
         backend.restore.assert_awaited_once_with("r1", PROV, "tnabc", power_on=True)
         spies.range_state.assert_called_once_with("r1", "ready", only_from=tasks._RESTORABLE_STATES, clear_error=True)
         spies.snapshot_state.assert_called_once_with(SNAP_ID, "ready", only_from=("restoring",))
@@ -601,7 +609,7 @@ class TestDeleteSnapshotTask:
     def test_deletes_by_recorded_name_on_the_ranges_backend(self, backend, spies):
         with patch.object(tasks, "_db_session", _rows("deleted", {"snapshot_name": "tnabc"})):
             assert tasks.delete_snapshot(range_id="r1", snapshot_id=SNAP_ID)["status"] == "deleted"
-        spies.get_backend.assert_called_once_with("proxmox")
+        spies.get_backend.assert_called_once_with("proxmox", "r1")
         backend.delete_snapshot.assert_awaited_once_with("r1", PROV, "tnabc")
 
     def test_a_snapshot_that_never_completed_needs_no_backend_call(self, backend, spies):

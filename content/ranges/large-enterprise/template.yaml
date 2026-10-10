@@ -8,7 +8,7 @@ description: |
   exercises including APT simulations and purple team operations.
 author: TrueNorth Range
 difficulty: advanced
-vm_count: 54
+vm_count: 50  # = the VMs the nodes build (tests/contracts/test_template_vm_count.py)
 
 network:
   vlans:

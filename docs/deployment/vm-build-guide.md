@@ -204,6 +204,27 @@ template's users, groups, web GUI and SSH settings and certificates, so **every 
 firewall has the template's admin password**. Log: `/conf/tn-pfsense-config.log`.
 A VM with no guestinfo config (the template itself) boots unchanged.
 
+### OPNsense
+
+As pfSense (FreeBSD 14, two vmxnet3 NICs, `vmx0` = WAN, `vmx1` = LAN), with these
+differences:
+1. Install the **os-vmware** plugin (System → Firmware → Plugins); the per-range config
+   arrives through it. Set the root password every range firewall should have.
+2. Install the **same** boot script under the OPNsense name, which selects OPNsense mode:
+   ```sh
+   cp tn-pfsense-config /usr/local/sbin/tn-opnsense-config
+   chmod 0755 /usr/local/sbin/tn-opnsense-config
+   tn-opnsense-config install   # writes /usr/local/etc/rc.syshook.d/early/50-tn-opnsense-config
+   tn-opnsense-config status    # "guestinfo config: none" on the template: correct
+   ```
+3. Shut down, convert to template `opnsense`, register.
+
+At deploy the worker renders the pfSense policy in OPNsense's legacy `config.xml` layout
+(`pfsense_config.build_config(product="opnsense")`) into `guestinfo.tn.opnsense.config` /
+`.ifmap`; the hook applies it to `/conf/config.xml` on first boot and reboots once (OPNsense
+migrates the legacy sections on that boot). Users, groups, web GUI/SSH and certificates
+stay the template's. Log: `/conf/tn-opnsense-config.log`.
+
 ### Security Onion 2.4
 
 1. New VM: Oracle Linux 9 / RHEL 9 64-bit. **4 vCPU / 16 GB / 200 GB** (anything smaller
@@ -221,7 +242,18 @@ A VM with no guestinfo config (the template itself) boots unchanged.
    Reboot without the ISO.
 3. VMware tools are built in. `configure; delete interfaces ethernet eth0 hw-id; delete interfaces ethernet eth1 hw-id; commit; save`,
    so that clones don't pin the template's MACs.
-4. Shut down. Convert to template `vyos` and register.
+4. The per-range config arrives through **cloud-init** (VyOS images ship it). Check it
+   reads VMware guestinfo: `cloud-init status` works and
+   `/etc/cloud/cloud.cfg.d/` does not restrict `datasource_list` to something without
+   `VMware`. Then `sudo cloud-init clean` so the first clone runs it afresh.
+5. Shut down. Convert to template `vyos` and register.
+
+At deploy the worker renders `vyos_config_commands` for each VyOS router
+(`control-plane/worker/worker/vyos_config.py`) into `guestinfo.userdata` (base64, with
+`guestinfo.metadata`: an instance id carrying the config's hash, and the hostname). On first
+boot cloud-init pins each `ethN` to its NIC's MAC, sets the addresses, the default route to
+the uplink, source NAT, and the same default-drop, depot-only filter policy as pfSense,
+then commits and saves. The template's users and SSH settings are not touched.
 
 ## 4. Derived images
 

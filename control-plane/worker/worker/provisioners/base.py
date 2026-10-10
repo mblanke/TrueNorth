@@ -23,6 +23,11 @@ from .results import (
 )
 
 
+class ExperimentalProvisionerError(ValueError):
+    """An experimental backend (proxmox_api, hyperv) was selected without
+    EXPERIMENTAL_PROVISIONERS. Final: a retry finds the same configuration."""
+
+
 @dataclass(frozen=True)
 class AllocationNeed:
     """Values on shared infrastructure a build needs reserved first (``allocation_needs``).

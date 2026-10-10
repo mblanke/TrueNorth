@@ -28,6 +28,12 @@ No secrets: the guest keeps the template's users, groups, web GUI certificate an
 settings (the boot script copies them over from the config it replaces), so the admin
 password stays the template's and nothing a vCenter reader can see in guestinfo is a
 credential.
+
+OPNsense (``product="opnsense"``) gets the same config in OPNsense's legacy config.xml
+layout (root ``<opnsense>``, flags as ``1`` rather than empty elements, no
+``earlyshellcmd``), in ``guestinfo.tn.opnsense.*``. The same boot script, installed in
+the OPNsense template as ``tn-opnsense-config`` and run from an ``rc.syshook.d/early``
+hook, applies it; OPNsense migrates the legacy sections on that boot.
 """
 
 from __future__ import annotations
@@ -45,6 +51,7 @@ from dataclasses import dataclass, field
 BOOT_COMMAND = "/usr/local/bin/php -q /usr/local/sbin/tn-pfsense-config boot"
 GUESTINFO_CONFIG = "guestinfo.tn.pfsense.config"
 GUESTINFO_IFMAP = "guestinfo.tn.pfsense.ifmap"
+PRODUCTS = ("pfsense", "opnsense")
 # pfSense CE 2.7.2's config version. The boot script replaces it with the version of the
 # config it finds in the guest, so a newer or older pfSense template still upgrades cleanly.
 CONFIG_VERSION = "23.3"
@@ -73,6 +80,7 @@ class PfsenseConfig:
     xml: str
     interfaces: list[Interface]
     notes: list[str] = field(default_factory=list)  # template rules that were skipped, and why
+    product: str = "pfsense"  # or "opnsense": the config.xml dialect and the guestinfo keys
 
     @property
     def sha256(self) -> str:
@@ -88,9 +96,21 @@ class PfsenseConfig:
         }
 
 
+def _image_name(vm_def: dict) -> str:
+    return str(vm_def.get("os") or "").lower() + " " + str(vm_def.get("template_name") or "").lower()
+
+
 def is_pfsense(vm_def: dict) -> bool:
-    name = str(vm_def.get("os") or "").lower() + " " + str(vm_def.get("template_name") or "").lower()
-    return "pfsense" in name
+    return "pfsense" in _image_name(vm_def)
+
+
+def is_opnsense(vm_def: dict) -> bool:
+    return "opnsense" in _image_name(vm_def)
+
+
+def product_of(vm_def: dict) -> str | None:
+    """"pfsense", "opnsense", or None for a VM that takes no config.xml."""
+    return "pfsense" if is_pfsense(vm_def) else "opnsense" if is_opnsense(vm_def) else None
 
 
 def _alias_name(text: str, limit: int = 31) -> str:
@@ -139,9 +159,10 @@ def _endpoint(parent: ET.Element, tag: str, *, network: str = "", address: str =
 
 
 class _Rules:
-    def __init__(self, filter_el: ET.Element, aliases_el: ET.Element):
+    def __init__(self, filter_el: ET.Element, aliases_el: ET.Element, flag: str | None = None):
         self.filter = filter_el
         self.aliases = aliases_el
+        self.flag = flag  # the text of an "on" flag element: None (empty, pfSense) or "1" (OPNsense)
         self.tracker = 1_700_000_000
         self.alias_names: set[str] = set()
 
@@ -177,7 +198,7 @@ class _Rules:
         _endpoint(r, "source", network=src_net, address=src_addr)
         _endpoint(r, "destination", network=dst_net, address=dst_addr, port=port)
         if log:
-            _sub(r, "log")
+            _sub(r, "log", self.flag)
         _sub(r, "descr", descr[:200])
 
 
@@ -197,8 +218,13 @@ def build_config(
     depot_ports: tuple[int, ...] | list[int] = DEPOT_PORTS,
     domain: str = "range.local",
     hostname: str = "",
+    product: str = "pfsense",
 ) -> PfsenseConfig:
-    """The pfSense config.xml for one rendered firewall VM (see the module docstring)."""
+    """The pfSense (or OPNsense) config.xml for one rendered firewall VM (see the module
+    docstring)."""
+    if product not in PRODUCTS:
+        raise PfsenseConfigError(f"unknown firewall product {product!r}")
+    flag = "1" if product == "opnsense" else None  # OPNsense tests flags with !empty()
     ifaces = _interfaces(vm_def)
     has_uplink = bool(ifaces) and bool((vm_def.get("nics") or [{}])[0].get("uplink"))
     zones = [i for i in ifaces if not (has_uplink and i.key == "wan")]
@@ -206,22 +232,23 @@ def build_config(
         raise PfsenseConfigError(f"firewall {vm_def.get('name')!r} has a zone NIC without an address")
     notes: list[str] = []
 
-    root = ET.Element("pfsense")
+    root = ET.Element(product)
     _sub(root, "version", CONFIG_VERSION)
     system = _sub(root, "system")
     _sub(system, "optimization", "normal")
-    _sub(system, "hostname", hostname or str(vm_def.get("node_id") or vm_def.get("name") or "pfsense")[:63])
+    _sub(system, "hostname", hostname or str(vm_def.get("node_id") or vm_def.get("name") or product)[:63])
     _sub(system, "domain", domain)
     _sub(system, "timezone", "Etc/UTC")
     _sub(system, "language", "en_US")
     _sub(system, "already_run_config_wizard")
     _sub(system, "disablenatreflection", "yes")
-    _sub(system, "earlyshellcmd", BOOT_COMMAND)
+    if product == "pfsense":  # OPNsense runs the boot script from rc.syshook.d/early
+        _sub(system, "earlyshellcmd", BOOT_COMMAND)
 
     interfaces = _sub(root, "interfaces")
     for i in ifaces:
         el = _sub(interfaces, i.key)
-        _sub(el, "enable")
+        _sub(el, "enable", flag)
         _sub(el, "if", i.ifname)
         _sub(el, "descr", "WAN" if (has_uplink and i.key == "wan") else _alias_name(i.network or i.key, 22))
         _sub(el, "ipaddr", i.ip)
@@ -243,7 +270,7 @@ def build_config(
     _sub(root, "dhcpd")  # every range VM has a static address
     _sub(_sub(_sub(root, "nat"), "outbound"), "mode", "automatic" if has_uplink else "disabled")
     unbound = _sub(root, "unbound")
-    _sub(unbound, "enable")
+    _sub(unbound, "enable", flag)
     _sub(unbound, "active_interface", ",".join(["lo0"] + [z.key for z in zones]))
     _sub(unbound, "outgoing_interface", ",".join(z.key for z in zones))
     _sub(unbound, "system_domain_local_zone_type", "transparent")
@@ -251,7 +278,7 @@ def build_config(
 
     aliases = _sub(root, "aliases")
     filt = _sub(root, "filter")
-    fr = _Rules(filt, aliases)
+    fr = _Rules(filt, aliases, flag)
 
     by_zone = {z.network: z for z in zones}
     range_cidrs: list[str] = []
@@ -324,7 +351,7 @@ def build_config(
 
     ET.indent(root)
     xml = '<?xml version="1.0"?>\n' + ET.tostring(root, encoding="unicode") + "\n"
-    return PfsenseConfig(xml=xml, interfaces=ifaces, notes=notes)
+    return PfsenseConfig(xml=xml, interfaces=ifaces, notes=notes, product=product)
 
 
 def encode(xml: str) -> str:
@@ -333,7 +360,8 @@ def encode(xml: str) -> str:
 
 
 def guestinfo(cfg: PfsenseConfig, macs: list[str]) -> dict[str, str]:
-    """``guestinfo.tn.pfsense.*`` for a VM whose NICs (device-key order) have ``macs``.
+    """``guestinfo.tn.pfsense.*`` (``guestinfo.tn.opnsense.*`` for OPNsense) for a VM whose
+    NICs (device-key order) have ``macs``.
 
     ``ifmap`` lets the boot script rename ``vmxN`` to whatever the guest called the NIC
     with that MAC (FreeBSD numbers vmxnet3 cards by PCI slot, which can differ from the
@@ -345,6 +373,8 @@ def guestinfo(cfg: PfsenseConfig, macs: list[str]) -> dict[str, str]:
     if len(blob) > MAX_GUESTINFO:
         raise PfsenseConfigError(f"the pfSense config is {len(blob)} bytes encoded; guestinfo takes {MAX_GUESTINFO}")
     ifmap = " ".join(f"{i.ifname}={mac.lower()}" for i, mac in zip(cfg.interfaces, macs, strict=True))
+    if cfg.product != "pfsense":
+        return {f"guestinfo.tn.{cfg.product}.config": blob, f"guestinfo.tn.{cfg.product}.ifmap": ifmap}
     return {GUESTINFO_CONFIG: blob, GUESTINFO_IFMAP: ifmap}
 
 

@@ -1,0 +1,123 @@
+---
+# The shipped demo people (tn_demo_people) as local Keycloak accounts, so a staging or
+# demo host can be signed into as each of them. Included from main.yml's local-identity
+# block only when tn_load_shipped_demo and tn_load_shipped_content are on (never without
+# both; off in group_vars and on every production inventory) and there is no AD.
+#
+# The same steps as the bootstrap administrator: look up before create, the password from
+# the persisted secret (config/secrets/demo_*_password, generated once by tn_config and
+# reused on every run), set again only when that secret changed (keyed hash in the state
+# dir), and the account put in its TN-* group. Passwords travel only in Admin REST API
+# request bodies (no_log), never on a command line. 80-seed then points each demo roster
+# row at its account (app.link_demo_accounts).
+
+- name: Keycloak — do the demo accounts exist?
+  ansible.builtin.uri:
+    url: "{{ tn_kc_realm_url }}/users?username={{ item.email | urlencode }}&exact=true"
+    headers: "{{ tn_kc_headers }}"
+    status_code: 200
+  register: tn_kc_demo_existing
+  loop: "{{ tn_demo_people }}"
+  loop_control:
+    label: "{{ item.email }}"
+
+# First and last name: Keycloak 24's user profile requires them (see the bootstrap admin).
+- name: Keycloak — create the demo accounts (local)
+  ansible.builtin.uri:
+    url: "{{ tn_kc_realm_url }}/users"
+    method: POST
+    headers: "{{ tn_kc_headers }}"
+    body:
+      username: "{{ item.item.email }}"
+      email: "{{ item.item.email }}"
+      emailVerified: true
+      enabled: true
+      firstName: "{{ item.item.first_name }}"
+      lastName: "{{ item.item.last_name }}"
+      requiredActions: []
+      credentials:
+        - {type: password, value: "{{ tn_secrets[item.item.secret] }}", temporary: false}
+    body_format: json
+    status_code: [201]
+  loop: "{{ tn_kc_demo_existing.results }}"
+  loop_control:
+    label: "{{ item.item.email }}"
+  when: item.json | length == 0
+  changed_when: true
+  no_log: true
+
+- name: Keycloak — re-read the demo accounts
+  ansible.builtin.uri:
+    url: "{{ tn_kc_realm_url }}/users?username={{ item.email | urlencode }}&exact=true"
+    headers: "{{ tn_kc_headers }}"
+    status_code: 200
+  register: tn_kc_demo_users
+  loop: "{{ tn_demo_people }}"
+  loop_control:
+    label: "{{ item.email }}"
+
+- name: Keycloak — the demo passwords last set (keyed hash)
+  ansible.builtin.slurp:
+    src: "{{ tn_state_dir }}/keycloak_{{ item.secret }}.hmac"
+  register: tn_kc_demo_pw_prev
+  loop: "{{ tn_demo_people }}"
+  loop_control:
+    label: "{{ item.email }}"
+  failed_when: false
+
+# Created with it above; set again only when the persisted secret changed (so a re-run
+# rotates nothing, and deleting config/secrets/demo_<who>_password rotates that one).
+- name: Keycloak — set the demo passwords
+  ansible.builtin.uri:
+    url: "{{ tn_kc_realm_url }}/users/{{ tn_kc_demo_users.results[i].json[0].id }}/reset-password"
+    method: PUT
+    headers: "{{ tn_kc_headers }}"
+    body: {type: password, value: "{{ tn_secrets[item.secret] }}", temporary: false}
+    body_format: json
+    status_code: [204]
+  loop: "{{ tn_demo_people }}"
+  loop_control:
+    index_var: i
+    label: "{{ item.email }}"
+  when: >-
+    tn_kc_demo_existing.results[i].json | length > 0
+    and (tn_kc_demo_pw_prev.results[i].content | default('') | b64decode | trim)
+        != (tn_secrets[item.secret] ~ ':' ~ tn_secrets['secrets_key']) | hash('sha256')
+  changed_when: true
+  no_log: true
+
+- name: Keycloak — record them (keyed hash)
+  ansible.builtin.copy:
+    dest: "{{ tn_state_dir }}/keycloak_{{ item.secret }}.hmac"
+    content: "{{ (tn_secrets[item.secret] ~ ':' ~ tn_secrets['secrets_key']) | hash('sha256') }}"
+    mode: "0600"
+  loop: "{{ tn_demo_people }}"
+  loop_control:
+    label: "{{ item.email }}"
+  no_log: true
+
+- name: Keycloak — the demo accounts' groups
+  ansible.builtin.uri:
+    url: "{{ tn_kc_realm_url }}/users/{{ tn_kc_demo_users.results[i].json[0].id }}/groups"
+    headers: "{{ tn_kc_headers }}"
+    status_code: 200
+  register: tn_kc_demo_groups
+  loop: "{{ tn_demo_people }}"
+  loop_control:
+    index_var: i
+    label: "{{ item.email }}"
+
+- name: Keycloak — put each demo account in its group
+  vars:
+    _gid: "{{ (tn_kc_local_groups2.json | selectattr('name', 'equalto', item.group) | first).id }}"
+  ansible.builtin.uri:
+    url: "{{ tn_kc_realm_url }}/users/{{ tn_kc_demo_users.results[i].json[0].id }}/groups/{{ _gid }}"
+    method: PUT
+    headers: "{{ tn_kc_headers }}"
+    status_code: [204]
+  loop: "{{ tn_demo_people }}"
+  loop_control:
+    index_var: i
+    label: "{{ item.email }} -> {{ item.group }}"
+  when: item.group not in (tn_kc_demo_groups.results[i].json | map(attribute='name') | list)
+  changed_when: true

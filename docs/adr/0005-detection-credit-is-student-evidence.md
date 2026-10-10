@@ -167,8 +167,8 @@ Left as they are:
   (a replay clears every objective). Lab sessions have their own lifecycle.
 - The answer key is read from the scenario at submission time, so editing a running
   exercise's scenario changes its key.
-- There is no Student-to-exercise relation, so any Student in the tenant may submit on a
-  running exercise.
+- ~~There is no Student-to-exercise relation, so any Student in the tenant may submit on a
+  running exercise.~~ Closed 2026-10-09: participants only (below).
 
 ## Changes after the security sweep (2026-10-08, H4)
 
@@ -204,14 +204,32 @@ staff; refused and hidden for everyone else), and their documents fall outside a
 exercise window. An index that existed before the template change maps
 `tn_ground_truth` dynamically until it is recreated; the grammar still refuses it.
 
+## Participants only (2026-10-09, closes the M3 open question)
+
+Detection submissions were not restricted to an exercise's participants: any Student in
+the tenant holding `detection:submit` could submit on any running exercise and earn (or
+spend) its detection credit. Now `POST /exercises/{id}/objectives/{ref}/detections`
+answers **403** to a Student who is not a participant, before an attempt is reserved
+(`app/exercise_participants.py`).
+
+- **No new table.** The participant relations are the ones the telemetry rule (#112, M2,
+  `app/telemetry_access.py`) already uses: a calendar booking (`scheduled_events`, not
+  cancelled) that ties the exercise, or the range it runs on, to a course, whose
+  participants are the Students actively enrolled in that course (`enrolled` or
+  `in_progress`); and a Student's own lab session on the exercise's range.
+- **Default: participants only.** An exercise with no roster has no Student participants,
+  so no Student may submit on it. Book the exercise (or its range) for the class's course.
+  `DETECTION_SUBMIT_PARTICIPANTS_ONLY=false` restores the earlier rule for an exercise
+  with no roster (any Student of the tenant); a roster, when there is one, still applies.
+- **Staff** (`exercise:start`: instructors, admins) may always submit; theirs is a
+  `staff_detection`, not Student evidence.
+- **Telemetry search is unchanged** (M2): a Student may still read the range of a
+  running exercise with no roster. Reading is not credit.
+
 ## Open questions
 
-- **TODO (security sweep M3, 2026-10-08, owner decision):** detection submissions are
-  not restricted to an exercise's participants. Any Student in the tenant holding
-  `detection:submit` can submit on any running exercise and earn (or spend) its
-  detection credit, because there is no Student-to-exercise relation (see the last
-  bullet of the review changes above). Left unchanged on purpose until the owner decides
-  whether to add that relation and gate submissions on it; tracked here so it is not lost.
+- Whether telemetry search (M2) should also become participants-only for exercises with
+  no roster, to match submission.
 
 ## Not in this decision (later ADRs)
 

@@ -47,6 +47,25 @@
       ones marked "generated on target if empty".
     success_msg: "vault: no CHANGE_ME placeholders"
 
+# Supported: vsphere_api (ADR 0009) and mock. proxmox_api and hyperv are experimental and
+# the API and workers refuse them unless EXPERIMENTAL_PROVISIONERS is true; the Terraform
+# backends were removed. Refuse here, before an install that builds no range.
+- name: Preflight — the provisioner backend is supported (or experimental and allowed)
+  vars:
+    _supported: ['mock', 'vsphere_api']
+    _experimental: ['proxmox_api', 'hyperv']
+  ansible.builtin.assert:
+    that: >-
+      tn_provisioner_backend in _supported
+      or (tn_provisioner_backend in _experimental and tn_experimental_provisioners | default(false) | bool)
+    fail_msg: >-
+      tn_provisioner_backend is {{ tn_provisioner_backend }}.
+      {% if tn_provisioner_backend in _experimental %}It is experimental and switched off: set
+      tn_experimental_provisioners: true in the inventory to install it anyway (not supported).
+      {% else %}Not a provisioner backend. Valid: {{ (_supported + _experimental) | join(', ') }}
+      (vsphere_api for vSphere, not "vsphere"; the Terraform backends were removed).{% endif %}
+    quiet: true
+
 - name: Preflight — the AI endpoint is configured
   ansible.builtin.assert:
     that: tn_ai_base_url | default('') | length > 0

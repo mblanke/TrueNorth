@@ -115,6 +115,35 @@
     msg: "{{ tn_shipped_content.stdout_lines | select('search', '^(\\S|  (ok|FAIL)|  \\w+: )') | list }}"
   when: tn_load_shipped_content | bool
 
+# The loader's demo people are roster rows only. Without AD, 60-keycloak gave each a local
+# account (roles/tn_keycloak/tasks/demo_accounts.yml); this points each row at its
+# account's subject, as app.bootstrap_admin does for the administrator, so they can sign
+# in. Their roles stay the loader's. The Keycloak master admin is passed through the
+# environment, never on a command line; the demo passwords never reach this task.
+- name: Seed — link the demo people to their sign-in accounts
+  ansible.builtin.command:
+    cmd: >-
+      docker compose -f {{ tn_compose_file }} --env-file {{ tn_env_file }}
+      run --rm --no-deps --entrypoint ""
+      -e TN_DEMO_EMAILS={{ tn_demo_people | map(attribute='email') | join(',') | quote }}
+      -e KEYCLOAK_ADMIN_USER -e KEYCLOAK_ADMIN_PASSWORD
+      api python -m app.link_demo_accounts
+    chdir: "{{ tn_app_dir }}/infra/platform/docker"
+  environment:
+    KEYCLOAK_ADMIN_USER: "{{ vault_keycloak_admin_user | default('admin') }}"
+    KEYCLOAK_ADMIN_PASSWORD: "{{ tn_secrets['keycloak_admin_password'] }}"
+  register: tn_demo_link
+  # app.link_demo_accounts logs to stderr.
+  changed_when: "'linked ' in (tn_demo_link.stdout ~ tn_demo_link.stderr)"
+  when: tn_load_shipped_content | bool and tn_load_shipped_demo | bool and not tn_ldap_enabled | bool
+
+- name: Seed — demo sign-in result
+  ansible.builtin.debug:
+    msg: >-
+      {{ (tn_demo_link.stdout_lines + tn_demo_link.stderr_lines) | default(['(no output)'], true)
+         + ['Demo passwords: ' ~ tn_config_dir ~ '/secrets/demo_*_password (mode 0600)'] }}
+  when: tn_load_shipped_content | bool and tn_load_shipped_demo | bool and not tn_ldap_enabled | bool
+
 - name: Seed — optional demo content
   ansible.builtin.debug:
     msg: >-

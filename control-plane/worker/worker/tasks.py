@@ -169,7 +169,7 @@ def provision_range(self, range_id: str, noise_mgmt: dict | None = None):
             if rendered["unresolved"]:
                 logger.warning("[provision] unresolved OS templates: %s", rendered["unresolved"])
 
-        provisioner = _get_backend(backend)
+        provisioner = _get_backend(backend, range_id)  # the range's own tenant's connection (H6)
         allocations.update(range_alloc.reserve_for_build(_db_session, range_id, provisioner, template))
         result = run_async(provisioner.provision(range_id, template, allocations))
 
@@ -228,7 +228,7 @@ def destroy_range(self, range_id: str):
 
         prov_output = json.loads(row[0]) if row and row[0] else {}
         backend = (row[1] if row and row[1] else None) or os.getenv("PROVISIONER_BACKEND", "mock")
-        provisioner = _get_backend(backend)
+        provisioner = _get_backend(backend, range_id)  # the vCenter it was built on
 
         result = run_async(provisioner.destroy(range_id, prov_output))
 
@@ -266,8 +266,6 @@ def health_check_ranges(self):
     """
     logger.info("[health] Starting health check for active ranges")
 
-    provisioner = _get_backend()
-
     try:
         with _db_session() as db:
             active_ranges = db_ops.active_ranges(db)
@@ -285,7 +283,7 @@ def health_check_ranges(self):
 
             try:
                 prov_dict = json.loads(prov_output) if prov_output else {}
-                result = asyncio.run(provisioner.health_check(range_id, prov_dict))
+                result = asyncio.run(_get_backend(None, range_id).health_check(range_id, prov_dict))
                 is_healthy = result.healthy
 
                 if is_healthy:
@@ -346,8 +344,6 @@ def collect_range_metrics(self):
     """
     logger.info("[metrics] Collecting range metrics")
 
-    provisioner = _get_backend()
-
     try:
         with _db_session() as db:
             active_ranges = db_ops.active_ranges(db)
@@ -365,7 +361,7 @@ def collect_range_metrics(self):
 
             # Use provisioner health check for VM status awareness
             try:
-                health = asyncio.run(provisioner.health_check(range_id, prov_dict))
+                health = asyncio.run(_get_backend(None, range_id).health_check(range_id, prov_dict))
                 vm_count = len(health.vm_statuses) or len(prov_dict.get("vms", []))
             except Exception:
                 vm_count = len(prov_dict.get("vms", []))
@@ -493,7 +489,7 @@ def snapshot_range(self, range_id: str, snapshot_id: str):
         if not prov_output.get("vms"):
             raise RuntimeError("range has no VMs recorded, so there is nothing to snapshot")
         backend = _range_backend(rng)
-        provisioner = _get_backend(backend)
+        provisioner = _get_backend(backend, range_id)
 
         # Clear whatever an earlier attempt of this task left under this name. The row
         # is not `ready`, so nothing depends on it, and a leftover made the create fail
@@ -561,7 +557,7 @@ def restore_snapshot(self, range_id: str, snapshot_id: str):
         # Snapshots from before the name was recorded were taken under the bare id.
         name = snapshot_data.get("snapshot_name") or snapshot_id
 
-        provisioner = _get_backend(_range_backend(rng))
+        provisioner = _get_backend(_range_backend(rng), range_id)
         result = run_async(provisioner.restore(range_id, prov_output, name, power_on=original_state != "stopped"))
         changed = result.vms_reverted > 0
         if result.status != "ok":
@@ -611,7 +607,8 @@ def delete_snapshot(self, range_id: str, snapshot_id: str):
             snapshot_data = json.loads(snap[1])
             prov_output = json.loads(rng[1]) if rng and rng[1] else {}
             name = snapshot_data.get("snapshot_name") or snapshot_id
-            result = asyncio.run(_get_backend(_range_backend(rng)).delete_snapshot(range_id, prov_output, name))
+            prov = _get_backend(_range_backend(rng), range_id)
+            result = asyncio.run(prov.delete_snapshot(range_id, prov_output, name))
             if result.status != "ok":
                 raise RuntimeError(f"delete {result.status}: {'; '.join(result.errors) or 'no detail'}")
 

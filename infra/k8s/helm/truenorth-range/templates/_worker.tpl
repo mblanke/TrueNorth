@@ -58,9 +58,6 @@ spec:
       {{- end }}
       volumes:
         {{- include "truenorth-range.scratchVolumes" $root | nindent 8 }}
-        # Terraform workspaces (provisioners/terraform.py, TERRAFORM_WORKSPACE_ROOT).
-        - name: terraform-workspaces
-          emptyDir: {}
         {{- with (include "truenorth-range.opensearchCaVolumes" $root) }}
         {{- . | trim | nindent 8 }}
         {{- end }}
@@ -101,8 +98,6 @@ spec:
             {{- end }}
           volumeMounts:
             {{- include "truenorth-range.scratchVolumeMounts" $root | nindent 12 }}
-            - name: terraform-workspaces
-              mountPath: /opt/truenorth/terraform/workspaces
             {{- with (include "truenorth-range.opensearchCaVolumeMounts" $root) }}
             {{- . | trim | nindent 12 }}
             {{- end }}
