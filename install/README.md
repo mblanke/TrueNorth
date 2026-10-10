@@ -327,6 +327,15 @@ and no AD import check. Instead `60-keycloak` creates the `tn_ad_groups` as loca
 groups and `tn_bootstrap_admin_upn` as a local account in `TN-Platform-Admins`, with the
 generated password `bootstrap_admin_password` (`/srv/truenorth/config/secrets/`). The smoke
 test signs in as that account, so the claim contract (a `groups` claim) is still proven.
+With `tn_load_shipped_demo` (and `tn_load_shipped_content`) on, `60-keycloak` also creates
+the shipped demo people (`tn_demo_people`: `instructor.demo@truenorth.test`,
+`trainee1..3.demo@truenorth.test`, `observer.demo@truenorth.test`) as local accounts in
+their `TN-*` groups, and `80-seed` links each to its roster row (`app.link_demo_accounts`)
+so they can sign in with the role the loader gave them. Each password is generated once and
+kept, mode 0600, next to the admin's: `/srv/truenorth/config/secrets/demo_instructor_password`,
+`demo_trainee1_password` … `demo_trainee3_password`, `demo_observer_password`
+(`sudo cat` one to sign in; delete one and re-run `60-keycloak` to rotate it). Re-runs reuse
+them. Never turn the demo on where Students train.
 `inventory/staging.yml` is such a site (tn-staging, 192.168.1.240):
 
 ```bash
@@ -353,7 +362,7 @@ catalogue and course files, the VM catalogue, range templates, scenarios and Sig
 |---|---|---|
 | `tn_load_shipped_content` | `false` | 80-seed loads `content/` through the API |
 | `tn_publish_shipped_content` | `false` | publish every course, quiz and learning path (imports are drafts) |
-| `tn_load_shipped_demo` | `false` | demo people (roster only, no sign-in), ranges and exercises (not provisioned) |
+| `tn_load_shipped_demo` | `false` | demo people, ranges and exercises (not provisioned); without AD the demo people can sign in ([Without Active Directory](#without-active-directory)) |
 
 The load runs `scripts/load_content_inprocess.py` in a one-off api container as the
 bootstrap administrator: the API's routes, permissions, CSRF and validation all apply,

@@ -47,6 +47,22 @@ tn_generated_secrets:
   - { name: opensearch_admin_password, value: "{{ vault_opensearch_admin_password | default('') }}", first_start: true }
   - { name: opensearch_dashboards_password, value: "{{ vault_opensearch_dashboards_password | default('') }}", first_start: true }
 
+# Only with tn_load_shipped_demo (tasks/secrets.yml adds them; staging and demo hosts):
+# the local Keycloak passwords of the shipped demo people, one per tn_demo_people entry
+# (roles/tn_keycloak/tasks/demo_accounts.yml). Persisted like every other secret.
+tn_demo_secrets:
+  - { name: demo_instructor_password, value: "{{ vault_demo_instructor_password | default('') }}" }
+  - { name: demo_trainee1_password, value: "{{ vault_demo_trainee1_password | default('') }}" }
+  - { name: demo_trainee2_password, value: "{{ vault_demo_trainee2_password | default('') }}" }
+  - { name: demo_trainee3_password, value: "{{ vault_demo_trainee3_password | default('') }}" }
+  - { name: demo_observer_password, value: "{{ vault_demo_observer_password | default('') }}" }
+
+# What tasks/secrets.yml persists: the demo passwords only where tn_load_shipped_demo is
+# on (staging and demo hosts; off in group_vars and on no production inventory).
+tn_secret_list: >-
+  {{ tn_generated_secrets
+     + (tn_demo_secrets if tn_load_shipped_demo | default(false) | bool else []) }}
+
 # Every secret, wherever it came from, is at least this long. Generated ones are 32.
 tn_secret_min_length: 32
 

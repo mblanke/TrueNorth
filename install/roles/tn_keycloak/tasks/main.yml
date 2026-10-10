@@ -557,6 +557,11 @@
       when: tn_kc_local_admin_group not in (tn_kc_local_admin_groups.json | map(attribute='name') | list)
       changed_when: true
 
+    # Staging and demo hosts only (tn_load_shipped_demo is off in group_vars).
+    - name: Keycloak — the shipped demo people's sign-in accounts
+      ansible.builtin.include_tasks: demo_accounts.yml
+      when: tn_load_shipped_demo | bool and tn_load_shipped_content | bool
+
 # ── The claim contract ────────────────────────────────────────────────
 # Attached to a dedicated client scope rather than duplicated per client, so
 # `truenorth-web` and `truenorth-api` cannot drift apart.

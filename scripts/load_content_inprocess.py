@@ -14,8 +14,9 @@ Run by the installer (roles/tn_seed, tn_load_shipped_content) as a one-off api c
 
 Idempotent: importers upsert, create-style steps skip what exists, publishing skips what
 is published. --publish publishes every course, quiz and learning path (imports are
-drafts); --demo adds the demo people (roster only: no sign-in), ranges and exercises
-(not provisioned).
+drafts); --demo adds the demo people (roster rows; without AD the installer then links
+them to local sign-in accounts, app.link_demo_accounts), ranges and exercises (not
+provisioned).
 """
 
 from __future__ import annotations
