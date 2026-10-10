@@ -641,3 +641,55 @@ A run made by an installed Studio (§13) is released the same way, from the host
 `sudo -u tn-arc2 env PYTHONPATH=/srv/truenorth/app/tools /opt/truenorth-arc2/venv/bin/python
 -m arc2.release build /srv/truenorth/arc2/runs/<slug>` writes the tarball beside the run; copy it
 to a workstation and upload it as in step 4.
+
+## 15. Batch on a test host (2026-10-10)
+
+On a test host (staging, `ARC2_AUTO_ACCEPT_GATES=1`) `scripts/arc2_batch_inprocess.py` takes
+every catalogue course in `content/courses/*.yaml` through a full ARC² run, a course release,
+acceptance and publication, with nobody reviewing it. **The result is test content: never
+run it against a host that serves Students.**
+
+It runs in a one-off api container, in-process as the bootstrap administrator, with the same
+harness as `load_content_inprocess.py` (`scripts/_inprocess_api.py`: the token check replaced
+by that user's identity; the CSRF cookie read immediately before every non-GET, since every
+response rotates it; back-off on 429). Every step goes through the API:
+
+1. **Queue.** One run per course, named after its catalogue code (`C103`, `RMC C202`), with a
+   plain-language request built from the YAML (title, level, hours, each module's objectives,
+   topics and lab, the register's T/P/R pattern) that names `catalogue_code`, so stage 1
+   records it and the run can be released. A course that already has a run of that name is
+   followed, never queued again. `--concurrency` runs are in flight at once (default 1).
+2. **Follow.** `GET /arc2/runs`. A job that failed on a usage limit or a transient error
+   (overloaded, 5xx, timed out, runner stopped) is re-queued with `/retry` after the limit's
+   reset hint, or with exponential back-off (5 min doubling, 2 h cap), at most
+   `--max-attempts` (6) times. A STOP or a QA human-takeover is **held** and not retried. A run
+   left at a gate longer than `--stall-minutes` (30) fails: auto-accept is probably off.
+3. **Release.** For a packaged run, the tarball is built in the container by
+   `tools/arc2/release.py` (from the mounted checkout) over a snapshot of the run read from
+   `ARC2_RUNS_DIR`: regular files only, no symlink followed, nothing written beside the run.
+   `release.readiness` still refuses a run that is not accepted, QA-pass and unchanged. No API
+   endpoint was added: the api image does not carry the engine.
+4. **Accept and publish.** `POST /course-releases`, then `/accept` acknowledging the release's
+   open actions with the note "auto-accepted test content (staging)"; the TrueNorth course is
+   published if it is not; then `POST /course-releases/{id}/publications?wait=true` to the
+   tenant's first active `moodle` platform (or `--platform-id`; `--publish-platform none`
+   stops after acceptance), waiting for `published`.
+
+Courses held for a cleared author in `content/catalogue/production_register.csv` (C302, C305,
+C306, RMC C202, RMC C205, RMC C207, RMC C211) are skipped unless `--include-held`. It prints a
+status table and exits 1 if any course failed (held is not failure). `--dry-run` reads
+`/arc2/runs` and queues nothing (`--print-requests` shows each request);
+`--state <file> --resume` keeps retry counts and times across restarts (all other progress is
+derived from the API, so a plain re-run is safe too).
+
+```bash
+sudo install -d -o 10001 -m 0700 /srv/truenorth/arc2-batch   # state file, writable by the api user
+cd /srv/truenorth/app/infra/platform/docker
+docker compose -f compose.prod.yml --env-file /srv/truenorth/config/.env.production \
+  run --rm --no-deps -T -w /app -e PYTHONPATH=/app \
+  -v /srv/truenorth/app:/srcapp:ro -v /srv/truenorth/arc2-batch:/state --entrypoint python \
+  api /srcapp/scripts/arc2_batch_inprocess.py --admin <bootstrap admin UPN> \
+  --state /state/arc2-batch.json --resume
+```
+
+Tests: `tests/scripts/test_arc2_batch_inprocess.py`, `tests/arc2/test_arc2_batch_release.py`.

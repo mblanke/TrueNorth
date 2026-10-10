@@ -41,7 +41,9 @@ def test_the_load_runs_in_process_as_the_bootstrap_admin_without_credentials() -
 
 
 def test_the_loader_replaces_only_the_token_check() -> None:
-    src = (ROOT / "scripts/load_content_inprocess.py").read_text()
+    # The harness is shared with scripts/arc2_batch_inprocess.py (scripts/_inprocess_api.py).
+    src = (ROOT / "scripts/load_content_inprocess.py").read_text() + (ROOT / "scripts/_inprocess_api.py").read_text()
+    assert "from _inprocess_api import connect" in src
     assert "dependency_overrides[auth.get_token_identity]" in src
     assert "x-csrf-token" in src  # CSRF stays on: the loader echoes the cookie like a browser
     # No credential of any kind: no bearer header, no Keycloak secret, no env lookups.
