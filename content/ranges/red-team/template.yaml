@@ -9,7 +9,7 @@ description: |
   training and adversary simulation exercises.
 author: TrueNorth Range
 difficulty: advanced
-vm_count: 30
+vm_count: 28  # = the VMs the nodes build (tests/contracts/test_template_vm_count.py)
 
 network:
   vlans:

@@ -351,6 +351,10 @@ What users need:
   - Found while building it: four shipped templates declare a `vm_count` that
     differs from what they build (soc-training 25 vs 23, cloud-security 20 vs 16,
     red-team 30 vs 28, large-enterprise 54 vs 50). Demand uses what is built.
+  - 2026-10-09 — Corrected: the four now declare what they build, and
+    `tests/contracts/test_template_vm_count.py` renders every shipped template with the
+    worker's code and fails when a declared `vm_count` (or a
+    `deployment.node_assignment.*.vm_count`) differs from it.
 - Moot: whether Students can see other Students' names. They can't see the calendar,
   and their own feed omits other attendees.
 
