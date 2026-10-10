@@ -514,7 +514,8 @@ so decide whether that is acceptable for what this platform holds.
 | | |
 |---|---|
 | `tn_arc2_enabled: true` | inventory (group_vars or the host) |
-| One model credential | vault; **exactly one** of `vault_arc2_claude_oauth_token` or `vault_arc2_anthropic_api_key`, no default (preflight stops with neither, and with both, so it is never ambiguous which account is billed). See "Model credential" below |
+| A model mode | `tn_arc2_mode`: `subscription` (default; Claude), `local` (only an Anthropic-compatible gateway; jobs never reach `api.anthropic.com`) or `subscription_with_local_fallback`. See "Model mode" below |
+| One model credential | vault; **exactly one** of `vault_arc2_claude_oauth_token` or `vault_arc2_anthropic_api_key`, no default (preflight stops with neither, and with both, so it is never ambiguous which account is billed). Not needed in `local` mode. See "Model credential" below |
 | HTTPS out to `api.anthropic.com` | from the platform host (preflight checks). Or `tn_arc2_anthropic_base_url`: an Anthropic-compatible gateway, `https://` on port 443 only; Claude Code reads `ANTHROPIC_BASE_URL` and the jobs' proxy then allows that host instead |
 | At install time: PyPI, the npm registry, nodejs.org | or mirrors: `tn_arc2_pip_index_url`, `tn_arc2_npm_registry`, `tn_arc2_node_mirror` |
 | A free gid | `tn_arc2_runs_gid` (`10010`; preflight checks) |
@@ -541,10 +542,34 @@ read it, and can use it only against the model endpoint (the jobs' egress proxy 
 nothing else). Preflight also refuses an API key (`sk-ant-api…`) in the token's variable
 and a token (`sk-ant-oat…`) in the key's.
 
+**Model mode.** `tn_arc2_mode: local` runs every job on an Anthropic-compatible gateway
+(for example a LiteLLM router exposing `/v1/messages`) instead of Claude: set
+`tn_arc2_local_url` (`https://host[:port][/path]`, any https port, never http; staging's is
+`https://atlas.tail8d54ec.ts.net:4443`), `tn_arc2_local_model` (the model id the gateway
+serves) and, in the vault, `vault_arc2_local_token` (its bearer token; issue one for this host
+alone). The jobs' proxy then allows exactly that host:port and nothing else, and no Anthropic
+credential is written to the runner's environment file. A tailnet or internal gateway sits in
+a range `tn_arc2_ip_deny` denies (Tailscale: `100.64.0.0/10`): leave the list as it is.
+`55-arc2` resolves the gateway's host on the platform host (it must resolve there: for a
+tailnet name, the host must be on the tailnet) and the unit allows exactly those addresses
+(`IPAddressAllow`); the rest of the range stays denied. Re-run `55-arc2` if the gateway's
+address changes.
+`subscription_with_local_fallback` needs both an Anthropic credential and the gateway: Claude
+runs each step, and a step Claude could not run at all (signed out, usage limit, overloaded)
+is re-run on the gateway. Preflight and `55-arc2` check what each mode needs; the token goes
+only into `/etc/truenorth-arc2/runner.env` as `ARC2_LOCAL_TOKEN` (`no_log`).
+docs/arc2-course-studio.md §13 "Model mode" has the details.
+
+**Test hosts: auto-accept.** `tn_arc2_auto_accept: true` (staging sets it) makes the runner
+accept the outline and preview gates itself when a job stops at one with nothing failing, so
+a course builds end to end with no reviewer. It is recorded as `accepted_by: "auto (test
+host)"`, and the Studio marks such runs "TEST CONTENT — gates auto-accepted, not reviewed".
+Never set it on a platform whose courses reach Students.
+
 Then `ansible-playbook site.yml`, or on a running platform `30-config`, `50-stack-up` (the
 api picks up the setting and the mount) and `55-arc2`. Switching between the two
-credentials later: change the vault and re-run `55-arc2` (it rewrites the file and restarts
-the runner).
+credentials, or between modes, later: change the vault or inventory and re-run `55-arc2` (it
+rewrites the file and the unit and restarts the runner).
 
 **What `55-arc2` installs**
 
@@ -553,7 +578,7 @@ the runner).
 | `tn-arc2` | system account: no login shell, no password, no sudo, not in `docker`; home `/var/lib/tn-arc2` (0700: per-job homes, deleted after each job) |
 | `{{ tn_data_root }}/arc2/runs` | the runs root, `tn-arc2:tn-arc2-runs` 2750; `_queue/` and `_studio/` 2770 (the api writes them); `_jobs/`, `_history/` and each run 2750 (the runner's). The api container joins `tn-arc2-runs` by gid (`group_add`) and mounts the directory at `/srv/arc2/runs` |
 | `/opt/truenorth-arc2/` | root-owned: `node` (pinned, SHA-256-checked tarball), `claude-code` (pinned, `npm ci` from `roles/tn_arc2/files/claude-code/package-lock.json`), `venv` (the engine's Python: the api's requirements, pytest, ruff), `bin/bwrap` (a copy, `root:tn-arc2 0750`) |
-| `/etc/truenorth-arc2/runner.env` | the credential only (`CLAUDE_CODE_OAUTH_TOKEN` or `ANTHROPIC_API_KEY`), `root:root 0600`, read by systemd (`EnvironmentFile`). Never on a command line, never in `.env.production` |
+| `/etc/truenorth-arc2/runner.env` | the credentials only (per `tn_arc2_mode`: `CLAUDE_CODE_OAUTH_TOKEN` or `ANTHROPIC_API_KEY`, and/or `ARC2_LOCAL_TOKEN`), `root:root 0600`, read by systemd (`EnvironmentFile`). Never on a command line, never in `.env.production` |
 | `/etc/apparmor.d/truenorth-arc2-bwrap` | see "Sandbox" below |
 | `truenorth-arc2-runner.service` | the runner, from the deployed checkout (read-only), as `tn-arc2` |
 
@@ -573,8 +598,8 @@ an empty capability bounding set, `ProtectSystem=strict` (writable: the runs dir
 its own state directory), `ProtectHome`, `PrivateTmp`, `PrivateDevices`, `PrivateIPC`,
 `ProtectProc=invisible`, a system-call filter, only the namespaces bubblewrap creates, the
 platform's config, TLS, state and datastore directories and `/var/lib/docker` made
-inaccessible, no private-network addresses (`tn_arc2_ip_deny`; empty it only for an internal
-gateway), and memory, CPU and task limits. `ProtectKernelTunables`, `ProtectKernelLogs`,
+inaccessible, no private-network addresses (`tn_arc2_ip_deny`; a local gateway's own resolved
+addresses are let through, nothing else), and memory, CPU and task limits. `ProtectKernelTunables`, `ProtectKernelLogs`,
 `ProtectHostname` and `ProcSubset=pid` are deliberately off: each overmounts part of
 `/proc`, and bubblewrap then cannot mount the job's own `/proc`.
 

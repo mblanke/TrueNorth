@@ -11691,6 +11691,11 @@
             "title": "Actions Open",
             "type": "integer"
           },
+          "auto_accepted": {
+            "default": false,
+            "title": "Auto Accepted",
+            "type": "boolean"
+          },
           "code": {
             "anyOf": [
               {
@@ -11922,6 +11927,11 @@
           "actions_open": {
             "title": "Actions Open",
             "type": "integer"
+          },
+          "auto_accepted": {
+            "default": false,
+            "title": "Auto Accepted",
+            "type": "boolean"
           },
           "code": {
             "anyOf": [

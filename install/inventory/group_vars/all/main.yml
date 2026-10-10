@@ -251,6 +251,26 @@ tn_arc2_node_version: "24.21.0"
 # Empty: api.anthropic.com. Or an Anthropic-compatible gateway, https on port 443 only
 # (Claude Code reads ANTHROPIC_BASE_URL; the jobs' egress proxy tunnels 443 to this host).
 tn_arc2_anthropic_base_url: ""
+# Which model runs a job (the runner's ARC2_MODE; docs/arc2-course-studio.md §13):
+#   subscription                      Claude, with exactly one credential below (the default)
+#   local                             only the Anthropic-compatible gateway at tn_arc2_local_url
+#                                     (a LiteLLM router exposing /v1/messages, say): jobs never
+#                                     reach api.anthropic.com; needs url, model and
+#                                     vault_arc2_local_token, and no Anthropic credential
+#   subscription_with_local_fallback  Claude; a step Claude cannot run at all (signed out,
+#                                     usage limit, overloaded) is re-run on the gateway; needs both
+tn_arc2_mode: subscription
+# The gateway, https on any port (https://host[:port][/path]; never http), and the model id
+# it serves. The jobs' egress proxy allows exactly that host:port, and 55-arc2 lets the
+# runner reach exactly the addresses the host resolves to, even inside tn_arc2_ip_deny
+# (a tailnet's 100.64.0.0/10, a private LAN); the rest of those ranges stays denied.
+tn_arc2_local_url: ""
+tn_arc2_local_model: ""
+# TEST HOSTS ONLY. true: when a job stops at the outline gate, or at the preview gate with
+# QA passing, the runner accepts it itself (ARC2_AUTO_ACCEPT_GATES), so a course is built end
+# to end without a reviewer. Recorded as accepted_by "auto (test host)", and the Studio marks
+# such runs "TEST CONTENT". Never past a failure, a STOP or a QA takeover.
+tn_arc2_auto_accept: false
 # Free space preflight requires when ARC² is on: for runs on tn_data_root's disk, and for
 # /opt/truenorth-arc2 (Node, Claude Code, the venv: about 1.5 GB) on the root disk.
 tn_arc2_min_free_gb: 5

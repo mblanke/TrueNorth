@@ -8,7 +8,11 @@ connection except to this proxy, which the runner runs outside the sandbox on
 refuses everything else with 403. By default that is the model API
 (``api.anthropic.com``); Claude Code with ``CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1``
 asks for nothing else (measured). ``ARC2_EGRESS_ALLOW`` replaces the list (comma
-separated); the local model fallback is reached directly, not through the proxy.
+separated); an entry ``host:port`` allows exactly that port on that host (a gateway that
+is not on 443), a bare ``host`` allows port 443 only. The runner builds the list from its model mode (arc2/runner.py
+``ModelConfig.egress_hosts``): in ``local`` mode it is the gateway's host alone, so a job
+never reaches api.anthropic.com. A model endpoint on this host is reached directly, not
+through the proxy.
 
 What it does not do: inspect TLS. A job can still put text in its own model requests;
 it cannot send them to anyone but the model provider.
@@ -45,7 +49,9 @@ class EgressProxy:
         ports: tuple[int, ...] = (443,),
         unix_path: str | None = None,
     ):
-        self.allow = tuple(h.lower() for h in (allow or allowed_hosts()))
+        # None: ARC2_EGRESS_ALLOW (or the default). An empty tuple allows nothing, which is
+        # what a job whose only model is on this host (arc2/runner.py ModelConfig) needs.
+        self.allow = tuple(h.lower() for h in (allowed_hosts() if allow is None else allow))
         self.ports = ports
         self.refused: list[str] = []  # "host:port" refused, for the job record and tests
         self.bridges: list = []  # Linux: (port, unix socket) the job's namespace forwards (runner sets)
@@ -67,6 +73,12 @@ class EgressProxy:
             for srv in (self._srv, self._unix)
             if srv
         ]
+
+    def permits(self, host: str, port: int) -> bool:
+        """``host:port`` in the list matches exactly that pair (a gateway on its own port);
+        a bare ``host`` matches it on ``ports`` (443)."""
+        host = host.lower()
+        return f"{host}:{port}" in self.allow or (host in self.allow and port in self.ports)
 
     def start(self) -> EgressProxy:
         for thread in self._threads:
@@ -115,7 +127,7 @@ class EgressProxy:
             host, _, port_text = target.rpartition(":")
             host = host.strip("[]").lower()
             port = int(port_text) if port_text.isdigit() else 0
-            if method.upper() != "CONNECT" or host not in self.allow or port not in self.ports:
+            if method.upper() != "CONNECT" or not self.permits(host, port):
                 self.refused.append(f"{host or target}:{port}")
                 logger.warning("egress refused: %s %s", method, target)
                 client.sendall(b"HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\n")

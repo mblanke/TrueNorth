@@ -63,6 +63,7 @@ const MARKING = 'Dynamic page · highest possible classification: UNCLASSIFIED (
           @for (r of runs(); track r.slug) {
             <button type="button" class="proj" [attr.aria-current]="selected() === r.slug" (click)="select(r.slug)">
               <strong>{{ r.name }}</strong><span>{{ r.phase_text }}</span>
+              @if (r.auto_accepted) { <span class="tag test" title="{{ testContent }}">TEST CONTENT</span> }
               <small>{{ time(r.updated_at) }}{{ r.code ? ' · ' + r.code : '' }}</small>
             </button>
           } @empty {
@@ -87,7 +88,7 @@ const MARKING = 'Dynamic page · highest possible classification: UNCLASSIFIED (
           }
           @for (m of messages(); track $index) {
             @if (m.role === 'user') { <div class="msg user">{{ m.text }}<time>{{ time(m.ts) }}</time></div> }
-            @else { <div class="msg pipe" [class.warn]="m.error"><b>{{ m.error ? 'PIPELINE · STOPPED' : 'PIPELINE' }}</b><span class="pre">{{ m.text }}</span><time>{{ time(m.ts) }}</time></div> }
+            @else { <div class="msg pipe" [class.warn]="m.error || m.auto" [class.auto]="m.auto"><b>{{ m.error ? 'PIPELINE · STOPPED' : m.auto ? 'RUNNER · AUTO-ACCEPTED (TEST HOST)' : 'PIPELINE' }}</b><span class="pre">{{ m.text }}</span><time>{{ time(m.ts) }}</time></div> }
           }
           @if (run(); as r) {
             @if (r.phase === 'queued' || r.phase === 'running') {
@@ -121,6 +122,9 @@ const MARKING = 'Dynamic page · highest possible classification: UNCLASSIFIED (
           }
         </nav>
         @if (run(); as r) {
+          @if (r.auto_accepted) {
+            <p class="testbadge" role="note">{{ testContent }}</p>
+          }
           <div class="workhead">
             <div><h2>{{ heads[tab()] }}</h2><p>{{ r.name }} · {{ r.phase_text }}</p></div>
             <div class="toolbar">
@@ -307,6 +311,9 @@ const MARKING = 'Dynamic page · highest possible classification: UNCLASSIFIED (
     .row:first-of-type { border-top:0; padding-top:0; }
     .tag { display:inline-block; border-radius:5px; padding:2px 7px; font-size:11px; white-space:nowrap; background:var(--tn-bg); color:var(--tn-muted); border:1px solid var(--tn-line); }
     .tag.ok { background:var(--tn-ok-soft); color:var(--tn-ok); } .tag.warn { background:var(--tn-warm); color:var(--tn-warm-ink); } .tag.red { background:var(--tn-soft); color:var(--tn-accent); }
+    .tag.test, .testbadge { background:var(--tn-warm); color:var(--tn-warm-ink); border-color:var(--tn-warm-ink); font-weight:700; letter-spacing:.4px; }
+    .proj .tag.test { display:inline-block; margin:3px 0 1px; font-size:10px; }
+    .testbadge { margin:0; padding:7px 18px; border:0; border-bottom:1px solid var(--tn-warm-ink); border-radius:0; font-size:12px; text-transform:uppercase; }
     .grid2 { display:grid; grid-template-columns:minmax(0,1.3fr) minmax(0,1fr); gap:12px; align-items:start; }
     pre.code { margin:0; background:#fbf6f6; border:1px solid var(--tn-line); border-radius:8px; padding:14px; overflow:auto; font:12px/1.55 ui-monospace,Menlo,monospace; }
     .q { margin:0 0 4px; font-weight:600; } .opts { margin:6px 0 0; padding-left:18px; list-style:none; } .opts li.a { color:var(--tn-ok); font-weight:600; }
@@ -330,6 +337,8 @@ export class Arc2StudioComponent implements OnInit {
   @ViewChild('msgs') private msgsEl?: ElementRef<HTMLElement>;
 
   readonly marking = MARKING;
+  /** A test host's runner accepted this run's gates itself (ARC2_AUTO_ACCEPT_GATES). */
+  readonly testContent = 'TEST CONTENT — gates auto-accepted, not reviewed';
   readonly tabs: [Tab, string][] = [['files', 'Files'], ['outline', 'Outline'], ['quiz', 'Quiz Bank'], ['preview', 'Preview'], ['code', 'Code'], ['lab', 'Lab'], ['validation', 'To-do']];
   readonly heads: Record<Tab, string> = {
     files: 'Run files', outline: 'Review your course outline', quiz: 'Quiz bank', preview: 'Review your generated course',

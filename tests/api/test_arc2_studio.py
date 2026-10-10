@@ -183,6 +183,47 @@ def test_accept_and_feedback_resume_the_run(client, runs):
     assert r.json()["messages"][-1]["text"] == "Outline accepted."
 
 
+def test_a_human_review_is_not_flagged_as_automatic(client, runs):
+    slug = client.post("/arc2/runs", json={"name": "Wireshark", "request": REQUEST}).json()["slug"]
+    runner_finishes(runs, "Outline ready.")
+    write_run(runs, slug, outline="pending", done=1)
+    client.post(f"/arc2/runs/{slug}/reply", json={"action": "accept"})
+    runner_finishes(runs, "Preview ready.")
+    d = client.get(f"/arc2/runs/{slug}").json()
+    assert d["auto_accepted"] is False
+    assert not any(m.get("auto") for m in d["messages"])
+    assert client.get("/arc2/runs").json()["runs"][0]["auto_accepted"] is False
+
+
+def test_a_gate_the_test_hosts_runner_accepted_is_flagged_and_said_in_the_chat(client, runs):
+    """tools/arc2/runner.py maybe_auto_accept: the runner queues `accept` itself, as
+    "auto (test host)", and the engine records accepted_by on the gate."""
+    slug = client.post("/arc2/runs", json={"name": "Wireshark", "request": REQUEST}).json()["slug"]
+    runner_finishes(runs, "Outline ready.")
+    run = write_run(runs, slug, outline="accepted", done=1)
+    manifest = json.loads((run / "manifest.json").read_text())
+    manifest["gates"]["outline"]["accepted_by"] = "auto (test host)"
+    (run / "manifest.json").write_text(json.dumps(manifest))
+    auto = {"id": "auto0001", "action": "resume", "slug": slug, "text": "accept", "state": "done",
+            "created_at": "2099-01-01T00:00:00.000000Z", "finished_at": "2099-01-01T00:05:00.000000Z",
+            "requested_by": "auto (test host)", "tenant_id": DEV_TENANT, "result": "Preview ready.",
+            "auto_accept": {"gate": "outline", "accepted_by": "auto (test host)", "at": "2099-01-01T00:00:00.000000Z"}}
+    (runs / "_jobs" / "auto0001.json").write_text(json.dumps(auto))
+
+    d = client.get(f"/arc2/runs/{slug}").json()
+    assert d["auto_accepted"] is True
+    assert d["gates"]["outline"]["accepted_by"] == "auto (test host)"
+    [note] = [m for m in d["messages"] if m.get("auto")]
+    assert note["role"] == "pipeline" and "accepted automatically" in note["text"] and "Not reviewed" in note["text"]
+    assert [m["text"] for m in d["messages"]][-2:] == [note["text"], "Preview ready."]
+    [summary] = client.get("/arc2/runs").json()["runs"]
+    assert summary["auto_accepted"] is True
+
+    # The manifest alone is enough (job records may be pruned).
+    (runs / "_jobs" / "auto0001.json").unlink()
+    assert client.get(f"/arc2/runs/{slug}").json()["auto_accepted"] is True
+
+
 def test_there_is_nothing_to_accept_on_a_packaged_run(client, runs):
     write_run(runs, "arc2-done-course", outline="accepted", preview="accepted", done=7, package=True)
     assert client.post("/arc2/runs/arc2-done-course/reply", json={"action": "accept"}).status_code == 409

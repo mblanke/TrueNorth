@@ -311,9 +311,41 @@
 - name: Preflight — ARC² Course Studio
   when: tn_arc2_enabled | default(false) | bool
   block:
-    # Exactly one credential, so it is never ambiguous which account is billed. The
-    # messages name the variables and whether each is set, never their values.
+    # Which model runs jobs (tn_arc2_mode), and what each mode needs. The messages name the
+    # variables and whether each is set, never their values.
+    - name: Preflight — ARC² model mode is known
+      ansible.builtin.assert:
+        that: tn_arc2_mode | default('subscription') in ['subscription', 'local', 'subscription_with_local_fallback']
+        fail_msg: >-
+          tn_arc2_mode={{ tn_arc2_mode | default('subscription') }}: use subscription (Claude), local (only the
+          gateway at tn_arc2_local_url) or subscription_with_local_fallback (Claude, then the gateway).
+        quiet: true
+
+    # local and subscription_with_local_fallback: an Anthropic-compatible gateway, https on
+    # any port (the jobs' egress proxy then allows exactly that host:port), the model it
+    # serves, and its token. Never plain http: the token travels in every request.
+    - name: Preflight — ARC² local gateway is complete
+      when: tn_arc2_mode | default('subscription') != 'subscription'
+      ansible.builtin.assert:
+        that:
+          - tn_arc2_local_url | default('') is match('^https://[A-Za-z0-9.-]+(:[0-9]{1,5})?(/.*)?$')
+          - tn_arc2_local_model | default('') | string | trim | length > 0
+          - vault_arc2_local_token | default('') | string | trim | length > 0
+          - vault_arc2_local_token | default('') is not search('CHANGE_ME')
+        fail_msg: >-
+          tn_arc2_mode is {{ tn_arc2_mode | default('subscription') }}, so ARC² needs the local gateway: tn_arc2_local_url
+          {{ 'set' if tn_arc2_local_url | default('') | length > 0 else 'NOT set' }} (https://host[:port][/path], never http),
+          tn_arc2_local_model {{ 'set' if tn_arc2_local_model | default('') | string | trim | length > 0 else 'NOT set' }},
+          vault_arc2_local_token {{ 'set' if (vault_arc2_local_token | default('') | string | trim | length > 0)
+          and (vault_arc2_local_token | default('') is not search('CHANGE_ME')) else 'NOT set (or still CHANGE_ME)' }}.
+          Or set tn_arc2_mode: subscription.
+        quiet: true
+
+    # subscription (and the fallback mode): exactly one credential, so it is never
+    # ambiguous which account is billed. In local mode neither is needed, and neither is
+    # written to the runner's environment file even if the vault still holds one.
     - name: Preflight — ARC² has exactly one model credential
+      when: tn_arc2_mode | default('subscription') != 'local'
       ansible.builtin.assert:
         that:
           - >-
@@ -330,7 +362,8 @@
           Either a Claude subscription: run `claude setup-token` on a machine signed in to it
           and put the token in vault_arc2_claude_oauth_token; or a pay-per-use Anthropic API
           key issued for this host, in vault_arc2_anthropic_api_key. Leave the other empty
-          (ansible-vault edit inventory/group_vars/all/vault.yml), or set tn_arc2_enabled: false.
+          (ansible-vault edit inventory/group_vars/all/vault.yml), set tn_arc2_mode: local to
+          use only a local gateway, or set tn_arc2_enabled: false.
         quiet: true
 
     # Claude Code reads CLAUDE_CODE_OAUTH_TOKEN as a subscription token and

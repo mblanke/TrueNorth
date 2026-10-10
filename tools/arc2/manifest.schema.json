@@ -78,6 +78,7 @@
         "ts": {"oneOf": [{"type": "null"}, {"$ref": "#/definitions/timestamp"}]},
         "accepted_sha256": {"oneOf": [{"type": "null"}, {"$ref": "#/definitions/sha256"}]},
         "rework_count": {"type": "integer", "minimum": 0},
+        "accepted_by": {"type": "string", "minLength": 1, "maxLength": 120},
         "accepted_activities": {
           "type": "object",
           "propertyNames": {"$ref": "#/definitions/module_id"},

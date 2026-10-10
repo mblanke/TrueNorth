@@ -44,10 +44,29 @@ tn_arc2_memory_max: 4G
 tn_arc2_cpu_weight: 50
 tn_arc2_tasks_max: 1024
 
-# The only host the jobs' egress proxy tunnels to (ARC2_EGRESS_ALLOW): the model endpoint.
-tn_arc2_egress_allow: >-
+# The hosts the jobs' egress proxy tunnels to (ARC2_EGRESS_ALLOW), from tn_arc2_mode: the
+# Anthropic endpoint (or the tn_arc2_anthropic_base_url gateway), the local gateway, or
+# both. In local mode the runner allows the gateway alone whatever this says
+# (arc2/runner.py ModelConfig.egress_hosts); the unit states the same list.
+tn_arc2_anthropic_host: >-
   {{ (tn_arc2_anthropic_base_url | ansible.builtin.urlsplit('hostname'))
      if tn_arc2_anthropic_base_url | default('') | length > 0 else 'api.anthropic.com' }}
+# The local gateway may listen on any https port (staging's is Tailscale Serve on :4443).
+# The proxy then allows exactly host:port (a bare host means 443 only; arc2/egress.py).
+tn_arc2_local_hostname: >-
+  {{ (tn_arc2_local_url | ansible.builtin.urlsplit('hostname'))
+     if tn_arc2_local_url | default('') | length > 0 else '' }}
+tn_arc2_local_port: >-
+  {{ ((tn_arc2_local_url | ansible.builtin.urlsplit('port')) | default(443, true) | int)
+     if tn_arc2_local_url | default('') | length > 0 else 443 }}
+tn_arc2_local_endpoint: >-
+  {{ tn_arc2_local_hostname if tn_arc2_local_port | int == 443
+     else tn_arc2_local_hostname ~ ':' ~ tn_arc2_local_port }}
+tn_arc2_egress_allow: >-
+  {{ tn_arc2_local_endpoint if tn_arc2_mode | default('subscription') == 'local'
+     else (tn_arc2_anthropic_host ~ ',' ~ tn_arc2_local_endpoint)
+     if tn_arc2_mode | default('subscription') == 'subscription_with_local_fallback'
+     else tn_arc2_anthropic_host }}
 
 # Host data the runner never needs, masked in its mount namespace (InaccessiblePaths), and
 # so in every job's, which bubblewrap builds from it. `-`: a missing path is not an error.
@@ -71,6 +90,12 @@ tn_arc2_inaccessible_paths:
 # controller or the Docker bridges (cgroup IP filtering, IPAddressDeny). Loopback stays
 # reachable: the host resolver (127.0.0.53) and each Linux job's own netbridge. Empty this
 # only if tn_arc2_anthropic_base_url is an internal gateway.
+#
+# A local gateway (tn_arc2_mode local or subscription_with_local_fallback) on one of these
+# ranges, such as a tailnet host in 100.64.0.0/10, stays reachable: 55-arc2 resolves its host
+# and the unit allows exactly those addresses (IPAddressAllow, which wins over this list);
+# nothing else in the range opens. Set by the role (tasks/install.yml), not by hand.
+tn_arc2_local_ips: []
 tn_arc2_ip_deny:
   - 10.0.0.0/8
   - 172.16.0.0/12

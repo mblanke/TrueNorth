@@ -63,3 +63,7 @@ all:
           tn_backup_max_total_gb: 30
           # vcsim serves a self-signed certificate.
           tn_vsphere_verify_ssl: false
+          # Staging is a test host: the ARC² runner accepts the outline and preview gates
+          # itself (accepted_by "auto (test host)"; the Studio marks such runs TEST CONTENT).
+          # Only matters once tn_arc2_enabled is on.
+          tn_arc2_auto_accept: true

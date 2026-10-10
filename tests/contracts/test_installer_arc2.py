@@ -24,7 +24,8 @@ ROLE = INSTALL / "roles/tn_arc2"
 DOCKER = ROOT / "infra/platform/docker"
 KEY = "vault_arc2_anthropic_api_key"
 TOKEN = "vault_arc2_claude_oauth_token"  # a Claude subscription (`claude setup-token`)
-CREDENTIALS = (KEY, TOKEN)
+LOCAL = "vault_arc2_local_token"  # the local gateway's bearer token (tn_arc2_mode local / fallback)
+CREDENTIALS = (KEY, TOKEN, LOCAL)
 
 
 def _yaml(path: Path):
@@ -225,7 +226,8 @@ def test_jobs_get_only_the_extra_environment_they_need():
     assert env["ANTHROPIC_BASE_URL"] == "https://llm-gw.example.org/anthropic"
     assert "ANTHROPIC_BASE_URL" in env["ARC2_JOB_ENV"].split(",")
     assert env["ARC2_EGRESS_ALLOW"] == "llm-gw.example.org"
-    assert "urlsplit('hostname')" in _defaults()["tn_arc2_egress_allow"]
+    assert "urlsplit('hostname')" in _defaults()["tn_arc2_anthropic_host"]
+    assert _egress_allow(tn_arc2_anthropic_base_url="https://llm-gw.example.org/anthropic") == "llm-gw.example.org"
 
 
 # ── The key ───────────────────────────────────────────────────────────
@@ -290,16 +292,22 @@ def _conditions(task: dict) -> list[str]:
     return [that] if isinstance(that, str) else that
 
 
-def _holds(task: dict, **vault) -> bool:
-    """Evaluate an assert's conditions as Ansible would (Jinja expressions, `is search`/`is match`)."""
+def _ansible_jinja() -> jinja2.Environment:
+    """With Ansible's `is search` / `is match` tests."""
     env = _jinja()
     env.tests.update(search=lambda v, p: re.search(p, str(v)) is not None,
                      match=lambda v, p: re.match(p, str(v)) is not None)
+    return env
+
+
+def _holds(task: dict, **vault) -> bool:
+    """Evaluate an assert's conditions as Ansible would (Jinja expressions, `is search`/`is match`)."""
+    env = _ansible_jinja()
     return all(env.compile_expression(c.strip())(**vault) for c in _conditions(task))
 
 
 def _fail_msg(task: dict, **vault) -> str:
-    return _jinja().from_string(task["ansible.builtin.assert"]["fail_msg"]).render(**vault)
+    return _ansible_jinja().from_string(task["ansible.builtin.assert"]["fail_msg"]).render(**vault)
 
 
 def _credential_asserts() -> list[dict]:
@@ -482,3 +490,173 @@ def test_the_installer_refuses_an_app_without_the_wiring():
     check = next(t for t in _tasks() if t.get("name") == "ARC² — the deployed app supports an installed Course Studio")
     that = " ".join(check["ansible.builtin.assert"]["that"])
     assert "ARC2_RUNS_HOST_DIR" in that and "--self-test" in that
+    # An older runner would ignore ARC2_MODE (and send a local-mode job to Claude) or the
+    # auto-accept switch: the installer refuses it when either is asked for.
+    assert "'ARC2_LOCAL_TOKEN' in" in that and "'ARC2_AUTO_ACCEPT_GATES' in" in that
+    runner = (ROOT / "tools/arc2/runner.py").read_text()
+    assert "ARC2_LOCAL_TOKEN" in runner and "ARC2_AUTO_ACCEPT_GATES" in runner
+
+
+# ── Model mode: subscription | local | subscription_with_local_fallback ──
+GATEWAY = {"tn_arc2_local_url": "https://llm-gw.example.org/anthropic", "tn_arc2_local_model": "qwen3-coder"}
+
+
+def _egress_allow(**vars_) -> str:
+    """tn_arc2_egress_allow as Ansible resolves the role defaults."""
+    from urllib.parse import urlsplit
+    env = _jinja()
+    env.filters["ansible.builtin.urlsplit"] = lambda url, part: getattr(urlsplit(url), part)
+    d = _defaults()
+    ctx = {"tn_arc2_anthropic_base_url": "", "tn_arc2_local_url": "", **vars_}
+    for name in ("tn_arc2_anthropic_host", "tn_arc2_local_hostname", "tn_arc2_local_port", "tn_arc2_local_endpoint",
+                 "tn_arc2_egress_allow"):
+        ctx[name] = env.from_string(d[name]).render(ctx).strip()
+    return ctx["tn_arc2_egress_allow"]
+
+
+STAGING_GATEWAY = {"tn_arc2_local_url": "https://atlas.tail8d54ec.ts.net:4443", "tn_arc2_local_model": "qwen3-coder"}
+
+
+def test_a_gateway_on_its_own_https_port_is_allowed_as_exactly_that_host_and_port():
+    """Staging's gateway: Tailscale Serve on :4443 (443 is taken on that host)."""
+    assert _egress_allow(tn_arc2_mode="local", **STAGING_GATEWAY) == "atlas.tail8d54ec.ts.net:4443"
+    assert _egress_allow(tn_arc2_mode="subscription_with_local_fallback", **STAGING_GATEWAY) \
+        == "api.anthropic.com,atlas.tail8d54ec.ts.net:4443"
+    assert _egress_allow(tn_arc2_mode="local", tn_arc2_local_url="https://atlas.tail8d54ec.ts.net:443/x") \
+        == "atlas.tail8d54ec.ts.net"
+
+
+def test_the_gateways_resolved_addresses_and_only_they_are_let_through_the_ip_deny_list():
+    d = _defaults()
+    assert "100.64.0.0/10" in d["tn_arc2_ip_deny"], "the tailnet range stays denied by default"
+    assert d["tn_arc2_local_ips"] == []
+    ips = ["100.101.102.103", "fd7a:115c:a1e0::1"]
+    unit = _unit(tn_arc2_mode="local", tn_arc2_local_ips=ips, tn_arc2_local_endpoint="atlas.tail8d54ec.ts.net:4443",
+                 tn_arc2_ip_deny=["10.0.0.0/8", "100.64.0.0/10"], **STAGING_GATEWAY)
+    assert _one(unit, "IPAddressAllow") == "100.101.102.103/32 fd7a:115c:a1e0::1/128"
+    assert _one(unit, "IPAddressDeny") == "10.0.0.0/8 100.64.0.0/10"
+    assert "IPAddressAllow" not in _unit(), "subscription: nothing is opened"
+    # 55-arc2 resolves the gateway's host on the platform host and refuses one that does not resolve.
+    tasks = _tasks()
+    resolve = next(t for t in tasks if t.get("name") == "ARC² — resolve the local gateway's addresses")
+    assert _argv(resolve) == ["getent", "ahosts", "{{ tn_arc2_local_hostname }}"] and resolve["changed_when"] is False
+    facts = next(t for t in tasks if t.get("name") == "ARC² — the local gateway's addresses")
+    assert "tn_arc2_local_ips" in facts["ansible.builtin.set_fact"]
+    check = next(t for t in tasks if t.get("name") == "ARC² — the local gateway resolves on this host")
+    assert "tn_arc2_local_ips | length > 0" in check["ansible.builtin.assert"]["that"]
+    names = [t.get("name") for t in tasks]
+    assert names.index("ARC² — the local gateway resolves on this host") < names.index("ARC² — the runner service")
+
+
+def test_the_mode_defaults_to_the_subscription_and_auto_accept_is_off():
+    gv = _group_vars()
+    assert gv["tn_arc2_mode"] == "subscription"
+    assert gv["tn_arc2_local_url"] == "" and gv["tn_arc2_local_model"] == ""
+    assert gv["tn_arc2_auto_accept"] is False
+    assert LOCAL not in gv
+    assert re.search(rf'^{LOCAL}: ""$', (INSTALL / "inventory/group_vars/all/vault.yml.example").read_text(), re.M)
+
+
+def test_staging_is_a_test_host_whose_gates_are_auto_accepted():
+    staging = _yaml(INSTALL / "inventory/staging.yml")
+    assert staging["all"]["children"]["platform"]["hosts"]["tn-staging"]["tn_arc2_auto_accept"] is True
+
+
+def test_the_unit_sets_the_mode_and_the_gateway_but_never_its_token():
+    env = _envs(_unit())
+    assert env["ARC2_MODE"] == "subscription"
+    assert "ARC2_LOCAL_URL" not in env and "ARC2_AUTO_ACCEPT_GATES" not in env
+    for mode in ("local", "subscription_with_local_fallback"):
+        unit = _unit(tn_arc2_mode=mode, **GATEWAY)
+        env = _envs(unit)
+        assert env["ARC2_MODE"] == mode
+        assert env["ARC2_LOCAL_URL"] == "https://llm-gw.example.org/anthropic" and env["ARC2_LOCAL_MODEL"] == "qwen3-coder"
+        assert not any("ARC2_LOCAL_TOKEN" in v or LOCAL in v for vs in unit.values() for v in vs)
+        assert "ARC2_LOCAL_TOKEN" not in env["ARC2_JOB_ENV"].split(",")
+    source = "".join(p.read_text() for p in (ROOT / "tools/arc2").glob("*.py"))
+    for name in _envs(_unit(tn_arc2_mode="local", tn_arc2_auto_accept=True, **GATEWAY)):
+        if name.startswith("ARC2_"):
+            assert f'"{name}"' in source, f"{name} is not read by tools/arc2"
+
+
+def test_auto_accept_is_set_only_on_a_test_host():
+    assert _envs(_unit(tn_arc2_auto_accept=True))["ARC2_AUTO_ACCEPT_GATES"] == "1"
+    assert "ARC2_AUTO_ACCEPT_GATES" not in _envs(_unit(tn_arc2_auto_accept=False))
+
+
+def test_egress_follows_the_mode_and_local_never_reaches_anthropic():
+    assert _egress_allow() == "api.anthropic.com"
+    assert _egress_allow(tn_arc2_mode="subscription", **GATEWAY) == "api.anthropic.com"
+    assert _egress_allow(tn_arc2_mode="local", **GATEWAY) == "llm-gw.example.org"
+    assert _egress_allow(tn_arc2_mode="local", tn_arc2_anthropic_base_url="https://other.example.org", **GATEWAY) \
+        == "llm-gw.example.org"
+    assert _egress_allow(tn_arc2_mode="subscription_with_local_fallback", **GATEWAY) \
+        == "api.anthropic.com,llm-gw.example.org"
+
+
+def test_the_env_file_follows_the_mode():
+    every = {TOKEN: "sk-ant-oat01-aaaa", KEY: "", LOCAL: "gw-key-1234"}
+    assert _settings(_env_file(**every)) == {"CLAUDE_CODE_OAUTH_TOKEN": "sk-ant-oat01-aaaa"}
+    assert _settings(_env_file(tn_arc2_mode="subscription", **every)) == {"CLAUDE_CODE_OAUTH_TOKEN": "sk-ant-oat01-aaaa"}
+    local = _env_file(tn_arc2_mode="local", **GATEWAY, **every)
+    assert _settings(local) == {"ARC2_LOCAL_TOKEN": "gw-key-1234"}, "local: no Anthropic credential at all"
+    both = _env_file(tn_arc2_mode="subscription_with_local_fallback", **GATEWAY, **{**every, TOKEN: "", KEY: "sk-ant-api03-bbbb"})
+    assert _settings(both) == {"ANTHROPIC_API_KEY": "sk-ant-api03-bbbb", "ARC2_LOCAL_TOKEN": "gw-key-1234"}
+    assert "gw-key" not in "".join(line for line in local.splitlines() if line.startswith("#"))
+
+
+def _preflight(name: str) -> dict:
+    pre = next(t for t in _yaml(INSTALL / "roles/tn_preflight/tasks/main.yml")
+               if t.get("name") == "Preflight — ARC² Course Studio")["block"]
+    return next(t for t in pre if t.get("name") == name)
+
+
+def _applies(task: dict, **vars_) -> bool:
+    when = task.get("when")
+    return when is None or bool(_jinja().compile_expression(when)(**vars_))
+
+
+MODE_TASKS = ("Preflight — ARC² model mode is known", "Preflight — ARC² local gateway is complete",
+              "Preflight — ARC² has exactly one model credential", "Preflight — ARC² credential is in the right variable")
+ONE = {TOKEN: "sk-ant-oat01-aaaa", KEY: ""}
+NONE = {TOKEN: "", KEY: ""}
+GW = {**GATEWAY, LOCAL: "gw-key-1234"}
+MODES = {
+    "subscription, one credential": ({"tn_arc2_mode": "subscription", **ONE}, True),
+    "subscription, none": ({"tn_arc2_mode": "subscription", **NONE, **GW}, False),
+    "local, gateway complete": ({"tn_arc2_mode": "local", **NONE, **GW}, True),
+    "local, an unused Anthropic credential too": ({"tn_arc2_mode": "local", **ONE, **GW}, True),
+    "local, no token": ({"tn_arc2_mode": "local", **NONE, **GATEWAY}, False),
+    "local, placeholder token": ({"tn_arc2_mode": "local", **NONE, **GW, LOCAL: "CHANGE_ME"}, False),
+    "local, no model": ({"tn_arc2_mode": "local", **NONE, **GW, "tn_arc2_local_model": " "}, False),
+    "local, http": ({"tn_arc2_mode": "local", **NONE, **GW, "tn_arc2_local_url": "http://llm-gw.example.org"}, False),
+    "local, its own https port": ({"tn_arc2_mode": "local", **NONE, **GW, **STAGING_GATEWAY}, True),
+    "local, http on its own port": ({"tn_arc2_mode": "local", **NONE, **GW,
+                                     "tn_arc2_local_url": "http://atlas.tail8d54ec.ts.net:4443"}, False),
+    "local, a port that is not a number": ({"tn_arc2_mode": "local", **NONE, **GW,
+                                            "tn_arc2_local_url": "https://gw.example.org:x443"}, False),
+    "local, no url": ({"tn_arc2_mode": "local", **NONE, LOCAL: "gw-key-1234", "tn_arc2_local_model": "m"}, False),
+    "fallback, both": ({"tn_arc2_mode": "subscription_with_local_fallback", **ONE, **GW}, True),
+    "fallback, no Anthropic credential": ({"tn_arc2_mode": "subscription_with_local_fallback", **NONE, **GW}, False),
+    "fallback, no gateway": ({"tn_arc2_mode": "subscription_with_local_fallback", **ONE}, False),
+    "unknown mode": ({"tn_arc2_mode": "cloud", **ONE, **GW}, False),
+}
+
+
+def test_preflight_checks_what_each_mode_needs():
+    tasks = [_preflight(n) for n in MODE_TASKS]
+    role = next(t for t in _tasks() if t.get("name") == "ARC² — one model credential, and the endpoint, are usable")
+    host = {"tn_arc2_anthropic_base_url": "", "tn_arc2_node_arch": "x64", "tn_arc2_node_sha256": {"x64": "0"}}
+    for case, (vars_, ok) in MODES.items():
+        assert all(_holds(t, **vars_) for t in tasks if _applies(t, **vars_)) is ok, case
+        assert _holds(role, **vars_, **host) is ok, f"55-arc2: {case}"
+
+
+def test_the_gateway_preflight_names_what_is_missing_never_the_token():
+    task = _preflight("Preflight — ARC² local gateway is complete")
+    msg = _fail_msg(task, tn_arc2_mode="local", tn_arc2_local_url="", tn_arc2_local_model="m", **{LOCAL: "gw-SECRET"})
+    assert "tn_arc2_local_url NOT set" in msg and "tn_arc2_local_model set" in msg and "vault_arc2_local_token set" in msg
+    assert "SECRET" not in msg
+    role = next(t for t in _tasks() if t.get("name") == "ARC² — one model credential, and the endpoint, are usable")
+    assert "SECRET" not in _fail_msg(role, tn_arc2_mode="local", **{LOCAL: "gw-SECRET"},
+                                     ansible_facts={"architecture": "x86_64"})
