@@ -32,6 +32,9 @@ _REGISTRY: dict[str, type] = {
 }
 # Registered but off by default: no live run, no maintained deployment (vSphere only).
 EXPERIMENTAL: frozenset[str] = frozenset({"proxmox_api", "hyperv"})
+# Backends that take a HypervisorConnection's credentials (worker.db_ops.hypervisor_creds:
+# the range's own tenant's endpoint and login), by the connection's hypervisor_type.
+CREDENTIALS_HYPERVISOR: dict[str, str] = {"vsphere_api": "vsphere"}
 
 
 def experimental_enabled() -> bool:
@@ -39,8 +42,11 @@ def experimental_enabled() -> bool:
     return os.getenv("EXPERIMENTAL_PROVISIONERS", "").strip().lower() in {"1", "true", "yes", "on"}
 
 
-def get_provisioner(backend: str) -> BaseProvisioner:
+def get_provisioner(backend: str, credentials: dict | None = None) -> BaseProvisioner:
     """Return an instantiated provisioner for the given backend name.
+
+    ``credentials`` (a HypervisorConnection's endpoint and login) go to a backend that
+    takes them (CREDENTIALS_HYPERVISOR); empty or None: the backend's own environment.
 
     Raises:
         ValueError: If the backend is not registered.
@@ -54,6 +60,8 @@ def get_provisioner(backend: str) -> BaseProvisioner:
             f"Provisioner backend {backend!r} is experimental and disabled. Supported: mock, vsphere_api. "
             "Set EXPERIMENTAL_PROVISIONERS=true on the API and the workers to use it anyway."
         )
+    if credentials and backend in CREDENTIALS_HYPERVISOR:
+        return factory(credentials=credentials)
     return factory()
 
 

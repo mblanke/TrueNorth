@@ -349,8 +349,10 @@ class VsphereAPIProvisioner(BaseProvisioner):
 
     The REST session token is created on first use and renewed once on a 401 (vCenter
     sessions expire after 30 idle minutes, well inside a long build). Credentials come
-    from the environment, or from the primary vSphere HypervisorConnection row when
-    VSPHERE_URL is unset (worker.tasks passes them in through ``use_credentials``).
+    from the range's own tenant's vSphere HypervisorConnection (else a shared one with no
+    tenant), which the worker passes to the constructor for every operation on a range
+    (worker.base_tasks._get_backend -> db_ops.hypervisor_creds), and to ``provision`` as
+    ``template["credentials"]``. With no such connection: the VSPHERE_* environment.
     """
 
     def __init__(self, credentials: dict | None = None) -> None:
@@ -1168,7 +1170,12 @@ class VsphereAPIProvisioner(BaseProvisioner):
 
         Nothing is left behind on failure: when no VM could be built, the VMs and port
         groups this call made are removed again, so a retry starts clean.
+
+        ``template["credentials"]`` (the range's own tenant's HypervisorConnection, from the
+        worker) wins over the environment, as credentials given to the constructor do.
         """
+        if template.get("credentials"):
+            self.use_credentials(template["credentials"])
         start = time.monotonic()
         errors: list[str] = []
         warnings: list[str] = []

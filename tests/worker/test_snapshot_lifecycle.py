@@ -472,7 +472,7 @@ class TestSnapshotRangeTask:
         with patch.object(tasks, "_db_session", _rows()):
             assert tasks.snapshot_range(range_id="r1", snapshot_id=SNAP_ID)["status"] == "ready"
 
-        spies.get_backend.assert_called_once_with("proxmox")  # not PROVISIONER_BACKEND
+        spies.get_backend.assert_called_once_with("proxmox", "r1")  # not PROVISIONER_BACKEND; its connection
         backend.snapshot.assert_awaited_once_with("r1", PROV, NAME)
         args, kwargs = spies.snapshot_state.call_args
         assert args == (SNAP_ID, "ready") and kwargs["only_from"] == tasks._SNAPSHOT_PENDING
@@ -536,7 +536,7 @@ class TestRestoreSnapshotTask:
         with patch.object(tasks, "_db_session", self._rows()):
             assert tasks.restore_snapshot(range_id="r1", snapshot_id=SNAP_ID)["status"] == "restored"
 
-        spies.get_backend.assert_called_once_with("proxmox")
+        spies.get_backend.assert_called_once_with("proxmox", "r1")
         backend.restore.assert_awaited_once_with("r1", PROV, "tnabc", power_on=True)
         spies.range_state.assert_called_once_with("r1", "ready", only_from=tasks._RESTORABLE_STATES, clear_error=True)
         spies.snapshot_state.assert_called_once_with(SNAP_ID, "ready", only_from=("restoring",))
@@ -609,7 +609,7 @@ class TestDeleteSnapshotTask:
     def test_deletes_by_recorded_name_on_the_ranges_backend(self, backend, spies):
         with patch.object(tasks, "_db_session", _rows("deleted", {"snapshot_name": "tnabc"})):
             assert tasks.delete_snapshot(range_id="r1", snapshot_id=SNAP_ID)["status"] == "deleted"
-        spies.get_backend.assert_called_once_with("proxmox")
+        spies.get_backend.assert_called_once_with("proxmox", "r1")
         backend.delete_snapshot.assert_awaited_once_with("r1", PROV, "tnabc")
 
     def test_a_snapshot_that_never_completed_needs_no_backend_call(self, backend, spies):

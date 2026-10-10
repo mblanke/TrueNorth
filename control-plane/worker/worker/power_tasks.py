@@ -38,7 +38,7 @@ def _power(task, range_id: str, action: str, claim: str, done: str) -> dict:
         backend = (row[1] if row and row[1] else None) or os.getenv("PROVISIONER_BACKEND", "mock")
         if not prov_output.get("vms"):
             raise RuntimeError(f"{action}: the range has no VMs recorded; nothing to power")
-        result = run_async(getattr(_get_backend(backend), action)(range_id, prov_output))
+        result = run_async(getattr(_get_backend(backend, range_id), action)(range_id, prov_output))  # its tenant's
         if result.status != "ok":
             raise RuntimeError(f"{action} {result.status}: {'; '.join(result.errors) or 'no detail'}")
         _update_range_state(range_id, done, only_from=(claim,), clear_error=True)

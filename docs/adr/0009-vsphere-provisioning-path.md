@@ -46,10 +46,17 @@ intentionally separate: its own instructions forbid `terraform apply` from that 
 - Done in `vsphere_api` since the scan: per-range port groups on reserved VLANs,
   `VSPHERE_RESOURCE_POOL`, inventory-template clone where there is no Content Library,
   and a legacy-session fallback for vCenters without `/api/session`.
-- Still open: `tasks.py` reads per-connection credentials (`_hypervisor_creds`) but the
-  provisioner still takes its endpoint and login from the environment; a build and its
-  destroy must use the same vCenter, so this is changed for every operation at once or
-  not at all.
+- ~~Still open: `tasks.py` reads per-connection credentials (`_hypervisor_creds`) but the
+  provisioner still takes its endpoint and login from the environment.~~ Done 2026-10-09
+  (v1.0.0 known limitation H6), for every operation at once: `base_tasks._get_backend(
+  backend, range_id)` passes the range's own tenant's vSphere connection
+  (`db_ops.hypervisor_creds`; else a shared one with no tenant) to `VsphereAPIProvisioner`
+  for build, destroy, stop/start, snapshot/restore/delete and health; `provision` also
+  takes `template["credentials"]`. With no connection, the `VSPHERE_*` environment is the
+  fallback. A build and its destroy reach the same vCenter as long as the tenant's
+  connection is not repointed while the range exists. Lab-session reconcile
+  (`lab_tasks.reconcile_lab_vms`) lists one inventory for many ranges and stays on the
+  environment.
 - ~~`terraform_vsphere` stays registered (ADR 0001 does not require removing an adapter to
   stop using it).~~ Superseded 2026-10-09, below.
 

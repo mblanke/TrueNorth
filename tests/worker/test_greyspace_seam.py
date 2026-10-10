@@ -164,7 +164,7 @@ def test_provision_range_deploys_the_block_and_destroy_range_undeploys_it(factor
         provision=ProvisionResult(status="ok", vms=[], networks=[]),
         destroy=DestroyResult(status="ok", resources_removed=0),
     )
-    monkeypatch.setattr(tasks, "_get_backend", lambda name=None: backend)
+    monkeypatch.setattr(tasks, "_get_backend", lambda name=None, range_id=None: backend)
     _attach(factory, rng)
     _set_state(factory, rng, m.RangeState.provisioning)
 
@@ -183,7 +183,7 @@ def test_provision_range_without_a_block_leaves_no_row(factory, rng, monkeypatch
     from worker.provisioners.results import ProvisionResult
 
     monkeypatch.setattr(tasks, "_notify_api", MagicMock())
-    monkeypatch.setattr(tasks, "_get_backend", lambda name=None: _fake_backend(
+    monkeypatch.setattr(tasks, "_get_backend", lambda name=None, range_id=None: _fake_backend(
         provision=ProvisionResult(status="ok", vms=[], networks=[])))
     _set_state(factory, rng, m.RangeState.provisioning)
     assert tasks.provision_range(str(rng.id))["status"] == "ready"
