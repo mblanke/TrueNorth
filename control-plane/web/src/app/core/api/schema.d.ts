@@ -3353,6 +3353,99 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/lti/links": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Lti Links Mine
+         * @description The learning-platform accounts linked to the caller's own account.
+         */
+        get: operations["lti_links_mine_lti_links_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/lti/links/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Lti Link Confirm
+         * @description Link the LMS account of a deep-linking launch to the signed-in staff account (once).
+         *
+         *     ```
+         *     POST /lti/links/confirm {"code": "<from /lti/link#code=…>"}
+         *     201 {"id": "…", "platform_id": "…", "platform_name": "Moodle (default)",
+         *          "lms_name": "Ada Lovelace", "confirmed_at": "…"}
+         *     ```
+         *     Must be the browser that launched (cookie), a staff account of the platform's tenant,
+         *     signed in with its own sign-in (not an LTI session), whose email the LMS asserted.
+         *     409 if either side is already linked on that platform.
+         */
+        post: operations["lti_link_confirm_lti_links_confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/lti/links/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Lti Link Preview
+         * @description What a staff member is about to link: the platform and the LMS account's name.
+         *
+         *     Same checks as confirm, nothing changed. 404 unknown, spent or another tenant's;
+         *     410 expired; 403 another browser, a Student, an LTI session, or an email that is not
+         *     the caller's.
+         */
+        post: operations["lti_link_preview_lti_links_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/lti/links/{link_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Lti Link Remove
+         * @description Unlink: the account holder, or an integration admin of the same tenant. 404 otherwise.
+         */
+        delete: operations["lti_link_remove_lti_links__link_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/lti/login": {
         parameters: {
             query?: never;
@@ -10450,6 +10543,45 @@ export interface components {
             is_published: boolean;
             /** Title */
             title: string;
+        };
+        /** LtiLinkCodeIn */
+        LtiLinkCodeIn: {
+            /** Code */
+            code: string;
+        };
+        /** LtiLinkOut */
+        LtiLinkOut: {
+            /** Confirmed At */
+            confirmed_at?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Lms Name */
+            lms_name: string;
+            /**
+             * Platform Id
+             * Format: uuid
+             */
+            platform_id: string;
+            /**
+             * Platform Name
+             * @default
+             */
+            platform_name?: string;
+        };
+        /** LtiLinkPreviewOut */
+        LtiLinkPreviewOut: {
+            /** Lms Name */
+            lms_name: string;
+            /**
+             * Platform Id
+             * Format: uuid
+             */
+            platform_id: string;
+            /** Platform Name */
+            platform_name: string;
         };
         /** LtiSessionIn */
         LtiSessionIn: {
@@ -20419,6 +20551,121 @@ export interface operations {
                 content: {
                     "application/json": unknown;
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    lti_links_mine_lti_links_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LtiLinkOut"][];
+                };
+            };
+        };
+    };
+    lti_link_confirm_lti_links_confirm_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LtiLinkCodeIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LtiLinkOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    lti_link_preview_lti_links_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LtiLinkCodeIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LtiLinkPreviewOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    lti_link_remove_lti_links__link_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                link_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

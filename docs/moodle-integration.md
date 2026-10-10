@@ -148,6 +148,34 @@ follows from #1; #6 is open (installer and compose, not this change).
 | 6 | **Prod sets no `LTI_TOOL_BASE_URL` or `LTI_WEB_BASE_URL`**, so both fall back to localhost. The dev defaults also disagree: `.env.example` and the Moodle harness's tool URLs use :8980, but `compose.dev.yml` exposes the API on :8081. | `infra/platform/docker/compose.prod.yml`; `.env.example` | Add both to prod compose and `env.production.j2`; pick one dev port. |
 | 7 | **The quiz export link sends no bearer token**, so it fails once auth is on. | `curriculum-forge.component.ts` (`<a href>` to `/quizzes/{id}/export`) | **Closed:** downloaded through `ApiService.exportQuiz` as a blob. |
 
+### Staff deep linking (2026-10-09)
+
+The email claim is the LMS's assertion, so it never makes a launch a staff account
+(`_jit_user`). Instead a staff member links their LMS account once, explicitly
+(`app/lti_identity/links.py`):
+
+1. A **deep-linking** launch whose email is a staff account's in the platform's tenant
+   gets a page, not a 403: "link this account". It stores a request (platform, LMS
+   subject, a hash of the asserted email; single use; ten minutes) bound to an HttpOnly
+   `SameSite=Lax` cookie on that browser (with `LTI_REQUIRE_STATE_COOKIE` on). A resource
+   launch asserting a staff email is still a 403.
+2. The button opens `/lti/link#code=…` in TrueNorth. The staff member signs in as
+   themselves (Keycloak; an LTI session cannot link), sees which LMS account and site it
+   is (`POST /lti/links/preview`), and confirms (`POST /lti/links/confirm`).
+3. TrueNorth binds `(platform, sub) -> user` (`lti_user_links`) only if: the code is live
+   and from this browser; the platform is the caller's tenant's and active; the caller is
+   staff; the email the LMS asserted is the caller's own; and neither side is linked on
+   that platform already (409). Otherwise 403/404/410 and nothing changes.
+4. From then on that LMS account's launches are that staff member: deep linking shows the
+   picker. Staff are never handed an LTI session (they use Keycloak). `GET /lti/links`
+   lists your links; `DELETE /lti/links/{id}` removes one (the holder, or an
+   `integration:write` admin of the tenant). Deregistering the platform removes its links.
+
+Students are unchanged: their email links an existing Student account, as before. The
+threat cases (email collision, another staff member or a Student confirming, another
+tenant, another browser, a replayed or expired code, the same subject on another tenant's
+platform) are tests in `tests/api/test_lti_staff_link.py`.
+
 ### Acceptance
 
 1. `compose.moodle.yml` up; register Moodle through the API with `lti_auth_login_url`. A student token gets 403 on the same call.

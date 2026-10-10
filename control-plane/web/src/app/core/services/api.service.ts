@@ -30,6 +30,9 @@ export type RangeStats = components['schemas']['RangeStatsOut'];
 export type LtiSession = components['schemas']['LtiSessionOut'];
 /** GET /integrations/lti/tool-config. */
 export type LtiToolConfig = components['schemas']['LtiToolConfigOut'];
+/** POST /lti/links/preview and /lti/links/confirm (staff deep linking). */
+export type LtiLinkPreview = components['schemas']['LtiLinkPreviewOut'];
+export type LtiLink = components['schemas']['LtiLinkOut'];
 /** One detection attempt (POST/GET .../detections). */
 export type Detection = components['schemas']['DetectionOut'];
 
@@ -662,6 +665,14 @@ export class ApiService {
   /** POST /lti/session: spend a launch's hand-off code for a TrueNorth session. */
   exchangeLtiSession(code: string): Observable<LtiSession> {
     return this.http.post<LtiSession>(`${this.base}/lti/session`, { code });
+  }
+  /** POST /lti/links/preview: which LMS account a staff link request would bind. */
+  previewLtiLink(code: string): Observable<LtiLinkPreview> {
+    return this.http.post<LtiLinkPreview>(`${this.base}/lti/links/preview`, { code });
+  }
+  /** POST /lti/links/confirm: bind it to the signed-in staff account (once). */
+  confirmLtiLink(code: string): Observable<LtiLink> {
+    return this.http.post<LtiLink>(`${this.base}/lti/links/confirm`, { code });
   }
   /** GET /integrations/lti/tool-config: the real tool URLs to register in an LMS. */
   getLtiToolConfig(): Observable<LtiToolConfig> {

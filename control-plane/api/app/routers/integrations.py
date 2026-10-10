@@ -25,7 +25,7 @@ from ..auth import CurrentUser, get_current_user
 from ..course_publishing.models import CoursePublication
 from ..db import get_db
 from ..delete_guard import commit_delete, refuse_if
-from ..lti_identity.models import ExerciseLearner, LTIHandoff
+from ..lti_identity.models import ExerciseLearner, LTIHandoff, LTILinkRequest, LTIUserLink
 from ..models import (
     ExternalActivity,
     ExternalPlatform,
@@ -218,6 +218,9 @@ def deregister_platform(
     # Talking-to-the-platform state goes with it: the results cursor, unspent sign-in codes.
     db.query(MoodleResultCursor).filter(MoodleResultCursor.platform_id == p.id).delete(synchronize_session=False)
     db.query(LTIHandoff).filter(LTIHandoff.platform_id == p.id).delete(synchronize_session=False)
+    # Account links name accounts on this platform only; they go with it.
+    db.query(LTILinkRequest).filter(LTILinkRequest.platform_id == p.id).delete(synchronize_session=False)
+    db.query(LTIUserLink).filter(LTIUserLink.platform_id == p.id).delete(synchronize_session=False)
     db.query(LTINonce).filter(LTINonce.platform_id == p.id).delete(synchronize_session=False)
     db.query(LTILaunch).filter(LTILaunch.platform_id == p.id).delete(synchronize_session=False)
     db.flush()
@@ -465,6 +468,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel as _BaseModel
 
 from .. import lti13
+from ..lti_identity import links as lti_links
 from ..lti_identity import session as lti_session
 from ..models import Course, Quiz, UserRole
 
@@ -560,26 +564,39 @@ def _state_cookie_required() -> bool:
     return os.getenv("LTI_REQUIRE_STATE_COOKIE", "true").strip().lower() not in ("0", "false", "no", "off")
 
 
+class StaffEmailRefusedError(HTTPException):
+    """The LMS asserted a staff account's email for an unlinked LMS account (403). A deep
+    linking launch turns this into a link request (lti_identity.links); others are refused."""
+
+    def __init__(self) -> None:
+        super().__init__(403, "Staff accounts are not signed in through the learning platform.")
+
+
 def _jit_user(db: Session, platform, claims: dict) -> User:
     """Find-or-create a TrueNorth user from LTI launch claims.
 
-    The platform's subject is what identifies a returning user (``lti:<platform>:<sub>``).
-    The email claim is asserted by the platform, not verified by us, so it links an
-    existing account only inside the platform's own tenant (never across tenants: email is
-    globally unique, so that would be impersonation) and only a Student's: an LMS naming an
-    instructor's or admin's address does not become them (security sweep, low).
+    An LMS account a staff member linked to their own account (signed in to TrueNorth,
+    lti_identity.links) is that account. Otherwise the platform's subject is what
+    identifies a returning user (``lti:<platform>:<sub>``). The email claim is asserted by
+    the platform, not verified by us, so it links an existing account only inside the
+    platform's own tenant (never across tenants: email is globally unique, so that would be
+    impersonation) and only a Student's: an LMS naming an instructor's or admin's address
+    does not become them (security sweep, low); it raises StaffEmailRefusedError.
     """
     sub = str(claims.get("sub", ""))
     email = str(claims.get("email") or f"lti-{sub}@{platform.slug}.local").lower()
     name = str(claims.get("name") or claims.get("given_name") or email.split("@")[0])
     lti_kc_id = f"lti:{platform.id}:{sub}"
 
+    linked = lti_links.linked_user(db, platform, sub) if sub else None
+    if linked is not None:
+        return linked
     user = db.query(User).filter(User.keycloak_id == lti_kc_id).first()
     if user is None:
         user = db.query(User).filter(User.email == email).first()
         if user is not None and str(user.tenant_id) == str(platform.tenant_id) and user.role != UserRole.student:
             logger.warning("LTI launch from %s asserted a staff account's email; refused", platform.name)
-            raise HTTPException(403, "Staff accounts are not signed in through the learning platform.")
+            raise StaffEmailRefusedError()
     if user:
         if str(user.tenant_id) != str(platform.tenant_id):
             logger.warning(
@@ -623,7 +640,16 @@ async def lti_launch(
         raise HTTPException(401, f"LTI launch validation failed: {exc}") from exc
 
     message_type = claims.get(lti13.CLAIM_MESSAGE_TYPE, "")
-    user = _jit_user(db, platform, claims)
+    try:
+        user = _jit_user(db, platform, claims)
+    except StaffEmailRefusedError:
+        if message_type != "LtiDeepLinkingRequest":
+            raise
+        # Staff deep linking: never bound by email; the staff member confirms it, signed in.
+        response = _link_request_page(db, platform, claims, bind_cookie=cookie_required)
+        if cookie_required:
+            response.delete_cookie(lti_state_cookie_name(state), path="/", secure=True, httponly=True, samesite="none")
+        return response
 
     if message_type == "LtiDeepLinkingRequest":
         response = _deep_link_picker(db, platform, claims)
@@ -839,6 +865,124 @@ h1{{font-size:20px}}</style></head><body>
 <br><button type="submit">Add selected to course</button>
 </form></body></html>"""
     return HTMLResponse(html)
+
+
+def _link_request_page(db: Session, platform, claims: dict, *, bind_cookie: bool) -> HTMLResponse:
+    """A staff member's LMS account asked to deep-link: offer the one-time link, which
+    they confirm signed in to TrueNorth (lti_identity.links). Nothing is bound here."""
+    bind = secrets.token_urlsafe(32) if bind_cookie else ""
+    code = lti_links.request_link(db, platform, claims, bind=bind)
+    url = f"{WEB_BASE_URL}/lti/link#code={code}"
+    html = f"""<!doctype html><html><head><title>TrueNorth — link your account</title>
+<style>body{{font-family:system-ui;background:#071629;color:#F0F4F8;padding:40px;max-width:640px;margin:auto}}
+a.button{{display:inline-block;background:#1FB6A6;color:#071629;border-radius:8px;padding:12px 24px;font-weight:700;
+text-decoration:none;margin-top:16px}} h1{{font-size:20px}}</style></head><body>
+<h1>Link this learning-platform account to TrueNorth</h1>
+<p>This account's email belongs to a TrueNorth staff account. TrueNorth never signs staff in
+by email alone, so link the two once: open TrueNorth, sign in as yourself, and confirm.
+The link expires in ten minutes. Then choose <em>Select content</em> again.</p>
+<a class="button" href="{_html_escape(url)}" target="_blank" rel="noopener noreferrer">Open TrueNorth to confirm</a>
+</body></html>"""
+    response = HTMLResponse(html, headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"})
+    if bind:
+        response.set_cookie(
+            lti_links.LINK_COOKIE, bind, max_age=lti_links.REQUEST_SECONDS, httponly=True, secure=True,
+            samesite="lax", path="/",
+        )
+    return response
+
+
+class LtiLinkCodeIn(_BaseModel):
+    code: str
+
+
+class LtiLinkPreviewOut(_BaseModel):
+    platform_id: uuid.UUID
+    platform_name: str
+    lms_name: str
+
+
+class LtiLinkOut(_BaseModel):
+    id: uuid.UUID
+    platform_id: uuid.UUID
+    platform_name: str = ""
+    lms_name: str
+    confirmed_at: datetime | None = None
+
+
+def _link_out(db: Session, link) -> LtiLinkOut:
+    platform = db.get(ExternalPlatform, link.platform_id)  # tenant-safe: the link's own platform
+    return LtiLinkOut(id=link.id, platform_id=link.platform_id, platform_name=platform.name if platform else "",
+                      lms_name=link.lms_name, confirmed_at=link.confirmed_at)
+
+
+def _signed_in_user(db: Session, user: CurrentUser) -> User:
+    row = db.get(User, uuid.UUID(str(user.id)))  # tenant-safe: the caller's own row
+    if row is None:
+        raise HTTPException(403, "Sign in to TrueNorth with your own account")
+    return row
+
+
+@lti_router.post("/links/preview", response_model=LtiLinkPreviewOut)
+def lti_link_preview(
+    body: LtiLinkCodeIn,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+):
+    """What a staff member is about to link: the platform and the LMS account's name.
+
+    Same checks as confirm, nothing changed. 404 unknown, spent or another tenant's;
+    410 expired; 403 another browser, a Student, an LTI session, or an email that is not
+    the caller's."""
+    try:
+        return lti_links.preview(db, body.code, request.cookies.get(lti_links.LINK_COOKIE, ""),
+                                 _signed_in_user(db, user))
+    except lti_links.LinkError as exc:
+        raise HTTPException(exc.status, exc.detail) from exc
+
+
+@lti_router.post("/links/confirm", response_model=LtiLinkOut, status_code=status.HTTP_201_CREATED)
+def lti_link_confirm(
+    body: LtiLinkCodeIn,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Link the LMS account of a deep-linking launch to the signed-in staff account (once).
+
+    ```
+    POST /lti/links/confirm {"code": "<from /lti/link#code=…>"}
+    201 {"id": "…", "platform_id": "…", "platform_name": "Moodle (default)",
+         "lms_name": "Ada Lovelace", "confirmed_at": "…"}
+    ```
+    Must be the browser that launched (cookie), a staff account of the platform's tenant,
+    signed in with its own sign-in (not an LTI session), whose email the LMS asserted.
+    409 if either side is already linked on that platform."""
+    try:
+        link = lti_links.confirm(db, body.code, request.cookies.get(lti_links.LINK_COOKIE, ""),
+                                 _signed_in_user(db, user))
+    except lti_links.LinkError as exc:
+        raise HTTPException(exc.status, exc.detail) from exc
+    logger.info("LTI account on platform %s linked to user %s", link.platform_id, link.user_id)
+    return _link_out(db, link)
+
+
+@lti_router.get("/links", response_model=list[LtiLinkOut])
+def lti_links_mine(db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)):
+    """The learning-platform accounts linked to the caller's own account."""
+    rows =db.query(LTIUserLink).filter(LTIUserLink.user_id == uuid.UUID(str(user.id))).all()
+    return [_link_out(db, r) for r in rows]
+
+
+@lti_router.delete("/links/{link_id}", status_code=status.HTTP_204_NO_CONTENT, response_class=Response)
+def lti_link_remove(link_id: uuid.UUID, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)):
+    """Unlink: the account holder, or an integration admin of the same tenant. 404 otherwise."""
+    try:
+        lti_links.unlink(db, link_id, _signed_in_user(db, user),
+                         admin=user_has_permission(user, Permission.INTEGRATION_WRITE))
+    except lti_links.LinkError as exc:
+        raise HTTPException(exc.status, exc.detail) from exc
 
 
 @lti_router.post("/deeplink/finish")

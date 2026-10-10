@@ -4,6 +4,6 @@ learner links, and staff accounts linked to an LMS account by explicit confirmat
 Importing this package registers its tables on ``Base.metadata``.
 """
 
-from .models import ExerciseLearner, LTIHandoff
+from .models import ExerciseLearner, LTIHandoff, LTILinkRequest, LTIUserLink
 
-__all__ = ["ExerciseLearner", "LTIHandoff"]
+__all__ = ["ExerciseLearner", "LTIHandoff", "LTILinkRequest", "LTIUserLink"]

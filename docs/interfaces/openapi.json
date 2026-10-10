@@ -7569,6 +7569,85 @@
         "title": "LessonBrief",
         "type": "object"
       },
+      "LtiLinkCodeIn": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code"
+        ],
+        "title": "LtiLinkCodeIn",
+        "type": "object"
+      },
+      "LtiLinkOut": {
+        "properties": {
+          "confirmed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmed At"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "lms_name": {
+            "title": "Lms Name",
+            "type": "string"
+          },
+          "platform_id": {
+            "format": "uuid",
+            "title": "Platform Id",
+            "type": "string"
+          },
+          "platform_name": {
+            "default": "",
+            "title": "Platform Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "platform_id",
+          "lms_name"
+        ],
+        "title": "LtiLinkOut",
+        "type": "object"
+      },
+      "LtiLinkPreviewOut": {
+        "properties": {
+          "lms_name": {
+            "title": "Lms Name",
+            "type": "string"
+          },
+          "platform_id": {
+            "format": "uuid",
+            "title": "Platform Id",
+            "type": "string"
+          },
+          "platform_name": {
+            "title": "Platform Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "platform_id",
+          "platform_name",
+          "lms_name"
+        ],
+        "title": "LtiLinkPreviewOut",
+        "type": "object"
+      },
       "LtiSessionIn": {
         "properties": {
           "code": {
@@ -26967,6 +27046,173 @@
           }
         },
         "summary": "Lti Launch",
+        "tags": [
+          "lti"
+        ]
+      }
+    },
+    "/lti/links": {
+      "get": {
+        "description": "The learning-platform accounts linked to the caller's own account.",
+        "operationId": "lti_links_mine_lti_links_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/LtiLinkOut"
+                  },
+                  "title": "Response Lti Links Mine Lti Links Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Lti Links Mine",
+        "tags": [
+          "lti"
+        ]
+      }
+    },
+    "/lti/links/confirm": {
+      "post": {
+        "description": "Link the LMS account of a deep-linking launch to the signed-in staff account (once).\n\n```\nPOST /lti/links/confirm {\"code\": \"<from /lti/link#code=\u2026>\"}\n201 {\"id\": \"\u2026\", \"platform_id\": \"\u2026\", \"platform_name\": \"Moodle (default)\",\n     \"lms_name\": \"Ada Lovelace\", \"confirmed_at\": \"\u2026\"}\n```\nMust be the browser that launched (cookie), a staff account of the platform's tenant,\nsigned in with its own sign-in (not an LTI session), whose email the LMS asserted.\n409 if either side is already linked on that platform.",
+        "operationId": "lti_link_confirm_lti_links_confirm_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LtiLinkCodeIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LtiLinkOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Lti Link Confirm",
+        "tags": [
+          "lti"
+        ]
+      }
+    },
+    "/lti/links/preview": {
+      "post": {
+        "description": "What a staff member is about to link: the platform and the LMS account's name.\n\nSame checks as confirm, nothing changed. 404 unknown, spent or another tenant's;\n410 expired; 403 another browser, a Student, an LTI session, or an email that is not\nthe caller's.",
+        "operationId": "lti_link_preview_lti_links_preview_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LtiLinkCodeIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LtiLinkPreviewOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Lti Link Preview",
+        "tags": [
+          "lti"
+        ]
+      }
+    },
+    "/lti/links/{link_id}": {
+      "delete": {
+        "description": "Unlink: the account holder, or an integration admin of the same tenant. 404 otherwise.",
+        "operationId": "lti_link_remove_lti_links__link_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "link_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Link Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Lti Link Remove",
         "tags": [
           "lti"
         ]

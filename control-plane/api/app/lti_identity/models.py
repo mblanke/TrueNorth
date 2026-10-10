@@ -39,6 +39,45 @@ class LTIHandoff(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class LTIUserLink(Base):
+    """An LMS account (platform + LTI ``sub``) bound to a TrueNorth account, by that
+    account's holder, signed in to TrueNorth (app/lti_identity/links.py). This is the only
+    way an LTI launch becomes a staff account: never by the email the LMS asserts."""
+
+    __tablename__ = "lti_user_links"
+    __table_args__ = (
+        UniqueConstraint("platform_id", "lti_sub", name="uq_lti_user_link_sub"),
+        UniqueConstraint("platform_id", "user_id", name="uq_lti_user_link_user"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
+    platform_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("external_platforms.id"), nullable=False)
+    lti_sub: Mapped[str] = mapped_column(String(255), nullable=False)
+    user_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("users.id"), nullable=False)
+    lms_name: Mapped[str] = mapped_column(String(255), nullable=False, default="")  # as the LMS named them
+    confirmed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class LTILinkRequest(Base):
+    """A pending link: an LMS launch whose asserted email is a staff account's. Holds the
+    hash of that email, never the email; confirmed once, within ten minutes, by the staff
+    member signed in to TrueNorth in the browser that launched (``bind_hash``)."""
+
+    __tablename__ = "lti_link_requests"
+    __table_args__ = (Index("ix_lti_link_requests_expires", "expires_at"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
+    code_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    bind_hash: Mapped[str] = mapped_column(String(64), nullable=False, default="")
+    platform_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("external_platforms.id"), nullable=False)
+    lti_sub: Mapped[str] = mapped_column(String(255), nullable=False)
+    email_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    lms_name: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class ExerciseLearner(Base):
     __tablename__ = "exercise_learners"
     __table_args__ = (
