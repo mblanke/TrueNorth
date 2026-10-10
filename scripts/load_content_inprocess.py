@@ -25,7 +25,6 @@ import argparse
 import importlib.util
 import json
 import sys
-import time
 from pathlib import Path
 
 SRC = Path("/srcapp")
@@ -38,27 +37,13 @@ def main() -> int:
     ap.add_argument("--demo", action="store_true", help="demo people, ranges and exercises (not provisioned)")
     args = ap.parse_args()
 
-    from app import auth
-    from app.db import SessionLocal
-    from app.main import app
-    from app.models import User
-    from fastapi.testclient import TestClient
+    sys.path.insert(0, str(SRC / "scripts"))
+    from _inprocess_api import connect  # the shared harness: identity override, fresh CSRF, 429 backoff
 
-    db = SessionLocal()
-    try:
-        user = db.query(User).filter(User.email == args.admin).first()
-        if user is None:
-            print(f"administrator {args.admin} not found", file=sys.stderr)
-            return 2
-        ident = auth.TokenPayload(
-            sub=user.keycloak_id,
-            email=user.email,
-            name=user.display_name or user.email,
-            preferred_username=user.email,
-        )
-    finally:
-        db.close()
-    app.dependency_overrides[auth.get_token_identity] = lambda: ident
+    connected = connect(args.admin)
+    if connected is None:
+        return 2
+    _client, inproc = connected
 
     spec = importlib.util.spec_from_file_location("load_content", SRC / "scripts/load_content.py")
     lc = importlib.util.module_from_spec(spec)
@@ -66,24 +51,9 @@ def main() -> int:
     lc.ROOT = SRC
     lc.CONTENT = SRC / "content"
 
-    client = TestClient(app, base_url="https://api.internal")
-    client.get("/health/live")  # the CSRF middleware sets truenorth_csrf on every response
-
     class Api(lc.Api):
         def _send(self, method, path, body, ctype):
-            # Double-submit CSRF, as the browser does; back off when rate-limited.
-            headers = {"x-csrf-token": client.cookies.get("truenorth_csrf", "")}
-            if ctype:
-                headers["Content-Type"] = ctype
-            for _ in range(20):
-                r = client.request(method, path, content=body, headers=headers)
-                if r.status_code != 429:
-                    break
-                time.sleep(int(r.json().get("retry_after", 60)) + 1)
-            try:
-                return r.status_code, (r.json() if r.content else None)
-            except ValueError:
-                return r.status_code, r.text[:400]
+            return inproc.request(method, path, content=body, headers={"Content-Type": ctype} if ctype else None)
 
     api = Api("https://api.internal", None)
     if args.demo:
