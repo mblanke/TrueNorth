@@ -104,6 +104,24 @@ def _world(db, *, started_minutes_ago=5, scenario_yaml=SCENARIO, validator="vali
     return tenant, ex, student
 
 
+def _participant(db, tenant, ex, student):
+    """Make ``student`` a participant (ADR 0005): a live booking ties the exercise to a
+    course, and the Student is enrolled in it."""
+    from app import models as m
+    from app.scheduler.models import EventState, ScheduledEvent
+
+    course = m.Course(name="Class", tenant_id=tenant.id)
+    db.add(course)
+    db.flush()
+    now = datetime.now(UTC)
+    db.add(ScheduledEvent(name="lesson", tenant_id=tenant.id, exercise_id=ex.id, range_id=ex.range_id,
+                          course_id=course.id, state=EventState.active, start_time=now - timedelta(hours=1),
+                          end_time=now + timedelta(hours=1)))
+    db.add(m.Enrollment(user_id=student.id, course_id=course.id, tenant_id=tenant.id,
+                        status=m.EnrollmentStatus.enrolled))
+    db.commit()
+
+
 def test_the_chain_creates_detection_submissions(pg):
     db, _ = pg
     cols = {c["name"] for c in sa.inspect(db.get_bind()).get_columns("detection_submissions")}
@@ -119,6 +137,7 @@ def test_a_student_detection_is_credited_on_postgres(pg, monkeypatch):
 
     db, factory = pg
     tenant, ex, student = _world(db)
+    _participant(db, tenant, ex, student)
     start = ex.started_at
     store = FakeStore([beacon(), beacon(), *noise(n=1)])
     for e in store.events:  # the fake store's window is relative to the exercise start
@@ -205,6 +224,7 @@ def test_concurrent_submissions_cannot_exceed_the_attempt_cap(pg, monkeypatch):
 
     db, factory = pg
     tenant, ex, student = _world(db)
+    _participant(db, tenant, ex, student)
 
     def _db():
         s = factory()
