@@ -75,15 +75,24 @@ def _release(db: Session, release_id: uuid.UUID, user: CurrentUser) -> CourseRel
     return release
 
 
-def _enrolled(db: Session, release: CourseRelease, user: CurrentUser) -> None:
+def _enrolled(db: Session, release: CourseRelease, user: CurrentUser) -> Enrollment | None:
     """A Student reads and marks a module only on their own enrolment in this release, the
     same rule as launching it; course authors (who hold the answer key anyway) need none."""
     if user_has_permission(user, Permission.COURSE_AUTHOR):
-        return
+        return None
     try:
-        lms.enrolment_for(db, uuid.UUID(user.id), release)
+        return lms.enrolment_for(db, uuid.UUID(user.id), release)
     except lms.Cmi5Error as exc:
         raise _http(exc) from exc
+
+
+def _serialise_marking(db: Session, enrolled: Enrollment) -> None:
+    """Take the enrolment's row lock before counting a Student's marks, so two concurrent
+    submissions cannot both see room under the limit. A no-op UPDATE is the portable form:
+    a row lock on PostgreSQL, the database write lock on SQLite (where FOR UPDATE is ignored)."""
+    db.query(Enrollment).filter(Enrollment.id == enrolled.id, Enrollment.user_id == enrolled.user_id).update(
+        {Enrollment.id: Enrollment.id}, synchronize_session=False
+    )
 
 
 def _grade_attempts() -> int:
@@ -195,10 +204,11 @@ def grade_cmi5_au_quiz(
     AU's passed/failed must then report this mark (TN-GRADE); an AU launched by another LMS
     reports to that LMS, which TrueNorth cannot vouch for (docs/cmi5.md)."""
     release = _release(db, release_id, user)
-    _enrolled(db, release, user)
+    enrolled = _enrolled(db, release, user)
     me = uuid.UUID(user.id)
     now = datetime.now(UTC)
-    if not user_has_permission(user, Permission.COURSE_AUTHOR):
+    if enrolled is not None:
+        _serialise_marking(db, enrolled)
         used = (
             db.query(Cmi5Grade)
             .filter(

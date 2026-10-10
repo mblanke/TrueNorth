@@ -115,7 +115,7 @@ numbering ADL's CATAPULT uses. TrueNorth rejects, so it never has to void.
 | result rules: completion only on completed, success only on passed/failed, score only on passed/failed (raw needs min/max), durations required, moveon category exactly on completed/passed/failed | 9.5.x, 9.6.2.2-1/-2 |
 | passed at or above the masteryScore, failed below it, and the `masteryscore` extension when judged | 9.3.4.0-2, 9.3.6.0-1, 9.6.3.2-2 |
 | no completed/passed/failed in Browse or Review | 10.2.2.0-2/-3 |
-| `LMS.LaunchData` read-only; State and Profile only for this actor and activity; learner preferences read-only | 10.2.1.0-5, 10.1.0.0-3 |
+| `LMS.LaunchData` read-only; State and Profile only for this actor and activity; Agent Profiles (the learner preferences included) read-only | 10.2.1.0-5, 10.1.0.0-3 |
 | no voiding | 6.3.0.0-1 |
 | `LMS.LaunchData` never written or deleted; every State request names this registration, and a write or delete names its `stateId`; Activity Profiles and the activity definition read-only | 10.2.1.0-5, 8.1.4.0-3 |
 
@@ -124,11 +124,24 @@ unless marked otherwise):
 
 | Rule | Id |
 |---|---|
-| every statement is about the launch activity (its `activityId`, or an activity under it): an AU cannot write about a TrueNorth quiz, course or other module | `TN-SCOPE` |
+| every statement is about the launch activity (its `activityId`, or a plain path under it: no empty, `.` or `..` segment, no `%`-encoding, `?` or `#`): an AU cannot write about a TrueNorth quiz, course or other module | `TN-SCOPE` |
+| `context.contextActivities` (parent, grouping, other, category) names no TrueNorth activity (under `XAPI_IRI_BASE` or the legacy root) outside the AU's own subtree; activities elsewhere are the AU's business | `TN-SCOPE` |
 | `initialized`, `completed`, `passed`, `failed`, `terminated` only as cmi5-defined statements (with the cmi5 category), so none escapes the rules above | `TN-DEFINED` |
+| no verb id that is a cmi5 or LMS verb spelled differently (case, `https`, a trailing slash) | `TN-VERB` |
+| a cmi5-allowed (uncategorised) statement carries no `result.success`, `result.completion` or `result.score`: only cmi5-defined statements judge | `TN-RESULT` |
+| no NaN, infinity or integer beyond a double anywhere in the statement (400; NaN compares false against every mark) | `TN-NUMBER` |
 | judged against a masteryScore, `passed`/`failed` carry `score.scaled` (400) | `TN-SCORE` |
 | `passed`/`failed` report the score TrueNorth marked for this Student and AU since the launch | `TN-GRADE` |
 | statement ids of UUID version 8 are reserved for TrueNorth's own statements | `TN-ID` |
+
+`authority` and `stored` are the LRS's to set: an AU's values are dropped before forwarding
+(the body forwarded is the one checked, re-serialised). Every AU request also re-checks that
+the course is still published and the Student still enrolled on this release (two
+primary-key reads); otherwise 403, whatever the token's age.
+
+Marking (`POST …/grade`) is attempt-limited per Student and AU; the handler takes the
+enrolment's row lock (a no-op `UPDATE`, which is also SQLite's write lock) before counting,
+so concurrent submissions cannot both find room under the limit.
 
 **Provenance.** AU traffic reaches the LRS with its own credential, `CMI5_LRS_AUTH` (scoped:
 statements write-only, State, Agent and Activity Profiles), never the server's `LRS_AUTH`. The
@@ -245,7 +258,7 @@ copies each plugin (at the commits above) into `/var/www/html/public/mod/<name>`
 |---|---|---|
 | `LMS_BACKEND` | `xapi_lrs` | `null` turns cmi5 launching off (503, said so). |
 | `CMI5_WEB_BASE_URL` | the platform URL (`DOMAIN`, else `LTI_WEB_BASE_URL`) | Where browsers reach the SPA (AU URLs, returnURL). |
-| `CMI5_API_BASE_URL` | `<web>/api` | The fetch URL and the AU's endpoint. |
+| `CMI5_API_BASE_URL` | `<web>/api` | The fetch URL and the AU's endpoint. With `TN_ENV=production` the API refuses to start if either resolves to localhost or to nothing. |
 | `CMI5_SESSION_HOURS` | `12` | A session token's lifetime. |
 | `CMI5_FETCH_HOURS` | `0.25` | How long after launch the fetch URL works. |
 | `CMI5_LRS_AUTH` | none (cmi5 off) | The AU traffic's LRS credential; must differ from `LRS_AUTH`. |

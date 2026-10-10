@@ -35,9 +35,11 @@ GOOD = {
     "MINIO_SECRET_KEY": "Mn4-long-minio-secret",
     "XAPI_ACCOUNT_HOMEPAGE": "https://range.example.mil",
     "XAPI_IRI_BASE": "https://range.example.mil/xapi",
+    "LTI_WEB_BASE_URL": "https://range.example.mil",
 }
 NAMES = (
-    *GOOD, "SEED_DEV_DATA", "DB_AUTO_CREATE", "DOCS_ENABLED", "OIDC_AUDIENCE", "REDIS_PASSWORD", "TN_VERSION", "DOMAIN"
+    *GOOD, "SEED_DEV_DATA", "DB_AUTO_CREATE", "DOCS_ENABLED", "OIDC_AUDIENCE", "REDIS_PASSWORD", "TN_VERSION", "DOMAIN",
+    "CMI5_WEB_BASE_URL", "CMI5_API_BASE_URL",
 )
 
 
@@ -90,6 +92,11 @@ def test_an_empty_production_environment_names_every_problem(monkeypatch):
         ("XAPI_IRI_BASE", "", "XAPI_IRI_BASE"),
         ("XAPI_ACCOUNT_HOMEPAGE", "http://localhost:4200", "XAPI_ACCOUNT_HOMEPAGE"),
         ("XAPI_IRI_BASE", "http://127.0.0.1/xapi", "XAPI_IRI_BASE"),
+        # cmi5 review 2 (6): launch URLs a Student's browser follows never name localhost.
+        ("LTI_WEB_BASE_URL", "", "CMI5_WEB_BASE_URL"),
+        ("LTI_WEB_BASE_URL", "http://localhost:4200", "CMI5_WEB_BASE_URL"),
+        ("CMI5_WEB_BASE_URL", "http://localhost:4200", "CMI5_WEB_BASE_URL"),
+        ("CMI5_API_BASE_URL", "http://127.0.0.1:8000/api", "CMI5_API_BASE_URL"),
     ],
 )
 def test_each_unsafe_setting_is_refused(prod, name, value, needle):
@@ -111,6 +118,16 @@ def test_xapi_identity_may_come_from_domain(prod):
     prod.delenv("XAPI_IRI_BASE")
     assert any("XAPI_" in p for p in settings.production_problems())
     prod.setenv("DOMAIN", "range.example.mil")
+    assert settings.production_problems() == []
+
+
+def test_cmi5_urls_may_come_from_domain_or_be_explicit(prod):
+    prod.delenv("LTI_WEB_BASE_URL")
+    assert any("CMI5_WEB_BASE_URL" in p for p in settings.production_problems())
+    prod.setenv("DOMAIN", "range.example.mil")
+    assert settings.production_problems() == []
+    prod.delenv("DOMAIN")
+    prod.setenv("CMI5_WEB_BASE_URL", "https://range.example.mil")
     assert settings.production_problems() == []
 
 

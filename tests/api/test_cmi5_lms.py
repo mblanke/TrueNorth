@@ -686,3 +686,176 @@ def test_review_8_a_registration_stays_on_its_release(client, lrs, release, stud
     with pytest.raises(lms.Cmi5Error) as exc:
         lms.registration(db_session, enrolled, other)
     assert exc.value.status == 409
+
+
+# -- adversarial review 2 of 2026-10-10: one regression per finding ------------------------
+def test_review2_1_uncategorised_statements_carry_no_judgement_and_no_lookalike_verbs(client, lrs, release, student):
+    """Repro: `experienced` with result.success/score went to the LRS as an uncategorised
+    statement a reader could take for a pass; `HTTPS://adlnet.gov/expapi/verbs/Passed/`
+    slipped past the exact-match verb rules."""
+    au = _started(client, student, release)
+    assert au.initialized().status_code == 200
+    for result in ({"success": True}, {"completion": True}, {"score": {"scaled": 1.0}}):
+        st = au.statement("experienced", defined=False, result=result)
+        _refused(au.send(st), "TN-RESULT", 403)
+        assert st["id"] not in lrs.statements
+    for spelled in (
+        "HTTPS://adlnet.gov/expapi/verbs/Passed/",
+        "https://adlnet.gov/expapi/verbs/passed",
+        "http://adlnet.gov/expapi/verbs/completed/",
+        "http://ADLNET.gov/expapi/verbs/terminated",
+        "http://w3id.org/xapi/adl/verbs/satisfied",
+        "https://w3id.org/xapi/adl/verbs/Waived",
+    ):
+        for defined in (False, True):
+            _refused(au.send(au.statement(spelled, defined=defined)), "TN-VERB", 403)
+    # A plain verb with only a duration or a response is still a cmi5-allowed statement.
+    ok = au.statement("experienced", defined=False, result={"duration": "PT5S", "response": "read"})
+    assert au.send(ok).status_code == 200
+
+
+def test_review2_2_context_activities_stay_in_the_au(client, lrs, release, student):
+    """Repro: grouping/parent/other naming another TrueNorth activity (a quiz, another AU)
+    attached the AU's statement to it."""
+    au = _started(client, student, release)
+    assert au.initialized().status_code == 200
+    elsewhere = (_quiz_iri(), au.activity_id.rsplit("/", 1)[0] + "/mod_002", au.activity_id + "x")
+    for key in ("parent", "grouping", "other"):
+        for foreign in elsewhere:
+            st = au.statement("experienced", defined=False)
+            st["context"]["contextActivities"].setdefault(key, []).append({"id": foreign})
+            _refused(au.send(st), "TN-SCOPE", 403)
+    # The AU's own sub-activities, and activities that are not TrueNorth's, are fine.
+    st = au.statement("experienced", defined=False)
+    acts = st["context"]["contextActivities"]
+    acts.setdefault("grouping", []).append({"id": au.activity_id + "/page/2"})
+    acts["other"] = [{"id": "https://example.org/glossary/term"}]
+    assert au.send(st).status_code == 200, st
+
+
+def _raw(au, statement: dict, token: str):
+    """POST a statement whose "__N__" placeholder is the raw JSON token (json.dumps would
+    never write NaN or 1e999 itself)."""
+    body = json.dumps(statement).replace('"__N__"', token)
+    return au.client.post(
+        f"{au.endpoint}statements", content=body, headers=au.headers(**{"Content-Type": "application/json"})
+    )
+
+
+@pytest.mark.parametrize("number", ["NaN", "Infinity", "-Infinity", "1e999", "-1e999", "1" + "0" * 400])
+def test_review2_3_non_finite_numbers_are_refused(client, lrs, release, student, number):
+    """Repro: score.scaled NaN passed the server-mark comparison (every comparison with NaN
+    is false), so a `passed` with no real score was accepted."""
+    au = _started(client, student, release)
+    assert au.initialized().status_code == 200
+    au.mark(1.0)
+    st = au.statement(
+        "passed",
+        moveon=True,
+        result={"success": True, "score": {"scaled": "__N__"}, "duration": "PT1S"},
+        ext={EXT + "masteryscore": 0.7},
+    )
+    _refused(_raw(au, st, number), "TN-NUMBER")
+    assert lrs.by_verb(ADL + "passed") == []
+    # ... anywhere in the statement, not only the score
+    other = au.statement("experienced", defined=False, ext={"https://example.org/x": "__N__"})
+    _refused(_raw(au, other, number), "TN-NUMBER")
+
+
+def test_review2_4_marking_locks_the_enrolment_before_counting(client, lrs, release, student, db_session):
+    """Repro: two concurrent /grade requests both counted N-1 marks and both recorded one.
+    The handler now writes the enrolment row (a row lock on PostgreSQL, the write lock on
+    SQLite) before it counts."""
+    from sqlalchemy import event
+
+    engine = db_session.get_bind()
+    seen: list[str] = []
+
+    def capture(conn, cursor, statement, params, context, executemany):
+        text = " ".join(statement.split()).upper()
+        if "ENROLLMENTS" in text or "CMI5_GRADES" in text:
+            seen.append(text)
+
+    event.listen(engine, "before_cursor_execute", capture)
+    try:
+        with acting_as(student):
+            r = client.post(f"/cmi5/releases/{release['id']}/aus/0/grade", json={"answers": {}})
+    finally:
+        event.remove(engine, "before_cursor_execute", capture)
+    assert r.status_code == 200, r.text
+    lock = next(i for i, s in enumerate(seen) if s.startswith("UPDATE ENROLLMENTS"))
+    count = next(i for i, s in enumerate(seen) if s.startswith("SELECT") and "CMI5_GRADES" in s)
+    assert lock < count, seen
+
+
+@pytest.mark.parametrize("suffix", ["/../mod_002", "/./x", "/%2e%2e/x", "/%2E%2E/mod_002", "//x", "/x/", "/a/../../b"])
+def test_review2_5_object_ids_are_plain_paths_under_the_au(client, lrs, release, student, suffix):
+    """Repro: `<au>/../mod_002` passed the prefix check and resolves to another AU."""
+    au = _started(client, student, release)
+    assert au.initialized().status_code == 200
+    st = au.statement("experienced", defined=False, object={"objectType": "Activity", "id": au.activity_id + suffix})
+    _refused(au.send(st), "TN-SCOPE", 403)
+
+
+def test_review2_6a_agent_profiles_are_read_only(client, lrs, release, student):
+    au = _started(client, student, release)
+    for profile_id in ("cmi5LearnerPreferences", "anything"):
+        params = {"agent": json.dumps(au.actor), "profileId": profile_id}
+        for method in ("PUT", "POST", "DELETE"):
+            r = au.lrs(method, "agents/profile", params=params, json_body=None if method == "DELETE" else {"a": 1})
+            assert r.status_code == 403, (profile_id, method, r.text)
+    assert not any(k[0] == "agent" for k in lrs.docs)
+    prefs = {"agent": json.dumps(au.actor), "profileId": "cmi5LearnerPreferences"}
+    assert au.lrs("GET", "agents/profile", params=prefs).status_code in (200, 404)
+
+
+def test_review2_6b_the_au_cannot_set_authority_or_stored(client, lrs, release, student):
+    au = _started(client, student, release)
+    st = au.statement(
+        "initialized",
+        authority={"objectType": "Agent", "account": {"homePage": "https://lms.example", "name": "admin"}},
+        stored="2020-01-01T00:00:00.000Z",
+    )
+    assert au.send(st).status_code == 200
+    kept = lrs.statements[st["id"]]
+    assert "authority" not in kept and "stored" not in kept
+    assert kept["verb"]["id"] == ADL + "initialized"
+
+
+def test_review2_6c_au_traffic_stops_when_the_course_or_the_enrolment_does(client, lrs, release, student, db_session):
+    from types import SimpleNamespace
+
+    from app.course_releases.models import CourseRelease
+    from app.models import Course, Enrollment, EnrollmentStatus
+
+    au = _started(client, student, release)
+    assert au.initialized().status_code == 200
+    course = db_session.get(Course, uuid.UUID(release["course_id"]))
+    course.is_published = False
+    db_session.commit()
+    assert au.lrs("GET", "about").status_code == 403
+    assert au.send(au.statement("experienced", defined=False)).status_code == 403
+    course.is_published = True
+    db_session.commit()
+    assert au.lrs("GET", "about").status_code == 200
+
+    enrolled = db_session.query(Enrollment).filter(Enrollment.user_id == student.id).one()
+    enrolled.status = EnrollmentStatus.withdrawn
+    db_session.commit()
+    assert au.send(au.statement("experienced", defined=False)).status_code == 403
+    assert au.lrs("GET", "activities/state", params=au.state_params("LMS.LaunchData")).status_code == 403
+
+    # A course author previews a draft course, as launching allows; their AU keeps working.
+    author = _user(db_session, UserRole.instructor)
+    ensure_enrollment(db_session, user_id=author.id, course_id=course.id, tenant_id=DEV_TENANT)
+    course.is_published = False
+    db_session.commit()
+    preview = _started(client, author, release)
+    assert preview.initialized().status_code == 200
+    assert au.lrs("GET", "about").status_code == 403  # the withdrawn Student still is not
+
+    # A registration whose enrolment no longer exists is refused the same way.
+    rel = db_session.get(CourseRelease, uuid.UUID(release["id"]))
+    with pytest.raises(lms.Cmi5Error) as exc:
+        lms._still_entitled(db_session, SimpleNamespace(enrollment_id=uuid.uuid4()), rel)
+    assert exc.value.status == 403

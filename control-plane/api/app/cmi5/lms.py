@@ -33,6 +33,7 @@ import hashlib
 import hmac
 import json
 import logging
+import math
 import os
 import secrets
 import uuid
@@ -46,7 +47,8 @@ from .. import xapi
 from ..course_releases.models import CourseRelease
 from ..course_releases.service import pinned_release
 from ..lms import LRSResponse, LRSUnavailableError, get_lms_backend
-from ..models import Enrollment
+from ..models import Course, Enrollment, EnrollmentStatus, User
+from ..rbac import ROLE_PERMISSIONS, Permission
 from . import rules
 from . import structure as structure_mod
 from .content import package
@@ -585,6 +587,7 @@ def proxy(
 ) -> LRSResponse:
     """Check one AU request against its session and the cmi5 rules, then forward it."""
     reg, release = _release(db, session)
+    _still_entitled(db, reg, release)
     actor = xapi.actor(session.user_id)
     runtime = structure_mod.au_runtime_id(release.id, session.au_index)
     method = method.upper()
@@ -599,7 +602,7 @@ def proxy(
         if method not in ("POST", "PUT"):
             raise Cmi5Error(403, "the AU credential is write-only for statements")
         graded = _graded(db, session, release.id)
-        accepted = _check_statements(session, reg, runtime, actor, body, params, method, graded)
+        accepted, body = _check_statements(session, reg, runtime, actor, body, params, method, graded)
     elif resource == "activities/state":
         _agent_param(params, actor)
         if params.get("activityId") != runtime:
@@ -618,11 +621,13 @@ def proxy(
             marks["launch_data"] = True
     elif resource == "agents/profile":
         _agent_param(params, actor)
+        if method != "GET":
+            # An Agent Profile follows the Student into every course and LMS: the AU writes
+            # none. Only cmi5LearnerPreferences is the AU's business at all, and the LMS may
+            # refuse changes to it (cmi5 11.0), as TrueNorth does.
+            raise Cmi5Error(403, "Agent Profiles are read-only for an AU")
         if params.get("profileId") == "cmi5LearnerPreferences":
-            if method == "GET":
-                marks["prefs"] = True
-            else:
-                raise Cmi5Error(403, "the learner preferences are the LMS's to change")
+            marks["prefs"] = True
     elif resource == "agents" and method == "GET":
         _agent_param(params, actor)
     elif resource in ("activities", "activities/profile"):
@@ -682,16 +687,34 @@ def _view(
         sent=set(json.loads(session.sent or "[]")),
         au_completed=bool(state.get("completed")),
         au_passed=bool(state.get("passed")),
+        tn_iri_roots=(xapi.iri_base() + "/", "http://truenorthrange.local/"),
         require_graded=True,
         graded=graded,
     )
 
 
+def _no_constant(name: str):
+    raise rules.RuleViolationError("TN-NUMBER", f"{name} is not a JSON number")
+
+
+def _finite_float(text: str) -> float:
+    value = float(text)
+    if not math.isfinite(value):
+        raise rules.RuleViolationError("TN-NUMBER", f"{text} is not a finite number")
+    return value
+
+
+# What the LRS sets on a statement itself; an AU's values are dropped, never forwarded.
+_SERVER_SET = ("authority", "stored")
+
+
 def _check_statements(
     session, reg, runtime, actor, body: bytes, params: dict[str, str], method: str, graded: float | None = None
-) -> list[str]:
+) -> tuple[list[str], bytes]:
+    """The cmi5-defined verbs accepted, and the body to forward (re-serialised from what was
+    checked, without the server-set properties)."""
     try:
-        payload = json.loads(body or b"null")
+        payload = json.loads(body or b"null", parse_constant=_no_constant, parse_float=_finite_float)
     except ValueError as exc:
         raise rules.RuleViolationError("4.1.0.0-1", "the body is not JSON") from exc
     statements = payload if isinstance(payload, list) else [payload]
@@ -705,7 +728,31 @@ def _check_statements(
         verb = rules.check(st, view, accepted)
         if verb:
             accepted.append(verb)
-    return accepted
+        for key in _SERVER_SET:
+            st.pop(key, None)
+    cleaned = statements if isinstance(payload, list) else statements[0]
+    return accepted, json.dumps(cleaned).encode()
+
+
+def _still_entitled(db: Session, reg: Cmi5Registration, release: CourseRelease) -> None:
+    """Each AU request: the Student is still enrolled on this release and the course is still
+    published (unless they may author courses, the rule launching applies: an author previews
+    a draft). A token outlives neither (primary-key reads only)."""
+    # tenant-safe: the registration's own enrolment.
+    enrolled = db.get(Enrollment, reg.enrollment_id)
+    if enrolled is None or enrolled.status == EnrollmentStatus.withdrawn:
+        raise Cmi5Error(403, "the enrolment has ended")
+    pinned = pinned_release(db, enrolled.id)
+    if pinned is None or pinned.id != release.id:
+        raise Cmi5Error(403, "the enrolment is no longer on this release")
+    # tenant-safe: the authenticated session's registration's own release's course.
+    course = db.get(Course, release.course_id)
+    if course is not None and course.is_published:
+        return
+    # tenant-safe: the enrolment's own user, for their current role.
+    who = db.get(User, enrolled.user_id)
+    if course is None or who is None or Permission.COURSE_AUTHOR not in ROLE_PERMISSIONS.get(who.role, set()):
+        raise Cmi5Error(403, "the course is no longer published")
 
 
 def _after_statements(

@@ -12,6 +12,7 @@ difference: the AU's credential here cannot read statements back (least privileg
 
 from __future__ import annotations
 
+import math
 import re
 import uuid
 from dataclasses import dataclass, field
@@ -73,6 +74,9 @@ class SessionView:
     sent: set[str] = field(default_factory=set)  # cmi5-defined verbs sent in this session
     au_completed: bool = False  # in the registration
     au_passed: bool = False
+    # IRI roots of TrueNorth's own activities (XAPI_IRI_BASE, the legacy one): a context
+    # activity under one of them must be under this AU (TN-SCOPE).
+    tn_iri_roots: tuple[str, ...] = ()
     # TrueNorth marks the quiz (POST .../grade): passed/failed must report that score.
     require_graded: bool = True
     graded: float | None = None  # the latest server-marked score since this session's launch
@@ -86,7 +90,10 @@ class SessionView:
 #              no "passed" escapes the cmi5 rules by leaving the category off;
 #  TN-ID       statement ids of UUID version 8 are reserved for the LMS's own statements;
 #  TN-SCORE    judged against a masteryScore, passed/failed carry score.scaled;
-#  TN-GRADE    in a TrueNorth session, passed/failed report the score TrueNorth marked.
+#  TN-GRADE    in a TrueNorth session, passed/failed report the score TrueNorth marked;
+#  TN-VERB     no verb id that is a cmi5/LMS verb in another spelling (case, https, a slash);
+#  TN-RESULT   a cmi5-allowed statement carries no success, completion or score;
+#  TN-NUMBER   no NaN or infinity anywhere (they would compare false against any mark).
 
 
 def is_reserved_id(value) -> bool:
@@ -98,7 +105,44 @@ def is_reserved_id(value) -> bool:
 
 
 def in_scope(object_id, au_runtime_id: str) -> bool:
-    return isinstance(object_id, str) and (object_id == au_runtime_id or object_id.startswith(au_runtime_id + "/"))
+    """The AU's own activity, or a plain path under it: no empty, '.' or '..' segment and no
+    %-encoding (which an LRS or reader could resolve back out of the subtree)."""
+    if not isinstance(object_id, str):
+        return False
+    if object_id == au_runtime_id:
+        return True
+    if not object_id.startswith(au_runtime_id + "/"):
+        return False
+    rest = object_id[len(au_runtime_id) + 1 :]
+    if any(c in rest for c in "%\\?#"):
+        return False
+    return all(seg not in ("", ".", "..") for seg in rest.split("/"))
+
+
+def _norm_verb(verb: str) -> str:
+    v = verb.strip().lower().rstrip("/")
+    return "http://" + v[len("https://") :] if v.startswith("https://") else v
+
+
+# Every verb an AU may not use as spelled differently, by its normalised form.
+_CANONICAL = {_norm_verb(v): v for v in (*AU_DEFINED, LAUNCHED, ABANDONED, WAIVED, SATISFIED, VOIDED)}
+
+
+def finite(value) -> bool:
+    """No NaN or infinity anywhere in a JSON value, nor an integer too large for a double
+    (float() of it would raise rather than compare)."""
+    if isinstance(value, float):
+        return math.isfinite(value)
+    if isinstance(value, int) and not isinstance(value, bool):
+        try:
+            return math.isfinite(float(value))
+        except OverflowError:
+            return False
+    if isinstance(value, dict):
+        return all(finite(v) for v in value.values())
+    if isinstance(value, list):
+        return all(finite(v) for v in value)
+    return True
 
 
 def _ids(items) -> list[str]:
@@ -157,8 +201,13 @@ def check(st: dict, view: SessionView, earlier: list[str]) -> str | None:
         if prop not in st:
             raise RuleViolationError("4.1.0.0-1", f"statement has no {prop}")
     verb = (st.get("verb") or {}).get("id")
-    if not verb:
+    if not verb or not isinstance(verb, str):
         raise RuleViolationError("4.1.0.0-1", "statement has no verb.id")
+    if not finite(st):
+        raise RuleViolationError("TN-NUMBER", "NaN and infinity are not JSON numbers")
+    canonical = _CANONICAL.get(_norm_verb(verb))
+    if canonical is not None and canonical != verb:
+        raise RuleViolationError("TN-VERB", f"{verb!r} is {canonical} spelled differently", status=403)
     if not st.get("id"):
         raise RuleViolationError("9.1.0.0-1", "the AU must give every statement an id")
     if is_reserved_id(st["id"]):
@@ -180,6 +229,15 @@ def check(st: dict, view: SessionView, earlier: list[str]) -> str | None:
     if not isinstance(context.get("contextActivities"), dict):
         raise RuleViolationError("10.2.1.0-6", "context has no contextActivities (contextTemplate)")
     _matches_template(context, view.context_template)
+    for key in ("parent", "grouping", "other", "category"):
+        for act_id in _ids(context["contextActivities"].get(key)):
+            ours = isinstance(act_id, str) and any(act_id.startswith(root) for root in view.tn_iri_roots)
+            if ours and not in_scope(act_id, view.au_runtime_id):
+                raise RuleViolationError(
+                    "TN-SCOPE",
+                    f"context.contextActivities.{key} names a TrueNorth activity outside this AU",
+                    status=403,
+                )
     categories = _ids(context["contextActivities"].get("category"))
     defined = CAT_CMI5 in categories
     if CAT_MOVEON in categories and (not defined or verb not in JUDGED):
@@ -203,6 +261,11 @@ def check(st: dict, view: SessionView, earlier: list[str]) -> str | None:
         if verb in AU_DEFINED:
             raise RuleViolationError(
                 "TN-DEFINED", f"{verb.rsplit('/', 1)[1]} is cmi5-defined: send it with the cmi5 category", status=403
+            )
+        result = st.get("result")
+        if isinstance(result, dict) and any(k in result for k in ("success", "completion", "score")):
+            raise RuleViolationError(
+                "TN-RESULT", "a cmi5-allowed statement carries no success, completion or score", status=403
             )
         return None  # cmi5-allowed: any other verb, about this AU
     return _check_defined(st, verb, view, earlier)
@@ -276,7 +339,7 @@ def _check_defined(st: dict, verb: str, view: SessionView, earlier: list[str]) -
                 raise RuleViolationError(
                     "TN-GRADE", "no score marked by TrueNorth in this session: submit the quiz first", status=403
                 )
-            if scaled is None or abs(float(scaled) - view.graded) > 1e-4:
+            if scaled is None or not math.isfinite(float(scaled)) or abs(float(scaled) - view.graded) > 1e-4:
                 raise RuleViolationError(
                     "TN-GRADE", f"score.scaled must be the score TrueNorth marked ({view.graded})", status=403
                 )

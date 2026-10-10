@@ -21,7 +21,19 @@ MIN_SECRET_LENGTH = 32  # the same floor app/secretbox.py applies to TN_SECRETS_
 
 # Passwords that ship in examples, compose files and the code's own defaults.
 WEAK_PASSWORDS = frozenset(
-    {"", "forge", "postgres", "password", "changeme", "change-me", "secret", "admin", "minioadmin", "truenorth", "redis"}
+    {
+        "",
+        "forge",
+        "postgres",
+        "password",
+        "changeme",
+        "change-me",
+        "secret",
+        "admin",
+        "minioadmin",
+        "truenorth",
+        "redis",
+    }
 )
 
 
@@ -162,6 +174,18 @@ def production_problems() -> list[str]:
             problems.append(f"{name} is not set, nor DOMAIN: xAPI statements would name localhost")
         elif any(host in value for host in ("localhost", "127.0.0.1")):
             problems.append(f"{name} names localhost ({value})")
+
+    # cmi5 (app/cmi5/structure.py): where Students' browsers reach the AU runtime and the API.
+    # They default to the platform URL (DOMAIN, else LTI_WEB_BASE_URL), never localhost here.
+    web = env("CMI5_WEB_BASE_URL", "").strip() or (
+        f"https://{domain}" if domain else env("LTI_WEB_BASE_URL", "").strip()
+    )
+    api = env("CMI5_API_BASE_URL", "").strip() or (f"{web.rstrip('/')}/api" if web else "")
+    for name, value in (("CMI5_WEB_BASE_URL", web), ("CMI5_API_BASE_URL", api)):
+        if not value:
+            problems.append(f"{name} is not set, nor DOMAIN or LTI_WEB_BASE_URL: cmi5 launch URLs would name localhost")
+        elif any(host in value for host in ("localhost", "127.0.0.1")):
+            problems.append(f"{name} resolves to localhost ({value})")
     return problems
 
 

@@ -297,6 +297,11 @@ def test_a_refused_statement_never_reaches_the_lrs(api_client, api_base_url, rel
     r = au.send(forged)
     assert r.status_code == 403 and r.json()["violatedReqId"] == "TN-SCOPE", r.text
     assert lrs.get("statements", params={"statementId": forged["id"]}).status_code == 404
+    # Review 2: no judgement on an uncategorised statement, even about the AU itself.
+    judged = au.statement("experienced", defined=False, result={"score": {"scaled": 1.0}})
+    r = au.send(judged)
+    assert r.status_code == 403 and r.json()["violatedReqId"] == "TN-RESULT", r.text
+    assert lrs.get("statements", params={"statementId": judged["id"]}).status_code == 404
     write = au.lrs(
         "PUT",
         "activities/state",
