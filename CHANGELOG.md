@@ -18,8 +18,10 @@ course production with a local-model fallback, and the cleanup of unsupported su
   passes, separate AU LRS credential, read-only profiles), moveOn/satisfied/abandon/waive.
   CI lane `cmi5`: ADL CATAPULT judges the runtime. Moodle cmi5 plugins evaluated and
   rejected; Moodle launches TrueNorth AUs instead.
-- **cmi5 over LTI 1.3** (#140): Moodle launches TrueNorth AUs and receives TrueNorth's mark
-  over AGS (never the AU's number), only for the exact LTI-linked account.
+- **cmi5 over LTI 1.3** (#140): Moodle launches TrueNorth AUs and receives TrueNorth's best
+  mark over AGS (never the AU's number), only for an account bound to the Student (exact LTI
+  identity, an explicit link, or a TrueNorth-managed farm node's locked idnumber; never by
+  email). AGS traffic goes through net_guard; farm nodes may use private addresses.
 - **Moodle loop** (#132): completions and quiz grades flow back to TrueNorth per course;
   LTI hand-off session for LTI-created Students; quiz/exercise launch targets; tool-config
   endpoint; staff deep linking after an explicit, browser-bound one-time link (closes the
@@ -52,6 +54,9 @@ course production with a local-model fallback, and the cleanup of unsupported su
 - Fix: `alembic heads`/`history` crashed in the image on revisions importing `app`
   (`prepend_sys_path`) — the v1.2.0-rc1 upgrade blocker (#135).
 - CI: `junit_require_pass` also fails on failing or erroring tests (#138).
+- Installer fixes from the rc2 staging upgrade: the ARC² health check matches the runner's
+  confinement field (not a literal ')'), and the demo-account steps take a fresh Keycloak
+  admin token (they outlived the ~60 s one) (#141).
 
 ### Known limitations in v1.2.0
 - Greyspace, VyOS/OPNsense configs and per-tenant vCenter are proven on vcsim/fakes, not on
