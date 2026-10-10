@@ -68,6 +68,7 @@ def get_status(user: CurrentUser = Depends(get_current_user)):
     on = enabled()
     return {"enabled": on, "reason": None if on else NOT_ENABLED}
 
+
 SLUG_RE = re.compile(r"^arc2-[a-z0-9-]{1,60}$")
 # Request and feedback text goes on /arc2's argument line after the caller's own slug. A
 # --slug or --resume in it would point the engine at another run, so it is refused here
@@ -90,8 +91,16 @@ MAX_PACKAGE_BYTES = 200 * 1024 * 1024  # a whole cmi5 package
 
 
 def runs_dir() -> Path:
-    default = Path(__file__).resolve().parents[4] / "build" / "arc2"
-    return Path(os.getenv("ARC2_RUNS_DIR", str(default)))
+    # ARC2_RUNS_DIR first: the repo-relative default exists only in a checkout. In the api
+    # image this file is /app/app/routers/arc2_studio.py, which has no parents[4], so
+    # computing the default eagerly raised IndexError on every Studio call (staging, v1.1.0).
+    configured = os.getenv("ARC2_RUNS_DIR")
+    if configured:
+        return Path(configured)
+    here = Path(__file__).resolve()
+    if len(here.parents) > 4:
+        return here.parents[4] / "build" / "arc2"
+    return Path("build") / "arc2"
 
 
 def _now() -> str:
@@ -221,8 +230,13 @@ def _enqueue(slug: str, action: str, text: str, user: CurrentUser) -> dict:
     queue = runs_dir() / "_queue"
     queue.mkdir(parents=True, exist_ok=True)
     job = {
-        "id": secrets.token_hex(8), "action": action, "slug": slug, "text": text,
-        "created_at": _now(), "requested_by": user.email or user.id, "tenant_id": str(tenant_uuid(user)),
+        "id": secrets.token_hex(8),
+        "action": action,
+        "slug": slug,
+        "text": text,
+        "created_at": _now(),
+        "requested_by": user.email or user.id,
+        "tenant_id": str(tenant_uuid(user)),
     }
     tmp = queue / f".{job['id']}.tmp"
     tmp.write_text(json.dumps(job))
@@ -233,8 +247,12 @@ def _enqueue(slug: str, action: str, text: str, user: CurrentUser) -> dict:
 def _stage_view(manifest: dict | None) -> list[dict]:
     stages = (manifest or {}).get("stages") or {}
     return [
-        {"key": key, "name": name, "state": (stages.get(key) or {}).get("state", "pending"),
-         "stop_reason": (stages.get(key) or {}).get("stop_reason")}
+        {
+            "key": key,
+            "name": name,
+            "state": (stages.get(key) or {}).get("state", "pending"),
+            "stop_reason": (stages.get(key) or {}).get("stop_reason"),
+        }
         for key, name, _ in STAGES
     ]
 
@@ -288,17 +306,34 @@ def _summary(slug: str) -> dict:
         "phase": phase,
         "phase_text": words,
         "stages": _stage_view(manifest),
-        "gates": {g: {k: v for k, v in ((manifest or {}).get("gates") or {}).get(g, {}).items()
-                      if k in ("state", "ts", "accepted_sha256", "rework_count", "accepted_by")}
-                  for g in ("outline", "preview")},
+        "gates": {
+            g: {
+                k: v
+                for k, v in ((manifest or {}).get("gates") or {}).get(g, {}).items()
+                if k in ("state", "ts", "accepted_sha256", "rework_count", "accepted_by")
+            }
+            for g in ("outline", "preview")
+        },
         "auto_accepted": _auto_accepted(manifest, jobs),
         "qa": {k: ((manifest or {}).get("qa") or {}).get(k) for k in ("result", "cycle", "rework_stage", "checked_at")},
         "actions_open": len(open_actions),
         "actions_blocking": sum(1 for a in open_actions if a.get("blocks_promotion")),
-        "job": job and {k: job.get(k) for k in ("id", "action", "state", "current_agent", "error",
-                                                 "created_at", "started_at", "finished_at")},
-        "updated_at": max(filter(None, [meta.get("created_at"), job and (job.get("finished_at") or job.get("created_at")),
-                                        _mtime(run / "manifest.json")]), default=None),
+        "job": job
+        and {
+            k: job.get(k)
+            for k in ("id", "action", "state", "current_agent", "error", "created_at", "started_at", "finished_at")
+        },
+        "updated_at": max(
+            filter(
+                None,
+                [
+                    meta.get("created_at"),
+                    job and (job.get("finished_at") or job.get("created_at")),
+                    _mtime(run / "manifest.json"),
+                ],
+            ),
+            default=None,
+        ),
     }
 
 
@@ -368,15 +403,32 @@ def _messages(slug: str, manifest: dict | None) -> list[dict]:
         auto = job.get("auto_accept")
         if isinstance(auto, dict):
             gate = "Outline" if auto.get("gate") == "outline" else "Preview"
-            msgs.append({"role": "pipeline", "auto": True, "ts": auto.get("at") or job.get("created_at"),
-                         "text": f"{gate} accepted automatically by the runner (test host). "
-                                 "Not reviewed by a person."})
+            msgs.append(
+                {
+                    "role": "pipeline",
+                    "auto": True,
+                    "ts": auto.get("at") or job.get("created_at"),
+                    "text": f"{gate} accepted automatically by the runner (test host). Not reviewed by a person.",
+                }
+            )
         if job.get("state") in ("done", "failed") and (job.get("result") or job.get("error")):
-            msgs.append({"role": "pipeline", "text": job.get("result") or job.get("error"),
-                         "ts": job.get("finished_at"), "error": job.get("state") == "failed"})
+            msgs.append(
+                {
+                    "role": "pipeline",
+                    "text": job.get("result") or job.get("error"),
+                    "ts": job.get("finished_at"),
+                    "error": job.get("state") == "failed",
+                }
+            )
     if not msgs and manifest:  # a run started from Claude Code, before the Studio existed
-        req = (manifest.get("request") or {})
-        msgs.append({"role": "user", "text": _safe_text(runs_dir() / slug / "request.txt") or str(req), "ts": (manifest.get("provenance") or {}).get("created_at")})
+        req = manifest.get("request") or {}
+        msgs.append(
+            {
+                "role": "user",
+                "text": _safe_text(runs_dir() / slug / "request.txt") or str(req),
+                "ts": (manifest.get("provenance") or {}).get("created_at"),
+            }
+        )
         for gate in ("outline", "preview"):
             g = (manifest.get("gates") or {}).get(gate) or {}
             if g.get("state") == "accepted":
@@ -400,15 +452,20 @@ def _detail(slug: str) -> dict:
         for m in ((course or {}).get("modules") or [])
     ]
     out["pages"] = [
-        p for p in _list(run, "02-content", depth=2)
-        if p.endswith(".html") and PurePosixPath(p).parts[1].startswith("mod_") and PurePosixPath(p).parts[2] == "content"
+        p
+        for p in _list(run, "02-content", depth=2)
+        if p.endswith(".html")
+        and PurePosixPath(p).parts[1].startswith("mod_")
+        and PurePosixPath(p).parts[2] == "content"
     ]
     scenario = (_safe_yaml(run / "05-sensor" / "scenario.yaml") or {}).get("scenario") or {}
     timeline = (_safe_yaml(run / "03-range" / "timeline.yaml") or {}).get("scenario") or {}
     out["lab"] = {
         "range": scenario.get("range_template") or timeline.get("range_template"),
-        "injects": [{k: i.get(k) for k in ("id", "t_offset_min", "objective_id", "critical", "author_required", "description")}
-                    for i in (timeline.get("injects") or [])],
+        "injects": [
+            {k: i.get(k) for k in ("id", "t_offset_min", "objective_id", "critical", "author_required", "description")}
+            for i in (timeline.get("injects") or [])
+        ],
         "noise_floor": [{k: n.get(k) for k in ("id", "description")} for n in (timeline.get("noise_floor") or [])],
     }
     out["findings"] = ((manifest.get("qa") or {}).get("findings")) or []
@@ -479,10 +536,13 @@ def list_runs(user: CurrentUser = Depends(author)):
     root = runs_dir()
     slugs = {p.name for p in root.iterdir() if p.is_dir() and SLUG_RE.match(p.name)} if root.is_dir() else set()
     slugs |= {j["slug"] for j in _jobs() if SLUG_RE.match(str(j.get("slug") or ""))}
-    slugs |= {p.stem for p in (root / "_studio").glob("*.json") if SLUG_RE.match(p.stem)} if (root / "_studio").is_dir() else set()
+    slugs |= (
+        {p.stem for p in (root / "_studio").glob("*.json") if SLUG_RE.match(p.stem)}
+        if (root / "_studio").is_dir()
+        else set()
+    )
     runs = [_summary(s) for s in slugs if _is_owner(s, user)]
-    return {"runs": sorted(runs, key=lambda r: r.get("updated_at") or "", reverse=True),
-            "runner_seen": _runner_seen()}
+    return {"runs": sorted(runs, key=lambda r: r.get("updated_at") or "", reverse=True), "runner_seen": _runner_seen()}
 
 
 def _runner_seen() -> str | None:
@@ -503,10 +563,16 @@ def create_run(body: NewRun, user: CurrentUser = Depends(author)):
     """Send: create a project and queue stage 1. The run stops at the outline for review."""
     request = " ".join(body.request.split())
     _refuse_run_flags(request)
-    slug = _claim_slug(body.name, {
-        "name": body.name.strip(), "request": request, "created_by": user.email or user.id,
-        "tenant_id": str(tenant_uuid(user)), "created_at": _now(),
-    })
+    slug = _claim_slug(
+        body.name,
+        {
+            "name": body.name.strip(),
+            "request": request,
+            "created_by": user.email or user.id,
+            "tenant_id": str(tenant_uuid(user)),
+            "created_at": _now(),
+        },
+    )
     _append_chat(slug, {"text": request, "ts": _now(), "by": user.email or user.id})
     _enqueue(slug, "start", request, user)
     return _detail(slug)
@@ -557,8 +623,12 @@ def reply(slug: str, body: Reply, user: CurrentUser = Depends(author)):
 def get_file(slug: str, path: str = Query(..., max_length=300), user: CurrentUser = Depends(author)):
     run = _owned_run(slug, user)
     rel = PurePosixPath(path)
-    if rel.is_absolute() or not rel.parts or any(p in ("", ".", "..") for p in rel.parts) \
-            or rel.suffix not in TEXT_SUFFIXES:
+    if (
+        rel.is_absolute()
+        or not rel.parts
+        or any(p in ("", ".", "..") for p in rel.parts)
+        or rel.suffix not in TEXT_SUFFIXES
+    ):
         raise HTTPException(404, "No such file")
     data = _read_bytes(run.joinpath(*rel.parts), MAX_FILE_BYTES + 1)
     if data is None:
@@ -600,5 +670,6 @@ def package_zip(slug: str, user: CurrentUser = Depends(author)):
     finally:
         os.close(root_fd)
     buf.seek(0)
-    return StreamingResponse(buf, media_type="application/zip",
-                             headers={"Content-Disposition": f'attachment; filename="{slug}-cmi5.zip"'})
+    return StreamingResponse(
+        buf, media_type="application/zip", headers={"Content-Disposition": f'attachment; filename="{slug}-cmi5.zip"'}
+    )
