@@ -72,7 +72,7 @@ from ..schemas import (
     ObjectiveOut,
 )
 from ..tenancy import get_owned
-from ..xapi import emit_lifecycle
+from ..xapi import emit_lifecycle, objective_result
 
 logger = logging.getLogger("truenorth.api.exercises")
 
@@ -229,11 +229,11 @@ async def start_exercise(
         emit_lifecycle(
             background_tasks,
             verb_key="attempted",
-            user_email=user.email or f"{user.id}@truenorth.local",
-            user_name=user.display_name,
+            user_id=user.id,
             activity_type="exercise",
             activity_id=str(ex.id),
             activity_name=ex.name,
+            registration=ex.id,  # the exercise run
         )
     return ex
 
@@ -352,12 +352,12 @@ async def pause_exercise(
         emit_lifecycle(
             background_tasks,
             verb_key="terminated",
-            user_email=user.email or f"{user.id}@truenorth.local",
-            user_name=user.display_name,
+            user_id=user.id,
             activity_type="exercise",
             activity_id=str(ex.id),
             activity_name=ex.name,
             context_extensions={"pause": True},
+            registration=ex.id,
         )
     return ex
 
@@ -519,13 +519,13 @@ async def acknowledge_objective(
         emit_lifecycle(
             background_tasks,
             verb_key="passed",
-            user_email=user.email or f"{user.id}@truenorth.local",
-            user_name=user.display_name,
+            user_id=user.id,
             activity_type="objective",
             activity_id=str(obj.id),
             activity_name=obj.description or obj.ref_id,
-            result={"score": {"raw": obj.points}, "success": True},
+            result=objective_result(obj.points),
             context_extensions={"exercise_id": str(exercise_id), "ref_id": obj.ref_id},
+            registration=exercise_id,
         )
     return obj
 

@@ -59,6 +59,14 @@ def total(db: Session, exercise_id: uuid.UUID) -> int:
     )
 
 
+def _run_time(ex: Exercise) -> timedelta | None:
+    """Wall time from start to completion (``result.duration``), None if either is missing."""
+    if ex.started_at is None or ex.completed_at is None:
+        return None
+    start, end = (t if t.tzinfo else t.replace(tzinfo=UTC) for t in (ex.started_at, ex.completed_at))
+    return end - start if end >= start else None
+
+
 def participants(db: Session, ex: Exercise, closer: Participant | None = None) -> list[Participant]:
     """Whoever closed it, plus every user who submitted a detection in this run."""
     rows = (
@@ -92,6 +100,7 @@ def close(db: Session, exercise_id: uuid.UUID, background_tasks: Any, closer: Pa
     people = participants(db, ex, closer)
     db.commit()
     db.refresh(ex)
+    took = _run_time(ex)
 
     for p in people:
         if dispatch("auto_assess_competency", str(ex.id), str(p.user_id)) is None:
@@ -102,12 +111,12 @@ def close(db: Session, exercise_id: uuid.UUID, background_tasks: Any, closer: Pa
             emit_lifecycle(
                 background_tasks,
                 verb_key="completed",
-                user_email=p.email or f"{p.user_id}@truenorth.local",
-                user_name=p.name,
+                user_id=p.user_id,
                 activity_type="exercise",
                 activity_id=str(ex.id),
                 activity_name=ex.name,
-                result=exercise_result(ex.total_score, ex.max_score),
+                result=exercise_result(ex.total_score, ex.max_score, duration=took),
+                registration=ex.id,  # the exercise run, shared by its participants
             )
     return ex
 

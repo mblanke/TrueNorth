@@ -20,8 +20,7 @@ _SCHEMA_PATH = Path(__file__).resolve().parents[2] / "docs" / "interfaces" / "xa
 _SCHEMA = json.loads(_SCHEMA_PATH.read_text(encoding="utf-8"))
 _VALIDATOR = Draft7Validator(_SCHEMA)
 
-_EMAIL = "student@example.mil"
-_NAME = "Test Student"
+_USER = "3b8f1c2e-5d4a-4e6f-9a7b-0c1d2e3f4a5b"  # users.id: the account name, never an email
 
 
 def _errors(stmt: dict) -> list[str]:
@@ -61,22 +60,21 @@ def test_schema_is_valid_draft7():
 
 @pytest.mark.parametrize("verb_key", sorted(xapi.VERBS))
 def test_build_statement_every_registered_verb(verb_key):
-    stmt = xapi.build_statement(verb_key, _EMAIL, _NAME, "exercise", "ex-1", "Blue Team Drill")
+    stmt = xapi.build_statement(verb_key, _USER, "exercise", "ex-1", "Blue Team Drill")
     _assert_conformant(stmt)
     assert stmt["verb"]["id"] == xapi.VERBS[verb_key]
 
 
 def test_build_statement_unregistered_verb_still_gets_an_iri():
-    stmt = xapi.build_statement("debriefed", _EMAIL, _NAME, "exercise", "ex-1", "Drill")
+    stmt = xapi.build_statement("debriefed", _USER, "exercise", "ex-1", "Drill")
     _assert_conformant(stmt)
-    assert stmt["verb"]["id"] == "http://truenorthrange.local/verbs/debriefed"
+    assert stmt["verb"]["id"] == f"{xapi.iri_base()}/verbs/debriefed"
 
 
 def test_build_statement_with_result_and_extensions():
     stmt = xapi.build_statement(
         "answered",
-        _EMAIL,
-        _NAME,
+        _USER,
         "quiz-question",
         str(uuid.uuid4()),
         "Which port does LDAPS use?",
@@ -84,18 +82,18 @@ def test_build_statement_with_result_and_extensions():
         context_extensions={"quiz_id": str(uuid.uuid4()), "attempt_id": str(uuid.uuid4())},
     )
     _assert_conformant(stmt)
-    assert all(k.startswith("http://truenorthrange.local/extensions/") for k in stmt["context"]["extensions"])
+    assert all(k.startswith(f"{xapi.iri_base()}/extensions/") for k in stmt["context"]["extensions"])
 
 
 def test_build_statement_empty_activity_id():
     # events.py passes data.get("session_id", "") for login/logout; the object id must still be an IRI.
-    stmt = xapi.build_statement("experienced", _EMAIL, _NAME, "session", "", "User Login")
+    stmt = xapi.build_statement("experienced", _USER, "session", "", "User Login")
     _assert_conformant(stmt)
 
 
 @pytest.mark.parametrize("extra", [{}, {"range_id": "r-1", "scenario_id": "s-1"}])
 def test_exercise_launched(extra):
-    _assert_conformant(xapi.exercise_launched(_EMAIL, _NAME, "ex-1", "Blue Team Drill", **extra))
+    _assert_conformant(xapi.exercise_launched(_USER, "ex-1", "Blue Team Drill", **extra))
 
 
 @pytest.mark.parametrize(
@@ -108,7 +106,7 @@ def test_exercise_launched(extra):
     ],
 )
 def test_exercise_completed(score, max_score):
-    stmt = xapi.exercise_completed(_EMAIL, _NAME, "ex-1", "Drill", score=score, max_score=max_score)
+    stmt = xapi.exercise_completed(_USER, "ex-1", "Drill", score=score, max_score=max_score)
     _assert_conformant(stmt)
     assert stmt["result"]["completion"] is True
 
@@ -124,7 +122,7 @@ def test_exercise_completed(score, max_score):
     ],
 )
 def test_exercise_completed_with_max_is_bounded(score, max_score, raw, scaled, success):
-    stmt = xapi.exercise_completed(_EMAIL, _NAME, "ex-1", "Drill", score=score, max_score=max_score)
+    stmt = xapi.exercise_completed(_USER, "ex-1", "Drill", score=score, max_score=max_score)
     _assert_conformant(stmt)
     result = stmt["result"]
     assert result["score"] == {"raw": raw, "min": 0, "max": max_score, "scaled": pytest.approx(scaled)}
@@ -135,7 +133,7 @@ def test_exercise_completed_with_max_is_bounded(score, max_score, raw, scaled, s
 def test_exercise_completed_without_max_omits_max_scaled_and_success(score, max_score):
     # Regression: max_score 0/None used to emit raw > max (40 > 0) and success=True for
     # an exercise with nothing to score. With no maximum there is nothing to pass or fail.
-    stmt = xapi.exercise_completed(_EMAIL, _NAME, "ex-1", "Drill", score=score, max_score=max_score)
+    stmt = xapi.exercise_completed(_USER, "ex-1", "Drill", score=score, max_score=max_score)
     _assert_conformant(stmt)
     result = stmt["result"]
     assert result["completion"] is True
@@ -146,13 +144,13 @@ def test_exercise_completed_without_max_omits_max_scaled_and_success(score, max_
 
 @pytest.mark.parametrize("points", [0, 50])
 def test_objective_achieved(points):
-    stmt = xapi.objective_achieved(_EMAIL, _NAME, "obj-1", "Detect C2 beacon", points)
+    stmt = xapi.objective_achieved(_USER, "obj-1", "Detect C2 beacon", points)
     _assert_conformant(stmt)
     assert stmt["result"]["success"] is True
 
 
 def test_scenario_started():
-    _assert_conformant(xapi.scenario_started(_EMAIL, _NAME, "scn-1", "Ransomware Lite", "range-1"))
+    _assert_conformant(xapi.scenario_started(_USER, "scn-1", "Ransomware Lite", "range-1"))
 
 
 class _CapturingBackgroundTasks:
@@ -168,8 +166,7 @@ def test_emit_lifecycle_queues_a_conformant_statement():
     xapi.emit_lifecycle(
         tasks,
         verb_key="terminated",
-        user_email=_EMAIL,
-        user_name=_NAME,
+        user_id=_USER,
         activity_type="exercise",
         activity_id=str(uuid.uuid4()),
         activity_name="Drill",
@@ -187,7 +184,7 @@ def test_emit_lifecycle_queues_a_conformant_statement():
 
 
 def _valid() -> dict:
-    return xapi.build_statement("launched", _EMAIL, _NAME, "exercise", "ex-1", "Drill")
+    return xapi.build_statement("launched", _USER, "exercise", "ex-1", "Drill")
 
 
 @pytest.mark.parametrize(
@@ -198,9 +195,10 @@ def _valid() -> dict:
         (lambda s: s.pop("object"), "object is required"),
         (lambda s: s["verb"].pop("id"), "verb.id is required"),
         (lambda s: s["verb"].__setitem__("id", "launched"), "verb.id must be an absolute IRI"),
-        (lambda s: s["actor"].pop("mbox"), "agent needs an IFI"),
+        (lambda s: s["actor"].pop("account"), "agent needs an IFI"),
         (lambda s: s["actor"].__setitem__("openid", "https://id.example/u"), "agent has two IFIs"),
-        (lambda s: s["actor"].__setitem__("mbox", _EMAIL), "mbox must be a mailto: IRI"),
+        (lambda s: s["actor"]["account"].pop("homePage"), "an account needs a homePage"),
+        (lambda s: s.__setitem__("actor", {"mbox": "student@example.mil"}), "mbox must be a mailto: IRI"),
         (lambda s: s.__setitem__("id", "not-a-uuid"), "id must be a UUID"),
         (lambda s: s.__setitem__("timestamp", "yesterday"), "timestamp must be ISO 8601"),
         (lambda s: s["context"].__setitem__("registration", "abc"), "registration must be a UUID"),
@@ -293,3 +291,14 @@ def test_complete_route_normal_score(client, db_session, monkeypatch):
     _assert_conformant(stmt)
     assert stmt["result"]["score"] == {"raw": 60, "min": 0, "max": 100, "scaled": 0.6}
     assert stmt["result"]["success"] is False
+
+
+def test_complete_route_names_the_student_by_account_and_the_run_as_registration(client, db_session, monkeypatch):
+    stmt = _complete_and_capture(client, db_session, monkeypatch, max_score=100, points=[80])
+    _assert_conformant(stmt)
+    assert set(stmt["actor"]) == {"objectType", "account"}
+    uuid.UUID(stmt["actor"]["account"]["name"])  # users.id
+    assert stmt["actor"]["account"]["homePage"] == xapi.account_homepage()
+    assert stmt["context"]["registration"] == stmt["object"]["id"].rsplit("/", 1)[1]  # the exercise run
+    assert "@" not in json.dumps(stmt), "an email leaked into a statement"
+    assert stmt["result"]["duration"].startswith("PT")

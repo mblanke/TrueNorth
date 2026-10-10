@@ -18,11 +18,15 @@ import os
 
 import httpx
 
-from .base import BaseLMSBackend
+from .base import BaseLMSBackend, LRSResponse, LRSUnavailableError
 
 logger = logging.getLogger("truenorth.lms.xapi_lrs")
 
 _XAPI_VERSION_HEADER = "1.0.3"
+# What a caller may pass through to the LRS, and what comes back. Authorization is never
+# forwarded (the backend sends its own credential), and hop-by-hop headers are dropped.
+_FORWARDED_REQUEST_HEADERS = frozenset({"content-type", "if-match", "if-none-match", "x-experience-api-version"})
+_RETURNED_RESPONSE_HEADERS = frozenset({"content-type", "etag", "last-modified", "x-experience-api-consistent-through"})
 
 
 class XAPILRSBackend(BaseLMSBackend):
@@ -99,6 +103,40 @@ class XAPILRSBackend(BaseLMSBackend):
         except Exception as exc:
             logger.warning("LRS emit_statement_sync failed: %s", exc)
             return False
+
+    supports_resources = True
+
+    def xapi_request(
+        self,
+        method: str,
+        resource: str,
+        *,
+        params: dict[str, str] | None = None,
+        body: bytes | None = None,
+        headers: dict[str, str] | None = None,
+        timeout: float = 10.0,
+    ) -> LRSResponse:
+        resource = resource.lstrip("/")
+        if not resource or ".." in resource.split("/"):
+            raise ValueError(f"not an xAPI resource: {resource!r}")
+        sent = {"X-Experience-API-Version": _XAPI_VERSION_HEADER}
+        for name, value in (headers or {}).items():
+            if name.lower() in _FORWARDED_REQUEST_HEADERS:
+                sent[name] = value
+        if self._auth:
+            sent["Authorization"] = f"Basic {self._auth}"  # the server's credential, never a caller's
+        try:
+            with httpx.Client(timeout=timeout) as client:
+                resp = client.request(
+                    method.upper(), f"{self._url}/xapi/{resource}", params=params or None, content=body, headers=sent
+                )
+        except httpx.HTTPError as exc:
+            raise LRSUnavailableError(f"LRS {method.upper()} {resource}: {exc}") from exc
+        return LRSResponse(
+            status=resp.status_code,
+            body=resp.content,
+            headers={k.lower(): v for k, v in resp.headers.items() if k.lower() in _RETURNED_RESPONSE_HEADERS},
+        )
 
     async def health_check(self) -> bool:
         try:

@@ -157,7 +157,7 @@ def xapi(monkeypatch):
     """Capture xAPI statements instead of queueing them."""
     sent: list[tuple[str, str]] = []
 
-    def _capture(_bg, verb, _email, _name, activity_type, activity_id, *_a, **_k):
+    def _capture(_bg, verb, _user_id, activity_type, activity_id, *_a, **_k):
         sent.append((verb, activity_type))
 
     monkeypatch.setattr(quizzes_router, "emit_lifecycle", _capture)

@@ -517,6 +517,12 @@ services:
       LMS_BACKEND: ${LMS_BACKEND:-xapi_lrs}
       LRS_URL: ${LRS_URL:-http://lrs:8080}
       LRS_AUTH: ${LRS_AUTH}
+      # xAPI identity and IRIs (app/xapi.py, docs/xapi-conformance.md): the actor is
+      # account {homePage: XAPI_ACCOUNT_HOMEPAGE, name: users.id}; TrueNorth-minted IRIs
+      # live under XAPI_IRI_BASE. Fix both before data exists: IRIs compare as strings.
+      XAPI_ACCOUNT_HOMEPAGE: ${XAPI_ACCOUNT_HOMEPAGE:-https://${DOMAIN}}
+      XAPI_IRI_BASE: ${XAPI_IRI_BASE:-https://${DOMAIN}/xapi}
+      XAPI_DEFAULT_LANGUAGE: ${XAPI_DEFAULT_LANGUAGE:-en}
       SEARCH_BACKEND: ${SEARCH_BACKEND:-opensearch}
       AI_ORCHESTRATOR_URL: http://ai-orchestrator:6000
       # Schema ownership belongs to Alembic. The installer sets these false so the

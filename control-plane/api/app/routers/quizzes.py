@@ -49,6 +49,8 @@ from ..models import (
 )
 from ..rbac import Permission, require_permission, user_has_permission
 from ..xapi import emit_lifecycle
+from ..xapi import score_result as xapi_score_result
+from ..xapi_context import quiz_context
 
 logger = logging.getLogger("truenorth.api.quizzes")
 
@@ -435,6 +437,7 @@ def submit_attempt(
     score = 0
     results: list[QuestionResultOut] = []
     competency_points: dict[str, list[int]] = {}  # code -> [earned, possible]
+    where = quiz_context(db, quiz, uuid.UUID(user.id), attempt.id)  # registration + language
 
     for qid, question in questions.items():
         selected = sorted(set(answers.get(qid, [])))
@@ -466,13 +469,14 @@ def submit_attempt(
         emit_lifecycle(
             background_tasks,
             "answered",
-            user.email,
-            user.display_name,
+            user.id,
             "quiz-question",
             str(question.id),
             question.stem[:200],
-            result={"success": is_correct, "score": {"raw": earned, "max": question.points}},
+            result={"success": is_correct, "score": {"raw": earned, "min": 0, "max": question.points}},
             context_extensions={"quiz_id": str(quiz.id), "attempt_id": str(attempt.id)},
+            registration=where.registration,
+            language=where.language,
         )
 
     max_score = attempt.max_score or sum(q.points for q in quiz.questions)
@@ -484,30 +488,37 @@ def submit_attempt(
     attempt.passed = passed
     attempt.submitted_at = datetime.now(UTC)
 
-    # Attempt-level xAPI: scored + passed/failed
+    # Attempt-level xAPI: scored + passed/failed, judged against this quiz's own pass mark.
+    started = attempt.started_at
+    if started is not None and started.tzinfo is None:  # SQLite hands back naive UTC
+        started = started.replace(tzinfo=UTC)
+    took = attempt.submitted_at - started if started else None
+    graded = xapi_score_result(score, max_score, pass_threshold=quiz.pass_pct / 100, duration=took)
+    graded["success"] = passed  # the route's own verdict (the same rule), never a second opinion
+    quiz_ext = {"attempt_id": str(attempt.id), "pass_threshold": quiz.pass_pct / 100}
     emit_lifecycle(
         background_tasks,
         "scored",
-        user.email,
-        user.display_name,
+        user.id,
         "quiz",
         str(quiz.id),
         quiz.title,
-        result={
-            "score": {"raw": score, "max": max_score, "scaled": score / max(max_score, 1)},
-            "completion": True,
-            "success": passed,
-        },
+        result={**graded, "completion": True},
+        context_extensions=quiz_ext,
+        registration=where.registration,
+        language=where.language,
     )
     emit_lifecycle(
         background_tasks,
         "passed" if passed else "failed",
-        user.email,
-        user.display_name,
+        user.id,
         "quiz",
         str(quiz.id),
         quiz.title,
-        result={"success": passed},
+        result=graded,
+        context_extensions=quiz_ext,
+        registration=where.registration,
+        language=where.language,
     )
 
     # Module progress (if quiz is bound to a course module the user is enrolled in)

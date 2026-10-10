@@ -298,15 +298,19 @@ async def xapi_handler(event: Event) -> None:
     from . import xapi
 
     data = event.data
-    user_email = data.get("user_email", "unknown@truenorth.local")
-    user_name = data.get("user_name", "Unknown")
+    # The actor is the event's user id (an account IFI, app/xapi.py). An event with no
+    # user produces no statement: it used to be sent as "unknown@truenorth.local", a
+    # made-up person every anonymous event in the LRS was credited to.
+    user_id = event.user_id or data.get("user_id")
+    if not user_id:
+        logger.debug("xAPI: %s has no user; no statement", event.type.value)
+        return
 
     stmt = None
     try:
         if event.type == EventType.EXERCISE_STARTED:
             stmt = xapi.exercise_launched(
-                user_email=user_email,
-                user_name=user_name,
+                user_id,
                 exercise_id=data.get("exercise_id", ""),
                 exercise_name=data.get("exercise_name", ""),
                 range_id=data.get("range_id", ""),
@@ -314,8 +318,7 @@ async def xapi_handler(event: Event) -> None:
             )
         elif event.type == EventType.EXERCISE_COMPLETED:
             stmt = xapi.exercise_completed(
-                user_email=user_email,
-                user_name=user_name,
+                user_id,
                 exercise_id=data.get("exercise_id", ""),
                 exercise_name=data.get("exercise_name", ""),
                 score=data.get("total_score", 0),
@@ -323,30 +326,16 @@ async def xapi_handler(event: Event) -> None:
             )
         elif event.type == EventType.OBJECTIVE_ACHIEVED:
             stmt = xapi.objective_achieved(
-                user_email=user_email,
-                user_name=user_name,
+                user_id,
                 objective_id=data.get("objective_id", ""),
                 objective_name=data.get("objective_name", ""),
                 points=data.get("points", 0),
+                exercise_id=data.get("exercise_id") or None,
             )
         elif event.type == EventType.USER_LOGIN:
-            stmt = xapi.build_statement(
-                "experienced",
-                user_email,
-                user_name,
-                "session",
-                data.get("session_id", ""),
-                "User Login",
-            )
+            stmt = xapi.build_statement("experienced", user_id, "session", data.get("session_id", ""), "User Login")
         elif event.type == EventType.USER_LOGOUT:
-            stmt = xapi.build_statement(
-                "terminated",
-                user_email,
-                user_name,
-                "session",
-                data.get("session_id", ""),
-                "User Logout",
-            )
+            stmt = xapi.build_statement("terminated", user_id, "session", data.get("session_id", ""), "User Logout")
 
         if stmt:
             success = await xapi.send_statement(stmt)
