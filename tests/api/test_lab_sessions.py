@@ -195,6 +195,13 @@ class TestLaunch:
         with pytest.raises(service.LabRefusedError, match="not in the image catalogue"):
             launch(db_session, student(db_session), rid)
 
+    def test_a_switched_off_experimental_backend_is_refused(self, lab, db_session, monkeypatch):
+        _, rid, _ = lab
+        monkeypatch.setenv("PROVISIONER_BACKEND", "proxmox_api")
+        monkeypatch.delenv("EXPERIMENTAL_PROVISIONERS", raising=False)
+        with pytest.raises(service.LabRefusedError, match="experimental"):
+            launch(db_session, student(db_session), rid)
+
     def test_only_range_activities_have_labs(self, lab, db_session):
         _, rid, _ = lab
         with pytest.raises(service.LabRefusedError, match="not a range activity"):

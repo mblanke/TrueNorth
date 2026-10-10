@@ -34,6 +34,7 @@ from sqlalchemy import func, or_, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from .. import provisioner_choice
 from ..course_releases import lab_profile as profile_rules
 from ..course_releases.models import ACCEPTED, SUPERSEDED, CourseRelease
 from ..course_releases.service import load_bundle
@@ -463,6 +464,8 @@ def launch(
     other = db.query(LabSession).filter(LabSession.user_id == user_id, LabSession.state.in_(HOLDS_RESOURCES)).first()
     if other is not None:
         raise LabRefusedError("you already have a lab running or waiting; end it before starting another")
+    if why := provisioner_choice.refusal(backend()):  # an experimental backend that is switched off
+        raise LabRefusedError(why)
 
     profile = release_profile(db, release, activity_id)
     check_profile(db, profile, activity_id)

@@ -33,10 +33,11 @@ This guide remains the reference for what each component is, for Kubernetes, and
 for operating the stack after it is up.
 
 > **Note on `PROVISIONER_BACKEND`:** the valid values are the registry keys in
-> `worker/provisioners/__init__.py` — `mock`, `proxmox_api`, `vsphere_api`,
-> `hyperv`, `terraform`, `terraform_proxmox`, `terraform_vsphere`,
-> `terraform_hyperv`. Bare `vsphere` and `proxmox` are **not** keys and raise
-> `ValueError` at the first provision attempt.
+> `worker/provisioners/__init__.py` — `mock` and `vsphere_api` (supported), and
+> `proxmox_api` and `hyperv` (experimental: the API, the workers and the installer
+> preflight refuse them unless `EXPERIMENTAL_PROVISIONERS=true` /
+> `tn_experimental_provisioners: true`). The Terraform backends were removed (ADR 0009).
+> Bare `vsphere` and `proxmox` are **not** keys: creating a range answers 409.
 
 ---
 
@@ -701,10 +702,11 @@ services:
 
 | Variable | Default | Required | Description |
 |----------|---------|----------|-------------|
-| `PROVISIONER_BACKEND` | `mock` | No | `mock` or `terraform` |
-| `PROXMOX_API_URL` | -- | Terraform | Proxmox API endpoint |
-| `PROXMOX_TOKEN_ID` | -- | Terraform | Proxmox API token ID |
-| `PROXMOX_TOKEN_SECRET` | -- | Terraform | Proxmox API secret |
+| `PROVISIONER_BACKEND` | `mock` | No | `mock` or `vsphere_api`; experimental: `proxmox_api`, `hyperv` |
+| `EXPERIMENTAL_PROVISIONERS` | `false` | No | `true` allows the experimental `proxmox_api` and `hyperv` backends (API and workers) |
+| `PROXMOX_URL` | -- | proxmox_api | Proxmox API endpoint (experimental backend) |
+| `PROXMOX_TOKEN_ID` | -- | proxmox_api | Proxmox API token ID |
+| `PROXMOX_TOKEN_SECRET` | -- | proxmox_api | Proxmox API secret |
 | `CELERY_BROKER_URL` | `redis://redis:6379/0` | Yes | Celery broker URL |
 | `CELERY_RESULT_BACKEND` | `redis://redis:6379/1` | Yes | Result backend URL |
 

@@ -25,6 +25,10 @@ os.environ.setdefault("TN_SECRETS_KEY", "test-only-secrets-key-0123456789abcdef"
 os.environ.setdefault("COURSE_PUBLISH_RESUME", "false")
 os.environ.setdefault("LAB_SESSIONS_SWEEP", "false")
 os.environ.setdefault("RANGE_OP_REDISPATCH_SECONDS", "0")  # tests call redispatch_pending themselves
+# proxmox_api and hyperv are experimental (off by default); their tests keep running. The
+# refusal itself is tested with the variable removed (tests/worker/test_provisioners.py,
+# tests/api/test_provisioner_choice.py).
+os.environ.setdefault("EXPERIMENTAL_PROVISIONERS", "true")
 
 from app.db import Base, get_db
 from app.main import app as fastapi_app

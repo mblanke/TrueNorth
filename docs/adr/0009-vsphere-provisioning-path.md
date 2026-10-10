@@ -50,5 +50,25 @@ intentionally separate: its own instructions forbid `terraform apply` from that 
   provisioner still takes its endpoint and login from the environment; a build and its
   destroy must use the same vCenter, so this is changed for every operation at once or
   not at all.
-- `terraform_vsphere` stays registered (ADR 0001 does not require removing an adapter to
-  stop using it).
+- ~~`terraform_vsphere` stays registered (ADR 0001 does not require removing an adapter to
+  stop using it).~~ Superseded 2026-10-09, below.
+
+## Amendment 2026-10-09 — Terraform backends removed; Proxmox and Hyper-V experimental
+- `terraform`, `terraform_proxmox`, `terraform_vsphere` and `terraform_hyperv` are removed
+  from the registry, and `provisioners/terraform.py` with them. Nothing else used it, the
+  worker image has no `terraform` binary (so every one of them failed at its first
+  `terraform init`), and decision 2 already ruled `terraform_vsphere` out as a range
+  builder. The worker image no longer creates `/opt/truenorth/terraform/workspaces`, and
+  the Helm chart no longer mounts it. `infra/vsphere/terraform` (reference environments)
+  and `infra/proxmox/terraform` (its own CI plan) are unchanged.
+- `proxmox_api` and `hyperv` stay registered but are **experimental**: off unless
+  `EXPERIMENTAL_PROVISIONERS` is true. Neither has had a live run, and the sites served
+  are vSphere-only. With the flag off:
+  - the worker's `get_provisioner()` raises `ExperimentalProvisionerError`, a final error
+    (no retry; the range is recorded `failed` with the reason);
+  - the API answers 409, naming the fix, to `POST /ranges` and refuses a lab launch,
+    before any range row exists (`app/provisioner_choice.py`; a contract test keeps its
+    list equal to the worker registry);
+  - the installer preflight refuses `tn_provisioner_backend: proxmox_api|hyperv` unless
+    `tn_experimental_provisioners: true` (rendered to `EXPERIMENTAL_PROVISIONERS`).
+- Supported backends are `vsphere_api` and `mock` (a site without vCenter, tests).

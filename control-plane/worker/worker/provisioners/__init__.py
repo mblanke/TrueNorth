@@ -1,19 +1,26 @@
 """TrueNorth Range - Provisioner registry.
 
 Maps backend names to provisioner classes and provides a factory function.
+
+Supported: ``vsphere_api`` (ADR 0009) and ``mock``. ``proxmox_api`` and ``hyperv`` are
+experimental: registered, but refused unless ``EXPERIMENTAL_PROVISIONERS`` is true
+(the API refuses to create a range on them too, app/provisioner_choice.py). The
+Terraform backends were removed: the worker image has no terraform binary and ADR 0009
+rules ``terraform_vsphere`` out as a range builder.
 """
 
 from __future__ import annotations
 
+import os
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .base import BaseProvisioner
 
+from .base import ExperimentalProvisionerError
 from .hyperv import HypervProvisioner
 from .mock import MockProvisioner
 from .proxmox_api import ProxmoxAPIProvisioner
-from .terraform import TerraformProvisioner
 from .vsphere_api import VsphereAPIProvisioner
 
 _REGISTRY: dict[str, type] = {
@@ -22,14 +29,14 @@ _REGISTRY: dict[str, type] = {
     "proxmox_api": ProxmoxAPIProvisioner,
     "vsphere_api": VsphereAPIProvisioner,
     "hyperv": HypervProvisioner,
-    # Terraform provisioners — one entry per supported hypervisor type.
-    # These share the same TerraformProvisioner class but use different
-    # template directories (TERRAFORM_<TYPE>_DIR env vars).
-    "terraform": TerraformProvisioner,  # default — proxmox
-    "terraform_proxmox": lambda: TerraformProvisioner(hypervisor_type="proxmox"),
-    "terraform_vsphere": lambda: TerraformProvisioner(hypervisor_type="vsphere"),
-    "terraform_hyperv": lambda: TerraformProvisioner(hypervisor_type="hyperv"),
 }
+# Registered but off by default: no live run, no maintained deployment (vSphere only).
+EXPERIMENTAL: frozenset[str] = frozenset({"proxmox_api", "hyperv"})
+
+
+def experimental_enabled() -> bool:
+    """Whether EXPERIMENTAL_PROVISIONERS is set true (read on every call, not at import)."""
+    return os.getenv("EXPERIMENTAL_PROVISIONERS", "").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def get_provisioner(backend: str) -> BaseProvisioner:
@@ -37,10 +44,16 @@ def get_provisioner(backend: str) -> BaseProvisioner:
 
     Raises:
         ValueError: If the backend is not registered.
+        ExperimentalProvisionerError: If it is experimental and EXPERIMENTAL_PROVISIONERS is off.
     """
     factory = _REGISTRY.get(backend)
     if factory is None:
         raise ValueError(f"Unknown provisioner backend: {backend!r}. Available: {sorted(_REGISTRY)}")
+    if backend in EXPERIMENTAL and not experimental_enabled():
+        raise ExperimentalProvisionerError(
+            f"Provisioner backend {backend!r} is experimental and disabled. Supported: mock, vsphere_api. "
+            "Set EXPERIMENTAL_PROVISIONERS=true on the API and the workers to use it anyway."
+        )
     return factory()
 
 
@@ -78,10 +91,12 @@ def discard_built(provisioner, range_id: str, result) -> dict:
 
 __all__ = [
     "discard_built",
+    "EXPERIMENTAL",
+    "ExperimentalProvisionerError",
     "MockProvisioner",
-    "TerraformProvisioner",
     "ProxmoxAPIProvisioner",
     "VsphereAPIProvisioner",
     "HypervProvisioner",
+    "experimental_enabled",
     "get_provisioner",
 ]

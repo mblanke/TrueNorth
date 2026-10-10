@@ -35,11 +35,10 @@ LABEL org.opencontainers.image.title="truenorth-worker" \
       org.opencontainers.image.source="https://github.com/mblanke/TrueNorth"
 # Run as an unprivileged user (Trivy DS-0002). Dependencies and code stay root-owned,
 # so a compromised process cannot rewrite the app it is running. Pre-created and owned
-# by it: the Terraform workspace root (provisioners/terraform.py, TERRAFORM_WORKSPACE_ROOT)
-# and /data, where flower (same image, compose) keeps --db=/data/flower.db; a fresh named
-# volume takes this directory's owner.
+# by it: /data, where flower (same image, compose) keeps --db=/data/flower.db; a fresh
+# named volume takes this directory's owner.
 RUN useradd --system --uid 10001 --create-home --home-dir /home/app app \
-    && mkdir -p /opt/truenorth/terraform/workspaces /data \
-    && chown app:app /opt/truenorth/terraform/workspaces /data
+    && mkdir -p /data \
+    && chown app:app /data
 USER app
 CMD ["celery","-A","worker.celery_app","worker","--loglevel=INFO"]

@@ -707,7 +707,8 @@ actually change:
 | `tn_bootstrap_admin_upn` | *(empty — required)* | The named AD account that admits everyone else. |
 | `tn_tls_mode` | `selfsigned` | `provided` once the AD CS certificate is in `files/tls/` |
 | `tn_opensearch_disable_security` | `false` | Lab/dev override only: OpenSearch without auth or TLS ("OpenSearch" above). |
-| `tn_provisioner_backend` | `vsphere_api` | **Not** `vsphere` — that is not a registry key and raises `ValueError`. |
+| `tn_provisioner_backend` | `vsphere_api` | **Not** `vsphere` — that is not a registry key; preflight refuses it. `mock` for a site without vCenter. |
+| `tn_experimental_provisioners` | `false` | `true` lets preflight, the API and the workers accept the experimental `proxmox_api` / `hyperv` backends (unsupported). |
 | `tn_seed_demo_data` | `false` | Demo tenants have no place in a range holding CAF curriculum. |
 | `tn_default_progression` | `DP1` | Developmental progression a new trainee joins (DP1 → DP2). |
 | `tn_arc2_enabled` | `false` | ARC² Course Studio; with exactly one of `vault_arc2_claude_oauth_token` or `vault_arc2_anthropic_api_key` ("ARC² Course Studio (optional)"). |
