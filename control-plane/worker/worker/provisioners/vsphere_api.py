@@ -20,9 +20,10 @@ isolated.
 Software named in a node's ``services`` is installed after power-on through VMware
 guest operations (vsphere_guest.py), from the depot behind the uplink.
 
-Each pfSense VM gets a per-range config.xml (worker/pfsense_config.py: zone gateways,
-WAN, NAT, the template's firewall rules, depot-only egress) in its guestinfo before its
-first power-on; the template's boot script applies it.
+Each pfSense or OPNsense VM gets a per-range config.xml (worker/pfsense_config.py: zone
+gateways, WAN, NAT, the template's firewall rules, depot-only egress) in its guestinfo
+before its first power-on; the template's boot script applies it. Each VyOS VM gets the
+same policy as configuration commands (worker/vyos_config.py) in cloud-init user data.
 
 A lab session's network is the exception to per-range port groups: its segment names a
 pre-created, isolated ``port_group`` leased from LAB_PORT_GROUPS. Those NICs attach to
@@ -66,7 +67,7 @@ try:
 except ImportError:  # only the snapshot operations need it
     Disconnect = SmartConnect = vim = vmodl = None  # type: ignore[assignment]
 
-from .. import pfsense_config, software_catalogue, uplink_pool, vlan_pool
+from .. import pfsense_config, software_catalogue, uplink_pool, vlan_pool, vyos_config
 from . import vsphere_guest as guest
 from . import vsphere_infra as infra
 from . import vsphere_roles
@@ -1054,10 +1055,12 @@ class VsphereAPIProvisioner(BaseProvisioner):
         """Hostname and static IPs, applied while the VM is still powered off.
 
         Linux: cloud-init guestinfo metadata, NICs matched by MAC. Windows: Sysprep
-        guest customization. pfSense: the per-range config.xml (``_pfsense``, planned in
-        ``_plan_appliances``) in ``guestinfo.tn.pfsense.*``, with the NICs' MACs, for the
-        template's boot script to apply. Other routers (VyOS, OPNsense): none yet; their
-        NIC order is WAN first (the uplink, when there is one), then the zones.
+        guest customization. pfSense / OPNsense: the per-range config.xml (``_pfsense``,
+        planned in ``_plan_appliances``) in ``guestinfo.tn.pfsense.*`` /
+        ``guestinfo.tn.opnsense.*``, with the NICs' MACs, for the template's boot script to
+        apply. VyOS: the configuration commands (``_vyos``) as cloud-init user data in
+        ``guestinfo.userdata``, each ethN pinned to its MAC. Router NIC order is WAN first
+        (the uplink, when there is one), then the zones.
 
         A VM with software to install carries ``_guest`` credentials: the Windows
         Administrator password Sysprep sets, or the Linux install user cloud-init creates.
@@ -1072,13 +1075,16 @@ class VsphereAPIProvisioner(BaseProvisioner):
         elif family == "windows":
             password = creds.password.reveal() if creds else None
             self._wait(vm.CustomizeVM_Task(spec=infra.windows_customization(vm_def, password)), si)
-        elif vm_def.get("_pfsense") is not None:
+        elif vm_def.get("_pfsense") is not None or vm_def.get("_vyos") is not None:
             macs = [card.macAddress for card in infra.nic_cards(vm.config.hardware.device)]
-            values = pfsense_config.guestinfo(vm_def["_pfsense"], macs)
+            if vm_def.get("_pfsense") is not None:
+                values = pfsense_config.guestinfo(vm_def["_pfsense"], macs)
+            else:
+                values = vyos_config.guestinfo(vm_def["_vyos"], macs, vm_def["name"])
             spec = vim.vm.ConfigSpec(extraConfig=[vim.option.OptionValue(key=k, value=v) for k, v in values.items()])
             self._wait(vm.ReconfigVM_Task(spec=spec), si)
-        # TODO(appliance): VyOS / OPNsense configs. Until then those boot with their
-        # template config (the runbook, §4.1a, says what that config must hold).
+        # Any other appliance boots with its template config (the runbook, §4.1a, says what
+        # that config must hold).
 
     def _teardown_sync(self, si, range_id: str, networks: list[dict], mirrors: bool = False) -> int:
         """Remove the range's mirror sessions, port groups and (empty) VM folder. Missing
@@ -1341,20 +1347,25 @@ class VsphereAPIProvisioner(BaseProvisioner):
 
     def _plan_appliances(self, vm_defs: list[dict], template: dict, networks: list[dict],
                          warnings: list[str]) -> None:
-        """Render each pfSense VM's per-range config.xml (``_pfsense``), after the uplink NIC
-        is planned. The template's ``network.firewall_rules`` apply when it has any; rules
-        that cannot become pfSense rules are skipped with a warning."""
+        """Render each router appliance's per-range config, after the uplink NIC is planned:
+        a config.xml for pfSense and OPNsense (``_pfsense``, pfsense_config.py), configuration
+        commands for VyOS (``_vyos``, vyos_config.py). The template's
+        ``network.firewall_rules`` apply when it has any; rules that cannot be translated
+        are skipped with a warning."""
         net = template.get("network") if isinstance(template.get("network"), dict) else {}
         rules = [r for r in (net.get("firewall_rules") or []) if isinstance(r, dict)]
         depot_host = (urlparse(self._depot_url).hostname or "") if self._depot_url else ""
         for vm_def in vm_defs:
-            if infra.os_family(vm_def) != "appliance" or not pfsense_config.is_pfsense(vm_def):
+            if infra.os_family(vm_def) != "appliance":
                 continue
-            cfg = pfsense_config.build_config(
-                vm_def, networks=networks, rules=rules, depot_host=depot_host, depot_ports=self._depot_ports,
-                hostname=infra.hostname(vm_def),
-            )
-            vm_def["_pfsense"] = cfg
+            kw = {"networks": networks, "rules": rules, "depot_host": depot_host, "depot_ports": self._depot_ports,
+                  "hostname": infra.hostname(vm_def)}
+            if product := pfsense_config.product_of(vm_def):  # pfSense or OPNsense: a config.xml
+                cfg = vm_def["_pfsense"] = pfsense_config.build_config(vm_def, product=product, **kw)
+            elif vyos_config.is_vyos(vm_def):  # VyOS: configuration commands through cloud-init
+                cfg = vm_def["_vyos"] = vyos_config.build_config(vm_def, **kw)
+            else:
+                continue
             warnings += [f"VM {vm_def['name']}: {n}" for n in cfg.notes]
 
     def _plan_mirrors(self, template: dict, networks: list[dict], warnings: list[str]) -> list[dict]:
@@ -1625,7 +1636,9 @@ class VsphereAPIProvisioner(BaseProvisioner):
         ip = await self._get_vm_ip(client, vm_id, exclude=mgmt_ip or "") if tools_ready else None
         host, datastore = vm_def["_placement"]
         primary = next((n for n in vm_def["nics"] if not n.get("uplink")), vm_def["nics"][0])
-        extra = {"pfsense": vm_def["_pfsense"].summary()} if vm_def.get("_pfsense") is not None else {}
+        extra = {}
+        if (cfg := vm_def.get("_pfsense") or vm_def.get("_vyos")) is not None:
+            extra[getattr(cfg, "product", "vyos")] = cfg.summary()  # pfsense | opnsense | vyos
         if mgmt_ip:
             extra["mgmt_ip"] = mgmt_ip  # the noise controller reaches the agent here
         return {

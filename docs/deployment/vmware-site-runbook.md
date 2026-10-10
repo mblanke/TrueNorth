@@ -235,8 +235,23 @@ guide, pfSense) applies it on first boot and reboots once into it. The config ho
   and 192.168.1.0/24. Both layers are needed: the UniFi rule protects the platform if a
   student reconfigures pfSense.
 
-OPNsense and VyOS get no generated config yet (`TODO(appliance)` in `vsphere_api.py`); a
-range that uses one as its edge must carry the rules above in its template.
+**OPNsense and VyOS are configured per range too** (same policy as pfSense above):
+- **OPNsense:** the same config, in OPNsense's legacy `config.xml` layout (root
+  `<opnsense>`), in `guestinfo.tn.opnsense.config` / `.ifmap`. The boot script is the
+  pfSense one installed as `/usr/local/sbin/tn-opnsense-config`; `tn-opnsense-config
+  install` adds the hook `/usr/local/etc/rc.syshook.d/early/50-tn-opnsense-config`
+  (build guide, OPNsense). It works on `/conf/config.xml` and logs to
+  `/conf/tn-opnsense-config.log`. `provisioner_output.vms[].opnsense` records it.
+- **VyOS:** configuration commands (`control-plane/worker/worker/vyos_config.py`) as
+  cloud-init user data (`guestinfo.userdata`, `vyos_config_commands`), applied once per
+  instance id by VyOS's cloud-init on first boot: `ethN` pinned to each NIC's MAC
+  (`hw-id`), addresses, the default route to the uplink gateway, source NAT out of
+  `eth0`, a forward filter with default **drop** (replies; zones → depot TCP
+  `TN_DEPOT_PORTS`; the template's rules, or zone ↔ zone), and an input filter that drops
+  new connections from the WAN. `TN_DEPOT_URL`'s host must be an IP address for the
+  depot rule. `provisioner_output.vms[].vyos` records it.
+- Neither has had a live run yet: both are tested against the renderers and the vSphere
+  fakes (`tests/worker/test_appliance_configs.py`).
 
 #### Per-VM software at deploy time
 
