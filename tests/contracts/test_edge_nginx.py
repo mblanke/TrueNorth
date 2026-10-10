@@ -323,6 +323,13 @@ def test_spa_forms_post_only_to_this_host_its_moodle_included(edge):
     assert _directive(csp, "form-action") == ["'self'", "https://$host:*"]
 
 
+def test_spa_connects_only_to_this_host_its_moodle_included(edge):
+    """A cmi5 module launched by the installer's Moodle (its own origin on this host) sends
+    its xAPI statements to Moodle's endpoint; nothing beyond this host is reachable."""
+    csp = headers_for(edge, route(edge, "/"))["content-security-policy"]
+    assert _directive(csp, "connect-src") == ["'self'", "wss://$host", "https://$host:*"]
+
+
 def test_silent_sso_page_and_previews_can_be_framed_by_the_spa(edge):
     sso = headers_for(edge, route(edge, "/assets/silent-check-sso.html"))
     assert sso["x-frame-options"] == "SAMEORIGIN"

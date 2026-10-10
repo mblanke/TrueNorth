@@ -331,11 +331,11 @@ export class AppComponent implements OnDestroy {
   isBareRoute = signal(false);
 
   /** Pages that render without the navigation shell: sign-in, a student's lab (often
-   *  opened from Moodle by someone with no TrueNorth session), and the ARC² Course
-   *  Studio, which has its own chrome. */
+   *  opened from Moodle by someone with no TrueNorth session), the ARC² Course
+   *  Studio, which has its own chrome, and cmi5 modules (often launched by another LMS). */
   private isBare(url: string): boolean {
     const arc2 = url === '/arc2' || url.startsWith('/arc2/') || url.startsWith('/arc2?');
-    return url.startsWith('/login') || url.startsWith('/labs/') || arc2;
+    return url.startsWith('/login') || url.startsWith('/labs/') || url.startsWith('/au/') || arc2;
   }
   workspaceTitle = signal('Overview');
 

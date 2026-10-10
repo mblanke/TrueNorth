@@ -3,7 +3,8 @@
 What every statement TrueNorth's API emits looks like, why, how to configure it, and what
 happened to the statements sent before this scheme (2026-10-09). The builder is
 `control-plane/api/app/xapi.py`; the database lookups that place a statement (its
-registration and language) are `app/xapi_context.py`.
+registration and language) are `app/xapi_context.py`. cmi5 sessions, where the LMS
+(TrueNorth or another) supplies actor, registration and activity, are [`docs/cmi5.md`](cmi5.md).
 
 ## The statement
 

@@ -14,6 +14,7 @@ redis==5.0.8
 jsonschema==4.23.0
 jinja2==3.1.6
 fpdf2==2.7.9
+defusedxml==0.7.1  # app/cmi5: cmi5.xml parsing without entities or external references
 # Curriculum Forge — courseware ingestion + uploads + LTI 1.3
 minio==7.2.7
 pypdf==6.19.0

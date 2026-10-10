@@ -2134,6 +2134,443 @@
         "title": "CloneRequest",
         "type": "object"
       },
+      "Cmi5AuOut": {
+        "properties": {
+          "completed": {
+            "default": false,
+            "title": "Completed",
+            "type": "boolean"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "index": {
+            "title": "Index",
+            "type": "integer"
+          },
+          "mastery_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mastery Score"
+          },
+          "move_on": {
+            "title": "Move On",
+            "type": "string"
+          },
+          "passed": {
+            "default": false,
+            "title": "Passed",
+            "type": "boolean"
+          },
+          "publisher_id": {
+            "title": "Publisher Id",
+            "type": "string"
+          },
+          "satisfied": {
+            "default": false,
+            "title": "Satisfied",
+            "type": "boolean"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          },
+          "waived": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Waived"
+          }
+        },
+        "required": [
+          "index",
+          "publisher_id",
+          "title",
+          "description",
+          "move_on",
+          "mastery_score",
+          "url"
+        ],
+        "title": "Cmi5AuOut",
+        "type": "object"
+      },
+      "Cmi5ContentOut": {
+        "properties": {
+          "index": {
+            "title": "Index",
+            "type": "integer"
+          },
+          "lang": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lang"
+          },
+          "mastery_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mastery Score"
+          },
+          "move_on": {
+            "title": "Move On",
+            "type": "string"
+          },
+          "pages": {
+            "items": {
+              "$ref": "#/components/schemas/Cmi5PageOut"
+            },
+            "title": "Pages",
+            "type": "array"
+          },
+          "quiz": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Cmi5QuizOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "index",
+          "title",
+          "lang",
+          "move_on",
+          "mastery_score",
+          "pages",
+          "quiz"
+        ],
+        "title": "Cmi5ContentOut",
+        "type": "object"
+      },
+      "Cmi5FetchOut": {
+        "description": "The fetch URL's answer (cmi5 8.2): the token, or an error code. Always HTTP 200.",
+        "properties": {
+          "auth-token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Auth-Token"
+          },
+          "error-code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error-Code"
+          },
+          "error-text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error-Text"
+          }
+        },
+        "title": "Cmi5FetchOut",
+        "type": "object"
+      },
+      "Cmi5GradeIn": {
+        "properties": {
+          "answers": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "option letter (A, B, ...) per question id",
+            "title": "Answers",
+            "type": "object"
+          }
+        },
+        "title": "Cmi5GradeIn",
+        "type": "object"
+      },
+      "Cmi5GradeOut": {
+        "properties": {
+          "correct": {
+            "title": "Correct",
+            "type": "integer"
+          },
+          "scaled": {
+            "title": "Scaled",
+            "type": "number"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "correct",
+          "total",
+          "scaled"
+        ],
+        "title": "Cmi5GradeOut",
+        "type": "object"
+      },
+      "Cmi5LaunchIn": {
+        "properties": {
+          "launch_mode": {
+            "anyOf": [
+              {
+                "enum": [
+                  "Normal",
+                  "Browse",
+                  "Review"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Launch Mode"
+          }
+        },
+        "title": "Cmi5LaunchIn",
+        "type": "object"
+      },
+      "Cmi5LaunchOut": {
+        "properties": {
+          "launch_method": {
+            "title": "Launch Method",
+            "type": "string"
+          },
+          "launch_mode": {
+            "title": "Launch Mode",
+            "type": "string"
+          },
+          "registration": {
+            "format": "uuid",
+            "title": "Registration",
+            "type": "string"
+          },
+          "session_id": {
+            "format": "uuid",
+            "title": "Session Id",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "session_id",
+          "registration",
+          "launch_mode",
+          "launch_method"
+        ],
+        "title": "Cmi5LaunchOut",
+        "type": "object"
+      },
+      "Cmi5PageOut": {
+        "properties": {
+          "html": {
+            "title": "Html",
+            "type": "string"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "html"
+        ],
+        "title": "Cmi5PageOut",
+        "type": "object"
+      },
+      "Cmi5QuestionOut": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "options": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Options",
+            "type": "array"
+          },
+          "stem": {
+            "title": "Stem",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "stem",
+          "options"
+        ],
+        "title": "Cmi5QuestionOut",
+        "type": "object"
+      },
+      "Cmi5QuizOut": {
+        "properties": {
+          "questions": {
+            "items": {
+              "$ref": "#/components/schemas/Cmi5QuestionOut"
+            },
+            "title": "Questions",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "questions"
+        ],
+        "title": "Cmi5QuizOut",
+        "type": "object"
+      },
+      "Cmi5SatisfiedOut": {
+        "properties": {
+          "satisfied": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Satisfied",
+            "type": "array"
+          }
+        },
+        "required": [
+          "satisfied"
+        ],
+        "title": "Cmi5SatisfiedOut",
+        "type": "object"
+      },
+      "Cmi5StructureOut": {
+        "properties": {
+          "aus": {
+            "items": {
+              "$ref": "#/components/schemas/Cmi5AuOut"
+            },
+            "title": "Aus",
+            "type": "array"
+          },
+          "course_id": {
+            "format": "uuid",
+            "title": "Course Id",
+            "type": "string"
+          },
+          "course_satisfied": {
+            "title": "Course Satisfied",
+            "type": "boolean"
+          },
+          "enrolled": {
+            "title": "Enrolled",
+            "type": "boolean"
+          },
+          "publisher_id": {
+            "title": "Publisher Id",
+            "type": "string"
+          },
+          "registration": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Registration"
+          },
+          "release_id": {
+            "format": "uuid",
+            "title": "Release Id",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "release_id",
+          "course_id",
+          "publisher_id",
+          "title",
+          "registration",
+          "course_satisfied",
+          "enrolled",
+          "aus"
+        ],
+        "title": "Cmi5StructureOut",
+        "type": "object"
+      },
+      "Cmi5WaiveIn": {
+        "properties": {
+          "reason": {
+            "enum": [
+              "Tested Out",
+              "Equivalent AU",
+              "Equivalent Outside Activity",
+              "Administrative"
+            ],
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "Cmi5WaiveIn",
+        "type": "object"
+      },
       "CoalitionOut": {
         "properties": {
           "created_at": {
@@ -19024,6 +19461,672 @@
         "summary": "Add Certification",
         "tags": [
           "certifications"
+        ]
+      }
+    },
+    "/cmi5/fetch/{secret}": {
+      "post": {
+        "description": "cmi5 fetch URL: the session's auth token, once. Errors are HTTP 200 with\n``error-code`` 1 (already returned or expired) or 2 (unknown), as cmi5 8.2 requires.",
+        "operationId": "fetch_cmi5_auth_token_cmi5_fetch__secret__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "secret",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 20,
+              "title": "Secret",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Cmi5FetchOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Fetch Cmi5 Auth Token",
+        "tags": [
+          "cmi5"
+        ]
+      }
+    },
+    "/cmi5/lrs/{resource}": {
+      "delete": {
+        "description": "The AU's xAPI endpoint (its own State documents).",
+        "operationId": "cmi5_lrs_delete_cmi5_lrs__resource__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "resource",
+            "required": true,
+            "schema": {
+              "title": "Resource",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cmi5 Lrs Delete",
+        "tags": [
+          "cmi5"
+        ]
+      },
+      "get": {
+        "description": "The AU's xAPI endpoint (read): LMS.LaunchData, learner preferences, its own State.",
+        "operationId": "cmi5_lrs_get_cmi5_lrs__resource__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "resource",
+            "required": true,
+            "schema": {
+              "title": "Resource",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cmi5 Lrs Get",
+        "tags": [
+          "cmi5"
+        ]
+      },
+      "post": {
+        "description": "The AU's xAPI endpoint (statements, State documents), checked against the cmi5 rules.",
+        "operationId": "cmi5_lrs_post_cmi5_lrs__resource__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "resource",
+            "required": true,
+            "schema": {
+              "title": "Resource",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cmi5 Lrs Post",
+        "tags": [
+          "cmi5"
+        ]
+      },
+      "put": {
+        "description": "The AU's xAPI endpoint (a statement by id, State documents).",
+        "operationId": "cmi5_lrs_put_cmi5_lrs__resource__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "resource",
+            "required": true,
+            "schema": {
+              "title": "Resource",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cmi5 Lrs Put",
+        "tags": [
+          "cmi5"
+        ]
+      }
+    },
+    "/cmi5/registrations/{registration_id}/aus/{au_index}/waive": {
+      "post": {
+        "description": "Waive an AU for a Student's registration (``waived`` with the reason), then moveOn.",
+        "operationId": "waive_cmi5_au_cmi5_registrations__registration_id__aus__au_index__waive_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "registration_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Registration Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "au_index",
+            "required": true,
+            "schema": {
+              "minimum": 0,
+              "title": "Au Index",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Cmi5WaiveIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Cmi5SatisfiedOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Waive Cmi5 Au",
+        "tags": [
+          "cmi5"
+        ]
+      }
+    },
+    "/cmi5/releases/{release_id}/aus/{au_index}/content": {
+      "get": {
+        "description": "Pages and quiz questions for TrueNorth's AU runtime. Never the answers.",
+        "operationId": "get_cmi5_au_content_cmi5_releases__release_id__aus__au_index__content_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "release_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Release Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "au_index",
+            "required": true,
+            "schema": {
+              "minimum": 0,
+              "title": "Au Index",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Cmi5ContentOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Cmi5 Au Content",
+        "tags": [
+          "cmi5"
+        ]
+      }
+    },
+    "/cmi5/releases/{release_id}/aus/{au_index}/grade": {
+      "post": {
+        "description": "Mark the AU's formative quiz on the server; the AU reports the score to its LMS.",
+        "operationId": "grade_cmi5_au_quiz_cmi5_releases__release_id__aus__au_index__grade_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "release_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Release Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "au_index",
+            "required": true,
+            "schema": {
+              "minimum": 0,
+              "title": "Au Index",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Cmi5GradeIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Cmi5GradeOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Grade Cmi5 Au Quiz",
+        "tags": [
+          "cmi5"
+        ]
+      }
+    },
+    "/cmi5/releases/{release_id}/aus/{au_index}/launch": {
+      "post": {
+        "description": "Launch an AU for the caller (TrueNorth as the cmi5 LMS): records ``launched`` and\n``LMS.LaunchData`` in the LRS and returns the AU URL with the cmi5 launch parameters.",
+        "operationId": "launch_cmi5_au_cmi5_releases__release_id__aus__au_index__launch_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "release_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Release Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "au_index",
+            "required": true,
+            "schema": {
+              "minimum": 0,
+              "title": "Au Index",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Cmi5LaunchIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Cmi5LaunchOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Launch Cmi5 Au",
+        "tags": [
+          "cmi5"
+        ]
+      }
+    },
+    "/cmi5/releases/{release_id}/cmi5.xml": {
+      "get": {
+        "description": "The release's cmi5 course structure for another LMS (PCTE, Moodle): every AU URL\nabsolute (TrueNorth's AU runtime), ``launchMethod=\"OwnWindow\"``.",
+        "operationId": "get_cmi5_course_structure_cmi5_releases__release_id__cmi5_xml_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "release_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Release Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Cmi5 Course Structure",
+        "tags": [
+          "cmi5"
+        ]
+      }
+    },
+    "/cmi5/releases/{release_id}/structure": {
+      "get": {
+        "description": "The AUs of a release, with the caller's own progress when they have a registration.",
+        "operationId": "get_cmi5_structure_cmi5_releases__release_id__structure_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "release_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Release Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Cmi5StructureOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Cmi5 Structure",
+        "tags": [
+          "cmi5"
+        ]
+      }
+    },
+    "/cmi5/sessions/{session_id}/abandon": {
+      "post": {
+        "description": "End an open session abnormally (``abandoned``): its Student, or a records holder in the tenant.",
+        "operationId": "abandon_cmi5_session_cmi5_sessions__session_id__abandon_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Abandon Cmi5 Session",
+        "tags": [
+          "cmi5"
         ]
       }
     },

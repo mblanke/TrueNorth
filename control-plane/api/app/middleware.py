@@ -84,6 +84,11 @@ def _verify_csrf_token(token: str) -> bool:
 # one of them: no LTI launch and no noise reporting worked in production. Exactly these
 # paths; nothing by prefix.
 CSRF_EXEMPT_PATHS = frozenset({"/lti/login", "/lti/launch", "/lti/deeplink/finish", "/noise/agent/report"})
+# cmi5 (app/cmi5/router.py): an AU's fetch URL (its one-time secret is in the path) and its
+# xAPI endpoint (the session's auth token as Basic credentials). Neither reads a cookie, so
+# a forged cross-site request has nothing to ride on; the AU, which may be another LMS's
+# content on another origin, cannot hold the CSRF cookie. These two prefixes, no others.
+CSRF_EXEMPT_PREFIXES = ("/cmi5/fetch/", "/cmi5/lrs/")
 
 
 class CsrfMiddleware(BaseHTTPMiddleware):
@@ -105,7 +110,9 @@ class CsrfMiddleware(BaseHTTPMiddleware):
         method = request.method
 
         # Validate on mutating methods
-        if method not in _CSRF_SAFE_METHODS and request.url.path not in CSRF_EXEMPT_PATHS:
+        path = request.url.path
+        exempt = path in CSRF_EXEMPT_PATHS or path.startswith(CSRF_EXEMPT_PREFIXES)
+        if method not in _CSRF_SAFE_METHODS and not exempt:
             cookie_token = request.cookies.get(_CSRF_COOKIE, "")
             header_token = request.headers.get(_CSRF_HEADER, "")
 
@@ -411,11 +418,11 @@ _SLOW_THRESHOLD_MS: float = 1000.0
 
 # Paths that carry a bearer secret. They are logged with the secret replaced, here and in
 # uvicorn's access log (RedactSecretPaths). nginx skips logging them (access_log off).
-_SECRET_PATH = re.compile(r"(/schedule/feed/)[^/?\s\"]+")
+_SECRET_PATH = re.compile(r"(/schedule/feed/|/cmi5/fetch/)[^/?\s\"]+")  # + cmi5 fetch secrets
 
 
 def redact_path(path: str) -> str:
-    """Hide the calendar-feed token (ADR 0004) in anything about to be logged."""
+    """Hide the calendar-feed token (ADR 0004) and cmi5 fetch secrets in anything logged."""
     return _SECRET_PATH.sub(r"\1<redacted>", path)
 
 

@@ -28,7 +28,8 @@ API = REPO_ROOT / "control-plane/api"
 VERSIONS = API / "alembic/versions"
 sys.path.insert(0, str(API))
 
-CREATE_TABLE = re.compile(r'op\.create_table\(\s*["\']([a-z_]+)["\']')
+# Table names may carry digits (cmi5_sessions); [a-z_] alone silently missed them.
+CREATE_TABLE = re.compile(r'op\.create_table\(\s*["\']([a-z0-9_]+)["\']')
 
 # Tables created by migrations that have no ORM model. They predate this guard
 # and are reached through raw SQL rather than the ORM; listed so the check below
@@ -73,7 +74,7 @@ def test_every_orm_table_is_created_by_a_migration():
     # create_table calls, so credit its explicit frozen list.
     spec = (VERSIONS / "b0c1d2e3f4a5_reconcile_orm_only_tables.py").read_text(encoding="utf-8")
     block = spec.split("ORM_ONLY_TABLES", 1)[1].split(")", 1)[0]
-    created |= set(re.findall(r'"([a-z_]+)"', block))
+    created |= set(re.findall(r'"([a-z0-9_]+)"', block))
 
     missing = sorted(orm - created)
     assert not missing, (

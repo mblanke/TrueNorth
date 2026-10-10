@@ -187,8 +187,10 @@ platform) are tests in `tests/api/test_lti_staff_link.py`.
 
 ## Phase 2: cmi5
 
-> **Deferred to stage 5 (2026-10-07):** cmi5 stays packaging-only; nothing below is
-> stage-4 scope. See `docs/cmi5-packaging-decision.md`.
+> **Built (2026-10-09):** 2a (served `cmi5.xml` per release), 2b (the AU runtime, `/au/...`),
+> 2d (conformant xAPI) and 2e (LRS configuration), plus TrueNorth's own LMS side. Status,
+> routes and limits: [`docs/cmi5.md`](cmi5.md). 2c (range exercises as AUs) is not built.
+> (Deferred on 2026-10-07 in `docs/cmi5-packaging-decision.md`; that is superseded.)
 
 TrueNorth becomes a cmi5 **content provider**. Moodle and a cmi5 activity plugin act as the
 LMS: they launch AUs and issue `launched` / `satisfied` / `abandoned` / `waived`. TrueNorth's AUs
