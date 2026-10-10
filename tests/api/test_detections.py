@@ -31,6 +31,13 @@ from app.routers.detections import search_backend
 from app.search_backends import SearchQueryError
 
 
+@pytest.fixture(autouse=True)
+def _any_tenant_student(monkeypatch):
+    """These tests are about credit, not who takes part: exercises here have no roster
+    (participation: tests/api/test_detection_participants.py)."""
+    monkeypatch.setenv("DETECTION_SUBMIT_PARTICIPANTS_ONLY", "false")
+
+
 @pytest.fixture
 def store():
     s = FakeStore()

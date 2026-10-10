@@ -9,10 +9,11 @@ its ranges, including other Students' labs and ranges nobody had put them on. No
 - everyone else (Students) reads only
     * the range of their own lab session (current, or one it was rebuilt away from), and
     * the range of an exercise running or paused on it that they take part in. There is
-      no Student-to-exercise relation (ADR 0005, open question M3); the roster that exists
-      is a calendar booking's course: when a booking ties the exercise or its range to a
-      course, only Students actively enrolled in that course qualify. An exercise with no
-      such booking is open to the tenant's Students, as detection submission is.
+      no Student-to-exercise table; the roster that exists is a calendar booking's course:
+      when a booking ties the exercise or its range to a course, only Students actively
+      enrolled in that course qualify. An exercise with no such booking stays readable by
+      the tenant's Students here. Detection submission is stricter since 2026-10-09
+      (app/exercise_participants.py, ADR 0005): no roster, no Student submissions.
 
 Anything else is 404, as for a range of another tenant.
 """
@@ -68,7 +69,7 @@ def _takes_part(db: Session, user: CurrentUser, rng: Range) -> bool:
         )
     }
     if not courses:
-        return True  # no roster to check: as detection submission (ADR 0005 open question)
+        return True  # no roster to check: readable (submitting a detection is not; ADR 0005)
     return bool(courses & set(active_course_ids(db, uuid.UUID(user.id))))
 
 

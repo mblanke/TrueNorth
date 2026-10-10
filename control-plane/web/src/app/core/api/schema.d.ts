@@ -18148,6 +18148,13 @@ export interface operations {
                     "application/json": components["schemas"]["DetectionOut"];
                 };
             };
+            /** @description The Student is not a participant of the exercise (ADR 0005) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Exercise not running, objective already achieved, or not a detection objective */
             409: {
                 headers: {
