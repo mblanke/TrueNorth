@@ -1070,7 +1070,10 @@ class VsphereAPIProvisioner(BaseProvisioner):
         if family == "linux":
             macs = [card.macAddress for card in infra.nic_cards(vm.config.hardware.device)]
             user = guest.cloud_init_user(creds) if creds else None
-            spec = vim.vm.ConfigSpec(extraConfig=infra.linux_guestinfo(vm_def, macs, user))
+            # ``guestinfo``: more keys the guest reads itself (gs-core's bundle chunks).
+            more = [vim.option.OptionValue(key=k, value=v) for k, v in (vm_def.get("guestinfo") or {}).items()
+                    if str(k).startswith("guestinfo.tn.")]
+            spec = vim.vm.ConfigSpec(extraConfig=infra.linux_guestinfo(vm_def, macs, user) + more)
             self._wait(vm.ReconfigVM_Task(spec=spec), si)
         elif family == "windows":
             password = creds.password.reveal() if creds else None
@@ -1603,6 +1606,41 @@ class VsphereAPIProvisioner(BaseProvisioner):
             errors.extend(vsphere_roles.errors(out["name"], status))
 
         await asyncio.gather(*(one(by_name[o["name"]], o) for o in vms_out if by_name[o["name"]].get("roles")))
+
+    # ------------------------------------------------------------------ #
+    # Commands in a guest after the build (BaseProvisioner.run_in_guest)
+    # ------------------------------------------------------------------ #
+
+    supports_guest_commands = True
+
+    def _guest_sync(self, vm_id: str, login, steps: list, deadline: float) -> list[dict]:
+        creds = guest.GuestCredentials(login.family, login.username, guest.Secret(login.password))
+        out = [{"label": s.label, "status": "not_run", "exit_code": None} for s in steps]
+        with self._vim() as si:
+            session = guest.GuestSession(si.content, self._vm(si, vm_id), creds, poll=self._guest_poll)
+            try:
+                session.wait_ready(deadline)
+            except Exception as exc:  # noqa: BLE001 — reported with the password scrubbed
+                raise RuntimeError(guest.redact(getattr(exc, "msg", None) or str(exc), creds)) from None
+            for i, step in enumerate(steps):
+                cmd = guest.GuestCommand(step.label, step.program, step.arguments, frozenset(step.ok_codes))
+                try:
+                    status, code = session.run(cmd, deadline)
+                except Exception as exc:  # noqa: BLE001
+                    status, code = "failed", None
+                    out[i]["error"] = guest.redact(getattr(exc, "msg", None) or str(exc), creds)[:300]
+                out[i].update(status=status, exit_code=code)
+                if status != "ok":
+                    break
+        return out
+
+    async def run_in_guest(self, vm_id: str, login, steps: list, timeout: float) -> list[dict]:
+        """Guest operations as ``login`` (VMware Tools must run in the VM): wait until the
+        login works, then each step in turn, all within ``timeout`` seconds."""
+        if SmartConnect is None:
+            raise RuntimeError("pyvmomi is required for guest operations (pip install pyvmomi)")
+        deadline = time.monotonic() + timeout
+        return await asyncio.to_thread(self._guest_sync, vm_id, login, steps, deadline)
 
     async def _rollback(self, si, range_id: str, networks: list[dict], errors: list[str]) -> None:
         """Best effort: remove what a failed build created (its VMs already removed themselves)."""

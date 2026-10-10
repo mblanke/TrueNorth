@@ -162,6 +162,7 @@ def _json_logs(logger: logging.Logger, **_kwargs) -> None:
 from . import (
     aar_tasks,  # noqa: F401, E402
     chaos,  # noqa: F401, E402
+    configure_tasks,  # noqa: F401, E402
     exercise_run,  # noqa: F401, E402
     lab_tasks,  # noqa: F401, E402
     noise_tasks,  # noqa: F401, E402

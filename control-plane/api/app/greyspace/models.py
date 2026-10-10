@@ -12,10 +12,11 @@ from ..db import Base
 from ..models import GUID, TimestampMixin
 
 # configured              attached; config renders; not deployed (yet, or since the last destroy)
+# configuring             vSphere: gs-core is being built with the range, or the configure stage runs
 # deployed                the worker brought it up with the range (mock backend: recorded only)
-# pending_infrastructure  the range's backend has no Greyspace host yet (vSphere gs-core VM: TODO)
-# failed                  the worker could not deploy it; ``detail.error`` says why
-STATUSES = ("configured", "deployed", "pending_infrastructure", "failed")
+# pending_infrastructure  the range's backend has no Greyspace host (anything but mock and vsphere_api)
+# failed                  the worker could not deploy it; ``detail.error`` (and ``detail.stage``) say why
+STATUSES = ("configured", "configuring", "deployed", "pending_infrastructure", "failed")
 
 
 class RangeGreyspace(TimestampMixin, Base):

@@ -257,5 +257,8 @@ def rendered_config(db: Session, rng: Range) -> GreyspaceConfigOut:
         tlds=s["tlds"],
         zones=s["zones"],
         threat_domains=s["threat_domains"],
+        infra_names=s["infra_names"],
+        https=s["https"],
+        npc_profile=s["npc_profile"],
         files=s["files"],
     )

@@ -477,3 +477,74 @@ def test_a_vyos_router_gets_its_config_in_cloud_init_guestinfo(env, si, range_id
     assert meta["instance-id"].startswith(rtr["name"])
     assert _run(mod.VsphereAPIProvisioner().destroy(range_id, {"vms": built.vms, "networks": built.networks})
                 ).status == "ok"
+
+
+def test_greyspace_gs_core_is_built_wired_and_torn_down(env, si, range_id, monkeypatch):
+    """ADR 0007 on vSphere: gs-core (worker/greyspace_host.py) is cloned with the range,
+    on the range's Greyspace port group, with its cloud-init and the stack bundle in
+    guestinfo; the edge router's config routes the public space to it; the configure
+    stage's guest channel fails closed on the simulator (below); destroy removes it with
+    the range. Proven on vcsim, not on a real vCenter."""
+    import base64
+    import hashlib
+
+    import yaml
+    from worker import greyspace, greyspace_host, vyos_config
+    from worker.provisioners.base import GuestStep
+
+    monkeypatch.setenv("GREYSPACE_HOST_TEMPLATE", TEMPLATE_VM)
+    monkeypatch.setenv("GREYSPACE_HOST_CORES", "1")
+    monkeypatch.setenv("GREYSPACE_HOST_MEMORY_MB", "512")
+    monkeypatch.setenv("GREYSPACE_HOST_DISK_GB", "1")
+    topo = {
+        **RANGE,
+        "network": {"vlans": [*RANGE["network"]["vlans"], {"id": 30, "name": "greyspace", "cidr": "100.64.30.0/24"}]},
+        "nodes": [*RANGE["nodes"], {
+            "id": "rtr", "role": "router", "os": "vyos", "vlan": "red", "ip": "10.10.10.1",
+            "specs": {"cores": 1, "memory_mb": 512, "disk_gb": 1},
+            "interfaces": [{"vlan": "red"}, {"vlan": "blue"}, {"vlan": "greyspace"}]}],
+    }
+    out = render.render_topology(topo, range_id, lambda alias: TEMPLATE_VM)
+    template = {"name": "sim", "vms": out["vm_definitions"], "networks": out["network_definitions"]}
+    vm_def, info = greyspace_host.host_vm(range_id, dict(greyspace.DEFAULT_BLOCK), template)
+    template["vms"].append(vm_def)
+    assert greyspace_host.route_router(template, info) == f"{range_id[:8]}-rtr"
+
+    prov = mod.VsphereAPIProvisioner()
+    allocations = _reserve(prov, range_id, template)
+    built = _run(prov.provision(range_id, template, allocations))
+    assert built.status == "ok", built.errors
+    gs = next(v for v in built.vms if v["node_id"] == "gs-core")
+    assert gs["name"] == f"{range_id[:8]}-gs-core" and gs["nics"][0]["ip"] == "100.64.30.254"
+
+    vm = vim.VirtualMachine(gs["vm_id"], si._stub)
+    assert mod.annotated_range(vm.config.annotation) == range_id
+    pg = _portgroups(si, f"tn-{range_id[:8]}-")[f"tn-{range_id[:8]}-v{allocations['physical_vlans']['30']}"]
+    assert [n.backing.port.portgroupKey for n in infra.nic_cards(vm.config.hardware.device)] == [pg.key]
+    extra = {o.key: o.value for o in vm.config.extraConfig}
+    userdata = yaml.safe_load(base64.b64decode(extra["guestinfo.userdata"]))
+    assert [u["name"] for u in userdata["users"][1:]] == ["tn-greyspace"]
+    assert userdata["runcmd"] == [["/opt/greyspace/bootstrap.sh", "unpack"]]
+    count = int(extra["guestinfo.tn.greyspace.bundle.count"])
+    bundle = base64.b64decode("".join(extra[f"guestinfo.tn.greyspace.bundle.{n}"] for n in range(count)))
+    assert hashlib.sha256(bundle).hexdigest() == extra["guestinfo.tn.greyspace.bundle.sha256"]
+
+    rtr = next(v for v in built.vms if v["node_id"] == "rtr")
+    rtr_extra = {o.key: o.value for o in vim.VirtualMachine(rtr["vm_id"], si._stub).config.extraConfig}
+    assert "set protocols static route '198.18.0.0/15' next-hop '100.64.30.254'" in vyos_config.commands_of(rtr_extra)
+
+    # The configure stage's guest channel. vcsim v0.56.0 runs no VMware Tools, and its
+    # guestOperationsManager.authManager reply carries no xsi:type, which pyVmomi cannot
+    # read (KeyError 'type'): guest operations cannot be exercised on the simulator. What
+    # is proven here is that the channel fails closed (an exception, which the configure
+    # stage records as failed), never a false "ok". GuestSession itself is tested with a
+    # fake vCenter in tests/worker/test_vsphere_guest.py.
+    prov._guest_poll = 0.2
+    login = greyspace_host.login(range_id)
+    with pytest.raises((RuntimeError, KeyError)):
+        _run(prov.run_in_guest(gs["vm_id"], login, [GuestStep("health", "/bin/true")], timeout=2))
+
+    gone = _run(mod.VsphereAPIProvisioner().destroy(range_id, {"vms": built.vms, "networks": built.networks}))
+    assert gone.status == "ok", gone.errors
+    assert _named(si, vim.VirtualMachine, gs["name"]) is None
+    assert _portgroups(si, f"tn-{range_id[:8]}-") == {}

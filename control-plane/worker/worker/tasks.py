@@ -123,8 +123,7 @@ def provision_range(self, range_id: str, noise_mgmt: dict | None = None):
     _notify_api("range", {"id": range_id, "state": "provisioning"})
 
     try:
-        # Fetch template, allocations, and provisioner_backend from DB
-        with _db_session() as db:
+        with _db_session() as db:  # template and provisioner_backend
             row = db_ops.range_template_and_backend(db, range_id)
 
         # The template column holds YAML (see content/ranges/*.yaml); tolerate JSON too.
@@ -169,6 +168,7 @@ def provision_range(self, range_id: str, noise_mgmt: dict | None = None):
             if rendered["unresolved"]:
                 logger.warning("[provision] unresolved OS templates: %s", rendered["unresolved"])
 
+        template = greyspace.plan_host(range_id, backend, template)  # + gs-core on HOSTED backends (ADR 0007)
         provisioner = _get_backend(backend, range_id)  # the range's own tenant's connection (H6)
         allocations.update(range_alloc.reserve_for_build(_db_session, range_id, provisioner, template))
         result = run_async(provisioner.provision(range_id, template, allocations))

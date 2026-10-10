@@ -73,6 +73,12 @@ TASKS: dict[str, TaskContract] = {
             "Build a range's VMs on its hypervisor.",
         ),
         TaskContract("batch_provision", "provision", (Arg("range_ids", "array", description="ranges.id list"),)),
+        TaskContract(
+            "configure_range",
+            "provision",
+            (_RANGE,),
+            "Post-deploy configure stage of a built range (its Greyspace gs-core: corpus, stack, health).",
+        ),
         TaskContract("destroy_range", "destroy", (_RANGE,), "Tear down a range's VMs."),
         TaskContract("stop_range", "provision", (_RANGE,), "Power off a range's VMs (POST /ranges/{id}/stop)."),
         TaskContract("start_range", "provision", (_RANGE,), "Power on a range's VMs (POST /ranges/{id}/start)."),

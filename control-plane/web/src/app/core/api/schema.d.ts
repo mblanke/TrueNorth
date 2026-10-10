@@ -9691,8 +9691,14 @@ export interface components {
              */
             corpus_tier?: "t0" | "t1" | "t2" | "full";
             /**
+             * Network
+             * @description vSphere: the template network (VLAN name) the gs-core VM joins; its gateway router routes to it.
+             * @default greyspace
+             */
+            network?: string;
+            /**
              * Npc Profile
-             * @description Simulated users. Recorded only: NPC traffic is a later slice.
+             * @description Simulated users browsing, resolving and mailing in the stack (app/greyspace/npc.py).
              * @default off
              * @enum {string}
              */
@@ -9715,7 +9721,7 @@ export interface components {
             threat_infra?: boolean;
             /**
              * Trust Ca
-             * @description Recorded only: the Greyspace root CA is a later slice.
+             * @description A Greyspace root CA and HTTPS for every site; the CA is at http://pki.gs-infra.net/root.crt.
              * @default true
              */
             trust_ca?: boolean;
@@ -9741,10 +9747,27 @@ export interface components {
             corpus_version: string;
             /** Files */
             files: string[];
+            /**
+             * Https
+             * @default false
+             */
+            https?: boolean;
+            /**
+             * Infra Names
+             * @description Greyspace's own service names -> address.
+             */
+            infra_names?: {
+                [key: string]: string;
+            };
             /** Isps */
             isps: {
                 [key: string]: unknown;
             }[];
+            /**
+             * Npc Profile
+             * @default off
+             */
+            npc_profile?: string;
             /**
              * Range Id
              * Format: uuid
@@ -9793,7 +9816,7 @@ export interface components {
              * Status
              * @enum {string}
              */
-            status: "not_attached" | "configured" | "deployed" | "pending_infrastructure" | "failed";
+            status: "not_attached" | "configured" | "configuring" | "deployed" | "pending_infrastructure" | "failed";
             /** @description The block the range's template declares, if any; attaching with no body uses it. */
             template_block?: components["schemas"]["GreyspaceBlock"] | null;
             /** Updated At */
