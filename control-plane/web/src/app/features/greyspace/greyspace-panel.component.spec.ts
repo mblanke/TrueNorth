@@ -4,7 +4,7 @@ import { provideRouter } from '@angular/router';
 import { of, throwError } from 'rxjs';
 import { GreyspaceApiService, GreyspaceStatus } from '@core/services/greyspace-api.service';
 import { NotificationService } from '@core/services/notification.service';
-import { GreyspacePanelComponent } from './greyspace-panel.component';
+import { formatBytes, GreyspacePanelComponent } from './greyspace-panel.component';
 
 const CORPORA = [
   { tier: 't0', title: 'CI fixture', cap_bytes: 100000000, location: 'generated', builder: 'b', description: 'd',
@@ -120,6 +120,50 @@ describe('GreyspacePanelComponent', () => {
     TestBed.flushEffects();
     fixture.detectChanges();
     expect(fixture.componentInstance.error()).toBe('Range not found');
+  });
+
+  it('shows gs-core while it starts on vSphere, and why it failed', () => {
+    create(status({ attached: true, status: 'configuring', corpus: CORPORA[0],
+      block: { version: 1, corpus_tier: 't0', site_packs: null, npc_profile: 'office-day', threat_infra: true,
+               trust_ca: true, network: 'greyspace' },
+      detail: { host: 'ab12cd34-gs-core', ip: '100.64.190.254', network: 'greyspace', corpus: 'bundled t0 2026.10-t0',
+                breadcrumbs: [{ operation: 'plant', exercise: 'ex-1', ok: true }] } } as any));
+    const el: HTMLElement = fixture.nativeElement;
+    expect(el.querySelector('[data-test="gs-status"]')?.textContent).toContain('Starting on gs-core');
+    expect(el.querySelector('[data-test="gs-host"]')?.textContent).toContain('100.64.190.254');
+    expect(el.querySelector('[data-test="gs-crumbs"]')?.textContent).toContain('exercise ex-1');
+    expect(el.querySelector('[data-test="gs-error"]')).toBeNull();
+
+    fixture.componentInstance.status.set(status({ attached: true, status: 'failed',
+      detail: { stage: 'configure', error: 'step health failed (exit 1)' } } as any));
+    fixture.detectChanges();
+    expect(el.querySelector('[data-test="gs-status"]')?.textContent).toContain('Failed');
+    expect(el.querySelector('[data-test="gs-error"]')?.textContent).toContain('step health failed');
+  });
+
+  it('sends the Greyspace network, defaulting to "greyspace"', () => {
+    const c = create(status({ template_block: { version: 1, corpus_tier: 't0', site_packs: null, npc_profile: 'off',
+      threat_infra: true, trust_ca: true, network: 'internet' } } as any));
+    expect(c.toBlock().network).toBe('internet');
+    c.draft.network = '  ';
+    expect(c.toBlock().network).toBe('greyspace');
+  });
+
+  it('lists the corpora read-only on its own page, not in the designer panel', () => {
+    create(status());
+    const table = fixture.nativeElement.querySelector('[data-test="gs-corpora"]') as HTMLElement;
+    expect(table?.textContent).toContain('2026.10-t0');
+    expect(table?.textContent).toContain('100.0 MB');
+    expect(table?.querySelectorAll('tbody tr').length).toBe(2);
+    fixture.componentRef.setInput('showPageLink', true);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[data-test="gs-corpora"]')).toBeNull();
+  });
+
+  it('formats corpus sizes', () => {
+    expect(formatBytes(null)).toBe('—');
+    expect(formatBytes(33532)).toBe('34 kB');
+    expect(formatBytes(5e9)).toBe('5.0 GB');
   });
 
   it('switching to a tier the control plane cannot read clears the packs', () => {

@@ -8,7 +8,7 @@ from __future__ import annotations
 import contextlib
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from .results import (
     DestroyResult,
@@ -44,6 +44,27 @@ class AllocationNeed:
     pool: list[str]  # candidate values, in the order they are handed out
     holders: list[str]  # what in the range holds a value (a logical VLAN, "edge")
     single: bool = False
+
+
+@dataclass(frozen=True)
+class GuestLogin:
+    """An account inside a range VM (``family``: linux | windows). The password is never
+    logged; providers redact it from any error they record."""
+
+    username: str
+    password: str = field(repr=False)
+    family: str = "linux"
+
+
+@dataclass(frozen=True)
+class GuestStep:
+    """One program to run in a guest: ``program`` + ``arguments`` (one string, as the
+    guest's process API takes it); ``ok_codes`` are the exit codes that count as ok."""
+
+    label: str
+    program: str
+    arguments: str = ""
+    ok_codes: tuple[int, ...] = (0,)
 
 
 class BaseProvisioner(ABC):
@@ -171,6 +192,26 @@ class BaseProvisioner(ABC):
             status="unsupported",
             errors=[f"{type(self).__name__} does not report VM metrics"],
         )
+
+    supports_guest_commands: bool = False
+
+    async def run_in_guest(
+        self,
+        vm_id: str,
+        login: GuestLogin,
+        steps: list[GuestStep],
+        timeout: float,
+    ) -> list[dict]:
+        """Run ``steps`` in order inside one range VM's guest OS, as ``login``, with no
+        network path into the range (vSphere: VMware guest operations). Stops at the
+        first step that does not end ``ok``.
+
+        Returns one ``{"label", "status": ok | failed | timeout | not_run, "exit_code"}``
+        per step. The post-deploy configure stage (worker/greyspace.py) and Greyspace
+        breadcrumbs use it. A backend that cannot reach into a guest says so here, so
+        callers record why instead of guessing (``supports_guest_commands``).
+        """
+        raise NotImplementedError(f"{type(self).__name__} cannot run commands inside a guest")
 
     @contextlib.asynccontextmanager
     async def session(self) -> AsyncIterator[BaseProvisioner]:

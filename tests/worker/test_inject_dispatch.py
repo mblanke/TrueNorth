@@ -169,6 +169,32 @@ class TestDispatchInject:
         assert out["status"] == "skipped"
         assert out["detail"] == "skipped: range has no provisioned hosts"
 
+    def test_greyspace_breadcrumbs_go_to_the_ranges_greyspace(self, wdb, no_real_broker, monkeypatch):
+        """The injector prepares the payload; the worker's Greyspace seam delivers it."""
+        from worker import greyspace
+
+        sent = []
+        monkeypatch.setattr(greyspace, "deliver_breadcrumbs",
+                            lambda rid, backend, op: sent.append((rid, backend, op)) or (True, "plant on gs-core"))
+        rid = _range(wdb, backend="vsphere_api")
+        eid = _exercise(wdb, rid)
+        crumbs = [{"id": "c1", "kind": "dns", "name": "x.update-cdn-sync.net", "value": "{{ token }}"}]
+        out = inject_dispatch.dispatch_inject(eid, "greyspace_breadcrumb", {"crumbs": crumbs})
+        assert out["status"] == "fired" and out["execution_mode"] == "live"
+        assert out["detail"].endswith("(plant on gs-core)")
+        [(range_arg, backend, op)] = sent
+        assert (range_arg, backend, op["operation"], op["exercise"]) == (rid, "vsphere_api", "plant", eid)
+        assert op["payload"]["crumbs"][0]["value"].startswith("GS-")
+
+    def test_an_undelivered_breadcrumb_is_a_failed_inject(self, wdb, monkeypatch):
+        from worker import greyspace
+
+        monkeypatch.setattr(greyspace, "deliver_breadcrumbs", lambda *a: (False, "the range's Greyspace is configuring"))
+        eid = _exercise(wdb, _range(wdb))
+        out = inject_dispatch.dispatch_inject(eid, "greyspace_breadcrumb", {"operation": "remove"})
+        assert out["status"] == "failed" and "not delivered: the range's Greyspace is configuring" in out["detail"]
+        assert _records(wdb, exercise_id=eid)[0]["status"] == "failed"
+
     def test_unknown_action_is_recorded_failed(self, wdb, no_real_broker):
         eid = _exercise(wdb, _range(wdb))
         out = inject_dispatch.dispatch_inject(eid, "deploy_malware", {})

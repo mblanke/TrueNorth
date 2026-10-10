@@ -24,6 +24,7 @@ import { FilterCategoryPipe } from './filter-category.pipe';
 import { GraphHistory } from './graph-history';
 import { upgradeDiagramJson } from './diagram-compat';
 import { importTemplateYaml, YamlImportOutcome } from './range-designer-yaml-import';
+import { GREYSPACE_DEFAULTS, GreyspaceSettings, greyspaceSettings } from './greyspace-stencil';
 import { YamlImportErrorsDialogComponent, YamlImportErrorsData } from './yaml-import-errors-dialog.component';
 import { ApiService, RoleSpecs, WindowsRole, WindowsRoleCatalogue } from '@core/services/api.service';
 import { RangeNotesComponent } from '../../shared/components/range-notes/range-notes.component';
@@ -530,6 +531,49 @@ export class TextPromptDialogComponent {
                 <mat-label>CIDR</mat-label>
                 <input matInput [(ngModel)]="propCidr" placeholder="10.0.0.0/24" (ngModelChange)="updateNodeData('cidr', $event)">
               </mat-form-field>
+            }
+
+            @if (selectedNodeType() === 'cloud') {
+              <!-- The Internet/Cloud stencil is the template's greyspace: block (ADR 0007) -->
+              <div class="services-section" data-test="cloud-greyspace">
+                <mat-checkbox [checked]="!!propGreyspace && propGreyspace.enabled !== false"
+                              (change)="setGreyspaceEnabled($event.checked)" color="primary"
+                              data-test="cloud-greyspace-on">
+                  Greyspace simulated internet
+                </mat-checkbox>
+                @if (propGreyspace && propGreyspace.enabled !== false) {
+                  <mat-form-field appearance="outline" subscriptSizing="dynamic" class="full-width">
+                    <mat-label>Corpus</mat-label>
+                    <select matNativeControl [ngModel]="propGreyspace.corpus_tier"
+                            (ngModelChange)="updateGreyspace('corpus_tier', $event)">
+                      <option value="t0">T0 CI fixture</option>
+                      <option value="t1">T1 Mac sample</option>
+                      <option value="t2">T2 lab corpus</option>
+                      <option value="full">Full corpus</option>
+                    </select>
+                  </mat-form-field>
+                  <mat-form-field appearance="outline" subscriptSizing="dynamic" class="full-width">
+                    <mat-label>Simulated users</mat-label>
+                    <select matNativeControl [ngModel]="propGreyspace.npc_profile"
+                            (ngModelChange)="updateGreyspace('npc_profile', $event)">
+                      <option value="off">Off</option>
+                      <option value="office-day">Office day</option>
+                      <option value="quiet-night">Quiet night</option>
+                    </select>
+                  </mat-form-field>
+                  <mat-form-field appearance="outline" subscriptSizing="dynamic" class="full-width">
+                    <mat-label>Greyspace network (zone name)</mat-label>
+                    <input matInput [ngModel]="propGreyspace.network"
+                           (ngModelChange)="updateGreyspace('network', $event)">
+                  </mat-form-field>
+                  <mat-checkbox [checked]="propGreyspace.threat_infra" color="primary"
+                                (change)="updateGreyspace('threat_infra', $event.checked)">Threat-actor infrastructure</mat-checkbox>
+                  <mat-checkbox [checked]="propGreyspace.trust_ca" color="primary"
+                                (change)="updateGreyspace('trust_ca', $event.checked)">HTTPS from the Greyspace CA</mat-checkbox>
+                  <div class="role-sizing">Exported as the template's <code>greyspace:</code> block. On vSphere,
+                    gs-core joins the zone named above; the router on it routes the range to Greyspace.</div>
+                }
+              </div>
             }
 
             <div class="prop-actions">
@@ -1298,10 +1342,37 @@ export class RangeDesignerComponent implements AfterViewInit, OnDestroy {
       element = createNodeShape(item.type, item.label, item.icon, color, x, y, item.defaults);
     }
 
+    if (item.type === 'cloud') {
+      // The Internet/Cloud stencil is the range's Greyspace block (ADR 0007): on by default.
+      element.prop('nodeData/greyspace', { ...GREYSPACE_DEFAULTS });
+    }
     this.graph.addCell(element);
     this.selectElement(element);
     this.scheduleSnapshot();
     this.snack.open('Added ' + item.label, '', { duration: 1500, panelClass: 'snack-success' });
+  }
+
+  /** The selected Internet/Cloud cell's Greyspace settings (null: a plain drawing). */
+  propGreyspace: GreyspaceSettings | null = null;
+
+  /** Turn the selected cloud's Greyspace block on or off (off keeps it as a drawing). */
+  setGreyspaceEnabled(on: boolean): void {
+    this.propGreyspace = { ...(this.propGreyspace ?? GREYSPACE_DEFAULTS), enabled: on };
+    if (on) delete this.propGreyspace.enabled;
+    this.writeGreyspace();
+  }
+
+  updateGreyspace<K extends keyof GreyspaceSettings>(key: K, value: GreyspaceSettings[K]): void {
+    if (!this.propGreyspace) return;
+    this.propGreyspace = { ...this.propGreyspace, [key]: value };
+    this.writeGreyspace();
+  }
+
+  private writeGreyspace(): void {
+    const el = this.selectedNode();
+    if (!el || !this.propGreyspace) return;
+    el.prop('nodeData/greyspace', { ...this.propGreyspace });
+    this.scheduleSnapshot(700);
   }
 
   /* --- Selection --- */
@@ -1324,6 +1395,7 @@ export class RangeDesignerComponent implements AfterViewInit, OnDestroy {
     this.propVlan = parseInt(data.vlan, 10) || 100;
     this.propCidr = data.cidr || '';
     this.propServices = data.services ? data.services.split(',').filter((s: string) => s) : [];
+    this.propGreyspace = data.greyspace ? greyspaceSettings(data.greyspace) : null;
     this.cdr.detectChanges();
   }
 

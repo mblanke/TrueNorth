@@ -91,12 +91,23 @@ def test_mock_backend_records_the_block_as_deployed(factory, rng):
     assert "webfarm" in row.detail["services"] and "threat" not in row.detail["services"]
 
 
-def test_vsphere_is_pending_infrastructure_with_the_todo(factory, rng):
+def test_a_backend_without_a_greyspace_host_is_pending_infrastructure(factory, rng):
     _attach(factory, rng)
-    assert greyspace.after_provision(str(rng.id), "vsphere_api", {}) == "pending_infrastructure"
+    assert greyspace.after_provision(str(rng.id), "hyperv", {}) == "pending_infrastructure"
     row = _row(factory, rng)
     assert row.status == "pending_infrastructure" and "gs-core" in row.detail["todo"]
     assert row.deployed_at is None
+
+
+def test_vsphere_without_a_planned_gs_core_says_why(factory, rng, monkeypatch):
+    """Attached after the build (plan_host never saw it): failed with the reason, no configure."""
+    sent = []
+    monkeypatch.setattr(greyspace, "send_configure", sent.append)
+    _attach(factory, rng)
+    assert greyspace.after_provision(str(rng.id), "vsphere_api", {}) == "failed"
+    row = _row(factory, rng)
+    assert row.detail["stage"] == "plan" and "gs-core was not part of this build" in row.detail["error"]
+    assert sent == []
 
 
 def test_a_templates_block_attaches_itself(factory, rng):

@@ -121,12 +121,15 @@ class TestConfig:
         compose = json.loads(out.files["compose.yaml"])
         assert set(compose["services"]) == {
             "isp-a", "isp-b", "dns-root", "dns-tld", "dns-auth", "resolver", "webfarm", "threat", "probe",
+            "mail", "ntp", "ca",
         }
         assert compose["services"]["probe"]["profiles"] == ["probe"]
-        assert "probe" not in out.summary["services"]
+        assert "probe" not in out.summary["services"] and "ca" not in out.summary["services"]
         net = compose["networks"]["gs-public"]
         assert net["internal"] is True  # a closed range: no route to the real internet
-        assert net["ipam"]["config"] == [{"subnet": "198.18.0.0/15", "ip_range": "198.18.0.0/24"}]
+        assert net["ipam"]["config"] == [
+            {"subnet": "198.18.0.0/15", "ip_range": "198.18.0.0/24", "gateway": "198.18.0.1"}
+        ]
 
     def test_corpus_is_mounted_read_only_and_overlay_read_write(self, t0):
         out = config.render(t0, config.BlockParams(), corpus_dir="/mnt/corpus")

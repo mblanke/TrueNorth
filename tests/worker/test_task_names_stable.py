@@ -55,6 +55,7 @@ def _registered() -> set[str]:
 # Tasks added since the split, each in its own module. New names, so nothing queued
 # before them can be stranded; listed so that any other change still fails here.
 ADDED_SINCE_SPLIT = {
+    "worker.tasks.configure_range",  # worker/configure_tasks.py (post-deploy: Greyspace gs-core)
     "worker.tasks.deploy_noise_agents",  # worker/noise_tasks.py (background noise)
     "worker.tasks.run_inject",  # worker/exercise_run.py (instructor inject)
     "worker.tasks.run_scenario_execution",  # worker/exercise_run.py (POST /scenarios/execute)

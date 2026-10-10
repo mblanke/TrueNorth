@@ -1,4 +1,24 @@
-# Greyspace — simulated internet module (plan + mockup only)
+# Greyspace — simulated internet module (plan and status)
+
+## Status (2026-10-09, branch `claude/greyspace-vsphere`)
+
+**Proven on the T0 Docker stack (CI job `greyspace`, `greyspace/scripts/check-t0.sh`) and
+on vcsim (`pytest -m vcsim`, CI job `vsphere-sim`). Not run on a real vCenter or ESXi
+host: no real vSphere was available. vcsim runs no VMware Tools and cannot do guest
+operations, so the configure stage and breadcrumb delivery on gs-core are covered by
+unit tests with a fake guest channel, not end to end on vSphere.**
+
+| Slice | Status | Where |
+|---|---|---|
+| 0 Prerequisites | **Done for Greyspace.** Post-deploy stage `configure_range` (worker/configure_tasks.py) after `provision_range`; per-VM `nics[]` already existed (render.py `interfaces`); the gs-core VM is planned into the build (worker/greyspace_host.py) and configured through `BaseProvisioner.run_in_guest` (vSphere guest operations). Not done: injector-param plumbing items were already fixed before this branch; `RangeContext.greyspace` not added (the breadcrumb injector does not need it). | ADR 0007 §6–7 |
+| 1 Template block | Done earlier as the template's `greyspace:` key (not `includes:`), plus `network` (the VLAN gs-core joins). | template.schema.json |
+| 2 Stack, core | Done (stage 4 earlier); now pinned by digest, routed-bridge host render for gs-core, `bin/gs` operator CLI. Golden image `greyspace-host` (Packer, `files/linux/roles/greyspace-host.sh`): written, **not built on vSphere**. | app/greyspace/config.py |
+| 3 Rich services | **Mail** (Mailpit: SMTP, MX for every site zone, webmail at `webmail.<zone>`), **NTP** (chrony), **HTTPS** from a Greyspace root CA (`trust_ca`, published at `http://pki.gs-infra.net/root.crt`). Video is served as static files (T0 test pattern). **Search not done.** | check-t0.sh 6–8 |
+| 4 Breadcrumbs | Done: `greyspace_breadcrumb` injector (web file / DNS record / threat-feed entry, per-exercise `{{ token }}`), delivered by inject_dispatch → worker/greyspace.py (`bin/gs crumb plant` on gs-core; recorded on mock); validator `greyspace_breadcrumb` recomputes the token. Access-log shipping to OpenSearch **not done** (validators use the token, not fetch logs). | check-t0.sh 10 |
+| 5 Threat-actor infra | Stub only (pages per threat domain, HTTPS); no C2 redirector / payload host compose project yet. | — |
+| 6 NPC traffic | Done with a **lightweight GHOSTS equivalent** (app/greyspace/npc.py profiles `office-day` / `quiet-night`, npc_agent.py: browse, resolve, mail), one container in the stack. GHOSTS itself was not chosen: it needs a .NET client per endpoint plus its API and Postgres. GHOSTS clients in workstation images remain open. | check-t0.sh 9 |
+| 7 UI | Done: the Range Designer's Internet/Cloud stencil carries the block (`nodeData.greyspace`), exports it as `greyspace:` and YAML import draws it back (round trip, Karma + pytest); Greyspace panel shows `configuring`, the gs-core host, failures, breadcrumb operations; the page lists corpora read-only. Scenario-editor breadcrumb authoring **not done**. | range-designer, greyspace-panel |
+| 8 Corpus ops | Done (offline): `corpus.py ingest` (WARC → `sites/<fqdn>/…` + manifest + checksums), `corpus.py report` (size, duplicates), `corpus.py sample-warc` (CI sample), `bin/gs corpus mount` (NFS read-only) and `verify` on gs-core; read-only corpus table on the Greyspace page. NetApp snapshot versioning stays a storage-side procedure (docs/greyspace-corpus.md). | check-t0.sh 11 |
 
 ## Context
 
@@ -17,7 +37,7 @@ Decisions taken with the user (2026-10-03):
   (`docs/dell-netapp-mobile-kit-inventory.md:177`, ~600 TB, NFS), mounted **read-only**.
 - Greyspace runtime is a **Docker stack** pointing at that data.
 - Exercises hide **breadcrumbs** in some sites → per-range writable overlay, never the corpus.
-- Deliverable this session: **this plan + a UI mockup**. No code.
+- Deliverable of the 2026-10-03 session: this plan + a UI mockup (the build status is above).
 
 ## Architecture
 

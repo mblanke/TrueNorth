@@ -62,7 +62,10 @@ def test_injector_catalogue_advertises_what_runs_on_the_mock_backend(client):
     items = {i["name"]: i for i in client.get("/injectors").json()}
     assert items["simulated_execution"]["touches_range_hosts"] is False
     assert items["dns_spike"]["touches_range_hosts"] is True
-    assert {i["execution_mode"] for i in items.values()} == {"simulated"}
+    # Every injector is synthetic except Greyspace breadcrumbs, which the worker plants (ADR 0007).
+    assert {n for n, i in items.items() if i["execution_mode"] != "simulated"} == {"greyspace_breadcrumb"}
+    assert items["greyspace_breadcrumb"]["execution_mode"] == "live"
+    assert items["greyspace_breadcrumb"]["touches_range_hosts"] is False
 
 
 # -- DELETE /scenarios/{id} ------------------------------------------------------

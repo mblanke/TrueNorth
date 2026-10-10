@@ -432,8 +432,14 @@ def linux_guestinfo(vm_def: dict, macs: list[str], install_user: dict | None = N
     metadata = {"instance-id": vm_def["name"], "local-hostname": name, "network": netplan(vm_def["nics"], macs, vm_def.get("dns"),
                                                                      vm_def.get("dns_search"))}
     userdata = f"#cloud-config\nhostname: {name}\npreserve_hostname: false\n"
-    if install_user:
-        userdata += yaml.safe_dump({"users": ["default", install_user]}, sort_keys=False)
+    # ``cloud_config``: more cloud-config from the worker for this VM (gs-core: its service
+    # account, bootstrap script and first-boot command; worker/greyspace_host.py).
+    extra = dict(vm_def.get("cloud_config") or {})
+    users = [u for u in [install_user, *extra.pop("users", [])] if u]
+    if users:
+        userdata += yaml.safe_dump({"users": ["default", *users]}, sort_keys=False)
+    if extra:
+        userdata += yaml.safe_dump(extra, sort_keys=False)
 
     def b64(text: str) -> str:
         return base64.b64encode(text.encode()).decode()

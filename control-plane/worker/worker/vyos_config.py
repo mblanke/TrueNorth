@@ -167,6 +167,22 @@ def build_config(
                      f"{fwd} rule 10 destination group address-group 'TN_DEPOT'",
                      f"{fwd} rule 10 destination group port-group 'TN_DEPOT_PORTS'"]
 
+    # Greyspace (worker/greyspace_host.py route_router): the simulated internet's public
+    # space is routed to gs-core, and every zone may reach it (it is the range's internet).
+    gs = vm_def.get("greyspace_route") if isinstance(vm_def.get("greyspace_route"), dict) else None
+    if gs:
+        try:
+            prefix, via = ipaddress.ip_network(str(gs["prefix"])), ipaddress.ip_address(str(gs["via"]))
+        except (KeyError, ValueError):
+            notes.append(f"greyspace route {gs!r} is not a prefix and an address (skipped)")
+        else:
+            cmds += [f"set protocols static route {_q(str(prefix))} next-hop {_q(str(via))}",
+                     f"{fwd} rule 20 action 'accept'", f"{fwd} rule 20 description 'TrueNorth: zones to Greyspace'",
+                     f"{fwd} rule 20 source group network-group 'TN_ZONES'",
+                     f"{fwd} rule 20 destination address {_q(str(prefix))}"]
+            if gs.get("resolver"):
+                cmds += [f"set system name-server {_q(str(gs['resolver']))}"]
+
     number = 100
     if rules:
         for n, rule in enumerate(rules):

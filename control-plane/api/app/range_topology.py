@@ -599,7 +599,40 @@ def template_to_diagram(doc: dict) -> dict:
         if extra:
             data["template_extra"] = extra
         node_cells.append(cell)
+    if isinstance(doc.get("greyspace"), dict):  # the Internet/Cloud stencil carries it (ADR 0007)
+        node_cells.append(greyspace_cell(doc["greyspace"], 40 + zone_w + 40, 40))
     return {"cells": zone_cells + node_cells}
+
+
+# ── Greyspace: the Internet/Cloud stencil is the template's `greyspace:` block ──
+GREYSPACE_KEYS = ("version", "corpus_tier", "site_packs", "public_prefix", "npc_profile", "threat_infra", "trust_ca",
+                  "network")
+GREYSPACE_DEFAULTS: dict = {"version": 1, "corpus_tier": "t0", "site_packs": None, "npc_profile": "off",
+                            "threat_infra": True, "trust_ca": True, "network": "greyspace"}
+
+
+def greyspace_cell(block: dict, x: int, y: int) -> dict:
+    """The Internet/Cloud cell that stands for a template's ``greyspace:`` block."""
+    cell = _cell_node("greyspace", "Greyspace internet", "cloud", "", "", x, y)
+    cell["nodeData"]["greyspace"] = {k: v for k, v in block.items() if k in GREYSPACE_KEYS}
+    return cell
+
+
+def _greyspace_from_cells(cells: list[dict], warnings: list[str]) -> dict | None:
+    """The ``greyspace:`` block of the first Internet/Cloud cell that carries one (and has
+    it enabled); the designer drops the stencil with the defaults. None: no Greyspace."""
+    found = [c for c in cells if c["nodeType"] == "cloud" and isinstance(c["nodeData"].get("greyspace"), dict)
+             and c["nodeData"]["greyspace"].get("enabled", True) is not False]
+    if not found:
+        return None
+    if len(found) > 1:
+        warnings.append(f"{len(found)} Internet/Cloud stencils carry Greyspace; a range has one, the first is used")
+    raw = found[0]["nodeData"]["greyspace"]
+    block = {**GREYSPACE_DEFAULTS, **{k: v for k, v in raw.items() if k in GREYSPACE_KEYS}}
+    dropped = sorted(k for k in raw if k not in GREYSPACE_KEYS and k != "enabled")
+    if dropped:
+        warnings.append(f"Greyspace: {', '.join(dropped)} are not block settings; dropped")
+    return block
 
 
 def _name(text: str) -> str:
@@ -854,6 +887,8 @@ def diagram_to_template(diagram: dict, name: str = "Range Design", *, range_id: 
     role_errors, role_warnings = windows_roles.check_nodes(nodes)
     warnings.extend(role_warnings)
     template: dict = {"name": name, "version": "1.0", "network": {"vlans": vlans}, "nodes": nodes}
+    if (greyspace := _greyspace_from_cells(cells, warnings)) is not None:
+        template["greyspace"] = greyspace
     template["source"] = {"tool": "range-designer", **({"range_id": range_id} if range_id else {})}
     return {"template": template, "warnings": warnings, "errors": role_errors}
 

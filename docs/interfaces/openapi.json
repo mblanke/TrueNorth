@@ -5921,9 +5921,16 @@
             "title": "Corpus Tier",
             "type": "string"
           },
+          "network": {
+            "default": "greyspace",
+            "description": "vSphere: the template network (VLAN name) the gs-core VM joins; its gateway router routes to it.",
+            "pattern": "^[A-Za-z0-9_.-]{1,63}$",
+            "title": "Network",
+            "type": "string"
+          },
           "npc_profile": {
             "default": "off",
-            "description": "Simulated users. Recorded only: NPC traffic is a later slice.",
+            "description": "Simulated users browsing, resolving and mailing in the stack (app/greyspace/npc.py).",
             "enum": [
               "off",
               "office-day",
@@ -5968,7 +5975,7 @@
           },
           "trust_ca": {
             "default": true,
-            "description": "Recorded only: the Greyspace root CA is a later slice.",
+            "description": "A Greyspace root CA and HTTPS for every site; the CA is at http://pki.gs-infra.net/root.crt.",
             "title": "Trust Ca",
             "type": "boolean"
           },
@@ -6010,6 +6017,19 @@
             "title": "Files",
             "type": "array"
           },
+          "https": {
+            "default": false,
+            "title": "Https",
+            "type": "boolean"
+          },
+          "infra_names": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Greyspace's own service names -> address.",
+            "title": "Infra Names",
+            "type": "object"
+          },
           "isps": {
             "items": {
               "additionalProperties": true,
@@ -6017,6 +6037,11 @@
             },
             "title": "Isps",
             "type": "array"
+          },
+          "npc_profile": {
+            "default": "off",
+            "title": "Npc Profile",
+            "type": "string"
           },
           "range_id": {
             "format": "uuid",
@@ -6152,6 +6177,7 @@
             "enum": [
               "not_attached",
               "configured",
+              "configuring",
               "deployed",
               "pending_infrastructure",
               "failed"

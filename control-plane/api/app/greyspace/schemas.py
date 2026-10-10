@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 CorpusTier = Literal["t0", "t1", "t2", "full"]
 NpcProfile = Literal["off", "office-day", "quiet-night"]
-GreyspaceStatus = Literal["not_attached", "configured", "deployed", "pending_infrastructure", "failed"]
+GreyspaceStatus = Literal["not_attached", "configured", "configuring", "deployed", "pending_infrastructure", "failed"]
 
 
 class GreyspaceBlock(BaseModel):
@@ -27,9 +27,18 @@ class GreyspaceBlock(BaseModel):
     public_prefix: str | None = Field(
         None, description="IPv4 CIDR covering every ISP prefix of the corpus. Omit to use the corpus's own."
     )
-    npc_profile: NpcProfile = Field("off", description="Simulated users. Recorded only: NPC traffic is a later slice.")
+    npc_profile: NpcProfile = Field(
+        "off", description="Simulated users browsing, resolving and mailing in the stack (app/greyspace/npc.py)."
+    )
     threat_infra: bool = Field(True, description="Serve the corpus's threat-actor domains (C2, phishing stubs).")
-    trust_ca: bool = Field(True, description="Recorded only: the Greyspace root CA is a later slice.")
+    trust_ca: bool = Field(
+        True, description="A Greyspace root CA and HTTPS for every site; the CA is at http://pki.gs-infra.net/root.crt."
+    )
+    network: str = Field(
+        "greyspace",
+        description="vSphere: the template network (VLAN name) the gs-core VM joins; its gateway router routes to it.",
+        pattern=r"^[A-Za-z0-9_.-]{1,63}$",
+    )
 
 
 class CorpusSummary(BaseModel):
@@ -75,4 +84,7 @@ class GreyspaceConfigOut(BaseModel):
     tlds: list[str]
     zones: list[str]
     threat_domains: list[dict]
+    infra_names: dict[str, str] = Field(default_factory=dict, description="Greyspace's own service names -> address.")
+    https: bool = False
+    npc_profile: str = "off"
     files: list[str]

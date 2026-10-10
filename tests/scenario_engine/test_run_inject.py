@@ -36,10 +36,14 @@ def test_no_label_sits_beside_the_observable_fields():
     assert set(event) == {"@timestamp", "event.kind", "range_id", "tenant_id", engine.GROUND_TRUTH_FIELD}
 
 
+# Injectors whose effect is real: delivered by the worker, not synthetic records.
+LIVE = {"greyspace_breadcrumb"}  # planted on the range's Greyspace host (worker/greyspace.py)
+
+
 def test_every_registered_injector_declares_its_contract():
     for action in engine.list_injectors():
         profile = engine.injector_profile(action)
-        assert profile["execution_mode"] == "simulated", action  # none delivers to hosts today
+        assert profile["execution_mode"] == ("live" if action in LIVE else "simulated"), action
         assert profile["touches_range_hosts"] is (action in HOST_TOUCHING), action
 
 

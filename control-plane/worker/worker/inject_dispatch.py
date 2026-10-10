@@ -149,6 +149,15 @@ def _run(
             result = eng.run_inject(action, params, ctx, allow_host_effects=allow)
             if result.skipped and backend != MOCK_BACKEND:
                 result.detail = "skipped: range has no provisioned hosts"
+            # Greyspace breadcrumbs: the injector prepared them; the range's Greyspace host
+            # gets them through the worker's Greyspace seam (ADR 0007).
+            gs_op = (result.raw or {}).get("greyspace") if result.success and not result.skipped else None
+            if isinstance(gs_op, dict) and range_id:
+                from . import greyspace
+
+                ok, what = greyspace.deliver_breadcrumbs(str(range_id), backend, gs_op)
+                result.success = ok
+                result.detail = f"{result.detail} ({what})" if ok else f"{result.detail}: not delivered: {what}"
             summary.update(
                 dispatched=not result.skipped and result.raw is not None,
                 status="skipped" if result.skipped else ("fired" if result.success else "failed"),

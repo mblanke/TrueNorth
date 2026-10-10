@@ -6,8 +6,14 @@
                                               write manifest.json + checksums.sha256 for a tree
                                               of mirrored sites (build-sample.sh calls this)
     corpus.py verify --root DIR               check the manifest and every checksum
-    corpus.py render --corpus DIR --out DIR [--packs news,dev] [--no-threat]
+    corpus.py render --corpus DIR --out DIR [--packs news,dev] [--no-threat] [--no-ca]
+                     [--npc office-day] [--host] [--project NAME]
                                               generate the Docker stack for a corpus
+    corpus.py sample-warc --out FILE.warc.gz  a WARC of the T0 sites, as a crawler would
+                                              write it (the CI sample for the ingest pipeline)
+    corpus.py ingest --warc F [--warc F ...] --out DIR --tier t1 --version V [--seeds FILE]
+                                              WARC -> sites/<fqdn>/... + manifest + checksums
+    corpus.py report --root DIR [--out FILE]  size and duplicate-content report of a corpus
 
 Every tier has the same layout (sites/<fqdn>/..., manifest.json, checksums.sha256), so
 ``render`` and the web farm do not care which tier they are given. The manifest parser
@@ -30,7 +36,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "control-plane" / "api"))
 
-from app.greyspace import config, fixture  # noqa: E402 — after the path insert
+from app.greyspace import config, fixture, ingest  # noqa: E402 — after the path insert
 from app.greyspace.manifest import TIERS, ManifestError, parse_manifest, valid_fqdn  # noqa: E402
 
 IMAGES_DIR = ROOT / "greyspace" / "images"
@@ -92,14 +98,19 @@ def cmd_t0(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_index(args: argparse.Namespace) -> int:
-    """Manifest for a mirrored tree. Seeds file: ``<fqdn> <category> <licence> <source-url>``."""
-    root = Path(args.root).resolve()
+def _seeds(path: str | None) -> dict[str, tuple[str, str, str]]:
     seeds: dict[str, tuple[str, str, str]] = {}
-    for line in Path(args.seeds).read_text(encoding="utf-8").splitlines():
+    for line in (Path(path).read_text(encoding="utf-8").splitlines() if path else []):
         parts = line.split()
         if len(parts) >= 4 and not line.lstrip().startswith("#"):
             seeds[parts[0].lower()] = (parts[1], parts[2], parts[3])
+    return seeds
+
+
+def cmd_index(args: argparse.Namespace) -> int:
+    """Manifest for a mirrored tree. Seeds file: ``<fqdn> <category> <licence> <source-url>``."""
+    root = Path(args.root).resolve()
+    seeds = _seeds(args.seeds)
     isps = [dict(i) for i in fixture.ISPS]
     pools = [ipaddress.IPv4Network(i["prefix"]) for i in isps]
     hosts = [list(p.hosts())[256:] for p in pools]  # skip the infrastructure /24
@@ -156,8 +167,11 @@ def cmd_render(args: argparse.Namespace) -> int:
         corpus_tier=manifest.tier,
         site_packs=tuple(args.packs.split(",")) if args.packs else None,
         threat_infra=not args.no_threat,
+        trust_ca=not args.no_ca,
+        npc_profile=args.npc,
     )
-    rendered = config.render(manifest, params, corpus_dir=str(corpus), images_dir=str(IMAGES_DIR))
+    rendered = config.render(manifest, params, corpus_dir=str(corpus), images_dir=str(IMAGES_DIR), host=args.host,
+                             project=args.project)
     out = Path(args.out).resolve()
     if out.exists():
         shutil.rmtree(out)
@@ -169,6 +183,67 @@ def cmd_render(args: argparse.Namespace) -> int:
             os.chmod(dest, 0o755)
     (out / "summary.json").write_text(json.dumps(rendered.summary, indent=2) + "\n", encoding="utf-8")
     print(f"render: {len(rendered.files)} files, {rendered.summary['sites']} sites -> {out}")
+    return 0
+
+
+_TYPES = {".html": "text/html", ".css": "text/css", ".txt": "text/plain", ".webm": "video/webm"}
+
+
+def cmd_sample_warc(args: argparse.Namespace) -> int:
+    """The T0 sites as a crawl would capture them: one response per file, plus a request
+    record and a 404 (both of which ingest must skip)."""
+    out = Path(args.out).resolve()
+    out.parent.mkdir(parents=True, exist_ok=True)
+    date = "2026-10-07T00:00:00Z"
+    n = 0
+    with out.open("wb") as fh:
+        for fqdn, category, title, tagline in fixture.SITES:
+            for rel, data in sorted(fixture.site_files(fqdn, category, title, tagline).items()):
+                uri = f"https://{fqdn}/" + ("" if rel == "index.html" else rel)
+                ctype = _TYPES.get(Path(rel).suffix, "application/octet-stream")
+                ingest.write_record(fh, "request", uri, f"GET /{rel} HTTP/1.1\r\nHost: {fqdn}\r\n\r\n".encode(),
+                                    date=date, content_type="application/http; msgtype=request")
+                ingest.write_record(fh, "response", uri, ingest.http_response(data, ctype), date=date,
+                                    content_type="application/http; msgtype=response")
+                n += 1
+        missing = b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n"
+        ingest.write_record(fh, "response", f"https://{fixture.SITES[0][0]}/gone.html", missing, date=date,
+                            content_type="application/http; msgtype=response")
+    print(f"sample-warc: {n} responses -> {out}")
+    return 0
+
+
+def cmd_ingest(args: argparse.Namespace) -> int:
+    out = Path(args.out).resolve()
+    if out.exists():
+        shutil.rmtree(out)
+    result = ingest.extract([Path(w) for w in args.warc], out)
+    (out / "warc").mkdir(parents=True, exist_ok=True)
+    for w in args.warc:  # provenance: the WARCs travel with the tree they made
+        shutil.copy2(w, out / "warc" / Path(w).name)
+    print(f"ingest: {result.records} records, {result.stored} files stored, {len(result.sites)} sites, "
+          f"skipped {result.skipped}")
+    if not result.stored:
+        print("ingest: nothing stored", file=sys.stderr)
+        return 1
+    seeds = args.seeds
+    if not seeds:  # the CI sample: categories and licences from the T0 fixture
+        seeds = str(out / "seeds.txt")
+        Path(seeds).write_text("".join(f"{f} {c} {fixture.LICENCE} https://{f}/\n" for f, c, _, _ in fixture.SITES),
+                               encoding="utf-8")
+    rc = cmd_index(argparse.Namespace(root=str(out), tier=args.tier, version=args.version, seeds=seeds))
+    if not args.seeds:
+        Path(seeds).unlink()
+    return rc
+
+
+def cmd_report(args: argparse.Namespace) -> int:
+    rep = ingest.report(Path(args.root).resolve())
+    text = json.dumps(rep, indent=2) + "\n"
+    if args.out:
+        Path(args.out).write_text(text, encoding="utf-8")
+    print(f"report: {rep['files']} files, {rep['bytes']} bytes, {rep['duplicate_bytes']} duplicate bytes "
+          f"in {rep['duplicate_groups']} groups (dedupe ratio {rep['dedupe_ratio']})")
     return 0
 
 
@@ -190,9 +265,26 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--out", default=str(ROOT / "build" / "greyspace" / "stack"))
     p.add_argument("--packs", default="")
     p.add_argument("--no-threat", action="store_true")
+    p.add_argument("--no-ca", action="store_true")
+    p.add_argument("--npc", default="off", choices=list(config.NPC_PROFILES))
+    p.add_argument("--host", action="store_true", help="render for a gs-core VM (routed bridge, no probe)")
+    p.add_argument("--project", default="greyspace")
+    p = sub.add_parser("sample-warc")
+    p.add_argument("--out", default=str(ROOT / "build" / "greyspace" / "sample.warc.gz"))
+    p = sub.add_parser("ingest")
+    p.add_argument("--warc", action="append", required=True)
+    p.add_argument("--out", required=True)
+    p.add_argument("--tier", default="t1", choices=sorted(TIERS))
+    p.add_argument("--version", required=True)
+    p.add_argument("--seeds", default="")
+    p = sub.add_parser("report")
+    p.add_argument("--root", required=True)
+    p.add_argument("--out", default="")
     args = parser.parse_args(argv)
+    commands = {"t0": cmd_t0, "index": cmd_index, "verify": cmd_verify, "render": cmd_render,
+                "sample-warc": cmd_sample_warc, "ingest": cmd_ingest, "report": cmd_report}
     try:
-        return {"t0": cmd_t0, "index": cmd_index, "verify": cmd_verify, "render": cmd_render}[args.cmd](args)
+        return commands[args.cmd](args)
     except (ManifestError, config.ConfigError) as exc:
         print(f"{args.cmd}: {exc}", file=sys.stderr)
         return 2
