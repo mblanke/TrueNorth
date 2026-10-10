@@ -17,29 +17,8 @@
     name: tn_config
     tasks_from: secrets
 
-- name: Keycloak — obtain an admin token
-  ansible.builtin.uri:
-    url: "{{ tn_kc_internal }}/realms/master/protocol/openid-connect/token"
-    method: POST
-    body_format: form-urlencoded
-    body:
-      grant_type: password
-      client_id: admin-cli
-      username: "{{ vault_keycloak_admin_user | default('admin') }}"
-      password: "{{ tn_secrets['keycloak_admin_password'] }}"
-    status_code: 200
-  register: tn_kc_token
-  retries: 10
-  delay: 6
-  until: tn_kc_token.status == 200
-  no_log: true
-
-- name: Keycloak — set the auth header
-  ansible.builtin.set_fact:
-    tn_kc_headers:
-      Authorization: "Bearer {{ tn_kc_token.json.access_token }}"
-      Content-Type: application/json
-  no_log: true
+- name: Keycloak — admin token
+  ansible.builtin.include_tasks: admin_token.yml
 
 # ── Realm ─────────────────────────────────────────────────────────────
 - name: Keycloak — does the realm exist?

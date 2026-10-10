@@ -1,0 +1,27 @@
+---
+# A fresh master-realm admin token and the header that carries it. Keycloak's admin-cli
+# tokens live about 60 s, so long stretches (the demo accounts) take a new one first;
+# the demo groups step got 401 on staging (v1.2.0-rc2) with the token from the start.
+- name: Keycloak — obtain an admin token
+  ansible.builtin.uri:
+    url: "{{ tn_kc_internal }}/realms/master/protocol/openid-connect/token"
+    method: POST
+    body_format: form-urlencoded
+    body:
+      grant_type: password
+      client_id: admin-cli
+      username: "{{ vault_keycloak_admin_user | default('admin') }}"
+      password: "{{ tn_secrets['keycloak_admin_password'] }}"
+    status_code: 200
+  register: tn_kc_token
+  retries: 10
+  delay: 6
+  until: tn_kc_token.status == 200
+  no_log: true
+
+- name: Keycloak — set the auth header
+  ansible.builtin.set_fact:
+    tn_kc_headers:
+      Authorization: "Bearer {{ tn_kc_token.json.access_token }}"
+      Content-Type: application/json
+  no_log: true
