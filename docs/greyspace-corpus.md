@@ -70,6 +70,35 @@ look-alikes are synthetic, never scraped.
 6. **Publish.** Copy to the NetApp volume, verify, then take a snapshot named for the
    version (`corpus@2026.10`). Ranges pin a version; old versions stay as snapshots.
 
+### 3a. The ingest tooling (shipped, plan slice 8)
+
+Everything below is standard-library Python in the repo; CI runs the sample pipeline on
+every build (`check-t0.sh`, step 11).
+
+```
+# 1. A crawl's WARCs (wget2/Browsertrix), or the CI sample made from the T0 sites:
+python greyspace/scripts/corpus.py sample-warc --out build/greyspace/sample.warc.gz
+# 2. WARC -> sites/<fqdn>/... (200 responses only; paths confined to their site;
+#    "/" and "/dir/" become index.html), then manifest.json + checksums.sha256, and the
+#    WARCs kept under warc/ for provenance. --seeds gives each site's category and licence.
+python greyspace/scripts/corpus.py ingest --warc crawl1.warc.gz --warc crawl2.warc.gz \
+    --out /staging/2026.11 --tier t2 --version 2026.11 --seeds greyspace/corpus/seeds-lab.txt
+# 3. Check and size it before it goes to the array.
+python greyspace/scripts/corpus.py verify --root /staging/2026.11
+python greyspace/scripts/corpus.py report --root /staging/2026.11 --out report.json
+```
+
+`report` gives total and per-site files and bytes, the largest files, and duplicate
+content (sha256 groups, bytes a dedupe would save, `dedupe_ratio`) for step 3 above.
+
+**Loading a corpus into gs-core's web farm** (vSphere): set `GREYSPACE_CORPUS_NFS`
+(`server:/export`) on the worker. Each gs-core VM then mounts it read-only at
+`/srv/greyspace/corpus` in its configure stage (`bin/gs corpus mount`, options
+`ro,nfsvers=4.1,nosuid,nodev,noexec`) and verifies every checksum (`bin/gs corpus verify`)
+before the stack starts. Without it, gs-core gets the T0 corpus inside its bundle. The
+worker reads the tier's manifest from `GREYSPACE_MANIFEST_DIR/<tier>/manifest.json` to
+render the stack (the API reads the same path to validate blocks).
+
 ## 4. NetApp layout
 
 ```
@@ -116,4 +145,5 @@ T2 (~50 GB) = stage 1 + 2 + a 30 GB slice of 3 + 10 GB of 4.
 
 - Legal review of the licence allow list and attribution pages before any tier ships on a kit.
 - Search index per corpus version (stage 3 dependency for the search service).
-- TLS: the Greyspace root CA and per-site certificates (ADR 0007, later slice).
+- TLS is done in the stack (ADR 0007 §8: a root CA per stack, one certificate per zone);
+  a corpus needs nothing for it.

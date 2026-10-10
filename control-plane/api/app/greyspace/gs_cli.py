@@ -174,18 +174,22 @@ def cmd_health(args) -> int:
         res = in_webfarm(f"wget -q -O - --header 'Host: {site}' http://127.0.0.1/ | head -c 2000", check=False)
         ok = res.returncode == 0 and bool(res.stdout.strip())
         checks.append({"check": "web", "ok": ok, "detail": f"http://{site}/ from the web farm"})
-    if cfg.get("host"):  # only a gs-core VM routes to the stack's addresses from the host
+    # From inside the stack's network (the web farm's busybox), so the check means the same
+    # on a gs-core VM and on a test host that does not route to the stack.
+    if site:
+        res = in_webfarm(f"nslookup {shlex.quote(site)} {cfg['resolver']}", check=False)
+        out = res.stdout.decode("utf-8", "replace")
+        addrs = re.findall(r"Address:\s*(\d+\.\d+\.\d+\.\d+)", out.split("Name:", 1)[-1]) if "Name:" in out else []
+        checks.append({"check": "dns", "ok": bool(addrs), "detail": f"{site} -> {addrs}"})
+    res = in_webfarm(f"echo QUIT | nc -w 5 {cfg['mail']} 25 | head -1", check=False)
+    banner = res.stdout.decode("utf-8", "replace").strip()
+    checks.append({"check": "smtp", "ok": banner.startswith("220"), "detail": banner[:80] or "no banner"})
+    if cfg.get("host"):  # gs-core: the stack must also answer from the VM itself (range side)
         try:
             got = dns_query(cfg["resolver"], site) if site else []
-            checks.append({"check": "dns", "ok": bool(got), "detail": f"{site} -> {got}"})
+            checks.append({"check": "dns-from-host", "ok": bool(got), "detail": f"{site} -> {got}"})
         except OSError as exc:
-            checks.append({"check": "dns", "ok": False, "detail": str(exc)})
-        try:
-            with socket.create_connection((cfg["mail"], 25), timeout=5) as s:
-                banner = s.recv(200).decode("utf-8", "replace").strip()
-            checks.append({"check": "smtp", "ok": banner.startswith("220"), "detail": banner[:80]})
-        except OSError as exc:
-            checks.append({"check": "smtp", "ok": False, "detail": str(exc)})
+            checks.append({"check": "dns-from-host", "ok": False, "detail": str(exc)})
     ok = all(c["ok"] for c in checks)
     print(json.dumps({"ok": ok, "checks": checks}, indent=2 if not args.json else None))
     return 0 if ok else 1

@@ -89,11 +89,14 @@ configure() {
   source "$ROOT/host.env"
   mkdir -p "$CORPUS"
   if [[ -n "${GS_CORPUS_NFS:-}" ]]; then
+    # A published NetApp snapshot was verified when it was published (docs/greyspace-corpus.md);
+    # re-hashing terabytes here would hold the range for hours.
     python3 "$ROOT/stack/bin/gs" corpus mount --source "$GS_CORPUS_NFS" --dir "$CORPUS"
+    test -s "$CORPUS/manifest.json"
   elif [[ -d "$ROOT/corpus" ]]; then
     rm -rf "$CORPUS" && mkdir -p "$(dirname "$CORPUS")" && cp -a "$ROOT/corpus" "$CORPUS"
+    python3 "$ROOT/stack/bin/gs" corpus verify "$CORPUS"
   fi
-  python3 "$ROOT/stack/bin/gs" corpus verify "$CORPUS"
   python3 "$ROOT/stack/bin/gs" up
   log "stack up"
 }

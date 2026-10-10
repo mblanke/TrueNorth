@@ -53,8 +53,12 @@ Now: every event goes through the dispatch on every backend. Each injector decla
 
 The default on the base class is `True`, so a new injector must opt in to running without
 hosts. Separately, `execution_mode` says what the code actually does: every injector is
-`"simulated"` today (no network, process or file I/O), and the records and telemetry say
-so. A real injector must declare `"live"`.
+`"simulated"` (no network, process or file I/O), and the records and telemetry say so,
+except `greyspace_breadcrumb`, which is `"live"`: it prepares breadcrumbs for the range's
+Greyspace and inject dispatch hands them to the worker's Greyspace seam
+(`greyspace.deliver_breadcrumbs`), which plants them on gs-core on vSphere and records
+them on mock (so it is `touches_range_hosts: False`). A delivery that fails makes the
+inject `failed` with the reason (ADR 0007 §9).
 
 The worker never scores (ADR 0005). On a real backend `run_scenario_v2` fires the timeline
 and leaves the exercise `running` (notification phase `timeline_complete`): a Student

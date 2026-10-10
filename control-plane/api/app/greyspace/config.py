@@ -54,7 +54,7 @@ IMAGES = {
     "mailpit": "axllent/mailpit:v1.27.10@sha256:b1f1be18af530d939a11ee8820b379e0c88eeec204d904bfad68862adced3a5a",
 }
 # Built from greyspace/images/<name> (FROM pinned base images), tagged by stack version.
-LOCAL_IMAGES = ("resolver", "probe", "ntp", "ca", "npc")
+LOCAL_IMAGES = ("resolver", "probe", "ntp", "ca")
 LOCAL_TAG = "gs1"
 NPC_PROFILES = npc.PROFILE_NAMES
 

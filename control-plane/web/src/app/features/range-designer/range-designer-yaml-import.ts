@@ -17,6 +17,7 @@
  */
 import { Observable, of } from 'rxjs';
 import { catchError, map } from 'rxjs/operators';
+import { GREYSPACE_CELL_ID, GREYSPACE_LABEL, greyspaceSettings } from './greyspace-stencil';
 
 /** Same cap as the server's safe_yaml.MAX_YAML_BYTES. */
 export const MAX_IMPORT_BYTES = 1024 * 1024;
@@ -82,7 +83,14 @@ const ROLE_STENCIL: Record<string, [string, string]> = {
 const NODE_FIELDS = new Set(['id', 'name', 'role', 'os', 'vlan', 'ip', 'specs', 'services', 'count']);
 const VLAN_FIELDS = new Set(['id', 'name', 'cidr']);
 /** Top-level keys the designer either uses or regenerates on export. */
-const KNOWN_TOP_LEVEL = new Set(['name', 'version', 'network', 'nodes', 'assets', 'source']);
+const KNOWN_TOP_LEVEL = new Set(['name', 'version', 'network', 'nodes', 'assets', 'source', 'greyspace']);
+
+/** Mirror of range_topology.greyspace_cell: the Internet/Cloud cell carrying the block. */
+function greyspaceCell(block: unknown, x: number, y: number, taken: Set<string>): Record<string, any> {
+  const cell = nodeCell(uniqueId(GREYSPACE_CELL_ID, taken), GREYSPACE_LABEL, 'cloud', '', '', x, y);
+  cell['nodeData']['greyspace'] = greyspaceSettings(block);
+  return cell;
+}
 
 function zoneCell(
   id: string, label: string, cidr: string, x: number, y: number,
@@ -305,7 +313,9 @@ function fullNodesToDiagram(doc: Record<string, any>, nodes: Record<string, any>
     if (Object.keys(extra).length) data['template_extra'] = extra;
     nodeCells.push(cell);
   }
-  return { diagram: { cells: [...zoneCells, ...nodeCells] }, nodeCount: nodeCells.length, zoneCount: zoneCells.length, notes };
+  const nodeCount = nodeCells.length;
+  if (isMapping(doc['greyspace'])) nodeCells.push(greyspaceCell(doc['greyspace'], 40 + zoneW + 40, 40, taken));
+  return { diagram: { cells: [...zoneCells, ...nodeCells] }, nodeCount, zoneCount: zoneCells.length, notes };
 }
 
 /** Mirror of build_template_diagram's assets path: a gateway plus one zone of hosts. */
@@ -342,6 +352,7 @@ function assetsToDiagram(
     const [type, os] = ROLE_STENCIL[role.toLowerCase()] ?? ['server', 'ubuntu-24.04'];
     cells.push(nodeCell(`n-${i}`, label, type, os, `10.0.0.${10 + i}`, 70 + (i % 4) * 150, 175 + Math.floor(i / 4) * 95));
   });
+  if (isMapping(doc['greyspace'])) cells.push(greyspaceCell(doc['greyspace'], 720, 20, new Set(cells.map(c => c['id']))));
   return { diagram: { cells }, nodeCount: shown.length + 1, zoneCount: 1, notes };
 }
 

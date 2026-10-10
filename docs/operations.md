@@ -888,6 +888,29 @@ curl -s "https://auth.truenorth.local/realms/truenorth/.well-known/openid-config
 
 ---
 
+### Greyspace stuck in "configuring" or "failed" (vSphere)
+
+**Symptoms:** a range is `ready` but its Greyspace page shows *Starting on gs-core* for
+more than 30 minutes, or *Failed*.
+
+**Diagnosis:** the page (and `GET /ranges/{id}/greyspace`) shows `detail.stage` and
+`detail.error`; after the configure stage, `detail.configure` lists each step
+(`cloud-init`, `configure`, `health`) with its status and exit code.
+
+| `stage` / error | Cause | Fix |
+|---|---|---|
+| `plan`: no network named `greyspace` | the template has no VLAN for gs-core | add the VLAN (or set the block's `network`) and a router interface on it; reprovision |
+| `plan`: `TN_SECRETS_KEY` unset | the worker cannot derive gs-core's account | set it on the worker; reprovision |
+| `configure`: guest operations not ready | VMware Tools not running in gs-core, or the clone did not come from `greyspace-host` | check `GREYSPACE_HOST_TEMPLATE` and the template's Tools; reprovision |
+| `configure`: step `configure` failed | corpus mount (NFS export, `GREYSPACE_CORPUS_NFS`) or `docker compose up` | on gs-core: `/var/log/greyspace-bootstrap.log`, `sudo python3 /opt/greyspace/stack/bin/gs health` |
+| `configure`: step `health` failed | a stack service is down | on gs-core: `sudo docker compose -p greyspace -f /opt/greyspace/stack/compose.yaml ps` |
+
+Nothing re-runs the configure stage on its own (it is not retried); reprovision the
+range, or as an operator on the worker: `celery -A worker.celery_app call
+worker.tasks.configure_range --args '["<range id>"]' --queue provision`.
+
+---
+
 ## Capacity Planning
 
 ### Resource Estimation by User Count

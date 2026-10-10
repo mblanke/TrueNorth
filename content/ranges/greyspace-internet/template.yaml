@@ -4,9 +4,10 @@ version: "1.0"
 description: |
   A small office network whose edge reaches a Greyspace simulated internet: backbone
   routing between two "ISPs", root/TLD/authoritative DNS, a recursive resolver, rehosted
-  sites served from the read-only corpus and a threat-actor stub (ADR 0007). The
-  `greyspace` block below is attached to every range built from this template.
-  On the mock backend the block is recorded; on vSphere the gs-core VM is a later slice.
+  sites served from the read-only corpus, mail, NTP, HTTPS from a Greyspace CA and a
+  threat-actor stub (ADR 0007). The `greyspace` block below is attached to every range
+  built from this template. On the mock backend the block is recorded; on vSphere a
+  gs-core VM joins the `greyspace` VLAN and the edge router routes the range to it.
 author: TrueNorth Range
 difficulty: beginner
 
@@ -18,6 +19,10 @@ network:
     - id: 120
       name: servers
       cidr: "10.40.120.0/24"
+    # The hand-off to the simulated internet: the edge router is .1, gs-core .254.
+    - id: 190
+      name: greyspace
+      cidr: "100.64.190.0/24"
 
 nodes:
   - id: edge01
@@ -26,6 +31,7 @@ nodes:
     os: vyos
     vlan: servers
     ip: "10.40.120.1"
+    interfaces: [{ vlan: servers }, { vlan: corporate }, { vlan: greyspace }]
     specs: { cores: 2, memory_mb: 2048, disk_gb: 10 }
     services: [nat, dns_forwarder]
 
@@ -58,6 +64,7 @@ greyspace:
   version: 1
   corpus_tier: t0
   site_packs: [news, search, social, webmail, dev]
-  npc_profile: "off"
+  npc_profile: office-day
   threat_infra: true
   trust_ca: true
+  network: greyspace

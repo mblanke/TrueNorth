@@ -13,13 +13,14 @@
 
 locals {
   linux_derived = {
-    remnux          = "REMnux malware-analysis workstation"
-    sift            = "SANS SIFT DFIR workstation"
-    "svc-emulators" = "DNS/NTP/mail/web service emulation"
-    "ca-host"       = "step-ca certificate authority"
-    usersim         = "GHOSTS noise-floor user simulation"
-    "cloudlog-emu"  = "Azure/AWS cloud log emulation"
-    "c2-server"     = "open-source C2 (Sliver/Mythic) — SIGN-OFF REQUIRED (catalogue enabled=no)"
+    remnux           = "REMnux malware-analysis workstation"
+    sift             = "SANS SIFT DFIR workstation"
+    "svc-emulators"  = "DNS/NTP/mail/web service emulation"
+    "greyspace-host" = "Greyspace gs-core: Docker + every stack image pre-loaded (ADR 0007)"
+    "ca-host"        = "step-ca certificate authority"
+    usersim          = "GHOSTS noise-floor user simulation"
+    "cloudlog-emu"   = "Azure/AWS cloud log emulation"
+    "c2-server"      = "open-source C2 (Sliver/Mythic) — SIGN-OFF REQUIRED (catalogue enabled=no)"
   }
 }
 
@@ -76,6 +77,38 @@ source "vsphere-clone" "sift" {
     content {
       library = var.content_library
       name    = "sift"
+      ovf     = true
+      destroy = true
+    }
+  }
+}
+
+# Greyspace host (ADR 0007): the image the worker clones a range's gs-core VM from
+# (GREYSPACE_HOST_TEMPLATE, default greyspace-host). Docker, NFS client, open-vm-tools,
+# and every Greyspace stack image pre-loaded (ranges have no internet to pull from).
+source "vsphere-clone" "greyspace-host" {
+  vcenter_server      = var.vcenter_server
+  username            = var.vcenter_username
+  password            = var.vcenter_password
+  insecure_connection = var.insecure_connection
+  datacenter          = var.vsphere_datacenter
+  cluster             = var.vsphere_cluster
+  host                = var.vsphere_host
+  datastore           = var.vsphere_datastore
+  folder              = var.vsphere_folder
+  template            = var.base_ubuntu_template
+  vm_name             = "greyspace-host"
+  linked_clone        = false
+  communicator        = "ssh"
+  ssh_username        = var.ssh_username
+  ssh_password        = var.ssh_password
+  ssh_timeout         = "30m"
+  convert_to_template = true
+  dynamic "content_library_destination" {
+    for_each = var.publish_to_library ? [1] : []
+    content {
+      library = var.content_library
+      name    = "greyspace-host"
       ovf     = true
       destroy = true
     }
@@ -234,6 +267,7 @@ build {
     "source.vsphere-clone.remnux",
     "source.vsphere-clone.sift",
     "source.vsphere-clone.svc-emulators",
+    "source.vsphere-clone.greyspace-host",
     "source.vsphere-clone.ca-host",
     "source.vsphere-clone.usersim",
     "source.vsphere-clone.cloudlog-emu",
@@ -250,6 +284,15 @@ build {
   provisioner "shell" {
     only   = ["vsphere-clone.svc-emulators"]
     script = "${path.root}/files/linux/roles/svc-emulators.sh"
+  }
+  provisioner "file" {
+    only        = ["vsphere-clone.greyspace-host"]
+    source      = "${path.root}/../../../greyspace/images"
+    destination = "/tmp/greyspace-images"
+  }
+  provisioner "shell" {
+    only   = ["vsphere-clone.greyspace-host"]
+    script = "${path.root}/files/linux/roles/greyspace-host.sh"
   }
   provisioner "shell" {
     only   = ["vsphere-clone.ca-host"]

@@ -28,7 +28,7 @@ mkdir -p logs
 ORDER=(
   srv2022 win10-22h2 ubuntu-lts pfsense securityonion kali win11-24h2
   srv2019 srv2016 rocky vyos srv2025 debian13 parrot win10-ltsc
-  remnux sift svc-emulators ca-host usersim cloudlog-emu c2-server
+  remnux sift svc-emulators greyspace-host ca-host usersim cloudlog-emu c2-server
   precomp-host detonation-host
 )
 
@@ -37,7 +37,7 @@ VARIANT_DIR="variants"
 # Names built by the vsphere-clone builder (everything else is vsphere-iso).
 is_clone() {
   case "$1" in
-    remnux|sift|svc-emulators|ca-host|usersim|cloudlog-emu|c2-server|precomp-host|detonation-host) return 0 ;;
+    remnux|sift|svc-emulators|greyspace-host|ca-host|usersim|cloudlog-emu|c2-server|precomp-host|detonation-host) return 0 ;;
     *) return 1 ;;
   esac
 }

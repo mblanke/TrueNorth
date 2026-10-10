@@ -1,6 +1,7 @@
 import * as joint from '@joint/core';
 import { firstValueFrom, Observable, of, throwError } from 'rxjs';
 import { upgradeDiagramJson } from './diagram-compat';
+import { GREYSPACE_DEFAULTS, greyspaceBlock } from './greyspace-stencil';
 import {
   importTemplateYaml,
   MAX_IMPORT_BYTES,
@@ -282,6 +283,25 @@ describe('range designer YAML import', () => {
       expect(nodeCount).toBe(4); // gateway + 3 hosts
       expect(diagram.cells.map(c => c['nodeType'])).toEqual(['firewall', 'subnet', 'dc', 'workstation', 'workstation']);
       expect(notes.some(n => n.startsWith('Assets-style template'))).toBeTrue();
+    });
+
+    it("draws a template's greyspace block as the Internet/Cloud stencil, and gives it back on export", () => {
+      const block = { version: 1, corpus_tier: 't0', site_packs: ['news', 'webmail'], npc_profile: 'office-day',
+        threat_infra: false, trust_ca: true, network: 'internet' };
+      const { diagram, nodeCount, notes } = templateToDiagram({ ...exportedTemplate(), greyspace: block });
+      expect(nodeCount).toBe(5); // the cloud is not a VM
+      expect(notes).toEqual([]);
+      const clouds = diagram.cells.filter(c => c['nodeType'] === 'cloud');
+      expect(clouds.length).toBe(1);
+      expect(clouds[0]['id']).toBe('greyspace');
+      expect(clouds[0]['nodeData'].label).toBe('Greyspace internet');
+      expect(greyspaceBlock(clouds[0]['nodeData'].greyspace)).toEqual(block);
+    });
+
+    it('fills a partial greyspace block with the server defaults', () => {
+      const { diagram } = templateToDiagram({ name: 'x', nodes: [{ id: 'a', os: 'kali-2024' }], greyspace: { npc_profile: 'quiet-night' } });
+      const cloud = diagram.cells.find(c => c['nodeType'] === 'cloud')!;
+      expect(cloud['nodeData'].greyspace).toEqual({ ...GREYSPACE_DEFAULTS, npc_profile: 'quiet-night' });
     });
 
     it('reports a template with nothing to draw instead of loading a blank canvas', async () => {

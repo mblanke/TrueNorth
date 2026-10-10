@@ -20,7 +20,7 @@ windows.pkr.hcl              srv2022, srv2025, srv2019, srv2016, win10-22h2, win
                              win11-24h2
 linux.pkr.hcl                ubuntu-lts, rocky, kali, debian13, parrot
 appliances.pkr.hcl           pfsense, securityonion, vyos (keystroke builds)
-derived.pkr.hcl              vsphere-clone: remnux, sift, svc-emulators, ca-host, usersim,
+derived.pkr.hcl              vsphere-clone: remnux, sift, svc-emulators, greyspace-host, ca-host, usersim,
                              cloudlog-emu, c2-server, precomp-host, detonation-host
 variants.pkr.hcl             vsphere-clone: variant-windows, variant-linux (custom images)
 variants/<name>.pkrvars.hcl  one custom image each: base + packages + scripts
@@ -171,6 +171,7 @@ The deploy provisioner can use either, so keeping both costs only datastore spac
 | securityonion | iso | **Fragile (keystroke)** | Base OS install only; `so-setup` deferred to deploy. Finish the OS install by hand the first time, then template |
 | vyos | iso | **Fragile (keystroke)** | `install image` driven blind over the console |
 | remnux, sift, svc-emulators, ca-host, usersim, cloudlog-emu | clone | **Likely** | Clone `ubuntu-lts`, run `files/linux/roles/<name>.sh` over SSH. Role installers have honest `TODO(offline)` / `TODO(deploy)` where media is online-only or range-specific |
+| greyspace-host | clone | **Not run on vSphere yet** | Clone `ubuntu-lts`, Docker >= 27 + every Greyspace stack image pulled by digest (`files/linux/roles/greyspace-host.sh`, needs internet or the depot as apt proxy and registry mirror). Proven: the stack on Docker (CI `greyspace`), gs-core on vcsim; not a real vCenter |
 | c2-server | clone | **Gated** | Catalogue `enabled=no`; needs instructor/Standards sign-off |
 | c2-server-cs | — | **Not built here** | Cobalt Strike image: production only, needs licensed media, never built in the lab |
 | precomp-host, detonation-host | clone | **Partial** | Clone `win10-22h2` and template only (`communicator="none"`); `files/windows/<name>.ps1` is applied at deploy via a guest-customization spec. detonation-host stays sterile (no sensor, no egress). The variant WinRM mechanism below could bake these too; not switched over yet |
