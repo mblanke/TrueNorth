@@ -52,7 +52,7 @@ registration and language) are `app/xapi_context.py`. cmi5 sessions, where the L
 
 | Variable | Default | Notes |
 |---|---|---|
-| `XAPI_ACCOUNT_HOMEPAGE` | `https://$DOMAIN`, else `LTI_WEB_BASE_URL`, else `http://localhost:4200` | The identity authority. `compose.prod.yml` sets it from `DOMAIN`. |
+| `XAPI_ACCOUNT_HOMEPAGE` | `https://$DOMAIN`, else `LTI_WEB_BASE_URL`, else `http://localhost:4200` | The identity authority. `compose.prod.yml` and the Helm chart set it (and `XAPI_IRI_BASE`) from the public origin; with `TN_ENV=production` the API refuses to start if either is unset (and `DOMAIN` too) or names localhost. |
 | `XAPI_IRI_BASE` | `<same>/xapi` | Root of every TrueNorth IRI. |
 | `XAPI_DEFAULT_LANGUAGE` | `en` | RFC 5646 tag for courses with no locale, e.g. `en-CA`. |
 | `XAPI_DEFAULT_PASS_THRESHOLD` | `0.7` | Only for activities with no pass mark of their own. |
@@ -85,12 +85,16 @@ about the old ones, per installation, and records the decision:
 
 1. **Leave them (the default).** Reports that span the switch join the two identities
    through `xapi_legacy_identities`. Nothing is sent.
-2. **Re-issue them.** `python -m app.xapi_reissue --apply` (in the api container) stores, for
-   every legacy statement of every recorded user, a copy under the account actor with current
-   IRIs. The copy keeps the original `timestamp`, points back at the original
-   (`context.statement` StatementRef, and the `<XAPI_IRI_BASE>/extensions/reissued-from`
-   extension), and its `id` is a UUID v5 of the original's, so a second run stores nothing
-   new. Run it without `--apply` first: it reports what it would send.
+2. **Re-issue them.** `python -m app.xapi_reissue --apply --authority <name>` (in the api
+   container) stores, for every legacy statement TrueNorth wrote for a recorded user, a copy
+   under the account actor with current IRIs. Only statements TrueNorth wrote are touched:
+   the object under `http://truenorthrange.local/`, and the LRS `authority` that of
+   TrueNorth's own `LRS_AUTH` credential, named with `--authority` (an old email alone proves
+   nothing: anyone with an LRS credential could have used it). Run it without `--apply`
+   first: it reports what it would send and lists the authorities it found. The copy keeps
+   the original `timestamp`, points back at the original (`context.statement` StatementRef,
+   and the `<XAPI_IRI_BASE>/extensions/reissued-from` extension), and its `id` is a UUID v5 of
+   the original's, so a second run stores nothing new.
 3. **Re-issue and void.** `--apply --void` also sends an ADL `voided` statement for each
    original, so default queries return only the copy. This is irreversible (voided statements
    remain, but only `voidedStatementId` reads them) and needs an LRS credential allowed to

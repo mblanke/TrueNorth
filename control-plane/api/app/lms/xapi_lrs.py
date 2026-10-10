@@ -115,6 +115,7 @@ class XAPILRSBackend(BaseLMSBackend):
         body: bytes | None = None,
         headers: dict[str, str] | None = None,
         timeout: float = 10.0,
+        credential: str | None = None,
     ) -> LRSResponse:
         resource = resource.lstrip("/")
         if not resource or ".." in resource.split("/"):
@@ -123,8 +124,11 @@ class XAPILRSBackend(BaseLMSBackend):
         for name, value in (headers or {}).items():
             if name.lower() in _FORWARDED_REQUEST_HEADERS:
                 sent[name] = value
-        if self._auth:
-            sent["Authorization"] = f"Basic {self._auth}"  # the server's credential, never a caller's
+        # The server's credential, or the one the caller names (cmi5 AU traffic has its own,
+        # so the LRS records a different authority on it); never a credential a client sent.
+        auth = credential if credential is not None else self._auth
+        if auth:
+            sent["Authorization"] = f"Basic {auth}"
         try:
             with httpx.Client(timeout=timeout) as client:
                 resp = client.request(

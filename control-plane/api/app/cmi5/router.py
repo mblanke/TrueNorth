@@ -19,7 +19,9 @@ Neither token-authenticated route uses a browser cookie, so CSRF does not apply 
 
 from __future__ import annotations
 
+import os
 import uuid
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Path, Request, Response
 from fastapi.responses import JSONResponse
@@ -29,13 +31,13 @@ from ..auth import CurrentUser, get_current_user
 from ..course_releases.models import CANDIDATE, CourseRelease
 from ..course_releases.service import pinned_release
 from ..db import get_db
-from ..models import Enrollment
+from ..models import Course, Enrollment
 from ..rbac import Permission, require_permission, user_has_permission
 from ..tenancy import get_owned
 from . import content as content_mod
 from . import lms
 from . import structure as structure_mod
-from .models import Cmi5Registration, Cmi5Session
+from .models import Cmi5Grade, Cmi5Registration, Cmi5Session
 from .rules import RuleViolationError
 from .schemas import (
     Cmi5AuOut,
@@ -61,11 +63,34 @@ def _http(exc: lms.Cmi5Error | content_mod.ContentError) -> HTTPException:
 
 
 def _release(db: Session, release_id: uuid.UUID, user: CurrentUser) -> CourseRelease:
-    """The caller's tenant's release; a candidate only for course authors (404 otherwise)."""
+    """The caller's tenant's release. Without course:author, only an accepted (or superseded)
+    release of a published course; anything else is 404, as the course catalogue treats a
+    draft (routers/courses.py)."""
     release = get_owned(db, CourseRelease, release_id, user, not_found="release not found")
-    if release.state == CANDIDATE and not user_has_permission(user, Permission.COURSE_AUTHOR):
+    if user_has_permission(user, Permission.COURSE_AUTHOR):
+        return release
+    course = db.get(Course, release.course_id)  # tenant-safe: the owned release's own course
+    if release.state == CANDIDATE or course is None or not course.is_published:
         raise HTTPException(404, "release not found")
     return release
+
+
+def _enrolled(db: Session, release: CourseRelease, user: CurrentUser) -> None:
+    """A Student reads and marks a module only on their own enrolment in this release, the
+    same rule as launching it; course authors (who hold the answer key anyway) need none."""
+    if user_has_permission(user, Permission.COURSE_AUTHOR):
+        return
+    try:
+        lms.enrolment_for(db, uuid.UUID(user.id), release)
+    except lms.Cmi5Error as exc:
+        raise _http(exc) from exc
+
+
+def _grade_attempts() -> int:
+    try:
+        return max(int(os.getenv("CMI5_GRADE_ATTEMPTS", "3")), 1)
+    except ValueError:
+        return 3
 
 
 def _package(db: Session, release: CourseRelease):
@@ -148,6 +173,7 @@ def get_cmi5_au_content(
 ):
     """Pages and quiz questions for TrueNorth's AU runtime. Never the answers."""
     release = _release(db, release_id, user)
+    _enrolled(db, release, user)
     bundle, parsed = _package(db, release)
     try:
         return content_mod.au_content(bundle, parsed, au_index)
@@ -163,13 +189,47 @@ def grade_cmi5_au_quiz(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ):
-    """Mark the AU's formative quiz on the server; the AU reports the score to its LMS."""
+    """Mark the AU's quiz on the server, record the mark, and return only the totals (no
+    per-question result). A Student needs an enrolment on the release and gets
+    CMI5_GRADE_ATTEMPTS marks per AU per 24 hours (default 3). In a TrueNorth session the
+    AU's passed/failed must then report this mark (TN-GRADE); an AU launched by another LMS
+    reports to that LMS, which TrueNorth cannot vouch for (docs/cmi5.md)."""
     release = _release(db, release_id, user)
+    _enrolled(db, release, user)
+    me = uuid.UUID(user.id)
+    now = datetime.now(UTC)
+    if not user_has_permission(user, Permission.COURSE_AUTHOR):
+        used = (
+            db.query(Cmi5Grade)
+            .filter(
+                Cmi5Grade.user_id == me,
+                Cmi5Grade.release_id == release.id,
+                Cmi5Grade.au_index == au_index,
+                Cmi5Grade.created_at >= now - timedelta(hours=24),
+            )
+            .count()
+        )
+        if used >= _grade_attempts():
+            raise HTTPException(429, f"{used} attempts at this quiz in the last 24 hours; try again later")
     bundle, parsed = _package(db, release)
     try:
-        return content_mod.grade(bundle, parsed, au_index, body.answers)
+        marked = content_mod.grade(bundle, parsed, au_index, body.answers)
     except content_mod.ContentError as exc:
         raise HTTPException(404, str(exc)) from exc
+    db.add(
+        Cmi5Grade(
+            tenant_id=release.tenant_id,
+            user_id=me,
+            release_id=release.id,
+            au_index=au_index,
+            correct=marked["correct"],
+            total=marked["total"],
+            scaled=marked["scaled"],
+            created_at=now,
+        )
+    )
+    db.commit()
+    return marked
 
 
 @router.post("/releases/{release_id}/aus/{au_index}/launch", response_model=Cmi5LaunchOut)

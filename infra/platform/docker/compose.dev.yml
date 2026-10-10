@@ -216,6 +216,9 @@ services:
       PROVISIONER_BACKEND: mock
       LRS_URL: http://lrs:8080
       LRS_AUTH: dHJ1ZW5vcnRoLWxycy1rZXk6dHJ1ZW5vcnRoLWxycy1zZWNyZXQ=
+      # cmi5 AU traffic's own LRS credential (docs/cmi5.md); unset, cmi5 launching is off.
+      # Mint one: python -m app.lms.lrsql_admin (scripts/itest.sh does, with ITEST_LRS=1).
+      CMI5_LRS_AUTH: "${CMI5_LRS_AUTH:-}"
       LMS_BACKEND: xapi_lrs
       SEARCH_BACKEND: opensearch
       # AI orchestrator serves on 6000 (the code default of 8100 is stale)

@@ -24,16 +24,18 @@ Statement identity and the LRS: [`docs/xapi-conformance.md`](xapi-conformance.md
 |---|---|---|
 | `GET /cmi5/releases/{id}/cmi5.xml` | `course:author` | The structure for another LMS: publisher IDs, objectives, moveOn, masteryScore and launchParameters as published; every `<url>` absolute (`<web>/au/releases/{id}/{n}`); `launchMethod="OwnWindow"` (TrueNorth refuses to be framed by another origin, and its sign-in cookie is first-party). Valid against `CourseStructure.xsd` (vendored, `docs/interfaces/cmi5/`). |
 | `GET /cmi5/releases/{id}/structure` | signed in, same tenant | The AUs, and the caller's own progress when they have a registration. |
-| `GET /cmi5/releases/{id}/aus/{n}/content` | signed in, same tenant | Pages and quiz questions for the AU runtime. Never the answers. |
-| `POST /cmi5/releases/{id}/aus/{n}/grade` | signed in, same tenant | Marks the AU's quiz on the server: `{correct, total, scaled}`. |
+| `GET /cmi5/releases/{id}/aus/{n}/content` | an enrolled Student, or `course:author` | Pages and quiz questions for the AU runtime. Never the answers. |
+| `POST /cmi5/releases/{id}/aus/{n}/grade` | an enrolled Student, or `course:author` | Marks the AU's quiz on the server and records the mark: `{correct, total, scaled}` only, no per-question result. A Student gets `CMI5_GRADE_ATTEMPTS` (3) marks per AU per 24 hours; then 429. |
 | `POST /cmi5/releases/{id}/aus/{n}/launch` | an enrolled Student | TrueNorth's launch: returns the AU URL with the cmi5 parameters. |
 | `POST /cmi5/fetch/{secret}` | the secret | The fetch URL: the session's auth token, once. |
 | `GET/POST/PUT/DELETE /cmi5/lrs/{resource}` | the session token (Basic) | The AU's xAPI endpoint. |
 | `POST /cmi5/sessions/{id}/abandon` | the Student, or `learning_record:write` | Ends an open session (`abandoned`). |
 | `POST /cmi5/registrations/{id}/aus/{n}/waive` | `learning_record:write` | `waived` with a reason, then moveOn. |
 
-Candidate (not yet accepted) releases are visible to course authors only. Another tenant's
-release is 404.
+Without `course:author`, every route above sees only an accepted (or superseded) release of a
+**published** course; a candidate, or an unpublished course, is 404, as the course catalogue
+treats drafts. Content, marking and launch also need the caller's enrolment pinned to the
+release (403 / 409). Another tenant's release is 404.
 
 ## TrueNorth as the LMS: one session
 
@@ -56,7 +58,7 @@ enrolment is pinned to. Runtime activity IDs are TrueNorth's, never the publishe
    ```
 
    ```json
-   {"id": "<uuid5(session:launched)>", "actor": {"objectType": "Agent",
+   {"id": "<HMAC-derived, UUID version 8>", "actor": {"objectType": "Agent",
       "account": {"homePage": "https://range.example.mil", "name": "<users.id>"}},
     "verb": {"id": "http://adlnet.gov/expapi/verbs/launched", "display": {"en": "launched"}},
     "object": {"objectType": "Activity", "id": "https://range.example.mil/xapi/cmi5/releases/9a0e…/au/0"},
@@ -74,11 +76,17 @@ enrolment is pinned to. Runtime activity IDs are TrueNorth's, never the publishe
    else `Normal`; `Browse` and `Review` can be asked for.
 2. **Fetch** (the AU, once): `{"auth-token": "…"}`; again → `{"error-code": "1", …}`; unknown
    → `"2"`. HTTP 200 either way. The secret works for 15 minutes after launch
-   (`CMI5_FETCH_HOURS`), is stored hashed and is never logged.
+   (`CMI5_FETCH_HOURS`) and once, and is stored hashed. It travels in the AU URL's query, so:
+   the SPA takes the launch out of the address bar before its first request (kept for the tab
+   in sessionStorage, so a reload resumes); `/au/` pages are served with
+   `Referrer-Policy: no-referrer`; both nginx configs log the request line and Referer with
+   the `fetch=` value replaced by `<redacted>`, and never log `/api/cmi5/fetch/` itself. The
+   LMS's own launch response (`POST .../launch`) and a browser history entry made before the
+   SPA loaded can still hold it; it is dead once used or 15 minutes old.
 3. **The AU** reads `LMS.LaunchData` and `cmi5LearnerPreferences`, then sends `initialized`,
-   cmi5-allowed `progressed` per page, `completed` after the last page, `passed` or `failed`
-   from the server-marked quiz (with the `masteryscore` extension and `score.scaled`/`raw`/
-   `min`/`max`), and `terminated` on Exit (or, best effort with `keepalive`, when the window
+   cmi5-allowed `progressed` per page, `completed` after the last page, then submits the quiz
+   to TrueNorth's marking (`POST .../grade`) and reports `passed` or `failed` with exactly that
+   score (`score.scaled`/`raw`/`min`/`max`, the `masteryscore` extension), and `terminated` on Exit (or, best effort with `keepalive`, when the window
    closes), then follows `returnURL` back to the course page.
 4. **moveOn**: after an accepted `completed`/`passed` (or a waiver), TrueNorth evaluates the
    AU's moveOn and records `satisfied` for every block and then the course that became
@@ -109,6 +117,26 @@ numbering ADL's CATAPULT uses. TrueNorth rejects, so it never has to void.
 | no completed/passed/failed in Browse or Review | 10.2.2.0-2/-3 |
 | `LMS.LaunchData` read-only; State and Profile only for this actor and activity; learner preferences read-only | 10.2.1.0-5, 10.1.0.0-3 |
 | no voiding | 6.3.0.0-1 |
+| `LMS.LaunchData` never written or deleted; every State request names this registration, and a write or delete names its `stateId`; Activity Profiles and the activity definition read-only | 10.2.1.0-5, 8.1.4.0-3 |
+
+On top of cmi5, because the same LRS holds TrueNorth's own records (refusals `TN-…`, 403
+unless marked otherwise):
+
+| Rule | Id |
+|---|---|
+| every statement is about the launch activity (its `activityId`, or an activity under it): an AU cannot write about a TrueNorth quiz, course or other module | `TN-SCOPE` |
+| `initialized`, `completed`, `passed`, `failed`, `terminated` only as cmi5-defined statements (with the cmi5 category), so none escapes the rules above | `TN-DEFINED` |
+| judged against a masteryScore, `passed`/`failed` carry `score.scaled` (400) | `TN-SCORE` |
+| `passed`/`failed` report the score TrueNorth marked for this Student and AU since the launch | `TN-GRADE` |
+| statement ids of UUID version 8 are reserved for TrueNorth's own statements | `TN-ID` |
+
+**Provenance.** AU traffic reaches the LRS with its own credential, `CMI5_LRS_AUTH` (scoped:
+statements write-only, State, Agent and Activity Profiles), never the server's `LRS_AUTH`. The
+LRS stamps every statement's `authority` with the credential that wrote it, so a statement an
+AU wrote is always distinguishable from one TrueNorth wrote. Without `CMI5_LRS_AUTH`, or with
+it equal to `LRS_AUTH`, launching answers 503 (fail closed). Mint it once on lrsql with its
+admin account: `python -m app.lms.lrsql_admin` (reads `LRS_URL`, `LRS_ADMIN_USER`,
+`LRS_ADMIN_PASSWORD`; `scripts/itest.sh` does this for the itest stack).
 
 The AU's token cannot read statements back (least privilege; cmi5 does not need it) and is
 dead once the session is terminated, abandoned, or 12 hours old (`CMI5_SESSION_HOURS`).
@@ -116,8 +144,10 @@ dead once the session is terminated, abandoned, or 12 hours old (`CMI5_SESSION_H
 ### Delivery guarantees
 
 - TrueNorth's own statements (launched, abandoned, waived, satisfied) are written with
-  `PUT /statements?statementId=` and ids derived from what they record (UUID v5), so a retry
-  never duplicates; a conflict on that id means it is already stored, and stands.
+  `PUT /statements?statementId=` and ids that are an HMAC (key `TN_SECRETS_KEY`) of what they
+  record, shaped as UUID version 8: stable for a retry, unguessable without the key, and a form
+  AUs may not use. On a 409 the stored statement is read back; only the same verb, actor and
+  object counts as already recorded, anything else under the id fails the operation (502).
 - A launch whose `LMS.LaunchData` or `launched` the LRS refuses fails (502/503) and creates no
   session. What it already did (an abandoned session) is kept, matching the LRS.
 - A `satisfied` the LRS refuses is not marked sent and is retried at the next evaluation
@@ -132,9 +162,14 @@ dead once the session is terminated, abandoned, or 12 hours old (`CMI5_SESSION_H
 any cmi5 LMS. That LMS owns the registration, the session and the LRS; the AU runtime talks
 to its endpoint with its token. Two things it needs from TrueNorth's side:
 
-- **Sign-in.** The AU reads the module's pages from TrueNorth, so the Student signs in to
-  TrueNorth (single sign-on with the LMS where both use the same Keycloak, as the Moodle
-  farm does). The query parameters survive the sign-in round trip.
+- **Sign-in and enrolment.** The AU reads the module's pages from TrueNorth, so the Student
+  signs in to TrueNorth (single sign-on with the LMS where both use the same Keycloak, as the
+  Moodle farm does) and must be enrolled on the release there. The query parameters survive
+  the sign-in round trip.
+- **Self-reported results.** TrueNorth marks the quiz (attempt-limited, recorded), but the AU
+  reports passed/failed to *that* LMS's LRS, which TrueNorth does not check: there the result
+  is self-reported, as it is for any content an LMS hosts. Only TrueNorth's own launches
+  enforce the marked score (`TN-GRADE`).
 - **Reaching the LMS's endpoint.** The production CSP allows the SPA to connect to its own
   origin and to any https port on its own host (the farm Moodle). An LMS on another host
   needs its origin added to `connect-src` in `infra/platform/nginx/snippets/security-headers.conf`,
@@ -194,10 +229,11 @@ copies each plugin (at the commits above) into `/var/www/html/public/mod/<name>`
 
 - **lrsql on PostgreSQL** (`compose.prod.yml` `lrs`), with xAPI 1.0.3 enabled (the default,
   alongside 2.0.0): cmi5 and TrueNorth send `X-Experience-API-Version: 1.0.3`.
-- **One server credential**, `LRS_AUTH` (base64 `key:secret` of the installer-generated
-  `lrs_api_key`/`lrs_api_secret`), held by the API only. No LRS credential reaches a browser:
-  AUs get the per-session cmi5 token, valid only through TrueNorth's checking endpoint. Read-only
-  dashboard credentials are issued in the lrsql admin UI, never this one.
+- **Two credentials, both held by the API only.** `LRS_AUTH` (base64 `key:secret` of the
+  installer-generated `lrs_api_key`/`lrs_api_secret`) for what TrueNorth writes, and
+  `CMI5_LRS_AUTH` (scoped, above) for what AUs write through it. No LRS credential reaches a
+  browser: AUs get the per-session cmi5 token, valid only through TrueNorth's checking endpoint.
+  Read-only dashboard credentials are issued in the lrsql admin UI, never these.
 - **No CORS** needed for TrueNorth's own launches: the AU and its endpoint share the origin.
 - **State documents need concurrency headers** on lrsql (a PUT over an existing document
   without `If-Match` is 409, checked against v0.9.9): TrueNorth and its AU send `If-Match` /
@@ -212,6 +248,9 @@ copies each plugin (at the commits above) into `/var/www/html/public/mod/<name>`
 | `CMI5_API_BASE_URL` | `<web>/api` | The fetch URL and the AU's endpoint. |
 | `CMI5_SESSION_HOURS` | `12` | A session token's lifetime. |
 | `CMI5_FETCH_HOURS` | `0.25` | How long after launch the fetch URL works. |
+| `CMI5_LRS_AUTH` | none (cmi5 off) | The AU traffic's LRS credential; must differ from `LRS_AUTH`. |
+| `CMI5_GRADE_ATTEMPTS` | `3` | Quiz marks per Student per AU per 24 hours. |
+| `TN_SECRETS_KEY` | (required in production) | Also keys TrueNorth's cmi5 statement ids. |
 
 ## Conformance
 

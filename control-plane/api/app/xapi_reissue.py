@@ -126,7 +126,20 @@ class Report:
     found: int = 0
     reissued: int = 0
     voided: int = 0
+    skipped: int = 0  # not TrueNorth's: another authority, or no legacy TrueNorth IRI
+    authorities: dict[str, int] = field(default_factory=dict)  # authority name -> legacy statements
     errors: list[str] = field(default_factory=list)
+
+
+def _authority_name(stmt: dict) -> str:
+    return str(((stmt.get("authority") or {}).get("account") or {}).get("name", ""))
+
+
+def is_truenorth_legacy(stmt: dict) -> bool:
+    """TrueNorth wrote it: its object and type are under the legacy IRI prefix. Anyone else
+    able to write to the LRS could also use the old mbox; that alone proves nothing."""
+    obj = stmt.get("object") or {}
+    return isinstance(obj.get("id"), str) and obj["id"].startswith(LEGACY_PREFIX)
 
 
 def _put(backend: BaseLMSBackend, stmt: dict) -> int:
@@ -140,9 +153,17 @@ def _put(backend: BaseLMSBackend, stmt: dict) -> int:
     return resp.status
 
 
-def run(db: Session, backend: BaseLMSBackend, *, apply: bool = False, void: bool = False) -> Report:
+def run(
+    db: Session, backend: BaseLMSBackend, *, apply: bool = False, void: bool = False, authority: str | None = None
+) -> Report:
+    """Re-issue (and with ``void``, void) the legacy statements TrueNorth wrote: object IRIs
+    under ``LEGACY_PREFIX`` and, to apply, the ``authority`` (the account name the LRS
+    stamped on TrueNorth's server credential, LRS_AUTH). A dry run lists the authorities
+    found, so the operator can name TrueNorth's; nothing another credential wrote is touched."""
     if void and not apply:
         raise ValueError("--void needs --apply")
+    if apply and not authority:
+        raise ValueError("--apply needs --authority: the LRS authority name of TrueNorth's LRS_AUTH credential")
     if not backend.supports_resources:
         raise RuntimeError(f"LMS backend {type(backend).__name__} cannot read the LRS")
     report = Report()
@@ -150,6 +171,14 @@ def run(db: Session, backend: BaseLMSBackend, *, apply: bool = False, void: bool
         report.users += 1
         for original in legacy_statements(backend, row.legacy_mbox):
             if original.get("verb", {}).get("id") == VOIDED:
+                continue
+            if not is_truenorth_legacy(original):
+                report.skipped += 1
+                continue
+            name = _authority_name(original)
+            report.authorities[name] = report.authorities.get(name, 0) + 1
+            if authority and name != authority:
+                report.skipped += 1
                 continue
             report.found += 1
             if not apply:
@@ -172,16 +201,19 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m app.xapi_reissue", description=__doc__.split("\n\n")[0])
     parser.add_argument("--apply", action="store_true", help="store re-issued copies (default: dry run)")
     parser.add_argument("--void", action="store_true", help="also void each original (irreversible)")
+    parser.add_argument("--authority", help="LRS authority account name of TrueNorth's LRS_AUTH credential")
     args = parser.parse_args(argv)
     from .db import SessionLocal
 
     with SessionLocal() as db:
-        report = run(db, get_lms_backend(), apply=args.apply, void=args.void)
+        report = run(db, get_lms_backend(), apply=args.apply, void=args.void, authority=args.authority)
     mode = "applied" if args.apply else "dry run"
     print(
         f"{mode}: {report.users} legacy identities, {report.found} legacy statements, "
-        f"{report.reissued} re-issued, {report.voided} voided, {len(report.errors)} errors"
+        f"{report.reissued} re-issued, {report.voided} voided, {report.skipped} skipped, {len(report.errors)} errors"
     )
+    for name, count in sorted(report.authorities.items()):
+        print(f"  authority {name or '(none)'}: {count} legacy statements")
     for err in report.errors:
         print(f"  error: {err}", file=sys.stderr)
     return 1 if report.errors else 0

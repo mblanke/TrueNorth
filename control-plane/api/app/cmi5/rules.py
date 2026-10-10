@@ -13,6 +13,7 @@ difference: the AU's credential here cannot read statements back (least privileg
 from __future__ import annotations
 
 import re
+import uuid
 from dataclasses import dataclass, field
 
 CAT_CMI5 = "https://w3id.org/xapi/cmi5/context/categories/cmi5"
@@ -72,6 +73,32 @@ class SessionView:
     sent: set[str] = field(default_factory=set)  # cmi5-defined verbs sent in this session
     au_completed: bool = False  # in the registration
     au_passed: bool = False
+    # TrueNorth marks the quiz (POST .../grade): passed/failed must report that score.
+    require_graded: bool = True
+    graded: float | None = None  # the latest server-marked score since this session's launch
+
+
+# TrueNorth's own rules on top of cmi5 (ids starting "TN-"), for what an LMS that also issues
+# TrueNorth's records must not let an AU do:
+#  TN-SCOPE    an AU's statements are about its own activity (the launch activityId, or an
+#              activity under it), never another TrueNorth activity such as a quiz or course;
+#  TN-DEFINED  the cmi5-defined verbs only as cmi5-defined statements (with the category), so
+#              no "passed" escapes the cmi5 rules by leaving the category off;
+#  TN-ID       statement ids of UUID version 8 are reserved for the LMS's own statements;
+#  TN-SCORE    judged against a masteryScore, passed/failed carry score.scaled;
+#  TN-GRADE    in a TrueNorth session, passed/failed report the score TrueNorth marked.
+
+
+def is_reserved_id(value) -> bool:
+    """Version-8 UUIDs: the form TrueNorth's LMS statement ids take (app/cmi5/lms.py)."""
+    try:
+        return uuid.UUID(str(value)).version == 8
+    except ValueError:
+        return False
+
+
+def in_scope(object_id, au_runtime_id: str) -> bool:
+    return isinstance(object_id, str) and (object_id == au_runtime_id or object_id.startswith(au_runtime_id + "/"))
 
 
 def _ids(items) -> list[str]:
@@ -134,6 +161,8 @@ def check(st: dict, view: SessionView, earlier: list[str]) -> str | None:
         raise RuleViolationError("4.1.0.0-1", "statement has no verb.id")
     if not st.get("id"):
         raise RuleViolationError("9.1.0.0-1", "the AU must give every statement an id")
+    if is_reserved_id(st["id"]):
+        raise RuleViolationError("TN-ID", "statement ids of UUID version 8 are reserved for the LMS", status=403)
     if verb == VOIDED:
         raise RuleViolationError("6.3.0.0-1", "an AU may not void statements", status=403)
     if verb in (LAUNCHED, ABANDONED, WAIVED, SATISFIED):
@@ -163,8 +192,19 @@ def check(st: dict, view: SessionView, earlier: list[str]) -> str | None:
         raise RuleViolationError("9.3.0.0-4", "initialized must be the first statement of the session")
     if view.terminated or TERMINATED in earlier:
         raise RuleViolationError("9.3.0.0-5", "the session is terminated", status=403)
+    obj = st["object"]
+    if not isinstance(obj, dict) or obj.get("objectType", "Activity") != "Activity":
+        raise RuleViolationError("TN-SCOPE", "an AU's statements have its own activity as their object", status=403)
+    if not in_scope(obj.get("id"), view.au_runtime_id):
+        raise RuleViolationError(
+            "TN-SCOPE", "object.id must be the launch activityId or an activity under it", status=403
+        )
     if not defined:
-        return None  # cmi5-allowed: any verb but the ones refused above
+        if verb in AU_DEFINED:
+            raise RuleViolationError(
+                "TN-DEFINED", f"{verb.rsplit('/', 1)[1]} is cmi5-defined: send it with the cmi5 category", status=403
+            )
+        return None  # cmi5-allowed: any other verb, about this AU
     return _check_defined(st, verb, view, earlier)
 
 
@@ -228,6 +268,18 @@ def _check_defined(st: dict, verb: str, view: SessionView, earlier: list[str]) -
 
     sent = view.sent | set(earlier)
     scaled = ((result or {}).get("score") or {}).get("scaled")
+    if verb in (PASSED, FAILED):
+        if view.mastery_score is not None and scaled is None:
+            raise RuleViolationError("TN-SCORE", "judged against the masteryScore: report score.scaled")
+        if view.require_graded:
+            if view.graded is None:
+                raise RuleViolationError(
+                    "TN-GRADE", "no score marked by TrueNorth in this session: submit the quiz first", status=403
+                )
+            if scaled is None or abs(float(scaled) - view.graded) > 1e-4:
+                raise RuleViolationError(
+                    "TN-GRADE", f"score.scaled must be the score TrueNorth marked ({view.graded})", status=403
+                )
     if verb in (INITIALIZED, TERMINATED) and verb in sent:
         raise RuleViolationError("9.3.0.0-2", f"{verb.rsplit('/', 1)[1]} already sent in this session")
     if verb == COMPLETED:

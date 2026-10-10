@@ -124,11 +124,11 @@ def test_dry_run_counts_and_sends_nothing(db_session, legacy_user):
 
 def test_apply_reissues_once_and_a_rerun_adds_nothing(db_session, legacy_user):
     lrs = FakeLRS(_two_legacy())
-    first = xapi_reissue.run(db_session, lrs, apply=True)
+    first = xapi_reissue.run(db_session, lrs, apply=True, authority="key")
     assert (first.reissued, first.voided, first.errors) == (2, 0, [])
     stored = dict(lrs.stored)
     assert {s["actor"]["account"]["name"] for s in stored.values()} == {str(legacy_user.id)}
-    again = xapi_reissue.run(db_session, lrs, apply=True)
+    again = xapi_reissue.run(db_session, lrs, apply=True, authority="key")
     assert again.errors == [] and lrs.stored == stored
 
 
@@ -136,10 +136,35 @@ def test_void_is_opt_in_and_needs_apply(db_session, legacy_user):
     lrs = FakeLRS(_two_legacy())
     with pytest.raises(ValueError):
         xapi_reissue.run(db_session, lrs, void=True)
-    report = xapi_reissue.run(db_session, lrs, apply=True, void=True)
+    report = xapi_reissue.run(db_session, lrs, apply=True, void=True, authority="key")
     assert report.voided == 2
     voids = [s for s in lrs.stored.values() if s["verb"]["id"] == xapi_reissue.VOIDED]
     assert sorted(v["object"]["id"] for v in voids) == sorted(s["id"] for s in _two_legacy())
+
+
+def test_only_truenorths_own_legacy_statements_are_touched(db_session, legacy_user):
+    """Review low 7: the old mbox alone proves nothing (anyone with an LRS credential could
+    have used it): only statements under the legacy IRI prefix and written by TrueNorth's
+    own credential (the authority named) are re-issued or voided."""
+    foreign_authority = {
+        **LEGACY,
+        "id": str(uuid.uuid4()),
+        "authority": {"account": {"homePage": "http://lrs", "name": "other"}},
+    }
+    foreign_object = {
+        **LEGACY,
+        "id": str(uuid.uuid4()),
+        "object": {"objectType": "Activity", "id": "https://elsewhere/x"},
+    }
+    lrs = FakeLRS([LEGACY, foreign_authority, foreign_object])
+    dry = xapi_reissue.run(db_session, lrs)
+    assert dry.authorities == {"key": 1, "other": 1} and dry.skipped == 1  # the operator sees who wrote what
+    with pytest.raises(ValueError):
+        xapi_reissue.run(db_session, lrs, apply=True)  # must name TrueNorth's authority
+    report = xapi_reissue.run(db_session, lrs, apply=True, void=True, authority="key")
+    assert (report.reissued, report.voided, report.skipped) == (1, 1, 2)
+    voided = {s["object"]["id"] for s in lrs.stored.values() if s["verb"]["id"] == xapi_reissue.VOIDED}
+    assert voided == {LEGACY["id"]}
 
 
 def test_a_backend_without_an_lrs_refuses(db_session, legacy_user):

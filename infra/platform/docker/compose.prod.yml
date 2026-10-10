@@ -523,6 +523,9 @@ services:
       XAPI_ACCOUNT_HOMEPAGE: ${XAPI_ACCOUNT_HOMEPAGE:-https://${DOMAIN}}
       XAPI_IRI_BASE: ${XAPI_IRI_BASE:-https://${DOMAIN}/xapi}
       XAPI_DEFAULT_LANGUAGE: ${XAPI_DEFAULT_LANGUAGE:-en}
+      # cmi5 AU traffic's own LRS credential, so the LRS can tell what an AU wrote from what
+      # TrueNorth wrote (docs/cmi5.md). Unset: cmi5 launching answers 503.
+      CMI5_LRS_AUTH: ${CMI5_LRS_AUTH:-}
       SEARCH_BACKEND: ${SEARCH_BACKEND:-opensearch}
       AI_ORCHESTRATOR_URL: http://ai-orchestrator:6000
       # Schema ownership belongs to Alembic. The installer sets these false so the

@@ -57,8 +57,10 @@ class BaseLMSBackend(ABC):
         body: bytes | None = None,
         headers: dict[str, str] | None = None,
         timeout: float = 10.0,
+        credential: str | None = None,
     ) -> LRSResponse:
-        """Send one request to ``<LRS>/xapi/<resource>`` with the server's own credential.
+        """Send one request to ``<LRS>/xapi/<resource>`` with the server's own credential, or
+        with ``credential`` (base64 ``key:secret``) when the caller names another one.
 
         Raises ``LRSUnsupportedError`` when the backend has no LRS, and
         ``LRSUnavailableError`` when the LRS does not answer. Any HTTP status the LRS

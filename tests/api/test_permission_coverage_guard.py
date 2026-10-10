@@ -109,10 +109,10 @@ SIGN_IN_ONLY: dict[str, str] = {
         "in-body: the release's AUs and the caller's own registration; candidates need course:author"
     ),
     "GET /cmi5/releases/{release_id}/aus/{au_index}/content": (
-        "in-body: a released module's pages and questions, never the answers; candidates need course:author"
+        "in-body: the caller's enrolment on this release of a published course (no answers), or course:author"
     ),
     "POST /cmi5/releases/{release_id}/aus/{au_index}/grade": (
-        "own: marks the caller's answers against the release's key and stores nothing"
+        "in-body: marks the caller's own answers on their enrolment, attempt-limited, totals only; or course:author"
     ),
     "POST /cmi5/releases/{release_id}/aus/{au_index}/launch": (
         "own: launches for the caller only, on the caller's enrolment pinned to this release (403 otherwise)"

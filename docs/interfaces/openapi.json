@@ -19861,7 +19861,7 @@
     },
     "/cmi5/releases/{release_id}/aus/{au_index}/grade": {
       "post": {
-        "description": "Mark the AU's formative quiz on the server; the AU reports the score to its LMS.",
+        "description": "Mark the AU's quiz on the server, record the mark, and return only the totals (no\nper-question result). A Student needs an enrolment on the release and gets\nCMI5_GRADE_ATTEMPTS marks per AU per 24 hours (default 3). In a TrueNorth session the\nAU's passed/failed must then report this mark (TN-GRADE); an AU launched by another LMS\nreports to that LMS, which TrueNorth cannot vouch for (docs/cmi5.md).",
         "operationId": "grade_cmi5_au_quiz_cmi5_releases__release_id__aus__au_index__grade_post",
         "parameters": [
           {

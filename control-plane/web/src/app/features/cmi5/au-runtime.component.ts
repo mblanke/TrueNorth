@@ -11,6 +11,39 @@ import { Cmi5Au, isCmi5Launch } from './cmi5-au';
 
 const LETTERS = 'ABCDEFGH';
 
+const LAUNCH_KEY = (path: string) => `cmi5-launch:${path}`;
+
+/**
+ * The launch parameters carry the one-time fetch URL. Take them out of the address bar at
+ * once, before any request, so they are not bookmarked, shared or sent on as a Referer; keep
+ * them for this tab only, so a reload resumes the same session (whose token is kept the same
+ * way, cmi5-au.ts). Returns the launch's query string, '' for none.
+ */
+export function takeLaunch(search: string): string {
+  const path = window.location.pathname;
+  let store: Storage | null = null;
+  try {
+    store = window.sessionStorage;
+  } catch {
+    store = null;
+  }
+  if (isCmi5Launch(search)) {
+    store?.setItem(LAUNCH_KEY(path), search);
+    history.replaceState(history.state, '', path + window.location.hash);
+    return search;
+  }
+  return store?.getItem(LAUNCH_KEY(path)) ?? search;
+}
+
+/** No Referer from this page, whatever the server's header said; undone on leaving it. */
+export function refuseReferrer(): () => void {
+  const meta = document.createElement('meta');
+  meta.name = 'referrer';
+  meta.content = 'no-referrer';
+  document.head.appendChild(meta);
+  return () => meta.remove();
+}
+
 /** Makes the cmi5 session for a launch. A seam for the unit specs. */
 export type AuFactory = (search: string) => Cmi5Au;
 export const defaultAuFactory: AuFactory = (search: string) => new Cmi5Au(search);
@@ -122,7 +155,11 @@ export class Cmi5AuRuntimeComponent implements OnInit {
     this.releaseId = this.route.snapshot.paramMap.get('releaseId') ?? '';
     this.auIndex = Number(this.route.snapshot.paramMap.get('auIndex') ?? '0');
     const params = this.route.snapshot.queryParamMap;
-    const search = new URLSearchParams(params.keys.map(k => [k, params.get(k) ?? ''] as [string, string])).toString();
+    const search = takeLaunch(
+      new URLSearchParams(params.keys.map(k => [k, params.get(k) ?? ''] as [string, string])).toString(),
+    );
+    const restoreReferrer = refuseReferrer();
+    this.destroyRef.onDestroy(restoreReferrer);
     const onLeave = () => {
       if (this.au && !this.au.terminated) void this.au.terminate({ keepalive: true }).catch(() => undefined);
     };
@@ -205,6 +242,11 @@ export class Cmi5AuRuntimeComponent implements OnInit {
     this.busy.set(true);
     try {
       if (this.au && !this.au.terminated) {
+        try {
+          window.sessionStorage.removeItem(LAUNCH_KEY(window.location.pathname));
+        } catch {
+          /* storage may be unavailable */
+        }
         await this.au.terminate({ redirect: url => Cmi5AuRuntimeComponent.leave(url) });
         if (this.au.launchData.returnURL) return;
       }

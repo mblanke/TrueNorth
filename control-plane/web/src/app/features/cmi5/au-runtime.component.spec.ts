@@ -4,7 +4,7 @@ import { ActivatedRoute, Router, convertToParamMap } from '@angular/router';
 import { of } from 'rxjs';
 
 import { Cmi5ApiService, Cmi5Content } from '@core/services/cmi5-api.service';
-import { Cmi5AuRuntimeComponent, defaultAuFactory } from './au-runtime.component';
+import { Cmi5AuRuntimeComponent, defaultAuFactory, refuseReferrer, takeLaunch } from './au-runtime.component';
 import { Cmi5Au } from './cmi5-au';
 
 const LAUNCH = {
@@ -46,6 +46,7 @@ describe('Cmi5AuRuntimeComponent', () => {
   let left: string[];
 
   async function setUp(query: Record<string, string>, mode = 'Normal'): Promise<void> {
+    sessionStorage.removeItem(`cmi5-launch:${window.location.pathname}`);
     api = jasmine.createSpyObj('Cmi5ApiService', ['content', 'grade']);
     api.content.and.returnValue(of(content()));
     api.grade.and.returnValue(of({ correct: 1, total: 1, scaled: 1 }));
@@ -166,5 +167,26 @@ describe('Cmi5AuRuntimeComponent', () => {
     await settle();
     expect(text()).toContain('fetch URL error 1: used');
     expect(api.content).not.toHaveBeenCalled();
+  });
+
+  it('takes the launch, fetch secret and all, out of the address bar and keeps it for this tab', () => {
+    const path = window.location.pathname;
+    const key = `cmi5-launch:${path}`;
+    sessionStorage.removeItem(key);
+    const search = new URLSearchParams(LAUNCH).toString();
+    history.replaceState(history.state, '', `${path}?${search}`);
+    expect(takeLaunch(search)).toBe(search);
+    expect(window.location.search).toBe('');
+    expect(sessionStorage.getItem(key)).toBe(search);
+    expect(takeLaunch('')).toBe(search); // a reload resumes the same launch
+    sessionStorage.removeItem(key);
+    expect(takeLaunch('')).toBe('');
+  });
+
+  it('sends no Referer from the module page while it is open', () => {
+    const undo = refuseReferrer();
+    expect(document.head.querySelector('meta[name="referrer"]')?.getAttribute('content')).toBe('no-referrer');
+    undo();
+    expect(document.head.querySelector('meta[name="referrer"]')).toBeNull();
   });
 });

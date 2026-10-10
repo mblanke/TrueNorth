@@ -50,12 +50,19 @@ from ..models import Enrollment
 from . import rules
 from . import structure as structure_mod
 from .content import package
-from .models import ABANDONED, INITIALIZED, LAUNCHED, OPEN_STATES, TERMINATED, Cmi5Registration, Cmi5Session
+from .models import (
+    ABANDONED,
+    INITIALIZED,
+    LAUNCHED,
+    OPEN_STATES,
+    TERMINATED,
+    Cmi5Grade,
+    Cmi5Registration,
+    Cmi5Session,
+)
 
 logger = logging.getLogger("truenorth.cmi5")
 
-# Fixed forever: LMS statement ids are uuid5(STATEMENT_NS, <what the statement is about>).
-STATEMENT_NS = uuid.UUID("0c4e5f1a-7b2d-5e93-8a10-4f6b2c9d7e31")
 LAUNCH_MODES = ("Normal", "Browse", "Review")
 WAIVE_REASONS = ("Tested Out", "Equivalent AU", "Equivalent Outside Activity", "Administrative")
 
@@ -90,6 +97,38 @@ def _stamp(t: datetime | None = None) -> str:
     return (t or _now()).astimezone(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
+_PROCESS_KEY = secrets.token_bytes(32)
+
+
+def _id_key() -> bytes:
+    """The secret LMS statement ids are derived with: TN_SECRETS_KEY (required in
+    production). Without it (development) a per-process random key: ids are then only
+    stable within one process, which costs idempotence across restarts, never secrecy."""
+    key = os.getenv("TN_SECRETS_KEY", "").strip()
+    return key.encode() if key else _PROCESS_KEY
+
+
+def lms_statement_id(*parts: object) -> str:
+    """An LMS statement id: HMAC-SHA256 of what it records, under a server secret, shaped as
+    a version-8 UUID. Stable for a retry (so the LRS dedupes it), unguessable by an AU (so
+    it cannot be squatted), and recognisable: AUs may not send version-8 ids (TN-ID)."""
+    digest = bytearray(hmac.new(_id_key(), ":".join(map(str, parts)).encode(), hashlib.sha256).digest()[:16])
+    digest[6] = (digest[6] & 0x0F) | 0x80  # version 8
+    digest[8] = (digest[8] & 0x3F) | 0x80  # RFC 4122 variant
+    return str(uuid.UUID(bytes=bytes(digest)))
+
+
+def au_credential() -> str:
+    """The LRS credential AU traffic is forwarded with (``CMI5_LRS_AUTH``, base64 key:secret).
+    It must not be the server's ``LRS_AUTH``: the LRS records the writing credential as each
+    statement's authority, which is how an AU's statement is told from TrueNorth's own. With
+    none configured, cmi5 launching is off (fail closed). Mint one: python -m app.lms.lrsql_admin."""
+    au = os.getenv("CMI5_LRS_AUTH", "").strip()
+    if not au or au == os.getenv("LRS_AUTH", "").strip():
+        raise Cmi5Error(503, "cmi5 needs CMI5_LRS_AUTH, an LRS credential of its own (not LRS_AUTH): docs/cmi5.md")
+    return au
+
+
 # -- the LRS, through the adapter ---------------------------------------------------------
 def _backend():
     backend = get_lms_backend()
@@ -114,11 +153,24 @@ def put_statement(stmt: dict) -> None:
         headers={"Content-Type": "application/json"},
     )
     if resp.status == 409:
-        # Every LMS statement id is derived from what it records, so a conflict means this
-        # one is already in the LRS (an earlier attempt stored it, then failed after). The
-        # stored one stands; statements are immutable.
-        logger.info("cmi5: %s %s was already recorded", stmt["verb"]["id"].rsplit("/", 1)[-1], stmt["id"])
-        return
+        # The id is derived from what the statement records, so a conflict normally means an
+        # earlier attempt stored it and then failed after. Only if the stored statement is
+        # the same verb, actor and object; anything else under our id is refused, loudly.
+        stored = _lrs("GET", "statements", params={"statementId": stmt["id"]})
+        try:
+            have = stored.json() if stored.status == 200 else None
+        except ValueError:
+            have = None
+        same = (
+            isinstance(have, dict)
+            and (have.get("verb") or {}).get("id") == stmt["verb"]["id"]
+            and (have.get("actor") or {}).get("account") == stmt["actor"]["account"]
+            and (have.get("object") or {}).get("id") == stmt["object"]["id"]
+        )
+        if same:
+            logger.info("cmi5: %s %s was already recorded", stmt["verb"]["id"].rsplit("/", 1)[-1], stmt["id"])
+            return
+        raise Cmi5Error(502, f"statement id {stmt['id']} is taken by a different statement in the LRS")
     if resp.status not in (200, 204):
         raise Cmi5Error(502, f"the LRS refused a {stmt['verb']['id'].rsplit('/', 1)[-1]} statement: {resp.status}")
 
@@ -184,6 +236,8 @@ def registration(db: Session, enrolled: Enrollment, release: CourseRelease, *, l
         db.add(reg)
         db.flush()
         evaluate(db, reg, release, str(uuid.uuid4()))
+    elif reg.release_id != release.id:
+        raise Cmi5Error(409, "this enrolment's cmi5 registration is on another release of the course")
     return reg
 
 
@@ -204,7 +258,7 @@ def au_satisfied(au: structure_mod.AU, state: dict) -> bool:
 
 def _satisfied_statement(reg: Cmi5Registration, runtime_id: str, publisher_id: str, kind: str, session_id: str) -> dict:
     return {
-        "id": str(uuid.uuid5(STATEMENT_NS, f"{reg.id}:satisfied:{runtime_id}")),
+        "id": lms_statement_id(reg.id, "satisfied", runtime_id),
         "actor": xapi.actor(reg.user_id),
         "verb": {"id": rules.SATISFIED, "display": {"en": "satisfied"}},
         "object": {
@@ -284,6 +338,7 @@ def _context_template(au: structure_mod.AU, session_id: str) -> dict:
 def launch(
     db: Session, user_id: uuid.UUID, release: CourseRelease, au_index: int, launch_mode: str | None = None
 ) -> Launch:
+    au_credential()  # fail closed before anything is written: no AU credential, no launch
     enrolled = enrolment_for(db, user_id, release)
     _, parsed = package(db, release)
     if not 0 <= au_index < len(parsed.aus):
@@ -340,7 +395,7 @@ def launch(
         extensions[rules.EXT_MASTERY] = au.mastery_score
     put_statement(
         {
-            "id": str(uuid.uuid5(STATEMENT_NS, f"{sid}:launched")),
+            "id": lms_statement_id(sid, "launched"),
             "actor": actor,
             "verb": {"id": rules.LAUNCHED, "display": {"en": "launched"}},
             "object": {"objectType": "Activity", "id": runtime},
@@ -399,7 +454,7 @@ def abandon(db: Session, session: Cmi5Session, release: CourseRelease) -> None:
     since = _aware(session.initialized_at) or _aware(session.launched_at)
     put_statement(
         {
-            "id": str(uuid.uuid5(STATEMENT_NS, f"{session.id}:abandoned")),
+            "id": lms_statement_id(session.id, "abandoned"),
             "actor": xapi.actor(session.user_id),
             "verb": {"id": rules.ABANDONED, "display": {"en": "abandoned"}},
             "object": {"objectType": "Activity", "id": structure_mod.au_runtime_id(release.id, session.au_index)},
@@ -429,10 +484,10 @@ def waive(db: Session, reg: Cmi5Registration, release: CourseRelease, au_index: 
     if state.get("waived"):
         raise Cmi5Error(409, "this AU is already waived in this registration")
     au = parsed.aus[au_index]
-    session_id = str(uuid.uuid5(STATEMENT_NS, f"{reg.id}:waived-session:{au_index}"))
+    session_id = str(uuid.uuid4())
     put_statement(
         {
-            "id": str(uuid.uuid5(STATEMENT_NS, f"{reg.id}:waived:{au_index}")),
+            "id": lms_statement_id(reg.id, "waived", au_index),
             "actor": xapi.actor(reg.user_id),
             "verb": {"id": rules.WAIVED, "display": {"en": "waived"}},
             "object": {"objectType": "Activity", "id": structure_mod.au_runtime_id(release.id, au_index)},
@@ -543,13 +598,18 @@ def proxy(
     elif resource == "statements":
         if method not in ("POST", "PUT"):
             raise Cmi5Error(403, "the AU credential is write-only for statements")
-        accepted = _check_statements(session, reg, runtime, actor, body, params, method)
+        graded = _graded(db, session, release.id)
+        accepted = _check_statements(session, reg, runtime, actor, body, params, method, graded)
     elif resource == "activities/state":
         _agent_param(params, actor)
         if params.get("activityId") != runtime:
             raise rules.RuleViolationError("10.1.0.0-3", "activityId is not the launch activityId", status=403)
-        if params.get("registration") not in (None, str(reg.id)):
-            raise rules.RuleViolationError("8.1.4.0-3", "registration is not the launch registration", status=403)
+        # Every State request names this registration: without one, a DELETE (or a read)
+        # would reach the documents of every registration of this AU, LMS.LaunchData included.
+        if params.get("registration") != str(reg.id):
+            raise rules.RuleViolationError("8.1.4.0-3", "registration must be the launch registration", status=403)
+        if not params.get("stateId") and method != "GET":
+            raise Cmi5Error(403, "name the stateId: the AU may not change or delete all its State documents at once")
         if params.get("stateId") == "LMS.LaunchData":
             if method != "GET":
                 raise rules.RuleViolationError(
@@ -568,12 +628,15 @@ def proxy(
     elif resource in ("activities", "activities/profile"):
         if params.get("activityId") != runtime:
             raise rules.RuleViolationError("10.1.0.0-3", "activityId is not the launch activityId", status=403)
-        if resource == "activities" and method != "GET":
-            raise Cmi5Error(405, "activities is read-only")
+        if method != "GET":
+            # Activity Profiles are shared by every registration of the AU (the LMS's to
+            # write); the activity definition is the LMS's too.
+            raise Cmi5Error(403, f"{resource} is read-only for an AU")
     else:
         raise Cmi5Error(404, f"{method} {resource} is not part of the AU's LRS")
 
-    resp = _lrs(method, resource, params=params, body=body or None, headers=forward)
+    # The AU's own credential: the LRS records it as the authority of what the AU wrote.
+    resp = _lrs(method, resource, params=params, body=body or None, headers=forward, credential=au_credential())
     if resp.status in (200, 204):
         if marks["launch_data"]:
             session.launch_data_fetched = True
@@ -585,7 +648,25 @@ def proxy(
     return resp
 
 
-def _view(session: Cmi5Session, reg: Cmi5Registration, runtime: str, actor: dict) -> rules.SessionView:
+def _graded(db: Session, session: Cmi5Session, release_id: uuid.UUID) -> float | None:
+    """The latest score TrueNorth marked for this Student and AU since the session launched."""
+    row = (
+        db.query(Cmi5Grade)
+        .filter(
+            Cmi5Grade.user_id == session.user_id,
+            Cmi5Grade.release_id == release_id,
+            Cmi5Grade.au_index == session.au_index,
+            Cmi5Grade.created_at >= session.launched_at,
+        )
+        .order_by(Cmi5Grade.created_at.desc())
+        .first()
+    )
+    return row.scaled if row else None
+
+
+def _view(
+    session: Cmi5Session, reg: Cmi5Registration, runtime: str, actor: dict, graded: float | None = None
+) -> rules.SessionView:
     state = progress(reg)["aus"].get(str(session.au_index)) or {}
     return rules.SessionView(
         actor=actor,
@@ -601,10 +682,14 @@ def _view(session: Cmi5Session, reg: Cmi5Registration, runtime: str, actor: dict
         sent=set(json.loads(session.sent or "[]")),
         au_completed=bool(state.get("completed")),
         au_passed=bool(state.get("passed")),
+        require_graded=True,
+        graded=graded,
     )
 
 
-def _check_statements(session, reg, runtime, actor, body: bytes, params: dict[str, str], method: str) -> list[str]:
+def _check_statements(
+    session, reg, runtime, actor, body: bytes, params: dict[str, str], method: str, graded: float | None = None
+) -> list[str]:
     try:
         payload = json.loads(body or b"null")
     except ValueError as exc:
@@ -614,7 +699,7 @@ def _check_statements(session, reg, runtime, actor, body: bytes, params: dict[st
         raise rules.RuleViolationError("4.1.0.0-1", "no statements")
     if method == "PUT" and (len(statements) != 1 or params.get("statementId") != (statements[0] or {}).get("id")):
         raise rules.RuleViolationError("4.1.0.0-1", "PUT carries one statement whose id is the statementId parameter")
-    view = _view(session, reg, runtime, actor)
+    view = _view(session, reg, runtime, actor, graded)
     accepted: list[str] = []
     for st in statements:
         verb = rules.check(st, view, accepted)

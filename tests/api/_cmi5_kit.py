@@ -57,11 +57,15 @@ class MemoryLRS(XAPILRSBackend):
         self.docs: dict[tuple, bytes] = {}
         self.refuse_statements = False
         self.calls: list[tuple[str, str]] = []
+        self.credentials: list[str | None] = []  # per call: None = the server's LRS_AUTH
+        self.authority: dict[str, str] = {}  # statement id -> credential that wrote it (lrsql's authority)
 
-    def xapi_request(self, method, resource, *, params=None, body=None, headers=None, timeout=10.0):
+    def xapi_request(self, method, resource, *, params=None, body=None, headers=None, timeout=10.0, credential=None):
         params = dict(params or {})
         headers = {k.lower(): v for k, v in (headers or {}).items()}
         self.calls.append((method, resource))
+        self.credentials.append(credential)
+        self._writer = credential or "server"
         if resource == "about":
             return LRSResponse(200, b'{"version":["1.0.3"]}', {"content-type": "application/json"})
         if resource == "statements":
@@ -80,6 +84,9 @@ class MemoryLRS(XAPILRSBackend):
         if self.refuse_statements:
             return LRSResponse(500, b'{"error":"down"}')
         if method == "GET":
+            if "statementId" in params:
+                st = self.statements.get(params["statementId"])
+                return LRSResponse(404) if st is None else LRSResponse(200, json.dumps(st).encode())
             return LRSResponse(200, json.dumps({"statements": [], "more": ""}).encode())
         payload = json.loads(body)
         batch = payload if isinstance(payload, list) else [payload]
@@ -94,6 +101,7 @@ class MemoryLRS(XAPILRSBackend):
             if have is None:
                 self.statements[st["id"]] = st
                 self.order.append(st["id"])
+                self.authority[st["id"]] = self._writer
             ids.append(st["id"])
         if method == "PUT":
             return LRSResponse(204)
@@ -147,7 +155,7 @@ def now() -> str:
 class AU:
     """A conformant AU, driven through the API (TestClient), started from a launch URL."""
 
-    def __init__(self, client, launch_url: str):
+    def __init__(self, client, launch_url: str, student=None):
         q = {k: v[0] for k, v in parse_qs(urlsplit(launch_url).query).items()}
         self.client = client
         self.url = launch_url
@@ -158,6 +166,9 @@ class AU:
         self.activity_id = q["activityId"]
         self.token: str | None = None
         self.launch_data: dict = {}
+        self.student = student  # who submits the quiz to TrueNorth's marking (POST .../grade)
+        path = urlsplit(launch_url).path.split("/")
+        self.release_id, self.au_index = path[-2], int(path[-1])
 
     def fetch(self) -> dict:
         r = self.client.post(self.fetch_url)
@@ -230,7 +241,14 @@ class AU:
     def completed(self):
         return self.send(self.statement("completed", moveon=True, result={"completion": True, "duration": "PT60.00S"}))
 
-    def scored(self, scaled: float):
+    def mark(self, scaled: float):
+        """Have TrueNorth mark the quiz with answers worth ``scaled`` (in fifths), as the AU
+        runtime does before reporting passed/failed."""
+        mark_quiz(self.client, self.student, self.release_id, self.au_index, scaled)
+
+    def scored(self, scaled: float, *, marked: bool = True):
+        if marked and self.student is not None:
+            self.mark(scaled)
         ms = self.launch_data.get("masteryScore")
         ok = scaled >= ms if ms is not None else scaled >= 0.5
         return self.send(
@@ -248,3 +266,42 @@ class AU:
 
 def token_session_id(token: str) -> str:
     return base64.b64decode(token).decode().split(":", 1)[0]
+
+
+def quiz_answers(au_index: int) -> list[tuple[str, str]]:
+    """(question id, right letter) for a C105 module's quiz, from the release itself."""
+    from app.course_releases import bundle as bundle_mod
+
+    files = bundle_mod.parse(BUNDLE.read_bytes()).files["learner"]
+    cfg = json.loads(files[f"07-bundle/cmi5/mod_{au_index + 1:03d}/course-config.json"])
+    return [(q["id"], q["answer"]) for q in cfg["quiz"]["questions"]]
+
+
+def mark_quiz(client, user, release_id: str, au_index: int, scaled: float):
+    """POST .../grade as ``user`` with answers worth ``scaled``; returns the response."""
+    from app.auth import CurrentUser, get_current_user
+    from app.main import app as fastapi_app
+
+    key = quiz_answers(au_index)
+    right = round(scaled * len(key))
+    answers = {qid: (letter if i < right else ("A" if letter != "A" else "B")) for i, (qid, letter) in enumerate(key)}
+    who = CurrentUser(
+        id=str(user.id),
+        email=user.email,
+        display_name=user.display_name,
+        role=user.role,
+        tenant_id=str(user.tenant_id),
+        keycloak_id=user.keycloak_id,
+    )
+    previous = fastapi_app.dependency_overrides.get(get_current_user)
+    fastapi_app.dependency_overrides[get_current_user] = lambda: who
+    try:
+        r = client.post(f"/cmi5/releases/{release_id}/aus/{au_index}/grade", json={"answers": answers})
+    finally:
+        if previous is None:
+            fastapi_app.dependency_overrides.pop(get_current_user, None)
+        else:
+            fastapi_app.dependency_overrides[get_current_user] = previous
+    assert r.status_code == 200, r.text
+    assert abs(r.json()["scaled"] - scaled) < 1e-9, r.json()
+    return r

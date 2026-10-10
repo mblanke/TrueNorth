@@ -63,6 +63,12 @@ up() {
     say "lrs"
     "${COMPOSE[@]}" up -d lrs
     wait_http "http://127.0.0.1:18001/health" 60
+    # cmi5 AU traffic goes to the LRS with its own credential (docs/cmi5.md): mint one with
+    # the dev LRS admin (compose.dev.yml) and hand it to the api through compose.
+    say "lrs: minting the cmi5 AU credential"
+    CMI5_LRS_AUTH="$(PYTHONPATH="$ROOT/control-plane/api" "$PY" -c \
+      'from app.lms.lrsql_admin import mint_au_credential as m; print(m("http://127.0.0.1:18001", "lrsadmin", "lrsadmin"))')"
+    export CMI5_LRS_AUTH
   fi
   say "app: ${APP[*]}"
   "${COMPOSE[@]}" up -d --build --wait --wait-timeout 300 "${APP[@]}"

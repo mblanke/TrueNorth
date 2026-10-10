@@ -33,8 +33,12 @@ GOOD = {
     "REDIS_URL": "redis://:Rz9-long-redis-password@redis:6379/0",
     "MINIO_ACCESS_KEY": "tn-objects",
     "MINIO_SECRET_KEY": "Mn4-long-minio-secret",
+    "XAPI_ACCOUNT_HOMEPAGE": "https://range.example.mil",
+    "XAPI_IRI_BASE": "https://range.example.mil/xapi",
 }
-NAMES = (*GOOD, "SEED_DEV_DATA", "DB_AUTO_CREATE", "DOCS_ENABLED", "OIDC_AUDIENCE", "REDIS_PASSWORD", "TN_VERSION")
+NAMES = (
+    *GOOD, "SEED_DEV_DATA", "DB_AUTO_CREATE", "DOCS_ENABLED", "OIDC_AUDIENCE", "REDIS_PASSWORD", "TN_VERSION", "DOMAIN"
+)
 
 
 @pytest.fixture
@@ -82,6 +86,10 @@ def test_an_empty_production_environment_names_every_problem(monkeypatch):
         ("MINIO_SECRET_KEY", "minioadmin", "MinIO"),
         ("MINIO_ACCESS_KEY", "minioadmin", "MinIO"),
         ("SEED_DEV_DATA", "true", "SEED_DEV_DATA"),
+        ("XAPI_ACCOUNT_HOMEPAGE", "", "XAPI_ACCOUNT_HOMEPAGE"),  # review low 9: no localhost fallback
+        ("XAPI_IRI_BASE", "", "XAPI_IRI_BASE"),
+        ("XAPI_ACCOUNT_HOMEPAGE", "http://localhost:4200", "XAPI_ACCOUNT_HOMEPAGE"),
+        ("XAPI_IRI_BASE", "http://127.0.0.1/xapi", "XAPI_IRI_BASE"),
     ],
 )
 def test_each_unsafe_setting_is_refused(prod, name, value, needle):
@@ -95,6 +103,14 @@ def test_generic_oidc_needs_its_own_audience(prod):
     prod.delenv("KEYCLOAK_AUDIENCE")
     assert any("OIDC_AUDIENCE" in p for p in settings.production_problems())
     prod.setenv("OIDC_AUDIENCE", "api://truenorth")
+    assert settings.production_problems() == []
+
+
+def test_xapi_identity_may_come_from_domain(prod):
+    prod.delenv("XAPI_ACCOUNT_HOMEPAGE")
+    prod.delenv("XAPI_IRI_BASE")
+    assert any("XAPI_" in p for p in settings.production_problems())
+    prod.setenv("DOMAIN", "range.example.mil")
     assert settings.production_problems() == []
 
 

@@ -15,17 +15,28 @@ from contextlib import contextmanager
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
-from _cmi5_kit import ABANDONED, AU, BUNDLE, CATALOGUE, CMI5, CROSSWALK, EXT, SATISFIED, WAIVED, MemoryLRS
+from _cmi5_kit import ABANDONED, ADL, AU, BUNDLE, CATALOGUE, CMI5, CROSSWALK, EXT, SATISFIED, WAIVED, MemoryLRS
 from app import xapi
 from app.auth import CurrentUser, get_current_user
 from app.cmi5 import lms
 from app.cmi5.models import Cmi5Session
+from app.db import get_db
 from app.enrollment import ensure_enrollment
 from app.lms import NullLMSBackend
 from app.main import app as fastapi_app
 from app.models import Tenant, User, UserRole
 
 DEV_TENANT = uuid.UUID("00000000-0000-0000-0000-000000000001")
+
+
+AU_CRED = "YXUta2V5OmF1LXNlY3JldA=="  # base64 "au-key:au-secret": the AU traffic's own credential
+SERVER_CRED = "c2VydmVyOnNlY3JldA=="  # base64 "server:secret": TrueNorth's LRS_AUTH
+
+
+@pytest.fixture(autouse=True)
+def _credentials(monkeypatch):
+    monkeypatch.setenv("CMI5_LRS_AUTH", AU_CRED)
+    monkeypatch.setenv("LRS_AUTH", SERVER_CRED)
 
 
 @pytest.fixture
@@ -49,6 +60,12 @@ def release(client):
         r = client.post(f"/course-releases/{rel['id']}/accept", json={"acknowledge_actions": acks})
         assert r.status_code == 200, r.text
         rel = r.json()
+    # A Student reaches a module only in a published course (catalogue courses import unpublished).
+    from app.models import Course
+
+    db = client.app.dependency_overrides[get_db]().__next__()
+    db.get(Course, uuid.UUID(rel["course_id"])).is_published = True
+    db.commit()
     return rel
 
 
@@ -176,7 +193,7 @@ def test_a_refused_launched_statement_fails_the_launch_and_leaves_no_session(cli
 
 # -- fetch ------------------------------------------------------------------------------------
 def test_fetch_returns_the_token_once(client, lrs, release, student):
-    au = AU(client, _launch(client, student, release)["url"])
+    au = AU(client, _launch(client, student, release)["url"], student)
     first = au.fetch()
     assert set(first) == {"auth-token"}
     assert au.fetch() == {"error-code": "1", "error-text": "The authorization token has already been returned."}
@@ -187,7 +204,7 @@ def test_fetch_returns_the_token_once(client, lrs, release, student):
 # -- a whole session ----------------------------------------------------------------------------
 def test_a_conformant_session_passes_and_satisfies_its_block(client, lrs, release, student):
     out = _launch(client, student, release)
-    au = AU(client, out["url"]).start()
+    au = AU(client, out["url"], student).start()
     for step in (au.initialized, au.completed, lambda: au.scored(0.8), au.terminated):
         r = step()
         assert r.status_code == 200, r.text
@@ -215,7 +232,7 @@ def test_a_conformant_session_passes_and_satisfies_its_block(client, lrs, releas
 
 
 def test_waiving_the_rest_satisfies_the_course(client, lrs, release, student, db_session):
-    au = AU(client, _launch(client, student, release)["url"]).start()
+    au = AU(client, _launch(client, student, release)["url"], student).start()
     assert au.initialized().status_code == 200
     assert au.scored(1.0).status_code == 200
     instructor = _user(db_session, UserRole.instructor)
@@ -246,16 +263,16 @@ def test_waiving_the_rest_satisfies_the_course(client, lrs, release, student, db
 
 
 def test_a_student_cannot_waive(client, lrs, release, student):
-    au = AU(client, _launch(client, student, release)["url"])
+    au = AU(client, _launch(client, student, release)["url"], student)
     with acting_as(student):
         r = client.post(f"/cmi5/registrations/{au.registration}/aus/1/waive", json={"reason": "Tested Out"})
     assert r.status_code == 403
 
 
 def test_relaunch_abandons_the_open_session(client, lrs, release, student):
-    first = AU(client, _launch(client, student, release)["url"]).start()
+    first = AU(client, _launch(client, student, release)["url"], student).start()
     assert first.initialized().status_code == 200
-    second = AU(client, _launch(client, student, release)["url"])
+    second = AU(client, _launch(client, student, release)["url"], student)
     (ab,) = lrs.by_verb(ABANDONED)
     assert (
         ab["context"]["extensions"][EXT + "sessionid"]
@@ -269,11 +286,11 @@ def test_relaunch_abandons_the_open_session(client, lrs, release, student):
 
 
 def test_after_passing_the_next_launch_is_review(client, lrs, release, student):
-    au = AU(client, _launch(client, student, release)["url"]).start()
-    au.initialized(), au.scored(0.9), au.terminated()
+    au = AU(client, _launch(client, student, release)["url"], student).start()
+    au.initialized(), au.scored(1.0), au.terminated()
     again = _launch(client, student, release)
     assert again["launch_mode"] == "Review"
-    review = AU(client, again["url"]).start()
+    review = AU(client, again["url"], student).start()
     assert review.launch_data["launchMode"] == "Review"
     assert review.initialized().status_code == 200
     r = review.completed()
@@ -281,7 +298,7 @@ def test_after_passing_the_next_launch_is_review(client, lrs, release, student):
 
 
 def test_browse_mode_refuses_judgement(client, lrs, release, student):
-    au = AU(client, _launch(client, student, release, launch_mode="Browse")["url"]).start()
+    au = AU(client, _launch(client, student, release, launch_mode="Browse")["url"], student).start()
     assert au.initialized().status_code == 200
     r = au.scored(1.0)
     assert r.status_code == 400 and r.json()["violatedReqId"] == "10.2.2.0-2"
@@ -289,7 +306,7 @@ def test_browse_mode_refuses_judgement(client, lrs, release, student):
 
 # -- refusals -----------------------------------------------------------------------------------
 def _started(client, student, release):
-    return AU(client, _launch(client, student, release)["url"]).start()
+    return AU(client, _launch(client, student, release)["url"], student).start()
 
 
 def _refused(r, req, status=400):
@@ -299,7 +316,7 @@ def _refused(r, req, status=400):
 
 
 def test_learner_preferences_must_be_read_first(client, lrs, release, student):
-    au = AU(client, _launch(client, student, release)["url"])
+    au = AU(client, _launch(client, student, release)["url"], student)
     au.fetch()
     au.launch_data = au.lrs("GET", "activities/state", params=au.state_params("LMS.LaunchData")).json()
     _refused(au.initialized(), "11.0.0.0-3")
@@ -318,7 +335,7 @@ def test_learner_preferences_must_be_read_first(client, lrs, release, student):
         (lambda au, st: st.pop("id"), "9.1.0.0-1"),
         (
             lambda au, st: st["object"].update(id="https://ccoe.forces.gc.ca/xapi/arc2/arc2-c105/au/mod_001"),
-            "8.1.5.0-6",
+            "TN-SCOPE",
         ),
     ],
 )
@@ -326,7 +343,7 @@ def test_a_malformed_initialized_is_refused(client, lrs, release, student, mutat
     au = _started(client, student, release)
     st = au.statement("initialized")
     mutate(au, st)
-    _refused(au.send(st), req)
+    _refused(au.send(st), req, 403 if req.startswith("TN-") else 400)
     assert lrs.by_verb("http://adlnet.gov/expapi/verbs/initialized") == []
 
 
@@ -338,17 +355,18 @@ def test_ordering_and_once_only_rules(client, lrs, release, student):
     _refused(au.send(au.statement("initialized", moveon=True)), "9.6.2.2-2")
     assert au.completed().status_code == 200
     _refused(au.completed(), "9.3.0.0-2")
+    au.mark(0.6)
     r = au.send(
         au.statement(
             "passed",
             moveon=True,
-            result={"success": True, "score": {"scaled": 0.5}, "duration": "PT1S"},
+            result={"success": True, "score": {"scaled": 0.6}, "duration": "PT1S"},
             ext={EXT + "masteryscore": 0.7},
         )
     )
     _refused(r, "9.3.4.0-2")  # passed below the masteryScore
     assert au.scored(0.4).status_code == 200  # failed
-    _refused(au.scored(0.9), "9.3.0.0-3")  # passed after failed in the same session
+    _refused(au.scored(1.0), "9.3.0.0-3")  # passed after failed in the same session
     assert au.terminated().status_code == 200
 
 
@@ -382,7 +400,7 @@ def test_result_rules(client, lrs, release, student):
 def test_completed_once_per_registration_across_sessions(client, lrs, release, student):
     au = _started(client, student, release)
     au.initialized(), au.completed(), au.terminated()
-    again = AU(client, _launch(client, student, release)["url"]).start()  # still Normal: not passed yet
+    again = AU(client, _launch(client, student, release)["url"], student).start()  # still Normal: not passed yet
     assert again.launch_data["launchMode"] == "Normal"
     again.initialized()
     _refused(again.completed(), "9.3.0.0-6")
@@ -434,7 +452,7 @@ def test_the_au_credential_is_scoped_to_its_session(client, lrs, release, studen
 
 def test_a_token_is_not_its_fetch_secret(client, lrs, release, student):
     out = _launch(client, student, release)
-    au = AU(client, out["url"])
+    au = AU(client, out["url"], student)
     secret = au.fetch_url.rsplit("/", 1)[1]
     import base64
 
@@ -473,3 +491,198 @@ def test_grade_marks_on_the_server(client, lrs, release, student, db_session):
 def test_a_student_cannot_download_the_structure_file(client, lrs, release, student):
     with acting_as(student):
         assert client.get(f"/cmi5/releases/{release['id']}/cmi5.xml").status_code == 403
+
+
+# -- adversarial review of 2026-10-09: one regression per finding --------------------------
+def _quiz_iri() -> str:
+    return xapi.activity_iri("quiz", str(uuid.uuid4()))
+
+
+def test_review_1_a_student_cannot_forge_a_truenorth_quiz_pass(client, lrs, release, student):
+    """Repro: an uncategorised `passed` about another TrueNorth activity went through with the
+    server's credential, indistinguishable from TrueNorth's own quiz statements."""
+    au = _started(client, student, release)
+    assert au.initialized().status_code == 200
+    forged = au.statement(
+        "passed",
+        defined=False,
+        result={"success": True, "score": {"scaled": 1.0}},
+        object={"objectType": "Activity", "id": _quiz_iri()},
+    )
+    _refused(au.send(forged), "TN-SCOPE", 403)
+    assert forged["id"] not in lrs.statements
+
+
+def test_review_1_cmi5_verbs_need_the_cmi5_category(client, lrs, release, student):
+    """Repro: `passed` on the AU itself without the category skipped every cmi5 rule."""
+    au = _started(client, student, release)
+    assert au.initialized().status_code == 200
+    for verb in ("passed", "completed", "failed", "terminated", "initialized"):
+        st = au.statement(verb, defined=False, result={"success": True, "duration": "PT1S"})
+        _refused(au.send(st), "TN-DEFINED", 403)
+    # Anything else about the AU (or under it) is still a cmi5-allowed statement.
+    sub = au.statement(
+        "experienced", defined=False, object={"objectType": "Activity", "id": au.activity_id + "/page/1"}
+    )
+    assert au.send(sub).status_code == 200
+
+
+def test_review_1_au_traffic_carries_its_own_credential(client, lrs, release, student, monkeypatch):
+    out = _launch(client, student, release)
+    au = AU(client, out["url"], student).start()
+    first = au.statement("initialized")
+    assert au.send(first).status_code == 200
+    (launched,) = lrs.by_verb("http://adlnet.gov/expapi/verbs/launched")
+    assert lrs.authority[launched["id"]] == "server"  # TrueNorth's own statement: LRS_AUTH
+    assert lrs.authority[first["id"]] == AU_CRED  # the AU's: CMI5_LRS_AUTH, a different authority
+    # Without a credential of its own (or with the server's), cmi5 does not launch at all.
+    for value in ("", SERVER_CRED):
+        monkeypatch.setenv("CMI5_LRS_AUTH", value)
+        with acting_as(student):
+            r = client.post(f"/cmi5/releases/{release['id']}/aus/1/launch", json={})
+        assert r.status_code == 503 and "CMI5_LRS_AUTH" in r.json()["detail"]
+
+
+def test_review_2_passed_needs_a_score_and_the_server_marked_one(client, lrs, release, student, db_session):
+    au = _started(client, student, release)
+    assert au.initialized().status_code == 200
+    no_score = au.statement(
+        "passed", moveon=True, result={"success": True, "duration": "PT1S"}, ext={EXT + "masteryscore": 0.7}
+    )
+    _refused(au.send(no_score), "TN-SCORE")
+    claimed = au.statement(
+        "passed",
+        moveon=True,
+        ext={EXT + "masteryscore": 0.7},
+        result={"success": True, "score": {"scaled": 1.0}, "duration": "PT1S"},
+    )
+    _refused(au.send(claimed), "TN-GRADE", 403)  # nothing marked yet
+    au.mark(0.6)
+    _refused(au.send(claimed), "TN-GRADE", 403)  # marked 0.6, claims 1.0
+    assert au.scored(1.0).status_code == 200  # marked 1.0, reports 1.0
+
+
+def test_review_2_a_mark_from_before_the_launch_does_not_count(client, lrs, release, student):
+    from _cmi5_kit import mark_quiz
+
+    mark_quiz(client, student, release["id"], 0, 1.0)
+    au = _started(client, student, release)
+    assert au.initialized().status_code == 200
+    _refused(au.scored(1.0, marked=False), "TN-GRADE", 403)
+
+
+def test_review_2_marking_is_attempt_limited_and_says_only_the_total(client, lrs, release, student, monkeypatch):
+    from _cmi5_kit import mark_quiz
+
+    monkeypatch.setenv("CMI5_GRADE_ATTEMPTS", "2")
+    first = mark_quiz(client, student, release["id"], 0, 0.4)
+    assert set(first.json()) == {"correct", "total", "scaled"}  # no per-question result
+    mark_quiz(client, student, release["id"], 0, 0.4)
+    with acting_as(student):
+        third = client.post(f"/cmi5/releases/{release['id']}/aus/0/grade", json={"answers": {}})
+        other_au = client.post(f"/cmi5/releases/{release['id']}/aus/1/grade", json={"answers": {}})
+    assert third.status_code == 429
+    assert other_au.status_code == 200  # per AU
+
+
+def test_review_3_content_and_marking_need_a_published_course_and_an_enrolment(
+    client, lrs, release, student, db_session
+):
+    from app.models import Course
+
+    stranger = _user(db_session)
+    with acting_as(stranger):
+        for r in (
+            client.get(f"/cmi5/releases/{release['id']}/aus/0/content"),
+            client.post(f"/cmi5/releases/{release['id']}/aus/0/grade", json={"answers": {}}),
+        ):
+            assert r.status_code == 403, r.text
+    db_session.get(Course, uuid.UUID(release["course_id"])).is_published = False
+    db_session.commit()
+    with acting_as(student):
+        for r in (
+            client.get(f"/cmi5/releases/{release['id']}/aus/0/content"),
+            client.post(f"/cmi5/releases/{release['id']}/aus/0/grade", json={"answers": {}}),
+            client.get(f"/cmi5/releases/{release['id']}/structure"),
+            client.post(f"/cmi5/releases/{release['id']}/aus/0/launch", json={}),
+        ):
+            assert r.status_code == 404, r.text
+    author = _user(db_session, UserRole.instructor)
+    with acting_as(author):
+        assert client.get(f"/cmi5/releases/{release['id']}/aus/0/content").status_code == 200
+
+
+def test_review_4_lms_ids_are_keyed_reserved_and_never_taken_by_the_au(client, lrs, release, student, monkeypatch):
+    first = lms.lms_statement_id("s", "launched")
+    assert uuid.UUID(first).version == 8 and lms.lms_statement_id("s", "launched") == first  # stable for a retry
+    monkeypatch.setenv("TN_SECRETS_KEY", "another-installation-key-0123456789abcdef")
+    assert lms.lms_statement_id("s", "launched") != first  # unguessable without the server's key
+    au = _started(client, student, release)
+    squat = au.statement("initialized", id=lms.lms_statement_id(au.registration, "satisfied", "x"))
+    _refused(au.send(squat), "TN-ID", 403)
+
+
+def test_review_4_a_conflicting_statement_under_our_id_is_not_taken_as_recorded(client, lrs, release, student):
+    out = _launch(client, student, release)
+    au = AU(client, out["url"], student).start()
+    assert au.initialized().status_code == 200
+    planted = lms.lms_statement_id(out["session_id"], "abandoned")
+    lrs.statements[planted] = {
+        "id": planted,
+        "actor": au.actor,
+        "verb": {"id": ADL + "experienced"},
+        "object": {"id": "x"},
+    }
+    lrs.order.append(planted)
+    with acting_as(student):
+        r = client.post(f"/cmi5/releases/{release['id']}/aus/0/launch", json={})
+    assert r.status_code == 502 and "taken" in r.json()["detail"]
+
+
+def test_review_4_a_retried_lms_statement_is_recognised(client, lrs, release, student):
+    out = _launch(client, student, release)
+    AU(client, out["url"], student).start().initialized()
+    sid = lms.lms_statement_id(out["session_id"], "abandoned")
+    stored = {
+        "id": sid,
+        "actor": xapi.actor(student.id),
+        "verb": {"id": ABANDONED},
+        "object": {
+            "id": json.loads(json.dumps(lrs.by_verb("http://adlnet.gov/expapi/verbs/launched")[0]["object"]))["id"]
+        },
+        "timestamp": "2026-10-09T00:00:00.000Z",
+    }
+    lrs.statements[sid] = stored
+    lrs.order.append(sid)
+    assert _launch(client, student, release)["launch_mode"] == "Normal"  # same verb/actor/object: recorded
+
+
+def test_review_5_profiles_and_state_cannot_be_rewritten_wholesale(client, lrs, release, student):
+    au = _started(client, student, release)
+    profile = {"activityId": au.activity_id, "profileId": "p"}
+    for method in ("PUT", "POST", "DELETE"):
+        assert (
+            au.lrs(
+                method, "activities/profile", params=profile, json_body={} if method != "DELETE" else None
+            ).status_code
+            == 403
+        )
+    assert au.lrs("GET", "activities/profile", params=profile).status_code == 404  # reading is fine
+    no_id = {k: v for k, v in au.state_params("x").items() if k != "stateId"}
+    assert au.lrs("DELETE", "activities/state", params=no_id).status_code == 403
+    no_reg = {k: v for k, v in au.state_params("au.status").items() if k != "registration"}
+    _refused(au.lrs("GET", "activities/state", params=no_reg), "8.1.4.0-3", 403)
+    _refused(au.lrs("DELETE", "activities/state", params=au.state_params("LMS.LaunchData")), "10.2.1.0-5", 403)
+
+
+def test_review_8_a_registration_stays_on_its_release(client, lrs, release, student, db_session):
+    from types import SimpleNamespace
+
+    from app.models import Enrollment
+
+    _launch(client, student, release)
+    enrolled = db_session.query(Enrollment).filter(Enrollment.user_id == student.id).one()
+    other = SimpleNamespace(id=uuid.uuid4(), tenant_id=DEV_TENANT)
+    with pytest.raises(lms.Cmi5Error) as exc:
+        lms.registration(db_session, enrolled, other)
+    assert exc.value.status == 409

@@ -46,6 +46,25 @@ class Cmi5Registration(Base):
     )
 
 
+class Cmi5Grade(Base):
+    """One server-marked quiz attempt (``POST .../grade``). The marking is TrueNorth's, so a
+    TrueNorth session's ``passed``/``failed`` must report the score recorded here; the rows
+    also count attempts against ``CMI5_GRADE_ATTEMPTS``."""
+
+    __tablename__ = "cmi5_grades"
+    __table_args__ = (Index("ix_cmi5_grade_user_au", "user_id", "release_id", "au_index", "created_at"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("tenants.id"), nullable=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("users.id"), nullable=False)
+    release_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("course_releases.id"), nullable=False)
+    au_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    correct: Mapped[int] = mapped_column(Integer, nullable=False)
+    total: Mapped[int] = mapped_column(Integer, nullable=False)
+    scaled: Mapped[float] = mapped_column(Float, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
 class Cmi5Session(Base):
     __tablename__ = "cmi5_sessions"
     __table_args__ = (Index("ix_cmi5_session_reg_state", "registration_id", "state"),)

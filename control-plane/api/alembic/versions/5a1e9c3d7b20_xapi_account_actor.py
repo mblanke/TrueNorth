@@ -1,7 +1,7 @@
 """xAPI actor switches from email to an account IFI: record each user's legacy identity
 
 Revision ID: 5a1e9c3d7b20
-Revises: b7c8d9e0f1a3
+Revises: 1a2b3c4d5e63
 Create Date: 2026-10-09 12:00:00.000000
 
 A data migration, reversible. Until this revision every xAPI statement TrueNorth sent
@@ -29,7 +29,7 @@ from alembic import op
 from app.models import GUID
 
 revision: str = "5a1e9c3d7b20"
-down_revision: str | None = "b7c8d9e0f1a3"
+down_revision: str | None = "1a2b3c4d5e63"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

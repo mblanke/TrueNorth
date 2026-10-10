@@ -151,6 +151,17 @@ def production_problems() -> list[str]:
             uuid.UUID(platform)
         except ValueError:
             problems.append("PLATFORM_TENANT_ID is not a tenant id (UUID)")
+
+    # xAPI identity (app/xapi.py): every statement names its actor's identity authority and
+    # its IRIs by these. Outside production they fall back to the local web URL; here a
+    # localhost value would be written into the LRS for good (IRIs compare as strings).
+    domain = env("DOMAIN", "").strip()
+    for name in ("XAPI_ACCOUNT_HOMEPAGE", "XAPI_IRI_BASE"):
+        value = env(name, "").strip()
+        if not value and not domain:
+            problems.append(f"{name} is not set, nor DOMAIN: xAPI statements would name localhost")
+        elif any(host in value for host in ("localhost", "127.0.0.1")):
+            problems.append(f"{name} names localhost ({value})")
     return problems
 
 

@@ -185,6 +185,23 @@ def _launch(api_client, api_base_url, release, index, **body) -> tuple[dict, AU]
     return r.json(), AU(api_base_url, r.json()["url"])
 
 
+def _mark(api_client, release, index: int, scaled: float) -> None:
+    """Have TrueNorth mark the module's quiz with answers worth ``scaled`` (in fifths), as the
+    AU runtime does before it reports passed/failed (the API is the dev admin here)."""
+    import subprocess
+
+    raw = subprocess.run(
+        ["tar", "-xzOf", str(BUNDLE), f"learner/07-bundle/cmi5/mod_{index + 1:03d}/course-config.json"],
+        check=True,
+        capture_output=True,
+    ).stdout
+    key = [(q["id"], q["answer"]) for q in json.loads(raw)["quiz"]["questions"]]
+    right = round(scaled * len(key))
+    answers = {qid: (a if i < right else ("A" if a != "A" else "B")) for i, (qid, a) in enumerate(key)}
+    r = api_client.post(f"/cmi5/releases/{release['id']}/aus/{index}/grade", json={"answers": answers})
+    assert r.status_code == 200 and abs(r.json()["scaled"] - scaled) < 1e-9, r.text
+
+
 def _statements(lrs, **params) -> list[dict]:
     r = lrs.get("statements", params={"ascending": "true", "limit": "200", **params})
     assert r.status_code == 200, r.text
@@ -213,6 +230,7 @@ def test_a_session_lands_in_the_lrs_as_cmi5_requires(api_client, api_base_url, r
 
     au.start()
     assert au.fetch()["error-code"] == "1"  # the fetch URL works once
+    _mark(api_client, release, index, 0.8)
     steps = [
         au.statement("initialized"),
         au.statement("completed", moveon=True, result={"completion": True, "duration": "PT30.00S"}),
@@ -249,6 +267,11 @@ def test_a_session_lands_in_the_lrs_as_cmi5_requires(api_client, api_base_url, r
         assert st["actor"]["account"] == au.actor["account"] and "mbox" not in st["actor"]
         assert st["context"]["registration"] == au.registration
         assert st["timestamp"].endswith("Z")
+    # Provenance: what the AU wrote carries another authority than what TrueNorth wrote.
+    tn_authority = launched["authority"]["account"]["name"]
+    au_written = [s for s in session if s["verb"]["id"].rsplit("/", 1)[1] in ("initialized", "completed", "passed")]
+    assert au_written and all(s["authority"]["account"]["name"] != tn_authority for s in au_written)
+    assert satisfied["authority"]["account"]["name"] == tn_authority
     # The token died with the session.
     assert au.send(au.statement("experienced", defined=False)).status_code == 403
 
@@ -258,6 +281,7 @@ def test_a_refused_statement_never_reaches_the_lrs(api_client, api_base_url, rel
     _, au = _launch(api_client, api_base_url, release, index)
     au.start()
     assert au.send(au.statement("initialized")).status_code == 200
+    _mark(api_client, release, index, 0.2)
     bad = au.statement(
         "passed",
         moveon=True,
@@ -267,6 +291,12 @@ def test_a_refused_statement_never_reaches_the_lrs(api_client, api_base_url, rel
     r = au.send(bad)
     assert r.status_code == 400 and r.json()["violatedReqId"] == "9.3.4.0-2", r.text
     assert lrs.get("statements", params={"statementId": bad["id"]}).status_code == 404
+    # Review blocker 1: no uncategorised "passed" about some other TrueNorth activity.
+    forged = au.statement("passed", defined=False, result={"success": True, "score": {"scaled": 1.0}})
+    forged["object"] = {"objectType": "Activity", "id": au.activity_id.split("/cmi5/")[0] + "/activities/quiz/x"}
+    r = au.send(forged)
+    assert r.status_code == 403 and r.json()["violatedReqId"] == "TN-SCOPE", r.text
+    assert lrs.get("statements", params={"statementId": forged["id"]}).status_code == 404
     write = au.lrs(
         "PUT",
         "activities/state",
@@ -330,14 +360,18 @@ def test_reissue_round_trip_against_the_lrs(lrs, monkeypatch):
 
     key, secret = LRS_AUTH.split(":", 1)
     backend = XAPILRSBackend(lrs_url=LRS_URL, lrs_auth=base64.b64encode(f"{key}:{secret}".encode()).decode())
-    first = xapi_reissue.run(_Db(), backend, apply=True)
+    # TrueNorth's server credential wrote the originals: its authority is what --apply names.
+    authority = lrs.get("statements", params={"statementId": originals[0]}).json()["authority"]["account"]["name"]
+    first = xapi_reissue.run(_Db(), backend, apply=True, authority=authority)
     assert (first.found, first.reissued, first.errors) == (3, 3, [])
-    second = xapi_reissue.run(_Db(), backend, apply=True)  # identical copies: no error, nothing new
+    second = xapi_reissue.run(
+        _Db(), backend, apply=True, authority=authority
+    )  # identical copies: no error, nothing new
     assert second.errors == [] and second.reissued == 3
     copies = _statements(lrs, agent=json.dumps(xapi_reissue.xapi.actor(user_id)))
     assert sorted(s["context"]["statement"]["id"] for s in copies) == sorted(originals)
     assert all(s["object"]["id"].startswith("https://itest.example/xapi/activities/exercise/") for s in copies)
-    voided = xapi_reissue.run(_Db(), backend, apply=True, void=True)
+    voided = xapi_reissue.run(_Db(), backend, apply=True, void=True, authority=authority)
     assert voided.voided == 3 and voided.errors == []
     # The originals drop out of queries; what the agent filter still finds are the voiding
     # statements themselves (a StatementRef matches when its target does, xAPI 1.0.3).

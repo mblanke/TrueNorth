@@ -782,7 +782,11 @@ export interface paths {
         put?: never;
         /**
          * Grade Cmi5 Au Quiz
-         * @description Mark the AU's formative quiz on the server; the AU reports the score to its LMS.
+         * @description Mark the AU's quiz on the server, record the mark, and return only the totals (no
+         *     per-question result). A Student needs an enrolment on the release and gets
+         *     CMI5_GRADE_ATTEMPTS marks per AU per 24 hours (default 3). In a TrueNorth session the
+         *     AU's passed/failed must then report this mark (TN-GRADE); an AU launched by another LMS
+         *     reports to that LMS, which TrueNorth cannot vouch for (docs/cmi5.md).
          */
         post: operations["grade_cmi5_au_quiz_cmi5_releases__release_id__aus__au_index__grade_post"];
         delete?: never;
