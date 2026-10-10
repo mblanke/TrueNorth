@@ -49,6 +49,11 @@ all:
           tn_load_shipped_content: true
           tn_publish_shipped_content: true
           tn_load_shipped_demo: true
+          # ARC² Course Studio on the operator's Claude subscription
+          # (vault_arc2_claude_oauth_token, from `claude setup-token`; no pay-per-use key).
+          tn_arc2_enabled: true
+          # Moodle (TrueNorth-branded, LTI 1.3) at https://tn-staging.corp.tnrange.lab:8443.
+          tn_moodle_enabled: true
           # Staging attests its secrets are escrowed elsewhere (they are generated on the
           # host and are disposable). A platform Students use sets tn_backup_escrow_pubkey.
           tn_backup_escrow: out-of-band
