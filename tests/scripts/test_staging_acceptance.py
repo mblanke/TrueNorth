@@ -396,11 +396,13 @@ class FakeAdmin:
         self.users.existing[json["email"]] = json["role"]
         return 201, {"id": "new-1", **json}
 
-    def patch(self, path, json=None, **kw):
-        self.calls.append(("PATCH", path, json))
+    def patch(self, path, params=None, json=None, **kw):
+        # As the real route: its fields are query parameters, and a JSON body is ignored.
+        self.calls.append(("PATCH", path, params))
         row = next(r for r in self.rows if path.endswith(r["id"]))
-        self.users.existing[row["email"]] = json["role"]
-        return 200, {**row, **json}
+        if params:
+            self.users.existing[row["email"]] = params.get("role", row["role"])
+        return 200, {**row, **(params or {})}
 
     def delete(self, path, **kw):
         self.calls.append(("DELETE", path))
@@ -437,7 +439,7 @@ def test_a_demo_account_with_another_role_is_not_used_and_a_deactivated_acceptan
     admin = FakeAdmin(users, rows=[row])
     c = ctx(admin=admin, users=users)
     assert c.persona("instructor").email == "acceptance-instructor@truenorth.test"
-    assert ("PATCH", "/users/u9", {"is_active": True, "role": "instructor"}) in admin.calls
+    assert ("PATCH", "/users/u9", {"is_active": "true", "role": "instructor"}) in admin.calls
 
 
 # ── the multi-user harness (scripts/_inprocess_api.py) ──────────────────
