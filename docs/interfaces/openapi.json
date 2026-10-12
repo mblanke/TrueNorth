@@ -19537,7 +19537,7 @@
     },
     "/audit-log": {
       "get": {
-        "description": "Query the audit log.  **Permission: audit:read**\n\nScoped to the caller's tenant. A caller who also holds the platform-level\n``tenant:read`` (the platform admin, who already lists every tenant) sees every\ntenant's entries, including legacy rows written before writers recorded a tenant.",
+        "description": "Query the audit log.  **Permission: audit:read**\n\nScoped to the caller's tenant; legacy rows with no tenant are not shown. Only the\nplatform administrator (``rbac.is_platform_admin``: an admin of PLATFORM_TENANT_ID's\ntenant, or of a single-tenant install) sees every tenant's entries and the legacy\nrows, and may narrow them with ``tenant_id``. Holding ``tenant:read`` is not enough:\nevery tenant's admin holds it (the bug fixed in v1.2.0).",
         "operationId": "list_audit_log_audit_log_get",
         "parameters": [
           {
@@ -19560,6 +19560,25 @@
               "minimum": 0,
               "title": "Offset",
               "type": "integer"
+            }
+          },
+          {
+            "description": "Platform administrator only: restrict to one tenant's entries.",
+            "in": "query",
+            "name": "tenant_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Platform administrator only: restrict to one tenant's entries.",
+              "title": "Tenant Id"
             }
           }
         ],

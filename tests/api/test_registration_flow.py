@@ -379,3 +379,64 @@ def test_auth_me_says_whether_the_caller_is_the_platform_administrator(
 
 def test_auth_me_is_not_platform_admin_before_registration(as_trainee, tenant):
     assert as_trainee(_identity()).get("/auth/me").json()["platform_admin"] is False
+
+# ── Auth zone at registration (F3, v1.2.0) ─────────────────────────────
+# Before v1.2.0 an unnamed zone meant "the first active zone by name". seed_auth_zones
+# runs on every API start and "Secret Zone" sorts first, so registration demanded MFA and
+# a "secret" clearance claim that nothing the installer configures emits.
+@pytest.fixture
+def seeded_zones(db_session):
+    from app.models import AuthZonePolicy
+
+    rows = [
+        AuthZonePolicy(id=uuid.uuid4(), zone_name="Secret Zone", require_mfa=True, clearance_required="secret"),
+        AuthZonePolicy(id=uuid.uuid4(), zone_name="TS/SCI Zone", require_mfa=True, clearance_required="ts_sci"),
+        AuthZonePolicy(id=uuid.uuid4(), zone_name="Unclassified Zone", require_mfa=False),
+        AuthZonePolicy(id=uuid.uuid4(), zone_name="Cleared Zone", require_mfa=True, clearance_required="secret"),
+        AuthZonePolicy(id=uuid.uuid4(), zone_name="Fenced Zone", require_mfa=False, ip_whitelist="10.0.0.0/8"),
+    ]
+    db_session.add_all(rows)
+    db_session.flush()
+    return rows
+
+
+def test_registration_applies_no_zone_when_none_is_named(as_trainee, tenant, seeded_zones, monkeypatch):
+    monkeypatch.delenv("REGISTRATION_AUTH_ZONE", raising=False)
+    c = as_trainee(_identity())  # no amr, no acr, no clearance_level
+    assert c.post("/registration", json={"rank": "Pte"}).status_code == 201
+
+
+def test_named_zone_clearance_rule_still_applies(as_trainee, tenant, seeded_zones, monkeypatch):
+    monkeypatch.setenv("REGISTRATION_AUTH_ZONE", "Cleared Zone")
+    r = as_trainee(_identity()).post("/registration", json={})
+    assert r.status_code == 403 and "clearance" in r.json()["detail"]
+
+
+def test_named_zone_clearance_met_registers_without_mfa(as_trainee, tenant, seeded_zones, monkeypatch):
+    """The zone requires MFA, but registration does not apply it: the role decides MFA."""
+    monkeypatch.setenv("REGISTRATION_AUTH_ZONE", "Cleared Zone")
+    c = as_trainee(_identity(clearance_level="secret"))
+    assert c.post("/registration", json={}).status_code == 201
+
+
+def test_named_zone_ip_rule_still_applies(as_trainee, tenant, seeded_zones, monkeypatch):
+    monkeypatch.setenv("REGISTRATION_AUTH_ZONE", "Fenced Zone")
+    r = as_trainee(_identity()).post("/registration", json={})
+    assert r.status_code == 403 and "does not permit access" in r.json()["detail"]
+
+
+def test_named_zone_that_does_not_exist_fails_closed(as_trainee, tenant, seeded_zones, monkeypatch):
+    monkeypatch.setenv("REGISTRATION_AUTH_ZONE", "Typo Zone")
+    r = as_trainee(_identity()).post("/registration", json={})
+    assert r.status_code == 403 and "not configured" in r.json()["detail"]
+
+
+def test_zone_mfa_rule_does_not_count_acr_1_as_mfa(db_session, seeded_zones):
+    """F1: Keycloak issues acr "1" for a password-only sign-in."""
+    from app.identity import auth_zone_denial
+
+    claims = {"acr": "1", "amr": ["pwd"], "clearance_level": "secret"}
+    assert "multi-factor" in auth_zone_denial(db_session, claims, None, zone_name="Cleared Zone")
+    for good in ({"amr": ["pwd", "otp"]}, {"amr": ["hwk"]}, {"acr": "mfa"}):
+        claims = {**good, "clearance_level": "secret"}
+        assert auth_zone_denial(db_session, claims, None, zone_name="Cleared Zone") is None

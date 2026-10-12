@@ -28,6 +28,7 @@ import os
 
 from sqlalchemy.orm import Session
 
+from . import mfa_policy
 from .models import AuthZonePolicy, Nation, Tenant, UserRole
 
 logger = logging.getLogger(__name__)
@@ -235,37 +236,45 @@ def _ip_permitted(whitelist: str | None, client_ip: str | None) -> bool:
     return False
 
 
+def registration_zone_name() -> str | None:
+    """REGISTRATION_AUTH_ZONE: the zone whose policy applies at registration; None if unset."""
+    return os.getenv("REGISTRATION_AUTH_ZONE", "").strip() or None
+
+
 def auth_zone_denial(
     db: Session,
     claims: dict,
     client_ip: str | None,
     *,
-    zone_name: str | None = None,
+    zone_name: str | None,
+    check_mfa: bool = True,
 ) -> str | None:
     """Return a human-readable denial reason, or ``None`` if the zone permits.
 
-    Returns a reason rather than raising so both ``get_current_user`` and the
-    registration endpoint can apply the same policy while shaping their own
-    error responses.
+    The zone must be named. ``zone_name=None`` applies no zone policy: there is no
+    "default" zone. (Before v1.2.0 an unnamed zone meant the first active zone by name,
+    which on every install was the seeded "Secret Zone", so registration demanded MFA
+    and a "secret" clearance claim nothing emits.) A name that matches no active zone
+    fails closed: the operator asked for a policy that does not exist.
+
+    ``check_mfa=False`` skips the zone's MFA rule. Registration passes it: an identity
+    with no account has no role yet, and the role decides MFA (``mfa_policy``), applied
+    on the first request after approval. The clearance and network rules still apply.
+
+    Returns a reason rather than raising so callers shape their own error responses.
     """
-    q = db.query(AuthZonePolicy).filter(AuthZonePolicy.is_active.is_(True))
+    if not zone_name:
+        return None
     policy = (
-        q.filter(AuthZonePolicy.zone_name == zone_name).first()
-        if zone_name
-        else q.order_by(AuthZonePolicy.zone_name).first()
+        db.query(AuthZonePolicy)
+        .filter(AuthZonePolicy.is_active.is_(True), AuthZonePolicy.zone_name == zone_name)
+        .first()
     )
     if policy is None:
-        return None
+        return f"Auth zone '{zone_name}' is not configured or not active"
 
-    if policy.require_mfa:
-        amr = claims.get("amr") or []
-        if isinstance(amr, str):
-            amr = [amr]
-        acr = str(claims.get("acr") or "")
-        mfa_present = bool({"mfa", "otp", "hwk", "fido", "swk"}.intersection(str(a).lower() for a in amr))
-        # acr "0" means "no authentication context" — explicitly not MFA.
-        if not mfa_present and acr in ("", "0"):
-            return f"Auth zone '{policy.zone_name}' requires multi-factor authentication"
+    if check_mfa and policy.require_mfa and not mfa_policy.mfa_satisfied(claims):
+        return f"Auth zone '{policy.zone_name}' requires multi-factor authentication"
 
     if _clearance_rank(claims.get("clearance_level")) < _clearance_rank(policy.clearance_required):
         return (

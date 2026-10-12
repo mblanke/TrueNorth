@@ -157,7 +157,10 @@ def submit_registration(
             f"Registration is limited to members of: {', '.join(allowed)}",
         )
 
-    denial = ident.auth_zone_denial(db, identity.model_dump(), client_ip(request))
+    # No MFA rule here: the role decides MFA and an unregistered identity has none yet.
+    denial = ident.auth_zone_denial(
+        db, identity.model_dump(), client_ip(request), zone_name=ident.registration_zone_name(), check_mfa=False
+    )
     if denial:
         raise HTTPException(status.HTTP_403_FORBIDDEN, denial)
 

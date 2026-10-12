@@ -236,6 +236,29 @@ course production with a local-model fallback, and the cleanup of unsupported su
   or `created`. Their random choices are seeded from exercise id + inject id (the timeline
   position, from the worker).
 
+### Security (track S)
+- **Audit log scoped per tenant (behaviour change).** `GET /audit-log` crossed tenants for
+  any holder of `tenant:read`, which every tenant's admin holds, so each tenant's admin read
+  every tenant's log and the legacy no-tenant rows. Only the platform administrator
+  (`rbac.is_platform_admin`: an admin of `PLATFORM_TENANT_ID`'s tenant, or of a
+  single-tenant install) now sees other tenants and legacy rows, and may filter with the new
+  `tenant_id` query parameter; anyone else asking for another tenant gets 403. With
+  `PLATFORM_TENANT_ID` unset and two or more tenants, nobody crosses tenants.
+- **Registration auth zone is explicit (behaviour change).** With no zone named,
+  registration used the first active auth zone by name, which on every install was the
+  seeded "Secret Zone": it demanded MFA and a `secret` clearance claim nothing emits.
+  `REGISTRATION_AUTH_ZONE` (installer `tn_registration_auth_zone`, default empty) now names
+  the zone whose clearance and IP rules apply; empty applies none, and an unknown name
+  refuses registration. Registration never applies a zone's MFA rule (the role decides MFA,
+  and an unregistered identity has none). A site that relied on a zone at registration must
+  set the variable.
+- **`acr="1"` is not MFA.** The zone MFA check counted any `acr` other than "" or "0" as a
+  second factor; Keycloak issues `acr="1"` for every password sign-in. `app/mfa_policy.py`
+  decides MFA from `amr` (`TN_MFA_AMR_VALUES`, default `otp,hwk,swk,mfa`) or an allow-listed
+  `acr` (`TN_MFA_ACR_VALUES`, default `mfa`); "", "0" and "1" never count.
+- An IdP token can no longer carry the TrueNorth-only `tn_session` claim
+  (`auth.token_from_idp_claims` strips it on HTTP and WebSocket).
+
 ### Known limitations in v1.2.0
 - Greyspace, VyOS/OPNsense configs and per-tenant vCenter are proven on vcsim/fakes, not on
   a real vCenter (the live run on TN-MGMT01 is still pending).
