@@ -85,6 +85,9 @@ SIGN_IN_ONLY: dict[str, str] = {
     "POST /integrations/moodle/sso": (
         "in-body: moodle_sso.mint_ticket — Students need an active enrolment; staff need learning_record:write"
     ),
+    "GET /integrations/moodle/results": (
+        "in-body: authorize_record_access(learning_record:read); last_error only with integration:read"
+    ),
     # ── Staff deep linking (app/lti_identity/links.py): the caller's own LMS account ──
     "POST /lti/links/preview": (
         "in-body: links._check — staff of the platform's tenant, own sign-in, the email the LMS asserted"

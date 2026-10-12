@@ -545,7 +545,7 @@ from ..cmi5 import lms as cmi5_lms
 from ..cmi5 import lti as cmi5_lti
 from ..lti_identity import links as lti_links
 from ..lti_identity import session as lti_session
-from ..models import Course, Quiz, UserRole
+from ..models import Quiz, UserRole  # Course: imported at the top
 
 WEB_BASE_URL = __import__("os").getenv("LTI_WEB_BASE_URL", "http://localhost:4200")
 
