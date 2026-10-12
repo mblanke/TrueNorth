@@ -58,6 +58,11 @@ def _live(db: Session, hypervisor_type: str, tenant_id) -> list[tuple[Range, dic
         rec = out.get("connection")
         if isinstance(rec, dict) and rec.get("host"):
             found.append((rng, rec))
+        elif rng.state == RangeState.failed and out.get("unrecorded_vms_missing"):
+            # Its destroy found none of its VMs on the vCenter it resolved to (the worker's
+            # mark): changing or repointing connections cannot strand it further, and is
+            # the fix its error recommends. Or an operator abandons it (POST /ranges/{id}/abandon).
+            continue
         elif out.get("vms") or out.get("networks") or rng.state == RangeState.provisioning:
             found.append((rng, None))
     return found

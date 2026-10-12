@@ -1785,11 +1785,23 @@ class VsphereAPIProvisioner(BaseProvisioner):
                     break
         return out
 
-    async def run_in_guest(self, vm_id: str, login, steps: list, timeout: float) -> list[dict]:
+    async def run_in_guest(self, vm_id: str, login, steps: list, timeout: float, *, range_id: str | None = None,
+                           vm_name: str = "") -> list[dict]:
         """Guest operations as ``login`` (VMware Tools must run in the VM): wait until the
-        login works, then each step in turn, all within ``timeout`` seconds."""
+        login works, then each step in turn, all within ``timeout`` seconds.
+
+        Only in a VM that is ``range_id``'s on this vCenter (``_screen``): a bare ``vm-NN``
+        on the wrong vCenter would run the steps, as root, in someone else's VM."""
         if SmartConnect is None:
             raise RuntimeError("pyvmomi is required for guest operations (pip install pyvmomi)")
+        if not range_id:
+            raise RuntimeError("guest commands need the range id: they run only in that range's own VM")
+        async with self._soap_scope(always=True):
+            _, notes, missing = await self._screen(range_id, [{"vm_id": vm_id, "name": vm_name}])
+        if notes:
+            raise RuntimeError(notes[0])
+        if vm_id in missing:
+            raise RuntimeError(f"VM {vm_name or vm_id}: {vm_id} is not on {self._base_url}")
         deadline = time.monotonic() + timeout
         return await asyncio.to_thread(self._guest_sync, vm_id, login, steps, deadline)
 
@@ -1924,6 +1936,11 @@ class VsphereAPIProvisioner(BaseProvisioner):
                     # Nothing recorded which vCenter built it, and none of its VMs is here: this
                     # is likely not that vCenter (the tenant's preferred connection changed).
                     # Counting them as deleted would record the range destroyed and orphan them.
+                    if self.on_unrecorded_vms_missing is not None:
+                        try:
+                            await asyncio.to_thread(self.on_unrecorded_vms_missing, range_id)
+                        except Exception as exc:  # noqa: BLE001 — the refusal below stands either way
+                            logger.warning("range %s: could not mark its VMs missing: %s", range_id, exc)
                     raise RuntimeError(
                         f"none of the range's {len(recorded_ids)} recorded VMs exist on {self._base_url}, and the "
                         "range does not record which vCenter built it; refusing to call it destroyed. Point the "

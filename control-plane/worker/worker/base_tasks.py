@@ -40,8 +40,10 @@ def _get_backend(backend: str | None = None, range_id: str | None = None, *, out
     connection_binding.verify(provisioner, rec)
     if build and rec is None and range_id:
         connection_binding.record_build(range_id, provisioner)
-    elif rec is None:  # built before records: backfill once one of its VMs is found here
-        connection_binding.hook(range_id, provisioner)
+    # Per range at call time, whichever range this instance ends up serving (range_sweep and
+    # lab cleanup share one per vCenter): a range built before records is backfilled once
+    # one of its VMs is found here; a recorded one is left as it is.
+    connection_binding.hook(range_id, provisioner)
     return provisioner
 
 

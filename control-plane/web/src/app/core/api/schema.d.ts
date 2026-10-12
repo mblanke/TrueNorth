@@ -5439,6 +5439,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/ranges/{range_id}/abandon": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Abandon Range
+         * @description DANGEROUS. Record a ``failed`` range destroyed without touching the hypervisor.
+         *
+         *     For a range whose destroy cannot succeed, typically one that does not record which
+         *     vCenter built it and none of whose VMs exist where it now resolves. Whatever is still
+         *     on a hypervisor stays there: ``provisioner_output.abandoned`` and the audit log name
+         *     its VMs and port groups for removal by hand. ``reason`` is required.
+         *     **Permission: platform administrator**
+         */
+        post: operations["abandon_range_ranges__range_id__abandon_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/ranges/{range_id}/description/import": {
         parameters: {
             query?: never;
@@ -12277,6 +12303,14 @@ export interface components {
             k?: number;
             /** Query */
             query: string;
+        };
+        /**
+         * RangeAbandonIn
+         * @description Why the range is written off; recorded on the range and in the audit log.
+         */
+        RangeAbandonIn: {
+            /** Reason */
+            reason: string;
         };
         /** RangeDocumentOut */
         RangeDocumentOut: {
@@ -24579,6 +24613,41 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    abandon_range_ranges__range_id__abandon_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                range_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RangeAbandonIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RangeOut"];
+                };
             };
             /** @description Validation Error */
             422: {

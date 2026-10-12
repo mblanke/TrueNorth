@@ -542,7 +542,8 @@ def test_greyspace_gs_core_is_built_wired_and_torn_down(env, si, range_id, monke
     prov._guest_poll = 0.2
     login = greyspace_host.login(range_id)
     with pytest.raises((RuntimeError, KeyError)):
-        _run(prov.run_in_guest(gs["vm_id"], login, [GuestStep("health", "/bin/true")], timeout=2))
+        _run(prov.run_in_guest(gs["vm_id"], login, [GuestStep("health", "/bin/true")], timeout=2,
+                               range_id=range_id, vm_name=gs["name"]))
 
     gone = _run(mod.VsphereAPIProvisioner().destroy(range_id, {"vms": built.vms, "networks": built.networks}))
     assert gone.status == "ok", gone.errors

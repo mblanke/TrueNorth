@@ -11319,6 +11319,22 @@
         "title": "RagSearchIn",
         "type": "object"
       },
+      "RangeAbandonIn": {
+        "description": "Why the range is written off; recorded on the range and in the audit log.",
+        "properties": {
+          "reason": {
+            "maxLength": 500,
+            "minLength": 10,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "RangeAbandonIn",
+        "type": "object"
+      },
       "RangeDocumentOut": {
         "properties": {
           "created_at": {
@@ -33328,6 +33344,65 @@
           }
         ],
         "summary": "Update Range",
+        "tags": [
+          "ranges"
+        ]
+      }
+    },
+    "/ranges/{range_id}/abandon": {
+      "post": {
+        "description": "DANGEROUS. Record a ``failed`` range destroyed without touching the hypervisor.\n\nFor a range whose destroy cannot succeed, typically one that does not record which\nvCenter built it and none of whose VMs exist where it now resolves. Whatever is still\non a hypervisor stays there: ``provisioner_output.abandoned`` and the audit log name\nits VMs and port groups for removal by hand. ``reason`` is required.\n**Permission: platform administrator**",
+        "operationId": "abandon_range_ranges__range_id__abandon_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "range_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Range Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RangeAbandonIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RangeOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Abandon Range",
         "tags": [
           "ranges"
         ]

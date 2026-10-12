@@ -232,11 +232,47 @@ class TestTheBuildsVcenterIsKept:
         assert base_tasks._get_backend("vsphere_api", rid)._base_url == "https://vc-a.test"
         assert connection_binding.record_confirmed(rid, prov) is False  # never over a record
 
-    def test_a_range_with_a_record_gets_no_backfill_hook(self, world):
+    def test_the_hook_acts_per_range_even_on_a_provisioner_resolved_for_a_recorded_one(self, world):
+        """Review 3 item 2: range_sweep and lab cleanup reuse the first range's provisioner for
+        the whole vCenter; the backfill must still reach an unrecorded range in that group."""
+        cid = world.add_conn("vc-a.test")
+        recorded_rid = world.add_range()
+        base_tasks._get_backend("vsphere_api", recorded_rid, build=True)
+        legacy_rid = world.add_range(state="ready", output={"vms": [{"name": "a", "vm_id": "vm-1"}]})
+        shared = base_tasks._get_backend("vsphere_api", recorded_rid)  # the group's provisioner
+        assert shared.on_connection_confirmed(recorded_rid) is False  # recorded: left alone
+        assert shared.on_connection_confirmed(legacy_rid) is True
+        assert world.output(legacy_rid)["connection"] == {"id": cid, "host": "https://vc-a.test"}
+
+    def test_the_sweep_backfills_an_unrecorded_range_behind_a_recorded_one(self, world, vc, monkeypatch):
+        cid = world.add_conn("vc-a.test")
+        first = world.add_range(state="ready")
+        base_tasks._get_backend("vsphere_api", first, build=True)
+        legacy = world.add_range(state="ready", output={"vms": [{"name": f"{R8}-web", "vm_id": "vm-1"}]})
+        _tagged(vc, "vm-1", legacy, f"{R8}-web")
+        real = base_tasks._get_backend
+
+        def get(*a, **kw):  # the real binding, talking to the fake vCenter
+            prov = real(*a, **kw)
+            prov._transport, prov._vm = httpx.MockTransport(vc.handler), lambda si, vm_id: vc.vms[vm_id]
+            return prov
+
+        monkeypatch.setattr(base_tasks, "_get_backend", get)
+        rows = [(first, "a", json.dumps(world.output(first)), "vsphere_api"),
+                (legacy, "b", json.dumps(world.output(legacy)), "vsphere_api")]
+        range_sweep.health_checks(rows)
+        assert world.output(legacy)["connection"] == {"id": cid, "host": "https://vc-a.test"}
+
+    def test_a_destroy_that_finds_none_of_its_vms_marks_the_range(self, world):
         world.add_conn("vc-a.test")
-        rid = world.add_range()
-        base_tasks._get_backend("vsphere_api", rid, build=True)
-        assert base_tasks._get_backend("vsphere_api", rid).on_connection_confirmed is None
+        rid = world.add_range(state="destroying", output={"vms": [{"name": "a", "vm_id": "vm-1"}]})
+        prov = base_tasks._get_backend("vsphere_api", rid, teardown=True)
+        assert prov.on_unrecorded_vms_missing(rid) is True
+        mark = world.output(rid)["unrecorded_vms_missing"]
+        assert mark["host"] == "https://vc-a.test" and mark["at"]
+        recorded_rid = world.add_range()
+        base_tasks._get_backend("vsphere_api", recorded_rid, build=True)
+        assert prov.on_unrecorded_vms_missing(recorded_rid) is False  # recorded ranges are never marked
 
     def test_a_recorded_url_spelled_differently_still_matches(self, world):
         """verify compares id + (host, port), not URL strings."""
@@ -299,10 +335,31 @@ class TestOwnershipCheck:
         assert result.status == "ok", result.errors
 
     def test_a_range_with_nothing_recorded_and_none_of_its_vms_here_is_not_destroyed(self, vc):
-        """Review 2 should-fix 2a: likely the wrong vCenter; 404s must not count as deleted."""
+        """Review 2 should-fix 2a: likely the wrong vCenter; 404s must not count as deleted.
+        Review 3: the range is marked (on_unrecorded_vms_missing), so the guard lets the
+        tenant repoint its connection."""
         out = {"vms": [{"name": f"{R8}-x", "vm_id": "vm-404"}, {"name": f"{R8}-y", "vm_id": "vm-405"}]}
-        result = _run(_prov(vc).destroy(RANGE_ID, out))
+        prov, marked = _prov(vc), []
+        prov.on_unrecorded_vms_missing = marked.append
+        result = _run(prov.destroy(RANGE_ID, out))
         assert result.status == "failed" and "none of the range's 2 recorded VMs" in result.errors[0]
+        assert marked == [RANGE_ID]
+
+    def test_guest_commands_run_only_in_the_ranges_own_vm(self, vc, monkeypatch):
+        """Review 3 item 3: run_in_guest (Greyspace configure, breadcrumbs) acted on a bare id."""
+        _tagged(vc, "vm-1", RANGE_ID, f"{R8}-gs-core")
+        _tagged(vc, "vm-2", OTHER_RANGE, "prod-db")
+        prov = _prov(vc)
+        ran = []
+        monkeypatch.setattr(prov, "_guest_sync", lambda vm_id, *a: ran.append(vm_id) or [])
+        _run(prov.run_in_guest("vm-1", None, [], 5, range_id=RANGE_ID, vm_name=f"{R8}-gs-core"))
+        with pytest.raises(RuntimeError, match=OTHER_RANGE):
+            _run(prov.run_in_guest("vm-2", None, [], 5, range_id=RANGE_ID, vm_name=f"{R8}-gs-core"))
+        with pytest.raises(RuntimeError, match="not on"):
+            _run(prov.run_in_guest("vm-404", None, [], 5, range_id=RANGE_ID, vm_name=f"{R8}-gs-core"))
+        with pytest.raises(RuntimeError, match="range id"):
+            _run(prov.run_in_guest("vm-1", None, [], 5))
+        assert ran == ["vm-1"]
 
     def test_one_of_its_vms_found_backfills_the_record_so_a_retry_can_finish(self, vc):
         _tagged(vc, "vm-1", RANGE_ID, f"{R8}-web")

@@ -19,7 +19,12 @@ The contract, for a backend that takes connection credentials (CREDENTIALS_HYPER
   edited to another host, or an environment that now names another vCenter, is refused.
 * **Legacy.** A range with nothing recorded (built before this, or not built yet) uses
   today's lookup. The provisioner's range-ownership check (VM annotation) still guards
-  what it deletes, powers or snapshots.
+  what it deletes, powers or snapshots. The first operation that finds one of its VMs
+  records the endpoint (``record_confirmed``). A legacy range with port groups but no VM
+  on record (a build that died before its first VM) has nothing to confirm by, and stays
+  unrecorded until it is destroyed. A destroy that finds none of a legacy range's VMs
+  refuses and marks it (``record_vms_missing``); the API then lets the tenant repoint its
+  connection, and a platform administrator can abandon it (POST /ranges/{id}/abandon).
 
 ``ConnectionBindingError`` is final (fencing.FINAL_ERRORS): retrying cannot bring a
 deleted connection back. The API refuses to deactivate, repoint or delete a connection
@@ -134,8 +139,32 @@ def record_confirmed(range_id: str, provisioner) -> bool:
     return True
 
 
+def record_vms_missing(range_id: str, provisioner) -> bool:
+    """Mark a range with nothing recorded whose destroy found none of its VMs on the vCenter
+    it resolved to (``unrecorded_vms_missing``): the API then lets the tenant change its
+    preferred connection (app/hypervisor_connection_guard.py), the fix the destroy's error
+    recommends, instead of refusing it for this very range. Returns whether it marked."""
+    rec = provisioner.connection_record()
+    from datetime import UTC, datetime
+
+    from . import db_ops
+    from .tasks import _db_session
+
+    with _db_session() as db:
+        db_ops.lock_range(db, range_id)
+        if recorded(_output(db, range_id)) is not None:
+            return False
+        host = rec.get("host") if isinstance(rec, dict) else None
+        db_ops.merge_range_output(db, range_id, {
+            "unrecorded_vms_missing": {"host": host, "at": datetime.now(UTC).isoformat()}})
+    return True
+
+
 def hook(range_id: str | None, provisioner) -> None:
-    """Give a provisioner for a range with nothing recorded the means to backfill it
-    (``on_connection_confirmed``, called by the provisioner with the range id it confirmed)."""
+    """Give a provisioner the means to backfill a range's record (``on_connection_confirmed``)
+    and to mark one whose VMs are not where it resolved (``on_unrecorded_vms_missing``).
+    Both take the range id at call time and act only on a range with nothing recorded, so
+    one instance can serve several ranges (range_sweep, lab cleanup)."""
     if range_id and hasattr(provisioner, "on_connection_confirmed"):
         provisioner.on_connection_confirmed = lambda rid: record_confirmed(rid, provisioner)
+        provisioner.on_unrecorded_vms_missing = lambda rid: record_vms_missing(rid, provisioner)
