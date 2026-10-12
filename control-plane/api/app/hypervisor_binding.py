@@ -20,7 +20,8 @@ import re
 from sqlalchemy import case, or_
 from sqlalchemy.orm import Session
 
-from .hypervisor_ports import endpoint_key, endpoint_url
+from .hypervisor_backends.vsphere import base_url
+from .hypervisor_ports import endpoint_key
 from .models import HypervisorConnection, Range
 from .secretbox import unseal
 
@@ -58,15 +59,30 @@ def _env() -> dict:
             "verify_ssl": os.getenv("VSPHERE_VERIFY_SSL", "false").lower() == "true"}
 
 
+def connection_url(conn: HypervisorConnection) -> str:
+    """The row's endpoint, as the API's vSphere backend and the worker build it
+    (hypervisor_backends.vsphere.base_url; tests/contracts keeps it equal to the worker's
+    endpoint_url). BindingError for an address no URL can carry."""
+    from urllib.parse import urlparse
+
+    try:
+        raw = str(conn.host or "").strip()
+        if "://" in raw and not urlparse(raw).hostname:
+            raise ValueError("a scheme and no host")
+        url = base_url(conn)
+        parsed = urlparse(url)
+        if not parsed.hostname or parsed.port == 0:
+            raise ValueError("no host")
+    except ValueError as exc:
+        raise BindingError(f"hypervisor connection {conn.name!r} has no usable address ({conn.host!r})") from exc
+    return url
+
+
 def _from_row(conn: HypervisorConnection) -> dict:
     password = unseal(conn.password_encrypted) or ""
     if not (conn.host and conn.username and password):
         raise BindingError(f"hypervisor connection {conn.name!r} has no host, username or password")
-    try:
-        url = endpoint_url(conn.host, conn.port)
-    except ValueError as exc:
-        raise BindingError(f"hypervisor connection {conn.name!r}: {exc}") from exc
-    return {"url": url, "username": conn.username, "password": password, "verify_ssl": bool(conn.verify_ssl)}
+    return {"url": connection_url(conn),"username": conn.username, "password": password, "verify_ssl": bool(conn.verify_ssl)}
 
 
 def _scope(rng: Range):

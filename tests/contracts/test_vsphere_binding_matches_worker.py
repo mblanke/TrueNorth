@@ -18,27 +18,35 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "control-plane/worker"))
 sys.path.insert(0, str(ROOT / "control-plane/api"))
 
+from types import SimpleNamespace  # noqa: E402
+
 from app import hypervisor_backends, hypervisor_binding, hypervisor_ports  # noqa: E402
+from app.hypervisor_backends.vsphere import base_url  # noqa: E402
 from worker import provisioners  # noqa: E402
 from worker.provisioners import vsphere_api  # noqa: E402
 
 CASES = [("vc.test", None), ("vc.test", 443), ("vc.test", 8443), ("vc.test", 8006), ("vc.test:9443", 1),
-         ("https://vc.test/", "8443"), ("fd00::10", None), ("fd00::10", 8443), ("[fd00::10]:9443", 1),
-         ("HTTPS://VC.test", None)]
+         ("https://vc.test/", "8443"), ("fd00::10", None), ("fd00::10", 8443), ("[fd00::10]", 8443),
+         ("[fd00::10]:9443", 1), ("HTTPS://VC.test", None), ("10.0.0.5", 8443), (" vc.test/ ", None)]
 
 
 @pytest.mark.parametrize(("host", "port"), CASES)
-def test_the_endpoint_url_is_built_the_same(host, port):
-    assert hypervisor_ports.endpoint_url(host, port) == vsphere_api.endpoint_url(host, port)
+def test_the_api_and_the_worker_build_the_same_endpoint(host, port):
+    """The API's vSphere backend (base_url: connection test, discovery, console) and the
+    worker (endpoint_url: builds and every later operation) reach one URL for a row."""
+    row = SimpleNamespace(host=host, port=port, name="c")
+    assert base_url(row) == vsphere_api.endpoint_url(host, port)
+    assert hypervisor_binding.connection_url(row) == vsphere_api.endpoint_url(host, port)
     url = vsphere_api.endpoint_url(host, port)
     assert hypervisor_ports.endpoint_key(url) == vsphere_api.endpoint_key(url)
 
 
 @pytest.mark.parametrize("host", ["https://fd00::10", "vc.test:x", "https://"])
 def test_both_refuse_the_same_unusable_addresses(host):
-    for build in (hypervisor_ports.endpoint_url, vsphere_api.endpoint_url):
-        with pytest.raises(ValueError):
-            build(host)
+    with pytest.raises(ValueError):
+        vsphere_api.endpoint_url(host)
+    with pytest.raises(hypervisor_binding.BindingError):
+        hypervisor_binding.connection_url(SimpleNamespace(host=host, port=None, name="c"))
 
 
 def test_the_console_reads_the_annotation_the_worker_writes():

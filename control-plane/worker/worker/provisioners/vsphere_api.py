@@ -210,14 +210,18 @@ def endpoint_url(host: str, port=None) -> str:
     any connection created without one (app/hypervisor_ports.py), and no vCenter listens
     there, so on a vSphere row it means "not given". A port already in ``host`` wins. A bare
     IPv6 address is bracketed (``fd00::10`` -> ``https://[fd00::10]``). Raises ValueError for
-    an address no URL can carry. app/hypervisor_ports.endpoint_url is the API's copy
-    (tests/contracts keep the two in step)."""
-    host = str(host or "").strip()
-    if "://" not in host:
-        if host.count(":") >= 2 and not host.startswith("["):
-            host = f"[{host}]"  # a bare IPv6 address
-        host = f"https://{host}"
-    url = host.rstrip("/")
+    an address no URL can carry. The API's copy is app/hypervisor_backends/vsphere.base_url
+    (tests/contracts keeps the two equal)."""
+    url = str(host or "").strip()
+    if "://" in url and not urlparse(url).hostname:
+        raise ValueError(f"not a usable vCenter address: {url!r}")  # a scheme and nothing else
+    url = url.rstrip("/")
+    if "://" not in url:
+        bare = url[1:-1] if url.startswith("[") and url.endswith("]") else url
+        with contextlib.suppress(ValueError):
+            if ipaddress.ip_address(bare).version == 6:
+                url = f"[{bare}]"  # a bare IPv6 address
+        url = f"https://{url}"
     parsed = urlparse(url)
     try:
         explicit = parsed.port

@@ -313,7 +313,7 @@ class TestVsphereEndpointAndDialect:
 
         assert not result.success and "401" in result.message
         assert not routes["login"].called
-        assert conn.is_active is False
+        assert conn.is_active is True  # reported, not deactivated: ranges stay on it (#131 review 2)
 
     def test_session_is_deleted_when_a_read_fails(self, db_session):
         conn = _vcenter(db_session)
