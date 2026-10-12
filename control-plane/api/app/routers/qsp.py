@@ -37,7 +37,7 @@ from ..models import (
     RangeObjectiveMap,
     Template,
 )
-from ..rbac import Permission, require_any_permission, require_permission
+from ..rbac import PLATFORM_CURRICULUM_WRITE, Permission, require_any_permission, require_permission
 from ..tenancy import get_owned, tenant_uuid
 
 logger = logging.getLogger("truenorth.api.qsp")
@@ -367,7 +367,7 @@ def _template_curriculum(db: Session, template: Template) -> dict:
 # ranges and progress hang off — whichever tenant first created the row. Changing it is
 # therefore a platform action and needs the platform-level ``tenant:read`` (the
 # convention /audit-log uses), not only ``course:author``.
-SPINE_WRITE = require_permission(Permission.COURSE_AUTHOR, Permission.TENANT_READ)
+SPINE_WRITE = require_permission(*PLATFORM_CURRICULUM_WRITE)
 
 
 @router.post("/import-crosswalk")

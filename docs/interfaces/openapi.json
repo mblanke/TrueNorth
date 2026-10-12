@@ -20611,7 +20611,7 @@
         ]
       },
       "post": {
-        "description": "Create a competency definition (admin/instructor).",
+        "description": "Create a competency definition in the platform-shared catalogue.\n\n**Permission: course:author + tenant:read** \u2014 platform admin only; a tenant author\n(instructor) is refused.",
         "operationId": "create_competency_competency_frameworks_post",
         "parameters": [
           {
@@ -20723,7 +20723,7 @@
     },
     "/competency/frameworks/import-nice": {
       "post": {
-        "description": "Seed the NICE Workforce Framework (SP 800-181r1) core work roles and KSAs.\n\nThis is idempotent \u2014 skips competencies that already exist.",
+        "description": "Seed the NICE Workforce Framework (SP 800-181r1) core work roles and KSAs.\n\nThis is idempotent \u2014 skips competencies that already exist.\n\n**Permission: course:author + tenant:read** \u2014 platform admin only.",
         "operationId": "import_nice_framework_competency_frameworks_import_nice_post",
         "responses": {
           "201": {

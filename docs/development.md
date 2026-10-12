@@ -496,9 +496,15 @@ accreditation. Each is idempotent (upsert on a natural key):
 |---|---|---|
 | QSP/CFITES spine (Qualification → PO → EO) | `POST /qsp/import-crosswalk` | `truenorth-content-pack/truenorth-content/crosswalk.csv` |
 | NICE/CSF competency crosswalk | `POST /qsp/import-competency-crosswalk` | `content/catalogue/qsp_competency_crosswalk.csv` + `nist_csf_2_0_taxonomy.csv` |
+| NICE competency catalogue | `POST /competency/frameworks/import-nice` (and `POST /competency/frameworks` for one entry) | built into `app/routers/competency.py` |
 | Golden-image catalogue | `POST /golden-images/import-catalogue` | `content/catalogue/vm_iso_catalogue.csv` |
 | Academic programme catalogue | `POST /courses/import-programme` | `content/catalogue/cyber_operator_programme.csv` |
 | Authored course content (modules, labs, quizzes) | `POST /courses/import-course-content` | `content/courses/*.yaml` |
+
+The QSP spine, the competency crosswalk and the competency catalogue are shared by every
+tenant, so their imports and writes are platform actions: they need `course:author` **and**
+the platform-level `tenant:read` (`PLATFORM_CURRICULUM_WRITE` in `app/rbac.py`), i.e. a
+platform admin. A tenant author (instructor) gets 403.
 
 Routers are mounted at the root (`app/main.py`), not under `/api/v1`. The dev API
 listens on `127.0.0.1:8081`, and dev runs with `AUTH_DISABLED`, so the token headers

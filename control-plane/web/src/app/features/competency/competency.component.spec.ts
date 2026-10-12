@@ -1,4 +1,4 @@
-import { Component, signal } from '@angular/core';
+import { Component, WritableSignal, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { provideRouter } from '@angular/router';
@@ -41,8 +41,10 @@ describe('CompetencyComponent', () => {
   ];
 
   let responses: Record<string, unknown>;
+  let isAdmin: WritableSignal<boolean>;
 
   beforeEach(async () => {
+    isAdmin = signal(true);
     responses = {
       '/competency/frameworks': of(FRAMEWORK),
       '/competency/users/u-1/profile': of(PROFILE),
@@ -62,7 +64,7 @@ describe('CompetencyComponent', () => {
         provideRouter([]),
         { provide: ApiService, useValue: api },
         { provide: NotificationService, useValue: notify },
-        { provide: AuthService, useValue: { userId: signal('u-1') } },
+        { provide: AuthService, useValue: { userId: signal('u-1'), isAdmin: isAdmin } },
         { provide: ThemeService, useValue: { activeTheme: signal('dark') } },
       ],
     })
@@ -131,6 +133,19 @@ describe('CompetencyComponent', () => {
     await openTab('Framework Browser');
     expect(component.competencies()).toEqual([]);
     expect(el.textContent).toContain('No competencies loaded');
+  });
+
+  it('offers the shared-catalogue import to a platform admin only', async () => {
+    isAdmin.set(false);
+    responses['/competency/frameworks'] = of([]);
+    await create();
+    await openTab('Framework Browser');
+    expect(el.textContent).not.toContain('Import NICE Framework');
+    expect(el.textContent).toContain('a platform administrator imports it');
+
+    isAdmin.set(true);
+    fixture.detectChanges();
+    expect(el.textContent).toContain('Import NICE Framework');
   });
 
   it('imports the NICE framework and reloads the list', async () => {
