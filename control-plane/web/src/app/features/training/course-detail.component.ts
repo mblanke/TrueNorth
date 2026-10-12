@@ -5,6 +5,7 @@ import { MatCardModule } from '@angular/material/card';
 import { MatExpansionModule } from '@angular/material/expansion';
 import { MatIconModule } from '@angular/material/icon';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { MoodleEnrolmentResults, MoodleResult, MoodleSyncStatus } from '@core/models';
 import { ApiService } from '@core/services/api.service';
 import { EnrolButtonComponent, EnrolmentsService } from './enrol-button.component';
 
@@ -123,6 +124,31 @@ interface Section {
           </div>
         </header>
         @if (moodleError()) { <p class="moodle-err" role="alert">{{ moodleError() }}</p> }
+        <!-- What Moodle reported for this enrolment, pulled back (not LTI passback), with
+             Moodle's own time and how fresh the pull is. Staff see the reason a pull failed. -->
+        @if (moodleResults(); as r) {
+          @if (r.enrollment_id && (r.results.length || r.sync.length)) {
+            <section class="moodle-results" data-moodle-results aria-label="Results from Moodle">
+              @for (s of r.sync; track s.platform_id) {
+                <p class="sync" [class.stale]="s.stale" [attr.data-sync-state]="s.state">
+                  <mat-icon>{{ s.stale ? 'sync_problem' : 'cloud_done' }}</mat-icon>
+                  <span>{{ syncLabel(s) }}</span>
+                  @if (s.last_error) { <span class="tn-muted">— {{ s.last_error }}</span> }
+                </p>
+              }
+              @for (x of r.results; track x.kind + x.activity) {
+                <p class="fact" [attr.data-kind]="x.kind" [attr.data-activity]="x.activity">
+                  <span>{{ factLabel(x) }}</span>
+                  @if (x.source_time) {
+                    <span class="tn-muted">in Moodle {{ when(x.source_time) }}</span>
+                  }
+                </p>
+              } @empty {
+                <p class="fact tn-muted">Nothing from Moodle yet.</p>
+              }
+            </section>
+          }
+        }
         <!-- Generated on a test host and accepted by its runner: nobody reviewed it. -->
         @if (c.test_content) {
           <p class="test-content" role="note" data-test-content>
@@ -226,6 +252,10 @@ interface Section {
 
       .head-actions { display: flex; align-items: center; gap: 10px; flex: 0 0 auto; }
       .moodle-err { margin: 8px 0 0; font-size: 0.82rem; color: var(--warning); }
+      .moodle-results { margin: 10px 0 0; font-size: 0.82rem; }
+      .moodle-results p { display: flex; align-items: center; gap: 6px; margin: 2px 0; }
+      .moodle-results mat-icon { font-size: 16px; width: 16px; height: 16px; color: var(--text-muted); }
+      .moodle-results .sync.stale, .moodle-results .sync.stale mat-icon { color: var(--warning); }
       .test-content {
         display: flex;
         align-items: center;
@@ -318,6 +348,8 @@ export class CourseDetailComponent implements OnInit {
    * offering a launch that 404s.
    */
   protected readonly moodleAvailable = computed(() => this.course()?.moodle_available === true);
+  /** The caller's own results from Moodle on this course; null until loaded or if refused. */
+  protected readonly moodleResults = signal<MoodleEnrolmentResults | null>(null);
 
   ngOnInit(): void {
     const id = this.route.snapshot.paramMap.get('id');
@@ -331,6 +363,7 @@ export class CourseDetailComponent implements OnInit {
       next: c => {
         this.course.set(c);
         this.loading.set(false);
+        if (c.moodle_available === true) this.loadMoodleResults(c.id);
       },
       error: () => {
         this.error.set('That course could not be loaded. It may have been removed.');
@@ -373,6 +406,37 @@ export class CourseDetailComponent implements OnInit {
         this.opening.set(false);
       },
     });
+  }
+
+  private loadMoodleResults(courseId: string): void {
+    this.api
+      .get<MoodleEnrolmentResults>(`/integrations/moodle/results?course_id=${encodeURIComponent(courseId)}`)
+      .subscribe({ next: r => this.moodleResults.set(r), error: () => this.moodleResults.set(null) });
+  }
+
+  protected syncLabel(s: MoodleSyncStatus): string {
+    const at = s.last_success_at ? this.when(s.last_success_at) : '';
+    switch (s.state) {
+      case 'current':
+        return `Moodle results synced ${at}`;
+      case 'stale':
+        return `Moodle results may be out of date: last synced ${at}`;
+      case 'failing':
+        return `Moodle results may be out of date: the last sync failed${at ? `; last good ${at}` : ''}`;
+      default:
+        return 'Moodle results not synced yet';
+    }
+  }
+
+  protected factLabel(x: MoodleResult): string {
+    const mod = /^tn:mod_0*(\d+):(\w+)/.exec(x.activity);
+    const where = mod ? `Module ${mod[1]} ${mod[2]}` : x.activity;
+    if (x.kind === 'quiz_grade') return `${where}: ${x.grade ?? 0} / ${x.grade_max ?? 0}`;
+    return `${where}: ${x.complete ? 'complete' : 'not complete'}`;
+  }
+
+  protected when(iso: string): string {
+    return new Date(iso).toLocaleString();
   }
 
   /** The name without its leading code, which is shown separately. */

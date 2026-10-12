@@ -203,3 +203,9 @@ export type NetworkSummary = S['NetworkSummaryOut'];
 // ── Kit Definition Models ─────────────────────────────────────
 export type KitDefinition = S['KitDefinitionOut'];
 
+
+// ── Moodle results (pulled back into TrueNorth) ───────────────
+/** GET /integrations/moodle/results: one enrolment's Moodle facts and sync status. */
+export type MoodleEnrolmentResults = S['MoodleEnrolmentResultsOut'];
+export type MoodleResult = S['MoodleResultOut'];
+export type MoodleSyncStatus = S['MoodleSyncStatusOut'];

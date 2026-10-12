@@ -32,6 +32,9 @@ use moodle_exception;
  * writes `timecompleted` earlier than the time it writes the row, which a time cursor
  * would step over.
  *
+ * A quiz grade names Moodle's own id of the latest finished attempt behind it (`attempt`,
+ * `quiz_attempts.id`), so TrueNorth can tell attempts apart without trusting any name.
+ *
  * The cursor is the last row read, `<time>.<source>.<id>`, so paging is exact even when
  * many rows share one second. Both sources' times are the time of the write
  * (completion_info::update_state and the quiz grade calculator set `timemodified` to
@@ -171,7 +174,10 @@ class results {
                        cm.idnumber AS cmidnumber,
                        (SELECT COUNT(1) FROM {quiz_attempts} qa
                          WHERE qa.quiz = q.id AND qa.userid = qg.userid AND qa.state = 'finished' AND qa.preview = 0
-                       ) AS attempts
+                       ) AS attempts,
+                       (SELECT MAX(qa2.id) FROM {quiz_attempts} qa2
+                         WHERE qa2.quiz = q.id AND qa2.userid = qg.userid AND qa2.state = 'finished' AND qa2.preview = 0
+                       ) AS lastattempt
                   FROM {quiz_grades} qg
                   JOIN {quiz} q ON q.id = qg.quiz
                   JOIN {modules} m ON m.name = 'quiz'
@@ -188,7 +194,8 @@ class results {
             $out[] = ['source' => self::QUIZ_GRADE, 'id' => (int) $r->id, 't' => (int) $r->t, 'kind' => 'quiz_grade',
                 'user' => $r->useridnumber, 'username' => $r->username, 'course' => $r->courseidnumber,
                 'activity' => $r->cmidnumber, 'modname' => 'quiz', 'grade' => (float) $r->grade, 'grademax' => (float) $r->grademax,
-                'gradepass' => (float) ($r->gradepass ?? 0), 'attempts' => (int) $r->attempts];
+                'gradepass' => (float) ($r->gradepass ?? 0), 'attempts' => (int) $r->attempts,
+                'attempt' => $r->lastattempt ? (int) $r->lastattempt : null];
         }
         return $out;
     }

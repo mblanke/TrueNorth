@@ -29,6 +29,7 @@ from ..delete_guard import commit_delete, refuse_if
 from ..lti_identity.models import ExerciseLearner, LTIHandoff, LTILinkRequest, LTIUserLink
 from ..models import (
     AuditLog,
+    Course,
     ExternalActivity,
     ExternalPlatform,
     IntegrationAuthType,
@@ -41,7 +42,12 @@ from ..moodle_farm import service as moodle_farm
 from ..moodle_results import runner as results_runner
 from ..moodle_results import service as results_service
 from ..moodle_results.models import MoodleResultCursor, MoodleResultRecord
-from ..moodle_results.schemas import MoodleResultsPullIn, MoodleResultsPullOut, MoodleResultsStatusOut
+from ..moodle_results.schemas import (
+    MoodleEnrolmentResultsOut,
+    MoodleResultsPullIn,
+    MoodleResultsPullOut,
+    MoodleResultsStatusOut,
+)
 from ..platforms import get_platform_adapter
 from ..rbac import Permission, is_platform_admin, require_permission, user_has_permission
 from ..schemas import (
@@ -51,7 +57,7 @@ from ..schemas import (
     ExternalPlatformUpdate,
     PaginatedResponse,
 )
-from ..tenancy import get_owned, tenant_uuid
+from ..tenancy import authorize_record_access, get_owned, get_owned_or_global, tenant_uuid
 
 logger = logging.getLogger("truenorth.integrations")
 
@@ -417,6 +423,29 @@ def _audit_pull(db: Session, user: CurrentUser, platform_id: uuid.UUID, detail: 
         resource_type="external_platform", resource_id=str(platform_id), detail=detail,
     ))
     db.commit()
+
+
+@router.get("/moodle/results", response_model=MoodleEnrolmentResultsOut)
+def moodle_enrolment_results(
+    course_id: uuid.UUID = Query(...),
+    user_id: uuid.UUID | None = Query(default=None),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+):
+    """What Moodle reported for one enrolment, and how fresh it is.
+
+    Each quiz grade and activity completion recorded from the tenant's Moodle (pulled, not
+    pushed: LTI passback to Moodle is separate), with Moodle's own timestamp
+    (``source_time``), the release that made the activity and Moodle's attempt id; and
+    each Moodle's sync status (``current``, ``stale``, ``failing``, ``never``). Your own
+    record (``user_id`` omitted or yours), or, with ``learning_record:read``, someone in
+    your tenant; another tenant's person or course is 404. ``last_error`` is shown to
+    staff only."""
+    subject = user_id or uuid.UUID(str(user.id))
+    authorize_record_access(db, user, subject, permission=Permission.LEARNING_RECORD_READ)
+    course = get_owned_or_global(db, Course, course_id, user, not_found="Course not found")
+    staff = user_has_permission(user, Permission.INTEGRATION_READ)
+    return results_service.enrolment_results(db, tenant_uuid(user), subject, course.id, with_errors=staff)
 
 
 # ══════════════════════════════════════════════════════════════════════════

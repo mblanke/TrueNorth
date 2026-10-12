@@ -14,14 +14,35 @@ const OUTLINE = {
   term_label: '', provenance: '', status: '', tags: [], modules: [], moodle_available: true,
 };
 
+const SYNC = {
+  platform_id: 'p-1', platform_name: 'Moodle', state: 'current', stale: false,
+  last_success_at: '2026-10-12T10:00:00Z', last_run_at: '2026-10-12T10:00:00Z', last_error: '',
+  sync_interval_seconds: 600, running: false,
+};
+const RESULTS = {
+  course_id: 'c-1', user_id: 'u-1', enrollment_id: 'e-1', enrollment_status: 'in_progress',
+  sync: [SYNC],
+  results: [
+    { platform_id: 'p-1', kind: 'completion', activity: 'tn:mod_001:page:01', complete: true, completion_state: 1,
+      source_time: '2026-10-12T09:58:00Z' },
+    { platform_id: 'p-1', kind: 'quiz_grade', activity: 'tn:mod_001:quiz:ab12', grade: 80, grade_max: 100,
+      source_time: '2026-10-12T09:59:00Z', source_attempt_id: 7 },
+  ],
+};
+
 describe('CourseDetailComponent', () => {
   let fixture: ComponentFixture<CourseDetailComponent>;
   let api: jasmine.SpyObj<ApiService>;
   let submitted: HTMLFormElement[];
 
-  function setup(id: string | null = 'c-1', outline: object = OUTLINE, mine: Enrollment[] = []): void {
+  function setup(
+    id: string | null = 'c-1', outline: object = OUTLINE, mine: Enrollment[] = [], results: object | null = null,
+  ): void {
     api = jasmine.createSpyObj<ApiService>('ApiService', ['get', 'post', 'myEnrollments', 'enrollInCourse']);
-    api.get.and.returnValue(of(outline) as any);
+    api.get.and.callFake(((path: string) =>
+      path.startsWith('/integrations/moodle/results')
+        ? (results ? of(results) : throwError(() => ({ status: 404 })))
+        : of(outline)) as any);
     api.myEnrollments.and.returnValue(of(mine));
     api.enrollInCourse.and.returnValue(of({ id: 'e1', course_id: 'c-1', user_id: 'u-self' } as Enrollment));
     TestBed.configureTestingModule({
@@ -95,6 +116,35 @@ describe('CourseDetailComponent', () => {
     delete legacy.moodle_available;
     setup('c-1', legacy);
     expect(moodleButton()).toBeUndefined();
+  });
+
+  it('shows the grade and completion Moodle reported, with their Moodle time and the sync state', () => {
+    setup('c-1', OUTLINE, [], RESULTS);
+    expect(api.get).toHaveBeenCalledWith('/integrations/moodle/results?course_id=c-1');
+    const panel = fixture.nativeElement.querySelector('[data-moodle-results]') as HTMLElement;
+    expect(panel).not.toBeNull();
+    expect(panel.querySelector('[data-sync-state="current"]')).not.toBeNull();
+    expect(panel.textContent).toContain('Module 1 quiz: 80 / 100');
+    expect(panel.textContent).toContain('Module 1 page: complete');
+    expect(panel.textContent).toContain('in Moodle');
+    expect(panel.textContent).toContain('synced');
+  });
+
+  it('says plainly when Moodle results may be out of date', () => {
+    setup('c-1', OUTLINE, [], { ...RESULTS, sync: [{ ...SYNC, state: 'failing', stale: true }] });
+    const sync = fixture.nativeElement.querySelector('[data-sync-state="failing"]') as HTMLElement;
+    expect(sync.classList).toContain('stale');
+    expect(sync.textContent).toContain('may be out of date');
+  });
+
+  it('asks for no Moodle results when the course is not on Moodle', () => {
+    setup('c-1', { ...OUTLINE, moodle_available: false });
+    expect(api.get).not.toHaveBeenCalledWith('/integrations/moodle/results?course_id=c-1');
+  });
+
+  it('shows no Moodle results when they are refused', () => {
+    setup('c-1', OUTLINE, [], null);
+    expect(fixture.nativeElement.querySelector('[data-moodle-results]')).toBeNull();
   });
 
   it('labels test content a test host accepted automatically', () => {
