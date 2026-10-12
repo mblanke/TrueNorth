@@ -1,0 +1,201 @@
+{
+    "schema_version": 1,
+    "release": "v1.2.0",
+    "source_commit": "48b0fc6708cc384133a5759fd3d49a8f1c431575",
+    "frozen": "2026-10-12",
+    "matrix": "docs/release-notes/v1.2.0-module-matrix.md",
+    "rules": [
+        "Read by scripts/staging_acceptance.py --strict (--skip-profile, default staging).",
+        "A SKIP stands only when its profile has an entry with its module and check whose reason_contains is in the skip's reason. Any other SKIP is a FAIL, declared or not.",
+        "Every check in `checks` must be registered and every registered check must be here; a difference is a FAIL.",
+        "A skip never counts as a pass. A skipped core workflow cannot earn readiness (plan of record, section 1).",
+        "Adding an entry is a release decision: change the matrix in the same commit and say why."
+    ],
+    "checks": {
+        "infra": [
+            "health live + ready",
+            "health deep: every component",
+            "metrics need the scrape token",
+            "edge: health, API, metrics refused",
+            "backup environment present"
+        ],
+        "platform-core": [
+            "users for each role",
+            "RBAC: Student and Observer refused staff routes",
+            "tenant scoping",
+            "audit log records writes",
+            "demo accounts linked to Keycloak"
+        ],
+        "web-shell": [
+            "SPA served through nginx",
+            "each main route's API, by role"
+        ],
+        "content": [
+            "course files loaded",
+            "templates, scenarios, Sigma rules, VM images"
+        ],
+        "curriculum": [
+            "QSP spine and learning paths",
+            "a Student's own curriculum map"
+        ],
+        "lms": [
+            "enrol, sit a quiz, progress recorded",
+            "cmi5 launch, fetch, statements to the LRS",
+            "Moodle platform reachable"
+        ],
+        "scenario-engine": [
+            "shipped scenario becomes an exercise plan",
+            "start, inject fired by the worker, pause, resume"
+        ],
+        "telemetry": [
+            "index an event, search it as staff",
+            "Students cannot read a range they are not on"
+        ],
+        "detection": [
+            "non-participant refused",
+            "participant's detection scored"
+        ],
+        "reporting-aar": [
+            "complete the exercise, generate the AAR",
+            "AAR PDF and Student access"
+        ],
+        "ai-arc2": [
+            "AI orchestrator answers through the API",
+            "ARC² Course Studio enabled"
+        ],
+        "ranges-labs": [
+            "template validation",
+            "range create, read, documents, delete",
+            "lab session refusals",
+            "lab build on the hypervisor"
+        ],
+        "provisioners": [
+            "vSphere connection test and discovery",
+            "inventory summary"
+        ],
+        "scheduling": [
+            "capacity and fit check",
+            "book and cancel a session"
+        ],
+        "noise-engine": [
+            "profile, dry-run deploy, plan, stop",
+            "deploy to agents"
+        ],
+        "greyspace": [
+            "corpora and the template's block"
+        ],
+        "wiki-helpdesk": [
+            "wiki page, assigned ticket, assignee's inbox"
+        ]
+    },
+    "profiles": {
+        "staging": [
+            {
+                "module": "ranges-labs",
+                "check": "lab build on the hypervisor",
+                "reason_contains": "it needs a writable, real vCenter",
+                "reason": "Building a lab clones VMs from a content-library template and waits for VMware Tools. Staging's vCenter is the read-only simulator (tn-vcenter-sim); there is no writable vCenter.",
+                "alternative_evidence": "tests/integration/test_lab_sessions_vsphere.py through .github/workflows/lab.yml (self-hosted runner, not yet registered: no run exists). On staging, 'lab session refusals' covers access control only.",
+                "milestone": "H"
+            },
+            {
+                "module": "noise-engine",
+                "check": "deploy to agents",
+                "reason_contains": "it needs a provisioned range on a writable hypervisor",
+                "reason": "A real deploy installs the noise agent on built range VMs (deploy_noise_agents on worker-provision). Staging provisions nothing.",
+                "alternative_evidence": "tests/integration/test_noise_flow.py and tests/worker/test_noise_inventory_safety.py (CI). On staging, 'profile, dry-run deploy, plan, stop' covers planning and control.",
+                "milestone": "H"
+            }
+        ],
+        "ci-integration": [
+            {
+                "module": "infra",
+                "check": "metrics need the scrape token",
+                "reason_contains": "metrics-token declared absent",
+                "reason": "The CI integration stack sets no METRICS_SCRAPE_TOKEN.",
+                "alternative_evidence": "Mandatory in the staging profile (staging sets the token).",
+                "milestone": "R0"
+            },
+            {
+                "module": "infra",
+                "check": "edge: health, API, metrics refused",
+                "reason_contains": "edge declared absent",
+                "reason": "The CI integration stack has no nginx edge.",
+                "alternative_evidence": "Mandatory in the staging profile; e2e (Playwright) runs behind the web image.",
+                "milestone": "R0"
+            },
+            {
+                "module": "infra",
+                "check": "backup environment present",
+                "reason_contains": "backup declared absent",
+                "reason": "The CI integration stack has no host backup environment.",
+                "alternative_evidence": "Mandatory in the staging profile (host config mounted read-only); restore drill (plan section 6).",
+                "milestone": "R0"
+            },
+            {
+                "module": "platform-core",
+                "check": "demo accounts linked to Keycloak",
+                "reason_contains": "keycloak declared absent",
+                "reason": "The CI integration stack runs no Keycloak.",
+                "alternative_evidence": "Mandatory in the staging profile (KEYCLOAK_ADMIN_PASSWORD passed to the one-off container); scripts/check_keycloak_realm.sh.",
+                "milestone": "R0"
+            },
+            {
+                "module": "web-shell",
+                "check": "SPA served through nginx",
+                "reason_contains": "edge declared absent",
+                "reason": "The CI integration stack has no nginx edge.",
+                "alternative_evidence": "Mandatory in the staging profile; CI e2e (Playwright).",
+                "milestone": "R0"
+            },
+            {
+                "module": "lms",
+                "check": "cmi5 launch, fetch, statements to the LRS",
+                "reason_contains": "lrs declared absent",
+                "reason": "The CI integration stack runs no LRS.",
+                "alternative_evidence": "Mandatory in the staging profile; CI cmi5-conformance job.",
+                "milestone": "R0"
+            },
+            {
+                "module": "lms",
+                "check": "Moodle platform reachable",
+                "reason_contains": "moodle declared absent",
+                "reason": "The CI integration stack registers no Moodle.",
+                "alternative_evidence": "Mandatory in the staging profile; CI moodle job (real Moodle).",
+                "milestone": "R0"
+            },
+            {
+                "module": "ai-arc2",
+                "check": "ARC² Course Studio enabled",
+                "reason_contains": "arc2 declared absent",
+                "reason": "The CI integration stack does not enable the ARC² Course Studio.",
+                "alternative_evidence": "Mandatory in the staging profile (ARC2_STUDIO_ENABLED=true there).",
+                "milestone": "R0"
+            },
+            {
+                "module": "ranges-labs",
+                "check": "lab build on the hypervisor",
+                "reason_contains": "it needs a writable, real vCenter",
+                "reason": "No writable vCenter in CI.",
+                "alternative_evidence": "tests/integration/test_lab_sessions_vsphere.py via .github/workflows/lab.yml (runner not registered).",
+                "milestone": "H"
+            },
+            {
+                "module": "provisioners",
+                "check": "vSphere connection test and discovery",
+                "reason_contains": "vsphere declared absent",
+                "reason": "The CI integration stack registers no vCenter connection.",
+                "alternative_evidence": "Mandatory in the staging profile (simulated vCenter); CI vsphere-sim job (vcsim).",
+                "milestone": "R0"
+            },
+            {
+                "module": "noise-engine",
+                "check": "deploy to agents",
+                "reason_contains": "it needs a provisioned range on a writable hypervisor",
+                "reason": "No provisioned range in CI.",
+                "alternative_evidence": "tests/integration/test_noise_flow.py, tests/worker/test_noise_inventory_safety.py.",
+                "milestone": "H"
+            }
+        ]
+    }
+}

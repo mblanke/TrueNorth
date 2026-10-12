@@ -135,6 +135,74 @@ def test_dependents_of_a_declared_skip_are_declared_too():
     assert err.value.declared is True
 
 
+# ── permitted skips (docs/release-notes/v1.2.0-permitted-skips.json) ────
+
+
+def test_the_shipped_inventory_is_exactly_the_registered_checks():
+    _, inventory = acc.load_permitted(acc.PERMITTED_SKIPS, "staging")
+    assert list(inventory) == list(acc.MODULES)
+    assert acc.inventory_drift(acc.CHECKS, inventory, acc.MODULES) == []
+
+
+def test_staging_permits_only_the_two_hardware_skips():
+    entries, _ = acc.load_permitted(acc.PERMITTED_SKIPS, "staging")
+    assert {(e["module"], e["check"], e["milestone"]) for e in entries} == {
+        ("ranges-labs", "lab build on the hypervisor", "H"),
+        ("noise-engine", "deploy to agents", "H"),
+    }
+
+
+@pytest.mark.parametrize("profile", ["staging", "ci-integration"])
+def test_each_permitted_skip_matches_the_reason_its_check_gives(profile):
+    """Run each permitted check where it skips (the CI stack's absent facilities); the reason
+    it gives must carry the entry's reason_contains, or the entry can never apply."""
+    entries, _ = acc.load_permitted(acc.PERMITTED_SKIPS, profile)
+    absent = {"edge", "keycloak", "minio", "lrs", "moodle", "backup", "vsphere", "metrics-token", "arc2"}
+    for e in entries:
+        with pytest.raises(acc.SkippedCheckError) as err:
+            dict(acc.CHECKS[e["module"]])[e["check"]](ctx(absent=absent))
+        assert e["reason_contains"] in str(err.value), (e["module"], e["check"], str(err.value))
+
+
+def test_strict_with_a_profile_fails_every_skip_it_does_not_list():
+    permitted = [{"module": "ranges-labs", "check": "lab build", "reason_contains": "writable, real vCenter"}]
+    r = acc.Report(strict=True, permitted=permitted)
+    listed = r.add("ranges-labs", "lab build", acc.SKIP, "it needs a writable, real vCenter", declared=True)
+    other_reason = r.add("ranges-labs", "lab build", acc.SKIP, "no connection registered", declared=True)
+    declared_unlisted = r.add("lms", "moodle", acc.SKIP, "moodle declared absent", declared=True)
+    assert listed.status == acc.SKIP
+    assert (other_reason.status, declared_unlisted.status) == (acc.FAIL, acc.FAIL)
+    assert declared_unlisted.detail == "skip not in the permitted list (--strict): moodle declared absent"
+    assert r.exit_code() == 1
+
+
+def test_inventory_drift_names_missing_and_unrecorded_checks():
+    checks = {"m": [("a", None), ("new", None)]}
+    assert acc.inventory_drift(checks, {"m": ["a", "gone"]}, ["m"]) == [
+        ("m", "gone", "in the release's check inventory but not registered: a missing check"),
+        ("m", "new", "registered but not in the release's check inventory"),
+    ]
+
+
+def test_a_malformed_permitted_skips_file_is_refused(tmp_path):
+    bad = tmp_path / "skips.json"
+    bad.write_text(json.dumps({"profiles": {"staging": [{"module": "infra", "check": "nope"}]}}))
+    with pytest.raises(ValueError, match="lacks reason_contains"):
+        acc.load_permitted(bad, "staging")
+    with pytest.raises(ValueError, match="no skip profile 'prod'"):
+        acc.load_permitted(bad, "prod")
+    entry = dict.fromkeys(acc.SKIP_ENTRY_KEYS, "x") | {"module": "infra", "check": "nope"}
+    bad.write_text(json.dumps({"profiles": {"staging": [entry]}}))
+    with pytest.raises(ValueError, match="which is not a check"):
+        acc.load_permitted(bad, "staging")
+
+
+def test_strict_refuses_to_start_without_a_usable_profile(tmp_path, capsys):
+    assert acc.main(["--admin", "a@b", "--strict", "--skip-profile", "prod"]) == 2
+    assert "no skip profile 'prod'" in capsys.readouterr().err
+    assert acc.main(["--admin", "a@b", "--strict", "--permitted-skips", str(tmp_path / "missing.json")]) == 2
+
+
 def test_report_refuses_unknown_status_and_flattens_detail():
     r = acc.Report()
     with pytest.raises(ValueError):
