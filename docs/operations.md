@@ -902,7 +902,7 @@ more than 30 minutes, or *Failed*.
 | `plan`: no network named `greyspace` | the template has no VLAN for gs-core | add the VLAN (or set the block's `network`) and a router interface on it; reprovision |
 | `plan`: `TN_SECRETS_KEY` unset | the worker cannot derive gs-core's account | set it on the worker; reprovision |
 | `configure`: guest operations not ready | VMware Tools not running in gs-core, or the clone did not come from `greyspace-host` | check `GREYSPACE_HOST_TEMPLATE` and the template's Tools; reprovision |
-| `configure`: step `configure` failed | corpus mount (NFS export, `GREYSPACE_CORPUS_NFS`) or `docker compose up` | on gs-core: `/var/log/greyspace-bootstrap.log`, `sudo python3 /opt/greyspace/stack/bin/gs health` |
+| `configure`: step `configure` failed | corpus mount (`GREYSPACE_CORPUS_NFS` set: NFS is not reachable from gs-core yet, unset it; docs/greyspace-corpus.md §3) or `docker compose up` | on gs-core: `/var/log/greyspace-bootstrap.log`, `sudo python3 /opt/greyspace/stack/bin/gs health` |
 | `configure`: step `health` failed | a stack service is down | on gs-core: `sudo docker compose -p greyspace -f /opt/greyspace/stack/compose.yaml ps` |
 
 Nothing re-runs the configure stage on its own (it is not retried); reprovision the

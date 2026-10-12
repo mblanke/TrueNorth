@@ -41,7 +41,7 @@ reaches `deployed` (the Greyspace page shows each configure step).
 |---|---|---|
 | `GREYSPACE_HOST_TEMPLATE` | `greyspace-host` | inventory template or Content Library item gs-core is cloned from |
 | `GREYSPACE_HOST_CORES` / `_MEMORY_MB` / `_DISK_GB` | 4 / 8192 / 80 | gs-core's size |
-| `GREYSPACE_CORPUS_NFS` | empty | `server:/export` of the corpus, mounted read-only on gs-core; empty: the bundled T0 corpus |
+| `GREYSPACE_CORPUS_NFS` | empty | leave empty: the bundled T0 corpus. An NFS corpus does not work yet (see Known limitations) |
 | `GREYSPACE_MANIFEST_DIR` | empty | `<dir>/<tier>/manifest.json` the worker (and API) render from; T0 is built in |
 | `GREYSPACE_CRUMB_KEY` | the first key of `TN_SECRETS_KEY` | the breadcrumb secret (≥32 characters; set the same on the worker and wherever objectives are scored). Unset and no `TN_SECRETS_KEY`: breadcrumb injects fail rather than plant guessable tokens. Changing it changes the tokens of exercises already running |
 | `GREYSPACE_CRUMB_SALT` | empty | an optional extra mixed into breadcrumb tokens (not a secret; the key is) |
@@ -49,6 +49,11 @@ reaches `deployed` (the Greyspace page shows each configure step).
 
 ## Known limitations
 
+- **Only the T0 corpus works on vSphere.** gs-core has one NIC, on the range's Greyspace
+  network; the range router lets zones out to the depot (8081, 3142) only, so an NFS
+  export is unreachable and `GREYSPACE_CORPUS_NFS` fails the configure stage at
+  `corpus mount`. T1+ needs a second gs-core NIC on a storage port group not routed to
+  any zone; not built ([greyspace-corpus.md §3](../greyspace-corpus.md)).
 - Templates need a network for gs-core (default name `greyspace`) with a router on it;
   without one the range builds without gs-core and its Greyspace is `failed` (`plan`).
 - Only VyOS routers are configured to route the range to Greyspace; pfSense/OPNsense are not.

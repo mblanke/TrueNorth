@@ -72,6 +72,9 @@ an exercise, while exercises need to hide breadcrumbs in some sites per range.
    `BaseProvisioner.run_in_guest` (vSphere: VMware guest operations; no network path into
    the range) and runs cloud-init wait, `bootstrap.sh configure` (corpus: NFS read-only
    from `GREYSPACE_CORPUS_NFS`, else the bundled T0; `bin/gs up`) and `bin/gs health`.
+   Amended 2026-10-11: gs-core has no storage NIC yet, and the range router lets zones
+   out to the depot only, so the NFS path cannot mount; only T0 works on vSphere
+   (known limitation, `docs/greyspace-corpus.md` §3).
    Every step's outcome is recorded; the block ends `deployed` or `failed` (with `stage`
    and `error`). The service account's password is never stored: HMAC of
    `TN_SECRETS_KEY` (first key) and the range id; guestinfo holds its SHA-512 crypt hash.

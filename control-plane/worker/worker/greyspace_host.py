@@ -8,7 +8,9 @@ rendered VM for the build, ``gs-core``:
   greyspace/host/prepare-host.sh), or the Content Library item of that name;
 * one NIC on the template's Greyspace network (the block's ``network``, default
   ``greyspace``), at that subnet's last usable address, its gateway the range router
-  that also has a NIC there;
+  that also has a NIC there. No storage NIC: the router lets zones out to the depot
+  only, so an NFS corpus (GREYSPACE_CORPUS_NFS) is unreachable and only the bundled T0
+  corpus works (docs/greyspace-corpus.md §3, known limitation);
 * cloud-init (VMware guestinfo) carrying a service account for the configure stage and
   ``/opt/greyspace/bootstrap.sh``, which at first boot unpacks the **bundle**: the stack
   rendered for this block (greyspace_runtime.config.render, ``host=True``) plus, for T0,
@@ -210,7 +212,8 @@ def bundle(manifest: Manifest, rendered: config.Rendered, *, with_corpus: bool) 
             add(f"stack/{rel}", text.encode("utf-8"), 0o755 if rel.endswith(".sh") or rel == "bin/gs" else 0o644)
         if with_corpus:
             if manifest.tier != "t0":
-                raise HostPlanError(f"the {manifest.tier} corpus is not bundled: set GREYSPACE_CORPUS_NFS")
+                raise HostPlanError(f"the {manifest.tier} corpus is not bundled, and gs-core cannot reach an NFS "
+                                    "corpus yet (no storage NIC): only T0 works (docs/greyspace-corpus.md)")
             doc = fixture.t0_manifest_doc()
             doc["videos"] = []  # no ffmpeg in the worker: the T0 test-pattern video is CI-only
             lines = []
@@ -228,7 +231,7 @@ def guestinfo_bundle(data: bytes) -> dict[str, str]:
     b64 = base64.b64encode(data).decode("ascii")
     if len(b64) > MAX_BUNDLE_B64:
         raise HostPlanError(f"the Greyspace bundle is {len(b64)} bytes in base64, over {MAX_BUNDLE_B64}: "
-                            "serve the corpus over NFS (GREYSPACE_CORPUS_NFS)")
+                            "only the T0 corpus fits (NFS corpora need a gs-core storage NIC, not built)")
     chunks = [b64[i:i + CHUNK] for i in range(0, len(b64), CHUNK)]
     out = {f"guestinfo.tn.greyspace.bundle.{n}": c for n, c in enumerate(chunks)}
     out["guestinfo.tn.greyspace.bundle.count"] = str(len(chunks))
