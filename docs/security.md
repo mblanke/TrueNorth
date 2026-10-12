@@ -212,28 +212,10 @@ add a lockout with no recovery path short of the database; not done in v1.2.0.
 token request and disables it again (`install/roles/tn_smoke`). Sign-in flows:
 `docs/api.md` ("Authentication").
 
-**Multi-factor sign-in (v1.2.0).** admin, instructor (including `TN-Content-Authors`),
-range_ops and observer sign in with a password and an authenticator-app code (TOTP);
-Students sign in with a password, and LTI-launched Students through Moodle. Two halves:
-the installer builds the `tn-browser` flow and the `tn-mfa-required` role on the
-privileged groups (`scripts/keycloak_mfa.py`), and the API refuses a privileged
-**database** role whose token shows no second factor (`amr` otp/hwk/swk/mfa or `acr`
-mfa; never `acr` "1"), on every request and WebSocket (`control-plane/api/app/mfa_policy.py`).
-Enrolment is forced on the next sign-in. A lost authenticator is reset with
-`playbooks/breakglass-reset-mfa.yml` (`docs/runbooks/break-glass.md`); there is no HTTP
-path around MFA. Details: `docs/identity.md` ("MFA"). Proven on the pinned Keycloak by
-`scripts/check_keycloak_mfa.sh` (CI `keycloak-mfa`).
-
 **Login banner (v1.2.0).** The `truenorth` login theme shows the site's system-use
-notice above the sign-in form and will not submit until it is acknowledged
-(`infra/keycloak/themes/truenorth`, text from `tn_login_banner_text`).
-
-**Risk acceptance: the master realm administrator.** Keycloak's master realm admin
-(`KEYCLOAK_ADMIN`, escrowed by `backup.sh`) signs in with a password only. It is
-published on the host's loopback port only and nginx answers 404 for `/auth/admin` and
-`/auth/realms/master`, so using it needs an SSH login to the host. It is the installer's
-and the break-glass playbook's credential. Applying `tn-browser` to the master realm
-would add a lockout with no recovery path short of the database; not done in v1.2.0.
+notice above the sign-in form on each interactive sign-in, with an acknowledgement box the
+browser requires (`infra/keycloak/themes/truenorth`, text from `tn_login_banner_text`;
+AC-8 below).
 
 ### API JWT Validation
 
@@ -625,8 +607,9 @@ executions, users, roster imports, teams, tenants, registrations, the scheduler,
 Greyspace, threat intel, detection rules, wiki and tickets. Coverage is per call site, not
 enforced centrally, so a new endpoint is audited only if it writes a row.
 
-**Not audited by TrueNorth:** sign-in success or failure, token refresh and sign-out (these
-happen in Keycloak, and the realm does not enable Keycloak's event store), and reads.
+**Not in `audit_logs`:** sign-in success or failure, sign-out and authenticator changes are
+Keycloak login events (the event store and admin events are enabled by 60-keycloak and
+kept 90 days); reads are not logged.
 
 ### Audit Log Schema
 
@@ -635,7 +618,7 @@ happen in Keycloak, and the realm does not enable Keycloak's event store), and r
 | Column | Type | Notes |
 |--------|------|-------|
 | `id` | UUID | |
-| `timestamp` | timestamptz | server default `now()` |
+| `timestamp` | timestamptz | set by the database clock at insert (`tn_audit_insert_stamp`), whatever the writer sent |
 | `user_id` | UUID, nullable | who acted |
 | `tenant_id` | UUID, nullable | legacy rows may have none |
 | `action` | varchar(100) | e.g. `create`, `provision`, `ack_objective` |
@@ -666,6 +649,43 @@ WHERE tenant_id = '<tenant-id>'
   AND timestamp >= '2026-01-01' AND timestamp < '2026-02-01'
 ORDER BY timestamp DESC;
 ```
+
+### Audit Log Integrity (ADR 0011)
+
+- **Append-only in PostgreSQL** (migration `b7c8d9e0f1a2`). A trigger refuses every
+  `UPDATE` of `audit_logs` and every `TRUNCATE` of `audit_logs`, `audit_exports` and
+  `audit_export_checks`; inserts are stamped with the database clock, so nothing can be
+  backdated into a day already exported.
+- **One delete path.** A row is deleted only in a transaction that set `tn.audit_purge`,
+  only when it is at least 30 days old (a floor in the trigger), and only when its day has
+  an export and a re-verification check of it (same manifest hash) less than a day old.
+  The retention job writes that check only after the files verify against a key the
+  database recorded and the recorded manifest hash, and hold exactly the table's rows; it
+  writes an `audit.purge` row for each day it deletes.
+- **Signed daily export.** The worker writes each finished UTC day to
+  `AUDIT_ARCHIVE_PATH` (`/srv/truenorth/audit-archive` on an installed host): a gzipped
+  JSON-lines file, a manifest (the file's SHA-256, the previous manifest's SHA-256: one hash
+  chain) and an Ed25519 signature over the manifest. The key derives from the installer
+  secret `audit_signing_seed`; its fingerprint is printed at the end of the install to be
+  recorded out of band. Verify a day with OpenSSL 3:
+
+  ```bash
+  cd /srv/truenorth/audit-archive
+  openssl pkeyutl -verify -pubin -inkey keys/<key_id>.pub.pem -rawin \
+    -in 2026/10/audit-2026-10-11.manifest.json -sigfile 2026/10/audit-2026-10-11.manifest.json.sig
+  ```
+
+  and everything with `python -m worker.audit_verify --db` in the worker image. Every
+  backup copies the archive and verifies signatures, hashes, the chain and `audit_exports`
+  (exit 6 and the critical `AuditArchiveTampered` alert when they disagree; the backup is
+  still copied off-host). A restore moves archive days newer than the restored database to
+  `quarantine/` (kept). The restore drill covers both.
+- **What this does not do.** The application connects as the database **owner**, which
+  can disable the triggers or write export and check rows itself, and the signing seed is
+  on the same host. Against a compromised application or host this is **detection, not
+  prevention**: the chain, the out-of-band fingerprint and off-host verified backups show
+  it. A non-owner role (without UPDATE/DELETE/TRUNCATE on `audit_logs` and without INSERT
+  on `audit_exports`/`audit_export_checks`) and WORM storage are v1.3.
 
 ### Audit Log Retention
 
@@ -828,8 +848,8 @@ repository does it, whatever an operator could add.
 | AU-2 Event Logging | Partial | State changes in most sections write an audit row. Sign-ins, failures, sign-outs and authenticator changes are Keycloak login events (event store and admin events enabled by 60-keycloak, kept 90 days), not TrueNorth audit rows; reads are not logged | `control-plane/api/app/models.py` (`AuditLog`), `install/roles/tn_keycloak/files/mfa-spec.json`; [Audit Logging](#audit-logging) |
 | AU-3 Content of Audit Records | Partial | Time, user, tenant, action, resource type and id, free-text detail. No source IP, user agent or outcome (success or failure) | `control-plane/api/app/models.py` (`AuditLog`) |
 | AU-6 Audit Review | Partial | A paged, newest-first list (`GET /audit-log`, Admin → Audit Log), scoped per tenant; only the platform administrator (`PLATFORM_TENANT_ID`) reads across tenants, with a `tenant_id` filter. No search, date or user filter, correlation, reporting or alerting on audit events | `control-plane/api/app/routers/admin.py` (`list_audit_log`), `tests/api/test_audit_scope.py` |
-| AU-9 Protection of Audit Information | Being built for v1.2.0; row owned by that work | Append-only table, backup to MinIO | — |
-| AU-11 Audit Record Retention | Being built for v1.2.0; row owned by that work | 90d hot, 365d warm, 7yr cold | — |
+| AU-9 Protection of Audit Information | Partial | The database refuses UPDATE and TRUNCATE of `audit_logs`, stamps inserts with its own clock, and allows DELETE only through the retention path (`tn.audit_purge`, rows 30+ days old, an export and a fresh re-verification check of it). Signed (Ed25519) daily export with a hash chain, verified in every backup and the restore drill. Gap: the application connects as the database owner, which can disable triggers or write export rows, so against a compromised application or host this is detection (chain, out-of-band key fingerprint, off-host backups), not prevention; non-owner role and WORM storage are v1.3 | `control-plane/api/alembic/versions/b7c8d9e0f1a2_audit_log_append_only.py`, `control-plane/worker/worker/audit_tasks.py`, `docs/adr/0011-audit-log-integrity.md`, `tests/api/test_audit_append_only_postgres.py` |
+| AU-11 Audit Record Retention | Implemented | 90 days in the database (`tn_audit_hot_retention_days`, floor 30, 0 = forever), each day deleted only after its export verifies; the signed archive is kept until the operator prunes it, and every backup holds a verified copy. No 365-day or 7-year tiers: keep the archive and backups as long as the site's policy requires | `control-plane/worker/worker/audit_tasks.py`, `scripts/backup/backup.sh`, `docs/runbooks/backup-restore.md` |
 | CA-7 Continuous Monitoring | Partial | Prometheus, Alertmanager and Grafana with unit-tested alert rules. Alert delivery through Alertmanager has not been exercised on staging | `infra/platform/docker/compose.monitoring.yml`, `tests/contracts/test_prometheus_rules.py` |
 | CA-8 Penetration Testing | Not implemented | No penetration test has been performed or scheduled. Internal code security sweeps only | — |
 | CM-2 Baseline Configuration | Partial | Configuration as code: the Ansible installer, `compose.prod.yml` by image digest, a Helm chart, Packer image builds. No drift detection. (Terraform was removed in #131.) | `install/`, `infra/platform/docker/compose.prod.yml`, `infra/k8s/helm/`, `infra/vsphere/packer/` |
@@ -855,7 +875,7 @@ been made.
 |------|------------|--------|
 | Authentication | MFA for privileged users | **Implemented.** TOTP for every privileged role, enforced by the API and the Keycloak flow (IA-2); WebAuthn planned |
 | Encryption | FIPS 140-validated modules | **Not implemented.** Images use standard, non-FIPS crypto libraries |
-| Audit | Continuous audit log export | Being built for v1.2.0; row owned by that work. Daily export to immutable storage |
+| Audit | Continuous audit log export | **Partial.** Daily signed export to the archive volume and into every (off-host) backup, verified at each backup; not immutable (WORM) storage, planned for v1.3 (see AU-9) |
 | Monitoring | Continuous monitoring program | **Partial.** Prometheus, Alertmanager and Grafana; delivery not exercised (see CA-7) |
 | Vulnerability Management | Monthly scanning | **Implemented** for code and images on every CI run and release (see SI-2). Deployed hosts are not scanned |
 | Incident Response | Documented IR plan | **Partial.** Runbooks exist; never exercised (see IR-4) |
