@@ -361,7 +361,7 @@ catalogue and course files, the VM catalogue, range templates, scenarios and Sig
 | Variable | Default | Effect |
 |---|---|---|
 | `tn_load_shipped_content` | `false` | 80-seed loads `content/` through the API |
-| `tn_publish_shipped_content` | `false` | publish every course, quiz and learning path (imports are drafts) |
+| `tn_publish_shipped_content` | `false` | publish every course, quiz and learning path (imports are drafts), except C105 and its quizzes: its committed release is a CI/CATAPULT fixture and the course stays a draft ([content-library.md](../docs/content-library.md#courses)) |
 | `tn_load_shipped_demo` | `false` | demo people, ranges and exercises (not provisioned); without AD the demo people can sign in ([Without Active Directory](#without-active-directory)) |
 
 The load runs `scripts/load_content_inprocess.py` in a one-off api container as the

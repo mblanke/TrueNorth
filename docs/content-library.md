@@ -7,6 +7,7 @@
 ## Table of Contents
 
 - [Overview](#overview)
+- [Courses](#courses)
 - [Range Templates](#range-templates)
 - [Attack Scenarios](#attack-scenarios)
 - [Detection Rules](#detection-rules)
@@ -31,6 +32,28 @@ The TrueNorth Range Content Library provides pre-built, tested, and versioned tr
 | Detection Rules | `content/detections/` | YAML (Sigma-inspired) | Rules for validating trainee detections |
 | Inject Packs | `content/inject-packs/` | YAML | Reusable collections of timeline events |
 | Datasets | `content/datasets/` | YAML + NDJSON | Pre-built telemetry for background noise |
+| Courses | `content/courses/` + `content/catalogue/` | YAML + CSV | Catalogue courses (drafts) and the programme they sit in |
+| Course releases | `content/releases/` | `.tar.gz` (ARC² release bundle) | Test fixtures only (below) |
+
+---
+
+## Courses
+
+### C105 release: a test fixture, the course stays a draft
+
+`content/releases/c105-foundations-d0e83b9f6c1f.tar.gz` is the ARC² release of C105 that
+the programme owner accepted for the pilot. It is committed as a **fixture**: the API tests
+(`tests/api/test_c105_release.py`, `test_cmi5_lms.py`, `test_cmi5_lti.py`) and the CI
+`cmi5` lane, where ADL CATAPULT imports the `cmi5.xml` TrueNorth serves for it. It is not a
+course for Students: C105 is unpublished pending Standards review
+(`content/courses/c105-foundations-of-cybersecurity.yaml`: `status: draft`).
+
+Nothing publishes it automatically. The installer's shipped-content load
+(`tn_load_shipped_content`, `scripts/load_content_inprocess.py`) never uploads a release, and
+with `tn_publish_shipped_content` it publishes every course, quiz and learning path
+**except** the courses in its `KEEP_DRAFT` list (C105) and their quizzes
+(`tests/contracts/test_installer_shipped_content.py`). A host that loaded the content
+before this rule keeps whatever it published then: unpublish C105 there by hand.
 
 ---
 
