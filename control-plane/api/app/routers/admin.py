@@ -37,6 +37,7 @@ from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, UploadFile
 from fastapi.responses import Response
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from ..auth import CurrentUser, get_current_user
@@ -61,7 +62,7 @@ logger = logging.getLogger("truenorth.api.admin")
 router = APIRouter(tags=["admin"])
 
 
-def _audit(db: Session, user: CurrentUser, action: str, rtype: str, rid: str) -> None:
+def _audit(db: Session, user: CurrentUser, action: str, rtype: str, rid: str, detail: str = "") -> None:
     db.add(
         AuditLog(
             user_id=uuid.UUID(user.id),
@@ -69,6 +70,7 @@ def _audit(db: Session, user: CurrentUser, action: str, rtype: str, rid: str) ->
             action=action,
             resource_type=rtype,
             resource_id=rid,
+            detail=detail,
         )
     )
 
@@ -288,7 +290,22 @@ def delete_team(
 
 
 # -- Team Membership -------------------------------------------------------
-@router.post("/teams/{team_id}/members", status_code=201)
+class TeamMemberAddedOut(BaseModel):
+    user_id: uuid.UUID
+    team_id: uuid.UUID
+    role: str
+
+
+class TeamMemberOut(BaseModel):
+    user_id: uuid.UUID
+    display_name: str
+    email: str
+    role: str
+    position: str | None = None
+    joined_at: datetime | None = None
+
+
+@router.post("/teams/{team_id}/members", status_code=201, response_model=TeamMemberAddedOut)
 def add_team_member(
     team_id: uuid.UUID = Path(...),
     user_id: uuid.UUID = Query(...),
@@ -316,31 +333,41 @@ def add_team_member(
     )
     db.add(membership)
     db.commit()
-    _audit(db, user, "add_member", "team", str(team_id))
+    _audit(db, user, "add_member", "team", str(team_id), f"user {user_id} as {role}")
     db.commit()
     return {"user_id": str(user_id), "team_id": str(team_id), "role": role}
 
 
-@router.get("/teams/{team_id}/members")
+@router.get("/teams/{team_id}/members", response_model=list[TeamMemberOut])
 def list_team_members(
     team_id: uuid.UUID = Path(...),
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_permission(Permission.USER_READ)),
 ) -> list[dict]:
-    """List members of a team.  **Permission: user:read**"""
-    team = get_owned(db, Team, team_id, user, not_found="Team not found")
+    """List members of a team.  **Permission: user:read**
+
+    A member whose account was deleted (or is not in the caller's tenant) is listed as
+    "Unknown" with no email; before 2026-10-12 one such row made the whole list 404."""
+    get_owned(db, Team, team_id, user, not_found="Team not found")
     memberships = db.query(TeamMembership).filter(TeamMembership.team_id == team_id).all()
+    ids = [m.user_id for m in memberships]
+    people = {
+        u.id: u
+        for u in db.query(User).filter(
+            User.id.in_(ids), User.tenant_id == uuid.UUID(user.tenant_id), User.deleted_at.is_(None)
+        )
+    } if ids else {}
     results = []
     for m in memberships:
-        u = get_owned(db, User, m.user_id, user)
+        u = people.get(m.user_id)
         results.append(
             {
-                "user_id": str(m.user_id),
+                "user_id": m.user_id,
                 "display_name": u.display_name if u else "Unknown",
                 "email": u.email if u else "",
                 "role": m.role,
                 "position": m.position,
-                "joined_at": m.joined_at.isoformat() if m.joined_at else None,
+                "joined_at": m.joined_at,
             }
         )
     return results
@@ -366,7 +393,7 @@ def remove_team_member(
         raise HTTPException(404, "Membership not found")
     db.delete(m)
     db.commit()
-    _audit(db, user, "remove_member", "team", str(team_id))
+    _audit(db, user, "remove_member", "team", str(team_id), f"user {member_user_id}")
     db.commit()
 
 

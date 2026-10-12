@@ -355,6 +355,7 @@ export class AppComponent implements OnDestroy {
       name: 'Learn',
       items: [
         { label: 'Learning',         icon: 'school',        route: '/learning' },
+        { label: 'Student progress', icon: 'fact_check',    route: '/learning/admin/progress', access: 'learnerProgress' },
       ],
     },
     {
@@ -387,6 +388,7 @@ export class AppComponent implements OnDestroy {
       name: 'Admin',
       items: [
         { label: 'Approvals',       icon: 'how_to_reg',           route: '/approvals', access: 'approvals' },
+        { label: 'Teams',           icon: 'groups',               route: '/teams', access: 'teams' },
         { label: 'Infrastructure',  icon: 'storage',              route: '/infrastructure', access: 'infrastructure' },
         { label: 'AI Orchestrator', icon: 'memory',               route: '/ai-orchestrator', access: 'aiOrchestrator' },
         { label: 'Integrations',    icon: 'device_hub',           route: '/integrations', adminOnly: true },

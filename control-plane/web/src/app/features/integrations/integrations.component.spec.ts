@@ -8,6 +8,9 @@ import { ApiService } from '@core/services/api.service';
 import { NotificationService } from '@core/services/notification.service';
 import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog/confirm-dialog.component';
 import { IntegrationsComponent } from './integrations.component';
+import { signal } from '@angular/core';
+import { AuthService } from '@core/services/auth.service';
+import { OperatorRecordsApiService } from '@core/services/operator-records-api.service';
 
 describe('IntegrationsComponent', () => {
   let fixture: ComponentFixture<IntegrationsComponent>;
@@ -19,6 +22,7 @@ describe('IntegrationsComponent', () => {
   let notify: jasmine.SpyObj<NotificationService>;
   let dialogOpen: jasmine.Spy;
   let dialogResult: boolean;
+  let records: jasmine.SpyObj<OperatorRecordsApiService>;
 
   afterEach(() => {
     expect(alertSpy).not.toHaveBeenCalled();
@@ -59,6 +63,9 @@ describe('IntegrationsComponent', () => {
     confirmSpy = spyOn(window, 'confirm').and.returnValue(true);
     notify = jasmine.createSpyObj('NotificationService', ['success', 'error', 'info']);
     dialogResult = true;
+    records = jasmine.createSpyObj('OperatorRecordsApiService', ['getMoodleResults', 'pullMoodleResults']);
+    records.getMoodleResults.and.returnValue(of({ platform_id: 'p1', stale: true, stale_reason: 'No pull has succeeded yet.',
+      running: false, scheduled_every_seconds: 600 } as any));
     dialogOpen = jasmine.createSpy('open').and.callFake(() => ({ afterClosed: () => of(dialogResult) }));
 
     await TestBed.configureTestingModule({
@@ -68,6 +75,8 @@ describe('IntegrationsComponent', () => {
         { provide: ApiService, useValue: api },
         { provide: NotificationService, useValue: notify },
         { provide: MatDialog, useValue: { open: dialogOpen } },
+        { provide: AuthService, useValue: { isAdmin: signal(true) } },
+        { provide: OperatorRecordsApiService, useValue: records },
       ],
     }).compileComponents();
 
@@ -229,6 +238,18 @@ describe('IntegrationsComponent', () => {
       const options = Array.from(document.querySelectorAll('mat-option')).map(o => o.textContent?.trim());
       expect(options).toEqual(['Moodle', 'Immersive Labs', 'OffSec', 'Custom']);
     });
+  });
+
+  it('opens Moodle results for a Moodle platform only (R0-B)', async () => {
+    await render();
+    const resultsButtons = () =>
+      Array.from(el.querySelectorAll('button')).filter(b => b.textContent?.includes('Results')) as HTMLButtonElement[];
+    expect(resultsButtons().length).toBe(1); // the Moodle card, not OffSec
+    resultsButtons()[0].click();
+    fixture.detectChanges();
+    expect(records.getMoodleResults).toHaveBeenCalledWith('p1');
+    expect(el.querySelector('tn-moodle-results-panel')?.textContent).toContain('No pull has succeeded yet.');
+    expect(resultsButtons()[0].getAttribute('aria-expanded')).toBe('true');
   });
 
   it('reports when delete fails', async () => {

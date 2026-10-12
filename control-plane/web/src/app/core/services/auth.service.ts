@@ -52,6 +52,8 @@ export interface AuthMe {
   request?: Record<string, unknown>;
   prefill?: RegistrationPrefill;
   suggestions?: RegistrationSuggestions;
+  /** rbac.is_platform_admin, from GET /auth/me: may act on every tenant (display only). */
+  platform_admin?: boolean;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -69,6 +71,9 @@ export class AuthService {
 
   readonly isAuthenticated = computed(() => this.userSignal() !== null);
   readonly isAdmin = computed(() => this.userSignal()?.role === 'admin');
+  /** The platform administrator (an admin of the operator's tenant), as /auth/me reports it.
+   *  False until /auth/me has answered; the API checks every platform-wide call anyway. */
+  readonly isPlatformAdmin = computed(() => this.meSignal()?.platform_admin === true);
   readonly isInstructor = computed(() => {
     const role = this.userSignal()?.role;
     return role === 'admin' || role === 'instructor';

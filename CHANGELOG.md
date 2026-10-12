@@ -63,6 +63,22 @@ course production with a local-model fallback, and the cleanup of unsupported su
   `source`; no disk or network figures. A backend that cannot report (mock, Proxmox,
   Hyper-V, a host sending no stats) publishes nothing. The telemetry table shows
   "Not reported" for a missing figure and no figures for pre-change events.
+- **Operator screens for existing APIs (R0-B).** Range recovery at `/ranges/:id`
+  (operations, abandon an operation, abandon a failed range for platform admins with the
+  VMs and port groups left for manual cleanup, network reservations, snapshots with
+  restore/delete confirmations); team membership at `/teams`; per-Student course progress
+  and mark-complete at `/learning/admin/progress`; Moodle results and "Pull now" on the
+  Integrations page. Each action states its impact first and shows the API's outcome.
+- **Force-release needs proof.** It deleted an abandoned operation's lease tombstone at
+  any time, so a hung worker's clones or port groups could run beside the next build, or
+  a destroy queued behind the tombstone started at once. It is now refused (409, with the
+  quarantine guidance) unless nothing is in flight behind it, no snapshot is busy, and the
+  abandoned worker has not renewed the tombstone for two heartbeats. New `GET
+  /ranges/{id}/lease` reports the holder and that proof; the UI offers force-release only
+  when it holds. A dead worker's vCenter tasks can still be running: check vCenter first.
+- Team members list no longer 404s when a member's account was deleted; add/remove
+  audit entries name the member; staff mark-complete and manual Moodle pulls are audited;
+  the Moodle results status reports `stale`, its reason and the schedule.
 
 ### vSphere per-tenant credentials (hardening of #131)
 - A tenant's vCenter connection is used whole or not at all: host, username and password

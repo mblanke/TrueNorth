@@ -1,5 +1,5 @@
 ﻿import { Component, OnInit, computed, inject, signal } from '@angular/core';
-import { ActivatedRoute } from '@angular/router';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 import { CommonModule } from '@angular/common';
 import { FormsModule, ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { MatCardModule } from '@angular/material/card';
@@ -19,6 +19,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatExpansionModule } from '@angular/material/expansion';
 import { ApiService } from '@core/services/api.service';
 import { NotificationService } from '@core/services/notification.service';
+import { AuthService } from '@core/services/auth.service';
 
 interface Course {
   id: string;
@@ -128,7 +129,7 @@ function sortRows<T>(rows: T[], sort: Sort, key: (row: T, column: string) => unk
     MatCardModule, MatButtonModule, MatIconModule, MatTabsModule,
     MatTableModule, MatSortModule, MatFormFieldModule, MatInputModule, MatSelectModule,
     MatSlideToggleModule, MatDividerModule, MatProgressBarModule,
-    MatChipsModule, MatTooltipModule, MatExpansionModule,
+    MatChipsModule, MatTooltipModule, MatExpansionModule, RouterLink,
   ],
   template: `
     <div class="page-container tn-quiet">
@@ -142,6 +143,11 @@ function sortRows<T>(rows: T[], sort: Sort, key: (row: T, column: string) => unk
           </div>
         </div>
         <div class="header-actions">
+          @if (auth.canOpen('learnerProgress')) {
+            <a mat-stroked-button routerLink="/learning/admin/progress">
+              <mat-icon>fact_check</mat-icon> Student progress
+            </a>
+          }
           @if (activeTab() === 0) {
             <button mat-stroked-button (click)="openCourseForm()">
               <mat-icon>add</mat-icon> New course
@@ -583,6 +589,7 @@ function sortRows<T>(rows: T[], sort: Sort, key: (row: T, column: string) => unk
 export class TrainingComponent implements OnInit {
   private api = inject(ApiService);
   private notify = inject(NotificationService);
+  protected auth = inject(AuthService);
   private fb = inject(FormBuilder);
 
   private readonly route = inject(ActivatedRoute);

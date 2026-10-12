@@ -354,3 +354,28 @@ def test_approval_refuses_to_adopt_a_row_from_another_idp(
 # ── Status enum sanity ─────────────────────────────────────────────────
 def test_registration_status_values():
     assert [s.value for s in RegistrationStatus] == ["pending", "approved", "rejected", "withdrawn"]
+
+
+# ── /auth/me platform_admin: what the UI may offer (R0-B "Abandon range") ──────────
+@pytest.mark.parametrize(
+    ("role", "platform", "expected"),
+    [
+        (UserRole.admin, "mine", True),  # the operator's tenant
+        (UserRole.admin, "other", False),  # a tenant's own admin
+        (UserRole.instructor, "mine", False),
+    ],
+)
+def test_auth_me_says_whether_the_caller_is_the_platform_administrator(
+    as_trainee, db_session, tenant, monkeypatch, role, platform, expected
+):
+    sub = f"ad-sub-{uuid.uuid4().hex[:8]}"
+    db_session.add(User(id=uuid.uuid4(), keycloak_id=sub, email=f"{sub}@x.test", display_name="A", role=role,
+                        tenant_id=tenant.id))
+    db_session.commit()
+    monkeypatch.setenv("PLATFORM_TENANT_ID", str(tenant.id) if platform == "mine" else str(uuid.uuid4()))
+    body = as_trainee(_identity(sub=sub)).get("/auth/me").json()
+    assert body["status"] == "registered" and body["platform_admin"] is expected
+
+
+def test_auth_me_is_not_platform_admin_before_registration(as_trainee, tenant):
+    assert as_trainee(_identity()).get("/auth/me").json()["platform_admin"] is False

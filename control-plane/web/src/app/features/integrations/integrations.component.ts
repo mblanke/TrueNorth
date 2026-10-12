@@ -16,6 +16,8 @@ import { NotificationService } from '@core/services/notification.service';
 import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog/confirm-dialog.component';
 import { EmptyStateComponent } from '../../shared/components/empty-state/empty-state.component';
 import { EnterStaggerDirective } from '../../shared/motion';
+import { AuthService } from '@core/services/auth.service';
+import { MoodleResultsPanelComponent } from './moodle-results-panel.component';
 
 interface ExternalPlatform {
   id: string;
@@ -33,7 +35,7 @@ interface ExternalPlatform {
   imports: [
     CommonModule, FormsModule, MatCardModule, MatButtonModule, MatIconModule,
     MatTabsModule, MatTableModule, MatFormFieldModule, MatInputModule,
-    MatSelectModule, MatChipsModule, EmptyStateComponent, EnterStaggerDirective,
+    MatSelectModule, MatChipsModule, EmptyStateComponent, EnterStaggerDirective, MoodleResultsPanelComponent,
   ],
   template: `
     <div class="page-container">
@@ -126,8 +128,16 @@ interface ExternalPlatform {
                     @if (p.last_sync_at) {
                       <p class="sync-info">Last sync: {{ p.last_sync_at | date:'medium' }}</p>
                     }
+                    @if (resultsFor() === p.id) {
+                      <tn-moodle-results-panel [platformId]="p.id" [platformName]="p.name" [canPull]="auth.isAdmin()" />
+                    }
                   </mat-card-content>
                   <mat-card-actions align="end">
+                    @if (isMoodle(p)) {
+                      <button mat-button (click)="toggleResults(p)" [attr.aria-expanded]="resultsFor() === p.id">
+                        <mat-icon>grading</mat-icon> Results
+                      </button>
+                    }
                     <button mat-button (click)="testConnection(p)">
                       <mat-icon>network_check</mat-icon> Test
                     </button>
@@ -211,8 +221,11 @@ export class IntegrationsComponent implements OnInit {
   private api = inject(ApiService);
   private notify = inject(NotificationService);
   private dialog = inject(MatDialog);
+  protected auth = inject(AuthService);
 
   platforms = signal<ExternalPlatform[]>([]);
+  /** The platform whose Moodle results panel is open (R0-B). */
+  resultsFor = signal<string | null>(null);
   loading = signal(true);
   /** The real tool URLs, from the API (LTI_TOOL_BASE_URL), never hard-coded here. */
   toolConfig = signal<LtiToolConfig | null>(null);
@@ -228,6 +241,15 @@ export class IntegrationsComponent implements OnInit {
       next: c => this.toolConfig.set(c),
       error: () => this.toolConfigError.set('The tool configuration could not be loaded.'),
     });
+  }
+
+  /** Moodle platforms report results back; the API answers 422 for any other type. */
+  isMoodle(p: ExternalPlatform): boolean {
+    return p.platform_type.includes('moodle');
+  }
+
+  toggleResults(p: ExternalPlatform): void {
+    this.resultsFor.set(this.resultsFor() === p.id ? null : p.id);
   }
 
   platformIcon(type: string): string {

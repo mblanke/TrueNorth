@@ -28,6 +28,7 @@ from ..db import get_db
 from ..delete_guard import commit_delete, refuse_if
 from ..lti_identity.models import ExerciseLearner, LTIHandoff, LTILinkRequest, LTIUserLink
 from ..models import (
+    AuditLog,
     ExternalActivity,
     ExternalPlatform,
     IntegrationAuthType,
@@ -37,6 +38,7 @@ from ..models import (
 )
 from ..moodle_backends import MoodleError, supported_moodle_types
 from ..moodle_farm import service as moodle_farm
+from ..moodle_results import runner as results_runner
 from ..moodle_results import service as results_service
 from ..moodle_results.models import MoodleResultCursor, MoodleResultRecord
 from ..moodle_results.schemas import MoodleResultsPullIn, MoodleResultsPullOut, MoodleResultsStatusOut
@@ -351,11 +353,27 @@ def moodle_results_status(
     platform that is not a Moodle with the TrueNorth plugin."""
     p = _results_platform(db, platform_id, user)
     row = db.get(MoodleResultCursor, p.id)  # tenant-safe: p came from get_owned()
+    every = results_runner.interval()
     if row is None:
-        return MoodleResultsStatusOut(platform_id=p.id)
+        return MoodleResultsStatusOut(
+            platform_id=p.id, scheduled_every_seconds=max(every, 0), stale_reason="No pull has succeeded yet."
+        )
     out = MoodleResultsStatusOut.model_validate(row)
+    out.scheduled_every_seconds = max(every, 0)
+    now = datetime.now(UTC)
     lease = row.lease_until if row.lease_until is None or row.lease_until.tzinfo else row.lease_until.replace(tzinfo=UTC)
-    out.running = lease is not None and lease > datetime.now(UTC)
+    out.running = lease is not None and lease > now
+    ok = row.last_success_at
+    ok = ok if ok is None or ok.tzinfo else ok.replace(tzinfo=UTC)
+    if ok is None:
+        out.stale, out.stale_reason = True, "No pull has succeeded yet."
+    elif every > 0 and (now - ok).total_seconds() > 2 * every:
+        out.stale = True
+        out.stale_reason = f"The last successful pull is older than two scheduled intervals ({2 * every:.0f} s)."
+    elif every <= 0:
+        out.stale, out.stale_reason = False, "The scheduled pull is off; results arrive only when pulled by hand."
+    else:
+        out.stale, out.stale_reason = False, ""
     return out
 
 
@@ -374,15 +392,31 @@ def moodle_results_pull(
     another pull of the same Moodle is running. ``reset`` reads from the beginning again;
     recording is idempotent, so that only re-checks."""
     p = _results_platform(db, platform_id, user)
+    reset = bool(body and body.reset)
     try:
-        summary = results_service.pull(db, p, reset=bool(body and body.reset))
+        summary = results_service.pull(db, p, reset=reset)
     except results_service.PullBusyError as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
     except results_service.LeaseLostError as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
     except MoodleError as exc:
+        _audit_pull(db, user, p.id, f"refused by the Moodle (502): {str(exc)[:300]}")
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc)) from exc
+    _audit_pull(
+        db, user, p.id,
+        f"{'reset; ' if reset else ''}{summary.rows} rows, {summary.applied} recorded, {summary.unchanged} unchanged, "
+        f"skipped {dict(summary.skipped)}",
+    )
     return MoodleResultsPullOut(**summary.as_dict())
+
+
+def _audit_pull(db: Session, user: CurrentUser, platform_id: uuid.UUID, detail: str) -> None:
+    """A pull by hand is an operator's act on learning records: who, and what it did."""
+    db.add(AuditLog(
+        user_id=uuid.UUID(user.id), tenant_id=tenant_uuid(user), action="moodle_results_pull",
+        resource_type="external_platform", resource_id=str(platform_id), detail=detail,
+    ))
+    db.commit()
 
 
 # ══════════════════════════════════════════════════════════════════════════

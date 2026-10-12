@@ -456,33 +456,124 @@ def _force_release(client, rid: str, **overrides):
     return client.post(f"/ranges/{rid}/lease/force-release", json=body)
 
 
-def test_a_hung_workers_tombstone_says_its_worst_case_and_an_admin_can_force_release_it(
-    client, db_session, no_real_broker
-):
-    """A live but hung worker renews its tombstone until its time limit and then keeps it
-    for an hour: about 1 h 55 min. The 409 and the abandon say so, and an admin can
-    release it, audited with the reason."""
-    from app.models import AuditLog
-
+def _abandoned(client, db_session, holder: str = "provision:hung") -> tuple[str, str]:
+    """A range whose provision was abandoned while ``holder`` held its lease: a tombstone."""
     rid = _range(client, db_session)
     op_id = client.post(f"/ranges/{rid}/provision").headers["Operation-Id"]
-    _lease(db_session, rid, "provision:hung", 3600)
-    op = client.post(f"/ranges/{rid}/operations/{op_id}/abandon").json()
+    _lease(db_session, rid, holder, 3600)
+    client.post(f"/ranges/{rid}/operations/{op_id}/abandon")
+    return rid, op_id
+
+
+def _age_abandon(db_session, rid: str, op_id: str, seconds_ago: float, *, renewed: bool = False) -> None:
+    """Move the abandon ``seconds_ago`` into the past. Unrenewed, the tombstone still ends
+    where the abandon wrote it (a dead worker); renewed, a heartbeat pushed it out again."""
+    from app.range_leases import RangeLease
+
+    op = db_session.get(RangeOperation, uuid.UUID(op_id))
+    op.finished_at = datetime.now(UTC) - timedelta(seconds=seconds_ago)
+    lease = db_session.get(RangeLease, uuid.UUID(rid))
+    if renewed:
+        lease.expires_at = datetime.now(UTC) + timedelta(seconds=ops.lease_seconds())
+    else:
+        lease.expires_at = op.finished_at + timedelta(seconds=ops.lease_seconds())
+    db_session.commit()
+
+
+def test_a_hung_workers_tombstone_is_quarantined_not_force_released(client, db_session, no_real_broker):
+    """R0-B: no lease is recycled while resources may still be live. A live but hung worker
+    renews its tombstone until its time limit and then keeps it for an hour (about 1 h 55
+    min). Before 2026-10-12 an admin could release it at once, and the next build ran
+    beside the hung worker's clones and port groups. The API now refuses, says why, and
+    gives the quarantine guidance; the lease endpoint reports the same."""
+    rid, op_id = _abandoned(client, db_session)
+    op = client.get(f"/ranges/{rid}/operations/{op_id}").json()
     assert "1 h 55 min" in op["error"]["message"]
     refused = client.post(f"/ranges/{rid}/provision")
     assert refused.status_code == 409 and "1 h 55 min" in refused.json()["detail"]
     assert "force-release" in refused.json()["detail"]
 
+    # Right after the abandon: a live worker has not had time to renew yet.
+    resp = _force_release(client, rid)
+    assert resp.status_code == 409 and "Too soon to tell" in resp.json()["detail"]
+    assert "Quarantine" in resp.json()["detail"]
+    # Later, renewed by its heartbeat: alive.
+    _age_abandon(db_session, rid, op_id, 600, renewed=True)
+    status = client.get(f"/ranges/{rid}/lease").json()
+    assert status["kind"] == "tombstone" and status["blocking"] is True
+    assert status["force_release_allowed"] is False and "alive" in status["reason"]
+    assert "destroy can be queued" in status["guidance"]
+    resp = _force_release(client, rid)
+    assert resp.status_code == 409 and "alive" in resp.json()["detail"]
+    assert _leases(db_session, rid) == ["abandoned:provision:hung"], "a live worker's tombstone was released"
+
+
+def test_force_release_refuses_while_an_operation_waits_behind_the_tombstone(client, db_session, no_real_broker):
+    """A destroy is accepted over a tombstone and its worker waits for the lease. Releasing
+    the tombstone then started the destroy at once, beside the abandoned worker."""
+    rid, op_id = _abandoned(client, db_session)
+    _age_abandon(db_session, rid, op_id, 600)  # otherwise provably dead
+    destroy = client.post(f"/ranges/{rid}/destroy")
+    assert destroy.status_code == 202
+    status = client.get(f"/ranges/{rid}/lease").json()
+    assert status["force_release_allowed"] is False and status["in_flight_action"] == "destroy"
+    resp = _force_release(client, rid)
+    assert resp.status_code == 409 and "destroy of this range is in flight" in resp.json()["detail"]
+    assert _leases(db_session, rid) == ["abandoned:provision:hung"]
+
+
+def test_force_release_refuses_while_a_snapshot_is_being_restored(client, db_session, no_real_broker):
+    rid, op_id = _abandoned(client, db_session)
+    _age_abandon(db_session, rid, op_id, 600)
+    db_session.add(RangeSnapshot(range_id=uuid.UUID(rid), name="s", tenant_id=db_session.get(Range, uuid.UUID(rid))
+                                 .tenant_id, range_state_at_snapshot="ready", snapshot_state="restoring"))
+    db_session.commit()
+    resp = _force_release(client, rid)
+    assert resp.status_code == 409 and "snapshot of this range is restoring" in resp.json()["detail"]
+
+
+def test_a_dead_workers_tombstone_can_be_force_released_with_proof_and_audit(client, db_session, no_real_broker):
+    """The proof: nothing queued behind it, and no renewal in two heartbeats since the
+    abandon. Released, audited with the reason, and the range can be built again."""
+    from app.models import AuditLog
+
+    rid, op_id = _abandoned(client, db_session)
+    _age_abandon(db_session, rid, op_id, 120)  # 2 x the 30 s heartbeat, tombstone still unexpired
+    status = client.get(f"/ranges/{rid}/lease").json()
+    assert status["force_release_allowed"] is True and status["blocking"] is True, status
+    assert "has not renewed" in status["reason"]
+
     resp = _force_release(client, rid)
     assert resp.status_code == 200, resp.text
     out = resp.json()
     assert out["released_holder"] == "abandoned:provision:hung" and out["was_expired"] is False
-    assert "still running" in out["warning"]
+    assert "vCenter" in out["warning"]
     assert _leases(db_session, rid) == []
     audit = db_session.query(AuditLog).filter(AuditLog.action == "force_release_lease", AuditLog.resource_id == rid).one()
     assert "abandoned:provision:hung" in audit.detail and "vCenter checked" in audit.detail
     assert audit.tenant_id == db_session.get(Range, uuid.UUID(rid)).tenant_id
+    assert client.get(f"/ranges/{rid}/lease").json()["kind"] == "none"
     assert client.post(f"/ranges/{rid}/provision").status_code == 202
+
+
+def test_a_tombstone_with_no_abandoned_operation_on_record_is_not_released(client, db_session, no_real_broker):
+    rid = _range(client, db_session)
+    _lease(db_session, rid, "abandoned:provision:orphan", 120)
+    resp = _force_release(client, rid)
+    assert resp.status_code == 409 and "no proof" in resp.json()["detail"]
+
+
+def test_the_lease_status_is_tenant_scoped_and_readable_by_range_readers(client, db_session, no_real_broker):
+    from _shared import OTHER_TENANT, acting_as
+    from app.models import UserRole
+
+    rid, _ = _abandoned(client, db_session)
+    with acting_as(UserRole.observer):
+        status = client.get(f"/ranges/{rid}/lease")
+        assert status.status_code == 200 and status.json()["kind"] == "tombstone"
+        assert _force_release(client, rid).status_code == 403
+    with acting_as(UserRole.admin, OTHER_TENANT):
+        assert client.get(f"/ranges/{rid}/lease").status_code == 404
 
 
 def test_force_release_takes_only_a_tombstone_and_a_deliberate_request(client, db_session, no_real_broker):

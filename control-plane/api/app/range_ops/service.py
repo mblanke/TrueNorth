@@ -209,7 +209,7 @@ def _check(db: Session, rng: Range, action: str) -> None:
             why = (
                 "the abandoned operation's worker may still be finishing on the hypervisor. If it is dead this "
                 f"clears within {lease_seconds():.0f} s; if alive, when its work ends, at worst "
-                f"{TOMBSTONE_WORST_CASE}; an admin can force-release it"
+                f"{TOMBSTONE_WORST_CASE}; an admin can force-release it once the worker is proven stopped"
             )
         else:
             why = (
@@ -488,22 +488,17 @@ def force_release_tombstone(db: Session, rng: Range) -> tuple[str, bool]:
     commit; the caller has row-locked the range (the lock order of accept and abandon).
     Returns (holder, whether it had expired already).
 
-    Only a tombstone: a live lease belongs to a task that is still the range's (abandon
-    its operation first; a dead worker's lease expires on its own). The tombstone of a
-    hung worker can otherwise block the range for ``TOMBSTONE_WORST_CASE``."""
-    from ..range_leases import RangeLease
+    Only a tombstone, and only with proof that nothing would run beside the abandoned
+    worker (lease_status.assess): no operation in flight, no snapshot busy, and a worker
+    that has stopped renewing. A live lease belongs to a task that is still the range's;
+    a live or unproven tombstone is quarantined (409 with the guidance)."""
+    from .lease_status import assess
 
-    lease = (
-        db.query(RangeLease).filter(RangeLease.range_id == rng.id).with_for_update().populate_existing().first()
-    )
+    status, lease = assess(db, rng, lock=True)
     if lease is None:
         raise HTTPException(404, "This range has no lease to release")
-    if not lease.holder.startswith(ABANDONED):
-        raise HTTPException(
-            409,
-            "This lease is held by a task that is still the range's, not an abandoned operation's tombstone. "
-            "Abandon its operation first; a dead worker's lease expires on its own.",
-        )
+    if not status.force_release_allowed:
+        raise HTTPException(409, f"{status.reason} {status.guidance}".strip())
     expired = _aware(lease.expires_at) <= _now()
     holder = lease.holder
     db.delete(lease)
