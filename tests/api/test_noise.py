@@ -351,19 +351,26 @@ class TestAgentChannel:
         agents = client.get(f"/noise/ranges/{rng.id}/agents").json()
         assert next(a for a in agents if a["node"] == "ws01")["version"] == "0.1.0"
 
+    # Each tamper derives its value from the original, so it always changes the record.
+    # A fixed value can coincide with what was planned (the plan is keyed on the clock),
+    # and then the "forgery" is the genuine signed action and is rightly accepted.
     @pytest.mark.parametrize(
-        "tamper",
+        "field,tamper",
         [
-            {"target": "10.99.99.99"},  # the attacker's C2, dressed as noise
-            {"persona": "not-a-persona"},
-            {"kind": "admin_scan"},  # promote a benign action to a lookalike
-            {"at": "2036-01-01T00:00:00+00:00"},  # pin it to the top of the feed
-            {"sig": "0" * 64},
+            ("target", lambda v: "10.99.99.99" if v != "10.99.99.99" else "10.99.99.98"),  # attacker's C2
+            ("persona", lambda v: f"not-{v}"),
+            # promote the action to a lookalike it was not planned as
+            ("kind", lambda v: next(k for k in sorted(dial.LOOKALIKES) if k != v)),
+            ("at", lambda v: "2036-01-01T00:00:00+00:00"),  # pin it to the top of the feed
+            ("sig", lambda v: "0" * 64 if v != "0" * 64 else "f" * 64),
         ],
+        ids=["target", "persona", "kind", "at", "sig"],
     )
-    def test_a_stolen_token_cannot_forge_ground_truth(self, client, rng, tamper):
+    def test_a_stolen_token_cannot_forge_ground_truth(self, client, rng, field, tamper):
         tokens = _setup(client, rng, level=95, count=30)
-        forged = {**self._signed(client, tokens["ws01"])[0], **tamper}
+        original = self._signed(client, tokens["ws01"])[0]
+        forged = {**original, field: tamper(original.get(field, ""))}
+        assert forged[field] != original.get(field, ""), f"tamper left {field} unchanged; it tests nothing"
         r = client.post("/noise/agent/report", json={"results": [forged]}, headers=_hdr(tokens["ws01"]))
         assert r.status_code == 200 and r.json()["rejected"] == 1
         assert client.get(f"/noise/ranges/{rng.id}/activity").json() == []
