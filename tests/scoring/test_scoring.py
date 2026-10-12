@@ -18,7 +18,7 @@ from scenario_engine.scoring.engine import (
 )
 from scenario_engine.scoring.grading import GradeResult, GradingCalculator
 from scenario_engine.scoring.leaderboard import Leaderboard
-from scenario_engine.scoring.validators import ScoringValidator
+from scenario_engine.scoring.validators import ScoringValidator, UnscoredError
 
 # ── Fixtures ────────────────────────────────────────────────
 
@@ -124,9 +124,9 @@ class TestScoringEngine:
 
     @pytest.mark.asyncio
     async def test_evaluate_single_manual_not_approved(self, engine: ScoringEngine):
-        result = await engine.evaluate_objective("obj-contain-1")
-        assert result.achieved is False
-        assert result.points_awarded == 0
+        # Awaiting the instructor is unscored, not failed.
+        with pytest.raises(UnscoredError, match="awaiting instructor"):
+            await engine.evaluate_objective("obj-contain-1")
 
     @pytest.mark.asyncio
     async def test_evaluate_unknown_objective(self, engine: ScoringEngine):
@@ -142,6 +142,8 @@ class TestScoringEngine:
         assert result.max_score == 100
         # Only manual-approved objective should give points
         assert result.total_score == 20
+        # Unapproved manual and a deliverable with no location are unscored, not failed.
+        assert set(result.unscored) == {"obj-contain-1", "obj-report-1"}
         assert result.grade in ("A", "B", "C", "D", "F")
 
     @pytest.mark.asyncio
@@ -351,11 +353,8 @@ class TestScoringValidator:
 
     @pytest.mark.asyncio
     async def test_manual_not_approved(self):
-        ok, evidence = await ScoringValidator.validate(
-            method="manual",
-            config={"approved": False},
-        )
-        assert ok is False
+        with pytest.raises(UnscoredError, match="awaiting instructor"):
+            await ScoringValidator.validate(method="manual", config={"approved": False})
 
     @pytest.mark.asyncio
     async def test_deliverable_missing_file(self):
@@ -432,47 +431,25 @@ class TestScoringValidator:
 
     @pytest.mark.asyncio
     async def test_unknown_method(self):
-        ok, evidence = await ScoringValidator.validate(
-            method="does_not_exist",
-            config={},
-        )
-        assert ok is False
-        assert evidence == []
+        with pytest.raises(UnscoredError, match="unknown validator"):
+            await ScoringValidator.validate(method="does_not_exist", config={})
 
     @pytest.mark.asyncio
-    async def test_firewall_rule(self):
-        ok, evidence = await ScoringValidator.validate(
-            method="firewall_rule",
-            config={"expected_rules": [{"port": 443, "protocol": "tcp", "action": "block"}]},
-        )
-        # Stub always returns True for now
-        assert isinstance(ok, bool)
-        assert len(evidence) == 1
+    @pytest.mark.parametrize(
+        ("method", "config"),
+        [
+            # firewall_rule used to count every expected rule as matched: always achieved.
+            ("firewall_rule", {"expected_rules": [{"port": 443, "protocol": "tcp", "action": "block"}]}),
+            ("process_killed", {"process_name": "beacon.exe"}),
+            ("network_isolated", {"host_ip": "10.0.30.101"}),
+        ],
+    )
+    async def test_refused_validators_are_unscored(self, method, config):
+        with pytest.raises(UnscoredError, match="refused"):
+            await ScoringValidator.validate(method=method, config=config)
 
     @pytest.mark.asyncio
-    async def test_process_killed(self):
-        ok, evidence = await ScoringValidator.validate(
-            method="process_killed",
-            config={"process_name": "beacon.exe"},
-        )
-        # Stub returns False (pending verification)
-        assert ok is False
-        assert evidence[0]["process_name"] == "beacon.exe"
-
-    @pytest.mark.asyncio
-    async def test_user_disabled(self):
-        ok, evidence = await ScoringValidator.validate(
-            method="user_disabled",
-            config={"username": "jsmith"},
-        )
-        assert ok is False
-        assert evidence[0]["username"] == "jsmith"
-
-    @pytest.mark.asyncio
-    async def test_network_isolated(self):
-        ok, evidence = await ScoringValidator.validate(
-            method="network_isolated",
-            config={"host_ip": "10.0.30.101"},
-        )
-        assert ok is False
-        assert evidence[0]["host_ip"] == "10.0.30.101"
+    async def test_user_disabled_needs_an_event_store(self):
+        # Real now (tests/scenario_engine/test_scoring_truth.py); no store, no judgement.
+        with pytest.raises(UnscoredError, match="no event store"):
+            await ScoringValidator.validate(method="user_disabled", config={"username": "jsmith"})

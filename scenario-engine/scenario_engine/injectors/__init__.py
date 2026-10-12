@@ -17,8 +17,11 @@ two calling conventions:
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import importlib
+import json
 import logging
+import random
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -58,6 +61,13 @@ class InjectResult:
     skipped: bool = False
     # "simulated" (synthetic records, nothing touched) or "live"; None when nothing ran.
     execution_mode: str | None = None
+    # True unless a live injector ran. A simulated inject touched no host, whatever it reports.
+    simulated: bool = True
+    # "synthetic" (a simulated inject built the records) or "live"; None when nothing ran.
+    evidence_class: str | None = None
+    # What seeded the inject's random choices (inject_seed); None when nothing ran.
+    inject_id: str | None = None
+    seed: int | None = None
 
 
 # ── BaseInjector (params-in-constructor convention) ─────────────────────
@@ -80,6 +90,7 @@ class BaseInjector(ABC):
 
     def __init__(self, params: dict[str, Any] | None = None) -> None:
         self.params = params or {}
+        self.rng = random.Random(0)  # seeded by run_inject, as base.BaseInjector
 
     def validate_params(self) -> None:  # noqa: B027 — optional override
         pass
@@ -171,7 +182,34 @@ def injector_profile(action: str) -> dict[str, Any] | None:
     }
 
 
-def inject_telemetry(action: str, raw: dict[str, Any], ctx: RangeContext, *, execution_mode: str) -> list[dict]:
+# Result fields that would say a simulated inject acted on a host. It did not.
+_HOST_EFFECT_CLAIMS = ("delivered", "created", "executed")
+
+
+def inject_id_for(action: str, params: dict[str, Any] | None) -> str:
+    """A stable id for an inject the caller did not name: its action and params."""
+    body = json.dumps(params or {}, sort_keys=True, default=str)
+    return f"{action}:{hashlib.sha256(body.encode()).hexdigest()[:16]}"
+
+
+def inject_seed(exercise_id: str | None, inject_id: str) -> int:
+    """The seed for one inject's random choices: deterministic from exercise and inject.
+
+    The same inject in the same exercise builds the same synthetic records on a replay;
+    another exercise gets different ones. Never the process-global ``random``.
+    """
+    digest = hashlib.sha256(f"{exercise_id or ''}\x00{inject_id}".encode()).hexdigest()
+    return int(digest[:16], 16)
+
+
+def inject_telemetry(
+    action: str,
+    raw: dict[str, Any],
+    ctx: RangeContext,
+    *,
+    execution_mode: str,
+    inject_id: str | None = None,
+) -> list[dict]:
     """Telemetry for one executed inject: the injector's own events, else one summary event.
 
     Every platform label (which exercise and inject, the technique, the target, that the
@@ -183,6 +221,9 @@ def inject_telemetry(action: str, raw: dict[str, Any], ctx: RangeContext, *, exe
     ``event.module: truenorth.inject``, ``threat.technique.id``) and searchable by anyone.
 
     A summary event is nothing but labels: it records that the inject ran.
+
+    ``evidence_class`` is ``synthetic`` for a simulated inject: scoring that requires
+    observed evidence (objective_catalogue) does not count these events.
     """
     own = raw.get("telemetry")
     events = [dict(e) for e in own if isinstance(e, dict)] if isinstance(own, list) else []
@@ -201,13 +242,23 @@ def inject_telemetry(action: str, raw: dict[str, Any], ctx: RangeContext, *, exe
         e[GROUND_TRUTH_FIELD] = {
             **summary,
             "exercise_id": ctx.exercise_id,
+            "range_id": ctx.range_id,
             "inject_action": action,
+            "inject_id": inject_id,
             "simulated": execution_mode != "live",
+            "evidence_class": "live" if execution_mode == "live" else "synthetic",
         }
     return events
 
 
-def run_inject(action: str, params: dict, ctx: RangeContext, *, allow_host_effects: bool = True) -> InjectResult:
+def run_inject(
+    action: str,
+    params: dict,
+    ctx: RangeContext,
+    *,
+    allow_host_effects: bool = True,
+    inject_id: str | None = None,
+) -> InjectResult:
     """Execute an inject by action name, returning an ``InjectResult``. Never raises.
 
     Bridges the two conventions: builds the ``BaseInjector`` with *params*, calls
@@ -216,6 +267,11 @@ def run_inject(action: str, params: dict, ctx: RangeContext, *, allow_host_effec
     a failed result. With ``allow_host_effects=False`` (a range with no hosts, e.g. the
     mock backend) an injector whose contract touches range hosts is not run: the result
     is ``skipped``.
+
+    The injector's random choices are seeded from ``ctx.exercise_id`` and *inject_id*
+    (default: the action and params, ``inject_id_for``). A simulated inject's result and
+    ``raw`` say ``simulated: True`` and ``evidence_class: "synthetic"``, with the exercise
+    and range they belong to: it touched no host, whatever its fields suggest.
     """
     cls = _INJECTOR_REGISTRY.get(canonical_action(action))
     if cls is None:
@@ -230,8 +286,20 @@ def run_inject(action: str, params: dict, ctx: RangeContext, *, allow_host_effec
             detail="skipped: mock backend (injector needs range hosts)",
             skipped=True,
         )
+    inject_id = inject_id or inject_id_for(action, params)
+    seed = inject_seed(ctx.exercise_id, inject_id)
+    simulated = mode != "live"
+    labels = {
+        "simulated": simulated,
+        "evidence_class": "synthetic" if simulated else "live",
+        "exercise_id": ctx.exercise_id,
+        "range_id": ctx.range_id,
+        "inject_id": inject_id,
+        "seed": seed,
+    }
     try:
         inj = cls(dict(params or {}))
+        inj.rng = random.Random(seed)
         inj.validate_params()
         raw = inj.execute(
             {
@@ -245,7 +313,13 @@ def run_inject(action: str, params: dict, ctx: RangeContext, *, allow_host_effec
         )
         if not isinstance(raw, dict):
             raise TypeError(f"injector returned {type(raw).__name__}, expected dict")
-        telemetry = inject_telemetry(action, raw, ctx, execution_mode=mode)
+        if simulated:
+            for claim in _HOST_EFFECT_CLAIMS:
+                if raw.get(claim) is True:
+                    logger.warning("Simulated injector %s claimed %s; recorded as not %s", action, claim, claim)
+                    raw[claim] = False
+        raw.update(labels)  # after execute: an injector cannot relabel its own result
+        telemetry = inject_telemetry(action, raw, ctx, execution_mode=mode, inject_id=inject_id)
     except AssertionError as exc:  # validate_params() uses assert for missing params
         return InjectResult(success=False, action=action, detail=f"Invalid params: {exc or 'missing required param'}")
     except Exception as exc:  # noqa: BLE001 — injectors must not crash the run
@@ -259,6 +333,10 @@ def run_inject(action: str, params: dict, ctx: RangeContext, *, allow_host_effec
         mitre_technique=raw.get("technique_id") or raw.get("technique"),
         raw=raw,
         execution_mode=mode,
+        simulated=simulated,
+        evidence_class=labels["evidence_class"],
+        inject_id=inject_id,
+        seed=seed,
     )
 
 
@@ -312,6 +390,8 @@ __all__ = [
     "list_injectors",
     "canonical_action",
     "injector_profile",
+    "inject_id_for",
+    "inject_seed",
     "inject_telemetry",
     "run_inject",
     "GROUND_TRUTH_FIELD",

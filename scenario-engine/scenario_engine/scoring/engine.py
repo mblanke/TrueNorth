@@ -266,9 +266,11 @@ class ScoringEngine:
         evidence: list[dict[str, Any]],
     ) -> int:
         if not achieved:
-            if obj.partial_credit and evidence:
+            # An error report ("deliverable not found") is not evidence of anything.
+            found = [e for e in evidence if isinstance(e, dict) and "error" not in e]
+            if obj.partial_credit and found:
                 # Award partial credit proportional to evidence gathered
-                ratio = min(len(evidence) / max(obj.validation_config.get("threshold", 1), 1), 0.5)
+                ratio = min(len(found) / max(obj.validation_config.get("threshold", 1), 1), 0.5)
                 return int(obj.max_points * ratio)
             return 0
 

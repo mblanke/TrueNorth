@@ -92,8 +92,27 @@ def validate_yaml(schema_name: str, yaml_text: str) -> dict[str, Any]:
     ]
     if schema_name == "scenario":
         errors += _unrendered_query_errors(parsed)
+        errors += _objective_catalogue().objective_errors(parsed)
     errors.sort(key=lambda e: e["path"])
     return {"valid": not errors, "errors": errors, "normalized": parsed}
+
+
+def _objective_catalogue():
+    """``scenario_engine.objective_catalogue``: which validators are judged or refused, and why.
+
+    The scoring engine reads the same module, so the API cannot accept a validator the
+    engine refuses (a stub that passed every objective, until 2026-10-12).
+    """
+    root = str(engine_dir())
+    if not (engine_dir() / "scenario_engine").is_dir():
+        raise _unavailable("objective catalogue")
+    if root not in sys.path:
+        sys.path.insert(0, root)
+    try:
+        from scenario_engine import objective_catalogue  # noqa: PLC0415 — deliberate lazy import
+    except ImportError as exc:
+        raise _unavailable("objective catalogue") from exc
+    return objective_catalogue
 
 
 def _unrendered_query_errors(scenario: dict[str, Any]) -> list[dict[str, str]]:

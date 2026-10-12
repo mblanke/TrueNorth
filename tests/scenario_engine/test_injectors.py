@@ -55,7 +55,7 @@ class TestInjectorExecution:
 
         inj = EmailPhishInjector({"sender": "a@b.com", "recipient": "v@c.com", "subject": "Test"})
         result = inj.execute({})
-        assert result["delivered"] is True
+        assert result["delivered"] is False  # simulated: no mail was sent
 
 
 class TestScenarioYAML:

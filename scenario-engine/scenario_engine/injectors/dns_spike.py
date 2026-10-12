@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 
 class DnsSpikeInjector(BaseInjector):
     name: str = "dns_spike"
-    description: str = "Generates a burst of DNS queries against the given domains."
+    description: str = "Builds synthetic records of a burst of DNS queries; sends no queries."
     required_params: list[str] = ["domains", "count"]
 
     def validate_params(self) -> None:

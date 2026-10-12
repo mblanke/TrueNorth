@@ -11,13 +11,14 @@ from __future__ import annotations
 QUERY = "opensearch_query"
 MANUAL = "manual_ack"
 DELIVERABLE = "deliverable_check"
-CANONICAL = (QUERY, MANUAL, DELIVERABLE)
+USER_DISABLED = "user_disabled"  # observed 4725 only (scenario_engine/objective_catalogue.py)
+CANONICAL = (QUERY, MANUAL, DELIVERABLE, USER_DISABLED)
 
 
 def canonical_validator(name: str | None, default: str = MANUAL) -> str:
     """``validate.opensearch.query`` -> ``opensearch_query``; an empty name is ``default``.
 
-    A name that is not one of the three is returned normalised but otherwise unchanged,
+    A name that is not canonical is returned normalised but otherwise unchanged,
     so a custom validator is still visible (and unscored) rather than silently renamed.
     """
     raw = (name or "").strip().lower()

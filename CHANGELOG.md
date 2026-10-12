@@ -203,12 +203,34 @@ course production with a local-model fallback, and the cleanup of unsupported su
   (default the shipped one). Contract tests run `amtool check-config` on every rendered
   variant in the pinned image.
 
+### Scoring and inject evidence (R0-B)
+- **Behaviour change:** no objective passes without evidence. The `firewall_rule` validator
+  passed every objective; it, `process_killed` and `network_isolated` are now refused
+  (no telemetry can prove them): `POST /scenarios/validate` rejects them with the reason and
+  the engine leaves them unscored. Use `manual_ack`. `user_disabled` is real: Windows event
+  4725 for the account, observed telemetry only. Unknown validators and phase-level
+  `validators:` blocks are rejected; incident-response-drill's (`network_isolation`,
+  `firewall_rule`, `artifact_removal`, never evaluated) are gone, scored by its existing
+  `manual_ack` objectives. Every shipped scenario validates (tested).
+- `manual_ack` is an explicit instructor action: content cannot pre-approve it, and until
+  acknowledged it is unscored, not failed. Unknown validators, a deliverable with no
+  location, or a store outage are unscored too; error rows no longer earn partial credit.
+- Simulated injects say so: results and telemetry carry `simulated: true`,
+  `evidence_class: "synthetic"`, the exercise, range and inject; none claims `delivered` or
+  `created`. Their random choices are seeded from exercise id + inject id. A query objective
+  with `require_observed: true` ignores synthetic records (default false: detection
+  objectives score finding the inject's records).
+
 ### Known limitations in v1.2.0
 - Greyspace, VyOS/OPNsense configs and per-tenant vCenter are proven on vcsim/fakes, not on
   a real vCenter (the live run on TN-MGMT01 is still pending).
 - ARC² test-host content is auto-accepted and unreviewed; never release it to Students.
 - cmi5 Moodle activities are tied to one release; LTI cmi5 launches do not enrol.
 - WebSockets do not accept the LTI hand-off session.
+- Scenario create/update and exercise start do not yet run objective validation; a stored
+  scenario naming a refused validator still launches, and those objectives stay unscored.
+  On the mock backend the worker still marks every objective achieved. Evidence is not
+  windowed to the exercise: a reused range index can carry an earlier exercise's events.
 - A range built before connection records with port groups but no VM stays unrecorded until
   destroyed; shared vCenter connections are managed outside the tenant API; an abandoned
   range's leftover VMs and port groups must be removed by hand (`docs/release-notes/v1.2.0.md`).

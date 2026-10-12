@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import hashlib
 import logging
-import random
 import string
 from typing import Any
 
@@ -91,20 +90,20 @@ class FileOperationInjector(BaseInjector):
             selected = [t for t in self._ATTACKER_TOOLS if t["name"] in tools_to_drop]
         else:
             count = int(self.params.get("tool_count", 3))
-            selected = random.sample(self._ATTACKER_TOOLS, min(count, len(self._ATTACKER_TOOLS)))
+            selected = self.rng.sample(self._ATTACKER_TOOLS, min(count, len(self._ATTACKER_TOOLS)))
 
         drop_path = self.params.get("drop_path", "C:\\Windows\\Temp")
         dropped: list[dict[str, Any]] = []
         for tool in selected:
-            file_hash = hashlib.sha256(f"{tool['name']}:{random.random()}".encode()).hexdigest()
+            file_hash = hashlib.sha256(f"{tool['name']}:{self.rng.random()}".encode()).hexdigest()
             dropped.append(
                 {
                     "filename": tool["name"],
                     "path": f"{drop_path}\\{tool['name']}",
                     "sha256": file_hash,
-                    "size_bytes": random.randint(50_000, 2_000_000),
+                    "size_bytes": self.rng.randint(50_000, 2_000_000),
                     "technique_id": tool["technique"],
-                    "detected": random.choice([True, False]),
+                    "detected": self.rng.choice([True, False]),
                 }
             )
 
@@ -135,7 +134,7 @@ class FileOperationInjector(BaseInjector):
                     "modification_type": tf["modification"],
                     "original_hash": hashlib.sha256(tf["path"].encode()).hexdigest()[:16],
                     "modified_hash": hashlib.sha256(f"{tf['path']}:modified".encode()).hexdigest()[:16],
-                    "backup_created": random.choice([True, False]),
+                    "backup_created": self.rng.choice([True, False]),
                     "timestamp": "2026-02-26T10:30:00Z",
                 }
             )
@@ -173,15 +172,15 @@ class FileOperationInjector(BaseInjector):
 
         cleared: list[dict[str, Any]] = []
         for source in log_sources:
-            events_cleared = random.randint(500, 50_000)
+            events_cleared = self.rng.randint(500, 50_000)
             cleared.append(
                 {
                     "log_name": source["name"],
                     "log_type": source["type"],
                     "log_path": source["path"],
                     "events_cleared": events_cleared,
-                    "method": random.choice(["wevtutil cl", "Clear-EventLog", "rm -f", "truncate"]),
-                    "success": random.random() > 0.1,
+                    "method": self.rng.choice(["wevtutil cl", "Clear-EventLog", "rm -f", "truncate"]),
+                    "success": self.rng.random() > 0.1,
                 }
             )
 
@@ -222,9 +221,9 @@ class FileOperationInjector(BaseInjector):
 
         encrypted_files: list[dict[str, str]] = []
         for _i in range(file_count):
-            ext = random.choice(extensions)
-            directory = random.choice(target_dirs)
-            filename = "".join(random.choices(string.ascii_lowercase, k=8)) + ext
+            ext = self.rng.choice(extensions)
+            directory = self.rng.choice(target_dirs)
+            filename = "".join(self.rng.choices(string.ascii_lowercase, k=8)) + ext
             encrypted_files.append(
                 {
                     "original_path": f"{directory}\\{filename}",

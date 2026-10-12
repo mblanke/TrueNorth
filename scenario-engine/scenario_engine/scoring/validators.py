@@ -3,17 +3,28 @@
 Each validator checks whether a specific type of objective has been
 completed, returning ``(achieved, evidence)`` where *evidence* is a
 list of supporting artefact dicts.
+
+An objective that cannot be judged raises ``UnscoredError``: an unknown or refused
+validator (objective_catalogue.REFUSED_VALIDATORS), missing config, an event store that
+is down, or a manual objective no instructor has acknowledged yet. Unscored is never
+"achieved" and never "not achieved". On a miss, evidence is empty (or carries ``error``),
+so a miss earns no partial credit for evidence that does not exist.
 """
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any
 
 from ..event_stores import BaseEventStore, OpenSearchEventStore
+from ..objective_catalogue import ACCOUNT_NAME, REFUSED_VALIDATORS, evidence_class
 from ..variables import unresolved
 
 logger = logging.getLogger(__name__)
+
+# Most hits fetched to tell observed from synthetic evidence.
+_OBSERVED_SCAN = 100
 
 
 class UnscoredError(Exception):
@@ -30,6 +41,36 @@ def _threshold(config: dict[str, Any]) -> int:
         return max(int(raw), 1)
     except (TypeError, ValueError) as exc:
         raise UnscoredError(f"threshold {raw!r} is not an integer") from exc
+
+
+async def _observed_hits(
+    store: BaseEventStore, index: str, queries: list[str | dict[str, Any]], threshold: int
+) -> list[dict[str, Any]]:
+    """Hits for any of ``queries`` that a range host or sensor produced (not synthetic).
+
+    Raises ``UnscoredError`` when the store fails, or when a query has more hits than were
+    scanned and too few of those scanned were observed to decide.
+    """
+    observed: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for query in queries:
+        try:
+            found = await store.search(index, query, size=_OBSERVED_SCAN)
+        except Exception as exc:
+            logger.exception("Event store query validation failed")
+            raise UnscoredError(f"event store unavailable: {exc}") from exc
+        for hit in found.hits:
+            source = hit.get("_source") if isinstance(hit.get("_source"), dict) else {}
+            # By content: the same event can match more than one query.
+            key = json.dumps(source, sort_keys=True, default=str) if source else f"id:{hit.get('_id')}"
+            if key not in seen and evidence_class(source) == "observed":
+                seen.add(key)
+                observed.append(hit)
+        if found.total > len(found.hits) and len(observed) < threshold:
+            raise UnscoredError(
+                f"{found.total} matching events, more than the {len(found.hits)} scanned for observed evidence"
+            )
+    return observed
 
 
 class ScoringValidator:
@@ -54,18 +95,17 @@ class ScoringValidator:
         dispatch = {
             "opensearch_query": ScoringValidator.validate_opensearch_query,
             "deliverable": ScoringValidator.validate_deliverable,
-            "firewall_rule": ScoringValidator.validate_firewall_rule,
-            "process_killed": ScoringValidator.validate_process_killed,
             "user_disabled": ScoringValidator.validate_user_disabled,
-            "network_isolated": ScoringValidator.validate_network_isolated,
             "manual": ScoringValidator.validate_manual,
             "greyspace_breadcrumb": ScoringValidator.validate_greyspace_breadcrumb,
         }
+        if method in REFUSED_VALIDATORS:
+            raise UnscoredError(f"validator '{method}' is refused: {REFUSED_VALIDATORS[method]}")
         handler = dispatch.get(method)
         if handler is None:
             logger.warning("Unknown validation method: %s", method)
-            return False, []
-        if method == "opensearch_query":
+            raise UnscoredError(f"unknown validator '{method}'")
+        if method in ("opensearch_query", "user_disabled"):
             if event_store is None and opensearch_url:
                 event_store = OpenSearchEventStore(opensearch_url)
             return await handler(config, event_store)
@@ -90,6 +130,9 @@ class ScoringValidator:
             - ``query``: Lucene query string, or query DSL (dict). Required: an objective
               without one is not scored, never scored as match-all.
             - ``threshold`` (or ``min_hits``): minimum number of matching docs, at least 1
+            - ``require_observed``: count only events a range host or sensor produced, not
+              a simulated inject's synthetic records (objective_catalogue). Default false:
+              a detection objective scores finding the inject's records.
 
         Raises ``UnscoredError`` when the objective cannot be judged (no query, a bad threshold,
         no store, or the store failed), so an outage is never reported as "not achieved".
@@ -100,10 +143,17 @@ class ScoringValidator:
         if isinstance(query, str) and (names := unresolved(query)):
             raise UnscoredError(f"query has unrendered placeholders: {', '.join(names)}")
         threshold = _threshold(config)
+        require_observed = config.get("require_observed", False)
+        if not isinstance(require_observed, bool):
+            raise UnscoredError(f"require_observed {require_observed!r} is not true or false")
         if event_store is None:
             raise UnscoredError("no event store configured")
 
         index = config.get("index", "truenorth-*")
+        if require_observed:
+            observed = await _observed_hits(event_store, index, [query], threshold)
+            # Synthetic matches are not evidence here, not even for partial credit.
+            return len(observed) >= threshold, observed[:20]
         try:
             found = await event_store.search(index, query, size=min(threshold, 100))
         except Exception as exc:
@@ -167,7 +217,8 @@ class ScoringValidator:
         deliverable_type = config.get("deliverable_type", "unknown")
 
         if not storage_path:
-            return False, []
+            # Content names a deliverable store key; without a resolved path nothing can be checked.
+            raise UnscoredError("deliverable objective has no storage_path to check")
 
         if not os.path.exists(storage_path):
             return False, [{"error": f"Deliverable not found at {storage_path}"}]
@@ -205,130 +256,61 @@ class ScoringValidator:
 
         return True, evidence
 
-    @staticmethod
-    async def validate_firewall_rule(
-        config: dict[str, Any],
-    ) -> tuple[bool, list[dict[str, Any]]]:
-        """Check if expected firewall rules were created.
-
-        ``config`` keys:
-            - ``host``: target host to check
-            - ``expected_rules``: list of dicts with keys ``port``,
-              ``protocol``, ``action`` (allow/block)
-            - ``check_method``: ``opensearch`` or ``agent``
-        """
-        expected_rules = config.get("expected_rules", [])
-        if not expected_rules:
-            return False, []
-
-        # In production this would query the host or OpenSearch
-        # for firewall-configuration events.  Here we stub it.
-        evidence: list[dict[str, Any]] = []
-        matched = 0
-        for rule in expected_rules:
-            # Placeholder: actual implementation queries target host
-            evidence.append(
-                {
-                    "rule": rule,
-                    "status": "pending_verification",
-                }
-            )
-            matched += 1  # In real impl, only count verified rules
-
-        achieved = matched >= len(expected_rules)
-        return achieved, evidence
-
-    @staticmethod
-    async def validate_process_killed(
-        config: dict[str, Any],
-    ) -> tuple[bool, list[dict[str, Any]]]:
-        """Check if a malicious process was terminated.
-
-        ``config`` keys:
-            - ``process_name``: name of the process (e.g. ``beacon.exe``)
-            - ``host``: target host
-            - ``opensearch_index``: index to query for Sysmon Event ID 5
-        """
-        process_name = config.get("process_name", "")
-        if not process_name:
-            return False, []
-
-        # Placeholder — real implementation queries Sysmon logs for
-        # Event ID 5 (Process Terminated) matching process_name.
-        evidence: list[dict[str, Any]] = [
-            {
-                "check": "process_killed",
-                "process_name": process_name,
-                "status": "pending_verification",
-            }
-        ]
-        return False, evidence
+    # firewall_rule, process_killed and network_isolated were stubs here until 2026-10-12
+    # (firewall_rule passed every objective). They are refused: objective_catalogue says why.
 
     @staticmethod
     async def validate_user_disabled(
         config: dict[str, Any],
+        event_store: BaseEventStore | None = None,
     ) -> tuple[bool, list[dict[str, Any]]]:
-        """Check if a compromised account was disabled.
+        """Was the account disabled? Windows Security event 4725 for it, observed.
+
+        Range domain controllers audit User Account Management (infra/ansible/roles/
+        domain_controller), so a disable writes 4725. The event is looked for under each
+        field convention the range's telemetry uses: flat (``EventID``/``TargetUserName``,
+        as the scenario content queries) and Winlogbeat ECS. Only observed events count: a
+        simulated inject's synthetic records never prove an account was disabled.
 
         ``config`` keys:
-            - ``username``: the account name
-            - ``domain``: AD domain
-            - ``opensearch_index``: index for Event ID 4725
+            - ``username``: the account name (required; a plain name, no query syntax)
+            - ``index``: index pattern (default ``truenorth-*``)
+
+        Raises ``UnscoredError`` with no usable username, no store, or a store failure.
         """
-        username = config.get("username", "")
-        if not username:
-            return False, []
-
-        # Placeholder — real implementation queries Windows Security
-        # logs for Event ID 4725 (User Account Disabled).
-        evidence: list[dict[str, Any]] = [
-            {
-                "check": "user_disabled",
-                "username": username,
-                "status": "pending_verification",
-            }
+        username = str(config.get("username") or "")
+        if unresolved(username):
+            raise UnscoredError(f"username has unrendered placeholders: {', '.join(unresolved(username))}")
+        if not ACCOUNT_NAME.match(username):
+            raise UnscoredError("user_disabled objective needs a plain account name in username")
+        if event_store is None:
+            raise UnscoredError("no event store configured")
+        queries: list[str | dict[str, Any]] = [
+            f'EventID:4725 AND TargetUserName:"{username}"',
+            f'winlog.event_id:4725 AND winlog.event_data.TargetUserName:"{username}"',
+            f'event.code:4725 AND user.target.name:"{username}"',
         ]
-        return False, evidence
-
-    @staticmethod
-    async def validate_network_isolated(
-        config: dict[str, Any],
-    ) -> tuple[bool, list[dict[str, Any]]]:
-        """Check if an infected host was network-isolated.
-
-        ``config`` keys:
-            - ``host_ip``: IP of the isolated host
-            - ``vlan``: expected quarantine VLAN
-            - ``check_method``: ``ping`` or ``opensearch``
-        """
-        host_ip = config.get("host_ip", "")
-        if not host_ip:
-            return False, []
-
-        # Placeholder — real implementation would attempt connectivity
-        # or query firewall / switch logs.
-        evidence: list[dict[str, Any]] = [
-            {
-                "check": "network_isolated",
-                "host_ip": host_ip,
-                "status": "pending_verification",
-            }
-        ]
-        return False, evidence
+        index = config.get("index", "truenorth-*")
+        observed = await _observed_hits(event_store, index, queries, 1)
+        return bool(observed), observed[:20]
 
     @staticmethod
     async def validate_manual(
         config: dict[str, Any],
     ) -> tuple[bool, list[dict[str, Any]]]:
-        """Manual validation — always returns pending.
+        """An instructor's explicit acknowledgement; until then, unscored.
 
-        Instructor must mark this objective via the API.
+        Achieved only when the caller passes the instructor's acknowledgement as
+        ``approved: True`` (the API records it through ``POST /exercises/{id}/objectives/
+        {ref}/ack``). Scenario content cannot set it: the runner drops it and scenario
+        validation refuses it. Anything else raises ``UnscoredError``: awaiting review is
+        neither a pass nor a fail.
 
         ``config`` keys:
-            - ``approved``: bool set by instructor
+            - ``approved``: True once an instructor acknowledged the objective
             - ``notes``: instructor feedback
         """
-        approved = config.get("approved", False)
-        notes = config.get("notes", "Awaiting instructor review")
-        evidence: list[dict[str, Any]] = [{"manual_review": True, "approved": approved, "notes": notes}]
-        return approved, evidence
+        if config.get("approved") is not True:
+            raise UnscoredError("awaiting instructor acknowledgement")
+        notes = config.get("notes", "")
+        return True, [{"manual_review": True, "approved": True, "notes": notes}]

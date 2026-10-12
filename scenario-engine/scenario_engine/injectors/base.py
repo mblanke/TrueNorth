@@ -1,3 +1,4 @@
+import random
 from abc import ABC, abstractmethod
 from typing import Any
 
@@ -13,11 +14,17 @@ class BaseInjector(ABC):
     # execution_mode: what execute() actually does today. "simulated" means it builds
     #   synthetic records and touches nothing; every injector in this package is
     #   simulated as of 2026-10. One that delivers to real hosts must say "live".
+    #   A simulated injector's result never claims it delivered or created anything on a
+    #   host; run_inject labels it ``simulated: True`` / ``evidence_class: "synthetic"``.
     touches_range_hosts: bool = True
     execution_mode: str = "simulated"
 
     def __init__(self, params: dict[str, Any] | None = None):
         self.params = params or {}
+        # Every random choice goes through self.rng. run_inject seeds it from the exercise
+        # and inject (injectors.inject_seed), so a replay builds the same synthetic records;
+        # a direct caller gets a fixed seed rather than the process-global random.
+        self.rng = random.Random(0)
 
     @abstractmethod
     def execute(self, context: dict[str, Any]) -> dict[str, Any]: ...

@@ -62,6 +62,11 @@ def load_scenario(path: str) -> dict:
     schema_path = Path(__file__).parent.parent / "schemas" / "scenario.schema.json"
     if schema_path.exists():
         validate_against_schema(data, str(schema_path))
+    from scenario_engine.objective_catalogue import objective_errors
+
+    # Such objectives are reported unscored; the API refuses the scenario outright.
+    for err in objective_errors(data if isinstance(data, dict) else {}):
+        logger.error(f"Objective validation failed at {err['path']}: {err['message']}")
     return data
 
 
@@ -152,8 +157,11 @@ def evaluate_objectives(scenario: dict, range_ctx: dict, event_store=None) -> li
     objectives = []
     for obj in scenario.get("objectives", []):
         params = dict(obj.get("params") or {})
-        if isinstance(params.get("query"), str):
-            params["query"] = render(params["query"], scenario.get("variables"))
+        # Only an instructor approves a manual objective; content cannot pre-approve it.
+        params.pop("approved", None)
+        for key in ("query", "username"):
+            if isinstance(params.get(key), str):
+                params[key] = render(params[key], scenario.get("variables"))
         objectives.append(
             {
                 "id": obj.get("id", "unknown"),
