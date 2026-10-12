@@ -1521,8 +1521,13 @@ export interface paths {
          *     - it is published, unless the caller authors courses — a draft is 404, as on every read;
          *     - it is not retired (a stub superseded by authored content) — 409.
          *
-         *     Idempotent: enrolling again answers 200 with the existing enrolment, unchanged (it used
-         *     to be 409, so a second click read as a failure). Two racing requests make one row.
+         *     Idempotent: enrolling again answers 200 with the existing enrolment (it used to be 409,
+         *     so a second click read as a failure). Two racing requests make one row (unique
+         *     ``uq_user_course``; the loser's IntegrityError returns the winner's row).
+         *
+         *     Source (app/enrollment.py): enrolling yourself is ``self`` — the course's content, but
+         *     no seat in an exercise someone booked for the course. Enrolling someone else is
+         *     ``assigned``, and upgrades their own ``self`` row.
          */
         post: operations["enroll_user_courses__course_id__enroll_post"];
         delete?: never;

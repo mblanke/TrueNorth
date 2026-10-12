@@ -144,8 +144,13 @@ course production with a local-model fallback, and the cleanup of unsupported su
   is in the menu for `telemetry:read`. Deep links to a page a role cannot open go to the
   dashboard; the approvals queue says when it failed to load instead of "Nothing waiting".
 - **Behaviour change:** a Student reads an AAR only for a completed exercise they took part
-  in (team member or detection submitted); other exercises' reports are 404. They were
-  readable tenant-wide, mid-run reports (evidence, inject playbook) included.
+  in this run (rostered by an assigned enrolment, on one of its teams, or a detection
+  submitted since the run started); other exercises' reports are 404. They were readable
+  tenant-wide, mid-run reports (evidence, inject playbook) included.
+- **Behaviour change:** `enrollments.source` (migration `a1e2b3c4d5f6`; existing rows
+  `assigned`). A Student's own enrolment (Enrol, or a path picked in onboarding) is `self`:
+  course content, but no seat in an exercise booked for the course — no telemetry,
+  detection submission or AAR of another class's run. Staff enrolling them upgrades it.
 - Self-enrolment: **Enrol** on the course catalogue and course page. `POST
   /courses/{id}/enroll` now accepts the shared (global) catalogue, refuses retired courses
   (409), and answers a repeat with 200 and the existing enrolment (was 409); drafts and other

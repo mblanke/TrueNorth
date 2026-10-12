@@ -12,7 +12,7 @@ its ranges, including other Students' labs and ranges nobody had put them on. No
       no Student-to-exercise table; the roster that exists is a calendar booking's course:
       when a booking ties the exercise or its range to a course, and its time overlaps the
       exercise's (started to completed, or to now while it runs), only Students actively
-      enrolled in that course qualify. A range booked only at other times (last month's
+      enrolled in that course by assignment qualify (not a self-enrolment). A range booked only at other times (last month's
       class, next week's) has a roster with no seat now. An exercise with no booking at
       all stays readable by the tenant's Students here. Detection submission is stricter
       since 2026-10-09 (app/exercise_participants.py, ADR 0005): no roster, no Student
@@ -32,7 +32,7 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from .auth import CurrentUser
-from .enrollment import active_course_ids
+from .enrollment import rostered_course_ids
 from .models import Exercise, ExerciseState, Range
 from .rbac import Permission, user_has_permission
 from .tenancy import get_owned
@@ -85,7 +85,8 @@ def _takes_part(db: Session, user: CurrentUser, rng: Range) -> bool:
                 ScheduledEvent.end_time >= start,
             )
         }
-    return bool(courses & set(active_course_ids(db, uuid.UUID(user.id))))
+    # Assigned enrolments only: self-enrolling on a shared course is no seat in its class.
+    return bool(courses & set(rostered_course_ids(db, uuid.UUID(user.id))))
 
 
 def readable_telemetry_range(db: Session, range_id: uuid.UUID, user: CurrentUser) -> Range:

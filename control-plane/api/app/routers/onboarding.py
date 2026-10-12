@@ -25,7 +25,7 @@ from sqlalchemy.orm import Session
 
 from ..auth import CurrentUser, get_current_user
 from ..db import get_db
-from ..enrollment import ensure_enrollment, ensure_path_enrollment
+from ..enrollment import SELF, ensure_enrollment, ensure_path_enrollment
 from ..models import Course, Enrollment, LearningPath, Qualification, User
 from ..schemas import OnboardingPathIn, OnboardingProfileIn, OnboardingStateOut
 from ..tenancy import get_owned_or_global
@@ -155,7 +155,8 @@ def select_path(
         )
         enrolled += len(
             ensure_path_enrollment(
-                db, user_id=row.id, learning_path_id=body.learning_path_id, tenant_id=tenant_id
+                db, user_id=row.id, learning_path_id=body.learning_path_id, tenant_id=tenant_id,
+                source=SELF,  # the Student's own pick: content, not a seat in a booked class
             )
         )
 
@@ -166,7 +167,7 @@ def select_path(
         # tenant-safe: reached only through a qualification already scoped above.
         courses = db.query(Course).filter(Course.qualification_id == body.qualification_id).all()
         for course in courses:
-            ensure_enrollment(db, user_id=row.id, course_id=course.id, tenant_id=tenant_id)
+            ensure_enrollment(db, user_id=row.id, course_id=course.id, tenant_id=tenant_id, source=SELF)
             enrolled += 1
 
     data = _data(row)

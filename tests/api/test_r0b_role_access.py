@@ -59,7 +59,7 @@ def _on_team(db, ex: Exercise, user) -> None:
 
 def _submitted(db, ex: Exercise, user) -> None:
     db.add(DetectionSubmission(tenant_id=ex.tenant_id, exercise_id=ex.id, objective_ref="o", user_id=uuid.UUID(user.id),
-                               query="q", verdict="missed"))
+                               query="q", verdict="missed", window_start=ex.started_at))  # in this run
     db.flush()
 
 

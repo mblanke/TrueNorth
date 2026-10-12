@@ -10,7 +10,14 @@ the answer key (ADR 0005 §5).
 A Student now reads an AAR only when both hold:
 
 - the exercise is completed (nothing left to be scored, so nothing in it is an answer key);
-- they took part: a member of one of its teams, or they submitted a detection in it.
+- they took part in this run (``took_part``), by any of:
+    * the roster: an assigned enrolment in a course whose booking overlaps the run
+      (``exercise_participants.roster_courses``; a self-enrolment is no seat);
+    * a member of one of the exercise's teams, as staff have them now (teams belong to the
+      exercise, not to one run: a replay keeps them, and a Student taken off a team is out);
+    * a detection submitted in this run (``window_start >= started_at``, as ``_attempts``
+      counts them), so a run-1 submitter does not read run 2's report after
+      ``run?reset=true``.
 
 Anything else is 404, the same answer as for another tenant's exercise or a report not
 generated yet (tenancy.py: "this exists but is not yours" is itself disclosure). Staff and
@@ -25,6 +32,8 @@ from sqlalchemy.orm import Session
 
 from .auth import CurrentUser
 from .detections.models import DetectionSubmission
+from .enrollment import rostered_course_ids
+from .exercise_participants import roster_courses
 from .models import Exercise, ExerciseState, Team, TeamMembership, UserRole
 
 
@@ -34,6 +43,8 @@ def scoped_to_participation(user: CurrentUser) -> bool:
 
 
 def took_part(db: Session, ex: Exercise, user_id: uuid.UUID) -> bool:
+    if roster_courses(db, ex) & set(rostered_course_ids(db, user_id)):
+        return True
     on_a_team = (
         db.query(TeamMembership.id)
         .join(Team, TeamMembership.team_id == Team.id)
@@ -42,9 +53,15 @@ def took_part(db: Session, ex: Exercise, user_id: uuid.UUID) -> bool:
     )
     if on_a_team:
         return True
+    if ex.started_at is None:
+        return False  # never ran: no submission belongs to a run of it
     submitted = (
         db.query(DetectionSubmission.id)
-        .filter(DetectionSubmission.exercise_id == ex.id, DetectionSubmission.user_id == user_id)
+        .filter(
+            DetectionSubmission.exercise_id == ex.id,
+            DetectionSubmission.user_id == user_id,
+            DetectionSubmission.window_start >= ex.started_at,
+        )
         .first()
     )
     return submitted is not None

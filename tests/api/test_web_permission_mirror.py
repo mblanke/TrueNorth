@@ -18,6 +18,14 @@ TS = Path(__file__).resolve().parents[2] / "control-plane/web/src/app/core/auth/
 TOKEN = re.compile(r"'([a-z_]+:[a-z_]+)'")
 
 
+COMMENTS = re.compile(r"/\*.*?\*/|//[^\n]*", re.DOTALL)
+
+
+def _strip_comments(text: str) -> str:
+    """A commented-out ``// 'x:y'`` is not a grant (the markers are re-found first)."""
+    return COMMENTS.sub("", text)
+
+
 def _ts() -> str:
     return TS.read_text(encoding="utf-8")
 
@@ -27,7 +35,7 @@ def _block(text: str, start: str, end: str) -> str:
 
 
 def _web_table() -> dict[str, set[str] | str]:
-    mirror = _block(_ts(), "// mirror:start", "// mirror:end")
+    mirror = _strip_comments(_block(_ts(), "// mirror:start", "// mirror:end"))
     roles = list(re.finditer(r"^\s{2}([a-z_]+):", mirror, re.MULTILINE))
     out: dict[str, set[str] | str] = {}
     for i, m in enumerate(roles):
@@ -37,8 +45,13 @@ def _web_table() -> dict[str, set[str] | str]:
 
 
 def test_every_permission_is_known_to_the_web_app():
-    declared = set(TOKEN.findall(_block(_ts(), "export const ALL_PERMISSIONS", "];")))
+    declared = set(TOKEN.findall(_strip_comments(_block(_ts(), "export const ALL_PERMISSIONS", "];"))))
     assert declared == {p.value for p in Permission}
+
+
+def test_commented_out_grants_are_not_counted():
+    text = "  student: [\n    'wiki:read',\n    // 'infra:read',\n    /* 'audit:read', */\n  ],\n"
+    assert set(TOKEN.findall(_strip_comments(text))) == {"wiki:read"}
 
 
 def test_each_role_matches_rbac():

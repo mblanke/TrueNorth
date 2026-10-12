@@ -789,7 +789,7 @@ class Enrollment(TimestampMixin, Base):
     final_grade: Mapped[str | None] = mapped_column(String(10), nullable=True)  # A/B/C/D/F
     final_score: Mapped[int] = mapped_column(Integer, default=0)
     max_score: Mapped[int] = mapped_column(Integer, default=0)
-
+    source: Mapped[str] = mapped_column(String(16), default="assigned", server_default="assigned")  # or "self": enrollment.py
     course: Mapped[Course] = relationship(back_populates="enrollments")
     module_progress: Mapped[list[ModuleProgress]] = relationship(back_populates="enrollment")
 

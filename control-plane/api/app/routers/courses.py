@@ -21,7 +21,7 @@ from ..course_publishing.models import CoursePublication
 from ..course_releases.models import CourseRelease
 from ..db import get_db
 from ..delete_guard import commit_delete, refuse_if
-from ..enrollment import complete_enrollment, ensure_enrollment, ensure_path_enrollment
+from ..enrollment import ASSIGNED, SELF, complete_enrollment, ensure_enrollment, ensure_path_enrollment
 from ..models import (
     ContentKind,
     Course,
@@ -555,11 +555,17 @@ def enroll_user(
     - it is published, unless the caller authors courses — a draft is 404, as on every read;
     - it is not retired (a stub superseded by authored content) — 409.
 
-    Idempotent: enrolling again answers 200 with the existing enrolment, unchanged (it used
-    to be 409, so a second click read as a failure). Two racing requests make one row.
+    Idempotent: enrolling again answers 200 with the existing enrolment (it used to be 409,
+    so a second click read as a failure). Two racing requests make one row (unique
+    ``uq_user_course``; the loser's IntegrityError returns the winner's row).
+
+    Source (app/enrollment.py): enrolling yourself is ``self`` — the course's content, but
+    no seat in an exercise someone booked for the course. Enrolling someone else is
+    ``assigned``, and upgrades their own ``self`` row.
     """
     # Self, or user:update over someone in your own tenant — never across tenants.
     authorize_record_access(db, user, body.user_id, permission=Permission.USER_UPDATE)
+    source = SELF if str(body.user_id) == str(user.id) else ASSIGNED
 
     # Global courses (tenant NULL) are the standard programme every tenant enrols on;
     # get_owned 404'd on them, so a Student could not enrol on the shared catalogue.
@@ -570,13 +576,19 @@ def enroll_user(
 
     existing = _existing_enrollment(db, body.user_id, course_id)
     if existing:
+        if source == ASSIGNED and existing.source != ASSIGNED:
+            ensure_enrollment(db, user_id=body.user_id, course_id=course_id, tenant_id=user.tenant_id, source=source)
+            db.commit()
+            db.refresh(existing)
         response.status_code = status.HTTP_200_OK
         return existing
     if qsp_paths.course_meta_of(course).get("retired"):
         raise HTTPException(status.HTTP_409_CONFLICT, "This course is retired and no longer takes enrolments")
 
     try:
-        enrollment = ensure_enrollment(db, user_id=body.user_id, course_id=course_id, tenant_id=user.tenant_id)
+        enrollment = ensure_enrollment(
+            db, user_id=body.user_id, course_id=course_id, tenant_id=user.tenant_id, source=source
+        )
         db.commit()
     except IntegrityError:
         # A concurrent request enrolled first (uq_user_course): that row is the answer.
