@@ -39,6 +39,20 @@ The TrueNorth Range Content Library provides pre-built, tested, and versioned tr
 
 ## Courses
 
+`content/courses/` holds the 44 catalogue course files of the programme in
+`content/catalogue/cyber_operator_programme.csv` (tracked in
+`content/catalogue/production_register.csv`). Every one is `status: draft`: generated or
+unsourced courseware that Standards has not validated. Imports are always unpublished.
+
+**Staging (`tn-staging`, v1.2.0-rc3) lists 45 courses.** It loads the shipped content with
+`tn_publish_shipped_content` on, and the ARC² batch driver
+(`scripts/arc2_batch_inprocess.py`) has run the catalogue through the Course Studio there.
+Those releases are **TEST CONTENT**: the staging runner accepts the outline and preview
+gates by itself (`ARC2_AUTO_ACCEPT_GATES`, recorded as `accepted_by: auto (test host)`,
+badged "TEST CONTENT" in the Studio) and the batch accepts each release's open actions with
+the note "auto-accepted test content (staging)". Nobody reviewed them. Never release them
+to Students or copy them to another host ([arc2-course-studio.md](arc2-course-studio.md)).
+
 ### C105 release: a test fixture, the course stays a draft
 
 `content/releases/c105-foundations-d0e83b9f6c1f.tar.gz` is the ARC² release of C105 that
@@ -52,8 +66,10 @@ Nothing publishes it automatically. The installer's shipped-content load
 (`tn_load_shipped_content`, `scripts/load_content_inprocess.py`) never uploads a release, and
 with `tn_publish_shipped_content` it publishes every course, quiz and learning path
 **except** the courses in its `KEEP_DRAFT` list (C105) and their quizzes
-(`tests/contracts/test_installer_shipped_content.py`). A host that loaded the content
-before this rule keeps whatever it published then: unpublish C105 there by hand.
+(`tests/contracts/test_installer_shipped_content.py`). The ARC² batch driver on a test
+host skips C105 the same way, whatever `--courses` says
+(`tests/scripts/test_arc2_batch_inprocess.py`). A host that loaded the content or ran the
+batch before this rule keeps whatever it published then: unpublish C105 there by hand.
 
 ---
 
