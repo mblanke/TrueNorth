@@ -184,7 +184,7 @@ const POLL_MS = 10_000;
         </mat-card>
 
         <tn-range-snapshots class="section" [rangeId]="r.id" [rangeState]="r.state"
-                            [canProvision]="caps().changeRange" [canDelete]="caps().changeRange"
+                            [canProvision]="caps().changeRange" [canDelete]="caps().deleteSnapshot"
                             (changed)="reload()" />
       }
     </div>

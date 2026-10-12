@@ -10,6 +10,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
 import { AuthService } from '@core/services/auth.service';
+import { roleCan } from '@core/auth/permissions';
 import { NotificationService } from '@core/services/notification.service';
 import {
   DirectoryUser, OperatorRecordsApiService, TeamMember, TeamSummary,
@@ -180,7 +181,7 @@ export class TeamMembersComponent implements OnInit {
   newRole = 'member';
 
   /** user:update is admin-only (rbac.py); an instructor reads. */
-  readonly canEdit = computed(() => this.auth.user()?.role === 'admin');
+  readonly canEdit = computed(() => roleCan(this.auth.user()?.role, 'user:update'));
   readonly candidates = computed(() => {
     const on = new Set((this.members() ?? []).map(m => m.user_id));
     return this.users().filter(u => !on.has(u.id) && u.is_active);

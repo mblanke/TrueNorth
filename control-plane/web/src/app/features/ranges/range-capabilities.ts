@@ -1,29 +1,34 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import type { UserRole } from '@core/services/auth.service';
+import { PAGE_ACCESS, roleCan, roleHasAccess } from '@core/auth/permissions';
 
 /**
- * What the range recovery screen offers each role. A mirror of control-plane/api/app/rbac.py
- * for display only: the API checks every call, and a refusal is shown as such.
+ * What the range recovery screen offers each role, read from the permission table
+ * (core/auth/permissions.ts, a mirror of control-plane/api/app/rbac.py). Display only:
+ * the API checks every call, and a refusal is shown as such.
  *
- * - view (range:read, staff only on this screen): admin, instructor, range_ops, observer
- * - abandon an operation, snapshots (range:provision / range:destroy): admin, instructor, range_ops
- * - force-release a lease (range:lease_force_release): admin
+ * - view: PAGE_ACCESS.rangeRecovery, the same key the route's pageGuard checks
+ * - abandon an operation, take/restore a snapshot: range:provision / range:destroy
+ * - delete a snapshot: range:destroy
+ * - force-release a lease: range:lease_force_release
  * - abandon a range: a platform administrator only (an admin of the operator's tenant), as
  *   GET /auth/me reports it (`platform_admin`); other admins would only get a 403
  */
 export interface RangeCapabilities {
   view: boolean;
+  /** Abandon an operation (range:destroy) and take or restore a snapshot (range:provision). */
   changeRange: boolean;
+  deleteSnapshot: boolean;
   forceRelease: boolean;
   abandonRange: boolean;
 }
 
 export function rangeCapabilities(role: UserRole | null | undefined, platformAdmin = false): RangeCapabilities {
-  const staff = role === 'admin' || role === 'instructor' || role === 'range_ops';
   return {
-    view: staff || role === 'observer',
-    changeRange: staff,
-    forceRelease: role === 'admin',
+    view: roleHasAccess(role, PAGE_ACCESS.rangeRecovery),
+    changeRange: roleCan(role, 'range:provision') && roleCan(role, 'range:destroy'),
+    deleteSnapshot: roleCan(role, 'range:destroy'),
+    forceRelease: roleCan(role, 'range:lease_force_release'),
     abandonRange: role === 'admin' && platformAdmin,
   };
 }

@@ -9,6 +9,7 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatSelectModule } from '@angular/material/select';
 import { AuthService } from '@core/services/auth.service';
+import { roleCan } from '@core/auth/permissions';
 import { NotificationService } from '@core/services/notification.service';
 import {
   CourseDetail, CourseEnrollment, CourseSummary, DirectoryUser, ModuleProgress, OperatorRecordsApiService,
@@ -176,11 +177,8 @@ export class LearnerProgressComponent implements OnInit {
   busy = signal(false);
   outcome = signal('');
 
-  /** learning_record:write: instructor and admin (rbac.py). The route already requires one. */
-  readonly canComplete = computed(() => {
-    const role = this.auth.user()?.role;
-    return role === 'admin' || role === 'instructor';
-  });
+  /** learning_record:write (core/auth/permissions.ts, mirrored from rbac.py). */
+  readonly canComplete = computed(() => roleCan(this.auth.user()?.role, 'learning_record:write'));
 
   ngOnInit(): void {
     this.api.listCourses().subscribe({

@@ -134,11 +134,13 @@ describe('AppComponent', () => {
       '/scoring', '/wiki'],
     range_ops: ['/dashboard', '/learning', '/authoring', '/exercises', '/ops-center/select', '/telemetry',
       '/schedule', '/wiki', '/support', '/infrastructure', '/ai-orchestrator'],
-    instructor: ['/dashboard', '/learning', '/authoring', '/exercises', '/ops-center/select', '/telemetry',
-      '/schedule', '/scoring', '/wiki', '/support', '/approvals', '/infrastructure', '/ai-orchestrator'],
-    admin: ['/dashboard', '/learning', '/authoring', '/exercises', '/ops-center/select', '/telemetry',
-      '/schedule', '/scoring', '/wiki', '/support', '/approvals', '/infrastructure', '/ai-orchestrator',
-      '/integrations', '/users', '/admin'],
+    // Student progress (learning_record:read) and Teams (user:read): instructors and admins.
+    instructor: ['/dashboard', '/learning', '/learning/admin/progress', '/authoring', '/exercises',
+      '/ops-center/select', '/telemetry', '/schedule', '/scoring', '/wiki', '/support', '/approvals', '/teams',
+      '/infrastructure', '/ai-orchestrator'],
+    admin: ['/dashboard', '/learning', '/learning/admin/progress', '/authoring', '/exercises',
+      '/ops-center/select', '/telemetry', '/schedule', '/scoring', '/wiki', '/support', '/approvals', '/teams',
+      '/infrastructure', '/ai-orchestrator', '/integrations', '/users', '/admin'],
   };
   for (const role of Object.keys(MENU) as UserRole[]) {
     it(`shows ${role} exactly the pages the role may open`, () => {

@@ -210,9 +210,13 @@ describe('RangeDetailComponent', () => {
     expect(el.textContent).toContain('re-reading every 10 s');
   });
 
-  it('maps roles like rbac.py', () => {
+  it('reads the permission table: the screen (PAGE_ACCESS.rangeRecovery) and each action', () => {
     expect(rangeCapabilities('student').view).toBeFalse();
-    expect(rangeCapabilities('observer')).toEqual({ view: true, changeRange: false, forceRelease: false, abandonRange: false });
+    expect(rangeCapabilities('observer')).toEqual(
+      { view: false, changeRange: false, deleteSnapshot: false, forceRelease: false, abandonRange: false });
+    expect(rangeCapabilities('range_ops').view).toBeTrue();
+    expect(rangeCapabilities('range_ops').deleteSnapshot).toBeTrue();
+    expect(rangeCapabilities('instructor').view).toBeTrue();
     expect(rangeCapabilities('instructor').changeRange).toBeTrue();
     expect(rangeCapabilities('instructor').forceRelease).toBeFalse();
     expect(rangeCapabilities('admin').forceRelease).toBeTrue();

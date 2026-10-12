@@ -161,6 +161,12 @@ export const PAGE_ACCESS = {
   aiOrchestrator: { all: ['ai_config:read'] },
   support: { all: ['ticket:create'] },
   wiki: { all: ['wiki:read'] },
+  /** A range's operations, lease, reservations and snapshots (R0-B): those who act on ranges. */
+  rangeRecovery: { all: ['range:read'], any: ['range:provision', 'range:destroy'] },
+  /** GET /teams/{id}/members; adding and removing needs user:update (admins). */
+  teams: { all: ['user:read'] },
+  /** GET /courses/{id}/enrollments and /progress/{uid}; mark-complete needs learning_record:write. */
+  learnerProgress: { all: ['learning_record:read'] },
 } as const satisfies Record<string, Access>;
 
 export type PageKey = keyof typeof PAGE_ACCESS;

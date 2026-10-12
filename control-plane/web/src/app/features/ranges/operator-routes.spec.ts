@@ -1,6 +1,9 @@
 import { TestBed } from '@angular/core/testing';
 import { Router, RoutesRecognized, provideRouter } from '@angular/router';
 import { routes } from '../../app.routes';
+import { PAGE_ACCESS, roleHasAccess } from '@core/auth/permissions';
+import { instructorGuard } from '@core/guards/auth.guard';
+import type { UserRole } from '@core/services/auth.service';
 
 /**
  * The R0-B routes resolve to their own screens, including `learning/admin/progress`,
@@ -39,5 +42,23 @@ describe('R0-B operator routes', () => {
 
   it('learning/admin/progress is Student progress, not the course admin screen', async () => {
     expect(await resolve('/learning/admin/progress')).toBe('Student progress - TrueNorth Range');
+  });
+
+  /** The keys these routes' pageGuards check, and the menu reads: who gets in. */
+  it('admits each role per the permission table', () => {
+    const who = (key: 'rangeRecovery' | 'teams' | 'learnerProgress') =>
+      (['admin', 'instructor', 'range_ops', 'observer', 'student'] as UserRole[])
+        .filter(r => roleHasAccess(r, PAGE_ACCESS[key]));
+    expect(who('rangeRecovery')).toEqual(['admin', 'instructor', 'range_ops']);
+    expect(who('teams')).toEqual(['admin', 'instructor']);
+    expect(who('learnerProgress')).toEqual(['admin', 'instructor']);
+  });
+
+  it('guards the three routes with the permission table, not a role list', () => {
+    for (const path of ['ranges/:id', 'teams', 'learning/admin/progress']) {
+      const route = routes.find(r => r.path === path)!;
+      expect(route.canActivate?.length).withContext(path).toBe(3);
+      expect(route.canActivate).not.toContain(instructorGuard);
+    }
   });
 });

@@ -10,7 +10,6 @@ import {
   scheduleGuard,
   registrationGuard,
 } from './core/guards/auth.guard';
-import { rangeStaffGuard } from './features/ranges/range-staff.guard';
 
 export const routes: Routes = [
   {
@@ -446,16 +445,17 @@ export const routes: Routes = [
   },
   // -- R0-B operator screens (range recovery, team membership, Student progress). Kept
   //    in one block so menu changes elsewhere do not collide with it. The API checks every
-  //    call; these guards only keep each screen to the roles that can use it. --
+  //    call; these guards (PAGE_ACCESS, as the menu reads it) only keep each screen to the
+  //    roles that can use it. --
   {
     path: 'ranges/:id',
-    canActivate: [authGuard, onboardingGuard, rangeStaffGuard],
+    canActivate: [authGuard, onboardingGuard, pageGuard('rangeRecovery')],
     loadComponent: () => import('./features/ranges/range-detail.component').then(m => m.RangeDetailComponent),
     title: 'Range recovery - TrueNorth Range',
   },
   {
     path: 'teams',
-    canActivate: [authGuard, onboardingGuard, instructorGuard],
+    canActivate: [authGuard, onboardingGuard, pageGuard('teams')],
     loadComponent: () => import('./features/teams/team-members.component').then(m => m.TeamMembersComponent),
     title: 'Team membership - TrueNorth Range',
   },
@@ -463,7 +463,7 @@ export const routes: Routes = [
     // Under the course administration area; the 'learning' hub has no such child, so the
     // router falls through to this route.
     path: 'learning/admin/progress',
-    canActivate: [authGuard, onboardingGuard, instructorGuard],
+    canActivate: [authGuard, onboardingGuard, pageGuard('learnerProgress')],
     loadComponent: () =>
       import('./features/training/learner-progress.component').then(m => m.LearnerProgressComponent),
     title: 'Student progress - TrueNorth Range',
