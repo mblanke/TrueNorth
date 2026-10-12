@@ -96,7 +96,8 @@ ansible-vault encrypt inventory/group_vars/all/vault.yml
 #    60-keycloak creates). Without this the install finishes with an approval queue nobody
 #    can drain. Pin the release to install (docs/release.md): tn_release_version: v1.2.3.
 #    The AI endpoint (tn_ai_base_url) has no default. The backup escrow is REQUIRED
-#    ("Backups"). Set vault_alertmanager_webhook_url too, or alerts go nowhere ("Alerting").
+#    ("Backups"). Turn on alert email (tn_alert_email_enabled) or alerts go nowhere
+#    ("Alerting").
 $EDITOR inventory/group_vars/all/main.yml        # or inventory/hosts.yml host vars
 
 # 3. TLS: drop truenorth.crt / truenorth.key into files/tls/
@@ -448,15 +449,79 @@ load`s the ones that changed, and runs the same digest check instead of pulling.
 
 ## Alerting
 
-Prometheus evaluates the 19 rules in `monitoring/prometheus/alerts.yml` and sends what
-fires to the `alertmanager` service. **By default Alertmanager routes everything to a
-`null` receiver: nobody is told.** `30-config` says so in a warning, and `99-validate`
-reports `alerts: NOWHERE`. For any platform Students use, set
+Prometheus evaluates the rules in `monitoring/prometheus/alerts.yml` and sends what fires
+to the `alertmanager` service. **By default Alertmanager routes everything to a `null`
+receiver: nobody is told.** `30-config` says so in a warning, and `99-validate` reports
+`alerts: NOWHERE (null receiver)` with a `WARNING: ALERTS ARE NOT DELIVERED` of its own.
+
+### Email (the supported receiver)
+
+Set, in the inventory and the vault, then run `00-preflight`, `30-config` and
+`50-stack-up` (or the whole `site.yml`):
+
+| Variable | Default | Note |
+|---|---|---|
+| `tn_alert_email_enabled` | `false` (staging too, until its SMTP details are set) | Off: the null receiver (or the webhook, below). |
+| `tn_alert_email_to` | *(empty — required when on)* | One address, or several separated by commas. |
+| `tn_alert_email_from` | *(empty — required when on)* | An address the relay lets this host send as. |
+| `tn_alert_smtp_host` | *(empty — required when on)* | The SMTP relay, reached over `tn-egress`. |
+| `tn_alert_smtp_port` | `587` | `465` is implicit TLS (Alertmanager detects it). |
+| `tn_alert_smtp_require_tls` | `true` | STARTTLS required; `false` only for a relay on a trusted network. |
+| `vault_alert_smtp_username` / `vault_alert_smtp_password` | `CHANGE_ME` in `vault.yml.example` | Both set, or both empty for a relay that accepts unauthenticated mail from this host. |
+
+Preflight refuses an empty recipient, sender or relay, a `CHANGE_ME` in either credential,
+or one credential without the other; it ignores them while alert email is off.
+`30-config` renders `/srv/truenorth/config/alertmanager/alertmanager.email.yml` (0400,
+owned by Alertmanager's uid 65534) and writes the password to `smtp_password` beside it
+(0600), which the config reads with `smtp_auth_password_file`: the password is not in the
+config, the env file or `docker inspect`, and both tasks are `no_log`. The env file then
+selects that config (`ALERTMANAGER_CONFIG_DIR`, `ALERTMANAGER_CONFIG=alertmanager.email.yml`)
+and the role restarts a running Alertmanager when either file changes. Turning it off
+removes both files and selects the shipped config again.
+
+Routing: a **critical** is mailed at once (`group_wait: 0s`) and again every hour while it
+fires; **warnings** are batched (`group_wait: 5m`, `group_interval: 15m`) and repeat every
+12 h; a critical inhibits the warning of the same name and instance; every message has a
+**resolved** follow-up. Subjects start `[TrueNorth <tn_domain_fqdn>]`, so staging and
+production can share an inbox. If `vault_alertmanager_webhook_url` is set as well, the same
+alerts go to the webhook too.
+
+### Prove delivery (`tn-alert-test`)
+
+A config that loads is not a message that arrives. After every change, fire a synthetic
+critical alert and look for it in the inbox:
+
+```bash
+ansible-playbook -i inventory/staging.yml playbooks/alert-test.yml --ask-vault-pass
+# or: ansible-playbook -i inventory/staging.yml site.yml --tags tn-alert-test --ask-vault-pass
+```
+
+It sends `TrueNorthAlertTest` (severity `critical`, a fresh `run` label each time) with
+`amtool` inside `tn-alertmanager`, then watches Alertmanager's
+`alertmanager_notification_requests_total` / `_failed_total` counters (per attempt, so a
+refusal shows at once): it fails if the relay refused it three times or never accepted it
+(`docker logs --since 5m tn-alertmanager` says why), or if nothing was attempted within 2
+minutes. The counters cover every email Alertmanager sends, so run it when nothing else is
+firing. `SENT` means the relay accepted it; delivery is proven when
+`[TrueNorth <fqdn>] [FIRING:1] TrueNorthAlertTest ...` is in `tn_alert_email_to`, followed
+about 5 minutes later by `[RESOLVED]`. Record both (time, mailbox) as the delivery
+evidence. The same alert by hand, on the platform host:
+
+```bash
+docker exec tn-alertmanager amtool --alertmanager.url=http://localhost:9093 \
+  alert add TrueNorthAlertTest severity=critical source=tn-alert-test run=$(date +%s) \
+  --annotation='summary="TrueNorth alert delivery test"' \
+  --end=$(date -u -d '+5 minutes' +%Y-%m-%dT%H:%M:%SZ)
+```
+
+### Webhook
+
 `vault_alertmanager_webhook_url` (anything that accepts Alertmanager's webhook JSON: a chat
-bridge, an incident tool) and re-run `30-config` and `50-stack-up`. The installer writes
+bridge, an incident tool), then re-run `30-config` and `50-stack-up`. The installer writes
 the URL to `/srv/truenorth/config/alertmanager/webhook_url` (read with `url_file`, so it is
-not in the environment) and selects `alertmanager.webhook.yml`. Criticals repeat hourly,
-warnings every 4 h; a critical inhibits the warning of the same name and instance.
+not in the environment). Without alert email it selects the shipped
+`alertmanager.webhook.yml`: criticals repeat hourly, warnings every 4 h. Test it with the
+same playbook.
 
 Check a config change before shipping it:
 
@@ -464,6 +529,8 @@ Check a config change before shipping it:
 cd infra/platform/docker/monitoring
 docker run --rm --entrypoint amtool -v "$PWD/alertmanager:/c:ro" prom/alertmanager:v0.27.0 \
   check-config /c/alertmanager.yml /c/alertmanager.webhook.yml
+# The rendered email config, on the platform host:
+docker exec tn-alertmanager amtool check-config /etc/alertmanager/alertmanager.yml
 docker run --rm --entrypoint promtool -v "$PWD/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro" \
   -v "$PWD/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro" \
   -v "$PWD/prometheus/secrets-dev:/etc/prometheus/secrets:ro" prom/prometheus:v2.51.0 \
@@ -747,7 +814,8 @@ actually change:
 | `tn_image_source` | `release` | `build` only for a lab ("Images") |
 | `tn_release_version` | *(empty — required in release mode)* | The release tag to install, e.g. `v1.2.3` |
 | `tn_release_dir` / `tn_image_archive_dir` | *(empty)* | Air-gapped: the release files, and `docker save` tarballs |
-| `vault_alertmanager_webhook_url` | *(empty: alerts go nowhere)* | "Alerting" |
+| `tn_alert_email_enabled` | `false` (staging too, until its SMTP details are set) | Alerts by email; with `tn_alert_email_to`, `tn_alert_email_from`, `tn_alert_smtp_host`, `tn_alert_smtp_port` (`587`), `tn_alert_smtp_require_tls` (`true`) and `vault_alert_smtp_username` / `vault_alert_smtp_password` ("Alerting"). Off: alerts go nowhere. |
+| `vault_alertmanager_webhook_url` | *(empty)* | A webhook receiver, alone or beside email ("Alerting"). |
 | `tn_bootstrap_admin_upn` | *(empty — required)* | The named AD account that admits everyone else. |
 | `tn_tls_mode` | `selfsigned` | `provided` once the AD CS certificate is in `files/tls/` |
 | `tn_opensearch_disable_security` | `false` | Lab/dev override only: OpenSearch without auth or TLS ("OpenSearch" above). |

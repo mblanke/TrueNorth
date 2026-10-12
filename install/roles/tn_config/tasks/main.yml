@@ -69,14 +69,81 @@
     mode: "0400"
   no_log: true
 
+# ── Alert delivery by email (tn_alert_email_enabled; preflight checked the settings) ──
+# The config is rendered here, not shipped in the checkout: recipient, sender and relay
+# are per site. The SMTP password goes to its own 0600 file (smtp_auth_password_file).
+# Off, both files are removed and the env file selects the shipped config again.
+# 30-config can run without 00-preflight: a config with no relay would crash-loop Alertmanager.
+- name: Config — alert email settings are usable
+  ansible.builtin.assert:
+    that:
+      - tn_alert_email_to | default('') | string | trim | length > 0
+      - tn_alert_email_from | default('') | string | trim | length > 0
+      - tn_alert_smtp_host | default('') | string | trim | length > 0
+      - vault_alert_smtp_username | default('') | string is not search('CHANGE_ME')
+      - vault_alert_smtp_password | default('') | string is not search('CHANGE_ME')
+    fail_msg: >-
+      tn_alert_email_enabled is true but its settings are incomplete or still CHANGE_ME:
+      run playbooks/00-preflight.yml, which names what is missing (install/README.md "Alerting").
+    quiet: true
+  when: tn_alert_email_enabled | default(false) | bool
+
+- name: Config — the app's compose file can mount a rendered Alertmanager config
+  ansible.builtin.command:
+    argv: [grep, -q, ALERTMANAGER_CONFIG_DIR, "{{ tn_compose_file }}"]
+  register: tn_alertmanager_config_dir_support
+  changed_when: false
+  failed_when: tn_alertmanager_config_dir_support.rc != 0
+  when: tn_alert_email_enabled | default(false) | bool
+
+- name: Config — Alertmanager SMTP password
+  become: true
+  ansible.builtin.copy:
+    dest: "{{ tn_config_dir }}/alertmanager/smtp_password"
+    content: "{{ vault_alert_smtp_password | string | trim }}"
+    owner: "65534"
+    group: "65534"
+    mode: "0600"
+  no_log: true
+  notify: Restart Alertmanager
+  when:
+    - tn_alert_email_enabled | default(false) | bool
+    - vault_alert_smtp_username | default('') | string | trim | length > 0
+
+- name: Config — Alertmanager email receiver
+  become: true
+  ansible.builtin.template:
+    src: alertmanager.email.yml.j2
+    dest: "{{ tn_config_dir }}/alertmanager/alertmanager.email.yml"
+    owner: "65534"
+    group: "65534"
+    mode: "0400"
+  no_log: true
+  notify: Restart Alertmanager
+  when: tn_alert_email_enabled | default(false) | bool
+
+- name: Config — no alert email files while it is off (or without SMTP auth)
+  become: true
+  ansible.builtin.file:
+    path: "{{ tn_config_dir }}/alertmanager/{{ item }}"
+    state: absent
+  loop: >-
+    {{ (['alertmanager.email.yml'] if not tn_alert_email_enabled | default(false) | bool else [])
+       + (['smtp_password'] if not (tn_alert_email_enabled | default(false) | bool
+                                    and vault_alert_smtp_username | default('') | string | trim | length > 0)
+          else []) }}
+
 - name: Config — ALERTS GO NOWHERE
   ansible.builtin.debug:
     msg: >-
-      WARNING: vault_alertmanager_webhook_url is empty, so Alertmanager routes every alert
-      to a null receiver: the 19 Prometheus rules fire and nobody is told. Set it in the
-      vault and re-run playbooks/30-config.yml and 50-stack-up.yml (install/README.md
-      "Alerting").
-  when: vault_alertmanager_webhook_url | default('') | length == 0
+      WARNING: alert delivery is off (tn_alert_email_enabled is false and
+      vault_alertmanager_webhook_url is empty), so Alertmanager routes every alert to a null
+      receiver: the Prometheus rules fire and nobody is told. Set tn_alert_email_enabled
+      and its settings, then re-run playbooks/30-config.yml and 50-stack-up.yml
+      (install/README.md "Alerting").
+  when:
+    - not tn_alert_email_enabled | default(false) | bool
+    - vault_alertmanager_webhook_url | default('') | length == 0
 
 # ── Backups ───────────────────────────────────────────────────────────
 # Every backup escrows the env file and config/secrets/ (TN_SECRETS_KEY, every database

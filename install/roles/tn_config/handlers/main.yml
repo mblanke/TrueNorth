@@ -1,0 +1,16 @@
+---
+# Alertmanager's config is a single-file bind mount: the template module replaces the
+# file (a new inode), which a running container never sees, and a reload would re-read
+# the old one. A restart re-binds it. Nothing to do while it is not running: the next
+# `up` mounts the new file.
+- name: Restart Alertmanager
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      set -euo pipefail
+      if [ -n "$(docker ps -q --filter name=^tn-alertmanager$)" ]; then
+        docker restart tn-alertmanager >/dev/null
+        echo RESTARTED
+      fi
+  register: tn_alertmanager_restart
+  changed_when: "'RESTARTED' in tn_alertmanager_restart.stdout"

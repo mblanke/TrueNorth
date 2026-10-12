@@ -1177,17 +1177,21 @@ services:
 
   # Routes the alerts in monitoring/prometheus/alerts.yml. The default config
   # (monitoring/alertmanager/alertmanager.yml) sends them NOWHERE (a null receiver):
-  # set a webhook (install/README.md "Alerting") or nobody is told when a rule fires.
+  # turn on alert email or set a webhook (install/README.md "Alerting") or nobody is told
+  # when a rule fires.
   alertmanager:
     image: prom/alertmanager:v0.27.0@sha256:e13b6ed5cb929eeaee733479dce55e10eb3bc2e9c4586c705a4e8da41e5eacf5
     container_name: tn-alertmanager
     restart: always
     <<: *hardened
     volumes:
-      # alertmanager.yml (null receiver) or alertmanager.webhook.yml (ALERTMANAGER_CONFIG).
-      - ./monitoring/alertmanager/${ALERTMANAGER_CONFIG:-alertmanager.yml}:/etc/alertmanager/alertmanager.yml:ro
-      # webhook_url (read with url_file, so the URL and any token in it stay out of the
-      # environment). The installer writes it; secrets-dev/ holds a placeholder.
+      # alertmanager.yml (null receiver) or alertmanager.webhook.yml (ALERTMANAGER_CONFIG),
+      # both shipped here; or, with ALERTMANAGER_CONFIG_DIR, the alertmanager.email.yml the
+      # installer renders per site (tn_alert_email_enabled).
+      - ${ALERTMANAGER_CONFIG_DIR:-./monitoring/alertmanager}/${ALERTMANAGER_CONFIG:-alertmanager.yml}:/etc/alertmanager/alertmanager.yml:ro
+      # webhook_url and smtp_password (read with url_file / smtp_auth_password_file, so
+      # they stay out of the environment). The installer writes them; secrets-dev/ holds a
+      # placeholder.
       - ${ALERTMANAGER_SECRETS_DIR:-./monitoring/alertmanager/secrets-dev}:/etc/alertmanager/secrets:ro
       - alertmanager-data:/alertmanager
     command:
@@ -1214,7 +1218,7 @@ services:
         max-file: "5"
     networks:
       - tn-monitoring
-      - tn-egress # the webhook receiver is off-host; tn-monitoring is internal
+      - tn-egress # the SMTP relay and webhook receiver are off-host; tn-monitoring is internal
 
   grafana:
     image: grafana/grafana:10.4.0@sha256:f9811e4e687ffecf1a43adb9b64096c50bc0d7a782f8608530f478b6542de7d5

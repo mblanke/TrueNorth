@@ -171,6 +171,22 @@ course production with a local-model fallback, and the cleanup of unsupported su
 - The fictional LMS and readiness previews are off unless `TN_DEMO_PREVIEWS=true`, and then
   carry a "Demo — fictional data" banner.
 
+### Alert delivery by email
+- Installer: `tn_alert_email_enabled` (default off; staging off until its SMTP details are known) renders an
+  Alertmanager email receiver from `tn_alert_email_to` / `_from`, `tn_alert_smtp_host` /
+  `_port` (587) / `_require_tls` (true) and `vault_alert_smtp_username` / `_password`.
+  Criticals mailed at once and hourly while firing, warnings batched (5 m / 15 m, repeat
+  12 h), resolved messages on, subjects tagged with the host. The SMTP password is only in a
+  0600 file (`smtp_auth_password_file`), tasks `no_log`. Preflight refuses `CHANGE_ME` and
+  a missing recipient, sender or relay while it is on.
+- Off, the null receiver stays and `99-validate` prints `WARNING: ALERTS ARE NOT DELIVERED`.
+- `playbooks/alert-test.yml` (`site.yml --tags tn-alert-test`) fires a synthetic critical
+  `TrueNorthAlertTest` and fails unless Alertmanager hands it to the relay; delivery is
+  proven by the inbox (install/README.md "Alerting", docs/operations.md "Alert delivery").
+- `compose.prod.yml`: the Alertmanager config directory is `ALERTMANAGER_CONFIG_DIR`
+  (default the shipped one). Contract tests run `amtool check-config` on every rendered
+  variant in the pinned image.
+
 ### Known limitations in v1.2.0
 - Greyspace, VyOS/OPNsense configs and per-tenant vCenter are proven on vcsim/fakes, not on
   a real vCenter (the live run on TN-MGMT01 is still pending).

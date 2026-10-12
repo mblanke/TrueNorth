@@ -371,6 +371,25 @@ tn_backup_max_total_gb: 200
 tn_pre_upgrade_backup: true
 tn_upgrade_inflight: drain # drain | abandon
 
+# ── Alert delivery by email (install/README.md "Alerting"; docs/operations.md) ──
+# false (the default): Alertmanager routes every alert to a null receiver, or to the
+# webhook if vault_alertmanager_webhook_url is set, and 99-validate warns that alerts are
+# NOT delivered. true: 30-config renders an email receiver
+# ({{ tn_config_dir }}/alertmanager/alertmanager.email.yml). Criticals are mailed at once
+# and hourly while firing; warnings are batched; resolutions are mailed too. Preflight
+# refuses an empty recipient, sender or relay, and a CHANGE_ME in the SMTP credentials
+# (vault_alert_smtp_username / vault_alert_smtp_password; leave both empty for a relay
+# that takes unauthenticated mail from this host). Prove delivery with
+# playbooks/alert-test.yml (tag tn-alert-test).
+tn_alert_email_enabled: false
+tn_alert_email_to: "" # one address, or several separated by commas
+tn_alert_email_from: ""
+tn_alert_smtp_host: ""
+tn_alert_smtp_port: 587
+# STARTTLS is required (Alertmanager refuses to send if the relay does not offer it). On
+# port 465 Alertmanager speaks implicit TLS instead.
+tn_alert_smtp_require_tls: true
+
 # ── Moodle (optional; install/README.md "Moodle (optional)") ──────────
 # true: 85-moodle runs TrueNorth's Moodle for tn_tenant_slug at
 # https://<tn_domain_fqdn>:<tn_moodle_port>, registers it as the tenant's Moodle platform
