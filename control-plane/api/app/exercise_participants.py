@@ -4,14 +4,16 @@ There is no Student-to-exercise table. The relations that exist, the same ones t
 telemetry rule uses (app/telemetry_access.py, security sweep M2), are:
 
 - a calendar booking (``scheduled_events``, not cancelled) that ties the exercise, or the
-  range it runs on, to a course: its participants are the Students actively enrolled in
-  that course;
+  range it runs on, to a course, and whose time overlaps the exercise's (started to
+  completed, or to now while it runs): its participants are the Students actively
+  enrolled in that course;
 - a Student's own lab session on the exercise's range.
 
 A Student submits a detection only as a participant. An exercise with no roster (no booked
 course, not the Student's own lab) has no Student participants, so it is refused unless
 ``DETECTION_SUBMIT_PARTICIPANTS_ONLY=false``, which restores the previous rule for such an
-exercise: any Student of the tenant (the roster still applies when there is one). Staff
+exercise: any Student of the tenant (the roster still applies when there is one, and an
+exercise or range booked only at other times has a roster with no seat now). Staff
 (``exercise:start``: instructors, admins) may always submit; theirs is recorded as a staff
 detection, not Student evidence.
 """
@@ -20,6 +22,7 @@ from __future__ import annotations
 
 import os
 import uuid
+from datetime import UTC, datetime
 
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
@@ -35,22 +38,37 @@ def participants_only() -> bool:
     return os.getenv("DETECTION_SUBMIT_PARTICIPANTS_ONLY", "true").strip().lower() not in {"0", "false", "no", "off"}
 
 
-def roster_courses(db: Session, ex: Exercise) -> set[uuid.UUID]:
-    """Courses whose live bookings tie this exercise, or its range, to a course."""
+def exercise_window(ex: Exercise, now: datetime | None = None) -> tuple[datetime, datetime]:
+    """When the exercise runs: ``started_at`` (else now) to ``completed_at`` (else now)."""
+    now = now or datetime.now(UTC)
+    return ex.started_at or now, ex.completed_at or now
+
+
+def _bookings(db: Session, ex: Exercise):
+    """Live (not cancelled) course bookings that tie this exercise, or its range, to a course."""
     from .scheduler.models import EventState, ScheduledEvent
 
     links = [ScheduledEvent.exercise_id == ex.id]
     if ex.range_id is not None:
         links.append(ScheduledEvent.range_id == ex.range_id)
-    return {
-        cid
-        for (cid,) in db.query(ScheduledEvent.course_id).filter(
-            ScheduledEvent.tenant_id == ex.tenant_id,
-            ScheduledEvent.course_id.isnot(None),
-            ScheduledEvent.state != EventState.cancelled,
-            or_(*links),
-        )
-    }
+    return db.query(ScheduledEvent.course_id).filter(
+        ScheduledEvent.tenant_id == ex.tenant_id,
+        ScheduledEvent.course_id.isnot(None),
+        ScheduledEvent.state != EventState.cancelled,
+        or_(*links),
+    )
+
+
+def roster_courses(db: Session, ex: Exercise) -> set[uuid.UUID]:
+    """Courses of the live bookings (``_bookings``) whose time overlaps the exercise's
+    (``exercise_window``). Until 2026-10-11 any non-cancelled booking counted, however long
+    ago: a range is reused class after class, so every past class on it stayed a
+    participant of every later exercise there."""
+    from .scheduler.models import ScheduledEvent
+
+    start, end = exercise_window(ex)
+    query = _bookings(db, ex).filter(ScheduledEvent.start_time <= end, ScheduledEvent.end_time >= start)
+    return {cid for (cid,) in query}
 
 
 def may_submit(db: Session, user: CurrentUser, ex: Exercise) -> bool:
@@ -65,4 +83,8 @@ def may_submit(db: Session, user: CurrentUser, ex: Exercise) -> bool:
     courses = roster_courses(db, ex)
     if courses:
         return bool(courses & set(active_course_ids(db, user_id)))
+    if _bookings(db, ex).first() is not None:
+        # Booked, but at another time: a roster with no seat now. Not "no roster", so the
+        # opt-out below does not open it to every Student of the tenant.
+        return False
     return not participants_only()
