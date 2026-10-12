@@ -41,6 +41,7 @@ Options:
 | `--edge-url` | the edge as the container reaches it (default `https://nginx`) |
 | `--host-config <dir>` | the host's config directory, if mounted (for `backup.env`) |
 | `--lms-course <code>` | the catalogue course for the LMS checks (default `C103`) |
+| `--moodle-course <code>` | the catalogue course for the Moodle loop (default: `--lms-course`); it must be published to the tenant's Moodle from an accepted release |
 | `--vsphere-url`, `--vsphere-user`, `--vsphere-insecure` | when no vSphere connection is registered: a temporary one (password from `ACCEPTANCE_VSPHERE_PASSWORD`), removed afterwards |
 | `--list` | list the checks and exit |
 | `--verbose` | keep the API's own request logs (off by default: the table is the output) |
@@ -96,7 +97,7 @@ expected role — `instructor.demo`, `trainee1.demo` (the participant Student),
 | web-shell | the Angular shell served through nginx for `/`, `/dashboard`, `/learning/courses`; for 17 main routes, the API endpoint each page loads answers each role as `app/rbac.py` says (50 role checks) |
 | content | all shipped course files (`content/courses/*.yaml`, 44) have their catalogue course with modules; every shipped template, scenario and Sigma rule is loaded; the VM image catalogue is not empty |
 | curriculum | QSP qualifications with performance objectives, learning paths, developmental progression, the curriculum map; a Student's own map |
-| lms | the participant Student enrolled on C103 sits its quizzed module's quiz (answers hidden from them), passes, and the module progress and the PO on their curriculum map show completed; cmi5: on an accepted release of a published course, the Student launches an AU, fetches the token once (a second fetch is refused), reads `LMS.LaunchData` and learner preferences, sends `initialized` and `terminated` through TrueNorth's LRS endpoint, and the statement is read back from the LRS; each registered Moodle platform is reachable and its results list answers |
+| lms | the participant Student enrolled on C103 sits its quizzed module's quiz (answers hidden from them), passes, and the module progress and the PO on their curriculum map show completed; cmi5: on an accepted release of a published course, the Student launches an AU, fetches the token once (a second fetch is refused), reads `LMS.LaunchData` and learner preferences, sends `initialized` and `terminated` through TrueNorth's LRS endpoint, and the statement is read back from the LRS; each registered Moodle platform is reachable and its results list answers; **Moodle loop (integration, bypasses browser)**: see below |
 | scenario-engine | the shipped `incident-response-drill` validates and its exercise (the installer's demo exercise, or a pending `acceptance-plan-…`) carries exactly the scenario's objectives and timeline; `acceptance-exercise-<tag>` starts, **worker-scenario** fires its inject (recorded `fired`), it stays running after the timeline (real backend), pauses (a second pause 409) and resumes |
 | telemetry | three events indexed into a range, MITRE-tagged, found by administrator and Observer through the search API; a query outside the grammar 422; Students get 404 searching a range they are not on and 403 writing telemetry |
 | detection | a draft booking ties the exercise to C103 (the roster), timed over the exercise's run (a booking seats its course only while it overlaps the exercise); a Student not enrolled there is refused (403); the participant's detection query is credited (`achieved`, score 40/50, objective achieved, `on_target` hidden from them); a repeat is refused 409 |
@@ -109,6 +110,41 @@ expected role — `instructor.demo`, `trainee1.demo` (the participant Student),
 | greyspace | corpus `t0` available; a range from the shipped Greyspace template reads its block, attaches it (`configured`, no problems), the config plans DNS, resolver and web farm, an unknown site pack 422, detach |
 | wiki-helpdesk | a wiki space and published page (a Student reads it); a ticket assigned to the instructor reaches the instructor's inbox, is marked read, is not in the actor's inbox and is 404 to anyone else |
 
+### lms / Moodle loop (integration, bypasses browser)
+
+M1's Student loop on the installed host, without a browser (`scripts/_moodle_student.py`):
+
+1. The suite's own Student, `acceptance-moodle-student@truenorth.test` (never a demo account,
+   so the participant's record is not touched), is enrolled on the course (`--moodle-course`,
+   default `--lms-course`).
+2. TrueNorth mints the sign-in ticket in-process (`POST /integrations/moodle/sso` as that
+   Student, the route the SPA's "Open in Moodle" calls).
+3. The suite POSTs it to `sso.php` and, in that Moodle session, opens the course, a page, and
+   the first quiz: it starts an attempt, answers the first page, leaves, comes back ("Continue
+   your attempt" must reopen the same attempt), answers the rest from TrueNorth's answer key
+   for the course (`GET /quizzes/{id}/questions`) and submits. These are Moodle's own pages
+   and forms, as plain HTTP; no JavaScript runs.
+4. After Moodle's 5 s settle window it triggers a pull (`POST …/moodle-results/pull`; a pull
+   already running is waited out), then reads `GET /integrations/moodle/results` as the
+   Student: the grade of **this** attempt (Moodle's attempt id; an older plugin reports none
+   and is matched on Moodle's time instead, and says so), a completed activity, the
+   enrolment, and the sync `current`. With every answer keyed, the grade must be full marks.
+5. The participant Student's progress on the course must not go down.
+
+How it reaches Moodle: like TrueNorth's own server-side calls, to the platform's `base_url`
+(e.g. `http://moodle-default:8080` on `tn-backend`) with the public Host header
+(`app.lti13.platform_route`). It needs no token, password or host-side helper: the session is
+the one TrueNorth's ticket opens, and the installer's registration (`install_cli register`)
+already records both addresses.
+
+Needs: a registered Moodle (the installer's `moodle-<node>`), and the course published to it
+from an accepted release (`docs/runbooks/moodle.md` section 2). C103 has no release until the
+ARC² batch publishes one; until then run with `--moodle-course` naming a course that has, or
+the check SKIPs ("not published to …"), which `--strict` on the `staging` profile fails: the
+loop is mandatory on staging (`docs/release-notes/v1.2.0-module-matrix.md`). The CI
+`integration` stack has no Moodle: its `ci-integration` profile permits the skip, and the CI
+`moodle` lane runs the same loop in Chromium (`tests/integration/test_moodle_student_journey.py`).
+
 ## What it cannot verify, and why
 
 - **Building anything on the hypervisor.** Staging's provisioner is `vsphere_api` against a
@@ -120,7 +156,9 @@ expected role — `instructor.demo`, `trainee1.demo` (the participant Student),
   writable, real vCenter (`tests/integration/test_lab_sessions_vsphere.py`).
 - **Noise agents on VMs** (declared SKIP): a real deploy installs agents on built range VMs.
 - **The browser.** The SPA is checked as served HTML plus the API each page loads, per role;
-  rendering and sign-in through Keycloak are the Playwright lane's (`e2e`).
+  rendering and sign-in through Keycloak are the Playwright lane's (`e2e`). The Moodle loop
+  drives Moodle's pages without a browser; the loop in Chromium is the CI `moodle` lane's, and
+  on staging the click-through in `docs/runbooks/moodle.md` ("Student loop on staging").
 - **The edge certificate.** nginx is reached from inside the stack without verifying TLS (the
   installer's certificate is often from an internal CA this container does not carry).
 
@@ -134,7 +172,11 @@ Kept and reused by name on the next run, because exercises keep them as history:
 `acceptance-scenario`, `acceptance-noise-template`, `acceptance-plan-<scenario>` (when there
 is no demo exercise). Each run adds one completed `acceptance-exercise-<tag>` (exercises
 cannot be deleted) and leaves the participant enrolled on C103 (and on the cmi5 course), with
-the quiz attempts and statements it made. Anything cleanup could not remove is printed
+the quiz attempts and statements it made. The Moodle loop's Student
+(`acceptance-moodle-student`) is deactivated afterwards and reactivated by the next run, so it
+keeps one TrueNorth id and one Moodle account (`tn-<id>`); each run adds one finished quiz
+attempt in Moodle, which the next pull records as that Student's grade (the highest, as
+Moodle grades), and leaves them enrolled on the course. Anything cleanup could not remove is printed
 (`cleanup: …`) and listed in the JSON.
 
 ## When a check fails
@@ -150,6 +192,14 @@ the quiz attempts and statements it made. Anything cleanup could not remove is p
   a defect in that backend, not in the suite.
 - **lms cmi5: SKIP `no accepted course release … on a published course`.** No course with an
   accepted ARC² release is published yet (`scripts/arc2_batch_inprocess.py` publishes them).
+- **lms Moodle loop: SKIP `… is not published to …`.** Publish an accepted release of the
+  course to the tenant's Moodle, or name one that is with `--moodle-course`.
+- **lms Moodle loop: `sso.php => 404: a different moodle account already uses this email
+  address`.** A Moodle account that TrueNorth's sign-in did not make holds
+  `acceptance-moodle-student@truenorth.test` (Moodle never takes an account over by email).
+  Remove that Moodle account as the break-glass administrator, then re-run.
+- **lms Moodle loop: `sync after the pull: … failing`.** Read `last_error` on
+  `GET /api/integrations/platforms/{id}/moodle-results` (`docs/runbooks/moodle.md` section 4).
 - **a FAIL naming a route and a status** in web-shell: the role's access changed from
   `app/rbac.py`; either the route or the table in `ROUTE_BACKING` is wrong. Find out which
   before changing either.
