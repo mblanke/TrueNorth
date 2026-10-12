@@ -15,8 +15,10 @@
 * ``threat/``                           the threat-actor stub: a page per domain
 * ``mail/``                             SMTP + webmail (Mailpit): MX for every site zone
 * ``ntp/``                              an NTP server (chrony, local clock) at ntp.gs-infra.net
-* ``ca/``                               ``trust_ca``: a Greyspace root CA and one certificate per
-                                        zone, made at start-up; the web farm serves HTTPS
+* ``ca/``                               ``trust_ca``: a Greyspace root CA (name-constrained to
+                                        the stack's zones; its key never leaves the ca
+                                        service) and one certificate per zone, made at
+                                        start-up; the web farm serves HTTPS
 * ``npc/``                              ``npc_profile``: simulated users browsing, resolving
                                         and mailing (npc.py), driven by a profile
 * ``bin/gs``                            the operator CLI on the stack's host: up, health,
@@ -472,33 +474,82 @@ def _web(sites: list[Site], threats: list[ThreatDomain], params: BlockParams) ->
 
 
 # ── Compose ─────────────────────────────────────────────────────────────────
+CA_ROOT_DAYS = 825
+CA_LEAF_DAYS = 397  # the longest a browser accepts
 _CA_SCRIPT = """\
 #!/bin/sh
-# The Greyspace root CA and one certificate per zone (generated; ca/zones.txt lists them).
-# Runs once per stack start; the certificates live in the gs-certs volume, the CA's public
-# certificate is also published at http://pki.gs-infra.net/root.crt (overlay).
+# The Greyspace root CA and the zone certificates (generated). ca/zones.txt lists
+# "<zone> <server>" (server: web | threat; "default" is the certificate without SNI).
+# Runs at every stack start and is idempotent.
+#   $CA (/ca, volume gs-ca, this service only)    root.key (0600), root.crt, issued/
+#   $OUT/<server> (volume gs-tls-<server>, ro)   that server's zone certificates and keys
+#   $OUT/trust (volume gs-trust, ro: npc, probe)  root.crt only
+# The root is name-constrained to the zones it issues for and is remade when that list
+# changes or it has under 400 days left, so a leaf never outlives it; a leaf is reissued
+# with under 30 days left. root.crt is also published at http://pki.gs-infra.net/root.crt.
 set -eu
-cd /certs
-if [ ! -s root.key ]; then
-  openssl ecparam -name prime256v1 -genkey -noout -out root.key
-  openssl req -x509 -new -key root.key -sha256 -days 3650 -subj "/O=Greyspace/CN=Greyspace Root CA" -out root.crt
+CA=${GS_CA_DIR:-/ca}
+OUT=${GS_CA_OUT:-/out}
+ZONES=${GS_CA_ZONES:-/gs/zones.txt}
+OVERLAY=${GS_OVERLAY_DIR:-/overlay}
+KEY_GROUP=${GS_CA_KEY_GROUP-101}  # nginx's worker group: it loads the key per handshake (SNI)
+cd "$CA"
+mkdir -p issued
+names=$(awk 'NF { print ($1 == "default" ? "greyspace.invalid" : $1) }' "$ZONES" | sort -u)
+old_names=$(cat names.txt 2>/dev/null || true)
+if [ ! -s root.key ] || [ ! -s root.crt ] || [ "$old_names" != "$names" ] \\
+    || ! openssl x509 -checkend 34560000 -noout -in root.crt >/dev/null; then
+  rm -f root.key root.crt root.srl issued/*
+  {
+    printf '[req]\\ndistinguished_name = dn\\nprompt = no\\n[dn]\\nO = Greyspace\\nCN = Greyspace Root CA\\n'
+    printf '[v3]\\nbasicConstraints = critical,CA:TRUE,pathlen:0\\nkeyUsage = critical,keyCertSign,cRLSign\\n'
+    printf 'subjectKeyIdentifier = hash\\nnameConstraints = critical,@nc\\n[nc]\\n'
+    i=0
+    for n in $names; do printf 'permitted;DNS.%s = %s\\n' "$i" "$n"; i=$((i + 1)); done
+  } > root.cnf
+  (umask 077 && openssl ecparam -name prime256v1 -genkey -noout -out root.key)
+  openssl req -x509 -new -key root.key -sha256 -days @ROOT_DAYS@ -config root.cnf -extensions v3 -out root.crt
+  printf '%s\\n' "$names" > names.txt
 fi
-mkdir -p /overlay/sites/pki.gs-infra.net
-cp root.crt /overlay/sites/pki.gs-infra.net/root.crt
-while read -r zone; do
-  [ -n "$zone" ] || continue
-  [ -s "$zone.crt" ] && continue
-  openssl ecparam -name prime256v1 -genkey -noout -out "$zone.key"
+chmod 0600 root.key
+for zone in $(awk 'NF { print $1 }' "$ZONES" | sort -u); do
+  if [ -s "issued/$zone.crt" ] && openssl x509 -checkend 2592000 -noout -in "issued/$zone.crt" >/dev/null; then
+    continue
+  fi
   if [ "$zone" = default ]; then san="DNS:greyspace.invalid"; cn=greyspace.invalid; else san="DNS:$zone,DNS:*.$zone"; cn="$zone"; fi
-  openssl req -new -key "$zone.key" -subj "/O=Greyspace/CN=$cn" -out "$zone.csr"
-  printf 'subjectAltName=%s\\nbasicConstraints=CA:FALSE\\nextendedKeyUsage=serverAuth\\n' "$san" > "$zone.ext"
-  openssl x509 -req -in "$zone.csr" -CA root.crt -CAkey root.key -CAcreateserial -days 825 -sha256 \\
-    -extfile "$zone.ext" -out "$zone.crt"
-  rm -f "$zone.csr" "$zone.ext"
-done < /gs/zones.txt
-chmod 0644 ./*.crt ./*.key
-echo "greyspace ca: $(ls ./*.crt | wc -l) certificates"
-"""
+  (umask 077 && openssl ecparam -name prime256v1 -genkey -noout -out "issued/$zone.key")
+  openssl req -new -key "issued/$zone.key" -subj "/O=Greyspace/CN=$cn" -out "issued/$zone.csr"
+  printf 'subjectAltName=%s\\nbasicConstraints=critical,CA:FALSE\\nkeyUsage=critical,digitalSignature\\nextendedKeyUsage=serverAuth\\n' \\
+    "$san" > "issued/$zone.ext"
+  openssl x509 -req -in "issued/$zone.csr" -CA root.crt -CAkey root.key -CAcreateserial -days @LEAF_DAYS@ -sha256 \\
+    -extfile "issued/$zone.ext" -out "issued/$zone.crt"
+  rm -f "issued/$zone.csr" "issued/$zone.ext"
+done
+# Each server gets its own zones' certificates and keys, nothing else; the root key stays here.
+for dir in "$OUT"/*/; do
+  if [ -d "$dir" ]; then rm -f "$dir"*.crt "$dir"*.key; fi
+done
+while read -r zone server; do
+  [ -n "$zone" ] || continue
+  case "$server" in
+    web|threat) ;;
+    *) echo "greyspace ca: zones.txt names server '$server' for $zone" >&2; exit 1 ;;
+  esac
+  mkdir -p "$OUT/$server"
+  cp "issued/$zone.crt" "issued/$zone.key" "$OUT/$server/"
+  chmod 0644 "$OUT/$server/$zone.crt"
+  if [ -n "$KEY_GROUP" ]; then
+    chown "0:$KEY_GROUP" "$OUT/$server/$zone.key" && chmod 0640 "$OUT/$server/$zone.key"
+  else
+    chmod 0600 "$OUT/$server/$zone.key"
+  fi
+done < "$ZONES"
+mkdir -p "$OUT/trust" "$OVERLAY/sites/pki.gs-infra.net"
+cp root.crt "$OUT/trust/root.crt"
+cp root.crt "$OVERLAY/sites/pki.gs-infra.net/root.crt"
+chmod 0644 "$OUT/trust/root.crt" "$OVERLAY/sites/pki.gs-infra.net/root.crt"
+echo "greyspace ca: $(ls issued/*.crt | wc -l) certificates"
+""".replace("@ROOT_DAYS@", str(CA_ROOT_DAYS)).replace("@LEAF_DAYS@", str(CA_LEAF_DAYS))
 
 _NTP_CONF = """\
 # Greyspace NTP (generated): serves its local clock to the simulated internet; never syncs out.
@@ -532,6 +583,7 @@ def _compose(
         return {net: {"ipv4_address": str(ip)}}
 
     certs = params.trust_ca
+    tls_servers = ["web", "threat"] if threats else ["web"]
     services: dict[str, dict] = {}
     for slug, ip in plan.routers.items():
         services[slug] = {
@@ -569,12 +621,16 @@ def _compose(
             "image": _local("ca"),
             "network_mode": "none",
             "entrypoint": ["/bin/sh", "/gs/make-certs.sh"],
-            "volumes": ["gs-certs:/certs", "gs-overlay:/overlay", "./ca/make-certs.sh:/gs/make-certs.sh:ro",
+            # The root key lives in gs-ca, mounted here only; each server mounts only its
+            # own zones' certificates (gs-tls-<server>), clients only root.crt (gs-trust).
+            "volumes": ["gs-ca:/ca", *(f"gs-tls-{s}:/out/{s}" for s in tls_servers), "gs-trust:/out/trust",
+                        "gs-overlay:/overlay", "./ca/make-certs.sh:/gs/make-certs.sh:ro",
                         "./ca/zones.txt:/gs/zones.txt:ro"],
             "restart": "no",
         }
     after_ca = {"depends_on": {"ca": {"condition": "service_completed_successfully"}}} if certs else {}
-    tls_volume = ["gs-certs:/certs:ro"] if certs else []
+    tls_volume = ["gs-tls-web:/certs:ro"] if certs else []
+    trust_volume = ["gs-trust:/certs:ro"] if certs else []
     services["webfarm"] = {
         "image": IMAGES["nginx"],
         "cap_add": ["NET_ADMIN"],
@@ -601,7 +657,7 @@ def _compose(
                 "./threat/nginx.conf:/etc/nginx/nginx.conf:ro",
                 "./threat/addresses.txt:/gs/addresses.txt:ro",
                 "./threat/entrypoint.sh:/gs/entrypoint.sh:ro",
-                *tls_volume,
+                *(["gs-tls-threat:/certs:ro"] if certs else []),
             ],
             "networks": addr(plan.threat),
             "restart": "unless-stopped",
@@ -641,7 +697,7 @@ def _compose(
             "cap_add": ["NET_ADMIN"],
             "dns": [str(plan.resolver)],
             "environment": {"GS_NPC_SPEED": "${GS_NPC_SPEED:-1}", "PYTHONUNBUFFERED": "1"},
-            "volumes": ["./npc/npc.py:/gs/npc.py:ro", "./npc/config.json:/gs/config.json:ro", *tls_volume],
+            "volumes": ["./npc/npc.py:/gs/npc.py:ro", "./npc/config.json:/gs/config.json:ro", *trust_volume],
             "command": ["sh", "-c", f"{routes} ; exec python3 /gs/npc.py /gs/config.json"],
             "networks": addr(plan.npc),
             "depends_on": ["resolver", "webfarm", "mail"],
@@ -657,7 +713,7 @@ def _compose(
             "cap_add": ["NET_ADMIN"],
             "dns": [str(plan.resolver)],
             "command": ["sh", "-c", f"{routes} ; exec sleep infinity"],
-            "volumes": tls_volume,
+            "volumes": trust_volume,
             "networks": addr(plan.probe),
         }
     ipam = {"config": [{"subnet": str(plan.public), "ip_range": str(plan.infra), "gateway": str(plan.gateway)}]}
@@ -677,7 +733,8 @@ def _compose(
     return {
         "services": services,
         "networks": {net: network},
-        "volumes": {"gs-overlay": {}, **({"gs-certs": {}} if certs else {})},
+        "volumes": {"gs-overlay": {}, **({v: {} for v in ["gs-ca", "gs-trust", *(f"gs-tls-{s}" for s in tls_servers)]}
+                                         if certs else {})},
     }
 
 
@@ -707,12 +764,15 @@ def render(
     files.update(_frr(manifest, plan, threats))
     files.update(_web(sites, threats, params))
     files["ntp/chrony.conf"] = _NTP_CONF
-    cert_zones = sorted(
-        {zone_of(n) for s in sites for n in s.names} | {zone_of(t.fqdn) for t in threats} | {INFRA_ZONE}
-    )
     if params.trust_ca:
+        # "<zone> <server>": each server is handed only the certificates of the zones it serves.
+        web_zones = sorted({zone_of(n) for s in sites for n in s.names} | {INFRA_ZONE})
+        threat_zones = sorted({zone_of(t.fqdn) for t in threats})
+        lines = [f"{z} web" for z in ["default", *web_zones]]
+        if threats:
+            lines += [f"{z} threat" for z in ["default", *threat_zones]]
         files["ca/make-certs.sh"] = _CA_SCRIPT
-        files["ca/zones.txt"] = "".join(f"{z}\n" for z in ["default", *cert_zones])
+        files["ca/zones.txt"] = "".join(f"{line}\n" for line in lines)
     if params.npc_profile != "off":
         files["npc/npc.py"] = npc.agent_source()
         files["npc/config.json"] = json.dumps(

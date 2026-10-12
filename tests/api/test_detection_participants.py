@@ -49,14 +49,16 @@ def _submit(client, ex):
     return client.post(f"/exercises/{ex.id}/objectives/detect_c2/detections", json={"query": "url.domain:*northwind*"})
 
 
-def _book(db, world, *, enrol=("student",), state=EventState.active, by_range=False, status=EnrollmentStatus.enrolled):
+def _book(db, world, *, enrol=("student",), state=EventState.active, by_range=False, status=EnrollmentStatus.enrolled,
+          when=None):
     course = Course(id=uuid.uuid4(), name="Class", tenant_id=world["a"].id)
     db.add(course)
     db.flush()
     now = datetime.now(UTC)
+    start, end = when or (now, now + timedelta(hours=2))
     link = {"range_id": world["ex"].range_id} if by_range else {"exercise_id": world["ex"].id}
-    db.add(ScheduledEvent(name="lesson", tenant_id=world["a"].id, course_id=course.id, state=state, start_time=now,
-                          end_time=now + timedelta(hours=2), **link))
+    db.add(ScheduledEvent(name="lesson", tenant_id=world["a"].id, course_id=course.id, state=state, start_time=start,
+                          end_time=end, **link))
     for who in enrol:
         db.add(Enrollment(user_id=uuid.UUID(world[who].id), course_id=course.id, tenant_id=world["a"].id,
                           status=status))
@@ -128,3 +130,59 @@ def test_a_student_submits_on_their_own_labs_range(client, db_session, store, wo
     act_as(world["student"])
     assert _submit(client, world["ex"]).status_code == 201
     assert exercise_participants.participants_only() is True
+
+
+# ── bookings count only while they overlap the exercise (review of #133, 2026-10-11) ──
+
+PAST = (STARTED - timedelta(days=30), STARTED - timedelta(days=30) + timedelta(hours=2))  # ended before the start
+
+
+def _future():
+    now = datetime.now(UTC)
+    return now + timedelta(days=7), now + timedelta(days=7, hours=2)
+
+
+@pytest.mark.parametrize("by_range", [False, True], ids=["booking-names-exercise", "booking-names-range"])
+@pytest.mark.parametrize("when", ["past", "future"])
+def test_a_booking_at_another_time_is_no_seat(client, db_session, store, world, by_range, when):
+    """A range is reused class after class: last month's class (or next week's) is not a
+    participant of the exercise running now."""
+    _book(db_session, world, by_range=by_range, when=PAST if when == "past" else _future())
+    act_as(world["student"])
+    r = _submit(client, world["ex"])
+    assert r.status_code == 403 and "not a participant" in r.json()["detail"]
+    assert _attempts(db_session) == 0
+
+
+def test_a_booking_overlapping_the_running_exercise_is_a_seat(client, db_session, store, world):
+    _book(db_session, world, by_range=True, when=PAST)  # an old class on the same range
+    _book(db_session, world, by_range=True, enrol=("classmate",),
+          when=(STARTED - timedelta(hours=1), datetime.now(UTC) + timedelta(hours=1)))
+    act_as(world["student"])  # enrolled only in the old class
+    assert _submit(client, world["ex"]).status_code == 403
+    act_as(world["classmate"])  # enrolled in the class booked now
+    assert _submit(client, world["ex"]).status_code == 201
+
+
+def test_opting_out_does_not_open_an_exercise_booked_at_another_time(client, db_session, store, world, monkeypatch):
+    """An exercise whose range was booked only at other times has a roster with no seat
+    now, not "no roster": DETECTION_SUBMIT_PARTICIPANTS_ONLY=false must not open it."""
+    monkeypatch.setenv("DETECTION_SUBMIT_PARTICIPANTS_ONLY", "false")
+    _book(db_session, world, by_range=True, when=PAST)
+    for who in ("student", "classmate"):
+        act_as(world[who])
+        assert _submit(client, world["ex"]).status_code == 403, who
+
+
+def test_the_window_of_a_completed_exercise_is_start_to_completion(db_session, world):
+    from app.exercise_participants import exercise_window, roster_courses
+
+    ex = world["ex"]
+    ex.completed_at = STARTED + timedelta(hours=3)
+    db_session.flush()
+    assert exercise_window(ex) == (STARTED, STARTED + timedelta(hours=3))
+    during = _book(db_session, world, when=(STARTED + timedelta(hours=2), STARTED + timedelta(hours=4)))
+    after = _book(db_session, world, when=(STARTED + timedelta(hours=5), STARTED + timedelta(hours=6)))
+    before = _book(db_session, world, by_range=True, when=PAST)
+    courses = roster_courses(db_session, ex)
+    assert during.id in courses and after.id not in courses and before.id not in courses

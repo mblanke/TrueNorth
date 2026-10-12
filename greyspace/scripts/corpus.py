@@ -217,7 +217,11 @@ def cmd_ingest(args: argparse.Namespace) -> int:
     out = Path(args.out).resolve()
     if out.exists():
         shutil.rmtree(out)
-    result = ingest.extract([Path(w) for w in args.warc], out)
+    try:
+        result = ingest.extract([Path(w) for w in args.warc], out)
+    except ValueError as exc:  # a malformed or truncated record: the archive is not trusted
+        print(f"ingest: {exc}", file=sys.stderr)
+        return 1
     (out / "warc").mkdir(parents=True, exist_ok=True)
     for w in args.warc:  # provenance: the WARCs travel with the tree they made
         shutil.copy2(w, out / "warc" / Path(w).name)

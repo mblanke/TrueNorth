@@ -217,6 +217,7 @@ class ScoringEngine:
             config=obj.validation_config,
             opensearch_url=self.opensearch_url,
             event_store=self.event_store,
+            exercise_id=self.exercise_id,
         )
 
         # Score

@@ -132,6 +132,20 @@ probe curl -fsS --max-time 5 --cacert /certs/root.crt "https://www.$SITE/about.h
 if probe curl -fsS --max-time 5 "https://$SITE/" >/dev/null 2>&1; then
   fail "https://$SITE/ verified without the Greyspace CA (it must not chain to a public root)"
 fi
+probe curl -fsS --max-time 5 --cacert /certs/root.crt "https://$THREAT/" | grep -q 'data-gs-threat' \
+  || fail "https://$THREAT/ (the threat stub's own certificate) did not verify"
+# The root CA's key stays in the ca service: servers hold their zones' certificates only,
+# clients root.crt only.
+for svc in webfarm threat probe; do
+  if "${COMPOSE[@]}" exec -T "$svc" sh -c 'ls /certs | grep -q "^root\.key$"'; then
+    fail "$svc can read the Greyspace root CA's key"
+  fi
+done
+[[ "$(probe ls /certs)" == "root.crt" ]] || fail "the probe's /certs holds more than root.crt"
+web_keys="$("${COMPOSE[@]}" exec -T webfarm ls /certs)"
+for key in $("${COMPOSE[@]}" exec -T threat ls /certs | grep '\.key$' | grep -v '^default\.key$'); do
+  if grep -qx "$key" <<<"$web_keys"; then fail "the web farm holds the threat stub's $key"; fi
+done
 
 read -r MAILZONE < <("$PY" -c 'import json,sys; print(next(s["fqdn"] for s in json.load(open(sys.argv[1]))["sites"] if s["category"] == "webmail"))' "$CORPUS/manifest.json")
 say "7. Mail: MX $MAILZONE, SMTP to mail.gs-infra.net, webmail API"

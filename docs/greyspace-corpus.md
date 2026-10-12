@@ -91,13 +91,29 @@ python greyspace/scripts/corpus.py report --root /staging/2026.11 --out report.j
 `report` gives total and per-site files and bytes, the largest files, and duplicate
 content (sha256 groups, bytes a dedupe would save, `dedupe_ratio`) for step 3 above.
 
-**Loading a corpus into gs-core's web farm** (vSphere): set `GREYSPACE_CORPUS_NFS`
-(`server:/export`) on the worker. Each gs-core VM then mounts it read-only at
-`/srv/greyspace/corpus` in its configure stage (`bin/gs corpus mount`, options
-`ro,nfsvers=4.1,nosuid,nodev,noexec`) and verifies every checksum (`bin/gs corpus verify`)
-before the stack starts. Without it, gs-core gets the T0 corpus inside its bundle. The
-worker reads the tier's manifest from `GREYSPACE_MANIFEST_DIR/<tier>/manifest.json` to
-render the stack (the API reads the same path to validate blocks).
+**Loading a corpus into gs-core's web farm** (vSphere). What works today: the **T0**
+corpus, inside gs-core's bundle (guestinfo), checked with `bin/gs corpus verify` before
+the stack starts. That is the default (`GREYSPACE_CORPUS_NFS` empty).
+
+> **Known limitation: an NFS corpus (T1 and up) does not work yet.** gs-core has one
+> NIC, on the range's Greyspace network, and its only way out is the range's edge
+> router, whose forward filter lets range zones reach the depot (tcp 8081, 3142) and
+> nothing else outside the range (worker/vyos_config.py). So the NFS export the design
+> below describes is unreachable: `GREYSPACE_CORPUS_NFS` makes the configure stage fail
+> at `corpus mount` (Greyspace `failed`, step `configure`), and a T1+ block cannot be
+> bundled (`plan` fails). Serving T1+ needs a second gs-core NIC on a storage port group
+> that is not routed to any range zone, with the export limited to that NIC's address;
+> it is not built. Do not open the router's filter to the NetApp instead: every zone of
+> the range would then reach it.
+
+How the NFS path is meant to work once gs-core has that storage NIC: set
+`GREYSPACE_CORPUS_NFS` (`server:/export`) on the worker; each gs-core VM mounts it
+read-only at `/srv/greyspace/corpus` in its configure stage (`bin/gs corpus mount`,
+options `ro,nfsvers=4.1,nosuid,nodev,noexec`) and checks `manifest.json` is there. It does
+not re-hash an NFS corpus (a published NetApp snapshot was verified when it was
+published; re-hashing terabytes would hold the range for hours). The worker reads the
+tier's manifest from `GREYSPACE_MANIFEST_DIR/<tier>/manifest.json` to render the stack
+(the API reads the same path to validate blocks).
 
 ## 4. NetApp layout
 
@@ -111,9 +127,11 @@ volume greyspace-corpus        Full (10 TB+); NFSv4 export, read-only, gs-core h
   .snapshot/corpus@<version>   one snapshot per published version
 ```
 
-Exports are read-only and limited to the gs-core hosts' storage-VLAN addresses; student
-VLANs never reach NFS (`docs/dell-netapp-mobile-kit-inventory.md`, STORAGE VLAN). The
-per-range breadcrumb overlay is a local volume on gs-core, never on these volumes.
+The intended design: exports read-only and limited to gs-core's storage-VLAN addresses,
+so student VLANs never reach NFS (`docs/dell-netapp-mobile-kit-inventory.md`, STORAGE
+VLAN). **Not built yet**: gs-core has no storage-VLAN NIC (see the known limitation in
+§3), so today no range reaches these exports at all. The per-range breadcrumb overlay is
+a local volume on gs-core, never on these volumes.
 
 ## 5. Staged download order
 

@@ -7,20 +7,29 @@
 Writes the payload ``bin/gs crumb plant --file`` takes (exactly what the worker sends to
 a gs-core VM) and prints ``<crumb id>=<token>`` for each crumb, so a check or an
 instructor can see the values the exercise's breadcrumbs carry.
+
+Tokens are keyed by GREYSPACE_CRUMB_KEY (else TN_SECRETS_KEY), as on the worker; with
+``--params`` the key must be set (the same as the worker's, or the tokens will not match
+what the range was given). ``--t0`` is a throwaway check and uses a random key when none is set.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import os
+import secrets
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scenario-engine"))
 
 from scenario_engine.injectors.greyspace_breadcrumb import (  # noqa: E402 — after the path insert
+    KEY_ENV,
+    BreadcrumbKeyError,
     GreyspaceBreadcrumbInjector,
     breadcrumb_token,
+    crumb_key,
 )
 
 
@@ -46,7 +55,16 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--out", required=True)
     args = p.parse_args(argv)
     params = t0_params(args.t0) if args.t0 else json.loads(Path(args.params).read_text(encoding="utf-8"))
-    result = GreyspaceBreadcrumbInjector(params).execute({"exercise_id": args.exercise})
+    if args.t0:
+        try:
+            crumb_key()
+        except BreadcrumbKeyError:
+            os.environ[KEY_ENV] = secrets.token_urlsafe(32)
+    try:
+        result = GreyspaceBreadcrumbInjector(params).execute({"exercise_id": args.exercise})
+    except BreadcrumbKeyError as exc:
+        print(f"crumb_payload: {exc}", file=sys.stderr)
+        return 2
     Path(args.out).write_text(json.dumps(result["greyspace"]["payload"]) + "\n", encoding="utf-8")
     for crumb in params["crumbs"]:
         print(f"{crumb['id']}={breadcrumb_token(args.exercise, crumb['id'], params.get('salt'))}")
