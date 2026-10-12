@@ -71,6 +71,25 @@ course production with a local-model fallback, and the cleanup of unsupported su
   confinement field (not a literal ')'), and the demo-account steps take a fresh Keycloak
   admin token (they outlived the ~60 s one) (#141).
 
+### Release readiness (#147)
+- **Behaviour change:** the competency catalogue is platform-shared: `POST
+  /competency/frameworks` and `/frameworks/import-nice` need `course:author` + `tenant:read`
+  (the QSP spine gate, `PLATFORM_CURRICULUM_WRITE`); tenant authors (instructors) get 403.
+- Monitoring matches `docs/operations.md`: node_exporter textfile metrics from `backup.sh`
+  and `scripts/monitoring/host-probes.sh`; alerts for OpenSearch red/yellow/unreachable,
+  Moodle down, ARC² runner down, backup failed/incomplete/stale (>26 h), stale probes;
+  promtool unit tests. The never-implemented WebSocket alert is gone from the docs.
+- Backups include the ARC² runs directory (`ARC2_RUNS_DIR` with `tn_arc2_enabled`),
+  owners kept; restore refuses while the runner is active (`--skip-arc2`).
+- CI: `lab.yml` is manual-only until the self-hosted lab runner is registered.
+- ADR 0010: deleting what history depends on is 409; retire/archive instead; no
+  NULL-on-delete (pre-existing exceptions listed and frozen by a test).
+- C105 stays a draft: its committed release is a CI/CATAPULT fixture; the shipped-content
+  publish and the ARC² batch skip it. Hosts that published it earlier must unpublish it.
+- `scenario-engine/template_engine` deleted (no importers); `runner` kept.
+- Docs: v1.2.0 release notes (simulator-proven list, staging record placeholder), H6
+  marked fixed, user-guide telemetry queries rewritten to the closed grammar (tested).
+
 ### Known limitations in v1.2.0
 - Greyspace, VyOS/OPNsense configs and per-tenant vCenter are proven on vcsim/fakes, not on
   a real vCenter (the live run on TN-MGMT01 is still pending).

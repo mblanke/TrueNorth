@@ -1014,7 +1014,10 @@ export interface paths {
         put?: never;
         /**
          * Create Competency
-         * @description Create a competency definition (admin/instructor).
+         * @description Create a competency definition in the platform-shared catalogue.
+         *
+         *     **Permission: course:author + tenant:read** — platform admin only; a tenant author
+         *     (instructor) is refused.
          */
         post: operations["create_competency_competency_frameworks_post"];
         delete?: never;
@@ -1037,6 +1040,8 @@ export interface paths {
          * @description Seed the NICE Workforce Framework (SP 800-181r1) core work roles and KSAs.
          *
          *     This is idempotent — skips competencies that already exist.
+         *
+         *     **Permission: course:author + tenant:read** — platform admin only.
          */
         post: operations["import_nice_framework_competency_frameworks_import_nice_post"];
         delete?: never;

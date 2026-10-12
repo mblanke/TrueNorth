@@ -19,8 +19,8 @@ _TRUE = {"yes", "true", "y", "1"}
 
 # OS identifiers that were renamed. Stored ranges, saved designer diagrams and older
 # golden-image registries still carry the old names, so they must keep resolving.
-# Mirrored in control-plane/worker/worker/render.py and
-# scenario-engine/template_engine/renderer.py (a test keeps the three in step).
+# Mirrored in control-plane/worker/worker/render.py (tests/api/test_os_aliases.py keeps
+# the two in step).
 DEPRECATED_OS_ALIASES: dict[str, str] = {
     "ubuntu-2204": "ubuntu-2404",
     "ubuntu2204": "ubuntu-2404",

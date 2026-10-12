@@ -19,6 +19,11 @@
 #   moodle/moodledata.tar       only with MOODLE_COMPOSE_FILE (the installer's Moodle,
 #                               tn_moodle_enabled): Moodle's files, without its caches.
 #                               Its database is one of the postgres dumps above.
+#   arc2/runs.tar               only with ARC2_RUNS_DIR (the installer sets it with
+#                               tn_arc2_enabled): every ARC² Course Studio run, archived as
+#                               root through a throwaway container (lib.sh), numeric owners
+#                               (tn-arc2:tn-arc2-runs) and modes kept. The runner is not
+#                               stopped; a job in progress may be caught half-written.
 #   manifest.json, SHA256SUMS
 #
 # Not backed up, on purpose (docs/runbooks/backup-restore.md):
@@ -60,6 +65,9 @@
 #   OPENSEARCH_SNAPSHOT_KEEP keep the newest N tn-* snapshots in the repository and
 #                            delete older ones after a successful snapshot (default 14;
 #                            0 = keep all).
+#   METRICS_DIR              optional: node_exporter's textfile directory. Each run writes
+#                            truenorth_backup.prom there (last success, last exit code)
+#                            for the BackupFailed / BackupStale alerts.
 #   OPENSSL                  default: openssl
 #   MOODLE_COMPOSE_FILE      optional: the Moodle node's compose file
 #   MOODLE_ENV_FILE          (compose.moodle-prod.yml) and its env file. Set: moodledata is
@@ -67,6 +75,9 @@
 #                            its user, running or not; a failure fails the backup like a
 #                            database dump would. Set but the env file absent (the node is
 #                            not installed yet): recorded as "not-installed".
+#   ARC2_RUNS_DIR            optional: the ARC² runs root (tn_arc2_runs_dir). Set but absent:
+#                            recorded as "not-installed". ARC2_RUNNER_UNIT (default
+#                            truenorth-arc2-runner) is only read to record its state.
 #
 # Exit codes: 0 ok; 1 failed (no backup kept); 3 data backed up but secrets NOT
 # escrowed (configure BACKUP_ESCROW_PUBKEY or BACKUP_ESCROW=out-of-band); 5 data and
@@ -112,6 +123,8 @@ on_exit() {
     if (( LOCKED )); then
         rmdir "${LOCK_DIR}" 2>/dev/null || true
     fi
+    # For BackupFailed / BackupStale (prometheus/alerts.yml): 0, 3 and 5 all kept a backup.
+    if [[ "${CURRENT_STEP}" == "done" ]]; then backup_metrics "${rc}" 1; else backup_metrics "${rc}" 0; fi
 }
 trap on_exit EXIT
 
@@ -215,6 +228,38 @@ case "$(moodle_state)" in
         MOODLE_JSON='{"status":"not-configured"}'
         ;;
 esac
+
+# ── 2c. ARC² Course Studio runs (optional) ───────────────────────────────────
+# Every Studio run (request, staged course, QA report, cmi5 package) lives only here.
+# The runner keeps running: finished runs are copied whole, and a job running at that
+# moment may be captured half-written (tar's exit 1, "file changed as we read it", is
+# accepted and recorded). For a quiescent copy stop the runner first (runbook).
+CURRENT_STEP="arc2"
+ARC2_JSON='{"status":"not-configured"}'
+if [[ -n "${ARC2_RUNS_DIR:-}" ]]; then
+    if [[ -d "${ARC2_RUNS_DIR}" ]]; then
+        mkdir -p "${WORK_PATH}/arc2"
+        runner="$(arc2_runner_state)"
+        tar_rc=0
+        docker run --rm --network none --user 0:0 -v "${ARC2_RUNS_DIR}:/runs:ro" \
+            --entrypoint tar "$(arc2_tar_image)" -C /runs --numeric-owner -cf - . \
+            >"${WORK_PATH}/arc2/runs.tar" </dev/null || tar_rc=$?
+        (( tar_rc <= 1 )) || die "archiving the ARC² runs in ${ARC2_RUNS_DIR} failed (tar exit ${tar_rc})"
+        # An archive tar cannot list is not a backup.
+        tar -tf "${WORK_PATH}/arc2/runs.tar" >/dev/null || die "ARC² runs archive is unreadable"
+        size="$(wc -c <"${WORK_PATH}/arc2/runs.tar" | tr -d ' ')"
+        changed=false
+        if (( tar_rc == 1 )); then
+            changed=true
+            log "WARN" "  arc2: files changed while being archived (the runner was ${runner}); a job in progress may be incomplete in this backup"
+        fi
+        ARC2_JSON="{\"status\":\"backed-up\",\"runs\":\"arc2/runs.tar\",\"bytes\":${size},\"source\":$(json_str "${ARC2_RUNS_DIR}"),\"runner\":$(json_str "${runner}"),\"changed_while_reading\":${changed}}"
+        log "INFO" "  arc2: runs ${size} bytes (runner ${runner})"
+    else
+        ARC2_JSON="{\"status\":\"not-installed\",\"reason\":$(json_str "ARC2_RUNS_DIR ${ARC2_RUNS_DIR} does not exist")}"
+        log "WARN" "  arc2: ARC2_RUNS_DIR ${ARC2_RUNS_DIR} does not exist; no runs backed up"
+    fi
+fi
 
 # ── 3. OpenSearch (optional) ─────────────────────────────────────────────────
 # Telemetry must never cost the backup of the data: a failed snapshot (or prune) is recorded
@@ -345,6 +390,7 @@ cat >"${WORK_PATH}/manifest.json" <<EOF
   "minio": {"buckets": ${BUCKETS}, "objects": ${BAK_OBJECTS}, "dir": "minio"},
   "opensearch": ${OS_JSON},
   "moodle": ${MOODLE_JSON},
+  "arc2": ${ARC2_JSON},
   "redis": {"status": "not-backed-up", "reason": "transient broker/cache; restoring would replay tasks"},
   "escrow": ${ESCROW_JSON}
 }

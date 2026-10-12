@@ -6,8 +6,12 @@ the real vCenter: two Students' labs are built, reset, expired, cleaned up and r
 runs on a **self-hosted runner inside the lab network** with the labels
 `[self-hosted, truenorth-lab]`.
 
-It runs on `workflow_dispatch` (Actions -> "Lab (live vSphere)" -> Run workflow) and
-nightly at 06:17 UTC. Never on `push` or `pull_request`: a self-hosted runner executes
+It runs on `workflow_dispatch` (Actions -> "Lab (live vSphere)" -> Run workflow) only.
+**The nightly schedule (06:17 UTC) is off** until a runner is registered: with no runner
+carrying the labels, every scheduled run sat queued and then failed, which taught people to
+ignore the workflow. Once the runner below is registered and one manual run has passed,
+turn the nightly back on by uncommenting the `schedule:` block in `lab.yml` (and update
+this paragraph). Never on `push` or `pull_request`: a self-hosted runner executes
 whatever the workflow checks out, so it must not run code from forks or unreviewed
 branches. Keep it that way. One run at a time (`concurrency: lab-vsphere`).
 

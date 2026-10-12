@@ -3,7 +3,8 @@
 ``app.routers.competency`` had no tests and no authorization beyond "signed in": any
 user could read anyone's profile across tenants, assert their own proficiency, and add
 to the platform-wide catalogue; a bad enum value or a duplicate code was a 500.
-These pin the rules now in its module docstring, plus the error paths.
+These pin the rules now in its module docstring, plus the error paths. Catalogue writes
+are platform-level (``course:author`` + ``tenant:read``): a tenant author is refused.
 """
 
 from __future__ import annotations
@@ -116,9 +117,28 @@ def test_student_cannot_add_to_the_catalogue(client, db_session, tenants):
         assert client.post("/competency/frameworks/import-nice").status_code == 403
 
 
-def test_instructor_creates_a_competency(client, db_session, tenants):
+def test_tenant_author_cannot_write_the_shared_catalogue(client, db_session, tenants):
+    """The catalogue is shared by every tenant, so a tenant-level author (an instructor:
+    ``course:author`` without the platform-level ``tenant:read``) may not change it — the
+    same gate as the QSP spine import (``PLATFORM_CURRICULUM_WRITE``)."""
     code = _code()
     with acting_as(_user(db_session, UserRole.instructor)):
+        r = client.post("/competency/frameworks", params={"code": code, "name": "x", "framework": "custom"})
+        assert r.status_code == 403
+        assert "tenant:read" in r.json()["detail"]
+        assert client.post("/competency/frameworks/import-nice").status_code == 403
+    assert db_session.query(Competency).filter(Competency.code == code).count() == 0
+
+
+def test_catalogue_gate_is_the_qsp_spine_gate():
+    from app.rbac import PLATFORM_CURRICULUM_WRITE, Permission
+
+    assert set(PLATFORM_CURRICULUM_WRITE) == {Permission.COURSE_AUTHOR, Permission.TENANT_READ}
+
+
+def test_platform_admin_creates_a_competency(client, db_session, tenants):
+    code = _code()
+    with acting_as(_user(db_session, UserRole.admin)):
         r = client.post(
             "/competency/frameworks",
             params={"code": code, "name": "Packet analysis", "framework": "custom", "category": "Analyze"},
@@ -128,7 +148,7 @@ def test_instructor_creates_a_competency(client, db_session, tenants):
 
 
 def test_unknown_framework_is_422_not_500(client, db_session, tenants):
-    with acting_as(_user(db_session, UserRole.instructor)):
+    with acting_as(_user(db_session, UserRole.admin)):
         r = client.post("/competency/frameworks", params={"code": _code(), "name": "x", "framework": "cobit"})
     assert r.status_code == 422
     assert "framework" in r.json()["detail"]
@@ -137,7 +157,7 @@ def test_unknown_framework_is_422_not_500(client, db_session, tenants):
 def test_duplicate_code_in_a_framework_is_409(client, db_session, tenants):
     code = _code()
     _comp(db_session, code)
-    with acting_as(_user(db_session, UserRole.instructor)):
+    with acting_as(_user(db_session, UserRole.admin)):
         r = client.post("/competency/frameworks", params={"code": code, "name": "again", "framework": "nice"})
     assert r.status_code == 409
 

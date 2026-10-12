@@ -1,4 +1,4 @@
-# Resume — 2026-10-09
+# Resume — 2026-10-11
 
 Read this first after a restart. It describes the current state. History is in
 `git log` and `docs/hardening/`. Product state, module by module: `docs/current-state.md`.
@@ -10,17 +10,23 @@ Releasing: `docs/release.md`.
   runs on PRs into it, and releases are tags on it. Local `main` and `github/main` have
   diverged before, so check `git rev-list --left-right --count main...github/main` before
   branching "from main". `feat/aar-pdf-designer-xapi` is an old line, not the base.
-- **All 17 modules are at stage 4. Release status: `v1.0.0-rc3` (`e015d27`, #117) is
-  the latest signed pre-release and is installed on staging** (`tn-staging`, an upgrade
-  from rc2). `v1.0.0` is not tagged yet. Changes: `CHANGELOG.md`. Known limitations and
-  the staging record: `docs/release-notes/v1.0.0.md`. The section modules live under
-  `control-plane/api/app/<module>/`: scheduler + capacity, range leases and range ops,
-  lab sessions, network inventory, noise, greyspace, detections, scenario runs, course
-  releases/publishing, LMS, wiki/support tickets/notifications. Everything up to #118
-  is merged (R-series, final security review #112, installer v1 #111, Helm #108).
-- **Open PRs** (2026-10-09): #92 (session coordinator). #118 (nightly backup wrapper
-  on a new host) merged after rc3. #3–#51 predate the re-land on main. Check each
-  against main before acting on it, and do not merge them as they are.
+- **All 17 modules are at stage 4. Release status: `v1.2.0-rc3` is installed on staging**
+  (`tn-staging`); `v1.2.0` is not tagged yet (`v1.1.0` was released 2026-10-09).
+  Changes: `CHANGELOG.md`. Known limitations, what is proven only on simulators, and the
+  staging record: `docs/release-notes/v1.2.0.md` (v1.0.0's: `docs/release-notes/v1.0.0.md`).
+  The section modules live under `control-plane/api/app/<module>/`: scheduler + capacity,
+  range leases and range ops, lab sessions, network inventory, noise, greyspace,
+  detections, scenario runs, course releases/publishing, LMS, cmi5, wiki/support
+  tickets/notifications. Everything up to #142 is merged.
+- **H6 is fixed** (#131): every vSphere operation uses the range's own tenant's vCenter
+  credentials. Like Greyspace on vSphere (#133) and the VyOS/OPNsense configs, it is proven
+  on vcsim and fakes only: **no real vCenter run yet**.
+- **Open PRs** (2026-10-11): #143 (ARC² runner) in flight. #92 (session coordinator).
+  #3–#51 predate the re-land on main. Check each against main before acting on it, and do
+  not merge them as they are.
+- **scenario-engine:** `runner/` is live (the scenario-engine image's command, the
+  documented CLI, `tests/scenario_engine/`). `template_engine/` had no importers outside a
+  parity test and was deleted in v1.2.0.
 
 ## The gate and the CI lanes
 
@@ -43,10 +49,11 @@ Capture the exit code: piping into `tail` hides failures.
 | integration | itest stack (`scripts/itest.sh`), `tests/integration`; zero passed = fail | yes |
 | e2e | Playwright (lockfile, `npm ci`) on itest + keycloak + web | yes |
 | load-smoke | k6, every scenario at 1 VU for 30 s (`tests/load/README.md`) | yes (since #107) |
-| moodle, vsphere-sim, greyspace | disposable Moodle publish, vcsim provisioner, Greyspace T0 stack | yes |
+| moodle, vsphere-sim, greyspace, cmi5 | disposable Moodle publish, vcsim provisioner, Greyspace T0 stack, ADL CATAPULT judging the cmi5 runtime (C105 release fixture) | yes |
 
 Other workflows: `release.yml` (tag `v*`: images by digest, Trivy gate, SBOMs,
-`release-manifest.json`), `lab.yml` (nightly live vSphere on a self-hosted runner),
+`release-manifest.json`), `lab.yml` (live vSphere on a self-hosted runner; manual only,
+the nightly is off until the runner is registered: `docs/runbooks/lab-runner.md`),
 `packer-build.yml` (manual), `terraform-plan.yml` (Proxmox PRs). `deploy-dev.yml` and
 `deploy-prod.yml` were deleted on 2026-10-08 (they could not work; see
 `docs/release.md`). **Nothing in CI deploys.** The installer (`install/`) deploys.
@@ -109,14 +116,15 @@ Scripts in `/opt/llm-stack/`: `to-fleet.sh`, `to-glm.sh`, `taz-status.sh`,
 
 ## Still open (product)
 
-1. **v1.0.0 known limitations** (`docs/release-notes/v1.0.0.md`): LTI refuses staff
-   emails (no deep linking for them), pre-upgrade telemetry indices, `vsphere_api`
-   ignores per-tenant credentials, `PLATFORM_TENANT_ID` on multi-tenant installs,
-   OpenSearch backups need `OPENSEARCH_SNAPSHOT_REPO`, LTI needs HTTPS.
-   (Installing by digest is done: #109, #111.)
+1. **v1.2.0 known limitations** (`docs/release-notes/v1.2.0.md`): simulator-only
+   evidence for vSphere work (Greyspace, VyOS/OPNsense configs, per-tenant vCenter), ARC²
+   test-host content is unreviewed (staging's courses are TEST CONTENT), cmi5 Moodle
+   activities tied to one release, WebSockets refuse the LTI hand-off session. Still from
+   v1.0.0: pre-upgrade telemetry indices, `PLATFORM_TENANT_ID` on multi-tenant installs,
+   LTI needs HTTPS. (Staff deep linking was resolved in #132, H6 in #131.)
 2. **Live vSphere evidence** needs the self-hosted lab runner and its credentials
-   (`lab.yml`, `docs/runbooks/lab-runner.md`). The Taz box cannot reach that LAN.
-   Staging has no vCenter (simulated, read-only).
+   (`lab.yml`, manual only until it is registered; `docs/runbooks/lab-runner.md`). The Taz
+   box cannot reach that LAN. Staging has no vCenter (simulated, read-only).
 3. **Content is the real bottleneck:** about 2,600 build hours, about 57% of them gated
    on cleared humans and purchased courseware. The four Red Analyst crosswalk rows still
    carry `DCWF-TODO`.
