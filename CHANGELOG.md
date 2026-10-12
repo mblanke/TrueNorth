@@ -305,7 +305,11 @@ course production with a local-model fallback, and the cleanup of unsupported su
   in". The wording is per site: `tn_login_banner_title` / `_text` / `_ack` (default: the
   owner's GoC-style notice), written as realm localization by 60-keycloak, so a change
   needs no rebuild or restart; a theme file change restarts Keycloak once. Shown on every
-  interactive sign-in (each SSO session, at most 10 h). LTI-launched Students sign in
+  interactive sign-in (each SSO session, at most 10 h). The acknowledgement is enforced by
+  the browser only (HTML `required`; Keycloak ignores the field): Keycloak 24 has no
+  built-in per-sign-in server-side acknowledgement (its Terms and Conditions required
+  action records one acceptance per user, not per sign-in, and a custom authenticator
+  needs a Java SPI provider), so AC-8 is recorded as Partial. LTI-launched Students sign in
   through Moodle and do not see it (no Moodle banner, by decision). CI: `keycloak-realm`
   checks the banner, the required box and the localization override on the pinned image.
 - **Smoke identity (behaviour change):** 95-smoke-test signs in as the local,

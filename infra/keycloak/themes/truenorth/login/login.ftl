@@ -5,7 +5,10 @@
 
   NIST AC-8 (system use notification): the banner is shown above the sign-in form on every
   interactive sign-in, and the form cannot be submitted until the acknowledgement box is
-  ticked (HTML `required`, no JavaScript). The text is the message tnLoginBanner: the
+  ticked (HTML `required`, no JavaScript). That is enforced by the browser only: Keycloak
+  ignores the tn_ack field, and Keycloak 24 offers no per-sign-in server-side
+  acknowledgement (Terms and Conditions is once per user; anything else needs a Java SPI
+  authenticator). docs/security.md records AC-8 as Partial. The text is the message tnLoginBanner: the
   theme's default (messages/messages_en.properties) or the realm's localization override,
   which the installer sets from tn_login_banner_text (roles/tn_keycloak/tasks/banner.yml).
 -->
