@@ -6,7 +6,8 @@ module merges them, so no agent ever edits the manifest by hand, and no agent ca
 key another stage owns. ``check`` walks the golden thread and writes ``qa``; ``gate``
 records the two human decisions (outline, preview) so a resumed run knows where it stopped.
 
-    python -m arc2.check init   <run> --slug <slug> --request-file <txt> [--enclave]
+    python -m arc2.check init   <run> --slug <slug> [--request-file <txt>] [--enclave]
+                                (default request file: <run>/request.txt)
     python -m arc2.check merge  <run> <stage>
     python -m arc2.check check  <run> [--json] [--dry-run] [--repo-root <dir>]
     python -m arc2.check gate   <run> outline|preview accept|feedback [--text ..] [--route <stage>]
@@ -1422,7 +1423,7 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("init", help="create the run directory and skeleton manifest")
     s.add_argument("run", type=Path)
     s.add_argument("--slug", required=True)
-    s.add_argument("--request-file", required=True, type=Path)
+    s.add_argument("--request-file", type=Path, help="the course request (default: <run>/request.txt)")
     s.add_argument("--enclave", action="store_true")
     s.add_argument("--repo-root", type=Path, default=REPO_ROOT)
 
@@ -1459,7 +1460,10 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
         if args.cmd == "init":
-            m = init_run(args.run, args.slug, args.request_file.read_text(), args.repo_root, args.enclave)
+            request_file = args.request_file or args.run / "request.txt"
+            if not request_file.is_file():
+                raise ContractError(f"no request file at {request_file}")
+            m = init_run(args.run, args.slug, request_file.read_text(), args.repo_root, args.enclave)
             print(f"initialised {args.run} run_id={m['run_id']}")
             return 0
         if args.cmd == "merge":

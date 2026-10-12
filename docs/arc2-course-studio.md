@@ -333,9 +333,9 @@ where file writes are denied by default (`tools/arc2/confine.py`: Seatbelt via `
 
 | While a job runs | Allowed |
 |---|---|
-| Write `build/arc2/<slug>/`, `build/arc2/<slug>.request.txt`, the job's own home | yes |
-| Write anything else: other runs, `_studio/` (ownership), `_queue/`, `_jobs/`, `_history/`, the repository, the runner account's home (`~/.claude`, `~/.gitconfig`, shell profiles, launch agents), shared temp | no |
-| Read the repository (except `.env*`) and the `claude` installation | yes |
+| Write `build/arc2/<slug>/` (which holds the request, `request.txt`) and the job's own home | yes |
+| Write anything else: the runs root `build/arc2/` itself, other runs, `_studio/` (ownership), `_queue/`, `_jobs/`, `_history/`, the repository, the runner account's home (`~/.claude`, `~/.gitconfig`, shell profiles, launch agents), shared temp | no |
+| Read the repository (except `.env*`; the tracked `.env.example` templates are readable) and the `claude` installation | yes |
 | Read other runs, `_studio/`, `_queue/`, `_jobs/`, anything else in the runner's home (other jobs' sessions, `~/.ssh`, `~/.docker`), including through symlinks | no |
 | Read `build/arc2/` or `.claude/worktrees/` anywhere in the repository (other checkouts' runs) | no |
 | Signal processes outside the sandbox | no |
@@ -349,6 +349,22 @@ anything worth reading: the runner re-executes itself with a scrubbed environmen
 on stdin, never on its command line. The API bounds every read of a run file (2 MB; a
 package at 200 MB), refuses YAML aliases (a few hundred bytes of nested aliases expand to
 gigabytes), and lists a run's pages without following links.
+
+Only directories are made writable, never a lone file in the read-only runs root. Claude
+Code's Write tool writes a temporary file beside its target and renames it into place,
+which a single bound file cannot take (bubblewrap: `EROFS`). So for a new run the runner
+writes the request to `build/arc2/<slug>/request.txt` itself before the job starts
+(`runner.stage_request`, not through links), and `/arc2` initialises the run from there
+(`arc2.check init` reads `<run>/request.txt` by default). Up to v1.2.0 the request went to
+`build/arc2/<slug>.request.txt` in the runs root; nothing reads that file after `init`, so
+older runs need nothing, and a leftover one can be deleted. Interactive runs (no runner)
+write `$RUN/request.txt` themselves.
+
+Under bubblewrap, `.env*` files in the checkout are masked with `/dev/null`, but not the
+tracked `.env.example` templates: masking a tracked file replaces it with a character
+device, so every job's `git status` (`/arc2` step 1) saw the checkout as modified and
+recorded `provenance.git_dirty: true`. The step 1/3 "no new tracked change" comparison was
+never affected (both ran in the same sandbox), but the provenance was wrong.
 
 Each job gets a fresh `HOME` and `CLAUDE_CONFIG_DIR` (its Claude sessions, memory and temp
 files), deleted when it ends. It also gets an allow-listed environment (`JOB_ENV` plus
@@ -466,7 +482,7 @@ both are the same directory.
 
 | Path under the runs root | Writer | Mode (`tn-arc2:tn-arc2-runs`, setgid) | Why |
 |---|---|---|---|
-| `.` | runner (run dirs, `<slug>.request.txt`, `_runner.lock`) | 2750 | the api lists it |
+| `.` | runner (run dirs, `_runner.lock`); jobs never | 2750 | the api lists it |
 | `_queue/` | api (temp file + rename); runner renames claimed jobs out | 2770 | both write; no sticky bit, or the runner could not rename the api's files |
 | `_studio/` | api (metadata by exclusive create, chat appends); `assign_owner` | 2770 | the runner never writes it |
 | `_jobs/`, `_history/`, `<slug>/` | runner and its jobs | 2750, files 0640 (`UMask=0027`) | the api reads them through the group |
