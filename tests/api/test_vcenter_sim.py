@@ -76,6 +76,16 @@ def test_installer_lookups_resolve(sim_base) -> None:
         assert c.delete(f"https://{sim_base}/api/session", headers=h).status_code == 204
 
 
+def test_serves_the_version_at_the_documented_path_and_the_old_one(sim_base) -> None:
+    with httpx.Client(verify=False) as c:
+        h = _session(c, sim_base)
+        for path in ("/api/appliance/system/version", "/api/vcenter/system/version"):
+            r = c.get(f"https://{sim_base}{path}", headers=h)
+            assert r.status_code == 200, path
+            assert r.json()["version"] == "8.0.3"
+        assert c.get(f"https://{sim_base}/api/appliance/system/version").status_code == 401  # needs a session
+
+
 def test_dashboard_backend_reads_the_simulator(sim_base, monkeypatch) -> None:
     from app.hypervisor_backends import vsphere
 

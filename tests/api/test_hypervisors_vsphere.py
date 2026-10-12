@@ -209,7 +209,7 @@ class TestVsphereEndpointAndDialect:
         base = "https://vcsa.range.test:8443"
         with respx.mock(assert_all_called=True) as router:
             router.post(f"{base}/api/session").mock(return_value=httpx.Response(201, json="tok"))
-            router.get(f"{base}/api/vcenter/system/version").mock(
+            router.get(f"{base}/api/appliance/system/version").mock(
                 return_value=httpx.Response(200, json={"version": "8.0.3"})
             )
             router.get(f"{base}/api/vcenter/host").mock(return_value=httpx.Response(200, json=HOSTS))
@@ -220,6 +220,38 @@ class TestVsphereEndpointAndDialect:
         assert (result.version, result.nodes_found) == ("8.0.3", 2)
         assert logout.calls.last.request.headers["vmware-api-session-id"] == "tok"
         assert conn.is_active is True
+
+    def test_api_version_falls_back_to_the_old_sim_path_on_404(self, db_session):
+        conn = _vcenter(db_session)
+        with respx.mock(assert_all_called=True) as router:
+            router.post(f"{VCENTER}/api/session").mock(return_value=httpx.Response(201, json="tok"))
+            documented = router.get(f"{VCENTER}/api/appliance/system/version").mock(
+                return_value=httpx.Response(404)
+            )
+            old = router.get(f"{VCENTER}/api/vcenter/system/version").mock(
+                return_value=httpx.Response(200, json={"version": "8.0.3"})
+            )
+            router.get(f"{VCENTER}/api/vcenter/host").mock(return_value=httpx.Response(200, json=HOSTS))
+            router.delete(f"{VCENTER}/api/session").mock(return_value=httpx.Response(204))
+            result = check_vsphere(conn, db_session)
+
+        assert result.success, result.message
+        assert result.version == "8.0.3"
+        assert documented.call_count == 1 and old.call_count == 1  # documented path asked first
+
+    def test_api_version_error_other_than_404_does_not_fall_back(self, db_session):
+        conn = _vcenter(db_session)
+        with respx.mock(assert_all_called=False) as router:
+            router.post(f"{VCENTER}/api/session").mock(return_value=httpx.Response(201, json="tok"))
+            router.get(f"{VCENTER}/api/appliance/system/version").mock(return_value=httpx.Response(403))
+            old = router.get(f"{VCENTER}/api/vcenter/system/version").mock(
+                return_value=httpx.Response(200, json={"version": "8.0.3"})
+            )
+            router.delete(f"{VCENTER}/api/session").mock(return_value=httpx.Response(204))
+            result = check_vsphere(conn, db_session)
+
+        assert not result.success and "403" in result.message
+        assert not old.called
 
     def test_api_404_falls_back_to_rest_with_the_rows_credentials(self, db_session):
         conn = _legacy_vcenter(db_session)
@@ -262,7 +294,7 @@ class TestVsphereEndpointAndDialect:
         conn = _vcenter(db_session)
         with respx.mock() as router:
             router.post(f"{VCENTER}/api/session").mock(return_value=httpx.Response(201, json="tok"))
-            router.get(f"{VCENTER}/api/vcenter/system/version").mock(return_value=httpx.Response(503))
+            router.get(f"{VCENTER}/api/appliance/system/version").mock(return_value=httpx.Response(503))
             logout = router.delete(f"{VCENTER}/api/session").mock(return_value=httpx.Response(204))
             result = check_vsphere(conn, db_session)
 

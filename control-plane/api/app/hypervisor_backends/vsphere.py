@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import ipaddress
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from datetime import datetime
 
 import httpx
@@ -30,7 +30,11 @@ from .base import BaseHypervisorBackend
 API = "api"  # /api, vSphere 7.0U2+
 REST = "rest"  # legacy /rest only: vCenter before 7.0U2, vcsim
 _SESSION_PATH = {API: "/api/session", REST: "/rest/com/vmware/cis/session"}
-_VERSION_PATH = {API: "/vcenter/system/version", REST: "/appliance/system/version"}
+# The documented version read is /appliance/system/version in both dialects. The /api
+# form falls back to /vcenter/system/version on a 404: older builds of tools/vcenter-sim
+# serve only that.
+_VERSION_PATH = {API: "/appliance/system/version", REST: "/appliance/system/version"}
+_API_VERSION_FALLBACK = "/vcenter/system/version"
 _VM_HOST_FILTER = {API: "hosts", REST: "filter.hosts"}
 
 
@@ -67,6 +71,15 @@ class _Session:
         body = r.json()
         return body.get("value") if self.dialect == REST and isinstance(body, dict) else body
 
+    def version(self):
+        """The appliance version info; on /api a 404 retries the older sim-only path."""
+        try:
+            return self.get(_VERSION_PATH[self.dialect])
+        except httpx.HTTPStatusError as exc:
+            if self.dialect != API or exc.response.status_code != 404:
+                raise
+        return self.get(_API_VERSION_FALLBACK)
+
     def vms_on(self, host_id: str):
         return self.get("/vcenter/vm", params={_VM_HOST_FILTER[self.dialect]: host_id})
 
@@ -95,10 +108,9 @@ def _session(conn: HypervisorConnection, password: str, timeout: float) -> Itera
         try:
             yield s
         finally:
-            try:
+            # A failed logout does not change the result: vCenter expires idle sessions itself.
+            with suppress(httpx.HTTPError):
                 client.delete(_SESSION_PATH[dialect], headers=s.headers)
-            except httpx.HTTPError:
-                pass  # vCenter expires an idle session itself; the result stands
 
 
 class VSphereBackend(BaseHypervisorBackend):
@@ -120,14 +132,14 @@ def check_connection(conn: HypervisorConnection, db) -> HypervisorTestResult:
         note = ""
         with _session(conn, password, timeout=10) as s:
             if s.dialect == API:
-                ver_info = s.get(_VERSION_PATH[API])
+                ver_info = s.version()
                 hosts = s.get("/vcenter/host")
             else:
                 # The login is the test. The legacy version and host reads are not served
                 # everywhere (vcsim has neither), so their absence is reported, not fatal.
                 ver_info, hosts, missing = {}, [], []
                 try:
-                    ver_info = s.get(_VERSION_PATH[REST]) or {}
+                    ver_info = s.version() or {}
                 except httpx.HTTPStatusError:
                     missing.append("version")
                 try:
