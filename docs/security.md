@@ -43,7 +43,7 @@ flowchart TB
     end
 
     subgraph Data Zone
-        PG[(PostgreSQL<br>Encrypted at Rest)]
+        PG[(PostgreSQL)]
         RS[(Redis<br>Auth Required)]
         OS[(OpenSearch<br>TLS + Auth)]
         MIO[(MinIO<br>TLS + IAM)]
@@ -76,8 +76,10 @@ flowchart TB
 1. **Defense in Depth** — Multiple security layers from network to application
 2. **Least Privilege** — Each component and user gets minimum required permissions
 3. **Zero Trust** — Every request is authenticated and authorized, no implicit trust
-4. **Encryption Everywhere** — TLS in transit, AES-256 at rest
-5. **Audit Everything** — Every state change and admin action is logged
+4. **Encryption** — TLS at the edge and to OpenSearch; stored credentials sealed by the
+   application. Not everywhere: see [Encryption](#encryption) for the gaps
+5. **Audit** — State changes in most sections write an audit row; see
+   [Audit Logging](#audit-logging) for what is and is not covered
 6. **Tenant Isolation** — Strict data separation between tenants
 
 ---
@@ -459,21 +461,25 @@ Each provisioned range receives a dedicated VLAN (100-999):
 
 ### Encryption in Transit
 
-| Connection | Protocol | Minimum Version |
+As shipped in `infra/platform/docker/compose.prod.yml` (checked 2026-10-12):
+
+| Connection | Protected | Evidence |
 |-----------|----------|----------------|
-| Client → Load Balancer | TLS | 1.2 (prefer 1.3) |
-| Load Balancer → API | TLS | 1.2 |
-| API → PostgreSQL | TLS | 1.2 |
-| API → Redis | TLS | 1.2 |
-| API → OpenSearch | TLS | 1.2 |
-| API → MinIO | TLS | 1.2 |
-| API → Keycloak | TLS | 1.2 |
-| Inter-node (K8s) | mTLS (Istio) | 1.3 |
+| Browser → nginx edge | TLS 1.2/1.3, HSTS | `infra/platform/nginx/conf.d/ssl-params.conf`, `snippets/security-headers-common.conf` |
+| nginx → API, web, Keycloak | No (plain HTTP on the compose network) | `conf.d/truenorth.conf` |
+| API/worker → PostgreSQL (pgbouncer) | No | `DATABASE_URL` with no `sslmode` |
+| API/worker → Redis | Password, no TLS | `REDIS_URL=redis://` |
+| API → MinIO | No | `MINIO_ENDPOINT=http://minio:9000` |
+| API → Keycloak (JWKS) | No | `KEYCLOAK_URL=http://keycloak:8080/auth` |
+| API/worker → OpenSearch | TLS, installer's internal CA | security plugin `ssl.http.enabled=true` |
+| Kubernetes inter-pod | No service mesh; nothing configures mTLS | `infra/k8s/helm/` |
+
+Internal traffic relies on the host's container network not being reachable from outside.
 
 ### TLS Configuration
 
 ```nginx
-# Recommended TLS settings (nginx)
+# Recommended TLS settings (nginx; the shipped ssl-params.conf sets the protocols)
 ssl_protocols TLSv1.2 TLSv1.3;
 ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384;
 ssl_prefer_server_ciphers on;
@@ -488,14 +494,19 @@ add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; prelo
 
 ### Encryption at Rest
 
-| Data Store | Method | Key Management |
+TrueNorth ships no Vault, no KMS integration, no database TDE and no disk encryption
+(LUKS). The one application-level encryption at rest is the sealed-credential columns
+below; anything more is the host's job (for example an encrypted volume under
+`/var/lib/docker`), and the installer does not set it up.
+
+| Data Store | Encrypted at rest by TrueNorth? | Notes |
 |-----------|--------|---------------|
-| PostgreSQL | TDE (Transparent Data Encryption) | OS-level LUKS or cloud KMS |
-| OpenSearch | Node-level encryption | OpenSearch Security plugin |
-| MinIO | Server-Side Encryption (SSE-S3) | MinIO KMS or Vault |
-| Redis | Not encrypted at rest (volatile) | N/A — cache only |
-| Backups | AES-256-GCM | Vault or cloud KMS |
-| Stored credentials (hypervisor passwords and API tokens, AI engine keys) | Fernet (AES-128-CBC + HMAC-SHA256), sealed by the application | `TN_SECRETS_KEY` |
+| PostgreSQL | No | Plain data files. Credential columns are sealed (last row) |
+| OpenSearch | No | The security plugin provides TLS and auth, not at-rest encryption |
+| MinIO | No | No SSE or KMS configured |
+| Redis | No | Broker and cache only, not backed up |
+| Backups | Partly | Database dumps and MinIO mirrors are plain; the env file and secrets directory are AES-256 encrypted to the escrow RSA public key (`scripts/backup/backup.sh`) |
+| Stored credentials (hypervisor passwords and API tokens, AI engine keys) | Yes: Fernet (AES-128-CBC + HMAC-SHA256), sealed by the application | `TN_SECRETS_KEY`, an environment value; no external key manager |
 
 #### Stored credentials
 
@@ -526,47 +537,39 @@ worker has a byte-identical copy, `worker/secretbox.py`). The API never returns 
 
 ### Rate Limiting
 
-```python
-# Rate limiting tiers
-RATE_LIMITS = {
-    "default":        "100/minute",
-    "auth":           "10/minute",   # Login attempts
-    "provision":      "5/minute",    # Range provisioning
-    "batch_provision":"2/minute",    # Batch operations
-    "ai_request":     "30/minute",   # AI Orchestrator calls
-    "websocket":      "5/minute",    # WebSocket connection attempts
-}
-```
+Two layers. The API keeps a per-user-per-address sliding window in Redis
+(`control-plane/api/app/middleware.py`; on unless `RATE_LIMIT_ENABLED` is not `true`),
+answering 429 with `Retry-After`:
 
-| Endpoint Category | Limit | Window | Response on Exceed |
-|------------------|-------|--------|-------------------|
-| General API | 100 req | 1 minute | 429 + Retry-After header |
-| Authentication | 10 req | 1 minute | 429 + 60s lockout |
-| Provisioning | 5 req | 1 minute | 429 |
-| Batch Operations | 2 req | 1 minute | 429 |
-| AI Requests | 30 req | 1 minute | 429 |
-| WebSocket Connect | 5 req | 1 minute | 429 |
+| Requests | Limit per minute |
+|----------|------------------|
+| Default (`RATE_LIMIT_DEFAULT`) | 100 |
+| Any `GET` | 200 |
+| `POST /ranges` | 30 |
+| `POST /ranges/batch-provision` | 5 |
+| `POST /ai/…` | 20 |
+| Exercise Forge, quiz generation, AAR AI enhance, MESL generation | 10 each |
+| Curriculum AI search and course generation, detection submissions | 30 each |
+
+All users behind one address together get at most 10 times the per-user limit. The nginx
+edge adds per-address `limit_req` zones and 100 connections per address
+(`infra/platform/nginx/nginx.conf`). Keycloak's brute-force detection covers sign-in.
 
 ### Input Validation
 
-All API inputs are validated using Pydantic v2 models:
+API request bodies are Pydantic v2 models (`control-plane/api/app/schemas.py` and the
+section modules), in the default (lax) mode. For example:
 
 ```python
-class RangeCreate(BaseModel):
-    name: str = Field(..., min_length=1, max_length=255, pattern=r'^[a-zA-Z0-9\s\-_]+$')
-    template_id: UUID
-    description: str = Field(default="", max_length=2000)
-    vm_count: int = Field(default=1, ge=1, le=100)
-
-    model_config = ConfigDict(strict=True)
+class RangeIn(BaseModel):
+    name: str = Field(..., min_length=1, max_length=255)
+    template_id: uuid.UUID
 ```
 
 **Validation rules applied:**
-- **String lengths** — Min/max enforced on all string fields
-- **Regex patterns** — Special characters restricted where appropriate
-- **UUID format** — All IDs validated as proper UUIDs
+- **String lengths and numeric bounds** — where a model declares them; not on every field
+- **UUID format** — path and body IDs typed as UUIDs
 - **Enum values** — State/type fields restricted to valid enum values
-- **Numeric bounds** — Min/max on all numeric fields
 - **No SQL injection** — SQLAlchemy parameterized queries throughout
 - **No XSS** — Output encoding in templates; Angular auto-escapes
 - **YAML validation** — Scenario YAML parsed with safe_load, schema-validated
@@ -577,54 +580,50 @@ class RangeCreate(BaseModel):
 
 ### What Is Audited
 
-Every state-changing operation is recorded in the `audit_logs` table:
+Routers and services write `AuditLog` rows for their state changes: ranges (create, update,
+delete, provision, power, destroy, abandon, snapshots), exercises (create, start, pause,
+resume, complete, objective acknowledgement), detections, templates, scenarios and
+executions, users, roster imports, teams, tenants, registrations, the scheduler, noise,
+Greyspace, threat intel, detection rules, wiki and tickets. Coverage is per call site, not
+enforced centrally, so a new endpoint is audited only if it writes a row.
 
-| Event Category | Events Logged |
-|---------------|--------------|
-| **Authentication** | Login success/failure, token refresh, logout |
-| **Range** | Create, update, delete, provision, destroy, state changes |
-| **Exercise** | Create, start, pause, complete, cancel, objective ack |
-| **Template** | Create, update, delete |
-| **Scenario** | Create, update, delete |
-| **User** | Create, update roles, delete, password change |
-| **Tenant** | Create, update, delete |
-| **Admin** | Configuration changes, bulk operations |
+**Not audited by TrueNorth:** sign-in success or failure, token refresh and sign-out (these
+happen in Keycloak, and the realm does not enable Keycloak's event store), and reads.
 
 ### Audit Log Schema
 
-```sql
-CREATE TABLE audit_logs (
-    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    tenant_id   UUID NOT NULL REFERENCES tenants(id),
-    user_id     UUID REFERENCES users(id),
-    action      VARCHAR(100) NOT NULL,
-    resource    VARCHAR(100) NOT NULL,
-    resource_id UUID,
-    details     JSONB,
-    ip_address  INET,
-    user_agent  TEXT,
-    created_at  TIMESTAMP WITH TIME ZONE DEFAULT now()
-);
+`AuditLog` in `control-plane/api/app/models.py`:
 
-CREATE INDEX idx_audit_tenant_created ON audit_logs(tenant_id, created_at DESC);
-CREATE INDEX idx_audit_user ON audit_logs(user_id);
-CREATE INDEX idx_audit_resource ON audit_logs(resource, resource_id);
-```
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | UUID | |
+| `timestamp` | timestamptz | server default `now()` |
+| `user_id` | UUID, nullable | who acted |
+| `tenant_id` | UUID, nullable | legacy rows may have none |
+| `action` | varchar(100) | e.g. `create`, `provision`, `ack_objective` |
+| `resource_type` | varchar(100) | e.g. `range`, `exercise` |
+| `resource_id` | varchar(255) | |
+| `detail` | text, nullable | free text |
+
+Indexes: `(tenant_id, timestamp)` and `(resource_type, resource_id)`. The record has no
+source IP address and no user agent.
 
 ### Querying Audit Logs
 
-```bash
-# Via API (admin only - requires audit:read permission)
-curl -H "Authorization: Bearer $TOKEN" \
-  "https://api.truenorth.local/admin/audit-log?limit=50&offset=0"
+The only reader is a paged list, newest first: `GET /audit-log?limit=…&offset=…`
+(`audit:read`; `limit` at most 500). Only the admin role holds `audit:read`. A caller who
+also holds `tenant:read` sees every tenant's entries; the admin role holds every
+permission, so in practice every admin does. The web app shows it under **Admin → Audit Log**. There is no
+filtering by date, user or resource.
 
-# Via SQL (for compliance exports)
-SELECT action, resource, resource_id, details, created_at
+For anything else, query the database directly:
+
+```sql
+SELECT timestamp, user_id, action, resource_type, resource_id, detail
 FROM audit_logs
 WHERE tenant_id = '<tenant-id>'
-  AND created_at >= '2026-01-01'
-  AND created_at < '2026-02-01'
-ORDER BY created_at DESC;
+  AND timestamp >= '2026-01-01' AND timestamp < '2026-02-01'
+ORDER BY timestamp DESC;
 ```
 
 ### Audit Log Retention
@@ -637,6 +636,11 @@ ORDER BY created_at DESC;
 ---
 
 ## Vulnerability Management
+
+What CI actually runs (`.github/workflows/ci.yml`, `release.yml`): pip-audit and npm audit
+on every run (blocking); Trivy, checksum-pinned, on each built image (fixable CRITICAL
+blocks a PR; a release blocks on fixable HIGH and CRITICAL). The commands below are for
+scanning by hand.
 
 ### Container Scanning
 
@@ -666,6 +670,8 @@ govulncheck ./...
 
 ### Patch Management
 
+A recommended cadence for operators; TrueNorth does not schedule or enforce it.
+
 | Component | Update Frequency | Method |
 |-----------|-----------------|--------|
 | OS packages (containers) | Weekly | Rebuild base images |
@@ -677,9 +683,10 @@ govulncheck ./...
 
 ### Penetration Testing
 
-- **Frequency:** Annual (external) + quarterly (internal)
-- **Scope:** Full platform including range VMs
-- **Focus areas:** Authentication bypass, privilege escalation, tenant isolation, injection attacks
+No penetration test has been performed on TrueNorth. A recommended programme for an
+operator: an external test before production and annually, covering the whole platform
+including range VMs, with authentication bypass, privilege escalation, tenant isolation
+and injection as focus areas.
 
 ---
 
@@ -759,57 +766,64 @@ govulncheck ./...
 
 ## Compliance Mapping
 
+Checked against `github/main` on 2026-10-12 (v1.2.0). This is a self-assessment of what the
+code and shipped configuration do, not an accreditation, and it is not evidence that any
+control has been assessed. **Implemented** means the code or shipped configuration does it;
+**Partial** says exactly what is missing; **Not implemented** means nothing in the
+repository does it, whatever an operator could add.
+
 ### NIST 800-53 Controls
 
-| Control Family | Control | TrueNorth Implementation |
-|---------------|---------|------------------------|
-| **AC - Access Control** | AC-2 Account Management | Keycloak user lifecycle, admin CRUD API |
-| | AC-3 Access Enforcement | RBAC with 25+ permissions, dependency injection |
-| | AC-6 Least Privilege | 5 roles with granular permissions |
-| | AC-7 Unsuccessful Logon Attempts | Keycloak brute force protection (5 failures) |
-| | AC-8 System Use Notification | Login banner via Keycloak theme |
-| | AC-12 Session Termination | JWT expiry (1h), session timeout (30min) |
-| **AU - Audit** | AU-2 Event Logging | Comprehensive audit_logs table |
-| | AU-3 Content of Audit Records | User, action, resource, details, IP, timestamp |
-| | AU-6 Audit Review | Grafana dashboards, admin API |
-| | AU-9 Protection of Audit Info | Append-only table, backup to MinIO |
-| | AU-11 Audit Record Retention | 90d hot, 365d warm, 7yr cold |
-| **CA - Assessment** | CA-7 Continuous Monitoring | Prometheus + Grafana + Alertmanager |
-| | CA-8 Penetration Testing | Annual external, quarterly internal |
-| **CM - Configuration** | CM-2 Baseline Configuration | Terraform + Packer + Helm charts |
-| | CM-6 Configuration Settings | Hardening checklist above |
-| **IA - Identification** | IA-2 User Identification | Keycloak OIDC with MFA support |
-| | IA-5 Authenticator Management | Keycloak password policy |
-| **IR - Incident Response** | IR-4 Incident Handling | Runbooks in operations guide |
-| | IR-5 Incident Monitoring | Alert response procedures |
-| **SC - System & Comms** | SC-8 Transmission Confidentiality | TLS 1.2+ on all connections |
-| | SC-12 Cryptographic Key Management | Vault / KMS integration |
-| | SC-13 Cryptographic Protection | AES-256-GCM, RSA-2048+ |
-| | SC-28 Protection of Info at Rest | TDE, SSE, LUKS |
-| **SI - System & Info Integrity** | SI-2 Flaw Remediation | Trivy scanning, pip-audit, npm audit |
-| | SI-4 Information System Monitoring | Full observability stack |
-| | SI-10 Information Input Validation | Pydantic v2 strict validation |
+| Control | Status | What exists, and the gap | Evidence |
+|---------|--------|--------------------------|----------|
+| AC-2 Account Management | Partial | Accounts are created only by approving an access request (instructor or admin); admins manage users. No automated disabling of inactive accounts; deprovisioning relies on the directory | `control-plane/api/app/routers/registration.py`, `control-plane/api/app/routers/admin.py`, `docs/onboarding.md` |
+| AC-3 Access Enforcement | Implemented | 60 permissions over 5 roles, checked per route; tenant ownership checked on lookups | `control-plane/api/app/rbac.py`, `control-plane/api/app/tenancy.py` |
+| AC-6 Least Privilege | Partial | Five roles with distinct permission sets. The admin role holds every permission, including cross-tenant reads | `control-plane/api/app/rbac.py` (`ROLE_PERMISSIONS`) |
+| AC-7 Unsuccessful Logon Attempts | Implemented (Keycloak) | Brute-force detection after 5 failures, temporary lockout growing by 60 s up to 300 s; no permanent lockout. AD-federated accounts are also subject to the directory's own policy | `infra/keycloak/realm-truenorth.json`, `tests/contracts/test_keycloak_hardening.py` |
+| AC-8 System Use Notification | Being built for v1.2.0; row owned by that work | Login banner via Keycloak theme | — |
+| AC-12 Session Termination | Implemented (Keycloak) | Access token 5 min, SSO idle 30 min, SSO maximum 10 h, offline session 7 days | `install/roles/tn_keycloak/defaults/main.yml` (`tn_kc_realm_settings`) |
+| AU-2 Event Logging | Partial | State changes in most sections write an audit row. Sign-ins, failures and reads are not logged by TrueNorth, and Keycloak's event store is not enabled | `control-plane/api/app/models.py` (`AuditLog`); [Audit Logging](#audit-logging) |
+| AU-3 Content of Audit Records | Partial | Time, user, tenant, action, resource type and id, free-text detail. No source IP, user agent or outcome (success or failure) | `control-plane/api/app/models.py` (`AuditLog`) |
+| AU-6 Audit Review | Partial | A paged, newest-first list (`GET /audit-log`, Admin → Audit Log). No search, filter, correlation, reporting or alerting on audit events | `control-plane/api/app/routers/admin.py` (`list_audit_log`) |
+| AU-9 Protection of Audit Information | Being built for v1.2.0; row owned by that work | Append-only table, backup to MinIO | — |
+| AU-11 Audit Record Retention | Being built for v1.2.0; row owned by that work | 90d hot, 365d warm, 7yr cold | — |
+| CA-7 Continuous Monitoring | Partial | Prometheus, Alertmanager and Grafana with unit-tested alert rules. Alert delivery through Alertmanager has not been exercised on staging | `infra/platform/docker/compose.monitoring.yml`, `tests/contracts/test_prometheus_rules.py` |
+| CA-8 Penetration Testing | Not implemented | No penetration test has been performed or scheduled. Internal code security sweeps only | — |
+| CM-2 Baseline Configuration | Partial | Configuration as code: the Ansible installer, `compose.prod.yml` by image digest, a Helm chart, Packer image builds. No drift detection. (Terraform was removed in #131.) | `install/`, `infra/platform/docker/compose.prod.yml`, `infra/k8s/helm/`, `infra/vsphere/packer/` |
+| CM-6 Configuration Settings | Partial | The installer enforces Keycloak token, session, password and client settings on every run. The [hardening checklist](#security-hardening-checklist) is guidance for the operator, not enforced | `install/roles/tn_keycloak/` |
+| IA-2 Identification and Authentication | Partial | Keycloak OIDC with PKCE; optional read-only AD federation. MFA for privileged users: see the FedRAMP table. No CAC/PIV or smart-card support | `infra/keycloak/realm-truenorth.json`, `control-plane/api/app/identity.py` |
+| IA-5 Authenticator Management | Partial | Local Keycloak accounts: minimum 12 characters, not the username, last 5 not reused. AD-federated passwords are governed by AD | `install/roles/tn_keycloak/defaults/main.yml` (`passwordPolicy`) |
+| IR-4 Incident Handling | Partial | Written runbooks for incidents and on-call. No exercised incident on record | `docs/runbooks/incident.md`, `docs/runbooks/on-call.md` |
+| IR-5 Incident Monitoring | Partial | Alert rules and runbook procedures exist; delivery unproven (see CA-7). No incident tracking system | `docs/operations.md`, `docs/runbooks/incident.md` |
+| SC-8 Transmission Confidentiality | Partial | TLS 1.2/1.3 at the nginx edge with HSTS, and TLS to OpenSearch. Internal traffic to PostgreSQL, Redis, MinIO and Keycloak is plain on the container network | [Encryption in Transit](#encryption-in-transit) |
+| SC-12 Cryptographic Key Management | Partial | One application key, `TN_SECRETS_KEY`, held in the env file, with a documented rotation (`new,old`) and escrow in the backups. No Vault, KMS or HSM | `control-plane/api/app/secretbox.py`, `docs/runbooks/key-rotation.md` |
+| SC-13 Cryptographic Protection | Partial | Fernet (AES-128-CBC + HMAC-SHA256) for stored credentials; AES-256 with RSA key wrapping for the backup escrow. No FIPS 140-validated modules | `control-plane/api/app/secretbox.py`, `scripts/backup/backup.sh` |
+| SC-28 Protection of Information at Rest | Partial | Only hypervisor credentials and AI engine keys are encrypted (sealed columns). No database TDE, no disk encryption (LUKS), no MinIO SSE, no OpenSearch at-rest encryption | [Encryption at Rest](#encryption-at-rest) |
+| SI-2 Flaw Remediation | Implemented | Every CI run: pip-audit and npm audit (blocking), Trivy on built images (fixable CRITICAL blocks). Release: Trivy blocks fixable HIGH and CRITICAL | `.github/workflows/ci.yml`, `.github/workflows/release.yml` |
+| SI-4 System Monitoring | Partial | Platform health and resource metrics (Prometheus exporters, host probes). No intrusion detection on the platform itself | `infra/platform/docker/compose.monitoring.yml` |
+| SI-10 Information Input Validation | Implemented | Pydantic v2 request models; scenario YAML parsed safely and validated; telemetry search limited to a closed query language | `control-plane/api/app/schemas.py`, `control-plane/api/app/safe_yaml.py`, `control-plane/api/app/search_backends/query.py` |
 
 ### FedRAMP Alignment
 
-For FedRAMP Moderate baseline:
+For the FedRAMP Moderate baseline. TrueNorth is not FedRAMP authorized and no assessment has
+been made.
 
 | Area | Requirement | Status |
 |------|------------|--------|
-| Authentication | MFA for privileged users | Keycloak supports TOTP/WebAuthn |
-| Encryption | FIPS 140-2 validated modules | Use FIPS-enabled OpenSSL builds |
-| Audit | Continuous audit log export | Daily export to immutable storage |
-| Monitoring | Continuous monitoring program | Prometheus + Grafana + alerts |
-| Vulnerability Management | Monthly scanning | Trivy + pip-audit in CI/CD |
-| Incident Response | Documented IR plan | Runbooks in operations guide |
-| Data Residency | Data within authorized boundaries | Configurable deployment regions |
+| Authentication | MFA for privileged users | Being built for v1.2.0; row owned by that work. Keycloak supports TOTP/WebAuthn |
+| Encryption | FIPS 140-validated modules | **Not implemented.** Images use standard, non-FIPS crypto libraries |
+| Audit | Continuous audit log export | Being built for v1.2.0; row owned by that work. Daily export to immutable storage |
+| Monitoring | Continuous monitoring program | **Partial.** Prometheus, Alertmanager and Grafana; delivery not exercised (see CA-7) |
+| Vulnerability Management | Monthly scanning | **Implemented** for code and images on every CI run and release (see SI-2). Deployed hosts are not scanned |
+| Incident Response | Documented IR plan | **Partial.** Runbooks exist; never exercised (see IR-4) |
+| Data Residency | Data within authorized boundaries | **Deployment-dependent.** Self-hosted: data stays on the hosts it is installed on. AI prompts go to the operator-configured AI endpoint (`tn_ai_*` installer variables, rendered to `OPENAI_BASE_URL`, which `compose.prod.yml` requires). Keep that endpoint inside the authorized boundary |
 
 ### SOC 2 Type II Relevance
 
-| Trust Service Criteria | Implementation |
+| Trust Service Criteria | What exists |
 |----------------------|----------------|
-| **Security** | RBAC, encryption, network isolation, audit logging |
-| **Availability** | Multi-region optional, health checks, auto-recovery |
+| **Security** | RBAC, sealed credentials, edge TLS, audit rows for most state changes |
+| **Availability** | Health checks, backups with a nightly CI restore drill. No multi-site or HA deployment |
 | **Processing Integrity** | Input validation, state machines with transition guards |
-| **Confidentiality** | Tenant isolation, encryption at rest/transit, VLAN separation |
+| **Confidentiality** | Tenant scoping on lookups. Gaps: plain internal traffic, no at-rest encryption beyond credentials |
 | **Privacy** | Minimal PII collection, data retention policies |
