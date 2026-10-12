@@ -1,0 +1,43 @@
+---
+# Validate (99-validate, tn_cmi5_enabled): the install FAILS when cmi5 is on and its AU
+# credential is missing. Checked in the env file the api is started from and in the
+# persisted secret, never printed.
+#   - ansible.builtin.include_role: {name: tn_cmi5, tasks_from: validate}
+
+- name: Validate — read the env file and the persisted cmi5 AU credential
+  ansible.builtin.slurp:
+    src: "{{ item }}"
+  loop:
+    - "{{ tn_env_file }}"
+    - "{{ tn_config_dir }}/secrets/cmi5_lrs_auth"
+  register: tn_cmi5_validate_files
+  failed_when: false
+  no_log: true
+
+# Worked out without printing anything (no_log), then judged where the message shows.
+- name: Validate — compare CMI5_LRS_AUTH with LRS_AUTH and the persisted credential
+  vars:
+    _lines: "{{ (tn_cmi5_validate_files.results[0].content | default('') | b64decode).splitlines() }}"
+    _au: >-
+      {{ _lines | select('match', '^CMI5_LRS_AUTH=') | map('regex_replace', '^CMI5_LRS_AUTH=', '')
+         | first | default('') | trim }}
+    _server: >-
+      {{ _lines | select('match', '^LRS_AUTH=') | map('regex_replace', '^LRS_AUTH=', '')
+         | first | default('') | trim }}
+    _persisted: "{{ tn_cmi5_validate_files.results[1].content | default('') | b64decode | trim }}"
+  ansible.builtin.set_fact:
+    tn_cmi5_validate_problem: >-
+      {{ 'has no CMI5_LRS_AUTH' if _au | length == 0
+         else ('sets CMI5_LRS_AUTH to LRS_AUTH, the server credential' if _au == _server
+         else ('' if _au == _persisted
+         else 'and ' ~ tn_config_dir ~ '/secrets/cmi5_lrs_auth disagree')) }}
+  no_log: true
+
+- name: Validate — cmi5 is on, so CMI5_LRS_AUTH is set, persisted, and not LRS_AUTH
+  ansible.builtin.assert:
+    that: tn_cmi5_validate_problem | length == 0
+    fail_msg: >-
+      tn_cmi5_enabled is true but {{ tn_env_file }} {{ tn_cmi5_validate_problem }}:
+      every cmi5 launch answers 503. Run playbooks/50-stack-up.yml (it mints the credential
+      on the LRS and restarts the api), or set tn_cmi5_enabled: false to install without cmi5.
+    success_msg: "cmi5: CMI5_LRS_AUTH set (its own LRS credential, persisted)"

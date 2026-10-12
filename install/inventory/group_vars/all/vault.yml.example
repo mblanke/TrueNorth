@@ -56,6 +56,10 @@ vault_lrs_admin_user: lrsadmin
 vault_lrs_admin_password: "" # generated on target if empty
 vault_lrs_api_key: "" # generated on target if empty
 vault_lrs_api_secret: "" # generated on target if empty
+# cmi5 AU traffic's own LRS credential (CMI5_LRS_AUTH, base64 "key:secret"; docs/cmi5.md).
+# Empty: 50-stack-up mints one on the LRS once and keeps it. Set: it must already be a
+# credential of this LRS with exactly the AU scopes, and differ from the LRS_API_* one.
+vault_cmi5_lrs_auth: "" # minted on the LRS if empty
 
 # ── Monitoring / ops UIs ──────────────────────────────────────────────
 vault_grafana_admin_user: admin

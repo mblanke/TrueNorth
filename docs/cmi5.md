@@ -149,7 +149,8 @@ LRS stamps every statement's `authority` with the credential that wrote it, so a
 AU wrote is always distinguishable from one TrueNorth wrote. Without `CMI5_LRS_AUTH`, or with
 it equal to `LRS_AUTH`, launching answers 503 (fail closed). Mint it once on lrsql with its
 admin account: `python -m app.lms.lrsql_admin` (reads `LRS_URL`, `LRS_ADMIN_USER`,
-`LRS_ADMIN_PASSWORD`; `scripts/itest.sh` does this for the itest stack).
+`LRS_ADMIN_PASSWORD`; `scripts/itest.sh` does this for the itest stack). The Ansible installer
+mints, persists and checks it itself (`install/roles/tn_cmi5`, install/README.md "cmi5").
 
 The AU's token cannot read statements back (least privilege; cmi5 does not need it) and is
 dead once the session is terminated, abandoned, or 12 hours old (`CMI5_SESSION_HOURS`).

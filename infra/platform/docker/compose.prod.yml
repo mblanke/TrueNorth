@@ -524,8 +524,13 @@ services:
       XAPI_IRI_BASE: ${XAPI_IRI_BASE:-https://${DOMAIN}/xapi}
       XAPI_DEFAULT_LANGUAGE: ${XAPI_DEFAULT_LANGUAGE:-en}
       # cmi5 AU traffic's own LRS credential, so the LRS can tell what an AU wrote from what
-      # TrueNorth wrote (docs/cmi5.md). Unset: cmi5 launching answers 503.
+      # TrueNorth wrote (docs/cmi5.md). Unset: cmi5 launching answers 503. The installer
+      # mints it on the LRS (install/roles/tn_cmi5) and renders it.
       CMI5_LRS_AUTH: ${CMI5_LRS_AUTH:-}
+      # Where Students' browsers reach the AU runtime and the API (cmi5 launch URLs and
+      # cmi5.xml). Empty: the api derives them (the web app's URL, and that + /api).
+      CMI5_WEB_BASE_URL: ${CMI5_WEB_BASE_URL:-}
+      CMI5_API_BASE_URL: ${CMI5_API_BASE_URL:-}
       SEARCH_BACKEND: ${SEARCH_BACKEND:-opensearch}
       AI_ORCHESTRATOR_URL: http://ai-orchestrator:6000
       # Schema ownership belongs to Alembic. The installer sets these false so the

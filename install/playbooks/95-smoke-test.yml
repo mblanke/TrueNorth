@@ -8,3 +8,13 @@
   roles:
     - role: tn_smoke
       tags: [smoke]
+  tasks:
+    # cmi5 launches do not answer 503 (roles/tn_cmi5/tasks/smoke.yml).
+    - name: Smoke — cmi5
+      ansible.builtin.include_role:
+        name: tn_cmi5
+        tasks_from: smoke
+        apply:
+          tags: [smoke, cmi5]
+      when: tn_cmi5_enabled | bool
+      tags: [smoke, cmi5]

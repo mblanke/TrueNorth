@@ -6,6 +6,10 @@
 # what keeps the API's create_all() from racing the migration on a fresh
 # database — see roles/tn_migrate for the full explanation.
 #
+# Then, with tn_cmi5_enabled, tn_cmi5 makes sure the cmi5 AU's own LRS credential
+# (CMI5_LRS_AUTH) exists: minted on the LRS once it runs, persisted, kept on every re-run,
+# and rendered into the env file the api is then recreated from.
+#
 # Re-runnable on its own:  ansible-playbook playbooks/50-stack-up.yml
 - name: "Bring up datastores, migrate the schema, then start the rest of the stack."
   hosts: platform
@@ -17,3 +21,6 @@
       tags: [stack]
     - role: tn_migrate
       tags: [stack, migrate]
+    - role: tn_cmi5
+      tags: [stack, cmi5]
+      when: tn_cmi5_enabled | bool

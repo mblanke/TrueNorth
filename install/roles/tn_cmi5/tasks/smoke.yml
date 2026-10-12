@@ -1,0 +1,63 @@
+---
+# Smoke (95-smoke-test, tn_cmi5_enabled): cmi5 launches do not answer 503.
+#
+# Two checks. Through nginx, a cmi5 route answers at all (the fetch URL with a secret that
+# was never issued: 200 and error-code "2", cmi5 8.2). That route does not need the AU
+# credential, so it cannot tell a configured platform from one that fails closed; the
+# second check can: in the RUNNING api container, app.cmi5.lms.au_credential(), the gate
+# every launch (TrueNorth's, an LTI one) and AU request passes first and that answers the
+# 503, must return; the LRS must accept the credential and refuse it a statement read.
+#   - ansible.builtin.include_role: {name: tn_cmi5, tasks_from: smoke}
+
+- name: Smoke — a cmi5 route answers through nginx (fetch URL, unknown secret)
+  ansible.builtin.uri:
+    # Issued secrets are random URL-safe tokens; this one never is (20..128 characters).
+    url: "https://{{ tn_domain_fqdn }}/api/cmi5/fetch/installer-smoke-never-issued"
+    method: POST
+    validate_certs: "{{ tn_tls_mode != 'selfsigned' }}"
+    status_code: [200, 503] # judged below, with the body
+    timeout: 20
+  register: tn_cmi5_fetch
+
+- name: Smoke — the cmi5 fetch URL answered, not 503
+  ansible.builtin.assert:
+    that:
+      - tn_cmi5_fetch.status == 200
+      - (tn_cmi5_fetch.json | default({}))['error-code'] | default('') == '2'
+    fail_msg: >-
+      POST /api/cmi5/fetch/<unknown> answered {{ tn_cmi5_fetch.status }}
+      {{ tn_cmi5_fetch.json | default(tn_cmi5_fetch.msg | default('')) }}; expected 200 with
+      error-code "2" (docs/cmi5.md). The cmi5 routes are not being served.
+    success_msg: "cmi5 fetch URL: 200, error-code 2 (unknown secret)"
+
+- name: Smoke — cmi5 launching is configured in the running api (not fail-closed)
+  ansible.builtin.command:
+    argv:
+      - docker
+      - compose
+      - -f
+      - "{{ tn_compose_file }}"
+      - --env-file
+      - "{{ tn_env_file }}"
+      - exec
+      - -T
+      - api
+      - python
+      - -c
+      - "{{ lookup('ansible.builtin.file', 'smoke_au_credential.py') }}"
+    chdir: "{{ tn_app_dir }}/infra/platform/docker"
+  register: tn_cmi5_smoke
+  changed_when: false
+  failed_when: false
+
+- name: Smoke — cmi5 launches would not answer 503
+  ansible.builtin.assert:
+    that:
+      - tn_cmi5_smoke.rc == 0
+      - tn_cmi5_smoke.stdout is search('^OK ')
+    fail_msg: |
+      {{ tn_cmi5_smoke.stdout | default('') or tn_cmi5_smoke.stderr | default('') | trim }}
+
+      cmi5 launches would answer 503. Run playbooks/50-stack-up.yml (it mints the AU's LRS
+      credential, CMI5_LRS_AUTH, and restarts the api with it); docs/cmi5.md.
+    success_msg: "cmi5: {{ tn_cmi5_smoke.stdout | trim }}"

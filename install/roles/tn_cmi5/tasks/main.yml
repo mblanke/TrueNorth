@@ -1,0 +1,135 @@
+---
+# The cmi5 AU credential, CMI5_LRS_AUTH (docs/cmi5.md "Provenance"). Run by 50-stack-up
+# after the stack is up, because it is minted ON the LRS (lrsql's admin API): unlike the
+# generated secrets (tn_config/tasks/secrets.yml) it cannot be made up on the host, the
+# LRS must know it. Without it every cmi5 launch answers 503 (v1.2.0-rc4 on staging).
+#
+#   vault_cmi5_lrs_auth empty, nothing persisted      -> minted                  MINTED
+#   persisted, and this LRS has it with the AU scopes  -> kept (every re-run)     KEPT
+#   persisted, but the LRS lost it (or it is unusable) -> minted again           REMINTED
+#   vault_cmi5_lrs_auth set, and this LRS has it       -> persisted               KEPT/WRITTEN
+#   vault_cmi5_lrs_auth set, but unusable here         -> the install stops       VAULT_REFUSED
+#
+# Persisted in {{ tn_config_dir }}/secrets/cmi5_lrs_auth (0600, escrowed with the other
+# secrets by every backup), read back by tn_config/tasks/env.yml into .env.production;
+# then the api is recreated with it. No secret is on a command line, in the play's output
+# or in Ansible's task environment (which -vvv prints and `ps` shows): the vault value
+# arrives on stdin; the persisted one and the LRS admin password (tn_config's persisted
+# lrs_admin_password) are read on the target by the shell and handed to `docker compose
+# run -e NAME` through its environment; a minted one comes back only on the script's
+# stdout, which the shell writes straight to the file.
+#
+# Re-runnable on its own:  ansible-playbook playbooks/50-stack-up.yml
+
+- name: cmi5 — the secret map is loaded (run from 50-stack-up, after tn_config)
+  ansible.builtin.assert:
+    that: tn_secrets is defined and 'lrs_admin_password' in tn_secrets
+    fail_msg: roles/tn_cmi5 runs after roles/tn_config in the same play (playbooks/50-stack-up.yml).
+    quiet: true
+
+- name: cmi5 — ensure the AU's LRS credential (minted once, then kept)
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      set -euo pipefail
+      umask 077
+      f="{{ tn_config_dir }}/secrets/cmi5_lrs_auth"
+      vault="$(cat)"
+      LRS_ADMIN_USER={{ vault_lrs_admin_user | default('lrsadmin') | quote }}
+      LRS_ADMIN_PASSWORD="$(cat "{{ tn_config_dir }}/secrets/lrs_admin_password")"
+      export LRS_ADMIN_USER LRS_ADMIN_PASSWORD
+      have=""
+      if [ -s "$f" ]; then have="$(cat "$f")"; fi
+      if [ -n "$vault" ]; then
+        TN_CMI5_SOURCE=vault TN_CMI5_CANDIDATE="$vault"
+      else
+        TN_CMI5_SOURCE=persisted TN_CMI5_CANDIDATE="$have"
+      fi
+      export TN_CMI5_SOURCE TN_CMI5_CANDIDATE
+      err="$(mktemp)"
+      trap 'rm -f "$err"' EXIT
+      rc=0
+      out="$(docker compose -f {{ tn_compose_file }} --env-file {{ tn_env_file }} \
+        run --rm --no-deps -T --entrypoint "" \
+        -e LRS_ADMIN_USER -e LRS_ADMIN_PASSWORD -e TN_CMI5_SOURCE -e TN_CMI5_CANDIDATE \
+        api python -c {{ lookup('ansible.builtin.file', 'lrs_au_credential.py') | quote }} \
+        </dev/null 2>"$err")" || rc=$?
+      status="$(printf '%s\n' "$out" | sed -n 1p)"
+      case "$status" in
+        KEPT)
+          if [ "$TN_CMI5_CANDIDATE" != "$have" ]; then
+            printf '%s' "$TN_CMI5_CANDIDATE" > "$f.tmp" && mv "$f.tmp" "$f"
+            status=WRITTEN
+          fi ;;
+        MINTED|REMINTED)
+          new="$(printf '%s\n' "$out" | sed -n 2p)"
+          [ -n "$new" ] || { echo "EMPTY"; exit 1; }
+          printf '%s' "$new" > "$f.tmp" && mv "$f.tmp" "$f" ;;
+        VAULT_REFUSED) ;;
+        *)
+          echo "FAILED rc=$rc"
+          grep -v '^ *Container ' "$err" | tail -n 5 || true
+          exit 1 ;;
+      esac
+      chmod 0600 "$f" 2>/dev/null || true
+      echo "$status"
+      # The script's reason (never a credential), for the messages below.
+      grep '^cmi5 AU credential: ' "$err" || true
+    chdir: "{{ tn_app_dir }}/infra/platform/docker"
+    stdin: "{{ vault_cmi5_lrs_auth | default('') }}"
+    stdin_add_newline: false
+  register: tn_cmi5_cred
+  # The LRS has no healthcheck (no probe tool in its image): it may still be starting.
+  until: tn_cmi5_cred.rc == 0
+  retries: 12
+  delay: 10
+  changed_when: (tn_cmi5_cred.stdout_lines | default([''], true) | first) in ['MINTED', 'REMINTED', 'WRITTEN']
+  no_log: true
+
+# What the task above saw, without its arguments (no_log hides the stdin it was given).
+# stdout holds a status word and the script's reason, never a credential.
+- name: cmi5 — what happened to the AU credential
+  ansible.builtin.debug:
+    msg: "{{ tn_cmi5_cred.stdout_lines | default(['FAILED: the task output is hidden (no_log); re-run with the LRS up']) }}"
+
+- name: cmi5 — the vault's credential is usable on this LRS
+  ansible.builtin.assert:
+    that: (tn_cmi5_cred.stdout_lines | first) != 'VAULT_REFUSED'
+    fail_msg: >-
+      vault_cmi5_lrs_auth cannot be the cmi5 AU credential:
+      {{ tn_cmi5_cred.stdout_lines[1:] | join(' ') | regex_replace('^cmi5 AU credential: ', '') }}.
+      Empty it in the vault (one is minted and kept), or give a credential this LRS has with
+      exactly the scopes statements/write, state, agents_profile, activities_profile.
+    quiet: true
+  when: not ansible_check_mode # the task above does not run under --check
+
+- name: cmi5 — the LRS had lost the persisted credential; a new one was minted
+  ansible.builtin.debug:
+    msg: >-
+      WARNING: {{ tn_cmi5_cred.stdout_lines[1:] | join(' ') }}. A new AU credential was
+      minted and the api restarted with it. If the LRS database was restored or rebuilt,
+      that is expected; otherwise find out why it lost the credential.
+  when:
+    - not ansible_check_mode
+    - (tn_cmi5_cred.stdout_lines | first) == 'REMINTED'
+
+- name: cmi5 — render .env.production with it
+  ansible.builtin.include_role:
+    name: tn_config
+    tasks_from: env
+
+# Only the api reads CMI5_LRS_AUTH. Always applied: compose recreates the api only when its
+# configuration differs, so a run that persisted the credential but stopped before this
+# step is caught up by the next one.
+- name: cmi5 — the api runs with the rendered credential
+  community.docker.docker_compose_v2:
+    project_src: "{{ tn_app_dir }}/infra/platform/docker"
+    files: [compose.prod.yml]
+    env_files: ["{{ tn_env_file }}"]
+    services: [api]
+    dependencies: false
+    state: present
+    build: never
+    pull: never
+    wait: true
+    wait_timeout: 300

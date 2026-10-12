@@ -75,6 +75,33 @@
       -e tn_ai_base_url=http://<litellm-host>:4000/v1, and its key in vault_openai_api_key.
     quiet: true
 
+# cmi5 (docs/cmi5.md): launches need CMI5_LRS_AUTH, the AU's own LRS credential, or they
+# answer 503. 50-stack-up mints it on the LRS with the LRS admin account unless the vault
+# supplies one; a supplied one must be base64 "key:secret" and not the server's own LRS
+# credential (the LRS would then stamp an AU's statements as TrueNorth's). 50-stack-up
+# checks it against the LRS; 99-validate fails an install that ends without it.
+- name: Preflight — cmi5 can get its AU credential
+  vars:
+    _given: "{{ vault_cmi5_lrs_auth | default('') | trim }}"
+    _server: >-
+      {{ ((vault_lrs_api_key | default('')) ~ ':' ~ (vault_lrs_api_secret | default(''))) | b64encode }}
+  ansible.builtin.assert:
+    that: >-
+      _given | length == 0
+      or (_given is match('^[A-Za-z0-9+/]+={0,2}$') and (_given | length) % 4 == 0
+          and ':' in (_given | b64decode)
+          and not (_given | b64decode).startswith(':') and not (_given | b64decode).endswith(':')
+          and _given != _server)
+    fail_msg: >-
+      vault_cmi5_lrs_auth is set but is not a usable cmi5 AU credential: it must be base64
+      of "key:secret" for a credential of this platform's LRS, other than vault_lrs_api_key /
+      vault_lrs_api_secret. Empty it to have 50-stack-up mint one (install/README.md
+      "Key variables"), or set tn_cmi5_enabled: false to install without cmi5 (launches 503).
+    success_msg: >-
+      cmi5: on, {{ 'AU credential from the vault' if _given | length > 0
+                   else 'AU credential minted on the LRS by 50-stack-up' }}
+  when: tn_cmi5_enabled | default(true) | bool
+
 # Backups escrow TN_SECRETS_KEY and every credential (scripts/backup/backup.sh). A backup
 # without them restores data nobody can decrypt or log in to.
 - name: Preflight — a backup escrow is configured
