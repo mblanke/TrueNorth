@@ -172,7 +172,9 @@
 - name: Break-glass — require enrolment (and, for a local account, a new password)
   vars:
     _local: "{{ tn_bg_user.json[0].federationLink is not defined }}"
-    _pw: "{{ ['UPDATE_PASSWORD'] if (_local | bool and tn_breakglass_reset_password | default(true) | bool) else [] }}"
+    _pw: >-
+      {{ ['UPDATE_PASSWORD'] if (tn_bg_user.json[0].federationLink is not defined
+         and tn_breakglass_reset_password | default(true) | bool) else [] }}
     _actions: "{{ (tn_bg_user.json[0].requiredActions | default([]) + ['CONFIGURE_TOTP'] + _pw) | unique }}"
   ansible.builtin.uri:
     url: "{{ tn_kc_realm_url }}/users/{{ tn_bg_user.json[0].id }}"
@@ -198,7 +200,8 @@
     msg: >-
       {{ tn_breakglass_user }}: {{ tn_bg_creds.json | selectattr('type', 'in', ['otp', 'webauthn', 'webauthn-passwordless']) | list | length }}
       second-factor credential(s) removed, signed out, enrolment required at the next sign-in
-      {{ ('(and a new password: the temporary one is in ' ~ tn_state_dir ~ '/breakglass-*.password, root-owned 0600; hand it over out of band, then DELETE the file: sudo rm it)')
+      {{ ('(and a new password: the temporary one is in ' ~ tn_state_dir ~ '/breakglass-*.password, '
+          ~ 'root-owned 0600; hand it over out of band, then DELETE the file: sudo rm it)')
          if tn_bg_temp_password is defined
          else '(AD account: reset its password in AD now; until it re-enrols, anyone with the password could enrol)' }}.
       {{ tn_bg_audit.stdout | default('') }}

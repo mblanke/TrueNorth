@@ -123,7 +123,7 @@ def test_a_local_account_must_also_set_a_new_password():
     assert written["ansible.builtin.copy"]["mode"] == "0600" and written["no_log"] is True
     put = next(t for t in _uri_tasks() if t["ansible.builtin.uri"].get("method") == "PUT"
                and "requiredActions" in t["ansible.builtin.uri"]["body"])
-    assert "UPDATE_PASSWORD" in put["vars"]["_pw"] and "federationLink" in put["vars"]["_local"]
+    assert "UPDATE_PASSWORD" in put["vars"]["_pw"] and "federationLink" in put["vars"]["_pw"]
     assert "tn_breakglass_reset_password" in put["vars"]["_pw"]
 
 
