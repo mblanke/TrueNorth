@@ -55,14 +55,16 @@ class TestServices:
 
     def test_https_comes_from_a_greyspace_ca_with_a_certificate_per_zone(self, t0):
         out = config.render(t0, config.BlockParams(trust_ca=True))
-        zones = out.files["ca/zones.txt"].split()
-        assert zones[0] == "default" and "maplewire-news.com" in zones and "gs-infra.net" in zones
-        assert "update-cdn-sync.net" in zones  # threat domains get certificates too
+        zones = [tuple(line.split()) for line in out.files["ca/zones.txt"].splitlines()]
+        assert zones[0] == ("default", "web") and ("maplewire-news.com", "web") in zones
+        assert ("gs-infra.net", "web") in zones
+        assert ("update-cdn-sync.net", "threat") in zones  # threat domains get certificates too
+        assert ("default", "threat") in zones and ("update-cdn-sync.net", "web") not in zones
         conf = out.files["web/nginx.conf"]
         assert "listen 443 ssl" in conf and "ssl_certificate /certs/$gs_cert.crt;" in conf
         assert "www.maplewire-news.com maplewire-news.com;" in conf
         web = _compose(out)["services"]["webfarm"]
-        assert "gs-certs:/certs:ro" in web["volumes"]
+        assert "gs-tls-web:/certs:ro" in web["volumes"]
         assert web["depends_on"] == {"ca": {"condition": "service_completed_successfully"}}
         assert out.summary["https"] is True
 

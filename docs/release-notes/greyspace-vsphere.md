@@ -22,6 +22,12 @@ reaches `deployed` (the Greyspace page shows each configure step).
   post-deploy `configure_range` task that starts the stack on it. Status `configuring`
   → `deployed` / `failed` (with the step that failed).
 - **Services:** mail (SMTP, MX, webmail), NTP, HTTPS from a Greyspace root CA.
+  The root CA is name-constrained to the stack's zones, lives 825 days (leaves 397,
+  renewed at stack start), and its key (0600) is in the `gs-ca` volume, mounted by the
+  one-shot `ca` service only: the web farm and threat stub get only their own zones'
+  certificates, the NPCs and probe only `root.crt` (amended 2026-10-11; before, every
+  one of them could read the root key). A stack started before this makes a new root;
+  its old `gs-certs` volume is no longer used (`docker volume rm <project>_gs-certs`).
 - **NPC traffic:** `npc_profile: office-day | quiet-night` is now real (simulated users
   in the stack), not recorded only.
 - **Breadcrumbs:** `greyspace_breadcrumb` inject (web file, DNS record, threat-feed
