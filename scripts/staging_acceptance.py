@@ -130,6 +130,10 @@ PERSONAS = {
     "student": ("trainee1.demo@truenorth.test", "student"),  # the participant
     "outsider": ("trainee2.demo@truenorth.test", "student"),  # enrolled in nothing here
     "observer": ("observer.demo@truenorth.test", "observer"),
+    # The Moodle loop's own Student, never a demo account: its Moodle results land on its own
+    # enrolment and leave the participant's record alone. Deactivated after a run and
+    # reactivated by the next, so it keeps one TrueNorth id and one Moodle account.
+    "moodle-student": ("acceptance-moodle-student@truenorth.test", "student"),
 }
 
 TEMPLATE_NAME = PREFIX + "template"
@@ -491,7 +495,9 @@ class Ctx:
                 what=f"POST /users ({email})",
             )
         elif not row.get("is_active", True) or row.get("role") != role:
-            ok(self.admin.patch(f"/users/{row['id']}", json={"is_active": True, "role": role}), what="PATCH /users")
+            # PATCH /users/{id} takes its fields as query parameters (the contract, UserUpdateIn
+            # as a dependency); a JSON body is ignored, so a deactivated suite user stayed off.
+            ok(self.admin.patch(f"/users/{row['id']}", params={"is_active": "true", "role": role}), what="PATCH /users")
         uid = row["id"]
         self.on_cleanup(f"user {email}", lambda: _left(self.admin.delete(f"/users/{uid}"), 204, 404))
         self.persona_source[key] = f"{email} (no demo account with role {role}; created by this suite)"
@@ -1190,6 +1196,115 @@ def lms_moodle(ctx: Ctx) -> str:
     return "reachable: " + ", ".join(out)
 
 
+MOODLE_LOOP = "Moodle loop: SSO, quiz, pull, grade on the enrolment (integration, bypasses browser)"
+
+
+def _pull_now(ctx: Ctx, platform_id: str) -> dict:
+    """The explicit trigger ("Pull now"), waiting out a scheduled pull that holds the claim."""
+
+    def attempt() -> dict | None:
+        st, body = ctx.admin.post(f"/integrations/platforms/{platform_id}/moodle-results/pull", json={})
+        if st == 409:
+            return None
+        return ok((st, body), what="POST moodle-results/pull")
+
+    return ctx.poll(attempt, "a Moodle results pull (another was running)", timeout=120, interval=5)
+
+
+@check("lms", MOODLE_LOOP)
+def lms_moodle_loop(ctx: Ctx) -> str:
+    """M1 on an installed host, without a browser (the browser journey is CI's ``moodle``
+    lane, and the click-through in docs/runbooks/moodle.md): a dedicated Student
+    (``acceptance-moodle-student``) enrolled on the course is handed into Moodle by TrueNorth's
+    own ticket, views a page, starts the quiz, leaves, resumes and submits it through
+    Moodle's own pages over HTTP (scripts/_moodle_student.py); after a triggered pull the
+    grade and completion are on that Student's enrolment, with Moodle's attempt id and time,
+    and the sync is current. The participant Student's grades on the course do not go down."""
+    sys.path.insert(0, str(SRC / "scripts"))
+    from _moodle_student import MoodleWeb
+
+    ctx.require("moodle")
+    platforms = [
+        p for p in listing(ctx.admin, "/integrations/platforms")
+        if p.get("platform_type") == "moodle" and p.get("is_active", True) and p.get("lti_issuer")
+    ]
+    if not platforms:
+        skip("no Moodle platform registered for this tenant")
+    # The one app.moodle_sso hands Students to: the tenant's oldest active Moodle.
+    platform = min(platforms, key=lambda p: str(p.get("created_at") or ""))
+    code = ctx.opt.get("moodle_course") or ctx.opt.get("lms_course") or "C103"
+    course = catalogue_course(ctx.admin, code)
+    expect(course is not None, f"no catalogue course {code} (load the shipped content)")
+    cid = str(course["id"])
+    student = ctx.persona("moodle-student")
+    st, body = ctx.admin.post(f"/courses/{cid}/enroll", json={"user_id": student.user_id, "course_id": cid})
+    expect(st in (201, 409), f"enrol {student.email} on {code} => {st} {short(body)}")
+    outline = ok(student.get(f"/courses/{cid}/outline"), what=f"{code} outline as the Moodle Student")
+    if not outline.get("moodle_available"):
+        skip(f"{code} is not published to {platform.get('name')} (publish an accepted release: "
+             "docs/runbooks/moodle.md section 2, or pick a course with --moodle-course)")
+    key = []
+    for m in outline.get("modules", []):
+        if m.get("quiz"):
+            key += ok(ctx.admin.get(f"/quizzes/{m['quiz']['id']}/questions"), what="quiz answer key") or []
+    participant = ctx.persona("student")
+    st, before = ctx.admin.get(f"/courses/{cid}/progress/{participant.user_id}")
+    before = {p["module_id"]: p for p in before} if st == 200 and isinstance(before, list) else {}
+
+    started = datetime.now(UTC).replace(microsecond=0) - timedelta(seconds=5)
+    sso = ok(student.post("/integrations/moodle/sso", json={"course_id": cid}), what="POST /integrations/moodle/sso")
+    web = MoodleWeb(platform["lti_issuer"], platform.get("base_url"))
+    course_page = web.sign_in(sso["action"], sso["token"])
+    course_url = web.url
+    pages, quizzes = MoodleWeb.activities(course_page, "page"), MoodleWeb.activities(course_page, "quiz")
+    expect(pages and quizzes, f"the Moodle course shows the Student {len(pages)} pages and {len(quizzes)} quizzes")
+    web.get(f"/mod/page/view.php?id={pages[0]}")
+    attempt = web.start_quiz(quizzes[0])
+    shown, matched, html = web.answer_page(web.get(web.url), key)
+    web.get(course_url)  # leaves mid-attempt
+    expect(web.start_quiz(quizzes[0]) == attempt, "Continue your attempt opened a different attempt")
+    html = web.get(web.url)
+    for _ in range(100):
+        if "/mod/quiz/summary.php" in web.url:
+            break
+        n, k, html = web.answer_page(html, key)
+        shown, matched = shown + n, matched + k
+    web.finish(html)
+    ctx.sleep(7)  # local_truenorth leaves rows younger than its settle window (5 s) for the next pull
+
+    pulled = _pull_now(ctx, platform["id"])
+    mine = ok(student.get("/integrations/moodle/results", params={"course_id": cid}), what="GET moodle/results")
+    sync = next((s for s in mine.get("sync", []) if s["platform_id"] == platform["id"]), None)
+    expect(sync and sync["state"] == "current", f"sync after the pull: {short(sync)}")
+    expect(mine.get("enrollment_id"), f"no enrolment in the results: {short(mine)}")
+    grades = [r for r in mine["results"] if r["kind"] == "quiz_grade" and r["platform_id"] == platform["id"]]
+    grade = next((r for r in grades if r.get("source_attempt_id") == attempt), None)
+    note = ""
+    if grade is None and grades and all(r.get("source_attempt_id") is None for r in grades):
+        # A local_truenorth older than this release reports no attempt id: match on Moodle's time.
+        grade = max(grades, key=lambda r: r.get("source_time") or "")
+        expect(grade.get("source_time") and grade["source_time"] >= started.isoformat().replace("+00:00", ""),
+               f"no grade from this run's attempt {attempt}: {short(grades)}")
+        note = " (this Moodle's plugin reports no attempt id: matched on Moodle's time)"
+    expect(grade, f"attempt {attempt}'s grade is not on the enrolment after the pull: {short(mine['results'])}")
+    if matched == shown and shown:
+        expect(grade["grade"] == grade["grade_max"], f"all {shown} answers keyed, but the grade is {short(grade)}")
+    done = [r for r in mine["results"] if r["kind"] == "completion" and r.get("complete")]
+    expect(done, f"no completed activity recorded on the enrolment: {short(mine['results'])}")
+
+    st, after = ctx.admin.get(f"/courses/{cid}/progress/{participant.user_id}")
+    after = {p["module_id"]: p for p in after} if st == 200 and isinstance(after, list) else {}
+    lowered = [m for m, p in before.items() if (after.get(m, {}).get("score") or 0) < (p.get("score") or 0)
+               or (p.get("status") == "completed" and after.get(m, {}).get("status") != "completed")]
+    expect(not lowered, f"the participant's progress went down on modules {lowered}")
+    return (
+        f"{code} on {platform.get('name')}: ticket sign-in, page viewed, quiz attempt {attempt} started, left, "
+        f"resumed, submitted ({matched}/{shown} answers keyed); pull applied {pulled.get('applied')}; grade "
+        f"{grade['grade']:g}/{grade['grade_max']:g} at {grade['source_time']} on enrolment "
+        f"{mine['enrollment_id']}{note}, {len(done)} completion(s); sync current; participant's grades kept"
+    )
+
+
 # ══ scenario-engine ═════════════════════════════════════════════════════
 
 
@@ -1780,6 +1895,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--edge-url", default="https://nginx", help="the edge, as this container reaches it")
     ap.add_argument("--host-config", default="/srv/truenorth/config", help="the host's config dir, if mounted")
     ap.add_argument("--lms-course", default="C103", help="catalogue course for the LMS checks (default C103)")
+    ap.add_argument(
+        "--moodle-course", help="catalogue course for the Moodle loop, published to Moodle (default: --lms-course)"
+    )
     ap.add_argument("--scenario", default="incident-response-drill", help="shipped scenario directory to plan")
     ap.add_argument("--vsphere-url", help="create a temporary connection to this vCenter when none is registered")
     ap.add_argument("--vsphere-user", help="its user (password: ACCEPTANCE_VSPHERE_PASSWORD)")
@@ -1836,6 +1954,7 @@ def main(argv: list[str] | None = None) -> int:
             "edge_url": args.edge_url,
             "host_config": args.host_config,
             "lms_course": args.lms_course,
+            "moodle_course": args.moodle_course,
             "scenario": args.scenario,
             "vsphere_url": args.vsphere_url,
             "vsphere_user": args.vsphere_user,

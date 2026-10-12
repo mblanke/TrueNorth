@@ -192,7 +192,10 @@ def update_user(
 ) -> User:
     """Update a user's profile fields.  **Permission: user:update**"""
     target = get_owned(db, User, user_id, user, not_found="User not found")
-    update_data = body.model_dump(exclude_unset=True)
+    # The fields are query parameters (UserUpdateIn as a dependency): every one the caller
+    # left out arrives as None and counts as set, so exclude_unset nulled them all (a PATCH
+    # without display_name was a 500). A query string cannot ask for null; omit the Nones.
+    update_data = body.model_dump(exclude_none=True)
     if "role" in update_data:
         update_data["role"] = UserRole(update_data["role"])
     for key, val in update_data.items():
