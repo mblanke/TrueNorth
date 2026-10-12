@@ -136,7 +136,11 @@ def vsphere(monkeypatch):
     monkeypatch.setattr(mod, "Disconnect", MagicMock())
     monkeypatch.setattr(mod, "_wait_task", wait)
     monkeypatch.setattr(mod, "vim", SimpleNamespace(VirtualMachine=lambda vm_id, stub: vms[vm_id]))
-    return SimpleNamespace(prov=mod.VsphereAPIProvisioner(), vms=vms, waited=waited, connect=connect, mod=mod)
+    prov = mod.VsphereAPIProvisioner()
+    # Every VM here is range "r1"'s; the ownership check itself: test_vsphere_tenant_credentials.
+    prov._owners_sync = lambda vm_ids: ({v: {"name": "", "config.annotation": mod.range_annotation("r1")}
+                                         for v in vm_ids if v in vms}, {v for v in vm_ids if v not in vms})
+    return SimpleNamespace(prov=prov, vms=vms, waited=waited, connect=connect, mod=mod)
 
 
 def _prov_output(*vm_ids):

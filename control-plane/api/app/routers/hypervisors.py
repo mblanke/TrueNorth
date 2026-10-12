@@ -24,6 +24,7 @@ from ..auth import CurrentUser, get_current_user
 from ..db import get_db
 from ..delete_guard import commit_delete
 from ..hypervisor_backends import get_hypervisor_backend
+from ..hypervisor_connection_guard import refuse_if_live, require_password
 from ..models import (
     HypervisorConnection,
     HypervisorNode,
@@ -70,6 +71,7 @@ def list_connections(db: Session = Depends(get_db), user: CurrentUser = Depends(
 def create_connection(
     payload: HypervisorConnectionIn, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)
 ):
+    require_password(payload.hypervisor_type, payload.password)  # never the platform's (#131 review)
     conn = HypervisorConnection(
         name=payload.name,
         hypervisor_type=payload.hypervisor_type,
@@ -103,7 +105,14 @@ def update_connection(
     user: CurrentUser = Depends(get_current_user),
 ):
     conn = _conn(db, conn_id, user)
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    changes = payload.model_dump(exclude_unset=True)
+    if "password" in changes:
+        require_password(conn.hypervisor_type, changes["password"])  # rotate it, never clear it
+    if changes.get("is_active") is False and conn.is_active:
+        refuse_if_live(db, conn, "deactivate")
+    if "host" in changes and changes["host"] != conn.host:
+        refuse_if_live(db, conn, "point to another host")
+    for field, value in changes.items():
         if field == "password":
             conn.password_encrypted = seal(value)
         elif field == "api_token":
@@ -120,8 +129,10 @@ def delete_connection(conn_id: uuid.UUID, db: Session = Depends(get_db), user: C
     """Delete a connection with the hosts and pools discovered through it.
 
     Those rows are inventory read from the hypervisor, with no meaning once the
-    connection is gone, so they go with it."""
+    connection is gone, so they go with it. Refused (409) while ranges not yet destroyed
+    are on it (app/hypervisor_connection_guard.py)."""
     conn = _conn(db, conn_id, user)
+    refuse_if_live(db, conn, "delete")
     # tenant-safe: conn came from _conn(), so what hangs off it is the caller's.
     db.query(HypervisorPool).filter(HypervisorPool.connection_id == conn.id).delete(synchronize_session=False)
     db.query(HypervisorNode).filter(HypervisorNode.connection_id == conn.id).delete(synchronize_session=False)

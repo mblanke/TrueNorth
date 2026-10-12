@@ -166,14 +166,18 @@ class TestRanges:
                                    password_encrypted="pw", is_primary=True, is_active=True, datacenter="DC1"),
         )
         backend = _fake_backend(provision=ProvisionResult(status="ok", vms=[{"name": "web"}], networks=[]))
-        monkeypatch.setattr(tasks, "_get_backend", lambda name=None, range_id=None: backend)
+        monkeypatch.setattr(tasks, "_get_backend", lambda name=None, range_id=None, **kw: backend)
 
         out = tasks.provision_range(str(world.range.id))
 
         assert out == {"status": "ready", "range_id": str(world.range.id), "vm_count": 1}
         template = backend.provision.await_args.args[1]
-        assert template["credentials"]["host"] == "vc-a"  # primary first
-        assert template["credentials"]["datacenter"] == "DC1"
+        # The login goes to the provisioner's constructor only (worker/connection_binding.py), never
+        # a second lookup in the template that could name another connection.
+        assert "credentials" not in template
+        with tasks._db_session() as s:
+            creds = db_ops.hypervisor_creds(s, "vsphere", str(world.range.id))
+        assert (creds["host"], creds["datacenter"]) == ("vc-a", "DC1")  # primary first
         by_name = {vm["node_id"]: vm["template_name"] for vm in template["vms"]}
         assert by_name["web"] == "tpl-ubuntu"  # resolved through os_aliases
         assert by_name["old"] == "win-2008"  # disabled and soft-deleted images are not candidates: unresolved
@@ -185,7 +189,7 @@ class TestRanges:
         world.range.state = m.RangeState.provisioning
         world.db.commit()
         backend = _fake_backend(provision=ProvisionResult(status="failed", errors=["no capacity"]))
-        monkeypatch.setattr(tasks, "_get_backend", lambda name=None, range_id=None: backend)
+        monkeypatch.setattr(tasks, "_get_backend", lambda name=None, range_id=None, **kw: backend)
         with pytest.raises(RuntimeError, match="no capacity"):
             tasks.provision_range(str(world.range.id))
         r = _fresh(world.db, world.range)
@@ -197,7 +201,7 @@ class TestRanges:
         world.db.commit()
         backend = _fake_backend(destroy=DestroyResult(status="ok", resources_removed=1))
         seen = []
-        monkeypatch.setattr(tasks, "_get_backend", lambda name=None, range_id=None: seen.append(name) or backend)
+        monkeypatch.setattr(tasks, "_get_backend", lambda name=None, range_id=None, **kw: seen.append(name) or backend)
 
         assert tasks.destroy_range(str(world.range.id))["status"] == "destroyed"
         assert seen == ["mock"]
@@ -212,7 +216,8 @@ class TestRanges:
         _add(db, stopped)
         before = _fresh(db, world.range).updated_at
         backend = _fake_backend(health_check=HealthResult(healthy=False, status="degraded", vm_statuses=[{}]))
-        monkeypatch.setattr(tasks, "_get_backend", lambda name=None, range_id=None: backend)
+        # The scheduled reads build their provisioners in worker/range_sweep.py (base_tasks).
+        monkeypatch.setattr(tasks.range_sweep.base_tasks, "_get_backend", lambda name=None, range_id=None, **kw: backend)
 
         summary = tasks.health_check_ranges()
         assert summary["checked"] == 1
@@ -540,7 +545,7 @@ class TestSnapshots:
             snapshot=SnapshotResult(status="ok", vms_snapped=1),
             delete_snapshot=SnapshotDeleteResult(status="ok"),
         )
-        monkeypatch.setattr(tasks, "_get_backend", lambda name=None, range_id=None: backend)
+        monkeypatch.setattr(tasks, "_get_backend", lambda name=None, range_id=None, **kw: backend)
 
         out = tasks.snapshot_range(str(world.range.id), str(snap.id))
 
@@ -568,7 +573,7 @@ class TestSnapshots:
         world.range.state, world.range.error_message = m.RangeState.failed, "old failure"
         world.db.commit()
         backend = _fake_backend(restore=RestoreResult(status="ok", vms_reverted=1, vms_restored=1))
-        monkeypatch.setattr(tasks, "_get_backend", lambda name=None, range_id=None: backend)
+        monkeypatch.setattr(tasks, "_get_backend", lambda name=None, range_id=None, **kw: backend)
 
         assert tasks.restore_snapshot(str(world.range.id), str(snap.id))["status"] == "restored"
         assert backend.restore.await_args.args[2] == "tnabc"
@@ -581,7 +586,7 @@ class TestSnapshots:
         world.range.state = m.RangeState.destroyed
         world.db.commit()
         backend = _fake_backend()
-        monkeypatch.setattr(tasks, "_get_backend", lambda name=None, range_id=None: backend)
+        monkeypatch.setattr(tasks, "_get_backend", lambda name=None, range_id=None, **kw: backend)
 
         assert tasks.restore_snapshot(str(world.range.id), str(snap.id))["status"] == "skipped"
         assert _fresh(world.db, world.range).state == m.RangeState.destroyed
@@ -591,7 +596,7 @@ class TestSnapshots:
         snap.snapshot_state, snap.snapshot_data = "ready", '{"snapshot_name": "tnabc"}'
         world.db.commit()
         backend = _fake_backend(delete_snapshot=SnapshotDeleteResult(status="ok"))
-        monkeypatch.setattr(tasks, "_get_backend", lambda name=None, range_id=None: backend)
+        monkeypatch.setattr(tasks, "_get_backend", lambda name=None, range_id=None, **kw: backend)
 
         assert tasks.delete_snapshot(str(world.range.id), str(snap.id))["status"] == "deleted"
         assert backend.delete_snapshot.await_args.args[2] == "tnabc"
@@ -781,6 +786,7 @@ PG_CALLS = {
     "hypervisor_connection": lambda db: db_ops.hypervisor_connection(db, "vsphere", ID),
     "range_tenant": lambda db: db_ops.range_tenant(db, ID),
     "hypervisor_creds": lambda db: db_ops.hypervisor_creds(db, "vsphere", ID),
+    "hypervisor_creds_by_id": lambda db: db_ops.hypervisor_creds_by_id(db, "vsphere", ID, ID),
     "enabled_golden_images": lambda db: db_ops.enabled_golden_images(db, "vsphere"),
     "exercise_scenario_yaml": lambda db: db_ops.exercise_scenario_yaml(db, ID),
     "exercise_scores_and_yaml": lambda db: db_ops.exercise_scores_and_yaml(db, ID),

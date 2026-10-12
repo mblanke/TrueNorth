@@ -327,6 +327,8 @@ class FakeVM:
         self.reconfig_specs.append(spec)
         if spec.deviceChange:
             self.config.hardware.device = _apply(self.config.hardware.device, spec.deviceChange)
+        if spec.annotation is not None:
+            self.config.annotation = spec.annotation
         return FakeTask(label=f"reconfig:{self.name}")
 
     def CustomizeVM_Task(self, spec):  # noqa: N802
@@ -403,10 +405,25 @@ class FakeVCenter:
             return SimpleNamespace(view=objs, Destroy=lambda: None)
 
         collector = SimpleNamespace(CreatePropertyCollector=lambda: SimpleNamespace(
-            DestroyPropertyCollector=lambda: None))
+            DestroyPropertyCollector=lambda: None), RetrievePropertiesEx=self.retrieve)
         return SimpleNamespace(_stub=object(), content=SimpleNamespace(
             rootFolder=object(), viewManager=SimpleNamespace(CreateContainerView=view), propertyCollector=collector,
             guestOperationsManager=self.guest_ops))
+
+    def retrieve(self, specSet, options):  # noqa: N803 -- pyVmomi's keywords
+        """RetrievePropertiesEx over the VMs: name and annotation (the range-ownership check),
+        failing the whole call on an unknown VM, as vCenter does."""
+        (spec,) = specSet
+        paths = list(spec.propSet[0].pathSet)
+        objects = []
+        for o in spec.objectSet:
+            vm = self.vms.get(o.obj._moId)
+            if vm is None:
+                raise vmodl.fault.ManagedObjectNotFound(obj=o.obj)
+            vals = {"name": vm.name, "config.annotation": getattr(vm.config, "annotation", None)}
+            objects.append(SimpleNamespace(obj=o.obj, propSet=[SimpleNamespace(name=p, val=vals.get(p))
+                                                               for p in paths]))
+        return SimpleNamespace(objects=objects, token=None)
 
     def wait(self, task, si, timeout):
         # mod._wait_task itself (private collector, bounded) is tested in TestWaitTask.
@@ -836,6 +853,7 @@ class TestSession:
 
     def _vc(self, vc):
         vc.vms["vm-a"] = FakeVM("a", [])
+        vc.vms["vm-a"].config.annotation = mod.range_annotation(RANGE_ID)  # a build tags its VMs
         vc.power["vm-a"] = "POWERED_ON"
         return vc
 
@@ -1842,6 +1860,7 @@ class TestLegacyDialect:
 
     def test_power_goes_through_the_web_services_api(self, vc):
         vm = FakeVM("a", [])
+        vm.config.annotation = mod.range_annotation(RANGE_ID)
         vm.runtime.powerState = "poweredOn"
         vc.vms["vm-a"] = vm
         out = {"vms": [{"name": "a", "vm_id": "vm-a"}]}

@@ -12,35 +12,35 @@ import os
 
 from celery import Task
 
+from . import connection_binding
 from .fencing import FINAL_ERRORS
-from .provisioners import CREDENTIALS_HYPERVISOR, get_provisioner
+from .provisioners import get_provisioner
 
 
-def _get_backend(backend: str | None = None, range_id: str | None = None):
+def _get_backend(backend: str | None = None, range_id: str | None = None, *, output: dict | None = None,
+                 teardown: bool = False, build: bool = False):
     """Return an instantiated provisioner for the given backend name.
 
     Falls back to the ``PROVISIONER_BACKEND`` environment variable, then
     to ``"mock"`` when neither the caller nor the env provides a value.
 
-    With ``range_id``, a backend that takes credentials (vsphere_api) logs in with the
-    range's own tenant's hypervisor connection (H6), else a shared one; with neither, its
-    environment (VSPHERE_*). Every operation on a range (build, destroy, power, snapshots,
-    health) resolves them the same way, so a build and its teardown reach the same vCenter.
+    With ``range_id``, a backend that takes credentials (vsphere_api) reaches the endpoint
+    the range was built on, recorded in its provisioner_output (worker/connection_binding.py),
+    and refuses (ConnectionBindingError) when that connection is gone or now names another
+    host. A range with nothing recorded gets its own tenant's active connection (H6), else a
+    shared one, else the environment (VSPHERE_*); ``build`` then records it. ``output``: the
+    range's provisioner_output when the caller has read it already.
+
+    ``teardown`` (destroy, leak cleanup) is allowed on an experimental backend that has
+    been switched off since the range was built.
     """
     resolved = backend or os.getenv("PROVISIONER_BACKEND", "mock")
-    return get_provisioner(resolved, range_credentials(resolved, range_id))
-
-
-def range_credentials(backend: str, range_id: str | None) -> dict:
-    """The connection ``backend`` should use for ``range_id`` ({}: its environment)."""
-    hypervisor = CREDENTIALS_HYPERVISOR.get(backend)
-    if not hypervisor or not range_id:
-        return {}
-    from . import db_ops
-    from .tasks import _db_session  # at call time: tasks imports this module
-
-    with _db_session() as db:
-        return db_ops.hypervisor_creds(db, hypervisor, range_id)
+    creds, rec = connection_binding.resolve(resolved, range_id, output)
+    provisioner = get_provisioner(resolved, creds, teardown=teardown)
+    connection_binding.verify(provisioner, rec)
+    if build and rec is None and range_id:
+        connection_binding.record_build(range_id, provisioner)
+    return provisioner
 
 
 def db_connect_args(url: str) -> dict:

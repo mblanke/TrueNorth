@@ -115,7 +115,9 @@ def test_destroy_uses_the_ranges_connection(db):
     backend = MagicMock(destroy=AsyncMock(return_value=DestroyResult(status="ok")))
     with patch.object(tasks, "_get_backend", return_value=backend) as get:
         assert tasks.destroy_range.run(rid)["status"] == "destroyed"
-    get.assert_called_once_with("mock", rid)
+    get.assert_called_once()
+    assert get.call_args.args == ("mock", rid)
+    assert get.call_args.kwargs["teardown"] is True  # even an experimental backend switched off since
 
 
 def test_power_uses_the_ranges_connection(db):
@@ -135,9 +137,10 @@ def test_health_and_metrics_check_each_range_on_its_own_connection(monkeypatch):
         yield None
 
     monkeypatch.setattr(tasks, "_db_session", session)
-    monkeypatch.setattr(tasks.db_ops, "active_ranges", lambda db: [(r, "n", OUTPUT) for r in rids])
+    monkeypatch.setattr(tasks.db_ops, "active_ranges", lambda db: [(r, "n", OUTPUT, "vsphere_api") for r in rids])
     monkeypatch.setattr(tasks, "_notify_api", lambda *a, **k: None)
     backend = MagicMock(health_check=AsyncMock(return_value=HealthResult()))
-    with patch.object(tasks, "_get_backend", return_value=backend) as get:
+    with patch.object(base_tasks, "_get_backend", return_value=backend) as get:
         tasks.health_check_ranges.run()
-    assert [c.args for c in get.call_args_list] == [(None, r) for r in rids]
+    # Each range's own backend (not PROVISIONER_BACKEND) and its own connection.
+    assert [c.args for c in get.call_args_list] == [("vsphere_api", r) for r in rids]

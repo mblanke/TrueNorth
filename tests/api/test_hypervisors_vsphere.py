@@ -457,7 +457,8 @@ class TestHypervisorTenancy:
         theirs = _vcenter(db_session, OTHER_TENANT)
         theirs.is_primary = True
         db_session.commit()
-        body = {"name": "New", "hypervisor_type": "vsphere", "host": "vc.mine.test", "port": 443, "username": "u"}
+        body = {"name": "New", "hypervisor_type": "vsphere", "host": "vc.mine.test", "port": 443, "username": "u",
+                "password": "pw"}
         r = client.post("/hypervisors/connections", json=body)
         assert r.status_code == 201, r.text
         created = db_session.get(HypervisorConnection, uuid.UUID(r.json()["id"]))

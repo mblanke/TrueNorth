@@ -131,6 +131,8 @@ def _session(conn: HypervisorConnection, password: str, timeout: float) -> Itera
 
 class VSphereBackend(BaseHypervisorBackend):
     kind = "vsphere"
+    requires_password = True
+    provisioner_backends = frozenset({"vsphere_api"})
 
     def check_connection(self, conn, db):
         return check_connection(conn, db)

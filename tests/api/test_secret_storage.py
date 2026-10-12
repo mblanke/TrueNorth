@@ -103,8 +103,9 @@ def test_without_a_key_credentials_are_refused_not_stored_in_clear(client, db_se
 
 def test_a_connection_without_credentials_needs_no_key(client, monkeypatch):
     monkeypatch.delenv("TN_SECRETS_KEY", raising=False)
+    # Not vSphere: a vSphere connection must carry a password (tests/api/test_hypervisor_connection_guard.py).
     r = client.post("/hypervisors/connections", json={
-        "name": "vc", "hypervisor_type": "vsphere", "host": "h", "username": "u"})
+        "name": "pve", "hypervisor_type": "proxmox", "host": "h", "username": "u"})
     assert r.status_code == 201, r.text
 
 

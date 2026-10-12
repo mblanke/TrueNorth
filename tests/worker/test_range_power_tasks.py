@@ -105,7 +105,7 @@ def _vsphere(monkeypatch, vc: FakeVcenter):
     import asyncio
     from contextlib import asynccontextmanager
 
-    from worker.provisioners.vsphere_api import VsphereAPIProvisioner
+    from worker.provisioners.vsphere_api import VsphereAPIProvisioner, range_annotation
 
     prov = VsphereAPIProvisioner()
 
@@ -116,8 +116,17 @@ def _vsphere(monkeypatch, vc: FakeVcenter):
     async def client():
         yield None
 
+    @asynccontextmanager
+    async def soap_scope(**kw):
+        yield
+
+    def owners(vm_ids):  # every VM is range "r"'s (the ownership check: test_vsphere_tenant_credentials)
+        return {v: {"name": "", "config.annotation": range_annotation("r")} for v in vm_ids}, set()
+
     monkeypatch.setattr(prov, "_get_session", session)
     monkeypatch.setattr(prov, "_client", client)
+    monkeypatch.setattr(prov, "_soap_scope", soap_scope)
+    monkeypatch.setattr(prov, "_owners_sync", owners)
     monkeypatch.setattr(prov, "_api_get", vc.get)
     monkeypatch.setattr(prov, "_power_action", vc.act)
     return prov, asyncio.run

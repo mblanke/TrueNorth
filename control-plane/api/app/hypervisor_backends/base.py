@@ -23,6 +23,18 @@ class BaseHypervisorBackend(ABC):
     #: ``hypervisor_connections.hypervisor_type`` value this backend serves.
     kind: str
 
+    #: Whether a connection must carry a password. The worker logs in with the
+    #: connection's own credentials only, never the platform's (worker
+    #: provisioners/vsphere_api.py use_credentials), so one without is unusable.
+    requires_password: bool = False
+
+    #: The worker provisioner backends (``ranges.provisioner_backend``) that build ranges
+    #: with this family's connections and record which one (worker/connection_binding.py).
+    #: A connection with live ranges of these on it cannot be deactivated, repointed or
+    #: deleted (app/hypervisor_connection_guard.py). Must match the worker's
+    #: CREDENTIALS_HYPERVISOR (tests/contracts).
+    provisioner_backends: frozenset[str] = frozenset()
+
     @abstractmethod
     def check_connection(self, conn: HypervisorConnection, db: Session) -> HypervisorTestResult:
         """Reach the hypervisor with the stored credentials; update ``conn.is_active``."""

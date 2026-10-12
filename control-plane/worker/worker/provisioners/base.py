@@ -28,6 +28,13 @@ class ExperimentalProvisionerError(ValueError):
     EXPERIMENTAL_PROVISIONERS. Final: a retry finds the same configuration."""
 
 
+class ConnectionBindingError(ValueError):
+    """A range's hypervisor connection cannot be used safely: its credentials are
+    incomplete, or the connection the range was built on is gone or now names another
+    host. Final: the worker refuses rather than fall back to the platform's own
+    credentials or reach a different hypervisor (worker/connection_binding.py)."""
+
+
 @dataclass(frozen=True)
 class AllocationNeed:
     """Values on shared infrastructure a build needs reserved first (``allocation_needs``).
@@ -73,6 +80,12 @@ class BaseProvisioner(ABC):
     def allocation_needs(self, range_id: str, template: dict) -> list[AllocationNeed]:
         """Shared values (VLANs, addresses) to reserve before ``provision``. Default: none."""
         return []
+
+    def connection_record(self) -> dict | None:
+        """The hypervisor endpoint this instance talks to, as a build records it in the
+        range's provisioner_output (``{"id": connection id or None, "host": url}``), so
+        every later operation reaches the same one. None: a backend with no such choice."""
+        return None
 
     def planned_output(self, range_id: str, allocations: dict) -> dict:
         """What to record in provisioner_output before the build, so a destroy after a
