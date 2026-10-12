@@ -17,3 +17,7 @@ pytest-mock==3.14.0   # `mocker` fixture
 respx==0.21.1         # httpx mocking (LTI 1.3, LMS, auth, search, vSphere backends)
 aiosmtplib==5.1.3
 lxml==6.1.3           # cmi5 CourseStructure.xsd validation (python-docx installs the same)
+# The Moodle lane's browser journey (tests/integration/test_moodle_student_journey.py).
+# Python, not tests/e2e's Node Playwright: the journey seeds and reads TrueNorth's database
+# in-process, as the other Moodle tests do. Browsers: python -m playwright install chromium.
+playwright==1.63.0
