@@ -78,6 +78,102 @@ class InProcessApi:
     def patch(self, path: str, **kw: Any) -> tuple[int, Any]:
         return self.request("PATCH", path, **kw)
 
+    def put(self, path: str, **kw: Any) -> tuple[int, Any]:
+        return self.request("PUT", path, **kw)
+
+    def delete(self, path: str, **kw: Any) -> tuple[int, Any]:
+        return self.request("DELETE", path, **kw)
+
+
+class IdentitySwitch:
+    """Several existing users in one process. The token check answers with ``current``,
+    which each user's client sets immediately before its own request (requests are
+    sequential), so every request is checked as the user whose client sent it."""
+
+    def __init__(self) -> None:
+        self.current: Any = None
+
+    def __call__(self) -> Any:
+        if self.current is None:  # nothing set: the API's own 401, never someone's identity
+            from fastapi import HTTPException
+
+            raise HTTPException(401, "Not authenticated")
+        return self.current
+
+
+class UserApi(InProcessApi):
+    """An ``InProcessApi`` for one user: its own client (cookie jar, so its own CSRF
+    token) and its identity, put in the switch before every request it sends."""
+
+    def __init__(
+        self, client: Any, identity: Any, switch: IdentitySwitch, *, email: str = "", role: str = "", **kw: Any
+    ):
+        super().__init__(client, **kw)
+        self.identity = identity
+        self.switch = switch
+        self.email = email
+        self.role = role
+
+    def request(self, method: str, path: str, **kw: Any) -> tuple[int, Any]:
+        self.switch.current = self.identity
+        return super().request(method, path, **kw)
+
+    def raw(self, path: str, **kw: Any) -> Any:
+        """GET ``path`` as this user and return the response itself (bytes, headers)."""
+        self.switch.current = self.identity
+        return self.client.get(path, **kw)
+
+
+class Users:
+    """``connect_users()``: sign in as any existing user of the database, by email."""
+
+    def __init__(self, app: Any, switch: IdentitySwitch, client_factory: Callable[[], Any]):
+        self.app = app
+        self.switch = switch
+        self.client_factory = client_factory
+
+    def lookup(self, email: str) -> tuple[Any, str] | None:
+        """``(TokenPayload, role)`` for an active user with this email, or None."""
+        from app import auth
+        from app.db import SessionLocal
+        from app.models import User
+
+        db = SessionLocal()
+        try:
+            user = db.query(User).filter(User.email == email).first()
+            if user is None or not user.is_active:
+                return None
+            ident = auth.TokenPayload(
+                sub=user.keycloak_id,
+                email=user.email,
+                name=user.display_name or user.email,
+                preferred_username=user.email,
+            )
+            return ident, getattr(user.role, "value", str(user.role))
+        finally:
+            db.close()
+
+    def api(self, email: str) -> UserApi | None:
+        found = self.lookup(email)
+        if found is None:
+            return None
+        ident, role = found
+        client = self.client_factory()
+        client.get("/health/live")  # the CSRF middleware sets truenorth_csrf on every response
+        return UserApi(client, ident, self.switch, email=email, role=role)
+
+
+def connect_users() -> Users:
+    """Install the identity switch on the app and return a ``Users`` factory. Imports the
+    app, so it runs inside the api image."""
+    from app import auth
+    from app.main import app
+    from fastapi.testclient import TestClient
+
+    switch = IdentitySwitch()
+    app.dependency_overrides[auth.get_token_identity] = switch
+    return Users(app, switch, lambda: TestClient(app, base_url="https://api.internal", raise_server_exceptions=False))
+
 
 def connect(admin_upn: str) -> tuple[Any, InProcessApi] | None:
     """Sign in as ``admin_upn`` (an existing user) and return ``(TestClient, InProcessApi)``,
