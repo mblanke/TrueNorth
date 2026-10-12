@@ -369,6 +369,10 @@ bootstrap administrator: the API's routes, permissions, CSRF and validation all 
 and no token or password is used. Re-running is safe. `inventory/staging.yml` turns all
 three on.
 
+On a staging host loaded this way, `scripts/staging_acceptance.py` then proves each module's
+key flow end to end against the installed stack, in the same kind of one-off container
+(docs/runbooks/staging-acceptance.md).
+
 ## Images: deploy by digest
 
 `compose.prod.yml` builds nothing. The four TrueNorth images run as `${TN_IMAGE_API}`,
