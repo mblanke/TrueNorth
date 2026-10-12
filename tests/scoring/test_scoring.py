@@ -139,7 +139,9 @@ class TestScoringEngine:
         result = await engine.evaluate()
         assert isinstance(result, ScoringResult)
         assert result.exercise_id == "test-ex-001"
-        assert result.max_score == 100
+        # Out of what was judged: the unapproved manual and the deliverable with no
+        # submission are unscored and reported apart (80 points), not counted as zeros.
+        assert result.max_score == 20 and result.unscored_points == 80
         # Only manual-approved objective should give points
         assert result.total_score == 20
         # Unapproved manual and a deliverable with no location are unscored, not failed.
@@ -153,7 +155,7 @@ class TestScoringEngine:
             tmp_path = f.name
 
         try:
-            sample_objectives[2]["validation_config"]["storage_path"] = tmp_path
+            sample_objectives[2]["validation_config"]["submission"] = {"path": tmp_path, "submitted_by": "s1"}
             eng = ScoringEngine(
                 exercise_id="test-deliverable",
                 objectives=sample_objectives,
@@ -358,14 +360,15 @@ class TestScoringValidator:
 
     @pytest.mark.asyncio
     async def test_deliverable_missing_file(self):
-        ok, evidence = await ScoringValidator.validate(
-            method="deliverable",
-            config={
-                "storage_path": "/tmp/nonexistent_file_12345.txt",
-                "min_size_bytes": 10,
-            },
-        )
-        assert ok is False
+        # A submission record whose file is gone is the platform's fault: unscored, not failed.
+        with pytest.raises(UnscoredError, match="file is missing"):
+            await ScoringValidator.validate(
+                method="deliverable",
+                config={
+                    "submission": {"path": "/tmp/nonexistent_file_12345.txt", "submitted_by": "s1"},
+                    "min_size_bytes": 10,
+                },
+            )
 
     @pytest.mark.asyncio
     async def test_deliverable_valid_file(self):
@@ -375,7 +378,7 @@ class TestScoringValidator:
         try:
             ok, evidence = await ScoringValidator.validate(
                 method="deliverable",
-                config={"storage_path": path, "min_size_bytes": 10},
+                config={"submission": {"path": path, "submitted_by": "s1"}, "min_size_bytes": 10},
             )
             assert ok is True
             assert evidence[0]["size_bytes"] >= 200
@@ -391,7 +394,7 @@ class TestScoringValidator:
             ok, evidence = await ScoringValidator.validate(
                 method="deliverable",
                 config={
-                    "storage_path": path,
+                    "submission": {"path": path, "submitted_by": "s1"},
                     "min_size_bytes": 5,
                     "required_fields": ["title", "findings"],
                 },
@@ -409,7 +412,7 @@ class TestScoringValidator:
             ok, evidence = await ScoringValidator.validate(
                 method="deliverable",
                 config={
-                    "storage_path": path,
+                    "submission": {"path": path, "submitted_by": "s1"},
                     "min_size_bytes": 5,
                     "required_fields": ["title", "indicators", "timeline"],
                 },
@@ -425,7 +428,7 @@ class TestScoringValidator:
         with pytest.raises(UnscoredError, match="no event store"):
             await ScoringValidator.validate(
                 method="opensearch_query",
-                config={"index": "test-*", "query": {"match_all": {}}, "threshold": 1},
+                config={"index": "test-*", "query": {"match_all": {}}, "threshold": 1, "require_observed": True},
                 opensearch_url=None,
             )
 
@@ -452,4 +455,6 @@ class TestScoringValidator:
     async def test_user_disabled_needs_an_event_store(self):
         # Real now (tests/scenario_engine/test_scoring_truth.py); no store, no judgement.
         with pytest.raises(UnscoredError, match="no event store"):
-            await ScoringValidator.validate(method="user_disabled", config={"username": "jsmith"})
+            await ScoringValidator.validate(
+                method="user_disabled", config={"username": "jsmith"}, window=(datetime(2025, 1, 1, tzinfo=UTC), None)
+            )

@@ -28,9 +28,10 @@ class OpenSearchEventStore(BaseEventStore):
         self.verify_ssl = verify_ssl
         self.timeout = timeout
 
-    async def search(self, index: str, query: str | dict[str, Any], size: int = 20) -> EventHits:
+    async def search(self, index: str, query: str | dict[str, Any], size: int = 20, offset: int = 0) -> EventHits:
         dsl = {"query_string": {"query": query}} if isinstance(query, str) else query
-        payload = {"query": dsl, "size": size, "track_total_hits": True}
+        # Index order, not relevance: pages (``from``) stay stable, and nothing here ranks.
+        payload: dict[str, Any] = {"query": dsl, "size": size, "from": offset, "sort": ["_doc"], "track_total_hits": True}
         async with httpx.AsyncClient(verify=self.verify_ssl, timeout=self.timeout, auth=self.auth) as client:
             # A range's index does not exist until its first event is ingested; that is
             # "no matches", not a store failure.

@@ -82,7 +82,8 @@
               "opensearch_query",
               "manual_ack",
               "deliverable_check",
-              "user_disabled"
+              "user_disabled",
+              "greyspace_breadcrumb"
             ]
           },
           "params": {

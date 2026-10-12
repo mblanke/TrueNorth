@@ -146,7 +146,12 @@ def _run(
             # Host-touching injectors need hosts: none on the mock backend, none on an
             # unprovisioned range.
             allow = backend != MOCK_BACKEND and bool(vms)
-            result = eng.run_inject(action, params, ctx, allow_host_effects=allow)
+            # The timeline position names the inject, so its synthetic records are seeded per
+            # exercise and event (injectors.inject_seed): a replay rebuilds the same ones, and
+            # two identical events in one timeline differ. An instructor inject has no position;
+            # the engine names it by action and params.
+            inject_id = f"timeline-{seq}" if seq is not None else None
+            result = eng.run_inject(action, params, ctx, allow_host_effects=allow, inject_id=inject_id)
             if result.skipped and backend != MOCK_BACKEND:
                 result.detail = "skipped: range has no provisioned hosts"
             # Greyspace breadcrumbs: the injector prepared them; the range's Greyspace host

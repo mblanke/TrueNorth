@@ -64,11 +64,14 @@ inject `failed` with the reason (ADR 0007 §9).
 A simulated inject's result (`InjectResult` and its `raw`) says `simulated: true` and
 `evidence_class: "synthetic"` with its `exercise_id`, `range_id`, `inject_id` and `seed`,
 and never claims `delivered` or `created` (run_inject overrides such a claim). Its random
-choices come from a generator seeded by exercise id + inject id (`inject_seed`; the inject
-id defaults to the action plus a hash of its params), so a replay builds the same records.
-Scoring that must see something really happen counts only observed telemetry
-(`require_observed: true` on a query objective; always for `user_disabled`;
-`scenario_engine/objective_catalogue.py`).
+choices come from a generator seeded by exercise id + inject id (`inject_seed`), so a replay
+builds the same records. The worker names a timeline event by its position
+(`timeline-<seq>`); an instructor inject is named by its action plus a hash of its params.
+Only wall-clock fields (c2_beacon's `timestamp_epoch`) differ between replays.
+No synthetic record can prove something really happened: the scoring engine never credits a
+plain detection objective (Students earn that by submitting a detection, ADR 0005), and
+objectives it does judge (`require_observed: true`, `user_disabled`) count only observed
+telemetry (`scenario_engine/objective_catalogue.py`).
 
 The worker never scores (ADR 0005). On a real backend `run_scenario_v2` fires the timeline
 and leaves the exercise `running` (notification phase `timeline_complete`): a Student

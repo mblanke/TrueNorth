@@ -9,6 +9,7 @@ named ``network_isolation``, ``firewall_rule`` and ``artifact_removal`` in phase
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -98,11 +99,58 @@ def test_require_observed_must_be_a_boolean():
     assert _errors(_doc(bad.replace("require_observed: 1", "require_observed: true"))) == []
 
 
-def test_catalogue_schema_and_api_names_agree():
+def _studio_validators() -> list[str]:
+    ts = (ROOT / "control-plane/web/src/app/features/scenario-studio/scenario-yaml.util.ts").read_text()
+    body = re.search(r"export const COMMON_VALIDATORS = \[(.*?)\];", ts, re.S)
+    assert body, "COMMON_VALIDATORS not found in scenario-yaml.util.ts"
+    return re.findall(r"'([a-z_]+)'", body.group(1))
+
+
+def test_every_validator_list_agrees():
+    """Schema enum, engine catalogue, API names and the Scenario Studio: one list."""
     schema = json.loads((ROOT / "scenario-engine/schemas/scenario.schema.json").read_text())
     enum = schema["properties"]["objectives"]["items"]["properties"]["validator"]["enum"]
-    assert set(enum) == set(SCENARIO_VALIDATORS) == set(CANONICAL)
+    assert list(enum) == list(SCENARIO_VALIDATORS) == list(CANONICAL) == _studio_validators()
     assert not set(REFUSED_VALIDATORS) & set(SCENARIO_VALIDATORS)
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["", None, "   ", "opensearch_query", "validate.opensearch.query", "validate_opensearch_query",
+     "Validate.Manual.Ack", "deliverable_check", "user_disabled", "greyspace_breadcrumb", "custom.thing",
+     "firewall_rule", "validate.network_isolated"],
+)
+def test_one_canonical_spelling_everywhere(name):
+    from app.detections.names import canonical_validator
+    from scenario_engine.objective_catalogue import DEFAULT_VALIDATOR, canonical
+    from scenario_engine.scoring import validation_method
+
+    assert canonical_validator(name) == canonical(name)
+    # The engine routes on the same spelling (two content names map to method names).
+    method = {"manual_ack": "manual", "deliverable_check": "deliverable"}.get(canonical(name), canonical(name))
+    assert validation_method(name) == method
+    if not (name or "").strip():
+        assert canonical(name) == DEFAULT_VALIDATOR == "manual_ack"
+
+
+def test_every_scenario_validator_has_an_engine_judge():
+    from scenario_engine.scoring import validation_method
+
+    for name in SCENARIO_VALIDATORS:
+        assert hasattr(ScoringValidator, f"validate_{validation_method(name)}"), name
+
+
+def test_greyspace_breadcrumb_needs_a_crumb():
+    assert _errors(_doc("{id: o, type: detection, validator: greyspace_breadcrumb, points: 5}")) == [
+        {"path": "objectives.0.params.crumb_id", "message": "greyspace_breadcrumb needs params.crumb_id"}
+    ]
+    assert _errors(_doc("{id: o, type: detection, validator: greyspace_breadcrumb, points: 5, params: {crumb_id: c1}}")) == []
+
+
+@pytest.mark.parametrize("key", ["approved", "submission", "storage_path", "window_start", "window_end"])
+def test_content_cannot_set_platform_params(key):
+    errors = _errors(_doc(f"{{id: o, type: response, validator: manual_ack, points: 5, params: {{{key}: x}}}}"))
+    assert [e["path"] for e in errors] == [f"objectives.0.params.{key}"]
 
 
 def test_no_scoring_method_left_for_a_refused_validator():

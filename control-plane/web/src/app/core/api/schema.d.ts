@@ -6215,8 +6215,9 @@ export interface paths {
          *     Returns ``{valid, errors: [{path, message}], normalized}`` — ``normalized``
          *     is the parsed document whenever the YAML parses, even when schema-invalid,
          *     so the Scenario Studio can load a document and show its problems at once.
-         *     Create/update stay permissive on purpose (forge output and older seeds are
-         *     not schema-clean); this endpoint is the contract for authored content.
+         *     Create/update enforce the objective check only (``objective_errors``), not the
+         *     full schema (forge output and older seeds are not schema-clean); this endpoint is
+         *     the contract for authored content.
          */
         post: operations["validate_scenario_scenarios_validate_post"];
         delete?: never;

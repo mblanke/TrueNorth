@@ -204,22 +204,33 @@ course production with a local-model fallback, and the cleanup of unsupported su
   variant in the pinned image.
 
 ### Scoring and inject evidence (R0-B)
-- **Behaviour change:** no objective passes without evidence. The `firewall_rule` validator
-  passed every objective; it, `process_killed` and `network_isolated` are now refused
-  (no telemetry can prove them): `POST /scenarios/validate` rejects them with the reason and
-  the engine leaves them unscored. Use `manual_ack`. `user_disabled` is real: Windows event
-  4725 for the account, observed telemetry only. Unknown validators and phase-level
-  `validators:` blocks are rejected; incident-response-drill's (`network_isolation`,
-  `firewall_rule`, `artifact_removal`, never evaluated) are gone, scored by its existing
-  `manual_ack` objectives. Every shipped scenario validates (tested).
-- `manual_ack` is an explicit instructor action: content cannot pre-approve it, and until
-  acknowledged it is unscored, not failed. Unknown validators, a deliverable with no
-  location, or a store outage are unscored too; error rows no longer earn partial credit.
+- **Behaviour change:** no objective passes without evidence, and each has one judge
+  (`scenario_engine/objective_catalogue.py`). `firewall_rule` passed every objective; it,
+  `process_killed` and `network_isolated` are refused (no telemetry can prove them):
+  `POST /scenarios/validate`, scenario create and update reject them with the reason
+  (422), and the engine leaves them unscored. Use `manual_ack`. Unknown validators,
+  phase-level `validators:` blocks and params only the platform may set (`approved`,
+  `submission`, `storage_path`, the exercise window) are rejected the same way;
+  incident-response-drill's inert phase blocks are gone, scored by its `manual_ack`
+  objectives. Every shipped scenario validates (tested).
+- **Behaviour change:** the scoring engine never credits a detection objective
+  (`opensearch_query`): the inject's own synthetic records matched the answer key, full
+  points with no Student action. Detection credit comes only from Student submissions
+  (ADR 0005). With `require_observed: true` the objective is the engine's instead, judged
+  on observed telemetry in the exercise window (synthetic records excluded, every match
+  classified), and Student submissions are not credited against it.
+- `user_disabled` is real: observed Windows 4725 for the account (case-insensitive) in the
+  exercise window, not re-enabled (4722) afterwards. No such event is unscored, never a fail.
+- `deliverable_check` needs a Student submission record; a content file path is no longer
+  trusted (`/etc/hosts` passed). `manual_ack` is an explicit instructor action, unscored
+  until acknowledged. Unscored objectives are left out of the score's denominator and
+  reported apart (`unscored_points`); error rows earn no partial credit.
+- `greyspace_breadcrumb` and `user_disabled` are in the scenario schema and the Scenario
+  Studio's validator list; one canonical spelling everywhere (drift test).
 - Simulated injects say so: results and telemetry carry `simulated: true`,
-  `evidence_class: "synthetic"`, the exercise, range and inject; none claims `delivered` or
-  `created`. Their random choices are seeded from exercise id + inject id. A query objective
-  with `require_observed: true` ignores synthetic records (default false: detection
-  objectives score finding the inject's records).
+  `evidence_class: "synthetic"`, the exercise, range and inject id; none claims `delivered`
+  or `created`. Their random choices are seeded from exercise id + inject id (the timeline
+  position, from the worker).
 
 ### Known limitations in v1.2.0
 - Greyspace, VyOS/OPNsense configs and per-tenant vCenter are proven on vcsim/fakes, not on
@@ -227,10 +238,13 @@ course production with a local-model fallback, and the cleanup of unsupported su
 - ARC² test-host content is auto-accepted and unreviewed; never release it to Students.
 - cmi5 Moodle activities are tied to one release; LTI cmi5 launches do not enrol.
 - WebSockets do not accept the LTI hand-off session.
-- Scenario create/update and exercise start do not yet run objective validation; a stored
-  scenario naming a refused validator still launches, and those objectives stay unscored.
-  On the mock backend the worker still marks every objective achieved. Evidence is not
-  windowed to the exercise: a reused range index can carry an earlier exercise's events.
+- Scoring evidence: the worker never runs the scoring engine, so engine-judged objectives
+  (`require_observed`, `user_disabled`, `greyspace_breadcrumb`) are scored only by the CLI
+  runner and tests; on the mock backend the worker still marks every objective achieved.
+  `user_disabled` field names match the content and Winlogbeat/ECS but are unproven against
+  a live range's ingest. Scenarios stored before this release are not re-checked; forge
+  output is stored without the objective check. Deliverables have no Student submission
+  path yet (instructor acknowledgement only).
 - A range built before connection records with port groups but no VM stays unrecorded until
   destroyed; shared vCenter connections are managed outside the tenant API; an abandoned
   range's leftover VMs and port groups must be removed by hand (`docs/release-notes/v1.2.0.md`).

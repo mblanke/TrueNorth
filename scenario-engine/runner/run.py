@@ -150,15 +150,16 @@ def evaluate_objectives(scenario: dict, range_ctx: dict, event_store=None) -> li
     be, so it always returned [] and every run scored 0.
     """
     from scenario_engine.event_stores import event_store_from_env
+    from scenario_engine.objective_catalogue import PLATFORM_PARAMS
     from scenario_engine.scoring import ScoringEngine, validation_method
     from scenario_engine.variables import render
 
     index = f"range-{range_ctx['range_id']}"
     objectives = []
     for obj in scenario.get("objectives", []):
-        params = dict(obj.get("params") or {})
-        # Only an instructor approves a manual objective; content cannot pre-approve it.
-        params.pop("approved", None)
+        # Only the platform supplies approval, submissions and the exercise window
+        # (objective_catalogue.PLATFORM_PARAMS); content naming them is dropped.
+        params = {k: v for k, v in (obj.get("params") or {}).items() if k not in PLATFORM_PARAMS}
         for key in ("query", "username"):
             if isinstance(params.get(key), str):
                 params[key] = render(params[key], scenario.get("variables"))
@@ -219,17 +220,21 @@ def main():
         os.environ["EVENT_STORE"] = args.event_store
     objective_results = evaluate_objectives(scenario, range_ctx)
 
-    # Summary
-    total = sum(r.get("points_earned", 0) for r in objective_results)
-    max_pts = sum(o.get("points", 0) for o in scenario.get("objectives", []))
-    logger.info(f"=== Score: {total}/{max_pts} ===")
+    # Summary: out of what was judged; unscored objectives (detections credited from
+    # Student submissions, awaiting an instructor, refused, no evidence) are reported apart.
+    points = {o.get("id", "unknown"): o.get("points", 0) for o in scenario.get("objectives", [])}
+    judged = [r for r in objective_results if r.get("passed") is not None]
+    total = sum(r.get("points_earned", 0) for r in judged)
+    max_pts = sum(points.get(r["id"], 0) for r in judged)
+    unscored_pts = sum(points.get(r["id"], 0) for r in objective_results if r.get("passed") is None)
+    logger.info(f"=== Score: {total}/{max_pts} judged; {unscored_pts} points unscored ===")
 
     results = {
         "scenario": scenario["name"],
         "range_id": args.range_id,
         "timeline": timeline_results,
         "objectives": objective_results,
-        "score": {"earned": total, "max": max_pts},
+        "score": {"earned": total, "max": max_pts, "unscored": unscored_pts},
     }
 
     if args.output:

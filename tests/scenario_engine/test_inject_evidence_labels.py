@@ -30,8 +30,9 @@ CASES = [
     ("simulated_execution", {"technique": "T1059"}),
 ]
 _IDS = [f"{a}:{next(iter(p.values()), '')}" for a, p in CASES]
-# Wall-clock fields: the seed fixes content, not when the inject ran.
-_CLOCK = ("timestamp", "@timestamp", "time", "ts", "start_time", "end_time", "duration_seconds")
+# The only fields that follow the wall clock (c2_beacon's callback times); the seed fixes
+# everything else. test_only_the_known_fields_follow_the_clock keeps this list complete.
+_CLOCK = {"timestamp_epoch"}
 
 
 def _strip_clock(value):
@@ -40,6 +41,26 @@ def _strip_clock(value):
     if isinstance(value, list):
         return [_strip_clock(v) for v in value]
     return value
+
+
+def _leaf_diffs(a, b, key=None):
+    """The keys of the leaves that differ between two results of the same shape."""
+    if isinstance(a, dict) and isinstance(b, dict) and a.keys() == b.keys():
+        return {d for k in a for d in _leaf_diffs(a[k], b[k], k)}
+    if isinstance(a, list) and isinstance(b, list) and len(a) == len(b):
+        return {d for x, y in zip(a, b, strict=True) for d in _leaf_diffs(x, y, key)}
+    return set() if a == b else {key}
+
+
+@pytest.fixture
+def clock(monkeypatch):
+    """Set the wall clock the injectors read (time.time)."""
+    import time
+
+    def _set(at: float):
+        monkeypatch.setattr(time, "time", lambda: at)
+
+    return _set
 
 
 def _claims(value, found=None):
@@ -84,11 +105,21 @@ def test_simulated_results_never_claim_a_host_effect(action, params):
 
 
 @pytest.mark.parametrize(("action", "params"), CASES, ids=_IDS)
-def test_synthetic_records_are_deterministic_per_exercise_and_inject(action, params):
+def test_synthetic_records_are_deterministic_per_exercise_and_inject(action, params, clock):
+    clock(1_800_000_000.0)  # the same instant: the whole result must match, clock fields too
     first = engine.run_inject(action, params, CTX)
     again = engine.run_inject(action, params, CTX)
     assert first.seed == again.seed
-    assert _strip_clock(first.raw) == _strip_clock(again.raw)
+    assert first.raw == again.raw
+
+
+@pytest.mark.parametrize(("action", "params"), CASES, ids=_IDS)
+def test_only_the_known_fields_follow_the_clock(action, params, clock):
+    clock(1_800_000_000.0)
+    before = engine.run_inject(action, params, CTX).raw
+    clock(1_900_000_000.0)
+    after = engine.run_inject(action, params, CTX).raw
+    assert _leaf_diffs(before, after) <= _CLOCK
 
 
 def test_seed_differs_by_exercise_and_by_inject():

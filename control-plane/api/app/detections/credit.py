@@ -105,6 +105,12 @@ def answer_key(validator: str, validator_params: str | None, ref_id: str, scenar
             if isinstance(obj, dict) and str(obj.get("id")) == ref_id:
                 params = obj.get("params") or {}
                 break
+    if params.get("require_observed", False) is not False:  # true, or anything not plainly false
+        # Asserts something really happened on the range. The answer key would also match
+        # the inject's synthetic records (their label is deliberately not indexed, so the
+        # query cannot exclude them), so a submission is never credited against it: the
+        # scoring engine judges it from observed telemetry (objective_catalogue).
+        raise NotScorable("this objective is judged from observed range telemetry, not by a submitted detection")
     query = params.get("query")
     if not isinstance(query, str) or not query.strip():
         raise NotScorable("this objective has no answer key")

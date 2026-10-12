@@ -20,15 +20,21 @@ class NullEventStore(BaseEventStore):
     def __init__(self, events: list[dict[str, Any]] | None = None) -> None:
         self.events = list(events or [])
 
-    async def search(self, index: str, query: str | dict[str, Any], size: int = 20) -> EventHits:
+    async def search(self, index: str, query: str | dict[str, Any], size: int = 20, offset: int = 0) -> EventHits:
         if not isinstance(query, str):
             return EventHits(total=0)
         # (field, raw value, inner text when the value was "quoted")
         terms = [(f, inner if raw.startswith('"') else raw) for f, raw, inner in _TERM.findall(query)]
         if not terms:
             return EventHits(total=0)
-        matched = [e for e in self.events if all(fnmatch.fnmatch(str(_get(e, f)), pat) for f, pat in terms)]
-        return EventHits(total=len(matched), hits=[{"_id": str(i), "_source": e} for i, e in enumerate(matched[:size])])
+        # An event's _id is its position in the store, as a document's id is fixed in an index.
+        matched = [
+            (i, e) for i, e in enumerate(self.events) if all(fnmatch.fnmatch(str(_get(e, f)), pat) for f, pat in terms)
+        ]
+        return EventHits(
+            total=len(matched),
+            hits=[{"_id": str(i), "_source": e} for i, e in matched[offset : offset + size]],
+        )
 
 
 def _get(event: dict[str, Any], dotted: str) -> Any:

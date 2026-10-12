@@ -14,6 +14,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from ..event_stores import BaseEventStore
+from ..objective_catalogue import canonical
 
 logger = logging.getLogger(__name__)
 
@@ -25,13 +26,11 @@ _VALIDATOR_METHODS = {"manual_ack": "manual", "deliverable_check": "deliverable"
 
 
 def validation_method(validator: str) -> str:
-    """The ScoringValidator method for a scenario/objective-row validator name."""
-    name = (validator or "manual").strip().lower()
-    for prefix in ("validate.", "validate_"):
-        if name.startswith(prefix):
-            name = name[len(prefix):]
-            break
-    name = name.replace(".", "_")
+    """The ScoringValidator method for a scenario/objective-row validator name.
+
+    Spelling is objective_catalogue.canonical's, the one function every layer agrees on.
+    """
+    name = canonical(validator)
     return _VALIDATOR_METHODS.get(name, name)
 
 
@@ -98,6 +97,9 @@ class ScoringResult:
     time_elapsed: int  # seconds
     bonuses: list[dict[str, Any]]
     unscored: dict[str, str] = field(default_factory=dict)  # objective id -> why it was not judged
+    # Points of the unscored objectives (refused, awaiting an instructor, no evidence yet).
+    # They are not in max_score: the percentage is over what was judged.
+    unscored_points: int = 0
 
 
 # ── Scoring Engine ──────────────────────────────────────────
@@ -119,6 +121,11 @@ class ScoringEngine:
         Exercise start timestamp; defaults to *now*.
     event_store:
         Store that query objectives run against (``scenario_engine.event_stores``).
+    window_start, window_end:
+        The exercise's started_at / completed_at, from the platform. Objectives judged on
+        observed telemetry count only events ingested inside it; without a start,
+        ``user_disabled`` is unscored. ``start_time`` is not used for this: it defaults to
+        now.
     """
 
     def __init__(
@@ -128,11 +135,14 @@ class ScoringEngine:
         opensearch_url: str | None = None,
         start_time: datetime | None = None,
         event_store: BaseEventStore | None = None,
+        window_start: datetime | None = None,
+        window_end: datetime | None = None,
     ) -> None:
         self.exercise_id = exercise_id
         self.objectives: dict[str, Objective] = {obj["id"]: Objective.from_dict(obj) for obj in objectives}
         self.opensearch_url = opensearch_url
         self.event_store = event_store
+        self.window = (window_start, window_end) if window_start or window_end else None
         self.start_time = start_time or datetime.now(UTC)
         self.total_score: int = 0
         self.max_score: int = sum(obj.max_points for obj in self.objectives.values())
@@ -161,7 +171,8 @@ class ScoringEngine:
                 objective_results.append(res)
 
         self.total_score = sum(r.points_awarded for r in objective_results)
-        percentage = (self.total_score / self.max_score * 100) if self.max_score else 0.0
+        judged_max = sum(r.max_points for r in objective_results)
+        percentage = (self.total_score / judged_max * 100) if judged_max else 0.0
 
         from scenario_engine.scoring.grading import GradingCalculator
 
@@ -172,13 +183,14 @@ class ScoringEngine:
         return ScoringResult(
             exercise_id=self.exercise_id,
             total_score=self.total_score,
-            max_score=self.max_score,
+            max_score=judged_max,
             percentage=round(percentage, 2),
             grade=grade,
             objectives=objective_results,
             time_elapsed=elapsed,
             bonuses=list(self._bonuses),
             unscored=unscored,
+            unscored_points=sum(self.objectives[oid].max_points for oid in unscored),
         )
 
     async def evaluate_objective(self, objective_id: str) -> ObjectiveResult:
@@ -218,6 +230,7 @@ class ScoringEngine:
             opensearch_url=self.opensearch_url,
             event_store=self.event_store,
             exercise_id=self.exercise_id,
+            window=self.window,
         )
 
         # Score
