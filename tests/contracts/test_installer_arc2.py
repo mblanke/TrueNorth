@@ -537,14 +537,25 @@ def test_the_runs_directory_lets_the_api_queue_and_the_runner_own_the_rest():
     assert "docker" not in str(user["groups"]) and user["append"] is False
 
 
-def _env_block(enabled: bool) -> str:
+def _env_block(enabled: bool, **extra) -> str:
     text = (INSTALL / "roles/tn_config/templates/env.production.j2").read_text()
-    block = re.search(r"# ── ARC² Course Studio.*?{% endif %}\n", text, re.S).group(0)
+    block = re.search(r"# ── ARC² Course Studio.*?{% else %}.*?{% endif %}\n", text, re.S).group(0)
     return (
         _jinja()
         .from_string(block)
-        .render(tn_arc2_enabled=enabled, tn_arc2_runs_dir="/srv/truenorth/arc2/runs", tn_arc2_runs_gid=10010)
+        .render(tn_arc2_enabled=enabled, tn_arc2_runs_dir="/srv/truenorth/arc2/runs", tn_arc2_runs_gid=10010, **extra)
     )
+
+
+def test_only_an_auto_accepting_host_is_a_test_host_for_the_api():
+    """TN_TEST_HOST lets the api accept and publish releases the runner auto-accepted
+    (labelled TEST CONTENT); only a host with tn_arc2_auto_accept gets it."""
+    assert "TN_TEST_HOST=true\n" in _env_block(True, tn_arc2_auto_accept=True)
+    assert "TN_TEST_HOST" not in _env_block(True, tn_arc2_auto_accept=False)
+    assert "TN_TEST_HOST" not in _env_block(True)
+    assert "TN_TEST_HOST" not in _env_block(False, tn_arc2_auto_accept=True)
+    env = _yaml(DOCKER / "compose.prod.yml")["services"]["api"]["environment"]
+    assert env["TN_TEST_HOST"] == "${TN_TEST_HOST:-false}"
 
 
 def test_the_env_file_wires_the_api_only_when_enabled():

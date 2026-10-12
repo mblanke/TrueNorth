@@ -86,6 +86,45 @@ def test_an_edit_after_acceptance_is_refused(tmp_path, repo):
         release.build(run)
 
 
+def test_a_person_reviewed_release_says_so(tmp_path, repo):
+    _, meta = release.build(released_run(tmp_path, repo), tmp_path / "r.tar.gz")
+    assert meta["auto_accepted"] is False and "auto_accept" not in meta
+
+
+def test_a_gate_the_runner_accepted_makes_test_content_under_the_digest(tmp_path, repo):
+    """Adversarial review of #130: TEST CONTENT must travel with the release."""
+    from app.course_releases import bundle
+
+    run = released_run(tmp_path, repo)
+    m = check.load_manifest(run)
+    m["gates"]["preview"]["accepted_by"] = release.AUTO_ACCEPTED_BY
+    check.save_manifest(run, m)
+    out, meta = release.build(run, tmp_path / "r.tar.gz")
+    assert meta["auto_accepted"] is True
+    assert meta["auto_accept"] == {"gates": ["preview"], "accepted_by": "auto (test host)"}
+    parsed = bundle.parse(out.read_bytes())  # the API verifies it, digest included
+    assert bundle.auto_accepted(parsed.meta)
+
+
+def test_the_runners_job_record_wins_over_a_rewritten_manifest(tmp_path, repo):
+    """The job can write manifest.json (and drop ``accepted_by``); it cannot write the
+    runner's ``_jobs`` record, which is the authority."""
+    run = released_run(tmp_path, repo)
+    slug = check.load_manifest(run)["slug"]
+    jobs = run.parent / "_jobs"
+    jobs.mkdir()
+    (jobs / "a.json").write_text(f'{{"slug": "{slug}", "auto_accept": {{"gate": "outline"}}}}')
+    (jobs / "b.json").write_text('{"slug": "arc2-other", "auto_accept": {"gate": "preview"}}')
+    (jobs / "c.json").write_text("not json")
+    _, meta = release.build(run, tmp_path / "r.tar.gz")
+    assert meta["auto_accept"] == {"gates": ["outline"], "accepted_by": "auto (test host)"}
+    # A caller building from a copy passes the record it read beside the real run.
+    _, meta = release.build(run, tmp_path / "s.tar.gz", runner_record={"gates": ["preview"]})
+    assert meta["auto_accept"]["gates"] == ["preview"]
+    _, meta = release.build(run, tmp_path / "t.tar.gz", runner_record={})
+    assert meta["auto_accepted"] is False
+
+
 def test_the_catalogue_identity_must_exist(tmp_path, repo):
     _, findings = check.check_run(make_run(tmp_path, catalogued("C999")), repo)
     assert "qa.catalogue_identity" in {f.check for f in findings if f.severity == "fail"}

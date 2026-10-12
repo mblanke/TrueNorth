@@ -52,6 +52,11 @@ class CourseReleaseOut(BaseModel):
     activities: dict[str, str]
     open_actions: list[OpenAction]
     acknowledged_actions: list[str]
+    auto_accepted: bool = Field(
+        False,
+        description="Test content: a test host's ARC² runner accepted its gates, not a person. "
+        "Accepted and published only on a test host (TN_TEST_HOST), and labelled there.",
+    )
     created_at: datetime | None
     accepted_at: datetime | None
     accepted_by: uuid.UUID | None
@@ -88,6 +93,7 @@ def _out(r: CourseRelease) -> CourseReleaseOut:
         activities=meta.get("activities") or {},
         open_actions=[OpenAction(**a) for a in meta.get("open_human_actions") or []],
         acknowledged_actions=json.loads(r.acknowledged_actions or "[]"),
+        auto_accepted=bundle_mod.auto_accepted(meta),
         created_at=r.created_at,
         accepted_at=r.accepted_at,
         accepted_by=r.accepted_by,

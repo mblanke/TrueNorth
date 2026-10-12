@@ -1,8 +1,12 @@
-"""Batch ARC² on a TEST host: every catalogue course → ARC² run → release → accepted → published.
+"""Batch ARC² on a TEST host: every catalogue course → ARC² run → release → accepted (→ published).
 
 For staging only, where the runner accepts the outline and preview gates by itself
 (ARC2_AUTO_ACCEPT_GATES, docs/arc2-course-studio.md §13). Nothing here is reviewed by a
-person: the releases it accepts are test content, never for Students.
+person: the releases it accepts are test content, never for Students. It refuses to run
+unless TN_TEST_HOST is on (the installer sets it only with tn_arc2_auto_accept), releases
+only runs the runner auto-accepted (``auto_accepted``), only runs it queued itself, and only
+a release whose catalogue_code is the course it was asked for. The API labels what it
+accepts as TEST CONTENT (app/course_releases/test_content.py).
 
 Runs inside a one-off api container, in-process as the bootstrap administrator (the same
 harness as scripts/load_content_inprocess.py: scripts/_inprocess_api.py). Every step goes
@@ -12,9 +16,11 @@ through the API's own routes and checks:
     GET  /arc2/runs                         progress (phase, last job, QA)
     POST /arc2/runs/{slug}/retry            after a usage limit or a transient failure
     POST /course-releases                   the release tarball (built here, see below)
-    POST /course-releases/{id}/accept       acknowledging the release's open actions
+    POST /course-releases/{id}/accept       only with no open action (else the course is
+                                            needs-review), unless --ack-open-actions
     PATCH /courses/{id}                     keep/get the TrueNorth course published
-    POST /course-releases/{id}/publications the tenant's Moodle; wait for "published"
+    POST /course-releases/{id}/publications the tenant's Moodle, with --publish-platform
+                                            moodle only; wait for "published"
 
 The release tarball is built in this process with the engine's own builder
 (tools/arc2/release.py, from the mounted checkout) from a snapshot of the run: the run
@@ -27,11 +33,14 @@ run that the Studio lists for this tenant and reports as packaged is built, and
       -v <app checkout>:/srcapp:ro --entrypoint python api \\
       /srcapp/scripts/arc2_batch_inprocess.py --admin <upn> [--courses C1*] [--dry-run]
 
-Idempotent: a course with a run of its name is never queued again (the run is followed
-instead); uploads of the same release return the existing one; accepted releases and
-published publications are left as they are. --state/--resume keep retry counts and
-retry times across restarts. Courses held for a cleared author (production register) are
-skipped unless --include-held. Exits 1 if any course failed (held is not failure).
+Runs it follows are the ones it queued: the slug from its own POST /arc2/runs, kept in its
+state. A run of the course's name that it did not queue (any author in the tenant can name
+a run "C103") is never followed: the course fails and says so. Use --state, and --resume
+after a restart, so its own runs are followed rather than refused. Uploads of the same
+release return the existing one; accepted releases and published publications are left as
+they are. --state/--resume also keep retry counts and retry times. Courses held for a
+cleared author (production register) are skipped unless --include-held. Exits 1 if any
+course failed or needs review (held is not failure).
 """
 
 from __future__ import annotations
@@ -332,8 +341,10 @@ def build_release(runs_root: Path, slug: str, tools_dir: Path = TOOLS) -> tuple[
 
     with tempfile.TemporaryDirectory(prefix="arc2-release-") as tmp:
         snap = snapshot_run(runs_root, slug, Path(tmp) / "runs")
+        # The runner's own record of what it accepted lives beside the run, not in the copy.
+        runner_record = release.runner_auto_accept(runs_root, slug) or {}
         try:
-            out, meta = release.build(snap, Path(tmp) / "release.tar.gz")
+            out, meta = release.build(snap, Path(tmp) / "release.tar.gz", runner_record=runner_record)
         except (release.ReleaseError, check.ContractError, KeyError, ValueError) as exc:
             raise ReleaseBuildError(str(exc)) from exc
         return out.read_bytes(), meta
@@ -342,15 +353,27 @@ def build_release(runs_root: Path, slug: str, tools_dir: Path = TOOLS) -> tuple[
 # ── driver ──────────────────────────────────────────────────────────────
 
 PENDING, SKIPPED, WORKING, WAITING, HELD, FAILED = "pending", "skipped", "working", "waiting_retry", "held", "failed"
-ACCEPTED, PUBLISHED, PLANNED = "accepted", "published", "planned"
-TERMINAL = {SKIPPED, HELD, FAILED, ACCEPTED, PUBLISHED, PLANNED}
+ACCEPTED, PUBLISHED, PLANNED, NEEDS_REVIEW = "accepted", "published", "planned", "needs-review"
+TERMINAL = {SKIPPED, HELD, FAILED, ACCEPTED, PUBLISHED, PLANNED, NEEDS_REVIEW}
+FAILING = {FAILED, NEEDS_REVIEW}  # exit 1
+TEST_HOST_ENV = "TN_TEST_HOST"  # app/course_releases/test_content.py
+
+
+def is_test_host(environ: dict[str, str] | None = None) -> bool:
+    environ = os.environ if environ is None else environ
+    return environ.get(TEST_HOST_ENV, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+class NotATestHostError(RuntimeError):
+    pass
 
 
 @dataclass
 class Track:
     code: str
     status: str = PENDING
-    slug: str | None = None
+    slug: str | None = None  # only ever a run this driver queued itself (POST /arc2/runs)
+    created: bool = False  # the slug came from this driver's own POST, not from a name match
     detail: str = ""
     attempts: int = 0
     next_retry_at: str | None = None
@@ -381,8 +404,10 @@ class Driver:
         *,
         builder: Callable[[str], tuple[bytes, dict[str, Any]]],
         concurrency: int = 1,
-        publish_platform: str = "moodle",
+        publish_platform: str = "none",
         platform_id: str | None = None,
+        ack_open_actions: bool = False,
+        test_host: bool | None = None,
         include_held: bool = False,
         hours: int | None = None,
         max_attempts: int = 6,
@@ -401,6 +426,8 @@ class Driver:
         self.courses = {c.code: c for c in courses}
         self.concurrency = max(1, concurrency)
         self.publish_platform, self.platform_id = publish_platform, platform_id
+        self.ack_open_actions = ack_open_actions
+        self.test_host = is_test_host() if test_host is None else test_host
         self.hours = hours
         self.max_attempts, self.retry_base, self.retry_cap = max_attempts, retry_base, retry_cap
         self.stall_timeout, self.publish_timeout, self.poll = stall_timeout, publish_timeout, poll
@@ -411,9 +438,10 @@ class Driver:
         for c in courses:
             t = Track(code=c.code)
             old = saved.get(c.code)
-            if old:
-                t.slug, t.attempts, t.next_retry_at = (
+            if old and old.get("created") and old.get("slug"):  # a run this driver queued; never a name match
+                t.slug, t.created, t.attempts, t.next_retry_at = (
                     old.get("slug"),
+                    True,
                     int(old.get("attempts") or 0),
                     old.get("next_retry_at"),
                 )
@@ -445,33 +473,48 @@ class Driver:
         t.status, t.detail = status, detail
 
     # runs
-    def runs_by_name(self) -> dict[str, dict[str, Any]]:
+    def list_runs(self) -> list[dict[str, Any]]:
         status, body = self.api.get("/arc2/runs")
         if status == 404:
             raise StudioUnavailableError("the ARC² Studio is not enabled on this API (ARC2_STUDIO_ENABLED)")
         if status != 200 or not isinstance(body, dict):
             raise StudioUnavailableError(f"GET /arc2/runs answered {status}: {str(body)[:200]}")
-        by_name: dict[str, dict[str, Any]] = {}
-        for run in body.get("runs") or []:  # newest first: the first of a name wins
-            by_name.setdefault(str(run.get("name") or "").strip().lower(), run)
-        return by_name
+        return [r for r in body.get("runs") or [] if isinstance(r, dict)]
+
+    @staticmethod
+    def _others(runs: list[dict[str, Any]], code: str) -> list[str]:
+        """Runs in the tenant named after this course that this driver did not queue. Any
+        author in the tenant can name a run "C103"; following one would release, accept
+        and publish their content as this course (a confused deputy). Never followed."""
+        return [str(r.get("slug")) for r in runs if str(r.get("name") or "").strip().lower() == code.lower()]
+
+    def _refuse_others(self, t: Track, others: list[str]) -> None:
+        self._set(
+            t,
+            FAILED,
+            f"run(s) named {t.code} that this driver did not queue exist ({', '.join(others)}); not followed. "
+            "Continue the batch that queued them with --state/--resume, or release them by hand",
+        )
 
     def inflight(self) -> int:
         return sum(1 for t in self.tracks.values() if t.status in (WORKING, WAITING))
 
     def plan(self) -> list[tuple[str, str]]:
         """Dry run: what would happen, with no request other than GET /arc2/runs."""
-        by_name = self.runs_by_name()
+        runs = self.list_runs()
+        by_slug = {r.get("slug"): r for r in runs}
         out = []
         for code, t in self.tracks.items():
             if t.status == SKIPPED:
                 out.append((code, t.detail))
                 continue
-            run = by_name.get(code.lower())
+            run = by_slug.get(t.slug) if t.slug else None
+            others = self._others(runs, code)
             if run:
-                t.slug = run.get("slug")
                 kind, words = classify(run)
-                self._set(t, PLANNED, f"follow existing run {t.slug}: {kind} ({words})")
+                self._set(t, PLANNED, f"follow this driver's run {t.slug}: {kind} ({words})")
+            elif t.slug is None and others:
+                self._set(t, PLANNED, f"refuse: run(s) {', '.join(others)} named {code} were not queued by this driver")
             else:
                 text = request_text(self.courses[code], self.hours)
                 self._set(t, PLANNED, f"would queue a run ({len(text)} chars)")
@@ -479,17 +522,21 @@ class Driver:
         return out
 
     def step(self) -> bool:
-        """One pass over every course. True when every course is finished."""
-        by_name = self.runs_by_name()
+        """One pass over every course. True when every course is finished. Only runs this
+        driver queued itself (their slugs are in its state) are ever followed."""
+        runs = self.list_runs()
+        by_slug = {r.get("slug"): r for r in runs}
         now = self.clock()
         for code, t in self.tracks.items():
             if t.status in TERMINAL:
                 continue
-            run = by_name.get(code.lower())
+            run = by_slug.get(t.slug) if t.slug and t.created else None
             if t.status == PENDING:
-                if run is not None:
-                    t.slug = run.get("slug")
-                    self._set(t, WORKING, f"following existing run {t.slug}")
+                if t.slug and t.created:
+                    self._set(t, WORKING, f"following this driver's run {t.slug}")
+                elif others := self._others(runs, code):
+                    self._refuse_others(t, others)
+                    continue
                 elif self.inflight() < self.concurrency:
                     self._create(t)
                     continue
@@ -510,9 +557,10 @@ class Driver:
     def _create(self, t: Track) -> None:
         text = request_text(self.courses[t.code], self.hours)
         status, body = self.api.post("/arc2/runs", json={"name": t.code, "request": text})
-        if status == 201 and isinstance(body, dict):
-            t.slug = body.get("slug")
+        if status == 201 and isinstance(body, dict) and SLUG_RE.match(str(body.get("slug") or "")):
+            t.slug, t.created = body["slug"], True
             self._set(t, WORKING, f"queued run {t.slug}")
+            self.save()  # the slug is the only proof the run is this driver's: keep it at once
         else:
             self._set(t, FAILED, f"could not queue a run: {status} {str(body)[:200]}")
 
@@ -546,7 +594,11 @@ class Driver:
             t.next_retry_at = _iso(when)
             self._set(t, WAITING, f"retry {t.attempts}/{self.max_attempts} at {t.next_retry_at}: {words}")
         elif kind == "packaged":
-            self.release(t)
+            self.release(t, run)
+        elif kind == "gate" and run.get("actions_blocking"):
+            # The runner never auto-accepts past an open action that blocks promotion.
+            self._set(t, NEEDS_REVIEW, f"waiting at the {run.get('phase')} gate with "
+                      f"{run['actions_blocking']} open blocking action(s): a person decides")
         else:  # waiting at a gate, or paused, with nothing queued: auto-accept should move it
             since = _parse(t.stalled_since)
             if since is None:
@@ -557,11 +609,22 @@ class Driver:
             self._set(t, WORKING, words)
 
     # release → accept → publish
-    def release(self, t: Track) -> None:
+    def release(self, t: Track, run: dict[str, Any]) -> None:
+        # Only content nobody reviewed is this driver's to accept: a run a person accepted
+        # gates on is theirs to release, through the Course releases page.
+        if run.get("auto_accepted") is not True:
+            self._set(t, FAILED, f"run {t.slug} was not auto-accepted by the test host's runner; not released")
+            return
         try:
             data, meta = self.builder(t.slug)
         except ReleaseBuildError as exc:
             self._set(t, FAILED, f"release build refused: {exc}")
+            return
+        if str(meta.get("catalogue_code") or "").strip().lower() != t.code.lower():
+            self._set(t, FAILED, f"run {t.slug} built a release of {meta.get('catalogue_code')!r}, not {t.code}; not uploaded")
+            return
+        if meta.get("auto_accepted") is not True:
+            self._set(t, FAILED, f"release of {t.slug} does not say auto_accepted; not uploaded")
             return
         files = {"file": (f"{t.slug}-{meta.get('release_digest', '')[:12]}.tar.gz", data, "application/gzip")}
         status, rel = self.api.post("/course-releases", files=files)
@@ -569,10 +632,20 @@ class Driver:
             self._set(t, FAILED, f"upload refused: {status} {str(rel)[:200]}")
             return
         t.release_id, t.version = rel.get("id"), rel.get("version")
+        if str(rel.get("catalogue_code") or "").lower() != t.code.lower() or rel.get("auto_accepted") is not True:
+            self._set(t, FAILED, f"release {t.release_id} is {rel.get('catalogue_code')!r} "
+                      f"(auto_accepted {rel.get('auto_accepted')}), not test content for {t.code}")
+            return
         if rel.get("state") == "candidate":
-            ack = [a["id"] for a in rel.get("open_actions") or []]
+            ack = [str(a["id"]) for a in rel.get("open_actions") or []]
+            if ack and not self.ack_open_actions:
+                t.extra["open_actions"] = ack
+                self._set(t, NEEDS_REVIEW, f"release v{t.version} has open action(s) for a person: {', '.join(ack)}")
+                return
+            notes = ACCEPT_NOTES + (f"; open actions acknowledged by the batch driver: {', '.join(ack)}" if ack else "")
+            t.extra["acknowledged_actions"] = ack
             status, rel = self.api.post(
-                f"/course-releases/{t.release_id}/accept", json={"acknowledge_actions": ack, "notes": ACCEPT_NOTES}
+                f"/course-releases/{t.release_id}/accept", json={"acknowledge_actions": ack, "notes": notes}
             )
             if status != 200 or not isinstance(rel, dict):
                 self._set(t, FAILED, f"accept refused: {status} {str(rel)[:200]}")
@@ -637,13 +710,18 @@ class Driver:
             self._set(t, FAILED, f"publication {pub.get('state')}: {str(pub.get('error') or '')[:200]}")
 
     def run(self, dry_run: bool = False) -> int:
+        if not self.test_host:
+            raise NotATestHostError(
+                f"this is not a test host ({TEST_HOST_ENV} is off): the batch accepts content nobody reviewed, "
+                "so it runs only where the installer set tn_arc2_auto_accept"
+            )
         if dry_run:
             self.plan()
         else:
             while not self.step():
                 self.sleep(self.poll)
         self.log(self.table())
-        return 1 if any(t.status == FAILED for t in self.tracks.values()) else 0
+        return 1 if any(t.status in FAILING for t in self.tracks.values()) else 0
 
     def table(self) -> str:
         lines = [f"{'course':<9} {'status':<13} {'run':<34} detail", "-" * 100]
@@ -668,7 +746,18 @@ def main(argv: list[str] | None = None) -> int:
         default=True,
         help="build each request from the course YAML (the only source today; kept for the interface)",
     )
-    ap.add_argument("--publish-platform", choices=("moodle", "none"), default="moodle")
+    ap.add_argument(
+        "--publish-platform",
+        choices=("moodle", "none"),
+        default="none",
+        help="also publish each accepted release to the tenant's Moodle (default none: opt in with moodle)",
+    )
+    ap.add_argument(
+        "--ack-open-actions",
+        action="store_true",
+        help="acknowledge a release's open actions when accepting it (recorded in its notes); "
+        "by default such a course stops as needs-review",
+    )
     ap.add_argument("--platform-id", help="the Moodle platform to publish to (default: the tenant's first active one)")
     ap.add_argument("--include-held", action="store_true", help="also run courses held for a cleared author")
     ap.add_argument("--hours", type=int, help="student hours for every run (default: each YAML's duration_hours)")
@@ -685,6 +774,13 @@ def main(argv: list[str] | None = None) -> int:
     if args.resume and not args.state:
         ap.error("--resume needs --state")
 
+    if not is_test_host():
+        print(
+            f"arc2-batch: not a test host ({TEST_HOST_ENV} is off). This accepts content nobody reviewed; "
+            "it runs only where the installer set tn_arc2_auto_accept.",
+            file=sys.stderr,
+        )
+        return 2
     courses = select(load_courses(), args.courses)
     if not courses:
         print("no course matches --courses", file=sys.stderr)
@@ -707,6 +803,7 @@ def main(argv: list[str] | None = None) -> int:
         concurrency=args.concurrency,
         publish_platform=args.publish_platform,
         platform_id=args.platform_id,
+        ack_open_actions=args.ack_open_actions,
         include_held=args.include_held,
         hours=args.hours,
         max_attempts=args.max_attempts,
@@ -717,7 +814,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     try:
         code = driver.run(dry_run=args.dry_run)
-    except StudioUnavailableError as exc:
+    except (StudioUnavailableError, NotATestHostError) as exc:
         print(f"arc2-batch: {exc}", file=sys.stderr)
         return 2
     if args.dry_run and args.print_requests:

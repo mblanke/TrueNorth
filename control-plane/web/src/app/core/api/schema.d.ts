@@ -9097,6 +9097,12 @@ export interface components {
             };
             /** Arc2 Code */
             arc2_code: string;
+            /**
+             * Auto Accepted
+             * @description Test content: a test host's ARC² runner accepted its gates, not a person. Accepted and published only on a test host (TN_TEST_HOST), and labelled there.
+             * @default false
+             */
+            auto_accepted?: boolean;
             /** Catalogue Code */
             catalogue_code: string;
             /**

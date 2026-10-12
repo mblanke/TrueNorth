@@ -52,6 +52,8 @@ interface CourseOutline {
   modules: OutlineModule[];
   /** The tenant has a usable Moodle and this course is published to it (any role may read). */
   moodle_available?: boolean;
+  /** Set while the course delivers content a test host's ARC² runner accepted, not a person. */
+  test_content?: string | null;
 }
 
 /** One section of a module's teaching content, split out of its markdown. */
@@ -114,6 +116,14 @@ interface Section {
           </div>
         </header>
         @if (moodleError()) { <p class="moodle-err" role="alert">{{ moodleError() }}</p> }
+        <!-- Generated on a test host and accepted by its runner: nobody reviewed it. -->
+        @if (c.test_content) {
+          <p class="test-content" role="note" data-test-content>
+            <mat-icon>science</mat-icon>
+            <span><strong>{{ c.test_content }}</strong> — generated and accepted automatically on a test host;
+              no person has reviewed this course.</span>
+          </p>
+        }
 
         @if (c.description) { <p class="desc">{{ c.description }}</p> }
 
@@ -209,6 +219,19 @@ interface Section {
 
       .head-actions { display: flex; align-items: center; gap: 10px; flex: 0 0 auto; }
       .moodle-err { margin: 8px 0 0; font-size: 0.82rem; color: var(--warning); }
+      .test-content {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 10px 0 0;
+        padding: 8px 12px;
+        font-size: 0.84rem;
+        color: var(--warning);
+        border: 1px solid color-mix(in srgb, var(--warning) 45%, transparent);
+        border-radius: 8px;
+        background: var(--warn-soft, rgba(180, 110, 0, 0.15));
+      }
+      .test-content mat-icon { flex: 0 0 auto; }
       .pill {
         flex: 0 0 auto;
         padding: 3px 10px;

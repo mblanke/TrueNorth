@@ -69,6 +69,19 @@ describe('CourseDetailComponent', () => {
     expect(moodleButton()).toBeUndefined();
   });
 
+  it('labels test content a test host accepted automatically', () => {
+    setup('c-1', { ...OUTLINE, test_content: 'TEST CONTENT — not reviewed' });
+    const note = fixture.nativeElement.querySelector('[data-test-content]') as HTMLElement;
+    expect(note).not.toBeNull();
+    expect(note.textContent).toContain('TEST CONTENT — not reviewed');
+    expect(note.textContent).toContain('no person has reviewed');
+  });
+
+  it('shows no test-content label on reviewed content', () => {
+    setup('c-1', { ...OUTLINE, test_content: null });
+    expect(fixture.nativeElement.querySelector('[data-test-content]')).toBeNull();
+  });
+
   it('reports a missing id without calling the API', () => {
     setup(null);
     expect(api.get).not.toHaveBeenCalled();

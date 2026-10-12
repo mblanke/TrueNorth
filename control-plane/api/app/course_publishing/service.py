@@ -26,8 +26,9 @@ from sqlalchemy import and_, exists, or_, update
 from sqlalchemy.orm import Session, aliased
 
 from .. import lti13
+from ..course_releases import test_content
 from ..course_releases.models import ACCEPTED, CourseRelease
-from ..course_releases.service import load_bundle
+from ..course_releases.service import is_test_content, load_bundle
 from ..models import ExternalPlatform, Qualification
 from ..moodle_backends import BaseMoodleBackend, MoodleError, get_moodle_backend
 from . import payload as payload_mod
@@ -73,6 +74,8 @@ def request(
     """The publication of this release on this platform, created if new."""
     if release.state != ACCEPTED:
         raise PublishRefusedError(f"release v{release.version} is {release.state}; only the accepted release publishes")
+    if is_test_content(release) and not test_content.is_test_host():
+        raise PublishRefusedError(test_content.refusal("published"))
     if platform.tenant_id != release.tenant_id:
         raise PublishRefusedError("platform not found", 404)
     try:
@@ -252,6 +255,8 @@ def run(db: Session, pub: CoursePublication, *, backend: BaseMoodleBackend | Non
             "this publication is already running, or another release of this course is being published to"
             " this Moodle; it runs after that one"
         )
+    if is_test_content(release) and not test_content.is_test_host():  # a job queued before the flag went off
+        return _fail(db, pub, test_content.refusal("published"))
     platform = db.get(ExternalPlatform, pub.platform_id)  # tenant-safe: see the release above
     pub.attempts += 1
     pub.error = ""

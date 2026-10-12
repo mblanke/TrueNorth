@@ -280,3 +280,33 @@ def test_a_failed_job_can_be_tried_again_and_only_then(client, runs):
     assert (job["action"], job["text"]) == ("start", REQUEST)
     runner_finishes(runs, "Outline ready.")
     assert client.post(f"/arc2/runs/{slug}/retry").status_code == 409  # last job succeeded
+
+
+def test_retrying_the_runners_own_accept_keeps_it_the_runners(client, runs):
+    """Adversarial review of #130: a retried test-host accept was re-queued as the admin
+    who pressed retry, so the gate recorded a person's acceptance nobody gave."""
+    slug = client.post("/arc2/runs", json={"name": "Wireshark", "request": REQUEST}).json()["slug"]
+    runner_finishes(runs, "Outline ready.")
+    write_run(runs, slug, outline="pending", done=1)
+    auto = {"gate": "outline", "accepted_by": "auto (test host)", "at": "2099-01-01T00:00:00.000000Z"}
+    failed = {"id": "auto0002", "action": "resume", "slug": slug, "text": "accept", "state": "failed",
+              "created_at": "2099-01-01T00:00:00.000000Z", "finished_at": "2099-01-01T00:01:00.000000Z",
+              "requested_by": "auto (test host)", "tenant_id": DEV_TENANT, "error": "API Error: 529 overloaded",
+              "auto_accept": auto}
+    (runs / "_jobs" / "auto0002.json").write_text(json.dumps(failed))
+
+    r = client.post(f"/arc2/runs/{slug}/retry")
+    assert r.status_code == 200
+    [job] = queued(runs)
+    assert (job["action"], job["text"], job["requested_by"]) == ("resume", "accept", "auto (test host)")
+    assert job["auto_accept"]["gate"] == "outline" and job["auto_accept"]["accepted_by"] == "auto (test host)"
+    assert job["retried_by"] == job["auto_accept"]["retried_by"] != "auto (test host)"
+    assert r.json()["auto_accepted"] is True
+
+
+def test_retrying_a_persons_job_stays_theirs(client, runs):
+    slug = client.post("/arc2/runs", json={"name": "Wireshark", "request": REQUEST}).json()["slug"]
+    runner_finishes(runs, "Failed to authenticate", state="failed")
+    assert client.post(f"/arc2/runs/{slug}/retry").status_code == 200
+    [job] = queued(runs)
+    assert "auto_accept" not in job and "retried_by" not in job and job["requested_by"] != "auto (test host)"

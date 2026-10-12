@@ -79,13 +79,15 @@ def test_request_text_sheds_detail_rather_than_running_over():
 # ── state machine and backoff ───────────────────────────────────────────
 
 
-def run(phase="new", job_state=None, error=None, name="C103", slug="arc2-c103"):
+def run(phase="new", job_state=None, error=None, name="C103", slug="arc2-c103", auto=True, blocking=0):
     return {
         "slug": slug,
         "name": name,
         "phase": phase,
         "phase_text": phase,
         "job": {"state": job_state, "error": error} if job_state else None,
+        "auto_accepted": auto,
+        "actions_blocking": blocking,
     }
 
 
@@ -135,9 +137,11 @@ class FakeApi:
         self.release = {
             "id": "rel-1",
             "course_id": "course-1",
+            "catalogue_code": "C103",
+            "auto_accepted": True,
             "version": 1,
             "state": "candidate",
-            "open_actions": [{"id": "xapi:ARC2-C103", "category": "standards", "text": "t"}],
+            "open_actions": [],
         }
         self.course_published = False
         self.pub_states = ["published"]
@@ -199,27 +203,151 @@ def courses(*codes):
     return [batch.Course(code=c, title=c, yaml_name=f"{c.lower()}.yaml", doc={"modules": []}) for c in codes]
 
 
-def driver(api, cs, clock=None, **kw):
+def built_meta(slug):
+    return {"release_digest": "abc123", "catalogue_code": slug.removeprefix("arc2-").upper(), "auto_accepted": True}
+
+
+def driver(api, cs, clock=None, own=None, **kw):
+    """``own``: course code → slug of runs this driver queued (as a resumed state says)."""
     clock = clock or Clock()
     built = []
 
     def builder(slug):
         built.append(slug)
-        return b"tarball", {"release_digest": "abc123"}
+        return b"tarball", built_meta(slug)
 
+    kw.setdefault("test_host", True)
     d = batch.Driver(
         api, cs, builder=kw.pop("builder", builder), clock=clock, sleep=clock.sleep, log=lambda s: None, **kw
     )
+    for code, slug in (own or {}).items():
+        d.tracks[code].slug, d.tracks[code].created = slug, True
     d.built = built
     return d
 
 
-def test_an_existing_run_is_followed_never_queued_again():
+def test_its_own_run_is_followed_never_queued_again():
     api = FakeApi([run("running", "running", name="C103")])
-    d = driver(api, courses("C103"))
+    d = driver(api, courses("C103"), own={"C103": "arc2-c103"})
     d.step()
     assert not api.posts("/arc2/runs")
     assert d.tracks["C103"].slug == "arc2-c103" and d.tracks["C103"].status == "working"
+
+
+def test_a_run_of_the_same_name_it_did_not_queue_is_never_followed():
+    """Adversarial review of #130 (confused deputy): any author in the tenant can name a
+    run "C103"; the driver used to follow it and release, accept and publish it as C103."""
+    api = FakeApi([run("packaged", "done", name="C103", slug="arc2-someone-elses")])
+    d = driver(api, courses("C103"))
+    assert d.run() == 1
+    t = d.tracks["C103"]
+    assert t.status == "failed" and "arc2-someone-elses" in t.detail and "did not queue" in t.detail
+    assert d.built == [] and not api.posts()
+
+
+def test_a_resumed_state_only_carries_runs_the_driver_queued(tmp_path):
+    state = tmp_path / "state.json"
+    # An older state file followed a run by name: its slug is not trusted.
+    state.write_text(json.dumps({"courses": {"C103": {"slug": "arc2-someone-elses", "status": "working"}}}))
+    api = FakeApi([run("packaged", "done", name="C103", slug="arc2-someone-elses")])
+    d = driver(api, courses("C103"), state_path=state, resume=True)
+    assert d.tracks["C103"].slug is None
+    d.step()
+    assert d.tracks["C103"].status == "failed" and d.built == []
+
+
+def test_the_slug_it_queued_is_saved_at_once_and_followed_after_a_restart(tmp_path):
+    state = tmp_path / "state.json"
+    api = FakeApi()
+    driver(api, courses("C103"), state_path=state).step()
+    saved = json.loads(state.read_text())["courses"]["C103"]
+    assert saved["slug"] == "arc2-c103" and saved["created"] is True
+    api.runs[0] = run("packaged", "done", name="C103")
+    d = driver(api, courses("C103"), state_path=state, resume=True, publish_platform="none")
+    assert d.run() == 0 and d.tracks["C103"].status == "accepted" and len(api.posts("/arc2/runs")) == 1
+
+
+def test_a_release_of_another_catalogue_course_is_refused():
+    api = FakeApi([run("packaged", "done", name="C103")])
+    d = driver(api, courses("C103"), own={"C103": "arc2-c103"},
+               builder=lambda slug: (b"t", dict(built_meta(slug), catalogue_code="C401")))
+    assert d.run() == 1 and "'C401', not C103" in d.tracks["C103"].detail
+    assert not api.posts("/course-releases")
+    # The API's view of the upload is checked too.
+    api = FakeApi([run("packaged", "done", name="C103")])
+    api.release["catalogue_code"] = "C401"
+    d = driver(api, courses("C103"), own={"C103": "arc2-c103"})
+    assert d.run() == 1 and not any(c[1].endswith("/accept") for c in api.calls)
+
+
+def test_a_run_a_person_accepted_is_not_released():
+    api = FakeApi([run("packaged", "done", name="C103", auto=False)])
+    d = driver(api, courses("C103"), own={"C103": "arc2-c103"})
+    assert d.run() == 1 and "not auto-accepted" in d.tracks["C103"].detail
+    assert d.built == [] and not api.posts()
+
+
+def test_a_release_that_is_not_test_content_is_not_uploaded_or_accepted():
+    api = FakeApi([run("packaged", "done", name="C103")])
+    d = driver(api, courses("C103"), own={"C103": "arc2-c103"},
+               builder=lambda slug: (b"t", dict(built_meta(slug), auto_accepted=False)))
+    assert d.run() == 1 and not api.posts()
+    api = FakeApi([run("packaged", "done", name="C103")])
+    api.release["auto_accepted"] = False
+    d = driver(api, courses("C103"), own={"C103": "arc2-c103"})
+    assert d.run() == 1 and not any(c[1].endswith("/accept") for c in api.calls)
+
+
+def test_it_refuses_to_run_off_a_test_host(monkeypatch):
+    api = FakeApi()
+    with pytest.raises(batch.NotATestHostError, match="TN_TEST_HOST"):
+        driver(api, courses("C103"), test_host=False).run()
+    assert not api.calls
+    monkeypatch.delenv("TN_TEST_HOST", raising=False)
+    assert batch.Driver(api, courses("C103"), builder=lambda s: None).test_host is False
+    assert batch.main(["--admin", "a@example.test"]) == 2
+    monkeypatch.setenv("TN_TEST_HOST", "true")
+    assert batch.Driver(api, courses("C103"), builder=lambda s: None).test_host is True
+
+
+def test_lms_publishing_is_opt_in():
+    assert batch.Driver(FakeApi(), courses("C103"), builder=lambda s: None).publish_platform == "none"
+    api = FakeApi([run("packaged", "done", name="C103")])
+    d = driver(api, courses("C103"), own={"C103": "arc2-c103"})
+    assert d.run() == 0 and d.tracks["C103"].status == "accepted"
+    assert not any(c[1].endswith("/publications") for c in api.calls)
+
+
+def test_open_actions_stop_the_course_for_a_person_by_default():
+    """Adversarial review of #130: every open action used to be acknowledged blindly."""
+    api = FakeApi([run("packaged", "done", name="C103")])
+    api.release["open_actions"] = [{"id": "xapi:ARC2-C103", "category": "standards", "text": "t"}]
+    d = driver(api, courses("C103"), own={"C103": "arc2-c103"})
+    assert d.run() == 1
+    t = d.tracks["C103"]
+    assert t.status == "needs-review" and "xapi:ARC2-C103" in t.detail and t.extra["open_actions"] == ["xapi:ARC2-C103"]
+    assert not any(c[1].endswith("/accept") for c in api.calls)
+    d.step()  # terminal: not retried
+    assert len(api.posts("/course-releases")) == 1
+
+
+def test_ack_open_actions_acknowledges_and_records_each_id():
+    api = FakeApi([run("packaged", "done", name="C103")])
+    api.release["open_actions"] = [{"id": "xapi:ARC2-C103", "category": "standards", "text": "t"},
+                                   {"id": "po.x", "category": "standards", "text": "t"}]
+    d = driver(api, courses("C103"), own={"C103": "arc2-c103"}, ack_open_actions=True)
+    assert d.run() == 0
+    accept = next(c for c in api.calls if c[1].endswith("/accept"))
+    assert accept[2]["json"]["acknowledge_actions"] == ["xapi:ARC2-C103", "po.x"]
+    assert "xapi:ARC2-C103, po.x" in accept[2]["json"]["notes"]
+    assert d.tracks["C103"].extra["acknowledged_actions"] == ["xapi:ARC2-C103", "po.x"]
+
+
+def test_a_gate_held_by_a_blocking_action_needs_review_not_a_stall():
+    api = FakeApi([run("preview", "done", name="C103", blocking=2)])
+    d = driver(api, courses("C103"), own={"C103": "arc2-c103"})
+    assert d.run() == 1 and d.tracks["C103"].status == "needs-review"
+    assert "2 open blocking" in d.tracks["C103"].detail
 
 
 def test_concurrency_limits_new_runs():
@@ -246,7 +374,7 @@ def test_stop_and_takeover_are_held_without_retrying():
     api = FakeApi(
         [run("stopped", "failed", "STOP: refused", name="C101"), run("takeover", "done", name="C102", slug="arc2-c102")]
     )
-    d = driver(api, courses("C101", "C102"))
+    d = driver(api, courses("C101", "C102"), own={"C101": "arc2-c103", "C102": "arc2-c102"})
     assert d.run() == 0
     assert {t.status for t in d.tracks.values()} == {"held"}
     assert not api.posts()
@@ -255,7 +383,7 @@ def test_stop_and_takeover_are_held_without_retrying():
 def test_usage_limit_waits_for_the_reset_then_retries_and_caps_attempts():
     clock = Clock()
     api = FakeApi([run("paused", "failed", "Claude usage limit reached ∙ resets 3pm", name="C101", slug="arc2-c101")])
-    d = driver(api, courses("C101"), clock=clock, max_attempts=2)
+    d = driver(api, courses("C101"), clock=clock, max_attempts=2, own={"C101": "arc2-c101"})
     d.step()
     t = d.tracks["C101"]
     assert t.status == "waiting_retry" and t.next_retry_at == "2026-10-10T15:02:00Z"
@@ -276,14 +404,14 @@ def test_usage_limit_waits_for_the_reset_then_retries_and_caps_attempts():
 
 def test_a_non_retryable_failure_fails_the_course():
     api = FakeApi([run("paused", "failed", "claude exited with 1", name="C101", slug="arc2-c101")])
-    d = driver(api, courses("C101"))
+    d = driver(api, courses("C101"), own={"C101": "arc2-c101"})
     assert d.run() == 1 and not api.posts()
 
 
 def test_a_run_stuck_at_a_gate_fails_after_the_stall_timeout():
     clock = Clock()
     api = FakeApi([run("outline", "done", name="C101", slug="arc2-c101")])
-    d = driver(api, courses("C101"), clock=clock, stall_timeout=600)
+    d = driver(api, courses("C101"), clock=clock, stall_timeout=600, own={"C101": "arc2-c101"})
     d.step()
     assert d.tracks["C101"].status == "working"
     clock.now += timedelta(minutes=11)
@@ -294,7 +422,7 @@ def test_a_run_stuck_at_a_gate_fails_after_the_stall_timeout():
 def test_packaged_run_is_released_accepted_and_published():
     api = FakeApi([run("packaged", "done", name="C103")])
     api.pub_states = ["verifying", "published"]
-    d = driver(api, courses("C103"))
+    d = driver(api, courses("C103"), own={"C103": "arc2-c103"}, publish_platform="moodle")
     assert d.run() == 0
     t = d.tracks["C103"]
     assert t.status == "published" and t.release_id == "rel-1" and d.built == ["arc2-c103"]
@@ -302,7 +430,7 @@ def test_packaged_run_is_released_accepted_and_published():
     assert upload[1] == "/course-releases" and upload[2]["files"]["file"][1] == b"tarball"
     accept = next(c for c in api.calls if c[1].endswith("/accept"))
     assert accept[2]["json"] == {
-        "acknowledge_actions": ["xapi:ARC2-C103"],
+        "acknowledge_actions": [],
         "notes": "auto-accepted test content (staging)",
     }
     assert ("PATCH", "/courses/course-1", {"json": {"is_published": True}}) in api.calls
@@ -314,7 +442,7 @@ def test_an_already_accepted_release_is_not_accepted_again_and_none_skips_lms():
     api = FakeApi([run("packaged", "done", name="C103")])
     api.release["state"] = "accepted"
     api.course_published = True
-    d = driver(api, courses("C103"), publish_platform="none")
+    d = driver(api, courses("C103"), publish_platform="none", own={"C103": "arc2-c103"})
     assert d.run() == 0
     assert d.tracks["C103"].status == "accepted"
     assert not any(c[1].endswith(("/accept", "/publications")) for c in api.calls)
@@ -326,32 +454,34 @@ def test_a_refused_build_fails_the_course_without_uploading():
         raise batch.ReleaseBuildError("QA is fail, not pass")
 
     api = FakeApi([run("packaged", "done", name="C103")])
-    d = driver(api, courses("C103"), builder=refuse)
+    d = driver(api, courses("C103"), builder=refuse, own={"C103": "arc2-c103"})
     assert d.run() == 1 and "QA is fail" in d.tracks["C103"].detail
     assert not api.posts("/course-releases")
 
 
 def test_no_moodle_platform_fails_after_accepting():
     api = FakeApi([run("packaged", "done", name="C103")])
-    d = driver(api, courses("C103"), platform_id=None)
+    d = driver(api, courses("C103"), platform_id=None, own={"C103": "arc2-c103"}, publish_platform="moodle")
     d._platform = lambda: None
     assert d.run() == 1 and "no active Moodle" in d.tracks["C103"].detail
 
 
 def test_dry_run_queues_nothing():
     api = FakeApi([run("running", "running", name="C101", slug="arc2-c101")])
-    d = driver(api, courses("C101", "C102"))
+    d = driver(api, courses("C101", "C102", "C103"), own={"C101": "arc2-c101"})
+    api.runs.append(run("running", "running", name="C103", slug="arc2-not-mine"))
     assert d.run(dry_run=True) == 0
     assert not api.posts()
-    assert "follow existing run arc2-c101" in d.tracks["C101"].detail
+    assert "follow this driver's run arc2-c101" in d.tracks["C101"].detail
     assert d.tracks["C102"].detail.startswith("would queue")
+    assert d.tracks["C103"].detail.startswith("refuse: run(s) arc2-not-mine")
 
 
 def test_resume_keeps_retry_counts_and_times(tmp_path):
     state = tmp_path / "state.json"
     clock = Clock()
     api = FakeApi([run("paused", "failed", "overloaded", name="C101", slug="arc2-c101")])
-    d = driver(api, courses("C101"), clock=clock, state_path=state)
+    d = driver(api, courses("C101"), clock=clock, state_path=state, own={"C101": "arc2-c101"})
     d.step()
     saved = json.loads(state.read_text())["courses"]["C101"]
     assert saved["status"] == "waiting_retry" and saved["attempts"] == 1

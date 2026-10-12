@@ -573,6 +573,9 @@ docs/arc2-course-studio.md §13 "Model mode" has the details.
 accept the outline and preview gates itself when a job stops at one with nothing failing, so
 a course builds end to end with no reviewer. It is recorded as `accepted_by: "auto (test
 host)"`, and the Studio marks such runs "TEST CONTENT — gates auto-accepted, not reviewed".
+It also writes `TN_TEST_HOST=true` for the api (`30-config`): only then does the api accept or
+publish a release built from such a run, labelled "TEST CONTENT — not reviewed" on the
+course page and in Moodle; anywhere else it refuses them.
 Never set it on a platform whose courses reach Students.
 
 Then `ansible-playbook site.yml`, or on a running platform `30-config`, `50-stack-up` (the
