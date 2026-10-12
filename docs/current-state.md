@@ -28,7 +28,9 @@ tests > docs. Labels: `IMPLEMENTED` `PARTIAL` `UNTESTED` `PLANNED`.
 | LMS / Moodle | publication to a per-tenant Moodle (ADR 0004), completions and grades back (#132); TrueNorth is a cmi5 LMS with conformant xAPI (#139), Moodle launches its AUs over LTI 1.3 (#140) | CI `moodle` and `cmi5` (ADL CATAPULT) lanes; `docs/cmi5.md` |
 | Monitoring | Prometheus rules match `docs/operations.md`; OpenSearch health, Moodle, ARC² runner and backup freshness come from host textfile metrics | `alerts.yml` + promtool unit tests (`tests/contracts/test_prometheus_rules.py`); alert delivery not exercised on staging |
 | Backups | PostgreSQL, MinIO, OpenSearch snapshot, Moodle files, ARC² runs, escrow | `scripts/backup/`, CI `backup-drill`; `docs/runbooks/backup-restore.md` |
-| Security | sealed credentials at rest (`TN_SECRETS_KEY`), non-root images (#90); pip-audit and npm audit blocking; image Trivy gate | `ci.yml` supply-chain and build-docker; `release.yml` |
+| Security | sealed credentials at rest (`TN_SECRETS_KEY`), non-root images (#90); pip-audit and npm audit blocking; image Trivy gate. `PARTIAL` against NIST 800-53: no KMS or disk/database encryption, internal traffic plain; login banner, privileged-user MFA and audit export/retention are being built for v1.2.0 | `ci.yml` supply-chain and build-docker; `release.yml`; control-by-control table in `docs/security.md` ("Compliance Mapping", 2026-10-12) |
+| Scenario injects | `PARTIAL`: every injector writes synthetic telemetry; only `greyspace_breadcrumb` acts on a range (vSphere, simulator-proven). No sensor is installed on range VMs | `docs/scenario-inject-execution.md` |
+| Teams | `PARTIAL`: team CRUD (admin UI) and a membership API; no team exercises, team scoring or leaderboards (planned, R2) | `control-plane/api/app/routers/admin.py`; `docs/user-guide.md` "Not in v1.2.0" |
 
 ## Release and deployment: `PARTIAL`
 
@@ -55,7 +57,13 @@ from CI runs, not from this count.
 
 ## Open
 
-1. v1.2.0 known limitations: `docs/release-notes/v1.2.0.md`.
+1. v1.2.0 known limitations: `docs/release-notes/v1.2.0.md`. In short (checked 2026-10-12):
+   all injectors simulated except the Greyspace breadcrumb; no real host sensor shipping;
+   no team exercises or leaderboards (planned, R2); no i18n (English only; French is a
+   planned milestone after R1); Alertmanager
+   delivery unproven; the nightly backup does not stop the ARC² runner; abandoning a range
+   leaves its hypervisor objects; vSphere simulator-proven only; the security gaps in the
+   row above.
 2. Live vSphere lab evidence pending (credentials, self-hosted runner): everything vSphere
    in v1.2.0 is simulator-proven only.
 3. Content authoring remains the binding constraint (about 2,600 build hours).

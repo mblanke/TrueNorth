@@ -1,6 +1,10 @@
 # TrueNorth Range — User Guide
 
 > End-user documentation for instructors, students, and observers covering every workflow from first login through after-action review.
+>
+> Checked against the code on `github/main` on 2026-10-12 for v1.2.0. Features this guide
+> once described but the release does not have are listed in
+> [Not in v1.2.0](#not-in-v120).
 
 ---
 
@@ -18,6 +22,7 @@
 - [Templates](#templates)
 - [AI Assistant](#ai-assistant)
 - [Keyboard Shortcuts](#keyboard-shortcuts)
+- [Not in v1.2.0](#not-in-v120)
 - [Frequently Asked Questions](#frequently-asked-questions)
 
 ---
@@ -29,6 +34,11 @@
 TrueNorth does not issue you a password. You sign in with your **existing domain
 credentials** — the same username and password you use for everything else — and
 the range checks them against Active Directory.
+
+> This applies where the deployment federates Active Directory (installer option
+> `tn_ldap_enabled`, see [identity.md](identity.md)). Without it, accounts are local
+> Keycloak accounts created by an administrator. Directory-backed sign-in has not yet been
+> qualified against a test directory for v1.2.0.
 
 1. Navigate to `https://your-truenorth-instance.com` in a modern browser
    (Chrome 120+, Firefox 120+, Edge 120+, Safari 17+)
@@ -66,7 +76,8 @@ enrolled on, and a quick tour of where things live. You will not be asked again.
 
 ### Understanding Your Role
 
-Your role determines what you can see and do:
+Your role determines what you can see and do. The table is the API's permission
+matrix (`ROLE_PERMISSIONS` in `control-plane/api/app/rbac.py`):
 
 | Feature | Admin | Instructor | Student | Observer | Range Ops |
 |---------|:-----:|:----------:|:-------:|:--------:|:---------:|
@@ -75,15 +86,19 @@ Your role determines what you can see and do:
 | Provision/destroy ranges | X | X | | | X |
 | Create exercises | X | X | | | |
 | Start/pause/complete exercises | X | X | | | |
-| Participate in exercises | X | X | X | | |
-| View telemetry | X | X | X | X | |
-| Acknowledge objectives | X | X | X | | |
+| Submit detections in an exercise | X | X | X | | |
+| View telemetry | X | X | | X | X |
+| Acknowledge objectives | X | X | | | |
 | Generate AARs | X | X | | | |
 | View AARs | X | X | X | X | |
 | Approve access requests | X | X | | | |
 | Manage users | X | | | | |
 | Manage tenants | X | | | | |
 | View audit logs | X | | | | |
+
+The web app is narrower than the API in places: the Authoring Studio (where the
+Ranges page lives) and Scoring & AAR are for instructors and admins only, so Range Ops
+manage ranges through the API in v1.2.0; Users & Teams is admin only.
 
 Your role is assigned when your access request is approved. Directory group
 membership *suggests* a role to the approver but does not set it — being in
@@ -94,49 +109,34 @@ membership *suggests* a role to the approver but does not set it — being in
 
 ### Navigation
 
-The main navigation sidebar includes:
+The sidebar (`control-plane/web/src/app/app.component.ts`) is grouped by task:
 
-- **Dashboard** — Overview of active ranges, exercises, and system health
-- **Ranges** — Create, view, and manage cyber ranges
-- **Exercises** — Create and run training exercises
-- **Templates** — Browse and manage range templates
-- **Scenarios** — Browse and manage attack scenarios
-- **Reports** — Access after-action reports
-- **Teams** — Manage teams and team membership
-- **Admin** — (admin only) User management, tenants, audit logs
+- **Overview → Dashboard**
+- **Learn → Learning** — career path, courses, your progress, competency
+- **Create → Authoring Studio** — Ranges (and the Range Designer), Scenarios,
+  Detections, Threat intel, MESL, Forge, Content (range templates), Courses
+- **Prepare & Operate → Exercises, Ops Center, Schedule** (Schedule is hidden from Students)
+- **Review → Scoring & AAR**
+- **Help → Wiki, Support**
+- **Admin → Infrastructure, AI Orchestrator, Integrations, Users, Admin**
+
+In v1.2.0 every role sees the same sidebar apart from Schedule. A page your role may not
+use sends you back to the dashboard (route guards) and the API refuses the call.
 
 ---
 
 ## Dashboard Overview
 
-The dashboard provides an at-a-glance view of your training environment:
+There is one dashboard for every role (`features/dashboard/dashboard.component.ts`).
+It has no per-role widget sets.
 
-### Instructors and Admins
-
-| Widget | Description |
-|--------|-------------|
-| **Active Ranges** | List of currently provisioned ranges with state indicators |
-| **Running Exercises** | Exercises in progress with elapsed time and progress bars |
-| **Recent Activity** | Timeline of recent actions (provisions, exercise starts, completions) |
-| **Quick Actions** | Buttons for common tasks: New Range, New Exercise, View Reports |
-| **System Health** | Status indicators for core services (API, database, search) |
-
-### Students
-
-| Widget | Description |
-|--------|-------------|
-| **My Exercises** | Exercises you are participating in |
-| **Current Objectives** | Active objectives with status (pending/achieved) |
-| **Recent Scores** | Your recent exercise scores and ratings |
-| **Team Standings** | Leaderboard for team-based exercises |
-
-### Observers
-
-| Widget | Description |
-|--------|-------------|
-| **Active Exercises** | Read-only view of running exercises |
-| **Score Summary** | Aggregate scoring across teams and individuals |
-| **Event Feed** | Real-time feed of exercise events |
+| Area | What it shows |
+|------|---------------|
+| **My sessions** | Students only: your booked sessions and calendar link |
+| **Workspace launcher** | Links to Learning, Exercises, the Authoring Studio and Scoring & AAR (and the Schedule for staff) |
+| **Platform & capacity** (collapsed) | Counts from the latest five ranges and exercises, API health, hypervisor nodes, cluster capacity and a "What can you deploy?" estimate, recent ranges and exercises |
+| **Your development workspace** | Links to courses, learning progress, the competency framework and the people directory |
+| **Quick Actions** | Design Range, Build Scenario, Browse Courses, Manage Infra, AI Config |
 
 ---
 
@@ -148,85 +148,64 @@ A **range** is a collection of virtual machines that simulates a network environ
 
 ### Range States
 
-```
-created → provisioning → ready → running → stopped → destroying → destroyed
-                                  ↑         ↓
-                                  +---------+
-```
+The allowed transitions are in `control-plane/api/app/state_machines.py`. The API
+records a request (`provisioning`, `stopping`, `starting`, `destroying`); only the worker
+moves the range out of those states, once the hypervisor has answered.
 
-| State | Description | Actions Available |
+| State | Description | Actions in the Ranges list |
 |-------|-------------|-------------------|
-| `created` | Range defined but not provisioned | Provision, Edit, Delete |
-| `provisioning` | VMs being created (Terraform running) | Wait, Cancel |
-| `ready` | VMs running, range available | Start Exercise, Stop, Destroy |
-| `running` | Active exercise in progress | View, Monitor |
-| `stopped` | VMs halted, state preserved | Resume, Destroy |
+| `created` | Range defined but not provisioned | Provision, Rename |
+| `provisioning` | The worker is building VMs and networks through the provisioner | Wait |
+| `ready` | VMs running, range available | Stop, Destroy |
+| `running` | Range in use | Stop, Destroy |
+| `stopping` / `starting` | A power request recorded; the worker is powering the VMs off or on | Destroy |
+| `stopped` | VMs powered off | Start, Rename, Destroy |
 | `destroying` | VMs being torn down | Wait |
-| `destroyed` | All VMs removed | Delete record |
-| `failed` | Provisioning or operation failed | Retry, Destroy, Delete |
+| `destroyed` | All VMs removed | — |
+| `failed` | Provisioning or an operation failed | Destroy (re-provision through the API) |
+
+v1.2.0 provisions on vSphere (`vsphere_api`) or the `mock` backend; vSphere is proven
+against a simulator only (see [release notes](release-notes/v1.2.0.md)).
 
 ### Creating a Range
 
-1. Navigate to **Ranges** → **New Range**
-2. Fill in the form:
-   - **Name** — Descriptive name (e.g., "SOC Training Lab - Cohort 12")
-   - **Description** — Optional notes about the range's purpose
-   - **Template** — Select from available templates (see Templates section)
-   - **VM Count** — Number of VMs (within template limits)
-3. Click **Create**
-4. The range is created in `created` state
+1. Open **Authoring Studio → Ranges** and click the create button
+2. Enter a **Range Name** and pick a **Template** (see [Templates](#templates))
+3. Click **Create**; the range is created in `created` state
+
+You can also start from **Open in Designer** (Authoring Studio → Ranges → Designer).
 
 ### Provisioning a Range
 
-1. From the Ranges list, click on your range
-2. Click **Provision** in the action bar
-3. Confirm the provisioning request
-4. The range moves to `provisioning` state
-5. A spinner and progress indicator show provisioning status
-6. WebSocket updates provide real-time state changes
-7. Once complete, the range moves to `ready` state
+1. In the Ranges list, click **Provision** on a range in `created` state
+2. The range moves to `provisioning`, then to `ready` (or `failed`) when the worker finishes
 
-**Typical provisioning times:**
-| Template Size | VMs | Time |
-|--------------|-----|------|
-| Small Enterprise | 3 | 3-5 min |
-| Medium Enterprise | 8 | 8-12 min |
-| Large Enterprise | 20+ | 15-25 min |
+The list does not update itself: reload it to see the new state. No provisioning time is
+published for v1.2.0; none has been measured on real vSphere hardware.
 
 ### Batch Provisioning
 
-Admins and Range Ops can provision multiple ranges at once:
-
-1. Navigate to **Ranges** → **Batch Provision**
-2. Select ranges to provision (checkboxes)
-3. Click **Provision Selected**
-4. Confirm the batch operation
-5. All selected ranges begin provisioning in parallel
+Admins, instructors and Range Ops can provision several ranges in one call through the
+API (`POST /ranges/batch-provision`). There is no batch screen in the web app.
 
 ### Monitoring a Range
 
-The range detail page shows:
+There is no per-range detail page in v1.2.0. The Ranges list shows name, state and
+creation time, with links to the Range Designer, background noise and range notes. An
+exercise's page shows its range topology, and the Telemetry Explorer (`/telemetry`)
+searches a range's events.
 
-- **Status** — Current state with timestamp
-- **VM List** — All VMs with IPs, hostnames, OS, and status
-- **Network Diagram** — Visual topology of the range network
-- **Resource Usage** — CPU, memory, and disk for each VM
-- **Exercises** — Exercises associated with this range
-- **Telemetry** — Link to telemetry viewer for this range
+### Stopping and Starting a Range
 
-### Stopping a Range
-
-1. Click **Stop** on the range detail page
-2. Confirm the stop action
-3. VMs are halted (state preserved on disk)
-4. Use **Resume** to restart VMs later
+1. Click **Stop** on a `ready` or `running` range; the VMs are powered off
+2. Click **Start** on a `stopped` range to power them on again
 
 ### Destroying a Range
 
-1. Click **Destroy** on the range detail page
-2. Type the range name to confirm deletion
-3. All VMs and associated resources are removed
-4. Telemetry data is retained per retention policy
+1. Click **Destroy** in the Ranges list. There is no confirmation step: the request is
+   sent at once
+2. The worker removes the range's VMs and networks
+3. Telemetry already indexed for the range stays in OpenSearch
 
 ---
 
@@ -234,82 +213,76 @@ The range detail page shows:
 
 ### What Is an Exercise?
 
-An **exercise** is a training session conducted on a range. It uses a scenario to inject attack events and defines objectives for trainees to complete.
+An **exercise** is a training session conducted on a range. It uses a scenario to inject attack events and defines objectives for Students to complete.
 
 ### Exercise States
 
 ```
-pending → running → paused → completed
-                      ↑
-                      ↓
-                    cancelled
+pending → running ⇄ paused
+   ↓         ↓        ↓
+cancelled  completed (running or paused)
 ```
 
 | State | Description |
 |-------|-------------|
 | `pending` | Exercise created, not yet started |
 | `running` | Exercise active, scenario events firing |
-| `paused` | Exercise paused — timer and events frozen |
-| `completed` | Exercise finished — scored and closed |
-| `cancelled` | Exercise aborted without scoring |
+| `paused` | No further injects fire until it resumes; the duration clock keeps running |
+| `completed` | Exercise finished — scored and closed (from `running` or `paused`) |
+| `cancelled` | A scheduled booking's exercise withdrawn before it started; there is no cancel button |
 
 ### Creating an Exercise
 
-1. Navigate to **Exercises** → **New Exercise**
-2. Fill in the form:
-   - **Name** — Exercise name (e.g., "Incident Response Drill 2026-Q1")
-   - **Range** — Select a provisioned range (must be in `ready` state)
-   - **Scenario** — Select the attack scenario to run
-   - **Teams** — Optionally assign teams
-3. Click **Create**
-4. The exercise is created in `pending` state
+1. Open **Exercises** and click the create button
+2. Fill in **Name**, **Range** and **Scenario** (`ExerciseIn` in
+   `control-plane/api/app/schemas.py` takes nothing else; there is no team assignment)
+3. Click **Create**; the exercise is created in `pending` state with the scenario's
+   objectives, and its maximum score is the sum of their points
 
 ### Starting an Exercise
 
-1. From the exercise detail page, click **Start**
-2. Confirm the start action
-3. The exercise moves to `running` state
-4. The scenario timeline begins executing
-5. Real-time updates stream via WebSocket to all participants
+1. In the Exercises list click **Start** (instructors and admins), or **Provision & Run
+   (simulated)** on the exercise's page
+2. The exercise moves to `running` and the worker fires the scenario's timeline
 
 **What happens when you start:**
-- Scenario Engine begins executing the timeline
-- Injectors fire events according to the timeline
-- Telemetry flows into OpenSearch
-- Objectives become available for completion
-- Exercise timer starts
+- The worker dispatches each timeline event to its injector. Every injector except the
+  Greyspace breadcrumb one is **simulated**: it writes synthetic telemetry, not real
+  network, process or file activity ([scenario-inject-execution.md](scenario-inject-execution.md))
+- The injected telemetry is indexed in OpenSearch for the range
+- The exercise clock starts
 
 ### Pausing an Exercise
 
-1. Click **Pause** on the exercise detail page
-2. The scenario timeline freezes
-3. All participants see the paused state
-4. Resume with the **Resume** button
+1. Click **Pause** in the Exercises list; the exercise moves to `paused`
+2. Click **Resume** to set it running again
+
+Paused time still counts towards the scenario's duration.
 
 ### Completing an Exercise
 
-Exercises can be completed in two ways:
+**Manual completion:** click **Complete** in the Exercises list. The score is totalled and
+the AAR can be generated.
 
-**Manual completion:**
-1. Click **Complete** on the exercise detail page
-2. Final scores are calculated
-3. After-Action Report can be generated
-
-**Automatic completion:**
-- When all required objectives are achieved
-- When the exercise duration expires
+**Automatic completion:** when the scenario's `duration_minutes` has passed since the
+start (`control-plane/api/app/exercise_completion.py`). Achieving every objective does not
+end an exercise. On the `mock` backend the worker completes the run itself and marks every
+objective achieved without evidence: a demonstration, not an assessment.
 
 ### Viewing Exercise Progress
 
-The exercise dashboard shows:
+The exercise page (`/exercises/{id}`) shows:
 
 | Panel | Description |
 |-------|-------------|
-| **Timeline** | Visual timeline of scenario events (past and upcoming) |
-| **Objectives** | List of objectives with status (pending/achieved/missed) |
-| **Score** | Current points earned / total available |
-| **Event Feed** | Real-time feed of scenario events and trainee actions |
-| **Participants** | Connected users and their activity |
+| **Score** | Points earned out of the maximum |
+| **Objectives** | Each objective with its type, points and achieved state; detection objectives carry the detection panel |
+| **Attack Timeline** | The scenario's planned events |
+| **Inject log** | What each inject did: `fired`, `skipped` or `failed` |
+| **Range Topology** | The range's networks and hosts |
+
+While the exercise is running, the page and the Exercises list poll the API every few
+seconds; they do not use a WebSocket.
 
 ---
 
@@ -317,38 +290,23 @@ The exercise dashboard shows:
 
 ### Browsing Scenarios
 
-Navigate to **Scenarios** to see available scenarios:
+Open **Authoring Studio → Scenarios** (instructors and admins). Each row shows the
+scenario's name, version and creation time, with **Open** and **Delete**.
 
-| Column | Description |
-|--------|-------------|
-| **Name** | Scenario display name |
-| **Difficulty** | Beginner / Intermediate / Advanced / Expert |
-| **Duration** | Expected exercise duration |
-| **MITRE ATT&CK** | Mapped techniques |
-| **Tags** | Searchable tags |
-| **Version** | Scenario version number |
+### Opening a Scenario
 
-### Scenario Details
-
-Click a scenario to see:
-
-- **Description** — Full scenario narrative
-- **Attack Timeline** — Sequence of events with timing
-- **Objectives** — What trainees must accomplish
-- **MITRE ATT&CK Mapping** — Techniques covered
-- **Prerequisites** — Required range template and sensors
-- **Difficulty Rating** — With recommended audience
+**Open** loads the scenario into the editor: its timeline events, objectives and other
+fields, built from the stored YAML. Where the editor cannot represent part of the YAML it
+says so and saving from it is refused, so nothing is silently dropped.
 
 ### Creating Scenarios (Instructors)
 
 See the [Scenario Authoring Guide](scenarios.md) for complete YAML schema and authoring instructions.
 
 **Quick path:**
-1. Navigate to **Scenarios** → **New Scenario**
-2. Fill in name, version, and optional fields
-3. Paste or upload YAML content
-4. Click **Create** — YAML is validated on submission
-5. If validation fails, error details are shown
+1. Open **Authoring Studio → Scenarios** and click **New Scenario** (or **Draft with AI**)
+2. Fill in the fields and add timeline events and objectives
+3. Click **Validate** to check the YAML, then **Save**
 
 ---
 
@@ -356,33 +314,28 @@ See the [Scenario Authoring Guide](scenarios.md) for complete YAML schema and au
 
 ### How Objectives Work
 
-Each exercise has objectives defined by its scenario. Objectives are tasks trainees must complete:
+Each exercise has objectives defined by its scenario. There are three types
+(`ObjectiveType` in `control-plane/api/app/models.py`):
 
-- **Detect** — Identify attack activity (validated by search queries)
-- **Respond** — Perform a response action (validated by ack or search)
-- **Contain** — Contain the threat (validated by ack)
-- **Report** — Submit written analysis (validated by file upload)
-- **Deliverable** — Upload an artifact (validated by file check)
+- **detection** — find the attack activity in the range's telemetry
+- **response** — carry out a response action
+- **deliverable** — produce an artifact
 
-### Acknowledging Objectives
+### Detection objectives: Students submit detections
 
-For objectives that require manual acknowledgment:
+A detection objective is achieved only by what a Student does (ADR 0005,
+[docs/adr/0005-detection-credit-is-student-evidence.md](adr/0005-detection-credit-is-student-evidence.md)).
+While the exercise is running, the objective's detection panel on the exercise page takes
+a detection query. The API runs it against the range's telemetry inside the exercise
+window and credits the objective if it finds the attack. The scenario's own query is the
+answer key and never achieves anything by itself, so an injected event credits nobody.
 
-1. Go to the exercise detail page → **Objectives** tab
-2. Find the objective to acknowledge
-3. Click **Acknowledge**
-4. Optionally add evidence (text description or file upload)
-5. Click **Submit**
-6. The validator checks the acknowledgment
-7. If valid, the objective is marked as **Achieved** and points are awarded
+### Acknowledging objectives (instructors)
 
-### Auto-Validated Objectives
-
-Some objectives are automatically validated:
-
-- **OpenSearch query validators** continuously check for matching events
-- When matching events are found, the objective is auto-achieved
-- A notification is sent to the trainee and instructor
+Instructors and admins can acknowledge an objective on a running or paused exercise, in
+**Scoring & AAR** (`POST /exercises/{id}/objectives/{ref_id}/ack`, optional text evidence). The objective is
+marked achieved, the acknowledger is recorded and the score is re-totalled. Students
+cannot acknowledge objectives.
 
 ### Understanding Scores
 
@@ -391,7 +344,9 @@ Some objectives are automatically validated:
 | **Points Earned** | Sum of achieved objective points |
 | **Points Available** | Total possible points |
 | **Percentage** | `(earned / available) * 100` |
-| **Rating** | Excellent (90%+), Good (75-89%), Satisfactory (60-74%), Needs Improvement (40-59%), Unsatisfactory (<40%) |
+
+There is no rating band (Excellent, Good, ...) in v1.2.0. The score belongs to the
+exercise, not to an individual or a team.
 
 ---
 
@@ -399,48 +354,43 @@ Some objectives are automatically validated:
 
 ### What Is an AAR?
 
-An After-Action Report (AAR) is an AI-generated analysis of exercise performance. It summarizes what happened, what was detected, what was missed, and provides recommendations.
+An After-Action Report (AAR) is a record of an exercise built from the database: what was
+planned, what happened, and how each objective ended. An AI analysis can be added to it
+afterwards; it is optional.
 
 ### Generating an AAR
 
-1. Complete the exercise (score must be calculated)
-2. Navigate to the exercise detail page
-3. Click **Generate AAR**
-4. The AI Orchestrator analyzes:
-   - Scenario timeline vs. trainee detections
-   - Time-to-detect for each objective
-   - Overall score and rating
-   - Gaps in detection and response
-5. Processing takes 30-60 seconds
-6. The AAR is saved and available for viewing
+1. Complete the exercise
+2. Click **Generate AAR** (the Exercises list, or the exercise page once it is completed;
+   instructors and admins)
+3. The API assembles the report (`control-plane/api/app/aar_report.py`) and stores it;
+   generating again replaces it
+4. Optionally, `POST /exercises/{id}/aar/ai-enhance` asks the AI Orchestrator for an
+   analysis (summary, strengths and weaknesses, recommendations) and adds it to the
+   report. It needs a configured, reachable AI engine.
 
 ### Viewing an AAR
 
-AARs are available in two formats:
+In the web app: **Scoring & AAR**, or **Download AAR PDF** in the Exercises list. Through
+the API:
 
-**JSON format** (via API):
 ```
-GET /exercises/{id}/aar
-```
-
-**HTML format** (rendered in browser):
-```
-GET /exercises/{id}/aar/html
+GET /exercises/{id}/aar        # JSON
+GET /exercises/{id}/aar/html   # rendered page
+GET /exercises/{id}/aar/pdf    # PDF
 ```
 
 ### AAR Contents
 
 | Section | Description |
 |---------|-------------|
-| **Executive Summary** | High-level overview of exercise results |
-| **Scenario Recap** | What attack was simulated |
-| **Timeline Analysis** | Chronological event-by-event analysis |
-| **Objective Results** | Each objective with achieved/missed status |
-| **Detection Gaps** | Attacks that were not detected |
-| **Response Assessment** | Quality and timeliness of responses |
-| **Recommendations** | Specific improvement suggestions |
-| **Score Breakdown** | Points by objective category |
-| **MITRE ATT&CK Coverage** | Heat map of detected vs. missed techniques |
+| **Exercise, scenario, range** | Names, state, start and completion times |
+| **Scores and summary** | Total, maximum and percentage; objectives achieved out of total |
+| **Objectives** | Each objective with type, points, achieved state, evidence and time achieved |
+| **Injects** | The scenario's planned timeline and any MESL serials |
+| **Timeline** | What happened, in time order |
+| **Participants** | Who took part |
+| **AI analysis** | Only after an AI enhance |
 
 ---
 
@@ -448,21 +398,21 @@ GET /exercises/{id}/aar/html
 
 ### Accessing Telemetry
 
-1. From a range or exercise page, click **View Telemetry**
-2. The event viewer opens with the range's telemetry data
+Open the **Telemetry Explorer** at `/telemetry` (it has no sidebar entry in v1.2.0). It needs
+`telemetry:read`: instructors, admins, observers and Range Ops; Students do not have it.
 
-### Event Viewer Features
+### Explorer Features
 
 | Feature | Description |
 |---------|-------------|
-| **Search Bar** | Full-text search across all events |
-| **Time Range** | Filter events by time window |
-| **Source Filter** | Filter by event source (Sysmon, Zeek, DNS, etc.) |
-| **Event Type Filter** | Filter by event type (process, network, file, etc.) |
-| **Host Filter** | Filter by hostname |
-| **Column Selector** | Choose which fields to display |
-| **Event Detail** | Click any event to see full JSON |
-| **Export** | Download matching events as CSV or JSON |
+| **Range** | Pick the range whose events to search |
+| **Query** | The search language below; filter by host, type, field and so on here |
+| **Charts** | Event volume over time, event types, top hosts |
+| **Results table** | Time, type, host, source IP, process, detail, ATT&CK technique |
+
+There is no time-window picker, column selector, raw-event view or export in v1.2.0.
+Range telemetry comes from the scenario injectors (synthetic), the noise engine and
+whatever is sent to the ingest API; no sensor is installed on range VMs by provisioning.
 
 ### Search Syntax
 
@@ -506,28 +456,22 @@ Common fields: `event_type`, `hostname`, `username`, `source_ip`, `dest_ip`,
 
 ## Team Management
 
-### Creating a Team
+In v1.2.0 a team is a named group with a type, description, colour and member limit. Teams
+are not linked to exercises or scores.
 
-1. Navigate to **Teams** → **New Team**
-2. Enter a team name
-3. Click **Create**
+### Creating, editing and deleting a team (admins)
 
-### Adding Members
+1. Open **Users** → **Teams** tab
+2. Click **Add Team**, fill in the name and optional fields, click **Create Team**
+3. Use the edit and delete buttons on a team card to change or remove it
 
-1. Click on a team name
-2. Click **Add Member**
-3. Search for a user by name or email
-4. Select the user and click **Add**
+### Team membership
 
-### Team Exercises
+Membership is managed through the API only (`GET`/`POST /teams/{team_id}/members`,
+`DELETE /teams/{team_id}/members/{user_id}`; `user:update` to change). The web app has no
+member screen in v1.2.0.
 
-When assigning teams to exercises:
-
-1. Create an exercise
-2. In the exercise settings, assign one or more teams
-3. Each team member can participate
-4. Scoring can be individual or team-based
-5. Leaderboards show team rankings
+Team exercises and team scoring are planned for R2; see [Not in v1.2.0](#not-in-v120).
 
 ---
 
@@ -539,34 +483,26 @@ A **template** defines the virtual infrastructure for a range — the VMs, their
 
 ### Browsing Templates
 
-Navigate to **Templates** to see available templates:
+Templates live in **Authoring Studio → Content** (the old `/templates` address redirects
+there). A template is YAML; the editor dialog loads and saves it.
 
-| Column | Description |
-|--------|-------------|
-| **Name** | Template name |
-| **VM Count** | Number of VMs in the template |
-| **Description** | Template purpose and contents |
-| **Public** | Whether available to all tenants |
-| **Created** | When the template was created |
+### Shipped Templates
 
-### Template Details
+The shipped-content load (`scripts/load_content.py`) imports every
+`content/ranges/*/template.yaml`:
 
-Click a template to see:
+| Directory | Template name |
+|-----------|---------------|
+| `cloud-security` | Cloud Security Training Environment |
+| `greyspace-internet` | Small Office with Greyspace Internet |
+| `large-enterprise` | Large Enterprise Network |
+| `medium-enterprise` | Medium Enterprise Network |
+| `red-team` | Red Team Operations Environment |
+| `red-vs-blue` | Red vs Blue Cyber Exercise |
+| `small-enterprise` | small-enterprise |
+| `soc-training` | SOC Analyst Training Environment |
 
-- **VM Definitions** — List of VMs with OS, role, and specs
-- **Network Topology** — Visual diagram of network layout
-- **Software** — Pre-installed security tools and services
-- **Requirements** — Minimum host resources needed
-
-### Standard Templates
-
-| Template | VMs | Description |
-|----------|-----|-------------|
-| Small Enterprise | 3 | DC, 1 workstation, 1 server |
-| Medium Enterprise | 8 | DC, 4 workstations, 2 servers, FW |
-| Large Enterprise | 20+ | Full corporate: DC, workstations, servers, DMZ, SIEM |
-| SOC Analyst Lab | 5 | SIEM-focused: ELK stack, sample data sources |
-| Incident Response | 10 | IR toolkit: Forensics workstation, compromised hosts |
+Read the YAML for each template's hosts and networks; this guide does not repeat them.
 
 ---
 
@@ -574,46 +510,57 @@ Click a template to see:
 
 ### Overview
 
-TrueNorth Range includes an AI-powered assistant that helps with:
+There is no chat assistant in the web app (no floating icon). AI is used in specific places,
+through the AI Orchestrator and a configured engine:
 
-- **Scenario Analysis** — Understanding attack chains
-- **AAR Generation** — Automated exercise analysis
-- **IOC Context** — Looking up indicators of compromise
-- **Guidance** — Training tips and recommendations
+- **Scenarios → Draft with AI** — drafts a scenario for you to edit
+- **AAR AI enhance** — `POST /exercises/{id}/aar/ai-enhance` (API only)
+- **ARC² Course Studio** — course generation (`/arc2`, instructors)
+- **AI Orchestrator page** (Admin section) — engines, model routing and an inference
+  playground for administrators
 
-### Using the AI Assistant
-
-1. Click the **AI Assistant** icon in the bottom-right corner
-2. Type your question or request
-3. The assistant responds with contextual help
-
-### Example Prompts
-
-| Prompt | Expected Response |
-|--------|------------------|
-| "Explain this attack chain" | Analysis of the current scenario's techniques |
-| "What should I look for next?" | Hints based on scenario progress |
-| "What is T1059.001?" | MITRE ATT&CK technique explanation |
-| "How do I detect lateral movement?" | Detection strategies and queries |
+Every AI feature needs an engine configured under **AI Orchestrator**; without one these
+actions fail with an error.
 
 ---
 
 ## Keyboard Shortcuts
 
+There are no application-wide shortcuts in v1.2.0 (see [Not in v1.2.0](#not-in-v120)).
+`Esc` closes dialogs, the notification panel and the tour.
+
+The **Range Designer** has its own shortcuts, active when focus is not in a text field
+(`features/range-designer/range-designer.component.ts`):
+
 | Shortcut | Action |
 |----------|--------|
-| `Ctrl + K` | Open command palette |
-| `Ctrl + /` | Open search |
-| `Ctrl + N` | New (context-dependent: range, exercise, etc.) |
-| `Ctrl + S` | Save current form |
-| `Ctrl + Enter` | Submit / confirm action |
-| `Esc` | Close modal / cancel |
-| `?` | Show keyboard shortcuts help |
-| `G then D` | Go to Dashboard |
-| `G then R` | Go to Ranges |
-| `G then E` | Go to Exercises |
-| `G then T` | Go to Templates |
-| `G then S` | Go to Scenarios |
+| `Ctrl/Cmd + S` | Save the diagram |
+| `Ctrl/Cmd + Z` | Undo |
+| `Ctrl/Cmd + Y` or `Ctrl/Cmd + Shift + Z` | Redo |
+| `Ctrl/Cmd + D` | Duplicate the selected node |
+| `Delete` or `Backspace` | Delete the selected node |
+
+---
+
+## Not in v1.2.0
+
+Earlier versions of this guide described the following. The v1.2.0 code does not have them;
+do not plan training around them.
+
+| Feature | What exists instead |
+|---------|---------------------|
+| Team exercises (assigning teams to an exercise); planned, R2 | Team records and a membership API only; exercises take no teams |
+| Team-based or individual scoring; planned, R2 | One score per exercise |
+| Leaderboards and the Student "Team Standings" widget; planned, R2 | None |
+| Observer "Score Summary" dashboard widget | None; the dashboard is the same for every role |
+| Per-role dashboard widget sets | One dashboard (see [Dashboard Overview](#dashboard-overview)) |
+| Global keyboard shortcuts and command palette | Range Designer shortcuts only |
+| Floating AI chat assistant | AI in specific features (see [AI Assistant](#ai-assistant)) |
+| Rating bands (Excellent ... Unsatisfactory) | Points and percentage only |
+| Telemetry time filter, column selector, raw-event view, export | Query box, charts and results table |
+| Range detail page, batch provisioning screen, destroy confirmation | Ranges list actions; batch through the API |
+| Live updates over WebSocket in the web app | Polling on the exercise pages |
+| French or any other interface language; planned milestone after R1 | English only; no i18n |
 
 ---
 
@@ -628,46 +575,53 @@ A: Chrome 120+, Firefox 120+, Edge 120+, Safari 17+. Chromium-based browsers rec
 A: The interface is responsive but optimized for desktop. Exercise participation requires a desktop browser.
 
 **Q: How do I reset my password?**
-A: Click "Forgot Password" on the login page, or contact your administrator.
+A: With Active Directory federation your password belongs to the directory: change it
+there. A local Keycloak account can use "Forgot Password" on the login page (the realm
+allows it; it needs mail configured in Keycloak), or ask your administrator.
 
 ### Ranges
 
 **Q: How long does provisioning take?**
-A: 3-25 minutes depending on template size (see provisioning times table above).
+A: It depends on the template and the vSphere cluster. No figure has been measured on real
+hardware for v1.2.0.
 
 **Q: Can I keep a range running indefinitely?**
-A: Ranges consume resources while running. Your administrator may enforce auto-stop policies.
+A: Ranges consume resources while running. Stop ranges you are not using.
 
 **Q: What happens to my data when a range is destroyed?**
-A: VMs and local data are deleted. Telemetry in OpenSearch and reports in MinIO are retained per your organization's retention policy.
+A: Its VMs and networks are removed. Telemetry already indexed in OpenSearch and stored
+reports stay.
 
 **Q: My range is stuck in "provisioning" — what do I do?**
-A: Wait up to 30 minutes for large templates. If still stuck, contact your administrator to check the provisioning task.
+A: Contact your administrator to check the provisioning task and the range's operations
+(`GET /ranges/{id}/operations`).
 
 ### Exercises
 
 **Q: Can I pause and resume an exercise?**
-A: Yes. Click **Pause** to freeze the scenario timeline and **Resume** to continue.
+A: Yes, instructors and admins can. Paused time still counts towards the scenario duration.
 
 **Q: What happens if I disconnect during an exercise?**
-A: The exercise continues running. Reconnect to see current state. WebSocket will automatically reconnect.
+A: The exercise keeps running. Reopen the page to see its current state.
 
 **Q: Can multiple people participate in the same exercise?**
-A: Yes. All team members can view and interact with the same exercise simultaneously.
+A: Yes. Several Students can open the same exercise and submit detections; the score is the
+exercise's, shared by everyone in it.
 
-**Q: How are objectives validated?**
-A: Three methods: (1) automatic OpenSearch query matching, (2) manual acknowledgment by trainee, (3) file upload verification.
+**Q: How are objectives achieved?**
+A: Two ways: (1) a Student's submitted detection finds the attack in the range's telemetry
+(detection objectives), (2) an instructor or admin acknowledges the objective.
 
 ### Scoring
 
 **Q: Can I improve my score after an exercise completes?**
-A: No. Scores are final at exercise completion.
+A: No. A completed exercise accepts no more detections or acknowledgements.
 
-**Q: How is the team score calculated?**
-A: Team score is the sum of all objectives achieved by any team member.
+**Q: Is there a team score?**
+A: No. There is one score per exercise; teams are not linked to exercises in v1.2.0.
 
 **Q: What is a passing score?**
-A: Per your organization's policy. The default rating system considers 60%+ as "Satisfactory."
+A: Per your organization's policy. TrueNorth v1.2.0 defines no pass mark or rating bands.
 
 ### Troubleshooting
 
@@ -678,7 +632,5 @@ A: Your role does not have permission for that action. Contact your administrato
 A: Ensure the exercise has started and events have been injected. Check the time range filter.
 
 **Q: AAR generation fails.**
-A: Ensure the exercise is completed (not just paused). Check that the AI Orchestrator is healthy.
-
-**Q: WebSocket disconnects frequently.**
-A: Check your network connection. Ensure your browser allows WebSocket connections. Contact your administrator if the issue persists.
+A: Ensure the exercise exists in your tenant and you are an instructor or admin. Only the
+optional AI enhance needs the AI Orchestrator.
