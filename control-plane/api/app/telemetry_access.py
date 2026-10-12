@@ -10,10 +10,13 @@ its ranges, including other Students' labs and ranges nobody had put them on. No
     * the range of their own lab session (current, or one it was rebuilt away from), and
     * the range of an exercise running or paused on it that they take part in. There is
       no Student-to-exercise table; the roster that exists is a calendar booking's course:
-      when a booking ties the exercise or its range to a course, only Students actively
-      enrolled in that course qualify. An exercise with no such booking stays readable by
-      the tenant's Students here. Detection submission is stricter since 2026-10-09
-      (app/exercise_participants.py, ADR 0005): no roster, no Student submissions.
+      when a booking ties the exercise or its range to a course, and its time overlaps the
+      exercise's (started to completed, or to now while it runs), only Students actively
+      enrolled in that course qualify. A range booked only at other times (last month's
+      class, next week's) has a roster with no seat now. An exercise with no booking at
+      all stays readable by the tenant's Students here. Detection submission is stricter
+      since 2026-10-09 (app/exercise_participants.py, ADR 0005): no roster, no Student
+      submissions.
 
 Anything else is 404, as for a range of another tenant.
 """
@@ -22,6 +25,7 @@ from __future__ import annotations
 
 import json
 import uuid
+from datetime import UTC, datetime
 
 from fastapi import HTTPException
 from sqlalchemy import or_
@@ -46,30 +50,41 @@ def _own_lab(db: Session, user_id: uuid.UUID, range_id: uuid.UUID) -> bool:
 
 
 def _takes_part(db: Session, user: CurrentUser, rng: Range) -> bool:
+    """Until 2026-10-11 any non-cancelled booking counted, however long ago: a range is
+    reused class after class, so every past class on it kept reading the telemetry of every
+    later exercise there. Now a booking counts only while it overlaps an active exercise's
+    window: started_at to completed_at, or to now while it runs. (Detection submission,
+    ``exercise_participants.roster_courses``, does not apply a time window yet.)"""
     from .scheduler.models import EventState, ScheduledEvent
 
-    exercise_ids = [
-        eid
-        for (eid,) in db.query(Exercise.id).filter(
-            Exercise.range_id == rng.id,
-            Exercise.tenant_id == rng.tenant_id,
-            Exercise.state.in_(ACTIVE_EXERCISE),
-            Exercise.deleted_at.is_(None),
-        )
-    ]
-    if not exercise_ids:
+    exercises = db.query(Exercise.id, Exercise.started_at, Exercise.completed_at).filter(
+        Exercise.range_id == rng.id,
+        Exercise.tenant_id == rng.tenant_id,
+        Exercise.state.in_(ACTIVE_EXERCISE),
+        Exercise.deleted_at.is_(None),
+    ).all()
+    if not exercises:
         return False
-    courses = {
-        cid
-        for (cid,) in db.query(ScheduledEvent.course_id).filter(
-            ScheduledEvent.tenant_id == rng.tenant_id,
-            ScheduledEvent.course_id.isnot(None),
-            ScheduledEvent.state != EventState.cancelled,
-            or_(ScheduledEvent.exercise_id.in_(exercise_ids), ScheduledEvent.range_id == rng.id),
-        )
-    }
-    if not courses:
+    bookings = db.query(ScheduledEvent.course_id).filter(
+        ScheduledEvent.tenant_id == rng.tenant_id,
+        ScheduledEvent.course_id.isnot(None),
+        ScheduledEvent.state != EventState.cancelled,
+        or_(ScheduledEvent.exercise_id.in_([eid for eid, _, _ in exercises]), ScheduledEvent.range_id == rng.id),
+    )
+    if bookings.first() is None:
         return True  # no roster to check: readable (submitting a detection is not; ADR 0005)
+    now = datetime.now(UTC)
+    courses: set[uuid.UUID] = set()
+    for eid, started, completed in exercises:
+        start, end = started or now, completed or now
+        courses |= {
+            cid
+            for (cid,) in bookings.filter(
+                or_(ScheduledEvent.exercise_id == eid, ScheduledEvent.range_id == rng.id),
+                ScheduledEvent.start_time <= end,
+                ScheduledEvent.end_time >= start,
+            )
+        }
     return bool(courses & set(active_course_ids(db, uuid.UUID(user.id))))
 
 
