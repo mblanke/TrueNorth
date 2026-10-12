@@ -17,14 +17,12 @@ import asyncio
 import json
 import logging
 import os
-import random
 import time
 from contextlib import contextmanager
-from datetime import UTC, datetime
 
 from celery import group
 
-from . import ai_client, db_ops, greyspace, range_alloc, range_sweep, windows_roles
+from . import ai_client, db_ops, greyspace, range_alloc, range_metrics, range_sweep, windows_roles
 from .base_tasks import ReliableTask, _get_backend, db_connect_args
 from .celery_app import app
 from .fencing import FINAL_ERRORS, fenced, guarded_range_update, run_async, snapshot_back_to_ready
@@ -334,74 +332,16 @@ def health_check_ranges(self):
 # -- Periodic: Collect Range Metrics ---------------------------------------
 @app.task(bind=True, name="worker.tasks.collect_range_metrics")
 def collect_range_metrics(self):
-    """Periodic task: collect resource utilization from active ranges.
+    """Periodic task: publish each active range's measured utilisation (worker/range_metrics.py).
 
-    Uses the provisioner health check for VM status awareness, generates
-    resource metrics, stores them in OpenSearch as telemetry events, and
-    updates the range resource_usage field.
+    Figures come only from the range's backend (``collect_metrics``), each event tagged
+    with its ``source``; a range whose backend cannot report gets no event, and its
+    usage in the return value is ``{"available": False, "reason": ...}``.
     """
     logger.info("[metrics] Collecting range metrics")
-
-    try:
-        with _db_session() as db:
-            active_ranges = db_ops.active_ranges(db)
-
-        if not active_ranges:
-            logger.info("[metrics] No active ranges for metrics collection")
-            return {"status": "ok", "ranges_collected": 0}
-
-        all_metrics = []
-        now = datetime.now(UTC).isoformat()
-        checks = range_sweep.health_checks(active_ranges)  # VM status awareness; one login per vCenter
-
-        for row in active_ranges:
-            range_id, name, prov_output = str(row[0]), row[1], row[2]
-            prov_dict = json.loads(prov_output) if prov_output else {}
-            try:
-                health = range_sweep.result(checks, range_id)
-                vm_count = len(health.vm_statuses) or len(prov_dict.get("vms", []))
-            except Exception:
-                vm_count = len(prov_dict.get("vms", []))
-
-            metrics = {
-                "range_id": range_id,
-                "range_name": name,
-                "timestamp": now,
-                "cpu_pct": round(random.uniform(5.0, 85.0), 1),
-                "memory_pct": round(random.uniform(20.0, 90.0), 1),
-                "disk_read_mbps": round(random.uniform(0.1, 50.0), 1),
-                "disk_write_mbps": round(random.uniform(0.1, 30.0), 1),
-                "network_in_mbps": round(random.uniform(0.01, 100.0), 2),
-                "network_out_mbps": round(random.uniform(0.01, 50.0), 2),
-                "vm_count": max(vm_count, 1),
-            }
-
-            all_metrics.append(metrics)
-
-            # Store as telemetry event
-            event = {
-                "@timestamp": now,
-                "event_type": "range_metrics",
-                "range_id": range_id,
-                **metrics,
-            }
-            try:
-                from .telemetry_tasks import ingest_telemetry_batch
-
-                ingest_telemetry_batch.delay(range_id, [event])
-            except Exception as ingest_err:
-                logger.warning(f"[metrics] Failed to queue telemetry for {range_id}: {ingest_err}")
-
-            # Update range resource_usage field
-            with _db_session() as db:
-                db_ops.touch_range(db, range_id)
-
-        logger.info(f"[metrics] Collected metrics for {len(all_metrics)} ranges")
-        return {"status": "ok", "ranges_collected": len(all_metrics)}
-
-    except Exception as e:
-        logger.error(f"[metrics] Metrics collection error: {e}")
-        raise
+    with _db_session() as db:
+        active_ranges = db_ops.active_ranges(db)
+    return range_metrics.collect(active_ranges)
 
 
 # -- Range Snapshots ----------------------------------------------------

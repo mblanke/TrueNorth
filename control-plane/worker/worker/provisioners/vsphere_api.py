@@ -372,22 +372,45 @@ def _read_vm_metrics(si, vm_ids: list[str], paths=METRIC_PATHS) -> tuple[dict[st
     return {}, missing
 
 
+def _not_ours(range_id: str, vm: dict, seen: dict, where: str) -> str | None:
+    """None when what vCenter holds under ``vm``'s recorded id is this range's VM, else a note.
+
+    The range-ownership rule (see VsphereAPIProvisioner._screen): its annotation names the
+    range (RANGE_TAG), or, built before the tag (2026-10-07), it carries no tag and still
+    has its recorded ``<range8>-<node>`` name. ``seen`` holds OWNER_PATHS."""
+    name = str(seen.get("name") or "")
+    owner = annotated_range(str(seen.get("config.annotation") or ""))
+    legacy = not owner and name == vm.get("name") and name.startswith(f"{range_id[:8]}-")
+    if owner == range_id or legacy:
+        return None
+    whose = f"range {owner}" if owner else "no TrueNorth range"
+    return f"VM {vm.get('name') or vm.get('vm_id')}: {vm.get('vm_id')} on {where} is {name!r} of {whose}, not this range's"
+
+
 def _vm_metrics(vm: dict, props: dict | None) -> dict:
-    """One MetricsResult VM entry from the properties read (None: vCenter has no such VM)."""
+    """One MetricsResult VM entry from the properties read (None: vCenter has no such VM).
+
+    pyVmomi turns an unset quickStats number into 0, so a running VM whose host sent no
+    stats (vcsim always; vCenter for a host not reporting) reads CPU 0, memory 0, uptime 0.
+    That is no reading, not an idle VM: those three are then None."""
     def val(path):
         v = (props or {}).get(path)
         return str(v) if isinstance(v, str) else v  # pyVmomi enums are str subclasses
 
+    stats = ("summary.quickStats.overallCpuUsage", "summary.quickStats.guestMemoryUsage",
+             "summary.quickStats.uptimeSeconds")
+    blank = val("runtime.powerState") == "poweredOn" and not any(val(p) for p in stats)
+    cpu, mem, up = (None, None, None) if blank else (val(p) for p in stats)
     return {
         "vm_id": vm.get("vm_id", ""),
         "name": vm.get("name", ""),
         "power_state": val("runtime.powerState") if props is not None else "notFound",
         "tools_status": val("guest.toolsRunningStatus"),
-        "cpu_usage_mhz": val("summary.quickStats.overallCpuUsage"),
+        "cpu_usage_mhz": cpu,
         "cpu_capacity_mhz": val("summary.runtime.maxCpuUsage"),
-        "memory_active_mb": val("summary.quickStats.guestMemoryUsage"),
+        "memory_active_mb": mem,
         "memory_configured_mb": val("summary.config.memorySizeMB"),
-        "uptime_seconds": val("summary.quickStats.uptimeSeconds"),
+        "uptime_seconds": up,
     }
 
 
@@ -713,17 +736,12 @@ class VsphereAPIProvisioner(BaseProvisioner):
             if not vm_id or vm_id in missing:
                 keep.append(vm)
                 continue
-            seen = props.get(vm_id, {})
-            name = str(seen.get("name") or "")
-            owner = annotated_range(str(seen.get("config.annotation") or ""))
-            legacy = not owner and name == vm.get("name") and name.startswith(f"{range_id[:8]}-")
-            if owner == range_id or legacy:
+            note = _not_ours(range_id, vm, props.get(vm_id, {}), self._base_url)
+            if note is None:
                 keep.append(vm)
                 confirmed = True
                 continue
-            whose = f"range {owner}" if owner else "no TrueNorth range"
-            notes.append(f"VM {vm.get('name') or vm_id}: {vm_id} on {self._base_url} is {name!r} of {whose}, "
-                         "not this range's; left alone")
+            notes.append(f"{note}; left alone")
         for note in notes:
             logger.warning("range %s: %s", range_id, note)
         if confirmed and self.on_connection_confirmed is not None:
@@ -2172,12 +2190,13 @@ class VsphereAPIProvisioner(BaseProvisioner):
             return scope["si"]
 
     def _metrics_sync(self, vm_ids: list[str]) -> tuple[dict[str, dict], set[str]]:
+        paths = METRIC_PATHS + OWNER_PATHS  # the figures and the ownership check, in one call
         scope = self._scope
         if scope is not None:
-            return _read_vm_metrics(self._scope_si(scope), vm_ids)
+            return _read_vm_metrics(self._scope_si(scope), vm_ids, paths)
         si = self._connect(self._metrics_timeout)  # a call outside a run: a session of its own
         try:
-            return _read_vm_metrics(si, vm_ids)
+            return _read_vm_metrics(si, vm_ids, paths)
         finally:
             with contextlib.suppress(Exception):
                 Disconnect(si)
@@ -2203,6 +2222,11 @@ class VsphereAPIProvisioner(BaseProvisioner):
         A VM vCenter no longer has is reported with power_state ``notFound`` and an error
         (the range is then ``partial``); a VM with no recorded id is an error. Nothing is
         estimated: a value vCenter did not send is None.
+
+        Only the range's own VMs are reported, by the rule a delete or power operation
+        uses (``_screen``), read in the same call. A recorded id vCenter now gives to
+        another range's VM, or to one TrueNorth did not build, is left out (no figures at
+        all) with an error, so no other tenant's load is ever shown as this range's.
         """
         start = time.monotonic()
         vms = provision_output.get("vms", [])
@@ -2219,6 +2243,11 @@ class VsphereAPIProvisioner(BaseProvisioner):
                     if not vm.get("vm_id"):
                         continue
                     found = vm["vm_id"] not in missing
+                    foreign = found and _not_ours(range_id, vm, props.get(vm["vm_id"], {}), self._base_url)
+                    if foreign:
+                        logger.warning("range %s: %s; metrics not read", range_id, foreign)
+                        errors.append(f"{foreign}; not read")
+                        continue
                     out.append(_vm_metrics(vm, props.get(vm["vm_id"], {}) if found else None))
                     if not found:
                         errors.append(f"VM {vm.get('name') or vm['vm_id']}: not found in vCenter")

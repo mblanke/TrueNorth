@@ -32,6 +32,21 @@ export function telemetryTechniques(e: TelemetryEvent): string {
   return typeof t === 'string' ? t : '';
 }
 
+function pct(v: unknown): string {
+  return typeof v === 'number' && Number.isFinite(v) ? `${v}%` : 'Not reported';
+}
+
+/** One line for a `range_metrics` event (worker/range_metrics.py), '' for any other event.
+ *  A figure the hypervisor did not report is "Not reported", never 0%. An event with no
+ *  `source` predates measured metrics: its numbers were made up, so none is shown. */
+export function rangeMetricsSummary(e: TelemetryEvent): string {
+  if (e.event_type !== 'range_metrics') return '';
+  if (!e['source']) return 'Not measured (recorded before metrics came from the hypervisor)';
+  const vms = typeof e['vm_count'] === 'number' ? ` · ${e['vms_powered_on'] ?? 0}/${e['vm_count']} VMs on` : '';
+  const partial = e['partial'] ? ' (partial)' : '';
+  return `CPU ${pct(e['cpu_pct'])} · Memory ${pct(e['memory_pct'])}${vms} · ${e['source']}${partial}`;
+}
+
 /** The API answers 422 with a reason for a query outside the search grammar. */
 export function telemetrySearchError(err: unknown): string {
   const e = err as { status?: number; error?: { detail?: unknown } };
@@ -123,6 +138,7 @@ export function telemetrySearchError(err: unknown): string {
           <ng-container matColumnDef="hostname"><th mat-header-cell *matHeaderCellDef>Host</th><td mat-cell *matCellDef="let e">{{ e.hostname || '—' }}</td></ng-container>
           <ng-container matColumnDef="source_ip"><th mat-header-cell *matHeaderCellDef>Src IP</th><td mat-cell *matCellDef="let e">{{ e.source_ip || '—' }}</td></ng-container>
           <ng-container matColumnDef="process_name"><th mat-header-cell *matHeaderCellDef>Process</th><td mat-cell *matCellDef="let e">{{ e.process_name || '—' }}</td></ng-container>
+          <ng-container matColumnDef="detail"><th mat-header-cell *matHeaderCellDef>Detail</th><td mat-cell *matCellDef="let e">{{ metricsSummary(e) || '—' }}</td></ng-container>
           <ng-container matColumnDef="mitre_technique"><th mat-header-cell *matHeaderCellDef>ATT&amp;CK</th><td mat-cell *matCellDef="let e">{{ techniques(e) || '—' }}</td></ng-container>
           <tr mat-header-row *matHeaderRowDef="columns"></tr>
           <tr mat-row *matRowDef="let row; columns: columns"></tr>
@@ -179,7 +195,7 @@ export class TelemetryComponent implements OnInit, OnDestroy {
   query = '*';
   searched = false;
   autoRefresh = false;
-  columns = ['timestamp', 'event_type', 'hostname', 'source_ip', 'process_name', 'mitre_technique'];
+  columns = ['timestamp', 'event_type', 'hostname', 'source_ip', 'process_name', 'detail', 'mitre_technique'];
 
   private refreshSub?: Subscription;
 
@@ -225,6 +241,7 @@ export class TelemetryComponent implements OnInit, OnDestroy {
 
   readonly eventTime = telemetryEventTime;
   readonly techniques = telemetryTechniques;
+  readonly metricsSummary = rangeMetricsSummary;
 
   private buildCharts(events: TelemetryEvent[]): void {
     const c = tnChartColors();

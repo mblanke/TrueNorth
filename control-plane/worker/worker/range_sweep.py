@@ -35,11 +35,26 @@ def health_checks(rows) -> dict[str, object]:
     db_ops.active_ranges: (id, name, provisioner_output, provisioner_backend). A range whose
     connection cannot be resolved (ConnectionBindingError) gets that error; the others are
     still checked."""
+    return _sweep(rows, "health_check")
+
+
+def metrics(rows) -> dict[str, object]:
+    """{range id: MetricsResult, or the exception its read raised}: ``collect_metrics`` of
+    every range, grouped and logged in once per endpoint exactly as ``health_checks``."""
+    return _sweep(rows, "collect_metrics")
+
+
+def backend_of(row) -> str:
+    """The backend a db_ops.active_ranges row was built on (the worker's default if unset)."""
+    return (row[3] if len(row) > 3 and row[3] else None) or os.getenv("PROVISIONER_BACKEND", "mock")
+
+
+def _sweep(rows, method: str) -> dict[str, object]:
     results: dict[str, object] = {}
     groups: dict[tuple, tuple[object, list[tuple[str, dict]]]] = {}
     for row in rows:
         range_id, output = str(row[0]), _output(row[2])
-        backend = (row[3] if len(row) > 3 and row[3] else None) or os.getenv("PROVISIONER_BACKEND", "mock")
+        backend = backend_of(row)
         try:
             provisioner = base_tasks._get_backend(backend, range_id, output=output)
         except Exception as exc:  # noqa: BLE001 — reported for this range only
@@ -51,19 +66,20 @@ def health_checks(rows) -> dict[str, object]:
         groups.setdefault(key, (provisioner, []))[1].append((range_id, output))
     for provisioner, items in groups.values():
         try:
-            asyncio.run(_check_group(provisioner, items, results))
+            asyncio.run(_check_group(provisioner, items, results, method))
         except Exception as exc:  # noqa: BLE001 — the scope itself failed (logout): keep what was read
             for range_id, _ in items:
                 results.setdefault(range_id, exc)
     return results
 
 
-async def _check_group(provisioner, items: list[tuple[str, dict]], results: dict) -> None:
+async def _check_group(provisioner, items: list[tuple[str, dict]], results: dict,
+                       method: str = "health_check") -> None:
     scope = getattr(provisioner, "session", None)  # BaseProvisioner's; a bare backend has none
     async with scope() if callable(scope) else contextlib.nullcontext():
         for range_id, output in items:
             try:
-                results[range_id] = await provisioner.health_check(range_id, output)
+                results[range_id] = await getattr(provisioner, method)(range_id, output)
             except Exception as exc:  # noqa: BLE001
                 results[range_id] = exc
 

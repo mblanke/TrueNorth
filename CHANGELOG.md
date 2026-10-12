@@ -56,6 +56,13 @@ course production with a local-model fallback, and the cleanup of unsupported su
   Proven on vcsim and the T0 Docker stack only.
 - Per-tenant vCenter credentials for every vSphere operation; VyOS and OPNsense get the
   range's rendered config; template `vm_count` corrected; Range Designer YAML import (#131).
+- **Range metrics are measured or absent.** `collect_range_metrics` published random CPU,
+  memory, disk and network figures as `range_metrics` telemetry. It now publishes only
+  what the backend reads (vSphere quickStats: CPU and active memory of the range's own
+  powered-on VMs, ownership-checked like a delete, one login per vCenter), tagged
+  `source`; no disk or network figures. A backend that cannot report (mock, Proxmox,
+  Hyper-V, a host sending no stats) publishes nothing. The telemetry table shows
+  "Not reported" for a missing figure and no figures for pre-change events.
 
 ### vSphere per-tenant credentials (hardening of #131)
 - A tenant's vCenter connection is used whole or not at all: host, username and password
