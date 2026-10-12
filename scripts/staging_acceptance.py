@@ -643,7 +643,8 @@ def fx_course(ctx: Ctx) -> dict:
         st, body = ctx.admin.post(
             f"/courses/{course['id']}/enroll", json={"user_id": student.user_id, "course_id": course["id"]}
         )
-        expect(st in (201, 409), f"enrol the Student on {code} => {st} {short(body)}")
+        # 200: already enrolled (idempotent, #159); 409: what the API said before.
+        expect(st in (200, 201, 409), f"enrol the Student on {code} => {st} {short(body)}")
         return {
             "id": str(course["id"]),
             "code": code,
@@ -1105,7 +1106,7 @@ def lms_cmi5(ctx: Ctx) -> str:
     st, body = ctx.admin.post(
         f"/courses/{rel['course_id']}/enroll", json={"user_id": student.user_id, "course_id": rel["course_id"]}
     )
-    expect(st in (201, 409), f"enrol on {rel.get('catalogue_code')} => {st} {short(body)}")
+    expect(st in (200, 201, 409), f"enrol on {rel.get('catalogue_code')} => {st} {short(body)}")
     s = ok(student.get(f"/cmi5/releases/{rel['id']}/structure"), what="structure as Student")
     expect(s.get("enrolled"), f"the Student is not pinned to release {rel['id']}: {short(s)}")
     free = [a["index"] for a in s["aus"] if not a["satisfied"] and not a["completed"]] or [s["aus"][0]["index"]]
@@ -1238,7 +1239,7 @@ def lms_moodle_loop(ctx: Ctx) -> str:
     cid = str(course["id"])
     student = ctx.persona("moodle-student")
     st, body = ctx.admin.post(f"/courses/{cid}/enroll", json={"user_id": student.user_id, "course_id": cid})
-    expect(st in (201, 409), f"enrol {student.email} on {code} => {st} {short(body)}")
+    expect(st in (200, 201, 409), f"enrol {student.email} on {code} => {st} {short(body)}")
     outline = ok(student.get(f"/courses/{cid}/outline"), what=f"{code} outline as the Moodle Student")
     if not outline.get("moodle_available"):
         skip(f"{code} is not published to {platform.get('name')} (publish an accepted release: "

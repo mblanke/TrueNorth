@@ -404,7 +404,7 @@ class TestImmutableIds:
                     display_name="Twin", role=UserRole.student, tenant_id=other.id)
         db_session.add(twin)
         db_session.flush()
-        db_session.add(Enrollment(user_id=twin.id, course_id=course.id, tenant_id=other.id))
+        db_session.add(Enrollment(user_id=twin.id, course_id=course.id, tenant_id=other.id, source="assigned"))
         db_session.commit()
         assert twin.email.lower() == course.student.email.lower() and twin.id != course.student.id
 

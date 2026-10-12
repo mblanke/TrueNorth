@@ -300,7 +300,8 @@ def world(tmp_path_factory):
     outsider = person(UserRole.student, TENANT, name="Out")
     admin = person(UserRole.admin, TENANT, name="Ada")
     twin = person(UserRole.student, other.id, email=student.email.upper(), name="Twin")  # same mailbox
-    enrollment = ensure_enrollment(db, user_id=student.id, course_id=rel.course_id, tenant_id=TENANT)
+    # Assigned by staff (as an approval or an admin would), not a self-enrolment.
+    enrollment = ensure_enrollment(db, user_id=student.id, course_id=rel.course_id, tenant_id=TENANT, source="assigned")
     db.commit()
 
     # A teacher's deep-linked cmi5 module in the same Moodle course (the farm image's tool).
