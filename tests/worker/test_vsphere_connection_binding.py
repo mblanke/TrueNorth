@@ -431,3 +431,36 @@ def test_db_creds_by_id_never_returns_another_tenants_row(world):
     with tasks._db_session() as db:
         assert db_ops.hypervisor_creds_by_id(db, "vsphere", theirs, rid) == {}
     assert connection_binding.recorded({"connection": {"id": None}}) is None  # no host: not a record
+
+
+# ============================================================================
+# The connection's port (coordinator follow-up, 2026-10-11)
+# ============================================================================
+@pytest.mark.parametrize(("host", "port", "url"), [
+    ("vc.test", 443, "https://vc.test"),
+    ("vc.test", None, "https://vc.test"),
+    ("vc.test", 8443, "https://vc.test:8443"),
+    ("vc.test", 8006, "https://vc.test"),  # the API's old default for every family: never a vCenter port
+    ("vc.test:9443", 8443, "https://vc.test:9443"),  # a port typed into the host wins
+    ("https://vc.test/", "8443", "https://vc.test:8443"),
+])
+def test_the_connections_port_reaches_the_endpoint(host, port, url):
+    assert mod.endpoint_url(host, port) == url
+
+
+def test_rest_and_pyvmomi_both_use_the_connections_port(monkeypatch):
+    seen = []
+
+    def handler(request):
+        seen.append((request.url.host, request.url.port))
+        return httpx.Response(201, json="tok")
+
+    prov = mod.VsphereAPIProvisioner({"host": "vc.test", "port": 8443, "username": "u", "password": "p"})
+    prov._transport = httpx.MockTransport(handler)
+    _run(prov._get_session())
+    assert seen == [("vc.test", 8443)]
+    connect = MagicMock()
+    monkeypatch.setattr(mod, "SmartConnect", connect)
+    prov._connect()
+    assert (connect.call_args.kwargs["host"], connect.call_args.kwargs["port"]) == ("vc.test", 8443)
+    assert prov.connection_record()["host"] == "https://vc.test:8443"

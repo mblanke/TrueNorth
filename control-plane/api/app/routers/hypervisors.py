@@ -25,6 +25,7 @@ from ..db import get_db
 from ..delete_guard import commit_delete
 from ..hypervisor_backends import get_hypervisor_backend
 from ..hypervisor_connection_guard import refuse_if_live, require_password
+from ..hypervisor_ports import default_port
 from ..models import (
     HypervisorConnection,
     HypervisorNode,
@@ -76,7 +77,7 @@ def create_connection(
         name=payload.name,
         hypervisor_type=payload.hypervisor_type,
         host=payload.host,
-        port=payload.port,
+        port=payload.port or default_port(payload.hypervisor_type),  # 8006 for every family until 2026-10-11
         username=payload.username,
         password_encrypted=seal(payload.password),  # app/secretbox.py: never stored as typed
         api_token=seal(payload.api_token),
@@ -110,7 +111,9 @@ def update_connection(
         require_password(conn.hypervisor_type, changes["password"])  # rotate it, never clear it
     if changes.get("is_active") is False and conn.is_active:
         refuse_if_live(db, conn, "deactivate")
-    if "host" in changes and changes["host"] != conn.host:
+    if changes.get("port") is None:
+        changes.pop("port", None)  # explicit null: keep the stored port
+    if ("host" in changes and changes["host"] != conn.host) or ("port" in changes and changes["port"] != conn.port):
         refuse_if_live(db, conn, "point to another host")
     for field, value in changes.items():
         if field == "password":

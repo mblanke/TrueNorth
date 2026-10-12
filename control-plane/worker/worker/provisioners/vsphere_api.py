@@ -203,6 +203,23 @@ _RANGE_TAG_RE = re.compile(re.escape(RANGE_TAG) + r"\s*([0-9A-Za-z][0-9A-Za-z-]*
 _SOAP_POWER = {"poweredOn": "POWERED_ON", "poweredOff": "POWERED_OFF", "suspended": "SUSPENDED"}
 
 
+def endpoint_url(host: str, port=None) -> str:
+    """``https://host[:port]`` for a connection row: REST and pyVmomi (``_connect``) both use it.
+
+    No port for 443. Nor for 8006: until 2026-10-11 the API stored 8006 (Proxmox's port) for
+    any connection created without one (app/hypervisor_ports.py), and no vCenter listens
+    there, so on a vSphere row it means "not given". A port already in ``host`` wins."""
+    url = (host if "://" in host else f"https://{host}").rstrip("/")
+    try:
+        port = int(port or 0)
+    except (TypeError, ValueError):
+        port = 0
+    parsed = urlparse(url)
+    if port in (0, 443, 8006) or parsed.port is not None:
+        return url
+    return parsed._replace(netloc=f"{parsed.netloc}:{port}").geturl()
+
+
 def range_annotation(range_id: str) -> str:
     return f"TrueNorth range VM. Deleted with its range. {RANGE_TAG}{range_id}"
 
@@ -434,7 +451,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
                 f"vSphere connection {ref} has no {', '.join(missing)}: set it on the connection "
                 "(Infrastructure > Hypervisors). The platform's own vCenter credentials are never used for it."
             )
-        self._base_url = (host if "://" in host else f"https://{host}").rstrip("/")
+        self._base_url = endpoint_url(host, creds.get("port"))
         self._username, self._password = username, password
         self._datacenter = creds.get("datacenter") or self._datacenter
         self._verify_ssl = bool(creds.get("verify_ssl", True))  # the row's own; secure when absent

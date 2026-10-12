@@ -631,7 +631,7 @@ class HypervisorConnectionIn(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     hypervisor_type: str = Field(..., pattern=r"^(proxmox|vsphere|hyperv)$")
     host: str = Field(..., min_length=1, max_length=255)
-    port: int = Field(default=8006, ge=1, le=65535)
+    port: int | None = Field(default=None, ge=1, le=65535)  # None: the family's (app/hypervisor_ports.py)
     username: str = Field(..., min_length=1, max_length=255)
     password: str | None = None
     api_token: str | None = None

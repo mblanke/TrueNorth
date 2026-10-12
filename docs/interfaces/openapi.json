@@ -6776,11 +6776,17 @@
             "title": "Password"
           },
           "port": {
-            "default": 8006,
-            "maximum": 65535.0,
-            "minimum": 1.0,
-            "title": "Port",
-            "type": "integer"
+            "anyOf": [
+              {
+                "maximum": 65535.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Port"
           },
           "username": {
             "maxLength": 255,
@@ -25708,7 +25714,7 @@
     },
     "/hypervisors/connections/{conn_id}": {
       "delete": {
-        "description": "Delete a connection with the hosts and pools discovered through it.\n\nThose rows are inventory read from the hypervisor, with no meaning once the\nconnection is gone, so they go with it.",
+        "description": "Delete a connection with the hosts and pools discovered through it.\n\nThose rows are inventory read from the hypervisor, with no meaning once the\nconnection is gone, so they go with it. Refused (409) while ranges not yet destroyed\nare on it (app/hypervisor_connection_guard.py).",
         "operationId": "delete_connection_hypervisors_connections__conn_id__delete",
         "parameters": [
           {

@@ -112,3 +112,33 @@ def test_another_tenants_ranges_never_block_a_tenant_connection(client, db_sessi
     _range(db_session, output={"vms": [{"name": "a", "vm_id": "vm-1"}]}, tenant=other_tenant)
     db_session.commit()
     assert client.delete(f"/hypervisors/connections/{conn.id}").status_code == 204
+
+
+# -- port: the family's default, not Proxmox's for everyone ------------------
+@pytest.mark.parametrize(("kind", "port"), [("vsphere", 443), ("proxmox", 8006), ("hyperv", 5985)])
+def test_a_connection_without_a_port_gets_its_familys(client, kind, port):
+    body = {"name": "x", "hypervisor_type": kind, "host": "h.test", "username": "u", "password": "pw"}
+    r = client.post("/hypervisors/connections", json=body)
+    assert r.status_code == 201, r.text
+    assert r.json()["port"] == port
+
+
+def test_an_explicit_port_is_kept(client):
+    body = {"name": "x", "hypervisor_type": "vsphere", "host": "h.test", "port": 8443, "username": "u",
+            "password": "pw"}
+    assert client.post("/hypervisors/connections", json=body).json()["port"] == 8443
+
+
+def test_the_model_default_follows_the_family(db_session):
+    conn = HypervisorConnection(name="x", hypervisor_type="vsphere", host="h", username="u", tenant_id=DEV_TENANT)
+    db_session.add(conn)
+    db_session.flush()
+    assert conn.port == 443
+
+
+def test_a_connection_with_live_ranges_cannot_change_port(client, db_session):
+    conn = _conn(db_session)
+    _range(db_session, output=_built_on(conn))
+    db_session.commit()
+    assert client.patch(f"/hypervisors/connections/{conn.id}", json={"port": 8443}).status_code == 409
+    assert client.patch(f"/hypervisors/connections/{conn.id}", json={"port": 443}).status_code == 200  # unchanged

@@ -2739,7 +2739,8 @@ export interface paths {
          * @description Delete a connection with the hosts and pools discovered through it.
          *
          *     Those rows are inventory read from the hypervisor, with no meaning once the
-         *     connection is gone, so they go with it.
+         *     connection is gone, so they go with it. Refused (409) while ranges not yet destroyed
+         *     are on it (app/hypervisor_connection_guard.py).
          */
         delete: operations["delete_connection_hypervisors_connections__conn_id__delete"];
         options?: never;
@@ -10442,11 +10443,8 @@ export interface components {
             notes?: string | null;
             /** Password */
             password?: string | null;
-            /**
-             * Port
-             * @default 8006
-             */
-            port?: number;
+            /** Port */
+            port?: number | null;
             /** Username */
             username: string;
             /**
