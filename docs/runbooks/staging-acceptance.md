@@ -35,7 +35,9 @@ Options:
 | `--keep` | leave the test data in place (see [Test data](#test-data)) |
 | `--json <path>` | write the report as JSON; mount a directory the api user (uid 10001) can write |
 | `--absent a,b` | facilities this host does not have; their checks SKIP and say so (`--help` lists them) |
-| `--strict` | any SKIP not declared up front (`--absent`, or a check no staging host can make) is a FAIL |
+| `--strict` | any SKIP not listed for `--skip-profile` in `docs/release-notes/v1.2.0-permitted-skips.json` is a FAIL, declared or not; so is a check missing from (or not recorded in) that file's inventory. Exit 2 if the file or profile is unusable |
+| `--skip-profile <name>` | with `--strict`: `staging` (default; only the two hardware skips) or `ci-integration` (what `scripts/itest.sh` uses) |
+| `--permitted-skips <path>` | with `--strict`: another permitted-skips file |
 | `--edge-url` | the edge as the container reaches it (default `https://nginx`) |
 | `--host-config <dir>` | the host's config directory, if mounted (for `backup.env`) |
 | `--lms-course <code>` | the catalogue course for the LMS checks (default `C103`) |
@@ -73,7 +75,9 @@ administrator was not found, a bad argument).
 A SKIP always states its reason. Two kinds:
 
 - **declared**: a facility named in `--absent`, or a check this suite cannot make on any
-  staging host (below). `--strict` accepts only these.
+  staging host (below). Being declared is not enough under `--strict`: only the skips the
+  profile lists in `docs/release-notes/v1.2.0-permitted-skips.json` stand (module, check and
+  reason), and the release matrix (`docs/release-notes/v1.2.0-module-matrix.md`) says why.
 - **found**: something the run discovered missing (no Moodle platform registered, no accepted
   cmi5 release on a published course, no demo accounts). Read these: on a host that should have
   the thing, they are findings.

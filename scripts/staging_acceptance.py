@@ -18,7 +18,8 @@ suite creates (``acceptance-<role>@truenorth.test``). No password or token is us
 Output: a table (module | check | PASS/FAIL/SKIP | detail), and with --json a report file.
 Exit 1 on any FAIL, 2 when the suite cannot start. A SKIP always states its reason; a check
 that can only be skipped on this stack (no real vSphere, a service an operator declared
-absent with --absent) says so rather than passing.
+absent with --absent) says so rather than passing. With --strict only the skips the release
+permits (docs/release-notes/v1.2.0-permitted-skips.json, --skip-profile) stand.
 
 Test data is named ``acceptance-...``. Fixtures that exercises keep as history (the range,
 scenario and template an exercise ran on) are reused by name on the next run; the rest is
@@ -80,6 +81,48 @@ FACILITIES = {
     "arc2": "the ARC² Course Studio (ARC2_STUDIO_ENABLED)",
     "telemetry-pipeline": "OpenSearch's ingested-at pipeline (telemetry.pipelines.bootstrap)",
 }
+
+# The release's permitted skips, per environment (docs/release-notes/v1.2.0-module-matrix.md).
+# Under --strict a SKIP stands only when its profile has an entry naming its module and check
+# whose ``reason_contains`` is in the skip's reason; any other SKIP is a FAIL, declared or not.
+# The file's ``checks`` inventory is every check the release expects: one missing, or one
+# not recorded there, is a FAIL too.
+PERMITTED_SKIPS = SRC / "docs" / "release-notes" / "v1.2.0-permitted-skips.json"
+SKIP_ENTRY_KEYS = ("module", "check", "reason_contains", "reason", "alternative_evidence", "milestone")
+
+
+def load_permitted(path: Path, profile: str) -> tuple[list[dict], dict[str, list[str]]]:
+    """(the profile's permitted skips, the check inventory). ValueError when the file or an
+    entry is malformed, or an entry names a check that does not exist."""
+    doc = json.loads(path.read_text(encoding="utf-8"))
+    profiles = doc.get("profiles") or {}
+    if profile not in profiles:
+        raise ValueError(f"no skip profile {profile!r} in {path} (has: {', '.join(sorted(profiles))})")
+    entries = list(profiles[profile])
+    for e in entries:
+        if lacking := [k for k in SKIP_ENTRY_KEYS if not str(e.get(k) or "").strip()]:
+            raise ValueError(f"{path}: {profile} entry {e.get('module')} / {e.get('check')} lacks {', '.join(lacking)}")
+        if e["check"] not in dict(CHECKS.get(e["module"], [])):
+            raise ValueError(f"{path}: {profile} permits skipping {e['module']} / {e['check']}, which is not a check")
+    return entries, dict(doc.get("checks") or {})
+
+
+def permitted_skip(entries: Iterable[dict], module: str, check: str, detail: str) -> dict | None:
+    return next(
+        (e for e in entries if e["module"] == module and e["check"] == check and e["reason_contains"] in detail), None
+    )
+
+
+def inventory_drift(
+    checks: dict[str, list[tuple[str, Check]]], inventory: dict[str, list[str]], modules: Iterable[str]
+) -> list[tuple[str, str, str]]:
+    """(module, check, problem) for each difference between the registered checks and the inventory."""
+    out = []
+    for m in modules:
+        have, want = [n for n, _ in checks.get(m, [])], list(inventory.get(m, []))
+        out += [(m, n, "in the release's check inventory but not registered: a missing check") for n in want if n not in have]
+        out += [(m, n, "registered but not in the release's check inventory") for n in have if n not in want]
+    return out
 
 # The installer's demo people (scripts/load_content.py DEMO_PEOPLE), by persona.
 PERSONAS = {
@@ -215,9 +258,10 @@ class Result:
 
 
 class Report:
-    def __init__(self, strict: bool = False) -> None:
+    def __init__(self, strict: bool = False, permitted: list[dict] | None = None) -> None:
         self.results: list[Result] = []
         self.strict = strict
+        self.permitted = permitted  # --strict with a permitted-skips profile: only those skips stand
 
     def add(
         self, module: str, check: str, status: str, detail: str = "", seconds: float = 0.0, declared: bool = False
@@ -229,6 +273,11 @@ class Report:
             # A skip is a claim that this host cannot show the flow; without a reason it is
             # indistinguishable from a check that quietly did nothing.
             status, detail = FAIL, "skipped without a stated reason"
+        elif status == SKIP and self.strict and self.permitted is not None:
+            # The release's permitted list is the authority: a declared skip it does not name
+            # (an --absent facility, a by-design skip) is as much a FAIL as one found on the way.
+            if permitted_skip(self.permitted, module, check, detail) is None:
+                status, detail = FAIL, f"skip not in the permitted list (--strict): {detail}"
         elif status == SKIP and self.strict and not declared:
             # --strict (CI): only skips declared up front may pass; anything found missing on
             # the way is a stack that cannot show the flow it was started to show.
@@ -1738,8 +1787,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument(
         "--strict",
         action="store_true",
-        help="a SKIP not declared up front (--absent, or a check no staging host can make) is a FAIL",
+        help="a SKIP not in the permitted-skips file's --skip-profile is a FAIL, as is a check missing from it",
     )
+    ap.add_argument(
+        "--skip-profile", default="staging", help="--strict: the permitted-skips profile (staging, ci-integration)"
+    )
+    ap.add_argument("--permitted-skips", type=Path, default=PERMITTED_SKIPS, help="--strict: the permitted-skips file")
     ap.add_argument("--list", action="store_true", help="list the checks and exit")
     ap.add_argument("--verbose", action="store_true", help="keep the API's own request logs")
     args = ap.parse_args(argv)
@@ -1756,6 +1809,13 @@ def main(argv: list[str] | None = None) -> int:
             for name, _ in CHECKS[m]:
                 print(f"{m:<16} {name}")
         return 0
+    permitted, inventory = None, {}
+    if args.strict:
+        try:
+            permitted, inventory = load_permitted(args.permitted_skips, args.skip_profile)
+        except (OSError, ValueError) as exc:
+            print(f"--strict: cannot use the permitted skips: {exc}", file=sys.stderr)
+            return 2
 
     sys.path.insert(0, str(SRC / "scripts"))
     from _inprocess_api import connect_users
@@ -1784,7 +1844,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     started = datetime.now(UTC)
     print(f"staging acceptance {ctx.tag}: {len(modules)} modules as {args.admin}")
-    report = run_checks(ctx, modules, Report(strict=args.strict))
+    report = run_checks(ctx, modules, Report(strict=args.strict, permitted=permitted))
+    if args.strict:
+        for module, name, problem in inventory_drift(CHECKS, inventory, modules):
+            report.add(module, name, FAIL, problem)
     left = ctx.cleanup()
     meta = {
         "tag": ctx.tag,
@@ -1800,6 +1863,7 @@ def main(argv: list[str] | None = None) -> int:
         "cleanup_left": left,
         "kept": args.keep,
         "strict": args.strict,
+        "skip_profile": args.skip_profile if args.strict else None,
     }
     print()
     print(report.table())
