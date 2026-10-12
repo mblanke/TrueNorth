@@ -195,13 +195,38 @@ class TestVsphereEndpointAndDialect:
             ("vcsa.range.test", 443, "https://vcsa.range.test"),
             ("vcsa.range.test", None, "https://vcsa.range.test"),
             ("vcsa.range.test", 8443, "https://vcsa.range.test:8443"),
+            # 8006 is the API's old default (Proxmox's port) on rows created without one
+            ("vcsa.range.test", 8006, "https://vcsa.range.test"),
+            ("vcsa.range.test", "8006", "https://vcsa.range.test"),
+            ("vcsa.range.test", "not-a-port", "https://vcsa.range.test"),
             ("127.0.0.1:8989", None, "https://127.0.0.1:8989"),  # host already carries a port
+            ("127.0.0.1:8989", 8443, "https://127.0.0.1:8989"),  # ...and it wins
             ("https://vcsa.range.test:9443/", 443, "https://vcsa.range.test:9443"),
+            ("https://vcsa.range.test", 8443, "https://vcsa.range.test:8443"),
             ("fd00::10", 8443, "https://[fd00::10]:8443"),
+            ("fd00::10", 8006, "https://[fd00::10]"),
         ],
     )
     def test_base_url(self, host, port, url):
         assert vsphere_base_url(SimpleNamespace(host=host, port=port)) == url
+
+    def test_a_row_stored_with_8006_connects_on_443(self, db_session):
+        conn = _vcenter(db_session)
+        conn.port = 8006  # what the API stored when a vSphere connection was created without a port
+        with respx.mock(assert_all_called=True) as router:
+            _mock_vcenter(router)
+            result = _discover_vsphere(conn.id, conn, db_session)
+        assert result["nodes_discovered"] == 2, result["message"]
+
+    def test_same_url_as_the_worker_for_a_row(self):
+        """The worker's provisioner builds its endpoint with the same rule, when it has one."""
+        worker = pytest.importorskip("worker.provisioners.vsphere_api")
+        endpoint_url = getattr(worker, "endpoint_url", None)
+        if endpoint_url is None:
+            pytest.skip("worker has no endpoint_url on this branch (claude/vsphere-tenant-creds-hardening)")
+        for host, port in [("vcsa.range.test", 443), ("vcsa.range.test", None), ("vcsa.range.test", 8006),
+                           ("vcsa.range.test", 8443), ("10.0.0.5:9443", 8443), ("https://vc.test", 8443)]:
+            assert vsphere_base_url(SimpleNamespace(host=host, port=port)) == endpoint_url(host, port), (host, port)
 
     def test_api_dialect_uses_the_port_and_logs_out(self, db_session):
         conn = _vcenter(db_session)

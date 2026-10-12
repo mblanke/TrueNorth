@@ -1,7 +1,8 @@
 """vSphere connection backend — vCenter Automation REST API (the range platform).
 
 Endpoint: ``https://{host}[:{port}]`` from the connection row; the port is left out when
-it is 443 or unset, and a host that already carries a scheme or port is used as given.
+it is 443, 8006 (the API's old Proxmox default) or unset, and a port already in the host
+wins. Same rule as the worker's provisioner (see ``base_url``).
 
 REST dialect, detected at login as the worker's provisioner does
 (``worker/provisioners/vsphere_api.py``): ``POST /api/session`` (vSphere 7.0U2+) first; a
@@ -19,6 +20,7 @@ import ipaddress
 from collections.abc import Iterator
 from contextlib import contextmanager, suppress
 from datetime import datetime
+from urllib.parse import urlparse
 
 import httpx
 
@@ -38,22 +40,36 @@ _API_VERSION_FALLBACK = "/vcenter/system/version"
 _VM_HOST_FILTER = {API: "hosts", REST: "filter.hosts"}
 
 
+# Ports that mean "not given" on a vSphere row: 443 is the default, and 8006 (Proxmox's
+# port) is what the API stored for any connection created without one. No vCenter listens
+# on 8006. Same rule as the worker's provisioner (vsphere_api.endpoint_url), so the API and
+# the worker reach the same URL for a row.
+_NO_PORT = (0, 443, 8006)
+
+
 def base_url(conn) -> str:
-    """``https://host[:port]`` for a connection row; no port for 443 or unset."""
+    """``https://host[:port]`` for a vSphere connection row.
+
+    No port for 443, 8006 or unset (see ``_NO_PORT``). A port already in ``host`` wins; a
+    host given with a scheme keeps it. A bare IPv6 address is bracketed.
+    """
     host = str(conn.host or "").strip().rstrip("/")
-    if "://" in host:
-        return host  # an explicit URL is taken as written
-    port = getattr(conn, "port", None)
-    bare = host[1:-1] if host.startswith("[") and host.endswith("]") else host
     try:
-        if ipaddress.ip_address(bare).version == 6:
-            host = f"[{bare}]"
-    except ValueError:
-        if ":" in host:
-            return f"https://{host}"  # host:port already
-    if not port or int(port) == 443:
-        return f"https://{host}"
-    return f"https://{host}:{int(port)}"
+        port = int(getattr(conn, "port", None) or 0)
+    except (TypeError, ValueError):
+        port = 0
+    if "://" not in host:
+        bare = host[1:-1] if host.startswith("[") and host.endswith("]") else host
+        try:
+            if ipaddress.ip_address(bare).version == 6:
+                host = f"[{bare}]"
+        except ValueError:
+            pass
+        host = f"https://{host}"
+    parsed = urlparse(host)
+    if port in _NO_PORT or parsed.port is not None:
+        return host
+    return parsed._replace(netloc=f"{parsed.netloc}:{port}").geturl()
 
 
 class _Session:
