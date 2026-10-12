@@ -224,7 +224,7 @@ def test_downgrade_then_upgrade_round_trips(postgres_engine):
                            capture_output=True, text=True, timeout=300)
         assert r.returncode == 0, r.stderr[-2000:]
 
-    alembic("downgrade", "9e5c3a7b2d18")
+    alembic("downgrade", "a1e2b3c4d5f6")
     with postgres_engine.begin() as conn:
         rid = _insert(conn)
         conn.execute(text("UPDATE audit_logs SET action = 'changed' WHERE id = :id"), {"id": rid})  # no guard now

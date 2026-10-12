@@ -280,7 +280,8 @@ prune_to_size() {
 # The last success survives a failed run, so BackupStale measures the age of the newest
 # good backup. No METRICS_DIR: nothing is written. Never fails the backup.
 backup_metrics() {
-    local rc="$1" kept="$2" f tmp now last=0
+    # backup_metrics <exit code> <kept 0|1> [<audit archive verified 1|0, empty: not checked>]
+    local rc="$1" kept="$2" audit="${3:-}" f tmp now last=0
     [[ -n "${METRICS_DIR:-}" && -d "${METRICS_DIR}" ]] || return 0
     f="${METRICS_DIR}/truenorth_backup.prom"
     now="$(date +%s)"
@@ -297,13 +298,22 @@ truenorth_backup_last_success_timestamp_seconds ${last}
 # HELP truenorth_backup_last_run_timestamp_seconds When backup.sh last finished, successful or not.
 # TYPE truenorth_backup_last_run_timestamp_seconds gauge
 truenorth_backup_last_run_timestamp_seconds ${now}
-# HELP truenorth_backup_last_exit_code backup.sh's last exit code: 0 ok, 1 failed, 3 no secrets escrow, 5 telemetry snapshot failed.
+# HELP truenorth_backup_last_exit_code backup.sh's last exit code: 0 ok, 1 failed, 3 no secrets escrow, 5 telemetry snapshot failed, 6 audit export archive does not verify (3 wins over 6; see truenorth_backup_audit_verified).
 # TYPE truenorth_backup_last_exit_code gauge
 truenorth_backup_last_exit_code ${rc}
-# HELP truenorth_backup_last_run_success 1 if the last run kept a backup (exit 0, 3 or 5), else 0.
+# HELP truenorth_backup_last_run_success 1 if the last run kept a backup (exit 0, 3, 5 or 6), else 0.
 # TYPE truenorth_backup_last_run_success gauge
 truenorth_backup_last_run_success ${kept}
 EOF
+    # Its own gauge, so a tampered archive is visible whatever the exit code says (an exit 3
+    # for a missing escrow would otherwise hide it). Absent when the archive was not checked.
+    if [[ "${audit}" == 0 || "${audit}" == 1 ]]; then
+        cat >>"${tmp}" <<EOF
+# HELP truenorth_backup_audit_verified 1 if the last backup verified the signed audit export archive, 0 if it did NOT (possible tampering).
+# TYPE truenorth_backup_audit_verified gauge
+truenorth_backup_audit_verified ${audit}
+EOF
+    fi
     chmod 0644 "${tmp}" 2>/dev/null || true   # node_exporter runs as nobody
     mv -f "${tmp}" "$f" 2>/dev/null || rm -f "${tmp}"
 }
@@ -387,9 +397,15 @@ audit_archive_verify() {
         done <"$db_rows"
         while IFS=' ' read -r sha prev key day; do
             [[ -n "$sha" ]] || continue
+            # The newest manifest may be written a moment before its audit_exports row (and,
+            # right after a key rotation, by a key the table has not recorded yet): tolerated
+            # for the one manifest at the head of the chain, not for any other.
             if ! cut -d'|' -f4 "$db_rows" | grep -qx "$key"; then
-                echo "the manifest of ${day%|*} is signed by key ${key}, which audit_exports never recorded" >&2
-                return 1
+                if [[ "$sha" != "$(printf '%s' "$chain" | awk '{s[$1]=1; if ($2 != "-") r[$2]=1} END {for (k in s) if (!(k in r)) print k}')" ]] \
+                        || cut -d'|' -f3 "$db_rows" | grep -qx "$sha"; then
+                    echo "the manifest of ${day%|*} is signed by key ${key}, which audit_exports never recorded" >&2
+                    return 1
+                fi
             fi
             if ! cut -d'|' -f3 "$db_rows" | grep -qx "$sha"; then
                 missing=$((missing + 1))  # written but not yet recorded: an interrupted export

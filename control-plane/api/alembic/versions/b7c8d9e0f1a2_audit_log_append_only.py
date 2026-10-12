@@ -1,7 +1,7 @@
 """audit_logs append-only; audit_exports for the signed daily exports (ADR 0011)
 
 Revision ID: b7c8d9e0f1a2
-Revises: 9e5c3a7b2d18
+Revises: a1e2b3c4d5f6
 Create Date: 2026-10-12 12:00:00.000000
 
 * ``audit_exports``: one row per signed export of a UTC day (worker/audit_tasks.py).
@@ -34,7 +34,7 @@ from alembic import op
 from app.models import GUID
 
 revision: str = "b7c8d9e0f1a2"
-down_revision: str | None = "9e5c3a7b2d18"
+down_revision: str | None = "a1e2b3c4d5f6"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

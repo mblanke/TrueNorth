@@ -37,7 +37,9 @@
 #      backup, or anything that does not match) are MOVED, never deleted, to
 #      quarantine/<restore time>/ with RESTORE.json saying why, and an
 #      audit.archive_quarantine row is written. Otherwise the next export would find a
-#      manifest for other rows and fail every night (docs/runbooks/backup-restore.md);
+#      manifest for other rows and fail every night (docs/runbooks/backup-restore.md).
+#      --skip-audit skips both 2b and 3b: after a database restore without them, reconcile by
+#      hand (runbook "Archive newer than the database") before worker-scenario runs;
 #   6. start the services stopped in step 2 again (unless --no-restart).
 #
 # It does NOT restore the env file: if it was lost, recover it from the escrow
@@ -244,7 +246,14 @@ if (( DO_PG && DO_AUDIT )) && [[ -n "${AUDIT_ARCHIVE_PATH:-}" && -d "${AUDIT_ARC
             day="${base%%.*}"; seq=0; [[ "$base" == *.s* ]] && seq="${base##*.s}"
             sha="$("${OPENSSL:-openssl}" dgst -sha256 -r "$m" | cut -d' ' -f1)"
             grep -qx "${day}|${seq}|${sha}|.*" "${QROWS}" && continue
+            # The manifest is untrusted input and this runs as root: its "file" may only name
+            # this export's own data file, beside the manifest (no '/', no '..').
             file="$(sed -n 's/.*"file":"\([^"]*\)".*/\1/p' "$m")"
+            fname="${file##*/}"
+            if [[ "${file}" != "$(dirname "${rel}")/${fname}" || "${fname}" == *..* || ! "${fname}" =~ ^audit-[0-9]{4}-[0-9]{2}-[0-9]{2}(\.s[0-9]+)?\.jsonl\.gz$ ]]; then
+                log "WARN" "  audit: ${rel} names an unexpected data file (${file}); only the manifest and signature are moved"
+                file=""
+            fi
             for f in "$rel" "${rel}.sig" "$file"; do
                 [[ -n "$f" && -e "${AUDIT_ARCHIVE_PATH}/${f}" ]] || continue
                 mkdir -p "$(dirname "${QDIR}/${f}")"

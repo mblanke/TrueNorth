@@ -132,7 +132,7 @@ on_exit() {
         rmdir "${LOCK_DIR}" 2>/dev/null || true
     fi
     # For BackupFailed / BackupStale (prometheus/alerts.yml): 0, 3 and 5 all kept a backup.
-    if [[ "${CURRENT_STEP}" == "done" ]]; then backup_metrics "${rc}" 1; else backup_metrics "${rc}" 0; fi
+    if [[ "${CURRENT_STEP}" == "done" ]]; then backup_metrics "${rc}" 1 "${AUDIT_VERIFIED:-}"; else backup_metrics "${rc}" 0; fi
 }
 trap on_exit EXIT
 
@@ -277,6 +277,7 @@ CURRENT_STEP="audit"
 AUDIT_JSON='{"status":"not-configured"}'
 AUDIT_FAILED=0
 AUDIT_ERROR=""
+AUDIT_VERIFIED=""   # 1 / 0 once checked: truenorth_backup_audit_verified
 if [[ -n "${AUDIT_ARCHIVE_PATH:-}" ]]; then
     if [[ -d "${AUDIT_ARCHIVE_PATH}" ]]; then
         mkdir -p "${WORK_PATH}/audit-archive"
@@ -290,9 +291,11 @@ if [[ -n "${AUDIT_ARCHIVE_PATH:-}" ]]; then
         if verdict="$(audit_archive_verify "${WORK_PATH}/audit-archive" "${db_rows}" 2>"${WORK_PATH}/.audit.err")"; then
             IFS=" " read -r v_n v_last v_extra <<<"${verdict}"
             AUDIT_JSON="{\"status\":\"backed-up\",\"dir\":\"audit-archive\",\"files\":${n_files},\"manifests\":${v_n},\"last_day\":$(json_str "${v_last}"),\"db_checked\":${db_checked},\"not_in_db\":${v_extra},\"verified\":true}"
+            AUDIT_VERIFIED=1
             log "INFO" "  audit: ${n_files} files, ${v_n} manifests through ${v_last}, signatures, hashes and chain verified (database compared: ${db_checked})"
         else
             AUDIT_FAILED=1
+            AUDIT_VERIFIED=0
             AUDIT_ERROR="$(head -c 300 "${WORK_PATH}/.audit.err" | tr -d '\r' | tr '\n\t' '  ')"
             AUDIT_JSON="{\"status\":\"backed-up\",\"dir\":\"audit-archive\",\"files\":${n_files},\"verified\":false,\"error\":$(json_str "${AUDIT_ERROR}")}"
             log "WARN" "  audit: archive copied but does NOT verify: ${AUDIT_ERROR}"

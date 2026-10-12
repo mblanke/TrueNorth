@@ -90,11 +90,16 @@ log "INFO" "Backup completed in ${DURATION}s"
 case "${BACKUP_RC}" in
     3) log "WARN" "data backed up, secrets NOT escrowed (exit 3)" ;;
     5) log "WARN" "data backed up, OpenSearch telemetry snapshot FAILED (exit 5; see the manifest)" ;;
-    6) send_notification "failure" "SECURITY: the audit export archive does NOT verify (backup exit 6): a signature, hash, chain link or recorded export is wrong. Possible tampering. The backup (with the archive as found) is kept and copied off-host; compare it with older backups and the recorded key fingerprint (docs/runbooks/backup-restore.md)." ;;
 esac
 
 # ── Find the latest backup just created ──────────────────────────────────────
 LATEST_BACKUP=$(find "${TYPE_DIR}" -maxdepth 1 -type d -name "truenorth-backup-*" | sort | tail -1)
+
+# The audit archive is judged from the manifest, not the exit code: exit 3 (no escrow)
+# wins over 6, and a tampered archive must still raise its own SECURITY notice.
+if [[ -n "${LATEST_BACKUP}" ]] && grep -q '"audit_archive": {[^}]*"verified":false' "${LATEST_BACKUP}/manifest.json" 2>/dev/null; then
+    send_notification "failure" "SECURITY: the audit export archive does NOT verify (backup exit ${BACKUP_RC}): a signature, hash, chain link or recorded export is wrong. Possible tampering. The backup (with the archive as found) is kept and copied off-host; compare it with older backups and the recorded key fingerprint (docs/runbooks/backup-restore.md)."
+fi
 
 # ── Upload to S3 if configured ──────────────────────────────────────────────
 if [[ -n "${S3_BUCKET}" && -n "${LATEST_BACKUP}" ]]; then

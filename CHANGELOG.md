@@ -325,7 +325,8 @@ course production with a local-model fallback, and the cleanup of unsupported su
   copies and verifies the archive: signatures, hashes, the chain, and against
   `audit_exports` (exact manifest hashes; signing keys the database recorded), new exit
   code 6 when it does not verify, which `cron-backup.sh` still uploads and rotates with a
-  critical `AuditArchiveTampered` alert (a pre-upgrade backup's 6 stops the upgrade, by
+  SECURITY notice; the critical `AuditArchiveTampered` alert reads its own metric
+  `truenorth_backup_audit_verified`, so an exit 3 cannot hide it (a pre-upgrade backup's 6 stops the upgrade, by
   design: docs/runbooks/upgrade.md). `restore.sh` restores the archive first and then moves
   every export the restored database does not list to `quarantine/<time>/` (kept;
   `RESTORE.json`, an `audit.archive_quarantine` row), so exports continue instead of

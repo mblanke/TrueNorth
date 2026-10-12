@@ -103,7 +103,10 @@ manifest's `opensearch` entry says `"status":"failed"` and why; `6` everything k
 audit export archive does **not** verify (a signature or file hash is wrong: tampering or
 damage) — the manifest's `audit_archive` entry has `"verified":false` and the first problem.
 Precedence when several apply: `3`, then `6`, then `5`; each alerts. Treat `6` as a security
-event: compare the archive with an older backup and the key fingerprint recorded at install. `cron-backup.sh` treats `3` and `5` alike: it uploads and rotates the backup and passes
+event: compare the archive with an older backup and the key fingerprint recorded at install.
+Because `3` can hide `6`, the archive has its own metric, `truenorth_backup_audit_verified`
+(0 fires the critical `AuditArchiveTampered`), and `cron-backup.sh` sends its SECURITY notice
+from the manifest's `audit_archive.verified`, whatever the exit code. `cron-backup.sh` treats `3` and `5` alike: it uploads and rotates the backup and passes
 the code through.
 
 Prometheus watches the same things: each `backup.sh` run writes

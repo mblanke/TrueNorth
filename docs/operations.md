@@ -253,7 +253,7 @@ OpenSearch's `_cluster/health`, the Moodle node's container health (only with
 | `Arc2RunnerDown` | warning | `truenorth-arc2-runner` not active for 5 min |
 | `BackupFailed` | critical | the last `backup.sh` run kept no backup |
 | `BackupIncomplete` | warning | the last backup kept the data but exited 3 (no escrow), 5 (telemetry snapshot failed) or 6 |
-| `AuditArchiveTampered` | critical | the last backup exited 6: the signed audit export archive does not verify (signature, hash, chain or recorded export). A security event: docs/runbooks/backup-restore.md |
+| `AuditArchiveTampered` | critical | `truenorth_backup_audit_verified` is 0: the last backup found that the signed audit export archive does not verify (signature, hash, chain or recorded export). A security event: docs/runbooks/backup-restore.md |
 | `BackupStale` | critical | no good backup for more than 26 h (seeded at install, so a cron that never runs alerts too) |
 
 There is no WebSocket-connection alert: the API's `active_websocket_connections` gauge is

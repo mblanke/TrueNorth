@@ -295,3 +295,65 @@ def test_cron_backup_uploads_and_rotates_on_exit_6_with_a_security_alert(stack, 
     assert "UPLOADED" in Path(stack["FAKE_LOG"] + ".s3").read_text()
     assert "SECURITY: the audit export archive does NOT verify" in run.stderr
     assert "Cron backup complete" in run.stdout + run.stderr
+
+
+# ── Review 2 ───────────────────────────────────────────────────────────
+def test_escrow_missing_and_a_tampered_archive_both_show(stack, tmp_path):
+    """Exit 3 wins over 6, so the archive has its own gauge, and cron its own notice."""
+    metrics = tmp_path / "metrics"
+    metrics.mkdir()
+    target = Path(stack["AUDIT_ARCHIVE_PATH"]) / "2026/10/audit-2026-10-10.jsonl.gz"
+    target.write_bytes(target.read_bytes() + b"\0")
+    env = {k: v for k, v in stack.items() if k != "BACKUP_ESCROW"}
+    env["METRICS_DIR"] = str(metrics)
+    run = _run("backup.sh", env)
+    assert run.returncode == 3, run.stdout + run.stderr
+    prom = (metrics / "truenorth_backup.prom").read_text()
+    assert "truenorth_backup_audit_verified 0" in prom and "truenorth_backup_last_exit_code 3" in prom
+
+
+def test_a_verified_archive_sets_the_gauge_to_1(stack, tmp_path):
+    metrics = tmp_path / "metrics"
+    metrics.mkdir()
+    assert _run("backup.sh", {**stack, "METRICS_DIR": str(metrics)}).returncode == 0
+    assert "truenorth_backup_audit_verified 1" in (metrics / "truenorth_backup.prom").read_text()
+
+
+def test_cron_sends_the_security_notice_on_exit_3_with_a_tampered_archive(stack, tmp_path):
+    scripts = tmp_path / "scripts-copy"
+    shutil.copytree(BACKUP, scripts)
+    target = Path(stack["AUDIT_ARCHIVE_PATH"]) / "2026/10/audit-2026-10-10.jsonl.gz"
+    target.write_bytes(target.read_bytes() + b"\0")
+    env = {k: v for k, v in stack.items() if k[0] != "_" and k != "BACKUP_ESCROW"}
+    run = subprocess.run(["bash", str(scripts / "cron-backup.sh")], env=env, capture_output=True, text=True,
+                         stdin=subprocess.DEVNULL, timeout=120)
+    assert run.returncode == 3, run.stdout + run.stderr
+    assert "SECURITY: the audit export archive does NOT verify (backup exit 3)" in run.stderr
+
+
+def test_restore_never_moves_a_file_a_manifest_points_outside_its_day(stack, tmp_path):
+    """The manifest is untrusted and restore.sh runs as root: a traversal 'file' is ignored."""
+    env = {**stack, "FAKE_AUDIT_TABLE": "t"}
+    assert _run("backup.sh", env).returncode == 0
+    backup = _the_backup(env)
+    live = Path(stack["AUDIT_ARCHIVE_PATH"])
+    victim = tmp_path / "victim.txt"
+    victim.write_text("root-owned file elsewhere")
+    evil = live / "2026/10/audit-2026-10-30.manifest.json"  # not in audit_exports: quarantined
+    rel_victim = os.path.relpath(victim, live)
+    evil.write_text(json.dumps({"day": "2026-10-30", "seq": 0, "file": rel_victim, "file_sha256": "0" * 64,
+                                "key_id": "0" * 16}, separators=(",", ":")))
+    run = _run("restore.sh", env, str(backup), "--force")
+    assert run.returncode == 0, run.stdout + run.stderr
+    assert victim.read_text() == "root-owned file elsewhere"
+    assert "names an unexpected data file" in run.stdout + run.stderr
+    assert not evil.exists()  # the manifest itself was quarantined
+
+
+def test_the_newest_manifest_may_carry_a_key_not_yet_recorded(stack):
+    """Just after a rotation, the head of the chain is written before its audit_exports row."""
+    _extend(Path(stack["AUDIT_ARCHIVE_PATH"]))  # signed by another key, not in the rows
+    run = _run("backup.sh", {**stack, "FAKE_AUDIT_TABLE": "t"})
+    assert run.returncode == 0, run.stdout + run.stderr
+    entry = json.loads((_the_backup(stack) / "manifest.json").read_text())["audit_archive"]
+    assert entry["verified"] is True and entry["not_in_db"] == 1
