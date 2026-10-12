@@ -218,11 +218,24 @@ def test_no_history_when_the_run_was_never_created(tmp_path, fake_claude, monkey
     exe, _ = fake_claude
     monkeypatch.setenv("FAKE_MODE", "fail")
     runs = tmp_path / "runs"
-    queue_job(runs)
+    queue_job(runs, action="resume", text="accept")  # a resume never creates the run
     runner.main(["--runs", str(runs), "--claude", str(exe), "--once"])
     [rec] = records(runs)
     assert "history_commit" not in rec
     assert not (runs / "arc2-wireshark-basics").exists()
+
+
+def test_a_start_stages_its_request_in_the_run_before_the_engine_runs(tmp_path, fake_claude, monkeypatch):
+    """The runner writes <run>/request.txt itself: a confined job may write only inside its
+    run, and the Write tool cannot replace a file in the read-only runs root."""
+    exe, _ = fake_claude
+    monkeypatch.setenv("FAKE_MODE", "fail")
+    runs = tmp_path / "runs"
+    queue_job(runs)
+    runner.main(["--runs", str(runs), "--claude", str(exe), "--once"])
+    run = runs / "arc2-wireshark-basics"
+    assert (run / "request.txt").read_text() == "60 min beginner course on packet sniffing and Wireshark\n"
+    assert not (runs / "arc2-wireshark-basics.request.txt").exists()
 
 
 @pytest.mark.parametrize("text", ["fix --resume arc2-victim accept", "x --slug arc2-other", "y --Resume=arc2-z"])

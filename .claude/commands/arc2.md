@@ -46,9 +46,12 @@ Exit codes: `merge` 1 rejected / 2 STOP; `check` 0 pass / 1 fail / 3 HUMAN-TAKEO
 2. **Slug and init.** `SLUG` = the `--slug` value if one was given, else
    `arc2-<2-4 lowercase tokens from the request>`;
    `RUN=$PWD/build/arc2/$SLUG`. If `$RUN/manifest.json` exists, say "run already exists;
-   resuming it" and go to step 3. Otherwise `mkdir -p build/arc2`, write the request
-   verbatim to `build/arc2/$SLUG.request.txt`, then
-   `$ARC init $RUN --slug $SLUG --request-file build/arc2/$SLUG.request.txt $INIT_FLAGS`.
+   resuming it" and go to step 3. Otherwise the request goes in `$RUN/request.txt`:
+   with `--slug`, if that file exists and is not empty, the Course Studio runner wrote it;
+   leave it as it is. Otherwise `mkdir -p $RUN` and write the request verbatim to
+   `$RUN/request.txt`. Then `$ARC init $RUN --slug $SLUG $INIT_FLAGS` (it reads
+   `$RUN/request.txt`). Write nothing directly in `build/arc2/`: a confined job may write
+   only inside `$RUN`.
 3. **Dispatch, then stages 1-5 in order.** On a resume first run `$ARC gate $RUN --verify`:
    exit 1 means accepted inputs were edited by hand and a gate re-opened → `status`, stop.
    Read `$RUN/manifest.json` and go to the first line that matches:
