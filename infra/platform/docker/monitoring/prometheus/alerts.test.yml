@@ -165,3 +165,69 @@ tests:
             exp_annotations:
               summary: "Host probes have not run for 10 minutes"
               description: "truenorth_probes.prom is stale: the OpenSearch, Moodle and ARC² runner alerts are blind. Check the truenorth-host-probes cron job and host:9100's logs/host-probes.log."
+
+  # ── API latency ──────────────────────────────────────────────────────
+  # 10 req/min per route. Before the path filter, slow probes and unrouted 404s pulled
+  # p95 to ~2.4 s while every real route answered in under 25 ms.
+  - name: slow health probes and unmatched paths do not fire ApiHighLatencyP95
+    interval: 1m
+    input_series:
+      - series: 'http_request_duration_seconds_bucket{job="truenorth-api",method="GET",path="/ranges",le="0.025"}'
+        values: "0+10x20"
+      - series: 'http_request_duration_seconds_bucket{job="truenorth-api",method="GET",path="/ranges",le="1"}'
+        values: "0+10x20"
+      - series: 'http_request_duration_seconds_bucket{job="truenorth-api",method="GET",path="/ranges",le="2.5"}'
+        values: "0+10x20"
+      - series: 'http_request_duration_seconds_bucket{job="truenorth-api",method="GET",path="/ranges",le="+Inf"}'
+        values: "0+10x20"
+      - series: 'http_request_duration_seconds_bucket{job="truenorth-api",method="GET",path="/health/deep",le="0.025"}'
+        values: "0x20"
+      - series: 'http_request_duration_seconds_bucket{job="truenorth-api",method="GET",path="/health/deep",le="1"}'
+        values: "0x20"
+      - series: 'http_request_duration_seconds_bucket{job="truenorth-api",method="GET",path="/health/deep",le="2.5"}'
+        values: "0+10x20"
+      - series: 'http_request_duration_seconds_bucket{job="truenorth-api",method="GET",path="/health/deep",le="+Inf"}'
+        values: "0+10x20"
+      - series: 'http_request_duration_seconds_bucket{job="truenorth-api",method="GET",path="unmatched",le="0.025"}'
+        values: "0x20"
+      - series: 'http_request_duration_seconds_bucket{job="truenorth-api",method="GET",path="unmatched",le="1"}'
+        values: "0x20"
+      - series: 'http_request_duration_seconds_bucket{job="truenorth-api",method="GET",path="unmatched",le="2.5"}'
+        values: "0+10x20"
+      - series: 'http_request_duration_seconds_bucket{job="truenorth-api",method="GET",path="unmatched",le="+Inf"}'
+        values: "0+10x20"
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: ApiHighLatencyP95
+        exp_alerts: []
+
+  - name: a slow real route fires ApiHighLatencyP95
+    interval: 1m
+    input_series:
+      - series: 'http_request_duration_seconds_bucket{job="truenorth-api",method="GET",path="/ranges",le="0.025"}'
+        values: "0x20"
+      - series: 'http_request_duration_seconds_bucket{job="truenorth-api",method="GET",path="/ranges",le="1"}'
+        values: "0x20"
+      - series: 'http_request_duration_seconds_bucket{job="truenorth-api",method="GET",path="/ranges",le="2.5"}'
+        values: "0+10x20"
+      - series: 'http_request_duration_seconds_bucket{job="truenorth-api",method="GET",path="/ranges",le="+Inf"}'
+        values: "0+10x20"
+      - series: 'http_request_duration_seconds_bucket{job="truenorth-api",method="GET",path="/health",le="0.025"}'
+        values: "0+10x20"
+      - series: 'http_request_duration_seconds_bucket{job="truenorth-api",method="GET",path="/health",le="1"}'
+        values: "0+10x20"
+      - series: 'http_request_duration_seconds_bucket{job="truenorth-api",method="GET",path="/health",le="2.5"}'
+        values: "0+10x20"
+      - series: 'http_request_duration_seconds_bucket{job="truenorth-api",method="GET",path="/health",le="+Inf"}'
+        values: "0+10x20"
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: ApiHighLatencyP95
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: ApiHighLatencyP95
+        exp_alerts:
+          - exp_labels: { severity: warning }
+            exp_annotations:
+              summary: "API P95 latency exceeds 1 second"
+              description: "P95 latency: 2.425s"

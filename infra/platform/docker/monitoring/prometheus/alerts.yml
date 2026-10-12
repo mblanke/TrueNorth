@@ -59,7 +59,9 @@ groups:
           description: "5xx error rate: {{ $value | printf \"%.2f\" }}%"
 
       - alert: ApiHighLatencyP95
-        expr: histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{job="truenorth-api"}[5m])) by (le)) > 1
+        # Probes (/health, /health/live|ready|deep) and unrouted 404s are not user latency;
+        # the API also stops timing the probes (app/metrics.py SKIP_PATHS).
+        expr: histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{job="truenorth-api", path!~"/health.*|unmatched"}[5m])) by (le)) > 1
         for: 5m
         labels:
           severity: warning
