@@ -228,23 +228,13 @@ def seed_infrastructure(db: Session) -> None:
 
 
 def seed_ai_backends(db: Session) -> None:
-    """Insert default AI backend configuration if empty."""
-    if db.query(AIBackendConfig).count() > 0:
-        return
+    """Seed no AI backend: there is no default AI endpoint.
 
-    backends = [
-        AIBackendConfig(
-            name="Ollama (Primary)",
-            backend_type="ollama",
-            base_url="https://ai.guapo613.beer",
-            is_active=True,
-            is_primary=True,
-            max_concurrent=4,
-            timeout_seconds=120,
-            notes="Self-hosted Ollama instance - default model: mistral",
-        ),
-    ]
-    for b in backends:
-        db.add(b)
-    db.commit()
-    logger.info("Seeded %d AI backend configs", len(backends))
+    This used to insert an active primary "Ollama (Primary)" pointing at one
+    person's internet-facing host, so a fresh install called out to it. With no
+    backend rows AI reads as not configured (POST /ai-config/test-generate answers
+    from the mock, the UI says so) until an operator registers one. Kept because
+    main.py calls it at startup; existing rows are never touched.
+    """
+    if db.query(AIBackendConfig).count() == 0:
+        logger.info("No AI backend configured; register one under AI Orchestrator > Backends")
