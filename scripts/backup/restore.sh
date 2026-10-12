@@ -31,7 +31,13 @@
 #      and does not start it again;
 #   2b. audit archive (when the backup holds audit-archive/ and AUDIT_ARCHIVE_PATH is set
 #      here): copied back over AUDIT_ARCHIVE_PATH before the databases (its files win over
-#      same-named ones; newer exports already there are kept), owners and modes kept;
+#      same-named ones), owners and modes kept;
+#   3b. audit archive reconciliation (after the databases, whenever AUDIT_ARCHIVE_PATH
+#      exists): exports the restored audit_exports does not list (days exported after the
+#      backup, or anything that does not match) are MOVED, never deleted, to
+#      quarantine/<restore time>/ with RESTORE.json saying why, and an
+#      audit.archive_quarantine row is written. Otherwise the next export would find a
+#      manifest for other rows and fail every night (docs/runbooks/backup-restore.md);
 #   6. start the services stopped in step 2 again (unless --no-restart).
 #
 # It does NOT restore the env file: if it was lost, recover it from the escrow
@@ -218,6 +224,58 @@ if (( DO_PG )); then
         psql_admin -c "DROP DATABASE IF EXISTS ${qdb} WITH (FORCE)"
         dc exec -T postgres pg_restore -U "${PG_USER}" -d template1 --create --exit-on-error <"$dump"
     done
+fi
+
+# ── Audit archive vs the restored database ───────────────────────────────────
+# The restored audit_exports is the truth: an export it does not list (with that exact
+# hash) is moved aside, kept for investigation, and the worker's next export continues
+# the chain from the restored database's last day.
+if (( DO_PG && DO_AUDIT )) && [[ -n "${AUDIT_ARCHIVE_PATH:-}" && -d "${AUDIT_ARCHIVE_PATH}" ]]; then
+    CURRENT_STEP="audit-archive:reconcile"
+    QROWS="$(mktemp)"
+    if audit_db_rows "${QROWS}"; then
+        QTS="$(date -u +%Y%m%dT%H%M%SZ)"
+        QDIR="${AUDIT_ARCHIVE_PATH}/quarantine/${QTS}"
+        moved=()
+        while IFS= read -r m; do
+            [[ -n "$m" ]] || continue
+            rel="${m#"${AUDIT_ARCHIVE_PATH}"/}"
+            base="${m##*/}"; base="${base#audit-}"; base="${base%.manifest.json}"
+            day="${base%%.*}"; seq=0; [[ "$base" == *.s* ]] && seq="${base##*.s}"
+            sha="$("${OPENSSL:-openssl}" dgst -sha256 -r "$m" | cut -d' ' -f1)"
+            grep -qx "${day}|${seq}|${sha}|.*" "${QROWS}" && continue
+            file="$(sed -n 's/.*"file":"\([^"]*\)".*/\1/p' "$m")"
+            for f in "$rel" "${rel}.sig" "$file"; do
+                [[ -n "$f" && -e "${AUDIT_ARCHIVE_PATH}/${f}" ]] || continue
+                mkdir -p "$(dirname "${QDIR}/${f}")"
+                mv "${AUDIT_ARCHIVE_PATH}/${f}" "${QDIR}/${f}"
+            done
+            moved+=("${rel}")
+        done < <(find "${AUDIT_ARCHIVE_PATH}" -path "${AUDIT_ARCHIVE_PATH}/quarantine" -prune -o \
+                    -type f -name '*.manifest.json' -print | sort)
+        if (( ${#moved[@]} > 0 )); then
+            list="$(printf '%s\n' "${moved[@]}" | sed 's/.*/"&"/' | paste -sd, -)"
+            printf '{"restored_from":%s,"at":"%s","reason":%s,"moved":[%s]}\n' \
+                "$(json_str "$(basename "${BACKUP_PATH}")")" "${QTS}" \
+                "$(json_str "exports the restored audit_exports does not list (exported after the backup, or not matching it)")" \
+                "${list}" >"${QDIR}/RESTORE.json"
+            # A record in the restored log itself (the insert trigger stamps the time).
+            # psql interpolates :'detail' (quoted safely) only in SQL read from stdin, not -c.
+            # shellcheck disable=SC2016  # the :'detail' is psql's, not the shell's
+            printf '%s\n' "insert into audit_logs (id, timestamp, action, resource_type, resource_id, detail) values (gen_random_uuid(), now(), 'audit.archive_quarantine', 'audit_archive', :'qts', :'detail');" \
+                | dc exec -T postgres psql -U "${PG_USER}" -d "${PG_DB}" -v ON_ERROR_STOP=1 -q \
+                    -v qts="${QTS}" \
+                    -v detail="{\"quarantine\":\"quarantine/${QTS}\",\"manifests\":${#moved[@]},\"backup\":\"$(basename "${BACKUP_PATH}")\"}" \
+                    -f - >/dev/null \
+                || log "WARN" "  audit: could not write the audit.archive_quarantine row (see quarantine/${QTS}/RESTORE.json)"
+            log "WARN" "  audit: ${#moved[@]} archive export(s) newer than (or not matching) the restored database moved to ${QDIR} (kept, not deleted; RESTORE.json)"
+        else
+            log "INFO" "  audit: archive and restored database agree"
+        fi
+    else
+        log "INFO" "  audit: the restored database has no audit_exports table; archive left as it is"
+    fi
+    rm -f "${QROWS}"
 fi
 
 # ── MinIO ────────────────────────────────────────────────────────────────────

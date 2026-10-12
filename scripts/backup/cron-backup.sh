@@ -22,8 +22,10 @@
 #   MONTHLY_KEEP     — Number of monthly backups to keep (default: 12)
 #
 # Exits non-zero whenever backup.sh does (1 = failed, 3 = no secrets escrow, 5 = data
-# backed up but the OpenSearch telemetry snapshot failed), or 4 when only the offsite
-# upload failed. On 3 and 5 the backup is kept, uploaded and rotated like a good one.
+# backed up but the OpenSearch telemetry snapshot failed, 6 = the audit export archive does
+# not verify), or 4 when only the offsite upload failed. On 3, 5 and 6 the backup is kept,
+# uploaded and rotated like a good one: a tampered audit archive must not also stop the
+# off-host copies (the copy is the evidence). 6 additionally raises a SECURITY alert.
 # =============================================================================
 set -euo pipefail
 IFS=$'\n\t'
@@ -74,9 +76,10 @@ BACKUP_RC=0
 ROOT_DIR="${BACKUP_DIR}"
 BACKUP_ROOT="${ROOT_DIR}" BACKUP_DIR="${TYPE_DIR}" BACKUP_RETENTION_DAYS=0 \
     bash "${SCRIPT_DIR}/backup.sh" || BACKUP_RC=$?
-# 3 (secrets not escrowed) and 5 (telemetry snapshot failed) mean the data WAS backed up:
-# upload, rotation and the summary still run; backup.sh has already alerted.
-if (( BACKUP_RC != 0 && BACKUP_RC != 3 && BACKUP_RC != 5 )); then
+# 3 (secrets not escrowed), 5 (telemetry snapshot failed) and 6 (audit archive does not
+# verify) mean the data WAS backed up: upload, rotation and the summary still run;
+# backup.sh has already alerted.
+if (( BACKUP_RC != 0 && BACKUP_RC != 3 && BACKUP_RC != 5 && BACKUP_RC != 6 )); then
     DURATION=$(( $(date +%s) - BACKUP_START ))
     send_notification "failure" "Backup type: ${BACKUP_TYPE}. Failed (exit ${BACKUP_RC}) after ${DURATION}s."
     exit "${BACKUP_RC}"
@@ -87,6 +90,7 @@ log "INFO" "Backup completed in ${DURATION}s"
 case "${BACKUP_RC}" in
     3) log "WARN" "data backed up, secrets NOT escrowed (exit 3)" ;;
     5) log "WARN" "data backed up, OpenSearch telemetry snapshot FAILED (exit 5; see the manifest)" ;;
+    6) send_notification "failure" "SECURITY: the audit export archive does NOT verify (backup exit 6): a signature, hash, chain link or recorded export is wrong. Possible tampering. The backup (with the archive as found) is kept and copied off-host; compare it with older backups and the recorded key fingerprint (docs/runbooks/backup-restore.md)." ;;
 esac
 
 # ── Find the latest backup just created ──────────────────────────────────────
@@ -151,7 +155,7 @@ log "INFO" "${SUMMARY}"
 
 log "INFO" "=== Cron backup complete ==="
 if (( BACKUP_RC != 0 )); then
-    exit "${BACKUP_RC}"   # 3: secrets not escrowed; 5: telemetry snapshot failed (both already alerted)
+    exit "${BACKUP_RC}"   # 3: no escrow; 5: telemetry snapshot; 6: audit archive (all already alerted)
 fi
 if (( ${OFFSITE_FAILED:-0} )); then
     exit 4

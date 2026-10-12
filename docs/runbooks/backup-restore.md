@@ -19,7 +19,7 @@ written by the installer before it migrates; [upgrade.md](upgrade.md))
 | `secrets/secrets.tar.enc` | `SECRETS_DIR` (the installer's `/srv/truenorth/config/secrets/`, one file per persisted secret), tarred straight into the same cipher with the same data key; never on disk in clear. `restore-secrets.sh` writes it back. |
 | `moodle/moodledata.tar` | only with the installer's Moodle (`tn_moodle_enabled`; `MOODLE_COMPOSE_FILE` in backup.env): its files, without caches, sessions and temp, archived through a throwaway container of its image. Its database is one of the `postgres/<db>.dump` files (`moodle`). See [moodle.md](moodle.md). |
 | `arc2/runs.tar` | only with the ARC² Course Studio (`tn_arc2_enabled`; `ARC2_RUNS_DIR` in backup.env, default `/srv/truenorth/arc2/runs`): every Studio run and the runner's queue and history. The directory is `tn-arc2:tn-arc2-runs` with files the backup user cannot read, so it is archived as root by a throwaway container of the platform's postgres image (read-only mount, no network), numeric owners and modes kept. See [ARC² runs](#arc-runs). |
-| `audit-archive/` | only with `AUDIT_ARCHIVE_PATH` in backup.env (the installer sets it): the signed daily audit exports (ADR 0011), copied as they are. Every manifest's Ed25519 signature (`keys/<key_id>.pub.pem`) and file SHA-256 is verified with OpenSSL 3 during the backup; a copy that does not verify is kept (evidence) and the backup exits `6`. `restore.sh` puts it back before the databases (`--skip-audit` to leave it). |
+| `audit-archive/` | only with `AUDIT_ARCHIVE_PATH` in backup.env (the installer sets it): the signed daily audit exports (ADR 0011), copied as they are. During the backup every manifest's Ed25519 signature (`keys/<key_id>.pub.pem`) and file SHA-256 is verified with OpenSSL 3, the hash chain is walked, and, when the database has `audit_exports`, every recorded export must be in the archive with its exact hash and every signing key must be one the database recorded (a deleted newest day or a dropped-in key is caught). A copy that does not verify is kept (evidence) and the backup exits `6`. `restore.sh` puts it back before the databases and reconciles it with the restored database afterwards ([Archive newer than the database](#archive-newer-than-the-database-after-a-restore); `--skip-audit` to leave it). |
 | `manifest.json` | databases and sizes, bucket/object counts, the OpenSearch snapshot's repository and name (or `not-backed-up`), Moodle's files (`backed-up`, `not-installed` or `not-configured`), the ARC² runs (same states, plus the runner's state at the time and `changed_while_reading`), escrow status, compose project, git commit |
 | `SHA256SUMS` | checksums of everything above; verified at the end of the backup and before any restore |
 
@@ -294,6 +294,27 @@ in PostgreSQL/MinIO either way.
 RPO **24 hours** (nightly backup; nothing in between is recoverable) and RTO **4 hours**
 (owner decision for v1.2.0). The drill below proves the steps on every change; record the
 time of a full-size restore on the target hardware in the release notes.
+
+## Archive newer than the database (after a restore)
+
+A database restored from a backup is older than the live audit export archive: the
+worker kept exporting days after the backup was taken. Those archive files describe rows
+the restored `audit_logs` no longer (or not yet) has, and the next export would collide
+with them every night (`... already exists and describes other rows` in worker-scenario's
+log; `/health/deep` reports `audit_export` degraded).
+
+`restore.sh` reconciles automatically after restoring the databases: every export the
+restored `audit_exports` does not list with that exact hash is **moved** (never deleted)
+to `quarantine/<restore time>/` under `AUDIT_ARCHIVE_PATH`, with `RESTORE.json` listing
+what moved and why, and an `audit.archive_quarantine` row is written to the restored audit
+log. The next export continues the chain from the restored database's last day.
+`quarantine/` is copied by every backup but is not part of the chain or the checks.
+
+If the database was restored some other way, do the same by hand: stop worker-scenario,
+run `python -m worker.audit_verify --db` (in the worker image) to list the manifests "in
+the archive but not in audit_exports", move each with its `.sig` and data file into
+`quarantine/<date>/` (same relative paths), and start worker-scenario again. Keep the
+quarantined files: they are the record of what was exported before the restore.
 
 ## Verify the audit export archive
 

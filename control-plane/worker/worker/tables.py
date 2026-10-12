@@ -54,6 +54,18 @@ after_action_reports = sa.Table(
     sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
 )
 
+audit_export_checks = sa.Table(
+    "audit_export_checks",
+    metadata,
+    sa.Column("id", GUID(), primary_key=True),
+    sa.Column("day", sa.Date(), nullable=False),
+    sa.Column("seq", sa.Integer(), nullable=False),
+    sa.Column("manifest_sha256", sa.String(64), nullable=False),
+    sa.Column("row_count", sa.Integer(), nullable=False),
+    sa.Column("key_id", sa.String(16), nullable=False),
+    sa.Column("checked_at", sa.DateTime(timezone=True), nullable=False),
+)
+
 audit_exports = sa.Table(
     "audit_exports",
     metadata,
@@ -479,6 +491,7 @@ users = sa.Table(
 __all__ = [
     "GUID",
     "after_action_reports",
+    "audit_export_checks",
     "audit_exports",
     "audit_logs",
     "competencies",

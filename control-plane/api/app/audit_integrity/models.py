@@ -34,3 +34,20 @@ class AuditExport(Base):
     prev_manifest_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
     key_id: Mapped[str] = mapped_column(String(16), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class AuditExportCheck(Base):
+    """One re-verification of an export, written by the retention job in the same
+    transaction as (and immediately before) the purge of that day. The database trigger
+    deletes a day's audit rows only when a check of an export of that day, matching its
+    manifest_sha256, is less than a day old. Never updated or deleted."""
+
+    __tablename__ = "audit_export_checks"
+
+    id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
+    day: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    seq: Mapped[int] = mapped_column(Integer, nullable=False)
+    manifest_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    row_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    key_id: Mapped[str] = mapped_column(String(16), nullable=False)
+    checked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)

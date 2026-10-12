@@ -26,6 +26,7 @@ OUT = ROOT / "control-plane/worker/worker/tables.py"
 # Tables the worker touches. Adding one here is how the worker gains access to it.
 WORKER_TABLES = (
     "after_action_reports",
+    "audit_export_checks",
     "audit_exports",
     "audit_logs",
     "competencies",

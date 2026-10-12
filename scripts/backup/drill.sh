@@ -25,9 +25,12 @@
 #   9. tear down (always, via trap).
 #
 # Audit export archive (ADR 0011): seeded with five days of signed exports by the worker's
-# own code (drill_audit_archive.py, needs python3 with cryptography and SQLAlchemy), backed
-# up and verified by backup.sh, deleted in the wipe, restored by restore.sh, then its
-# signatures, hashes and chain verified again; a tampered copy makes backup.sh exit 6.
+# own code (drill_audit_archive.py, needs python3 with cryptography and SQLAlchemy), with
+# their audit_exports rows in the app database; backed up and verified by backup.sh
+# (against those rows). After the backup one more day is exported (the archive is now
+# newer than the backup); the restore must move that day to quarantine/ (kept) and leave
+# the archive equal to the backup's, chain re-verified; a tampered copy makes backup.sh
+# exit 6.
 #
 # OpenSearch (DRILL_OPENSEARCH=1, the default): opensearch joins postgres and minio, with
 # the snapshot repository bind-mounted from the work dir as compose.prod.yml binds it from
@@ -363,13 +366,17 @@ if [[ "${DRILL_OPENSEARCH}" == "1" ]]; then
     os_bulk exercise-events 12
 fi
 
-snapshot >"${WORK}/before.txt"
 
 # The signed audit export archive, written by the worker's export code.
 "${AUDIT_PY}" "${HERE}/drill_audit_archive.py" seed "${AUDIT_ARCHIVE_PATH}" >/dev/null \
     || die "seeding the audit export archive failed (python3 with cryptography and SQLAlchemy?)"
 AUDIT_BEFORE="$("${AUDIT_PY}" "${HERE}/drill_audit_archive.py" verify "${AUDIT_ARCHIVE_PATH}")" \
     || die "the seeded audit archive does not verify: ${AUDIT_BEFORE}"
+# Their audit_exports rows, as the worker records them (the columns backup.sh and restore.sh read).
+psql_as "${PG_USER}" "${PG_DB}" "
+    create table audit_exports (day date, seq int, manifest_sha256 text, key_id text, primary key (day, seq));
+    insert into audit_exports values $("${AUDIT_PY}" "${HERE}/drill_audit_archive.py" rows "${AUDIT_ARCHIVE_PATH}");"
+snapshot >"${WORK}/before.txt"
 
 # ── 3. Backup ────────────────────────────────────────────────────────────────
 log "INFO" "Backup..."
@@ -378,12 +385,16 @@ BACKUP="$(find "${BACKUP_DIR}" -mindepth 1 -maxdepth 1 -type d -name 'truenorth-
 [[ -n "${BACKUP}" ]] || die "backup.sh produced no backup directory"
 grep -q '"audit_archive": {"status":"backed-up","dir":"audit-archive","files":[0-9]*,"manifests":5,' "${BACKUP}/manifest.json" \
     || die "the backup's manifest does not record a verified audit archive of 5 manifests"
-grep -q '"verified":true}' "${BACKUP}/manifest.json" || die "backup.sh did not verify the audit archive"
+grep -q '"db_checked":true,"not_in_db":0,"verified":true}' "${BACKUP}/manifest.json" \
+    || die "backup.sh did not verify the audit archive against audit_exports"
+# The worker exports another day after the backup: the live archive is now newer than it.
+"${AUDIT_PY}" "${HERE}/drill_audit_archive.py" extend "${AUDIT_ARCHIVE_PATH}" >/dev/null \
+    || die "extending the audit archive failed"
 
 # ── 4. Wipe ──────────────────────────────────────────────────────────────────
 log "INFO" "Wipe (down -v) and bring up empty..."
 dc down -v >/dev/null 2>&1
-rm -rf "${AUDIT_ARCHIVE_PATH}"
+# The archive is on the host, not in a volume: it survives, one day newer than the backup.
 start_stack
 # Telemetry written after the backup: a restore replaces the indices, so this must go.
 if [[ "${DRILL_OPENSEARCH}" == "1" ]]; then os_bulk range-drill-late 5; fi
@@ -405,6 +416,13 @@ fi
 AUDIT_AFTER="$("${AUDIT_PY}" "${HERE}/drill_audit_archive.py" verify "${AUDIT_ARCHIVE_PATH}")" \
     || die "the restored audit archive does not verify: ${AUDIT_AFTER}"
 [[ "${AUDIT_AFTER}" == "${AUDIT_BEFORE}" ]] || die "the restored audit archive differs: ${AUDIT_AFTER} vs ${AUDIT_BEFORE}"
+# The day exported after the backup was moved aside, not deleted, and the move recorded.
+QRESTORE="$(find "${AUDIT_ARCHIVE_PATH}/quarantine" -name RESTORE.json 2>/dev/null | head -n 1)"
+[[ -n "${QRESTORE}" ]] || die "restore.sh did not quarantine the archive day newer than the restored database"
+grep -q '"moved":\["[0-9]*/[0-9]*/audit-[0-9-]*.manifest.json"\]' "${QRESTORE}" \
+    || die "the quarantine record does not list exactly the one newer day: $(cat "${QRESTORE}")"
+[[ "$(find "$(dirname "${QRESTORE}")" -type f | grep -c .)" == 4 ]] \
+    || die "the quarantined day is not complete (manifest, signature, data, RESTORE.json)"
 "${HERE}/escrow-open.sh" "${BACKUP}" "${WORK}/escrow.key" "${WORK}/env.recovered" 2>/dev/null
 cmp -s "${ENV_FILE}" "${WORK}/env.recovered" || die "escrow did not decrypt to the original env file"
 grep -q '^TN_SECRETS_KEY=' "${WORK}/env.recovered" || die "escrowed env has no TN_SECRETS_KEY"
@@ -560,7 +578,8 @@ fi
     sed 's/^/  /' "${WORK}/after.txt"
     echo "escrow: decrypts to the original env file; TN_SECRETS_KEY not in plain text"
     echo "second backup after restore: ok; failure path: exit ${fail_rc} with alert"
-    echo "audit archive: 5 signed exports backed up and verified, restored, chain re-verified; tampered copy exits 6"
+    echo "audit archive: 5 signed exports backed up and verified against audit_exports, restored, chain re-verified;"
+    echo "  a day exported after the backup quarantined (kept) by the restore; tampered copy exits 6"
     echo "reinstalled host: escrowed secrets restored over fresh ones (refused without --force),"
     echo "  data restored, restored DB passwords authenticate over TCP and the fresh ones do not"
     echo "opensearch: ${OS_SUMMARY}"

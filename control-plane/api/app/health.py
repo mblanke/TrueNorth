@@ -406,7 +406,10 @@ def audit_export_status(db) -> tuple[HealthStatus, str, dict]:
     if latest is None and oldest_day >= today - timedelta(days=1):
         return HealthStatus.HEALTHY, "no finished day to export yet", details
     return (HealthStatus.DEGRADED,
-            f"audit export behind: latest {latest or 'none'}; check the worker's export (AUDIT_SIGNING_SEED, archive)",
+            f"audit export behind: latest exported day {latest or 'none'}. worker-scenario's log names the "
+            "cause: no or short AUDIT_SIGNING_SEED; archive not writable (uid 10001); or 'already exists "
+            "and describes other rows', an archive holding days this database does not (a database "
+            "restored without restore.sh; runbook backup-restore.md, \"Archive newer than the database\")",
             details)
 
 

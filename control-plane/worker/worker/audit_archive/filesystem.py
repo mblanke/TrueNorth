@@ -59,12 +59,16 @@ class FilesystemArchive(AuditArchive):
         return self._path(name).is_file()
 
     def list(self, prefix: str = "") -> list[str]:
+        """Names under ``prefix``. ``quarantine/`` (days restore.sh moved aside) is listed only
+        when asked for by that prefix."""
         if not self.root.is_dir():
             return []
         out = []
         for p in self.root.rglob("*"):
             if p.is_file() and not p.name.endswith(".tmp"):
                 rel = p.relative_to(self.root).as_posix()
+                if rel.startswith("quarantine/") and not prefix.startswith("quarantine/"):
+                    continue
                 if rel.startswith(prefix):
                     out.append(rel)
         return sorted(out)

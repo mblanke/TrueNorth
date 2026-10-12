@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 from worker import audit_export, audit_signing, audit_tasks, audit_verify
 from worker.audit_archive import AuditArchiveError, FilesystemArchive, get_archive
-from worker.tables import audit_exports, audit_logs
+from worker.tables import audit_export_checks, audit_exports, audit_logs
 
 SEED = "test-seed-" + "x" * 40
 TODAY = date(2026, 10, 12)
@@ -28,7 +28,7 @@ TODAY = date(2026, 10, 12)
 @pytest.fixture
 def db():
     eng = sa.create_engine("sqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False})
-    audit_logs.metadata.create_all(eng, tables=[audit_logs, audit_exports])
+    audit_logs.metadata.create_all(eng, tables=[audit_logs, audit_exports, audit_export_checks])
     with Session(eng) as session:
         yield session
     eng.dispose()
@@ -344,3 +344,91 @@ def test_beat_runs_both_daily_with_expiry_on_a_consumed_queue():
         if m:
             consumed.update(m.group(1).split(","))
     assert queue in consumed
+
+
+# ── Review S3-3 / S3-4: only known keys, the table's manifest hash, a recorded check ──
+def _resign_with(archive, name: str, other) -> None:
+    """Replace a manifest's signature, key_id and key file with another key's (a forger with
+    write access to the archive but not the seed)."""
+    manifest = json.loads(archive.get(name))
+    manifest["key_id"] = other.key_id
+    data = audit_export.manifest_bytes(manifest)
+    (archive.root / name).write_bytes(data)
+    (archive.root / (name + ".sig")).write_bytes(other.sign(data))
+    archive.put(audit_export.key_name(other.key_id), other.public_pem)
+
+
+def test_a_key_the_database_never_recorded_is_not_trusted(db, archive, key):
+    d = TODAY - timedelta(days=1)
+    add(db, d)
+    audit_tasks.run_export(db, archive, key, TODAY)
+    name = audit_export.manifest_name(d, 0)
+    forger = audit_signing.from_seed("forger-" + "f" * 40)
+    _resign_with(archive, name, forger)
+    # Self-consistent with the PEM dropped into keys/: the archive alone verifies...
+    assert audit_verify.verify_archive(archive)[0] == []
+    # ...but not against the key ids the database recorded.
+    problems, _ = audit_verify.verify_archive(archive, audit_export.trusted_key_ids(db, key))
+    assert any("does not know" in p for p in problems)
+
+
+def test_retention_refuses_a_manifest_the_table_does_not_hold(db, archive, key, caplog):
+    d = TODAY - timedelta(days=120)
+    add(db, d, 2)
+    audit_tasks.run_export(db, archive, key, d + timedelta(days=1))
+    name = audit_export.manifest_name(d, 0)
+    manifest = json.loads(archive.get(name))
+    manifest["generated_at"] = "2000-01-01T00:00:00+00:00"  # re-signed with the real key: valid,
+    data = audit_export.manifest_bytes(manifest)              # but not what audit_exports recorded
+    (archive.root / name).write_bytes(data)
+    (archive.root / (name + ".sig")).write_bytes(key.sign(data))
+    assert audit_tasks.run_retention(db, archive, key, TODAY) == []
+    assert audit_export.day_count(db, d) == 2
+    assert "does not match audit_exports.manifest_sha256" in caplog.text
+
+
+def test_a_purge_records_its_check_first(db, archive, key, monkeypatch):
+    monkeypatch.setenv("AUDIT_HOT_RETENTION_DAYS", "30")
+    old = TODAY - timedelta(days=40)
+    add(db, old, 2)
+    audit_tasks.run_export(db, archive, key, TODAY)
+    audit_tasks.run_retention(db, archive, key, TODAY)
+    [check] = db.execute(sa.select(audit_export_checks)).all()
+    [export] = [e for e in exports(db) if e.day == old]
+    assert (check.day, check.seq, check.manifest_sha256, check.row_count) == (old, 0, export.manifest_sha256, 2)
+
+
+def test_verify_database_uses_the_configured_retention(db, archive, key, monkeypatch):
+    d = TODAY - timedelta(days=60)
+    add(db, d)
+    audit_tasks.run_export(db, archive, key, d + timedelta(days=1))
+    db.execute(audit_logs.delete())
+    db.commit()
+    monkeypatch.setenv("AUDIT_HOT_RETENTION_DAYS", "45")
+    assert audit_verify.verify_database(db, archive, TODAY) == []  # older than 45 days: purged
+    monkeypatch.setenv("AUDIT_HOT_RETENTION_DAYS", "90")
+    assert audit_verify.verify_database(db, archive, TODAY)  # inside 90 days: rows went missing
+    monkeypatch.setenv("AUDIT_HOT_RETENTION_DAYS", "0")
+    assert audit_verify.verify_database(db, archive, TODAY)  # never purged: missing
+
+
+def test_quarantine_is_outside_the_chain(db, archive, key):
+    add(db, TODAY - timedelta(days=1))
+    audit_tasks.run_export(db, archive, key, TODAY)
+    archive.put("quarantine/20261012T000000Z/2026/10/audit-2026-10-30.manifest.json", b"{}")
+    assert not any(n.startswith("quarantine/") for n in archive.list())
+    assert archive.list("quarantine/")
+    assert audit_verify.verify_archive(archive)[0] == []
+
+
+def test_a_conflicting_archive_day_names_the_runbook(db, archive, key):
+    d = TODAY - timedelta(days=1)
+    add(db, d)
+    other = FilesystemArchive(archive.root)
+    audit_tasks.run_export(db, other, key, TODAY)
+    db.execute(audit_exports.delete())  # a database restored from before that export (SQLite: no trigger)
+    db.execute(audit_logs.delete())
+    db.commit()
+    add(db, d, 3)
+    with pytest.raises(audit_export.AuditExportError, match="Archive newer than the database"):
+        audit_tasks.run_export(db, archive, key, TODAY)

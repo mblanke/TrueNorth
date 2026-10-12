@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import uuid
 from datetime import UTC, date, datetime, timedelta
 
@@ -29,6 +28,8 @@ import sqlalchemy as sa
 from . import audit_signing
 from .audit_archive import AuditArchive, get_archive
 from .audit_export import (
+    DEFAULT_HOT_DAYS,  # noqa: F401 — re-exported
+    FLOOR_DAYS,  # noqa: F401 — re-exported
     AuditExportError,
     chain_head,
     day_bounds,
@@ -36,7 +37,10 @@ from .audit_export import (
     day_rows,
     exported_ids,
     exports_for,
+    hot_retention_days,
     manifest_name,
+    record_check,
+    trusted_key_ids,
     verify_manifest,
     write_export,
 )
@@ -46,19 +50,6 @@ from .tables import audit_exports, audit_logs
 from .task_plumbing import db_session as _db_session
 
 logger = logging.getLogger("truenorth.worker.audit")
-
-DEFAULT_HOT_DAYS = 90
-FLOOR_DAYS = 30  # the database trigger refuses younger rows whatever this says
-
-
-def hot_retention_days() -> int:
-    """AUDIT_HOT_RETENTION_DAYS, clamped to at least 30; 0 disables purging."""
-    raw = os.getenv("AUDIT_HOT_RETENTION_DAYS", str(DEFAULT_HOT_DAYS)).strip() or str(DEFAULT_HOT_DAYS)
-    days = int(raw)
-    if days <= 0:
-        return 0
-    return max(days, FLOOR_DAYS)
-
 
 def today_utc() -> date:
     return datetime.now(UTC).date()
@@ -135,8 +126,9 @@ def _purge_refusal(db, archive, key, day: date, live: int) -> str | None:
     if sum(e.row_count for e in exports) != live:
         return f"{live} rows in the table, {sum(e.row_count for e in exports)} exported"
     try:
+        trusted = trusted_key_ids(db, key)
         for e in exports:
-            verify_manifest(archive, manifest_name(day, e.seq), key)
+            verify_manifest(archive, manifest_name(day, e.seq), key, trusted=trusted, expected_sha=e.manifest_sha256)
         ids = exported_ids(archive, db, day, key)
     except AuditExportError as exc:
         return str(exc)
@@ -145,12 +137,22 @@ def _purge_refusal(db, archive, key, day: date, live: int) -> str | None:
     return None
 
 
+def _allow_purge(db) -> None:
+    """The setting the database trigger requires for a DELETE. Transaction-local: only this
+    transaction's DELETE passes. (SQLite, in tests, has neither the setting nor the trigger.)"""
+    if db.get_bind().dialect.name == "postgresql":
+        db.execute(sa.select(sa.func.set_config("tn.audit_purge", "on", True)))
+
+
 def _purge_day(db, day: date, live: int) -> dict:
     start, end = day_bounds(day)
-    shas = [e.manifest_sha256 for e in exports_for(db, day)]
-    if db.get_bind().dialect.name == "postgresql":
-        # Transaction-local: only this transaction's DELETE passes the trigger.
-        db.execute(sa.select(sa.func.set_config("tn.audit_purge", "on", True)))
+    exports = exports_for(db, day)
+    shas = [e.manifest_sha256 for e in exports]
+    # The checks just passed (_purge_refusal), recorded in this transaction: the trigger
+    # deletes nothing without a fresh check matching the export's manifest hash.
+    for e in exports:
+        record_check(db, e)
+    _allow_purge(db)
     deleted = db.execute(
         audit_logs.delete().where(audit_logs.c.timestamp >= start, audit_logs.c.timestamp < end)
     ).rowcount

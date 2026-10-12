@@ -48,7 +48,36 @@ tests:
           - exp_labels: { severity: warning, instance: "host:9100", job: node-exporter }
             exp_annotations:
               summary: "The last backup kept the data but is incomplete (exit 5)"
-              description: "Exit 3: secrets not escrowed. Exit 5: the OpenSearch telemetry snapshot failed. The manifest says which."
+              description: "Exit 3: secrets not escrowed. Exit 5: the OpenSearch telemetry snapshot failed. Exit 6: see AuditArchiveTampered. The manifest says which."
+
+  - name: exit 6 (audit archive does not verify) is a security alert
+    interval: 1m
+    input_series:
+      - series: 'truenorth_backup_last_run_success{instance="host:9100",job="node-exporter"}'
+        values: "1x5"
+      - series: 'truenorth_backup_last_exit_code{instance="host:9100",job="node-exporter"}'
+        values: "6x5"
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: AuditArchiveTampered
+        exp_alerts:
+          - exp_labels: { severity: critical, instance: "host:9100", job: node-exporter }
+            exp_annotations:
+              summary: "SECURITY: the audit export archive does not verify"
+              description: "The last backup found a wrong signature, hash, chain link or recorded export in the audit archive (exit 6). Possible tampering: compare with older backups and the recorded key fingerprint (docs/runbooks/backup-restore.md)."
+      - eval_time: 1m
+        alertname: BackupFailed
+        exp_alerts: []
+
+  - name: exit 5 does not raise the audit alert
+    interval: 1m
+    input_series:
+      - series: 'truenorth_backup_last_exit_code{instance="host:9100",job="node-exporter"}'
+        values: "5x5"
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: AuditArchiveTampered
+        exp_alerts: []
 
   - name: a good backup 25 h ago is fine, 27 h ago is stale
     interval: 1m

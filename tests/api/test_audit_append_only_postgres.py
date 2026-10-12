@@ -45,13 +45,25 @@ def _old_row(engine, days_ago: int) -> uuid.UUID:
     return rid
 
 
-def _export_row(engine, day: date) -> None:
+def _export_row(engine, day: date, *, checked: bool = True, check_sha: str = "0" * 64,
+                check_age: timedelta | None = None) -> None:
+    """An export of ``day`` and (``checked``) the re-verification the trigger requires."""
     with engine.begin() as conn:
         conn.execute(
             text("INSERT INTO audit_exports (day, seq, row_count, file_name, file_sha256, manifest_sha256, key_id) "
                  "VALUES (:d, 0, 1, 'f', :h, :h, '0123456789abcdef')"),
             {"d": day, "h": "0" * 64},
         )
+        if checked:
+            if check_age:
+                conn.execute(text("ALTER TABLE audit_export_checks DISABLE TRIGGER tn_audit_check_stamp"))
+            conn.execute(
+                text("INSERT INTO audit_export_checks (id, day, seq, manifest_sha256, row_count, key_id, checked_at) "
+                     "VALUES (:id, :d, 0, :h, 1, '0123456789abcdef', :at)"),
+                {"id": uuid.uuid4(), "d": day, "h": check_sha, "at": datetime.now(UTC) - (check_age or timedelta())},
+            )
+            if check_age:
+                conn.execute(text("ALTER TABLE audit_export_checks ENABLE TRIGGER tn_audit_check_stamp"))
 
 
 def _refused(engine, sql: str, params: dict | None = None, *, purge: bool = False, needle: str = "") -> str:
@@ -87,6 +99,38 @@ def test_delete_of_a_recent_row_is_refused_even_with_the_setting(postgres_engine
 def test_delete_of_an_old_row_without_an_export_is_refused(postgres_engine):
     rid = _old_row(postgres_engine, 60)
     _refused(postgres_engine, "DELETE FROM audit_logs WHERE id = :id", {"id": rid}, purge=True, needle=REFUSED)
+
+
+def test_delete_with_an_export_but_no_fresh_matching_check_is_refused(postgres_engine):
+    """Review S3-4: an export row alone is not enough; the purge must have re-verified it."""
+    day = (datetime.now(UTC) - timedelta(days=60)).date()
+    rid = _old_row(postgres_engine, 60)
+    _export_row(postgres_engine, day, checked=False)
+    _refused(postgres_engine, "DELETE FROM audit_logs WHERE id = :id", {"id": rid}, purge=True, needle=REFUSED)
+
+
+def test_a_check_of_another_manifest_hash_is_refused(postgres_engine):
+    rid = _old_row(postgres_engine, 60)
+    _export_row(postgres_engine, (datetime.now(UTC) - timedelta(days=60)).date(), check_sha="f" * 64)
+    _refused(postgres_engine, "DELETE FROM audit_logs WHERE id = :id", {"id": rid}, purge=True, needle=REFUSED)
+
+
+def test_a_stale_check_is_refused(postgres_engine):
+    rid = _old_row(postgres_engine, 60)
+    _export_row(postgres_engine, (datetime.now(UTC) - timedelta(days=60)).date(), check_age=timedelta(days=2))
+    _refused(postgres_engine, "DELETE FROM audit_logs WHERE id = :id", {"id": rid}, purge=True, needle=REFUSED)
+
+
+def test_checks_are_stamped_and_never_changed(postgres_engine):
+    day = date(2026, 1, 2)
+    with postgres_engine.begin() as conn:
+        conn.execute(text("INSERT INTO audit_export_checks (id, day, seq, manifest_sha256, row_count, key_id, checked_at) "
+                          "VALUES (:id, :d, 0, :h, 1, 'k', '2020-01-01')"), {"id": uuid.uuid4(), "d": day, "h": "0" * 64})
+        at = conn.execute(text("SELECT checked_at FROM audit_export_checks WHERE day = :d"), {"d": day}).scalar()
+    assert at > datetime.now(UTC) - timedelta(minutes=5)
+    _refused(postgres_engine, "UPDATE audit_export_checks SET row_count = 2", needle="never changed or deleted")
+    _refused(postgres_engine, "DELETE FROM audit_export_checks", needle="never changed or deleted")
+    _refused(postgres_engine, "TRUNCATE audit_export_checks", needle="never changed or deleted")
 
 
 def test_delete_with_the_setting_an_old_row_and_an_export_succeeds(postgres_engine):
@@ -149,6 +193,9 @@ def test_worker_export_and_retention_through_the_trigger(postgres_engine, tmp_pa
         left = conn.execute(text("SELECT count(*) FROM audit_logs WHERE id = ANY(:ids)"), {"ids": old}).scalar()
         notes = conn.execute(text("SELECT count(*) FROM audit_logs WHERE action = 'audit.purge'")).scalar()
     assert left == 0 and notes == 1
+    with postgres_engine.connect() as conn:
+        checks = conn.execute(text("SELECT count(*) FROM audit_export_checks")).scalar()
+    assert checks == 1  # the purge recorded its re-verification
 
 
 def test_without_the_setting_the_worker_purge_is_refused(postgres_engine, tmp_path, monkeypatch):
@@ -163,7 +210,7 @@ def test_without_the_setting_the_worker_purge_is_refused(postgres_engine, tmp_pa
     today = datetime.now(UTC).date()
     with Session(postgres_engine) as db:
         audit_tasks.run_export(db, archive, key, today)
-        monkeypatch.setattr(db.get_bind().dialect, "name", "not-postgresql")  # skips set_config
+        monkeypatch.setattr(audit_tasks, "_allow_purge", lambda db: None)  # no tn.audit_purge
         with pytest.raises(DBAPIError, match=REFUSED):
             audit_tasks.run_retention(db, archive, key, today)
 
@@ -182,5 +229,6 @@ def test_downgrade_then_upgrade_round_trips(postgres_engine):
         rid = _insert(conn)
         conn.execute(text("UPDATE audit_logs SET action = 'changed' WHERE id = :id"), {"id": rid})  # no guard now
         assert conn.execute(text("SELECT to_regclass('audit_exports')")).scalar() is None
+        assert conn.execute(text("SELECT to_regclass('audit_export_checks')")).scalar() is None
     alembic("upgrade", "head")
     _refused(postgres_engine, "UPDATE audit_logs SET action = 'x' WHERE id = :id", {"id": rid}, needle="never changed")

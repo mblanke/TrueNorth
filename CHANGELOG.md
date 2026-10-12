@@ -322,11 +322,22 @@ course production with a local-model fallback, and the cleanup of unsupported su
   (`tn_audit_hot_retention_days`, floor 30, 0 = never) only after the day's export
   verifies, writing an `audit.purge` row. New secret `audit_signing_seed` (worker-scenario
   only); the install report prints the key fingerprint to record out of band. `backup.sh`
-  copies and verifies the archive (new exit code 6 when it does not verify); `restore.sh`
-  restores it first; the drill re-verifies the chain (`python -m worker.audit_verify`).
+  copies and verifies the archive: signatures, hashes, the chain, and against
+  `audit_exports` (exact manifest hashes; signing keys the database recorded), new exit
+  code 6 when it does not verify, which `cron-backup.sh` still uploads and rotates with a
+  critical `AuditArchiveTampered` alert (a pre-upgrade backup's 6 stops the upgrade, by
+  design: docs/runbooks/upgrade.md). `restore.sh` restores the archive first and then moves
+  every export the restored database does not list to `quarantine/<time>/` (kept;
+  `RESTORE.json`, an `audit.archive_quarantine` row), so exports continue instead of
+  colliding every night. A purge needs a fresh `audit_export_checks` row matching the
+  export, written by the retention job's re-verification (key ids the database knows,
+  the recorded manifest hash). The drill re-verifies the chain and exercises the
+  quarantine (`python -m worker.audit_verify`).
   Deep health reports `audit_export`. Residual risk, stated in ADR 0011 and security.md:
-  the database owner can disable triggers; detection by the chain and the fingerprint, not
-  prevention (non-owner role and WORM storage planned for v1.3). Helm does not yet mount
+  the database owner (what the application connects as) can disable triggers or write
+  export and check rows; detection by the chain and the fingerprint, not prevention
+  (non-owner role without INSERT on `audit_exports`/`audit_export_checks`, and WORM
+  storage, planned for v1.3). Helm does not yet mount
   the archive or pass the seed.
 - docs/security.md: AC-8, AU-6, AU-9, AU-11, IA-2 and the FedRAMP MFA and audit-export rows
   describe what exists; the audit schema, retention and login-event claims are corrected.

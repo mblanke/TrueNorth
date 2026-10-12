@@ -5,6 +5,6 @@ retention run in the worker (worker/audit_tasks.py); the API only reads ``audit_
 (deep health).
 """
 
-from .models import AuditExport
+from .models import AuditExport, AuditExportCheck
 
-__all__ = ["AuditExport"]
+__all__ = ["AuditExport", "AuditExportCheck"]

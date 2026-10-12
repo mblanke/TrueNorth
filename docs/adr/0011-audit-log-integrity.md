@@ -28,11 +28,17 @@ disable triggers and set `session_replication_role`.
    - the transaction set `tn.audit_purge = on` (`set_config(..., true)`: transaction-local);
    - the row is at least **30 days** old (UTC days; hard-coded in the trigger, no setting
      lowers it);
-   - an `audit_exports` row exists for the row's UTC day.
-   The job additionally requires, per day: the export's summed `row_count` equals the
-   table's count, every manifest still verifies, and the exported ids are exactly the
-   table's ids. It deletes a whole day in one transaction, writes an `audit.purge` row
-   (day, row count, manifest hashes) and stops at the first day that fails a check.
+   - its UTC day has an `audit_exports` row **and** an `audit_export_checks` row for that
+     export, with the same `manifest_sha256`, less than a day old (`checked_at` stamped by
+     the database clock).
+   The job writes that check only after re-verifying the day, in the same transaction as
+   the delete: every manifest is signed by a key id the database knows (the worker's
+   current key or one `audit_exports` recorded), its bytes hash to the recorded
+   `manifest_sha256`, its file to `file_sha256`, the summed `row_count` equals the table's
+   count and the exported ids are exactly the table's ids. It deletes a whole day in one
+   transaction, writes an `audit.purge` row (day, row count, manifest hashes) and stops at
+   the first day that fails a check. While the application connects as the database owner
+   these rows are evidence the job wrote, not a barrier against the owner (residual risk).
 3. **Signed daily export** (`worker/audit_tasks.py`, beat 00:45 UTC): for every UTC day
    before today not yet exported (so a stopped worker catches up), a gzipped JSON-lines
    file (every column, ordered by timestamp then id), a manifest (day, seq, row count,
@@ -48,9 +54,14 @@ disable triggers and set `session_replication_role`.
    `AUDIT_ARCHIVE_PATH`, default `/var/lib/truenorth/audit-archive`). Writes are
    temp-file, fsync, rename; files 0640; a name is never overwritten with other bytes.
    `backup.sh` copies the archive into every backup and verifies every signature and
-   hash with OpenSSL 3 (exit 6 when it does not verify); `restore.sh` restores it before
-   the databases; the restore drill runs `python -m worker.audit_verify`, which also
-   walks the chain.
+   hash with OpenSSL 3, walks the chain, and (when the database has `audit_exports`)
+   requires every recorded export in the archive with its exact hash and every signing key
+   to be one the database recorded; exit 6 otherwise, which the nightly job still uploads
+   and rotates, with a critical `AuditArchiveTampered` alert. `restore.sh` restores the
+   archive before the databases and afterwards moves every export the restored
+   `audit_exports` does not list to `quarantine/<time>/` (kept, recorded in `RESTORE.json`
+   and an `audit.archive_quarantine` row), so the export continues from the restored
+   database. The restore drill re-verifies the chain and exercises that quarantine.
 5. **Key handling.** `AUDIT_SIGNING_SEED`, an installer-generated secret
    (`audit_signing_seed`, persisted under `config/secrets`, escrowed by `backup.sh`), is
    passed to the worker that runs the export (worker-scenario) and to no other service.
@@ -81,8 +92,11 @@ disable triggers and set `session_replication_role`.
   with root on the host can rewrite rows and re-sign a new chain; comparing `key_id` with
   the recorded fingerprint, and the archive with an older off-host backup, shows it.
 - **Prevention is v1.3:** a separate non-owner database role for the API and worker with
-  `UPDATE`/`DELETE`/`TRUNCATE` revoked on `audit_logs`, and WORM storage (MinIO object
-  lock) as a second archive backend.
+  `UPDATE`/`DELETE`/`TRUNCATE` revoked on `audit_logs`, and with **no `INSERT`** on
+  `audit_exports` or `audit_export_checks` either (otherwise a compromised application
+  could record a fake export and check and purge through the trigger; only a dedicated
+  exporter role writes them), plus WORM storage (MinIO object lock) as a second archive
+  backend.
 - The filesystem archive is on the worker host's disk; it is as durable as that disk
   until the nightly backup copies it.
 - Helm: the chart does not yet mount the archive or pass the seed; compose is the

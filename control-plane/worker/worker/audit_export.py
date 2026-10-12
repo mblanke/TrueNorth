@@ -40,7 +40,7 @@ import sqlalchemy as sa
 
 from . import audit_signing
 from .audit_archive import AuditArchive, AuditArchiveError
-from .tables import audit_exports, audit_logs
+from .tables import audit_export_checks, audit_exports, audit_logs
 
 logger = logging.getLogger("truenorth.worker.audit")
 
@@ -154,15 +154,38 @@ class Written:
     manifest_sha256: str
 
 
-def verify_manifest(archive: AuditArchive, name: str, key: audit_signing.SigningKey | None = None) -> dict:
+def trusted_key_ids(db, key: audit_signing.SigningKey | None = None) -> set[str]:
+    """Key ids allowed to have signed an export: the worker's current key and every key id
+    audit_exports recorded (prior keys, after a rotation). A PEM someone drops into the
+    archive's keys/ is never trusted on its own."""
+    ids = {r[0] for r in db.execute(sa.select(audit_exports.c.key_id).distinct())}
+    if key is not None:
+        ids.add(key.key_id)
+    return ids
+
+
+def verify_manifest(
+    archive: AuditArchive,
+    name: str,
+    key: audit_signing.SigningKey | None = None,
+    *,
+    trusted: set[str] | None = None,
+    expected_sha: str | None = None,
+) -> dict:
     """Read a manifest back and check its signature and its file's hash. Returns it.
 
     With ``key`` (the worker's current key) a manifest signed by that key id is checked
-    against it, not against the PEM stored next to it in the archive."""
+    against it, not against the PEM stored next to it in the archive. With ``trusted``
+    the manifest must be signed by one of those key ids (trusted_key_ids); with
+    ``expected_sha`` its bytes must hash to what audit_exports recorded."""
     try:
         mbytes = archive.get(name)
         sig = archive.get(name + ".sig")
         manifest = json.loads(mbytes)
+        if expected_sha is not None and sha256(mbytes) != expected_sha:
+            raise AuditExportError(f"{name}: does not match audit_exports.manifest_sha256")
+        if trusted is not None and manifest.get("key_id") not in trusted:
+            raise AuditExportError(f"{name}: signed by key {manifest.get('key_id')}, which this database does not know")
         if key is not None and manifest.get("key_id") == key.key_id:
             pem = key.public_pem
         else:
@@ -198,11 +221,15 @@ def write_export(
     mname = manifest_name(day, seq)
     archive.put(key_name(key.key_id), key.public_pem)
     if archive.exists(mname):
-        existing = verify_manifest(archive, mname, key)
+        existing = verify_manifest(archive, mname, key, trusted=trusted_key_ids(db, key))
         if (existing["file_sha256"], existing["prev_manifest_sha256"], existing["row_count"]) != (
             sha256(data), prev, len(rows)
         ):
-            raise AuditExportError(f"{mname} already exists and describes other rows or another chain position")
+            raise AuditExportError(
+                f"{mname} already exists and describes other rows or another chain position: the archive "
+                "holds exports the database does not (a database restored without restore.sh's archive "
+                "reconciliation?). docs/runbooks/backup-restore.md, \"Archive newer than the database\""
+            )
         mbytes = archive.get(mname)
         logger.warning("audit export %s: adopting files written by an interrupted run", mname)
     else:
@@ -224,7 +251,7 @@ def write_export(
         archive.put(file_name(day, seq), data)
         archive.put(mname, mbytes)
         archive.put(mname + ".sig", key.sign(mbytes))
-        verify_manifest(archive, mname, key)
+        verify_manifest(archive, mname, key, trusted={key.key_id})
     ids = [r._mapping["id"] for r in rows]
     db.execute(
         audit_exports.insert().values(
@@ -245,10 +272,36 @@ def write_export(
     return Written(day, seq, len(rows), sha256(mbytes))
 
 
+def record_check(db, export_row: Any) -> None:
+    """The re-verification the database trigger requires before a purge (same transaction)."""
+    db.execute(audit_export_checks.insert().values(
+        id=uuid.uuid4(), day=export_row.day, seq=export_row.seq, manifest_sha256=export_row.manifest_sha256,
+        row_count=export_row.row_count, key_id=export_row.key_id, checked_at=datetime.now(UTC),
+    ))
+
+
 def exported_ids(archive: AuditArchive, db, day: date, key: audit_signing.SigningKey | None = None) -> set[str]:
     """Every row id in the verified files of ``day``'s exports."""
     out: set[str] = set()
+    trusted = trusted_key_ids(db, key)
     for e in exports_for(db, day):
-        manifest = verify_manifest(archive, manifest_name(day, e.seq), key)
+        manifest = verify_manifest(archive, manifest_name(day, e.seq), key, trusted=trusted,
+                                   expected_sha=e.manifest_sha256)
         out.update(decode_ids(archive.get(manifest["file"])))
     return out
+
+
+# ── retention settings (shared by the tasks and the verifier) ─────────
+DEFAULT_HOT_DAYS = 90
+FLOOR_DAYS = 30  # the database trigger refuses younger rows whatever this says
+
+
+def hot_retention_days() -> int:
+    """AUDIT_HOT_RETENTION_DAYS, clamped to at least 30; 0 disables purging."""
+    import os
+
+    raw = os.getenv("AUDIT_HOT_RETENTION_DAYS", str(DEFAULT_HOT_DAYS)).strip() or str(DEFAULT_HOT_DAYS)
+    days = int(raw)
+    if days <= 0:
+        return 0
+    return max(days, FLOOR_DAYS)
