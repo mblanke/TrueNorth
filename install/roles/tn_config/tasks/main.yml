@@ -21,27 +21,10 @@
     name: tn_release
     public: true
 
-# Written by roles/tn_keycloak once the AD federation component exists. Rendered from
-# here so every re-run writes the same env file (a later play patching the file would
-# be undone by the next run of this one).
-- name: Config — read the recorded Keycloak LDAP component id
-  ansible.builtin.slurp:
-    src: "{{ tn_state_dir }}/keycloak_ldap_component_id"
-  register: tn_kc_component_state
-  failed_when: false
-
-- name: Config — use it
-  ansible.builtin.set_fact:
-    tn_keycloak_ldap_component_id: "{{ tn_kc_component_state.content | b64decode | trim }}"
-  when: tn_kc_component_state.content is defined
-
+# Its own task file: roles/tn_cmi5 renders it again once it has minted the cmi5 AU
+# credential (which needs the LRS running, so it cannot exist yet on a first install).
 - name: Config — render .env.production
-  ansible.builtin.template:
-    src: env.production.j2
-    dest: "{{ tn_env_file }}"
-    mode: "0600"
-    owner: "{{ ansible_user }}"
-  no_log: true
+  ansible.builtin.include_tasks: env.yml
 
 # Prometheus reads bearer tokens from files (monitoring/prometheus/prometheus.yml).
 # It runs as nobody (65534); handing a file to another uid needs root.

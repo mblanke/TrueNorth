@@ -112,6 +112,18 @@ course production with a local-model fallback, and the cleanup of unsupported su
   the mock. The orchestrator's unused `OLLAMA_PROXY_URL` (same host) is gone and `/health`
   gains `ai_configured`. Installed sites take the endpoint only from `tn_ai_base_url`.
   Existing backend rows are not touched: delete a seeded one by hand if it is still there.
+- Installer: cmi5 launches answered 503 on an installed platform (v1.2.0-rc4 on staging): the
+  installer never provided `CMI5_LRS_AUTH`. `50-stack-up` now mints the AU's own LRS
+  credential on the LRS (scopes statements/write, state, agents_profile, activities_profile),
+  persists it in `config/secrets/cmi5_lrs_auth` (0600, escrowed with the other secrets, never
+  echoed), keeps it on every re-run (minting again only if the LRS lost it), renders it into
+  `.env.production` and recreates the api. Also rendered: `CMI5_WEB_BASE_URL`,
+  `CMI5_API_BASE_URL`, `XAPI_ACCOUNT_HOMEPAGE`, `XAPI_IRI_BASE`, with the values the api
+  already derived. New variables `tn_cmi5_enabled` (default on), `vault_cmi5_lrs_auth`,
+  `tn_cmi5_web_base_url`, `tn_cmi5_api_base_url`, `tn_xapi_account_homepage`,
+  `tn_xapi_iri_base`. Preflight refuses an unusable `vault_cmi5_lrs_auth`; `99-validate`
+  fails an install that ends without the credential; `95-smoke-test` checks a cmi5 route
+  through nginx and that the running api's launch gate does not answer 503.
 
 ### Release readiness (#147)
 - **Behaviour change:** the competency catalogue is platform-shared: `POST

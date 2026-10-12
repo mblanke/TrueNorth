@@ -123,20 +123,20 @@ is always safe on its own.
 | Playbook | What it does |
 |---|---|
 | `00-docker` | With `tn_install_docker` (default on Ubuntu 24.04): Docker from its apt repository (key fingerprint pinned), at pinned versions, held; `daemon.json` log rotation and the containerd image store; chrony; the install user in the `docker` group. Otherwise nothing ("Prerequisites"). |
-| `00-preflight` | No `CHANGE_ME` left in the vault, the AI endpoint and the backup escrow set; OS, Docker/Compose versions, disk, NTP, vCenter reachability, the app repository; with AD, forward+reverse DNS through AD and the LDAPS port; without AD, that the service name resolves (or `tn_manage_etc_hosts`); with ARC² on, its key, model endpoint (https, reachable), runs gid, user namespaces and disk. Read-only, and runs for real under `--check`; fails loudly with the fix in the message. |
+| `00-preflight` | No `CHANGE_ME` left in the vault, the AI endpoint and the backup escrow set; OS, Docker/Compose versions, disk, NTP, vCenter reachability, the app repository; with AD, forward+reverse DNS through AD and the LDAPS port; without AD, that the service name resolves (or `tn_manage_etc_hosts`); a `vault_cmi5_lrs_auth`, if set, is usable; with ARC² on, its key, model endpoint (https, reachable), runs gid, user namespaces and disk. Read-only, and runs for real under `--check`; fails loudly with the fix in the message. |
 | `10-base` | Packages, `vm.max_map_count` (OpenSearch will not start without it), the `/srv/truenorth` tree with the uids each image runs as, logrotate for `/srv/truenorth/logs`; with AD, the resolver drop-in for AD DNS. |
 | `20-fetch-app` | Release mode: verifies `release-manifest.json`'s **cosign signature** against the release workflow's identity, checks it against `SHA256SUMS`, then fetches the app at the release's commit (`git_sha`) and refuses any other. Build mode: the installer's own commit. Refuses an older release/commit than the one deployed (rollback is explicit, `tn_allow_downgrade`) and an app whose compose file declares another compatibility level than `install/COMPAT`. `local` and `tarball` (checksum-verified, unpacked beside the app and swapped in) for air-gapped installs. Records what was deployed. |
 | `30-config` | Persists every secret under `/srv/truenorth/config/secrets/` (the vault's value, or one generated **once**; an empty file is regenerated), refuses a vault value that differs for a first-start secret ("Secrets"), asserts all are ≥ 32 characters, renders `.env.production` and the backup environment, and stops without a backup escrow. |
 | `40-tls` | Installs the AD CS root CA (DER or PEM, normalised to PEM; required with AD, optional without) into the host trust store *and* Keycloak's truststore; with AD, a **real LDAPS bind** as the Keycloak service account (password in a 0600 temp file, `ldapsearch -y`); the certificate nginx serves; the OpenSearch CA, certificates and `internal_users.yml` (as root). |
-| `50-stack-up` | Pulls the release's images **by digest** (or loads the air-gapped archives), stops unless every image resolves to the digest compose names. On an **upgrade**: a pre-upgrade backup, then the old application services stopped ("Upgrades"). Then datastores → **alembic** (with the new api image; refuses a database newer than the code) → everything else. Builds nothing unless `tn_image_source=build`. See "Images" and "The migration hazard" below. |
+| `50-stack-up` | Pulls the release's images **by digest** (or loads the air-gapped archives), stops unless every image resolves to the digest compose names. On an **upgrade**: a pre-upgrade backup, then the old application services stopped ("Upgrades"). Then datastores → **alembic** (with the new api image; refuses a database newer than the code) → everything else. Builds nothing unless `tn_image_source=build`. Then, with `tn_cmi5_enabled`, the cmi5 AU's LRS credential: minted once, kept, rendered, api recreated ("cmi5"). See "Images" and "The migration hazard" below. |
 | `55-arc2` | **Optional, off by default** (`tn_arc2_enabled`). The ARC² Course Studio runner: a `tn-arc2` account, the runs directory the api shares, bubblewrap with an AppArmor profile scoped to the runner, Node and Claude Code at pinned versions, a hardened systemd service whose self-test must pass. Off: nothing. "ARC² Course Studio (optional)". |
 | `60-keycloak` | Realm (imported without the development realm's sample users, with this host's redirect URIs and generated client secrets), token/session/password rules and client grants (enforced on every run, written only when they differ; "Identity hardening"), the API's least-privilege service account (`truenorth-api-admin`), AD user federation over LDAPS (or, without AD, local groups and the local bootstrap administrator), and the token claim mappers. **This is the join between the installer and the application** — see below. |
 | `70-telemetry` | OpenSearch index templates, ISM policies, ingest pipelines, and the backup's snapshot repository ("Backups"). |
 | `80-seed` | Counts the reference data in the database (fails on none), creates the tenant and the bootstrap administrator. |
 | `85-moodle` | Only with `tn_moodle_enabled` (off by default): TrueNorth's Moodle, its database and its registration as the tenant's Moodle ("Moodle (optional)"). |
 | `90-vsphere` | Provider wiring, and detects the unassigned vCenter role. |
-| `95-smoke-test` | Every container running and healthy (`ps -a`: an exited one fails it), API health and readiness (database, Redis **and OpenSearch**), and the claim-contract check, which is **mandatory**: with AD pass `-e tn_smoke_username=<upn> -e tn_smoke_password=<password>`; without AD it signs in as the local bootstrap administrator. The token comes from the `truenorth-smoke` client, enabled only for that one request. |
-| `99-validate` | Final report, including accepted warnings. |
+| `95-smoke-test` | Every container running and healthy (`ps -a`: an exited one fails it), API health and readiness (database, Redis **and OpenSearch**), cmi5 launches not failing closed ("cmi5"), and the claim-contract check, which is **mandatory**: with AD pass `-e tn_smoke_username=<upn> -e tn_smoke_password=<password>`; without AD it signs in as the local bootstrap administrator. The token comes from the `truenorth-smoke` client, enabled only for that one request. |
+| `99-validate` | Final report, including accepted warnings. Fails when `tn_cmi5_enabled` and the env file has no `CMI5_LRS_AUTH`. |
 | `rotate-secret` | Not in `site.yml`: changes a first-start password in its service and everywhere else (docs/runbooks/key-rotation.md). |
 
 ## Three things worth understanding before you run it
@@ -696,6 +696,34 @@ docs/runbooks/moodle.md.
 - **One tenant.** Further tenants get one node each (the farm model); the role takes a node
   name but loops over one (docs/runbooks/moodle.md, "More than one tenant").
 
+## cmi5
+
+TrueNorth launches its released courses as a cmi5 LMS (docs/cmi5.md). AU traffic reaches
+the LRS with its own credential, `CMI5_LRS_AUTH`, never the server's `LRS_AUTH`; without it
+every launch answers 503. With `tn_cmi5_enabled` (the default):
+
+- **Minted, not generated.** The LRS must know the credential, so `50-stack-up` creates it
+  once the stack is up (`roles/tn_cmi5`), through lrsql's admin API from a one-shot api
+  container (`LRS_ADMIN_USER` / `LRS_ADMIN_PASSWORD` in its environment, never on a command
+  line), with the scopes statements/write, state, agents_profile and activities_profile.
+- **Persisted and kept.** It goes to `/srv/truenorth/config/secrets/cmi5_lrs_auth` (0600,
+  escrowed by every backup, never printed) and is rendered into `.env.production`; the api is
+  recreated with it. Every re-run checks the LRS still has it with those scopes and keeps it;
+  only if the LRS lost it (a rebuilt or restored LRS database) is a new one minted, with a
+  warning. `vault_cmi5_lrs_auth` supplies one instead: it must already be a credential of
+  this LRS with exactly those scopes, and is never replaced (the stage stops if it is not).
+- **Checked.** Preflight refuses an unusable `vault_cmi5_lrs_auth`; `99-validate` fails an
+  install whose env file has no `CMI5_LRS_AUTH` (or has `LRS_AUTH` there); `95-smoke-test`
+  calls a cmi5 route through nginx and, in the running api, the launch gate that answers
+  503, then checks that the LRS accepts the credential and refuses it a statement read.
+- **URLs.** `CMI5_WEB_BASE_URL` / `CMI5_API_BASE_URL` (where Students' browsers reach the AU
+  runtime and the API) and `XAPI_ACCOUNT_HOMEPAGE` / `XAPI_IRI_BASE` (the actor's homePage
+  and the IRI root) are rendered from the variables below, which default to what the api
+  used before. The two xAPI values are written into every statement: never change them once
+  a cohort has started.
+
+`tn_cmi5_enabled: false` renders no credential: launches answer 503 (fail closed).
+
 ## Key variables
 
 `inventory/group_vars/all/main.yml` is commented throughout. The ones you will
@@ -730,6 +758,10 @@ actually change:
 | `tn_arc2_enabled` | `false` | ARC² Course Studio; with exactly one of `vault_arc2_claude_oauth_token` or `vault_arc2_anthropic_api_key` ("ARC² Course Studio (optional)"). |
 | `tn_arc2_claude_code_version` / `tn_arc2_node_version` | `2.1.286` / `24.21.0` | Pinned; bump with the lockfile and checksums. |
 | `tn_moodle_enabled` / `tn_moodle_port` | `false` / `8443` | "Moodle (optional)". |
+| `tn_cmi5_enabled` | `true` | "cmi5": `50-stack-up` mints the AU's LRS credential (`CMI5_LRS_AUTH`) once and keeps it; validate fails without it. `false`: cmi5 launches answer 503. |
+| `vault_cmi5_lrs_auth` | *(empty: minted on the LRS)* | base64 `key:secret` of a credential this LRS already has, with exactly the AU scopes, other than `vault_lrs_api_key`/`_secret` ("cmi5"). |
+| `tn_cmi5_web_base_url` / `tn_cmi5_api_base_url` | `tn_lti_web_base_url` / that + `/api` | `CMI5_WEB_BASE_URL` / `CMI5_API_BASE_URL`: where Students' browsers reach the AU runtime and the API. |
+| `tn_xapi_account_homepage` / `tn_xapi_iri_base` | `https://<tn_domain_fqdn>` / that + `/xapi` | `XAPI_ACCOUNT_HOMEPAGE` / `XAPI_IRI_BASE`. In every statement: **never change them once data exists**. |
 
 ## After the install
 

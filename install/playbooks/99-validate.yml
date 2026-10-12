@@ -74,6 +74,13 @@
       failed_when: false
       when: tn_arc2_enabled | default(false) | bool
 
+    # cmi5 on: the install fails without its AU credential (launches would answer 503).
+    - name: Validate — cmi5
+      ansible.builtin.include_role:
+        name: tn_cmi5
+        tasks_from: validate
+      when: tn_cmi5_enabled | bool
+
     - name: Validate — REPORT
       ansible.builtin.debug:
         msg:
@@ -97,6 +104,7 @@
           - >-
             {{ ' arc2 studio   : on, runner ' ~ (tn_arc2_state.status.ActiveState | default('unknown'))
                if tn_arc2_enabled | default(false) | bool else ' arc2 studio   : off' }}
+          - " cmi5          : {{ 'on, AU credential set' if tn_cmi5_enabled | bool else 'off (launches answer 503)' }}"
           - " env file      : {{ tn_env_file }}"
           - " data root     : {{ tn_data_root }}"
           - "──────────────────────────────────────────────────────────────"

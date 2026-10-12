@@ -119,6 +119,24 @@ tn_domain_fqdn: tn-mgmt01.corp.tnrange.lab
 tn_lti_tool_base_url: "https://{{ tn_domain_fqdn }}/api"
 tn_lti_web_base_url: "https://{{ tn_domain_fqdn }}"
 
+# ── xAPI and cmi5 (docs/xapi-conformance.md, docs/cmi5.md) ────────────
+# The xAPI actor's homePage and the root of TrueNorth's activity IRIs. Every statement
+# carries them and the LRS compares them as strings: fix them before the first cohort
+# and never change them afterwards. The defaults are what the api used before the
+# installer rendered them (compose.prod.yml's https://${DOMAIN}), so upgrades keep them.
+tn_xapi_account_homepage: "https://{{ tn_domain_fqdn }}"
+tn_xapi_iri_base: "https://{{ tn_domain_fqdn }}/xapi"
+# TrueNorth as a cmi5 LMS for its released courses. true: 50-stack-up mints the AU's own
+# LRS credential (CMI5_LRS_AUTH) once and keeps it, 99-validate fails without it, and
+# 95-smoke-test proves launches do not answer 503. vault_cmi5_lrs_auth supplies one
+# instead (base64 key:secret of a credential this LRS already has). false: no credential
+# is rendered and every cmi5 launch answers 503 (fail closed).
+tn_cmi5_enabled: true
+# The AU runtime and the API as Students' browsers reach them (the api's own defaults:
+# the web app's URL, and that + /api).
+tn_cmi5_web_base_url: "{{ tn_lti_web_base_url }}"
+tn_cmi5_api_base_url: "{{ tn_cmi5_web_base_url }}/api"
+
 # ── Keycloak ──────────────────────────────────────────────────────────
 tn_keycloak_realm: truenorth
 tn_keycloak_base: "https://{{ tn_domain_fqdn }}/auth"
