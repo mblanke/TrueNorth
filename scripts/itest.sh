@@ -4,9 +4,11 @@
 #
 #   scripts/itest.sh up      build + start the stack, migrate, wait until it answers
 #   scripts/itest.sh test    run tests/integration against it; fail if nothing passed
+#   scripts/itest.sh acceptance  the post-install acceptance suite (scripts/staging_acceptance.py)
+#                            against it, after loading the shipped content as the installer does
 #   scripts/itest.sh logs    dump compose logs (CI calls this on failure)
 #   scripts/itest.sh down    stop it and delete its volumes
-#   scripts/itest.sh all     up + test, logs on failure, down always (the default)
+#   scripts/itest.sh all     up + test + acceptance, logs on failure, down always (the default)
 #
 # The stack is compose.dev.yml + compose.itest.yml under its own project name
 # (ITEST_PROJECT, default truenorth-itest) and on its own host ports, so a developer's dev
@@ -96,6 +98,33 @@ test_cmd() {
   return "$rc"
 }
 
+# The post-install acceptance suite on this stack, set up the way the installer leaves a
+# host: OpenSearch bootstrapped (the ingested-at pipeline detection credit is windowed on),
+# the shipped content and demo people loaded in-process, then the suite in a one-off api
+# container (docs/runbooks/staging-acceptance.md). The one-off runs with AUTH_DISABLED=false
+# so each role is its own user, and PROVISIONER_BACKEND=vsphere_api, staging's backend, so
+# its ranges are recorded as staging's are (a run on one stays live after its timeline;
+# nothing is provisioned, and its one inject touches no host). What this stack does not
+# have is declared with --absent; --strict fails any other skip.
+ACCEPTANCE_ADMIN="admin@truenorth.local"  # compose.dev's seeded admin
+ACCEPTANCE_ABSENT="${ACCEPTANCE_ABSENT:-edge,keycloak,minio,lrs,moodle,backup,vsphere,metrics-token,arc2}"
+acceptance() {
+  local run=("${COMPOSE[@]}" run --rm --no-deps -T -w /app -e PYTHONPATH=/app -e AUTH_DISABLED=false
+    -v "$ROOT:/srcapp:ro" --entrypoint python)
+  say "acceptance: OpenSearch bootstrap"
+  "$PY" -m telemetry.pipelines.bootstrap --opensearch-url http://127.0.0.1:19200 > "$OUT/acceptance-bootstrap.log" 2>&1
+  say "acceptance: shipped content and demo people, in-process (log: $OUT/acceptance-load.log)"
+  # Rate limiting off for the loader only: hundreds of imports would otherwise wait out 429s.
+  "${run[@]}" -e RATE_LIMIT_ENABLED=false api /srcapp/scripts/load_content_inprocess.py \
+    --admin "$ACCEPTANCE_ADMIN" --publish --demo > "$OUT/acceptance-load.log" 2>&1 \
+    || { grep -E "^  (FAIL|[0-9]{3} )" "$OUT/acceptance-load.log" | tail -40; return 1; }
+  mkdir -p "$OUT/acceptance" && chmod 0777 "$OUT/acceptance"  # the container's user writes the report
+  say "acceptance: scripts/staging_acceptance.py --strict (absent: $ACCEPTANCE_ABSENT)"
+  "${run[@]}" -e PROVISIONER_BACKEND=vsphere_api -v "$OUT/acceptance:/out" api \
+    /srcapp/scripts/staging_acceptance.py --admin "$ACCEPTANCE_ADMIN" --strict \
+    --absent "$ACCEPTANCE_ABSENT" --json /out/acceptance.json
+}
+
 logs() { "${COMPOSE[@]}" logs --no-color --timestamps --tail=500; }
 down() { "${COMPOSE[@]}" --profile tools down -v --remove-orphans; }
 
@@ -106,6 +135,7 @@ all() {
   set +e
   (set -e; up); rc=$?
   if [[ $rc -eq 0 ]]; then (set -e; test_cmd); rc=$?; fi
+  if [[ $rc -eq 0 ]]; then (set -e; acceptance); rc=$?; fi
   set -e
   if [[ $rc -ne 0 ]]; then logs > "$OUT/compose.log" 2>&1 || true; say "compose logs: $OUT/compose.log"; fi
   if [[ "${ITEST_KEEP:-0}" != "1" ]]; then down; fi
@@ -116,8 +146,9 @@ mkdir -p "$OUT"
 case "${1:-all}" in
   up) up ;;
   test) test_cmd ;;
+  acceptance) acceptance ;;
   logs) logs ;;
   down) down ;;
   all) all ;;
-  *) echo "usage: $0 [up|test|logs|down|all]" >&2; exit 2 ;;
+  *) echo "usage: $0 [up|test|acceptance|logs|down|all]" >&2; exit 2 ;;
 esac
