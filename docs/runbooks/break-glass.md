@@ -37,9 +37,11 @@ Admin API on the host's loopback port only:
    it into the incident log);
 3. deletes that user's OTP (and any WebAuthn) credentials;
 4. for a **local** account, sets a fresh temporary password (Keycloak makes the user
-   replace it at the next sign-in) and writes it root-only to
-   `<tn_state_dir>/breakglass-<upn>.password` for you to hand over out of band, then
-   delete; `-e tn_breakglass_reset_password=false` skips this;
+   replace it at the next sign-in). The password is written first, root-owned 0600, to
+   `<tn_state_dir>/breakglass-<upn>.password`, and only then set in Keycloak (a failed
+   write changes nothing). Hand it over out of band, then **delete the file**
+   (`sudo rm <tn_state_dir>/breakglass-<upn>.password`); `-e tn_breakglass_reset_password=false`
+   skips this;
 5. adds `CONFIGURE_TOTP` (and, for a local account, `UPDATE_PASSWORD`) to the user's
    required actions;
 6. signs the user out of every session.

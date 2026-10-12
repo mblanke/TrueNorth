@@ -125,3 +125,14 @@ def test_a_local_account_must_also_set_a_new_password():
                and "requiredActions" in t["ansible.builtin.uri"]["body"])
     assert "UPDATE_PASSWORD" in put["vars"]["_pw"] and "federationLink" in put["vars"]["_local"]
     assert "tn_breakglass_reset_password" in put["vars"]["_pw"]
+
+
+
+def test_the_password_file_is_written_root_only_before_keycloak_changes():
+    """Review 2, items 3-4: a failed copy must not leave a password nobody knows."""
+    write = _index(lambda t: "ansible.builtin.copy" in t)
+    reset = _index(lambda t: t.get("ansible.builtin.uri", {}).get("url", "").endswith("/reset-password"))
+    assert write < reset
+    task = TASKS[write]
+    assert task["become"] is True
+    assert (task["ansible.builtin.copy"]["owner"], task["ansible.builtin.copy"]["mode"]) == ("root", "0600")

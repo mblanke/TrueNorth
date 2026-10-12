@@ -94,3 +94,71 @@ def test_installer_compose_path_warns_and_helm_can_choose():
     assert "TN_MFA_KEYCLOAK_CHECK=warn" in (root / "install/roles/tn_config/templates/env.production.j2").read_text()
     assert "TN_MFA_KEYCLOAK_CHECK" in (root / "infra/k8s/helm/truenorth-range/templates/configmap.yaml").read_text()
     assert "Upgrading to v1.2.0" in (root / "infra/k8s/README.md").read_text()
+
+
+
+# ── Review 2: a refused admin client is a configuration error; junk answers do not crash ──
+class _Resp:
+    def __init__(self, status, body=None, text=False):
+        self.status_code, self._body, self._text = status, body, text
+
+    def json(self):
+        if self._text:
+            raise ValueError("not JSON")
+        return self._body
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            import httpx
+
+            raise httpx.HTTPStatusError("x", request=None, response=None)
+
+
+class _Client:
+    def __init__(self, token, realm):
+        self._token, self._realm = token, realm
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def post(self, *a, **k):
+        return self._token
+
+    def get(self, *a, **k):
+        return self._realm
+
+
+@pytest.fixture
+def configured(monkeypatch):
+    for name, value in (("KEYCLOAK_URL", "http://kc/auth"), ("KEYCLOAK_ADMIN_CLIENT_ID", "truenorth-api-admin"),
+                        ("KEYCLOAK_ADMIN_CLIENT_SECRET", "s")):
+        monkeypatch.setenv(name, value)
+    import httpx
+
+    def use(token, realm):
+        monkeypatch.setattr(httpx, "Client", lambda **k: _Client(token, realm))
+
+    return use
+
+
+@pytest.mark.parametrize("token, realm", [(_Resp(401), None), (_Resp(200, {"access_token": "t"}), _Resp(403))])
+def test_a_refused_admin_client_is_reported_as_misconfigured(configured, token, realm):
+    configured(token, realm)
+    [problem] = k.check()
+    assert "misconfigured Admin API client" in problem
+
+
+@pytest.mark.parametrize("token, realm", [(_Resp(200, text=True), None), (_Resp(200, {}), None),
+                                         (_Resp(200, {"access_token": "t"}), _Resp(200, text=True))])
+def test_junk_answers_count_as_unreachable_not_a_crash(configured, token, realm):
+    configured(token, realm)
+    with pytest.raises(k.KeycloakUnreachableError):
+        k.check()
+
+
+def test_a_configured_realm_passes_through_check(configured):
+    configured(_Resp(200, {"access_token": "t"}), _Resp(200, GOOD))
+    assert k.check() == []

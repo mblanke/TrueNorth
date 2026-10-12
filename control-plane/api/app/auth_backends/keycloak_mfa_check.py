@@ -18,8 +18,10 @@ every member of staff out with nothing but 403s. This check names what is missin
              60-keycloak configures the realm right after the stack starts, and
              95-smoke-test then asserts the flow and mapper (a hard gate there).
   ``off``    (default outside production) no check.
-A Keycloak that does not answer is logged and never blocks the start: an outage of the
-identity provider must not keep the API down after it recovers.
+A Keycloak that does not answer (or answers something that is not Keycloak) is logged and
+never blocks the start: an outage of the identity provider must not keep the API down after
+it recovers. A Keycloak that answers but refuses the admin client (401/403) is a
+configuration error, reported like a missing piece (refused in ``refuse`` mode).
 """
 
 from __future__ import annotations
@@ -35,6 +37,11 @@ CONFIGURED_ATTR = "tn.mfa.configured"
 
 class KeycloakUnreachableError(RuntimeError):
     pass
+
+
+class AdminClientRefusedError(RuntimeError):
+    """Keycloak answered, but refused the Admin API client (wrong secret, disabled, or no
+    view-realm): a configuration error, not an outage."""
 
 
 def mode() -> str:
@@ -54,12 +61,6 @@ def _config() -> dict:
         "client_id": os.getenv("KEYCLOAK_ADMIN_CLIENT_ID", ""),
         "client_secret": os.getenv("KEYCLOAK_ADMIN_CLIENT_SECRET", ""),
     }
-
-
-def _get(client, url: str, token: str):
-    resp = client.get(url, headers={"Authorization": f"Bearer {token}"})
-    resp.raise_for_status()
-    return resp.json()
 
 
 def realm_problems(realm: dict) -> list[str]:
@@ -94,12 +95,25 @@ def check() -> list[str]:
                 data={"grant_type": "client_credentials", "client_id": cfg["client_id"],
                       "client_secret": cfg["client_secret"]},
             )
+            if tok.status_code in (400, 401, 403):
+                raise AdminClientRefusedError(f"token request answered HTTP {tok.status_code}")
             tok.raise_for_status()
             token = tok.json()["access_token"]
             admin = f"{cfg['base']}/admin/realms/{cfg['realm']}"
-            realm = _get(client, admin, token)
+            resp = client.get(admin, headers={"Authorization": f"Bearer {token}"})
+            if resp.status_code in (401, 403):
+                raise AdminClientRefusedError(f"reading the realm answered HTTP {resp.status_code} (no view-realm?)")
+            resp.raise_for_status()
+            realm = resp.json()
+    except AdminClientRefusedError as exc:
+        return [f"misconfigured Admin API client {cfg['client_id']!r}: {exc}; it needs a valid secret and "
+                "realm-management view-realm"]
     except httpx.HTTPError as exc:
         raise KeycloakUnreachableError(f"{type(exc).__name__}: {exc}") from exc
+    except (ValueError, KeyError, TypeError) as exc:  # not JSON, or no access_token
+        raise KeycloakUnreachableError(f"unexpected answer from Keycloak ({type(exc).__name__})") from exc
+    if not isinstance(realm, dict):
+        raise KeycloakUnreachableError("unexpected answer from Keycloak (not a realm)")
     return realm_problems(realm)
 
 

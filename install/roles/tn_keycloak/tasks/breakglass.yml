@@ -144,6 +144,19 @@
   when: tn_bg_user.json[0].federationLink is not defined and tn_breakglass_reset_password | default(true) | bool
   no_log: true
 
+# Written FIRST: if the file cannot be written, Keycloak is not changed, so a failure
+# never leaves the user with a password nobody knows. Root-owned 0600.
+- name: Break-glass — write it for the operator (root-only, before Keycloak is changed)
+  ansible.builtin.copy:
+    dest: "{{ tn_state_dir }}/breakglass-{{ tn_breakglass_user | trim | regex_replace('[^A-Za-z0-9@._-]', '_') }}.password"
+    content: "{{ tn_bg_temp_password }}\n"
+    owner: root
+    group: root
+    mode: "0600"
+  become: true
+  when: tn_bg_temp_password is defined
+  no_log: true
+
 - name: Break-glass — set it as a temporary password (the user must change it)
   ansible.builtin.uri:
     url: "{{ tn_kc_realm_url }}/users/{{ tn_bg_user.json[0].id }}/reset-password"
@@ -154,14 +167,6 @@
     status_code: [204]
   when: tn_bg_temp_password is defined
   changed_when: true
-  no_log: true
-
-- name: Break-glass — write it for the operator (root-only)
-  ansible.builtin.copy:
-    dest: "{{ tn_state_dir }}/breakglass-{{ tn_breakglass_user | trim | regex_replace('[^A-Za-z0-9@._-]', '_') }}.password"
-    content: "{{ tn_bg_temp_password }}\n"
-    mode: "0600"
-  when: tn_bg_temp_password is defined
   no_log: true
 
 - name: Break-glass — require enrolment (and, for a local account, a new password)
@@ -193,7 +198,7 @@
     msg: >-
       {{ tn_breakglass_user }}: {{ tn_bg_creds.json | selectattr('type', 'in', ['otp', 'webauthn', 'webauthn-passwordless']) | list | length }}
       second-factor credential(s) removed, signed out, enrolment required at the next sign-in
-      {{ ('(and a new password: the temporary one is in ' ~ tn_state_dir ~ '/breakglass-*.password, root-only; hand it over out of band, then delete the file)')
+      {{ ('(and a new password: the temporary one is in ' ~ tn_state_dir ~ '/breakglass-*.password, root-owned 0600; hand it over out of band, then DELETE the file: sudo rm it)')
          if tn_bg_temp_password is defined
          else '(AD account: reset its password in AD now; until it re-enrols, anyone with the password could enrol)' }}.
       {{ tn_bg_audit.stdout | default('') }}

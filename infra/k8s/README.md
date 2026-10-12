@@ -105,8 +105,9 @@ the next sign-in. Group names other than the shipped `TN-*` ones: pass `--groups
 At startup the API checks the realm through `config.keycloak.adminClientId` (a
 service account with realm-management `view-realm`). In production it **refuses to start**
 when the realm answers without `tn-browser`, `acr.loa.map` "mfa" or `tn.mfa.configured`,
-or when no admin client is configured, and its log names what is missing; a Keycloak that
-does not answer only logs a warning. `config.mfaKeycloakCheck: warn` starts anyway (staff
+when no admin client is configured, or when Keycloak refuses that client (401/403: wrong
+secret, or no `view-realm`), and its log names what is wrong; a Keycloak that does not
+answer only logs a warning. `config.mfaKeycloakCheck: warn` starts anyway (staff
 will then be refused at sign-in until the realm is configured). Proven on the pinned
 Keycloak by `scripts/check_keycloak_mfa.sh`.
 
