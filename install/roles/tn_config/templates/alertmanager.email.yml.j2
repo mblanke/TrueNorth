@@ -1,0 +1,56 @@
+# TrueNorth Range — Alertmanager with an EMAIL receiver. Managed by the installer
+# (roles/tn_config, tn_alert_email_enabled); a re-run overwrites local edits.
+#
+# Selected by ALERTMANAGER_CONFIG_DIR + ALERTMANAGER_CONFIG in the env file. The SMTP
+# password is read from /etc/alertmanager/secrets/smtp_password (smtp_auth_password_file,
+# a 0600 file), so it is not in this file, the environment or `docker inspect`.
+#
+# Criticals: mailed at once, again every hour while they fire. Warnings: batched (the
+# first waits 5 m so a burst arrives as one message), again every 12 h. Every receiver
+# also mails the resolution. Test delivery: playbooks/alert-test.yml (install/README.md
+# "Alerting").
+
+global:
+  smtp_smarthost: {{ (tn_alert_smtp_host | trim ~ ':' ~ (tn_alert_smtp_port | int)) | to_json }}
+  smtp_from: {{ tn_alert_email_from | trim | to_json }}
+  smtp_hello: {{ tn_domain_fqdn | to_json }}
+  smtp_require_tls: {{ tn_alert_smtp_require_tls | bool | to_json }}
+{% if vault_alert_smtp_username | default('') | string | trim | length > 0 %}
+  smtp_auth_username: {{ vault_alert_smtp_username | string | trim | to_json }}
+  smtp_auth_password_file: /etc/alertmanager/secrets/smtp_password
+{% endif %}
+
+route:
+  receiver: email
+  group_by: [alertname, severity]
+  group_wait: 5m
+  group_interval: 15m
+  repeat_interval: 12h
+  routes:
+    - matchers: ['severity="critical"']
+      receiver: email
+      group_wait: 0s
+      group_interval: 1m
+      repeat_interval: 1h
+
+# A critical alert silences the warning of the same name and instance.
+inhibit_rules:
+  - source_matchers: ['severity="critical"']
+    target_matchers: ['severity="warning"']
+    equal: [alertname, instance]
+
+receivers:
+  - name: email
+    email_configs:
+      - to: {{ ((tn_alert_email_to | join(', ')) if tn_alert_email_to is not string else tn_alert_email_to) | trim | to_json }}
+        send_resolved: true
+        headers:
+          # Which host is alerting: staging and production may mail the same people.
+          Subject: '[TrueNorth {{ tn_domain_fqdn }}] {% raw %}{{ template "email.default.subject" . }}{% endraw %}'
+{% if vault_alertmanager_webhook_url | default('') | length > 0 %}
+    # vault_alertmanager_webhook_url is set as well: the same alerts go to it.
+    webhook_configs:
+      - url_file: /etc/alertmanager/secrets/webhook_url
+        send_resolved: true
+        max_alerts: 50
+{% endif %}

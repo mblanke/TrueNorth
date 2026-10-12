@@ -30,7 +30,9 @@
   vars:
     _skip: >-
       {{ ([] if tn_ldap_enabled | bool else ['vault_ldap_bind_password'])
-         + ([] if tn_uses_vcenter | bool else ['vault_vsphere_password']) }}
+         + ([] if tn_uses_vcenter | bool else ['vault_vsphere_password'])
+         + ([] if tn_alert_email_enabled | default(false) | bool
+            else ['vault_alert_smtp_username', 'vault_alert_smtp_password']) }}
     _placeholders: >-
       {%- set out = [] -%}
       {%- for n in query('ansible.builtin.varnames', '^vault_') | reject('in', _skip) -%}
@@ -46,6 +48,34 @@
       Set real values (ansible-vault edit inventory/group_vars/all/vault.yml), or empty the
       ones marked "generated on target if empty".
     success_msg: "vault: no CHANGE_ME placeholders"
+
+# Alert email (tn_alert_email_enabled): everything Alertmanager needs to send, or the
+# install stops here rather than render a receiver that cannot deliver. Names what is
+# missing; never prints a credential.
+- name: Preflight — alert email is complete
+  vars:
+    _user: "{{ vault_alert_smtp_username | default('') | string | trim }}"
+    _pass: "{{ vault_alert_smtp_password | default('') | string | trim }}"
+    _missing: >-
+      {{ ([] if tn_alert_email_to | default('') | string | trim | length > 0 else ['tn_alert_email_to'])
+         + ([] if tn_alert_email_from | default('') | string | trim | length > 0 else ['tn_alert_email_from'])
+         + ([] if tn_alert_smtp_host | default('') | string | trim | length > 0 else ['tn_alert_smtp_host'])
+         + ([] if (tn_alert_smtp_port | default(0) | int) > 0 else ['tn_alert_smtp_port']) }}
+  ansible.builtin.assert:
+    that:
+      - _missing | length == 0
+      - _user is not search('CHANGE_ME') and _pass is not search('CHANGE_ME')
+      - (_user | length > 0) == (_pass | length > 0)
+    fail_msg: >-
+      tn_alert_email_enabled is true, but alert email cannot be sent.
+      {% if _missing | length > 0 %}Not set in the inventory: {{ _missing | join(', ') }}.{% endif %}
+      {% if _user is search('CHANGE_ME') or _pass is search('CHANGE_ME') %}vault_alert_smtp_username /
+      vault_alert_smtp_password still read CHANGE_ME (ansible-vault edit inventory/group_vars/all/vault.yml).{% endif %}
+      {% if (_user | length > 0) != (_pass | length > 0) %}Set both vault_alert_smtp_username and
+      vault_alert_smtp_password, or empty both for a relay without authentication.{% endif %}
+      Or set tn_alert_email_enabled: false (alerts are then NOT delivered; install/README.md "Alerting").
+    quiet: true
+  when: tn_alert_email_enabled | default(false) | bool
 
 # Supported: vsphere_api (ADR 0009) and mock. proxmox_api and hyperv are experimental and
 # the API and workers refuse them unless EXPERIMENTAL_PROVISIONERS is true; the Terraform

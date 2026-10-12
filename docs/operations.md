@@ -174,6 +174,41 @@ flowchart LR
 
 ## Alert Response Procedures
 
+### Alert delivery
+
+An alert nobody receives is not monitoring. Out of the box Alertmanager routes every alert
+to a `null` receiver; the installer warns about it in `30-config` and in the `99-validate`
+report (`alerts: NOWHERE (null receiver)`, `WARNING: ALERTS ARE NOT DELIVERED`).
+
+Delivery is by **email** (install/README.md "Alerting" has every variable):
+
+- Turn it on with `tn_alert_email_enabled: true` (staging has it on), the recipient
+  (`tn_alert_email_to`), sender (`tn_alert_email_from`) and relay (`tn_alert_smtp_host`,
+  port `587`, STARTTLS required), and the relay account in the vault
+  (`vault_alert_smtp_username`, `vault_alert_smtp_password`). Preflight refuses
+  placeholders and gaps. Re-run `30-config` and `50-stack-up`.
+- Criticals are mailed at once and hourly while they fire; warnings are batched (first
+  after 5 minutes, then at most every 15 minutes) and repeat every 12 hours; each alert
+  is followed by a RESOLVED message. Subjects start `[TrueNorth <host>]`.
+- The SMTP password lives only in `/srv/truenorth/config/alertmanager/smtp_password`
+  (0600, read with `smtp_auth_password_file`). To rotate it: change the vault value,
+  re-run `30-config` (Alertmanager restarts on its own), then run the delivery test.
+
+**Prove it after every change** (recipient, relay, credential, upgrade): the
+`tn-alert-test` path fires a synthetic critical `TrueNorthAlertTest` and fails if
+Alertmanager could not hand it to the relay.
+
+```bash
+cd install && ansible-playbook -i inventory/staging.yml playbooks/alert-test.yml --ask-vault-pass
+```
+
+`SENT` means the relay accepted the message, not that it arrived: delivery is proven
+when the FIRING message, and about 5 minutes later the RESOLVED one, are in the inbox.
+Record the times and mailbox as the evidence. If it fails, `docker logs --since 5m
+tn-alertmanager` names the SMTP error (authentication, TLS, a sender the relay refuses);
+`docker exec tn-alertmanager amtool check-config /etc/alertmanager/alertmanager.yml`
+checks the config Alertmanager is running.
+
 ### Alert Rules
 
 What Prometheus actually alerts on: `infra/platform/docker/monitoring/prometheus/alerts.yml`

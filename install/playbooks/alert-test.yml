@@ -1,0 +1,92 @@
+---
+# Prove alert delivery: fire a synthetic critical alert through the running Alertmanager.
+#
+#   ansible-playbook -i inventory/staging.yml playbooks/alert-test.yml --ask-vault-pass
+#   ansible-playbook -i inventory/staging.yml site.yml --tags tn-alert-test --ask-vault-pass
+#
+# Sends TrueNorthAlertTest (severity critical, so no batching delay) with amtool inside
+# tn-alertmanager, then watches Alertmanager's own counters until it has handed the
+# notification to the receiver, or failed to. A success here means the SMTP relay (or
+# webhook) ACCEPTED it; delivery is proven only when the message is in the inbox. The
+# alert ends after 5 minutes and a RESOLVED message follows within about a minute.
+# Each run adds a fresh `run` label, so it notifies again however often it is repeated.
+# The same thing by hand (install/README.md "Alerting"):
+#
+#   docker exec tn-alertmanager amtool --alertmanager.url=http://localhost:9093 \
+#     alert add TrueNorthAlertTest severity=critical source=tn-alert-test run=$(date +%s) \
+#     --annotation='summary="TrueNorth alert delivery test"' \
+#     --end=$(date -u -d '+5 minutes' +%Y-%m-%dT%H:%M:%SZ)
+- name: "Alert delivery test (tn-alert-test)"
+  hosts: platform
+  gather_facts: false
+  tags: [tn-alert-test]
+
+  tasks:
+    - name: Alert test — there is a receiver to test
+      ansible.builtin.assert:
+        that: >-
+          tn_alert_email_enabled | default(false) | bool
+          or vault_alertmanager_webhook_url | default('') | length > 0
+        fail_msg: >-
+          Alert delivery is off: Alertmanager routes every alert to a null receiver, so a test
+          alert would reach nobody. Set tn_alert_email_enabled and its settings, re-run
+          playbooks/30-config.yml and 50-stack-up.yml, then run this again.
+        quiet: true
+
+    - name: Alert test — fire TrueNorthAlertTest and wait for Alertmanager to send it
+      vars:
+        _integration: "{{ 'email' if tn_alert_email_enabled | default(false) | bool else 'webhook' }}"
+      ansible.builtin.shell:
+        executable: /bin/bash
+        cmd: |
+          set -euo pipefail
+          am() { docker exec tn-alertmanager "$@"; }
+          # Per-request counters: each attempt (retries included) adds to requests_total, and a
+          # refused one to requests_failed_total as well, as soon as the relay answers.
+          # (alertmanager_notifications_total counts a notification when it STARTS, before
+          # its outcome, so it cannot tell a sent message from a refused one.) They cover the
+          # whole integration: a real alert sent at the same moment counts too.
+          count() {
+            am wget -qO- http://localhost:9093/metrics \
+              | awk -v m="alertmanager_notification_requests$1_total{" -v i='integration="{{ _integration }}"' \
+                  'index($1, m) == 1 && index($1, i) { s += $2 } END { print s + 0 }'
+          }
+          req0=$(count ""); bad0=$(count _failed)
+          am amtool --alertmanager.url=http://localhost:9093 alert add TrueNorthAlertTest \
+            severity=critical source=tn-alert-test instance={{ inventory_hostname }} run="$(date +%s)" \
+            --annotation='summary="TrueNorth alert delivery test from {{ tn_domain_fqdn }}"' \
+            --annotation='description="Synthetic alert fired by playbooks/alert-test.yml. No action needed; a RESOLVED message follows in about 5 minutes."' \
+            --end="$(date -u -d '+5 minutes' +%Y-%m-%dT%H:%M:%SZ)"
+          for _ in $(seq 1 24); do
+            sleep 5
+            req=$(( $(count "") - req0 )); bad=$(( $(count _failed) - bad0 ))
+            if [ $(( req - bad )) -gt 0 ]; then
+              echo "SENT: the {{ _integration }} receiver accepted TrueNorthAlertTest ($bad refused attempt(s) first)"
+              exit 0
+            fi
+            # Alertmanager retries; three refusals is not a passing glitch.
+            if [ "$bad" -ge 3 ]; then
+              echo "FAILED: the {{ _integration }} receiver refused TrueNorthAlertTest $bad times; the reason: docker logs --since 5m tn-alertmanager"
+              exit 3
+            fi
+          done
+          if [ "$bad" -gt 0 ]; then
+            echo "FAILED: the {{ _integration }} receiver refused TrueNorthAlertTest $bad time(s) in 2 minutes;" \
+              "the reason: docker logs --since 5m tn-alertmanager"
+            exit 3
+          fi
+          echo "TIMEOUT: no {{ _integration }} notification attempt within 2 minutes; see: docker logs --since 5m tn-alertmanager"
+          exit 4
+      register: tn_alert_test
+      changed_when: true
+
+    - name: Alert test — now check the inbox
+      ansible.builtin.debug:
+        msg:
+          - "{{ tn_alert_test.stdout_lines | last }}"
+          - >-
+            {{ ('Look in ' ~ tn_alert_email_to ~ ' for "[TrueNorth ' ~ tn_domain_fqdn
+                ~ '] [FIRING:1] TrueNorthAlertTest", then "[RESOLVED] ..." about 5 minutes later.')
+               if tn_alert_email_enabled | default(false) | bool
+               else 'Check the webhook receiver for TrueNorthAlertTest.' }}
+          - "Delivery is proven only when that message has arrived: record when and where."

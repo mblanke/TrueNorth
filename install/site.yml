@@ -31,3 +31,6 @@
 - import_playbook: playbooks/90-vsphere.yml
 - import_playbook: playbooks/95-smoke-test.yml
 - import_playbook: playbooks/99-validate.yml
+# Only on request (--tags tn-alert-test): a synthetic critical alert that proves delivery.
+- import_playbook: playbooks/alert-test.yml
+  tags: [never, tn-alert-test]

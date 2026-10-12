@@ -81,6 +81,27 @@
         tasks_from: validate
       when: tn_cmi5_enabled | bool
 
+    # Where an alert goes. Shown in the report, and as a WARNING of its own when nowhere:
+    # the Prometheus rules then fire and nobody is told.
+    - name: Validate — alert delivery
+      ansible.builtin.set_fact:
+        tn_alert_delivery: >-
+          {{ ((['email to ' ~ tn_alert_email_to ~ ' via ' ~ tn_alert_smtp_host ~ ':' ~ tn_alert_smtp_port]
+               if tn_alert_email_enabled | default(false) | bool else [])
+              + (['webhook'] if vault_alertmanager_webhook_url | default('') | length > 0 else []))
+             | join(' + ') | default('NOWHERE (null receiver)', true) }}
+
+    - name: Validate — WARNING, alerts are not delivered
+      ansible.builtin.debug:
+        msg: >-
+          WARNING: ALERTS ARE NOT DELIVERED. Alertmanager routes every alert to a null
+          receiver: a down service, a stale backup or a failed probe fires and nobody is
+          told. Set tn_alert_email_enabled: true with tn_alert_email_to, tn_alert_email_from,
+          tn_alert_smtp_host and the vault_alert_smtp_* credentials, re-run
+          playbooks/30-config.yml and 50-stack-up.yml, then prove delivery with
+          playbooks/alert-test.yml (install/README.md "Alerting").
+      when: tn_alert_delivery.startswith('NOWHERE')
+
     - name: Validate — REPORT
       ansible.builtin.debug:
         msg:
@@ -93,7 +114,7 @@
           - " app ref       : {{ tn_app_state.ref | default('?') }}"
           - " app commit    : {{ (tn_app_state.commit | default('unknown'))[:12] }}"
           - " images        : {{ tn_app_state.image_source | default('?') }} {{ tn_app_state.release | default('') }}"
-          - " alerts        : {{ 'webhook' if vault_alertmanager_webhook_url | default('') | length > 0 else 'NOWHERE (null receiver)' }}"
+          - " alerts        : {{ tn_alert_delivery }}"
           - " alembic head  : {{ tn_head.stdout | default('unknown') | trim }}"
           - " tls mode      : {{ tn_tls_mode }}"
           - " realm         : {{ tn_keycloak_realm }} (AD: {{ tn_domain }})"

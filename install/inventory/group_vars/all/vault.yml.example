@@ -74,6 +74,14 @@ vault_opensearch_dashboards_password: "" # generated on target if empty
 # MEANS ALERTS GO NOWHERE: the null receiver (install/README.md "Alerting").
 vault_alertmanager_webhook_url: ""
 
+# ── Alert email (only with tn_alert_email_enabled) ────────────────────
+# The SMTP account Alertmanager signs in to at tn_alert_smtp_host. Preflight refuses
+# CHANGE_ME while alert email is on; set both, or empty both for a relay that accepts
+# unauthenticated mail from this host. The password reaches only a 0600 file Alertmanager
+# reads (smtp_auth_password_file), never its config or the environment.
+vault_alert_smtp_username: "CHANGE_ME"
+vault_alert_smtp_password: "CHANGE_ME"
+
 # ── Moodle (only with tn_moodle_enabled) ──────────────────────────────
 # 32+ characters of A-Z a-z 0-9 . _ - ; generated on target if empty.
 vault_moodle_db_password: ""
