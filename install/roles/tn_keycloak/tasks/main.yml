@@ -89,6 +89,31 @@
   when: tn_kc_realm_now.json | combine(_want) != tn_kc_realm_now.json
   changed_when: true
 
+# The master realm (the break-glass admin console, loopback only) shows the banner too.
+- name: Keycloak — the master realm's login theme
+  ansible.builtin.uri:
+    url: "{{ tn_kc_internal }}/admin/realms/master"
+    headers: "{{ tn_kc_headers }}"
+    status_code: 200
+  register: tn_kc_master_now
+
+- name: Keycloak — set the master realm's login theme
+  vars:
+    _want: {loginTheme: truenorth, internationalizationEnabled: true, supportedLocales: [en], defaultLocale: en}
+  ansible.builtin.uri:
+    url: "{{ tn_kc_internal }}/admin/realms/master"
+    method: PUT
+    headers: "{{ tn_kc_headers }}"
+    body: "{{ {'realm': 'master'} | combine(_want) }}"
+    body_format: json
+    status_code: [204]
+  when: tn_kc_master_now.json | combine(_want) != tn_kc_master_now.json
+  changed_when: true
+
+# ── Login banner (AC-8): this site's wording, as realm localization ───
+- name: Keycloak — login banner
+  ansible.builtin.include_tasks: banner.yml
+
 # ── Clients: this deployment's URLs and secrets, every run ────────────
 # An install whose realm predates the smoke client gets it here (disabled), and every
 # install gets the API's Admin API service account (truenorth-api-admin).

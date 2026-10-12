@@ -188,6 +188,19 @@ tn_registration_group_role_map:
 # registration. Empty: none. There is no default zone; name one explicitly.
 tn_registration_auth_zone: ""
 
+# ── Login banner (NIST AC-8; docs/security.md) ────────────────────────
+# Shown above the Keycloak sign-in form; the form cannot be submitted until the
+# acknowledgement box is ticked. The default is the owner's GoC-style notice; the
+# accredited wording for a site is the system owner's to supply. Changing it needs only
+# a re-run of 60-keycloak (no rebuild, no restart). LTI-launched Students sign in
+# through Moodle, not Keycloak, and do not see it (no Moodle banner, by decision).
+tn_login_banner_title: Notice to users
+tn_login_banner_text: >-
+  This is a Government of Canada training system. Use is monitored and recorded.
+  Unauthorized use is prohibited and may result in disciplinary or legal action.
+  By continuing you consent to monitoring.
+tn_login_banner_ack: I have read and accept this notice
+
 # ── Multi-factor sign-in (docs/identity.md "MFA") ─────────────────────
 # Roles that must sign in with a second factor (OTP). The API enforces it per request
 # from the database role (TN_MFA_ROLES); 60-keycloak makes the realm ask for it from the

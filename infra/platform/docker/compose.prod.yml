@@ -416,6 +416,9 @@ services:
       - "127.0.0.1:${KEYCLOAK_ADMIN_PORT:-8180}:8080"
     volumes:
       - ${TRUSTSTORE_PATH:-./truststores}:/opt/keycloak/conf/truststores:ro
+      # The login theme with the AC-8 banner (loginTheme: truenorth). Read-only; a change
+      # needs a Keycloak restart (themes are cached in `start` mode; roles/tn_keycloak does it).
+      - ${KEYCLOAK_THEMES_PATH:-../../keycloak/themes}/truenorth:/opt/keycloak/themes/truenorth:ro
     depends_on:
       postgres:
         condition: service_healthy

@@ -298,6 +298,16 @@ course production with a local-model fallback, and the cleanup of unsupported su
   in-process harness is exempt and writes an `inprocess_session` audit row. A test-host
   demo exemption (`tn_mfa_demo_exempt`, off) exists for `*.demo@truenorth.test` staff
   only, audited per use.
+- **Login banner (NIST AC-8).** The Keycloak sign-in page (realm `truenorth`, and the
+  loopback-only master console) uses the new `truenorth` login theme
+  (`infra/keycloak/themes/truenorth`, mounted read-only): a "Notice to users" banner above
+  the form and an acknowledgement box the browser requires before "I acknowledge - Sign
+  in". The wording is per site: `tn_login_banner_title` / `_text` / `_ack` (default: the
+  owner's GoC-style notice), written as realm localization by 60-keycloak, so a change
+  needs no rebuild or restart; a theme file change restarts Keycloak once. Shown on every
+  interactive sign-in (each SSO session, at most 10 h). LTI-launched Students sign in
+  through Moodle and do not see it (no Moodle banner, by decision). CI: `keycloak-realm`
+  checks the banner, the required box and the localization override on the pinned image.
 - **Smoke identity (behaviour change):** 95-smoke-test signs in as the local,
   non-privileged `tn_smoke_local_user` (new secret `smoke_user_password`), not the
   bootstrap admin; AD sites must pass a non-privileged `tn_smoke_username`. It also asserts

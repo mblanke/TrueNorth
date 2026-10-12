@@ -1,0 +1,64 @@
+---
+# The login banner (NIST AC-8): docs/security.md, infra/keycloak/themes/truenorth.
+#
+# The truenorth login theme shows the message tnLoginBanner above the sign-in form and
+# will not submit until the acknowledgement box is ticked. Its wording is this site's:
+# tn_login_banner_title / _text / _ack, written as realm localization overrides, which
+# take precedence over the theme's defaults (proven on Keycloak 24 by
+# scripts/check_keycloak_realm.sh). So changing the text needs no theme rebuild and no
+# restart: re-run 60-keycloak. The banner is not secret, so nothing here is no_log.
+#
+# The theme files themselves are cached by Keycloak in `start` mode: when they change
+# (an upgrade), Keycloak is restarted once (handler), and only then.
+
+- name: Banner — each realm's English localization overrides
+  ansible.builtin.uri:
+    url: "{{ tn_kc_internal }}/admin/realms/{{ item }}/localization/en"
+    headers: "{{ tn_kc_headers }}"
+    status_code: 200
+  register: tn_kc_l10n
+  loop: "{{ tn_kc_banner_realms }}"
+  no_log: false
+
+- name: Banner — set each text that differs
+  vars:
+    _realm: "{{ item.0.item }}"
+    _have: "{{ item.0.json | default({}) }}"
+  ansible.builtin.uri:
+    url: "{{ tn_kc_internal }}/admin/realms/{{ _realm }}/localization/en/{{ item.1.key }}"
+    method: PUT
+    headers:
+      Authorization: "{{ tn_kc_headers.Authorization }}"
+      Content-Type: text/plain; charset=utf-8
+    body: "{{ item.1.value }}"
+    body_format: raw
+    status_code: [204]
+  loop: "{{ tn_kc_l10n.results | product(tn_kc_banner_messages | dict2items) | list }}"
+  loop_control:
+    label: "{{ item.0.item }} {{ item.1.key }}"
+  when: _have[item.1.key] | default(none) != item.1.value
+  changed_when: true
+  no_log: false
+
+# ── Theme files: restart Keycloak when they change (theme cache in `start` mode) ──
+- name: Banner — checksum of the login theme on disk
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: set -o pipefail; find . -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1
+    chdir: "{{ tn_app_dir }}/infra/keycloak/themes/truenorth"
+  register: tn_kc_theme_sum
+  changed_when: false
+
+- name: Banner — the checksum Keycloak was last restarted with
+  ansible.builtin.slurp:
+    src: "{{ tn_state_dir }}/keycloak_theme.sha256"
+  register: tn_kc_theme_prev
+  failed_when: false
+
+- name: Banner — record the theme checksum (restart Keycloak if it changed)
+  ansible.builtin.copy:
+    dest: "{{ tn_state_dir }}/keycloak_theme.sha256"
+    content: "{{ tn_kc_theme_sum.stdout | trim }}"
+    mode: "0644"
+  when: (tn_kc_theme_prev.content | default('') | b64decode | trim) != (tn_kc_theme_sum.stdout | trim)
+  notify: Restart Keycloak for the login theme
