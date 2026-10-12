@@ -74,11 +74,12 @@ all:
           tn_arc2_mode: subscription_with_local_fallback
           tn_arc2_local_url: https://atlas.tail8d54ec.ts.net:4443
           tn_arc2_local_model: atl-coder
-          # Alerts by email (install/README.md "Alerting"). Preflight stops until the
-          # recipient, sender and relay are set here (or with -e) and
-          # vault_alert_smtp_username / vault_alert_smtp_password are no longer CHANGE_ME.
-          # Then: ansible-playbook -i inventory/staging.yml playbooks/alert-test.yml
-          tn_alert_email_enabled: true
+          # Alerts by email (install/README.md "Alerting"). OFF until the SMTP details are
+          # known: alerts go nowhere and 99-validate warns so. To turn on, set this true,
+          # uncomment the three below, put vault_alert_smtp_username /
+          # vault_alert_smtp_password in the vault (preflight refuses CHANGE_ME), then:
+          # ansible-playbook -i inventory/staging.yml playbooks/alert-test.yml
+          tn_alert_email_enabled: false
           # tn_alert_email_to: <the operator's inbox>
           # tn_alert_email_from: <an address the relay lets this host send as>
           # tn_alert_smtp_host: <the SMTP relay>   (tn_alert_smtp_port: 587, STARTTLS)

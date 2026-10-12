@@ -116,13 +116,17 @@ def _mount_source(env: dict[str, str]) -> Path:
 
 
 # ── Defaults: off, except staging ─────────────────────────────────────
-def test_alert_email_is_off_by_default_and_on_in_staging():
+def test_alert_email_is_off_by_default_and_on_staging_until_smtp_is_known():
     gv = _yaml(INSTALL / "inventory/group_vars/all/main.yml")
     assert gv["tn_alert_email_enabled"] is False
     assert gv["tn_alert_smtp_port"] == 587 and gv["tn_alert_smtp_require_tls"] is True
     assert gv["tn_alert_email_to"] == gv["tn_alert_email_from"] == gv["tn_alert_smtp_host"] == ""
     staging = _yaml(INSTALL / "inventory/staging.yml")["all"]["children"]["platform"]["hosts"]["tn-staging"]
-    assert staging["tn_alert_email_enabled"] is True
+    # Off on staging until the owner has SMTP details; a one-line flip, the rest pre-written.
+    assert staging["tn_alert_email_enabled"] is False
+    text = (INSTALL / "inventory/staging.yml").read_text()
+    for name in ("tn_alert_email_to", "tn_alert_email_from", "tn_alert_smtp_host"):
+        assert f"# {name}:" in text
     vault = _yaml(INSTALL / "inventory/group_vars/all/vault.yml.example")
     assert vault["vault_alert_smtp_username"] == vault["vault_alert_smtp_password"] == "CHANGE_ME"
 

@@ -461,7 +461,7 @@ Set, in the inventory and the vault, then run `00-preflight`, `30-config` and
 
 | Variable | Default | Note |
 |---|---|---|
-| `tn_alert_email_enabled` | `false` (`true` in `staging.yml`) | Off: the null receiver (or the webhook, below). |
+| `tn_alert_email_enabled` | `false` (staging too, until its SMTP details are set) | Off: the null receiver (or the webhook, below). |
 | `tn_alert_email_to` | *(empty — required when on)* | One address, or several separated by commas. |
 | `tn_alert_email_from` | *(empty — required when on)* | An address the relay lets this host send as. |
 | `tn_alert_smtp_host` | *(empty — required when on)* | The SMTP relay, reached over `tn-egress`. |
@@ -814,7 +814,7 @@ actually change:
 | `tn_image_source` | `release` | `build` only for a lab ("Images") |
 | `tn_release_version` | *(empty — required in release mode)* | The release tag to install, e.g. `v1.2.3` |
 | `tn_release_dir` / `tn_image_archive_dir` | *(empty)* | Air-gapped: the release files, and `docker save` tarballs |
-| `tn_alert_email_enabled` | `false` (`true` in `staging.yml`) | Alerts by email; with `tn_alert_email_to`, `tn_alert_email_from`, `tn_alert_smtp_host`, `tn_alert_smtp_port` (`587`), `tn_alert_smtp_require_tls` (`true`) and `vault_alert_smtp_username` / `vault_alert_smtp_password` ("Alerting"). Off: alerts go nowhere. |
+| `tn_alert_email_enabled` | `false` (staging too, until its SMTP details are set) | Alerts by email; with `tn_alert_email_to`, `tn_alert_email_from`, `tn_alert_smtp_host`, `tn_alert_smtp_port` (`587`), `tn_alert_smtp_require_tls` (`true`) and `vault_alert_smtp_username` / `vault_alert_smtp_password` ("Alerting"). Off: alerts go nowhere. |
 | `vault_alertmanager_webhook_url` | *(empty)* | A webhook receiver, alone or beside email ("Alerting"). |
 | `tn_bootstrap_admin_upn` | *(empty — required)* | The named AD account that admits everyone else. |
 | `tn_tls_mode` | `selfsigned` | `provided` once the AD CS certificate is in `files/tls/` |

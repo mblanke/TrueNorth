@@ -182,7 +182,7 @@ report (`alerts: NOWHERE (null receiver)`, `WARNING: ALERTS ARE NOT DELIVERED`).
 
 Delivery is by **email** (install/README.md "Alerting" has every variable):
 
-- Turn it on with `tn_alert_email_enabled: true` (staging has it on), the recipient
+- Turn it on with `tn_alert_email_enabled: true` (off on staging until the SMTP details are known), the recipient
   (`tn_alert_email_to`), sender (`tn_alert_email_from`) and relay (`tn_alert_smtp_host`,
   port `587`, STARTTLS required), and the relay account in the vault
   (`vault_alert_smtp_username`, `vault_alert_smtp_password`). Preflight refuses

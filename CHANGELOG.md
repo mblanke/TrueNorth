@@ -172,7 +172,7 @@ course production with a local-model fallback, and the cleanup of unsupported su
   carry a "Demo — fictional data" banner.
 
 ### Alert delivery by email
-- Installer: `tn_alert_email_enabled` (default off; on in `staging.yml`) renders an
+- Installer: `tn_alert_email_enabled` (default off; staging off until its SMTP details are known) renders an
   Alertmanager email receiver from `tn_alert_email_to` / `_from`, `tn_alert_smtp_host` /
   `_port` (587) / `_require_tls` (true) and `vault_alert_smtp_username` / `_password`.
   Criticals mailed at once and hourly while firing, warnings batched (5 m / 15 m, repeat
