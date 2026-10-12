@@ -193,6 +193,21 @@ and `tests/contracts/test_keycloak_hardening.py` keeps the two equal):
 }
 ```
 
+**Multi-factor sign-in (v1.2.0).** admin, instructor (including `TN-Content-Authors`),
+range_ops and observer sign in with a password and an authenticator-app code (TOTP);
+Students with a password, LTI-launched Students through Moodle. The installer builds the
+`tn-browser` flow and the `tn-mfa-required` role on the privileged groups
+(`scripts/keycloak_mfa.py`); the API refuses a privileged **database** role whose token
+shows no second factor, on every request and WebSocket (`control-plane/api/app/mfa_policy.py`).
+Details, enrolment and break-glass: `docs/identity.md` ("MFA"), `docs/runbooks/break-glass.md`.
+
+**Risk acceptance: the master realm administrator.** Keycloak's master realm admin
+(`KEYCLOAK_ADMIN`, escrowed by `backup.sh`) signs in with a password only. It is published
+on the host's loopback port only and nginx answers 404 for `/auth/admin` and
+`/auth/realms/master`, so using it needs an SSH login to the host. It is the installer's
+and the break-glass playbook's credential. Applying `tn-browser` to the master realm would
+add a lockout with no recovery path short of the database; not done in v1.2.0.
+
 `truenorth-smoke` exists only for the installer's smoke test, which enables it for one
 token request and disables it again (`install/roles/tn_smoke`). Sign-in flows:
 `docs/api.md` ("Authentication").
@@ -785,7 +800,7 @@ repository does it, whatever an operator could add.
 | AC-7 Unsuccessful Logon Attempts | Implemented (Keycloak) | Brute-force detection after 5 failures, temporary lockout growing by 60 s up to 300 s; no permanent lockout. AD-federated accounts are also subject to the directory's own policy | `infra/keycloak/realm-truenorth.json`, `tests/contracts/test_keycloak_hardening.py` |
 | AC-8 System Use Notification | Being built for v1.2.0; row owned by that work | Login banner via Keycloak theme | — |
 | AC-12 Session Termination | Implemented (Keycloak) | Access token 5 min, SSO idle 30 min, SSO maximum 10 h, offline session 7 days | `install/roles/tn_keycloak/defaults/main.yml` (`tn_kc_realm_settings`) |
-| AU-2 Event Logging | Partial | State changes in most sections write an audit row. Sign-ins, failures and reads are not logged by TrueNorth, and Keycloak's event store is not enabled | `control-plane/api/app/models.py` (`AuditLog`); [Audit Logging](#audit-logging) |
+| AU-2 Event Logging | Partial | State changes in most sections write an audit row. Sign-ins, failures, sign-outs and authenticator changes are Keycloak login events (event store and admin events enabled by 60-keycloak, kept 90 days), not TrueNorth audit rows; reads are not logged | `control-plane/api/app/models.py` (`AuditLog`), `install/roles/tn_keycloak/files/mfa-spec.json`; [Audit Logging](#audit-logging) |
 | AU-3 Content of Audit Records | Partial | Time, user, tenant, action, resource type and id, free-text detail. No source IP, user agent or outcome (success or failure) | `control-plane/api/app/models.py` (`AuditLog`) |
 | AU-6 Audit Review | Partial | A paged, newest-first list (`GET /audit-log`, Admin → Audit Log), scoped per tenant; only the platform administrator (`PLATFORM_TENANT_ID`) reads across tenants, with a `tenant_id` filter. No search, date or user filter, correlation, reporting or alerting on audit events | `control-plane/api/app/routers/admin.py` (`list_audit_log`), `tests/api/test_audit_scope.py` |
 | AU-9 Protection of Audit Information | Being built for v1.2.0; row owned by that work | Append-only table, backup to MinIO | — |
@@ -794,7 +809,7 @@ repository does it, whatever an operator could add.
 | CA-8 Penetration Testing | Not implemented | No penetration test has been performed or scheduled. Internal code security sweeps only | — |
 | CM-2 Baseline Configuration | Partial | Configuration as code: the Ansible installer, `compose.prod.yml` by image digest, a Helm chart, Packer image builds. No drift detection. (Terraform was removed in #131.) | `install/`, `infra/platform/docker/compose.prod.yml`, `infra/k8s/helm/`, `infra/vsphere/packer/` |
 | CM-6 Configuration Settings | Partial | The installer enforces Keycloak token, session, password and client settings on every run. The [hardening checklist](#security-hardening-checklist) is guidance for the operator, not enforced | `install/roles/tn_keycloak/` |
-| IA-2 Identification and Authentication | Partial | Keycloak OIDC with PKCE; optional read-only AD federation. MFA for privileged users: see the FedRAMP table. No CAC/PIV or smart-card support | `infra/keycloak/realm-truenorth.json`, `control-plane/api/app/identity.py` |
+| IA-2 Identification and Authentication | Partial | Keycloak OIDC with PKCE; optional read-only AD federation. IA-2(1)/(2): a second factor (TOTP) is required for admin, instructor, range_ops and observer, enforced by the API on every request and WebSocket from the database role (`amr`/`acr`; `acr` "1" never counts), with Keycloak's `tn-browser` flow, forced enrolment, step-up and an audited break-glass reset; production refuses to start without it, or with a realm not configured for it. Students: password only. Gaps: no WebAuthn yet, no CAC/PIV or smart-card support, and the master-realm admin is password-only (loopback only; risk acceptance under Keycloak Realm Configuration) | `control-plane/api/app/mfa_policy.py`, `scripts/keycloak_mfa.py`, `scripts/check_keycloak_mfa.sh`, `docs/identity.md` ("MFA") |
 | IA-5 Authenticator Management | Partial | Local Keycloak accounts: minimum 12 characters, not the username, last 5 not reused. AD-federated passwords are governed by AD | `install/roles/tn_keycloak/defaults/main.yml` (`passwordPolicy`) |
 | IR-4 Incident Handling | Partial | Written runbooks for incidents and on-call. No exercised incident on record | `docs/runbooks/incident.md`, `docs/runbooks/on-call.md` |
 | IR-5 Incident Monitoring | Partial | Alert rules and runbook procedures exist; delivery unproven (see CA-7). No incident tracking system | `docs/operations.md`, `docs/runbooks/incident.md` |
@@ -813,7 +828,7 @@ been made.
 
 | Area | Requirement | Status |
 |------|------------|--------|
-| Authentication | MFA for privileged users | Being built for v1.2.0; row owned by that work. Keycloak supports TOTP/WebAuthn |
+| Authentication | MFA for privileged users | **Implemented.** TOTP for every privileged role, enforced by the API and the Keycloak flow (IA-2); WebAuthn planned |
 | Encryption | FIPS 140-validated modules | **Not implemented.** Images use standard, non-FIPS crypto libraries |
 | Audit | Continuous audit log export | Being built for v1.2.0; row owned by that work. Daily export to immutable storage |
 | Monitoring | Continuous monitoring program | **Partial.** Prometheus, Alertmanager and Grafana; delivery not exercised (see CA-7) |
