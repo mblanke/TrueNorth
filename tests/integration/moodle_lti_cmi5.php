@@ -6,6 +6,8 @@
 //       parameter resource=<resource> (what a deep-linked cmi5 content item sets) and a
 //       grade out of 100, and a Student enrolled in it. Prints JSON: course, cmid,
 //       instance, userid, username, password, email.
+//       --into=<course idnumber>: add the activity to that existing course instead (a
+//       teacher deep-linking a module into a course TrueNorth published), in its first section.
 //   php moodle_lti_cmi5.php --grade --course=<id> --instance=<lti id> --userid=<id>
 //       The Student's grade for that activity in Moodle's gradebook, as JSON.
 
@@ -20,7 +22,7 @@ require_once($CFG->dirroot . '/mod/lti/locallib.php');
 require_once($CFG->libdir . '/gradelib.php');
 
 [$opt] = cli_get_params(['setup' => false, 'grade' => false, 'resource' => '', 'username' => '', 'course' => 0,
-    'instance' => 0, 'userid' => 0, 'course-idnumber' => '', 'idnumber' => '', 'whois' => false]);
+    'instance' => 0, 'userid' => 0, 'course-idnumber' => '', 'idnumber' => '', 'whois' => false, 'into' => '']);
 
 if ($opt['whois']) {
     // The account TrueNorth's sign-in made for a TrueNorth user, and whether its idnumber is locked.
@@ -48,8 +50,10 @@ if (!$opt['setup'] || !$opt['resource']) {
 \core\session\manager::set_user(get_admin());
 $typeid = $DB->get_field('lti_types', 'id', ['name' => 'TrueNorth Range', 'course' => SITEID], MUST_EXIST);
 $suffix = substr(md5($opt['resource'] . $opt['username'] . $opt['course-idnumber'] . microtime()), 0, 8);
-$course = create_course((object) ['fullname' => "cmi5 over LTI $suffix", 'shortname' => "cmi5-lti-$suffix",
-    'category' => 1, 'enablecompletion' => 1, 'idnumber' => $opt['course-idnumber']]);
+$course = $opt['into']
+    ? $DB->get_record('course', ['idnumber' => $opt['into']], '*', MUST_EXIST)
+    : create_course((object) ['fullname' => "cmi5 over LTI $suffix", 'shortname' => "cmi5-lti-$suffix",
+        'category' => 1, 'enablecompletion' => 1, 'idnumber' => $opt['course-idnumber']]);
 
 // --username: a plain Moodle account with a password, enrolled here. Without it, nobody is
 // enrolled: a farm Student arrives through TrueNorth's sign-in (local_truenorth sso.php).
