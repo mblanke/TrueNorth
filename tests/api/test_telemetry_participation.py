@@ -11,7 +11,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from _shared import act_as, real_exercise, real_tenant, real_user
+from _shared import STARTED, act_as, real_exercise, real_tenant, real_user
 from app import main as app_main
 from app.course_releases.models import CourseRelease, CourseReleaseBlob
 from app.lab_sessions.models import LabSession
@@ -124,3 +124,53 @@ def test_staff_read_tenant_ranges_and_only_infra_staff_read_labs(client, db_sess
     for who in (world["instructor"], world["range_ops"]):
         act_as(who)
         assert _search(client, lab).status_code == 200
+
+
+# ── a booking counts only while it overlaps the exercise (as app/exercise_participants.py) ──
+
+PAST = (STARTED - timedelta(days=30), STARTED - timedelta(days=30) + timedelta(hours=2))  # ended before the start
+
+
+def _future():
+    now = datetime.now(UTC)
+    return now + timedelta(days=7), now + timedelta(days=7, hours=2)
+
+
+def _book(db, world, ex, when, *, enrol=("student",), by_range=True):
+    course = Course(id=uuid.uuid4(), name="Class", tenant_id=world["a"].id)
+    db.add(course)
+    db.flush()
+    link = {"range_id": ex.range_id} if by_range else {"exercise_id": ex.id}
+    db.add(ScheduledEvent(name="lesson", tenant_id=world["a"].id, course_id=course.id, state=EventState.active,
+                          start_time=when[0], end_time=when[1], **link))
+    for who in enrol:
+        db.add(Enrollment(user_id=uuid.UUID(world[who].id), course_id=course.id, tenant_id=world["a"].id,
+                          status=EnrollmentStatus.enrolled))
+    db.flush()
+    return course
+
+
+@pytest.mark.parametrize("by_range", [False, True], ids=["booking-names-exercise", "booking-names-range"])
+@pytest.mark.parametrize("when", ["past", "future"])
+def test_a_booking_at_another_time_is_no_seat(client, db_session, backend, world, by_range, when):
+    """A range is reused class after class: last month's class (or next week's) does not
+    read the telemetry of the exercise running on it now, and a range booked only at other
+    times is not "no roster" either, so it is not opened to every Student of the tenant."""
+    ex = real_exercise(db_session, world["a"].id, state=ExerciseState.running, started_at=STARTED)
+    _book(db_session, world, ex, PAST if when == "past" else _future(), by_range=by_range)
+    for who in ("student", "classmate"):
+        act_as(world[who])
+        assert _search(client, ex.range_id).status_code == 404, who
+    assert backend.searched == []
+
+
+def test_a_booking_overlapping_the_running_exercise_is_a_seat(client, db_session, backend, world):
+    ex = real_exercise(db_session, world["a"].id, state=ExerciseState.running, started_at=STARTED)
+    _book(db_session, world, ex, PAST)  # an old class on the same range
+    _book(db_session, world, ex, (STARTED - timedelta(hours=1), datetime.now(UTC) + timedelta(hours=1)),
+          enrol=("classmate",))
+    act_as(world["student"])  # enrolled only in the old class
+    assert _search(client, ex.range_id).status_code == 404
+    act_as(world["classmate"])  # enrolled in the class booked now
+    assert _search(client, ex.range_id).status_code == 200
+    assert backend.searched == [f"range-{ex.range_id}"]
