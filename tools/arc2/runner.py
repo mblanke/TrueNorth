@@ -835,7 +835,8 @@ def reap(jobs: Path) -> None:
 # would. The job carries ``auto_accept`` and ``requested_by: "auto (test host)"``, and its
 # engine records ``accepted_by`` on the gate in manifest.json (check.py gate, from
 # ARC2_GATE_ACCEPTED_BY), so an automatic acceptance is auditable and never looks like a
-# person's. It never accepts past a failure, a STOP or a QA HUMAN-TAKEOVER, never when
+# person's. It never accepts past a failure, a STOP, a QA HUMAN-TAKEOVER or an open
+# human action that blocks promotion (``blocks_promotion``), never when
 # someone has already queued work for the run, and at most AUTO_ACCEPT_LIMIT times a run.
 
 AUTO_ACCEPTED_BY = "auto (test host)"
@@ -884,6 +885,9 @@ def pending_gate(manifest: dict | None) -> str | None:
         return None  # a STOP or a refused merge: a person decides
     if qa.get("result") == "human_takeover":
         return None
+    if any(isinstance(a, dict) and a.get("status") == "open" and a.get("blocks_promotion")
+           for a in manifest.get("human_actions") or []):
+        return None  # an open action that blocks promotion: a person decides, not the runner
     if (gates.get("outline") or {}).get("state") == "pending":
         return "outline"
     first_five = ("content-architect", "code-generator", "range-engineer", "artifact-creator", "sensor-gateway")

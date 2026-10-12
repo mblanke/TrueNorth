@@ -25,7 +25,9 @@ import uuid
 from html import unescape
 from typing import Any
 
-from ..course_releases.bundle import Bundle
+from ..course_releases.bundle import Bundle, auto_accepted
+from ..course_releases.test_content import LABEL as TEST_LABEL
+from ..course_releases.test_content import SUMMARY as TEST_SUMMARY
 
 STAGE_PREFIX = "tn-stage:"
 _H2 = re.compile(r"<h[12][^>]*>(.*?)</h[12]>", re.IGNORECASE | re.DOTALL)
@@ -128,11 +130,13 @@ def build(
         summary = "\n".join(f"- {o}" for o in m["objectives"])
         sections.append({"name": f"{m['ordinal']}. {m['title']}"[:255], "summary": summary, "activities": activities})
     title = bundle.meta["title"]
+    # Test content (a test host's runner accepted its ARC² gates) says so in Moodle too.
+    test = auto_accepted(bundle.meta)
     return {
         "idnumber": idnumber,
-        "fullname": f"{code} {title}" + (f" (staging v{version})" if stage else ""),
+        "fullname": f"{code} {title}" + (f" [{TEST_LABEL}]" if test else "") + (f" (staging v{version})" if stage else ""),
         "shortname": f"{code}" + (f" stage v{version}" if stage else ""),
-        "summary": f"{title}. Release v{version}.",
+        "summary": (f"{TEST_SUMMARY}\n\n" if test else "") + f"{title}. Release v{version}.",
         "visible": visible,
         "category": category,
         "sections": sections,

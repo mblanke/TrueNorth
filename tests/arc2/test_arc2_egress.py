@@ -94,3 +94,26 @@ def test_the_job_environment_points_at_the_proxy_and_keeps_the_local_fallback_di
         assert "127.0.0.1" in env["NO_PROXY"] and "localhost" in env["NO_PROXY"]
     finally:
         proxy.close()
+
+
+def test_a_host_with_a_colon_is_refused_unless_a_bracketed_ipv6_literal():
+    """Adversarial review of #130: with ``gw:4443`` allowed, ``CONNECT gw:4443:443`` split
+    into host ``gw:4443`` and port 443, and ``gw:4443:443`` matched the allow list."""
+    proxy = EgressProxy(allow=("gw:4443", "api.anthropic.com", "::1"))
+    assert proxy.permits("gw", 4443)
+    assert not proxy.permits("gw:4443", 443), "host:port smuggled into the host part"
+    assert not proxy.permits("api.anthropic.com:443", 443)
+    assert not proxy.permits("::1", 443), "an unbracketed IPv6 literal is ambiguous"
+    assert proxy.permits("[::1]", 443) and proxy.permits("[0:0:0:0:0:0:0:1]", 443)
+    assert not proxy.permits("[gw:4443]", 443) and not proxy.permits("[::1", 443)
+    proxy.close()
+
+
+def test_the_smuggled_port_is_refused_on_the_wire():
+    proxy = EgressProxy(allow=("gw:4443",)).start()
+    try:
+        s, reply = _connect(proxy, b"CONNECT gw:4443:443 HTTP/1.1\r\n\r\n")
+        assert reply.startswith("HTTP/1.1 403"), reply
+        s.close()
+    finally:
+        proxy.close()

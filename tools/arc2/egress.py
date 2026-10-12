@@ -21,6 +21,7 @@ it cannot send them to anyone but the model provider.
 from __future__ import annotations
 
 import contextlib
+import ipaddress
 import logging
 import os
 import socket
@@ -76,8 +77,19 @@ class EgressProxy:
 
     def permits(self, host: str, port: int) -> bool:
         """``host:port`` in the list matches exactly that pair (a gateway on its own port);
-        a bare ``host`` matches it on ``ports`` (443)."""
+        a bare ``host`` matches it on ``ports`` (443).
+
+        ``host`` is the CONNECT target's host as sent. A ``:`` in it is refused unless it is
+        a bracketed IPv6 literal: ``CONNECT gw:4443:443`` splits into host ``gw:4443`` and
+        port 443, and ``gw:4443:443`` would otherwise match an allowed ``gw:4443``."""
         host = host.lower()
+        if host.startswith("[") and host.endswith("]"):
+            try:
+                host = str(ipaddress.IPv6Address(host[1:-1]))
+            except ValueError:
+                return False
+        elif ":" in host or "[" in host or "]" in host:
+            return False
         return f"{host}:{port}" in self.allow or (host in self.allow and port in self.ports)
 
     def start(self) -> EgressProxy:
@@ -124,10 +136,10 @@ class EgressProxy:
                     return self._close(client)
                 head += chunk
             method, target, *_ = head.split(b"\r\n", 1)[0].decode("latin-1").split(" ")
-            host, _, port_text = target.rpartition(":")
-            host = host.strip("[]").lower()
+            sent_host, _, port_text = target.rpartition(":")
+            host = sent_host.strip("[]").lower()
             port = int(port_text) if port_text.isdigit() else 0
-            if method.upper() != "CONNECT" or not self.permits(host, port):
+            if method.upper() != "CONNECT" or not self.permits(sent_host, port):
                 self.refused.append(f"{host or target}:{port}")
                 logger.warning("egress refused: %s %s", method, target)
                 client.sendall(b"HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\n")

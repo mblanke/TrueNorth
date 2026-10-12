@@ -42,6 +42,13 @@ course production with a local-model fallback, and the cleanup of unsupported su
   `arc2.check init` reads it from there; nothing in the runs root is writable to a job.
   The tracked `.env.example` templates are no longer masked in the sandbox, which made every
   job record `provenance.git_dirty: true`.
+- Batch hardening: the driver follows only runs it queued and refuses a release for another
+  course; open actions stop at needs-review unless `--ack-open-actions` (each id recorded);
+  the runner no longer auto-accepts past an open `blocks_promotion` action. `release.json`
+  carries `auto_accepted`; accepting or publishing such a release needs `TN_TEST_HOST`
+  (installer: only with `tn_arc2_auto_accept`), and Students see a TEST CONTENT banner and
+  Moodle name. `--publish-platform` defaults to `none`; retries keep the auto attribution;
+  the egress proxy refuses `CONNECT host:port:port`.
 
 ### Ranges
 - **Greyspace on vSphere** (#133): gs-core VM in the range build, `configure_range` stage,

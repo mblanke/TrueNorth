@@ -3438,6 +3438,12 @@
             "title": "Arc2 Code",
             "type": "string"
           },
+          "auto_accepted": {
+            "default": false,
+            "description": "Test content: a test host's ARC\u00b2 runner accepted its gates, not a person. Accepted and published only on a test host (TN_TEST_HOST), and labelled there.",
+            "title": "Auto Accepted",
+            "type": "boolean"
+          },
           "catalogue_code": {
             "title": "Catalogue Code",
             "type": "string"

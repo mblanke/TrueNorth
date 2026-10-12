@@ -106,6 +106,22 @@ def test_only_a_clean_stop_at_a_gate_is_accepted(m, gate):
     assert runner.pending_gate(m) == gate
 
 
+@pytest.mark.parametrize("m", [
+    manifest(),
+    manifest(outline="accepted", preview="pending", done=6, qa="pass"),
+])
+def test_an_open_action_that_blocks_promotion_stops_auto_accept(m):
+    """Adversarial review of #130: the runner accepted a gate while a blocking human
+    action was open. A blocking action means a person decides; a non-blocking or resolved
+    one does not stop it."""
+    gate = runner.pending_gate(m)
+    m["human_actions"] = [{"id": "HA-1", "status": "open", "blocks_promotion": False},
+                          {"id": "HA-2", "status": "done", "blocks_promotion": True}]
+    assert runner.pending_gate(m) == gate
+    m["human_actions"].append({"id": "HA-3", "status": "open", "blocks_promotion": True})
+    assert runner.pending_gate(m) is None
+
+
 def test_range_stages_that_do_not_apply_count_as_complete():
     m = manifest(outline="accepted", preview="pending", done=6, qa="pass")
     m["stages"]["range-engineer"]["state"] = m["stages"]["sensor-gateway"]["state"] = "not_applicable"

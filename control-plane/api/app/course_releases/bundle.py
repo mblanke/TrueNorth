@@ -4,7 +4,8 @@ Nothing in the upload is trusted: every file's sha256, each part's digest and th
 digest (which also covers the rest of release.json) are recomputed here; the three parts
 are checked against their own allow-lists (independently of the tool that built them);
 release.json is checked against the run's own manifest (QA passed, both gates accepted on
-the digests it names, the same open actions, the same module activities, both ways); the
+the digests it names, the same open actions, the same module activities, both ways, and
+``auto_accepted`` whenever a gate says the test host's runner accepted it); the
 course file is parsed with the importer's parser; and a lab profile is validated with the
 same rules ARC² applied. A tarball that fails any of this is refused with the reason,
 before anything is stored. The gzip is inflated against a hard ceiling before tar sees it,
@@ -53,6 +54,7 @@ ALLOWED: dict[str, tuple[re.Pattern[str], ...]] = {
     "instructor": (re.compile(r"^04-artifacts/.+$"),),
 }
 LEARNER_FORBIDDEN = ("instructor", "answer_key", "answer-key", "solution", "rubric")
+AUTO_ACCEPTED_BY = "auto (test host)"  # tools/arc2/runner.py AUTO_ACCEPTED_BY
 
 
 class BundleError(ValueError):
@@ -225,6 +227,19 @@ def _check_manifest(bundle: Bundle, manifest: dict[str, Any]) -> None:
     }
     if open_ids != {a.get("id") for a in meta.get("open_human_actions") or []}:
         raise BundleError("release.json's open actions differ from the run's")
+    if "auto_accepted" in meta and not isinstance(meta["auto_accepted"], bool):
+        raise BundleError("release.json's auto_accepted must be true or false")
+    auto_gates = [g for g in ("outline", "preview") if (gates.get(g) or {}).get("accepted_by") == AUTO_ACCEPTED_BY]
+    if auto_gates and not meta.get("auto_accepted"):
+        raise BundleError(
+            f"the run's {', '.join(auto_gates)} gate was accepted by the test host's runner, "
+            "but release.json does not say auto_accepted"
+        )
+
+
+def auto_accepted(meta: dict[str, Any]) -> bool:
+    """Test content: a gate of the run was accepted by a test host's runner, not a person."""
+    return meta.get("auto_accepted") is True
 
 
 def _check_activities(bundle: Bundle, manifest: dict[str, Any]) -> dict[str, str]:

@@ -562,7 +562,8 @@ in `install/inventory/staging.yml`, default false), when a job finishes cleanly 
 waiting at the outline gate, or at the preview gate with stages 1-5 complete and QA `pass`,
 the runner queues the same `accept` resume that the Studio's Accept button would
 (`runner.maybe_auto_accept`). It never accepts after a failed job, a STOP (a failed stage), a
-QA `human_takeover` or failing QA, when a person has already queued something for the run, or
+QA `human_takeover` or failing QA, while an open human action blocks promotion
+(`blocks_promotion`; 2026-10-11), when a person has already queued something for the run, or
 more than `AUTO_ACCEPT_LIMIT` (6) times per run. The acceptance is auditable and visibly not a
 person's: the queued job has `requested_by: "auto (test host)"` and
 `auto_accept: {gate, accepted_by, at, after_job}`; the finished job records
@@ -570,10 +571,36 @@ person's: the queued job has `requested_by: "auto (test host)"` and
 the gate in `manifest.json` (the runner sets `ARC2_GATE_ACCEPTED_BY` for that job only, and a
 person's later acceptance removes it). The Studio API returns `auto_accepted` per run and a
 pipeline message per automatic acceptance; the web Studio shows "TEST CONTENT — gates
-auto-accepted, not reviewed" on the run and in the project list. A release built from such a
-run (§14) is not marked by this; do not release test content to Students.
+auto-accepted, not reviewed" on the run and in the project list. Retrying a failed automatic
+acceptance (`POST /arc2/runs/{slug}/retry`) re-queues it as the runner's, with its
+`auto_accept` and `requested_by: "auto (test host)"` (the admin who pressed retry is recorded
+as `retried_by`), so the gate never records a person's acceptance nobody gave.
+
+**Which record is the authority (2026-10-11).** A job can write its own run's `manifest.json`
+(it could always forge or drop a gate's `accepted_by`; that predates auto-accept). The record
+a job cannot write is the runner's own job record, `<runs>/_jobs/<id>.json`, written outside
+the sandbox: an `auto_accept` there is the authority for "this run was auto-accepted". The
+Studio API's `auto_accepted` is true if either record says so (neither can take the other
+away); `tools/arc2/release.py` reads `_jobs` beside the run (`release.runner_auto_accept`,
+or the record the caller passes as `runner_record`) as well as the manifest; the batch driver
+(§15) passes the record it read beside the real run; and the API, on upload, refuses a
+release whose release.json says `auto_accepted: false` while its manifest's gates or the
+Studio's `_jobs` on that host say otherwise.
+
+**Test content travels with the release (2026-10-11).** A release built from such a run has
+`auto_accepted: true` and `auto_accept: {gates, accepted_by}` in release.json, covered by the
+release digest. The API exposes `auto_accepted` on every course release and **refuses to
+accept or publish it** unless the host is a test host: `TN_TEST_HOST=true` in the api's
+environment, which the installer writes only where `tn_arc2_auto_accept` is true. Where it
+is allowed, the content is labelled wherever Students see it: accepting it sets
+`course_meta.test_content` (the course outline returns `test_content: "TEST CONTENT — not
+reviewed"` and the course page shows a banner), and the Moodle course is named
+`<code> <title> [TEST CONTENT — not reviewed]` with a summary that says so. A reviewed release
+accepted later clears the label. A publication queued while the flag was on fails if it runs
+after the flag goes off (`app/course_releases/test_content.py`).
 Tests: `tests/arc2/test_arc2_runner_auto_accept.py`, `tests/api/test_arc2_studio.py`,
-`arc2-studio.component.spec.ts`.
+`tests/arc2/test_arc2_release.py`, `tests/api/test_release_test_content.py`,
+`arc2-studio.component.spec.ts`, `course-detail.component.spec.ts`.
 
 **Credential.** Exactly one of two vault variables; preflight and `55-arc2` refuse neither
 and both, so it is never ambiguous which account is billed.
@@ -662,8 +689,21 @@ to a workstation and upload it as in step 4.
 
 On a test host (staging, `ARC2_AUTO_ACCEPT_GATES=1`) `scripts/arc2_batch_inprocess.py` takes
 every catalogue course in `content/courses/*.yaml` through a full ARC² run, a course release,
-acceptance and publication, with nobody reviewing it. **The result is test content: never
-run it against a host that serves Students.**
+acceptance and (opt-in) publication, with nobody reviewing it. **The result is test content:
+never run it against a host that serves Students.** It refuses to start unless
+`TN_TEST_HOST` is on (§13; the one-off container inherits the api's environment), and the
+API labels everything it accepts as TEST CONTENT.
+
+Hardened after an adversarial review (2026-10-11): it follows **only runs it queued itself**
+(the slug from its own `POST /arc2/runs`, saved to `--state` at once); a run of the course's
+name that it did not queue fails the course instead of being followed, since any author in
+the tenant can name a run `C103`. It releases only a run the Studio reports as
+`auto_accepted`, and only a release whose `catalogue_code` is the course it was asked for (in
+the built release.json and in the API's answer). It never acknowledges open actions blindly:
+a release with open actions stops the course as **needs-review** (not retried), unless
+`--ack-open-actions`, which acknowledges them and records each id in the acceptance notes. A
+run waiting at a gate with an open blocking action is needs-review too (the runner will not
+auto-accept it). Moodle publishing is opt-in: `--publish-platform moodle`.
 
 It runs in a one-off api container, in-process as the bootstrap administrator, with the same
 harness as `load_content_inprocess.py` (`scripts/_inprocess_api.py`: the token check replaced
@@ -673,8 +713,9 @@ response rotates it; back-off on 429). Every step goes through the API:
 1. **Queue.** One run per course, named after its catalogue code (`C103`, `RMC C202`), with a
    plain-language request built from the YAML (title, level, hours, each module's objectives,
    topics and lab, the register's T/P/R pattern) that names `catalogue_code`, so stage 1
-   records it and the run can be released. A course that already has a run of that name is
-   followed, never queued again. `--concurrency` runs are in flight at once (default 1).
+   records it and the run can be released. The driver's own run is followed, never queued
+   again (with `--state`/`--resume`); a run of that name it did not queue fails the course.
+   `--concurrency` runs are in flight at once (default 1).
 2. **Follow.** `GET /arc2/runs`. A job that failed on a usage limit or a transient error
    (overloaded, 5xx, timed out, runner stopped) is re-queued with `/retry` after the limit's
    reset hint, or with exponential back-off (5 min doubling, 2 h cap), at most
@@ -685,18 +726,20 @@ response rotates it; back-off on 429). Every step goes through the API:
    `ARC2_RUNS_DIR`: regular files only, no symlink followed, nothing written beside the run.
    `release.readiness` still refuses a run that is not accepted, QA-pass and unchanged. No API
    endpoint was added: the api image does not carry the engine.
-4. **Accept and publish.** `POST /course-releases`, then `/accept` acknowledging the release's
-   open actions with the note "auto-accepted test content (staging)"; the TrueNorth course is
-   published if it is not; then `POST /course-releases/{id}/publications?wait=true` to the
-   tenant's first active `moodle` platform (or `--platform-id`; `--publish-platform none`
-   stops after acceptance), waiting for `published`.
+4. **Accept and publish.** `POST /course-releases`, then `/accept` with the note
+   "auto-accepted test content (staging)" (open actions: needs-review, or acknowledged and
+   listed in the note with `--ack-open-actions`); the TrueNorth course is published if it is
+   not; then, with `--publish-platform moodle` only (the default is `none`),
+   `POST /course-releases/{id}/publications?wait=true` to the tenant's first active `moodle`
+   platform (or `--platform-id`), waiting for `published`.
 
 Courses held for a cleared author in `content/catalogue/production_register.csv` (C302, C305,
 C306, RMC C202, RMC C205, RMC C207, RMC C211) are skipped unless `--include-held`. It prints a
-status table and exits 1 if any course failed (held is not failure). `--dry-run` reads
-`/arc2/runs` and queues nothing (`--print-requests` shows each request);
-`--state <file> --resume` keeps retry counts and times across restarts (all other progress is
-derived from the API, so a plain re-run is safe too).
+status table and exits 1 if any course failed or needs review (held is not failure).
+`--dry-run` reads `/arc2/runs` and queues nothing (`--print-requests` shows each request);
+`--state <file> --resume` keeps the slugs of the runs it queued, retry counts and times across
+restarts. Without the state file a re-run refuses the runs an earlier run queued rather than
+follow them, so always pass `--state`.
 
 ```bash
 sudo install -d -o 10001 -m 0700 /srv/truenorth/arc2-batch   # state file, writable by the api user
@@ -707,5 +750,7 @@ docker compose -f compose.prod.yml --env-file /srv/truenorth/config/.env.product
   api /srcapp/scripts/arc2_batch_inprocess.py --admin <bootstrap admin UPN> \
   --state /state/arc2-batch.json --resume
 ```
+
+Add `--publish-platform moodle` to publish each accepted release to the tenant's Moodle.
 
 Tests: `tests/scripts/test_arc2_batch_inprocess.py`, `tests/arc2/test_arc2_batch_release.py`.

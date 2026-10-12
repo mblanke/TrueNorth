@@ -226,7 +226,11 @@ def _active_job(slug: str) -> dict | None:
     return next((j for j in reversed(_jobs(slug)) if j.get("state") in ("queued", "running")), None)
 
 
-def _enqueue(slug: str, action: str, text: str, user: CurrentUser) -> dict:
+def _enqueue(slug: str, action: str, text: str, user: CurrentUser, auto_accept: dict | None = None) -> dict:
+    """Queue a job. ``auto_accept`` is set only when retrying the runner's own test-host
+    acceptance: the retry stays the runner's (requested_by and the gate's ``accepted_by``
+    stay "auto (test host)"), and the person who pressed retry is recorded as such, so a
+    gate nobody reviewed is never recorded as accepted by them."""
     queue = runs_dir() / "_queue"
     queue.mkdir(parents=True, exist_ok=True)
     job = {
@@ -238,6 +242,12 @@ def _enqueue(slug: str, action: str, text: str, user: CurrentUser) -> dict:
         "requested_by": user.email or user.id,
         "tenant_id": str(tenant_uuid(user)),
     }
+    if isinstance(auto_accept, dict):
+        job.update(
+            requested_by=AUTO_ACCEPTED_BY,
+            retried_by=user.email or user.id,
+            auto_accept={**auto_accept, "retried_by": user.email or user.id, "retried_at": job["created_at"]},
+        )
     tmp = queue / f".{job['id']}.tmp"
     tmp.write_text(json.dumps(job))
     tmp.replace(queue / f"{job['created_at'].replace(':', '')}-{job['id']}.json")
@@ -589,7 +599,7 @@ def retry(slug: str, user: CurrentUser = Depends(author)):
     if not last or last.get("state") != "failed":
         raise HTTPException(409, "Nothing failed, so there is nothing to retry.")
     _append_chat(slug, {"text": "Try again.", "ts": _now(), "by": user.email or user.id})
-    _enqueue(slug, last["action"], last["text"], user)
+    _enqueue(slug, last["action"], last["text"], user, auto_accept=last.get("auto_accept"))
     return _detail(slug)
 
 
