@@ -62,13 +62,23 @@ def _audit(db: Session, user: CurrentUser, action: str, rtype: str, rid: str) ->
 def _parse_scenario_yaml(text: str) -> dict:
     """Parse a stored scenario without aliases or oversize input (app/safe_yaml.py, M4);
     422 unless it is a mapping. Create and update used yaml.safe_load, which expands a
-    billion-laughs alias bomb."""
+    billion-laughs alias bomb.
+
+    Also 422 for objectives that could never be judged honestly (a refused or unknown
+    validator, a manual objective approving itself, phase-level ``validators:``): the same
+    objective check as ``/scenarios/validate`` (scenario_engine/objective_catalogue.py).
+    The Exercise Forge runs it too; QSP paths write only fixed canonical objectives (tested).
+    Scenarios stored before this check are not re-checked, so a refused validator in one
+    can still launch; the engine leaves it unscored. The full JSON Schema is not enforced
+    here: forge output and older seeds are not schema-clean."""
     try:
         parsed = safe_yaml.load(text)
     except pyyaml.YAMLError as e:
         raise HTTPException(422, f"Invalid YAML: {e}") from e
     if not isinstance(parsed, dict):
         raise HTTPException(422, "Scenario YAML must be a mapping")
+    if errors := engine_bridge.objective_errors(parsed):
+        raise HTTPException(422, {"message": "Scenario objectives cannot be judged", "errors": errors})
     return parsed
 
 
@@ -82,8 +92,9 @@ def validate_scenario(
     Returns ``{valid, errors: [{path, message}], normalized}`` — ``normalized``
     is the parsed document whenever the YAML parses, even when schema-invalid,
     so the Scenario Studio can load a document and show its problems at once.
-    Create/update stay permissive on purpose (forge output and older seeds are
-    not schema-clean); this endpoint is the contract for authored content.
+    Create/update enforce the objective check only (``objective_errors``), not the
+    full schema (forge output and older seeds are not schema-clean); this endpoint is
+    the contract for authored content.
     """
     return engine_bridge.validate_yaml("scenario", body.yaml)
 

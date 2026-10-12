@@ -13,9 +13,10 @@ class EventHits:
 
 class BaseEventStore(ABC):
     @abstractmethod
-    async def search(self, index: str, query: str | dict[str, Any], size: int = 20) -> EventHits:
+    async def search(self, index: str, query: str | dict[str, Any], size: int = 20, offset: int = 0) -> EventHits:
         """Events matching ``query`` in ``index`` (a pattern such as ``truenorth-events-*``).
 
-        ``query`` is a Lucene query string or a query DSL dict. Raises on store errors;
+        ``query`` is a Lucene query string or a query DSL dict. ``offset`` skips that many
+        matches, for paging through all of them (in a stable order). Raises on store errors;
         callers decide whether an outage means "not achieved".
         """

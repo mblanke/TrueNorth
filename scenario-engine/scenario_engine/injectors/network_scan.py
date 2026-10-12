@@ -9,7 +9,6 @@ Simulates network reconnaissance activities:
 from __future__ import annotations
 
 import logging
-import random
 from typing import Any
 
 from .base import BaseInjector
@@ -96,7 +95,7 @@ class NetworkScanInjector(BaseInjector):
         filtered = 0
 
         for port in ports:
-            roll = random.random()
+            roll = self.rng.random()
             if port in _SERVICE_BANNERS and roll < 0.7:
                 svc = _SERVICE_BANNERS[port]
                 open_ports.append(
@@ -133,8 +132,8 @@ class NetworkScanInjector(BaseInjector):
         hosts: list[dict[str, str]] = []
         for i in range(1, host_count + 1):
             ip = f"{base}.{i + 9}"
-            mac = ":".join(f"{random.randint(0, 255):02x}" for _ in range(6))
-            vendor = random.choice(["VMware", "Microsoft", "Dell", "Intel", "Proxmox"])
+            mac = ":".join(f"{self.rng.randint(0, 255):02x}" for _ in range(6))
+            vendor = self.rng.choice(["VMware", "Microsoft", "Dell", "Intel", "Proxmox"])
             hosts.append({"ip": ip, "mac": mac, "vendor": vendor})
 
         return {
@@ -152,7 +151,7 @@ class NetworkScanInjector(BaseInjector):
         services: list[dict[str, Any]] = []
         for port in ports:
             svc_info = _SERVICE_BANNERS.get(port, {"service": "unknown", "banner": ""})
-            version = f"{svc_info['service']}/{random.randint(1, 9)}.{random.randint(0, 9)}"
+            version = f"{svc_info['service']}/{self.rng.randint(1, 9)}.{self.rng.randint(0, 9)}"
             services.append(
                 {
                     "port": port,

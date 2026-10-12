@@ -38,8 +38,15 @@ export interface ScenarioModel {
 
 export const OBJECTIVE_TYPES: ObjectiveType[] = ['detection', 'response', 'deliverable'];
 
-/** The validators the engine ships; the scenario schema accepts only these spellings. */
-export const COMMON_VALIDATORS = ['opensearch_query', 'manual_ack', 'deliverable_check'];
+/** The validators the engine ships; the scenario schema accepts only these spellings.
+ *  tests/scenario_engine/test_scenario_objective_validation.py keeps this list equal to the schema enum. */
+export const COMMON_VALIDATORS = [
+  'opensearch_query',
+  'manual_ack',
+  'deliverable_check',
+  'user_disabled',
+  'greyspace_breadcrumb',
+];
 
 export function emptyScenario(): ScenarioModel {
   return {

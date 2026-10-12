@@ -81,7 +81,9 @@
             "enum": [
               "opensearch_query",
               "manual_ack",
-              "deliverable_check"
+              "deliverable_check",
+              "user_disabled",
+              "greyspace_breadcrumb"
             ]
           },
           "params": {

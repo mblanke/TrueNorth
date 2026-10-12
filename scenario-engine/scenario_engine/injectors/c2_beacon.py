@@ -12,7 +12,6 @@ import base64
 import hashlib
 import logging
 import math
-import random
 import time
 from typing import Any
 
@@ -87,17 +86,17 @@ class C2BeaconInjector(BaseInjector):
         num_callbacks = int(self.params.get("num_callbacks", 10))
         sleep_jitter = float(self.params.get("jitter_pct", 0.0))
 
-        beacon_id = hashlib.sha256(f"{self.params['target_host']}:{random.random()}".encode()).hexdigest()[:16]
+        beacon_id = hashlib.sha256(f"{self.params['target_host']}:{self.rng.random()}".encode()).hexdigest()[:16]
 
         callbacks: list[dict[str, Any]] = []
         ts = time.time()
         for i in range(num_callbacks):
-            jitter = beacon_interval * sleep_jitter * (random.random() - 0.5) * 2
+            jitter = beacon_interval * sleep_jitter * (self.rng.random() - 0.5) * 2
             actual_interval = max(1, beacon_interval + jitter)
             ts += actual_interval
 
             # Simulate different HTTP methods / URIs
-            uri = random.choice(
+            uri = self.rng.choice(
                 [
                     "/api/v1/status",
                     "/updates/check",
@@ -107,11 +106,11 @@ class C2BeaconInjector(BaseInjector):
                     "/jquery-3.6.0.min.js",
                 ]
             )
-            method = random.choice(["GET", "GET", "GET", "POST"])
-            response_code = random.choices([200, 204, 302], weights=[85, 10, 5])[0]
+            method = self.rng.choice(["GET", "GET", "GET", "POST"])
+            response_code = self.rng.choices([200, 204, 302], weights=[85, 10, 5])[0]
 
-            payload_size = random.randint(64, 4096) if method == "POST" else 0
-            response_size = random.randint(128, 8192)
+            payload_size = self.rng.randint(64, 4096) if method == "POST" else 0
+            response_size = self.rng.randint(128, 8192)
 
             callbacks.append(
                 {
@@ -150,7 +149,7 @@ class C2BeaconInjector(BaseInjector):
         queries: list[dict[str, Any]] = []
         for i in range(num_queries):
             chunk = chunks[i % len(chunks)] if chunks else "ping"
-            query_type = random.choice(["TXT", "CNAME", "A", "MX"])
+            query_type = self.rng.choice(["TXT", "CNAME", "A", "MX"])
             fqdn = f"{chunk}.{c2_domain}"
             queries.append(
                 {
@@ -179,7 +178,7 @@ class C2BeaconInjector(BaseInjector):
         jitter_pct = float(self.params.get("jitter_pct", 0.40))
         num_callbacks = int(self.params.get("num_callbacks", 15))
 
-        beacon_id = hashlib.sha256(f"{self.params['target_host']}:https:{random.random()}".encode()).hexdigest()[:16]
+        beacon_id = hashlib.sha256(f"{self.params['target_host']}:https:{self.rng.random()}".encode()).hexdigest()[:16]
 
         # TLS fingerprint simulation (JA3)
         ja3_hash = hashlib.md5(
@@ -190,12 +189,12 @@ class C2BeaconInjector(BaseInjector):
         ts = time.time()
         for i in range(num_callbacks):
             # Apply jitter: interval * (1 +/- jitter_pct * random)
-            jitter_factor = 1.0 + jitter_pct * (random.random() * 2 - 1)
+            jitter_factor = 1.0 + jitter_pct * (self.rng.random() * 2 - 1)
             actual_interval = max(10, base_interval * jitter_factor)
             ts += actual_interval
 
             # Vary URIs to look like CDN/API traffic
-            uri = random.choice(
+            uri = self.rng.choice(
                 [
                     "/api/v2/config",
                     "/cdn/assets/main.js",
@@ -206,7 +205,7 @@ class C2BeaconInjector(BaseInjector):
                 ]
             )
 
-            encrypted_payload = base64.b64encode(f"task_response_{i}:{random.random()}".encode()).decode()
+            encrypted_payload = base64.b64encode(f"task_response_{i}:{self.rng.random()}".encode()).decode()
 
             callbacks.append(
                 {
@@ -217,7 +216,7 @@ class C2BeaconInjector(BaseInjector):
                     "tls_version": "TLSv1.3",
                     "ja3_hash": ja3_hash,
                     "encrypted_payload_b64": encrypted_payload[:32] + "...",
-                    "response_bytes": random.randint(256, 16384),
+                    "response_bytes": self.rng.randint(256, 16384),
                 }
             )
 
@@ -242,12 +241,11 @@ class C2BeaconInjector(BaseInjector):
     # Helpers
     # ------------------------------------------------------------------
 
-    @staticmethod
-    def _fake_dns_response(query_type: str) -> str:
+    def _fake_dns_response(self, query_type: str) -> str:
         """Generate a plausible DNS response for tunnel simulation."""
         return {
-            "A": f"127.0.0.{random.randint(1, 254)}",
-            "CNAME": f"cdn-{random.randint(1, 99)}.cloudfront.net",
-            "TXT": base64.b64encode(f"resp:{random.random()}".encode()).decode()[:40],
-            "MX": f"mail{random.randint(1, 5)}.evil-corp.io",
+            "A": f"127.0.0.{self.rng.randint(1, 254)}",
+            "CNAME": f"cdn-{self.rng.randint(1, 99)}.cloudfront.net",
+            "TXT": base64.b64encode(f"resp:{self.rng.random()}".encode()).decode()[:40],
+            "MX": f"mail{self.rng.randint(1, 5)}.evil-corp.io",
         }.get(query_type, "NXDOMAIN")

@@ -17,7 +17,8 @@ registry), `control-plane/api/app/scenario_runs/` (the tables).
    prefix, the engine examples do not; `canonical_action` is the one adapter).
 4. The injector's telemetry is sent to `ingest_telemetry_batch` (telemetry queue), which
    indexes it in `range-<range_id>`. Each event carries its labels (`exercise_id`,
-   `inject_action`, `simulated`, `module`, `action`, `technique_id`, `target`) under
+   `range_id`, `inject_action`, `inject_id`, `simulated`, `evidence_class`, `module`,
+   `action`, `technique_id`, `target`) under
    `tn_ground_truth`, which the range template stores but does not index: Students cannot
    query or see them, and answer keys cannot use them (ADR 0005, sweep H4).
 5. The outcome is written to `inject_records` and pushed over `notify_api`.
@@ -59,6 +60,18 @@ Greyspace and inject dispatch hands them to the worker's Greyspace seam
 (`greyspace.deliver_breadcrumbs`), which plants them on gs-core on vSphere and records
 them on mock (so it is `touches_range_hosts: False`). A delivery that fails makes the
 inject `failed` with the reason (ADR 0007 §9).
+
+A simulated inject's result (`InjectResult` and its `raw`) says `simulated: true` and
+`evidence_class: "synthetic"` with its `exercise_id`, `range_id`, `inject_id` and `seed`,
+and never claims `delivered` or `created` (run_inject overrides such a claim). Its random
+choices come from a generator seeded by exercise id + inject id (`inject_seed`), so a replay
+builds the same records. The worker names a timeline event by its position
+(`timeline-<seq>`); an instructor inject is named by its action plus a hash of its params.
+Only wall-clock fields (c2_beacon's `timestamp_epoch`) differ between replays.
+No synthetic record can prove something really happened: the scoring engine never credits a
+plain detection objective (Students earn that by submitting a detection, ADR 0005), and
+objectives it does judge (`require_observed: true`, `user_disabled`) count only observed
+telemetry (`scenario_engine/objective_catalogue.py`).
 
 The worker never scores (ADR 0005). On a real backend `run_scenario_v2` fires the timeline
 and leaves the exercise `running` (notification phase `timeline_complete`): a Student

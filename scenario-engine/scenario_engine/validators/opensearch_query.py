@@ -19,8 +19,11 @@ DEFAULT_INDEX = "truenorth-events-*"
 
 class OpenSearchQueryValidator(BaseValidator):
     def validate(self, context: dict[str, Any]) -> bool:
-        query = self.params.get("query", "*")
-        min_hits = int(self.params.get("min_hits", 1))
+        query = self.params.get("query")
+        if not query:  # never match-all: any event at all would pass
+            logger.warning("Detection objective has no query")
+            return False
+        min_hits = max(int(self.params.get("min_hits", 1)), 1)
         index = self.params.get("index", DEFAULT_INDEX)
         store: BaseEventStore | None = context.get("event_store")
         if store is None:

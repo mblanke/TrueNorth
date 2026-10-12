@@ -35842,7 +35842,7 @@
     },
     "/scenarios/validate": {
       "post": {
-        "description": "Validate scenario YAML against the engine's canonical schema.\n\nReturns ``{valid, errors: [{path, message}], normalized}`` \u2014 ``normalized``\nis the parsed document whenever the YAML parses, even when schema-invalid,\nso the Scenario Studio can load a document and show its problems at once.\nCreate/update stay permissive on purpose (forge output and older seeds are\nnot schema-clean); this endpoint is the contract for authored content.",
+        "description": "Validate scenario YAML against the engine's canonical schema.\n\nReturns ``{valid, errors: [{path, message}], normalized}`` \u2014 ``normalized``\nis the parsed document whenever the YAML parses, even when schema-invalid,\nso the Scenario Studio can load a document and show its problems at once.\nCreate/update enforce the objective check only (``objective_errors``), not the\nfull schema (forge output and older seeds are not schema-clean); this endpoint is\nthe contract for authored content.",
         "operationId": "validate_scenario_scenarios_validate_post",
         "requestBody": {
           "content": {

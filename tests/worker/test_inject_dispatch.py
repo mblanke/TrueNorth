@@ -491,3 +491,29 @@ class TestRunScenarioExecution:
         exercise_run.run_scenario_execution(xid, {"timeline": TIMELINE[:1]})
         [rec] = _records(wdb, execution_id=xid)
         assert (rec["status"], rec["detail"]) == ("failed", "no range to inject into")
+
+
+# -- inject ids seed synthetic records (R0-B) -----------------------------------
+class TestInjectSeed:
+    @staticmethod
+    def _labels(broker) -> list[dict]:
+        return [e[engine.GROUND_TRUTH_FIELD] for _rid, events in _ingest_sends(broker) for e in events]
+
+    def test_a_timeline_event_is_named_by_its_position(self, wdb, no_real_broker):
+        rid = _range(wdb)
+        eid = _exercise(wdb, rid)
+        params = {"technique": "T1059"}
+        inject_dispatch.dispatch_inject(eid, "simulated_execution", params, seq=3, t="0:30")
+        inject_dispatch.dispatch_inject(eid, "simulated_execution", params, seq=4, t="0:40")
+        [first, second] = self._labels(no_real_broker)
+        assert (first["inject_id"], second["inject_id"]) == ("timeline-3", "timeline-4")
+        assert first["exercise_id"] == eid and first["range_id"] == rid
+        assert first["evidence_class"] == "synthetic"
+
+    def test_an_instructor_inject_is_named_by_action_and_params(self, wdb, no_real_broker):
+        rid = _range(wdb)
+        eid = _exercise(wdb, rid)
+        params = {"technique": "T1003"}
+        inject_dispatch.dispatch_inject(eid, "simulated_execution", params, source="instructor")
+        [labels] = self._labels(no_real_broker)
+        assert labels["inject_id"] == engine.inject_id_for("simulated_execution", params)

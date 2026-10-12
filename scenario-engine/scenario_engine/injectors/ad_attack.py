@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import hashlib
 import logging
-import random
 import string
 from typing import Any
 
@@ -88,12 +87,12 @@ class ADAttackInjector(BaseInjector):
         )
         results = []
         for spn in target_spns:
-            ticket_hash = hashlib.sha256(f"{spn}:{random.random()}".encode()).hexdigest()[:32]
+            ticket_hash = hashlib.sha256(f"{spn}:{self.rng.random()}".encode()).hexdigest()[:32]
             results.append(
                 {
                     "spn": spn,
                     "ticket_hash": f"$krb5tgs$23$*{ticket_hash}",
-                    "crackable": random.choice([True, False]),
+                    "crackable": self.rng.choice([True, False]),
                 }
             )
         return {
@@ -126,7 +125,7 @@ class ADAttackInjector(BaseInjector):
         attempts: list[dict[str, Any]] = []
         for pwd in passwords:
             for user in users:
-                success = random.random() < success_rate
+                success = self.rng.random() < success_rate
                 attempts.append(
                     {
                         "username": user,
@@ -155,7 +154,7 @@ class ADAttackInjector(BaseInjector):
         )
         results = []
         for account in target_accounts:
-            nt_hash = hashlib.md5(f"{account}:{random.random()}".encode()).hexdigest()
+            nt_hash = hashlib.md5(f"{account}:{self.rng.random()}".encode()).hexdigest()
             results.append(
                 {
                     "account": account,
@@ -174,7 +173,7 @@ class ADAttackInjector(BaseInjector):
         """Simulate Group Policy Object modification for persistence."""
         gpo_name = self.params.get("gpo_name", "Default Domain Policy")
         modification = self.params.get("modification", "scheduled_task")
-        gpo_guid = "".join(random.choices(string.hexdigits[:16], k=32))
+        gpo_guid = "".join(self.rng.choices(string.hexdigits[:16], k=32))
         return {
             "gpo_name": gpo_name,
             "gpo_guid": f"{{{gpo_guid[:8]}-{gpo_guid[8:12]}-{gpo_guid[12:16]}-{gpo_guid[16:20]}-{gpo_guid[20:]}}}",

@@ -203,12 +203,52 @@ course production with a local-model fallback, and the cleanup of unsupported su
   (default the shipped one). Contract tests run `amtool check-config` on every rendered
   variant in the pinned image.
 
+### Scoring and inject evidence (R0-B)
+- **Behaviour change:** no objective passes without evidence, and each has one judge
+  (`scenario_engine/objective_catalogue.py`). `firewall_rule` passed every objective; it,
+  `process_killed` and `network_isolated` are refused (no telemetry can prove them):
+  `POST /scenarios/validate`, scenario create and update reject them with the reason
+  (422), the Exercise Forge refuses to store such output (502), and the engine leaves
+  them unscored. Use `manual_ack`. Unknown validators,
+  phase-level `validators:` blocks and params only the platform may set (`approved`,
+  `submission`, `storage_path`, the exercise window) are rejected the same way;
+  incident-response-drill's inert phase blocks are gone, scored by its `manual_ack`
+  objectives. Every shipped scenario validates (tested).
+- **Behaviour change:** the scoring engine never credits a detection objective
+  (`opensearch_query`): the inject's own synthetic records matched the answer key, full
+  points with no Student action. Detection credit comes only from Student submissions
+  (ADR 0005). With `require_observed: true` the objective is the engine's instead, judged
+  on observed telemetry ingested inside the exercise window (required: a reused range's
+  earlier events cannot count; synthetic records excluded; every match classified), and
+  Student submissions are not credited against it. The CLI runner reads `range-<id>` and
+  `range-<id>-*`, as detection credit does, from the run's start. A result with nothing
+  judged has no grade rather than an F.
+- `user_disabled` is real: observed Windows 4725 for the account (case-insensitive) in the
+  exercise window, not re-enabled (4722) afterwards. No such event is unscored, never a fail.
+- `deliverable_check` needs a Student submission record; a content file path is no longer
+  trusted (`/etc/hosts` passed). `manual_ack` is an explicit instructor action, unscored
+  until acknowledged. Unscored objectives are left out of the score's denominator and
+  reported apart (`unscored_points`); error rows earn no partial credit.
+- `greyspace_breadcrumb` and `user_disabled` are in the scenario schema and the Scenario
+  Studio's validator list; one canonical spelling everywhere (drift test).
+- Simulated injects say so: results and telemetry carry `simulated: true`,
+  `evidence_class: "synthetic"`, the exercise, range and inject id; none claims `delivered`
+  or `created`. Their random choices are seeded from exercise id + inject id (the timeline
+  position, from the worker).
+
 ### Known limitations in v1.2.0
 - Greyspace, VyOS/OPNsense configs and per-tenant vCenter are proven on vcsim/fakes, not on
   a real vCenter (the live run on TN-MGMT01 is still pending).
 - ARC² test-host content is auto-accepted and unreviewed; never release it to Students.
 - cmi5 Moodle activities are tied to one release; LTI cmi5 launches do not enrol.
 - WebSockets do not accept the LTI hand-off session.
+- Scoring evidence: the worker never runs the scoring engine, so engine-judged objectives
+  (`require_observed`, `user_disabled`, `greyspace_breadcrumb`) are scored only by the CLI
+  runner and tests; on the mock backend the worker still marks every objective achieved.
+  `user_disabled` field names match the content and Winlogbeat/ECS but are unproven against
+  a live range's ingest. Scenarios stored before this release are not re-checked (a
+  refused validator in one still launches, unscored). Deliverables have no Student
+  submission path yet (instructor acknowledgement only).
 - A range built before connection records with port groups but no VM stays unrecorded until
   destroyed; shared vCenter connections are managed outside the tenant API; an abandoned
   range's leftover VMs and port groups must be removed by hand (`docs/release-notes/v1.2.0.md`).

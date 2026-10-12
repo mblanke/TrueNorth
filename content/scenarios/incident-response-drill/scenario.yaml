@@ -114,11 +114,8 @@ timeline:
       - "Disable the unauthorized account you identified"
       - "Block lateral movement via SMB admin shares"
       - "Disable the malicious scheduled task"
-    validators:
-      - type: network_isolation
-        hosts: [v-ws01, v-ws02]
-      - type: firewall_rule
-        block_ip: "10.60.200.10"
+    # Scored by contain_threat (manual_ack): no telemetry proves isolation or a firewall
+    # rule, so the instructor verifies them (scenario_engine/objective_catalogue.py).
 
   - phase: 5
     t: "00:40"
@@ -131,12 +128,7 @@ timeline:
       - "Remove unauthorized user account"
       - "Revert GPO modifications"
       - "Reset compromised credentials (all domain accounts)"
-    validators:
-      - type: artifact_removal
-        files:
-          - "C:\\ProgramData\\svchost.exe"
-          - "C:\\Temp\\procdump64.exe"
-          - "C:\\Temp\\lsass.dmp"
+    # Scored by eradicate_artifacts (manual_ack): the instructor verifies the removals.
 
   - phase: 6
     t: "00:50"
@@ -208,6 +200,10 @@ objectives:
     validator: manual_ack
     params:
       prompt: "Verify eradication: all malicious files, tasks, and accounts removed"
+      checklist:
+        - 'C:\ProgramData\svchost.exe removed (v-ws01)'
+        - 'C:\Temp\procdump64.exe and C:\Temp\lsass.dmp removed (v-ws02)'
+        - "PSEXESVC removed (v-fs01)"
     points: 10
 
   - id: incident_report

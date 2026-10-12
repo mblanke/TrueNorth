@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import inspect
+from datetime import UTC, datetime
 from pathlib import Path
 
 import certifi
@@ -27,10 +28,13 @@ from scenario_engine.validators.opensearch_query import OpenSearchQueryValidator
 ROOT = Path(__file__).resolve().parents[2]
 OS = "http://os.test:9200"
 
+# Ingested inside WINDOW (the exercise window observed-only scoring needs).
+_AT = {"truenorth.ingested_at": "2026-10-12T09:30:00+00:00"}
+WINDOW = (datetime(2026, 10, 12, 9, 0, tzinfo=UTC), None)
 EVENTS = [
-    {"process_name": "psexec.exe", "host": "ws01"},
-    {"process_name": "rundll32.exe", "CommandLine": "rundll32 comsvcs.dll, MiniDump 624"},
-    {"event_type": "http", "url.domain": "c2.evil.test"},
+    {"process_name": "psexec.exe", "host": "ws01", **_AT},
+    {"process_name": "rundll32.exe", "CommandLine": "rundll32 comsvcs.dll, MiniDump 624", **_AT},
+    {"event_type": "http", "url.domain": "c2.evil.test", **_AT},
 ]
 
 
@@ -86,45 +90,64 @@ def test_opensearch_store_passes_dsl_through():
     assert json.loads(route.calls.last.request.content)["query"] == {"match_all": {}}
 
 
+# The engine judges a query objective only with require_observed (objective_catalogue);
+# a plain detection objective is credited from a Student's submission instead.
+OBSERVED = {"require_observed": True}
+
+
 def test_scoring_validator_uses_any_store():
     store = NullEventStore(EVENTS)
     ok, evidence = asyncio.run(
-        ScoringValidator.validate("opensearch_query", {"query": "host:ws01", "threshold": 1}, event_store=store)
+        ScoringValidator.validate("opensearch_query", {"query": "host:ws01", "threshold": 1, **OBSERVED}, event_store=store, window=WINDOW)
     )
     assert ok is True and evidence[0]["_source"]["host"] == "ws01"
-    ok, _ = asyncio.run(
-        ScoringValidator.validate("opensearch_query", {"query": "host:ws01", "threshold": 2}, event_store=store)
-    )
-    assert ok is False
+    with pytest.raises(UnscoredError, match="1 observed matching events of 2"):
+        asyncio.run(
+            ScoringValidator.validate("opensearch_query", {"query": "host:ws01", "threshold": 2, **OBSERVED}, event_store=store, window=WINDOW)
+        )
+
+
+def test_an_observed_objective_needs_the_exercise_window():
+    # Without it a reused range's earlier real events would satisfy this run.
+    cfg = {"query": "host:ws01", **OBSERVED}
+    with pytest.raises(UnscoredError, match="no exercise window"):
+        asyncio.run(ScoringValidator.validate("opensearch_query", cfg, event_store=NullEventStore(EVENTS)))
+
+
+def test_a_detection_objective_is_never_scored_by_the_engine():
+    # The inject's own records match the answer key: full points with no Student action.
+    with pytest.raises(UnscoredError, match="Student's submitted detection"):
+        asyncio.run(ScoringValidator.validate("opensearch_query", {"query": "host:ws01"}, event_store=NullEventStore(EVENTS)))
 
 
 @respx.mock
 def test_scoring_validator_opensearch_url_still_works():
     """Was aiohttp, which scenario-engine never installed: it always failed outside tests."""
     respx.post(f"{OS}/truenorth-*/_search").mock(
-        return_value=httpx.Response(200, json={"hits": {"total": {"value": 1}, "hits": []}})
+        return_value=httpx.Response(200, json={"hits": {"total": {"value": 1}, "hits": [{"_id": "x", "_source": {"a": "b", **_AT}}]}})
     )
-    ok, _ = asyncio.run(ScoringValidator.validate("opensearch_query", {"query": "a:b"}, opensearch_url=OS))
+    ok, _ = asyncio.run(ScoringValidator.validate("opensearch_query", {"query": "a:b", **OBSERVED}, opensearch_url=OS, window=WINDOW))
     assert ok is True
 
 
 class _Down(BaseEventStore):
-    async def search(self, index, query, size=20):
+    async def search(self, index, query, size=20, offset=0):
         raise ConnectionError("down")
 
 
 def test_store_outage_is_unscored_not_failed():
     # An outage must never read as "the Student did not detect it".
     with pytest.raises(UnscoredError, match="unavailable"):
-        asyncio.run(ScoringValidator.validate("opensearch_query", {"query": "a:b"}, event_store=_Down()))
+        asyncio.run(ScoringValidator.validate("opensearch_query", {"query": "a:b", **OBSERVED}, event_store=_Down(), window=WINDOW))
 
 
 def test_engine_reports_an_outage_as_unscored():
     eng = ScoringEngine(
         "ex-1",
         [{"id": "o1", "name": "o1", "max_points": 10, "validation_method": "opensearch_query",
-          "validation_config": {"query": "a:b"}}],
+          "validation_config": {"query": "a:b", **OBSERVED}}],
         event_store=_Down(),
+        window_start=WINDOW[0],
     )
     result = asyncio.run(eng.evaluate())
     assert result.objectives == [] and result.total_score == 0
@@ -134,9 +157,9 @@ def test_engine_reports_an_outage_as_unscored():
 @pytest.mark.parametrize(
     ("config", "reason"),
     [
-        ({}, "no query"),  # never match_all
-        ({"query": ""}, "no query"),
-        ({"query": "a:b", "threshold": "lots"}, "not an integer"),
+        (OBSERVED, "no query"),  # never match_all
+        ({"query": "", **OBSERVED}, "no query"),
+        ({"query": "a:b", "threshold": "lots", **OBSERVED}, "not an integer"),
     ],
 )
 def test_unjudgeable_objectives_are_unscored(config, reason):
@@ -146,9 +169,9 @@ def test_unjudgeable_objectives_are_unscored(config, reason):
 
 @pytest.mark.parametrize("threshold", [0, -3])
 def test_threshold_below_one_still_needs_an_event(threshold):
-    cfg = {"query": "process_name:mimikatz.exe", "threshold": threshold}
-    ok, _ = asyncio.run(ScoringValidator.validate("opensearch_query", cfg, event_store=NullEventStore(EVENTS)))
-    assert ok is False
+    cfg = {"query": "process_name:mimikatz.exe", "threshold": threshold, **OBSERVED}
+    with pytest.raises(UnscoredError, match="0 observed matching events of 1"):
+        asyncio.run(ScoringValidator.validate("opensearch_query", cfg, event_store=NullEventStore(EVENTS), window=WINDOW))
 
 
 @respx.mock
@@ -176,10 +199,11 @@ def test_scoring_engine_threads_the_store_through():
                 "name": "Detect PsExec",
                 "max_points": 10,
                 "validation_method": "opensearch_query",
-                "validation_config": {"query": "process_name:psexec.exe"},
+                "validation_config": {"query": "process_name:psexec.exe", **OBSERVED},
             }
         ],
         event_store=NullEventStore(EVENTS),
+        window_start=WINDOW[0],
     )
     result = asyncio.run(eng.evaluate_objective("o1"))
     assert result.achieved is True
