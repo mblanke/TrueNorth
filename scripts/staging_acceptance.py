@@ -604,18 +604,24 @@ def fx_course(ctx: Ctx) -> dict:
 def fx_roster(ctx: Ctx) -> dict:
     """The exercise's roster: a draft booking tying it to the LMS course. A draft holds
     nothing and the scheduler clock never acts on it, but it names the course whose active
-    Students take part (app/exercise_participants.py)."""
+    Students take part (app/exercise_participants.py).
+
+    A booking seats its course only while it overlaps the exercise's run (started, to
+    completed or now). The exercise is started before this is made, so a booking from
+    five minutes ago to two hours ahead overlaps it however long ago it started (its end
+    is after the start, its start before now). A booking weeks ahead seats nobody."""
 
     def make() -> dict:
         ex, course = fx_exercise(ctx), fx_course(ctx)
-        start = (datetime.now(UTC) + timedelta(days=60)).replace(microsecond=0)
+        now = datetime.now(UTC).replace(microsecond=0)
+        start, end = now - timedelta(minutes=5), now + timedelta(hours=2)
         evt = ok(
             ctx.admin.post(
                 "/schedule/events",
                 json={
                     "name": f"{PREFIX}roster-{ctx.tag}",
                     "start_time": start.isoformat(),
-                    "end_time": (start + timedelta(hours=1)).isoformat(),
+                    "end_time": end.isoformat(),
                     "exercise_id": ex["id"],
                     "course_id": course["id"],
                     "draft": True,
