@@ -909,11 +909,12 @@ def console(db: Session, session: LabSession, node: str | None = None) -> dict[s
     if target not in allowed:
         raise LabRefusedError(f"no console on {target}", 403)
     # tenant-safe: the session's own range, created by this module in its tenant.
-    vm = probes.vm_for(target, _vms(db.get(Range, session.range_id)), range_id=session.range_id)
+    rng = db.get(Range, session.range_id)
+    vm = probes.vm_for(target, _vms(rng), range_id=session.range_id)
     if vm is None:
         raise LabRefusedError(f"{target} has no VM yet")
     try:
-        access = get_console_backend(session.backend).open(vm)
+        access = get_console_backend(session.backend).open(vm, db=db, rng=rng)  # the range's own vCenter
     except (ValueError, ConsoleError) as exc:
         raise LabRefusedError(str(exc), 502) from exc
     touch(db, session)

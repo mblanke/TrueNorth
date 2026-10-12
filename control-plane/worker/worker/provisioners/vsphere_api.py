@@ -208,16 +208,39 @@ def endpoint_url(host: str, port=None) -> str:
 
     No port for 443. Nor for 8006: until 2026-10-11 the API stored 8006 (Proxmox's port) for
     any connection created without one (app/hypervisor_ports.py), and no vCenter listens
-    there, so on a vSphere row it means "not given". A port already in ``host`` wins."""
-    url = (host if "://" in host else f"https://{host}").rstrip("/")
+    there, so on a vSphere row it means "not given". A port already in ``host`` wins. A bare
+    IPv6 address is bracketed (``fd00::10`` -> ``https://[fd00::10]``). Raises ValueError for
+    an address no URL can carry. app/hypervisor_ports.endpoint_url is the API's copy
+    (tests/contracts keep the two in step)."""
+    host = str(host or "").strip()
+    if "://" not in host:
+        if host.count(":") >= 2 and not host.startswith("["):
+            host = f"[{host}]"  # a bare IPv6 address
+        host = f"https://{host}"
+    url = host.rstrip("/")
+    parsed = urlparse(url)
+    try:
+        explicit = parsed.port
+    except ValueError as exc:
+        raise ValueError(f"not a usable vCenter address: {url!r}") from exc
+    if not parsed.hostname:
+        raise ValueError(f"not a usable vCenter address: {url!r}")
     try:
         port = int(port or 0)
     except (TypeError, ValueError):
         port = 0
-    parsed = urlparse(url)
-    if port in (0, 443, 8006) or parsed.port is not None:
+    if port in (0, 443, 8006) or explicit is not None:
         return url
     return parsed._replace(netloc=f"{parsed.netloc}:{port}").geturl()
+
+
+def endpoint_key(url: str) -> tuple[str, int]:
+    """(host, port) of an endpoint URL, for comparing two spellings of one vCenter."""
+    try:
+        parsed = urlparse(url if "://" in str(url) else endpoint_url(url))
+        return (parsed.hostname or "").lower(), parsed.port or 443
+    except ValueError:
+        return str(url), 0
 
 
 def range_annotation(range_id: str) -> str:
@@ -451,7 +474,10 @@ class VsphereAPIProvisioner(BaseProvisioner):
                 f"vSphere connection {ref} has no {', '.join(missing)}: set it on the connection "
                 "(Infrastructure > Hypervisors). The platform's own vCenter credentials are never used for it."
             )
-        self._base_url = endpoint_url(host, creds.get("port"))
+        try:
+            self._base_url = endpoint_url(host, creds.get("port"))
+        except ValueError as exc:
+            raise ConnectionBindingError(f"vSphere connection {creds.get('connection_id') or host}: {exc}") from exc
         self._username, self._password = username, password
         self._datacenter = creds.get("datacenter") or self._datacenter
         self._verify_ssl = bool(creds.get("verify_ssl", True))  # the row's own; secure when absent
@@ -656,8 +682,9 @@ class VsphereAPIProvisioner(BaseProvisioner):
     def _owners_sync(self, vm_ids: list[str]) -> tuple[dict[str, dict], set[str]]:
         return _read_vm_metrics(self._soap(), vm_ids, OWNER_PATHS)
 
-    async def _screen(self, range_id: str, vms: list[dict]) -> tuple[list[dict], list[str]]:
-        """The recorded VMs to act on, and a note for each one left alone. Inside ``_soap_scope``.
+    async def _screen(self, range_id: str, vms: list[dict]) -> tuple[list[dict], list[str], set[str]]:
+        """The recorded VMs to act on, a note for each one left alone, and the recorded ids
+        vCenter does not have. Inside ``_soap_scope``.
 
         A recorded ``vm-NN`` is a managed-object id, unique only within one vCenter, so a
         delete, power or snapshot by bare id on the wrong vCenter hits someone else's VM.
@@ -666,13 +693,17 @@ class VsphereAPIProvisioner(BaseProvisioner):
         carries no tag and still has its recorded ``<range8>-<node>`` name. Anything else
         is skipped and logged. A VM vCenter no longer has, or one with no recorded id, is
         passed through: each operation already handles those (gone counts as deleted;
-        power and snapshots report them)."""
+        power and snapshots report them).
+
+        Finding one of the range's own VMs here proves the endpoint: a range with nothing
+        recorded then gets it recorded (``on_connection_confirmed``)."""
         ids = [vm["vm_id"] for vm in vms if vm.get("vm_id")]
         if not ids:
-            return list(vms), []
+            return list(vms), [], set()
         props, missing = await asyncio.to_thread(self._owners_sync, ids)
         keep: list[dict] = []
         notes: list[str] = []
+        confirmed = False
         for vm in vms:
             vm_id = vm.get("vm_id")
             if not vm_id or vm_id in missing:
@@ -684,13 +715,30 @@ class VsphereAPIProvisioner(BaseProvisioner):
             legacy = not owner and name == vm.get("name") and name.startswith(f"{range_id[:8]}-")
             if owner == range_id or legacy:
                 keep.append(vm)
+                confirmed = True
                 continue
             whose = f"range {owner}" if owner else "no TrueNorth range"
             notes.append(f"VM {vm.get('name') or vm_id}: {vm_id} on {self._base_url} is {name!r} of {whose}, "
                          "not this range's; left alone")
         for note in notes:
             logger.warning("range %s: %s", range_id, note)
-        return keep, notes
+        if confirmed and self.on_connection_confirmed is not None:
+            try:
+                await asyncio.to_thread(self.on_connection_confirmed, range_id)
+            except Exception as exc:  # noqa: BLE001 — the operation goes on; the next one records it
+                logger.warning("range %s: could not record its vCenter %s: %s", range_id, self._base_url, exc)
+        return keep, notes, missing
+
+    async def _confirm(self, range_id: str, provision_output: dict) -> None:
+        """For a range with nothing recorded, check its VMs are here (and so record it).
+        Best effort: a scheduled read is not failed by it."""
+        if self.on_connection_confirmed is None or provision_output.get("connection"):
+            return
+        try:
+            async with self._soap_scope(always=True):
+                await self._screen(range_id, provision_output.get("vms", []))
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("range %s: ownership check skipped: %s", range_id, exc)
 
     def _soap_power_state_sync(self, vm_id: str) -> str:
         state = str(self._vm(self._soap(), vm_id).runtime.powerState)
@@ -928,7 +976,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
         try:
             # One pyVmomi session for the check and the operation (``fn``'s _vim() reuses it).
             async with self._soap_scope(always=True):
-                keep, skipped = await self._screen(range_id, vms)
+                keep, skipped, _ = await self._screen(range_id, vms)
                 errors += skipped
                 vm_ids = [vm["vm_id"] for vm in keep if vm.get("vm_id")]
                 if vm_ids:
@@ -1284,11 +1332,10 @@ class VsphereAPIProvisioner(BaseProvisioner):
         Nothing is left behind on failure: when no VM could be built, the VMs and port
         groups this call made are removed again, so a retry starts clean.
 
-        ``template["credentials"]`` (the range's own tenant's HypervisorConnection, from the
-        worker) wins over the environment, as credentials given to the constructor do.
+        The vCenter and login are the constructor's only (worker/connection_binding.py). A
+        ``credentials`` key in the template is ignored: until 2026-10-11 it replaced them, so a
+        template author could send a build, and its recorded connection, to any host.
         """
-        if template.get("credentials"):
-            self.use_credentials(template["credentials"])
         start = time.monotonic()
         errors: list[str] = []
         warnings: list[str] = []
@@ -1871,7 +1918,16 @@ class VsphereAPIProvisioner(BaseProvisioner):
             if has_ids:  # only port groups left: no REST login needed
                 await self._get_session()
             async with self._soap_scope(always=has_ids), self._client() as client:
-                vms, errors = await self._screen(range_id, vms)
+                recorded_ids = [vm["vm_id"] for vm in vms if vm.get("vm_id")]
+                vms, errors, missing = await self._screen(range_id, vms)
+                if recorded_ids and set(recorded_ids) <= missing and not provision_output.get("connection"):
+                    # Nothing recorded which vCenter built it, and none of its VMs is here: this
+                    # is likely not that vCenter (the tenant's preferred connection changed).
+                    # Counting them as deleted would record the range destroyed and orphan them.
+                    raise RuntimeError(
+                        f"none of the range's {len(recorded_ids)} recorded VMs exist on {self._base_url}, and the "
+                        "range does not record which vCenter built it; refusing to call it destroyed. Point the "
+                        "tenant's connection at the vCenter that built it, or delete its VMs there by hand")
                 ids = [vm["vm_id"] for vm in vms if vm.get("vm_id")]
                 results = await asyncio.gather(*(self._delete_vm(client, i) for i in ids), return_exceptions=True)
                 for vm_id, res in zip(ids, results, strict=True):
@@ -1923,7 +1979,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
             if has_ids:  # nothing to power: no login
                 await self._get_session()
             async with self._soap_scope(always=has_ids), self._client() as client:
-                vms, skipped = await self._screen(range_id, recorded)
+                vms, skipped, _ = await self._screen(range_id, recorded)
                 results = await asyncio.gather(*(one(client, vm) for vm in vms), return_exceptions=True)
         except Exception as exc:  # could not log in, connect or check ownership: nothing was powered
             return 0, [self._redact(exc)]
@@ -2018,6 +2074,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
         errors: list[str] = []
         vm_statuses: list[dict] = []  # same shape as the other backends: one dict per VM
         vms = provision_output.get("vms", [])
+        await self._confirm(range_id, provision_output)  # a range with nothing recorded: record it
 
         try:
             if any(vm.get("vm_id") for vm in vms):  # nothing to read: no login

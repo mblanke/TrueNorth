@@ -40,6 +40,8 @@ def _get_backend(backend: str | None = None, range_id: str | None = None, *, out
     connection_binding.verify(provisioner, rec)
     if build and rec is None and range_id:
         connection_binding.record_build(range_id, provisioner)
+    elif rec is None:  # built before records: backfill once one of its VMs is found here
+        connection_binding.hook(range_id, provisioner)
     return provisioner
 
 

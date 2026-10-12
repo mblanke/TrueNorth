@@ -4,8 +4,9 @@ DB-backed CRUD for hypervisor connections (vSphere, plus legacy Proxmox and Hype
 node discovery, pool management, and connection testing. Talking to a hypervisor is
 the job of ``app/hypervisor_backends`` (ADR 0001); this module is HTTP only.
 
-Tenancy: a connection is tenant-owned (``seed.seed_infrastructure`` backfills NULL
-tenants onto the first tenant), like the storage appliances beside it. A caller sees,
+Tenancy: a connection made here is tenant-owned, like the storage appliances beside it.
+One with no tenant is shared (the worker builds on it for a tenant without its own);
+it is managed outside this API and is never handed to a tenant. A caller sees,
 changes and tests only their own tenant's connections and the hosts discovered through
 them; a foreign id is 404. Until 2026-10-07 every by-id route used ``db.get`` with no
 tenant predicate, so a range_ops user in one tenant could read, repoint, delete or
@@ -24,7 +25,7 @@ from ..auth import CurrentUser, get_current_user
 from ..db import get_db
 from ..delete_guard import commit_delete
 from ..hypervisor_backends import get_hypervisor_backend
-from ..hypervisor_connection_guard import refuse_if_live, require_password
+from ..hypervisor_connection_guard import refuse_if_it_moves_unrecorded, refuse_if_live, require_password
 from ..hypervisor_ports import default_port
 from ..models import (
     HypervisorConnection,
@@ -73,6 +74,12 @@ def create_connection(
     payload: HypervisorConnectionIn, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)
 ):
     require_password(payload.hypervisor_type, payload.password)  # never the platform's (#131 review)
+    same_kind = _own_connections(db, user).filter(HypervisorConnection.hypervisor_type == payload.hypervisor_type)
+    if payload.is_primary or not same_kind.filter(HypervisorConnection.is_active.is_(True)).count():
+        # It becomes the tenant's preferred connection: ranges that do not record theirs would follow.
+        refuse_if_it_moves_unrecorded(db, payload.hypervisor_type, tenant_uuid(user), "add this connection")
+    if payload.is_primary:  # one primary per tenant and family, as set-primary leaves it
+        same_kind.update({HypervisorConnection.is_primary: False}, synchronize_session=False)
     conn = HypervisorConnection(
         name=payload.name,
         hypervisor_type=payload.hypervisor_type,
@@ -111,6 +118,9 @@ def update_connection(
         require_password(conn.hypervisor_type, changes["password"])  # rotate it, never clear it
     if changes.get("is_active") is False and conn.is_active:
         refuse_if_live(db, conn, "deactivate")
+    if (changes.get("is_active") is True and not conn.is_active) or (
+            changes.get("is_primary") is not None and changes["is_primary"] != conn.is_primary):
+        refuse_if_it_moves_unrecorded(db, conn.hypervisor_type, conn.tenant_id, "change which connection is preferred")
     if changes.get("port") is None:
         changes.pop("port", None)  # explicit null: keep the stored port
     if ("host" in changes and changes["host"] != conn.host) or ("port" in changes and changes["port"] != conn.port):
@@ -194,6 +204,8 @@ def set_primary(conn_id: uuid.UUID, db: Session = Depends(get_db), user: Current
         )
         .all()
     )
+    if not conn.is_primary or any(o.is_primary for o in others):  # a no-op only if it is the sole primary
+        refuse_if_it_moves_unrecorded(db, conn.hypervisor_type, conn.tenant_id, "change the primary connection")
     for other in others:
         other.is_primary = False
     conn.is_primary = True

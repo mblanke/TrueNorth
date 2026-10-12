@@ -803,9 +803,11 @@ class TestProvisionOvf:
 
 class TestDestroy:
     def _built(self, vc):
-        result = _run(_prov(vc).provision(RANGE_ID, _rendered(), {}))
+        prov = _prov(vc)
+        result = _run(prov.provision(RANGE_ID, _rendered(), {}))
         assert result.status == "ok", result.errors
-        return {"vms": result.vms, "networks": result.networks}
+        # As range_alloc.stored_output records it: with the vCenter it was built on.
+        return {"vms": result.vms, "networks": result.networks, "connection": prov.connection_record()}
 
     def test_removes_vms_then_portgroups_and_folder(self, vc):
         output = self._built(vc)
@@ -1656,7 +1658,8 @@ class TestMirrorSessions:
         other = infra.vspan_sessions("ffffffff-other", {"dst": "x", "sources": [("y", 1)]}, ["9"], ["8"], None, 0)
         infra.ensure_vspan_sessions(vc.dvs, other, lambda t: None)
         result = _run(_prov(vc).provision(RANGE_ID, _mirror_build(), {}))
-        output = {"vms": result.vms, "networks": result.networks, "mirrors": result.mirrors}
+        output = {"vms": result.vms, "networks": result.networks, "mirrors": result.mirrors,
+                  "connection": _prov(vc).connection_record()}  # as stored_output records it
         destroyed = _run(_prov(vc).destroy(RANGE_ID, output))
         assert destroyed.status == "ok", destroyed.errors
         assert sorted(_sessions(vc)) == ["tn-ffffffff-x"]  # another range's session is not touched
@@ -1891,7 +1894,7 @@ class TestLegacyDialect:
         assert all(t.clone_specs for t in vc.templates.values())
         assert _only_sessions(vc)
 
-        output = {"vms": result.vms, "networks": result.networks}
+        output = {"vms": result.vms, "networks": result.networks, "connection": prov.connection_record()}
         gone = _run(_legacy(vc).destroy(RANGE_ID, output))
         assert gone.status == "ok", gone.errors
         assert gone.resources_removed == 4 + 3 and not vc.vms and vc.dvs.portgroup == []

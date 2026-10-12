@@ -31,6 +31,7 @@ from __future__ import annotations
 import json
 
 from .provisioners import CREDENTIALS_HYPERVISOR, ConnectionBindingError
+from .provisioners.vsphere_api import endpoint_key
 
 KEY = "connection"
 
@@ -79,11 +80,15 @@ def resolve(backend: str, range_id: str | None, output: dict | None = None) -> t
 
 
 def verify(provisioner, rec: dict | None) -> None:
-    """Refuse a provisioner that does not reach the recorded endpoint (None: nothing to check)."""
+    """Refuse a provisioner that does not reach the recorded endpoint (None: nothing to check).
+
+    Compared as connection id plus (host, port), not as URL strings, so a change in how a
+    URL is spelled (trailing slash, case, an explicit :443) does not strand a range."""
     if rec is None:
         return
     now = provisioner.connection_record() or {}
-    if now.get("host") != rec.get("host") or (now.get("id") or None) != (rec.get("id") or None):
+    same_id = str(now.get("id") or "") == str(rec.get("id") or "")
+    if not same_id or endpoint_key(str(now.get("host") or "")) != endpoint_key(str(rec.get("host") or "")):
         source = f"hypervisor connection {rec['id']}" if rec.get("id") else "the worker's VSPHERE_* settings"
         raise ConnectionBindingError(
             f"range was built on {rec['host']} ({source}), which now points at {now.get('host') or 'nothing'}. "
@@ -106,3 +111,31 @@ def record_build(range_id: str, provisioner) -> None:
         if db_ops.lock_range_in_state(db, range_id, "provisioning"):
             ensure_held(db, range_id)
             db_ops.merge_range_output(db, range_id, {KEY: rec})
+
+
+def record_confirmed(range_id: str, provisioner) -> bool:
+    """Backfill the record on a range built before records existed, once an operation has
+    found one of its VMs (by its range annotation, or pre-tag name) on this endpoint:
+    from then on it is bound like any other, and a change of the tenant's preferred
+    connection no longer moves it. Never over an existing record; never on a range with no
+    VMs recorded. Returns whether it recorded."""
+    rec = provisioner.connection_record()
+    if not isinstance(rec, dict) or not rec:
+        return False
+    from . import db_ops
+    from .tasks import _db_session
+
+    with _db_session() as db:
+        db_ops.lock_range(db, range_id)
+        out = _output(db, range_id)
+        if recorded(out) is not None or not out.get("vms"):
+            return False
+        db_ops.merge_range_output(db, range_id, {KEY: rec})
+    return True
+
+
+def hook(range_id: str | None, provisioner) -> None:
+    """Give a provisioner for a range with nothing recorded the means to backfill it
+    (``on_connection_confirmed``, called by the provisioner with the range id it confirmed)."""
+    if range_id and hasattr(provisioner, "on_connection_confirmed"):
+        provisioner.on_connection_confirmed = lambda rid: record_confirmed(rid, provisioner)

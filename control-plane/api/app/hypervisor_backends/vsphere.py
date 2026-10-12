@@ -177,7 +177,7 @@ def check_connection(conn: HypervisorConnection, db) -> HypervisorTestResult:
             nodes_found=len(hosts) if isinstance(hosts, list) else 0,
         )
     except Exception as exc:
-        conn.is_active = False
+        # Reported, not deactivated: a failed test must not move ranges off it (#131 review 2).
         db.commit()
         return HypervisorTestResult(success=False, message=f"Connection failed: {exc}", version="n/a", nodes_found=0)
 

@@ -136,6 +136,87 @@ def test_the_model_default_follows_the_family(db_session):
     assert conn.port == 443
 
 
+#  -- review 2: changing which connection is preferred moves unrecorded ranges ------
+UNRECORDED = {"vms": [{"name": "a", "vm_id": "vm-1"}]}  # built before the worker recorded its vCenter
+
+
+def test_set_primary_is_refused_while_unrecorded_ranges_would_follow_it(client, db_session):
+    _conn(db_session, host="vc-a.test").is_primary = True
+    b = _conn(db_session, host="vc-b.test")
+    _range(db_session, output=UNRECORDED)
+    db_session.commit()
+    assert client.post(f"/hypervisors/connections/{b.id}/set-primary").status_code == 409
+    assert client.patch(f"/hypervisors/connections/{b.id}", json={"is_primary": True}).status_code == 409
+    db_session.refresh(b)
+    assert b.is_primary is False
+
+
+def test_set_primary_is_free_once_every_range_records_its_vcenter(client, db_session):
+    a = _conn(db_session, host="vc-a.test")
+    b = _conn(db_session, host="vc-b.test")
+    _range(db_session, output=_built_on(a))
+    db_session.commit()
+    assert client.post(f"/hypervisors/connections/{b.id}/set-primary").status_code == 200
+
+
+def test_adding_a_primary_or_first_connection_is_refused_while_unrecorded_ranges_would_follow(client, db_session):
+    _range(db_session, output=UNRECORDED)
+    db_session.commit()
+    body = {"name": "x", "hypervisor_type": "vsphere", "host": "vc-new.test", "username": "u", "password": "pw"}
+    assert client.post("/hypervisors/connections", json=body).status_code == 409  # the tenant's first
+    _conn(db_session, host="vc-a.test")
+    db_session.commit()
+    assert client.post("/hypervisors/connections", json={**body, "is_primary": True}).status_code == 409
+    assert client.post("/hypervisors/connections", json=body).status_code == 201  # not preferred: nothing moves
+
+
+def test_a_new_primary_demotes_the_others(client, db_session):
+    a = _conn(db_session, host="vc-a.test")
+    a.is_primary = True
+    db_session.commit()
+    body = {"name": "x", "hypervisor_type": "vsphere", "host": "vc-new.test", "username": "u", "password": "pw",
+            "is_primary": True}
+    assert client.post("/hypervisors/connections", json=body).status_code == 201
+    db_session.refresh(a)
+    assert a.is_primary is False
+
+
+def test_a_failed_connection_test_does_not_deactivate_a_vsphere_connection(client, db_session):
+    import httpx
+    import respx
+
+    conn = _conn(db_session, host="vc-down.test")
+    conn.password_encrypted = None  # a test login with "" : still just a failure
+    _range(db_session, output=_built_on(conn))
+    db_session.commit()
+    with respx.mock(assert_all_called=False) as r:
+        r.route().mock(side_effect=httpx.ConnectError("unreachable"))
+        out = client.post(f"/hypervisors/connections/{conn.id}/test").json()
+    assert out["success"] is False
+    db_session.refresh(conn)
+    assert conn.is_active is True
+
+
+def test_seed_leaves_a_shared_connection_shared(db_session):
+    from app.seed import seed_infrastructure
+
+    shared = _conn(db_session, tenant=None, host="vc-shared.test")
+    db_session.commit()
+    seed_infrastructure(db_session)
+    db_session.refresh(shared)
+    assert shared.tenant_id is None
+
+
+@pytest.mark.parametrize("yaml", [
+    "name: x\ncredentials:\n  host: evil.example\n  username: u\n  password: p\nnodes: []\n",
+    '{"name": "x", "credentials": {"host": "evil.example"}}',
+])
+def test_a_template_may_not_carry_credentials(client, yaml):
+    """Review 2 blocker 1: the worker used to log in with them, to the template's host."""
+    r = client.post("/templates", json={"name": f"t-{uuid.uuid4().hex[:6]}", "yaml": yaml})
+    assert r.status_code == 422 and "credentials" in r.json()["detail"]
+
+
 def test_a_connection_with_live_ranges_cannot_change_port(client, db_session):
     conn = _conn(db_session)
     _range(db_session, output=_built_on(conn))

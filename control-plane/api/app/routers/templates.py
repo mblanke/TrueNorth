@@ -62,6 +62,10 @@ def _refuse_network_placement(text: str | None) -> None:
         raise HTTPException(422, f"template YAML refused: {exc}") from exc
     except pyyaml.YAMLError:
         return  # not YAML at all: validation reports it, nothing can be placed
+    if isinstance(doc, dict) and "credentials" in doc:
+        # The worker once logged in with a template's own credentials, to its own host.
+        raise HTTPException(422, "templates may not set credentials; the vCenter is the tenant's hypervisor "
+                                 "connection")
     keys = network_placement_keys(doc)
     if keys:
         raise HTTPException(

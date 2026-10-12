@@ -124,7 +124,9 @@ def hypervisor_connection(db, hypervisor_type: str, tenant_id):
         sa.select(*_connection_cols())
         .where(hc.c.hypervisor_type == hypervisor_type, hc.c.is_active == sa.true(),
                sa.or_(own, hc.c.tenant_id.is_(None)))
-        .order_by(sa.case((own, 0), else_=1), hc.c.is_primary.desc())
+        # Deterministic: two primaries (or none) resolve to the oldest, then the lowest id. The
+        # API's console (app/hypervisor_binding.py) orders the same way.
+        .order_by(sa.case((own, 0), else_=1), hc.c.is_primary.desc(), hc.c.created_at.asc(), hc.c.id.asc())
         .limit(1)
     )
     return db.execute(stmt).first()

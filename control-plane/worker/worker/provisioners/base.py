@@ -81,6 +81,11 @@ class BaseProvisioner(ABC):
         """Shared values (VLANs, addresses) to reserve before ``provision``. Default: none."""
         return []
 
+    #: Set by the worker for a range with no recorded endpoint (worker/connection_binding.hook):
+    #: called with the range id once an operation has found one of that range's own VMs
+    #: here, so the endpoint is recorded from then on. Blocking; call it from a thread.
+    on_connection_confirmed = None
+
     def connection_record(self) -> dict | None:
         """The hypervisor endpoint this instance talks to, as a build records it in the
         range's provisioner_output (``{"id": connection id or None, "host": url}``), so

@@ -220,6 +220,33 @@ class TestTheBuildsVcenterIsKept:
         assert prov._base_url == "https://vc-a.test"
         assert "connection" not in world.output(rid)  # only a build records
 
+    def test_a_legacy_range_is_backfilled_once_confirmed_and_then_stays_put(self, world):
+        """Review 2 should-fix 2d: the hook _get_backend sets writes the record, once."""
+        cid = world.add_conn("vc-a.test")
+        rid = world.add_range(state="ready", output={"vms": [{"name": "a", "vm_id": "vm-1"}]})
+        prov = base_tasks._get_backend("vsphere_api", rid)
+        prov.on_connection_confirmed(rid)
+        assert world.output(rid)["connection"] == {"id": cid, "host": "https://vc-a.test"}
+        world.run(sa.update(hypervisor_connections).values(is_primary=False))
+        world.add_conn("vc-new.test")  # a new preferred connection no longer moves it
+        assert base_tasks._get_backend("vsphere_api", rid)._base_url == "https://vc-a.test"
+        assert connection_binding.record_confirmed(rid, prov) is False  # never over a record
+
+    def test_a_range_with_a_record_gets_no_backfill_hook(self, world):
+        world.add_conn("vc-a.test")
+        rid = world.add_range()
+        base_tasks._get_backend("vsphere_api", rid, build=True)
+        assert base_tasks._get_backend("vsphere_api", rid).on_connection_confirmed is None
+
+    def test_a_recorded_url_spelled_differently_still_matches(self, world):
+        """verify compares id + (host, port), not URL strings."""
+        cid = world.add_conn("vc-a.test")
+        rid = world.add_range(output={"connection": {"id": cid, "host": "HTTPS://VC-A.test:443/"}})
+        assert base_tasks._get_backend("vsphere_api", rid)._base_url == "https://vc-a.test"
+        world.run(sa.update(hypervisor_connections).values(port=8443))  # now another endpoint
+        with pytest.raises(ConnectionBindingError):
+            base_tasks._get_backend("vsphere_api", rid)
+
     def test_binding_errors_are_final(self):
         from worker.fencing import FINAL_ERRORS
 
@@ -266,8 +293,45 @@ class TestOwnershipCheck:
         assert result.status == "ok" and "vm-3" not in vc.vms
 
     def test_a_vm_already_gone_still_counts_as_deleted(self, vc):
-        result = _run(_prov(vc).destroy(RANGE_ID, {"vms": [{"name": f"{R8}-x", "vm_id": "vm-404"}]}))
+        prov = _prov(vc)
+        out = {"vms": [{"name": f"{R8}-x", "vm_id": "vm-404"}], "connection": prov.connection_record()}
+        result = _run(prov.destroy(RANGE_ID, out))
         assert result.status == "ok", result.errors
+
+    def test_a_range_with_nothing_recorded_and_none_of_its_vms_here_is_not_destroyed(self, vc):
+        """Review 2 should-fix 2a: likely the wrong vCenter; 404s must not count as deleted."""
+        out = {"vms": [{"name": f"{R8}-x", "vm_id": "vm-404"}, {"name": f"{R8}-y", "vm_id": "vm-405"}]}
+        result = _run(_prov(vc).destroy(RANGE_ID, out))
+        assert result.status == "failed" and "none of the range's 2 recorded VMs" in result.errors[0]
+
+    def test_one_of_its_vms_found_backfills_the_record_so_a_retry_can_finish(self, vc):
+        _tagged(vc, "vm-1", RANGE_ID, f"{R8}-web")
+        prov, seen = _prov(vc), []
+        prov.on_connection_confirmed = seen.append
+        out = {"vms": [{"name": f"{R8}-web", "vm_id": "vm-1"}, {"name": f"{R8}-old", "vm_id": "vm-404"}]}
+        assert _run(prov.destroy(RANGE_ID, out)).status == "ok"
+        assert seen == [RANGE_ID]
+        # The retry (every VM gone now) reads the record the hook wrote, and finishes.
+        again = _run(_prov(vc).destroy(RANGE_ID, {**out, "connection": prov.connection_record()}))
+        assert again.status == "ok", again.errors
+
+    def test_a_vm_of_another_range_confirms_nothing(self, vc):
+        _tagged(vc, "vm-2", OTHER_RANGE)
+        prov, seen = _prov(vc), []
+        prov.on_connection_confirmed = seen.append
+        _run(prov.stop(RANGE_ID, {"vms": [{"name": f"{R8}-a", "vm_id": "vm-2"}]}))
+        assert seen == []
+
+    def test_health_backfills_a_range_with_nothing_recorded(self, vc):
+        _tagged(vc, "vm-1", RANGE_ID, f"{R8}-web")
+        prov, seen = _prov(vc), []
+        prov.on_connection_confirmed = seen.append
+        _run(prov.health_check(RANGE_ID, {"vms": [{"name": f"{R8}-web", "vm_id": "vm-1"}]}))
+        assert seen == [RANGE_ID]
+        seen.clear()  # recorded already: no ownership read at all
+        recorded = {"vms": [{"name": f"{R8}-web", "vm_id": "vm-1"}], "connection": prov.connection_record()}
+        _run(prov.health_check(RANGE_ID, recorded))
+        assert seen == []
 
     def test_power_leaves_another_ranges_vm_alone_and_says_so(self, vc):
         _tagged(vc, "vm-1", RANGE_ID, f"{R8}-web")
@@ -443,9 +507,26 @@ def test_db_creds_by_id_never_returns_another_tenants_row(world):
     ("vc.test", 8006, "https://vc.test"),  # the API's old default for every family: never a vCenter port
     ("vc.test:9443", 8443, "https://vc.test:9443"),  # a port typed into the host wins
     ("https://vc.test/", "8443", "https://vc.test:8443"),
+    ("fd00::10", None, "https://[fd00::10]"),  # a bare IPv6 address is bracketed
+    ("fd00::10", 8443, "https://[fd00::10]:8443"),
+    ("[fd00::10]", 443, "https://[fd00::10]"),
+    ("[fd00::10]:9443", 8443, "https://[fd00::10]:9443"),
 ])
 def test_the_connections_port_reaches_the_endpoint(host, port, url):
     assert mod.endpoint_url(host, port) == url
+
+
+def test_an_ipv6_vcenter_reaches_pyvmomi_unbracketed(monkeypatch):
+    connect = MagicMock()
+    monkeypatch.setattr(mod, "SmartConnect", connect)
+    mod.VsphereAPIProvisioner({"host": "fd00::10", "port": 8443, "username": "u", "password": "p"})._connect()
+    assert (connect.call_args.kwargs["host"], connect.call_args.kwargs["port"]) == ("fd00::10", 8443)
+
+
+@pytest.mark.parametrize("host", ["https://fd00::10", "vc.test:notaport", "https://"])
+def test_an_unusable_address_is_a_binding_error_not_a_crash(host):
+    with pytest.raises(ConnectionBindingError):
+        mod.VsphereAPIProvisioner({"host": host, "username": "u", "password": "p"})
 
 
 def test_rest_and_pyvmomi_both_use_the_connections_port(monkeypatch):

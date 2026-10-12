@@ -21,7 +21,7 @@ import pytest
 import sqlalchemy as sa
 import test_vsphere_provision as _vsp
 from test_range_task_fencing import OUTPUT, _range, _state
-from test_vsphere_provision import RANGE_ID, _prov, _rendered, _run
+from test_vsphere_provision import RANGE_ID, _rendered, _run
 from worker import base_tasks, power_tasks, secretbox, tasks
 from worker.provisioners import vsphere_api as mod
 from worker.provisioners.results import DestroyResult, HealthResult, StopResult
@@ -86,27 +86,32 @@ def test_a_backend_without_credentials_never_reads_the_connection(monkeypatch):
     base_tasks._get_backend("mock", str(uuid.uuid4()))
 
 
-def test_provision_logs_in_to_the_vcenter_in_template_credentials(vc):
-    """The two tenants' builds reach two vCenters: REST login and pyVmomi alike."""
+def test_each_build_reaches_its_connections_vcenter_and_never_a_templates(vc):
+    """The two tenants' builds reach two vCenters, REST login and pyVmomi alike, from the
+    connection given to the constructor. A ``credentials`` key in the template (which an
+    instructor writes) is ignored: it used to replace them, and the recorded connection."""
     seen: list[tuple[str, str]] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
         seen.append((request.url.host, request.headers.get("authorization", "")))
         return vc.handler(request)
 
+    evil = {"host": "evil.example", "username": "x", "password": "y", "datacenter": "DC-Lab"}
     for host, user in (("vc-a.test", "svc-a"), ("vc-b.test", "svc-b")):
         seen.clear()
         mod.SmartConnect.reset_mock()
-        prov = _prov(vc)
+        prov = mod.VsphereAPIProvisioner({"host": host, "username": user, "password": "pw",
+                                          "datacenter": "DC-Lab", "verify_ssl": False})
         prov._transport = httpx.MockTransport(handler)
-        template = {**_rendered(), "credentials": {"host": host, "username": user, "password": "pw",
-                                                   "datacenter": "DC-Lab", "verify_ssl": False}}
-        result = _run(prov.provision(RANGE_ID, template, {}))
+        prov._vm = lambda si, vm_id: vc.vms[vm_id]
+        result = _run(prov.provision(RANGE_ID, {**_rendered(), "credentials": evil}, {}))
         assert result.status == "ok", result.errors
         assert {h for h, _ in seen} == {host}
         assert {c.kwargs["host"] for c in mod.SmartConnect.call_args_list} == {host}
         assert {c.kwargs["user"] for c in mod.SmartConnect.call_args_list} == {user}
-        _run(prov.destroy(RANGE_ID, {"vms": result.vms, "networks": result.networks}))
+        assert prov.connection_record()["host"] == f"https://{host}"
+        _run(prov.destroy(RANGE_ID, {"vms": result.vms, "networks": result.networks,
+                                     "connection": prov.connection_record()}))
 
 
 # -- every task hands the range id over, so the lookup above happens ---------
