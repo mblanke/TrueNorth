@@ -167,7 +167,8 @@ describe('ScheduleComponent', () => {
   it('books a scenario, and links to the exercise once it exists', fakeAsync(() => {
     as('instructor', 'me', [booking({ id: 'x', instructor_id: 'me', exercise_id: 'ex1', scenario_id: 'sc1' } as any)]);
     component.startBooking();
-    component.patch({ name: 'With a scenario', templateId: 'tpl-soc', scenarioId: 'sc1' });
+    // Next week, clear of the fixture booking (today 09:00 would clash on a Monday).
+    component.patch({ name: 'With a scenario', templateId: 'tpl-soc', scenarioId: 'sc1', date: isoDate(addDays(MONDAY, 9)), from: '13:00', to: '15:00' });
     tick(300);
     fixture.detectChanges();
     expect(text()).toContain('A range is created from the template');

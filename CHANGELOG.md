@@ -36,6 +36,12 @@ course production with a local-model fallback, and the cleanup of unsupported su
 - Batch driver: catalogue course → run → release → accepted → published (#136).
 - Fix: the Studio read `ARC2_RUNS_DIR` after an image-incompatible repo default and 500'd on
   every call on installed hosts (#134).
+- Fix: on a Linux runner (bubblewrap) every new run stopped at `/arc2` init with `EROFS`:
+  the request file sat in the read-only runs root, where the Write tool's temp-then-rename
+  cannot work. The runner now writes it to `<run>/request.txt` before the job starts and
+  `arc2.check init` reads it from there; nothing in the runs root is writable to a job.
+  The tracked `.env.example` templates are no longer masked in the sandbox, which made every
+  job record `provenance.git_dirty: true`.
 
 ### Ranges
 - **Greyspace on vSphere** (#133): gs-core VM in the range build, `configure_range` stage,
