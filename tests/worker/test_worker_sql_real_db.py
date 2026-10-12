@@ -34,6 +34,7 @@ from worker import db_ops  # noqa: E402
 from worker.provisioners.results import (  # noqa: E402
     DestroyResult,
     HealthResult,
+    MetricsResult,
     ProvisionResult,
     RestoreResult,
     SnapshotDeleteResult,
@@ -215,7 +216,11 @@ class TestRanges:
         stopped = m.Range(name="r2", template_id=world.template.id, state=m.RangeState.stopped)
         _add(db, stopped)
         before = _fresh(db, world.range).updated_at
-        backend = _fake_backend(health_check=HealthResult(healthy=False, status="degraded", vm_statuses=[{}]))
+        measured = MetricsResult(status="ok", source="vsphere", vms=[
+            {"power_state": "poweredOn", "cpu_usage_mhz": 300, "cpu_capacity_mhz": 1200,
+             "memory_active_mb": 1024, "memory_configured_mb": 4096}])
+        backend = _fake_backend(health_check=HealthResult(healthy=False, status="degraded", vm_statuses=[{}]),
+                                collect_metrics=measured)
         # The scheduled reads build their provisioners in worker/range_sweep.py (base_tasks).
         monkeypatch.setattr(tasks.range_sweep.base_tasks, "_get_backend", lambda name=None, range_id=None, **kw: backend)
 
@@ -226,7 +231,9 @@ class TestRanges:
         with patch.object(tasks.ingest_telemetry_batch, "delay") as delay:
             assert tasks.collect_range_metrics()["ranges_collected"] == 1
         assert delay.call_args.args[0] == str(world.range.id)
-        assert _fresh(db, world.range).updated_at >= before
+        (event,) = delay.call_args.args[1]
+        assert (event["cpu_pct"], event["memory_pct"], event["source"]) == (25.0, 25.0, "vsphere")
+        assert _fresh(db, world.range).updated_at == before  # reading metrics is not a change to the range
 
 
 # -- exercises + objectives ----------------------------------------------------------

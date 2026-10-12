@@ -334,8 +334,9 @@ class MockProvisioner(BaseProvisioner):
     ) -> MetricsResult:
         """Fixed, made-up numbers, marked ``synthetic``: the same input gives the same output.
 
-        Nothing is measured here. The values only let the metrics pipeline run end to end
-        in development; ``synthetic=True`` travels with them into every event.
+        Nothing is measured here, so collect_range_metrics never publishes these: a
+        ``synthetic`` result is "not reported" (worker/range_metrics.py). They exist only
+        for tests of code that reads a MetricsResult.
         """
         start = time.monotonic()
         vms = []

@@ -5,7 +5,9 @@ import { of, throwError } from 'rxjs';
 
 import { ApiService } from '@core/services/api.service';
 import { RangeSummary, TelemetryEvent } from '@core/models';
-import { TelemetryComponent, telemetrySearchError, telemetryTechniques } from './telemetry.component';
+import {
+  TelemetryComponent, rangeMetricsSummary, telemetrySearchError, telemetryTechniques,
+} from './telemetry.component';
 
 describe('telemetryTechniques', () => {
   it('joins the list the API tags events with', () => {
@@ -18,6 +20,38 @@ describe('telemetryTechniques', () => {
 
   it('is empty for an untagged event', () => {
     expect(telemetryTechniques({ event_type: 'range_metrics' })).toBe('');
+  });
+});
+
+describe('rangeMetricsSummary', () => {
+  const base: TelemetryEvent = { event_type: 'range_metrics', source: 'vsphere', vm_count: 3, vms_powered_on: 2 };
+
+  it('shows the measured figures and where they came from', () => {
+    expect(rangeMetricsSummary({ ...base, cpu_pct: 12.5, memory_pct: 50 }))
+      .toBe('CPU 12.5% · Memory 50% · 2/3 VMs on · vsphere');
+  });
+
+  it('says "Not reported" for a figure the hypervisor did not give, never 0%', () => {
+    const line = rangeMetricsSummary({ ...base, memory_pct: 25 });
+    expect(line).toContain('CPU Not reported');
+    expect(line).not.toContain('CPU 0%');
+  });
+
+  it('shows a real 0% as 0%', () => {
+    expect(rangeMetricsSummary({ ...base, cpu_pct: 0, memory_pct: 0 })).toContain('CPU 0% · Memory 0%');
+  });
+
+  it('marks a partial reading', () => {
+    expect(rangeMetricsSummary({ ...base, cpu_pct: 1, partial: true })).toMatch(/\(partial\)$/);
+  });
+
+  it('shows no figures from an event recorded before metrics were measured', () => {
+    const old: TelemetryEvent = { event_type: 'range_metrics', cpu_pct: 47.3, memory_pct: 61.2 };
+    expect(rangeMetricsSummary(old)).toBe('Not measured (recorded before metrics came from the hypervisor)');
+  });
+
+  it('is empty for any other event', () => {
+    expect(rangeMetricsSummary({ event_type: 'process_exec', cpu_pct: 5 })).toBe('');
   });
 });
 
@@ -92,6 +126,21 @@ describe('TelemetryComponent', () => {
     expect(component.events()).toEqual([tagged]);
     expect(component.searchError()).toBe('');
     expect(component.techniques(component.events()[0])).toBe('T1059');
+  });
+
+  it('renders a range_metrics row with "Not reported" for a missing figure', () => {
+    const metrics: TelemetryEvent = {
+      '@timestamp': '2026-10-11T10:00:00Z', event_type: 'range_metrics', source: 'vsphere',
+      vm_count: 2, vms_powered_on: 2, memory_pct: 40,
+    };
+    api.searchTelemetry.and.returnValue(of({ hits: { hits: [{ _source: metrics }] } }));
+    component.selectedRangeId = 'r1';
+    component.search();
+    fixture.detectChanges();
+
+    const row: HTMLElement | null = fixture.nativeElement.querySelector('tr.mat-mdc-row');
+    expect(row?.textContent).toContain('CPU Not reported · Memory 40%');
+    expect(row?.textContent).not.toContain('CPU 0%');
   });
 
   it('shows the 422 reason instead of "no events matched"', () => {

@@ -27,9 +27,13 @@ def _content(vm_id: str, **props):
                            propSet=[SimpleNamespace(name=k, val=v) for k, v in props.items()])
 
 
-def _stats(power="poweredOn", tools="guestToolsRunning", cpu=250, cpu_max=4800, mem=512, mem_cfg=2048, up=3600):
+def _stats(power="poweredOn", tools="guestToolsRunning", cpu=250, cpu_max=4800, mem=512, mem_cfg=2048, up=3600,
+           owner="r1", name="whatever"):
     # pyVmomi hands enums back as str subclasses; the code must store plain strings.
+    # ``owner``: the range the VM's annotation names (mod.RANGE_TAG); None: no tag.
     return {
+        "name": name,
+        "config.annotation": mod.range_annotation(owner) if owner else "",
         "runtime.powerState": vim.VirtualMachine.PowerState(power),
         "guest.toolsRunningStatus": tools,
         "summary.quickStats.overallCpuUsage": cpu,
@@ -108,7 +112,7 @@ class TestCollectMetrics:
         assert result.status == "ok" and result.source == "vsphere" and not result.synthetic, result.errors
         ((ids, paths, kind),) = vc.collector.calls
         assert ids == ["vm-1", "vm-2"] and kind is vim.VirtualMachine
-        assert sorted(paths) == sorted(mod.METRIC_PATHS)
+        assert sorted(paths) == sorted(mod.METRIC_PATHS + mod.OWNER_PATHS)  # ownership read in the same call
         assert {"summary.quickStats.overallCpuUsage", "summary.quickStats.guestMemoryUsage",
                 "summary.quickStats.uptimeSeconds", "runtime.powerState",
                 "guest.toolsRunningStatus"} <= set(paths)
@@ -160,9 +164,45 @@ class TestCollectMetrics:
         assert result.status == "ok" and result.vms == [] and vc.logins == [] and vc.collector.calls == []
 
 
+def test_a_running_vm_with_all_zero_quickstats_is_no_reading(vc):
+    """What vcsim v0.56.0 answers (observed 2026-10-11): pyVmomi's 0 for unset numbers."""
+    vc.collector.inventory = {"vm-1": _stats(cpu=0, cpu_max=0, mem=0, mem_cfg=32, up=0),
+                              "vm-2": _stats(cpu=0, mem=128, up=5)}  # idle but reporting: kept
+    result = _run(mod.VsphereAPIProvisioner().collect_metrics("r1", _out("vm-1", "vm-2")))
+    blank, idle = result.vms
+    assert (blank["cpu_usage_mhz"], blank["memory_active_mb"], blank["uptime_seconds"]) == (None, None, None)
+    assert (idle["cpu_usage_mhz"], idle["memory_active_mb"]) == (0, 128)
+
+
+class TestOwnership:
+    """The same rule as a delete or power (_screen): only the range's own VMs are reported."""
+
+    def test_another_ranges_vm_under_a_recorded_id_is_left_out_with_no_figures(self, vc):
+        vc.collector.inventory = {"vm-1": _stats(cpu=100), "vm-2": _stats(owner="other-range", name="theirs", cpu=9999)}
+        result = _run(mod.VsphereAPIProvisioner().collect_metrics("r1", _out("vm-1", "vm-2")))
+        assert result.status == "partial"
+        assert [v["vm_id"] for v in result.vms] == ["vm-1"]  # nothing of vm-2, not even a name
+        assert 9999 not in [v["cpu_usage_mhz"] for v in result.vms]
+        assert result.errors == ["VM n-vm-2: vm-2 on https://vcsa.test is 'theirs' of range other-range, "
+                                 "not this range's; not read"]
+
+    def test_an_untagged_vm_that_is_not_the_recorded_one_is_left_out(self, vc):
+        vc.collector.inventory = {"vm-1": _stats(owner=None, name="someones-sql-server")}
+        result = _run(mod.VsphereAPIProvisioner().collect_metrics("r1", _out("vm-1")))
+        assert result.status == "failed" and result.vms == []
+        assert "of no TrueNorth range" in result.errors[0]
+
+    def test_a_legacy_untagged_vm_with_its_recorded_name_is_read(self, vc):
+        rid = "abcdef12-0000-0000-0000-000000000000"
+        vc.collector.inventory = {"vm-1": _stats(owner=None, name="abcdef12-web")}
+        out = {"vms": [{"name": "abcdef12-web", "vm_id": "vm-1"}]}
+        result = _run(mod.VsphereAPIProvisioner().collect_metrics(rid, out))
+        assert result.status == "ok" and result.vms[0]["cpu_usage_mhz"] == 250
+
+
 class TestScheduledRunSession:
     def test_one_pyvmomi_login_for_every_range_in_the_run(self, vc):
-        vc.collector.inventory = {f"vm-{i}": _stats() for i in range(4)}
+        vc.collector.inventory = {f"vm-{i}": _stats(owner="r1" if i < 2 else "r2") for i in range(4)}
         prov = mod.VsphereAPIProvisioner()
 
         async def run():
