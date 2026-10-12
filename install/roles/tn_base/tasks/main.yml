@@ -155,3 +155,5 @@
     - { path: "{{ tn_data_root }}/reports" }
     - { path: "{{ tn_data_root }}/artifacts" }
     - { path: "{{ tn_data_root }}/backups" }
+    # node_exporter's textfile directory (compose.prod.yml): backup and probe metrics.
+    - { path: "{{ tn_data_root }}/metrics" }

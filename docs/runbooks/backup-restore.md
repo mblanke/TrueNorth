@@ -59,6 +59,8 @@ OPENSEARCH_SNAPSHOT_KEEP=14             # tn_opensearch_snapshot_keep
 # OPENSEARCH_URL=http://localhost:9200  # only with tn_opensearch_disable_security (lab)
 # MOODLE_COMPOSE_FILE=.../compose.moodle-prod.yml   # only with tn_moodle_enabled
 # MOODLE_ENV_FILE=/srv/truenorth/config/moodle-default.env
+METRICS_DIR=/srv/truenorth/metrics      # Prometheus textfile metrics (backup + host probes)
+# ARC2_RUNNER_UNIT=truenorth-arc2-runner  # only with tn_arc2_enabled (host-probes.sh)
 
 # Optional, add by hand
 # DAILY_KEEP=7 WEEKLY_KEEP=4 MONTHLY_KEEP=12
@@ -97,6 +99,13 @@ Exit codes: `1` failed (nothing kept), `3` data kept but no escrow, `4` offsite 
 manifest's `opensearch` entry says `"status":"failed"` and why. `3` wins when both apply; both
 alert. `cron-backup.sh` treats `3` and `5` alike: it uploads and rotates the backup and passes
 the code through.
+
+Prometheus watches the same things: each `backup.sh` run writes
+`$METRICS_DIR/truenorth_backup.prom` (`METRICS_DIR` is in `backup.env`; node_exporter's
+textfile collector reads it), and `BackupFailed` (nothing kept), `BackupIncomplete`
+(exit 3 or 5) and `BackupStale` (no good backup in 26 h) fire from it
+([operations.md](../operations.md#alert-rules)). The installer seeds the file with the install
+time, so a nightly job that never runs alerts too. The offsite upload (exit 4) is not in it.
 
 ## Run a backup by hand
 

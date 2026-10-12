@@ -19,6 +19,8 @@
 #   BACKUP_WEBHOOK_URL (or WEBHOOK_URL)  optional extra alert channel.
 #   OPENSEARCH_URL / OPENSEARCH_SNAPSHOT_CACERT  how os_curl reaches the node from inside
 #                  the opensearch container (https://localhost:9200, config/certs/ca.pem).
+#   OS_CURL_MAX_TIME  os_curl's --max-time (default 3600, for snapshots).
+#   METRICS_DIR    node_exporter textfile directory for backup_metrics (optional).
 # shellcheck shell=bash
 
 TN_BACKUP_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -180,7 +182,7 @@ mc_run() {
 # in a netrc-style config on stdin (-K -), never on a command line. Fails on HTTP >= 400.
 os_curl() {
     local auth cfg=""
-    local -a opts=(-sS --fail --max-time 3600)
+    local -a opts=(-sS --fail --max-time "${OS_CURL_MAX_TIME:-3600}")
     auth="$(env_get OPENSEARCH_SNAPSHOT_AUTH)"
     if [[ "${OPENSEARCH_URL}" == https:* ]]; then opts+=(--cacert "${OPENSEARCH_SNAPSHOT_CACERT}"); fi
     if [[ -n "$auth" ]]; then
@@ -251,6 +253,39 @@ prune_to_size() {
         rm -rf "$b"
         total="$(size_kb "$root")"
     done
+}
+
+# backup_metrics <exit code> <kept: 1 if a backup directory was completed, else 0>
+# For Prometheus (node_exporter's textfile collector reads METRICS_DIR; compose.prod.yml).
+# The last success survives a failed run, so BackupStale measures the age of the newest
+# good backup. No METRICS_DIR: nothing is written. Never fails the backup.
+backup_metrics() {
+    local rc="$1" kept="$2" f tmp now last=0
+    [[ -n "${METRICS_DIR:-}" && -d "${METRICS_DIR}" ]] || return 0
+    f="${METRICS_DIR}/truenorth_backup.prom"
+    now="$(date +%s)"
+    if [[ -r "$f" ]]; then
+        last="$(awk '$1 == "truenorth_backup_last_success_timestamp_seconds" { print $2 }' "$f" 2>/dev/null)"
+        [[ "${last}" =~ ^[0-9]+$ ]] || last=0
+    fi
+    (( kept )) && last="${now}"
+    tmp="$(mktemp "${METRICS_DIR}/.truenorth_backup.XXXXXX" 2>/dev/null)" || return 0
+    cat >"${tmp}" <<EOF
+# HELP truenorth_backup_last_success_timestamp_seconds When the newest backup that kept the data finished (backup.sh exit 0, 3 or 5).
+# TYPE truenorth_backup_last_success_timestamp_seconds gauge
+truenorth_backup_last_success_timestamp_seconds ${last}
+# HELP truenorth_backup_last_run_timestamp_seconds When backup.sh last finished, successful or not.
+# TYPE truenorth_backup_last_run_timestamp_seconds gauge
+truenorth_backup_last_run_timestamp_seconds ${now}
+# HELP truenorth_backup_last_exit_code backup.sh's last exit code: 0 ok, 1 failed, 3 no secrets escrow, 5 telemetry snapshot failed.
+# TYPE truenorth_backup_last_exit_code gauge
+truenorth_backup_last_exit_code ${rc}
+# HELP truenorth_backup_last_run_success 1 if the last run kept a backup (exit 0, 3 or 5), else 0.
+# TYPE truenorth_backup_last_run_success gauge
+truenorth_backup_last_run_success ${kept}
+EOF
+    chmod 0644 "${tmp}" 2>/dev/null || true   # node_exporter runs as nobody
+    mv -f "${tmp}" "$f" 2>/dev/null || rm -f "${tmp}"
 }
 
 json_str() {

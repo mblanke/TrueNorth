@@ -173,6 +173,42 @@ def test_restore_of_a_backup_whose_snapshot_failed_restores_the_rest(stack):
     assert any(ln.endswith(" stop opensearch api") for ln in calls.splitlines()), calls
 
 
+def _metrics(env: dict) -> dict[str, int]:
+    prom = Path(env["METRICS_DIR"]) / "truenorth_backup.prom"
+    assert oct(prom.stat().st_mode & 0o777) == "0o644", "node_exporter (nobody) must read it"
+    return {
+        ln.split()[0]: int(ln.split()[1]) for ln in prom.read_text().splitlines() if ln and not ln.startswith("#")
+    }
+
+
+def test_each_run_writes_the_backup_metrics_for_prometheus(stack, tmp_path):
+    """BackupFailed / BackupIncomplete / BackupStale (prometheus/alerts.yml) read these."""
+    env = {**stack, "METRICS_DIR": str(tmp_path / "metrics")}
+    Path(env["METRICS_DIR"]).mkdir()
+
+    assert _run("backup.sh", env).returncode == 0
+    good = _metrics(env)
+    assert good["truenorth_backup_last_exit_code"] == 0 and good["truenorth_backup_last_run_success"] == 1
+    assert good["truenorth_backup_last_success_timestamp_seconds"] == good["truenorth_backup_last_run_timestamp_seconds"] > 0
+
+    assert _run("backup.sh", {**env, "FAKE_OS": "fail"}).returncode == 5
+    partial = _metrics(env)
+    assert partial["truenorth_backup_last_exit_code"] == 5 and partial["truenorth_backup_last_run_success"] == 1
+
+    # A failed run keeps the last success, so BackupStale counts from the last good backup.
+    (Path(env["COMPOSE_FILE"])).unlink()
+    assert _run("backup.sh", env).returncode == 1
+    failed = _metrics(env)
+    assert failed["truenorth_backup_last_exit_code"] == 1 and failed["truenorth_backup_last_run_success"] == 0
+    assert failed["truenorth_backup_last_success_timestamp_seconds"] == partial["truenorth_backup_last_success_timestamp_seconds"]
+    assert not list(Path(env["METRICS_DIR"]).glob(".truenorth_backup.*")), "temp file left behind"
+
+
+def test_without_metrics_dir_nothing_is_written(stack, tmp_path):
+    assert _run("backup.sh", stack).returncode == 0
+    assert not list(tmp_path.rglob("truenorth_backup.prom"))
+
+
 def test_the_pre_upgrade_backup_accepts_a_failed_telemetry_snapshot() -> None:
     """Upgrading to the first release with snapshots: the old OpenSearch has no path.repo
     and 70-telemetry has not registered the repository, so the pre-upgrade backup exits 5

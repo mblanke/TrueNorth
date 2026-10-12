@@ -160,6 +160,35 @@
       MOODLE_COMPOSE_FILE={{ tn_moodle_compose_file }}
       MOODLE_ENV_FILE={{ tn_moodle_env_file }}
       {% endif %}
+      # Prometheus textfile metrics (node_exporter, compose.prod.yml): backup.sh writes
+      # truenorth_backup.prom, scripts/monitoring/host-probes.sh truenorth_probes.prom.
+      METRICS_DIR={{ tn_data_root }}/metrics
+      {% if tn_arc2_enabled | default(false) | bool %}
+      # host-probes.sh: the ARC² runner's unit (Arc2RunnerDown).
+      ARC2_RUNNER_UNIT=truenorth-arc2-runner
+      {% endif %}
+
+# BackupStale measures from the last good backup. Seeded once with the install time, so a
+# host whose nightly backup never runs alerts after 26 h instead of never.
+- name: Config — seed the backup metric
+  ansible.builtin.copy:
+    dest: "{{ tn_data_root }}/metrics/truenorth_backup.prom"
+    mode: "0644"
+    force: false
+    content: |
+      # HELP truenorth_backup_last_success_timestamp_seconds Seeded at install; backup.sh rewrites this file.
+      # TYPE truenorth_backup_last_success_timestamp_seconds gauge
+      truenorth_backup_last_success_timestamp_seconds {{ ansible_facts['date_time']['epoch'] }}
+
+- name: Config — host probes for Prometheus (OpenSearch health, Moodle, ARC² runner)
+  ansible.builtin.cron:
+    name: truenorth-host-probes
+    minute: "*"
+    job: >-
+      set -a; . {{ tn_config_dir }}/backup.env; set +a;
+      {{ tn_app_dir }}/scripts/monitoring/host-probes.sh
+      >> {{ tn_data_root }}/logs/host-probes.log 2>&1
+    state: present
 
 - name: Config — nightly backup timer
   ansible.builtin.cron:

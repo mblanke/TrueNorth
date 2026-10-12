@@ -9,6 +9,7 @@ on:
   pull_request:
     paths:
       - "scripts/backup/**"
+      - "scripts/monitoring/**"
       - "infra/platform/docker/compose.prod.yml"
       - "infra/platform/docker/postgres-init/**"
       - ".github/workflows/backup-drill.yml"
@@ -40,7 +41,7 @@ jobs:
           docker run --rm -v "$PWD:/mnt" -w /mnt koalaman/shellcheck:v0.11.0
           -x scripts/backup/backup.sh scripts/backup/cron-backup.sh scripts/backup/drill.sh
           scripts/backup/escrow-open.sh scripts/backup/lib.sh scripts/backup/restore.sh
-          scripts/backup/s3-backup.sh
+          scripts/backup/s3-backup.sh scripts/monitoring/host-probes.sh
 
       - name: Tool versions
         run: |

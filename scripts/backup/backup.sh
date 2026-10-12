@@ -60,6 +60,9 @@
 #   OPENSEARCH_SNAPSHOT_KEEP keep the newest N tn-* snapshots in the repository and
 #                            delete older ones after a successful snapshot (default 14;
 #                            0 = keep all).
+#   METRICS_DIR              optional: node_exporter's textfile directory. Each run writes
+#                            truenorth_backup.prom there (last success, last exit code)
+#                            for the BackupFailed / BackupStale alerts.
 #   OPENSSL                  default: openssl
 #   MOODLE_COMPOSE_FILE      optional: the Moodle node's compose file
 #   MOODLE_ENV_FILE          (compose.moodle-prod.yml) and its env file. Set: moodledata is
@@ -112,6 +115,8 @@ on_exit() {
     if (( LOCKED )); then
         rmdir "${LOCK_DIR}" 2>/dev/null || true
     fi
+    # For BackupFailed / BackupStale (prometheus/alerts.yml): 0, 3 and 5 all kept a backup.
+    if [[ "${CURRENT_STEP}" == "done" ]]; then backup_metrics "${rc}" 1; else backup_metrics "${rc}" 0; fi
 }
 trap on_exit EXIT
 

@@ -117,7 +117,8 @@ flowchart LR
 | AI Orchestrator | `/metrics` | 6000 |
 | PostgreSQL | postgres_exporter | 9187 |
 | Redis | redis_exporter | 9121 |
-| OpenSearch | opensearch_exporter | 9114 |
+| OpenSearch, Moodle, ARC² runner | host probes → node_exporter textfile (`truenorth_probes.prom`) | 9100 |
+| Backups | `backup.sh` → node_exporter textfile (`truenorth_backup.prom`) | 9100 |
 | MinIO | `/minio/v2/metrics/cluster` | 9000 |
 | Node Exporter | `/metrics` | 9100 |
 
@@ -136,7 +137,6 @@ flowchart LR
 | Error Rate | `rate(http_requests_total{status=~"5.."}[5m])` | Warn: >1%, Crit: >5% |
 | Active Ranges | `truenorth_ranges_active` | Info only |
 | Active Exercises | `truenorth_exercises_active` | Info only |
-| WebSocket Connections | `truenorth_ws_connections` | Warn: >8000 |
 | Celery Queue Depth | `celery_queue_length` | Warn: >100, Crit: >500 |
 
 ### 2. Infrastructure Dashboard
@@ -148,7 +148,7 @@ flowchart LR
 | Disk Usage | `node_filesystem_avail_bytes` | Warn: >80%, Crit: >90% |
 | PostgreSQL Connections | `pg_stat_activity_count` | Warn: >80% of max |
 | Redis Memory | `redis_memory_used_bytes` | Warn: >80% of maxmemory |
-| OpenSearch Cluster Health | `opensearch_cluster_status` | Crit: "red" |
+| OpenSearch Cluster Health | `truenorth_opensearch_cluster_status{color=...}` | Warn: yellow 15 min, Crit: red |
 
 ### 3. Provisioning Dashboard
 
@@ -173,6 +173,56 @@ flowchart LR
 ---
 
 ## Alert Response Procedures
+
+### Alert Rules
+
+What Prometheus actually alerts on: `infra/platform/docker/monitoring/prometheus/alerts.yml`
+(unit tests in `alerts.test.yml`; `tests/contracts/test_prometheus_rules.py` runs promtool
+and keeps this table and the file in step). Alertmanager routes them
+(`monitoring/alertmanager/`).
+
+Some components have no exporter, so the host reports on them through node_exporter's
+textfile collector (`$TN_DATA_ROOT/metrics`): `scripts/backup/backup.sh` writes
+`truenorth_backup.prom` after every run, and `scripts/monitoring/host-probes.sh`
+(cron, every minute; installed with the backup cron) writes `truenorth_probes.prom`:
+OpenSearch's `_cluster/health`, the Moodle node's container health (only with
+`tn_moodle_enabled`) and `systemctl is-active truenorth-arc2-runner` (only with
+`tn_arc2_enabled`). A component that is not installed writes no series and cannot alert.
+
+| Alert | Severity | Fires when |
+|---|---|---|
+| `HighCpuUsage` | warning | CPU > 80% for 5 min |
+| `HighMemoryUsage` | warning | memory > 85% for 5 min |
+| `DiskSpaceHigh` | warning | a filesystem > 80% for 10 min |
+| `NodeDown` | critical | node_exporter unreachable for 1 min |
+| `ApiHighErrorRate` | critical | API 5xx > 5% for 5 min |
+| `ApiHighLatencyP95` | warning | API p95 > 1 s for 5 min |
+| `ApiTooManyRateLimits` | warning | > 10 429s/s for 5 min |
+| `CeleryHighTaskFailureRate` | critical | task failures > 10% for 5 min |
+| `CeleryProvisionQueueDeep` | warning | provision queue > 100 for 5 min |
+| `CeleryDeadWorkers` | critical | a worker offline for 2 min |
+| `PgConnectionPoolExhaustion` | critical | connections > 90% of max for 5 min |
+| `PgHighLockWaits` | warning | > 20 exclusive locks for 5 min |
+| `PgReplicationLag` | critical | replication lag > 30 s for 5 min |
+| `RedisHighMemory` | warning | Redis memory > 80% for 5 min |
+| `RedisConnectionErrors` | critical | Redis rejects connections |
+| `RedisPubSubBacklog` | warning | > 1000 pub/sub channels + patterns |
+| `HighProvisionFailureRate` | critical | range provisioning failures > 10% for 10 min |
+| `SlowProvisionTime` | warning | provisioning p95 > 5 min |
+| `StuckRanges` | critical | a range provisioning for > 15 min |
+| `HostProbesStale` | warning | `truenorth_probes.prom` not refreshed for 10 min (the next four are blind) |
+| `OpenSearchUnreachable` | critical | `_cluster/health` does not answer for 5 min |
+| `OpenSearchClusterRed` | critical | cluster health red for 2 min |
+| `OpenSearchClusterYellow` | warning | cluster health yellow for 15 min |
+| `MoodleDown` | critical | the Moodle container is not running or unhealthy for 10 min |
+| `Arc2RunnerDown` | warning | `truenorth-arc2-runner` not active for 5 min |
+| `BackupFailed` | critical | the last `backup.sh` run kept no backup |
+| `BackupIncomplete` | warning | the last backup kept the data but exited 3 (no escrow) or 5 (telemetry snapshot failed) |
+| `BackupStale` | critical | no good backup for more than 26 h (seeded at install, so a cron that never runs alerts too) |
+
+There is no WebSocket-connection alert: the API's `active_websocket_connections` gauge is
+not maintained, and each of the API's uvicorn workers keeps its own registry, so a scrape
+would see one worker's sockets at most. Watch WebSocket trouble in the logs (below).
 
 ### Critical Alerts
 
@@ -229,14 +279,35 @@ Condition: pg_up == 0
 4. If tasks stuck: Purge and retry: `celery -A celery_app purge`
 5. Monitor queue depth returning to normal
 
-#### WARN: WebSocket Connections > 8000
+#### WARN: OpenSearch Cluster Yellow
 
-**Response:**
-1. Check per-user connection counts in Redis
-2. Identify users with excessive connections (limit is 50/user)
-3. Force disconnect stale connections via admin API
-4. If legitimate load: Scale API replicas
-5. Review WebSocket heartbeat settings (30s interval, 3 missed = disconnect)
+The platform's single node runs `cluster.default_number_of_replicas=0`, so yellow means an
+index asks for replicas a single node cannot place.
+1. Find it: `curl localhost:9200/_cat/indices?v&health=yellow`
+2. Set its replicas to 0: `curl -X PUT localhost:9200/<index>/_settings -d '{"index":{"number_of_replicas":0}}'`
+
+#### WARN: ARC² Runner Down
+
+1. `systemctl status truenorth-arc2-runner` and `journalctl -u truenorth-arc2-runner -n 100`
+2. Exit 2 means no usable sandbox (fail closed) and 3 another runner holds the runs root;
+   neither heals by restarting (docs/arc2-course-studio.md "Deployment").
+3. Otherwise `sudo systemctl restart truenorth-arc2-runner`. Studio jobs queued meanwhile
+   run when it is back.
+
+#### CRIT: Moodle Down
+
+1. `docker compose -f compose.moodle-prod.yml --env-file $TN_CONFIG_DIR/moodle-<node>.env ps`
+   and `... logs --tail 100 moodle`
+2. A first install or upgrade stays `starting` for up to 20 minutes; that is not down.
+3. See [runbooks/moodle.md](runbooks/moodle.md).
+
+#### CRIT: Backup Failed / Stale
+
+1. Read `$TN_DATA_ROOT/logs/backup.log`: the `[ALERT]` line names the failed step.
+2. `BackupStale` with no failure logged: the `truenorth-backup` cron job is not running
+   (`crontab -l` as the install user).
+3. Fix the cause and run the backup by hand: `set -a; . $TN_DATA_ROOT/config/backup.env; set +a;
+   scripts/backup/cron-backup.sh` ([runbooks/backup-restore.md](runbooks/backup-restore.md)).
 
 #### WARN: Disk Usage > 80%
 
