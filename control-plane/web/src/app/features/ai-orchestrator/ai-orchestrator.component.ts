@@ -114,7 +114,7 @@ interface _AIFleetNode {
                 <div class="form-row">
                   <mat-form-field appearance="outline">
                     <mat-label>Base URL</mat-label>
-                    <input matInput [(ngModel)]="newBackend.base_url" placeholder="https://ai.guapo613.beer">
+                    <input matInput [(ngModel)]="newBackend.base_url" placeholder="http://<ollama-host>:11434">
                   </mat-form-field>
                   <mat-form-field appearance="outline">
                     <mat-label>API Key</mat-label>
@@ -174,6 +174,9 @@ interface _AIFleetNode {
             <tr mat-header-row *matHeaderRowDef="backendColumns"></tr>
             <tr mat-row *matRowDef="let row; columns: backendColumns;"></tr>
           </table>
+          @if (backends.length === 0) {
+            <p class="empty-state">AI is not configured. Add a backend to enable AI features.</p>
+          }
         </mat-tab>
 
         <!-- Fleet Nodes Tab -->

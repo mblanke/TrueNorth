@@ -106,6 +106,12 @@ course production with a local-model fallback, and the cleanup of unsupported su
   `/health/live`, `/health/ready` and `/health/deep` are no longer timed. The rule ignores
   `path=~"/health.*|unmatched"`, with promtool cases for both. `http_requests_in_flight` no
   longer drops by two when a handler raises.
+- **Behaviour change:** no default AI endpoint. A fresh database no longer gets an active
+  primary "Ollama (Primary)" backend pointing at a personal internet host; the AI page
+  says "AI is not configured" until an operator adds one, and test-generate answers from
+  the mock. The orchestrator's unused `OLLAMA_PROXY_URL` (same host) is gone and `/health`
+  gains `ai_configured`. Installed sites take the endpoint only from `tn_ai_base_url`.
+  Existing backend rows are not touched: delete a seeded one by hand if it is still there.
 
 ### Release readiness (#147)
 - **Behaviour change:** the competency catalogue is platform-shared: `POST
