@@ -23,6 +23,7 @@ from ..db import get_db
 from ..delete_guard import commit_delete, refuse_if
 from ..enrollment import ASSIGNED, SELF, complete_enrollment, ensure_enrollment, ensure_path_enrollment
 from ..models import (
+    AuditLog,
     ContentKind,
     Course,
     CourseModule,
@@ -663,6 +664,12 @@ def complete_course(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Enrollment not found")
 
     complete_enrollment(db, enrollment)  # final score and letter grade from module progress
+    if str(user_id) != str(user.id):  # staff completing someone else's record: who, and the outcome
+        db.add(AuditLog(
+            user_id=uuid.UUID(user.id), tenant_id=tenant_uuid(user), action="course_complete",
+            resource_type="enrollment", resource_id=str(enrollment.id),
+            detail=f"course {course_id} for user {user_id}: completed, grade {enrollment.final_grade or 'none'}",
+        ))
     db.commit()
     db.refresh(enrollment)
     logger.info("Course %s completed for user %s — grade %s", course_id, user_id, enrollment.final_grade)

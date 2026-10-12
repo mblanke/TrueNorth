@@ -22,6 +22,7 @@ POST   /ranges/{range_id}/start      RANGE_PROVISION
 GET    /ranges/{range_id}/operations RANGE_READ
 GET    /ranges/{range_id}/operations/{operation_id}            RANGE_READ
 POST   /ranges/{range_id}/operations/{operation_id}/abandon    RANGE_DESTROY
+GET    /ranges/{range_id}/lease                                 RANGE_READ
 POST   /ranges/{range_id}/lease/force-release                   RANGE_LEASE_FORCE_RELEASE (admin)
 POST   /ranges/{range_id}/abandon                               platform administrator
 GET   /ranges/{range_id}/network-reservations                  RANGE_READ
@@ -56,6 +57,8 @@ from ..models import (
 from ..network_inventory import NetworkReservation, NetworkReservationOut
 from ..provisioner_choice import configured_backend
 from ..range_ops import service as ops
+from ..range_ops.lease_status import LeaseStatusOut
+from ..range_ops.lease_status import assess as assess_lease
 from ..rbac import Permission, require_permission, require_platform_admin, user_has_permission
 from ..scheduler import service as scheduler
 from ..schemas import (
@@ -675,6 +678,21 @@ def abandon_range_operation(
     return op
 
 
+@router.get("/{range_id}/lease", response_model=LeaseStatusOut)
+def get_range_lease(
+    range_id: uuid.UUID = Path(...),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_permission(Permission.RANGE_READ)),
+) -> LeaseStatusOut:
+    """Who is acting on the range (its lease), and whether force-releasing that lease is
+    proven safe (app/range_ops/lease_status.py); if not, why, and the quarantine guidance.
+    **Permission: range:read**"""
+    rng = _readable_range(db, range_id, user)
+    status_out, _ = assess_lease(db, rng)
+    db.commit()  # the operations' outcomes reconciled on the way
+    return status_out
+
+
 @router.post("/{range_id}/lease/force-release", response_model=ops.ForceReleaseOut)
 def force_release_range_lease(
     body: ops.ForceReleaseIn,
@@ -683,13 +701,13 @@ def force_release_range_lease(
     user: CurrentUser = Depends(require_permission(Permission.RANGE_LEASE_FORCE_RELEASE)),
 ) -> ops.ForceReleaseOut:
     """DANGEROUS. Delete an abandoned operation's lease tombstone, so the range can be acted
-    on at once instead of when that operation's worker finishes (a hung worker can hold it
-    for about 1 h 55 min).
+    on at once instead of when the tombstone lapses.
 
-    Only after checking vCenter: if that worker is still running, its in-flight work
-    (clones, port groups, a teardown) continues beside whatever runs on the range next,
-    and what it builds is no longer discarded. Only a tombstone (``abandoned:...``) is
-    released: a live task's lease is refused with 409. ``confirm_range_id`` must repeat
+    Only after checking vCenter: a dead worker's hypervisor tasks (clones, port groups, a
+    teardown) may still be running there, beside whatever runs on the range next. Only a tombstone (``abandoned:...``) is
+    released, and only with proof (GET .../lease): no operation in flight behind it, no
+    snapshot busy, and an abandoned worker that has stopped renewing it. Anything else,
+    a live task's lease included, is refused with 409 and the quarantine guidance. ``confirm_range_id`` must repeat
     the range's id; ``reason`` is recorded in the audit log.
     **Permission: range:lease_force_release** (admin only)"""
     if body.confirm_range_id != range_id:

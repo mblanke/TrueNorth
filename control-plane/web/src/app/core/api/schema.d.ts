@@ -5670,6 +5670,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/ranges/{range_id}/lease": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Range Lease
+         * @description Who is acting on the range (its lease), and whether force-releasing that lease is
+         *     proven safe (app/range_ops/lease_status.py); if not, why, and the quarantine guidance.
+         *     **Permission: range:read**
+         */
+        get: operations["get_range_lease_ranges__range_id__lease_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/ranges/{range_id}/lease/force-release": {
         parameters: {
             query?: never;
@@ -5682,13 +5704,13 @@ export interface paths {
         /**
          * Force Release Range Lease
          * @description DANGEROUS. Delete an abandoned operation's lease tombstone, so the range can be acted
-         *     on at once instead of when that operation's worker finishes (a hung worker can hold it
-         *     for about 1 h 55 min).
+         *     on at once instead of when the tombstone lapses.
          *
-         *     Only after checking vCenter: if that worker is still running, its in-flight work
-         *     (clones, port groups, a teardown) continues beside whatever runs on the range next,
-         *     and what it builds is no longer discarded. Only a tombstone (``abandoned:...``) is
-         *     released: a live task's lease is refused with 409. ``confirm_range_id`` must repeat
+         *     Only after checking vCenter: a dead worker's hypervisor tasks (clones, port groups, a
+         *     teardown) may still be running there, beside whatever runs on the range next. Only a tombstone (``abandoned:...``) is
+         *     released, and only with proof (GET .../lease): no operation in flight behind it, no
+         *     snapshot busy, and an abandoned worker that has stopped renewing it. Anything else,
+         *     a live task's lease included, is refused with 409 and the quarantine guidance. ``confirm_range_id`` must repeat
          *     the range's id; ``reason`` is recorded in the audit log.
          *     **Permission: range:lease_force_release** (admin only)
          */
@@ -6717,6 +6739,9 @@ export interface paths {
         /**
          * List Team Members
          * @description List members of a team.  **Permission: user:read**
+         *
+         *     A member whose account was deleted (or is not in the caller's tenant) is listed as
+         *     "Unknown" with no email; before 2026-10-12 one such row made the whole list 404.
          */
         get: operations["list_team_members_teams__team_id__members_get"];
         put?: never;
@@ -10991,6 +11016,49 @@ export interface components {
              */
             user_id: string;
         };
+        /**
+         * LeaseStatusOut
+         * @description GET /ranges/{id}/lease: who blocks the range, and whether force-release is proven safe.
+         */
+        LeaseStatusOut: {
+            /** Abandoned At */
+            abandoned_at?: string | null;
+            /**
+             * Blocking
+             * @default false
+             */
+            blocking?: boolean;
+            /** Expires At */
+            expires_at?: string | null;
+            /**
+             * Force Release Allowed
+             * @default false
+             */
+            force_release_allowed?: boolean;
+            /**
+             * Guidance
+             * @default
+             */
+            guidance?: string;
+            /** Holder */
+            holder?: string | null;
+            /** In Flight Action */
+            in_flight_action?: string | null;
+            /** In Flight Operation Id */
+            in_flight_operation_id?: string | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "none" | "task" | "tombstone";
+            /**
+             * Range Id
+             * Format: uuid
+             */
+            range_id: string;
+            /** Reason */
+            reason: string;
+        };
         /** LessonBrief */
         LessonBrief: {
             /** Duration Minutes */
@@ -11235,6 +11303,21 @@ export interface components {
              * @default false
              */
             running?: boolean;
+            /**
+             * Scheduled Every Seconds
+             * @default 0
+             */
+            scheduled_every_seconds?: number;
+            /**
+             * Stale
+             * @default true
+             */
+            stale?: boolean;
+            /**
+             * Stale Reason
+             * @default
+             */
+            stale_reason?: string;
         };
         /** MoodleSsoIn */
         MoodleSsoIn: {
@@ -13538,6 +13621,39 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+        };
+        /** TeamMemberAddedOut */
+        TeamMemberAddedOut: {
+            /** Role */
+            role: string;
+            /**
+             * Team Id
+             * Format: uuid
+             */
+            team_id: string;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
+        /** TeamMemberOut */
+        TeamMemberOut: {
+            /** Display Name */
+            display_name: string;
+            /** Email */
+            email: string;
+            /** Joined At */
+            joined_at?: string | null;
+            /** Position */
+            position?: string | null;
+            /** Role */
+            role: string;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
         };
         /** TeamUpdate */
         TeamUpdate: {
@@ -25174,6 +25290,37 @@ export interface operations {
             };
         };
     };
+    get_range_lease_ranges__range_id__lease_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                range_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaseStatusOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     force_release_range_lease_ranges__range_id__lease_force_release_post: {
         parameters: {
             query?: never;
@@ -27128,9 +27275,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    }[];
+                    "application/json": components["schemas"]["TeamMemberOut"][];
                 };
             };
             /** @description Validation Error */
@@ -27164,9 +27309,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["TeamMemberAddedOut"];
                 };
             };
             /** @description Validation Error */

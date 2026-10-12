@@ -23,6 +23,11 @@ class MoodleResultsStatusOut(BaseModel):
     rows_seen: int = 0
     rows_applied: int = 0
     running: bool = False
+    # The scheduled pull's interval (MOODLE_RESULTS_PULL_SECONDS; 0 = off), and whether the
+    # results are stale: never pulled successfully, or not within two intervals.
+    scheduled_every_seconds: float = 0
+    stale: bool = True
+    stale_reason: str = ""
 
 
 class MoodleResultsPullOut(BaseModel):

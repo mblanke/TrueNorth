@@ -115,7 +115,10 @@ import { CountUpDirective } from '../../shared/motion';
       <table mat-table [dataSource]="ranges()" class="mt-2 full-width">
         <ng-container matColumnDef="name">
           <th mat-header-cell *matHeaderCellDef>Name</th>
-          <td mat-cell *matCellDef="let r">{{ r.name }}</td>
+          <td mat-cell *matCellDef="let r">
+            <a class="range-link" [routerLink]="['/ranges', r.id]"
+               [attr.aria-label]="r.name + ': operations, recovery and snapshots'">{{ r.name }}</a>
+          </td>
         </ng-container>
         <ng-container matColumnDef="state">
           <th mat-header-cell *matHeaderCellDef>State</th>
@@ -130,6 +133,10 @@ import { CountUpDirective } from '../../shared/motion';
         <ng-container matColumnDef="actions">
           <th mat-header-cell *matHeaderCellDef>Actions</th>
           <td mat-cell *matCellDef="let r">
+            <a mat-icon-button matTooltip="Operations, recovery and snapshots" [routerLink]="['/ranges', r.id]"
+               [attr.aria-label]="'Operations, recovery and snapshots of ' + r.name">
+              <mat-icon>build_circle</mat-icon>
+            </a>
             <a mat-icon-button matTooltip="Open in Designer"
                routerLink="/authoring/ranges/designer" [queryParams]="{ range: r.id }">
               <mat-icon>architecture</mat-icon>
@@ -220,6 +227,7 @@ import { CountUpDirective } from '../../shared/motion';
     .page-header { display: flex; justify-content: space-between; align-items: center; }
     .header-actions { display: flex; gap: 8px; align-items: center; }
     .full-width { width: 100%; }
+    .range-link { color: inherit; font-weight: 500; text-decoration: underline; text-underline-offset: 3px; }
     .create-form mat-card-content, .edit-form mat-card-content { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
     .create-form mat-form-field, .edit-form mat-form-field { flex: 1; min-width: 200px; }
     .notes-card { border: 1px solid var(--accent); }

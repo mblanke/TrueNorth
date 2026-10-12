@@ -372,6 +372,45 @@ class TestTheEndpoint:
         service._claim(db_session, course.platform)
         assert _pull(course).status_code == 409
 
+    # R0-B operator UI: an instructor reads, only an admin pulls; every pull is audited; stale is the API's call.
+    def test_an_instructor_reads_the_status_but_cannot_pull(self, course):
+        with acting_as(UserRole.instructor):
+            assert course.client.get(f"/integrations/platforms/{course.platform.id}/moodle-results").status_code == 200
+            assert _pull(course).status_code == 403
+
+    def test_a_pull_by_hand_is_audited_with_its_outcome(self, course, db_session):
+        from app.models import AuditLog
+
+        _view(course)
+        assert _pull(course).status_code == 200
+        fake.fail_next("pull_results")
+        assert _pull(course).status_code == 502
+        rows = (
+            db_session.query(AuditLog)
+            .filter(AuditLog.action == "moodle_results_pull", AuditLog.resource_id == str(course.platform.id))
+            .all()
+        )
+        details = sorted(r.detail for r in rows)  # one second apart at most: not ordered by time
+        assert len(rows) == 2 and "1 rows, 1 recorded" in details[0] and "502" in details[1]
+        assert all(str(r.tenant_id) == str(course.platform.tenant_id) for r in rows)
+
+    def test_the_status_says_when_results_are_stale(self, course, db_session, monkeypatch):
+        from datetime import UTC, datetime, timedelta
+
+        monkeypatch.setenv("MOODLE_RESULTS_PULL_SECONDS", "600")
+        url = f"/integrations/platforms/{course.platform.id}/moodle-results"
+        before = course.client.get(url).json()
+        assert before["stale"] is True and "No pull has succeeded" in before["stale_reason"]
+        assert before["scheduled_every_seconds"] == 600
+        _pull(course)
+        fresh = course.client.get(url).json()
+        assert fresh["stale"] is False and fresh["last_success_at"]
+        row = db_session.get(MoodleResultCursor, course.platform.id)
+        row.last_success_at = datetime.now(UTC) - timedelta(seconds=1201)
+        db_session.commit()
+        old = course.client.get(url).json()
+        assert old["stale"] is True and "two scheduled intervals" in old["stale_reason"]
+
 
 # -- the real backend's trust rules, against a mock plugin -------------------------------
 ISSUER = "https://moodle.example.test"

@@ -8016,6 +8016,109 @@
         "title": "LearningRecommendationOut",
         "type": "object"
       },
+      "LeaseStatusOut": {
+        "description": "GET /ranges/{id}/lease: who blocks the range, and whether force-release is proven safe.",
+        "properties": {
+          "abandoned_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Abandoned At"
+          },
+          "blocking": {
+            "default": false,
+            "title": "Blocking",
+            "type": "boolean"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "force_release_allowed": {
+            "default": false,
+            "title": "Force Release Allowed",
+            "type": "boolean"
+          },
+          "guidance": {
+            "default": "",
+            "title": "Guidance",
+            "type": "string"
+          },
+          "holder": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Holder"
+          },
+          "in_flight_action": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "In Flight Action"
+          },
+          "in_flight_operation_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "In Flight Operation Id"
+          },
+          "kind": {
+            "enum": [
+              "none",
+              "task",
+              "tombstone"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "range_id": {
+            "format": "uuid",
+            "title": "Range Id",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "range_id",
+          "kind",
+          "reason"
+        ],
+        "title": "LeaseStatusOut",
+        "type": "object"
+      },
       "LessonBrief": {
         "properties": {
           "duration_minutes": {
@@ -8502,6 +8605,21 @@
             "default": false,
             "title": "Running",
             "type": "boolean"
+          },
+          "scheduled_every_seconds": {
+            "default": 0,
+            "title": "Scheduled Every Seconds",
+            "type": "number"
+          },
+          "stale": {
+            "default": true,
+            "title": "Stale",
+            "type": "boolean"
+          },
+          "stale_reason": {
+            "default": "",
+            "title": "Stale Reason",
+            "type": "string"
           }
         },
         "required": [
@@ -14411,6 +14529,83 @@
           "updated_at"
         ],
         "title": "TeamFullOut",
+        "type": "object"
+      },
+      "TeamMemberAddedOut": {
+        "properties": {
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "team_id": {
+            "format": "uuid",
+            "title": "Team Id",
+            "type": "string"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "team_id",
+          "role"
+        ],
+        "title": "TeamMemberAddedOut",
+        "type": "object"
+      },
+      "TeamMemberOut": {
+        "properties": {
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "joined_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Joined At"
+          },
+          "position": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Position"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "display_name",
+          "email",
+          "role"
+        ],
+        "title": "TeamMemberOut",
         "type": "object"
       },
       "TeamUpdate": {
@@ -34134,9 +34329,58 @@
         ]
       }
     },
+    "/ranges/{range_id}/lease": {
+      "get": {
+        "description": "Who is acting on the range (its lease), and whether force-releasing that lease is\nproven safe (app/range_ops/lease_status.py); if not, why, and the quarantine guidance.\n**Permission: range:read**",
+        "operationId": "get_range_lease_ranges__range_id__lease_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "range_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Range Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LeaseStatusOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Range Lease",
+        "tags": [
+          "ranges"
+        ]
+      }
+    },
     "/ranges/{range_id}/lease/force-release": {
       "post": {
-        "description": "DANGEROUS. Delete an abandoned operation's lease tombstone, so the range can be acted\non at once instead of when that operation's worker finishes (a hung worker can hold it\nfor about 1 h 55 min).\n\nOnly after checking vCenter: if that worker is still running, its in-flight work\n(clones, port groups, a teardown) continues beside whatever runs on the range next,\nand what it builds is no longer discarded. Only a tombstone (``abandoned:...``) is\nreleased: a live task's lease is refused with 409. ``confirm_range_id`` must repeat\nthe range's id; ``reason`` is recorded in the audit log.\n**Permission: range:lease_force_release** (admin only)",
+        "description": "DANGEROUS. Delete an abandoned operation's lease tombstone, so the range can be acted\non at once instead of when the tombstone lapses.\n\nOnly after checking vCenter: a dead worker's hypervisor tasks (clones, port groups, a\nteardown) may still be running there, beside whatever runs on the range next. Only a tombstone (``abandoned:...``) is\nreleased, and only with proof (GET .../lease): no operation in flight behind it, no\nsnapshot busy, and an abandoned worker that has stopped renewing it. Anything else,\na live task's lease included, is refused with 409 and the quarantine guidance. ``confirm_range_id`` must repeat\nthe range's id; ``reason`` is recorded in the audit log.\n**Permission: range:lease_force_release** (admin only)",
         "operationId": "force_release_range_lease_ranges__range_id__lease_force_release_post",
         "parameters": [
           {
@@ -37258,7 +37502,7 @@
     },
     "/teams/{team_id}/members": {
       "get": {
-        "description": "List members of a team.  **Permission: user:read**",
+        "description": "List members of a team.  **Permission: user:read**\n\nA member whose account was deleted (or is not in the caller's tenant) is listed as\n\"Unknown\" with no email; before 2026-10-12 one such row made the whole list 404.",
         "operationId": "list_team_members_teams__team_id__members_get",
         "parameters": [
           {
@@ -37278,8 +37522,7 @@
               "application/json": {
                 "schema": {
                   "items": {
-                    "additionalProperties": true,
-                    "type": "object"
+                    "$ref": "#/components/schemas/TeamMemberOut"
                   },
                   "title": "Response List Team Members Teams  Team Id  Members Get",
                   "type": "array"
@@ -37349,9 +37592,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Add Team Member Teams  Team Id  Members Post",
-                  "type": "object"
+                  "$ref": "#/components/schemas/TeamMemberAddedOut"
                 }
               }
             },
