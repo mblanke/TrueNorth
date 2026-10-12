@@ -232,7 +232,7 @@ def test_one_event_matching_two_conventions_counts_once():
 
 QUERY = {"query": "event_type:flow AND dst_ip:10.60.200.10", "threshold": 2}
 OBSERVED = {**QUERY, "require_observed": True}
-FLOW = {"event_type": "flow", "dst_ip": "10.60.200.10"}
+FLOW = {"event_type": "flow", "dst_ip": "10.60.200.10", "truenorth.ingested_at": _at(5)}
 
 
 def test_a_detection_objective_is_never_credited_by_the_engine():
@@ -250,17 +250,17 @@ def test_a_detection_objective_is_never_credited_by_the_engine():
 def test_require_observed_is_not_satisfied_by_synthetic_records():
     store = NullEventStore([{**FLOW, **SYNTH}] * 5)
     with pytest.raises(UnscoredError, match="0 observed matching events of 2"):
-        _validate("opensearch_query", OBSERVED, store)
+        _validate("opensearch_query", OBSERVED, store, window=WINDOW)
     objective = {"id": "o", "name": "o", "max_points": 10, "validation_method": "opensearch_query",
                  "validation_config": OBSERVED, "partial_credit": True}
-    result = asyncio.run(ScoringEngine("ex-1", [objective], event_store=store).evaluate())
+    result = asyncio.run(ScoringEngine("ex-1", [objective], event_store=store, window_start=START).evaluate())
     assert result.total_score == 0 and "o" in result.unscored  # no partial credit either
 
 
 def test_require_observed_passes_on_observed_records():
     # Two identical observed events are two events.
     store = NullEventStore([FLOW, FLOW, {**FLOW, **SYNTH}])
-    ok, evidence = _validate("opensearch_query", OBSERVED, store)
+    ok, evidence = _validate("opensearch_query", OBSERVED, store, window=WINDOW)
     assert ok is True and len(evidence) == 2
     assert all(evidence_class(h["_source"]) == "observed" for h in evidence)
 
@@ -268,7 +268,7 @@ def test_require_observed_passes_on_observed_records():
 def test_require_observed_classifies_every_match_not_a_first_page():
     # 600 synthetic matches come first; the 2 observed ones are past the first page.
     store = _Pages([{**FLOW, **SYNTH}] * 600 + [FLOW, FLOW])
-    ok, _ = _validate("opensearch_query", OBSERVED, store)
+    ok, _ = _validate("opensearch_query", OBSERVED, store, window=WINDOW)
     assert ok is True and [o for o, _ in store.pages] == [0, 500]
 
 
@@ -280,19 +280,31 @@ def test_require_observed_counts_only_the_exercise_window():
     assert _validate("opensearch_query", OBSERVED, NullEventStore([inside, inside]), window=WINDOW)[0] is True
 
 
+def test_require_observed_without_an_exercise_window_is_unscored():
+    # A reused range's earlier real events must not satisfy this run.
+    with pytest.raises(UnscoredError, match="no exercise window"):
+        _validate("opensearch_query", OBSERVED, NullEventStore([FLOW, FLOW]))
+
+
+def test_nothing_judged_is_no_grade_not_an_f():
+    objective = {"id": "o", "name": "o", "max_points": 10, "validation_method": "manual", "validation_config": {}}
+    result = asyncio.run(ScoringEngine("ex-1", [objective]).evaluate())
+    assert (result.max_score, result.percentage, result.grade) == (0, 0.0, None)
+
+
 def test_require_observed_zero_evidence_is_unscored():
     with pytest.raises(UnscoredError, match="0 observed"):
-        _validate("opensearch_query", OBSERVED, NullEventStore([]))
+        _validate("opensearch_query", OBSERVED, NullEventStore([]), window=WINDOW)
 
 
 def test_require_observed_store_down_is_unscored():
     with pytest.raises(UnscoredError, match="event store unavailable"):
-        _validate("opensearch_query", OBSERVED, _Down())
+        _validate("opensearch_query", OBSERVED, _Down(), window=WINDOW)
 
 
 def test_too_many_matches_to_classify_is_unscored():
     with pytest.raises(UnscoredError, match="more than the"):
-        _validate("opensearch_query", OBSERVED, _TooMany())
+        _validate("opensearch_query", OBSERVED, _TooMany(), window=WINDOW)
 
 
 def test_require_observed_must_be_a_boolean():

@@ -92,6 +92,25 @@ def test_generate_rejects_output_that_is_not_a_scenario(client, db_session, orch
     assert db_session.query(Exercise).count() == before
 
 
+@pytest.mark.parametrize(
+    "objective",
+    [
+        "{id: o, type: response, validator: firewall_rule, points: 5}",
+        "{id: o, type: response, validator: network_isolation, points: 5}",
+        "{id: o, type: response, validator: manual_ack, points: 5, params: {approved: true}}",
+    ],
+    ids=["refused", "unknown", "self-approved"],
+)
+def test_generate_refuses_objectives_that_cannot_be_judged(client, db_session, orchestrator, forge_range, objective):
+    # R0-B: the same objective check as scenario create/update; nothing is stored.
+    orchestrator.output = f"name: forged\nobjectives:\n  - {objective}\n"
+    before = (db_session.query(Scenario).count(), db_session.query(Exercise).count())
+    r = client.post("/exercise-forge/generate", json=PAYLOAD)
+    assert r.status_code == 502, r.text
+    assert r.json()["detail"]["errors"][0]["path"].startswith("objectives.0")
+    assert (db_session.query(Scenario).count(), db_session.query(Exercise).count()) == before
+
+
 def test_generate_without_a_range_is_409(client, orchestrator):
     r = client.post("/exercise-forge/generate", json=PAYLOAD)
     assert r.status_code == 409

@@ -66,9 +66,11 @@ def _parse_scenario_yaml(text: str) -> dict:
 
     Also 422 for objectives that could never be judged honestly (a refused or unknown
     validator, a manual objective approving itself, phase-level ``validators:``): the same
-    objective check as ``/scenarios/validate`` (scenario_engine/objective_catalogue.py), so
-    such a scenario cannot be stored and so cannot be launched. The full JSON Schema is
-    not enforced here: forge output and older seeds are not schema-clean."""
+    objective check as ``/scenarios/validate`` (scenario_engine/objective_catalogue.py).
+    The Exercise Forge runs it too; QSP paths write only fixed canonical objectives (tested).
+    Scenarios stored before this check are not re-checked, so a refused validator in one
+    can still launch; the engine leaves it unscored. The full JSON Schema is not enforced
+    here: forge output and older seeds are not schema-clean."""
     try:
         parsed = safe_yaml.load(text)
     except pyyaml.YAMLError as e:

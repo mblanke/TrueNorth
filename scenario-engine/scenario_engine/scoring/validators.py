@@ -230,12 +230,14 @@ class ScoringValidator:
             - ``threshold`` (or ``min_hits``): minimum number of matching docs, at least 1
             - ``require_observed``: must be true for the engine to judge it; counts only
               events a range host or sensor produced (objective_catalogue)
-            - ``window_start`` / ``window_end``: set by the platform; only events ingested
-              inside the exercise window count
+            - ``window_start`` (required) / ``window_end``: set by the platform; only events
+              ingested inside the exercise window count, so a reused range's earlier real
+              events cannot satisfy this run
 
         Achieved with ``threshold`` observed matches. Fewer is unscored, not failed: the
         evidence may not have arrived. Raises ``UnscoredError`` for that and whenever the
-        objective cannot be judged (no query, a bad threshold, no store, a store failure).
+        objective cannot be judged (no query, a bad threshold, no exercise window, no store,
+        a store failure).
         """
         require_observed = config.get("require_observed", False)
         if not isinstance(require_observed, bool):
@@ -252,7 +254,7 @@ class ScoringValidator:
             raise UnscoredError("no event store configured")
 
         index = config.get("index", "truenorth-*")
-        start, end = _window(config, required=False)
+        start, end = _window(config, required=True)
         observed = [
             h for h in await _observed_hits(event_store, index, [query]) if _in_window(h.get("_source"), start, end)
         ]

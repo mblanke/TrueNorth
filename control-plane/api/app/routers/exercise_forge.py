@@ -17,7 +17,7 @@ import yaml
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from .. import safe_yaml, scenario_objectives
+from .. import engine_bridge, safe_yaml, scenario_objectives
 from ..ai_orchestrator_client import orchestrator_headers
 from ..auth import CurrentUser, get_current_user
 from ..db import get_db
@@ -205,6 +205,12 @@ async def generate_exercise(
     if not isinstance(parsed, dict):
         # A bare string or list parses fine but is not a scenario (and used to 500 below).
         raise HTTPException(502, "AI output is not a scenario mapping.")
+    # The same objective check as scenario create/update (routers/scenarios.py): a forged
+    # scenario naming a refused or unknown validator, or approving itself, is not stored.
+    if objective_errors := engine_bridge.objective_errors(parsed):
+        raise HTTPException(
+            502, {"message": "AI generated objectives that cannot be judged", "errors": objective_errors}
+        )
 
     scenario_name = req.name_override or parsed.get("name", f"forged-{uuid.uuid4().hex[:8]}")
 

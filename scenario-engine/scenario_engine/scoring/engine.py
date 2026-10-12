@@ -92,7 +92,7 @@ class ScoringResult:
     total_score: int
     max_score: int
     percentage: float
-    grade: str  # A, B, C, D, F
+    grade: str | None  # A, B, C, D, F; None when nothing was judged
     objectives: list[ObjectiveResult]
     time_elapsed: int  # seconds
     bonuses: list[dict[str, Any]]
@@ -176,7 +176,8 @@ class ScoringEngine:
 
         from scenario_engine.scoring.grading import GradingCalculator
 
-        grade = GradingCalculator.letter_grade(percentage)
+        # Nothing judged is no grade, not an F.
+        grade = GradingCalculator.letter_grade(percentage) if judged_max else None
 
         elapsed = int((datetime.now(UTC) - self.start_time).total_seconds())
 

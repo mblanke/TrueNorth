@@ -61,6 +61,19 @@ def test_validate_and_create_agree(client, db_session):
     assert refused == created["detail"]["errors"]
 
 
+@pytest.mark.parametrize("crit", [[], ["Lateral movement via PsExec"], ["Phishing email opened", "Credential dump"]])
+def test_qsp_scenarios_have_only_judgeable_objectives(crit):
+    # qsp_paths stores its generated scenario directly; it only ever writes fixed canonical
+    # validators with no params, which this holds to the same objective check.
+    from types import SimpleNamespace
+
+    from app import engine_bridge, qsp_paths, safe_yaml
+
+    po = SimpleNamespace(po_code="PO-1", title="Respond", environment=SimpleNamespace(value="it"),
+                         duration_min=60, deliverable="technical report")
+    assert engine_bridge.objective_errors(safe_yaml.load(qsp_paths._scenario_yaml(po, crit))) == []
+
+
 def _key(params: str):
     doc = f"objectives:\n  - id: o\n    params: {params}\n"
     return credit.answer_key("opensearch_query", None, "o", doc)

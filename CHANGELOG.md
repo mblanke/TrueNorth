@@ -208,7 +208,8 @@ course production with a local-model fallback, and the cleanup of unsupported su
   (`scenario_engine/objective_catalogue.py`). `firewall_rule` passed every objective; it,
   `process_killed` and `network_isolated` are refused (no telemetry can prove them):
   `POST /scenarios/validate`, scenario create and update reject them with the reason
-  (422), and the engine leaves them unscored. Use `manual_ack`. Unknown validators,
+  (422), the Exercise Forge refuses to store such output (502), and the engine leaves
+  them unscored. Use `manual_ack`. Unknown validators,
   phase-level `validators:` blocks and params only the platform may set (`approved`,
   `submission`, `storage_path`, the exercise window) are rejected the same way;
   incident-response-drill's inert phase blocks are gone, scored by its `manual_ack`
@@ -217,8 +218,11 @@ course production with a local-model fallback, and the cleanup of unsupported su
   (`opensearch_query`): the inject's own synthetic records matched the answer key, full
   points with no Student action. Detection credit comes only from Student submissions
   (ADR 0005). With `require_observed: true` the objective is the engine's instead, judged
-  on observed telemetry in the exercise window (synthetic records excluded, every match
-  classified), and Student submissions are not credited against it.
+  on observed telemetry ingested inside the exercise window (required: a reused range's
+  earlier events cannot count; synthetic records excluded; every match classified), and
+  Student submissions are not credited against it. The CLI runner reads `range-<id>` and
+  `range-<id>-*`, as detection credit does, from the run's start. A result with nothing
+  judged has no grade rather than an F.
 - `user_disabled` is real: observed Windows 4725 for the account (case-insensitive) in the
   exercise window, not re-enabled (4722) afterwards. No such event is unscored, never a fail.
 - `deliverable_check` needs a Student submission record; a content file path is no longer
@@ -242,9 +246,9 @@ course production with a local-model fallback, and the cleanup of unsupported su
   (`require_observed`, `user_disabled`, `greyspace_breadcrumb`) are scored only by the CLI
   runner and tests; on the mock backend the worker still marks every objective achieved.
   `user_disabled` field names match the content and Winlogbeat/ECS but are unproven against
-  a live range's ingest. Scenarios stored before this release are not re-checked; forge
-  output is stored without the objective check. Deliverables have no Student submission
-  path yet (instructor acknowledgement only).
+  a live range's ingest. Scenarios stored before this release are not re-checked (a
+  refused validator in one still launches, unscored). Deliverables have no Student
+  submission path yet (instructor acknowledgement only).
 - A range built before connection records with port groups but no VM stays unrecorded until
   destroyed; shared vCenter connections are managed outside the tenant API; an abandoned
   range's leftover VMs and port groups must be removed by hand (`docs/release-notes/v1.2.0.md`).

@@ -23,6 +23,7 @@ import os
 import re
 import sys
 import time
+from datetime import UTC, datetime
 from pathlib import Path
 
 import yaml
@@ -143,7 +144,7 @@ def execute_timeline(scenario: dict, range_ctx: dict, dry_run: bool = False) -> 
     return results
 
 
-def evaluate_objectives(scenario: dict, range_ctx: dict, event_store=None) -> list[dict]:
+def evaluate_objectives(scenario: dict, range_ctx: dict, event_store=None, window_start=None) -> list[dict]:
     """Score scenario objectives with the ScoringEngine against the range's event index.
 
     Until 2026-10-03 this imported ``scenario-engine.validators``, which no module name can
@@ -154,7 +155,9 @@ def evaluate_objectives(scenario: dict, range_ctx: dict, event_store=None) -> li
     from scenario_engine.scoring import ScoringEngine, validation_method
     from scenario_engine.variables import render
 
-    index = f"range-{range_ctx['range_id']}"
+    # The range's events as the API reads them (detections/credit.py range_index): worker and
+    # API ingest in range-<id>, the range's own Filebeat/Logstash in range-<id>-<date>.
+    index = f"range-{range_ctx['range_id']},range-{range_ctx['range_id']}-*"
     objectives = []
     for obj in scenario.get("objectives", []):
         # Only the platform supplies approval, submissions and the exercise window
@@ -177,7 +180,10 @@ def evaluate_objectives(scenario: dict, range_ctx: dict, event_store=None) -> li
         return []
 
     store = event_store if event_store is not None else event_store_from_env()
-    engine = ScoringEngine(range_ctx["range_id"], objectives, event_store=store)
+    # window_start: this run's start. Objectives judged on observed telemetry count only events
+    # ingested since, so a reused range's earlier events cannot satisfy this run; without it
+    # they are unscored.
+    engine = ScoringEngine(range_ctx["range_id"], objectives, event_store=store, window_start=window_start)
     scored = asyncio.run(engine.evaluate())
     validators = {o.get("id", "unknown"): o.get("validator", "") for o in scenario.get("objectives", [])}
     # An objective the engine could not judge (no query, store down) is reported as
@@ -211,6 +217,7 @@ def main():
     logger.info(f"Scenario: {scenario['name']} v{scenario['version']}")
 
     range_ctx = build_range_context(args.range_id)
+    run_started = datetime.now(UTC)  # the exercise window for objectives judged on observed telemetry
 
     logger.info("=== Executing Timeline ===")
     timeline_results = execute_timeline(scenario, range_ctx, dry_run=args.dry_run)
@@ -218,7 +225,7 @@ def main():
     logger.info("=== Evaluating Objectives ===")
     if args.event_store:
         os.environ["EVENT_STORE"] = args.event_store
-    objective_results = evaluate_objectives(scenario, range_ctx)
+    objective_results = evaluate_objectives(scenario, range_ctx, window_start=run_started)
 
     # Summary: out of what was judged; unscored objectives (detections credited from
     # Student submissions, awaiting an instructor, refused, no evidence) are reported apart.
