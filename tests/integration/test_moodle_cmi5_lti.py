@@ -222,9 +222,12 @@ def api(world, monkeypatch):
 
 
 def _path(url: str) -> str:
-    """A TrueNorth URL as Moodle wrote it (TN_TOOL_URL), as a path on the in-process API."""
+    """A TrueNorth URL as Moodle wrote it (TN_TOOL_URL), as a path on the in-process API.
+    A tool URL behind the edge's ``/api`` prefix (as the browser journey sets it) loses it,
+    as nginx strips it."""
     parts = urlsplit(url)
-    return parts.path + (f"?{parts.query}" if parts.query else "")
+    path = parts.path.removeprefix("/api") if parts.path.startswith("/api/") else parts.path
+    return path + (f"?{parts.query}" if parts.query else "")
 
 
 def moodle_login(username: str, password: str) -> httpx.Client:

@@ -10,6 +10,12 @@
 #       tests/integration/test_moodle_cmi5_lti.py
 #
 # TN_PUBLIC_KEY is the public half of the key the test signs sync tickets with.
+# TN_TOOL_URL is where students' browsers reach TrueNorth's API; Moodle writes it into its
+# LTI forms. The in-process tests only read it from those forms (the default is a
+# placeholder); the browser journey (tests/integration/test_moodle_student_journey.py)
+# serves TrueNorth there, so it sets it, e.g. TN_TOOL_URL=http://localhost:18095/api.
+# lrs: a disposable xAPI LRS (lrsql on SQLite) on 127.0.0.1:${MOODLE_TEST_LRS_PORT:-18094},
+# for the journey's cmi5 statements; nothing else uses it.
 # MOODLE_TEST_PORT (default 8093) moves the loopback port, for a second copy alongside one
 # already running: give it its own project too (-p), and MOODLE_TEST_URL/CONTAINER to match.
 name: tn-moodle-test
@@ -44,9 +50,22 @@ services:
       MOODLE_SITENAME: TrueNorth_Test
       SITE_URL: http://localhost:${MOODLE_TEST_PORT:-8093}
       MOODLE_PUBLIC_PORT: "${MOODLE_TEST_PORT:-8093}"
-      TN_TOOL_URL: http://localhost:8081
+      TN_TOOL_URL: ${TN_TOOL_URL:-http://localhost:8081}
       TN_PUBLIC_KEY: ${TN_PUBLIC_KEY:?set TN_PUBLIC_KEY to the test tool public key (PEM)}
       # The TrueNorth tenant this Moodle serves; sync tickets for any other tenant are refused.
       TN_TENANT_ID: ${TN_TENANT_ID:-7e57e57e-0000-4000-8000-000000000001}
     ports:
       - "127.0.0.1:${MOODLE_TEST_PORT:-8093}:8080"
+
+  lrs:
+    image: yetanalytics/lrsql:v0.9.9  # as compose.dev.yml
+    # Published for amd64 only; Apple Silicon hosts run it under emulation.
+    platform: linux/amd64
+    command: /lrsql/bin/run_sqlite.sh
+    environment:
+      LRSQL_ADMIN_USER_DEFAULT: lrsadmin
+      LRSQL_ADMIN_PASS_DEFAULT: lrsadmin
+      LRSQL_API_KEY_DEFAULT: truenorth-lrs-key
+      LRSQL_API_SECRET_DEFAULT: truenorth-lrs-secret
+    ports:
+      - "127.0.0.1:${MOODLE_TEST_LRS_PORT:-18094}:8080"

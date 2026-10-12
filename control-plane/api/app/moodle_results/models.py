@@ -8,6 +8,13 @@ processes from pulling one Moodle at once, as course publications do.
 the fact being an activity's completion, a quiz's grade or a course's completion. A row
 pulled again with the same content changes nothing; a changed grade updates the one quiz
 attempt the ledger row points at instead of adding another.
+
+A fact is matched on immutable ids only, never on an email: the platform, the TrueNorth
+user id (the locked idnumber of the ``tn-<id>`` account TrueNorth's sign-in made), the
+TrueNorth course id and the activity's ``tn:`` idnumber (a quiz's carries the hash of its
+questions, so another release's quiz is another fact). ``release_id`` (the release whose
+publication made the activity) and ``source_attempt_id`` (Moodle's ``quiz_attempts.id`` of
+the latest finished attempt behind a grade) say where it came from.
 """
 
 from __future__ import annotations
@@ -15,7 +22,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import BigInteger, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..db import Base
@@ -58,5 +65,9 @@ class MoodleResultRecord(Base):
     source_time: Mapped[int] = mapped_column(Integer, nullable=False, default=0)  # Moodle's timemodified
     fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, default="")
     quiz_attempt_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("quiz_attempts.id"), nullable=True)
+    release_id: Mapped[uuid.UUID | None] = mapped_column(
+        GUID(), ForeignKey("course_releases.id", name="moodle_result_records_release_id_fkey"), nullable=True
+    )
+    source_attempt_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)  # Moodle quiz_attempts.id
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

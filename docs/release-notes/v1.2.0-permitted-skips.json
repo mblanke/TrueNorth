@@ -41,7 +41,8 @@
         "lms": [
             "enrol, sit a quiz, progress recorded",
             "cmi5 launch, fetch, statements to the LRS",
-            "Moodle platform reachable"
+            "Moodle platform reachable",
+            "Moodle loop: SSO, quiz, pull, grade on the enrolment (integration, bypasses browser)"
         ],
         "scenario-engine": [
             "shipped scenario becomes an exercise plan",
@@ -162,6 +163,14 @@
                 "reason_contains": "moodle declared absent",
                 "reason": "The CI integration stack registers no Moodle.",
                 "alternative_evidence": "Mandatory in the staging profile; CI moodle job (real Moodle).",
+                "milestone": "R0"
+            },
+            {
+                "module": "lms",
+                "check": "Moodle loop: SSO, quiz, pull, grade on the enrolment (integration, bypasses browser)",
+                "reason_contains": "moodle declared absent",
+                "reason": "The CI integration stack registers no Moodle.",
+                "alternative_evidence": "Mandatory in the staging profile; CI moodle job: the same loop in Chromium (tests/integration/test_moodle_student_journey.py).",
                 "milestone": "R0"
             },
             {

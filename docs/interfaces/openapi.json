@@ -8492,6 +8492,193 @@
         "title": "ModuleProgressOut",
         "type": "object"
       },
+      "MoodleEnrolmentResultsOut": {
+        "properties": {
+          "course_id": {
+            "format": "uuid",
+            "title": "Course Id",
+            "type": "string"
+          },
+          "enrollment_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enrollment Id"
+          },
+          "enrollment_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enrollment Status"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/MoodleResultOut"
+            },
+            "title": "Results",
+            "type": "array"
+          },
+          "sync": {
+            "items": {
+              "$ref": "#/components/schemas/MoodleSyncStatusOut"
+            },
+            "title": "Sync",
+            "type": "array"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "course_id",
+          "user_id",
+          "sync",
+          "results"
+        ],
+        "title": "MoodleEnrolmentResultsOut",
+        "type": "object"
+      },
+      "MoodleResultOut": {
+        "description": "One fact Moodle reported for this enrolment (a quiz grade or an activity completion).",
+        "properties": {
+          "activity": {
+            "title": "Activity",
+            "type": "string"
+          },
+          "complete": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Complete"
+          },
+          "completion_state": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completion State"
+          },
+          "grade": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grade"
+          },
+          "grade_max": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grade Max"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "platform_id": {
+            "format": "uuid",
+            "title": "Platform Id",
+            "type": "string"
+          },
+          "quiz_attempt_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quiz Attempt Id"
+          },
+          "recorded_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recorded At"
+          },
+          "release_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Release Id"
+          },
+          "source_attempt_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Attempt Id"
+          },
+          "source_time": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Time"
+          }
+        },
+        "required": [
+          "platform_id",
+          "kind",
+          "activity"
+        ],
+        "title": "MoodleResultOut",
+        "type": "object"
+      },
       "MoodleResultsPullIn": {
         "properties": {
           "reset": {
@@ -8668,6 +8855,81 @@
           "token"
         ],
         "title": "MoodleSsoOut",
+        "type": "object"
+      },
+      "MoodleSyncStatusOut": {
+        "description": "How fresh one Moodle's results are in TrueNorth (service.sync_status).",
+        "properties": {
+          "last_error": {
+            "default": "",
+            "title": "Last Error",
+            "type": "string"
+          },
+          "last_run_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Run At"
+          },
+          "last_success_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Success At"
+          },
+          "platform_id": {
+            "format": "uuid",
+            "title": "Platform Id",
+            "type": "string"
+          },
+          "platform_name": {
+            "title": "Platform Name",
+            "type": "string"
+          },
+          "running": {
+            "default": false,
+            "title": "Running",
+            "type": "boolean"
+          },
+          "stale": {
+            "title": "Stale",
+            "type": "boolean"
+          },
+          "state": {
+            "enum": [
+              "current",
+              "stale",
+              "failing",
+              "never"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "sync_interval_seconds": {
+            "default": 0,
+            "title": "Sync Interval Seconds",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "platform_id",
+          "platform_name",
+          "state",
+          "stale"
+        ],
+        "title": "MoodleSyncStatusOut",
         "type": "object"
       },
       "MySessionOut": {
@@ -26738,6 +27000,72 @@
           }
         ],
         "summary": "Lti Tool Config",
+        "tags": [
+          "integrations"
+        ]
+      }
+    },
+    "/integrations/moodle/results": {
+      "get": {
+        "description": "What Moodle reported for one enrolment, and how fresh it is.\n\nEach quiz grade and activity completion recorded from the tenant's Moodle (pulled, not\npushed: LTI passback to Moodle is separate), with Moodle's own timestamp\n(``source_time``), the release that made the activity and Moodle's attempt id; and\neach Moodle's sync status (``current``, ``stale``, ``failing``, ``never``). Your own\nrecord (``user_id`` omitted or yours), or, with ``learning_record:read``, someone in\nyour tenant; another tenant's person or course is 404. ``last_error`` is shown to\nstaff only.",
+        "operationId": "moodle_enrolment_results_integrations_moodle_results_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "course_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Course Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "user_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "User Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MoodleEnrolmentResultsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Moodle Enrolment Results",
         "tags": [
           "integrations"
         ]

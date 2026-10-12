@@ -2987,6 +2987,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/integrations/moodle/results": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Moodle Enrolment Results
+         * @description What Moodle reported for one enrolment, and how fresh it is.
+         *
+         *     Each quiz grade and activity completion recorded from the tenant's Moodle (pulled, not
+         *     pushed: LTI passback to Moodle is separate), with Moodle's own timestamp
+         *     (``source_time``), the release that made the activity and Moodle's attempt id; and
+         *     each Moodle's sync status (``current``, ``stale``, ``failing``, ``never``). Your own
+         *     record (``user_id`` omitted or yours), or, with ``learning_record:read``, someone in
+         *     your tenant; another tenant's person or course is 404. ``last_error`` is shown to
+         *     staff only.
+         */
+        get: operations["moodle_enrolment_results_integrations_moodle_results_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/integrations/moodle/sso": {
         parameters: {
             query?: never;
@@ -11239,6 +11267,60 @@ export interface components {
             /** Status */
             status: string;
         };
+        /** MoodleEnrolmentResultsOut */
+        MoodleEnrolmentResultsOut: {
+            /**
+             * Course Id
+             * Format: uuid
+             */
+            course_id: string;
+            /** Enrollment Id */
+            enrollment_id?: string | null;
+            /** Enrollment Status */
+            enrollment_status?: string | null;
+            /** Results */
+            results: components["schemas"]["MoodleResultOut"][];
+            /** Sync */
+            sync: components["schemas"]["MoodleSyncStatusOut"][];
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
+        /**
+         * MoodleResultOut
+         * @description One fact Moodle reported for this enrolment (a quiz grade or an activity completion).
+         */
+        MoodleResultOut: {
+            /** Activity */
+            activity: string;
+            /** Complete */
+            complete?: boolean | null;
+            /** Completion State */
+            completion_state?: number | null;
+            /** Grade */
+            grade?: number | null;
+            /** Grade Max */
+            grade_max?: number | null;
+            /** Kind */
+            kind: string;
+            /**
+             * Platform Id
+             * Format: uuid
+             */
+            platform_id: string;
+            /** Quiz Attempt Id */
+            quiz_attempt_id?: string | null;
+            /** Recorded At */
+            recorded_at?: string | null;
+            /** Release Id */
+            release_id?: string | null;
+            /** Source Attempt Id */
+            source_attempt_id?: number | null;
+            /** Source Time */
+            source_time?: string | null;
+        };
         /** MoodleResultsPullIn */
         MoodleResultsPullIn: {
             /**
@@ -11337,6 +11419,45 @@ export interface components {
             action: string;
             /** Token */
             token: string;
+        };
+        /**
+         * MoodleSyncStatusOut
+         * @description How fresh one Moodle's results are in TrueNorth (service.sync_status).
+         */
+        MoodleSyncStatusOut: {
+            /**
+             * Last Error
+             * @default
+             */
+            last_error?: string;
+            /** Last Run At */
+            last_run_at?: string | null;
+            /** Last Success At */
+            last_success_at?: string | null;
+            /**
+             * Platform Id
+             * Format: uuid
+             */
+            platform_id: string;
+            /** Platform Name */
+            platform_name: string;
+            /**
+             * Running
+             * @default false
+             */
+            running?: boolean;
+            /** Stale */
+            stale: boolean;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "current" | "stale" | "failing" | "never";
+            /**
+             * Sync Interval Seconds
+             * @default 0
+             */
+            sync_interval_seconds?: number;
         };
         /**
          * MySessionOut
@@ -20477,6 +20598,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LtiToolConfigOut"];
+                };
+            };
+        };
+    };
+    moodle_enrolment_results_integrations_moodle_results_get: {
+        parameters: {
+            query: {
+                course_id: string;
+                user_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MoodleEnrolmentResultsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

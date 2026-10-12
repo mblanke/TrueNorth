@@ -92,9 +92,10 @@ def course(ready, tmp_path, db_session):  # noqa: F811 - the imported fixture
 
 
 def _grade(c, grade=100.0, module="mod_001", user=None, course=None, **extra):
-    fake.record_result(c.platform, kind="quiz_grade", user=str(user or c.student.id), course=str(course or c.id),
-                       activity=c.first("quiz", module), modname="quiz", grade=grade, grademax=100.0,
-                       gradepass=70.0, attempts=1, **extra)
+    fake.record_result(c.platform, **{"kind": "quiz_grade", "user": str(user or c.student.id),
+                                      "course": str(course or c.id), "activity": c.first("quiz", module),
+                                      "modname": "quiz", "grade": grade, "grademax": 100.0, "gradepass": 70.0,
+                                      "attempts": 1, **extra})
 
 
 def _view(c, module="mod_001"):
@@ -343,6 +344,156 @@ class TestOnlyThePlatformsOwnBusiness:
         fake.record_result(course.platform, kind="completion", user=str(course.student.id), course=str(course.id),
                            activity="tn:mod_999:page:01", state=1)
         assert _pull(course).json()["skipped"] == {"malformed": 1, "unknown_kind": 1, "unknown_activity": 1}
+
+
+def _as_student(c, student=None):
+    from _shared import act_as
+    from app.auth import CurrentUser
+
+    s = student or c.student
+    act_as(CurrentUser(id=str(s.id), email=s.email, display_name="S", role=UserRole.student,
+                       tenant_id=str(s.tenant_id), keycloak_id=s.keycloak_id))
+
+
+def _as_admin():
+    from _shared import act_as
+    from app.auth import CurrentUser
+
+    act_as(CurrentUser(id="00000000-0000-0000-0000-000000000001", email="admin@truenorth.local",
+                       display_name="Dev Admin", role=UserRole.admin, tenant_id=str(DEV_TENANT),
+                       keycloak_id="dev-admin"))
+
+
+def _results(c, **params):
+    return c.client.get("/integrations/moodle/results", params={"course_id": str(c.id), **params})
+
+
+class TestImmutableIds:
+    """M1: a fact is matched on platform, TrueNorth user id, course id and activity idnumber,
+    and keeps the release and Moodle attempt it came from. Never an email."""
+
+    def test_the_release_and_moodles_attempt_id_are_kept_with_each_fact(self, course, db_session):
+        from app.moodle_results.models import MoodleResultRecord
+
+        _view(course)
+        _grade(course, attempt=4711)
+        assert _pull(course).json()["applied"] == 2
+        records = {r.ref.split(":", 1)[0]: r for r in db_session.query(MoodleResultRecord).filter_by(user_id=course.student.id)}
+        release = db_session.query(CourseRelease).filter_by(course_id=course.id).one()
+        assert records["quiz_grade"].release_id == release.id and records["quiz_grade"].source_attempt_id == 4711
+        assert records["completion"].release_id == release.id and records["completion"].source_attempt_id is None
+
+    def test_a_new_moodle_attempt_updates_the_one_fact_and_its_mirror(self, course, db_session):
+        from app.moodle_results.models import MoodleResultRecord
+
+        _grade(course, grade=60, attempt=10)
+        _pull(course)
+        _grade(course, grade=100, attempt=11, attempts=2)  # resumed and retaken: Moodle's highest grade moves
+        assert _pull(course).json()["applied"] == 1
+        [record] = db_session.query(MoodleResultRecord).filter_by(user_id=course.student.id).all()
+        assert record.source_attempt_id == 11 and record.grade == 100
+        assert len(_attempts(db_session, course)) == 1  # one mirrored TrueNorth attempt, updated
+        assert _progress(db_session, course).attempts == 2
+
+    def test_the_same_mailbox_in_two_tenants_is_two_people(self, course, db_session):
+        """Emails are unique per spelling, so one mailbox can exist in two tenants as
+        Alice@ and alice@. Moodle names people by TrueNorth id only, and a result reaches
+        only the person that id names, in the platform's own tenant."""
+        other = real_tenant(db_session, "results-mailbox")
+        twin = User(id=uuid.uuid4(), keycloak_id=f"kc-{uuid.uuid4()}", email=course.student.email.upper(),
+                    display_name="Twin", role=UserRole.student, tenant_id=other.id)
+        db_session.add(twin)
+        db_session.flush()
+        db_session.add(Enrollment(user_id=twin.id, course_id=course.id, tenant_id=other.id, source="assigned"))
+        db_session.commit()
+        assert twin.email.lower() == course.student.email.lower() and twin.id != course.student.id
+
+        _grade(course, grade=100)  # the tenant's own Student
+        _grade(course, grade=30, user=twin.id)  # the other tenant's person with the same mailbox
+        fake.record_result(course.platform, kind="quiz_grade", user=course.student.email, course=str(course.id),
+                           activity=course.first("quiz"), grade=0, grademax=100)  # an email is not an id
+        body = _pull(course).json()
+        assert body["applied"] == 1 and body["skipped"] == {"not_this_tenants_user": 1, "malformed": 1}
+        assert _progress(db_session, course).score == 100
+        assert db_session.query(QuizAttempt).filter_by(user_id=twin.id).count() == 0
+        assert db_session.query(ModuleProgress).join(Enrollment).filter(Enrollment.user_id == twin.id).count() == 0
+        # Nor can anyone read the twin's record through this tenant: 404, not an empty list.
+        assert _results(course, user_id=str(twin.id)).status_code == 404
+
+
+class TestEnrolmentResults:
+    """GET /integrations/moodle/results: one enrolment's Moodle facts with Moodle's own
+    timestamps, and each Moodle's sync status (M1 grade return)."""
+
+    def test_before_any_pull_the_status_is_never(self, course):
+        _as_student(course)
+        body = _results(course).json()
+        assert body["enrollment_id"] == str(course.enrollment.id) and body["results"] == []
+        [sync] = body["sync"]
+        assert (sync["platform_id"], sync["state"], sync["stale"]) == (str(course.platform.id), "never", True)
+
+    def test_a_student_sees_their_grade_completion_source_time_and_sync(self, course, monkeypatch):
+        monkeypatch.setenv("MOODLE_RESULTS_PULL_SECONDS", "600")
+        _view(course)
+        _grade(course, attempt=7, time=1_760_000_123)
+        _pull(course)
+        _as_student(course)
+        body = _results(course).json()
+        assert body["enrollment_status"] == "in_progress"
+        by_kind = {r["kind"]: r for r in body["results"]}
+        grade, done = by_kind["quiz_grade"], by_kind["completion"]
+        assert (grade["grade"], grade["grade_max"], grade["source_attempt_id"]) == (100.0, 100.0, 7)
+        assert grade["source_time"].startswith("2025-10-09T08:55:23")  # 1_760_000_123, Moodle's clock
+        assert grade["quiz_attempt_id"] and grade["release_id"]
+        assert done["complete"] is True and done["grade"] is None
+        [sync] = body["sync"]
+        assert sync["state"] == "current" and sync["stale"] is False and sync["last_success_at"]
+        assert sync["sync_interval_seconds"] == 600
+
+    def test_an_outage_shows_stale_and_recovery_reconciles_without_duplicates(self, course, db_session):
+        from app.moodle_results.models import MoodleResultRecord
+
+        _view(course)
+        _pull(course)  # the page: current
+        _grade(course, attempt=21)  # then the quiz is finished in Moodle ...
+        fake.fail_next("pull_results")  # ... while Moodle is unreachable
+        assert _pull(course).status_code == 502
+        _as_student(course)
+        delayed = _results(course).json()
+        assert [r["kind"] for r in delayed["results"]] == ["completion"]  # the grade is not here yet
+        assert delayed["sync"][0]["state"] == "failing" and delayed["sync"][0]["stale"] is True
+        assert delayed["sync"][0]["last_error"] == ""  # the operator's detail is not the Student's
+        _as_admin()
+        assert "injected failure" in _results(course, user_id=str(course.student.id)).json()["sync"][0]["last_error"]
+
+        assert _pull(course).json()["applied"] == 1  # Moodle is back: the next pull reconciles
+        assert _pull(course, reset=True).json()["applied"] == 0  # and re-reading changes nothing
+        _as_student(course)
+        body = _results(course).json()
+        assert body["sync"][0]["state"] == "current"
+        assert sorted(r["kind"] for r in body["results"]) == ["completion", "quiz_grade"]
+        assert db_session.query(MoodleResultRecord).filter_by(user_id=course.student.id).count() == 2
+        assert len(_attempts(db_session, course)) == 1
+
+    def test_a_last_success_older_than_two_intervals_is_stale(self, course, db_session, monkeypatch):
+        from datetime import UTC, datetime, timedelta
+
+        monkeypatch.setenv("MOODLE_RESULTS_PULL_SECONDS", "600")
+        _pull(course)
+        row = db_session.get(MoodleResultCursor, course.platform.id)
+        row.last_success_at = datetime.now(UTC) - timedelta(minutes=21)
+        db_session.commit()
+        assert _results(course, user_id=str(course.student.id)).json()["sync"][0]["state"] == "stale"
+        monkeypatch.setenv("MOODLE_RESULTS_PULL_SECONDS", "0")  # pulls only on demand: age alone is not stale
+        assert _results(course, user_id=str(course.student.id)).json()["sync"][0]["state"] == "current"
+
+    def test_another_student_is_refused_and_another_tenant_gets_404(self, course, db_session):
+        peer = _student(db_session)
+        db_session.commit()
+        _as_student(course, peer)
+        assert _results(course, user_id=str(course.student.id)).status_code == 403
+        with acting_as(UserRole.admin, tenant="00000000-0000-0000-0000-0000000000ff"):
+            assert _results(course, user_id=str(course.student.id)).status_code == 404
 
 
 class TestTheEndpoint:

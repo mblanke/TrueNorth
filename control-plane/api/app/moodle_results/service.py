@@ -17,6 +17,15 @@ Anything else is counted under ``skipped`` and dropped. Recording is idempotent 
 ``moodle_result_records``: a row seen again changes nothing, a changed grade updates the
 one quiz attempt it recorded. Module progress only moves forward (``completed`` is never
 undone by a later, lower grade), and an enrolment completes when all its modules have.
+
+Matching is on immutable ids only: platform, TrueNorth user id, course id, activity
+idnumber; each fact also keeps the release that made its activity and Moodle's attempt id
+(``moodle_result_records``). An email is never read: two tenants may share one.
+
+    sync_status(db, platform)            how fresh this Moodle's results are ("current",
+                                         "stale", "failing", "never")
+    enrolment_results(db, ...)           one enrolment's Moodle facts, with their source
+                                         timestamps and each platform's sync status
 """
 
 from __future__ import annotations
@@ -258,7 +267,13 @@ class _Context:
             for idnumber in receipt.get("activities") or {}:
                 if m := _MODULE.match(idnumber):
                     activities.setdefault(m.group(1), []).append(idnumber)
-            info = {"ordinals": _ordinals(self.db, live or pubs[0]), "activities": activities}
+            # Which release made each activity: the newest publication whose receipt has it
+            # (a page kept across releases belongs to the latest; a quiz is per question set).
+            releases: dict[str, uuid.UUID] = {}
+            for pub in pubs:
+                for idnumber in json.loads(pub.receipt or "{}").get("activities") or {}:
+                    releases.setdefault(idnumber, pub.release_id)
+            info = {"ordinals": _ordinals(self.db, live or pubs[0]), "activities": activities, "releases": releases}
         self._courses[course_id] = info
         return info
 
@@ -304,6 +319,15 @@ def _uuid(value: Any) -> uuid.UUID | None:
         return None
 
 
+def _int(value: Any) -> int | None:
+    """A positive integer id, else None (an older plugin reports no attempt id)."""
+    try:
+        n = int(value)
+    except (ValueError, TypeError):
+        return None
+    return n if n > 0 else None
+
+
 def _when(row: dict[str, Any]) -> datetime:
     try:
         return datetime.fromtimestamp(int(row.get("time") or 0), UTC)
@@ -338,7 +362,7 @@ def _apply(ctx: _Context, row: dict[str, Any]) -> str:
     activity = str(row.get("activity") or "")
     # Activity idnumbers (tn:mod_NNN:...) repeat in every course: a fact is per course.
     ref = f"{kind}:{activity}"[:200]
-    content = {k: row.get(k) for k in ("state", "grade", "grademax", "gradepass", "attempts")}
+    content = {k: row.get(k) for k in ("state", "grade", "grademax", "gradepass", "attempts", "attempt")}
     fingerprint = hashlib.sha256(json.dumps(content, sort_keys=True, default=str).encode()).hexdigest()
     record = (
         db.query(MoodleResultRecord)
@@ -361,6 +385,9 @@ def _apply(ctx: _Context, row: dict[str, Any]) -> str:
         db.add(record)
     record.fingerprint = fingerprint
     record.source_time = int(row.get("time") or 0)
+    record.release_id = info.get("releases", {}).get(activity, record.release_id)
+    if kind == "quiz_grade":
+        record.source_attempt_id = _int(row.get("attempt")) or record.source_attempt_id
     when = _when(row)
 
     progress = _progress(db, enrollment, module)
@@ -502,3 +529,119 @@ def _record_quiz(
     attempt.max_score = round(grademax) or 100
     attempt.passed = grade >= gradepass if gradepass > 0 else pct >= module.pass_threshold
     attempt.submitted_at = when
+
+
+# -- reading back ----------------------------------------------------------------------
+NEVER, CURRENT, STALE, FAILING = "never", "current", "stale", "failing"
+
+
+def _aware(when: datetime | None) -> datetime | None:
+    return when if when is None or when.tzinfo else when.replace(tzinfo=UTC)
+
+
+def sync_status(db: Session, platform: ExternalPlatform, *, now: datetime | None = None) -> dict[str, Any]:
+    """How fresh what TrueNorth holds from this Moodle is.
+
+    ``state``: "never" (no pull has succeeded yet), "failing" (the latest pull failed:
+    Moodle down, or its answer refused; what TrueNorth shows may be behind Moodle), "stale"
+    (the last success is older than two scheduled intervals, ``MOODLE_RESULTS_PULL_SECONDS``;
+    with the schedule off only a failure makes it stale) or "current". ``stale`` is true
+    for every state but "current". ``last_error`` is the operator's detail."""
+    from .runner import interval
+
+    now = now or datetime.now(UTC)
+    every = interval()
+    row = db.get(MoodleResultCursor, platform.id)  # tenant-safe: the caller resolved the platform
+    success = _aware(row.last_success_at) if row else None
+    lease = _aware(row.lease_until) if row else None
+    if row is not None and row.last_error:
+        state = FAILING
+    elif success is None:
+        state = NEVER
+    elif every > 0 and now - success > timedelta(seconds=2 * every):
+        state = STALE
+    else:
+        state = CURRENT
+    return {
+        "platform_id": platform.id,
+        "platform_name": platform.name,
+        "state": state,
+        "stale": state != CURRENT,
+        "last_success_at": success,
+        "last_run_at": _aware(row.last_run_at) if row else None,
+        "last_error": (row.last_error if row else "") or "",
+        "sync_interval_seconds": int(every) if every > 0 else 0,
+        "running": lease is not None and lease > now,
+    }
+
+
+def enrolment_results(
+    db: Session, tenant_id: uuid.UUID, user_id: uuid.UUID, course_id: uuid.UUID, *, with_errors: bool
+) -> dict[str, Any]:
+    """One person's Moodle facts on one course, from every Moodle of ``tenant_id`` the course
+    is published to, each with Moodle's own timestamp, and those Moodles' sync status.
+
+    The caller has already checked the person and the course (``authorize_record_access``,
+    ``get_owned_or_global``). ``with_errors`` keeps ``last_error`` (staff only)."""
+    # tenant-safe: platforms of the caller's tenant only; publications tie them to the course.
+    platforms = (
+        db.query(ExternalPlatform)
+        .join(CoursePublication, CoursePublication.platform_id == ExternalPlatform.id)
+        .filter(
+            ExternalPlatform.tenant_id == tenant_id,
+            CoursePublication.course_id == course_id,
+            CoursePublication.state.in_((PUBLISHED, SUPERSEDED)),
+        )
+        .distinct()
+        .order_by(ExternalPlatform.name)
+        .all()
+    )
+    ids = [p.id for p in platforms]
+    records = (
+        db.query(MoodleResultRecord)
+        .filter(
+            MoodleResultRecord.platform_id.in_(ids),
+            MoodleResultRecord.user_id == user_id,
+            MoodleResultRecord.course_id == course_id,
+        )
+        .order_by(MoodleResultRecord.ref)
+        .all()
+        if ids
+        else []
+    )
+    # tenant-safe: the subject was checked by the caller (authorize_record_access).
+    enrollment = db.query(Enrollment).filter(Enrollment.user_id == user_id, Enrollment.course_id == course_id).first()
+    sync = []
+    for p in platforms:
+        status = sync_status(db, p)
+        if not with_errors:
+            status["last_error"] = ""
+        sync.append(status)
+    results = []
+    for r in records:
+        kind, _, activity = r.ref.partition(":")
+        graded = kind == "quiz_grade"
+        results.append(
+            {
+                "platform_id": r.platform_id,
+                "kind": kind,
+                "activity": activity,
+                "release_id": r.release_id,
+                "grade": r.grade if graded else None,
+                "grade_max": r.grade_max if graded else None,
+                "completion_state": None if graded else r.state,
+                "complete": None if graded else r.state in COMPLETE_STATES,
+                "source_time": datetime.fromtimestamp(r.source_time, UTC) if r.source_time else None,
+                "source_attempt_id": r.source_attempt_id,
+                "quiz_attempt_id": r.quiz_attempt_id,
+                "recorded_at": _aware(r.updated_at or r.created_at),
+            }
+        )
+    return {
+        "course_id": course_id,
+        "user_id": user_id,
+        "enrollment_id": enrollment.id if enrollment else None,
+        "enrollment_status": enrollment.status.value if enrollment else None,
+        "sync": sync,
+        "results": results,
+    }

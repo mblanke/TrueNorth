@@ -131,6 +131,86 @@ enrolment. Recording is idempotent (`reset: true` re-reads from the start safely
 | `last_error`: "not signed by its registered key" | The platform's `lti_jwks_url` must be the node's `/mod/lti/certs.php`, reached through `base_url`. |
 | `skipped.not_enrolled` | The Student opened the Moodle course without a TrueNorth enrolment (staff previewing, or an enrolment removed). |
 | `skipped.course_not_published_here` | Grades in a Moodle course TrueNorth did not publish to this platform: ignored by design. |
+| `skipped.not_this_tenants_user` | A row names a TrueNorth id that is not a user of the platform's tenant. Results match on ids only, never on email, so a same-address person in another tenant gets nothing. |
+
+**How fresh, and where it shows.** Each fact keeps Moodle's own time (`source_time`), the
+release that made the activity and, for a quiz grade, Moodle's attempt id. The Student sees
+their own on the course page (**Learning → Courses → the course**), under "Open in Moodle":
+"Module 1 quiz: 80 / 100, in Moodle <time>", "Module 1 page: complete", and the sync line.
+The same through the API, for the Student or (with `learning_record:read`) anyone in the
+tenant:
+
+```http
+GET /api/integrations/moodle/results?course_id=<id>[&user_id=<id>]
+→ 200 {"enrollment_id": "…", "enrollment_status": "in_progress",
+       "sync": [{"platform_name": "Moodle (default)", "state": "current", "stale": false,
+                 "last_success_at": "…", "last_error": "", "sync_interval_seconds": 600}],
+       "results": [{"kind": "quiz_grade", "activity": "tn:mod_001:quiz:…", "grade": 80.0,
+                    "grade_max": 100.0, "source_time": "…", "source_attempt_id": 42,
+                    "release_id": "…", "recorded_at": "…"}, …]}
+```
+
+| Sync state | Means | The course page says |
+|---|---|---|
+| `current` | the last pull succeeded within two intervals | "Moodle results synced <time>" |
+| `stale` | no successful pull for more than two intervals (`2 × MOODLE_RESULTS_PULL_SECONDS`) | "may be out of date: last synced <time>" |
+| `failing` | the latest pull failed (Moodle down, or its answer refused); `last_error` (staff only) says why | "may be out of date: the last sync failed" |
+| `never` | no pull has succeeded yet | "not synced yet" |
+
+A result Moodle holds while a pull fails is not lost: the cursor stays where it was, and the
+next successful pull records it once (the ledger is idempotent; `reset` re-reads safely).
+
+## 5. Student loop on staging (about 5 minutes)
+
+A person's click-through of M1 on the installed host, in a real browser. The automated
+evidence is the CI `moodle` lane (the same loop in Chromium) and the acceptance check
+`lms / Moodle loop` (the same loop over HTTP, without a browser); this is the part only a
+person can do: sign in through Keycloak with a real Student account and look.
+
+**Before** (once): a Student test account you can sign in as, enrolled on a course that is
+published to Moodle (its release chip reads `Moodle: published`); a second Student account
+not enrolled on it; a shell on the host. Use a private browser window per account. Note the
+time; you will record it.
+
+1. **TrueNorth (30 s).** Sign in at `https://<fqdn>` as the enrolled Student. **Learning →
+   Courses →** the course. Expect **Open in Moodle** and a line "Moodle results synced …" (or
+   "not synced yet").
+2. **Into Moodle (30 s).** Click **Open in Moodle**. A new tab opens the Moodle course on
+   `https://<fqdn>:8443`, signed in as the Student (their name at top right) with no Moodle
+   login page. The address bar never shows the ticket.
+3. **A page (15 s).** Open the first page of module 1. Back on the course page its completion
+   tick is filled.
+4. **The quiz, leave and resume (2 min).** Open the module 1 quiz → **Attempt quiz** → answer
+   question 1 → **Next page**. Go back to the course page (leave). Open the quiz again →
+   **Continue your attempt**: you are on question 2, question 1 still answered. Answer the
+   rest → **Finish attempt …** → **Submit all and finish** → confirm. Write down the grade
+   the review page shows.
+5. **Pull (30 s).** Wait 10 seconds (Moodle's settle window), then on the host:
+
+   ```bash
+   cd /srv/truenorth/app/infra/platform/docker
+   docker compose -p docker -f compose.prod.yml --env-file /srv/truenorth/config/.env.production \
+     exec -T api python -c 'from app.moodle_results.runner import pull_all; print(pull_all(), "Moodle(s) pulled")'
+   ```
+
+   (or wait for the scheduled pull, every `MOODLE_RESULTS_PULL_SECONDS`, 10 minutes by default).
+6. **Back in TrueNorth (30 s).** Reload the course page. Expect "Moodle results synced
+   <a minute ago>", "Module 1 quiz: <the grade from step 4, out of 100> … in Moodle <the time
+   you submitted>" and "Module 1 page: complete".
+7. **Refusals (1 min).**
+   - In the other private window, sign in as the Student who is **not** enrolled, open the
+     same course and click **Open in Moodle**: "You are not enrolled in this course", and no
+     Moodle tab stays open.
+   - In a third private window (no session anywhere), open `https://<fqdn>:8443/`: Moodle has
+     no login of its own and sends you to TrueNorth.
+   - Reused, expired and other-tenant tickets cannot be made by hand without developer tools;
+     the CI `moodle` lane refuses each in a browser (`test_moodle_student_journey.py`).
+
+**Pass** when every expectation above holds. **Record** in the release notes (staging
+record): date and time, the two accounts (usernames, never passwords), the course, the
+grade in Moodle and in TrueNorth with both times, the sync line, and screenshots of steps 2,
+4 (review page), 6 and the not-enrolled message. A failure at step 6 with "may be out of date: the last sync
+failed": read `last_error` (section 4) before anything else.
 
 ## Backups, restore, upgrades
 

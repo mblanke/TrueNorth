@@ -65,7 +65,7 @@ cmi5 `moveOn` of `Passed` expresses, so the two agree without new logic.
 | xAPI emitter and pluggable LRS backend | `app/xapi.py`, `app/lms/` (`xapi_lrs`, `null`) | Built. **Not cmi5-conformant** (see below) |
 | Local Moodle for testing | `infra/platform/docker/compose.moodle.yml` (Moodle 4.4 on :8083) | Built |
 | Quiz export to Moodle | `GET /quizzes/{id}/export?format=gift\|moodlexml` | Built. The UI downloads it through `ApiService` (bearer token sent) |
-| Results back from Moodle | `app/moodle_results`, `local_truenorth` `pull_results` | Built 2026-10-09: completions and quiz grades signed by the Moodle's LTI key, recorded on enrolments, progress and quiz attempts (`docs/runbooks/moodle.md` section 4) |
+| Results back from Moodle | `app/moodle_results`, `local_truenorth` `pull_results` | Built 2026-10-09: completions and quiz grades signed by the Moodle's LTI key, recorded on enrolments, progress and quiz attempts (`docs/runbooks/moodle.md` section 4). M1 (2026-10-12): each fact keeps its release and Moodle attempt id; the Student sees them with Moodle's time and the sync state ("Grades and completion: two directions", above) |
 | cmi5 AU with no dependencies, tested 9/9 | KB `au/cmi5-au.js` | Reference code to adopt |
 | LRS smoke test, cmi5 session simulator | KB `scripts/lrs-smoke-test.sh`, `scripts/cmi5-session-sim.sh` | Reference tooling |
 
@@ -79,6 +79,31 @@ Any integration would have widened each of these holes. All are closed, with neg
 - **`_jit_user` matched the platform-asserted email across tenants.** Email is globally unique, so a registered platform could sign in as any user, admins included. Matching is now restricted to the platform's own tenant; any other match is refused.
 - **Learning records had no tenant predicate.** Enrolments, progress, transcripts, external activities and `POST /lti/grades` now follow one rule: your own record always; anyone else's needs `learning_record:read` or `learning_record:write`, *and* that person must be in your tenant.
 - **`lti_auth_login_url` was missing from the platform schemas**, so a Moodle platform could never start a launch.
+
+## Grades and completion: two directions, never mixed
+
+TrueNorth and Moodle exchange results in two separate directions, by separate mechanisms.
+A Moodle quiz grade pulled into TrueNorth is never passed back, and a grade TrueNorth passes
+back is never pulled in as a grade: the pull reads only Moodle quiz grades. One crossing is
+by design: a published range-lab link (`tn:<module>:lab`) completes in Moodle on a
+passed-back grade (`completionusegrade`), and the pull reports that **completion**, as one of
+the module's Moodle activities. A teacher's deep-linked cmi5 activity has no `tn:` idnumber,
+so nothing about it is pulled.
+
+| | **LTI passback** (TrueNorth → Moodle) | **Results pull** (Moodle → TrueNorth) |
+|---|---|---|
+| What | TrueNorth's own mark for a cmi5 module (or quiz) launched from Moodle as an External tool activity | Moodle's native quiz grades and activity completions in courses TrueNorth published (`tn:` activities only) |
+| How | LTI 1.3 Assignment and Grade Services: TrueNorth posts a score to the activity's line item (`app/cmi5/ags.py`, `lti13.push_score_for_resource`) | TrueNorth asks `local_truenorth` (`pull_results`, a signed sync ticket) and verifies the answer, signed by the Moodle's LTI key (`app/moodle_results`) |
+| When | at once, when the AU reports passed or failed; a Moodle that was unreachable is retried by the API's AGS loop | every `MOODLE_RESULTS_PULL_SECONDS` (default **600 s**, i.e. 10 minutes; `0` turns the schedule off), and on **Pull now** (`POST /api/integrations/platforms/{id}/moodle-results/pull`, `integration:write`). Rows younger than Moodle's 5 s settle window wait for the next pull |
+| Who it names | the Moodle account bound to the Student (`lti_user_links`: their launch, an explicit link, or the farm account TrueNorth's sign-in made); never one matched by email alone | the TrueNorth user id locked in the `tn-<id>` account TrueNorth's sign-in made; never an email |
+| Lands in | Moodle's gradebook | the TrueNorth enrolment: module progress, a quiz attempt mirroring Moodle's grade, enrolment completion |
+| Freshness shown | Moodle's gradebook | the Student's course page and `GET /api/integrations/moodle/results`: Moodle's time per fact and the sync state (`current`, `stale` after two intervals without success, `failing`, `never`) |
+| Failure | the score is kept and resent; `cmi5_ags_scores.last_error` | the cursor does not move; `last_error` on the platform's results status; the next successful pull records what was missed, once |
+| Tested | `tests/integration/test_moodle_cmi5_lti.py` (real Moodle gradebook) | `tests/api/test_moodle_results.py`; `tests/integration/test_moodle_publish.py`; the browser journey `tests/integration/test_moodle_student_journey.py` (outage, then reconcile) |
+
+Matching is on immutable ids in both directions: platform, user, release, activity, and
+Moodle's attempt id for a quiz grade (`moodle_result_records`). Runbook:
+`docs/runbooks/moodle.md`, sections 4 and 5.
 
 ## Phase 1: LTI 1.3
 
