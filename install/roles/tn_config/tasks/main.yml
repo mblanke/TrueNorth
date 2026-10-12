@@ -164,8 +164,11 @@
       # truenorth_backup.prom, scripts/monitoring/host-probes.sh truenorth_probes.prom.
       METRICS_DIR={{ tn_data_root }}/metrics
       {% if tn_arc2_enabled | default(false) | bool %}
-      # host-probes.sh: the ARC² runner's unit (Arc2RunnerDown).
+      # host-probes.sh: the ARC² runner's unit (Arc2RunnerDown). backup.sh records its state.
       ARC2_RUNNER_UNIT=truenorth-arc2-runner
+      # ARC² Course Studio runs (tn-arc2:tn-arc2-runs): archived by backup.sh as root through
+      # a throwaway container; restore.sh refuses while the runner is active.
+      ARC2_RUNS_DIR={{ tn_arc2_runs_dir }}
       {% endif %}
 
 # BackupStale measures from the last good backup. Seeded once with the install time, so a

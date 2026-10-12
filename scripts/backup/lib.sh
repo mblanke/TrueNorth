@@ -120,6 +120,26 @@ moodle_dc() {
 MOODLE_DATA_EXCLUDES=(--exclude=./cache --exclude=./localcache --exclude=./sessions
     --exclude=./temp --exclude=./trashdir --exclude=./lock)
 
+# ARC² Course Studio (optional; tn_arc2_enabled): ARC2_RUNS_DIR is the runner's runs root
+# on the host (tn-arc2:tn-arc2-runs, 02750; files the backup user cannot read). It is
+# archived and restored as root by a throwaway container of the platform's own postgres
+# image (on the host already; GNU tar), with no network, numeric owners and modes kept.
+# arc2_runner_state prints the runner unit's state (active, inactive, failed, ...) or unknown.
+arc2_runner_state() {
+    local s
+    if ! command -v systemctl >/dev/null 2>&1; then
+        echo unknown
+        return 0
+    fi
+    s="$(systemctl is-active "${ARC2_RUNNER_UNIT:-truenorth-arc2-runner}" 2>/dev/null | head -n 1)"
+    printf '%s\n' "${s:-unknown}"
+}
+
+# arc2_tar_image — the image arc2_* containers run: the platform postgres container's.
+arc2_tar_image() {
+    docker inspect --format '{{.Config.Image}}' "$(service_cid postgres)"
+}
+
 # env_get KEY [default] — the last KEY=value in ENV_FILE, quotes stripped.
 # The file is parsed, not sourced: nothing in it is executed.
 env_get() {

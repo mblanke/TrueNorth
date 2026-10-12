@@ -18,7 +18,8 @@ written by the installer before it migrates; [upgrade.md](upgrade.md))
 | `secrets/env.enc`, `secrets/env.key.enc` | the stack's env file — which holds `TN_SECRETS_KEY` and every credential — AES-256 encrypted with a fresh data key, that key RSA-OAEP-wrapped to the escrow public key |
 | `secrets/secrets.tar.enc` | `SECRETS_DIR` (the installer's `/srv/truenorth/config/secrets/`, one file per persisted secret), tarred straight into the same cipher with the same data key; never on disk in clear. `restore-secrets.sh` writes it back. |
 | `moodle/moodledata.tar` | only with the installer's Moodle (`tn_moodle_enabled`; `MOODLE_COMPOSE_FILE` in backup.env): its files, without caches, sessions and temp, archived through a throwaway container of its image. Its database is one of the `postgres/<db>.dump` files (`moodle`). See [moodle.md](moodle.md). |
-| `manifest.json` | databases and sizes, bucket/object counts, the OpenSearch snapshot's repository and name (or `not-backed-up`), Moodle's files (`backed-up`, `not-installed` or `not-configured`), escrow status, compose project, git commit |
+| `arc2/runs.tar` | only with the ARC² Course Studio (`tn_arc2_enabled`; `ARC2_RUNS_DIR` in backup.env, default `/srv/truenorth/arc2/runs`): every Studio run and the runner's queue and history. The directory is `tn-arc2:tn-arc2-runs` with files the backup user cannot read, so it is archived as root by a throwaway container of the platform's postgres image (read-only mount, no network), numeric owners and modes kept. See [ARC² runs](#arc-runs). |
+| `manifest.json` | databases and sizes, bucket/object counts, the OpenSearch snapshot's repository and name (or `not-backed-up`), Moodle's files (`backed-up`, `not-installed` or `not-configured`), the ARC² runs (same states, plus the runner's state at the time and `changed_while_reading`), escrow status, compose project, git commit |
 | `SHA256SUMS` | checksums of everything above; verified at the end of the backup and before any restore |
 
 Not included, on purpose:
@@ -61,6 +62,7 @@ OPENSEARCH_SNAPSHOT_KEEP=14             # tn_opensearch_snapshot_keep
 # MOODLE_ENV_FILE=/srv/truenorth/config/moodle-default.env
 METRICS_DIR=/srv/truenorth/metrics      # Prometheus textfile metrics (backup + host probes)
 # ARC2_RUNNER_UNIT=truenorth-arc2-runner  # only with tn_arc2_enabled (host-probes.sh)
+# ARC2_RUNS_DIR=/srv/truenorth/arc2/runs  # only with tn_arc2_enabled: the Studio runs are backed up
 
 # Optional, add by hand
 # DAILY_KEEP=7 WEEKLY_KEEP=4 MONTHLY_KEEP=12
@@ -175,12 +177,35 @@ set -a; . /srv/truenorth/config/backup.env; set +a
 scripts/backup/restore.sh $BACKUP_DIR/daily/truenorth-backup-20261008T021700Z
 #   [--force]          skip the "type the project name" prompt
 #   [--no-restart]     leave the app services stopped afterwards
-#   [--skip-postgres | --skip-minio | --skip-opensearch | --skip-moodle]
+#   [--skip-postgres | --skip-minio | --skip-opensearch | --skip-moodle | --skip-arc2]
 ```
 
 With Moodle (`MOODLE_COMPOSE_FILE` set and the backup holding `moodle/moodledata.tar`), the
 Moodle node is stopped with the rest, its database comes back with the others, moodledata
 is replaced by the archive's, and the node starts after the platform.
+
+### ARC² runs
+
+The nightly backup does **not** stop the ARC² runner (a job may run for hours). Finished
+runs are copied whole; a job running at 02:17 may be caught half-written, which the
+manifest records as `"changed_while_reading": true` (tar's "file changed as we read it" is
+not a failure). For a quiescent copy, stop the runner around a hand-run backup:
+`sudo systemctl stop truenorth-arc2-runner`, run the backup, start it again.
+
+Restoring replaces the runs directory (`ARC2_RUNS_DIR`) with the archive's, as root through
+the same kind of container, owners and modes kept. On a rebuilt host the installer may have
+given `tn-arc2` / `tn-arc2-runs` other ids: the archive's owner of the runs root is mapped
+onto the directory's current owner (files the api wrote keep their own owner). The restore
+**refuses while the runner is active**, before touching anything:
+
+```bash
+sudo systemctl stop truenorth-arc2-runner
+scripts/backup/restore.sh <backup>          # or --skip-arc2 to leave the runs as they are
+sudo systemctl start truenorth-arc2-runner
+```
+
+A host without the Studio (no `ARC2_RUNS_DIR`) restores everything else and says the runs
+were not restored.
 
 What it does: verifies `SHA256SUMS` → if the manifest names an OpenSearch snapshot, checks
 that it is in its repository, and **refuses before stopping anything** if it is not (pruned

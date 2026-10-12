@@ -23,6 +23,12 @@
 #      MOODLE_ENV_FILE name the node here): its services are stopped in step 2 with the
 #      rest, its database comes back in step 3 like every other, and moodledata is
 #      replaced by the archive's (through a throwaway container of its image, as its user);
+#   5c. arc2 (when the backup holds arc2/runs.tar and ARC2_RUNS_DIR exists here): the
+#      runs root is replaced by the archive's, as root through a throwaway container of the
+#      postgres image, owners and modes kept (re-mapped to the runs root's current owner if
+#      a rebuilt host gave tn-arc2 other ids). The ARC² runner must be stopped first
+#      (`sudo systemctl stop truenorth-arc2-runner`); the restore refuses while it is active
+#      and does not start it again;
 #   6. start the services stopped in step 2 again (unless --no-restart).
 #
 # It does NOT restore the env file: if it was lost, recover it from the escrow
@@ -37,10 +43,10 @@ umask 077
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 TN_LOG_TAG="truenorth-restore"
 
-usage() { echo "Usage: $0 <backup-dir> [--force] [--no-restart] [--skip-postgres] [--skip-minio] [--skip-opensearch] [--skip-moodle]" >&2; exit 2; }
+usage() { echo "Usage: $0 <backup-dir> [--force] [--no-restart] [--skip-postgres] [--skip-minio] [--skip-opensearch] [--skip-moodle] [--skip-arc2]" >&2; exit 2; }
 [[ $# -ge 1 ]] || usage
 BACKUP_PATH="$1"; shift
-FORCE=0; RESTART=1; DO_PG=1; DO_MINIO=1; DO_OS=1; DO_MOODLE=1
+FORCE=0; RESTART=1; DO_PG=1; DO_MINIO=1; DO_OS=1; DO_MOODLE=1; DO_ARC2=1
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --force) FORCE=1 ;;
@@ -49,6 +55,7 @@ while [[ $# -gt 0 ]]; do
         --skip-minio) DO_MINIO=0 ;;
         --skip-opensearch) DO_OS=0 ;;
         --skip-moodle) DO_MOODLE=0 ;;
+        --skip-arc2) DO_ARC2=0 ;;
         *) usage ;;
     esac
     shift
@@ -119,8 +126,23 @@ if (( DO_MOODLE )) && [[ -f "${BACKUP_PATH}/moodle/moodledata.tar" ]]; then
     fi
 fi
 
+# The ARC² runs come back only where the runs root exists (the installer made it), and
+# never under a running runner: it would write into a directory being replaced.
+ARC2_TAR=""
+if (( DO_ARC2 )) && [[ -f "${BACKUP_PATH}/arc2/runs.tar" ]]; then
+    if [[ -n "${ARC2_RUNS_DIR:-}" && -d "${ARC2_RUNS_DIR}" ]]; then
+        if [[ "$(arc2_runner_state)" == active ]]; then
+            CURRENT_STEP="arc2:check"
+            die "the ARC² runner (${ARC2_RUNNER_UNIT:-truenorth-arc2-runner}) is running: stop it first (sudo systemctl stop ${ARC2_RUNNER_UNIT:-truenorth-arc2-runner}), or re-run with --skip-arc2"
+        fi
+        ARC2_TAR="${BACKUP_PATH}/arc2/runs.tar"
+    else
+        log "WARN" "ARC²: this backup holds Studio runs, but no ARC2_RUNS_DIR exists here (tn_arc2_enabled): they are NOT restored"
+    fi
+fi
+
 if (( ! FORCE )); then
-    echo "This OVERWRITES the databases and buckets${OS_SNAP:+ and telemetry indices}${MOODLE_TAR:+ and the Moodle files} of compose project '${PROJECT}' with:"
+    echo "This OVERWRITES the databases and buckets${OS_SNAP:+ and telemetry indices}${MOODLE_TAR:+ and the Moodle files}${ARC2_TAR:+ and the ARC² runs} of compose project '${PROJECT}' with:"
     echo "  ${BACKUP_PATH}"
     read -rp "Type the project name (${PROJECT}) to proceed: " answer
     [[ "${answer}" == "${PROJECT}" ]] || { log "INFO" "Restore cancelled"; exit 0; }
@@ -213,6 +235,27 @@ if [[ -n "${MOODLE_TAR}" ]]; then
     moodle_dc run --rm --no-deps -T --entrypoint sh moodle -c \
         'set -eu; find /var/www/moodledata -mindepth 1 -maxdepth 1 -exec rm -rf {} +; tar -C /var/www/moodledata -xf -' \
         <"${MOODLE_TAR}"
+fi
+
+# ── ARC² runs ────────────────────────────────────────────────────────────────
+# Replaced, not merged, like moodledata. Owners and modes come from the archive; if a
+# rebuilt host gave tn-arc2 / tn-arc2-runs other ids, the archive's owner of the runs root
+# is mapped onto the current one (and only that owner: the api's files keep theirs).
+if [[ -n "${ARC2_TAR}" ]]; then
+    CURRENT_STEP="arc2:runs"
+    log "INFO" "Restoring the ARC² runs into ${ARC2_RUNS_DIR}..."
+    # shellcheck disable=SC2016 # expanded by the container's sh
+    docker run --rm -i --network none --user 0:0 -v "${ARC2_RUNS_DIR}:/runs" \
+        --entrypoint sh "$(arc2_tar_image)" -c '
+            set -eu
+            u=$(stat -c %u /runs); g=$(stat -c %g /runs)
+            find /runs -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+            tar -C /runs --numeric-owner -xpf -
+            au=$(stat -c %u /runs); ag=$(stat -c %g /runs)
+            if [ "$au" != "$u" ]; then chown -R --from="$au" "$u" /runs; fi
+            if [ "$ag" != "$g" ]; then chown -R --from=":$ag" ":$g" /runs; fi' \
+        <"${ARC2_TAR}"
+    log "INFO" "  arc2: restored; start the runner again: sudo systemctl start ${ARC2_RUNNER_UNIT:-truenorth-arc2-runner}"
 fi
 
 # ── Restart ──────────────────────────────────────────────────────────────────
