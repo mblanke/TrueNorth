@@ -28,6 +28,7 @@ from app.models import (
     AfterActionReport,
     Course,
     Enrollment,
+    EnrollmentStatus,
     Exercise,
     ExerciseState,
     LearningPath,
@@ -103,7 +104,8 @@ def _submit(client, ex):
 
 def _complete_with_aar(db, ex) -> None:
     ex = db.get(Exercise, ex.id)
-    ex.state, ex.completed_at = ExerciseState.completed, NOW
+    # Completed now: after the fixture's enrolments were made (they were made during the run).
+    ex.state, ex.completed_at = ExerciseState.completed, datetime.now(UTC) + timedelta(seconds=1)
     db.add(AfterActionReport(exercise_id=ex.id, report_json=json.dumps({"participants": [{"name": "Classmate"}]}),
                              report_html=""))
     db.flush()
@@ -180,6 +182,57 @@ def test_an_unknown_source_is_refused(db_session, booked):
     with pytest.raises(ValueError):
         ensure_enrollment(db_session, user_id=uuid.UUID(booked["outsider"].id), course_id=booked["course"].id,
                           tenant_id=booked["t"].id, source="moodle")
+
+
+# ── The roster for an AAR is the run's roster, not today's ───────────────────────────
+JAN_START = datetime(2026, 1, 12, 9, tzinfo=UTC)
+JAN_END = datetime(2026, 1, 12, 17, tzinfo=UTC)
+
+
+@pytest.fixture
+def january(db_session):
+    """Exercise E, completed in January, booked on course X; its report is stored."""
+    t = real_tenant(db_session, "jan")
+    ex = real_exercise(db_session, t.id, state=ExerciseState.completed, started_at=JAN_START, completed_at=JAN_END)
+    x = Course(id=uuid.uuid4(), name="X", tenant_id=t.id, is_published=True)
+    db_session.add(x)
+    db_session.flush()
+    db_session.add(ScheduledEvent(name="Jan class", tenant_id=t.id, course_id=x.id, state=EventState.active,
+                                  start_time=JAN_START, end_time=JAN_END, exercise_id=ex.id))
+    db_session.add(AfterActionReport(exercise_id=ex.id, report_json="{}", report_html=""))
+    db_session.flush()
+    return t, ex, x
+
+
+def _assigned(db, user, course, *, created, status=EnrollmentStatus.enrolled) -> None:
+    db.add(Enrollment(user_id=uuid.UUID(user.id), course_id=course.id, tenant_id=course.tenant_id, source=ASSIGNED,
+                      status=status, created_at=created, enrolled_at=created))
+    db.flush()
+
+
+def test_a_later_cohort_on_the_same_course_cannot_read_an_earlier_runs_aar(client, db_session, january):
+    """A March cohort assigned to X must not read January's report (the answer key) first."""
+    t, ex, x = january
+    march = real_user(db_session, UserRole.student, t.id)
+    _assigned(db_session, march, x, created=datetime(2026, 3, 2, 9, tzinfo=UTC))
+    act_as(march)
+    assert client.get(f"/exercises/{ex.id}/aar").status_code == 404
+
+
+def test_a_participant_whose_enrolment_is_now_completed_still_reads_it(client, db_session, january):
+    t, ex, x = january
+    me = real_user(db_session, UserRole.student, t.id)
+    _assigned(db_session, me, x, created=JAN_START - timedelta(days=30), status=EnrollmentStatus.completed)
+    act_as(me)
+    assert client.get(f"/exercises/{ex.id}/aar").status_code == 200
+
+
+def test_a_withdrawn_enrolment_is_no_roster_seat_for_the_aar(client, db_session, january):
+    t, ex, x = january
+    gone = real_user(db_session, UserRole.student, t.id)
+    _assigned(db_session, gone, x, created=JAN_START - timedelta(days=30), status=EnrollmentStatus.withdrawn)
+    act_as(gone)
+    assert client.get(f"/exercises/{ex.id}/aar").status_code == 404
 
 
 # ── S1: only this run's participation counts ─────────────────────────────────────────

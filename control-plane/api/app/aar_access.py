@@ -11,8 +11,9 @@ A Student now reads an AAR only when both hold:
 
 - the exercise is completed (nothing left to be scored, so nothing in it is an answer key);
 - they took part in this run (``took_part``), by any of:
-    * the roster: an assigned enrolment in a course whose booking overlaps the run
-      (``exercise_participants.roster_courses``; a self-enrolment is no seat);
+    * the roster: an assigned enrolment, made before the run ended and not withdrawn, in a
+      course whose booking overlaps the run (``exercise_participants.roster_courses``; a
+      self-enrolment is no seat; a later cohort on the same course is not this run's);
     * a member of one of the exercise's teams, as staff have them now (teams belong to the
       exercise, not to one run: a replay keeps them, and a Student taken off a team is out);
     * a detection submitted in this run (``window_start >= started_at``, as ``_attempts``
@@ -27,14 +28,15 @@ observers keep the tenant-wide view: they review every run.
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
 from .auth import CurrentUser
 from .detections.models import DetectionSubmission
-from .enrollment import rostered_course_ids
+from .enrollment import ASSIGNED
 from .exercise_participants import roster_courses
-from .models import Exercise, ExerciseState, Team, TeamMembership, UserRole
+from .models import Enrollment, EnrollmentStatus, Exercise, ExerciseState, Team, TeamMembership, UserRole
 
 
 def scoped_to_participation(user: CurrentUser) -> bool:
@@ -42,8 +44,38 @@ def scoped_to_participation(user: CurrentUser) -> bool:
     return user.role == UserRole.student
 
 
+def _aware(t: datetime) -> datetime:
+    return t if t.tzinfo else t.replace(tzinfo=UTC)
+
+
+def _rostered_during_run(db: Session, ex: Exercise, user_id: uuid.UUID) -> bool:
+    """An assigned enrolment in a course booked over the run, made before the run ended.
+
+    Not ``enrollment.rostered_course_ids``, which is "assigned and still studying, now":
+    that let a later cohort assigned to the same course read an earlier run's report (its
+    answer key, ADR 0005 §5) before sitting the same scenario, and shut out a real
+    participant once their enrolment was completed. Here: created no later than the run's
+    end, any status but withdrawn (completed counts).
+    """
+    courses = roster_courses(db, ex)
+    if not courses:
+        return False
+    run_end = _aware(ex.completed_at or datetime.now(UTC))
+    rows = (
+        db.query(Enrollment.created_at)
+        .filter(
+            Enrollment.user_id == user_id,
+            Enrollment.course_id.in_(courses),
+            Enrollment.source == ASSIGNED,
+            Enrollment.status != EnrollmentStatus.withdrawn,
+        )
+        .all()
+    )
+    return any(created is not None and _aware(created) <= run_end for (created,) in rows)
+
+
 def took_part(db: Session, ex: Exercise, user_id: uuid.UUID) -> bool:
-    if roster_courses(db, ex) & set(rostered_course_ids(db, user_id)):
+    if _rostered_during_run(db, ex, user_id):
         return True
     on_a_team = (
         db.query(TeamMembership.id)
