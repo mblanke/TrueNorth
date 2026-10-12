@@ -5,9 +5,12 @@
 name: Lab (live vSphere)
 
 on:
+  # Manual only until a self-hosted runner labelled [self-hosted, truenorth-lab] is
+  # registered: without one every nightly run queued and then failed. Re-enable the
+  # nightly by restoring the schedule below (docs/runbooks/lab-runner.md, "Registration").
   workflow_dispatch:
-  schedule:
-    - cron: "17 6 * * *" # nightly, 06:17 UTC
+  # schedule:
+  #   - cron: "17 6 * * *" # nightly, 06:17 UTC
 
 permissions:
   contents: read

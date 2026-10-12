@@ -17,7 +17,7 @@ tests > docs. Labels: `IMPLEMENTED` `PARTIAL` `UNTESTED` `PLANNED`.
 | API contract | `IMPLEMENTED`: 336 paths | `docs/interfaces/openapi.json`, gate-checked against the code (ADR 0002); the built API image serves the same 336 |
 | Section modules | `IMPLEMENTED` (stage-4 base) | `control-plane/api/app/<module>/`: scheduler, capacity, range_leases, range_ops, lab_sessions, network_inventory, noise, greyspace, detections, scenario_runs, course_releases, course_publishing, lms, notifications; wiki and tickets |
 | Adapters | `IMPLEMENTED` (ADR 0001) | `*_backends/` (ai, auth, console, hypervisor, moodle, search, threat_intel, vector); worker `provisioners/` (vsphere_api, vsphere_guest, vsphere_infra, mock, terraform, hyperv, proxmox_api) |
-| Provisioning target | vSphere (`vsphere_api`); Proxmox is kept passing only | vcsim lane in CI; live lab nightly (`lab.yml`), which needs the self-hosted runner |
+| Provisioning target | vSphere (`vsphere_api`); Proxmox is kept passing only | vcsim lane in CI; live lab `lab.yml` is manual-only (nightly off) until the self-hosted runner is registered |
 | Migrations | one Alembic tree, `control-plane/api/alembic/` | CI test-python runs the real chain on PostgreSQL 16 and fails if any PostgreSQL test skips |
 | Worker ↔ API | typed task contract and table mirror, drift-checked by the gate | `worker/contracts.py`, `worker/tables.py`; MOSA ratchet `.dod-mosa-baseline` |
 | Web | Angular, generated API client | `npm run check:api` in CI; Karma and Playwright lanes |
