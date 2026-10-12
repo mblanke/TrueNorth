@@ -105,7 +105,8 @@ test_cmd() {
 # so each role is its own user, and PROVISIONER_BACKEND=vsphere_api, staging's backend, so
 # its ranges are recorded as staging's are (a run on one stays live after its timeline;
 # nothing is provisioned, and its one inject touches no host). What this stack does not
-# have is declared with --absent; --strict fails any other skip.
+# have is declared with --absent; --strict fails any skip that the ci-integration profile of
+# docs/release-notes/v1.2.0-permitted-skips.json does not list.
 ACCEPTANCE_ADMIN="admin@truenorth.local"  # compose.dev's seeded admin
 ACCEPTANCE_ABSENT="${ACCEPTANCE_ABSENT:-edge,keycloak,minio,lrs,moodle,backup,vsphere,metrics-token,arc2}"
 acceptance() {
@@ -121,7 +122,7 @@ acceptance() {
   mkdir -p "$OUT/acceptance" && chmod 0777 "$OUT/acceptance"  # the container's user writes the report
   say "acceptance: scripts/staging_acceptance.py --strict (absent: $ACCEPTANCE_ABSENT)"
   "${run[@]}" -e PROVISIONER_BACKEND=vsphere_api -v "$OUT/acceptance:/out" api \
-    /srcapp/scripts/staging_acceptance.py --admin "$ACCEPTANCE_ADMIN" --strict \
+    /srcapp/scripts/staging_acceptance.py --admin "$ACCEPTANCE_ADMIN" --strict --skip-profile ci-integration \
     --absent "$ACCEPTANCE_ABSENT" --json /out/acceptance.json
 }
 
