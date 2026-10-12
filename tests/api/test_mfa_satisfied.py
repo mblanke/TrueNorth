@@ -74,3 +74,13 @@ def test_idp_claims_cannot_set_tn_session():
     token = token_from_idp_claims({"sub": "kc-1", "tn_session": "inprocess", "amr": ["pwd"]})
     assert token.tn_session == ""
     assert token.sub == "kc-1" and token.amr == ["pwd"]
+
+
+def test_config_cannot_make_pwd_count(monkeypatch):
+    monkeypatch.setenv("TN_MFA_AMR_VALUES", "otp,pwd,kba")
+    assert not mfa_policy.mfa_satisfied_claims(["pwd"], "")
+    assert not mfa_policy.mfa_satisfied_claims(["kba"], "")
+    assert mfa_policy.mfa_satisfied_claims(["otp"], "")
+    assert "'pwd'" in mfa_policy.configured_amr_problem()
+    monkeypatch.delenv("TN_MFA_AMR_VALUES")
+    assert mfa_policy.configured_amr_problem() is None

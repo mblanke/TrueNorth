@@ -30,6 +30,9 @@ DEFAULT_ACR_VALUES = "mfa"
 # Keycloak's numeric levels for "no context" and "password". They never prove MFA,
 # so they are dropped from TN_MFA_ACR_VALUES even if an operator lists them.
 NEVER_MFA_ACR = frozenset({"", "0", "1"})
+# amr entries that are a single factor (the password, knowledge-based): never MFA, whatever
+# TN_MFA_AMR_VALUES lists.
+NEVER_MFA_AMR = frozenset({"", "pwd", "kba"})
 
 
 def _csv(name: str, default: str) -> frozenset[str]:
@@ -40,13 +43,21 @@ def _csv(name: str, default: str) -> frozenset[str]:
 
 
 def amr_values() -> frozenset[str]:
-    """The amr entries that count as a second factor (empty entries dropped)."""
-    return _csv("TN_MFA_AMR_VALUES", DEFAULT_AMR_VALUES) - {""}
+    """The amr entries that count as a second factor; never "pwd" or "kba"."""
+    return _csv("TN_MFA_AMR_VALUES", DEFAULT_AMR_VALUES) - NEVER_MFA_AMR
 
 
 def acr_values() -> frozenset[str]:
     """The acr values that count as a second factor; never "", "0" or "1"."""
     return _csv("TN_MFA_ACR_VALUES", DEFAULT_ACR_VALUES) - NEVER_MFA_ACR
+
+
+def configured_amr_problem() -> str | None:
+    """Why TN_MFA_AMR_VALUES as configured is unsafe, or None. For production checks."""
+    bad = sorted((_csv("TN_MFA_AMR_VALUES", DEFAULT_AMR_VALUES) & NEVER_MFA_AMR) - {""})
+    if bad:
+        return f"TN_MFA_AMR_VALUES lists {', '.join(repr(b) for b in bad)}: those are a single factor"
+    return None
 
 
 def configured_acr_problem() -> str | None:

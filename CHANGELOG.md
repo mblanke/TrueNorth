@@ -255,7 +255,7 @@ course production with a local-model fallback, and the cleanup of unsupported su
 - **`acr="1"` is not MFA.** The zone MFA check counted any `acr` other than "" or "0" as a
   second factor; Keycloak issues `acr="1"` for every password sign-in. `app/mfa_policy.py`
   decides MFA from `amr` (`TN_MFA_AMR_VALUES`, default `otp,hwk,swk,mfa`) or an allow-listed
-  `acr` (`TN_MFA_ACR_VALUES`, default `mfa`); "", "0" and "1" never count.
+  `acr` (`TN_MFA_ACR_VALUES`, default `mfa`); "", "0" and "1" never count as acr, and `pwd`/`kba` never count as amr, whatever the settings list.
 - An IdP token can no longer carry the TrueNorth-only `tn_session` claim
   (`auth.token_from_idp_claims` strips it on HTTP and WebSocket).
 
