@@ -370,6 +370,15 @@ def test_held_courses_are_skipped_unless_included():
     assert d.tracks["C302"].status == "working"
 
 
+def test_c105_is_never_run_released_or_published():
+    """Its committed release is the CI/CATAPULT fixture and the course stays a draft."""
+    api = FakeApi()
+    d = driver(api, courses("C105"), include_held=True)
+    assert d.run() == 0
+    assert not api.posts()
+    assert d.tracks["C105"].status == "skipped" and "draft" in d.tracks["C105"].detail
+
+
 def test_stop_and_takeover_are_held_without_retrying():
     api = FakeApi(
         [run("stopped", "failed", "STOP: refused", name="C101"), run("takeover", "done", name="C102", slug="arc2-c102")]

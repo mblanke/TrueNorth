@@ -81,7 +81,7 @@ def test_a_changed_password_and_token_are_sealed_too(client, db_session):
 def test_the_connection_test_logs_in_with_the_real_password(client):
     conn = _conn(client)
     session = respx.post("https://vc.lab.test/api/session").mock(return_value=httpx.Response(200, json="tok"))
-    respx.get("https://vc.lab.test/api/vcenter/system/version").mock(
+    respx.get("https://vc.lab.test/api/appliance/system/version").mock(
         return_value=httpx.Response(200, json={"version": "8.0.3"}))
     respx.get("https://vc.lab.test/api/vcenter/host").mock(return_value=httpx.Response(200, json=[]))
     respx.delete("https://vc.lab.test/api/session").mock(return_value=httpx.Response(204))

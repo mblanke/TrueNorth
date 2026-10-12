@@ -72,6 +72,10 @@ MAX_REQUEST = 3800  # the Studio accepts 4000 characters
 ACCEPT_NOTES = "auto-accepted test content (staging)"
 SLUG_RE = re.compile(r"^arc2-[a-z0-9-]{1,60}$")
 MAX_RUN_BYTES = 300 * 1024 * 1024
+# Never run, released or published by the batch, whatever --courses says: C105's committed
+# release (content/releases/) is the CI/CATAPULT cmi5 fixture and the course stays a draft
+# (docs/content-library.md; scripts/load_content_inprocess.py keeps the same list).
+KEEP_DRAFT = frozenset({"C105"})
 
 # ── courses ─────────────────────────────────────────────────────────────
 
@@ -449,6 +453,8 @@ class Driver:
                     t.status, t.detail = WAITING, old.get("detail") or ""
             if c.held and not include_held:
                 t.status, t.detail = SKIPPED, "held for a cleared author (--include-held to try)"
+            if c.code in KEEP_DRAFT:
+                t.status, t.detail = SKIPPED, "kept as a draft (its release is a CI/CATAPULT fixture)"
             self.tracks[c.code] = t
 
     # state file

@@ -734,7 +734,9 @@ response rotates it; back-off on 429). Every step goes through the API:
    platform (or `--platform-id`), waiting for `published`.
 
 Courses held for a cleared author in `content/catalogue/production_register.csv` (C302, C305,
-C306, RMC C202, RMC C205, RMC C207, RMC C211) are skipped unless `--include-held`. It prints a
+C306, RMC C202, RMC C205, RMC C207, RMC C211) are skipped unless `--include-held`. C105 is
+always skipped (`KEEP_DRAFT`): its committed release is the CI/CATAPULT fixture and the
+course stays a draft ([content-library.md](content-library.md#courses)). It prints a
 status table and exits 1 if any course failed or needs review (held is not failure).
 `--dry-run` reads `/arc2/runs` and queues nothing (`--print-requests` shows each request);
 `--state <file> --resume` keeps the slugs of the runs it queued, retry counts and times across

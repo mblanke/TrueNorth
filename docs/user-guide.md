@@ -464,16 +464,43 @@ GET /exercises/{id}/aar/html
 | **Event Detail** | Click any event to see full JSON |
 | **Export** | Download matching events as CSV or JSON |
 
+### Search Syntax
+
+The search bar takes a small, closed language (`control-plane/api/app/search_backends/query.py`),
+not raw Lucene. Every term is ANDed:
+
+| Form | Meaning | Example |
+|------|---------|---------|
+| `field:value` | exact value of one field | `event_type:dns_query` |
+| `field:"two words"` | quoted value | `hostname:"ws 01"` |
+| `field:prefix*` | value starts with (the `*` only at the end) | `process_name:power*` |
+| `field:*` | the field is present | `mitre_technique:*` |
+| free text | words anywhere in the event; `-word` excludes | `powershell -notepad` |
+
+Not accepted (the search answers 422): `OR` or `NOT` next to field terms, wildcards
+anywhere but the end of a value (`*.corp.local`, `10.*.1`), regular expressions, fuzzy or
+proximity operators, and field names starting with `_`.
+
+Common fields: `event_type`, `hostname`, `username`, `source_ip`, `dest_ip`,
+`source_port`, `dest_port`, `protocol`, `action`, `severity`, `process_name`,
+`mitre_technique`. Event types the scenario injectors and sensors use include
+`dns_query`, `http_request`, `process_exec`, `simulated_execution`, `login_attempt`,
+`lateral_move`, `network_scan`, `email_phish`, `identity_new_admin_user` and `c2_beacon`.
+
 ### Common Queries
 
 | Purpose | Query |
 |---------|-------|
-| Find phishing emails | `event.action:email_received AND email.has_attachment:true` |
-| Find PowerShell execution | `process.name:powershell.exe` |
-| Find DNS queries to external domains | `event.action:dns_query AND NOT dns.question.name:*.corp.local` |
-| Find new user accounts | `event.action:user_created` |
-| Find lateral movement | `event.action:logon AND logon.type:10` |
-| Find data exfiltration | `event.action:http_request AND destination.port:443 AND NOT destination.ip:10.*` |
+| Find phishing emails | `event_type:email_phish` |
+| Find PowerShell execution | `event_type:process_exec process_name:powershell*` |
+| Find DNS queries from one host | `event_type:dns_query hostname:ws-01` |
+| Find new admin accounts | `event_type:identity_new_admin_user` |
+| Find brute-force sign-in attempts | `event_type:login_attempt` |
+| Find lateral movement over RDP | `event_type:lateral_move dest_port:3389` |
+| Find outbound HTTPS from one host | `event_type:http_request hostname:ws-01 dest_port:443` |
+| Find events mapped to ATT&CK | `mitre_technique:*` |
+| Find high-severity events, any host | `severity:high` |
+| Free text, excluding a word | `powershell -notepad` |
 
 ---
 

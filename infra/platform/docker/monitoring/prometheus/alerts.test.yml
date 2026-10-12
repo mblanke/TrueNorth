@@ -1,0 +1,167 @@
+# promtool unit tests for alerts.yml: `promtool test rules alerts.test.yml`.
+# tests/contracts/test_prometheus_rules.py runs them (promtool on PATH, or the pinned
+# prom/prometheus image through docker). They cover the rules whose metrics the host
+# writes (backup.sh, scripts/monitoring/host-probes.sh); each fires on the failure and
+# stays quiet when healthy.
+rule_files:
+  - alerts.yml
+
+evaluation_interval: 1m
+
+tests:
+  # ── Backup ───────────────────────────────────────────────────────────
+  - name: a failed backup fires BackupFailed, not BackupIncomplete
+    interval: 1m
+    input_series:
+      - series: 'truenorth_backup_last_run_success{instance="host:9100",job="node-exporter"}'
+        values: "0x5"
+      - series: 'truenorth_backup_last_exit_code{instance="host:9100",job="node-exporter"}'
+        values: "1x5"
+      - series: 'truenorth_backup_last_success_timestamp_seconds{instance="host:9100",job="node-exporter"}'
+        values: "0x5"
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: BackupFailed
+        exp_alerts:
+          - exp_labels: { severity: critical, instance: "host:9100", job: node-exporter }
+            exp_annotations:
+              summary: "The last backup FAILED"
+              description: "backup.sh kept no backup. See logs/backup.log and docs/runbooks/backup-restore.md."
+      - eval_time: 1m
+        alertname: BackupIncomplete
+        exp_alerts: []
+
+  - name: exit 5 (telemetry snapshot failed) is incomplete, not failed
+    interval: 1m
+    input_series:
+      - series: 'truenorth_backup_last_run_success{instance="host:9100",job="node-exporter"}'
+        values: "1x5"
+      - series: 'truenorth_backup_last_exit_code{instance="host:9100",job="node-exporter"}'
+        values: "5x5"
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: BackupFailed
+        exp_alerts: []
+      - eval_time: 1m
+        alertname: BackupIncomplete
+        exp_alerts:
+          - exp_labels: { severity: warning, instance: "host:9100", job: node-exporter }
+            exp_annotations:
+              summary: "The last backup kept the data but is incomplete (exit 5)"
+              description: "Exit 3: secrets not escrowed. Exit 5: the OpenSearch telemetry snapshot failed. The manifest says which."
+
+  - name: a good backup 25 h ago is fine, 27 h ago is stale
+    interval: 1m
+    input_series:
+      # The last success was at t=0 (the series' value is that timestamp, 0 s).
+      - series: 'truenorth_backup_last_success_timestamp_seconds{instance="host:9100",job="node-exporter"}'
+        values: "0x1700"
+      - series: 'truenorth_backup_last_run_success{instance="host:9100",job="node-exporter"}'
+        values: "1x1700"
+      - series: 'truenorth_backup_last_exit_code{instance="host:9100",job="node-exporter"}'
+        values: "0x1700"
+    alert_rule_test:
+      - eval_time: 25h
+        alertname: BackupStale
+        exp_alerts: []
+      - eval_time: 27h
+        alertname: BackupStale
+        exp_alerts:
+          - exp_labels: { severity: critical, instance: "host:9100", job: node-exporter }
+            exp_annotations:
+              summary: "No successful backup for more than 26 hours"
+              description: "The newest good backup is 1d 3h 0m 0s old. Check the truenorth-backup cron job and logs/backup.log."
+      - eval_time: 27h
+        alertname: BackupFailed
+        exp_alerts: []
+
+  # ── Host probes ──────────────────────────────────────────────────────
+  - name: OpenSearch red fires critical; yellow waits 15 minutes; green is quiet
+    interval: 1m
+    input_series:
+      - series: 'truenorth_opensearch_cluster_status{color="red",instance="host:9100",job="node-exporter"}'
+        values: "0x5 1x5 0x30"
+      - series: 'truenorth_opensearch_cluster_status{color="yellow",instance="host:9100",job="node-exporter"}'
+        values: "0x11 1x30"
+      - series: 'truenorth_probe_up{component="opensearch",instance="host:9100",job="node-exporter"}'
+        values: "1x40"
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: OpenSearchClusterRed
+        exp_alerts: []
+      - eval_time: 9m
+        alertname: OpenSearchClusterRed
+        exp_alerts:
+          - exp_labels: { severity: critical, color: red, instance: "host:9100", job: node-exporter }
+            exp_annotations:
+              summary: "OpenSearch cluster health is RED"
+              description: "At least one primary shard is unassigned: telemetry for those indices is unavailable. docs/operations.md \"CRIT: OpenSearch Cluster Red\"."
+      - eval_time: 20m
+        alertname: OpenSearchClusterYellow
+        exp_alerts: []
+      - eval_time: 30m
+        alertname: OpenSearchClusterYellow
+        exp_alerts:
+          - exp_labels: { severity: warning, color: yellow, instance: "host:9100", job: node-exporter }
+            exp_annotations:
+              summary: "OpenSearch cluster health is YELLOW for 15 minutes"
+              description: "A replica shard is unassigned. The platform runs replicas=0, so this usually means an index was created with replicas by hand. docs/operations.md \"WARN: OpenSearch Cluster Yellow\"."
+      - eval_time: 30m
+        alertname: OpenSearchUnreachable
+        exp_alerts: []
+
+  - name: components down fire after their hold time
+    interval: 1m
+    input_series:
+      - series: 'truenorth_probe_up{component="opensearch",instance="host:9100",job="node-exporter"}'
+        values: "0x20"
+      - series: 'truenorth_probe_up{component="moodle",instance="host:9100",job="node-exporter"}'
+        values: "0x20"
+      - series: 'truenorth_probe_up{component="arc2-runner",instance="host:9100",job="node-exporter"}'
+        values: "1x2 0x20"
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: OpenSearchUnreachable
+        exp_alerts:
+          - exp_labels: { severity: critical, component: opensearch, instance: "host:9100", job: node-exporter }
+            exp_annotations:
+              summary: "OpenSearch does not answer _cluster/health"
+              description: "Telemetry ingestion and search are down. docs/operations.md \"CRIT: OpenSearch Cluster Red\"."
+      - eval_time: 6m
+        alertname: MoodleDown
+        exp_alerts: []
+      - eval_time: 11m
+        alertname: MoodleDown
+        exp_alerts:
+          - exp_labels: { severity: critical, component: moodle, instance: "host:9100", job: node-exporter }
+            exp_annotations:
+              summary: "The Moodle node is down or unhealthy"
+              description: "Its container is not running or its healthcheck fails: mixed Moodle courses, LTI launches and grade return are down. docs/operations.md \"CRIT: Moodle Down\"."
+      - eval_time: 6m
+        alertname: Arc2RunnerDown
+        exp_alerts: []
+      - eval_time: 9m
+        alertname: Arc2RunnerDown
+        exp_alerts:
+          - exp_labels: { severity: warning, component: arc2-runner, instance: "host:9100", job: node-exporter }
+            exp_annotations:
+              summary: "The ARC² Course Studio runner is not active"
+              description: "systemd unit truenorth-arc2-runner is not active: Studio jobs queue but do not run. docs/operations.md \"WARN: ARC² Runner Down\"."
+
+  - name: probes that stop refreshing their file fire HostProbesStale
+    interval: 1m
+    input_series:
+      # node_textfile_mtime_seconds stays at t=0 while time() advances.
+      - series: 'node_textfile_mtime_seconds{file="/textfile/truenorth_probes.prom",instance="host:9100",job="node-exporter"}'
+        values: "0x1700"
+    alert_rule_test:
+      - eval_time: 9m
+        alertname: HostProbesStale
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: HostProbesStale
+        exp_alerts:
+          - exp_labels: { severity: warning, file: "/textfile/truenorth_probes.prom", instance: "host:9100", job: node-exporter }
+            exp_annotations:
+              summary: "Host probes have not run for 10 minutes"
+              description: "truenorth_probes.prom is stale: the OpenSearch, Moodle and ARC² runner alerts are blind. Check the truenorth-host-probes cron job and host:9100's logs/host-probes.log."

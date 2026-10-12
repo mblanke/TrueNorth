@@ -287,6 +287,14 @@ def require_permission(*permissions: Permission) -> Callable[..., Any]:
     return _check
 
 
+# Curriculum data that every tenant shares — the QSP qualification spine
+# (routers/qsp.py, ``SPINE_WRITE``) and the competency catalogue (routers/competency.py)
+# — is changed only at platform level: ``course:author`` plus the platform-level
+# ``tenant:read`` (the convention /audit-log uses). A tenant author (an instructor) builds
+# courses on it but cannot rewrite it for everyone else.
+PLATFORM_CURRICULUM_WRITE: tuple[Permission, ...] = (Permission.COURSE_AUTHOR, Permission.TENANT_READ)
+
+
 def require_any_permission(*permissions: Permission) -> Callable[..., Any]:
     """FastAPI dependency — user must hold **at least one** of the listed permissions.
 

@@ -6,7 +6,7 @@ dashboards (control-plane/api/app/hypervisor_backends/vsphere.py) and the instal
 tn_vsphere role read, so this serves exactly those, from a fixed inventory:
 
     POST/DELETE /api/session                 any username/password
-    GET  /api/vcenter/system/version
+    GET  /api/appliance/system/version       (and /api/vcenter/system/version, the old sim-only path)
     GET  /api/vcenter/{host,vm,datacenter,cluster,datastore,network}  (?names= ?hosts= ?types=)
     POST /api/vcenter/vm                     403: it builds nothing
 
@@ -126,8 +126,10 @@ class Handler(BaseHTTPRequestHandler):
         if not self._authed():
             return self._send(401, {"error_type": "UNAUTHENTICATED"})
         query = {k: ",".join(v).split(",") for k, v in parse_qs(url.query).items()}
+        if url.path.rstrip("/") == "/api/appliance/system/version":  # what vCenter 7.0U2+ serves
+            return self._send(200, VERSION)
         kind = url.path.removeprefix("/api/vcenter/").rstrip("/")
-        if kind == "system/version":
+        if kind == "system/version":  # the sim's original, non-vCenter path; kept for old clients
             return self._send(200, VERSION)
         if kind == "host":
             return self._send(200, _filter(HOSTS, query))
