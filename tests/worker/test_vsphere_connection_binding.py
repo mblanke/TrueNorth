@@ -263,6 +263,35 @@ class TestTheBuildsVcenterIsKept:
         range_sweep.health_checks(rows)
         assert world.output(legacy)["connection"] == {"id": cid, "host": "https://vc-a.test"}
 
+    def test_a_legacy_range_whose_first_destroy_deleted_its_vms_then_died_can_be_retried(self, world, vc,
+                                                                                         monkeypatch):
+        """PR #151 CI: the retry of a destroy whose first attempt removed every VM must not hit
+        "all missing + unrecorded -> refuse". The first attempt's ownership check found the
+        range's VMs and backfilled the record (through the real binding and database) before
+        deleting them, so the retry, reading the range's output afresh as destroy_range does,
+        is bound and finishes."""
+        cid = world.add_conn("vc-a.test")
+        world.run(sa.update(hypervisor_connections).values(datacenter="DC-Lab"))  # the fake vCenter's
+        web, db_vm = _tagged(vc, "vm-1", RANGE_ID, f"{R8}-web"), _tagged(vc, "vm-2", RANGE_ID, f"{R8}-db")
+        legacy = {"vms": [{"name": web.name, "vm_id": "vm-1"}, {"name": db_vm.name, "vm_id": "vm-2"}],
+                  "networks": [{"name": "lan", "portgroup": f"tn-{R8}-v100"}]}
+        world.run(sa.insert(ranges).values(id=RANGE_ID, tenant_id=TENANT, name="r", state="destroying",
+                                           provisioner_backend="vsphere_api", provisioner_output=json.dumps(legacy)))
+
+        def provisioner():  # what destroy_range does on each attempt: the output read afresh
+            prov = base_tasks._get_backend("vsphere_api", RANGE_ID, output=world.output(RANGE_ID), teardown=True)
+            prov._transport, prov._vm = httpx.MockTransport(vc.handler), lambda si, vm_id: vc.vms[vm_id]
+            return prov
+
+        first = provisioner()
+        monkeypatch.setattr(first, "_teardown_sync", MagicMock(side_effect=RuntimeError("worker died")))
+        assert _run(first.destroy(RANGE_ID, world.output(RANGE_ID))).errors  # the VMs went; then it died
+        assert not vc.vms
+        assert world.output(RANGE_ID)["connection"] == {"id": cid, "host": "https://vc-a.test"}  # backfilled
+
+        retry = _run(provisioner().destroy(RANGE_ID, world.output(RANGE_ID)))
+        assert retry.status == "ok", retry.errors
+
     def test_a_destroy_that_finds_none_of_its_vms_marks_the_range(self, world):
         world.add_conn("vc-a.test")
         rid = world.add_range(state="destroying", output={"vms": [{"name": "a", "vm_id": "vm-1"}]})

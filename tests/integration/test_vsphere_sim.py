@@ -291,7 +291,9 @@ def test_a_two_network_range_lifecycle(env, si, range_id):
         assert vm.parent.name == r8 and vm.parent.parent.name == "ranges"
     assert {v["vm_id"] for v in _run(prov.find_vms(f"{range_id}-"))} == {v["vm_id"] for v in built.vms}
 
-    output = {"vms": built.vms, "networks": built.networks}
+    # What provision_range stores (range_alloc.stored_output): with the vCenter it was built
+    # on, which record_build wrote before the first VM existed (worker/connection_binding.py).
+    output = {"vms": built.vms, "networks": built.networks, "connection": prov.connection_record()}
     stopped = _run(mod.VsphereAPIProvisioner().stop(range_id, output))
     assert stopped.status == "ok" and stopped.vms_stopped == 2, stopped.errors
     assert {vim.VirtualMachine(v["vm_id"], si._stub).runtime.powerState for v in built.vms} == {"poweredOff"}
@@ -310,6 +312,11 @@ def test_a_two_network_range_lifecycle(env, si, range_id):
     assert _run(mod.VsphereAPIProvisioner().find_vms(f"{range_id}-")) == []
     again = _run(mod.VsphereAPIProvisioner().destroy(range_id, output))
     assert again.status == "ok", again.errors  # a retried destroy finds everything gone
+    # Without the record (a range from before records, never confirmed), "every VM gone"
+    # may just as well be the wrong vCenter: refused, not recorded destroyed.
+    unrecorded = {k: v for k, v in output.items() if k != "connection"}
+    refused = _run(mod.VsphereAPIProvisioner().destroy(range_id, unrecorded))
+    assert refused.status == "failed" and "does not record which vCenter" in refused.errors[0]
 
 
 def test_a_vlan_another_port_group_carries_builds_nothing(env, si, range_id):
