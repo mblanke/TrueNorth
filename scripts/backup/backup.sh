@@ -24,6 +24,9 @@
 #                               root through a throwaway container (lib.sh), numeric owners
 #                               (tn-arc2:tn-arc2-runs) and modes kept. The runner is not
 #                               stopped; a job in progress may be caught half-written.
+#   audit-archive/...           only with AUDIT_ARCHIVE_PATH (the installer sets it): the
+#                               signed daily audit exports (ADR 0011), copied as they are and
+#                               every signature and file hash verified with openssl.
 #   manifest.json, SHA256SUMS
 #
 # Not backed up, on purpose (docs/runbooks/backup-restore.md):
@@ -78,11 +81,16 @@
 #   ARC2_RUNS_DIR            optional: the ARC² runs root (tn_arc2_runs_dir). Set but absent:
 #                            recorded as "not-installed". ARC2_RUNNER_UNIT (default
 #                            truenorth-arc2-runner) is only read to record its state.
+#   AUDIT_ARCHIVE_PATH       optional: the audit export archive (tn_audit_archive_path).
+#                            Set but absent: recorded as "not-installed".
 #
 # Exit codes: 0 ok; 1 failed (no backup kept); 3 data backed up but secrets NOT
 # escrowed (configure BACKUP_ESCROW_PUBKEY or BACKUP_ESCROW=out-of-band); 5 data and
 # secrets backed up, but the OpenSearch snapshot (or its pruning) failed: the manifest
-# says which, and restore.sh restores everything else. 3 wins when both apply (both alert).
+# says which, and restore.sh restores everything else; 6 everything backed up, but the
+# audit export archive does NOT verify (a signature or file hash is wrong: tampering or
+# damage; the copy is kept as evidence). Precedence when several apply: 3, then 6, then 5
+# (each alerts).
 # Every failure also raises an alert (stderr + syslog, webhook if configured).
 # =============================================================================
 set -euo pipefail
@@ -261,6 +269,36 @@ if [[ -n "${ARC2_RUNS_DIR:-}" ]]; then
     fi
 fi
 
+# ── 2d. Audit export archive (optional) ──────────────────────────────────────
+# The signed daily exports of audit_logs (worker/audit_tasks.py, ADR 0011), copied as they
+# are, then every manifest's signature and file hash verified with openssl. A copy that does
+# not verify is kept (it is evidence) but alerted, and the exit code becomes 6.
+CURRENT_STEP="audit"
+AUDIT_JSON='{"status":"not-configured"}'
+AUDIT_FAILED=0
+AUDIT_ERROR=""
+if [[ -n "${AUDIT_ARCHIVE_PATH:-}" ]]; then
+    if [[ -d "${AUDIT_ARCHIVE_PATH}" ]]; then
+        mkdir -p "${WORK_PATH}/audit-archive"
+        cp -a "${AUDIT_ARCHIVE_PATH}/." "${WORK_PATH}/audit-archive/"
+        find "${WORK_PATH}/audit-archive" -type f -name '*.tmp' -delete
+        n_files="$(find "${WORK_PATH}/audit-archive" -type f | grep -c . || true)"
+        if verdict="$(audit_archive_verify "${WORK_PATH}/audit-archive" 2>"${WORK_PATH}/.audit.err")"; then
+            AUDIT_JSON="{\"status\":\"backed-up\",\"dir\":\"audit-archive\",\"files\":${n_files},\"manifests\":${verdict%% *},\"last_day\":$(json_str "${verdict#* }"),\"verified\":true}"
+            log "INFO" "  audit: ${n_files} files, ${verdict%% *} manifests through ${verdict#* }, signatures and hashes verified"
+        else
+            AUDIT_FAILED=1
+            AUDIT_ERROR="$(head -c 300 "${WORK_PATH}/.audit.err" | tr -d '\r' | tr '\n\t' '  ')"
+            AUDIT_JSON="{\"status\":\"backed-up\",\"dir\":\"audit-archive\",\"files\":${n_files},\"verified\":false,\"error\":$(json_str "${AUDIT_ERROR}")}"
+            log "WARN" "  audit: archive copied but does NOT verify: ${AUDIT_ERROR}"
+        fi
+        rm -f "${WORK_PATH}/.audit.err"
+    else
+        AUDIT_JSON="{\"status\":\"not-installed\",\"reason\":$(json_str "AUDIT_ARCHIVE_PATH ${AUDIT_ARCHIVE_PATH} does not exist")}"
+        log "WARN" "  audit: AUDIT_ARCHIVE_PATH ${AUDIT_ARCHIVE_PATH} does not exist; no audit exports backed up"
+    fi
+fi
+
 # ── 3. OpenSearch (optional) ─────────────────────────────────────────────────
 # Telemetry must never cost the backup of the data: a failed snapshot (or prune) is recorded
 # in the manifest, alerted, and turns the exit code into 5; postgres, minio and the escrow
@@ -391,6 +429,7 @@ cat >"${WORK_PATH}/manifest.json" <<EOF
   "opensearch": ${OS_JSON},
   "moodle": ${MOODLE_JSON},
   "arc2": ${ARC2_JSON},
+  "audit_archive": ${AUDIT_JSON},
   "redis": {"status": "not-backed-up", "reason": "transient broker/cache; restoring would replay tasks"},
   "escrow": ${ESCROW_JSON}
 }
@@ -423,9 +462,15 @@ log "INFO" "Backup complete: ${FINAL_PATH} ($(du -sh "${FINAL_PATH}" | cut -f1))
 if (( OS_FAILED )); then
     alert "backup ${BACKUP_NAME} completed, but the OpenSearch telemetry snapshot step failed: ${OS_ERROR}"
 fi
+if (( AUDIT_FAILED )); then
+    alert "backup ${BACKUP_NAME} completed, but the audit export archive does NOT verify: ${AUDIT_ERROR}"
+fi
 if (( EXIT_CODE == 3 )); then
     alert "backup ${BACKUP_NAME} completed WITHOUT secrets escrow; TN_SECRETS_KEY is not recoverable from it"
     exit 3
+fi
+if (( AUDIT_FAILED )); then
+    exit 6
 fi
 if (( OS_FAILED )); then
     exit 5

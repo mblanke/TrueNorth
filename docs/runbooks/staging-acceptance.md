@@ -92,7 +92,7 @@ expected role — `instructor.demo`, `trainee1.demo` (the participant Student),
 
 | Module | Checks |
 |---|---|
-| infra | `/health/live`, `/health/ready`; `/health/deep` with all seven components (OpenSearch yellow passes: a single node cannot place replicas; anything else not healthy fails); `/metrics` 401 without `METRICS_SCRAPE_TOKEN`, Prometheus text with it; through nginx: `/health` and `/api/health` 200, `/api/metrics` 404; `backup.env` present and sets `BACKUP_DIR` |
+| infra | `/health/live`, `/health/ready`; `/health/deep` with all seven components plus `audit_export` (the signed daily audit export is current; ADR 0011) (OpenSearch yellow passes: a single node cannot place replicas; anything else not healthy fails); `/metrics` 401 without `METRICS_SCRAPE_TOKEN`, Prometheus text with it; through nginx: `/health` and `/api/health` 200, `/api/metrics` 404; `backup.env` present and sets `BACKUP_DIR` |
 | platform-core | a user for each role; Student and Observer refused staff routes (403: audit log, users, booking, ranges, exercises), instructor refused AI config; tenant scoping (every role in the admin's tenant, rows carry it, foreign ids 404); the audit log records the exercise's create and start; demo accounts' subjects match Keycloak (needs the admin credential) |
 | web-shell | the Angular shell served through nginx for `/`, `/dashboard`, `/learning/courses`; for 17 main routes, the API endpoint each page loads answers each role as `app/rbac.py` says (50 role checks) |
 | content | all shipped course files (`content/courses/*.yaml`, 44) have their catalogue course with modules; every shipped template, scenario and Sigma rule is loaded; the VM image catalogue is not empty |

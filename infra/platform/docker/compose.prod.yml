@@ -768,9 +768,18 @@ services:
         -n scenario@%h
         --max-tasks-per-child=1000
         --without-heartbeat
-    environment: *worker-env
+    environment:
+      <<: *worker-env
+      # Audit log integrity (ADR 0011, worker/audit_tasks.py): the `default` queue runs the
+      # daily signed export and retention, so only this worker holds the signing seed and
+      # the archive. Not the api, not beat, not the other workers.
+      AUDIT_SIGNING_SEED: ${AUDIT_SIGNING_SEED:-}
+      AUDIT_ARCHIVE_DIR: /var/lib/truenorth/audit-archive
+      AUDIT_ARCHIVE_BACKEND: ${AUDIT_ARCHIVE_BACKEND:-filesystem}
+      AUDIT_HOT_RETENTION_DAYS: ${AUDIT_HOT_RETENTION_DAYS:-90}
     volumes:
       - ${OPENSEARCH_CERTS_DIR:-./opensearch/certs}/ca.pem:/etc/truenorth/opensearch-ca.pem:ro
+      - ${AUDIT_ARCHIVE_PATH:-/var/lib/truenorth/audit-archive}:/var/lib/truenorth/audit-archive
     depends_on:
       postgres:
         condition: service_healthy

@@ -716,6 +716,7 @@ DEEP_COMPONENTS = {
     "celery": None,
     "ai_orchestrator": None,
     "keycloak": "keycloak",
+    "audit_export": None,  # ADR 0011: the signed daily export is current
 }
 
 

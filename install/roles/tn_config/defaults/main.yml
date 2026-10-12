@@ -40,6 +40,10 @@ tn_generated_secrets:
   # Without AD: the password of tn_smoke_local_user, the non-privileged account
   # 95-smoke-test signs in as (the bootstrap admin needs a second factor since v1.2.0).
   - { name: smoke_user_password, value: "{{ vault_smoke_user_password | default('') }}" }
+  # Derives the Ed25519 key that signs the daily audit export (ADR 0011). Passed to the
+  # worker that exports (worker-scenario) and to nothing else. Changing it starts a new
+  # key_id (docs/runbooks/key-rotation.md); old public keys stay in the archive.
+  - { name: audit_signing_seed, value: "{{ vault_audit_signing_seed | default('') }}" }
   # Bearer token the api and workers present to the AI orchestrator (and Prometheus,
   # for its /metrics). TN_ENV=production refuses anything shorter than 32 characters.
   - { name: ai_service_token, value: "{{ vault_ai_service_token | default('') }}" }

@@ -110,3 +110,21 @@ The API never holds the Keycloak master admin: it calls the Admin API (`/ad-sync
 
 If a secret was **exposed**, treat it as an incident ([incident.md](incident.md)): rotate
 first, then look for copies (logs, `docs/`, old backups, CI artifacts).
+
+## Audit export signing seed (`audit_signing_seed`)
+
+The seed of the Ed25519 key that signs the daily audit export (ADR 0011). Only
+worker-scenario has it (`AUDIT_SIGNING_SEED`). It is not a first-start secret: rotate it
+by setting `vault_audit_signing_seed` (32+ characters) and re-running
+
+```bash
+ansible-playbook playbooks/30-config.yml --ask-vault-pass   # persists it (UPDATED)
+ansible-playbook playbooks/50-stack-up.yml --ask-vault-pass # recreates worker-scenario
+ansible-playbook playbooks/99-validate.yml                  # prints the new fingerprint
+```
+
+The next export is signed with the new key and carries its new `key_id`; its public key is
+written to `keys/<key_id>.pub.pem` beside the old ones, which stay, so every older day still
+verifies. The hash chain continues across the change. Record the new fingerprint out of
+band, as at install. Rotate after any suspected host compromise; a seed that leaked lets
+whoever has it sign a forged chain (the recorded fingerprints show which key signed what).

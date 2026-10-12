@@ -210,6 +210,9 @@
       MOODLE_COMPOSE_FILE={{ tn_moodle_compose_file }}
       MOODLE_ENV_FILE={{ tn_moodle_env_file }}
       {% endif %}
+      # The signed audit export archive (ADR 0011): copied into every backup and verified
+      # (exit 6 when a signature or hash does not verify); restored by restore.sh.
+      AUDIT_ARCHIVE_PATH={{ tn_audit_archive_path }}
       # Prometheus textfile metrics (node_exporter, compose.prod.yml): backup.sh writes
       # truenorth_backup.prom, scripts/monitoring/host-probes.sh truenorth_probes.prom.
       METRICS_DIR={{ tn_data_root }}/metrics

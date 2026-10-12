@@ -97,19 +97,31 @@ def test_exactly_one_beat_sends_the_periodic_tasks():
     beat = SERVICES["beat"]
     assert beat["image"] == SERVICES["worker-scenario"]["image"], "beat runs the worker image (same app, same schedule)"
     assert beat.get("deploy", {}).get("replicas", 1) == 1
-    assert beat["environment"] == SERVICES["worker-scenario"]["environment"]
+    # The same environment as the worker, except the audit export's signing seed and
+    # archive, which only worker-scenario (the exporter) holds (ADR 0011).
+    scenario_env = {k: v for k, v in SERVICES["worker-scenario"]["environment"].items() if not k.startswith("AUDIT_")}
+    assert beat["environment"] == scenario_env
+    assert not any(k.startswith("AUDIT_") for k in beat["environment"])
     assert "--schedule=/tmp/" in _command(beat), "the schedule file lives on the tmpfs (read-only root)"
     assert "/tmp" in " ".join(beat.get("tmpfs") or [])
 
 
 def test_beat_schedule_names_contracted_tasks_that_expire():
     schedule = worker_app.conf.beat_schedule
+    # Beat-only daily jobs the API never dispatches (no API contract); routed by name.
+    daily = {"worker.audit_tasks.export_audit_days", "worker.audit_tasks.enforce_audit_retention"}
     assert {e["task"] for e in schedule.values()} == {
         "worker.tasks.health_check_ranges",
         "worker.tasks.collect_range_metrics",
+        *daily,
     }
     contracted = {c.qualified_name for c in TASKS.values()}
     for name, entry in schedule.items():
+        if entry["task"] in daily:
+            # A missed daily run is caught up by the next one; drop it within the day.
+            assert 0 < entry["options"]["expires"] <= 24 * 3600, name
+            assert worker_app.conf.task_routes["worker.audit_tasks.*"] == {"queue": "default"}
+            continue
         assert entry["task"] in contracted, name
         # A run nobody picked up is dropped before the next is due: no backlog of stale
         # checks while the workers are down (noeviction would keep them all).

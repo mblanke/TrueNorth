@@ -24,6 +24,11 @@
 #      restored DB passwords authenticate over TCP while the fresh ones do not;
 #   9. tear down (always, via trap).
 #
+# Audit export archive (ADR 0011): seeded with five days of signed exports by the worker's
+# own code (drill_audit_archive.py, needs python3 with cryptography and SQLAlchemy), backed
+# up and verified by backup.sh, deleted in the wipe, restored by restore.sh, then its
+# signatures, hashes and chain verified again; a tampered copy makes backup.sh exit 6.
+#
 # OpenSearch (DRILL_OPENSEARCH=1, the default): opensearch joins postgres and minio, with
 # the snapshot repository bind-mounted from the work dir as compose.prod.yml binds it from
 # TN_DATA_ROOT (so it survives `down -v`, as the host directory does), registered on every
@@ -78,6 +83,8 @@ export COMPOSE_PROJECT_NAME="${DRILL_PROJECT}"
 export COMPOSE_FILE="${ROOT}/infra/platform/docker/compose.prod.yml:${WORK}/drill.override.yml"
 export ENV_FILE="${WORK}/env.production"
 export BACKUP_DIR="${WORK}/backups"
+export AUDIT_ARCHIVE_PATH="${WORK}/audit-archive"
+AUDIT_PY="${PYTHON:-python3}"
 export BACKUP_ESCROW_PUBKEY="${WORK}/escrow.pub"
 # The drill's backups are a few MB; the free-space floor is for real hosts.
 export BACKUP_MIN_FREE_GB="${BACKUP_MIN_FREE_GB:-1}"
@@ -358,15 +365,25 @@ fi
 
 snapshot >"${WORK}/before.txt"
 
+# The signed audit export archive, written by the worker's export code.
+"${AUDIT_PY}" "${HERE}/drill_audit_archive.py" seed "${AUDIT_ARCHIVE_PATH}" >/dev/null \
+    || die "seeding the audit export archive failed (python3 with cryptography and SQLAlchemy?)"
+AUDIT_BEFORE="$("${AUDIT_PY}" "${HERE}/drill_audit_archive.py" verify "${AUDIT_ARCHIVE_PATH}")" \
+    || die "the seeded audit archive does not verify: ${AUDIT_BEFORE}"
+
 # ── 3. Backup ────────────────────────────────────────────────────────────────
 log "INFO" "Backup..."
 "${HERE}/backup.sh"
 BACKUP="$(find "${BACKUP_DIR}" -mindepth 1 -maxdepth 1 -type d -name 'truenorth-backup-*' | sort | tail -n 1)"
 [[ -n "${BACKUP}" ]] || die "backup.sh produced no backup directory"
+grep -q '"audit_archive": {"status":"backed-up","dir":"audit-archive","files":[0-9]*,"manifests":5,' "${BACKUP}/manifest.json" \
+    || die "the backup's manifest does not record a verified audit archive of 5 manifests"
+grep -q '"verified":true}' "${BACKUP}/manifest.json" || die "backup.sh did not verify the audit archive"
 
 # ── 4. Wipe ──────────────────────────────────────────────────────────────────
 log "INFO" "Wipe (down -v) and bring up empty..."
 dc down -v >/dev/null 2>&1
+rm -rf "${AUDIT_ARCHIVE_PATH}"
 start_stack
 # Telemetry written after the backup: a restore replaces the indices, so this must go.
 if [[ "${DRILL_OPENSEARCH}" == "1" ]]; then os_bulk range-drill-late 5; fi
@@ -384,6 +401,10 @@ snapshot >"${WORK}/after.txt"
 if ! diff -u "${WORK}/before.txt" "${WORK}/after.txt" >&2; then
     die "restored state differs from the seeded state"
 fi
+# The audit archive came back whole: signatures, hashes and the chain (worker.audit_verify).
+AUDIT_AFTER="$("${AUDIT_PY}" "${HERE}/drill_audit_archive.py" verify "${AUDIT_ARCHIVE_PATH}")" \
+    || die "the restored audit archive does not verify: ${AUDIT_AFTER}"
+[[ "${AUDIT_AFTER}" == "${AUDIT_BEFORE}" ]] || die "the restored audit archive differs: ${AUDIT_AFTER} vs ${AUDIT_BEFORE}"
 "${HERE}/escrow-open.sh" "${BACKUP}" "${WORK}/escrow.key" "${WORK}/env.recovered" 2>/dev/null
 cmp -s "${ENV_FILE}" "${WORK}/env.recovered" || die "escrow did not decrypt to the original env file"
 grep -q '^TN_SECRETS_KEY=' "${WORK}/env.recovered" || die "escrowed env has no TN_SECRETS_KEY"
@@ -402,6 +423,20 @@ fail_rc=$?
 set -e
 (( fail_rc != 0 )) || die "backup.sh with a missing env file exited 0"
 grep -q 'ALERT\|ERROR' "${WORK}/fail.err" || die "backup.sh failure produced no alert on stderr"
+
+# A tampered audit archive: the backup is kept (evidence) but exits 6 with an alert.
+cp -a "${AUDIT_ARCHIVE_PATH}" "${WORK}/audit-archive.good"
+tampered="$(find "${AUDIT_ARCHIVE_PATH}" -name '*.jsonl.gz' | sort | head -n 1)"
+printf 'x' >>"${tampered}"
+sleep 1  # distinct timestamp
+set +e
+"${HERE}/backup.sh" >/dev/null 2>"${WORK}/audit-fail.err"
+audit_rc=$?
+set -e
+(( audit_rc == 6 )) || die "backup.sh with a tampered audit archive exited ${audit_rc}, not 6"
+grep -q 'audit export archive does NOT verify' "${WORK}/audit-fail.err" || die "no alert for the tampered audit archive"
+rm -rf "${AUDIT_ARCHIVE_PATH}" && mv "${WORK}/audit-archive.good" "${AUDIT_ARCHIVE_PATH}"
+# Not the latest backup for what follows: step 8 restores ${BACKUP} by name.
 
 # ── 8. A REINSTALLED host: fresh secrets, then the backup's restored over them ──
 # The disaster case: the host was rebuilt and the installer ran again, so the stack came
@@ -525,6 +560,7 @@ fi
     sed 's/^/  /' "${WORK}/after.txt"
     echo "escrow: decrypts to the original env file; TN_SECRETS_KEY not in plain text"
     echo "second backup after restore: ok; failure path: exit ${fail_rc} with alert"
+    echo "audit archive: 5 signed exports backed up and verified, restored, chain re-verified; tampered copy exits 6"
     echo "reinstalled host: escrowed secrets restored over fresh ones (refused without --force),"
     echo "  data restored, restored DB passwords authenticate over TCP and the fresh ones do not"
     echo "opensearch: ${OS_SUMMARY}"

@@ -105,6 +105,7 @@ def test_backup_env_names_the_repository_by_default():
         "tn_backup_min_free_gb": 20,
         "tn_backup_max_total_gb": 200,
         "tn_opensearch_snapshot_keep": defaults["tn_opensearch_snapshot_keep"],
+        "tn_audit_archive_path": "/srv/truenorth/audit-archive",
     }
     on = _render(
         task["ansible.builtin.copy"]["content"],

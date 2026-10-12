@@ -313,3 +313,37 @@ json_str() {
     s="${s//\\/\\\\}"; s="${s//\"/\\\"}"
     printf '"%s"' "$s"
 }
+
+# audit_archive_verify <dir>: every signed audit export in <dir> (worker/audit_export.py,
+# ADR 0011) verifies with OpenSSL 3: the manifest's Ed25519 signature with
+# keys/<key_id>.pub.pem, and its file's SHA-256. Prints "<manifests> <last day>" when all
+# verify; otherwise the first problem on stderr and status 1. The hash chain across days is
+# walked by `python -m worker.audit_verify` (drill.sh). Manifests are compact JSON, one
+# line, so sed reads their fields.
+audit_archive_verify() {
+    local dir="$1" n=0 last="" m key file want got day
+    while IFS= read -r m; do
+        [[ -n "$m" ]] || continue
+        key="$(sed -n 's/.*"key_id":"\([0-9a-f]*\)".*/\1/p' "$m")"
+        file="$(sed -n 's/.*"file":"\([^"]*\)".*/\1/p' "$m")"
+        want="$(sed -n 's/.*"file_sha256":"\([0-9a-f]*\)".*/\1/p' "$m")"
+        day="$(sed -n 's/.*"day":"\([0-9-]*\)".*/\1/p' "$m")"
+        if [[ -z "$key" || -z "$file" || -z "$want" ]]; then
+            echo "${m#"${dir}"/}: not an audit export manifest" >&2
+            return 1
+        fi
+        if ! "${OPENSSL:-openssl}" pkeyutl -verify -pubin -inkey "${dir}/keys/${key}.pub.pem" -rawin \
+                -in "$m" -sigfile "${m}.sig" >/dev/null 2>&1; then
+            echo "${m#"${dir}"/}: signature does not verify (key ${key})" >&2
+            return 1
+        fi
+        got="$("${OPENSSL:-openssl}" dgst -sha256 -r "${dir}/${file}" 2>/dev/null | cut -d' ' -f1)"
+        if [[ "$got" != "$want" ]]; then
+            echo "${file}: SHA-256 does not match its manifest" >&2
+            return 1
+        fi
+        n=$((n + 1))
+        if [[ "$day" > "$last" ]]; then last="$day"; fi
+    done < <(find "$dir" -type f -name '*.manifest.json' | sort)
+    printf '%s %s\n' "$n" "${last:-none}"
+}

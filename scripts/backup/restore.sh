@@ -29,6 +29,9 @@
 #      a rebuilt host gave tn-arc2 other ids). The ARC² runner must be stopped first
 #      (`sudo systemctl stop truenorth-arc2-runner`); the restore refuses while it is active
 #      and does not start it again;
+#   2b. audit archive (when the backup holds audit-archive/ and AUDIT_ARCHIVE_PATH is set
+#      here): copied back over AUDIT_ARCHIVE_PATH before the databases (its files win over
+#      same-named ones; newer exports already there are kept), owners and modes kept;
 #   6. start the services stopped in step 2 again (unless --no-restart).
 #
 # It does NOT restore the env file: if it was lost, recover it from the escrow
@@ -43,10 +46,10 @@ umask 077
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 TN_LOG_TAG="truenorth-restore"
 
-usage() { echo "Usage: $0 <backup-dir> [--force] [--no-restart] [--skip-postgres] [--skip-minio] [--skip-opensearch] [--skip-moodle] [--skip-arc2]" >&2; exit 2; }
+usage() { echo "Usage: $0 <backup-dir> [--force] [--no-restart] [--skip-postgres] [--skip-minio] [--skip-opensearch] [--skip-moodle] [--skip-arc2] [--skip-audit]" >&2; exit 2; }
 [[ $# -ge 1 ]] || usage
 BACKUP_PATH="$1"; shift
-FORCE=0; RESTART=1; DO_PG=1; DO_MINIO=1; DO_OS=1; DO_MOODLE=1; DO_ARC2=1
+FORCE=0; RESTART=1; DO_PG=1; DO_MINIO=1; DO_OS=1; DO_MOODLE=1; DO_ARC2=1; DO_AUDIT=1
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --force) FORCE=1 ;;
@@ -56,6 +59,7 @@ while [[ $# -gt 0 ]]; do
         --skip-opensearch) DO_OS=0 ;;
         --skip-moodle) DO_MOODLE=0 ;;
         --skip-arc2) DO_ARC2=0 ;;
+        --skip-audit) DO_AUDIT=0 ;;
         *) usage ;;
     esac
     shift
@@ -141,6 +145,16 @@ if (( DO_ARC2 )) && [[ -f "${BACKUP_PATH}/arc2/runs.tar" ]]; then
     fi
 fi
 
+# The audit export archive comes back where the installer made AUDIT_ARCHIVE_PATH.
+AUDIT_SRC=""
+if (( DO_AUDIT )) && [[ -d "${BACKUP_PATH}/audit-archive" ]]; then
+    if [[ -n "${AUDIT_ARCHIVE_PATH:-}" ]]; then
+        AUDIT_SRC="${BACKUP_PATH}/audit-archive"
+    else
+        log "WARN" "audit: this backup holds the audit export archive, but AUDIT_ARCHIVE_PATH is not set here: it is NOT restored"
+    fi
+fi
+
 if (( ! FORCE )); then
     echo "This OVERWRITES the databases and buckets${OS_SNAP:+ and telemetry indices}${MOODLE_TAR:+ and the Moodle files}${ARC2_TAR:+ and the ARC² runs} of compose project '${PROJECT}' with:"
     echo "  ${BACKUP_PATH}"
@@ -175,6 +189,14 @@ fi
 psql_admin() {
     dc exec -T postgres psql -U "${PG_USER}" -d template1 -v ON_ERROR_STOP=1 -q "$@"
 }
+
+# ── Audit export archive (before the databases: it is what they are checked against) ──
+if [[ -n "${AUDIT_SRC}" ]]; then
+    CURRENT_STEP="audit-archive"
+    mkdir -p "${AUDIT_ARCHIVE_PATH}"
+    cp -a "${AUDIT_SRC}/." "${AUDIT_ARCHIVE_PATH}/"
+    log "INFO" "  audit: archive restored to ${AUDIT_ARCHIVE_PATH} ($(find "${AUDIT_SRC}" -type f -name '*.manifest.json' | grep -c . || true) manifests)"
+fi
 
 # ── PostgreSQL ───────────────────────────────────────────────────────────────
 if (( DO_PG )); then

@@ -9,6 +9,8 @@ on:
   pull_request:
     paths:
       - "scripts/backup/**"
+      - "control-plane/worker/worker/audit_*.py"
+      - "control-plane/worker/worker/audit_archive/**"
       - "scripts/monitoring/**"
       - "infra/platform/docker/compose.prod.yml"
       - "infra/platform/docker/postgres-init/**"
@@ -47,6 +49,17 @@ jobs:
         run: |
           docker compose version
           openssl version
+
+      # drill_audit_archive.py seeds and verifies the signed audit export archive with the
+      # worker's own code (ADR 0011): the worker's pinned cryptography and SQLAlchemy.
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
+      - name: Worker libraries for the audit archive
+        run: |
+          grep -iE '^(cryptography|sqlalchemy)==' control-plane/worker/requirements.txt \
+            | sed 's/[[:space:]]*#.*//' > "$RUNNER_TEMP/audit-req.txt"
+          python -m pip install -r "$RUNNER_TEMP/audit-req.txt"
 
       - name: Run drill
         env:

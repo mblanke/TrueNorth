@@ -212,6 +212,29 @@ add a lockout with no recovery path short of the database; not done in v1.2.0.
 token request and disables it again (`install/roles/tn_smoke`). Sign-in flows:
 `docs/api.md` ("Authentication").
 
+**Multi-factor sign-in (v1.2.0).** admin, instructor (including `TN-Content-Authors`),
+range_ops and observer sign in with a password and an authenticator-app code (TOTP);
+Students sign in with a password, and LTI-launched Students through Moodle. Two halves:
+the installer builds the `tn-browser` flow and the `tn-mfa-required` role on the
+privileged groups (`scripts/keycloak_mfa.py`), and the API refuses a privileged
+**database** role whose token shows no second factor (`amr` otp/hwk/swk/mfa or `acr`
+mfa; never `acr` "1"), on every request and WebSocket (`control-plane/api/app/mfa_policy.py`).
+Enrolment is forced on the next sign-in. A lost authenticator is reset with
+`playbooks/breakglass-reset-mfa.yml` (`docs/runbooks/break-glass.md`); there is no HTTP
+path around MFA. Details: `docs/identity.md` ("MFA"). Proven on the pinned Keycloak by
+`scripts/check_keycloak_mfa.sh` (CI `keycloak-mfa`).
+
+**Login banner (v1.2.0).** The `truenorth` login theme shows the site's system-use
+notice above the sign-in form and will not submit until it is acknowledged
+(`infra/keycloak/themes/truenorth`, text from `tn_login_banner_text`).
+
+**Risk acceptance: the master realm administrator.** Keycloak's master realm admin
+(`KEYCLOAK_ADMIN`, escrowed by `backup.sh`) signs in with a password only. It is
+published on the host's loopback port only and nginx answers 404 for `/auth/admin` and
+`/auth/realms/master`, so using it needs an SSH login to the host. It is the installer's
+and the break-glass playbook's credential. Applying `tn-browser` to the master realm
+would add a lockout with no recovery path short of the database; not done in v1.2.0.
+
 ### API JWT Validation
 
 The Control Plane API validates every incoming JWT:
@@ -646,10 +669,12 @@ ORDER BY timestamp DESC;
 
 ### Audit Log Retention
 
-- **Hot storage (PostgreSQL):** 90 days
-- **Warm storage (export to S3/MinIO):** 365 days
-- **Cold storage (archive):** 7 years (compliance)
-- **Automated export:** Daily cron exports previous day's logs to MinIO
+- **In the database:** 90 days (`tn_audit_hot_retention_days`, never below 30; 0 keeps
+  rows forever), deleted day by day only after the day's export verifies.
+- **Archive:** kept until the operator prunes it; TrueNorth never deletes archive files.
+  Every backup holds a verified copy.
+- No 365-day or 7-year tiers exist; an operator who needs them keeps the archive and the
+  backups that long.
 
 ---
 

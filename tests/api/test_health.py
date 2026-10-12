@@ -86,7 +86,7 @@ async def test_readiness_returns_components(checker: HealthChecker):
 
 @pytest.mark.asyncio
 async def test_deep_check_returns_all_components(checker: HealthChecker):
-    """Deep check must report all seven infrastructure components."""
+    """Deep check must report all seven infrastructure components and the audit export."""
     expected_names = {
         "database",
         "redis",
@@ -95,6 +95,7 @@ async def test_deep_check_returns_all_components(checker: HealthChecker):
         "celery",
         "ai_orchestrator",
         "keycloak",
+        "audit_export",
     }
 
     async def _healthy_stub(name: str) -> ComponentHealth:
@@ -113,6 +114,7 @@ async def test_deep_check_returns_all_components(checker: HealthChecker):
         patch.object(checker, "_check_celery", new=lambda: _healthy_stub("celery")),
         patch.object(checker, "_check_ai_orchestrator", new=lambda: _healthy_stub("ai_orchestrator")),
         patch.object(checker, "_check_keycloak", new=lambda: _healthy_stub("keycloak")),
+        patch.object(checker, "_check_audit_export", new=lambda: _healthy_stub("audit_export")),
     ):
         result = await checker.deep_check()
 

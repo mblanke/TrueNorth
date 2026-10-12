@@ -26,6 +26,8 @@ OUT = ROOT / "control-plane/worker/worker/tables.py"
 # Tables the worker touches. Adding one here is how the worker gains access to it.
 WORKER_TABLES = (
     "after_action_reports",
+    "audit_exports",
+    "audit_logs",
     "competencies",
     "competency_assertions",
     "competency_auto_assessments",
@@ -73,6 +75,7 @@ def _type_src(t) -> str:
 
 
 def render() -> str:
+    import app.audit_integrity  # noqa: F401 — audit_exports
     import app.greyspace.models  # noqa: F401
     import app.network_inventory  # noqa: F401 — section models register their tables on import
     import app.range_leases  # noqa: F401
