@@ -1,8 +1,23 @@
-"""vSphere connection backend — vCenter Automation REST API (the range platform)."""
+"""vSphere connection backend — vCenter Automation REST API (the range platform).
+
+Endpoint: ``https://{host}[:{port}]`` from the connection row; the port is left out when
+it is 443 or unset, and a host that already carries a scheme or port is used as given.
+
+REST dialect, detected at login as the worker's provisioner does
+(``worker/provisioners/vsphere_api.py``): ``POST /api/session`` (vSphere 7.0U2+) first; a
+404 there means the server has no ``/api`` at all (older vCenters, govmomi's vcsim), so
+log in through the legacy ``/rest/com/vmware/cis/session`` (token wrapped as
+``{"value": ...}``) and read the ``/rest/vcenter/...`` forms instead. The session is
+deleted on the way out, whichever dialect, success or failure.
+
+Credentials are the connection row's only; there is no environment fallback here.
+"""
 
 from __future__ import annotations
 
 import ipaddress
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import datetime
 
 import httpx
@@ -11,6 +26,79 @@ from ..models import HypervisorConnection, HypervisorNode
 from ..schemas import HypervisorTestResult
 from ..secretbox import unseal
 from .base import BaseHypervisorBackend
+
+API = "api"  # /api, vSphere 7.0U2+
+REST = "rest"  # legacy /rest only: vCenter before 7.0U2, vcsim
+_SESSION_PATH = {API: "/api/session", REST: "/rest/com/vmware/cis/session"}
+_VERSION_PATH = {API: "/vcenter/system/version", REST: "/appliance/system/version"}
+_VM_HOST_FILTER = {API: "hosts", REST: "filter.hosts"}
+
+
+def base_url(conn) -> str:
+    """``https://host[:port]`` for a connection row; no port for 443 or unset."""
+    host = str(conn.host or "").strip().rstrip("/")
+    if "://" in host:
+        return host  # an explicit URL is taken as written
+    port = getattr(conn, "port", None)
+    bare = host[1:-1] if host.startswith("[") and host.endswith("]") else host
+    try:
+        if ipaddress.ip_address(bare).version == 6:
+            host = f"[{bare}]"
+    except ValueError:
+        if ":" in host:
+            return f"https://{host}"  # host:port already
+    if not port or int(port) == 443:
+        return f"https://{host}"
+    return f"https://{host}:{int(port)}"
+
+
+class _Session:
+    """A logged-in vCenter session: its dialect and auth header."""
+
+    def __init__(self, client: httpx.Client, dialect: str, token: str) -> None:
+        self.client = client
+        self.dialect = dialect
+        self.headers = {"vmware-api-session-id": token}
+
+    def get(self, path: str, params: dict | None = None):
+        """GET ``/api{path}`` or ``/rest{path}``; the legacy body's ``value`` is unwrapped."""
+        r = self.client.get(f"/{self.dialect}{path}", params=params, headers=self.headers)
+        r.raise_for_status()
+        body = r.json()
+        return body.get("value") if self.dialect == REST and isinstance(body, dict) else body
+
+    def vms_on(self, host_id: str):
+        return self.get("/vcenter/vm", params={_VM_HOST_FILTER[self.dialect]: host_id})
+
+
+def _login(client: httpx.Client, username: str, password: str) -> tuple[str, str]:
+    """Create a session; return ``(dialect, token)``. 401 and other errors raise."""
+    r = client.post(_SESSION_PATH[API], auth=(username, password))
+    if r.status_code != 404:
+        r.raise_for_status()
+        return API, r.json()  # a JSON string
+    legacy = client.post(_SESSION_PATH[REST], auth=(username, password))
+    legacy.raise_for_status()
+    body = legacy.json()
+    token = body.get("value") if isinstance(body, dict) else None
+    if not isinstance(token, str) or not token:
+        raise RuntimeError(f"vCenter legacy session endpoint returned no token: {body!r}")
+    return REST, token
+
+
+@contextmanager
+def _session(conn: HypervisorConnection, password: str, timeout: float) -> Iterator[_Session]:
+    """Log in with the row's credentials; always delete the session afterwards."""
+    with httpx.Client(base_url=base_url(conn), verify=conn.verify_ssl, timeout=timeout) as client:
+        dialect, token = _login(client, conn.username, password)
+        s = _Session(client, dialect, token)
+        try:
+            yield s
+        finally:
+            try:
+                client.delete(_SESSION_PATH[dialect], headers=s.headers)
+            except httpx.HTTPError:
+                pass  # vCenter expires an idle session itself; the result stands
 
 
 class VSphereBackend(BaseHypervisorBackend):
@@ -25,44 +113,36 @@ class VSphereBackend(BaseHypervisorBackend):
 
 def check_connection(conn: HypervisorConnection, db) -> HypervisorTestResult:
     """Test a vSphere connection via the vCenter Automation REST API."""
-    scheme = "https" if conn.verify_ssl else "https"
-    base = f"{scheme}://{conn.host}"
     # Outside the try: a missing or wrong TN_SECRETS_KEY is our fault, not the vCenter's,
     # and must not mark the connection inactive (it surfaces as a 503 naming the key).
     password = unseal(conn.password_encrypted) or ""
     try:
-        with httpx.Client(verify=conn.verify_ssl, timeout=10) as client:
-            # Create a session
-            r = client.post(f"{base}/api/session", auth=(conn.username, password))
-            r.raise_for_status()
-            token = r.json()
+        note = ""
+        with _session(conn, password, timeout=10) as s:
+            if s.dialect == API:
+                ver_info = s.get(_VERSION_PATH[API])
+                hosts = s.get("/vcenter/host")
+            else:
+                # The login is the test. The legacy version and host reads are not served
+                # everywhere (vcsim has neither), so their absence is reported, not fatal.
+                ver_info, hosts, missing = {}, [], []
+                try:
+                    ver_info = s.get(_VERSION_PATH[REST]) or {}
+                except httpx.HTTPStatusError:
+                    missing.append("version")
+                try:
+                    hosts = s.get("/vcenter/host")
+                except httpx.HTTPStatusError:
+                    missing.append("hosts")
+                note = " (legacy /rest API" + (f"; {' and '.join(missing)} not reported" if missing else "") + ")"
 
-            # Retrieve version info from /api/vcenter/system/version
-            rv = client.get(
-                f"{base}/api/vcenter/system/version",
-                headers={"vmware-api-session-id": token},
-            )
-            rv.raise_for_status()
-            ver_info = rv.json()
-
-            # List hosts
-            rh = client.get(
-                f"{base}/api/vcenter/host",
-                headers={"vmware-api-session-id": token},
-            )
-            rh.raise_for_status()
-            hosts = rh.json()
-
-            # Terminate the session
-            client.delete(f"{base}/api/session", headers={"vmware-api-session-id": token})
-
-        version = ver_info.get("version", "unknown")
+        version = (ver_info.get("version") if isinstance(ver_info, dict) else None) or "unknown"
         conn.is_active = True
         conn.last_seen_at = datetime.utcnow()
         db.commit()
         return HypervisorTestResult(
             success=True,
-            message=f"Connected to vCenter {version}",
+            message=f"Connected to vCenter {version}{note}",
             version=version,
             nodes_found=len(hosts) if isinstance(hosts, list) else 0,
         )
@@ -87,18 +167,17 @@ def discover(conn_id, conn: HypervisorConnection, db) -> dict:
     has no host CPU or memory figures. Those are left empty (None, "not reported"), never
     0, which would read as an idle host. Host capacity needs pyVmomi or the VI/JSON API.
     """
-    base = f"https://{conn.host}"
     password = unseal(conn.password_encrypted) or ""  # outside the try, as in check_connection
     try:
-        with httpx.Client(verify=conn.verify_ssl, timeout=15) as client:
-            r = client.post(f"{base}/api/session", auth=(conn.username, password))
-            r.raise_for_status()
-            token = r.json()
-            headers = {"vmware-api-session-id": token}
-
-            hosts_resp = client.get(f"{base}/api/vcenter/host", headers=headers)
-            hosts_resp.raise_for_status()
-            hosts = hosts_resp.json()
+        with _session(conn, password, timeout=15) as s:
+            try:
+                hosts = s.get("/vcenter/host")
+            except httpx.HTTPStatusError as exc:
+                if s.dialect == REST and exc.response.status_code == 404:
+                    raise RuntimeError("this vCenter's legacy /rest API does not list hosts") from exc
+                raise
+            if not isinstance(hosts, list):
+                raise RuntimeError(f"unexpected host list from vCenter: {hosts!r}")
 
             now = datetime.utcnow()
             discovered = 0
@@ -115,9 +194,9 @@ def discover(conn_id, conn: HypervisorConnection, db) -> dict:
                 vm_count = existing.vm_count if existing else 0
                 if h.get("host"):
                     try:
-                        vms_resp = client.get(f"{base}/api/vcenter/vm", params={"hosts": h["host"]}, headers=headers)
-                        vms_resp.raise_for_status()
-                        vm_count = len(vms_resp.json())
+                        vms = s.vms_on(h["host"])
+                        if isinstance(vms, list):
+                            vm_count = len(vms)
                     except httpx.HTTPError:
                         pass  # keep the last known count rather than report an empty host
 
@@ -138,8 +217,6 @@ def discover(conn_id, conn: HypervisorConnection, db) -> dict:
                         )
                     )
                     discovered += 1
-
-            client.delete(f"{base}/api/session", headers=headers)
 
         conn.is_active = True
         conn.last_seen_at = datetime.utcnow()
