@@ -103,8 +103,9 @@ class ModelRoute:
 
 
 # ── Fleet config from env ──────────────────────────────────────────────
-OLLAMA_PROXY_URL = os.getenv("OLLAMA_PROXY_URL", "https://ai.guapo613.beer")
-
+# There is no default AI endpoint. Ollama nodes come only from OLLAMA_NODES (or
+# POST /fleet/nodes), cloud backends only from their keys; with none of them the
+# service answers from the mock and /health reports ai_configured=false.
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 AUTH_DISABLED = os.getenv("AUTH_DISABLED", "false").lower() in ("1", "true", "yes")
@@ -277,6 +278,21 @@ def _parse_fleet() -> dict[str, OllamaNode]:
 
 
 FLEET: dict[str, OllamaNode] = _parse_fleet()
+
+
+def ai_configured() -> bool:
+    """True when a real backend could answer; mirrors the routing in ``_generate``.
+
+    Without one, generation falls through to the mock rather than calling out.
+    """
+    if BackendType.ollama == PRIMARY_BACKEND:
+        # The task routes fall back to OpenAI (never Anthropic) when the fleet fails.
+        return bool(FLEET) or bool(OPENAI_API_KEY)
+    if BackendType.openai == PRIMARY_BACKEND:
+        return bool(OPENAI_API_KEY)
+    if BackendType.anthropic == PRIMARY_BACKEND:
+        return bool(ANTHROPIC_API_KEY)
+    return False
 
 
 # ── Model tagging ──────────────────────────────────────────────────────
@@ -468,6 +484,11 @@ async def lifespan(app: FastAPI):
         raise RuntimeError("Refusing to start with TN_ENV=production: " + "; ".join(problems))
     if not AI_SERVICE_TOKEN:
         logger.warning("AI_SERVICE_TOKEN is not set: every route is open (TN_ENV=%s)", TN_ENV)
+    if not ai_configured():
+        logger.warning(
+            "AI is not configured (AI_MODEL_BACKEND=%s, no OLLAMA_NODES or provider key): answering from the mock",
+            PRIMARY_BACKEND.value,
+        )
 
     _llm_semaphore = asyncio.Semaphore(MAX_LLM_CONCURRENCY)
 
@@ -1018,6 +1039,7 @@ async def health():
         "status": "ok",
         "version": "0.4.0",
         "primary_backend": PRIMARY_BACKEND.value,
+        "ai_configured": ai_configured(),
         "cache_size": len(_cache),
         "max_concurrency": MAX_LLM_CONCURRENCY,
         "fleet": {

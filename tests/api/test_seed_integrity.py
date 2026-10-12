@@ -14,7 +14,7 @@ import inspect
 
 import pytest
 from app import seed
-from app.models import Course, Nation
+from app.models import AIBackendConfig, Course, Nation
 
 REQUIRED_SEED_FUNCTIONS = [
     "seed_nations_and_coalitions",
@@ -71,3 +71,32 @@ def test_seed_creates_no_courses(db_session):
     for name in REQUIRED_SEED_FUNCTIONS:
         getattr(seed, name)(db_session)
     assert db_session.query(Course).count() == 0
+
+
+def test_seed_creates_no_ai_backend(db_session):
+    """There is no default AI endpoint.
+
+    seed_ai_backends used to insert an active primary pointing at one person's
+    internet-facing host, so a fresh install called out to it. Now it inserts
+    nothing, and AI reads as not configured until an operator registers one.
+    """
+    seed.seed_ai_backends(db_session)
+    seed.seed_ai_backends(db_session)
+    assert db_session.query(AIBackendConfig).count() == 0
+
+
+def test_seed_ai_backends_leaves_an_operator_backend_alone(db_session):
+    db_session.add(
+        AIBackendConfig(name="site", backend_type="openai", base_url="http://litellm:4000/v1", is_primary=True)
+    )
+    db_session.commit()
+    seed.seed_ai_backends(db_session)
+    assert [b.name for b in db_session.query(AIBackendConfig).all()] == ["site"]
+
+
+def test_seeded_install_reports_ai_not_configured(client, db_session):
+    """A fresh seed leaves test-generate on the mock, labelled as not configured."""
+    seed.seed_ai_backends(db_session)
+    r = client.post("/ai-config/test-generate", params={"prompt": "hi"})
+    assert r.status_code == 200
+    assert r.json()["backend"] == "mock (no primary configured)"
