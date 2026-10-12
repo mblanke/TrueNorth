@@ -6776,11 +6776,17 @@
             "title": "Password"
           },
           "port": {
-            "default": 8006,
-            "maximum": 65535.0,
-            "minimum": 1.0,
-            "title": "Port",
-            "type": "integer"
+            "anyOf": [
+              {
+                "maximum": 65535.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Port"
           },
           "username": {
             "maxLength": 255,
@@ -11311,6 +11317,22 @@
           "query"
         ],
         "title": "RagSearchIn",
+        "type": "object"
+      },
+      "RangeAbandonIn": {
+        "description": "Why the range is written off; recorded on the range and in the audit log.",
+        "properties": {
+          "reason": {
+            "maxLength": 500,
+            "minLength": 10,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "RangeAbandonIn",
         "type": "object"
       },
       "RangeDocumentOut": {
@@ -25708,7 +25730,7 @@
     },
     "/hypervisors/connections/{conn_id}": {
       "delete": {
-        "description": "Delete a connection with the hosts and pools discovered through it.\n\nThose rows are inventory read from the hypervisor, with no meaning once the\nconnection is gone, so they go with it.",
+        "description": "Delete a connection with the hosts and pools discovered through it.\n\nThose rows are inventory read from the hypervisor, with no meaning once the\nconnection is gone, so they go with it. Refused (409) while ranges not yet destroyed\nare on it (app/hypervisor_connection_guard.py).",
         "operationId": "delete_connection_hypervisors_connections__conn_id__delete",
         "parameters": [
           {
@@ -33322,6 +33344,65 @@
           }
         ],
         "summary": "Update Range",
+        "tags": [
+          "ranges"
+        ]
+      }
+    },
+    "/ranges/{range_id}/abandon": {
+      "post": {
+        "description": "DANGEROUS. Record a ``failed`` range destroyed without touching the hypervisor.\n\nFor a range whose destroy cannot succeed, typically one that does not record which\nvCenter built it and none of whose VMs exist where it now resolves. Whatever is still\non a hypervisor stays there: ``provisioner_output.abandoned`` and the audit log name\nits VMs and port groups for removal by hand. ``reason`` is required.\n**Permission: platform administrator**",
+        "operationId": "abandon_range_ranges__range_id__abandon_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "range_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Range Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RangeAbandonIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RangeOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Abandon Range",
         "tags": [
           "ranges"
         ]

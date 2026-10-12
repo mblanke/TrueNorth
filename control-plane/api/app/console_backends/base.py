@@ -14,7 +14,9 @@ class BaseConsoleBackend(ABC):
     kind: ClassVar[str]
 
     @abstractmethod
-    def open(self, vm: dict[str, Any]) -> dict[str, Any]:
+    def open(self, vm: dict[str, Any], *, db=None, rng=None) -> dict[str, Any]:
         """Console access for one VM of a range (an entry of its provisioner output:
         ``vm_id``, ``name``, ...). Returns ``{"kind", "url", "expires_in"}``; the URL is
-        single-use or short-lived, never a standing credential."""
+        single-use or short-lived, never a standing credential. ``rng`` is the VM's range
+        (and ``db`` a session): a backend reaches the hypervisor that range was built on,
+        and opens only a VM that is that range's."""

@@ -28,6 +28,13 @@ class ExperimentalProvisionerError(ValueError):
     EXPERIMENTAL_PROVISIONERS. Final: a retry finds the same configuration."""
 
 
+class ConnectionBindingError(ValueError):
+    """A range's hypervisor connection cannot be used safely: its credentials are
+    incomplete, or the connection the range was built on is gone or now names another
+    host. Final: the worker refuses rather than fall back to the platform's own
+    credentials or reach a different hypervisor (worker/connection_binding.py)."""
+
+
 @dataclass(frozen=True)
 class AllocationNeed:
     """Values on shared infrastructure a build needs reserved first (``allocation_needs``).
@@ -73,6 +80,20 @@ class BaseProvisioner(ABC):
     def allocation_needs(self, range_id: str, template: dict) -> list[AllocationNeed]:
         """Shared values (VLANs, addresses) to reserve before ``provision``. Default: none."""
         return []
+
+    #: Set by the worker for a range with no recorded endpoint (worker/connection_binding.hook):
+    #: called with the range id once an operation has found one of that range's own VMs
+    #: here, so the endpoint is recorded from then on. Blocking; call it from a thread.
+    on_connection_confirmed = None
+    #: Set alongside it: called with the range id when a destroy of a range with nothing
+    #: recorded found none of its VMs here (the range is then marked, not destroyed).
+    on_unrecorded_vms_missing = None
+
+    def connection_record(self) -> dict | None:
+        """The hypervisor endpoint this instance talks to, as a build records it in the
+        range's provisioner_output (``{"id": connection id or None, "host": url}``), so
+        every later operation reaches the same one. None: a backend with no such choice."""
+        return None
 
     def planned_output(self, range_id: str, allocations: dict) -> dict:
         """What to record in provisioner_output before the build, so a destroy after a
@@ -201,10 +222,14 @@ class BaseProvisioner(ABC):
         login: GuestLogin,
         steps: list[GuestStep],
         timeout: float,
+        *,
+        range_id: str | None = None,
+        vm_name: str = "",
     ) -> list[dict]:
         """Run ``steps`` in order inside one range VM's guest OS, as ``login``, with no
         network path into the range (vSphere: VMware guest operations). Stops at the
-        first step that does not end ``ok``.
+        first step that does not end ``ok``. ``range_id`` and ``vm_name`` (the VM's
+        recorded name) let a backend check the VM under ``vm_id`` is that range's first.
 
         Returns one ``{"label", "status": ok | failed | timeout | not_run, "exit_code"}``
         per step. The post-deploy configure stage (worker/greyspace.py) and Greyspace

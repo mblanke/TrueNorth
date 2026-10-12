@@ -82,6 +82,16 @@ def test_the_ranges_own_tenant_wins_over_a_primary_elsewhere(db):
     assert (creds["host"], creds["password"]) == ("vc-b", "b-secret")
 
 
+def test_two_primaries_resolve_to_the_oldest_every_time(db):
+    """Review 2 should-fix 2b: no tie-breaker meant the database's row order picked one."""
+    _insert(db, "new", None, host="vc-new", primary=True)
+    db.execute(hypervisor_connections.update().where(hypervisor_connections.c.host == "vc-new")
+               .values(created_at=datetime(2026, 10, 9, tzinfo=UTC)))
+    _insert(db, "old", None, host="vc-old", primary=True)  # created NOW (2026-10-07): older
+    rid = _range(db)
+    assert {db_ops.hypervisor_creds(db, "vsphere", rid)["host"] for _ in range(5)} == {"vc-old"}
+
+
 def test_a_shared_connection_serves_a_tenant_without_its_own(db):
     _insert(db, "shared", None, tenant=None, host="vc-shared", primary=False)
     _insert(db, "a-secret", None, tenant=TENANT_A, host="vc-a", primary=True)

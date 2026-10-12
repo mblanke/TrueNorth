@@ -305,7 +305,8 @@ def configure(range_id: str) -> str:
             else:
                 try:
                     steps = run_async(provisioner.run_in_guest(
-                        vm["vm_id"], greyspace_host.login(range_id), greyspace_host.configure_steps(), CONFIGURE_TIMEOUT))
+                        vm["vm_id"], greyspace_host.login(range_id), greyspace_host.configure_steps(), CONFIGURE_TIMEOUT,
+                        range_id=range_id, vm_name=vm.get("name", "")))  # only the range's own gs-core
                     ok = bool(steps) and all(s["status"] == "ok" for s in steps)
                     status = "deployed" if ok else "failed"
                     detail = {**prior, "stage": "configure", "vm_id": vm["vm_id"], "configure": steps,
@@ -345,7 +346,8 @@ def _crumbs_on_host(range_id: str, op: dict) -> tuple[bool, str]:
         return False, found
     vm, backend, provisioner = found
     steps = run_async(provisioner.run_in_guest(vm["vm_id"], greyspace_host.login(range_id),
-                                               greyspace_host.crumb_steps(op), CRUMB_TIMEOUT))
+                                               greyspace_host.crumb_steps(op), CRUMB_TIMEOUT,
+                                               range_id=range_id, vm_name=vm.get("name", "")))
     bad = next((s for s in steps if s["status"] != "ok"), None)
     if bad:
         return False, f"gs-core: {bad['label']} {bad['status']} (exit {bad['exit_code']})"

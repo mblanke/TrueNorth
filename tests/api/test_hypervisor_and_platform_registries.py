@@ -69,7 +69,9 @@ def test_unreachable_hypervisor_reports_failure_instead_of_raising(db_session, k
 
     assert isinstance(checked, HypervisorTestResult)
     assert checked.success is False
-    assert conn.is_active is False
+    # vSphere reports the failure but stays active: a failed test must not move the ranges
+    # built on it (#131 review 2). The experimental families still deactivate.
+    assert conn.is_active is (kind == "vsphere")
     assert found["nodes_discovered"] == 0
     assert "fail" in found["message"].lower()
 

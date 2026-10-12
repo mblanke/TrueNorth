@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .base import BaseProvisioner
 
-from .base import ExperimentalProvisionerError
+from .base import ConnectionBindingError, ExperimentalProvisionerError
 from .hyperv import HypervProvisioner
 from .mock import MockProvisioner
 from .proxmox_api import ProxmoxAPIProvisioner
@@ -42,20 +42,25 @@ def experimental_enabled() -> bool:
     return os.getenv("EXPERIMENTAL_PROVISIONERS", "").strip().lower() in {"1", "true", "yes", "on"}
 
 
-def get_provisioner(backend: str, credentials: dict | None = None) -> BaseProvisioner:
+def get_provisioner(backend: str, credentials: dict | None = None, *, teardown: bool = False) -> BaseProvisioner:
     """Return an instantiated provisioner for the given backend name.
 
     ``credentials`` (a HypervisorConnection's endpoint and login) go to a backend that
     takes them (CREDENTIALS_HYPERVISOR); empty or None: the backend's own environment.
 
+    ``teardown`` (destroy, leak cleanup) is allowed on an experimental backend even with
+    EXPERIMENTAL_PROVISIONERS off: a range built while it was on must stay removable, or
+    its VMs are orphaned on the hypervisor.
+
     Raises:
         ValueError: If the backend is not registered.
-        ExperimentalProvisionerError: If it is experimental and EXPERIMENTAL_PROVISIONERS is off.
+        ExperimentalProvisionerError: If it is experimental, EXPERIMENTAL_PROVISIONERS is off
+            and this is not a teardown.
     """
     factory = _REGISTRY.get(backend)
     if factory is None:
         raise ValueError(f"Unknown provisioner backend: {backend!r}. Available: {sorted(_REGISTRY)}")
-    if backend in EXPERIMENTAL and not experimental_enabled():
+    if backend in EXPERIMENTAL and not experimental_enabled() and not teardown:
         raise ExperimentalProvisionerError(
             f"Provisioner backend {backend!r} is experimental and disabled. Supported: mock, vsphere_api. "
             "Set EXPERIMENTAL_PROVISIONERS=true on the API and the workers to use it anyway."
@@ -98,6 +103,7 @@ def discard_built(provisioner, range_id: str, result) -> dict:
 
 
 __all__ = [
+    "ConnectionBindingError",
     "discard_built",
     "EXPERIMENTAL",
     "ExperimentalProvisionerError",

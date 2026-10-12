@@ -23,7 +23,8 @@ GET    /ranges/{range_id}/operations RANGE_READ
 GET    /ranges/{range_id}/operations/{operation_id}            RANGE_READ
 POST   /ranges/{range_id}/operations/{operation_id}/abandon    RANGE_DESTROY
 POST   /ranges/{range_id}/lease/force-release                   RANGE_LEASE_FORCE_RELEASE (admin)
-GET    /ranges/{range_id}/network-reservations                  RANGE_READ
+POST   /ranges/{range_id}/abandon                               platform administrator
+GET   /ranges/{range_id}/network-reservations                  RANGE_READ
 POST   /ranges/batch-provision       RANGE_BATCH_PROVISION
 =================================  ==========================
 """
@@ -40,7 +41,7 @@ from fastapi.responses import Response
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from .. import object_store, range_ops
+from .. import object_store, range_abandon, range_ops
 from ..auth import CurrentUser
 from ..db import get_db
 from ..models import (
@@ -55,7 +56,7 @@ from ..models import (
 from ..network_inventory import NetworkReservation, NetworkReservationOut
 from ..provisioner_choice import configured_backend
 from ..range_ops import service as ops
-from ..rbac import Permission, require_permission, user_has_permission
+from ..rbac import Permission, require_permission, require_platform_admin, user_has_permission
 from ..scheduler import service as scheduler
 from ..schemas import (
     BatchProvisionIn,
@@ -704,6 +705,28 @@ def force_release_range_lease(
     return ops.ForceReleaseOut(
         range_id=rng.id, released_holder=holder, was_expired=expired, warning=ops.FORCE_RELEASE_WARNING
     )
+
+
+@router.post("/{range_id}/abandon", response_model=RangeOut)
+def abandon_range(
+    body: range_abandon.RangeAbandonIn,
+    range_id: uuid.UUID = Path(...),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_platform_admin()),
+) -> Range:
+    """DANGEROUS. Record a ``failed`` range destroyed without touching the hypervisor.
+
+    For a range whose destroy cannot succeed, typically one that does not record which
+    vCenter built it and none of whose VMs exist where it now resolves. Whatever is still
+    on a hypervisor stays there: ``provisioner_output.abandoned`` and the audit log name
+    its VMs and port groups for removal by hand. ``reason`` is required.
+    **Permission: platform administrator**"""
+    rng = range_abandon.abandon(db, range_id, user, body.reason)
+    db.commit()
+    db.refresh(rng)
+    logger.warning("range %s: abandoned (marked destroyed, hypervisor untouched) by %s: %s", rng.id, user.id,
+                   body.reason)
+    return rng
 
 
 @router.get("/{range_id}/network-reservations", response_model=list[NetworkReservationOut])

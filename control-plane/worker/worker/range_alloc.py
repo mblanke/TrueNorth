@@ -134,12 +134,17 @@ def release_after_destroy(session, range_id: str) -> int:
         return 0
 
 
-def stored_output(backend: str, range_id: str, result) -> dict:
+def stored_output(backend: str, range_id: str, result, provisioner=None) -> dict:
     """What provision_range records as the range's provisioner_output: the built VMs and
     networks, and (vSphere) the edge uplink, mirror sessions and warnings, which destroy
-    and the range pages read back."""
+    and the range pages read back, and the endpoint it was built on (``connection``:
+    worker/connection_binding.py), which every later operation must reach again."""
     out = {"provider": backend, "range_id": range_id, "vms": result.vms, "networks": result.networks}
     for key in ("uplink", "mirrors", "warnings"):
         if getattr(result, key, None):
             out[key] = getattr(result, key)
+    record = getattr(provisioner, "connection_record", None)  # BaseProvisioner's; None: not one
+    rec = record() if callable(record) else None
+    if isinstance(rec, dict) and rec:
+        out["connection"] = rec
     return out

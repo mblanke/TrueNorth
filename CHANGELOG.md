@@ -57,6 +57,28 @@ course production with a local-model fallback, and the cleanup of unsupported su
 - Per-tenant vCenter credentials for every vSphere operation; VyOS and OPNsense get the
   range's rendered config; template `vm_count` corrected; Range Designer YAML import (#131).
 
+### vSphere per-tenant credentials (hardening of #131)
+- A tenant's vCenter connection is used whole or not at all: host, username and password
+  come only from the connection, never from the platform's `VSPHERE_*` settings. A vSphere
+  connection needs a password. Templates may not carry `credentials` (422).
+- Each range records the connection it was built on (`provisioner_output.connection`).
+  Destroy, power, snapshots, health, guest commands and the browser console reach only that
+  vCenter, and act only on VMs whose annotation names the range. Ranges built earlier record
+  theirs the first time one of their VMs is found.
+- Connections with live ranges cannot be deleted, deactivated, repointed (host or port), or
+  replaced as the preferred connection while older ranges would follow (409). A failed
+  connection test no longer deactivates a vSphere connection, and shared (tenant-less)
+  connections are no longer assigned to the first tenant on startup.
+- **Behaviour change:** a connection's port defaults by type (vSphere 443, Proxmox 8006,
+  Hyper-V 5985); `HypervisorConnectionIn.port` is optional. The worker honours the port, and
+  IPv6 hosts are supported.
+- Health and metrics runs log in once per vCenter and log out. Lab leak cleanup searches
+  each range's own vCenter. Ranges on an experimental backend can still be destroyed after
+  `EXPERIMENTAL_PROVISIONERS` is turned off.
+- New: `POST /ranges/{id}/abandon` (platform administrator only) records a failed range as
+  destroyed without touching the hypervisor, for ranges whose VMs can no longer be found.
+  It requires a reason and is audit-logged.
+
 ### Platform
 - Terraform provisioners removed; Proxmox and Hyper-V behind `EXPERIMENTAL_PROVISIONERS`
   (#131).
@@ -96,6 +118,9 @@ course production with a local-model fallback, and the cleanup of unsupported su
 - ARC² test-host content is auto-accepted and unreviewed; never release it to Students.
 - cmi5 Moodle activities are tied to one release; LTI cmi5 launches do not enrol.
 - WebSockets do not accept the LTI hand-off session.
+- A range built before connection records with port groups but no VM stays unrecorded until
+  destroyed; shared vCenter connections are managed outside the tenant API; an abandoned
+  range's leftover VMs and port groups must be removed by hand (`docs/release-notes/v1.2.0.md`).
 
 ## v1.1.0 — 2026-10-09
 

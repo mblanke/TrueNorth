@@ -97,8 +97,8 @@ def range_output_and_backend(db, range_id: str):
 
 
 def active_ranges(db) -> list:
-    """(id, name, provisioner_output) of every range that is ready or running."""
-    stmt = sa.select(ranges.c.id, ranges.c.name, ranges.c.provisioner_output).where(
+    """(id, name, provisioner_output, provisioner_backend) of every range that is ready or running."""
+    stmt = sa.select(ranges.c.id, ranges.c.name, ranges.c.provisioner_output, ranges.c.provisioner_backend).where(
         ranges.c.state.in_(["ready", "running"])
     )
     return db.execute(stmt).fetchall()
@@ -121,33 +121,54 @@ def hypervisor_connection(db, hypervisor_type: str, tenant_id):
     hc = hypervisor_connections
     own = hc.c.tenant_id == tenant_id if tenant_id is not None else sa.false()
     stmt = (
-        sa.select(
-            hc.c.host, hc.c.port, hc.c.username, hc.c.password_encrypted, hc.c.api_token, hc.c.verify_ssl,
-            hc.c.datacenter,
-        )
+        sa.select(*_connection_cols())
         .where(hc.c.hypervisor_type == hypervisor_type, hc.c.is_active == sa.true(),
                sa.or_(own, hc.c.tenant_id.is_(None)))
-        .order_by(sa.case((own, 0), else_=1), hc.c.is_primary.desc())
+        # Deterministic: two primaries (or none) resolve to the oldest, then the lowest id. The
+        # API's console (app/hypervisor_binding.py) orders the same way.
+        .order_by(sa.case((own, 0), else_=1), hc.c.is_primary.desc(), hc.c.created_at.asc(), hc.c.id.asc())
         .limit(1)
     )
     return db.execute(stmt).first()
+
+
+def _connection_cols():
+    hc = hypervisor_connections
+    return (hc.c.host, hc.c.port, hc.c.username, hc.c.password_encrypted, hc.c.api_token, hc.c.verify_ssl,
+            hc.c.datacenter, hc.c.id)
 
 
 def range_tenant(db, range_id: str):
     return db.execute(sa.select(ranges.c.tenant_id).where(ranges.c.id == range_id)).scalar()
 
 
+def _creds(row) -> dict:
+    return {
+        "host": row[0], "port": row[1], "username": row[2],
+        "password": secretbox.unseal(row[3]) or "", "api_token": secretbox.unseal(row[4]) or "",
+        "verify_ssl": bool(row[5]), "datacenter": row[6] or "", "connection_id": str(row[7]),
+    }
+
+
 def hypervisor_creds(db, hypervisor_type: str, range_id: str) -> dict:
     """Endpoint and login for building ``range_id`` (empty: the provisioner's env fallback),
     from a connection of the range's own tenant. Sealed by the API; unsealed here."""
     row = hypervisor_connection(db, hypervisor_type, range_tenant(db, range_id))
-    if row is None:
-        return {}
-    return {
-        "host": row[0], "port": row[1], "username": row[2],
-        "password": secretbox.unseal(row[3]) or "", "api_token": secretbox.unseal(row[4]) or "",
-        "verify_ssl": bool(row[5]), "datacenter": row[6] or "",
-    }
+    return {} if row is None else _creds(row)
+
+
+def hypervisor_creds_by_id(db, hypervisor_type: str, connection_id: str, range_id: str) -> dict:
+    """The connection a range was built on (recorded in its provisioner_output), active or
+    not, or {} when it no longer exists or is no longer one the range's tenant may use
+    (its own, or a shared one). Never a fallback to another connection."""
+    hc = hypervisor_connections
+    tenant_id = range_tenant(db, range_id)
+    own = hc.c.tenant_id == tenant_id if tenant_id is not None else sa.false()
+    stmt = sa.select(*_connection_cols()).where(
+        hc.c.id == connection_id, hc.c.hypervisor_type == hypervisor_type, sa.or_(own, hc.c.tenant_id.is_(None))
+    )
+    row = db.execute(stmt).first()
+    return {} if row is None else _creds(row)
 
 
 def enabled_golden_images(db, hypervisor: str) -> list:

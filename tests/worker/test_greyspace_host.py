@@ -232,7 +232,8 @@ class FakeVsphere:
         self.calls: list[tuple] = []
         self.statuses = statuses or {}
 
-    async def run_in_guest(self, vm_id, login, steps, timeout):
+    async def run_in_guest(self, vm_id, login, steps, timeout, *, range_id=None, vm_name=""):
+        assert range_id, "guest commands must name the range, so the VM's ownership can be checked"
         self.calls.append((vm_id, login, [s.label for s in steps], [s.arguments for s in steps]))
         return [{"label": s.label, "status": self.statuses.get(s.label, "ok"),
                  "exit_code": 0 if self.statuses.get(s.label, "ok") == "ok" else 1} for s in steps]

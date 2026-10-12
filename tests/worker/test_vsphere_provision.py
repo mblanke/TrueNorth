@@ -327,6 +327,8 @@ class FakeVM:
         self.reconfig_specs.append(spec)
         if spec.deviceChange:
             self.config.hardware.device = _apply(self.config.hardware.device, spec.deviceChange)
+        if spec.annotation is not None:
+            self.config.annotation = spec.annotation
         return FakeTask(label=f"reconfig:{self.name}")
 
     def CustomizeVM_Task(self, spec):  # noqa: N802
@@ -403,10 +405,25 @@ class FakeVCenter:
             return SimpleNamespace(view=objs, Destroy=lambda: None)
 
         collector = SimpleNamespace(CreatePropertyCollector=lambda: SimpleNamespace(
-            DestroyPropertyCollector=lambda: None))
+            DestroyPropertyCollector=lambda: None), RetrievePropertiesEx=self.retrieve)
         return SimpleNamespace(_stub=object(), content=SimpleNamespace(
             rootFolder=object(), viewManager=SimpleNamespace(CreateContainerView=view), propertyCollector=collector,
             guestOperationsManager=self.guest_ops))
+
+    def retrieve(self, specSet, options):  # noqa: N803 -- pyVmomi's keywords
+        """RetrievePropertiesEx over the VMs: name and annotation (the range-ownership check),
+        failing the whole call on an unknown VM, as vCenter does."""
+        (spec,) = specSet
+        paths = list(spec.propSet[0].pathSet)
+        objects = []
+        for o in spec.objectSet:
+            vm = self.vms.get(o.obj._moId)
+            if vm is None:
+                raise vmodl.fault.ManagedObjectNotFound(obj=o.obj)
+            vals = {"name": vm.name, "config.annotation": getattr(vm.config, "annotation", None)}
+            objects.append(SimpleNamespace(obj=o.obj, propSet=[SimpleNamespace(name=p, val=vals.get(p))
+                                                               for p in paths]))
+        return SimpleNamespace(objects=objects, token=None)
 
     def wait(self, task, si, timeout):
         # mod._wait_task itself (private collector, bounded) is tested in TestWaitTask.
@@ -786,9 +803,11 @@ class TestProvisionOvf:
 
 class TestDestroy:
     def _built(self, vc):
-        result = _run(_prov(vc).provision(RANGE_ID, _rendered(), {}))
+        prov = _prov(vc)
+        result = _run(prov.provision(RANGE_ID, _rendered(), {}))
         assert result.status == "ok", result.errors
-        return {"vms": result.vms, "networks": result.networks}
+        # As range_alloc.stored_output records it: with the vCenter it was built on.
+        return {"vms": result.vms, "networks": result.networks, "connection": prov.connection_record()}
 
     def test_removes_vms_then_portgroups_and_folder(self, vc):
         output = self._built(vc)
@@ -836,6 +855,7 @@ class TestSession:
 
     def _vc(self, vc):
         vc.vms["vm-a"] = FakeVM("a", [])
+        vc.vms["vm-a"].config.annotation = mod.range_annotation(RANGE_ID)  # a build tags its VMs
         vc.power["vm-a"] = "POWERED_ON"
         return vc
 
@@ -1638,7 +1658,8 @@ class TestMirrorSessions:
         other = infra.vspan_sessions("ffffffff-other", {"dst": "x", "sources": [("y", 1)]}, ["9"], ["8"], None, 0)
         infra.ensure_vspan_sessions(vc.dvs, other, lambda t: None)
         result = _run(_prov(vc).provision(RANGE_ID, _mirror_build(), {}))
-        output = {"vms": result.vms, "networks": result.networks, "mirrors": result.mirrors}
+        output = {"vms": result.vms, "networks": result.networks, "mirrors": result.mirrors,
+                  "connection": _prov(vc).connection_record()}  # as stored_output records it
         destroyed = _run(_prov(vc).destroy(RANGE_ID, output))
         assert destroyed.status == "ok", destroyed.errors
         assert sorted(_sessions(vc)) == ["tn-ffffffff-x"]  # another range's session is not touched
@@ -1842,6 +1863,7 @@ class TestLegacyDialect:
 
     def test_power_goes_through_the_web_services_api(self, vc):
         vm = FakeVM("a", [])
+        vm.config.annotation = mod.range_annotation(RANGE_ID)
         vm.runtime.powerState = "poweredOn"
         vc.vms["vm-a"] = vm
         out = {"vms": [{"name": "a", "vm_id": "vm-a"}]}
@@ -1872,7 +1894,7 @@ class TestLegacyDialect:
         assert all(t.clone_specs for t in vc.templates.values())
         assert _only_sessions(vc)
 
-        output = {"vms": result.vms, "networks": result.networks}
+        output = {"vms": result.vms, "networks": result.networks, "connection": prov.connection_record()}
         gone = _run(_legacy(vc).destroy(RANGE_ID, output))
         assert gone.status == "ok", gone.errors
         assert gone.resources_removed == 4 + 3 and not vc.vms and vc.dvs.portgroup == []

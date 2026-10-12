@@ -16,7 +16,6 @@ from .models import (
     AuthZonePolicy,
     Coalition,
     CoalitionMembership,
-    HypervisorConnection,
     Nation,
     NetworkDevice,
     StorageAppliance,
@@ -188,16 +187,11 @@ def seed_infrastructure(db: Session) -> None:
         return
     tenant_id = tenant_row[0]
 
-    # Backfill tenant_id on any existing infra rows
-    updated = (
-        db.query(HypervisorConnection)
-        .filter(HypervisorConnection.tenant_id.is_(None))
-        .update({HypervisorConnection.tenant_id: tenant_id}, synchronize_session=False)
-    )
-    if updated:
-        db.commit()
-        logger.info("Backfilled tenant_id on %d hypervisor connections", updated)
-
+    # Backfill tenant_id on any existing infra rows. Not hypervisor connections: since H6
+    # (2026-10-08) a connection with no tenant is a *shared* one the worker builds on for
+    # any tenant without its own, and records on those ranges. Handing it to the first
+    # tenant on every start moved other tenants' ranges off it (#131 review 2). Rows from
+    # before tenancy were assigned by the earlier starts this ran on.
     updated = (
         db.query(StorageAppliance)
         .filter(StorageAppliance.tenant_id.is_(None))

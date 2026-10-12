@@ -291,7 +291,9 @@ def test_a_two_network_range_lifecycle(env, si, range_id):
         assert vm.parent.name == r8 and vm.parent.parent.name == "ranges"
     assert {v["vm_id"] for v in _run(prov.find_vms(f"{range_id}-"))} == {v["vm_id"] for v in built.vms}
 
-    output = {"vms": built.vms, "networks": built.networks}
+    # What provision_range stores (range_alloc.stored_output): with the vCenter it was built
+    # on, which record_build wrote before the first VM existed (worker/connection_binding.py).
+    output = {"vms": built.vms, "networks": built.networks, "connection": prov.connection_record()}
     stopped = _run(mod.VsphereAPIProvisioner().stop(range_id, output))
     assert stopped.status == "ok" and stopped.vms_stopped == 2, stopped.errors
     assert {vim.VirtualMachine(v["vm_id"], si._stub).runtime.powerState for v in built.vms} == {"poweredOff"}
@@ -310,6 +312,11 @@ def test_a_two_network_range_lifecycle(env, si, range_id):
     assert _run(mod.VsphereAPIProvisioner().find_vms(f"{range_id}-")) == []
     again = _run(mod.VsphereAPIProvisioner().destroy(range_id, output))
     assert again.status == "ok", again.errors  # a retried destroy finds everything gone
+    # Without the record (a range from before records, never confirmed), "every VM gone"
+    # may just as well be the wrong vCenter: refused, not recorded destroyed.
+    unrecorded = {k: v for k, v in output.items() if k != "connection"}
+    refused = _run(mod.VsphereAPIProvisioner().destroy(range_id, unrecorded))
+    assert refused.status == "failed" and "does not record which vCenter" in refused.errors[0]
 
 
 def test_a_vlan_another_port_group_carries_builds_nothing(env, si, range_id):
@@ -542,7 +549,8 @@ def test_greyspace_gs_core_is_built_wired_and_torn_down(env, si, range_id, monke
     prov._guest_poll = 0.2
     login = greyspace_host.login(range_id)
     with pytest.raises((RuntimeError, KeyError)):
-        _run(prov.run_in_guest(gs["vm_id"], login, [GuestStep("health", "/bin/true")], timeout=2))
+        _run(prov.run_in_guest(gs["vm_id"], login, [GuestStep("health", "/bin/true")], timeout=2,
+                               range_id=range_id, vm_name=gs["name"]))
 
     gone = _run(mod.VsphereAPIProvisioner().destroy(range_id, {"vms": built.vms, "networks": built.networks}))
     assert gone.status == "ok", gone.errors

@@ -11,7 +11,7 @@ from .base import BaseConsoleBackend
 class MockConsole(BaseConsoleBackend):
     kind: ClassVar[str] = "mock"
 
-    def open(self, vm: dict[str, Any]) -> dict[str, Any]:
+    def open(self, vm: dict[str, Any], *, db=None, rng=None) -> dict[str, Any]:
         return {
             "kind": "mock",
             "url": f"mock://console/{vm.get('vm_id', 'vm')}?t={secrets.token_hex(8)}",

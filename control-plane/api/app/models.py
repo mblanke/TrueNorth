@@ -1,7 +1,6 @@
 """TrueNorth Range - SQLAlchemy ORM models.
 
-Designed for 1,200 concurrent users and 70,000 VMs.
-All lookup columns carry composite indexes for tenant-scoped queries.
+Designed for 1,200 concurrent users and 70,000 VMs. Lookup columns carry composite indexes for tenant-scoped queries.
 """
 
 from __future__ import annotations
@@ -30,6 +29,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.types import CHAR, TypeDecorator
 
 from .db import Base
+from .hypervisor_ports import column_default as _hypervisor_port
 from .state_machines import _EXERCISE_TRANSITIONS, _RANGE_TRANSITIONS
 
 
@@ -1068,7 +1068,7 @@ class HypervisorConnection(TimestampMixin, Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     hypervisor_type: Mapped[str] = mapped_column(String(20), nullable=False)
     host: Mapped[str] = mapped_column(String(255), nullable=False)
-    port: Mapped[int] = mapped_column(Integer, default=8006)
+    port: Mapped[int] = mapped_column(Integer, default=_hypervisor_port)  # 443 vSphere, 8006 Proxmox, 5985 Hyper-V
     username: Mapped[str] = mapped_column(String(255), nullable=False)
     password_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
     api_token: Mapped[str | None] = mapped_column(Text, nullable=True)

@@ -24,7 +24,7 @@ from datetime import UTC, datetime
 
 from celery import group
 
-from . import ai_client, db_ops, greyspace, range_alloc, windows_roles
+from . import ai_client, db_ops, greyspace, range_alloc, range_sweep, windows_roles
 from .base_tasks import ReliableTask, _get_backend, db_connect_args
 from .celery_app import app
 from .fencing import FINAL_ERRORS, fenced, guarded_range_update, run_async, snapshot_back_to_ready
@@ -150,14 +150,12 @@ def provision_range(self, range_id: str, noise_mgmt: dict | None = None):
             hv = "proxmox" if "proxmox" in backend else "vsphere"
             with _db_session() as db2:
                 resolver = golden_image_resolver(db2, hv)
-                creds = db_ops.hypervisor_creds(db2, hv, range_id)  # the range's own tenant's connection
             rendered = windows_roles.require_buildable(render_topology(template, range_id, resolver, noise_mgmt=noise_mgmt))
             template = {
                 **template,
                 "name": rendered["range_name"],
                 "vms": rendered["vm_definitions"],
                 "networks": rendered["network_definitions"],
-                "credentials": creds,
                 "hypervisor": hv,
             }
             allocations = {"vlan_map": rendered["vlan_map"]}
@@ -169,14 +167,14 @@ def provision_range(self, range_id: str, noise_mgmt: dict | None = None):
                 logger.warning("[provision] unresolved OS templates: %s", rendered["unresolved"])
 
         template = greyspace.plan_host(range_id, backend, template)  # + gs-core on HOSTED backends (ADR 0007)
-        provisioner = _get_backend(backend, range_id)  # the range's own tenant's connection (H6)
+        provisioner = _get_backend(backend, range_id, build=True)  # its tenant's connection (H6), recorded
         allocations.update(range_alloc.reserve_for_build(_db_session, range_id, provisioner, template))
         result = run_async(provisioner.provision(range_id, template, allocations))
 
         if result.status == "failed":
             raise RuntimeError("; ".join(result.errors) or "Provisioning failed")
 
-        output = json.dumps(range_alloc.stored_output(backend, range_id, result))
+        output = json.dumps(range_alloc.stored_output(backend, range_id, result, provisioner))
 
         if not _update_range_state(range_id, "ready", output=output, only_from=("provisioning",)):
             return discard_built(provisioner, range_id, result)
@@ -228,7 +226,7 @@ def destroy_range(self, range_id: str):
 
         prov_output = json.loads(row[0]) if row and row[0] else {}
         backend = (row[1] if row and row[1] else None) or os.getenv("PROVISIONER_BACKEND", "mock")
-        provisioner = _get_backend(backend, range_id)  # the vCenter it was built on
+        provisioner = _get_backend(backend, range_id, output=prov_output, teardown=True)  # the vCenter it was built on
 
         result = run_async(provisioner.destroy(range_id, prov_output))
 
@@ -277,13 +275,13 @@ def health_check_ranges(self):
         healthy = 0
         unhealthy = 0
         unhealthy_ids = []
+        checks = range_sweep.health_checks(active_ranges)  # one provisioner and login per vCenter
 
         for row in active_ranges:
-            range_id, name, prov_output = str(row[0]), row[1], row[2]
+            range_id, name = str(row[0]), row[1]
 
             try:
-                prov_dict = json.loads(prov_output) if prov_output else {}
-                result = asyncio.run(_get_backend(None, range_id).health_check(range_id, prov_dict))
+                result = range_sweep.result(checks, range_id)
                 is_healthy = result.healthy
 
                 if is_healthy:
@@ -354,14 +352,13 @@ def collect_range_metrics(self):
 
         all_metrics = []
         now = datetime.now(UTC).isoformat()
+        checks = range_sweep.health_checks(active_ranges)  # VM status awareness; one login per vCenter
 
         for row in active_ranges:
             range_id, name, prov_output = str(row[0]), row[1], row[2]
             prov_dict = json.loads(prov_output) if prov_output else {}
-
-            # Use provisioner health check for VM status awareness
             try:
-                health = asyncio.run(_get_backend(None, range_id).health_check(range_id, prov_dict))
+                health = range_sweep.result(checks, range_id)
                 vm_count = len(health.vm_statuses) or len(prov_dict.get("vms", []))
             except Exception:
                 vm_count = len(prov_dict.get("vms", []))

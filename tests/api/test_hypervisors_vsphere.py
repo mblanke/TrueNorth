@@ -313,7 +313,7 @@ class TestVsphereEndpointAndDialect:
 
         assert not result.success and "401" in result.message
         assert not routes["login"].called
-        assert conn.is_active is False
+        assert conn.is_active is True  # reported, not deactivated: ranges stay on it (#131 review 2)
 
     def test_session_is_deleted_when_a_read_fails(self, db_session):
         conn = _vcenter(db_session)
@@ -457,7 +457,8 @@ class TestHypervisorTenancy:
         theirs = _vcenter(db_session, OTHER_TENANT)
         theirs.is_primary = True
         db_session.commit()
-        body = {"name": "New", "hypervisor_type": "vsphere", "host": "vc.mine.test", "port": 443, "username": "u"}
+        body = {"name": "New", "hypervisor_type": "vsphere", "host": "vc.mine.test", "port": 443, "username": "u",
+                "password": "pw"}
         r = client.post("/hypervisors/connections", json=body)
         assert r.status_code == 201, r.text
         created = db_session.get(HypervisorConnection, uuid.UUID(r.json()["id"]))

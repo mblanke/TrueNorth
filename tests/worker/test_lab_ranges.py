@@ -58,7 +58,7 @@ def test_reconcile_removes_only_vms_named_for_the_given_ranges(monkeypatch):
             removed[range_id] = [v["vm_id"] for v in output["vms"]]
             return DestroyResult(status="ok", resources_removed=len(output["vms"]))
 
-    monkeypatch.setattr(lab_tasks, "_get_backend", lambda backend: Prov())
+    monkeypatch.setattr(lab_tasks, "_get_backend", lambda backend, *a, **kw: Prov())
     result = lab_tasks.reconcile_lab_vms.run(["aaaa", "bbbb"], "vsphere_api")
     assert removed == {"aaaa": ["vm-1", "vm-2"]}
     assert result == {"status": "ok", "removed": {"aaaa": 2}}
@@ -84,7 +84,7 @@ def test_reconcile_finds_vms_by_the_range_id_they_are_tagged_with(monkeypatch):
             removed[range_id] = [v["vm_id"] for v in output["vms"]]
             return DestroyResult(status="ok", resources_removed=len(output["vms"]))
 
-    monkeypatch.setattr(lab_tasks, "_get_backend", lambda backend: Prov())
+    monkeypatch.setattr(lab_tasks, "_get_backend", lambda backend, *a, **kw: Prov())
     assert lab_tasks.reconcile_lab_vms.run([rid], "vsphere_api") == {"status": "ok", "removed": {rid: 1}}
     assert removed == {rid: ["vm-1"]}
 
@@ -139,7 +139,7 @@ def test_vms_built_for_a_range_torn_down_mid_build_are_destroyed(monkeypatch, le
     monkeypatch.setattr(tasks, "_update_range_state", state)
     monkeypatch.setattr(tasks, "_notify_api", lambda *a, **k: None)
     monkeypatch.setattr(tasks, "_db_session", lambda: Db())
-    monkeypatch.setattr(tasks, "_get_backend", lambda b, range_id=None: Prov())
+    monkeypatch.setattr(tasks, "_get_backend", lambda b, range_id=None, **kw: Prov())
     result = tasks.provision_range.run("r-1")
     assert result == {"status": "discarded", "range_id": "r-1", "vm_count": 1}
     assert destroyed == {"r-1": [{"vm_id": "vm-9", "name": "r-host"}]}
@@ -150,7 +150,7 @@ def test_destroying_a_destroyed_range_is_a_no_op(monkeypatch, lease_always_free)
     from worker import tasks
 
     monkeypatch.setattr(tasks, "_update_range_state", lambda *a, **k: 0)
-    monkeypatch.setattr(tasks, "_get_backend", lambda b, range_id=None: pytest.fail("must not touch the hypervisor"))
+    monkeypatch.setattr(tasks, "_get_backend", lambda b, range_id=None, **kw: pytest.fail("must not touch the hypervisor"))
     assert tasks.destroy_range.run("r-1") == {"status": "skipped", "range_id": "r-1"}
 
 
