@@ -3,8 +3,8 @@
 Converts a range template (`nodes` / `assets` + `network.vlans` / `inputs`) into
 concrete `vm_definitions` the provisioners consume, resolving each node's OS alias
 to a hypervisor template name via the golden-image registry and allocating static
-IPs within each VLAN's CIDR. Vendored here (rather than importing the Redis-coupled
-scenario-engine template_engine) so the worker stays self-contained.
+IPs within each VLAN's CIDR. The only renderer: scenario-engine's template_engine (a
+Terraform-variables renderer nothing imported) was deleted in v1.2.0.
 """
 
 from __future__ import annotations

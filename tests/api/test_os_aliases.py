@@ -14,7 +14,6 @@ import pytest
 import yaml
 from app import golden_images as api_gi
 from app.models import GoldenImage
-from template_engine import renderer as se_renderer
 from worker import render as worker_render
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -46,12 +45,13 @@ def _one_node(os_name: str) -> dict:
             "nodes": [{"id": "n1", "os": os_name, "vlan": "lan"}]}
 
 
-# ── the three copies of the table agree ──────────────────────────────────
+# ── the two copies of the table agree ────────────────────────────────────
+# (scenario-engine/template_engine held a third copy; nothing imported it and it was
+# deleted in v1.2.0.)
 
 
-def test_alias_tables_are_identical_across_api_worker_and_scenario_engine():
+def test_alias_tables_are_identical_across_api_and_worker():
     assert worker_render.DEPRECATED_OS_ALIASES == api_gi.DEPRECATED_OS_ALIASES
-    assert se_renderer.DEPRECATED_OS_ALIASES == api_gi.DEPRECATED_OS_ALIASES
     assert worker_render.EQUIVALENT_OS_ALIASES == api_gi.EQUIVALENT_OS_ALIASES
 
 
@@ -61,7 +61,6 @@ def test_alias_tables_are_identical_across_api_worker_and_scenario_engine():
 def test_canonical_os(old, new):
     assert api_gi.canonical_os(old) == new
     assert worker_render.canonical_os(old) == new
-    assert se_renderer.canonical_os(old) == new
 
 
 # ── content and catalogue ────────────────────────────────────────────────
