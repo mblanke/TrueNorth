@@ -6,17 +6,21 @@ text and are not a security boundary. So the runner puts the whole ``claude`` pr
 tree for a job in an OS sandbox. File writes are denied by default; reads, local network
 and other processes are denied where they matter; the job gets only what it needs:
 
-* **Writes**: only the job's run (``<runs>/<slug>/``), its request file
-  (``<runs>/<slug>.request.txt``), the job's own home directory (Claude Code's config,
-  sessions and temp files; created per job and deleted afterwards) and ``/dev`` nodes.
-  It cannot write the repository, other runs, ``_studio/`` (where the API records
+* **Writes**: only the job's run (``<runs>/<slug>/``, which holds its request,
+  ``request.txt``), the job's own home directory (Claude Code's config, sessions and temp
+  files; created per job and deleted afterwards) and ``/dev`` nodes. Only whole
+  directories are made writable, never a single file in a read-only directory: Claude
+  Code's Write tool writes a temporary file next to its target and renames it into
+  place, which a lone writable file cannot take. It cannot write the runs root itself,
+  the repository, other runs, ``_studio/`` (where the API records
   ownership), ``_queue/``, ``_jobs/``, ``_history/``, the runner's home, or any shared
   location a later job or the operator would load (``~/.claude``, ``~/.gitconfig``,
   shell profiles, launch agents, shared temp dirs).
 * **Reads**: nothing under the runner account's home except the repository, the
   ``claude`` installation, the job's run and the job's home. That excludes other runs,
   ``_studio``, ``_queue``, ``_jobs``, other jobs' Claude sessions, ``~/.ssh`` and
-  ``~/.docker``. Inside the repository, ``.env*`` files and any ``build/arc2/`` or
+  ``~/.docker``. Inside the repository, ``.env*`` files (except the tracked
+  ``.env.example`` templates, which hold no secrets) and any ``build/arc2/`` or
   ``.claude/worktrees/`` path (other checkouts' runs) are not readable either. System
   locations outside the home (``/etc``, shared temp) stay readable.
 * **Processes**: no signals to processes outside the sandbox. Seatbelt cannot stop a
@@ -50,6 +54,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 DNS_SOCKET = "/private/var/run/mDNSResponder"
+# Tracked templates that match ``.env*`` but hold no secrets: readable and never masked.
+# Masking a tracked file (bubblewrap) swaps it for a character device, and every job's
+# ``git status`` then reported the checkout as modified.
+ENV_TEMPLATES = frozenset({".env.example"})
 
 
 class ConfinementError(RuntimeError):
@@ -64,7 +72,6 @@ class Jail:
     runs: Path  # the runs root: unreadable and unwritable except ``writable`` below
     home: Path  # the runner account's home: unreadable except what is listed
     writable: tuple[Path, ...]  # read-write subtrees (the job's run, its home)
-    writable_files: tuple[Path, ...] = ()  # read-write single files (the request file)
     readable: tuple[Path, ...] = ()  # extra read-only subtrees (the claude installation)
     local_ports: tuple[int, ...] = ()  # localhost ports the job may connect to
     # When set, the only way out: every other outbound IP connection is denied and the
@@ -96,7 +103,8 @@ class Seatbelt(Confinement):
 
     def profile(self, jail: Jail) -> str:
         q = _quote
-        rw = [f"(subpath {q(p)})" for p in jail.writable] + [f"(literal {q(p)})" for p in jail.writable_files]
+        rw = [f"(subpath {q(p)})" for p in jail.writable]
+        templates = " ".join(f'(regex #"/{_sbpl_regex(name)}$")' for name in sorted(ENV_TEMPLATES))
         reads = [f"(subpath {q(p)})" for p in (jail.repo, *jail.readable)]
         # Seatbelt applies the last rule that matches: broad denials first, exceptions after.
         rules = [
@@ -108,7 +116,8 @@ class Seatbelt(Confinement):
             f"(deny file-read-data (subpath {q(jail.home)}))",
             f"(allow file-read-data {' '.join(reads)})",
             f"(deny file-read-data (subpath {q(jail.runs)}))",
-            r'(deny file-read-data (regex #"/\.env[^/]*$"))',
+            r'(deny file-read-data (require-all (regex #"/\.env[^/]*$")'
+            f" (require-not (require-any {templates}))))",
             # Other checkouts' runs inside the repository (worktrees, a second runs root).
             f"(deny file-read-data (subpath {q(Path(jail.repo) / 'build' / 'arc2')})"
             f" (subpath {q(Path(jail.repo) / '.claude' / 'worktrees')}))",
@@ -148,8 +157,11 @@ class Bubblewrap(Confinement):
     The root filesystem is mounted read-only. The runner account's home is replaced by an
     empty read-only tmpfs, and the repository and ``claude`` installation are bound back
     read-only. The runs root and the repository's other runs (``build/arc2``,
-    ``.claude/worktrees``) are hidden the same way, and ``.env*`` files are masked with
-    /dev/null. Only the job's run, its request file and its home are bound read-write.
+    ``.claude/worktrees``) are hidden the same way, and ``.env*`` files (not the tracked
+    ``ENV_TEMPLATES``) are masked with /dev/null. Only the job's run and its home are
+    bound read-write, as directories: a file bound alone into the read-only runs root
+    can be written in place but not replaced, and Claude Code's Write tool replaces
+    (temporary file, then rename), so it failed there with EROFS.
     ``--unshare-pid`` means the job cannot see, signal or read the arguments of any
     process outside it, which is stronger than Seatbelt here.
 
@@ -209,17 +221,13 @@ class Bubblewrap(Confinement):
         for path in hidden:  # 3. runs and other checkouts' runs: empty again
             out += ["--tmpfs", str(path)]
         for env_file in sorted({*repo.glob(".env*"), *repo.glob("*/.env*"), *repo.glob("*/*/.env*")}):
-            out += ["--ro-bind", "/dev/null", str(env_file.resolve())]  # 4. secrets: masked
+            if env_file.name not in ENV_TEMPLATES:
+                out += ["--ro-bind", "/dev/null", str(env_file.resolve())]  # 4. secrets: masked
         for path in jail.readable_inner:  # 5. read-only views inside the hidden areas
             out += ["--ro-bind", str(Path(path).resolve()), str(Path(path).resolve())]
         for path in jail.writable:  # 6. the job's own run and home, read-write
             path = Path(path).resolve()
             path.mkdir(parents=True, exist_ok=True)
-            out += ["--bind", str(path), str(path)]
-        for path in jail.writable_files:
-            path = Path(path).resolve()
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.touch(exist_ok=True)
             out += ["--bind", str(path), str(path)]
         for path in (home, *hidden):  # 7. the empty tmpfs layers become read-only
             out += ["--remount-ro", str(path)]
@@ -267,6 +275,11 @@ def select(choice: str | None = None) -> Confinement:
     if not backend.available():
         raise ConfinementError(f"ARC2_CONFINE={choice} is not available on this host")
     return backend
+
+
+def _sbpl_regex(text: str) -> str:
+    """``text`` matched literally inside an SBPL ``#"..."`` regex."""
+    return "".join(f"\\{c}" if c in '.^$*+?()[]{}|\\"' else c for c in text)
 
 
 def _quote(path: Path) -> str:

@@ -340,6 +340,9 @@ def course_outline(
         "provenance": meta.get("content_provenance") or meta.get("provenance") or "",
         "status": meta.get("content_status") or meta.get("status") or "",
         "tags": _course_tags(course),
+        # Set while the course delivers a release a test host's ARC² runner accepted, not a
+        # person (app/course_releases/test_content.py): the page labels it for Students.
+        "test_content": (meta.get("test_content") or {}).get("label") if isinstance(meta.get("test_content"), dict) else None,
         "modules": out_modules,
         # Whether "Open in Moodle" can work: the tenant has a usable Moodle and this course
         # is published to it. Readable by every role, unlike /integrations/platforms.

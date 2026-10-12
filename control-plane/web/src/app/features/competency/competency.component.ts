@@ -1,5 +1,5 @@
 import {
-  Component, ElementRef, OnDestroy, OnInit, ViewChild, effect, inject, signal,
+  Component, ElementRef, OnDestroy, OnInit, ViewChild, computed, effect, inject, signal,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MatCardModule } from '@angular/material/card';
@@ -160,11 +160,13 @@ interface SkillGap {
 
         <mat-tab label="Framework Browser">
           <div class="tab-content mt-2">
-            <div class="page-header">
-              <button mat-raised-button color="primary" (click)="importNice()">
-                <mat-icon>download</mat-icon> Import NICE Framework
-              </button>
-            </div>
+            @if (canEditCatalogue()) {
+              <div class="page-header">
+                <button mat-raised-button color="primary" (click)="importNice()">
+                  <mat-icon>download</mat-icon> Import NICE Framework
+                </button>
+              </div>
+            }
 
             @if (competencies().length) {
               <table mat-table [dataSource]="competencies()" class="full-width mt-2">
@@ -188,7 +190,10 @@ interface SkillGap {
                 <tr mat-row *matRowDef="let row; columns: frameworkColumns"></tr>
               </table>
             } @else {
-              <mat-card class="mt-2"><mat-card-content>No competencies loaded. Click "Import NICE Framework" to seed the database.</mat-card-content></mat-card>
+              <mat-card class="mt-2"><mat-card-content>No competencies loaded.
+                @if (canEditCatalogue()) { Click "Import NICE Framework" to seed the database. }
+                @else { The catalogue is shared by every tenant; a platform administrator imports it. }
+              </mat-card-content></mat-card>
             }
           </div>
         </mat-tab>
@@ -231,6 +236,8 @@ export class CompetencyComponent implements OnInit, OnDestroy {
   frameworkColumns = ['code', 'name', 'framework', 'category'];
   selectedRole = '';
   private readonly auth = inject(AuthService);
+  /** The catalogue is platform-shared: only a platform admin may write it (API: course:author + tenant:read). */
+  readonly canEditCatalogue = computed(() => this.auth.isAdmin());
   // Was hardcoded to the dev-admin UUID — see my-progress.component.ts.
   private get userId(): string {
     return this.auth.userId() ?? '';

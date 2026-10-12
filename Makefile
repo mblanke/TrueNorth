@@ -96,7 +96,7 @@ test-worker: ## Run worker tests only
 # Integration tests against a real stack built from this checkout (scripts/itest.sh; CI
 # runs the same script). Own project + ports (API 127.0.0.1:18081), so a running dev
 # stack is left alone. Fails if no test passed. ITEST_KEEP=1 leaves the stack up.
-itest: ## Build + start an isolated stack, migrate, run tests/integration, tear down
+itest: ## Build + start an isolated stack, migrate, run tests/integration + the acceptance suite, tear down
 	bash scripts/itest.sh all
 
 itest-web: ## Same stack plus keycloak + web on http://localhost:14200 (for Playwright)

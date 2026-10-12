@@ -5,7 +5,7 @@ holding only the manifest keys they own; ``arc2.check`` merges the fragments int
 ``manifest.json``, enforces the golden thread (module objective → PO → critical event →
 validator), records the two human gates and prints the run status.
 
-    python -m arc2.check init   build/arc2/<slug> --slug <slug> --request-file <txt>
+    python -m arc2.check init   build/arc2/<slug> --slug <slug>   (reads build/arc2/<slug>/request.txt)
     python -m arc2.check merge  build/arc2/<slug> <stage>
     python -m arc2.check check  build/arc2/<slug> [--json]
     python -m arc2.check gate   build/arc2/<slug> outline|preview accept|feedback [--text ..] [--route <stage>]

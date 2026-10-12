@@ -60,9 +60,14 @@ GATES = {"outline": "0" * 64, "preview": "1" * 64}
 
 
 def manifest(
-    mods: list[dict[str, Any]], activities: dict[str, str], open_actions: list[dict[str, str]], catalogue_code: str
+    mods: list[dict[str, Any]],
+    activities: dict[str, str],
+    open_actions: list[dict[str, str]],
+    catalogue_code: str,
+    auto_gates: tuple[str, ...] = (),
 ) -> dict[str, Any]:
-    """The parts of a run's manifest the API cross-checks release.json against."""
+    """The parts of a run's manifest the API cross-checks release.json against.
+    ``auto_gates``: gates a test host's runner accepted (``accepted_by`` on the gate)."""
     for m in mods:
         kind = activities[m["id"]]
         m["activity"] = {"kind": kind} if kind == "range" else {"kind": kind, "no_range_reason": "no live systems"}
@@ -71,7 +76,11 @@ def manifest(
         "course": {"code": "ARC2-IOT", "catalogue_code": catalogue_code},
         "content": {"modules": mods},
         "qa": {"result": "pass"},
-        "gates": {w: {"state": "accepted", "accepted_sha256": d} for w, d in GATES.items()},
+        "gates": {
+            w: {"state": "accepted", "accepted_sha256": d}
+            | ({"accepted_by": arc_release.AUTO_ACCEPTED_BY} if w in auto_gates else {})
+            for w, d in GATES.items()
+        },
         "human_actions": [dict(a, stage="orchestrator", status="open", blocks_promotion=True) for a in open_actions],
     }
 
@@ -86,6 +95,7 @@ def write_run(
     catalogue_code: str = "C304",
     drop_ordinals: frozenset[int] = frozenset(),
     evidence: dict[str, str] | None = None,
+    auto_gates: tuple[str, ...] = (),
 ) -> dict[str, str]:
     """Lay down the files a released run carries; returns module id → activity."""
     yml = course_yaml(range_ordinals, title_suffix=title_suffix, drop_ordinals=drop_ordinals)
@@ -93,7 +103,7 @@ def write_run(
     mods = [{"id": f"mod_{m['ordinal']:03d}", "ordinal": m["ordinal"]} for m in doc["modules"]]
     activities = {m["id"]: ("range" if m["ordinal"] in range_ordinals else "theory") for m in mods}
     files = {
-        "manifest.json": json.dumps(manifest(mods, activities, open_actions or [], catalogue_code)),
+        "manifest.json": json.dumps(manifest(mods, activities, open_actions or [], catalogue_code, auto_gates)),
         "01-blueprint/outline.yaml": yaml.safe_dump(
             {"modules": [{"id": k, "activity": v} for k, v in activities.items()]}
         ),
@@ -131,7 +141,11 @@ def build(
     slug: str = "arc2-iot",
     drop_ordinals: frozenset[int] = frozenset(),
     evidence: dict[str, str] | None = None,
+    auto_gates: tuple[str, ...] = (),
+    auto_accepted: bool | None = None,
 ) -> bytes:
+    """``auto_gates`` marks those gates as accepted by a test host's runner; release.json
+    then says ``auto_accepted`` unless ``auto_accepted`` says otherwise (a forgery)."""
     run = tmp_path / slug
     activities = write_run(
         run,
@@ -142,6 +156,7 @@ def build(
         catalogue_code=catalogue_code,
         drop_ordinals=drop_ordinals,
         evidence=evidence,
+        auto_gates=auto_gates,
     )
     parts = arc_release.collect(run)
     meta = {
@@ -159,5 +174,8 @@ def build(
         "open_human_actions": open_actions or [],
         "parts": {n: {"digest": arc_release.digest_files(f), "files": f} for n, f in parts.items()},
     }
+    if auto_accepted if auto_accepted is not None else bool(auto_gates):
+        meta["auto_accepted"] = True
+        meta["auto_accept"] = {"gates": sorted(auto_gates), "accepted_by": arc_release.AUTO_ACCEPTED_BY}
     meta["release_digest"] = arc_release.release_digest(meta)
     return arc_release._tarball(run, meta)

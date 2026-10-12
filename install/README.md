@@ -361,13 +361,17 @@ catalogue and course files, the VM catalogue, range templates, scenarios and Sig
 | Variable | Default | Effect |
 |---|---|---|
 | `tn_load_shipped_content` | `false` | 80-seed loads `content/` through the API |
-| `tn_publish_shipped_content` | `false` | publish every course, quiz and learning path (imports are drafts) |
+| `tn_publish_shipped_content` | `false` | publish every course, quiz and learning path (imports are drafts), except C105 and its quizzes: its committed release is a CI/CATAPULT fixture and the course stays a draft ([content-library.md](../docs/content-library.md#courses)) |
 | `tn_load_shipped_demo` | `false` | demo people, ranges and exercises (not provisioned); without AD the demo people can sign in ([Without Active Directory](#without-active-directory)) |
 
 The load runs `scripts/load_content_inprocess.py` in a one-off api container as the
 bootstrap administrator: the API's routes, permissions, CSRF and validation all apply,
 and no token or password is used. Re-running is safe. `inventory/staging.yml` turns all
 three on.
+
+On a staging host loaded this way, `scripts/staging_acceptance.py` then proves each module's
+key flow end to end against the installed stack, in the same kind of one-off container
+(docs/runbooks/staging-acceptance.md).
 
 ## Images: deploy by digest
 
@@ -573,6 +577,9 @@ docs/arc2-course-studio.md §13 "Model mode" has the details.
 accept the outline and preview gates itself when a job stops at one with nothing failing, so
 a course builds end to end with no reviewer. It is recorded as `accepted_by: "auto (test
 host)"`, and the Studio marks such runs "TEST CONTENT — gates auto-accepted, not reviewed".
+It also writes `TN_TEST_HOST=true` for the api (`30-config`): only then does the api accept or
+publish a release built from such a run, labelled "TEST CONTENT — not reviewed" on the
+course page and in Moodle; anywhere else it refuses them.
 Never set it on a platform whose courses reach Students.
 
 Then `ansible-playbook site.yml`, or on a running platform `30-config`, `50-stack-up` (the

@@ -5,8 +5,10 @@ identifies skill gaps, and manages external certifications.
 
 Access:
 
-- the competency catalogue is platform-wide (no tenant); anyone signed in may read it,
-  adding to it needs ``course:author``;
+- the competency catalogue is platform-wide (no tenant) and shared by every tenant;
+  anyone signed in may read it, but every write to it is a platform action and needs
+  ``course:author`` + the platform-level ``tenant:read`` (``PLATFORM_CURRICULUM_WRITE``,
+  the same gate as the QSP spine import). A tenant author (an instructor) is refused;
 - a user's profile, skill gaps and certifications are their learning record
   (``app.tenancy.authorize_record_access``): their own always, someone else's with
   ``learning_record:read`` / ``:write`` and only inside the caller's tenant (404 outside);
@@ -35,7 +37,7 @@ from ..models import (
     ProficiencyLevel,
     User,
 )
-from ..rbac import Permission, require_permission, user_has_permission
+from ..rbac import PLATFORM_CURRICULUM_WRITE, Permission, require_permission, user_has_permission
 from ..schemas import (
     CertificationIn,
     CertificationOut,
@@ -50,7 +52,8 @@ logger = logging.getLogger("truenorth.competency")
 
 router = APIRouter(prefix="/competency", tags=["competency"])
 
-author = require_permission(Permission.COURSE_AUTHOR)
+# The catalogue is platform-shared: writes need the QSP spine gate, not tenant-level author.
+platform_author = require_permission(*PLATFORM_CURRICULUM_WRITE)
 
 
 def _enum_or_422(enum_cls, value: str, field: str):
@@ -94,9 +97,12 @@ def create_competency(
     level: str = "",
     parent_code: str | None = None,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(author),
+    user: CurrentUser = Depends(platform_author),
 ):
-    """Create a competency definition (admin/instructor)."""
+    """Create a competency definition in the platform-shared catalogue.
+
+    **Permission: course:author + tenant:read** — platform admin only; a tenant author
+    (instructor) is refused."""
     comp = Competency(
         code=code,
         name=name,
@@ -119,11 +125,13 @@ def create_competency(
 @router.post("/frameworks/import-nice", status_code=status.HTTP_201_CREATED)
 def import_nice_framework(
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(author),
+    user: CurrentUser = Depends(platform_author),
 ):
     """Seed the NICE Workforce Framework (SP 800-181r1) core work roles and KSAs.
 
     This is idempotent — skips competencies that already exist.
+
+    **Permission: course:author + tenant:read** — platform admin only.
     """
     nice_roles = [
         (

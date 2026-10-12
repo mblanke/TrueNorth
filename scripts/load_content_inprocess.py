@@ -14,7 +14,7 @@ Run by the installer (roles/tn_seed, tn_load_shipped_content) as a one-off api c
 
 Idempotent: importers upsert, create-style steps skip what exists, publishing skips what
 is published. --publish publishes every course, quiz and learning path (imports are
-drafts); --demo adds the demo people (roster rows; without AD the installer then links
+drafts) except the courses in KEEP_DRAFT (C105) and their quizzes; --demo adds the demo people (roster rows; without AD the installer then links
 them to local sign-in accounts, app.link_demo_accounts), ranges and exercises (not
 provisioned).
 """
@@ -28,6 +28,56 @@ import sys
 from pathlib import Path
 
 SRC = Path("/srcapp")
+
+# Courses --publish leaves as drafts, by catalogue code (course names are "{code} — {title}",
+# programme_ingest.course_name), with their quizzes. C105: its committed release bundle
+# (content/releases/c105-*.tar.gz) is a CI and CATAPULT cmi5 fixture, not a course for
+# Students; the course is unpublished pending Standards review (docs/content-library.md).
+# This loader never uploads a release (POST /course-releases) either.
+KEEP_DRAFT = frozenset({"C105"})
+
+
+def _code(row: dict) -> str:
+    return str(row.get("name") or "").split(" — ", 1)[0].strip()
+
+
+def publish_all(api, keep_draft: frozenset = KEEP_DRAFT) -> bool:
+    """Publish every course, quiz and learning path not yet published, except the courses
+    in ``keep_draft`` and their quizzes. Returns True when every publish succeeded."""
+    failed = False
+    held_modules: set[str] = set()
+    print("Publishing")
+    for label, path in (("courses", "/courses"), ("quizzes", "/quizzes"), ("learning paths", "/learning-paths")):
+        status, rows = api.get(path + "?limit=1000")
+        if status != 200:
+            status, rows = api.get(path)
+        if isinstance(rows, dict):
+            rows = rows.get("items") or rows.get("results") or []
+        done = errors = held = 0
+        for row in rows or []:
+            if label == "courses" and _code(row) in keep_draft:
+                held += 1
+                st, course = api.get(f"/courses/{row['id']}")
+                if st == 200 and isinstance(course, dict):
+                    held_modules.update(str(m["id"]) for m in course.get("modules") or [])
+                continue
+            if label == "quizzes" and str(row.get("module_id")) in held_modules:
+                held += 1
+                continue
+            if row.get("is_published"):
+                continue
+            st, out = api._send(
+                "PATCH", f"{path}/{row['id']}", json.dumps({"is_published": True}).encode(), "application/json"
+            )
+            if isinstance(st, int) and 200 <= st < 300:
+                done += 1
+            else:
+                errors += 1
+                print(f"  FAIL {label} {row.get('name') or row.get('title') or row['id']}: {st} {str(out)[:160]}")
+        failed = failed or errors > 0
+        kept = f", {held} kept as drafts ({', '.join(sorted(keep_draft))})" if held else ""
+        print(f"  {label}: {len(rows or [])} listed, {done} published now, {errors} failed{kept}")
+    return not failed
 
 
 def main() -> int:
@@ -78,29 +128,7 @@ def main() -> int:
     lc.load_detections(api, rep)
     if args.demo:
         lc.load_demo(api, rep, templates, scenarios)
-    failed = False
-    if args.publish:
-        print("Publishing")
-        for label, path in (("courses", "/courses"), ("quizzes", "/quizzes"), ("learning paths", "/learning-paths")):
-            status, rows = api.get(path + "?limit=1000")
-            if status != 200:
-                status, rows = api.get(path)
-            if isinstance(rows, dict):
-                rows = rows.get("items") or rows.get("results") or []
-            done = errors = 0
-            for row in rows or []:
-                if row.get("is_published"):
-                    continue
-                st, out = api._send(
-                    "PATCH", f"{path}/{row['id']}", json.dumps({"is_published": True}).encode(), "application/json"
-                )
-                if isinstance(st, int) and 200 <= st < 300:
-                    done += 1
-                else:
-                    errors += 1
-                    print(f"  FAIL {label} {row.get('name') or row.get('title') or row['id']}: {st} {str(out)[:160]}")
-            failed = failed or errors > 0
-            print(f"  {label}: {len(rows or [])} listed, {done} published now, {errors} failed")
+    failed = bool(args.publish) and not publish_all(api)
     return 1 if (failed or rep.failures) else 0
 
 

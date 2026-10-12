@@ -19,7 +19,9 @@ Queue contract (the API writes, the runner reads):
 ``tenant_id`` is the owning tenant, carried into the job record for audit. The runner
 does not authorize: the API only queues jobs for runs the caller's tenant owns.
 
-* ``start``: ``text`` is the course request; runs ``/arc2 --slug <slug> <text>``.
+* ``start``: ``text`` is the course request; runs ``/arc2 --slug <slug> <text>``. For a
+  new run the runner first writes ``text`` to ``<runs>/<slug>/request.txt``
+  (``stage_request``), which ``/arc2`` initialises the run from.
 * ``resume``: ``text`` is ``accept`` or feedback; runs ``/arc2 --resume <slug> <text>``.
 
 Job records (the runner writes, the API reads):
@@ -110,8 +112,9 @@ RUNNER_GUIDANCE = (
     "`.venv/bin/python -m arc2.check` (PYTHONPATH=tools is already set). "
     "Chaining with ; && | is fine only between allowed commands: python via .venv/bin/python, "
     "git status/rev-parse/diff/log, ls, cat, head, tail, wc, grep, sort, diff, stat, echo, printf, test, mkdir. "
-    "File edits are allowed only in this run's directory, build/arc2/<slug>/, and its "
-    "request file build/arc2/<slug>.request.txt; other runs and build/arc2/_* are out of reach."
+    "File edits are allowed only in this run's directory, build/arc2/<slug>/; build/arc2/ itself, "
+    "other runs and build/arc2/_* are read-only or out of reach. For a new run the runner has "
+    "already written the request to build/arc2/<slug>/request.txt: use it, do not rewrite it."
 )
 
 AGENT_NAMES = {
@@ -168,9 +171,44 @@ def prompt_for(job: dict) -> str:
 
 
 def job_tools(slug: str) -> list[str]:
-    """ALLOWED_TOOLS plus file edits for this job's own run and request file."""
-    own = [f"./build/arc2/{slug}/**", f"./build/arc2/{slug}.request.txt"]
-    return [*ALLOWED_TOOLS, *(f"{tool}({path})" for tool in ("Write", "Edit") for path in own)]
+    """ALLOWED_TOOLS plus file edits for this job's own run (its request file included)."""
+    return [*ALLOWED_TOOLS, *(f"{tool}(./build/arc2/{slug}/**)" for tool in ("Write", "Edit"))]
+
+
+REQUEST_FILE = "request.txt"
+
+
+def stage_request(runs: Path, record: dict) -> Path | None:
+    """For a ``start`` job on a run that has no manifest yet, write the request to
+    ``<runs>/<slug>/request.txt`` before the engine starts; ``/arc2`` step 2 and
+    ``arc2.check init`` read it from there.
+
+    The runner writes it, outside the sandbox, because a confined job may write only inside
+    its own run: the request file used to sit in the runs root
+    (``<runs>/<slug>.request.txt``), where Claude Code's Write tool, which writes a
+    temporary file beside its target and renames it, failed (EROFS under bubblewrap).
+    The run directory may hold what an earlier job of the same run left, so nothing is
+    followed through a link. Returns the path, or None when there is nothing to stage.
+    """
+    if record.get("action") != "start" or read_manifest(runs, record["slug"]) is not None:
+        return None
+    run = runs / record["slug"]
+    if run.is_symlink():
+        raise JobError(f"run directory {run.name} is a link")
+    run.mkdir(exist_ok=True)
+    text = " ".join(str(record["text"]).split())  # the same one line the prompt carries
+    dir_fd = os.open(run, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        fd = os.open(REQUEST_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW | os.O_NONBLOCK, 0o640, dir_fd=dir_fd)
+    except OSError as exc:
+        raise JobError(f"cannot write {run.name}/{REQUEST_FILE}: {exc.strerror}") from exc
+    finally:
+        os.close(dir_fd)
+    with os.fdopen(fd, "w") as f:
+        if not stat.S_ISREG(os.fstat(f.fileno()).st_mode):
+            raise JobError(f"{run.name}/{REQUEST_FILE} is not a regular file")
+        f.write(text + "\n")
+    return run / REQUEST_FILE
 
 
 def command_for(job: dict, claude: str, model: str | None = None) -> list[str]:
@@ -504,6 +542,12 @@ def run_job(record: dict, path: Path, claude: str, timeout: int = DEFAULT_TIMEOU
     record["engine"] = primary.label if primary else "claude"
     record["mode"] = models.mode
     record["confinement"] = confinement.name
+    try:
+        stage_request(runs, record)
+    except (JobError, OSError) as exc:
+        record.update(state="failed", error=f"request not staged: {exc}", finished_at=now())
+        write_record(path, record)
+        return record
     if isinstance(confinement, Unconfined):
         env = {k: v for k, v in os.environ.items() if k not in ("AUTH_DISABLED", "DATABASE_URL", "ARC2_LOCAL_TOKEN")}
         env.update(PYTHONPATH="tools", PYTHONDONTWRITEBYTECODE="1")
@@ -526,7 +570,6 @@ def run_job(record: dict, path: Path, claude: str, timeout: int = DEFAULT_TIMEOU
     jail = Jail(
         repo=REPO_ROOT, runs=runs, home=Path.home(),
         writable=tuple(p for p in (runs / record["slug"], home) if p is not None),
-        writable_files=(runs / f"{record['slug']}.request.txt",),
         readable=_claude_install(claude), local_ports=models.local_ports(),
         egress_port=egress.port if egress and not isinstance(confinement, Unconfined) else None,
         bridges=tuple(getattr(egress, "bridges", ())) if egress else (),
@@ -792,7 +835,8 @@ def reap(jobs: Path) -> None:
 # would. The job carries ``auto_accept`` and ``requested_by: "auto (test host)"``, and its
 # engine records ``accepted_by`` on the gate in manifest.json (check.py gate, from
 # ARC2_GATE_ACCEPTED_BY), so an automatic acceptance is auditable and never looks like a
-# person's. It never accepts past a failure, a STOP or a QA HUMAN-TAKEOVER, never when
+# person's. It never accepts past a failure, a STOP, a QA HUMAN-TAKEOVER or an open
+# human action that blocks promotion (``blocks_promotion``), never when
 # someone has already queued work for the run, and at most AUTO_ACCEPT_LIMIT times a run.
 
 AUTO_ACCEPTED_BY = "auto (test host)"
@@ -841,6 +885,9 @@ def pending_gate(manifest: dict | None) -> str | None:
         return None  # a STOP or a refused merge: a person decides
     if qa.get("result") == "human_takeover":
         return None
+    if any(isinstance(a, dict) and a.get("status") == "open" and a.get("blocks_promotion")
+           for a in manifest.get("human_actions") or []):
+        return None  # an open action that blocks promotion: a person decides, not the runner
     if (gates.get("outline") or {}).get("state") == "pending":
         return "outline"
     first_five = ("content-architect", "code-generator", "range-engineer", "artifact-creator", "sensor-gateway")

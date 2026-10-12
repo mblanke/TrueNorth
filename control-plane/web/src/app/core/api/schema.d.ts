@@ -1014,7 +1014,10 @@ export interface paths {
         put?: never;
         /**
          * Create Competency
-         * @description Create a competency definition (admin/instructor).
+         * @description Create a competency definition in the platform-shared catalogue.
+         *
+         *     **Permission: course:author + tenant:read** — platform admin only; a tenant author
+         *     (instructor) is refused.
          */
         post: operations["create_competency_competency_frameworks_post"];
         delete?: never;
@@ -1037,6 +1040,8 @@ export interface paths {
          * @description Seed the NICE Workforce Framework (SP 800-181r1) core work roles and KSAs.
          *
          *     This is idempotent — skips competencies that already exist.
+         *
+         *     **Permission: course:author + tenant:read** — platform admin only.
          */
         post: operations["import_nice_framework_competency_frameworks_import_nice_post"];
         delete?: never;
@@ -9097,6 +9102,12 @@ export interface components {
             };
             /** Arc2 Code */
             arc2_code: string;
+            /**
+             * Auto Accepted
+             * @description Test content: a test host's ARC² runner accepted its gates, not a person. Accepted and published only on a test host (TN_TEST_HOST), and labelled there.
+             * @default false
+             */
+            auto_accepted?: boolean;
             /** Catalogue Code */
             catalogue_code: string;
             /**

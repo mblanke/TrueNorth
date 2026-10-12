@@ -302,6 +302,12 @@ Complete role-to-permission mapping as defined in `rbac.py`:
 | `schedule:write` | X | X | | | |
 | `schedule:admin` | X (platform tenant only when `PLATFORM_TENANT_ID` is set) | | | | |
 
+**Platform-shared curriculum.** The QSP qualification spine (`/qsp/import-crosswalk`,
+`/qsp/import-competency-crosswalk`) and the competency catalogue (`POST
+/competency/frameworks`, `/competency/frameworks/import-nice`) are shared by every tenant.
+Writing them needs `course:author` + `tenant:read` (`PLATFORM_CURRICULUM_WRITE`), so only a
+platform admin may; an instructor (tenant-level author) is refused with 403.
+
 ### Permission Enforcement
 
 Permissions are enforced at the API endpoint level using FastAPI dependency injection:

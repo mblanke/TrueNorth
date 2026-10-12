@@ -401,6 +401,11 @@ jobs:
       # scripts/junit_require_pass.py fails the step when zero tests passed.
       - name: Integration tests
         run: bash scripts/itest.sh test
+      # The post-install acceptance suite (scripts/staging_acceptance.py) on the same stack,
+      # after loading the shipped content as the installer does; about a minute. --strict:
+      # a skip other than what this stack lacks (ACCEPTANCE_ABSENT in scripts/itest.sh) fails.
+      - name: Post-install acceptance suite
+        run: bash scripts/itest.sh acceptance
       - name: Compose logs
         if: failure()
         run: bash scripts/itest.sh logs
@@ -408,7 +413,10 @@ jobs:
         if: always()
         with:
           name: integration-junit
-          path: build/itest/junit.xml
+          path: |
+            build/itest/junit.xml
+            build/itest/acceptance/acceptance.json
+            build/itest/acceptance-load.log
           if-no-files-found: ignore
       - name: Tear down
         if: always()

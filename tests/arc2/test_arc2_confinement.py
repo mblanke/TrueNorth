@@ -3,8 +3,13 @@
 The engine runs untrusted request and feedback text, and its tools include arbitrary
 Python, so Claude Code's tool permissions are not a boundary. The runner puts the whole
 engine process tree in an OS sandbox (tools/arc2/confine.py): file writes are denied by
-default, and reads, the network and other processes where they matter. A job may write only its own run, its request file and its own throwaway home. It may
-read the repository and its own run. It cannot reach:
+default, and reads, the network and other processes where they matter. A job may write
+only its own run (its request file, ``request.txt``, included; written there by the runner
+before the job starts) and its own throwaway home, and there it can replace files the way
+Claude Code's Write tool does (temporary file, then rename). It may read the repository
+and its own run. It cannot reach:
+
+* the runs root itself (a request file there broke the Write tool: EROFS under bwrap);
 
 * other runs, ``_studio/`` (where ownership lives), ``_queue/``, ``_jobs/`` or ``_history/``;
 * the runner account's home: other jobs' Claude sessions, ``~/.gitconfig``, ``~/.ssh``;
@@ -60,7 +65,21 @@ def connect_tcp():
 def connect_unix():
     s = socket.socket(socket.AF_UNIX); s.settimeout(2); s.connect(os.environ["PROBE_UNIX"]); s.close()
 attempt("write_own_run", write(f"{runs}/arc2-mine/own.txt"))
-attempt("write_request_file", write(f"{runs}/arc2-mine.request.txt"))
+def replace(path):
+    # Claude Code's Write tool: a temporary file beside the target, then a rename over it.
+    def go():
+        tmp = f"{path}.tmp.{os.getpid()}"
+        open(tmp, "w").write("x")
+        os.replace(tmp, path)
+    return go
+results["request_staged"] = open(f"{runs}/arc2-mine/request.txt").read()
+attempt("replace_request_file", replace(f"{runs}/arc2-mine/request.txt"))
+attempt("write_runs_root", write(f"{runs}/arc2-mine.request.txt"))
+attempt("replace_in_runs_root", replace(f"{runs}/arc2-mine.request.txt"))
+def env_template():
+    path = os.path.join(repo, ".env.example")
+    return "intact" if os.path.isfile(path) and open(path).read() else "masked"
+results["env_template"] = env_template()
 attempt("write_own_home", write(os.path.join(os.environ["HOME"], "scratch.txt")))
 attempt("write_other_run", write(f"{runs}/arc2-other/stolen.txt"))
 attempt("write_studio_owner", write(f"{runs}/_studio/arc2-other.json"))
@@ -220,7 +239,11 @@ def queue_job(runs: Path) -> None:
 
 EXPECTED = {
     "write_own_run": "allowed",
-    "write_request_file": "allowed",
+    "request_staged": "a course\n",  # the runner wrote it before the job started
+    "replace_request_file": "allowed",
+    "write_runs_root": "denied",
+    "replace_in_runs_root": "denied",
+    "env_template": "intact",  # a tracked template is not masked (masking dirtied git status)
     "write_own_home": "allowed",
     "write_other_run": "denied",
     "write_studio_owner": "denied",
@@ -321,7 +344,6 @@ def test_the_profile_denies_writes_by_default_and_allows_the_job_last(tmp_path):
         runs=runs,
         home=tmp_path,
         writable=(runs / SLUG, tmp_path / "home"),
-        writable_files=(runs / f"{SLUG}.request.txt",),
         local_ports=(11434,),
     )
     profile = confine.Seatbelt().profile(jail)
@@ -330,7 +352,10 @@ def test_the_profile_denies_writes_by_default_and_allows_the_job_last(tmp_path):
     assert f'(deny file-read-data (subpath "{r}"))' in profile
     allow = profile.index(f'(allow file-read-data file-write* (subpath "{r}/{SLUG}")')
     assert profile.index("(deny file-write*)") < profile.index(f'(deny file-read-data (subpath "{r}"))') < allow
-    assert f'(literal "{r}/{SLUG}.request.txt")' in profile
+    assert "(literal " not in profile.split("(allow file-read-data file-write*", 1)[1].split("\n", 1)[0], (
+        "only directories are writable: a lone file in the runs root defeats write-then-rename"
+    )
+    assert r'(require-not (require-any (regex #"/\.env\.example$")))' in profile
     assert "(deny network-outbound (remote unix-socket))" in profile
     assert '(allow network-outbound (remote ip "localhost:11434"))' in profile
     assert "(deny signal (target others))" in profile
@@ -353,6 +378,7 @@ def test_the_engine_ignores_user_settings_and_may_edit_only_its_own_run():
     cmd = runner.command_for(job, "claude")
     assert f"Write(./build/arc2/{SLUG}/**)" in cmd and f"Edit(./build/arc2/{SLUG}/**)" in cmd
     assert "Write(./build/arc2/**)" not in cmd and "Edit(./build/arc2/**)" not in cmd
+    assert not any(".request.txt" in arg for arg in cmd), "nothing in the runs root is writable"
     assert cmd[cmd.index("--setting-sources") + 1] == "project" and "--strict-mcp-config" in cmd
 
 

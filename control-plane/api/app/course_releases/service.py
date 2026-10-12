@@ -23,6 +23,7 @@ from .. import safe_yaml
 from ..course_content_ingest import find_catalogue_course, import_course_content
 from ..models import Course, Enrollment
 from . import bundle as bundle_mod
+from . import test_content
 from .models import ACCEPTED, CANDIDATE, SUPERSEDED, CourseRelease, CourseReleaseBlob, EnrollmentReleasePin
 
 logger = logging.getLogger(__name__)
@@ -46,6 +47,12 @@ def create_candidate(
     except bundle_mod.BundleError as exc:
         raise ReleaseRefusedError(str(exc), 422) from exc
     meta = parsed.meta
+    if not bundle_mod.auto_accepted(meta) and test_content.runner_says_auto_accepted(meta["slug"]):
+        raise ReleaseRefusedError(
+            f"the ARC² runner on this host accepted a gate of run {meta['slug']} by itself, but release.json "
+            "does not say auto_accepted; rebuild the release with tools/arc2/release.py",
+            422,
+        )
     existing = (
         db.query(CourseRelease)
         .filter(CourseRelease.tenant_id == tenant_id, CourseRelease.release_digest == meta["release_digest"])
@@ -127,6 +134,8 @@ def accept(
     acknowledged what, rather than letting a candidate with open actions through silently."""
     if release.state != CANDIDATE:
         raise ReleaseRefusedError(f"release is {release.state}; only a candidate can be accepted")
+    if is_test_content(release) and not test_content.is_test_host():
+        raise ReleaseRefusedError(test_content.refusal("accepted"))
     # One acceptance per course at a time: lock the course row, then re-read what is live.
     # tenant-safe: locks the release's own course row; nothing is read from it.
     db.query(Course).filter(Course.id == release.course_id).with_for_update().one()
@@ -143,6 +152,7 @@ def accept(
         raise ReleaseRefusedError("acknowledge the open actions first: " + ", ".join(pending))
     parsed = load_bundle(db, release)
     import_course_content(db, _as_catalogue_course(parsed), release.tenant_id, commit=False, release_mode=True)
+    _label_course(db, release)
 
     previous = (
         db.query(CourseRelease)
@@ -160,6 +170,24 @@ def accept(
     db.flush()
     logger.info("course release %s v%d accepted for %s", release.id, release.version, release.catalogue_code)
     return release
+
+
+def is_test_content(release: CourseRelease) -> bool:
+    """The release's run had a gate accepted by a test host's runner (``auto_accepted`` in
+    its release.json, which the upload checked against the run and the runner)."""
+    return bundle_mod.auto_accepted(json.loads(release.meta))
+
+
+def _label_course(db: Session, release: CourseRelease) -> None:
+    """The course says it is test content for as long as it delivers a test release, and
+    stops saying so when a reviewed release replaces it."""
+    course = db.get(Course, release.course_id)  # tenant-safe: the release's own course
+    meta = json.loads(course.course_meta or "{}")
+    if is_test_content(release):
+        meta["test_content"] = test_content.course_label(release.id, release.version, json.loads(release.meta))
+    elif meta.pop("test_content", None) is None:
+        return
+    course.course_meta = json.dumps(meta)
 
 
 def _as_catalogue_course(parsed: bundle_mod.Bundle) -> str:

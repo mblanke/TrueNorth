@@ -209,3 +209,98 @@ groups:
         annotations:
           summary: "Ranges stuck in provisioning state for >15 minutes"
           description: "Ranges in provisioning state beyond 15-minute threshold."
+
+  # ══════════════════════════════════════════════════════════════
+  # HOST PROBES (node_exporter textfile collector)
+  # scripts/monitoring/host-probes.sh runs every minute from cron (install/roles/tn_config)
+  # and writes truenorth_probes.prom: OpenSearch's cluster health, the installer's Moodle
+  # node and the ARC² runner unit. A component that is not installed writes no series, so
+  # its alert cannot fire. Unit tests: alerts.test.yml (promtool test rules).
+  # ══════════════════════════════════════════════════════════════
+  - name: host-probes
+    rules:
+      - alert: HostProbesStale
+        expr: time() - node_textfile_mtime_seconds{file=~".*truenorth_probes\\.prom"} > 600
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Host probes have not run for 10 minutes"
+          description: "truenorth_probes.prom is stale: the OpenSearch, Moodle and ARC² runner alerts are blind. Check the truenorth-host-probes cron job and {{ $labels.instance }}'s logs/host-probes.log."
+
+      - alert: OpenSearchUnreachable
+        expr: truenorth_probe_up{component="opensearch"} == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "OpenSearch does not answer _cluster/health"
+          description: "Telemetry ingestion and search are down. docs/operations.md \"CRIT: OpenSearch Cluster Red\"."
+
+      - alert: OpenSearchClusterRed
+        expr: truenorth_opensearch_cluster_status{color="red"} == 1
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "OpenSearch cluster health is RED"
+          description: "At least one primary shard is unassigned: telemetry for those indices is unavailable. docs/operations.md \"CRIT: OpenSearch Cluster Red\"."
+
+      - alert: OpenSearchClusterYellow
+        expr: truenorth_opensearch_cluster_status{color="yellow"} == 1
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "OpenSearch cluster health is YELLOW for 15 minutes"
+          description: "A replica shard is unassigned. The platform runs replicas=0, so this usually means an index was created with replicas by hand. docs/operations.md \"WARN: OpenSearch Cluster Yellow\"."
+
+      - alert: MoodleDown
+        expr: truenorth_probe_up{component="moodle"} == 0
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "The Moodle node is down or unhealthy"
+          description: "Its container is not running or its healthcheck fails: mixed Moodle courses, LTI launches and grade return are down. docs/operations.md \"CRIT: Moodle Down\"."
+
+      - alert: Arc2RunnerDown
+        expr: truenorth_probe_up{component="arc2-runner"} == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "The ARC² Course Studio runner is not active"
+          description: "systemd unit truenorth-arc2-runner is not active: Studio jobs queue but do not run. docs/operations.md \"WARN: ARC² Runner Down\"."
+
+  # ══════════════════════════════════════════════════════════════
+  # BACKUP (scripts/backup/backup.sh writes truenorth_backup.prom)
+  # ══════════════════════════════════════════════════════════════
+  - name: backup
+    rules:
+      - alert: BackupFailed
+        expr: truenorth_backup_last_run_success == 0
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: "The last backup FAILED"
+          description: "backup.sh kept no backup. See logs/backup.log and docs/runbooks/backup-restore.md."
+
+      - alert: BackupIncomplete
+        expr: truenorth_backup_last_exit_code > 0 and truenorth_backup_last_run_success == 1
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "The last backup kept the data but is incomplete (exit {{ $value }})"
+          description: "Exit 3: secrets not escrowed. Exit 5: the OpenSearch telemetry snapshot failed. The manifest says which."
+
+      - alert: BackupStale
+        expr: time() - truenorth_backup_last_success_timestamp_seconds > 26 * 3600
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "No successful backup for more than 26 hours"
+          description: "The newest good backup is {{ $value | humanizeDuration }} old. Check the truenorth-backup cron job and logs/backup.log."

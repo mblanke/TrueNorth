@@ -52,6 +52,8 @@ PARTS = ("learner", "platform", "instructor")
 # A learner file may never look like instructor material, whatever rule admitted it.
 LEARNER_FORBIDDEN = ("instructor", "answer_key", "answer-key", "solution", "rubric")
 SKIP_NAMES = frozenset({"fragment.json", ".gitkeep", "PROMOTE.md"})
+AUTO_ACCEPTED_BY = "auto (test host)"  # arc2/runner.py AUTO_ACCEPTED_BY
+MAX_JOB_BYTES = 1024 * 1024
 
 
 class ReleaseError(Exception):
@@ -136,9 +138,42 @@ def collect(run: Path) -> dict[str, list[dict[str, str]]]:
     return parts
 
 
-def build(run: Path, out: Path | None = None) -> tuple[Path, dict[str, Any]]:
+def runner_auto_accept(runs_root: Path, slug: str) -> dict[str, Any] | None:
+    """What the runner's own job records (``<runs>/_jobs``, written outside any job's
+    sandbox) say about test-host acceptance of ``slug``: ``{"gates": [...], "accepted_by":
+    ...}``, or None when the runner accepted nothing by itself. This, not the manifest
+    (which a job can write), is the authority for ``auto_accepted``."""
+    gates: set[str] = set()
+    jobs = runs_root / "_jobs"
+    for path in sorted(jobs.glob("*.json")) if jobs.is_dir() and not jobs.is_symlink() else []:
+        try:
+            job = json.loads(path.read_bytes()[:MAX_JOB_BYTES])
+        except (OSError, ValueError):
+            continue
+        auto = job.get("auto_accept") if isinstance(job, dict) and job.get("slug") == slug else None
+        if isinstance(auto, dict):
+            gates.add(str(auto.get("gate") or "unknown"))
+    return {"gates": sorted(gates), "accepted_by": AUTO_ACCEPTED_BY} if gates else None
+
+
+def auto_acceptance(manifest: dict[str, Any], runner_record: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Every sign that a gate of this run was accepted by the test host's runner, not a
+    person: the runner's record (authoritative) or the gate's ``accepted_by`` in the
+    manifest. Either is enough; neither can take the other away."""
+    gates = set((runner_record or {}).get("gates") or [])
+    gates |= {g for g in ("outline", "preview") if (manifest["gates"].get(g) or {}).get("accepted_by") == AUTO_ACCEPTED_BY}
+    return {"gates": sorted(gates), "accepted_by": AUTO_ACCEPTED_BY} if gates else None
+
+
+def build(
+    run: Path, out: Path | None = None, *, runner_record: dict[str, Any] | None = None
+) -> tuple[Path, dict[str, Any]]:
+    """``runner_record``: :func:`runner_auto_accept` for this run, read by a caller that
+    builds from a copy of the run; by default it is read from the run's own runs root."""
     run = run.resolve()
     manifest = check.load_manifest(run)
+    if runner_record is None:
+        runner_record = runner_auto_accept(run.parent, manifest["slug"])
     problems = readiness(run, manifest)
     if problems:
         raise ReleaseError("; ".join(problems))
@@ -168,6 +203,12 @@ def build(run: Path, out: Path | None = None) -> tuple[Path, dict[str, Any]]:
         ],
         "parts": {name: {"digest": digest_files(files), "files": files} for name, files in parts.items()},
     }
+    # TEST CONTENT travels with the release, under its digest: the API refuses to accept or
+    # publish it anywhere but a test host, and labels it where Students see it.
+    auto = auto_acceptance(manifest, runner_record)
+    meta["auto_accepted"] = auto is not None
+    if auto:
+        meta["auto_accept"] = auto
     meta["release_digest"] = release_digest(meta)
     out = out or run.parent / f"{manifest['slug']}-{meta['release_digest'][:12]}.tar.gz"
     out.write_bytes(_tarball(run, meta))
@@ -209,6 +250,8 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     counts = ", ".join(f"{n} {len(meta['parts'][n]['files'])}" for n in PARTS)
     print(f"{out}  release {meta['release_digest'][:12]}  {meta['catalogue_code']}  ({counts})")
+    if meta["auto_accepted"]:
+        print(f"  TEST CONTENT: gates {', '.join(meta['auto_accept']['gates'])} accepted by the runner, not a person")
     for a in meta["open_human_actions"]:
         print(f"  open action [{a['category']}] {a['text']}")
     return 0
