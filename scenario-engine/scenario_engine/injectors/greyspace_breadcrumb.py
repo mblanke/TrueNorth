@@ -25,9 +25,15 @@ Params::
       - {id: ioc-1, kind: threat_feed, type: domain, indicator: update-cdn-sync.net, note: AMBER HERON C2}
     salt: optional                    mixed into the token (else GREYSPACE_CRUMB_SALT)
 
-``{{ token }}`` is ``breadcrumb_token(exercise, crumb id, salt)``: different per exercise,
-so one team's find is no use to another, and recomputable by the validator
-(validators/greyspace_breadcrumb.py) without storing it anywhere.
+``{{ token }}`` is ``breadcrumb_token(exercise, crumb id, salt)``: an HMAC keyed by a
+per-exercise key, itself an HMAC of the installation's secret (``GREYSPACE_CRUMB_KEY``,
+else the first key of ``TN_SECRETS_KEY``, at least 32 characters). Different per
+exercise, so one team's find is no use to another; not computable by anyone who knows
+the scheme, the exercise id and the crumb id but not the secret (until 2026-10-11 it was a
+bare SHA-256 of those, with an empty salt, so a Student could compute it); recomputable
+by the validator (scoring method ``greyspace_breadcrumb``) without storing it anywhere.
+With no key, or a short one, a token is neither issued nor validated
+(``BreadcrumbKeyError``): an inject fails, an objective stays unscored.
 
 No observable telemetry: an event saying where a breadcrumb is would be searchable by the
 Students looking for it. The run is recorded by the summary event's ground-truth labels.
@@ -37,6 +43,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import hmac
 import os
 import re
 from typing import Any
@@ -50,11 +57,48 @@ _ID = re.compile(r"^[A-Za-z0-9._:-]{1,80}$")
 _PLACEHOLDER = re.compile(r"\{\{\s*(token|exercise_id|crumb_id)\s*\}\}")
 
 
-def breadcrumb_token(exercise: str, crumb_id: str, salt: str | None = None) -> str:
-    """The per-exercise value a crumb's ``{{ token }}`` renders to."""
+KEY_ENV = "GREYSPACE_CRUMB_KEY"
+FALLBACK_KEY_ENV = "TN_SECRETS_KEY"
+MIN_KEY_LENGTH = 32  # the floor TN_SECRETS_KEY has (control-plane secretbox.py)
+
+
+class BreadcrumbKeyError(RuntimeError):
+    """No breadcrumb key (or a short one): tokens would be guessable, so none are made."""
+
+
+def crumb_key() -> bytes:
+    """The installation's breadcrumb secret: GREYSPACE_CRUMB_KEY, else TN_SECRETS_KEY's first key."""
+    raw = os.environ.get(KEY_ENV, "").strip()
+    if not raw:
+        raw = next((k.strip() for k in os.environ.get(FALLBACK_KEY_ENV, "").split(",") if k.strip()), "")
+    if len(raw) < MIN_KEY_LENGTH:
+        raise BreadcrumbKeyError(
+            f"{KEY_ENV} (or {FALLBACK_KEY_ENV}) is unset or under {MIN_KEY_LENGTH} characters: "
+            "breadcrumb tokens would be guessable"
+        )
+    return raw.encode()
+
+
+def exercise_key(exercise: str, key: bytes | None = None) -> bytes:
+    """The exercise's own secret: every token of the exercise is keyed by it."""
+    if not exercise:
+        raise BreadcrumbKeyError("no exercise id: a breadcrumb token is per exercise")
+    return hmac.new(crumb_key() if key is None else key, f"greyspace-crumb-exercise\0{exercise}".encode(),
+                    hashlib.sha256).digest()
+
+
+def breadcrumb_token(exercise: str, crumb_id: str, salt: str | None = None, *, key: bytes | None = None) -> str:
+    """The per-exercise value a crumb's ``{{ token }}`` renders to. Raises BreadcrumbKeyError."""
     salt = os.environ.get("GREYSPACE_CRUMB_SALT", "") if salt is None else salt
-    digest = hashlib.sha256(f"greyspace-crumb:{salt}:{exercise}:{crumb_id}".encode()).hexdigest()
-    return "GS-" + digest[:12].upper()
+    mac = hmac.new(exercise_key(exercise, key), f"{crumb_id}\0{salt}".encode(), hashlib.sha256).hexdigest()
+    return "GS-" + mac[:16].upper()
+
+
+def crumb_found(exercise: str, crumb_id: str, answer: str, salt: str | None = None) -> bool:
+    """Whether *answer* (what a team submitted) carries this exercise's token for the crumb."""
+    if not crumb_id or not exercise or not answer:
+        return False
+    return breadcrumb_token(exercise, crumb_id, salt).lower() in answer.lower()
 
 
 def render_text(text: str, exercise: str, crumb_id: str, salt: str | None) -> str:

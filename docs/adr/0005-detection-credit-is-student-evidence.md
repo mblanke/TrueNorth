@@ -216,7 +216,11 @@ answers **403** to a Student who is not a participant, before an attempt is rese
   `app/telemetry_access.py`) already uses: a calendar booking (`scheduled_events`, not
   cancelled) that ties the exercise, or the range it runs on, to a course, whose
   participants are the Students actively enrolled in that course (`enrolled` or
-  `in_progress`); and a Student's own lab session on the exercise's range.
+  `in_progress`); and a Student's own lab session on the exercise's range. Amended
+  2026-10-11: the booking must overlap the exercise's time (started to completed, or to
+  now while it runs); before, any past booking counted, so every earlier class on a
+  reused range stayed a participant. A booking at another time is a roster with no seat
+  now, so the opt-out below does not open such an exercise.
 - **Default: participants only.** An exercise with no roster has no Student participants,
   so no Student may submit on it. Book the exercise (or its range) for the class's course.
   `DETECTION_SUBMIT_PARTICIPANTS_ONLY=false` restores the earlier rule for an exercise

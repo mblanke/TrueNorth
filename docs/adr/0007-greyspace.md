@@ -72,6 +72,9 @@ an exercise, while exercises need to hide breadcrumbs in some sites per range.
    `BaseProvisioner.run_in_guest` (vSphere: VMware guest operations; no network path into
    the range) and runs cloud-init wait, `bootstrap.sh configure` (corpus: NFS read-only
    from `GREYSPACE_CORPUS_NFS`, else the bundled T0; `bin/gs up`) and `bin/gs health`.
+   Amended 2026-10-11: gs-core has no storage NIC yet, and the range router lets zones
+   out to the depot only, so the NFS path cannot mount; only T0 works on vSphere
+   (known limitation, `docs/greyspace-corpus.md` §3).
    Every step's outcome is recorded; the block ends `deployed` or `failed` (with `stage`
    and `error`). The service account's password is never stored: HMAC of
    `TN_SECRETS_KEY` (first key) and the range id; guestinfo holds its SHA-512 crypt hash.
@@ -84,7 +87,9 @@ an exercise, while exercises need to hide breadcrumbs in some sites per range.
 9. **Breadcrumbs.** The `greyspace_breadcrumb` injector (scenario-engine) prepares a
    payload: web files (into the overlay), DNS records (into the authoritative zone files,
    reloaded in seconds), threat-feed entries (`intel.gs-infra.net/feed.txt`), with a
-   per-exercise `{{ token }}`. inject_dispatch hands it to `greyspace.deliver_breadcrumbs`,
+   per-exercise `{{ token }}` (an HMAC under a per-exercise key derived from the
+   installation secret, so a Student cannot compute it; amended 2026-10-11, it was an
+   unkeyed hash). inject_dispatch hands it to `greyspace.deliver_breadcrumbs`,
    which delivers it by backend (`CRUMB_CHANNELS`: mock records; vSphere runs
    `bin/gs crumb plant` on gs-core) and keeps the last 50 operations on the range's
    Greyspace row. No observable telemetry names a breadcrumb (Students search it).

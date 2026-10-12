@@ -13,6 +13,10 @@ and checksums are written by ``corpus.py index`` (the same code the Mac sample u
 Only successful (200) responses with a body are kept; a URL captured twice keeps the
 last capture. Paths are normalised and confined to the site directory: a record whose
 path would escape it (``..``, absolute, control characters) is skipped and counted.
+A record over MAX_RECORD_BYTES is skipped without being held in memory. A malformed
+Content-Length (negative, not ASCII digits) or a truncated record fails the ingest
+(ValueError): the archive is damaged or hostile, and guessing where the next record
+starts would ingest garbage.
 
 Pure standard library; reads gzip-per-record (``.warc.gz``) and plain ``.warc``.
 """
@@ -23,6 +27,7 @@ import gzip
 import hashlib
 import io
 import posixpath
+import re
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -70,11 +75,35 @@ def read_records(fh) -> Iterator[WarcRecord]:
                 break
             k, _, v = h.decode("utf-8", "replace").partition(":")
             headers[k.strip().lower()] = v.strip()
-        length = int(headers.get("content-length", "0"))
+        length = _content_length(headers.get("content-length", "0"))
         if length > MAX_RECORD_BYTES:
-            fh.read(length)
+            _discard(fh, length)  # too big to keep (video): skipped without holding it in memory
             continue
-        yield WarcRecord(headers, fh.read(length))
+        block = fh.read(length)
+        if len(block) != length:
+            raise ValueError(f"truncated WARC record: Content-Length {length}, {len(block)} bytes left")
+        yield WarcRecord(headers, block)
+
+
+_LENGTH = re.compile(r"[0-9]{1,15}")  # ASCII digits only: int() takes "-1", "+5", "1_0", "٣"
+_DISCARD_CHUNK = 1024 * 1024
+
+
+def _content_length(raw: str) -> int:
+    """A record's Content-Length, or ValueError. A negative one used to reach ``fh.read(-1)``,
+    which reads (and buffers) the rest of the stream."""
+    if not _LENGTH.fullmatch(raw.strip()):
+        raise ValueError(f"bad WARC Content-Length: {raw[:40]!r}")
+    return int(raw.strip())
+
+
+def _discard(fh, length: int) -> None:
+    left = length
+    while left > 0:
+        chunk = fh.read(min(left, _DISCARD_CHUNK))
+        if not chunk:
+            raise ValueError(f"truncated WARC record: Content-Length {length}, {length - left} bytes present")
+        left -= len(chunk)
 
 
 def open_warc(path: Path):

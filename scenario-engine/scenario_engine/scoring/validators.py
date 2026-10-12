@@ -43,11 +43,13 @@ class ScoringValidator:
         config: dict[str, Any],
         opensearch_url: str | None = None,
         event_store: BaseEventStore | None = None,
+        exercise_id: str | None = None,
     ) -> tuple[bool, list[dict[str, Any]]]:
         """Route to the correct validator based on *method*.
 
         Query objectives run against ``event_store``; ``opensearch_url`` is the older way
-        to say the same thing and builds an OpenSearch store.
+        to say the same thing and builds an OpenSearch store. ``exercise_id`` (the scoring
+        engine's) keys ``greyspace_breadcrumb`` tokens when the config names none.
         """
         dispatch = {
             "opensearch_query": ScoringValidator.validate_opensearch_query,
@@ -57,6 +59,7 @@ class ScoringValidator:
             "user_disabled": ScoringValidator.validate_user_disabled,
             "network_isolated": ScoringValidator.validate_network_isolated,
             "manual": ScoringValidator.validate_manual,
+            "greyspace_breadcrumb": ScoringValidator.validate_greyspace_breadcrumb,
         }
         handler = dispatch.get(method)
         if handler is None:
@@ -66,6 +69,8 @@ class ScoringValidator:
             if event_store is None and opensearch_url:
                 event_store = OpenSearchEventStore(opensearch_url)
             return await handler(config, event_store)
+        if method == "greyspace_breadcrumb":
+            return await handler(config, exercise_id)
         return await handler(config)
 
     # ── individual validators ───────────────────────────────
@@ -105,6 +110,43 @@ class ScoringValidator:
             logger.exception("Event store query validation failed")
             raise UnscoredError(f"event store unavailable: {exc}") from exc
         return found.total >= threshold, found.hits[:20]
+
+    @staticmethod
+    async def validate_greyspace_breadcrumb(
+        config: dict[str, Any],
+        exercise_id: str | None = None,
+    ) -> tuple[bool, list[dict[str, Any]]]:
+        """Did the team find this exercise's Greyspace breadcrumb (ADR 0007)?
+
+        ``config`` keys:
+            - ``crumb_id``: the breadcrumb's id in the greyspace_breadcrumb inject (required)
+            - ``salt``: as the inject's (optional)
+            - ``exercise_id``: else the scoring engine's (the inject's exercise)
+            - ``answer``: what the team submitted (a flag field, a report excerpt)
+
+        Achieved when the answer carries the exercise's token. No answer is not achieved.
+        Raises ``UnscoredError`` for an objective that cannot be judged: no crumb id, no
+        exercise, or no breadcrumb key (GREYSPACE_CRUMB_KEY / TN_SECRETS_KEY). The token
+        is never put in the evidence.
+        """
+        from ..injectors.greyspace_breadcrumb import BreadcrumbKeyError, crumb_found, crumb_key
+
+        crumb = str(config.get("crumb_id") or "")
+        exercise = str(config.get("exercise_id") or exercise_id or "")
+        if not crumb:
+            raise UnscoredError("greyspace_breadcrumb objective has no crumb_id")
+        if not exercise:
+            raise UnscoredError("greyspace_breadcrumb objective has no exercise")
+        answer = str(config.get("answer") or "")
+        try:
+            crumb_key()  # no key: unscored, even before anything is submitted
+            found = crumb_found(exercise, crumb, answer, config.get("salt"))
+        except BreadcrumbKeyError as exc:
+            raise UnscoredError(str(exc)) from exc
+        if not found:
+            # No evidence for a miss: evidence on a failed objective earns partial credit.
+            return False, []
+        return True, [{"check": "greyspace_breadcrumb", "crumb_id": crumb, "matched": True}]
 
     @staticmethod
     async def validate_deliverable(

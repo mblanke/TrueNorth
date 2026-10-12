@@ -103,6 +103,28 @@ class TestHostVm:
         assert env["content"] == "GS_CORPUS_NFS=netapp01:/greyspace-corpus\n"
         assert info["corpus"] == "nfs netapp01:/greyspace-corpus"
 
+    def test_a_t1_corpus_is_refused_naming_the_nfs_limitation(self):
+        from types import SimpleNamespace
+
+        with pytest.raises(greyspace_host.HostPlanError, match="cannot reach an NFS corpus yet") as err:
+            greyspace_host.bundle(SimpleNamespace(tier="t1"), SimpleNamespace(files={}), with_corpus=True)
+        assert "GREYSPACE_CORPUS_NFS" not in str(err.value)  # setting it would not help
+
+    def test_the_docs_state_the_nfs_limitation_while_gs_core_has_one_nic(self):
+        """Review of #133: the corpus doc promised a storage VLAN gs-core does not have, and
+        the edge router lets zones out to the depot only. While that is so, the docs must
+        say NFS corpora do not work (and stop claiming the storage-VLAN isolation)."""
+        from pathlib import Path
+
+        vm, _ = greyspace_host.host_vm(RANGE, dict(greyspace.DEFAULT_BLOCK), _template())
+        assert len(vm["nics"]) == 1 and vm["nics"][0]["network"] == "greyspace"
+        assert vyos_config.DEPOT_PORTS == (8081, 3142)  # no NFS (2049) out of the range
+        root = Path(__file__).resolve().parents[2] / "docs"
+        corpus = (root / "greyspace-corpus.md").read_text(encoding="utf-8")
+        notes = (root / "release-notes/greyspace-vsphere.md").read_text(encoding="utf-8")
+        assert "Known limitation: an NFS corpus (T1 and up) does not work yet" in corpus
+        assert "Only the T0 corpus works on vSphere" in notes
+
     def test_cloud_init_creates_the_service_account_without_its_password(self):
         vm, _ = greyspace_host.host_vm(RANGE, dict(greyspace.DEFAULT_BLOCK), _template())
         cc = vm["cloud_config"]
