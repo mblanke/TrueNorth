@@ -125,7 +125,9 @@ class Histogram:
         self.help_text = help_text
         self.label_names = label_names
         self.buckets = buckets or self.DEFAULT_BUCKETS
-        # keyed by label_values → {bucket_bound: count}
+        # keyed by label_values → {bucket_bound: count}; NON-cumulative (each observation
+        # sits in its first matching bucket only, or in none when above every bound, which
+        # leaves it to +Inf). collect() makes the series cumulative, once.
         self._counts: dict[tuple[str, ...], dict[float, int]] = defaultdict(lambda: defaultdict(int))
         self._sums: dict[tuple[str, ...], float] = defaultdict(float)
         self._totals: dict[tuple[str, ...], int] = defaultdict(int)
@@ -137,6 +139,7 @@ class Histogram:
             for b in self.buckets:
                 if value <= b:
                     self._counts[label_values][b] += 1
+                    break
 
     def collect(self) -> str:
         lines: list[str] = [
@@ -259,8 +262,12 @@ def _route_label(request: Request) -> str:
 class PrometheusMiddleware(BaseHTTPMiddleware):
     """Lightweight ASGI middleware that records HTTP metrics."""
 
-    # Paths to skip recording (avoid cardinality explosion and self-measurement)
-    SKIP_PATHS = frozenset({"/metrics", "/health", "/healthz", "/ready"})
+    # Paths to skip recording (self-measurement, and probes that would swamp real traffic).
+    # The probe routes are in main.py; VersionPrefixMiddleware is outermost, so a
+    # /api/v1/health/ready arrives here as /health/ready.
+    SKIP_PATHS = frozenset(
+        {"/metrics", "/health", "/health/live", "/health/ready", "/health/deep", "/healthz", "/ready"}
+    )
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         if request.url.path in self.SKIP_PATHS:
@@ -275,8 +282,7 @@ class PrometheusMiddleware(BaseHTTPMiddleware):
         except Exception:
             # The router has run by now, so the scope carries the matched route if any.
             http_requests_total.inc(method, _route_label(request), "500")
-            http_requests_in_flight.dec()
-            raise
+            raise  # in-flight is decremented once, in finally
         else:
             duration = time.perf_counter() - start
             status = str(response.status_code)

@@ -196,7 +196,7 @@ OpenSearch's `_cluster/health`, the Moodle node's container health (only with
 | `DiskSpaceHigh` | warning | a filesystem > 80% for 10 min |
 | `NodeDown` | critical | node_exporter unreachable for 1 min |
 | `ApiHighErrorRate` | critical | API 5xx > 5% for 5 min |
-| `ApiHighLatencyP95` | warning | API p95 > 1 s for 5 min |
+| `ApiHighLatencyP95` | warning | API p95 > 1 s for 5 min (health probes and unmatched paths excluded) |
 | `ApiTooManyRateLimits` | warning | > 10 429s/s for 5 min |
 | `CeleryHighTaskFailureRate` | critical | task failures > 10% for 5 min |
 | `CeleryProvisionQueueDeep` | warning | provision queue > 100 for 5 min |

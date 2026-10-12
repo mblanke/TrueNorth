@@ -99,6 +99,13 @@ course production with a local-model fallback, and the cleanup of unsupported su
 - Installer fixes from the rc2 staging upgrade: the ARC² health check matches the runner's
   confinement field (not a literal ')'), and the demo-account steps take a fresh Keycloak
   admin token (they outlived the ~60 s one) (#141).
+- Fix: `/metrics` exported invalid latency histograms. Every bucket a request fitted was
+  counted and then summed again, so the `_bucket` series were non-monotonic and `+Inf` did
+  not equal `_count`. `ApiHighLatencyP95` then read a constant 7.75 s on staging, where real
+  latency is about 15 ms. Each observation now lands in exactly one bucket. Also:
+  `/health/live`, `/health/ready` and `/health/deep` are no longer timed. The rule ignores
+  `path=~"/health.*|unmatched"`, with promtool cases for both. `http_requests_in_flight` no
+  longer drops by two when a handler raises.
 
 ### Release readiness (#147)
 - **Behaviour change:** the competency catalogue is platform-shared: `POST
