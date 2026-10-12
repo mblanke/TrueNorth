@@ -353,6 +353,95 @@ does, so the hypervisor dashboards have an inventory. It builds no VM.
 Its AI endpoint is an Open WebUI (`tn_ai_base_url: https://…/api`), so set
 `tn_ai_default_model` and `tn_ai_embed_model` to ids from that server's `/api/models`.
 
+## AD test domain (CI) and AD on staging
+
+Directory-backed sign-in is qualified in two places (plan M2), and the record keeps them
+apart: **Samba-tested** is not **Windows AD / AD CS qualified**.
+
+- **The AD test domain** (`tools/ad-test-dc/`, CI job `ad`): a Samba AD DC with its own test
+  CA, TN-DC01's OUs, groups and bind account, and test users (one per TN-* group, nested,
+  disabled, email collision), beside the pinned Keycloak, all on loopback under compose
+  project `tn-ad-test`. The realm and federation are made by this role's own task files
+  (`local_identity.yml`, `ldap_federation.yml`, `identity_scope.yml`, `ldap_sync.yml`), then
+  `tests/integration/test_ad_directory.py` checks group → role and tenant, nested groups,
+  untrusted CA, disabled accounts, group removal and its propagation, email collision, the
+  Moodle SSO subject and the local recovery path with the DC stopped. It is never deployed
+  on staging. Results and measured timings: `tools/ad-test-dc/README.md`.
+- **AD on staging**: the owner's Windows AD DS / AD CS DC on the home LAN, mirroring
+  TN-DC01 (`corp.tnrange.lab`, `OU=TrueNorth`, the TN-* groups, the bind account). Staging
+  uses the normal `tn_ldap_*` path: the bind password from the vault, the root CA from
+  `files/corp-root-ca.cer`. The same test file runs against it in external mode.
+
+What the measurements mean for operators:
+
+| Behaviour | Value |
+|---|---|
+| Nested groups | **Not expanded.** Membership is direct (`LOAD_GROUPS_BY_MEMBER_ATTRIBUTE`): a user in a group that is itself in `TN-Students` gets no `TN-Students` claim, no role suggestion and cannot register. Put people directly in a TN-* group. |
+| A group removed in AD | The `groups` claim drops once Keycloak re-reads the user: at the next changed-users sync (`changedSyncPeriod`, 300 s), or at once if it was not cached. Tokens already issued live up to 5 min more. **The TrueNorth role does not change**: groups suggest, an approval grants (docs/identity.md). To take TrueNorth rights away, change or disable the TrueNorth account, or disable the AD account. |
+| An AD account disabled | New sign-ins fail at once; a session's refresh keeps working until the next changed-users sync (≤ 300 s), then fails. Worst case to lose access: about 10 min (sync + token lifetime). |
+| An AD account with a local account's email | Keycloak refuses to import it (it cannot sign in, and the full sync reports it as failed; `60-keycloak` prints a warning). The local account is untouched. An approval never adopts a staff account by email (409). |
+| A local account with an AD account's email | Keycloak refuses to create it once AD is federated, so `60-keycloak` creates the local recovery administrator **before** federating. |
+| DC unreachable | AD sign-ins fail after `connectionTimeout` (5 s; without it they hung past 60 s). Local accounts are unaffected. |
+
+### AD on staging: turning it on (coordinator)
+
+1. In `inventory/staging.yml` (the M2 block): `tn_ldap_enabled: true`, and `tn_dc_host`,
+   `tn_dc_ip`, `tn_dns_servers` for the owner's DC. Leave `tn_keycloak_local_admin: true`.
+2. `ansible-vault edit inventory/group_vars/all/vault.yml`: `vault_ldap_bind_password` (the
+   `TrueNorth Keycloak Bind` account's).
+3. The DC's AD CS root CA (DER or PEM) at `install/files/corp-root-ca.cer`.
+4. On the DC: DNS forwarder 192.168.1.1 (staging will resolve everything through it), and
+   an A record `tn-staging.corp.tnrange.lab → 192.168.1.240` (preflight asks the DC).
+5. `ansible-playbook -i inventory/staging.yml site.yml -K --ask-vault-pass -e tn_release_version=<tag>`
+   (a full run; or `--tags preflight,base,config,tls,stack,keycloak,seed,smoke,validate`).
+   40-tls proves an LDAPS bind as the service account before Keycloak changes;
+   60-keycloak keeps `tnadmin@tn-staging.local` local, federates, syncs, and reports any AD
+   user it could not import; the smoke test still signs in as the local administrator.
+6. Qualify: `tests/integration/test_ad_directory.py` in external mode
+   (`tools/ad-test-dc/README.md`) with test accounts on the DC.
+
+`tn_keycloak_local_admin` (with AD) keeps the bootstrap administrator a **local** Keycloak
+account in `TN-Platform-Admins` with its generated password, beside the directory. Keycloak
+finds local accounts before it asks LDAP, so it still signs in with the DC down, the bind
+password wrong or the CA expired (tested with the DC stopped). Preflight refuses a
+`tn_bootstrap_admin_upn` inside `tn_domain`, so it can never name an AD account.
+
+## Work-domain cut-over and rollback
+
+The cut-over from the staging DC to the work domain (TN-DC01, or any production AD) is a
+change of the same variables, never of code. Do it in a window: sessions end.
+
+**Before**: the work domain's AD CS root CA, the bind account's password (vault), the DC's
+FQDN and address, DNS that forwards, and an A record for the platform name. Run the
+external-mode tests against the work domain from a workstation first if it is reachable;
+the result is what makes it "Windows AD / AD CS qualified" for that domain.
+
+**Cut-over**:
+
+1. Set `tn_dc_host`, `tn_dc_ip`, `tn_dns_servers`, and, if the domain differs,
+   `tn_domain`, `tn_ldap_base_dn`, `tn_ldap_users_dn`, `tn_ldap_groups_dn`, `tn_ldap_bind_dn`;
+   replace `files/corp-root-ca.cer` and `vault_ldap_bind_password`.
+2. Keep `tn_keycloak_local_admin: true` until the first AD administrator has signed in and
+   been approved; then decide whether to keep the break-glass account (recommended) or
+   set it false (the local account then stays but its password is no longer managed —
+   disable it in the Keycloak admin console).
+3. Run `site.yml`. The federation component (`corp-ad`) is updated in place: the users the
+   old directory imported keep their Keycloak ids only if the new directory has the same
+   objectGUIDs (the same forest). **A different forest is a new identity for everyone**:
+   their TrueNorth rows stay bound to the old Keycloak subjects, so each person registers
+   again and an administrator approves them (roster rows adopt by email; staff rows never
+   do — re-grant staff roles deliberately). Plan the approval queue.
+4. Prove it: the smoke test, then an AD administrator signs in, then
+   `tests/integration/test_ad_directory.py` in external mode.
+
+**Rollback** (to local identity): set `tn_ldap_enabled: false` and run `site.yml`
+(`--tags base,config,keycloak,smoke` is enough). 10-base removes the AD resolver drop-in,
+30-config clears the LDAP settings in the API's environment, and the local administrator
+still signs in. 60-keycloak does **not** delete the `corp-ad` federation component or the
+users it imported: remove the component in the Keycloak admin console (User federation →
+corp-ad → Delete) so AD users stop being able to sign in; their TrueNorth rows remain and
+can be disabled. Rolling back to the previous directory is the cut-over in reverse.
+
 ## Shipped content (optional)
 
 A production install starts with an empty catalogue: a site loads its own curriculum.

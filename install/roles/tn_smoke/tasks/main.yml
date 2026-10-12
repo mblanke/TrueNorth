@@ -17,14 +17,17 @@
     file: "{{ role_path }}/../tn_keycloak/defaults/main.yml"
 
 # Who the claim-contract check signs in as. With AD: an AD account you name
-# (-e tn_smoke_username=<upn> -e tn_smoke_password=...). Without AD: the local bootstrap
-# administrator 60-keycloak created, whose password is a persisted secret.
+# (-e tn_smoke_username=<upn> -e tn_smoke_password=...). Without AD, or with AD and
+# tn_keycloak_local_admin: the local bootstrap administrator 60-keycloak created, whose
+# password is a persisted secret (the AD claims are then checked by the CI `ad` lane's
+# tests against the directory, not here).
 - name: Smoke — the identity to sign in as
   ansible.builtin.set_fact:
     tn_smoke_user_effective: "{{ tn_smoke_username | default(tn_bootstrap_admin_upn, true) }}"
     tn_smoke_password_effective: >-
       {{ tn_smoke_password | default('', true)
-         or ('' if tn_ldap_enabled | bool else tn_secrets['bootstrap_admin_password']) }}
+         or ('' if tn_ldap_enabled | bool and not tn_keycloak_local_admin | bool
+             else tn_secrets['bootstrap_admin_password']) }}
   no_log: true
 
 # Mandatory: "the services are up" is not an installed platform. The claim contract is

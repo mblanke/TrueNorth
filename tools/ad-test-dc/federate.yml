@@ -1,0 +1,132 @@
+---
+# Federate the AD test DC into the fixture's Keycloak through the installer's own tasks
+# (install/roles/tn_keycloak: local_identity, ldap_federation, identity_scope, ldap_sync),
+# so the CI `ad` lane tests the federation the installer builds, not a copy of it.
+#
+#   tools/ad-test-dc/run.sh federate
+#
+# CI/dev only: it reads the fixture's generated secrets from $AD_TEST_DIR/secrets on this
+# machine and talks to the fixture's Keycloak on 127.0.0.1. It never runs against
+# staging (the installer itself federates a real DC there, from the vault).
+- name: Federate the AD test DC (installer code path)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars_files:
+    # The installer's own TN-* groups, client names and group-role map.
+    - ../../install/inventory/group_vars/all/main.yml
+  tasks:
+    - name: Fixture — where everything is
+      vars:
+        _dir: "{{ lookup('ansible.builtin.env', 'AD_TEST_DIR') }}"
+        _dns: "{{ lookup('ansible.builtin.env', 'AD_DNS_DOMAIN') | default('tnlab.test', true) }}"
+        _base: "{{ _dns.split('.') | map('regex_replace', '^', 'DC=') | join(',') }}"
+      ansible.builtin.set_fact:
+        ad_test_dir: "{{ _dir }}"
+        tn_kc_internal: "http://127.0.0.1:{{ lookup('ansible.builtin.env', 'AD_KC_PORT') | default('18480', true) }}/auth"
+        tn_keycloak_realm: truenorth
+        tn_state_dir: "{{ _dir }}/state"
+        tn_domain: "{{ _dns }}"
+        tn_dc_host: "dc01.{{ _dns }}"
+        tn_ldap_port: 636
+        tn_ldap_base_dn: "{{ _base }}"
+        tn_ldap_users_dn: "OU=Users,OU=TrueNorth,{{ _base }}"
+        tn_ldap_groups_dn: "OU=Groups,OU=TrueNorth,{{ _base }}"
+        tn_ldap_bind_dn: "CN=TrueNorth Keycloak Bind,OU=ServiceAccounts,OU=TrueNorth,{{ _base }}"
+        tn_bootstrap_admin_upn: "{{ lookup('ansible.builtin.env', 'AD_LOCAL_ADMIN_UPN') | default('tnadmin@tn-ad-test.local', true) }}"
+        tn_ldap_enabled: true
+        tn_keycloak_local_admin: true
+        tn_load_shipped_demo: false
+        tn_ad_test_client: truenorth-ad-test
+
+    - name: Fixture — the generated secrets (read here, never printed)
+      ansible.builtin.set_fact:
+        tn_secrets:
+          keycloak_admin_password: "{{ lookup('ansible.builtin.file', ad_test_dir ~ '/secrets/keycloak-admin') }}"
+          bootstrap_admin_password: "{{ lookup('ansible.builtin.file', ad_test_dir ~ '/secrets/local-admin') }}"
+          secrets_key: "{{ lookup('ansible.builtin.file', ad_test_dir ~ '/secrets/secrets-key') }}"
+        tn_ldap_bind_password: "{{ lookup('ansible.builtin.file', ad_test_dir ~ '/secrets/svc-keycloak-bind') }}"
+      no_log: true
+
+    # public: the role's defaults (tn_kc_realm_url, the federation body) for this play too.
+    - name: Keycloak — admin token
+      ansible.builtin.include_role:
+        name: tn_keycloak
+        tasks_from: admin_token
+        public: true
+
+    - name: Fixture — does the realm exist?
+      ansible.builtin.uri:
+        url: "{{ tn_kc_realm_url }}"
+        headers: "{{ tn_kc_headers }}"
+        status_code: [200, 404]
+      register: ad_realm
+
+    # The realm file as the installer imports it, less its sample users.
+    - name: Fixture — import infra/keycloak/realm-truenorth.json
+      vars:
+        _doc: "{{ lookup('ansible.builtin.file', playbook_dir ~ '/../../infra/keycloak/realm-truenorth.json') | from_json }}"
+      ansible.builtin.uri:
+        url: "{{ tn_kc_internal }}/admin/realms"
+        method: POST
+        headers: "{{ tn_kc_headers }}"
+        body: "{{ _doc | dict2items | rejectattr('key', 'equalto', 'users') | items2dict }}"
+        body_format: json
+        status_code: [201, 409]
+      when: ad_realm.status == 404
+
+    # In main.yml's order: the local recovery administrator first (see main.yml).
+    - name: Keycloak — local groups and the local recovery administrator (local_identity.yml)
+      ansible.builtin.include_role:
+        name: tn_keycloak
+        tasks_from: local_identity
+
+    - name: Keycloak — AD user federation (ldap_federation.yml)
+      ansible.builtin.include_role:
+        name: tn_keycloak
+        tasks_from: ldap_federation
+
+    - name: Keycloak — the claim contract scope (identity_scope.yml)
+      ansible.builtin.include_role:
+        name: tn_keycloak
+        tasks_from: identity_scope
+
+    # The tests' own client: public, password grant on (the lane signs in as each test
+    # account without a browser), the claim scope as a default scope. Fixture realm only.
+    - name: Fixture — the test client
+      ansible.builtin.uri:
+        url: "{{ tn_kc_realm_url }}/clients"
+        method: POST
+        headers: "{{ tn_kc_headers }}"
+        body:
+          clientId: "{{ tn_ad_test_client }}"
+          enabled: true
+          publicClient: true
+          standardFlowEnabled: false
+          directAccessGrantsEnabled: true
+        body_format: json
+        status_code: [201, 409]
+
+    - name: Fixture — read the test client
+      ansible.builtin.uri:
+        url: "{{ tn_kc_realm_url }}/clients?clientId={{ tn_ad_test_client }}"
+        headers: "{{ tn_kc_headers }}"
+      register: ad_client
+
+    - name: Fixture — the claim scope is a default scope of the test client
+      ansible.builtin.uri:
+        url: "{{ tn_kc_realm_url }}/clients/{{ ad_client.json[0].id }}/default-client-scopes/{{ tn_kc_scope_id }}"
+        method: PUT
+        headers: "{{ tn_kc_headers }}"
+        status_code: [204, 409]
+
+    - name: Keycloak — sync and import check (ldap_sync.yml)
+      ansible.builtin.include_role:
+        name: tn_keycloak
+        tasks_from: ldap_sync
+
+    - name: Fixture — the component id, for the tests
+      ansible.builtin.copy:
+        dest: "{{ tn_state_dir }}/keycloak_ldap_component_id"
+        content: "{{ tn_keycloak_ldap_component_id }}"
+        mode: "0600"

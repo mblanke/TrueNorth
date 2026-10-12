@@ -106,7 +106,7 @@ tn_kc_ldap_body:
     syncRegistrations: ["false"]
     connectionUrl: ["ldaps://{{ tn_dc_host }}:{{ tn_ldap_port }}"]
     bindDn: ["{{ tn_ldap_bind_dn }}"]
-    bindCredential: ["{{ vault_ldap_bind_password }}"]
+    bindCredential: ["{{ tn_ldap_bind_password }}"]
     usersDn: ["{{ tn_ldap_users_dn }}"]
     usernameLDAPAttribute: ["sAMAccountName"]
     rdnLDAPAttribute: ["cn"]
@@ -117,6 +117,10 @@ tn_kc_ldap_body:
     useTruststoreSpi: ["always"]
     startTls: ["false"]
     pagination: ["true"]
+    # Milliseconds. Without them a sign-in hangs on an unreachable DC (measured: over 60 s,
+    # until the client gave up, with the CI `ad` lane's DC stopped) instead of failing.
+    connectionTimeout: ["5000"]
+    readTimeout: ["10000"]
     batchSizeForSync: ["1000"]
     fullSyncPeriod: ["3600"]
     changedSyncPeriod: ["300"]

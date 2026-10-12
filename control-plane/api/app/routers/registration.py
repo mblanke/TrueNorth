@@ -45,7 +45,7 @@ from ..models import (
     User,
     UserRole,
 )
-from ..rbac import Permission, grant_refusal, is_platform_admin, require_permission
+from ..rbac import STAFF_GRANTED_BY_ADMIN_ONLY, Permission, grant_refusal, is_platform_admin, require_permission
 from ..schemas import (
     AuthMeOut,
     RegistrationApproveIn,
@@ -432,6 +432,16 @@ def _approve_one(
             )
         if existing is not None:
             _check_adoptable(existing, approver, target_tenant)
+            # Never by email onto a staff account (M2): matching an address must not hand
+            # a directory identity someone else's admin/instructor/range_ops row, nor
+            # unbind its owner, whoever approves. Roster Students are still adopted.
+            if existing.role in STAFF_GRANTED_BY_ADMIN_ONLY:
+                raise HTTPException(
+                    status.HTTP_409_CONFLICT,
+                    f"{req.email} belongs to an existing '{existing.role.value}' account; an email "
+                    "match never takes over a staff account. Change the address on one of them, "
+                    "or give the existing account its new identity deliberately",
+                )
             user = existing
             user.keycloak_id = req.keycloak_id
         else:
