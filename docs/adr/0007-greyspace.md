@@ -84,7 +84,9 @@ an exercise, while exercises need to hide breadcrumbs in some sites per range.
 9. **Breadcrumbs.** The `greyspace_breadcrumb` injector (scenario-engine) prepares a
    payload: web files (into the overlay), DNS records (into the authoritative zone files,
    reloaded in seconds), threat-feed entries (`intel.gs-infra.net/feed.txt`), with a
-   per-exercise `{{ token }}`. inject_dispatch hands it to `greyspace.deliver_breadcrumbs`,
+   per-exercise `{{ token }}` (an HMAC under a per-exercise key derived from the
+   installation secret, so a Student cannot compute it; amended 2026-10-11, it was an
+   unkeyed hash). inject_dispatch hands it to `greyspace.deliver_breadcrumbs`,
    which delivers it by backend (`CRUMB_CHANNELS`: mock records; vSphere runs
    `bin/gs crumb plant` on gs-core) and keeps the last 50 operations on the range's
    Greyspace row. No observable telemetry names a breadcrumb (Students search it).
