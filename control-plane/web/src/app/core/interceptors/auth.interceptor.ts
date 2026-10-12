@@ -1,9 +1,11 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpInterceptor, HttpRequest, HttpHandler, HttpEvent, HTTP_INTERCEPTORS } from '@angular/common/http';
-import { Observable, from, switchMap } from 'rxjs';
+import { Router } from '@angular/router';
+import { Observable, catchError, from, switchMap, throwError } from 'rxjs';
 import Keycloak from 'keycloak-js';
 import { freshToken } from '../auth/keycloak-init';
 import { ltiSessionToken } from '../auth/lti-session';
+import { isMfaRequired, requestMfaStepUp } from '../auth/mfa-step-up';
 import { environment } from '@env/environment';
 
 function getCookie(name: string): string | null {
@@ -14,6 +16,7 @@ function getCookie(name: string): string | null {
 @Injectable()
 export class AuthInterceptor implements HttpInterceptor {
   private readonly keycloak = inject(Keycloak);
+  private readonly router = inject(Router);
 
   intercept(req: HttpRequest<unknown>, next: HttpHandler): Observable<HttpEvent<unknown>> {
     // CSRF: double-submit cookie. app/middleware.py sets `truenorth_csrf` and
@@ -47,7 +50,25 @@ export class AuthInterceptor implements HttpInterceptor {
           Object.keys(headers).length ? req.clone({ setHeaders: headers }) : req,
         );
       }),
+      catchError((err: unknown) => {
+        if (isMfaRequired(err)) {
+          this.stepUp();
+        }
+        return throwError(() => err);
+      }),
     );
+  }
+
+  /**
+   * The API wants a second factor for this role (403 mfa_required): sign in again asking
+   * for acr "mfa" (core/auth/mfa-step-up.ts). Once per window; after that, or without a
+   * Keycloak session to step up, explain instead of looping.
+   */
+  private stepUp(): void {
+    const outcome = this.keycloak.authenticated ? requestMfaStepUp(this.keycloak) : 'exhausted';
+    if (outcome === 'exhausted') {
+      void this.router.navigate(['/mfa-required']);
+    }
   }
 }
 

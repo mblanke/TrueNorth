@@ -373,6 +373,18 @@ jobs:
       - uses: ./.github/actions/dockerhub-mirror
       - run: bash scripts/check_keycloak_realm.sh
 
+  # MFA on the pinned Keycloak: scripts/keycloak_mfa.py (what the installer runs) applied
+  # twice (idempotent), then real browser sign-ins: enrolment forced for privileged
+  # groups, amr/acr in tokens and refreshes, Students password-only, step-up, the
+  # test-host demo exemption, the break-glass reset, and the login banner.
+  keycloak-mfa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: ./.github/actions/dockerhub-mirror
+      - run: bash scripts/check_keycloak_mfa.sh
+
   # Integration lanes. Each one starts real services, and each one fails when no test
   # passed: until 2026-10-07 `integration` ran only on push to main, started postgres and
   # redis but no API, and tests/integration/conftest.py skipped every test when nothing

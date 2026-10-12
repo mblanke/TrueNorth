@@ -258,6 +258,30 @@ course production with a local-model fallback, and the cleanup of unsupported su
   `acr` (`TN_MFA_ACR_VALUES`, default `mfa`); "", "0" and "1" never count as acr, and `pwd`/`kba` never count as amr, whatever the settings list.
 - An IdP token can no longer carry the TrueNorth-only `tn_session` claim
   (`auth.token_from_idp_claims` strips it on HTTP and WebSocket).
+- **MFA for privileged roles (behaviour change; ship the API and 60-keycloak together).**
+  admin, instructor (incl. TN-Content-Authors), range_ops and observer sign in with a
+  password and an authenticator-app code (TOTP); Students and LTI-launched Students are
+  unaffected. The API enforces it on every request and WebSocket from the database role
+  (`TN_MFA_ROLES`; 403 `mfa_required` + `X-TrueNorth-Auth-State`), `/auth/me` reports
+  `mfa_required`/`mfa_satisfied`, and production refuses to start without all four roles,
+  with an `acr` allow-list containing "0"/"1", or with the demo exemption off a test host.
+  60-keycloak runs `scripts/keycloak_mfa.py` (OTP policy, login/admin events, realm role
+  `tn-mfa-required` on the privileged groups, the `tn-browser` flow, the AMR mapper); the
+  SPA steps up (`acr` mfa) on `mfa_required` with a loop guard (`/mfa-required`).
+  **Every privileged user, the bootstrap administrator included, enrols an authenticator
+  at the next sign-in**; the first sign-in asks for one more code (step-up). WebAuthn is
+  not offered yet (Keycloak 24 cannot enrol it as an alternative). CI job `keycloak-mfa`
+  (`scripts/check_keycloak_mfa.sh`) proves the flow on the pinned image.
+- Break-glass: `playbooks/breakglass-reset-mfa.yml -e tn_breakglass_user=<upn>
+  -e tn_breakglass_reason=...` deletes the user's second factor, requires re-enrolment,
+  signs them out and writes an `mfa_reset` audit row (docs/runbooks/break-glass.md). The
+  in-process harness is exempt and writes an `inprocess_session` audit row. A test-host
+  demo exemption (`tn_mfa_demo_exempt`, off) exists for `*.demo@truenorth.test` staff
+  only, audited per use.
+- **Smoke identity (behaviour change):** 95-smoke-test signs in as the local,
+  non-privileged `tn_smoke_local_user` (new secret `smoke_user_password`), not the
+  bootstrap admin; AD sites must pass a non-privileged `tn_smoke_username`. It also asserts
+  the `tn-browser` flow is bound and the AMR mapper is present.
 
 ### Directory sign-in qualification (M2)
 - **AD test domain** (`tools/ad-test-dc`, CI job `ad`): a pinned Samba AD DC (`TNLAB.TEST`,

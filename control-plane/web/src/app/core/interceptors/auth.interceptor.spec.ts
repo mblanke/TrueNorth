@@ -5,6 +5,8 @@ import Keycloak from 'keycloak-js';
 import { environment } from '@env/environment';
 import { authInterceptorProvider } from './auth.interceptor';
 import { clearLtiSession, storeLtiSession } from '../auth/lti-session';
+import { Router } from '@angular/router';
+import { STEP_UP_KEY, resetStepUpForTests } from '../auth/mfa-step-up';
 
 /** Resolve pending microtasks (the interceptor awaits the adapter's token refresh). */
 const settle = () => new Promise<void>(resolve => setTimeout(resolve));
@@ -13,7 +15,8 @@ describe('AuthInterceptor', () => {
   const originalAuthDisabled = environment.authDisabled;
   let http: HttpClient;
   let backend: HttpTestingController;
-  let keycloak: { authenticated: boolean; token?: string; updateToken: jasmine.Spy };
+  let keycloak: { authenticated: boolean; token?: string; updateToken: jasmine.Spy; login: jasmine.Spy };
+  let router: { navigate: jasmine.Spy };
 
   function setup(authDisabled: boolean): void {
     (environment as { authDisabled: boolean }).authDisabled = authDisabled;
@@ -21,13 +24,16 @@ describe('AuthInterceptor', () => {
       authenticated: true,
       token: 'kc-access-token',
       updateToken: jasmine.createSpy('updateToken').and.resolveTo(false),
+      login: jasmine.createSpy('login').and.resolveTo(undefined),
     };
+    router = { navigate: jasmine.createSpy('navigate').and.resolveTo(true) };
     TestBed.configureTestingModule({
       providers: [
         provideHttpClient(withInterceptorsFromDi()),
         provideHttpClientTesting(),
         authInterceptorProvider,
         { provide: Keycloak, useValue: keycloak },
+        { provide: Router, useValue: router },
       ],
     });
     http = TestBed.inject(HttpClient);
@@ -80,6 +86,42 @@ describe('AuthInterceptor', () => {
       expect(req.request.headers.get('Authorization')).toBe('Bearer kc-access-token');
       req.flush([]);
       clearLtiSession();
+    });
+
+    describe('MFA step-up (403 mfa_required)', () => {
+      const refusal = { detail: { code: 'mfa_required', state: 'mfa_required', message: 'x', next: '/auth/me' } };
+
+      beforeEach(() => {
+        resetStepUpForTests();
+        sessionStorage.removeItem(STEP_UP_KEY);
+      });
+      afterEach(() => sessionStorage.removeItem(STEP_UP_KEY));
+
+      it('signs in again asking for acr "mfa"', async () => {
+        http.get('/api/ranges').subscribe({ error: () => undefined });
+        await settle();
+        backend.expectOne('/api/ranges').flush(refusal, { status: 403, statusText: 'Forbidden' });
+        expect(keycloak.login).toHaveBeenCalledTimes(1);
+        expect(keycloak.login.calls.mostRecent().args[0].acr).toEqual({ values: ['mfa'], essential: true });
+        expect(router.navigate).not.toHaveBeenCalled();
+      });
+
+      it('does not loop: refused again after a step-up, it shows /mfa-required', async () => {
+        sessionStorage.setItem(STEP_UP_KEY, String(Date.now() - 10_000));
+        http.get('/api/ranges').subscribe({ error: () => undefined });
+        await settle();
+        backend.expectOne('/api/ranges').flush(refusal, { status: 403, statusText: 'Forbidden' });
+        expect(keycloak.login).not.toHaveBeenCalled();
+        expect(router.navigate).toHaveBeenCalledWith(['/mfa-required']);
+      });
+
+      it('leaves an ordinary 403 alone', async () => {
+        http.get('/api/ranges').subscribe({ error: () => undefined });
+        await settle();
+        backend.expectOne('/api/ranges').flush({ detail: 'Permission denied' }, { status: 403, statusText: 'Forbidden' });
+        expect(keycloak.login).not.toHaveBeenCalled();
+        expect(router.navigate).not.toHaveBeenCalled();
+      });
     });
 
     it('leaves static assets alone', () => {

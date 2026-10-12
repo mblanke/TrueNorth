@@ -32,7 +32,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .. import identity as ident
+from .. import mfa_policy
 from ..auth import CurrentUser, TokenPayload, client_ip, get_token_identity
+from ..auth_me_schemas import AuthMeOut
 from ..db import get_db
 from ..enrollment import ensure_enrollment, ensure_path_enrollment
 from ..models import (
@@ -47,7 +49,6 @@ from ..models import (
 )
 from ..rbac import STAFF_GRANTED_BY_ADMIN_ONLY, Permission, grant_refusal, is_platform_admin, require_permission
 from ..schemas import (
-    AuthMeOut,
     RegistrationApproveIn,
     RegistrationBulkApproveIn,
     RegistrationBulkApproveOut,
@@ -121,8 +122,13 @@ def auth_me(
     """Identity state for the current token. Always 200 while the token is valid."""
     user = db.query(User).filter(User.keycloak_id == identity.sub).first()
     if user is not None:
+        # MFA state: so the SPA can step up before a route refuses it. mfa_satisfied is
+        # "this request would pass the MFA rule" (app/mfa_policy.py), exemptions included.
         # is_platform_admin reads only role and tenant_id, which the row carries.
-        return AuthMeOut(status="registered", user=user, platform_admin=is_platform_admin(user, db))
+        required = mfa_policy.mfa_required_for(user.role)
+        satisfied = mfa_policy.mfa_denial_reason(identity, user.role, user.email) is None
+        return AuthMeOut(status="registered", user=user, platform_admin=is_platform_admin(user, db),
+                         mfa_required=required, mfa_satisfied=satisfied)
 
     groups = ident.normalise_groups(identity.groups)
     request_row = _latest_request(db, identity.sub)

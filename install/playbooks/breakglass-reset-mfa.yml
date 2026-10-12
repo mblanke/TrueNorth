@@ -1,0 +1,17 @@
+---
+# Break-glass: reset one user's second factor (lost or broken authenticator).
+#
+#   ansible-playbook playbooks/breakglass-reset-mfa.yml -K --ask-vault-pass \
+#     -e tn_breakglass_user=<upn> -e tn_breakglass_reason="lost phone, ticket 1234"
+#
+# The user enrols a new authenticator at the next sign-in; MFA is never off. Audited in
+# Keycloak (admin event) and TrueNorth (audit_logs, action mfa_reset).
+# docs/runbooks/break-glass.md.
+- name: "Break-glass: reset a user's second factor"
+  hosts: platform
+  gather_facts: false
+  tasks:
+    - name: Break-glass — reset
+      ansible.builtin.include_role:
+        name: tn_keycloak
+        tasks_from: breakglass

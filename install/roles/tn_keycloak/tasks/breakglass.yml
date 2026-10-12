@@ -1,0 +1,134 @@
+---
+# Break-glass: reset one user's second factor (docs/runbooks/break-glass.md).
+#
+#   ansible-playbook playbooks/breakglass-reset-mfa.yml -K --ask-vault-pass \
+#     -e tn_breakglass_user=<upn> -e tn_breakglass_reason="lost phone, ticket 1234"
+#
+# Never weakens MFA: it deletes the user's OTP/WebAuthn credentials, makes CONFIGURE_TOTP
+# a required action and signs the user out everywhere, so the next sign-in enrols a new
+# authenticator. It never touches the realm, the flow or its binding. It uses the master
+# realm admin on the host's loopback port (nginx answers 404 for /auth/admin), so it needs
+# an SSH login to the host. Keycloak records an admin event (enabled by tasks/mfa.yml);
+# TrueNorth records an audit row (action mfa_reset) with the reason and the operator.
+
+- name: Break-glass — a user and a reason were given
+  ansible.builtin.assert:
+    that:
+      - tn_breakglass_user | default('') | trim | length > 0
+      - tn_breakglass_reason | default('') | trim | length > 0
+    fail_msg: >-
+      -e tn_breakglass_user=<upn> -e tn_breakglass_reason="<why>" are both required.
+      The reason is recorded in TrueNorth's audit log.
+    quiet: true
+
+- name: Break-glass — who is running it
+  ansible.builtin.set_fact:
+    tn_breakglass_operator: >-
+      {{ lookup('ansible.builtin.env', 'SUDO_USER') | default('', true)
+         or lookup('ansible.builtin.env', 'USER') | default('unknown', true) }}
+
+- name: Break-glass — load the secret map
+  ansible.builtin.include_role:
+    name: tn_config
+    tasks_from: secrets
+
+- name: Break-glass — admin token (loopback)
+  ansible.builtin.include_tasks: admin_token.yml
+
+- name: Break-glass — find the user
+  ansible.builtin.uri:
+    url: "{{ tn_kc_realm_url }}/users?username={{ tn_breakglass_user | trim | urlencode }}&exact=true"
+    headers: "{{ tn_kc_headers }}"
+    status_code: 200
+  register: tn_bg_user
+  no_log: true
+
+- name: Break-glass — the user exists
+  ansible.builtin.assert:
+    that: tn_bg_user.json | length == 1
+    fail_msg: "No Keycloak user {{ tn_breakglass_user }} in realm {{ tn_keycloak_realm }}."
+    quiet: true
+
+- name: Break-glass — the user's credentials
+  ansible.builtin.uri:
+    url: "{{ tn_kc_realm_url }}/users/{{ tn_bg_user.json[0].id }}/credentials"
+    headers: "{{ tn_kc_headers }}"
+    status_code: 200
+  register: tn_bg_creds
+  no_log: true
+
+- name: Break-glass — delete the second-factor credentials (OTP, WebAuthn)
+  ansible.builtin.uri:
+    url: "{{ tn_kc_realm_url }}/users/{{ tn_bg_user.json[0].id }}/credentials/{{ item.id }}"
+    method: DELETE
+    headers: "{{ tn_kc_headers }}"
+    status_code: [204]
+  loop: "{{ tn_bg_creds.json | selectattr('type', 'in', ['otp', 'webauthn', 'webauthn-passwordless']) | list }}"
+  loop_control:
+    label: "{{ item.type }} {{ item.userLabel | default('') }}"
+  changed_when: true
+  no_log: true
+
+- name: Break-glass — require enrolment at the next sign-in
+  vars:
+    _actions: "{{ (tn_bg_user.json[0].requiredActions | default([]) + ['CONFIGURE_TOTP']) | unique }}"
+  ansible.builtin.uri:
+    url: "{{ tn_kc_realm_url }}/users/{{ tn_bg_user.json[0].id }}"
+    method: PUT
+    headers: "{{ tn_kc_headers }}"
+    body: {requiredActions: "{{ _actions }}"}
+    body_format: json
+    status_code: [204]
+  changed_when: true
+  no_log: true
+
+- name: Break-glass — sign the user out everywhere
+  ansible.builtin.uri:
+    url: "{{ tn_kc_realm_url }}/users/{{ tn_bg_user.json[0].id }}/logout"
+    method: POST
+    headers: "{{ tn_kc_headers }}"
+    status_code: [204]
+  changed_when: true
+  no_log: true
+
+- name: Break-glass — record it in TrueNorth's audit log
+  ansible.builtin.command:
+    argv:
+      - docker
+      - compose
+      - -f
+      - "{{ tn_compose_file }}"
+      - --env-file
+      - "{{ tn_env_file }}"
+      - run
+      - --rm
+      - --no-deps
+      - -T
+      - -w
+      - /app
+      - -e
+      - PYTHONPATH=/app
+      - -v
+      - "{{ tn_app_dir }}:/srcapp:ro"
+      - --entrypoint
+      - python
+      - api
+      - /srcapp/scripts/audit_note_inprocess.py
+      - --action
+      - mfa_reset
+      - --subject
+      - "{{ tn_breakglass_user | trim }}"
+      - --reason
+      - "{{ tn_breakglass_reason | trim }}"
+      - --operator
+      - "{{ tn_breakglass_operator | trim }}"
+    chdir: "{{ tn_app_dir }}/infra/platform/docker"
+  register: tn_bg_audit
+  changed_when: true
+
+- name: Break-glass — done
+  ansible.builtin.debug:
+    msg: >-
+      {{ tn_breakglass_user }}: {{ tn_bg_creds.json | selectattr('type', 'in', ['otp', 'webauthn', 'webauthn-passwordless']) | list | length }}
+      second-factor credential(s) removed, signed out, enrolment required at the next sign-in.
+      {{ tn_bg_audit.stdout | default('') }}

@@ -1052,19 +1052,6 @@ class RegistrationBulkApproveOut(BaseModel):
     results: list[RegistrationBulkResultItem]
 
 
-class AuthMeOut(BaseModel):
-    """Identity state for the SPA — always 200 on a valid token. A discriminated union on
-    ``status`` so the client never has to interpret an error response to decide where to go.
-    """
-
-    status: str  # registered | pending | rejected | unregistered
-    user: UserFullOut | None = None
-    platform_admin: bool = False  # rbac.is_platform_admin: the UI shows platform-wide actions (display only)
-    request: RegistrationRequestOut | None = None
-    prefill: RegistrationPrefill | None = None
-    suggestions: RegistrationSuggestions | None = None
-
-
 # ── Onboarding ──────────────────────────────────────────────────────────
 class OnboardingStateOut(BaseModel):
     state: str

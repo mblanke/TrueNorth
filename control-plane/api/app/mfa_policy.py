@@ -1,4 +1,4 @@
-"""Did this sign-in use a second factor? One answer for every caller.
+"""Did this sign-in use a second factor, and does this user need one? One answer for every caller.
 
 Keycloak reports how a user signed in two ways:
 
@@ -21,8 +21,11 @@ Configuration (comma-separated, case-insensitive):
 
 from __future__ import annotations
 
+import logging
 import os
 from collections.abc import Iterable
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_AMR_VALUES = "otp,hwk,swk,mfa"
 DEFAULT_ACR_VALUES = "mfa"
@@ -94,3 +97,150 @@ def mfa_satisfied(identity: object) -> bool:
     if isinstance(identity, dict):
         return mfa_satisfied_claims(identity.get("amr"), identity.get("acr"))
     return mfa_satisfied_claims(getattr(identity, "amr", None), getattr(identity, "acr", None))
+
+
+# ── Who must use MFA, enforced on every request (auth.get_current_user) ──
+# The role is the database's (users.role), never the token's: when the two disagree
+# (an admin promoted someone in the UI before their Keycloak groups changed) the API
+# refuses with mfa_required and the SPA steps up. Divergence costs a prompt, never access.
+#
+# ``TN_MFA_ROLES``          roles that must sign in with a second factor; default
+#                           ``admin,instructor,range_ops,observer``. Production refuses
+#                           to start without all four (settings.production_problems).
+# ``TN_MFA_DEMO_EXEMPT``    test hosts only (TN_TEST_HOST): the shipped demo staff
+#                           (``*.demo@truenorth.test``) skip MFA. Ignored anywhere else,
+#                           refused at startup in production without TN_TEST_HOST, and
+#                           each use is audited.
+DEFAULT_MFA_ROLES = "admin,instructor,range_ops,observer"
+PRIVILEGED_ROLES = frozenset(DEFAULT_MFA_ROLES.split(","))
+DEMO_EMAIL_SUFFIX = ".demo@truenorth.test"
+INPROCESS_SESSION = "inprocess"
+LTI_SESSION = "lti"
+MFA_REQUIRED_DETAIL = {
+    "code": "mfa_required",
+    "state": "mfa_required",
+    "message": "Your role requires multi-factor sign-in",
+    "next": "/auth/me",
+}
+
+
+def mfa_roles() -> frozenset[str]:
+    return _csv("TN_MFA_ROLES", DEFAULT_MFA_ROLES) - {""}
+
+
+def _role_value(role: object) -> str:
+    return str(getattr(role, "value", role) or "").lower()
+
+
+def mfa_required_for(role: object) -> bool:
+    return _role_value(role) in mfa_roles()
+
+
+def _flag(name: str) -> bool:
+    return os.getenv(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def is_test_host() -> bool:
+    """TN_TEST_HOST (the same switch as course_releases.test_content)."""
+    return _flag("TN_TEST_HOST")
+
+
+def demo_exemption_requested() -> bool:
+    return _flag("TN_MFA_DEMO_EXEMPT")
+
+
+def demo_exemption_active() -> bool:
+    """Only where both TN_MFA_DEMO_EXEMPT and TN_TEST_HOST are on."""
+    return demo_exemption_requested() and is_test_host()
+
+
+def is_demo_email(email: str | None) -> bool:
+    e = (email or "").strip().lower()
+    local = e[: -len(DEMO_EMAIL_SUFFIX)] if e.endswith(DEMO_EMAIL_SUFFIX) else ""
+    return bool(local) and "@" not in local
+
+
+def demo_exempt(email: str | None) -> bool:
+    return demo_exemption_active() and is_demo_email(email)
+
+
+def mfa_denial_reason(identity: object, role: object, email: str | None = None) -> str | None:
+    """None when this request may proceed; otherwise why MFA is missing.
+
+    Order: not required for the role -> proceed; the in-process harness (host root and
+    Docker, audited at start) -> proceed; an LTI session for a privileged role -> refused
+    (defence in depth: lti_identity.session only names Students); a second factor in the
+    token -> proceed; the test-host demo exemption -> proceed (the caller audits it).
+    """
+    if not mfa_required_for(role):
+        return None
+    session = getattr(identity, "tn_session", "") or ""
+    if session == INPROCESS_SESSION:
+        return None
+    if session == LTI_SESSION:
+        return "an LTI session cannot carry a role that requires multi-factor sign-in"
+    if mfa_satisfied(identity):
+        return None
+    if demo_exempt(email):
+        return None
+    return "no second factor in the token (amr/acr)"
+
+
+def mfa_denial(identity: object, role: object, email: str | None = None):
+    """The 403 to raise, or None. Imported lazily so this module stays importable alone."""
+    if mfa_denial_reason(identity, role, email) is None:
+        return None
+    from fastapi import HTTPException
+
+    from .auth import AUTH_STATE_HEADER
+
+    return HTTPException(status_code=403, detail=dict(MFA_REQUIRED_DETAIL),
+                         headers={AUTH_STATE_HEADER: "mfa_required"})
+
+
+def uses_demo_exemption(identity: object, role: object, email: str | None) -> bool:
+    """True when this request proceeds only because of the demo exemption (to audit it)."""
+    return (
+        mfa_required_for(role)
+        and (getattr(identity, "tn_session", "") or "") not in (INPROCESS_SESSION, LTI_SESSION)
+        and not mfa_satisfied(identity)
+        and demo_exempt(email)
+    )
+
+
+_demo_audited: dict[str, str] = {}
+
+
+def audit_demo_exemption(db, user) -> None:
+    """One audit row per demo user per UTC day per process: who skipped MFA, and why."""
+    from datetime import UTC, datetime
+
+    from .models import AuditLog
+
+    today = datetime.now(UTC).date().isoformat()
+    key = str(user.id)
+    if _demo_audited.get(key) == today:
+        return
+    db.add(AuditLog(
+        user_id=user.id, tenant_id=user.tenant_id, action="mfa_demo_exempt", resource_type="user",
+        resource_id=key, detail="TN_MFA_DEMO_EXEMPT on a test host (TN_TEST_HOST): demo staff signed in without MFA",
+    ))
+    db.commit()
+    _demo_audited[key] = today
+    logger.warning("MFA skipped for demo user %s (TN_MFA_DEMO_EXEMPT on a test host)", user.id)
+
+
+def production_problems() -> list[str]:
+    """MFA settings production refuses (settings.production_problems)."""
+    problems: list[str] = []
+    missing = sorted(PRIVILEGED_ROLES - mfa_roles())
+    if missing:
+        problems.append(f"TN_MFA_ROLES leaves out {', '.join(missing)}: privileged roles must use MFA")
+    acr = configured_acr_problem()
+    if acr:
+        problems.append(acr)
+    if not amr_values() and not acr_values():
+        problems.append("TN_MFA_AMR_VALUES and TN_MFA_ACR_VALUES are both empty: nothing could prove MFA")
+    if demo_exemption_requested() and not is_test_host():
+        problems.append("TN_MFA_DEMO_EXEMPT is on without TN_TEST_HOST: the demo MFA exemption is for test hosts only")
+    return problems

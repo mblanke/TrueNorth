@@ -3,6 +3,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import Keycloak from 'keycloak-js';
 import { freshToken } from '../auth/keycloak-init';
 import { clearLtiSession, storeLtiSession } from '../auth/lti-session';
+import { STEP_UP_KEY, resetStepUpForTests } from '../auth/mfa-step-up';
 import { AuthService, CurrentUser } from './auth.service';
 import { environment } from '@env/environment';
 import { provideHttpClient, withInterceptorsFromDi } from '@angular/common/http';
@@ -172,6 +173,56 @@ describe('AuthService', () => {
       });
       await pending;
       expect(service.isPlatformAdmin()).toBeTrue();
+    });
+
+    describe('MFA (v1.2.0)', () => {
+      const admin = { id: 'db-2', email: 'adm@tn.local', display_name: 'Adm', role: 'admin' };
+
+      beforeEach(() => {
+        resetStepUpForTests();
+        sessionStorage.removeItem(STEP_UP_KEY);
+        keycloakStub.authenticated = true;
+      });
+      afterEach(() => sessionStorage.removeItem(STEP_UP_KEY));
+
+      it('steps up when /auth/me says the role needs MFA the token lacks', async () => {
+        const http = TestBed.inject(HttpTestingController);
+        const pending = service.bootstrap(true);
+        http.expectOne(`${environment.apiUrl}/auth/me`).flush({
+          status: 'registered', user: admin, mfa_required: true, mfa_satisfied: false,
+        });
+        await pending;
+        expect(keycloakStub.login).toHaveBeenCalledTimes(1);
+        expect(keycloakStub.login.calls.mostRecent().args[0].acr).toEqual({ values: ['mfa'], essential: true });
+        expect(service.user()).toBeNull();
+        expect(service.mfaBlocked()).toBeFalse();
+      });
+
+      it('loop guard: still unsatisfied after a step-up -> blocked, no redirect', async () => {
+        sessionStorage.setItem(STEP_UP_KEY, String(Date.now() - 5_000));
+        const http = TestBed.inject(HttpTestingController);
+        const pending = service.bootstrap(true);
+        http.expectOne(`${environment.apiUrl}/auth/me`).flush({
+          status: 'registered', user: admin, mfa_required: true, mfa_satisfied: false,
+        });
+        await pending;
+        expect(keycloakStub.login).not.toHaveBeenCalled();
+        expect(service.mfaBlocked()).toBeTrue();
+        expect(service.user()).toBeNull();
+      });
+
+      it('a satisfied token signs in and clears the step-up marker', async () => {
+        sessionStorage.setItem(STEP_UP_KEY, String(Date.now() - 5_000));
+        const http = TestBed.inject(HttpTestingController);
+        const pending = service.bootstrap(true);
+        http.expectOne(`${environment.apiUrl}/auth/me`).flush({
+          status: 'registered', user: admin, mfa_required: true, mfa_satisfied: true,
+        });
+        await pending;
+        expect(service.user()?.role).toBe('admin');
+        expect(sessionStorage.getItem(STEP_UP_KEY)).toBeNull();
+        expect(keycloakStub.login).not.toHaveBeenCalled();
+      });
     });
 
     it('bootstrap() resolves a launched Student through their LTI session, without onboarding', async () => {

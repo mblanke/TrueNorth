@@ -40,6 +40,7 @@ GOOD = {
 NAMES = (
     *GOOD, "SEED_DEV_DATA", "DB_AUTO_CREATE", "DOCS_ENABLED", "OIDC_AUDIENCE", "REDIS_PASSWORD", "TN_VERSION", "DOMAIN",
     "CMI5_WEB_BASE_URL", "CMI5_API_BASE_URL",
+    "TN_MFA_ROLES", "TN_MFA_AMR_VALUES", "TN_MFA_ACR_VALUES", "TN_MFA_DEMO_EXEMPT", "TN_TEST_HOST",
 )
 
 
@@ -97,12 +98,31 @@ def test_an_empty_production_environment_names_every_problem(monkeypatch):
         ("LTI_WEB_BASE_URL", "http://localhost:4200", "CMI5_WEB_BASE_URL"),
         ("CMI5_WEB_BASE_URL", "http://localhost:4200", "CMI5_WEB_BASE_URL"),
         ("CMI5_API_BASE_URL", "http://127.0.0.1:8000/api", "CMI5_API_BASE_URL"),
+        # MFA (v1.2.0): every privileged role, and acr "1" can never count as MFA (F1).
+        ("TN_MFA_ROLES", "instructor,range_ops,observer", "admin"),
+        ("TN_MFA_ROLES", "admin,instructor,range_ops", "observer"),
+        ("TN_MFA_ROLES", "", "TN_MFA_ROLES"),
+        ("TN_MFA_ACR_VALUES", "mfa,1", "TN_MFA_ACR_VALUES"),
+        ("TN_MFA_ACR_VALUES", "0", "TN_MFA_ACR_VALUES"),
+        # The demo exemption without TN_TEST_HOST: production cannot enable it.
+        ("TN_MFA_DEMO_EXEMPT", "true", "TN_MFA_DEMO_EXEMPT"),
     ],
 )
 def test_each_unsafe_setting_is_refused(prod, name, value, needle):
     prod.setenv(name, value)
     problems = settings.production_problems()
     assert any(needle in p for p in problems), problems
+
+
+def test_the_demo_mfa_exemption_is_allowed_only_with_tn_test_host(prod):
+    prod.setenv("TN_MFA_DEMO_EXEMPT", "true")
+    prod.setenv("TN_TEST_HOST", "true")
+    assert settings.production_problems() == []
+
+
+def test_extra_mfa_roles_are_allowed(prod):
+    prod.setenv("TN_MFA_ROLES", "admin,instructor,range_ops,observer,student")
+    assert settings.production_problems() == []
 
 
 def test_generic_oidc_needs_its_own_audience(prod):

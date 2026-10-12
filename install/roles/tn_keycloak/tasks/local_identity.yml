@@ -9,7 +9,8 @@
 # the mapper's sync adopts them by name), and the bootstrap administrator as a local
 # account in TN-Platform-Admins with a generated password (bootstrap_admin_password,
 # persisted like every secret). app.bootstrap_admin (80-seed) then finds it like a
-# federated user, and 95-smoke-test signs in as it.
+# federated user. 95-smoke-test signs in as the non-privileged tn_smoke_local_user (last
+# below), not as the administrator, who since v1.2.0 needs a second factor.
 - name: Keycloak — a bootstrap administrator must be nominated
   ansible.builtin.assert:
     that: tn_bootstrap_admin_upn | default('') | length > 0
@@ -136,4 +137,90 @@
     headers: "{{ tn_kc_headers }}"
     status_code: [204]
   when: tn_kc_local_admin_group not in (tn_kc_local_admin_groups.json | map(attribute='name') | list)
+  changed_when: true
+
+# The smoke test's own account (95-smoke-test, when no tn_smoke_username is given): local,
+# in TN-Observers, never registered in TrueNorth (/auth/me answers "unregistered"). The
+# bootstrap administrator can no longer be used: since v1.2.0 it signs in with a second
+# factor, which the smoke test's password grant cannot give. With AD it is local too,
+# beside the recovery administrator (its UPN is outside the AD domain).
+- name: Keycloak — does the smoke-test account exist?
+  ansible.builtin.uri:
+    url: "{{ tn_kc_realm_url }}/users?username={{ tn_smoke_local_user | urlencode }}&exact=true"
+    headers: "{{ tn_kc_headers }}"
+    status_code: 200
+  register: tn_kc_smoke_user
+
+- name: Keycloak — create the smoke-test account
+  ansible.builtin.uri:
+    url: "{{ tn_kc_realm_url }}/users"
+    method: POST
+    headers: "{{ tn_kc_headers }}"
+    body:
+      username: "{{ tn_smoke_local_user }}"
+      email: "{{ tn_smoke_local_user }}"
+      emailVerified: true
+      enabled: true
+      firstName: TrueNorth
+      lastName: Smoke Test
+      requiredActions: []
+      credentials:
+        - {type: password, value: "{{ tn_secrets['smoke_user_password'] }}", temporary: false}
+    body_format: json
+    status_code: [201]
+  when: tn_kc_smoke_user.json | length == 0
+  changed_when: true
+  no_log: true
+
+- name: Keycloak — re-read the smoke-test account
+  ansible.builtin.uri:
+    url: "{{ tn_kc_realm_url }}/users?username={{ tn_smoke_local_user | urlencode }}&exact=true"
+    headers: "{{ tn_kc_headers }}"
+    status_code: 200
+  register: tn_kc_smoke_user2
+
+- name: Keycloak — the smoke-test password last set (keyed hash)
+  ansible.builtin.slurp:
+    src: "{{ tn_state_dir }}/keycloak_smoke_user.hmac"
+  register: tn_kc_smoke_pw_prev
+  failed_when: false
+
+- name: Keycloak — set the smoke-test account's password
+  ansible.builtin.uri:
+    url: "{{ tn_kc_realm_url }}/users/{{ tn_kc_smoke_user2.json[0].id }}/reset-password"
+    method: PUT
+    headers: "{{ tn_kc_headers }}"
+    body: {type: password, value: "{{ tn_secrets['smoke_user_password'] }}", temporary: false}
+    body_format: json
+    status_code: [204]
+  when: >-
+    tn_kc_smoke_user.json | length > 0
+    and (tn_kc_smoke_pw_prev.content | default('') | b64decode | trim)
+        != (tn_secrets['smoke_user_password'] ~ ':' ~ tn_secrets['secrets_key']) | hash('sha256')
+  changed_when: true
+  no_log: true
+
+- name: Keycloak — record it (keyed hash)
+  ansible.builtin.copy:
+    dest: "{{ tn_state_dir }}/keycloak_smoke_user.hmac"
+    content: "{{ (tn_secrets['smoke_user_password'] ~ ':' ~ tn_secrets['secrets_key']) | hash('sha256') }}"
+    mode: "0600"
+  no_log: true
+
+- name: Keycloak — the smoke-test account's groups
+  ansible.builtin.uri:
+    url: "{{ tn_kc_realm_url }}/users/{{ tn_kc_smoke_user2.json[0].id }}/groups"
+    headers: "{{ tn_kc_headers }}"
+    status_code: 200
+  register: tn_kc_smoke_groups
+
+- name: Keycloak — put the smoke-test account in TN-Observers
+  vars:
+    _gid: "{{ (tn_kc_local_groups2.json | selectattr('name', 'equalto', 'TN-Observers') | first).id }}"
+  ansible.builtin.uri:
+    url: "{{ tn_kc_realm_url }}/users/{{ tn_kc_smoke_user2.json[0].id }}/groups/{{ _gid }}"
+    method: PUT
+    headers: "{{ tn_kc_headers }}"
+    status_code: [204]
+  when: "'TN-Observers' not in (tn_kc_smoke_groups.json | map(attribute='name') | list)"
   changed_when: true

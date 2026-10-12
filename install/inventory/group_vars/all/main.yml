@@ -187,6 +187,25 @@ tn_registration_group_role_map:
 # Auth zone (Admin > Auth zones) whose clearance and network rules apply at
 # registration. Empty: none. There is no default zone; name one explicitly.
 tn_registration_auth_zone: ""
+
+# ── Multi-factor sign-in (docs/identity.md "MFA") ─────────────────────
+# Roles that must sign in with a second factor (OTP). The API enforces it per request
+# from the database role (TN_MFA_ROLES); 60-keycloak makes the realm ask for it from the
+# Keycloak groups those roles map to (tn_registration_group_role_map). Production refuses
+# to start without all four. Students (and LTI-launched Students) are exempt.
+tn_mfa_roles: [admin, instructor, range_ops, observer]
+# Test hosts only: the shipped demo staff (instructor.demo / observer.demo) sign in
+# without a second factor. Honoured only on a test host (TN_TEST_HOST, which the
+# installer sets only with tn_arc2_enabled + tn_arc2_auto_accept) that also loads the
+# shipped demo (tn_load_shipped_demo). The API ignores it anywhere else, refuses to
+# start with it in production without TN_TEST_HOST, and audits each use.
+tn_mfa_demo_exempt: false
+tn_mfa_demo_exempt_effective: >-
+  {{ (tn_mfa_demo_exempt | bool) and (tn_load_shipped_demo | bool)
+     and (tn_arc2_enabled | default(false) | bool) and (tn_arc2_auto_accept | default(false) | bool) }}
+# Without AD: the local, non-privileged account 95-smoke-test signs in as (TN-Observers,
+# never registered in TrueNorth). Its password is the persisted secret smoke_user_password.
+tn_smoke_local_user: "tn-smoke@{{ tn_domain_fqdn }}"
 tn_tenant_name: "TrueNorth Range"
 tn_tenant_slug: default
 # Developmental progression a newly approved trainee is enrolled on (DP1 -> DP2).

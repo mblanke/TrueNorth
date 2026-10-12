@@ -186,6 +186,12 @@ def production_problems() -> list[str]:
             problems.append(f"{name} is not set, nor DOMAIN or LTI_WEB_BASE_URL: cmi5 launch URLs would name localhost")
         elif any(host in value for host in ("localhost", "127.0.0.1")):
             problems.append(f"{name} resolves to localhost ({value})")
+
+    # MFA (app/mfa_policy.py): every privileged role, no acr that a password sign-in
+    # carries, and the demo exemption only on a test host.
+    from . import mfa_policy
+
+    problems.extend(mfa_policy.production_problems())
     return problems
 
 

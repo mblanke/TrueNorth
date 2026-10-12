@@ -21,11 +21,14 @@ class FakeAuthService {
   canOpen(page: PageKey): boolean {
     return roleHasAccess(this.role(), PAGE_ACCESS[page]);
   }
+  private readonly blocked = signal(false);
+  readonly mfaBlocked = this.blocked.asReadonly();
 
-  next: { role: UserRole | null; state: AuthState | null } = { role: null, state: null };
+  next: { role: UserRole | null; state: AuthState | null; mfaBlocked?: boolean } = { role: null, state: null };
   readonly bootstrap = jasmine.createSpy('bootstrap').and.callFake(async () => {
     this.role.set(this.next.role);
     this.state.set(this.next.state);
+    this.blocked.set(!!this.next.mfaBlocked);
     return null;
   });
 }
@@ -59,6 +62,11 @@ describe('auth guards', () => {
       auth.next = { role: 'student', state: 'registered' };
       expect(await run(authGuard)).toBeTrue();
       expect(auth.bootstrap).toHaveBeenCalled();
+    });
+
+    it('sends an account still lacking MFA after a step-up to /mfa-required', async () => {
+      auth.next = { role: null, state: null, mfaBlocked: true };
+      expect(path(await run(authGuard))).toBe('/mfa-required');
     });
 
     it('sends an anonymous visitor to /login', async () => {

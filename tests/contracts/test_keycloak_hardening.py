@@ -119,12 +119,17 @@ def test_installer_enforces_the_client_rules_every_run():
 def test_the_smoke_test_uses_its_own_client_and_switches_it_off_again():
     tasks = yaml.safe_load((ROOT / "install/roles/tn_smoke/tasks/main.yml").read_text())
     [block] = [t for t in tasks if "block" in t]
-    token = next(t for t in block["block"] if t["name"] == "Smoke — obtain a token for the bootstrap admin's AD account")
+    token = next(t for t in block["block"] if t["name"] == "Smoke — obtain a token for the non-privileged smoke identity")
     body = token["ansible.builtin.uri"]["body"]
+    # v1.2.0: never the bootstrap administrator, who now needs a second factor.
+    who = next(t for t in tasks if t.get("name") == "Smoke — the identity to sign in as")["ansible.builtin.set_fact"]
+    assert "bootstrap" not in json.dumps(who)
+    assert "tn_smoke_local_user" in who["tn_smoke_user_effective"]
+    assert "smoke_user_password" in who["tn_smoke_password_effective"]
     assert body["grant_type"] == "password"
     assert body["client_id"] == "{{ tn_kc_smoke_client }}"
     assert "keycloak_smoke_client_secret" in body["client_secret"]
     [off] = block["always"]
     assert off["ansible.builtin.uri"]["body"]["enabled"] is False
     secrets = yaml.safe_load((ROOT / "install/roles/tn_config/defaults/main.yml").read_text())["tn_generated_secrets"]
-    assert "keycloak_smoke_client_secret" in {s["name"] for s in secrets}
+    assert {"keycloak_smoke_client_secret", "smoke_user_password"} <= {s["name"] for s in secrets}

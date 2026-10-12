@@ -3,6 +3,7 @@ import { HttpClient } from '@angular/common/http';
 import Keycloak from 'keycloak-js';
 import { freshToken } from '../auth/keycloak-init';
 import { clearLtiSession, hasLtiSession, ltiSessionToken } from '../auth/lti-session';
+import { clearMfaStepUp, requestMfaStepUp } from '../auth/mfa-step-up';
 import { ReplaySubject, firstValueFrom } from 'rxjs';
 import { environment } from '@env/environment';
 import { PAGE_ACCESS, PageKey, Permission, roleCan, roleHasAccess } from '../auth/permissions';
@@ -54,6 +55,9 @@ export interface AuthMe {
   suggestions?: RegistrationSuggestions;
   /** rbac.is_platform_admin, from GET /auth/me: may act on every tenant (display only). */
   platform_admin?: boolean;
+  /** v1.2.0: this role needs a second factor / this token shows one (app/mfa_policy.py). */
+  mfa_required?: boolean;
+  mfa_satisfied?: boolean;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -68,6 +72,9 @@ export class AuthService {
   readonly user = this.userSignal.asReadonly();
   readonly authState = this.stateSignal.asReadonly();
   readonly me = this.meSignal.asReadonly();
+  /** The API wants a second factor and a step-up did not supply one: /mfa-required. */
+  private mfaBlockedSignal = signal(false);
+  readonly mfaBlocked = this.mfaBlockedSignal.asReadonly();
 
   readonly isAuthenticated = computed(() => this.userSignal() !== null);
   readonly isAdmin = computed(() => this.userSignal()?.role === 'admin');
@@ -173,6 +180,22 @@ export class AuthService {
 
     try {
       const me = await firstValueFrom(this.http.get<AuthMe>(`${environment.apiUrl}/auth/me`));
+      if (me.status === 'registered' && me.mfa_required && me.mfa_satisfied === false) {
+        // Step up before any route is refused (core/auth/mfa-step-up.ts). No user is set:
+        // the browser is leaving for Keycloak, or the step-up already failed.
+        const outcome = !lti ? requestMfaStepUp(this.keycloak) : 'exhausted';
+        this.mfaBlockedSignal.set(outcome === 'exhausted');
+        // Nothing platform-wide is shown to an identity that has not finished signing in.
+        this.meSignal.set({ ...me, platform_admin: false });
+        this.userSignal.set(null);
+        this.stateSignal.set(null);
+        this.finishBootstrap();
+        return me;
+      }
+      if (me.status === 'registered') {
+        clearMfaStepUp();
+        this.mfaBlockedSignal.set(false);
+      }
       this.meSignal.set(me);
       this.stateSignal.set(me.status);
       if (me.status === 'registered' && me.user) {

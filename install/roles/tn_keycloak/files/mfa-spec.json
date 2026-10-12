@@ -1,0 +1,144 @@
+{
+  "_comment": "Read by scripts/keycloak_mfa.py (installer: tasks/mfa.yml; CI: scripts/check_keycloak_mfa.sh) and by tests/contracts/test_keycloak_mfa.py. 'groups' is the default privileged set (admin, range_ops, instructor incl. Content-Authors, observer); the installer passes the list it derives from tn_registration_group_role_map and tn_mfa_roles. The second factor is OTP only: on Keycloak 24 a WebAuthn/OTP ALTERNATIVE pair with neither configured ends on an error page instead of enrolment (check_keycloak_mfa.sh, 2026-10-12), so WebAuthn waits for v1.3. tn-loa1 runs on every sign-in (acr pwd), tn-loa2 only on request (acr mfa, the SPA's step-up).",
+  "groups": [
+    "TN-Platform-Admins",
+    "TN-Range-Operators",
+    "TN-Instructors",
+    "TN-Content-Authors",
+    "TN-Observers"
+  ],
+  "required_role": "tn-mfa-required",
+  "exempt_role": "tn-mfa-exempt",
+  "realm": {
+    "otpPolicyType": "totp",
+    "otpPolicyAlgorithm": "HmacSHA1",
+    "otpPolicyDigits": 6,
+    "otpPolicyPeriod": 30,
+    "otpPolicyLookAheadWindow": 1,
+    "webAuthnPolicyRpEntityName": "TrueNorth Range",
+    "webAuthnPolicyAttestationConveyancePreference": "none",
+    "webAuthnPolicyUserVerificationRequirement": "preferred",
+    "eventsEnabled": true,
+    "eventsExpiration": 7776000,
+    "enabledEventTypes": [
+      "LOGIN",
+      "LOGIN_ERROR",
+      "LOGOUT",
+      "UPDATE_TOTP",
+      "REMOVE_TOTP",
+      "UPDATE_CREDENTIAL",
+      "REMOVE_CREDENTIAL",
+      "CUSTOM_REQUIRED_ACTION"
+    ],
+    "adminEventsEnabled": true,
+    "adminEventsDetailsEnabled": false
+  },
+  "realm_attributes": {
+    "acr.loa.map": {
+      "pwd": 1,
+      "mfa": 2
+    }
+  },
+  "required_actions": [
+    "CONFIGURE_TOTP",
+    "webauthn-register"
+  ],
+  "flow": [
+    {
+      "provider": "auth-cookie",
+      "requirement": "ALTERNATIVE"
+    },
+    {
+      "provider": "identity-provider-redirector",
+      "requirement": "ALTERNATIVE"
+    },
+    {
+      "flow": "tn-browser-forms",
+      "requirement": "ALTERNATIVE",
+      "description": "Password, a second factor by role, and step-up",
+      "executions": [
+        {
+          "flow": "tn-loa1",
+          "requirement": "CONDITIONAL",
+          "description": "Level 1 (acr pwd): password; privileged roles also a second factor",
+          "executions": [
+            {
+              "provider": "conditional-level-of-authentication",
+              "requirement": "REQUIRED",
+              "config_alias": "tn-cond-loa1",
+              "config": {
+                "loa-condition-level": "1",
+                "loa-max-age": "36000"
+              }
+            },
+            {
+              "provider": "auth-username-password-form",
+              "requirement": "REQUIRED",
+              "config_alias": "tn-amr-pwd",
+              "config": {
+                "default.reference.value": "pwd"
+              }
+            },
+            {
+              "flow": "tn-mfa-by-role",
+              "requirement": "CONDITIONAL",
+              "description": "Privileged roles (tn-mfa-required, not tn-mfa-exempt): OTP",
+              "executions": [
+                {
+                  "provider": "conditional-user-role",
+                  "requirement": "REQUIRED",
+                  "config_alias": "tn-cond-mfa-required",
+                  "config": {
+                    "condUserRole": "tn-mfa-required",
+                    "negate": "false"
+                  }
+                },
+                {
+                  "provider": "conditional-user-role",
+                  "requirement": "REQUIRED",
+                  "config_alias": "tn-cond-not-exempt",
+                  "config": {
+                    "condUserRole": "tn-mfa-exempt",
+                    "negate": "true"
+                  }
+                },
+                {
+                  "provider": "auth-otp-form",
+                  "requirement": "REQUIRED",
+                  "config_alias": "tn-amr-otp",
+                  "config": {
+                    "default.reference.value": "otp"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "flow": "tn-loa2",
+          "requirement": "CONDITIONAL",
+          "description": "Level 2 (acr mfa), on request (step-up): OTP",
+          "executions": [
+            {
+              "provider": "conditional-level-of-authentication",
+              "requirement": "REQUIRED",
+              "config_alias": "tn-cond-loa2",
+              "config": {
+                "loa-condition-level": "2",
+                "loa-max-age": "36000"
+              }
+            },
+            {
+              "provider": "auth-otp-form",
+              "requirement": "REQUIRED",
+              "config_alias": "tn-amr-otp-stepup",
+              "config": {
+                "default.reference.value": "otp"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
