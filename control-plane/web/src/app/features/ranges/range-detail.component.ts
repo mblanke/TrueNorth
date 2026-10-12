@@ -228,7 +228,7 @@ export class RangeDetailComponent implements OnInit, OnDestroy {
   busy = signal(false);
   outcome = signal<{ kind: 'ok' | 'error'; title: string; lines: string[] } | null>(null);
 
-  readonly caps = computed(() => rangeCapabilities(this.auth.user()?.role));
+  readonly caps = computed(() => rangeCapabilities(this.auth.user()?.role, this.auth.isPlatformAdmin()));
   readonly polling = computed(() => {
     const ops = this.operations().data ?? [];
     return ops.some(op => this.inFlight(op)) || !!this.lease().data?.blocking;

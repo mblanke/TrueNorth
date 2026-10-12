@@ -8106,12 +8106,15 @@ export interface components {
         };
         /**
          * AuthMeOut
-         * @description Identity state for the SPA — always 200 on a valid token.
-         *
-         *     A discriminated union on ``status`` so the client never has to interpret an
-         *     error response to decide where to send someone.
+         * @description Identity state for the SPA — always 200 on a valid token. A discriminated union on
+         *     ``status`` so the client never has to interpret an error response to decide where to go.
          */
         AuthMeOut: {
+            /**
+             * Platform Admin
+             * @default false
+             */
+            platform_admin?: boolean;
             prefill?: components["schemas"]["RegistrationPrefill"] | null;
             request?: components["schemas"]["RegistrationRequestOut"] | null;
             /** Status */

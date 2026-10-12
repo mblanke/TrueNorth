@@ -121,7 +121,8 @@ def auth_me(
     """Identity state for the current token. Always 200 while the token is valid."""
     user = db.query(User).filter(User.keycloak_id == identity.sub).first()
     if user is not None:
-        return AuthMeOut(status="registered", user=user)
+        # is_platform_admin reads only role and tenant_id, which the row carries.
+        return AuthMeOut(status="registered", user=user, platform_admin=is_platform_admin(user, db))
 
     groups = ident.normalise_groups(identity.groups)
     request_row = _latest_request(db, identity.sub)

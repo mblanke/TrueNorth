@@ -963,8 +963,13 @@
         "type": "object"
       },
       "AuthMeOut": {
-        "description": "Identity state for the SPA \u2014 always 200 on a valid token.\n\nA discriminated union on ``status`` so the client never has to interpret an\nerror response to decide where to send someone.",
+        "description": "Identity state for the SPA \u2014 always 200 on a valid token. A discriminated union on\n``status`` so the client never has to interpret an error response to decide where to go.",
         "properties": {
+          "platform_admin": {
+            "default": false,
+            "title": "Platform Admin",
+            "type": "boolean"
+          },
           "prefill": {
             "anyOf": [
               {

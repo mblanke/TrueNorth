@@ -8,7 +8,8 @@ import type { UserRole } from '@core/services/auth.service';
  * - view (range:read, staff only on this screen): admin, instructor, range_ops, observer
  * - abandon an operation, snapshots (range:provision / range:destroy): admin, instructor, range_ops
  * - force-release a lease (range:lease_force_release): admin
- * - abandon a range: a platform administrator (an admin of the operator's tenant; the API decides)
+ * - abandon a range: a platform administrator only (an admin of the operator's tenant), as
+ *   GET /auth/me reports it (`platform_admin`); other admins would only get a 403
  */
 export interface RangeCapabilities {
   view: boolean;
@@ -17,13 +18,13 @@ export interface RangeCapabilities {
   abandonRange: boolean;
 }
 
-export function rangeCapabilities(role: UserRole | null | undefined): RangeCapabilities {
+export function rangeCapabilities(role: UserRole | null | undefined, platformAdmin = false): RangeCapabilities {
   const staff = role === 'admin' || role === 'instructor' || role === 'range_ops';
   return {
     view: staff || role === 'observer',
     changeRange: staff,
     forceRelease: role === 'admin',
-    abandonRange: role === 'admin',
+    abandonRange: role === 'admin' && platformAdmin,
   };
 }
 

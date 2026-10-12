@@ -151,6 +151,27 @@ describe('AuthService', () => {
       await pending;
       expect(service.user()?.sub).toBe('kc-sub');
       expect(service.userId()).toBe('db-1');
+      expect(service.isPlatformAdmin()).toBeFalse(); // absent means no
+    });
+
+    it('isPlatformAdmin() comes from /auth/me platform_admin, not from the admin role alone', async () => {
+      keycloakStub.authenticated = true;
+      const http = TestBed.inject(HttpTestingController);
+      let pending = service.bootstrap(true);
+      http.expectOne(`${environment.apiUrl}/auth/me`).flush({
+        status: 'registered', platform_admin: false,
+        user: { id: 'db-2', email: 't@tn.local', display_name: 'Tenant admin', role: 'admin' },
+      });
+      await pending;
+      expect(service.isAdmin()).toBeTrue();
+      expect(service.isPlatformAdmin()).toBeFalse();
+      pending = service.bootstrap(true);
+      http.expectOne(`${environment.apiUrl}/auth/me`).flush({
+        status: 'registered', platform_admin: true,
+        user: { id: 'db-3', email: 'o@tn.local', display_name: 'Operator', role: 'admin' },
+      });
+      await pending;
+      expect(service.isPlatformAdmin()).toBeTrue();
     });
 
     it('bootstrap() resolves a launched Student through their LTI session, without onboarding', async () => {

@@ -44,7 +44,8 @@ describe('RangeDetailComponent', () => {
   let dialogOpen: jasmine.Spy;
   let dialogResult: { reason: string } | null;
 
-  async function render(role: UserRole, opts: { ops?: RangeOperation[]; lease?: RangeLeaseStatus; fail?: boolean } = {}) {
+  async function render(role: UserRole, opts: { ops?: RangeOperation[]; lease?: RangeLeaseStatus; fail?: boolean;
+    platformAdmin?: boolean } = {}) {
     api = jasmine.createSpyObj('RangeRecoveryApiService', [
       'getRange', 'listOperations', 'getLease', 'listNetworkReservations', 'abandonOperation', 'forceReleaseLease',
       'abandonRange', 'listSnapshots', 'createSnapshot', 'deleteSnapshot', 'restoreSnapshot',
@@ -68,7 +69,8 @@ describe('RangeDetailComponent', () => {
         provideRouter([]),
         { provide: RangeRecoveryApiService, useValue: api },
         { provide: NotificationService, useValue: notify },
-        { provide: AuthService, useValue: { user: signal({ id: 'u1', role }) } },
+        { provide: AuthService, useValue: { user: signal({ id: 'u1', role }),
+          isPlatformAdmin: signal(opts.platformAdmin ?? false) } },
         { provide: MatDialog, useValue: { open: dialogOpen } },
       ],
     }).compileComponents();
@@ -158,8 +160,18 @@ describe('RangeDetailComponent', () => {
     expect(el.textContent).toContain('An administrator can force-release this lease.');
   });
 
-  it('abandons a failed range (admin) and lists what was left for manual cleanup', async () => {
-    await render('admin');
+  it('offers Abandon range only to the platform administrator, not to every admin', async () => {
+    await render('admin', { platformAdmin: false });
+    expect(buttons('Abandon range').length).toBe(0);
+    expect(el.textContent).not.toContain('Abandon the range');
+    fixture.destroy();
+    TestBed.resetTestingModule();
+    await render('admin', { platformAdmin: true });
+    expect(buttons('Abandon range').length).toBe(1);
+  });
+
+  it('abandons a failed range (platform admin) and lists what was left for manual cleanup', async () => {
+    await render('admin', { platformAdmin: true });
     const abandoned = {
       ...RANGE, state: 'destroyed',
       provisioner_output: JSON.stringify({ abandoned: { vms: [{ name: 'r-dc01', vm_id: 'vm-1' }], networks: ['pg-210'] } }),
@@ -177,7 +189,7 @@ describe('RangeDetailComponent', () => {
   });
 
   it('shows a refusal as a refusal, not a success', async () => {
-    await render('admin');
+    await render('admin', { platformAdmin: true });
     api.abandonRange.and.returnValue(throwError(() => new HttpErrorResponse({
       status: 403, error: { detail: 'Only a platform administrator can change this' },
     })));
@@ -204,6 +216,9 @@ describe('RangeDetailComponent', () => {
     expect(rangeCapabilities('instructor').changeRange).toBeTrue();
     expect(rangeCapabilities('instructor').forceRelease).toBeFalse();
     expect(rangeCapabilities('admin').forceRelease).toBeTrue();
+    expect(rangeCapabilities('admin').abandonRange).toBeFalse();
+    expect(rangeCapabilities('admin', true).abandonRange).toBeTrue();
+    expect(rangeCapabilities('instructor', true).abandonRange).toBeFalse();
   });
 
   it('reads nothing left behind from a range that was not abandoned', () => {
