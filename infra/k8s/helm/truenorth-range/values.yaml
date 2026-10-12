@@ -395,6 +395,9 @@ config:
   minio:
     endpoint: ""            # required, with scheme: https://minio.example.com:9000
     bucket: truenorth-range
+  # The API's startup check that the realm is configured for MFA (scripts/keycloak_mfa.py):
+  # "" = refuse in production; "warn" starts anyway. infra/k8s/README.md.
+  mfaKeycloakCheck: ""
   keycloak:
     # Required: Keycloak as the API reaches it, including /auth if it serves there.
     url: ""

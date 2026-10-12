@@ -302,6 +302,13 @@ Keycloak **master** realm admin stays password-only: it is reachable only on the
 loopback port (nginx answers 404 for `/auth/admin` and `/auth/realms/master`), so using
 it needs an SSH login to the host. That is a recorded risk acceptance.
 
+**Startup check.** In production the API reads the realm through its Admin API client
+(view-realm) at startup and refuses to start when the realm answers without the
+`tn-browser` flow, `acr.loa.map` "mfa" or the `tn.mfa.configured` marker that
+`scripts/keycloak_mfa.py` writes last (`TN_MFA_KEYCLOAK_CHECK`: refuse | warn | off;
+the installer sets warn, Helm keeps refuse; infra/k8s/README.md). A Keycloak that does not
+answer is logged and never blocks the start.
+
 **Proof.** `scripts/check_keycloak_mfa.sh` (CI job `keycloak-mfa`) runs the pinned
 Keycloak image, applies `keycloak_mfa.py` twice (the second run must change nothing) and
 drives real browser sign-ins: enrolment forced for privileged groups, `amr`/`acr` in

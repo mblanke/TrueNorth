@@ -9,8 +9,9 @@ after scripts/keycloak_mfa.py has configured the realm. Standard library only. P
   (ii)  after enrolling TOTP (code computed here), the access token's amr has "otp",
         and so does a refreshed token (the AMR mapper on refresh);
   (iii) a Student signs in with a password only: no OTP page, amr == ["pwd"];
-  (iv)  after the break-glass reset (otp credentials deleted, CONFIGURE_TOTP required,
-        sessions logged out) the next sign-in lands on CONFIGURE_TOTP again;
+  (iv)  after the break-glass reset (otp credentials deleted, UPDATE_PASSWORD and
+        CONFIGURE_TOTP required, sessions logged out) the next sign-in lands on
+        CONFIGURE_TOTP again and must then set a new password;
   (v)   a privileged user holding tn-mfa-exempt (the test-host demo exemption) gets no
         OTP page, and without it gets one;
   (vi)  a step-up request (acr "mfa", essential) from a Student-group user is asked for a
@@ -349,15 +350,44 @@ def main() -> int:
     check(not d2.at_configure_totp and not d2.at_otp_form, "(v) holding tn-mfa-exempt, the demo instructor gets no OTP page")
     realm.admin("DELETE", f"/users/{demo_id}/role-mappings/realm", [role])
 
-    # (iv) break-glass: delete otp credentials, require CONFIGURE_TOTP, log out
+    # (iv) break-glass (roles/tn_keycloak/tasks/breakglass.yml): delete otp credentials,
+    # require a new password and CONFIGURE_TOTP, log out
     for cred in realm.admin("GET", f"/users/{inst_id}/credentials"):
         if cred["type"] in ("otp", "webauthn"):
             realm.admin("DELETE", f"/users/{inst_id}/credentials/{cred['id']}")
     u = realm.admin("GET", f"/users/{inst_id}")
-    realm.admin("PUT", f"/users/{inst_id}", {"requiredActions": sorted(set(u.get("requiredActions", [])) | {"CONFIGURE_TOTP"})})
+    actions = sorted(set(u.get("requiredActions", [])) | {"CONFIGURE_TOTP", "UPDATE_PASSWORD"})
+    realm.admin("PUT", f"/users/{inst_id}", {"requiredActions": actions})
     realm.admin("POST", f"/users/{inst_id}/logout")
     s4 = SignIn(realm, instructor)
     check(s4.at_configure_totp, "(iv) after the break-glass reset the next sign-in is sent to CONFIGURE_TOTP")
+    if s4.at_configure_totp:
+        wait_next_window()
+        s4.enrol_totp()
+    check('name="password-new"' in s4.page, "(iv) ... and must set a new password before reaching the app "
+          f"({page_message(s4.page)})")
+
+    # (viii) what the API's startup check reads (app/auth_backends/keycloak_mfa_check.py),
+    # with a service account holding view-realm only, as truenorth-api-admin does.
+    realm.admin("POST", "/clients", {"clientId": f"view-only-{tag}", "publicClient": False,
+                                     "serviceAccountsEnabled": True, "standardFlowEnabled": False,
+                                     "secret": "view-only-" + tag + "-secret"})
+    vid = realm.admin("GET", f"/clients?clientId=view-only-{tag}")[0]["id"]
+    sa = realm.admin("GET", f"/clients/{vid}/service-account-user")["id"]
+    rm = realm.admin("GET", "/clients?clientId=realm-management")[0]["id"]
+    view = [r for r in realm.admin("GET", f"/users/{sa}/role-mappings/clients/{rm}/available") if r["name"] == "view-realm"]
+    realm.admin("POST", f"/users/{sa}/role-mappings/clients/{rm}", view)
+    data = urllib.parse.urlencode({"grant_type": "client_credentials", "client_id": f"view-only-{tag}",
+                                   "client_secret": "view-only-" + tag + "-secret"}).encode()
+    with urllib.request.urlopen(f"{realm.base}/realms/{realm.realm}/protocol/openid-connect/token", data) as r:
+        vtok = json.load(r)["access_token"]
+    req = urllib.request.Request(f"{realm.base}/admin/realms/{realm.realm}", headers={"Authorization": f"Bearer {vtok}"})
+    with urllib.request.urlopen(req) as r:
+        rep_ = json.load(r)
+    attrs = rep_.get("attributes") or {}
+    check(rep_.get("browserFlow", "").startswith("tn-browser") and '"mfa"' in str(attrs.get("acr.loa.map"))
+          and str(attrs.get("tn.mfa.configured", "")).startswith("1:"),
+          "(viii) a view-realm-only service account sees the flow, acr mfa and tn.mfa.configured (the API's startup check)")
 
     print(f"\n{len(FAILURES)} failure(s)")
     return 1 if FAILURES else 0

@@ -272,9 +272,19 @@ course production with a local-model fallback, and the cleanup of unsupported su
   at the next sign-in**; the first sign-in asks for one more code (step-up). WebAuthn is
   not offered yet (Keycloak 24 cannot enrol it as an alternative). CI job `keycloak-mfa`
   (`scripts/check_keycloak_mfa.sh`) proves the flow on the pinned image.
+- **Startup check of the realm (Helm upgrades).** In production the API refuses to start
+  when Keycloak answers but its realm is not configured for MFA (no `tn-browser` flow,
+  no `acr.loa.map` "mfa", or no `tn.mfa.configured` marker, which `keycloak_mfa.py` now
+  writes after also installing the AMR mapper), or when no Admin API client is configured
+  to check; the log names what is missing. Keycloak down only warns. The installer's
+  compose path sets `TN_MFA_KEYCLOAK_CHECK=warn` (60-keycloak configures the realm after
+  the stack starts; 95-smoke-test gates). Helm: run `scripts/keycloak_mfa.py` against the
+  realm before upgrading (infra/k8s/README.md), or set `config.mfaKeycloakCheck: warn`.
 - Break-glass: `playbooks/breakglass-reset-mfa.yml -e tn_breakglass_user=<upn>
-  -e tn_breakglass_reason=...` deletes the user's second factor, requires re-enrolment,
-  signs them out and writes an `mfa_reset` audit row (docs/runbooks/break-glass.md). The
+  -e tn_breakglass_reason=...` writes an `mfa_reset` audit row first (and stops if it
+  cannot, unless `-e tn_breakglass_no_audit=true`, which warns loudly), then deletes the
+  user's second factor, gives a local account a temporary password (root-only file for
+  the operator), requires re-enrolment and signs them out (docs/runbooks/break-glass.md). The
   in-process harness is exempt and writes an `inprocess_session` audit row. A test-host
   demo exemption (`tn_mfa_demo_exempt`, off) exists for `*.demo@truenorth.test` staff
   only, audited per use.

@@ -40,6 +40,11 @@ What it does (each step reads the current state and changes only what differs):
    level reached and none requested, Keycloak 24 enters every LoA-conditioned subflow.
    OTP only: a WebAuthn/OTP ALTERNATIVE pair with neither configured ends on an error
    page on Keycloak 24 instead of enrolment. Both proven by scripts/check_keycloak_mfa.sh.
+5. the AMR mapper on the ``truenorth-identity`` scope, a default scope of the web and api
+   clients (the scope is created when the installer has not made it: Helm, an existing
+   Keycloak);
+6. last, the realm attribute ``tn.mfa.configured``, which the API checks at startup
+   (app/auth_backends/keycloak_mfa_check.py, with view-realm only).
 
 Authentication flows are not in realm-truenorth.json on purpose: nested flow executions
 did not import on Keycloak 24 (scripts/check_keycloak_realm.sh).
@@ -58,6 +63,12 @@ import urllib.request
 from typing import Any
 
 FLOW = "tn-browser"
+AMR_SCOPE = "truenorth-identity"
+AMR_MAPPER = {"name": "amr", "protocol": "openid-connect", "protocolMapper": "oidc-amr-mapper",
+              "config": {"access.token.claim": "true", "id.token.claim": "true"}}
+# Written last, once everything else is in place: the API's startup check
+# (app/auth_backends/keycloak_mfa_check.py) reads it with realm-management view-realm only.
+CONFIGURED_ATTR = "tn.mfa.configured"
 
 
 class KeycloakError(RuntimeError):
@@ -331,6 +342,44 @@ def ensure_flow(kc: Admin, spec: dict) -> None:
             kc.note(f"flow {alias} removed")
 
 
+# ── 5. the AMR mapper, on a default scope of the user-facing clients ──
+def ensure_amr_mapper(kc: Admin, clients: list[str]) -> None:
+    """Tokens say how the user signed in (amr). The installer puts the mapper on the
+    truenorth-identity scope (tn_kc_protocol_mappers); a realm configured only by this
+    script (Helm, an existing Keycloak) gets the scope here, as a default scope."""
+    scopes = {sc["name"]: sc for sc in kc.get("/client-scopes")}
+    scope = scopes.get(AMR_SCOPE)
+    if scope is None:
+        kc.call("POST", "/client-scopes", {"name": AMR_SCOPE, "protocol": "openid-connect",
+                                           "attributes": {"include.in.token.scope": "true",
+                                                          "display.on.consent.screen": "false"},
+                                           "protocolMappers": [AMR_MAPPER]})
+        kc.note(f"client scope {AMR_SCOPE} created with the AMR mapper")
+        scope = {sc["name"]: sc for sc in kc.get("/client-scopes")}[AMR_SCOPE]
+    elif "oidc-amr-mapper" not in [m.get("protocolMapper") for m in scope.get("protocolMappers") or []]:
+        kc.call("POST", f"/client-scopes/{scope['id']}/protocol-mappers/models", AMR_MAPPER)
+        kc.note(f"AMR mapper added to {AMR_SCOPE}")
+    for client_id in clients:
+        found = kc.get(f"/clients?clientId={q(client_id)}")
+        if not found:
+            continue
+        cid = found[0]["id"]
+        if scope["id"] not in [d["id"] for d in kc.get(f"/clients/{cid}/default-client-scopes")]:
+            kc.call("PUT", f"/clients/{cid}/default-client-scopes/{scope['id']}")
+            kc.note(f"{AMR_SCOPE} -> default scope of {client_id}")
+
+
+# ── 6. the marker the API checks at startup ───────────────────────────
+def mark_configured(kc: Admin, spec: dict) -> None:
+    import hashlib
+
+    want = "1:" + hashlib.sha256(json.dumps(spec, sort_keys=True).encode()).hexdigest()[:12]
+    attrs = kc.get("").get("attributes") or {}
+    if attrs.get(CONFIGURED_ATTR) != want:
+        kc.call("PUT", "", {"realm": kc.realm, "attributes": {**attrs, CONFIGURED_ATTR: want}})
+        kc.note(f"realm attribute {CONFIGURED_ATTR}={want}")
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     ap.add_argument("--base", required=True, help="Keycloak base URL, e.g. http://127.0.0.1:8080/auth")
@@ -360,6 +409,8 @@ def main(argv: list[str] | None = None) -> int:
         exempt_role = ensure_role(kc, spec["exempt_role"], "Demo staff on a test host: no second factor")
         ensure_user_role(kc, exempt_role, exempt)
         ensure_flow(kc, spec)
+        ensure_amr_mapper(kc, spec.get("amr_clients", ["truenorth-web", "truenorth-api"]))
+        mark_configured(kc, spec)
     except KeycloakError as exc:
         print(f"keycloak_mfa: {exc}", file=sys.stderr)
         return 1

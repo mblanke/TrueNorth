@@ -29,12 +29,26 @@ What it does (`install/roles/tn_keycloak/tasks/breakglass.yml`), through the Key
 Admin API on the host's loopback port only:
 
 1. refuses unless both `tn_breakglass_user` and `tn_breakglass_reason` are given;
-2. deletes that user's OTP (and any WebAuthn) credentials; the password is untouched;
-3. adds `CONFIGURE_TOTP` to the user's required actions;
-4. signs the user out of every session;
-5. writes a TrueNorth audit row: `action=mfa_reset`, `resource_type=user`, detail with
-   the subject, the reason and the operator (`SUDO_USER`), via
-   `scripts/audit_note_inprocess.py` in a one-off api container.
+2. writes a TrueNorth audit row **first**: `action=mfa_reset`, `resource_type=user`,
+   detail with the subject, the reason and the operator (`SUDO_USER`), via
+   `scripts/audit_note_inprocess.py` in a one-off api container. If the row cannot be
+   written, nothing is changed and the play fails; `-e tn_breakglass_no_audit=true` resets
+   anyway, with a loud warning, leaving Keycloak's admin event as the only record (write
+   it into the incident log);
+3. deletes that user's OTP (and any WebAuthn) credentials;
+4. for a **local** account, sets a fresh temporary password (Keycloak makes the user
+   replace it at the next sign-in) and writes it root-only to
+   `<tn_state_dir>/breakglass-<upn>.password` for you to hand over out of band, then
+   delete; `-e tn_breakglass_reset_password=false` skips this;
+5. adds `CONFIGURE_TOTP` (and, for a local account, `UPDATE_PASSWORD`) to the user's
+   required actions;
+6. signs the user out of every session.
+
+> **Until the user re-enrols, anyone who knows their password can sign in and enrol an
+> authenticator of their own.** That is why a local account's password is replaced in
+> the same step by a temporary one that only the person you hand it to knows. An **AD** account's password belongs to AD (read-only
+> federation): reset it in AD at the same time as this playbook, and have the user sign in
+> promptly.
 
 It never changes the realm, the `tn-browser` flow or its binding. The user's next sign-in
 asks for the password, then shows "Mobile Authenticator Setup": MFA is never off.

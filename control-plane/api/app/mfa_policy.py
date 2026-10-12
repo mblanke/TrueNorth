@@ -236,9 +236,9 @@ def production_problems() -> list[str]:
     missing = sorted(PRIVILEGED_ROLES - mfa_roles())
     if missing:
         problems.append(f"TN_MFA_ROLES leaves out {', '.join(missing)}: privileged roles must use MFA")
-    acr = configured_acr_problem()
-    if acr:
-        problems.append(acr)
+    for check in (configured_acr_problem(), configured_amr_problem()):
+        if check:
+            problems.append(check)
     if not amr_values() and not acr_values():
         problems.append("TN_MFA_AMR_VALUES and TN_MFA_ACR_VALUES are both empty: nothing could prove MFA")
     if demo_exemption_requested() and not is_test_host():
