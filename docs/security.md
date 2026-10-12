@@ -816,7 +816,7 @@ been made.
 | Monitoring | Continuous monitoring program | **Partial.** Prometheus, Alertmanager and Grafana; delivery not exercised (see CA-7) |
 | Vulnerability Management | Monthly scanning | **Implemented** for code and images on every CI run and release (see SI-2). Deployed hosts are not scanned |
 | Incident Response | Documented IR plan | **Partial.** Runbooks exist; never exercised (see IR-4) |
-| Data Residency | Data within authorized boundaries | **Deployment-dependent.** Self-hosted: data stays on the hosts it is installed on. AI prompts go to the engine named by `OPENAI_BASE_URL` (required by `compose.prod.yml`). Two defaults point outside the install and must be changed for a closed boundary: the seeded `Ollama (Primary)` backend record (`control-plane/api/app/seed.py`, `seed_ai_backends`) and the orchestrator's `OLLAMA_PROXY_URL` default (`ai-orchestrator/app/main.py`), both `https://ai.guapo613.beer` |
+| Data Residency | Data within authorized boundaries | **Deployment-dependent.** Self-hosted: data stays on the hosts it is installed on. AI prompts go to the operator-configured AI endpoint (`tn_ai_*` installer variables, rendered to `OPENAI_BASE_URL`, which `compose.prod.yml` requires). Keep that endpoint inside the authorized boundary |
 
 ### SOC 2 Type II Relevance
 
