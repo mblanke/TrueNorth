@@ -12,6 +12,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, status
 from fastapi.responses import Response
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .. import course_content_ingest, moodle_sso, programme_ingest, qsp_paths
@@ -200,6 +201,24 @@ def _course_tags(course: Course) -> list[str]:
     except (TypeError, ValueError):
         return []
     return [str(t) for t in parsed] if isinstance(parsed, list) else []
+
+
+@router.get("/enrollments/mine", response_model=list[EnrollmentOut])
+def my_enrollments(
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+):
+    """The caller's own course enrolments, newest first (the catalogue's Enrolled state).
+
+    Only the caller's: no permission needed and no way to ask for anyone else's. Declared
+    before ``/{course_id}`` so the path is not read as a course id.
+    """
+    return (
+        db.query(Enrollment)
+        .filter(Enrollment.user_id == uuid.UUID(str(user.id)))
+        .order_by(Enrollment.enrolled_at.desc())
+        .all()
+    )
 
 
 @router.get("/{course_id}", response_model=CourseOut)
@@ -509,37 +528,64 @@ def generate_programme_paths(
 # ══════════════════════════════════════════════════════════════════════════
 
 
-@router.post("/{course_id}/enroll", response_model=EnrollmentOut, status_code=status.HTTP_201_CREATED)
+def _existing_enrollment(db: Session, user_id: uuid.UUID, course_id: uuid.UUID) -> Enrollment | None:
+    return db.query(Enrollment).filter(Enrollment.user_id == user_id, Enrollment.course_id == course_id).first()
+
+
+@router.post(
+    "/{course_id}/enroll",
+    response_model=EnrollmentOut,
+    status_code=status.HTTP_201_CREATED,
+    responses={200: {"model": EnrollmentOut, "description": "Already enrolled: the existing enrolment, unchanged"}},
+)
 def enroll_user(
     course_id: uuid.UUID,
     body: EnrollmentIn,
+    response: Response,
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ):
-    """Enroll a user in a course.
+    """Enroll a user in a course: a Student's self-enrolment, or an admin enrolling someone.
 
-    Enrolling someone *other* than yourself is an administrative act. This
-    endpoint previously trusted ``body.user_id`` outright, so any authenticated
-    user could enroll anyone else in any course in their tenant.
+    Enrolling someone *other* than yourself is an administrative act (``user:update``, own
+    tenant). The server decides eligibility, whatever the client shows:
+
+    - the course is in the caller's catalogue: their tenant's, or a global (shared) one —
+      another tenant's is 404, as for any read;
+    - it is published, unless the caller authors courses — a draft is 404, as on every read;
+    - it is not retired (a stub superseded by authored content) — 409.
+
+    Idempotent: enrolling again answers 200 with the existing enrolment, unchanged (it used
+    to be 409, so a second click read as a failure). Two racing requests make one row.
     """
     # Self, or user:update over someone in your own tenant — never across tenants.
     authorize_record_access(db, user, body.user_id, permission=Permission.USER_UPDATE)
 
-    course = get_owned(db, Course, course_id, user)
-    if not course or (not course.is_published and not _sees_drafts(user)):
+    # Global courses (tenant NULL) are the standard programme every tenant enrols on;
+    # get_owned 404'd on them, so a Student could not enrol on the shared catalogue.
+    course = get_owned_or_global(db, Course, course_id, user, not_found="Course not found")
+    if not course.is_published and not _sees_drafts(user):
         # A draft is invisible to non-authors, so it cannot be enrolled on either.
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Course not found")
 
-    existing = (
-        db.query(Enrollment).filter(Enrollment.user_id == body.user_id, Enrollment.course_id == course_id).first()
-    )
+    existing = _existing_enrollment(db, body.user_id, course_id)
     if existing:
-        raise HTTPException(status.HTTP_409_CONFLICT, "User already enrolled in this course")
+        response.status_code = status.HTTP_200_OK
+        return existing
+    if qsp_paths.course_meta_of(course).get("retired"):
+        raise HTTPException(status.HTTP_409_CONFLICT, "This course is retired and no longer takes enrolments")
 
-    enrollment = ensure_enrollment(
-        db, user_id=body.user_id, course_id=course_id, tenant_id=user.tenant_id
-    )
-    db.commit()
+    try:
+        enrollment = ensure_enrollment(db, user_id=body.user_id, course_id=course_id, tenant_id=user.tenant_id)
+        db.commit()
+    except IntegrityError:
+        # A concurrent request enrolled first (uq_user_course): that row is the answer.
+        db.rollback()
+        existing = _existing_enrollment(db, body.user_id, course_id)
+        if existing is None:
+            raise
+        response.status_code = status.HTTP_200_OK
+        return existing
     db.refresh(enrollment)
     logger.info("User %s enrolled in course %s", body.user_id, course_id)
     return enrollment

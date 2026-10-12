@@ -60,6 +60,7 @@ SIGN_IN_ONLY: dict[str, str] = {
     "POST /onboarding/skip": "own: the caller's onboarding state",
     "POST /onboarding/complete": "own: the caller's onboarding state",
     "GET /schedule/mine": "own: the caller's own bookings (ADR 0004)",
+    "GET /courses/enrollments/mine": "own: the caller's own course enrolments (filtered on user_id)",
     "GET /schedule/feed-token": "own: the caller's calendar-feed token",
     "POST /schedule/feed-token": "own: rotates the caller's calendar-feed token",
     "DELETE /schedule/feed-token": "own: revokes the caller's calendar-feed token",
@@ -70,7 +71,8 @@ SIGN_IN_ONLY: dict[str, str] = {
         "in-body: authorize_record_access(learning_record:write); grade computed from recorded progress"
     ),
     "POST /courses/{course_id}/enroll": (
-        "in-body: authorize_record_access(user:update) to enrol anyone but yourself; drafts need course:author"
+        "in-body: authorize_record_access(user:update) to enrol anyone but yourself; drafts need course:author;"
+        " own tenant or global catalogue only; retired courses refused"
     ),
     "GET /competency/users/{user_id}/profile": "in-body: authorize_record_access(learning_record:read)",
     "GET /competency/users/{user_id}/skill-gaps": "in-body: authorize_record_access(learning_record:read)",

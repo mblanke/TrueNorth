@@ -1,23 +1,23 @@
-import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { RouterTestingModule } from '@angular/router/testing';
 import { of } from 'rxjs';
 import { AppComponent } from './app.component';
-import { AuthService } from './core/services/auth.service';
+import { AuthService, UserRole } from './core/services/auth.service';
+import { fakeAuth } from './core/auth/fake-auth';
 import { NotificationsApiService } from '@core/services/notifications-api.service';
 
 describe('AppComponent', () => {
   let component: AppComponent;
   let fixture: ComponentFixture<AppComponent>;
-  const canViewSchedule = signal(true);
+  let auth: ReturnType<typeof fakeAuth>;
 
   beforeEach(async () => {
-    canViewSchedule.set(true);
+    auth = fakeAuth('admin');
     await TestBed.configureTestingModule({
       imports: [AppComponent, NoopAnimationsModule, RouterTestingModule],
       providers: [
-        { provide: AuthService, useValue: { canViewSchedule } },
+        { provide: AuthService, useValue: auth },
         { provide: NotificationsApiService, useValue: { unreadCount: () => of({ unread: 0 }), list: () => of([]) } },
       ],
     }).compileComponents();
@@ -113,13 +113,57 @@ describe('AppComponent', () => {
     }
   });
 
+  const menu = () => Array.from(fixture.nativeElement.querySelectorAll('mat-nav-list a[mat-list-item]') as NodeListOf<HTMLAnchorElement>)
+    .map(a => a.getAttribute('href'));
+
   it('hides Schedule from Students (ADR 0004)', () => {
     fixture.detectChanges();
-    const routes = () => Array.from(fixture.nativeElement.querySelectorAll('mat-nav-list a[mat-list-item]') as NodeListOf<HTMLAnchorElement>)
-      .map(a => a.getAttribute('href'));
-    expect(routes()).toContain('/schedule');
-    canViewSchedule.set(false);
+    expect(menu()).toContain('/schedule');
+    auth.role.set('student');
     fixture.detectChanges();
-    expect(routes()).not.toContain('/schedule');
+    expect(menu()).not.toContain('/schedule');
+  });
+
+  /**
+   * R0-B: the menu per role, derived from the permissions rbac.py grants. Every entry
+   * shown is one the route guard admits; everything else is absent.
+   */
+  const MENU: Record<UserRole, string[]> = {
+    student: ['/dashboard', '/learning', '/exercises', '/scoring', '/wiki', '/support'],
+    observer: ['/dashboard', '/learning', '/exercises', '/ops-center/select', '/telemetry', '/schedule',
+      '/scoring', '/wiki'],
+    range_ops: ['/dashboard', '/learning', '/authoring', '/exercises', '/ops-center/select', '/telemetry',
+      '/schedule', '/wiki', '/support', '/infrastructure', '/ai-orchestrator'],
+    instructor: ['/dashboard', '/learning', '/authoring', '/exercises', '/ops-center/select', '/telemetry',
+      '/schedule', '/scoring', '/wiki', '/support', '/approvals', '/infrastructure', '/ai-orchestrator'],
+    admin: ['/dashboard', '/learning', '/authoring', '/exercises', '/ops-center/select', '/telemetry',
+      '/schedule', '/scoring', '/wiki', '/support', '/approvals', '/infrastructure', '/ai-orchestrator',
+      '/integrations', '/users', '/admin'],
+  };
+  for (const role of Object.keys(MENU) as UserRole[]) {
+    it(`shows ${role} exactly the pages the role may open`, () => {
+      auth.role.set(role);
+      fixture.detectChanges();
+      expect(menu()).toEqual(MENU[role]);
+    });
+  }
+
+  it('drops a section whose entries are all hidden', () => {
+    auth.role.set('student');
+    fixture.detectChanges();
+    const headings = Array.from(fixture.nativeElement.querySelectorAll('.nav-group-title') as NodeListOf<HTMLElement>)
+      .map(h => h.textContent!.trim());
+    expect(headings).not.toContain('Create');
+    expect(headings).not.toContain('Admin');
+  });
+
+  it('has an approvals entry for instructors and a telemetry entry for roles with telemetry:read', () => {
+    auth.role.set('instructor');
+    fixture.detectChanges();
+    expect(menu()).toContain('/approvals');
+    auth.role.set('observer');
+    fixture.detectChanges();
+    expect(menu()).toContain('/telemetry');
+    expect(menu()).not.toContain('/approvals');
   });
 });

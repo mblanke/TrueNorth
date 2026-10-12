@@ -12,6 +12,8 @@
 #   TN_ADMIN_AI_URL          Admin > Services: AI orchestrator API docs (unset: card hidden)
 #   TN_MOODLE_URL            Learning > LMS previews: the Moodle site's address, used when
 #                            no Moodle platform is registered (unset: no link)
+#   TN_DEMO_PREVIEWS         "true": show the fictional LMS/readiness design previews,
+#                            bannered as demo data (anything else: hidden)
 #
 # The web root is root-owned and read-only to this user, so the file goes to
 # /tmp/truenorth-runtime/config.json; nginx.conf serves /assets/config.json from there
@@ -34,8 +36,10 @@ admin_minio="${TN_ADMIN_MINIO_URL:-}"
 admin_dash="${TN_ADMIN_DASHBOARDS_URL:-}"
 admin_ai="${TN_ADMIN_AI_URL:-}"
 moodle="${TN_MOODLE_URL:-}"
+demo=""
+[ "${TN_DEMO_PREVIEWS:-}" != "true" ] || demo="\"demoPreviews\":true"
 
-if [ -z "${url}${realm}${client}${admin_kc}${admin_minio}${admin_dash}${admin_ai}${moodle}" ]; then
+if [ -z "${url}${realm}${client}${admin_kc}${admin_minio}${admin_dash}${admin_ai}${moodle}${demo}" ]; then
   rm -f "$target"
   echo "truenorth: no TN_KEYCLOAK_* / TN_ADMIN_* / TN_MOODLE_URL set; serving the built-in runtime config"
   exit 0
@@ -82,7 +86,7 @@ lms=""
 
 # Join the non-empty members with commas.
 body=""
-for part in "$kc" "$links" "$lms"; do
+for part in "$kc" "$links" "$lms" "$demo"; do
   [ -n "$part" ] || continue
   [ -z "$body" ] || body="${body},"
   body="${body}${part}"

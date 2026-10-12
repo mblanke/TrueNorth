@@ -3,7 +3,9 @@ import {
   adminGuard,
   authGuard,
   instructorGuard,
+  demoGuard,
   onboardingGuard,
+  pageGuard,
   pendingGuard,
   scheduleGuard,
   registrationGuard,
@@ -62,24 +64,27 @@ export const routes: Routes = [
     title: 'ARC² Course Studio - TrueNorth',
   },
   // -- Authoring Studio hub (consolidates the design/authoring screens) --
+  // Each tab and child route needs what its API calls need (PAGE_ACCESS in
+  // core/auth/permissions.ts, mirrored from rbac.py): range_ops get Ranges and Content
+  // (templates), instructors everything, Students and observers nothing.
   {
     path: 'authoring',
-    canActivate: [authGuard, instructorGuard],
+    canActivate: [authGuard, pageGuard('authoring')],
     loadComponent: () => import('./shared/hub-shell.component').then(m => m.HubShellComponent),
     data: {
       title: 'Authoring Studio',
       tabs: [
         // Full screen, so the tab hands over to /arc2 (see the redirect below). Hidden
         // unless the server has ARC² enabled (GET /arc2/status).
-        { label: 'Course Studio', path: 'studio', requires: 'arc2' },
-        { label: 'Ranges', path: 'ranges' },
-        { label: 'Scenarios', path: 'scenarios' },
-        { label: 'Detections', path: 'detections' },
-        { label: 'Threat intel', path: 'threat-intel' },
-        { label: 'MESL', path: 'mesl' },
-        { label: 'Forge', path: 'forge' },
-        { label: 'Content', path: 'content' },
-        { label: 'Courses', path: 'courses' },
+        { label: 'Course Studio', path: 'studio', requires: 'arc2', access: 'authoringCourses' },
+        { label: 'Ranges', path: 'ranges', access: 'authoringRanges' },
+        { label: 'Scenarios', path: 'scenarios', access: 'authoringScenarios' },
+        { label: 'Detections', path: 'detections', access: 'authoringDetections' },
+        { label: 'Threat intel', path: 'threat-intel', access: 'authoringThreatIntel' },
+        { label: 'MESL', path: 'mesl', access: 'authoringExercises' },
+        { label: 'Forge', path: 'forge', access: 'authoringExercises' },
+        { label: 'Content', path: 'content', access: 'authoringContent' },
+        { label: 'Courses', path: 'courses', access: 'authoringCourses' },
       ],
     },
     children: [
@@ -87,6 +92,7 @@ export const routes: Routes = [
       { path: 'studio', redirectTo: '/arc2', pathMatch: 'full' },
       {
         path: 'courses',
+        canActivate: [pageGuard('authoringCourses')],
         loadComponent: () =>
           import('./features/course-studio/course-studio.component').then(m => m.CourseStudioComponent),
         title: 'Authoring · Courses - TrueNorth Range',
@@ -94,12 +100,14 @@ export const routes: Routes = [
       {
         // Ranges tab is now the range list; the designer opens per range.
         path: 'ranges',
+        canActivate: [pageGuard('authoringRanges')],
         loadComponent: () =>
           import('./features/ranges/ranges.component').then(m => m.RangesComponent),
         title: 'Authoring · Ranges - TrueNorth Range',
       },
       {
         path: 'ranges/designer',
+        canActivate: [pageGuard('authoringRanges')],
         loadComponent: () =>
           import('./features/range-designer/range-designer.component').then(m => m.RangeDesignerComponent),
         title: 'Authoring · Range Designer - TrueNorth Range',
@@ -107,56 +115,65 @@ export const routes: Routes = [
       {
         // Greyspace (simulated internet) for one range; :rangeId binds to the panel's input.
         path: 'ranges/:rangeId/greyspace',
+        canActivate: [pageGuard('authoringRanges')],
         loadComponent: () =>
           import('./features/greyspace/greyspace-panel.component').then(m => m.GreyspacePanelComponent),
         title: 'Authoring · Greyspace - TrueNorth Range',
       },
       {
-        // Background noise for one range: white cell only (instructorGuard on the hub;
-        // the API checks noise:read / noise:control on every call).
+        // Background noise for one range: white cell only (noise:read; the API checks
+        // noise:read / noise:control on every call).
         path: 'ranges/:id/noise',
+        canActivate: [pageGuard('authoringNoise')],
         loadComponent: () =>
           import('./features/noise/noise-console.component').then(m => m.NoiseConsoleComponent),
         title: 'Authoring · Background noise - TrueNorth Range',
       },
       {
         path: 'scenarios',
+        canActivate: [pageGuard('authoringScenarios')],
         loadComponent: () =>
           import('./features/scenario-studio/scenario-studio.component').then(m => m.ScenarioStudioComponent),
         title: 'Authoring · Scenarios - TrueNorth Range',
       },
       {
         path: 'detections',
+        canActivate: [pageGuard('authoringDetections')],
         loadComponent: () =>
           import('./features/detection-editor/detection-editor.component').then(m => m.DetectionEditorComponent),
         title: 'Authoring · Detections - TrueNorth Range',
       },
       {
         path: 'threat-intel',
+        canActivate: [pageGuard('authoringThreatIntel')],
         loadComponent: () =>
           import('./features/threat-intel/threat-intel-feeds.component').then(m => m.ThreatIntelFeedsComponent),
         title: 'Authoring · Threat intel - TrueNorth Range',
       },
       {
         path: 'mesl',
+        canActivate: [pageGuard('authoringExercises')],
         loadComponent: () =>
           import('./features/mesl/mesl-home.component').then(m => m.MeslHomeComponent),
         title: 'Authoring · MESL - TrueNorth Range',
       },
       {
         path: 'mesl/:id',
+        canActivate: [pageGuard('authoringExercises')],
         loadComponent: () =>
           import('./features/mesl/mesl-board.component').then(m => m.MeslBoardComponent),
         title: 'Authoring · MESL Board - TrueNorth Range',
       },
       {
         path: 'forge',
+        canActivate: [pageGuard('authoringExercises')],
         loadComponent: () =>
           import('./features/exercise-forge/exercise-forge.component').then(m => m.ExerciseForgeComponent),
         title: 'Authoring · Forge - TrueNorth Range',
       },
       {
         path: 'content',
+        canActivate: [pageGuard('authoringContent')],
         loadComponent: () =>
           import('./features/content-catalog/content-catalog.component').then(m => m.ContentCatalogComponent),
         title: 'Authoring · Content - TrueNorth Range',
@@ -178,7 +195,8 @@ export const routes: Routes = [
         { label: 'Competency', path: 'competency' },
         // The Curriculum Forge is authoring: the API needs course:author on every call.
         { label: 'Curriculum', path: 'curriculum', instructorOnly: true },
-        { label: 'LMS & readiness previews', path: 'previews' },
+        // Fictional records: off unless the deployment sets TN_DEMO_PREVIEWS=true.
+        { label: 'Demo previews', path: 'previews', requires: 'demo' },
         { label: 'Admin', path: 'admin', instructorOnly: true },
       ],
     },
@@ -188,6 +206,7 @@ export const routes: Routes = [
       { path: 'qualifications', redirectTo: 'career-path', pathMatch: 'full' },
       {
         path: 'previews',
+        canActivate: [demoGuard],
         loadComponent: () =>
           import('./features/learning-preview/learning-preview.component').then(m => m.LearningPreviewComponent),
         title: 'LMS & readiness previews - TrueNorth',
@@ -267,15 +286,17 @@ export const routes: Routes = [
     title: 'Schedule - TrueNorth Range',
   },
   {
+    // aar:read: Students (their own exercises' reports, scoped by the API), observers
+    // (read only), instructors and admins.
     path: 'scoring',
-    canActivate: [authGuard, onboardingGuard, instructorGuard],
+    canActivate: [authGuard, onboardingGuard, pageGuard('scoring')],
     loadComponent: () =>
       import('./features/scoring/scoring.component').then(m => m.ScoringComponent),
     title: 'Scoring & AAR - TrueNorth Range',
   },
   {
     path: 'telemetry',
-    canActivate: [authGuard, onboardingGuard],
+    canActivate: [authGuard, onboardingGuard, pageGuard('telemetry')],
     loadComponent: () =>
       import('./features/telemetry/telemetry.component').then(m => m.TelemetryComponent),
     title: 'Telemetry - TrueNorth Range',
@@ -286,6 +307,15 @@ export const routes: Routes = [
     loadComponent: () =>
       import('./features/users/users.component').then(m => m.UsersComponent),
     title: 'Users & Teams - TrueNorth Range',
+  },
+  {
+    // The registration queue on its own page, for instructors (registration:read); the
+    // same panel is also a tab of the admin's /users.
+    path: 'approvals',
+    canActivate: [authGuard, onboardingGuard, pageGuard('approvals')],
+    loadComponent: () =>
+      import('./features/approvals/approvals.component').then(m => m.ApprovalsComponent),
+    title: 'Registration approvals - TrueNorth Range',
   },
   {
     path: 'admin',
@@ -311,14 +341,14 @@ export const routes: Routes = [
   // -- Infrastructure & AI --
   {
     path: 'infrastructure',
-    canActivate: [authGuard, onboardingGuard],
+    canActivate: [authGuard, onboardingGuard, pageGuard('infrastructure')],
     loadComponent: () =>
       import('./features/infrastructure/infrastructure.component').then(m => m.InfrastructureComponent),
     title: 'Infrastructure - TrueNorth Range',
   },
   {
     path: 'ai-orchestrator',
-    canActivate: [authGuard, onboardingGuard],
+    canActivate: [authGuard, onboardingGuard, pageGuard('aiOrchestrator')],
     loadComponent: () =>
       import('./features/ai-orchestrator/ai-orchestrator.component').then(m => m.AiOrchestratorComponent),
     title: 'AI Orchestrator - TrueNorth Range',
@@ -331,7 +361,7 @@ export const routes: Routes = [
   },
   {
     path: 'support',
-    canActivate: [authGuard, onboardingGuard],
+    canActivate: [authGuard, onboardingGuard, pageGuard('support')],
     loadChildren: () => import('./features/tickets/tickets.routes').then(m => m.SUPPORT_ROUTES),
   },
   { path: 'tickets', redirectTo: 'support', pathMatch: 'full' },
@@ -358,15 +388,17 @@ export const routes: Routes = [
     title: 'Exercise - TrueNorth Range',
   },
   {
+    // exercise:read + telemetry:read: instructors and admins run it, observers and range
+    // ops watch it (no mutating controls without exercise:create). Not Students.
     path: 'ops-center/select',
-    canActivate: [authGuard, onboardingGuard, instructorGuard],
+    canActivate: [authGuard, onboardingGuard, pageGuard('opsCenter')],
     loadComponent: () =>
       import('./features/ops-center/exercise-selector.component').then(m => m.ExerciseSelectorComponent),
     title: 'Select an exercise - TrueNorth',
   },
   {
     path: 'ops-center/:exerciseId',
-    canActivate: [authGuard, onboardingGuard, instructorGuard],
+    canActivate: [authGuard, onboardingGuard, pageGuard('opsCenter')],
     loadComponent: () =>
       import('./features/ops-center/ops-center.component').then(m => m.OpsCenterComponent),
     title: 'Ops Center - TrueNorth Range',

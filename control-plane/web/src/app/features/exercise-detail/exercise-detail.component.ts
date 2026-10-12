@@ -96,9 +96,18 @@ const NODE_ICON: Record<string, string> = {
                 {{ d.state === 'running' ? 'Running…' : 'Provision & Run (simulated)' }}
               </button>
             }
-            @if (d.state === 'completed' && auth.isInstructor()) {
+            @if (d.state === 'paused' && auth.can('exercise:pause')) {
+              <!-- POST /exercises/{id}/resume: the run carries on from its next unfired inject. -->
+              <button mat-flat-button color="primary" (click)="resume()" [disabled]="resuming">
+                <mat-icon>play_arrow</mat-icon> {{ resuming ? 'Resuming…' : 'Resume' }}
+              </button>
+            }
+            @if (d.state === 'completed' && auth.can('aar:generate')) {
               <button mat-stroked-button (click)="genAar()"><mat-icon>description</mat-icon> Generate AAR</button>
-              <!-- /scoring is instructor-guarded, so the link follows the same rule as Generate. -->
+            }
+            <!-- /scoring needs aar:read (pageGuard): Students see the report of an exercise they
+                 took part in (the API answers 404 otherwise), observers read it. -->
+            @if (d.state === 'completed' && auth.canOpen('scoring')) {
               <a mat-stroked-button [routerLink]="['/scoring']" [queryParams]="{ exercise: d.exercise_id }">
                 <mat-icon>visibility</mat-icon> View AAR
               </a>
@@ -309,6 +318,7 @@ export class ExerciseDetailComponent implements OnInit, OnDestroy {
   rangeDescription = '';
   injects: InjectRecord[] = [];
   running = false;
+  resuming = false;
   error = '';
   /** Attempts grouped by objective ref; stable arrays so bindings do not churn. */
   private attemptsByRef = new Map<string, Detection[]>();
@@ -478,6 +488,24 @@ export class ExerciseDetailComponent implements OnInit, OnDestroy {
         error: () => {},
       });
     }, 2000);
+  }
+
+  /** Resume a paused run; one request at a time, the state comes from the reload. */
+  resume(): void {
+    if (this.resuming) return;
+    this.resuming = true;
+    this.api.resumeExercise(this.id).subscribe({
+      next: () => {
+        this.resuming = false;
+        this.snack.open('Exercise resumed', '', { duration: 3000 });
+        this.load();
+      },
+      error: err => {
+        this.resuming = false;
+        this.snack.open(err?.error?.detail || 'Could not resume', '', { duration: 4000 });
+        this.load();
+      },
+    });
   }
 
   genAar(): void {

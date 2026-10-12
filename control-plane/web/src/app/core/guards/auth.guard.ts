@@ -3,6 +3,8 @@ import { CanActivateFn, Router, UrlTree } from '@angular/router';
 import { Observable, from, map } from 'rxjs';
 import { AuthService } from '../services/auth.service';
 import { safeReturnUrl } from '../auth/return-url';
+import type { PageKey } from '../auth/permissions';
+import { environment } from '@env/environment';
 
 /**
  * Guards resolve asynchronously.
@@ -123,6 +125,30 @@ export const instructorGuard: CanActivateFn = (): Observable<boolean | UrlTree> 
     auth.isInstructor() ? true : router.createUrlTree(['/dashboard']),
   );
 };
+
+/**
+ * A page that needs what PAGE_ACCESS lists for it (core/auth/permissions.ts, a mirror
+ * of rbac.py). The menu and the dashboard read the same table, so a deep link and a
+ * menu entry agree. Refused: back to the dashboard. The API refuses as well; this only
+ * keeps a role from landing on a page whose every call would 403.
+ */
+export function pageGuard(page: PageKey): CanActivateFn {
+  return (): Observable<boolean | UrlTree> => {
+    const auth = inject(AuthService);
+    const router = inject(Router);
+    return resolved<boolean | UrlTree>(() =>
+      auth.canOpen(page) ? true : router.createUrlTree(['/dashboard']),
+    );
+  };
+}
+
+/**
+ * The fictional design previews: only where the deployment turned them on
+ * (`environment.demoPreviews`, TN_DEMO_PREVIEWS=true). Otherwise back to Learning, so an
+ * old link cannot put invented records in front of a Student.
+ */
+export const demoGuard: CanActivateFn = (): boolean | UrlTree =>
+  environment.demoPreviews ? true : inject(Router).createUrlTree(['/learning']);
 
 /** The scheduler is for staff: every role except Student (ADR 0004). */
 export const scheduleGuard: CanActivateFn = (): Observable<boolean | UrlTree> => {

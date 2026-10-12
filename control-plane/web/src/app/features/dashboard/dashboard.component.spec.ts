@@ -1,4 +1,3 @@
-import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { of, throwError } from 'rxjs';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
@@ -8,6 +7,7 @@ import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { DashboardComponent, usagePct } from './dashboard.component';
 import { ApiService } from '@core/services/api.service';
 import { AuthService } from '@core/services/auth.service';
+import { fakeAuth } from '@core/auth/fake-auth';
 import { Range, Exercise, HealthResponse, HypervisorNode } from '@core/models';
 
 /** An ESXi host as vSphere discovery stores it: VM count, but no CPU/memory figures. */
@@ -21,7 +21,7 @@ describe('DashboardComponent', () => {
   let component: DashboardComponent;
   let fixture: ComponentFixture<DashboardComponent>;
   let mockApi: jasmine.SpyObj<ApiService>;
-  const canViewSchedule = signal(true);
+  let auth: ReturnType<typeof fakeAuth>;
 
   const mockHealth: HealthResponse = {
     status: 'ok',
@@ -43,7 +43,7 @@ describe('DashboardComponent', () => {
   ];
 
   beforeEach(async () => {
-    canViewSchedule.set(true);
+    auth = fakeAuth('admin');
     mockApi = jasmine.createSpyObj('ApiService', [
       'health',
       'listRanges',
@@ -65,7 +65,7 @@ describe('DashboardComponent', () => {
       ],
       providers: [
         { provide: ApiService, useValue: mockApi },
-        { provide: AuthService, useValue: { canViewSchedule } },
+        { provide: AuthService, useValue: auth },
         provideHttpClient(),
         provideHttpClientTesting(),
       ],
@@ -184,7 +184,7 @@ describe('DashboardComponent', () => {
   });
 
   it('neither fetches capacity nor offers the schedule to a Student (ADR 0004)', () => {
-    canViewSchedule.set(false);
+    auth.role.set('student');
     fixture.detectChanges();
     expect(mockApi.getCapacity).not.toHaveBeenCalled();
     expect(fixture.nativeElement.querySelector('a[href="/schedule"]')).toBeNull();
@@ -196,6 +196,45 @@ describe('DashboardComponent', () => {
     expect(mockApi.getCapacity).toHaveBeenCalled();
     expect(fixture.nativeElement.querySelector('a[href="/schedule"]')?.textContent).toContain('Plan the schedule');
     expect(fixture.nativeElement.querySelector('tn-my-sessions')).toBeNull();
+  });
+
+  // ── Links follow the route guards (R0-B) ─────────────────────────
+  const hrefs = () => Array.from(fixture.nativeElement.querySelectorAll('a[href], button[ng-reflect-router-link], [routerlink]') as NodeListOf<HTMLElement>)
+    .map(a => a.getAttribute('href') ?? a.getAttribute('routerlink') ?? a.getAttribute('ng-reflect-router-link'));
+
+  it('shows a Student only links their role can open', () => {
+    auth.role.set('student');
+    fixture.detectChanges();
+    const links = hrefs();
+    for (const denied of ['/authoring', '/users', '/infrastructure', '/ai-orchestrator', '/ranges',
+      '/authoring/ranges/designer', '/authoring/scenarios', '/approvals', '/schedule']) {
+      expect(links).withContext(denied).not.toContain(denied);
+    }
+    expect(links).toContain('/exercises');
+    expect(links).toContain('/scoring');  // their own AARs (aar:read)
+    expect(fixture.nativeElement.textContent).toContain('Your exercises');
+    // No host inventory request for a role the API refuses it to.
+    expect(mockApi.hypervisorNodes).not.toHaveBeenCalled();
+    expect(fixture.nativeElement.querySelector('.workspace-disclosure')).toBeNull();
+  });
+
+  it('gives an instructor the approvals queue but not the admin directory', () => {
+    auth.role.set('instructor');
+    fixture.detectChanges();
+    const links = hrefs();
+    expect(links).toContain('/approvals');
+    expect(links).not.toContain('/users');
+    expect(links).toContain('/authoring');
+  });
+
+  it('gives range ops Ranges and Infrastructure, not Scoring or scenarios', () => {
+    auth.role.set('range_ops');
+    fixture.detectChanges();
+    const links = hrefs();
+    expect(links).toContain('/authoring/ranges/designer');
+    expect(links).toContain('/infrastructure');
+    expect(links).not.toContain('/scoring');
+    expect(links).not.toContain('/authoring/scenarios');
   });
 
   it('usagePct() is null when a figure is not reported', () => {

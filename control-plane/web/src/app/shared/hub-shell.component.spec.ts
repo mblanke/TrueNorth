@@ -1,10 +1,10 @@
 import { TestBed } from '@angular/core/testing';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { provideHttpClient } from '@angular/common/http';
-import { signal } from '@angular/core';
 import { ActivatedRoute, provideRouter } from '@angular/router';
 import { environment } from '@env/environment';
-import { AuthService } from '@core/services/auth.service';
+import { AuthService, UserRole } from '@core/services/auth.service';
+import { fakeAuth } from '@core/auth/fake-auth';
 import { HubShellComponent } from './hub-shell.component';
 
 const STATUS = `${environment.apiUrl}/arc2/status`;
@@ -16,12 +16,12 @@ const AUTHORING = {
 describe('HubShellComponent', () => {
   let http: HttpTestingController;
 
-  function render(data: object): HTMLElement {
+  function render(data: object, role: UserRole = 'instructor'): HTMLElement {
     TestBed.configureTestingModule({
       imports: [HubShellComponent],
       providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([]),
         { provide: ActivatedRoute, useValue: { snapshot: { data } } },
-        { provide: AuthService, useValue: { isInstructor: signal(true) } }],
+        { provide: AuthService, useValue: fakeAuth(role) }],
     });
     http = TestBed.inject(HttpTestingController);
     const fixture = TestBed.createComponent(HubShellComponent);
@@ -52,6 +52,42 @@ describe('HubShellComponent', () => {
     http.expectOne(STATUS).flush({ detail: 'Bad gateway' }, { status: 502, statusText: 'Bad Gateway' });
     TestBed.tick();
     expect(labels(el)).toEqual(['Ranges']);
+  });
+
+  // R0-B: tabs follow the same PAGE_ACCESS table as the child routes' pageGuard.
+  const AUTHORING_TABS = {
+    title: 'Authoring Studio',
+    tabs: [
+      { label: 'Ranges', path: 'ranges', access: 'authoringRanges' },
+      { label: 'Scenarios', path: 'scenarios', access: 'authoringScenarios' },
+      { label: 'Content', path: 'content', access: 'authoringContent' },
+      { label: 'Courses', path: 'courses', access: 'authoringCourses' },
+    ],
+  };
+
+  it('gives range ops Ranges and Content (templates) only', () => {
+    expect(labels(render(AUTHORING_TABS, 'range_ops'))).toEqual(['Ranges', 'Content']);
+  });
+
+  it('gives an instructor every authoring tab', () => {
+    expect(labels(render(AUTHORING_TABS, 'instructor'))).toEqual(['Ranges', 'Scenarios', 'Content', 'Courses']);
+  });
+
+  describe('fictional previews tab', () => {
+    const LEARNING = { title: 'Learning', tabs: [{ label: 'Courses', path: 'courses' },
+      { label: 'Demo previews', path: 'previews', requires: 'demo' }] };
+    const configured = environment.demoPreviews;
+    afterEach(() => (environment.demoPreviews = configured));
+
+    it('is hidden unless the deployment turns the demo on', () => {
+      environment.demoPreviews = undefined;
+      expect(labels(render(LEARNING, 'student'))).toEqual(['Courses']);
+    });
+
+    it('is shown when TN_DEMO_PREVIEWS turned it on', () => {
+      environment.demoPreviews = true;
+      expect(labels(render(LEARNING, 'student'))).toEqual(['Courses', 'Demo previews']);
+    });
   });
 
   it('does not ask about ARC² in a hub without that tab', () => {

@@ -1,4 +1,4 @@
-import { Component, ElementRef, NgZone, OnDestroy, ViewChild, signal, inject } from '@angular/core';
+import { Component, ElementRef, NgZone, OnDestroy, ViewChild, computed, signal, inject } from '@angular/core';
 import {
   NavigationCancel,
   NavigationEnd,
@@ -20,6 +20,7 @@ import { Subscription } from 'rxjs';
 import gsap from 'gsap';
 
 import { AuthService } from './core/services/auth.service';
+import { PageKey } from './core/auth/permissions';
 import { ThemeService, ThemeOption } from './core/services/theme.service';
 import { MotionService } from './shared/motion';
 import { TourOverlayComponent } from './shared/tour/tour-overlay.component';
@@ -28,8 +29,11 @@ interface NavItem {
   label: string;
   icon: string;
   route: string;
-  /** Hidden from Students (the route guard and the API refuse them too). */
-  staffOnly?: boolean;
+  /** Shown only to roles that may open the page: the key the route's pageGuard checks
+   *  (PAGE_ACCESS in core/auth/permissions.ts, mirrored from rbac.py). */
+  access?: PageKey;
+  /** Shown only to admins (the route has adminGuard). */
+  adminOnly?: boolean;
 }
 
 interface NavSection {
@@ -71,12 +75,11 @@ interface NavSection {
 
           <nav class="side-nav" #sideNavEl aria-label="TrueNorth workspaces">
             <span class="active-indicator" #indicator></span>
-              @for (section of navSections; track section.name) {
+              @for (section of visibleNav(); track section.name) {
                 <section class="nav-group" [attr.aria-label]="section.name">
                   <h2 class="nav-group-title">{{ section.name }}</h2>
                   <mat-nav-list dense>
                     @for (item of section.items; track item.route) {
-                      @if (!item.staffOnly || auth.canViewSchedule()) {
                       <a mat-list-item
                          [routerLink]="item.route"
                          (click)="mobile() && sidenav.close()"
@@ -90,7 +93,6 @@ interface NavSection {
                         <mat-icon matListItemIcon>{{ item.icon }}</mat-icon>
                         <span matListItemTitle class="nav-label">{{ item.label }}</span>
                       </a>
-                      }
                     }
                   </mat-nav-list>
                 </section>
@@ -358,39 +360,56 @@ export class AppComponent implements OnDestroy {
     {
       name: 'Create',
       items: [
-        { label: 'Authoring Studio', icon: 'auto_fix_high', route: '/authoring' },
+        { label: 'Authoring Studio', icon: 'auto_fix_high', route: '/authoring', access: 'authoring' },
       ],
     },
     {
       name: 'Prepare & Operate',
       items: [
         { label: 'Exercises', icon: 'fitness_center', route: '/exercises' },
-        { label: 'Ops Center', icon: 'radar', route: '/ops-center/select' },
-        { label: 'Schedule', icon: 'event', route: '/schedule', staffOnly: true },
+        { label: 'Ops Center', icon: 'radar', route: '/ops-center/select', access: 'opsCenter' },
+        { label: 'Telemetry', icon: 'query_stats', route: '/telemetry', access: 'telemetry' },
+        { label: 'Schedule', icon: 'event', route: '/schedule', access: 'schedule' },
       ],
     },
     {
       name: 'Review',
-      items: [{ label: 'Scoring & AAR', icon: 'assessment', route: '/scoring' }],
+      items: [{ label: 'Scoring & AAR', icon: 'assessment', route: '/scoring', access: 'scoring' }],
     },
     {
       name: 'Help',
       items: [
-        { label: 'Wiki',    icon: 'menu_book',      route: '/wiki' },
-        { label: 'Support', icon: 'support_agent',  route: '/support' },
+        { label: 'Wiki',    icon: 'menu_book',      route: '/wiki', access: 'wiki' },
+        { label: 'Support', icon: 'support_agent',  route: '/support', access: 'support' },
       ],
     },
     {
       name: 'Admin',
       items: [
-        { label: 'Infrastructure',  icon: 'storage',              route: '/infrastructure' },
-        { label: 'AI Orchestrator', icon: 'memory',               route: '/ai-orchestrator' },
-        { label: 'Integrations',    icon: 'device_hub',           route: '/integrations' },
-        { label: 'Users',           icon: 'people',               route: '/users' },
-        { label: 'Admin',           icon: 'admin_panel_settings', route: '/admin' },
+        { label: 'Approvals',       icon: 'how_to_reg',           route: '/approvals', access: 'approvals' },
+        { label: 'Infrastructure',  icon: 'storage',              route: '/infrastructure', access: 'infrastructure' },
+        { label: 'AI Orchestrator', icon: 'memory',               route: '/ai-orchestrator', access: 'aiOrchestrator' },
+        { label: 'Integrations',    icon: 'device_hub',           route: '/integrations', adminOnly: true },
+        { label: 'Users',           icon: 'people',               route: '/users', adminOnly: true },
+        { label: 'Admin',           icon: 'admin_panel_settings', route: '/admin', adminOnly: true },
       ],
     },
   ];
+
+  /**
+   * The menu for the signed-in role: each entry only where its route's guard would let
+   * the role in, and a section only when something in it is left. Re-evaluates when the
+   * identity changes (canOpen and isAdmin read the user signal).
+   */
+  readonly visibleNav = computed<NavSection[]>(() =>
+    this.navSections
+      .map(section => ({
+        ...section,
+        items: section.items.filter(item =>
+          (!item.access || this.auth.canOpen(item.access)) && (!item.adminOnly || this.auth.isAdmin())),
+      }))
+      .filter(section => section.items.length > 0),
+  );
 
   private routerSub: Subscription;
 
@@ -410,6 +429,7 @@ export class AppComponent implements OnDestroy {
           learning: 'Learning', authoring: 'Authoring', exercises: 'Exercises',
           'ops-center': 'Ops Center', scoring: 'Review', infrastructure: 'Infrastructure',
           'ai-orchestrator': 'AI Orchestrator', integrations: 'Integrations', users: 'People',
+          approvals: 'People', telemetry: 'Telemetry',
           admin: 'Administration',
         } as Record<string, string>)[path] ?? 'Overview');
         this.isBareRoute.set(this.isBare(event.urlAfterRedirects));

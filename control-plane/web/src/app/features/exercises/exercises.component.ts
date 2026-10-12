@@ -1,6 +1,6 @@
 ﻿import { Component, DestroyRef, OnInit, signal, inject } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { interval } from 'rxjs';
+import { Observable, interval } from 'rxjs';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
@@ -40,12 +40,14 @@ export const EXERCISE_POLL_MS = 5000;
             <p class="subtitle">Bring the scenario, range, and training evidence together.</p>
           </div>
         </div>
-        <button mat-raised-button color="primary" (click)="showCreate = !showCreate">
-          <mat-icon>add</mat-icon> New Exercise
-        </button>
+        @if (auth.can('exercise:create')) {
+          <button mat-raised-button color="primary" (click)="showCreate = !showCreate">
+            <mat-icon>add</mat-icon> New Exercise
+          </button>
+        }
       </div>
 
-      @if (showCreate) {
+      @if (showCreate && auth.can('exercise:create')) {
         <mat-card class="mt-2">
           <mat-card-content>
             <mat-form-field appearance="outline" class="full-width">
@@ -127,38 +129,50 @@ export const EXERCISE_POLL_MS = 5000;
         <ng-container matColumnDef="actions">
           <th mat-header-cell *matHeaderCellDef>Actions</th>
           <td mat-cell *matCellDef="let e">
+            <!-- Each control only for a role whose permission the endpoint checks (rbac.py),
+                 and disabled while that exercise has a request in flight (no double submit). -->
             <a mat-button [routerLink]="['/exercises', e.id]">Open</a>
-            @if (e.state === 'pending' && auth.isInstructor()) {
+            @if (e.state === 'pending' && auth.can('exercise:create')) {
               <button mat-icon-button (click)="startEdit(e)" matTooltip="Rename" aria-label="Rename exercise" [disabled]="saving">
                 <mat-icon>edit</mat-icon>
               </button>
-              <button mat-icon-button color="primary" (click)="start(e.id)" matTooltip="Start" aria-label="Start exercise">
+            }
+            @if (e.state === 'pending' && auth.can('exercise:start')) {
+              <button mat-icon-button color="primary" (click)="start(e.id)" matTooltip="Start" aria-label="Start exercise"
+                      [disabled]="isBusy(e.id)">
                 <mat-icon>play_arrow</mat-icon>
               </button>
             }
-            @if (e.state === 'running' && auth.isInstructor()) {
-              <button mat-icon-button (click)="pause(e.id)" matTooltip="Pause" aria-label="Pause exercise">
+            @if (e.state === 'running' && auth.can('exercise:pause')) {
+              <button mat-icon-button (click)="pause(e.id)" matTooltip="Pause" aria-label="Pause exercise"
+                      [disabled]="isBusy(e.id)">
                 <mat-icon>pause</mat-icon>
               </button>
-              <button mat-icon-button color="accent" (click)="complete(e.id)" matTooltip="Complete" aria-label="Complete exercise">
-                <mat-icon>stop</mat-icon>
-              </button>
             }
-            @if (e.state === 'paused' && auth.isInstructor()) {
-              <button mat-icon-button color="primary" (click)="start(e.id)" matTooltip="Resume" aria-label="Resume exercise">
+            @if (e.state === 'paused' && auth.can('exercise:pause')) {
+              <button mat-icon-button color="primary" (click)="resume(e.id)" matTooltip="Resume" aria-label="Resume exercise"
+                      [disabled]="isBusy(e.id)">
                 <mat-icon>play_arrow</mat-icon>
               </button>
-              <button mat-icon-button color="accent" (click)="complete(e.id)" matTooltip="Complete" aria-label="Complete exercise">
+            }
+            @if ((e.state === 'running' || e.state === 'paused') && auth.can('exercise:complete')) {
+              <button mat-icon-button color="accent" (click)="complete(e.id)" matTooltip="Complete" aria-label="Complete exercise"
+                      [disabled]="isBusy(e.id)">
                 <mat-icon>stop</mat-icon>
               </button>
             }
             @if (e.state === 'completed') {
-              <button mat-icon-button (click)="genAAR(e.id)" matTooltip="Generate AAR" aria-label="Generate after-action report">
-                <mat-icon>assessment</mat-icon>
-              </button>
-              <button mat-icon-button (click)="downloadAARPdf(e.id)" matTooltip="Download AAR PDF" aria-label="Download after-action report PDF">
-                <mat-icon>picture_as_pdf</mat-icon>
-              </button>
+              @if (auth.can('aar:generate')) {
+                <button mat-icon-button (click)="genAAR(e.id)" matTooltip="Generate AAR" aria-label="Generate after-action report"
+                        [disabled]="isBusy(e.id)">
+                  <mat-icon>assessment</mat-icon>
+                </button>
+              }
+              @if (auth.can('aar:read')) {
+                <button mat-icon-button (click)="downloadAARPdf(e.id)" matTooltip="Download AAR PDF" aria-label="Download after-action report PDF">
+                  <mat-icon>picture_as_pdf</mat-icon>
+                </button>
+              }
             }
           </td>
         </ng-container>
@@ -178,15 +192,23 @@ export const EXERCISE_POLL_MS = 5000;
           <button mat-stroked-button (click)="load()">Retry</button>
         </tn-empty-state>
       } @else if (exercises().length === 0) {
-        <tn-empty-state
-          icon="fitness_center"
-          title="No exercises yet"
-          message="Create one from a range and a scenario to start a training run."
-        >
-          <button mat-stroked-button (click)="showCreate = true">
-            <mat-icon>add</mat-icon> New Exercise
-          </button>
-        </tn-empty-state>
+        @if (auth.can('exercise:create')) {
+          <tn-empty-state
+            icon="fitness_center"
+            title="No exercises yet"
+            message="Create one from a range and a scenario to start a training run."
+          >
+            <button mat-stroked-button (click)="showCreate = true">
+              <mat-icon>add</mat-icon> New Exercise
+            </button>
+          </tn-empty-state>
+        } @else {
+          <tn-empty-state
+            icon="fitness_center"
+            title="No exercises yet"
+            message="Your instructor sets exercises up; they appear here when one is ready."
+          />
+        }
       }
       </section>
     </div>
@@ -213,8 +235,11 @@ export class ExercisesComponent implements OnInit {
   private api = inject(ApiService);
   private notify = inject(NotificationService);
   private destroyRef = inject(DestroyRef);
-  /** Start, pause and complete are staff actions (exercise:start / complete, sweep M3). */
+  /** Each control follows the permission its endpoint checks (exercise:create / start /
+   *  pause / complete, aar:generate / read). Start and complete are staff (sweep M3). */
   protected auth = inject(AuthService);
+  /** Exercises with a lifecycle request in flight: their controls are disabled. */
+  private readonly inFlight = signal<ReadonlySet<string>>(new Set());
 
   exercises = signal<ExerciseSummary[]>([]);
   ranges = signal<RangeSummary[]>([]);
@@ -236,8 +261,30 @@ export class ExercisesComponent implements OnInit {
     interval(EXERCISE_POLL_MS).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
       if (this.exercises().some(e => e.state === 'running')) this.refresh();
     });
-    this.api.listRanges().subscribe(r => this.ranges.set(r));
-    this.api.listScenarios().subscribe(s => this.scenarios.set(s));
+    // Only the create form needs them.
+    if (this.auth.can('exercise:create')) {
+      this.api.listRanges().subscribe(r => this.ranges.set(r));
+      this.api.listScenarios().subscribe(s => this.scenarios.set(s));
+    }
+  }
+
+  isBusy(id: string): boolean {
+    return this.inFlight().has(id);
+  }
+
+  /**
+   * Run one lifecycle request for `id`, at most one at a time: a second click while the
+   * first is in flight does nothing. The row's state comes from the reload, never from
+   * the click, so a refused request leaves the row as the server has it.
+   */
+  private act(id: string, request: () => Observable<unknown>, ok: string, failed: string): void {
+    if (this.isBusy(id)) return;
+    this.inFlight.update(s => new Set(s).add(id));
+    const done = () => this.inFlight.update(s => { const n = new Set(s); n.delete(id); return n; });
+    request().subscribe({
+      next: () => { done(); this.notify.success(ok); this.load(); },
+      error: (err) => { done(); this.notify.error(err?.error?.detail || failed); this.load(); },
+    });
   }
 
   load(): void {
@@ -262,30 +309,33 @@ export class ExercisesComponent implements OnInit {
   }
 
   start(id: string): void {
-    this.api.startExercise(id).subscribe({
-      next: () => { this.notify.success('Exercise started'); this.load(); },
-      error: (err) => this.notify.error(err?.error?.detail || 'Start failed'),
-    });
+    this.act(id, () => this.api.startExercise(id), 'Exercise started', 'Start failed');
   }
 
   pause(id: string): void {
-    this.api.pauseExercise(id).subscribe({
-      next: () => { this.notify.success('Exercise paused'); this.load(); },
-      error: () => this.notify.error('Pause failed'),
-    });
+    this.act(id, () => this.api.pauseExercise(id), 'Exercise paused', 'Pause failed');
+  }
+
+  /**
+   * POST /exercises/{id}/resume. This used to call start(), which the API refuses with
+   * 409 for anything but a pending exercise, so a paused exercise could never resume.
+   * The server's own 409 detail (e.g. "Exercise is completed, expected paused") is shown.
+   */
+  resume(id: string): void {
+    this.act(id, () => this.api.resumeExercise(id), 'Exercise resumed', 'Resume failed');
   }
 
   complete(id: string): void {
-    this.api.completeExercise(id).subscribe({
-      next: () => { this.notify.success('Exercise completed'); this.load(); },
-      error: () => this.notify.error('Complete failed'),
-    });
+    this.act(id, () => this.api.completeExercise(id), 'Exercise completed', 'Complete failed');
   }
 
   genAAR(id: string): void {
+    if (this.isBusy(id)) return;
+    this.inFlight.update(s => new Set(s).add(id));
+    const done = () => this.inFlight.update(s => { const n = new Set(s); n.delete(id); return n; });
     this.api.generateAAR(id).subscribe({
-      next: () => this.notify.success('AAR generated'),
-      error: () => this.notify.error('AAR generation failed'),
+      next: () => { done(); this.notify.success('AAR generated'); },
+      error: () => { done(); this.notify.error('AAR generation failed'); },
     });
   }
 

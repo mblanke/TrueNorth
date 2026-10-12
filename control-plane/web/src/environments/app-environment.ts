@@ -27,6 +27,12 @@ export interface AppEnvironment {
    * registered under Integrations. Unset: no link. Runtime-overridable (TN_MOODLE_URL).
    */
   moodleUrl?: string;
+  /**
+   * The fictional LMS and readiness design previews (Learning > previews). Off unless a
+   * deployment turns them on (TN_DEMO_PREVIEWS=true): their records are invented, so a
+   * real Student must never mistake them for their own. On, they carry a demo banner.
+   */
+  demoPreviews?: boolean;
 }
 
 export interface AdminLinks {

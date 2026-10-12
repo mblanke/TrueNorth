@@ -13,6 +13,7 @@ import {
   groupByTerm,
 } from '@core/services/curriculum-map.service';
 import { EmptyStateComponent } from '@shared/components/empty-state/empty-state.component';
+import { EnrolButtonComponent, EnrolmentsService } from './enrol-button.component';
 
 export interface CatalogueStage {
   stage: DPStage;
@@ -63,7 +64,8 @@ export function catalogueStages(map: CurriculumMap | null, query = ''): Catalogu
     MatExpansionModule,
     MatIconModule,
     MatTooltipModule,
-    EmptyStateComponent
+    EmptyStateComponent,
+    EnrolButtonComponent,
 ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -137,7 +139,7 @@ export function catalogueStages(map: CurriculumMap | null, query = ''): Catalogu
                       </mat-expansion-panel-header>
                       <ul class="courses">
                         @for (c of t.courses; track c.course_id) {
-                          <li>
+                          <li class="row">
                             <a class="course" [routerLink]="['/learning/courses', c.course_id]" [attr.data-course]="c.course_code">
                               <span class="tn-code">{{ c.course_code }}</span>
                               <span class="name">{{ title(c) }}</span>
@@ -148,6 +150,11 @@ export function catalogueStages(map: CurriculumMap | null, query = ''): Catalogu
                                 <span class="draft" matTooltip="Not published yet — content may change">Draft</span>
                               }
                             </a>
+                            <!-- Published courses only: the API refuses a draft to anyone who
+                                 does not author courses. Enrolled state comes from the server. -->
+                            @if (c.is_published) {
+                              <tn-enrol-button class="enrol" [courseId]="c.course_id" [courseName]="title(c)" />
+                            }
                           </li>
                         }
                       </ul>
@@ -204,6 +211,10 @@ export function catalogueStages(map: CurriculumMap | null, query = ''): Catalogu
       .kicker { min-width: 7.5rem; color: var(--text-muted); font-weight: 500; }
 
       .courses { list-style: none; margin: 0; padding: 0; }
+      .row { display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--border); }
+      .courses li.row:last-child { border-bottom: 0; }
+      .row .course { flex: 1 1 auto; min-width: 0; border-bottom: 0; }
+      .row .enrol { flex: 0 0 auto; padding-right: 4px; }
       .course {
         display: grid;
         grid-template-columns: 1fr auto;
@@ -272,7 +283,11 @@ export class CourseCatalogueComponent implements OnInit {
       return;
     }
     this.load();
+    this.enrolments.load();
   }
+
+  /** The caller's own enrolments (GET /courses/enrollments/mine), shared with each row's button. */
+  private readonly enrolments = inject(EnrolmentsService);
 
   load(force = false): void {
     this.loading.set(true);

@@ -21,6 +21,10 @@ export function registeredMoodleUrl(platforms: readonly LearningPlatform[]): str
 /**
  * Isolated fictional previews: no application session or API access in the frames.
  *
+ * Off by default. The route (demoGuard) and the Learning tab exist only where the
+ * deployment sets TN_DEMO_PREVIEWS=true, and the page carries a "Demo — fictional data"
+ * banner, so invented records are never put in front of a real Student as theirs.
+ *
  * The Moodle link is never hard-coded (it used to be http://localhost:8083/, which is
  * only right on a developer's Docker host). It comes from, in order:
  *   1. the Moodle platform registered under Integrations (GET /integrations/platforms,
@@ -35,6 +39,10 @@ export function registeredMoodleUrl(platforms: readonly LearningPlatform[]): str
   imports: [RouterLink, MatButtonModule],
   template: `
     <section aria-label="LMS and mission readiness test workspace">
+      <!-- Reached only when the deployment sets TN_DEMO_PREVIEWS=true (demoGuard). -->
+      <p class="demo-banner" role="note" data-testid="demo-banner">
+        <strong>Demo — fictional data.</strong> Nothing on this page is anyone's training record.
+      </p>
       <nav aria-label="Test workspaces">
         <a mat-stroked-button routerLink="." [queryParams]="{view: 'development'}"
            [attr.aria-current]="view() === 'development' ? 'page' : null">LMS development</a>
@@ -61,7 +69,7 @@ export function registeredMoodleUrl(platforms: readonly LearningPlatform[]): str
         </article>
       } @else {
         <p class="notice">Interactive design preview · Fictional records · Actions do not
-          enrol learners, task a team, run an exercise, or change training records.</p>
+          enrol Students, task a team, run an exercise, or change training records.</p>
         @if (view() === 'readiness') {
           <iframe src="assets/previews/readiness.html" title="Commander readiness design preview"
                   sandbox="allow-scripts" referrerpolicy="no-referrer"></iframe>
@@ -73,6 +81,9 @@ export function registeredMoodleUrl(platforms: readonly LearningPlatform[]): str
     </section>
   `,
   styles: [`
+    .demo-banner { margin: 0 0 16px; padding: 10px 14px; border-radius: 8px;
+      border: 1px solid var(--warning); color: var(--text-primary);
+      background: color-mix(in srgb, var(--warning) 14%, transparent); }
     nav { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
     a[aria-current="page"] { border: 2px solid var(--accent); }
     .notice { color: var(--text-secondary); margin: 0 0 12px; }

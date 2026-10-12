@@ -3,7 +3,9 @@ import { computed, signal } from '@angular/core';
 import { ActivatedRouteSnapshot, Router, RouterStateSnapshot, UrlTree, provideRouter } from '@angular/router';
 import { Observable, firstValueFrom } from 'rxjs';
 import { AuthService, AuthState, UserRole } from '../services/auth.service';
-import { adminGuard, authGuard } from './auth.guard';
+import { adminGuard, authGuard, demoGuard, pageGuard } from './auth.guard';
+import { PAGE_ACCESS, PageKey, roleHasAccess } from '../auth/permissions';
+import { environment } from '@env/environment';
 
 /**
  * The guards read AuthService only after `bootstrap()` resolves (identity comes from
@@ -16,6 +18,9 @@ class FakeAuthService {
   readonly authState = this.state.asReadonly();
   readonly isAuthenticated = computed(() => this.role() !== null);
   readonly isAdmin = computed(() => this.role() === 'admin');
+  canOpen(page: PageKey): boolean {
+    return roleHasAccess(this.role(), PAGE_ACCESS[page]);
+  }
 
   next: { role: UserRole | null; state: AuthState | null } = { role: null, state: null };
   readonly bootstrap = jasmine.createSpy('bootstrap').and.callFake(async () => {
@@ -109,6 +114,70 @@ describe('auth guards', () => {
 
     it('sends an anonymous visitor back to the dashboard (authGuard runs first in routes)', async () => {
       expect(path(await run(adminGuard))).toBe('/dashboard');
+    });
+  });
+
+  /**
+   * Deep links (R0-B). Each row: a role, a page, and whether the guard lets it in. The
+   * page table is the one the menu reads, and it mirrors rbac.py, so "allowed" here
+   * means the page's API calls would answer the role too.
+   */
+  describe('pageGuard', () => {
+    const cases: [UserRole, PageKey, boolean][] = [
+      ['student', 'scoring', true],          // their own AARs (aar:read; scoped by the API)
+      ['student', 'telemetry', false],
+      ['student', 'opsCenter', false],
+      ['student', 'authoring', false],
+      ['student', 'approvals', false],
+      ['student', 'infrastructure', false],
+      ['student', 'support', true],
+      ['observer', 'opsCenter', true],
+      ['observer', 'scoring', true],
+      ['observer', 'telemetry', true],
+      ['observer', 'authoring', false],
+      ['observer', 'support', false],         // no ticket:create
+      ['range_ops', 'authoring', true],
+      ['range_ops', 'authoringRanges', true],
+      ['range_ops', 'authoringContent', true],
+      ['range_ops', 'authoringScenarios', false],
+      ['range_ops', 'authoringCourses', false],
+      ['range_ops', 'scoring', false],        // no aar:read
+      ['range_ops', 'approvals', false],
+      ['instructor', 'approvals', true],
+      ['instructor', 'authoringCourses', true],
+      ['instructor', 'telemetry', true],
+      ['admin', 'approvals', true],
+    ];
+    for (const [role, page, allowed] of cases) {
+      it(`${allowed ? 'admits' : 'refuses'} ${role} on ${page}`, async () => {
+        auth.next = { role, state: 'registered' };
+        const result = path(await run(pageGuard(page)));
+        expect(result).toBe(allowed ? true : '/dashboard');
+        expect(auth.bootstrap).toHaveBeenCalled();
+      });
+    }
+
+    it('refuses an anonymous visitor', async () => {
+      expect(path(await run(pageGuard('scoring')))).toBe('/dashboard');
+    });
+  });
+
+  describe('demoGuard (fictional previews)', () => {
+    const configured = environment.demoPreviews;
+    afterEach(() => (environment.demoPreviews = configured));
+
+    it('sends everyone back to Learning by default', () => {
+      environment.demoPreviews = undefined;
+      const result = TestBed.runInInjectionContext(() =>
+        demoGuard({} as ActivatedRouteSnapshot, {} as RouterStateSnapshot)) as boolean | UrlTree;
+      expect(path(result)).toBe('/learning');
+    });
+
+    it('admits when the deployment turned the demo on', () => {
+      environment.demoPreviews = true;
+      const result = TestBed.runInInjectionContext(() =>
+        demoGuard({} as ActivatedRouteSnapshot, {} as RouterStateSnapshot)) as boolean | UrlTree;
+      expect(result).toBeTrue();
     });
   });
 });

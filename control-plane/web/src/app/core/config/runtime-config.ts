@@ -11,7 +11,8 @@ import type { AppEnvironment } from '@env/app-environment';
  * values.
  *
  * Only the Keycloak endpoint, the Admin > Services links (`adminLinks`) and the
- * fallback Moodle address (`moodleUrl`, TN_MOODLE_URL) are overridable. `authDisabled` is deliberately not:
+ * fallback Moodle address (`moodleUrl`, TN_MOODLE_URL) are overridable, and the fictional
+ * design previews can be switched on (`demoPreviews: true`, TN_DEMO_PREVIEWS). `authDisabled` is deliberately not:
  * whoever can edit a served JSON file must not be able to turn authentication off,
  * and a production bundle is checked to carry `authDisabled: false`
  * (scripts/check-prod-env.mjs).
@@ -47,6 +48,10 @@ export function applyRuntimeConfig(body: unknown, env: AppEnvironment = environm
   const moodleUrl = text(body, 'moodleUrl');
   if (moodleUrl !== undefined && isLinkUrl(moodleUrl)) {
     env.moodleUrl = moodleUrl;
+  }
+  // Only a literal `true` turns the fictional previews on (TN_DEMO_PREVIEWS).
+  if ((body as { demoPreviews?: unknown }).demoPreviews === true) {
+    env.demoPreviews = true;
   }
   for (const key of KEYCLOAK_KEYS) {
     const value = text(keycloak, key);

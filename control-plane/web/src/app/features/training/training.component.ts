@@ -379,7 +379,7 @@ function sortRows<T>(rows: T[], sort: Sort, key: (row: T, column: string) => unk
               @if (enrollments().length === 0) {
                 <div class="empty-state">
                   <mat-icon>people</mat-icon>
-                  <p>No enrollments yet. Enrollments appear once trainees sign up for courses.</p>
+                  <p>No enrolments yet. Students enrol themselves with Enrol on the course catalogue or a course page.</p>
                 </div>
               }
             </div>

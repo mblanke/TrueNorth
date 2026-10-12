@@ -8,6 +8,8 @@ import {
 import { AuthService } from '@core/services/auth.service';
 import { Arc2AvailabilityService } from '@core/arc2/arc2-availability.service';
 import { QuietStylesComponent } from './quiet-styles.component';
+import { PageKey } from '@core/auth/permissions';
+import { environment } from '@env/environment';
 
 interface HubTab {
   label: string;
@@ -15,8 +17,12 @@ interface HubTab {
   /** Shown only to instructors and admins. The route must still carry its own guard;
    * hiding the tab is presentation, not access control. */
   instructorOnly?: boolean;
-  /** Shown only when the server has this optional feature on (GET /arc2/status). */
-  requires?: 'arc2';
+  /** Shown only to roles that may open this page (PAGE_ACCESS, mirrored from rbac.py).
+   * The child route carries pageGuard with the same key. */
+  access?: PageKey;
+  /** Shown only when an optional feature is on: ARC² on the server (GET /arc2/status),
+   * or the fictional design previews in this deployment (`demoPreviews`, default off). */
+  requires?: 'arc2' | 'demo';
 }
 
 /**
@@ -99,7 +105,9 @@ export class HubShellComponent {
 
   readonly visibleTabs = computed(() =>
     this.tabs.filter(tab => (!tab.instructorOnly || this.auth.isInstructor())
-      && (tab.requires !== 'arc2' || this.arc2.enabled())),
+      && (!tab.access || this.auth.canOpen(tab.access))
+      && (tab.requires !== 'arc2' || this.arc2.enabled())
+      && (tab.requires !== 'demo' || !!environment.demoPreviews)),
   );
 
   constructor() {
