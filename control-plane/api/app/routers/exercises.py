@@ -40,6 +40,7 @@ from fastapi.responses import HTMLResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
 from .. import safe_yaml, scenario_objectives
+from ..aar_access import may_read_aar
 from ..aar_html import RESPONSE_HEADERS as AAR_PAGE_HEADERS
 from ..aar_html import pdf_text
 from ..aar_html import render_html as render_aar_html
@@ -534,8 +535,11 @@ async def acknowledge_objective(
 # Every AAR route resolves the exercise through get_owned first: the report row has no
 # tenant of its own, so a lookup by exercise id alone served any tenant's report.
 def _owned_aar(db: Session, exercise_id: uuid.UUID, user: CurrentUser) -> AfterActionReport:
-    """The stored AAR of the caller's exercise, or 404 (unknown, foreign or not generated)."""
+    """The stored AAR of the caller's exercise, or 404 (unknown, foreign, not generated, or —
+    for a Student — not a completed exercise they took part in: app/aar_access.py)."""
     ex = get_owned(db, Exercise, exercise_id, user, not_found="Exercise not found")
+    if not may_read_aar(db, ex, user):
+        raise HTTPException(404, "AAR not found")
     aar = db.query(AfterActionReport).filter(AfterActionReport.exercise_id == ex.id).first()
     if not aar:
         raise HTTPException(404, "AAR not found — generate it first")

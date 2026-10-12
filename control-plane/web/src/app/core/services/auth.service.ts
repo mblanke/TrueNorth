@@ -5,6 +5,7 @@ import { freshToken } from '../auth/keycloak-init';
 import { clearLtiSession, hasLtiSession, ltiSessionToken } from '../auth/lti-session';
 import { ReplaySubject, firstValueFrom } from 'rxjs';
 import { environment } from '@env/environment';
+import { PAGE_ACCESS, PageKey, Permission, roleCan, roleHasAccess } from '../auth/permissions';
 
 /**
  * Roles as the API defines them (`UserRole` in control-plane/api/app/models.py).
@@ -88,11 +89,22 @@ export class AuthService {
    * publishing and exporting quizzes need it; Students get 403. The API enforces it;
    * this only hides the controls.
    */
-  readonly canAuthorCourses = computed(() => this.isInstructor());  /** The schedule (calendar, capacity, timeline) is for staff; Students never see it (ADR 0004). */
-  readonly canViewSchedule = computed(() => {
-    const role = this.userSignal()?.role;
-    return !!role && role !== 'student';
-  });
+  readonly canAuthorCourses = computed(() => this.isInstructor());
+  /** The schedule (calendar, capacity, timeline): `schedule:read`, so never Students (ADR 0004). */
+  readonly canViewSchedule = computed(() => roleCan(this.userSignal()?.role, 'schedule:read'));
+
+  /**
+   * Whether the signed-in role holds `permission` (core/auth/permissions.ts mirrors
+   * rbac.py). Reads the user signal, so templates and computeds re-evaluate on change.
+   */
+  can(permission: Permission): boolean {
+    return roleCan(this.userSignal()?.role, permission);
+  }
+
+  /** Whether the signed-in role may open `page` (PAGE_ACCESS: menu, guards, dashboard). */
+  canOpen(page: PageKey): boolean {
+    return roleHasAccess(this.userSignal()?.role, PAGE_ACCESS[page]);
+  }
   readonly userId = computed(() => this.userSignal()?.id ?? null);
   readonly onboardingState = computed(() => this.userSignal()?.onboarding_state ?? 'not_started');
   /** Signed in through an LTI launch's session hand-off rather than Keycloak. */

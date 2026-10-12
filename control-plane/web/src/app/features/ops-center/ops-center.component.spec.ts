@@ -5,6 +5,8 @@ import { ActivatedRoute } from '@angular/router';
 import { OpsCenterComponent } from './ops-center.component';
 import { ApiService } from '@core/services/api.service';
 import { NotificationService } from '@core/services/notification.service';
+import { AuthService } from '@core/services/auth.service';
+import { fakeAuth } from '@core/auth/fake-auth';
 
 describe('OpsCenterComponent', () => {
   let component: OpsCenterComponent;
@@ -33,7 +35,10 @@ describe('OpsCenterComponent', () => {
     elapsed_seconds: 3661,
   };
 
+  let auth: ReturnType<typeof fakeAuth>;
+
   beforeEach(async () => {
+    auth = fakeAuth('instructor');
     mockApi = jasmine.createSpyObj('ApiService', ['get', 'post']);
     mockNotify = jasmine.createSpyObj('NotificationService', ['success', 'error']);
 
@@ -49,6 +54,7 @@ describe('OpsCenterComponent', () => {
       providers: [
         { provide: ApiService, useValue: mockApi },
         { provide: NotificationService, useValue: mockNotify },
+        { provide: AuthService, useValue: auth },
         {
           provide: ActivatedRoute,
           useValue: { snapshot: { paramMap: { get: () => exerciseId } } },
@@ -231,5 +237,26 @@ describe('OpsCenterComponent', () => {
     expect(paths).toContain(`/ops/exercises/${exerciseId}/annotations`);
     expect(paths).toContain(`/ops/exercises/${exerciseId}/commands`);
     expect(paths).toContain(`/ops/exercises/${exerciseId}/stats`);
+  });
+
+  // ── Read-only for observers (R0-B) ───────────────────────────────
+  // The POSTs need exercise:create; an observer watches the annotations and commands.
+  const tabLabels = () => Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('[role="tab"]'))
+    .map(t => t.textContent!.trim());
+  const buttons = () => Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('button'))
+    .map(b => b.textContent!.trim());
+
+  it('shows an observer the feed without any way to write to it', () => {
+    auth.role.set('observer');
+    fixture.detectChanges();
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain('Suspicious DNS traffic');
+    expect(tabLabels()).not.toContain('Instructor');
+    expect(buttons().some(b => /Add annotation|Share command|Send Inject/.test(b))).toBeFalse();
+  });
+
+  it('gives an instructor the input cards and the Instructor tab', () => {
+    fixture.detectChanges();
+    expect(tabLabels()).toContain('Instructor');
+    expect(buttons().some(b => b.includes('Add annotation'))).toBeTrue();
   });
 });

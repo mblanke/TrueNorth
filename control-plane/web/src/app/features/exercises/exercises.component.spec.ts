@@ -6,14 +6,16 @@ import { EXERCISE_POLL_MS, ExercisesComponent } from './exercises.component';
 import { ApiService } from '@core/services/api.service';
 import { NotificationService } from '@core/services/notification.service';
 import { AuthService } from '@core/services/auth.service';
-import { signal } from '@angular/core';
 import { Exercise, Range, Scenario } from '@core/models';
+import { fakeAuth } from '@core/auth/fake-auth';
+import { Subject } from 'rxjs';
 
 describe('ExercisesComponent', () => {
   let component: ExercisesComponent;
   let fixture: ComponentFixture<ExercisesComponent>;
   let mockApi: jasmine.SpyObj<ApiService>;
   let mockNotify: jasmine.SpyObj<NotificationService>;
+  let auth: ReturnType<typeof fakeAuth>;
 
   const mockExercises: Partial<Exercise>[] = [
     { id: 'e1', name: 'IR Drill', state: 'pending', total_score: 0, max_score: 100, created_at: '2026-02-01T10:00:00Z' },
@@ -39,6 +41,7 @@ describe('ExercisesComponent', () => {
       'startExercise',
       'pauseExercise',
       'completeExercise',
+      'resumeExercise',
       'generateAAR',
     ]);
     mockNotify = jasmine.createSpyObj('NotificationService', ['success', 'error']);
@@ -50,7 +53,9 @@ describe('ExercisesComponent', () => {
     mockApi.startExercise.and.returnValue(of({ id: 'e1', state: 'running' } as Exercise));
     mockApi.pauseExercise.and.returnValue(of({ id: 'e2', state: 'paused' } as Exercise));
     mockApi.completeExercise.and.returnValue(of({ id: 'e2', state: 'completed' } as Exercise));
+    mockApi.resumeExercise.and.returnValue(of({ id: 'e4', state: 'running' } as Exercise));
     mockApi.generateAAR.and.returnValue(of({} as any));
+    auth = fakeAuth('instructor');
 
     await TestBed.configureTestingModule({
       imports: [ExercisesComponent, NoopAnimationsModule],
@@ -58,7 +63,7 @@ describe('ExercisesComponent', () => {
         provideRouter([]),
         { provide: ApiService, useValue: mockApi },
         { provide: NotificationService, useValue: mockNotify },
-        { provide: AuthService, useValue: { isInstructor: signal(true) } },
+        { provide: AuthService, useValue: auth },
       ],
     }).compileComponents();
 
@@ -234,6 +239,96 @@ describe('ExercisesComponent', () => {
     fixture.detectChanges();
     const links = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('td a'));
     expect(links.some(link => link.getAttribute('href') === '/exercises/e2')).toBeTrue();
+  });
+
+  // ── Resume (R0-B) ────────────────────────────────────────────────
+  // The Resume button called start(), and POST /start answers 409 unless pending, so a
+  // paused exercise could never carry on.
+  describe('Resume', () => {
+    const paused = { id: 'e4', name: 'Paused Drill', state: 'paused', total_score: 10, max_score: 100,
+      created_at: '2026-02-04T10:00:00Z' } as Exercise;
+    const running = { ...paused, state: 'running' } as Exercise;
+    const button = (label: string) => (fixture.nativeElement as HTMLElement)
+      .querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);
+
+    it('POSTs /resume (not /start) and shows the exercise running after reload', () => {
+      mockApi.listExercises.and.returnValues(of([paused]), of([running]));
+      fixture.detectChanges();
+      button('Resume exercise')!.click();
+      fixture.detectChanges();
+      expect(mockApi.resumeExercise).toHaveBeenCalledOnceWith('e4');
+      expect(mockApi.startExercise).not.toHaveBeenCalled();
+      expect(mockNotify.success).toHaveBeenCalledWith('Exercise resumed');
+      expect(component.exercises()[0].state).toBe('running');
+      expect(button('Resume exercise')).toBeNull();
+      expect(button('Pause exercise')).not.toBeNull();
+    });
+
+    it('sends one request for a double click, and disables the button meanwhile', () => {
+      const inFlight = new Subject<Exercise>();
+      mockApi.resumeExercise.and.returnValue(inFlight);
+      mockApi.listExercises.and.returnValue(of([paused]));
+      fixture.detectChanges();
+      button('Resume exercise')!.click();
+      component.resume('e4');
+      fixture.detectChanges();
+      expect(mockApi.resumeExercise).toHaveBeenCalledTimes(1);
+      expect(button('Resume exercise')!.disabled).toBeTrue();
+      inFlight.next(running);
+      inFlight.complete();
+      fixture.detectChanges();
+      expect(component.isBusy('e4')).toBeFalse();
+    });
+
+    it('shows the server\'s reason when the exercise is no longer paused, and reloads', () => {
+      mockApi.resumeExercise.and.returnValue(
+        throwError(() => ({ status: 409, error: { detail: 'Exercise is completed, expected paused' } })),
+      );
+      mockApi.listExercises.and.returnValues(of([paused]), of([{ ...paused, state: 'completed' } as Exercise]));
+      fixture.detectChanges();
+      component.resume('e4');
+      fixture.detectChanges();
+      expect(mockNotify.error).toHaveBeenCalledWith('Exercise is completed, expected paused');
+      expect(component.exercises()[0].state).toBe('completed');
+      expect(component.isBusy('e4')).toBeFalse();
+    });
+  });
+
+  // ── Role-aware controls (rbac.py) ────────────────────────────────
+  describe('as a Student', () => {
+    beforeEach(() => auth.role.set('student'));
+
+    it('shows no lifecycle, create or Generate AAR controls, but keeps the AAR download', () => {
+      mockApi.listExercises.and.returnValue(of([
+        ...(mockExercises as Exercise[]),
+        { id: 'e4', name: 'P', state: 'paused', total_score: 0, max_score: 1, created_at: '' } as Exercise,
+      ]));
+      fixture.detectChanges();
+      const labels = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('button'))
+        .map(b => b.getAttribute('aria-label') ?? b.textContent!.trim());
+      for (const forbidden of ['Start exercise', 'Pause exercise', 'Resume exercise', 'Complete exercise',
+        'Rename exercise', 'Generate after-action report']) {
+        expect(labels).not.toContain(forbidden);
+      }
+      expect(labels.some(l => /New Exercise/.test(l))).toBeFalse();
+      expect(labels).toContain('Download after-action report PDF');
+      expect(mockApi.listRanges).not.toHaveBeenCalled();
+    });
+
+    it('does not offer to create one when the list is empty', () => {
+      mockApi.listExercises.and.returnValue(of([]));
+      fixture.detectChanges();
+      expect((fixture.nativeElement as HTMLElement).textContent).toContain('Your instructor sets exercises up');
+    });
+  });
+
+  it('gives an observer read-only rows', () => {
+    auth.role.set('observer');
+    fixture.detectChanges();
+    const labels = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('button'))
+      .map(b => b.getAttribute('aria-label'));
+    expect(labels).not.toContain('Pause exercise');
+    expect(labels).not.toContain('Start exercise');
   });
 
   it('shows a retry state when the exercise request fails', () => {

@@ -3,7 +3,9 @@ import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
 import { of, throwError } from 'rxjs';
 
-import { ApiService } from '@core/services/api.service';
+import { ApiService, Enrollment } from '@core/services/api.service';
+import { AuthService } from '@core/services/auth.service';
+import { fakeAuth } from '@core/auth/fake-auth';
 import { CourseDetailComponent } from './course-detail.component';
 
 const OUTLINE = {
@@ -17,14 +19,17 @@ describe('CourseDetailComponent', () => {
   let api: jasmine.SpyObj<ApiService>;
   let submitted: HTMLFormElement[];
 
-  function setup(id: string | null = 'c-1', outline: object = OUTLINE): void {
-    api = jasmine.createSpyObj<ApiService>('ApiService', ['get', 'post']);
+  function setup(id: string | null = 'c-1', outline: object = OUTLINE, mine: Enrollment[] = []): void {
+    api = jasmine.createSpyObj<ApiService>('ApiService', ['get', 'post', 'myEnrollments', 'enrollInCourse']);
     api.get.and.returnValue(of(outline) as any);
+    api.myEnrollments.and.returnValue(of(mine));
+    api.enrollInCourse.and.returnValue(of({ id: 'e1', course_id: 'c-1', user_id: 'u-self' } as Enrollment));
     TestBed.configureTestingModule({
       imports: [CourseDetailComponent, NoopAnimationsModule],
       providers: [
         provideRouter([]),
         { provide: ApiService, useValue: api },
+        { provide: AuthService, useValue: fakeAuth('student') },
         { provide: ActivatedRoute, useValue: { snapshot: { paramMap: convertToParamMap(id ? { id } : {}) } } },
       ],
     });
@@ -42,6 +47,29 @@ describe('CourseDetailComponent', () => {
     spyOn(HTMLFormElement.prototype, 'submit').and.callFake(function (this: HTMLFormElement) {
       submitted.push(this);
     });
+  });
+
+  // ── Self-enrolment (R0-B) ────────────────────────────────────────
+  const enrolButton = () => fixture.nativeElement.querySelector('[data-testid="enrol"]') as HTMLButtonElement | null;
+
+  it('offers Enrol on a published course and enrols me through the API', () => {
+    setup();
+    expect(api.myEnrollments).toHaveBeenCalled();
+    enrolButton()!.click();
+    fixture.detectChanges();
+    expect(api.enrollInCourse).toHaveBeenCalledOnceWith('c-1', 'u-self');
+    expect(fixture.nativeElement.querySelector('[data-testid="enrolled"]')).not.toBeNull();
+  });
+
+  it('says Enrolled when the server already has me on it', () => {
+    setup('c-1', OUTLINE, [{ id: 'e1', course_id: 'c-1', user_id: 'u-self' } as Enrollment]);
+    expect(enrolButton()).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="enrolled"]')?.textContent).toContain('Enrolled');
+  });
+
+  it('offers no Enrol on a draft', () => {
+    setup('c-1', { ...OUTLINE, is_published: false });
+    expect(enrolButton()).toBeNull();
   });
 
   it('loads the outline for the id in the URL', () => {

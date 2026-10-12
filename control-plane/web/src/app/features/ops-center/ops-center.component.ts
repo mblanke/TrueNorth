@@ -14,6 +14,7 @@ import { MatListModule } from '@angular/material/list';
 import { MatBadgeModule } from '@angular/material/badge';
 import { ApiService } from '@core/services/api.service';
 import { NotificationService } from '@core/services/notification.service';
+import { AuthService } from '@core/services/auth.service';
 import { CountUpDirective, EnterStaggerDirective } from '../../shared/motion';
 
 interface Annotation {
@@ -116,6 +117,9 @@ interface OpsStats {
         <!-- Annotations Tab -->
         <mat-tab label="Annotations">
           <div class="tab-content">
+            <!-- Writing here needs exercise:create (routers/ops_center.py): observers and
+                 range ops watch, so the input cards and the Instructor tab are not shown. -->
+            @if (canWrite()) {
             <mat-card class="input-card">
               <mat-card-content>
                 <div class="input-row">
@@ -148,6 +152,7 @@ interface OpsStats {
                 </div>
               </mat-card-content>
             </mat-card>
+            }
 
             <mat-list>
               @for (a of annotations(); track a.id) {
@@ -173,6 +178,7 @@ interface OpsStats {
         <!-- Shared Commands Tab -->
         <mat-tab label="Shared Commands">
           <div class="tab-content">
+            @if (canWrite()) {
             <mat-card class="input-card">
               <mat-card-content>
                 <div class="input-row">
@@ -190,6 +196,7 @@ interface OpsStats {
                 </div>
               </mat-card-content>
             </mat-card>
+            }
 
             @for (cmd of sharedCommands(); track cmd.id) {
               <mat-card class="command-card">
@@ -215,6 +222,7 @@ interface OpsStats {
         </mat-tab>
 
         <!-- Instructor Panel Tab -->
+        @if (canWrite()) {
         <mat-tab label="Instructor">
           <div class="tab-content">
             <mat-card>
@@ -246,6 +254,7 @@ interface OpsStats {
             </mat-card>
           </div>
         </mat-tab>
+        }
       </mat-tab-group>
     </div>
   `,
@@ -278,6 +287,9 @@ export class OpsCenterComponent implements OnInit, OnDestroy {
   private route = inject(ActivatedRoute);
   private api = inject(ApiService);
   private notify = inject(NotificationService);
+  private auth = inject(AuthService);
+  /** Annotations, shared commands and live injects are POSTs that need exercise:create. */
+  readonly canWrite = () => this.auth.can('exercise:create');
 
   exerciseId = '';
   annotations = signal<Annotation[]>([]);

@@ -6,7 +6,8 @@ telemetry rule uses (app/telemetry_access.py, security sweep M2), are:
 - a calendar booking (``scheduled_events``, not cancelled) that ties the exercise, or the
   range it runs on, to a course, and whose time overlaps the exercise's (started to
   completed, or to now while it runs): its participants are the Students actively
-  enrolled in that course;
+  enrolled in that course by assignment (``enrollment.rostered_course_ids``; a Student's
+  own self-enrolment gives course content, not a seat in another class's exercise);
 - a Student's own lab session on the exercise's range.
 
 A Student submits a detection only as a participant. An exercise with no roster (no booked
@@ -28,7 +29,7 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from .auth import CurrentUser
-from .enrollment import active_course_ids
+from .enrollment import rostered_course_ids
 from .models import Exercise
 from .rbac import Permission, user_has_permission
 
@@ -82,7 +83,8 @@ def may_submit(db: Session, user: CurrentUser, ex: Exercise) -> bool:
         return True
     courses = roster_courses(db, ex)
     if courses:
-        return bool(courses & set(active_course_ids(db, user_id)))
+        # Assigned enrolments only: a self-enrolment on a shared course is no seat here.
+        return bool(courses & set(rostered_course_ids(db, user_id)))
     if _bookings(db, ex).first() is not None:
         # Booked, but at another time: a roster with no seat now. Not "no roster", so the
         # opt-out below does not open it to every Student of the tenant.

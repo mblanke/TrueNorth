@@ -1,10 +1,10 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { signal } from '@angular/core';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
-import { of, throwError } from 'rxjs';
+import { Subject, of, throwError } from 'rxjs';
 import { ApiService, Detection } from '@core/services/api.service';
-import { AuthService } from '@core/services/auth.service';
+import { AuthService, UserRole } from '@core/services/auth.service';
+import { fakeAuth } from '@core/auth/fake-auth';
 import { NotificationService } from '@core/services/notification.service';
 import { InjectRecord } from '@core/models';
 import { ExerciseDetailComponent } from './exercise-detail.component';
@@ -28,15 +28,12 @@ describe('ExerciseDetailComponent detections', () => {
 
   async function render(role: string, state = 'running'): Promise<HTMLElement> {
     api = jasmine.createSpyObj('ApiService', [
-      'get', 'listDetections', 'submitDetection', 'getRange', 'getRangeDiagram', 'listInjects',
+      'get', 'listDetections', 'submitDetection', 'getRange', 'getRangeDiagram', 'listInjects', 'resumeExercise',
     ]);
     api.get.and.returnValue(of(detail(state)) as any);
     api.listDetections.and.returnValue(of(attempts));
     api.listInjects.and.returnValue(of([]));
-    const auth = {
-      canSubmitDetections: signal(role !== 'observer'),
-      isInstructor: signal(role === 'admin' || role === 'instructor'),
-    };
+    const auth = fakeAuth(role as UserRole);
     await TestBed.configureTestingModule({
       imports: [ExerciseDetailComponent, NoopAnimationsModule],
       providers: [
@@ -91,9 +88,52 @@ describe('ExerciseDetailComponent detections', () => {
     expect(Array.from(el.querySelectorAll('button')).some(b => b.textContent?.includes('Generate AAR'))).toBeTrue();
   });
 
-  it('does not offer View AAR to a Student, who cannot open /scoring', async () => {
+  // R0-B: a Student reads the AAR of an exercise they took part in (aar:read; the API
+  // answers 404 for any other), but never generates one.
+  it('offers a Student View AAR but not Generate AAR', async () => {
     const el = await render('student', 'completed');
+    expect(Array.from(el.querySelectorAll('a')).some(a => a.textContent?.includes('View AAR'))).toBeTrue();
+    expect(Array.from(el.querySelectorAll('button')).some(b => b.textContent?.includes('Generate AAR'))).toBeFalse();
+  });
+
+  it('does not offer View AAR to range ops, who hold no aar:read', async () => {
+    const el = await render('range_ops', 'completed');
     expect(Array.from(el.querySelectorAll('a')).some(a => a.textContent?.includes('View AAR'))).toBeFalse();
+  });
+
+  describe('Resume (POST /exercises/{id}/resume)', () => {
+    const resumeButton = (el: HTMLElement) =>
+      Array.from(el.querySelectorAll('button')).find(b => b.textContent?.includes('Resume'));
+
+    it('resumes a paused exercise and reloads its state', async () => {
+      const el = await render('instructor', 'paused');
+      api.resumeExercise.and.returnValue(of({} as any));
+      api.get.calls.reset();
+      api.get.and.returnValue(of(detail('running')) as any);
+      resumeButton(el)!.click();
+      fixture.detectChanges();
+      expect(api.resumeExercise).toHaveBeenCalledOnceWith('ex1');
+      expect(api.get).toHaveBeenCalled();
+      expect((fixture.componentInstance as any).detail?.state).toBe('running');
+      expect(resumeButton(el)).toBeUndefined();
+    });
+
+    it('ignores a second click while the first is in flight', async () => {
+      const el = await render('instructor', 'paused');
+      const pending = new Subject<any>();
+      api.resumeExercise.and.returnValue(pending);
+      resumeButton(el)!.click();
+      fixture.componentInstance.resume();
+      expect(api.resumeExercise).toHaveBeenCalledTimes(1);
+      pending.complete();
+    });
+
+    it('is not offered to a Student or an observer', async () => {
+      expect(resumeButton(await render('student', 'paused'))).toBeUndefined();
+      fixture.destroy();
+      TestBed.resetTestingModule();
+      expect(resumeButton(await render('observer', 'paused'))).toBeUndefined();
+    });
   });
 
   it('gives staff the full attempts table', async () => {
@@ -132,7 +172,7 @@ describe('ExerciseDetailComponent inject log', () => {
         provideRouter([]),
         { provide: ApiService, useValue: mockApi },
         { provide: NotificationService, useValue: jasmine.createSpyObj('NotificationService', ['success', 'error']) },
-        { provide: AuthService, useValue: { canSubmitDetections: signal(false), isInstructor: signal(true) } },
+        { provide: AuthService, useValue: fakeAuth('instructor') },
         { provide: ActivatedRoute, useValue: { snapshot: { paramMap: convertToParamMap({ id: 'ex-1' }) } } },
       ],
     }).compileComponents();

@@ -69,6 +69,14 @@ describe('LearningPreviewComponent', () => {
     expect(el.querySelector('.notice')).not.toBeNull();
   });
 
+  it('labels every view as fictional demo data', async () => {
+    for (const url of ['/preview', '/preview?view=readiness', '/preview?view=moodle']) {
+      const { el } = await open(url);
+      expect(el.querySelector('[data-testid="demo-banner"]')?.textContent)
+        .withContext(url).toContain('Demo — fictional data');
+    }
+  });
+
   it('shows the commander readiness preview for ?view=readiness', async () => {
     const { cmp, el } = await open('/preview?view=readiness');
     expect(cmp.view()).toBe('readiness');

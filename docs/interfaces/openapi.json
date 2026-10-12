@@ -21757,6 +21757,37 @@
         ]
       }
     },
+    "/courses/enrollments/mine": {
+      "get": {
+        "description": "The caller's own course enrolments, newest first (the catalogue's Enrolled state).\n\nOnly the caller's: no permission needed and no way to ask for anyone else's. Declared\nbefore ``/{course_id}`` so the path is not read as a course id.",
+        "operationId": "my_enrollments_courses_enrollments_mine_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EnrollmentOut"
+                  },
+                  "title": "Response My Enrollments Courses Enrollments Mine Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "My Enrollments",
+        "tags": [
+          "courses"
+        ]
+      }
+    },
     "/courses/generate-programme-paths": {
       "post": {
         "description": "Build unpublished LearningPaths for the imported programme, term by term.\n\n**Permission: course:author** (was: any signed-in user).\n\nDelivery schedule only. These paths carry no qualification claim and are separate\nfrom the CFITES developmental paths generated from the QSP spine.",
@@ -22091,7 +22122,7 @@
     },
     "/courses/{course_id}/enroll": {
       "post": {
-        "description": "Enroll a user in a course.\n\nEnrolling someone *other* than yourself is an administrative act. This\nendpoint previously trusted ``body.user_id`` outright, so any authenticated\nuser could enroll anyone else in any course in their tenant.",
+        "description": "Enroll a user in a course: a Student's self-enrolment, or an admin enrolling someone.\n\nEnrolling someone *other* than yourself is an administrative act (``user:update``, own\ntenant). The server decides eligibility, whatever the client shows:\n\n- the course is in the caller's catalogue: their tenant's, or a global (shared) one \u2014\n  another tenant's is 404, as for any read;\n- it is published, unless the caller authors courses \u2014 a draft is 404, as on every read;\n- it is not retired (a stub superseded by authored content) \u2014 409.\n\nIdempotent: enrolling again answers 200 with the existing enrolment (it used to be 409,\nso a second click read as a failure). Two racing requests make one row (unique\n``uq_user_course``; the loser's IntegrityError returns the winner's row).\n\nSource (app/enrollment.py): enrolling yourself is ``self`` \u2014 the course's content, but\nno seat in an exercise someone booked for the course. Enrolling someone else is\n``assigned``, and upgrades their own ``self`` row.",
         "operationId": "enroll_user_courses__course_id__enroll_post",
         "parameters": [
           {
@@ -22116,6 +22147,16 @@
           "required": true
         },
         "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnrollmentOut"
+                }
+              }
+            },
+            "description": "Already enrolled: the existing enrolment, unchanged"
+          },
           "201": {
             "content": {
               "application/json": {

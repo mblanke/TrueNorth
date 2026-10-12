@@ -85,15 +85,28 @@ interface DeploymentProfile {
           <span class="workspace-action">Open your learning workspace <mat-icon>arrow_forward</mat-icon></span>
         </a>
         <div class="workspace-support">
-          <a routerLink="/exercises"><strong>Prepare an exercise</strong><span>Bring the scenario, range, and training run together.</span><mat-icon>arrow_forward</mat-icon></a>
-          <a routerLink="/authoring"><strong>Create training content</strong><span>Work on scenarios, detections, and range designs.</span><mat-icon>arrow_forward</mat-icon></a>
-          <a routerLink="/scoring"><strong>Review the evidence</strong><span>Inspect scoring and after-action reports.</span><mat-icon>arrow_forward</mat-icon></a>
+          <!-- Each link only for a role the route's guard admits (PAGE_ACCESS, mirrored
+               from rbac.py); a Student was shown Authoring and bounced back here. -->
+          @if (auth.can('exercise:create')) {
+            <a routerLink="/exercises"><strong>Prepare an exercise</strong><span>Bring the scenario, range, and training run together.</span><mat-icon>arrow_forward</mat-icon></a>
+          } @else {
+            <a routerLink="/exercises"><strong>Your exercises</strong><span>Open a training run and submit your detections.</span><mat-icon>arrow_forward</mat-icon></a>
+          }
+          @if (auth.canOpen('authoring')) {
+            <a routerLink="/authoring"><strong>Create training content</strong><span>Work on scenarios, detections, and range designs.</span><mat-icon>arrow_forward</mat-icon></a>
+          }
+          @if (auth.canOpen('scoring')) {
+            <a routerLink="/scoring"><strong>Review the evidence</strong><span>Inspect scoring and after-action reports.</span><mat-icon>arrow_forward</mat-icon></a>
+          }
           @if (auth.canViewSchedule()) {
             <a routerLink="/schedule"><strong>Plan the schedule</strong><span>Book sessions, check cluster capacity, subscribe in your calendar.</span><mat-icon>arrow_forward</mat-icon></a>
           }
         </div>
       </section>
 
+      <!-- Hosts and capacity need infra:read; without it the calls 403 and the panel
+           showed "No ESXi hosts yet", which was not true. -->
+      @if (auth.canOpen('infrastructure')) {
       <details class="workspace-disclosure">
       <summary><strong>Platform & capacity</strong><span>Recent activity counts, connected hosts, and deployment estimates</span></summary>
       <div class="stats-row" tnEnterStagger>
@@ -269,6 +282,7 @@ interface DeploymentProfile {
       </div>
 
       </details>
+      }
       <!-- ──── RECENT ACTIVITY ────────────────────────────────────────────────────────────────── -->
       <div class="recent-row">
         <div class="recent-col">
@@ -283,13 +297,17 @@ interface DeploymentProfile {
                     <span class="status-chip" [class]="range.state">{{ range.state }}</span>
                   </mat-card-subtitle>
                 </mat-card-header>
-                <mat-card-actions>
-                  <button mat-button [routerLink]="['/ranges']">View</button>
-                </mat-card-actions>
+                @if (auth.canOpen('authoringRanges')) {
+                  <mat-card-actions>
+                    <button mat-button [routerLink]="['/ranges']">View</button>
+                  </mat-card-actions>
+                }
               </mat-card>
             }
             @empty {
-              <mat-card><mat-card-content>No ranges yet. <a routerLink="/ranges">Create one</a></mat-card-content></mat-card>
+              <mat-card><mat-card-content>No ranges yet.
+                @if (auth.canOpen('authoringRanges')) { <a routerLink="/ranges">Create one</a> }
+              </mat-card-content></mat-card>
             }
           </div>
         </div>
@@ -358,28 +376,53 @@ interface DeploymentProfile {
           </mat-card-actions>
         </mat-card>
 
-        <mat-card class="personal-card" tnHoverLift>
-          <mat-card-header>
-            <mat-icon mat-card-avatar>public</mat-icon>
-            <mat-card-title>People & teams</mat-card-title>
-          </mat-card-header>
-          <mat-card-content>
-            <p class="card-note">Open the directory to explore teams and membership.</p>
-          </mat-card-content>
-          <mat-card-actions>
-            <button mat-button routerLink="/users">View Directory</button>
-          </mat-card-actions>
-        </mat-card>
+        <!-- /users is admin only (adminGuard). -->
+        @if (auth.isAdmin()) {
+          <mat-card class="personal-card" tnHoverLift>
+            <mat-card-header>
+              <mat-icon mat-card-avatar>public</mat-icon>
+              <mat-card-title>People & teams</mat-card-title>
+            </mat-card-header>
+            <mat-card-content>
+              <p class="card-note">Open the directory to explore teams and membership.</p>
+            </mat-card-content>
+            <mat-card-actions>
+              <button mat-button routerLink="/users">View Directory</button>
+            </mat-card-actions>
+          </mat-card>
+        }
+        @if (auth.canOpen('approvals')) {
+          <mat-card class="personal-card" tnHoverLift>
+            <mat-card-header>
+              <mat-icon mat-card-avatar>how_to_reg</mat-icon>
+              <mat-card-title>Registration approvals</mat-card-title>
+            </mat-card-header>
+            <mat-card-content>
+              <p class="card-note">Approve or decline people waiting for an account.</p>
+            </mat-card-content>
+            <mat-card-actions>
+              <button mat-button routerLink="/approvals">Open the queue</button>
+            </mat-card-actions>
+          </mat-card>
+        }
       </div>
 
-      <!-- Quick Actions -->
+      <!-- Quick Actions: each only for a role its page admits. -->
       <h2 class="section-heading"><mat-icon>bolt</mat-icon> Quick Actions</h2>
       <div class="quick-actions">
-        <button mat-stroked-button routerLink="/authoring/ranges/designer"><mat-icon>architecture</mat-icon> Design Range</button>
-        <button mat-stroked-button routerLink="/authoring/scenarios"><mat-icon>build</mat-icon> Build Scenario</button>
+        @if (auth.canOpen('authoringRanges')) {
+          <button mat-stroked-button routerLink="/authoring/ranges/designer"><mat-icon>architecture</mat-icon> Design Range</button>
+        }
+        @if (auth.canOpen('authoringScenarios')) {
+          <button mat-stroked-button routerLink="/authoring/scenarios"><mat-icon>build</mat-icon> Build Scenario</button>
+        }
         <button mat-stroked-button routerLink="/learning/courses"><mat-icon>school</mat-icon> Browse Courses</button>
-        <button mat-stroked-button routerLink="/infrastructure"><mat-icon>dns</mat-icon> Manage Infra</button>
-        <button mat-stroked-button routerLink="/ai-orchestrator"><mat-icon>psychology</mat-icon> AI Config</button>
+        @if (auth.canOpen('infrastructure')) {
+          <button mat-stroked-button routerLink="/infrastructure"><mat-icon>dns</mat-icon> Manage Infra</button>
+        }
+        @if (auth.canOpen('aiOrchestrator')) {
+          <button mat-stroked-button routerLink="/ai-orchestrator"><mat-icon>psychology</mat-icon> AI Config</button>
+        }
       </div>
     </div>
   `,
@@ -563,8 +606,8 @@ export class DashboardComponent implements OnInit {
       error: () => {},
     });
 
-    // Cluster discovery
-    this.refreshCluster();
+    // Cluster discovery: infra:read only (the panel is not shown otherwise)
+    if (this.auth.canOpen('infrastructure')) this.refreshCluster();
 
     // Capacity & events: staff only, the API refuses Students (ADR 0004)
     if (this.auth.canViewSchedule()) {

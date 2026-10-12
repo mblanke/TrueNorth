@@ -1,7 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
-import { signal } from '@angular/core';
 import { ActivatedRoute, convertToParamMap } from '@angular/router';
+import { fakeAuth } from '@core/auth/fake-auth';
 import { of, throwError } from 'rxjs';
 
 import { ScoringComponent } from './scoring.component';
@@ -47,7 +47,7 @@ describe('ScoringComponent acknowledge control', () => {
       imports: [ScoringComponent, NoopAnimationsModule],
       providers: [
         { provide: ApiService, useValue: api },
-        { provide: AuthService, useValue: { canAcknowledgeObjectives: signal(canAck) } },
+        { provide: AuthService, useValue: fakeAuth(canAck ? 'instructor' : 'student') },
         { provide: NotificationService, useValue: jasmine.createSpyObj('NotificationService', ['success', 'error']) },
         { provide: ActivatedRoute, useValue: { snapshot: { queryParamMap: convertToParamMap({}) } } },
       ],
@@ -80,6 +80,7 @@ describe('ScoringComponent (after-action review)', () => {
   let api: jasmine.SpyObj<ApiService>;
   let notify: jasmine.SpyObj<NotificationService>;
   let query: Record<string, string>;
+  let auth: ReturnType<typeof fakeAuth>;
 
   const exercise = { id: 'e1', name: 'Op Tern', state: 'completed', total_score: 60, max_score: 100 } as Exercise;
   const aar = { id: 'a1', exercise_id: 'e1', report_json: '{}', report_html: '' } as unknown as AAR;
@@ -91,7 +92,7 @@ describe('ScoringComponent (after-action review)', () => {
       providers: [
         { provide: ApiService, useValue: api },
         { provide: NotificationService, useValue: notify },
-        { provide: AuthService, useValue: { canAcknowledgeObjectives: signal(true) } },
+        { provide: AuthService, useValue: auth },
         { provide: ActivatedRoute, useValue: { snapshot: { queryParamMap: convertToParamMap(query) } } },
       ],
     }).compileComponents();
@@ -102,6 +103,7 @@ describe('ScoringComponent (after-action review)', () => {
 
   beforeEach(() => {
     query = {};
+    auth = fakeAuth('instructor');
     api = jasmine.createSpyObj('ApiService', [
       'listExercises', 'getExercise', 'listObjectives', 'getAAR', 'generateAAR', 'getAARHtml', 'getAARPdf', 'ackObjective',
     ]);
@@ -181,5 +183,44 @@ describe('ScoringComponent (after-action review)', () => {
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('[data-testid="aar-view"]')).toBeTruthy();
     expect(fixture.nativeElement.querySelector('[data-testid="aar-pdf"]')).toBeTruthy();
+  });
+
+  // R0-B: observers read Scoring & AAR without its mutating controls; a Student reads the
+  // report of an exercise they took part in and is told plainly when there is none.
+  const generateButton = () => Array.from(fixture.nativeElement.querySelectorAll('button') as NodeListOf<HTMLElement>)
+    .find(b => /Generate AAR|Regenerate AAR/.test(b.textContent ?? ''));
+
+  it('gives an observer the report but no Generate or Acknowledge', async () => {
+    auth = fakeAuth('observer');
+    api.listObjectives.and.returnValue(of([{ id: 'o1', exercise_id: 'e1', ref_id: 'x', objective_type: 'detection',
+      description: 'd', validator: 'manual', points: 5, achieved: false } as Objective]));
+    query = { exercise: 'e1' };
+    await create();
+    fixture.detectChanges();
+    expect(generateButton()).toBeUndefined();
+    expect(fixture.nativeElement.textContent).not.toContain('Acknowledge');
+    expect(fixture.nativeElement.querySelector('[data-testid="aar-view"]')).toBeTruthy();
+  });
+
+  it('tells a Student there is no report they can open (404), instead of offering Generate', async () => {
+    auth = fakeAuth('student');
+    api.getAAR.and.returnValue(throwError(() => ({ status: 404, error: { detail: 'AAR not found' } })));
+    query = { exercise: 'e1' };
+    await create();
+    fixture.detectChanges();
+    expect(generateButton()).toBeUndefined();
+    expect(fixture.nativeElement.querySelector('[data-testid="aar-none"]')?.textContent)
+      .toContain('an exercise you took part in');
+    expect(fixture.nativeElement.querySelector('iframe.aar-frame')).toBeNull();
+  });
+
+  it('says the report failed to load rather than that there is none', async () => {
+    auth = fakeAuth('observer');
+    api.getAAR.and.returnValue(throwError(() => ({ status: 500 })));
+    query = { exercise: 'e1' };
+    await create();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[data-testid="aar-error"]')).toBeTruthy();
+    expect(fixture.nativeElement.querySelector('[data-testid="aar-none"]')).toBeNull();
   });
 });

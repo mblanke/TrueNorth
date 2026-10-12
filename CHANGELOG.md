@@ -144,6 +144,33 @@ course production with a local-model fallback, and the cleanup of unsupported su
 - Docs: v1.2.0 release notes (simulator-proven list, staging record placeholder), H6
   marked fixed, user-guide telemetry queries rewritten to the closed grammar (tested).
 
+### R0-B: web correctness and role access
+- Fix: Resume on a paused exercise called `/start` (409 unless pending), so nothing resumed;
+  it now calls `POST /exercises/{id}/resume`, sends one request per click and shows the
+  server's reason when the exercise is no longer paused. The exercise page has Resume too.
+- Menus, route guards, dashboard links and buttons follow the API's permissions: the web
+  app mirrors `ROLE_PERMISSIONS` (`core/auth/permissions.ts`, a test keeps it equal to
+  `rbac.py`). Students: their courses, exercises, own AARs, progress. Observers: Ops Center,
+  Telemetry and Scoring & AAR, read only. range_ops: Authoring with Ranges and Content
+  (templates). Instructors: a new **Registration approvals** page (`/approvals`). Telemetry
+  is in the menu for `telemetry:read`. Deep links to a page a role cannot open go to the
+  dashboard; the approvals queue says when it failed to load instead of "Nothing waiting".
+- **Behaviour change:** a Student reads an AAR only for a completed exercise they took part
+  in this run (rostered by an assigned enrolment made before the run ended and not
+  withdrawn, on one of its teams, or a detection submitted since the run started); other
+  exercises' reports, including an earlier cohort's run of the same course, are 404. They were readable
+  tenant-wide, mid-run reports (evidence, inject playbook) included.
+- **Behaviour change:** `enrollments.source` (migration `a1e2b3c4d5f6`; existing rows
+  `assigned`). A Student's own enrolment (Enrol, or a path picked in onboarding) is `self`:
+  course content, but no seat in an exercise booked for the course — no telemetry,
+  detection submission or AAR of another class's run. Staff enrolling them upgrades it.
+- Self-enrolment: **Enrol** on the course catalogue and course page. `POST
+  /courses/{id}/enroll` now accepts the shared (global) catalogue, refuses retired courses
+  (409), and answers a repeat with 200 and the existing enrolment (was 409); drafts and other
+  tenants' courses stay 404. New `GET /courses/enrollments/mine`.
+- The fictional LMS and readiness previews are off unless `TN_DEMO_PREVIEWS=true`, and then
+  carry a "Demo — fictional data" banner.
+
 ### Known limitations in v1.2.0
 - Greyspace, VyOS/OPNsense configs and per-tenant vCenter are proven on vcsim/fakes, not on
   a real vCenter (the live run on TN-MGMT01 is still pending).

@@ -6,6 +6,7 @@ import { MatExpansionModule } from '@angular/material/expansion';
 import { MatIconModule } from '@angular/material/icon';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { ApiService } from '@core/services/api.service';
+import { EnrolButtonComponent, EnrolmentsService } from './enrol-button.component';
 
 interface ModuleQuiz {
   id: string;
@@ -72,7 +73,8 @@ interface Section {
  */
 @Component({
   selector: 'tn-course-detail',
-  imports: [RouterLink, MatButtonModule, MatCardModule, MatExpansionModule, MatIconModule, MatTooltipModule],
+  imports: [RouterLink, MatButtonModule, MatCardModule, MatExpansionModule, MatIconModule, MatTooltipModule,
+    EnrolButtonComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="cd tn-quiet">
@@ -102,6 +104,11 @@ interface Section {
             </p>
           </div>
           <div class="head-actions">
+            <!-- Self-enrolment (POST /courses/{id}/enroll): the server checks the course is
+                 published, in this tenant's catalogue and not retired. -->
+            @if (c.is_published) {
+              <tn-enrol-button [courseId]="c.id" [courseName]="title(c)" />
+            }
             <!-- Moodle has no login of its own: the app hands the Student in (local_truenorth).
                  Shown only when the outline says the course is live on the tenant's Moodle. -->
             @if (moodleAvailable()) {
@@ -296,6 +303,8 @@ interface Section {
 export class CourseDetailComponent implements OnInit {
   private readonly api = inject(ApiService);
   private readonly route = inject(ActivatedRoute);
+  /** The caller's enrolments, for the Enrol button's state. */
+  private readonly enrolments = inject(EnrolmentsService);
 
   protected readonly course = signal<CourseOutline | null>(null);
   protected readonly loading = signal(true);
@@ -317,6 +326,7 @@ export class CourseDetailComponent implements OnInit {
       this.loading.set(false);
       return;
     }
+    this.enrolments.load();
     this.api.get<CourseOutline>(`/courses/${id}/outline`).subscribe({
       next: c => {
         this.course.set(c);

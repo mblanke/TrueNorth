@@ -93,9 +93,20 @@ import { Exercise, ExerciseSummary, Objective, AAR } from '@core/models';
         </div>
 
         <div class="mt-3 aar-actions">
-          <button mat-raised-button color="primary" (click)="generateAAR()">
-            <mat-icon>assessment</mat-icon> {{ aar() ? 'Regenerate AAR' : 'Generate AAR' }}
-          </button>
+          <!-- aar:generate: instructors and admins. Observers and Students only read. -->
+          @if (canGenerate()) {
+            <button mat-raised-button color="primary" (click)="generateAAR()">
+              <mat-icon>assessment</mat-icon> {{ aar() ? 'Regenerate AAR' : 'Generate AAR' }}
+            </button>
+          } @else if (aarState() === 'none') {
+            <p class="meta" data-testid="aar-none">
+              No after-action report you can open for this exercise yet. Reports appear once
+              your instructor generates one{{ isStudent() ? ' for an exercise you took part in' : '' }}.
+            </p>
+          }
+          @if (aarState() === 'error') {
+            <p class="meta" role="alert" data-testid="aar-error">The report could not be loaded. Try again.</p>
+          }
           @if (aar()) {
             <button mat-stroked-button (click)="viewAARHtml()" data-testid="aar-view">
               <mat-icon>article</mat-icon> View report
@@ -134,6 +145,12 @@ export class ScoringComponent implements OnInit {
 
   /** Students see objectives but cannot award them (objective:ack). */
   readonly canAck = this.auth.canAcknowledgeObjectives;
+  /** aar:generate (rbac.py): not observers, not Students. */
+  readonly canGenerate = () => this.auth.can('aar:generate');
+  readonly isStudent = () => this.auth.user()?.role === 'student';
+  /** 'none': the API has no report this caller may read (404, which is also its answer for
+   *  a Student who did not take part); 'error': anything else. Never shown as empty data. */
+  readonly aarState = signal<'unknown' | 'ready' | 'none' | 'error'>('unknown');
 
   private route = inject(ActivatedRoute);
 
@@ -165,11 +182,12 @@ export class ScoringComponent implements OnInit {
   loadExercise(): void {
     if (!this.selectedExerciseId) return;
     this.aarHtml.set(null);
+    this.aarState.set('unknown');
     this.api.getExercise(this.selectedExerciseId).subscribe(e => this.selectedExercise.set(e));
     this.api.listObjectives(this.selectedExerciseId).subscribe(o => this.objectives.set(o));
     this.api.getAAR(this.selectedExerciseId).subscribe({
-      next: a => { this.aar.set(a); this.viewAARHtml(); },
-      error: () => this.aar.set(null),
+      next: a => { this.aar.set(a); this.aarState.set('ready'); this.viewAARHtml(); },
+      error: (err) => { this.aar.set(null); this.aarState.set(err?.status === 404 ? 'none' : 'error'); },
     });
   }
 
@@ -184,6 +202,7 @@ export class ScoringComponent implements OnInit {
     this.api.generateAAR(this.selectedExerciseId).subscribe({
       next: a => {
         this.aar.set(a);
+        this.aarState.set('ready');
         this.notify.success('AAR generated');
         this.viewAARHtml();
       },

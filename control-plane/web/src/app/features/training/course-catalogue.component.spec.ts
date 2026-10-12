@@ -1,7 +1,10 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { ActivatedRoute, Router, convertToParamMap, provideRouter } from '@angular/router';
-import { of } from 'rxjs';
+import { Subject, of, throwError } from 'rxjs';
+import { ApiService, Enrollment } from '@core/services/api.service';
+import { AuthService } from '@core/services/auth.service';
+import { fakeAuth } from '@core/auth/fake-auth';
 
 import { CourseCatalogueComponent, catalogueStages } from './course-catalogue.component';
 import { CurriculumMap, CurriculumMapService, NodeCourse, QualNode } from '@core/services/curriculum-map.service';
@@ -64,14 +67,20 @@ describe('CourseCatalogueComponent', () => {
   let fixture: ComponentFixture<CourseCatalogueComponent>;
   let el: HTMLElement;
   let navigate: jasmine.Spy;
+  let api: jasmine.SpyObj<ApiService>;
 
-  async function render(map: CurriculumMap, query: Record<string, string> = {}): Promise<void> {
+  async function render(map: CurriculumMap, query: Record<string, string> = {}, mine: Enrollment[] = []): Promise<void> {
+    api = jasmine.createSpyObj<ApiService>('ApiService', ['myEnrollments', 'enrollInCourse']);
+    api.myEnrollments.and.returnValue(of(mine));
+    api.enrollInCourse.and.callFake((courseId: string) => of(enrolment(courseId)));
     await TestBed.configureTestingModule({
       imports: [CourseCatalogueComponent, NoopAnimationsModule],
       providers: [
         provideRouter([]),
         { provide: CurriculumMapService, useValue: { map: () => of(map), refresh: () => of(map) } },
         { provide: ActivatedRoute, useValue: { snapshot: { queryParamMap: convertToParamMap(query) } } },
+        { provide: ApiService, useValue: api },
+        { provide: AuthService, useValue: fakeAuth('student') },
       ],
     }).compileComponents();
     navigate = spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true);
@@ -117,4 +126,74 @@ describe('CourseCatalogueComponent', () => {
     await render(MAP, { course: 'abc-123' });
     expect(navigate).toHaveBeenCalledWith(['/learning/courses', 'abc-123'], { replaceUrl: true });
   });
+
+  // ── Self-enrolment (R0-B) ────────────────────────────────────────
+  describe('Enrol', () => {
+    async function search(q: string, mine: Enrollment[] = []): Promise<void> {
+      await render(MAP, {}, mine);
+      const input = el.querySelector<HTMLInputElement>('input[type="search"]')!;
+      input.value = q;
+      input.dispatchEvent(new Event('input'));
+      fixture.detectChanges();
+    }
+    const rowOf = (code: string) => el.querySelector(`[data-course="${code}"]`)!.closest('li')!;
+    const enrolButton = (code: string) => rowOf(code).querySelector<HTMLButtonElement>('[data-testid="enrol"]');
+
+    it('offers Enrol on a published course, outside the course link, and not on a draft', async () => {
+      await search('CST10');
+      expect(enrolButton('CST101')).not.toBeNull();
+      expect(enrolButton('CST101')!.closest('a')).toBeNull();
+      expect(enrolButton('CST101')!.getAttribute('aria-label')).toBe('Enrol on Course CST101');
+      expect(enrolButton('CST102')).toBeNull();
+    });
+
+    it('shows the courses the server says I am enrolled on', async () => {
+      await search('CST101', [enrolment('id-CST101')]);
+      expect(api.myEnrollments).toHaveBeenCalled();
+      expect(rowOf('CST101').querySelector('[data-testid="enrolled"]')).not.toBeNull();
+      expect(enrolButton('CST101')).toBeNull();
+    });
+
+    it('POSTs /courses/{id}/enroll for myself and shows Enrolled once the server confirms', async () => {
+      await search('CST101');
+      enrolButton('CST101')!.click();
+      fixture.detectChanges();
+      expect(api.enrollInCourse).toHaveBeenCalledOnceWith('id-CST101', 'u-self');
+      expect(rowOf('CST101').querySelector('[data-testid="enrolled"]')).not.toBeNull();
+    });
+
+    it('sends one request for a double click', async () => {
+      const pending = new Subject<Enrollment>();
+      await search('CST101');
+      api.enrollInCourse.and.returnValue(pending);
+      const button = enrolButton('CST101')!;
+      button.click();
+      fixture.detectChanges();
+      button.click();
+      expect(api.enrollInCourse).toHaveBeenCalledTimes(1);
+      expect(button.disabled).toBeTrue();
+      pending.next(enrolment('id-CST101'));
+      pending.complete();
+      fixture.detectChanges();
+      expect(rowOf('CST101').querySelector('[data-testid="enrolled"]')).not.toBeNull();
+    });
+
+    it('shows the server\'s refusal and stays un-enrolled', async () => {
+      await search('CST101');
+      api.enrollInCourse.and.returnValue(throwError(() =>
+        ({ status: 409, error: { detail: 'This course is retired and no longer takes enrolments' } })));
+      enrolButton('CST101')!.click();
+      fixture.detectChanges();
+      expect(rowOf('CST101').querySelector('[role="alert"]')?.textContent).toContain('retired');
+      expect(rowOf('CST101').querySelector('[data-testid="enrolled"]')).toBeNull();
+      expect(enrolButton('CST101')!.disabled).toBeFalse();
+    });
+  });
 });
+
+function enrolment(courseId: string): Enrollment {
+  return {
+    id: `e-${courseId}`, user_id: 'u-self', course_id: courseId, tenant_id: 't', status: 'enrolled',
+    enrolled_at: '2026-10-12T00:00:00Z', final_score: 0, max_score: 0, created_at: '2026-10-12T00:00:00Z',
+  } as Enrollment;
+}

@@ -1,4 +1,4 @@
-import { Component, OnInit, inject, signal, computed } from '@angular/core';
+import { Component, OnInit, inject, input, signal, computed } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatCardModule } from '@angular/material/card';
 import { MatTableModule } from '@angular/material/table';
@@ -14,8 +14,8 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { RegistrationApiService, RegistrationRequest } from '@core/services/registration-api.service';
 import { EmptyStateComponent } from '../../shared/components/empty-state/empty-state.component';
-
-const ROLES = ['student', 'instructor', 'observer', 'range_ops', 'admin'];
+import type { UserRole } from '@core/services/auth.service';
+import { grantableRoles } from '@core/auth/permissions';
 
 /**
  * The instructor's intake queue.
@@ -91,6 +91,13 @@ const ROLES = ['student', 'instructor', 'observer', 'range_ops', 'admin'];
 
       @if (loading()) {
         <div class="centred"><mat-spinner diameter="32" /></div>
+      } @else if (loadError()) {
+        <tn-empty-state
+          icon="error_outline"
+          title="The queue could not be loaded"
+          [message]="loadError()!">
+          <button mat-stroked-button (click)="load()">Retry</button>
+        </tn-empty-state>
       } @else if (!requests().length) {
         <tn-empty-state
           icon="how_to_reg"
@@ -286,7 +293,14 @@ export class ApprovalsPanelComponent implements OnInit {
   private readonly registration = inject(RegistrationApiService);
   private readonly snack = inject(MatSnackBar);
 
-  readonly roles = ROLES;
+  /** Who is approving. /users is admin only, so 'admin' unless the host says otherwise
+   *  (the instructors' /approvals page passes the signed-in role). */
+  readonly approverRole = input<UserRole>('admin');
+  /** Only what this approver may grant (grant_refusal in rbac.py); the API refuses the rest. */
+  get roles(): string[] {
+    return grantableRoles(this.approverRole());
+  }
+  loadError = signal<string | null>(null);
   columns = ['select', 'person', 'groups', 'suggested', 'cohort', 'status', 'actions'];
 
   requests = signal<RegistrationRequest[]>([]);
@@ -305,8 +319,8 @@ export class ApprovalsPanelComponent implements OnInit {
   }
 
   label(role: string): string {
-    // `student` is the wire value; "Trainee" is what people here call it.
-    return role === 'student' ? 'Trainee' : role.replace('_', ' ');
+    // `student` is the wire value and what people here call it too.
+    return role === 'student' ? 'Student' : role.replace('_', ' ');
   }
 
   groupsOf(r: RegistrationRequest): string[] {
@@ -320,6 +334,7 @@ export class ApprovalsPanelComponent implements OnInit {
 
   load(): void {
     this.loading.set(true);
+    this.loadError.set(null);
     this.selectedIds.set(new Set());
     const params = new URLSearchParams({ status: this.statusFilter });
     if (this.cohortFilter) {
@@ -333,12 +348,18 @@ export class ApprovalsPanelComponent implements OnInit {
           for (const r of rows ?? []) {
             // Default the picker to the suggestion, so the common case is one
             // click — but the value is visible and changeable before approval.
-            this.roleChoice[r.id] ??= r.suggested_role ?? 'student';
+            // A suggestion this approver cannot grant falls back to Student.
+            const suggested = r.suggested_role ?? 'student';
+            this.roleChoice[r.id] ??= this.roles.includes(suggested) ? suggested : 'student';
           }
           this.loading.set(false);
         },
-        error: () => {
+        // Not an empty queue: say it failed, so nobody reads "Nothing waiting" as true.
+        error: (err) => {
           this.requests.set([]);
+          this.loadError.set(err?.status === 403
+            ? 'Your role cannot read registration requests.'
+            : err?.error?.detail ?? 'The request failed. Try again.');
           this.loading.set(false);
         },
       });

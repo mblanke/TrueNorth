@@ -31,6 +31,15 @@ from .models import (
 
 logger = logging.getLogger(__name__)
 
+# Where an enrolment came from (``enrollments.source``). SELF: the Student enrolled
+# themselves (the catalogue's Enrol, or a path they picked in onboarding): course content,
+# but no seat in an exercise someone else booked for that course. ASSIGNED: an admin,
+# approval, a lab auto-enrol, LTI/Moodle sync or an import, and every row made before the
+# column existed.
+SELF = "self"
+ASSIGNED = "assigned"
+SOURCES = (SELF, ASSIGNED)
+
 
 def ensure_enrollment(
     db: Session,
@@ -38,25 +47,38 @@ def ensure_enrollment(
     user_id: uuid.UUID,
     course_id: uuid.UUID,
     tenant_id: uuid.UUID | str,
+    source: str = ASSIGNED,
 ) -> Enrollment:
     """Enroll ``user_id`` on ``course_id``, creating ModuleProgress rows.
 
-    Returns the existing enrollment unchanged if one is already present. Flushes
-    but does not commit — the caller owns the transaction, which is what lets
-    approval create the user, the enrollment and the progress rows atomically.
+    Returns the existing enrollment if one is already present; an ``assigned`` call
+    upgrades a ``self`` row (staff putting a Student in the class they joined on their
+    own), never the reverse. Flushes but does not commit — the caller owns the
+    transaction, which is what lets approval create the user, the enrollment and the
+    progress rows atomically.
+
+    ``source`` (SOURCES): ``self`` when the Student enrolled themselves; ``assigned`` for
+    everything else. Only assigned enrolments seat a Student in an exercise booked for
+    the course (``rostered_course_ids``).
     """
+    if source not in SOURCES:
+        raise ValueError(f"unknown enrollment source {source!r}")
     existing = (
         db.query(Enrollment)
         .filter(Enrollment.user_id == user_id, Enrollment.course_id == course_id)
         .first()
     )
     if existing:
+        if source == ASSIGNED and existing.source != ASSIGNED:
+            existing.source = ASSIGNED
+            db.flush()
         return existing
 
     enrollment = Enrollment(
         user_id=user_id,
         course_id=course_id,
         tenant_id=tenant_id,
+        source=source,
         status=EnrollmentStatus.enrolled,
     )
     db.add(enrollment)
@@ -169,11 +191,12 @@ def ensure_path_enrollment(
     user_id: uuid.UUID,
     learning_path_id: uuid.UUID,
     tenant_id: uuid.UUID | str,
+    source: str = ASSIGNED,
 ) -> list[Enrollment]:
     """Enroll ``user_id`` on every course in a learning path. Idempotent."""
     courses = courses_for_learning_path(db, learning_path_id, tenant_id=tenant_id)
     return [
-        ensure_enrollment(db, user_id=user_id, course_id=c.id, tenant_id=tenant_id) for c in courses
+        ensure_enrollment(db, user_id=user_id, course_id=c.id, tenant_id=tenant_id, source=source) for c in courses
     ]
 
 
@@ -203,5 +226,24 @@ def active_course_ids(db: Session, user_id: uuid.UUID) -> list[uuid.UUID]:
         cid
         for (cid,) in db.query(Enrollment.course_id)
         .filter(Enrollment.user_id == user_id, Enrollment.status.in_(ACTIVE_STATUSES))
+        .all()
+    ]
+
+
+def rostered_course_ids(db: Session, user_id: uuid.UUID) -> list[uuid.UUID]:
+    """Courses whose class the user was put in (``assigned``) and still studies.
+
+    The roster of an exercise booked for a course (exercise_participants, telemetry_access).
+    A self-enrolment does not count: enrolling on a shared course must not seat a Student
+    in another class's booked exercise (its live telemetry, detection credit, its AAR).
+    """
+    return [
+        cid
+        for (cid,) in db.query(Enrollment.course_id)
+        .filter(
+            Enrollment.user_id == user_id,
+            Enrollment.status.in_(ACTIVE_STATUSES),
+            Enrollment.source == ASSIGNED,
+        )
         .all()
     ]

@@ -1344,6 +1344,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/courses/enrollments/mine": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * My Enrollments
+         * @description The caller's own course enrolments, newest first (the catalogue's Enrolled state).
+         *
+         *     Only the caller's: no permission needed and no way to ask for anyone else's. Declared
+         *     before ``/{course_id}`` so the path is not read as a course id.
+         */
+        get: operations["my_enrollments_courses_enrollments_mine_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/courses/generate-programme-paths": {
         parameters: {
             query?: never;
@@ -1488,11 +1511,23 @@ export interface paths {
         put?: never;
         /**
          * Enroll User
-         * @description Enroll a user in a course.
+         * @description Enroll a user in a course: a Student's self-enrolment, or an admin enrolling someone.
          *
-         *     Enrolling someone *other* than yourself is an administrative act. This
-         *     endpoint previously trusted ``body.user_id`` outright, so any authenticated
-         *     user could enroll anyone else in any course in their tenant.
+         *     Enrolling someone *other* than yourself is an administrative act (``user:update``, own
+         *     tenant). The server decides eligibility, whatever the client shows:
+         *
+         *     - the course is in the caller's catalogue: their tenant's, or a global (shared) one —
+         *       another tenant's is 404, as for any read;
+         *     - it is published, unless the caller authors courses — a draft is 404, as on every read;
+         *     - it is not retired (a stub superseded by authored content) — 409.
+         *
+         *     Idempotent: enrolling again answers 200 with the existing enrolment (it used to be 409,
+         *     so a second click read as a failure). Two racing requests make one row (unique
+         *     ``uq_user_course``; the loser's IntegrityError returns the winner's row).
+         *
+         *     Source (app/enrollment.py): enrolling yourself is ``self`` — the course's content, but
+         *     no seat in an exercise someone booked for the course. Enrolling someone else is
+         *     ``assigned``, and upgrades their own ``self`` row.
          */
         post: operations["enroll_user_courses__course_id__enroll_post"];
         delete?: never;
@@ -17378,6 +17413,26 @@ export interface operations {
             };
         };
     };
+    my_enrollments_courses_enrollments_mine_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnrollmentOut"][];
+                };
+            };
+        };
+    };
     generate_programme_paths_courses_generate_programme_paths_post: {
         parameters: {
             query?: never;
@@ -17612,6 +17667,15 @@ export interface operations {
             };
         };
         responses: {
+            /** @description Already enrolled: the existing enrolment, unchanged */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnrollmentOut"];
+                };
+            };
             /** @description Successful Response */
             201: {
                 headers: {

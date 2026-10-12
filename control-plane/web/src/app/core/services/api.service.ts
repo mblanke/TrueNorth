@@ -26,6 +26,8 @@ export interface InjectorInfo {
 
 /** GET /ranges/stats. `by_state` may be absent. */
 export type RangeStats = components['schemas']['RangeStatsOut'];
+/** POST /courses/{id}/enroll, GET /courses/enrollments/mine. */
+export type Enrollment = components['schemas']['EnrollmentOut'];
 /** POST /lti/session: a launched Student's TrueNorth session (core/auth/lti-session.ts). */
 export type LtiSession = components['schemas']['LtiSessionOut'];
 /** GET /integrations/lti/tool-config. */
@@ -368,6 +370,10 @@ export class ApiService {
   pauseExercise(id: string): Observable<Exercise> {
     return this.http.post<Exercise>(`${this.base}/exercises/${id}/pause`, {});
   }
+  /** A paused exercise carries on from its next unfired inject (409 unless paused). */
+  resumeExercise(id: string): Observable<Exercise> {
+    return this.http.post<Exercise>(`${this.base}/exercises/${id}/resume`, {});
+  }
   completeExercise(id: string): Observable<Exercise> {
     return this.http.post<Exercise>(`${this.base}/exercises/${id}/complete`, {});
   }
@@ -412,6 +418,18 @@ export class ApiService {
   }
   getAARPdf(exerciseId: string): Observable<Blob> {
     return this.http.get(`${this.base}/exercises/${exerciseId}/aar/pdf`, { responseType: 'blob' });
+  }
+
+  // ── Course enrolment ─────────────────────────────────────
+  /** Enrol the signed-in Student (`userId` is their own id). The server checks the course is
+   *  published and in their catalogue; enrolling again returns the existing enrolment. */
+  enrollInCourse(courseId: string, userId: string): Observable<Enrollment> {
+    const body: components['schemas']['EnrollmentIn'] = { course_id: courseId, user_id: userId };
+    return this.http.post<Enrollment>(`${this.base}/courses/${courseId}/enroll`, body);
+  }
+  /** The caller's own course enrolments. */
+  myEnrollments(): Observable<Enrollment[]> {
+    return this.http.get<Enrollment[]>(`${this.base}/courses/enrollments/mine`);
   }
 
   // ── Teams ────────────────────────────────────────────────
