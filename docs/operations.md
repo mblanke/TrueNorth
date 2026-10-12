@@ -658,68 +658,62 @@ kubectl rollout restart deployment keycloak
 
 ## Disaster Recovery
 
-### Recovery Time Objectives
+Scope: the supported install, a single host running `compose.prod.yml` from the installer
+and backed up nightly by `scripts/backup/cron-backup.sh`. There is no WAL archiving,
+replication, multi-site or HA, and no Kubernetes DR path. Terraform was removed (#131).
 
-| Scenario | RTO | RPO | Priority |
-|----------|-----|-----|----------|
-| Single service failure | 5 min | 0 (no data loss) | P1 |
-| Database failure | 30 min | 15 min (WAL) | P1 |
-| Full cluster failure | 4 hours | 1 hour | P1 |
-| Data center loss | 8 hours | 1 hour | P2 |
-| Data corruption | 2 hours | Last clean backup | P1 |
+### Recovery targets
 
-### DR Runbook: Full Cluster Recovery
+The owner's targets (decided 2026-10-12):
 
-```
-Phase 1: Infrastructure (0-60 min)
-  1. Provision new Kubernetes cluster (Terraform)
-  2. Deploy infrastructure services (PostgreSQL, Redis, OpenSearch, MinIO)
-  3. Restore DNS records to new cluster
+| Target | Value | Basis |
+|--------|-------|-------|
+| RPO | 24 hours | One backup per night: anything written after the last good backup is lost |
+| RTO | 4 hours | Rebuild or repair the host, restore secrets, re-run the installer, restore data, smoke test |
 
-Phase 2: Data Restore (60-120 min)
-  4. Restore PostgreSQL from latest backup
-  5. Restore OpenSearch from snapshot
-  6. Restore MinIO from mirror
-  7. Verify data integrity
+These are targets, not measurements. The CI drill (`.github/workflows/backup-drill.yml`)
+proves backup and restore are correct on a disposable compose project; it does not time a
+restore on production-sized data. Record the measured time of the first real restore
+drill here.
 
-Phase 3: Application (120-180 min)
-  8. Deploy application services (API, Workers, AI Orchestrator)
-  9. Configure Keycloak realm
-  10. Verify API health endpoints
-  11. Run smoke tests
+### DR Runbook: host loss or data corruption
 
-Phase 4: Validation (180-240 min)
-  12. Verify all ranges in expected states
-  13. Test range provisioning
-  14. Test exercise execution
-  15. Verify WebSocket connectivity
-  16. Notify users of restoration
-```
+The full procedure is [runbooks/backup-restore.md](runbooks/backup-restore.md). In order:
+
+1. **Pick the backup.** `ls -1d $BACKUP_DIR/*/truenorth-backup-* | sort | tail`; read its
+   `manifest.json`. For corruption, pick the last backup taken before it.
+2. **Rebuilt host only: secrets first.** With the escrow private key on the host:
+   `scripts/backup/restore-secrets.sh <backup> /path/to/backup-escrow.key --secrets-dir /srv/truenorth/config/secrets`.
+   Then remove the private key.
+3. **Rebuilt host only: run the installer** (`ansible-playbook site.yml -K --ask-vault-pass`).
+   It renders the env file from the restored secrets and starts the stack.
+4. **Stop the ARC² runner** if ARC² is enabled: `sudo systemctl stop truenorth-arc2-runner`.
+   The restore refuses while it is active. To restore without the ARC² runs, pass
+   `--skip-arc2` instead.
+5. **Restore the data:**
+
+   ```bash
+   cd /srv/truenorth/app
+   set -a; . /srv/truenorth/config/backup.env; set +a
+   scripts/backup/restore.sh <backup-dir>
+   #   [--force] [--no-restart]
+   #   [--skip-postgres | --skip-minio | --skip-opensearch | --skip-moodle | --skip-arc2]
+   ```
+
+   It verifies checksums, stops the app services, restores PostgreSQL (every database),
+   MinIO, the OpenSearch snapshot, Moodle files and ARC² runs, and starts the services
+   again. It does not restore the env file and does not run migrations.
+6. **If the code is newer than the backup,** follow [runbooks/upgrade.md](runbooks/upgrade.md).
+7. **Verify:** run the installer's smoke test (`95-smoke-test`), check `/health`, sign in,
+   and confirm recent ranges and exercises are present. Start the ARC² runner again.
 
 ### DR Test Procedure
 
-Run quarterly:
-
-```bash
-# 1. Take snapshot of current state
-pg_dump -Fc truenorth_db > /backups/dr-test/pre-test.dump
-
-# 2. Stand up DR environment
-cd infra/terraform/dr
-terraform init && terraform apply
-
-# 3. Restore data
-pg_restore -h dr-db.truenorth.local -U truenorth -d truenorth_db /backups/latest.dump
-
-# 4. Deploy application
-helm install truenorth charts/truenorth -f values-dr.yaml
-
-# 5. Run validation suite
-pytest tests/dr/test_dr_validation.py -v
-
-# 6. Record results and tear down
-terraform destroy
-```
+- **Automated:** `scripts/backup/drill.sh` in CI, nightly and on every change to the backup
+  scripts. It seeds data, backs up, wipes, restores and checks row counts, buckets and
+  escrow decryption, including the rebuilt-host secrets path.
+- **On a real host:** quarterly, restore the latest backup onto a spare host with the
+  steps above. Time it against the 4-hour RTO and record the result here.
 
 ---
 
