@@ -53,7 +53,7 @@ admin_token() {
 }
 
 echo "+ groups and the identity scope (as roles/tn_keycloak creates them)"
-admin_token | python3 "$ROOT/scripts/check_keycloak_mfa.py" --base "$BASE" --create-groups
+printf '%s\n' "$ADMIN_PASSWORD" | python3 "$ROOT/scripts/check_keycloak_mfa.py" --base "$BASE" --create-groups
 
 echo "+ keycloak_mfa.py (first run)"
 admin_token | python3 "$ROOT/scripts/keycloak_mfa.py" --base "$BASE" --realm truenorth --spec "$SPEC"
@@ -66,4 +66,4 @@ if [ "$(echo "$second" | tail -1)" != "ok" ]; then
 fi
 
 echo "+ browser sign-ins"
-admin_token | python3 "$ROOT/scripts/check_keycloak_mfa.py" --base "$BASE" ${BANNER[@]+"${BANNER[@]}"}
+printf '%s\n' "$ADMIN_PASSWORD" | python3 "$ROOT/scripts/check_keycloak_mfa.py" --base "$BASE" ${BANNER[@]+"${BANNER[@]}"}

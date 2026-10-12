@@ -18,7 +18,9 @@ after scripts/keycloak_mfa.py has configured the realm. Standard library only. P
   (vii) the login page carries the banner and the acknowledgement checkbox, when the
         theme is mounted (--expect-banner).
 
-The admin token for set-up is read from stdin.
+The master realm admin password (user ``admin``) is read from stdin, never argv; a fresh
+admin token is taken for each Admin API call (admin-cli tokens live about 60 s, and the
+TOTP steps wait for the next 30 s window).
 """
 
 from __future__ import annotations
@@ -132,8 +134,15 @@ def claims(token: str) -> dict:
 
 
 class Realm:
-    def __init__(self, base: str, realm: str, token: str) -> None:
-        self.base, self.realm, self.token = base.rstrip("/"), realm, token
+    def __init__(self, base: str, realm: str, admin_password: str) -> None:
+        self.base, self.realm, self._password = base.rstrip("/"), realm, admin_password
+
+    @property
+    def token(self) -> str:
+        data = urllib.parse.urlencode({"grant_type": "password", "client_id": "admin-cli", "username": "admin",
+                                       "password": self._password}).encode()
+        with urllib.request.urlopen(f"{self.base}/realms/master/protocol/openid-connect/token", data) as r:
+            return json.load(r)["access_token"]
 
     def admin(self, method: str, path: str, body=None):
         req = urllib.request.Request(
