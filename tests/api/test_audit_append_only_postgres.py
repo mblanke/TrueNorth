@@ -176,7 +176,7 @@ def test_the_orm_writer_still_inserts(postgres_engine):
 
 def test_worker_export_and_retention_through_the_trigger(postgres_engine, tmp_path, monkeypatch):
     """The real purge path: the worker's export, then its retention, on PostgreSQL."""
-    from worker import audit_signing, audit_tasks
+    from worker import audit_jobs, audit_signing
     from worker.audit_archive import FilesystemArchive
 
     monkeypatch.setenv("AUDIT_HOT_RETENTION_DAYS", "30")
@@ -186,8 +186,8 @@ def test_worker_export_and_retention_through_the_trigger(postgres_engine, tmp_pa
     key = audit_signing.from_seed("pg-seed-" + "z" * 40)
     archive = FilesystemArchive(tmp_path / "archive")
     with Session(postgres_engine) as db:
-        audit_tasks.run_export(db, archive, key, today)
-        purged = audit_tasks.run_retention(db, archive, key, today)
+        audit_jobs.run_export(db, archive, key, today)
+        purged = audit_jobs.run_retention(db, archive, key, today)
     assert [p["rows"] for p in purged] == [2]
     with postgres_engine.connect() as conn:
         left = conn.execute(text("SELECT count(*) FROM audit_logs WHERE id = ANY(:ids)"), {"ids": old}).scalar()
@@ -200,7 +200,7 @@ def test_worker_export_and_retention_through_the_trigger(postgres_engine, tmp_pa
 
 def test_without_the_setting_the_worker_purge_is_refused(postgres_engine, tmp_path, monkeypatch):
     """If the retention job did not set tn.audit_purge, the trigger would stop it."""
-    from worker import audit_signing, audit_tasks
+    from worker import audit_jobs, audit_signing
     from worker.audit_archive import FilesystemArchive
 
     monkeypatch.setenv("AUDIT_HOT_RETENTION_DAYS", "30")
@@ -209,10 +209,10 @@ def test_without_the_setting_the_worker_purge_is_refused(postgres_engine, tmp_pa
     archive = FilesystemArchive(tmp_path / "archive")
     today = datetime.now(UTC).date()
     with Session(postgres_engine) as db:
-        audit_tasks.run_export(db, archive, key, today)
-        monkeypatch.setattr(audit_tasks, "_allow_purge", lambda db: None)  # no tn.audit_purge
+        audit_jobs.run_export(db, archive, key, today)
+        monkeypatch.setattr(audit_jobs, "_allow_purge", lambda db: None)  # no tn.audit_purge
         with pytest.raises(DBAPIError, match=REFUSED):
-            audit_tasks.run_retention(db, archive, key, today)
+            audit_jobs.run_retention(db, archive, key, today)
 
 
 def test_downgrade_then_upgrade_round_trips(postgres_engine):

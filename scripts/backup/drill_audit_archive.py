@@ -30,7 +30,7 @@ def seed(directory: str) -> int:
     import sqlalchemy as sa
     from sqlalchemy.orm import Session
     from sqlalchemy.pool import StaticPool
-    from worker import audit_signing, audit_tasks
+    from worker import audit_jobs, audit_signing
     from worker.audit_archive import FilesystemArchive
     from worker.tables import audit_export_checks, audit_exports, audit_logs
 
@@ -45,7 +45,7 @@ def seed(directory: str) -> int:
                     user_id=None, tenant_id=None, action="drill", resource_type="probe", resource_id=str(i),
                     detail=None))
         db.commit()
-        written = audit_tasks.run_export(db, FilesystemArchive(directory), audit_signing.from_seed(DRILL_SEED), today)
+        written = audit_jobs.run_export(db, FilesystemArchive(directory), audit_signing.from_seed(DRILL_SEED), today)
     print(f"{len(written)} signed exports in {directory}")
     return 0
 
@@ -73,7 +73,7 @@ def extend(directory: str) -> int:
     import sqlalchemy as sa
     from sqlalchemy.orm import Session
     from sqlalchemy.pool import StaticPool
-    from worker import audit_signing, audit_tasks
+    from worker import audit_jobs, audit_signing
     from worker.audit_archive import FilesystemArchive
     from worker.tables import audit_export_checks, audit_exports, audit_logs
 
@@ -93,7 +93,7 @@ def extend(directory: str) -> int:
             id=uuid.uuid4(), timestamp=datetime.combine(new_day, time(9), tzinfo=UTC), user_id=None,
             tenant_id=None, action="drill-after-backup", resource_type="probe", resource_id="late", detail=None))
         db.commit()
-        written = audit_tasks.run_export(db, FilesystemArchive(directory), audit_signing.from_seed(DRILL_SEED),
+        written = audit_jobs.run_export(db, FilesystemArchive(directory), audit_signing.from_seed(DRILL_SEED),
                                          new_day + timedelta(days=1))
     print(f"{len(written)} more export(s): {', '.join(str(w.day) for w in written)}")
     return 0

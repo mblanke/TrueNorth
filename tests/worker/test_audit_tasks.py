@@ -17,7 +17,7 @@ import pytest
 import sqlalchemy as sa
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
-from worker import audit_export, audit_signing, audit_tasks, audit_verify
+from worker import audit_export, audit_jobs, audit_signing, audit_tasks, audit_verify
 from worker.audit_archive import AuditArchiveError, FilesystemArchive, get_archive
 from worker.tables import audit_export_checks, audit_exports, audit_logs
 
@@ -95,7 +95,7 @@ def test_the_task_writes_nothing_without_a_seed(monkeypatch):
 def test_export_writes_file_manifest_and_signature(db, archive, key):
     d = TODAY - timedelta(days=1)
     ids = add(db, d, 3)
-    [w] = audit_tasks.run_export(db, archive, key, TODAY)
+    [w] = audit_jobs.run_export(db, archive, key, TODAY)
     assert (w.day, w.seq, w.row_count) == (d, 0, 3)
     stem = f"2026/10/audit-{d.isoformat()}"
     for suffix in (".jsonl.gz", ".manifest.json", ".manifest.json.sig"):
@@ -123,7 +123,7 @@ def test_openssl_verifies_the_signature(db, archive, key, tmp_path):
     if not exe:
         pytest.skip("needs OpenSSL 3 (pkeyutl -rawin)")
     add(db, TODAY - timedelta(days=1))
-    audit_tasks.run_export(db, archive, key, TODAY)
+    audit_jobs.run_export(db, archive, key, TODAY)
     root = archive.root
     manifest = next(root.rglob("*.manifest.json"))
     pub = root / f"keys/{key.key_id}.pub.pem"
@@ -140,7 +140,7 @@ def test_openssl_verifies_the_signature(db, archive, key, tmp_path):
 def test_days_are_chained_and_empty_days_get_a_manifest(db, archive, key):
     add(db, TODAY - timedelta(days=3), 2)
     add(db, TODAY - timedelta(days=1), 1)  # TODAY-2 has no rows
-    written = audit_tasks.run_export(db, archive, key, TODAY)
+    written = audit_jobs.run_export(db, archive, key, TODAY)
     assert [(w.day, w.row_count) for w in written] == [
         (TODAY - timedelta(days=3), 2), (TODAY - timedelta(days=2), 0), (TODAY - timedelta(days=1), 1)]
     rows = exports(db)
@@ -153,10 +153,10 @@ def test_days_are_chained_and_empty_days_get_a_manifest(db, archive, key):
 
 def test_catch_up_after_downtime_exports_every_missing_day(db, archive, key):
     add(db, TODAY - timedelta(days=10))
-    audit_tasks.run_export(db, archive, key, TODAY - timedelta(days=8))  # last run 8 days ago
+    audit_jobs.run_export(db, archive, key, TODAY - timedelta(days=8))  # last run 8 days ago
     assert [r.day for r in exports(db)] == [TODAY - timedelta(days=10), TODAY - timedelta(days=9)]
     add(db, TODAY - timedelta(days=1))
-    audit_tasks.run_export(db, archive, key, TODAY)
+    audit_jobs.run_export(db, archive, key, TODAY)
     assert [r.day for r in exports(db)] == [TODAY - timedelta(days=n) for n in range(10, 0, -1)]
     assert audit_verify.verify_archive(archive)[0] == []
 
@@ -164,17 +164,17 @@ def test_catch_up_after_downtime_exports_every_missing_day(db, archive, key):
 def test_today_is_never_exported_and_a_rerun_changes_nothing(db, archive, key):
     add(db, TODAY)
     add(db, TODAY - timedelta(days=1))
-    audit_tasks.run_export(db, archive, key, TODAY)
+    audit_jobs.run_export(db, archive, key, TODAY)
     assert [r.day for r in exports(db)] == [TODAY - timedelta(days=1)]
-    assert audit_tasks.run_export(db, archive, key, TODAY) == []
+    assert audit_jobs.run_export(db, archive, key, TODAY) == []
 
 
 def test_a_late_commit_is_exported_as_a_supplement(db, archive, key, caplog):
     d2 = TODAY - timedelta(days=2)
     add(db, d2, 2)
-    audit_tasks.run_export(db, archive, key, TODAY - timedelta(days=1))  # exports d2
+    audit_jobs.run_export(db, archive, key, TODAY - timedelta(days=1))  # exports d2
     late = add(db, d2, 1, hour=23)  # committed after d2 was exported
-    written = audit_tasks.run_export(db, archive, key, TODAY)
+    written = audit_jobs.run_export(db, archive, key, TODAY)
     supplement = [w for w in written if w.seq == 1]
     assert supplement and supplement[0].day == d2 and supplement[0].row_count == 1
     assert "AUDIT_EXPORT_MISMATCH" in caplog.text
@@ -194,11 +194,11 @@ def test_an_interrupted_export_is_adopted_on_rerun(db, archive, key, monkeypatch
 
     monkeypatch.setattr(db, "execute", crash_on_record)
     with pytest.raises(RuntimeError):
-        audit_tasks.run_export(db, archive, key, TODAY)
+        audit_jobs.run_export(db, archive, key, TODAY)
     monkeypatch.setattr(db, "execute", real_execute)
     db.rollback()
     assert exports(db) == [] and archive.exists(audit_export.manifest_name(d, 0))
-    [w] = audit_tasks.run_export(db, archive, key, TODAY)
+    [w] = audit_jobs.run_export(db, archive, key, TODAY)
     assert w.row_count == 2 and len(exports(db)) == 1
 
 
@@ -222,7 +222,7 @@ def test_unknown_backend_is_refused(monkeypatch):
 def test_a_changed_archive_byte_fails_verification(db, archive, key):
     d = TODAY - timedelta(days=1)
     add(db, d, 2)
-    audit_tasks.run_export(db, archive, key, TODAY)
+    audit_jobs.run_export(db, archive, key, TODAY)
     path = archive.root / audit_export.file_name(d, 0)
     data = bytearray(path.read_bytes())
     data[-5] ^= 0x01
@@ -234,7 +234,7 @@ def test_a_changed_archive_byte_fails_verification(db, archive, key):
 def test_a_missing_day_breaks_the_chain(db, archive, key):
     for n in (3, 2, 1):
         add(db, TODAY - timedelta(days=n))
-    audit_tasks.run_export(db, archive, key, TODAY)
+    audit_jobs.run_export(db, archive, key, TODAY)
     middle = archive.root / audit_export.manifest_name(TODAY - timedelta(days=2), 0)
     middle.unlink()
     (archive.root / (audit_export.manifest_name(TODAY - timedelta(days=2), 0) + ".sig")).unlink()
@@ -245,7 +245,7 @@ def test_a_missing_day_breaks_the_chain(db, archive, key):
 def test_a_forged_signature_fails(db, archive, key):
     d = TODAY - timedelta(days=1)
     add(db, d)
-    audit_tasks.run_export(db, archive, key, TODAY)
+    audit_jobs.run_export(db, archive, key, TODAY)
     other = audit_signing.from_seed("another-seed-" + "y" * 40)
     name = audit_export.manifest_name(d, 0)
     (archive.root / (name + ".sig")).write_bytes(other.sign(archive.get(name)))
@@ -255,7 +255,7 @@ def test_a_forged_signature_fails(db, archive, key):
 def test_verify_database_matches_counts(db, archive, key):
     d = TODAY - timedelta(days=1)
     add(db, d, 2)
-    audit_tasks.run_export(db, archive, key, TODAY)
+    audit_jobs.run_export(db, archive, key, TODAY)
     assert audit_verify.verify_database(db, archive, TODAY) == []
     db.execute(audit_logs.delete())  # SQLite has no trigger: simulate tampering
     db.commit()
@@ -267,7 +267,7 @@ def test_verify_database_matches_counts(db, archive, key):
 def test_hot_retention_is_clamped_to_30(monkeypatch, value, days):
     if value is not None:
         monkeypatch.setenv("AUDIT_HOT_RETENTION_DAYS", value)
-    assert audit_tasks.hot_retention_days() == days
+    assert audit_export.hot_retention_days() == days
 
 
 def test_retention_deletes_only_exported_days_older_than_the_cutoff(db, archive, key, monkeypatch):
@@ -275,8 +275,8 @@ def test_retention_deletes_only_exported_days_older_than_the_cutoff(db, archive,
     old, edge, recent = TODAY - timedelta(days=40), TODAY - timedelta(days=30), TODAY - timedelta(days=5)
     for d in (old, edge, recent):
         add(db, d, 2)
-    audit_tasks.run_export(db, archive, key, TODAY)
-    purged = audit_tasks.run_retention(db, archive, key, TODAY)
+    audit_jobs.run_export(db, archive, key, TODAY)
+    purged = audit_jobs.run_retention(db, archive, key, TODAY)
     assert [p["day"] for p in purged] == [old.isoformat()]
     assert audit_export.day_count(db, old) == 0
     assert audit_export.day_count(db, edge) == 2 and audit_export.day_count(db, recent) == 2
@@ -288,14 +288,14 @@ def test_retention_deletes_only_exported_days_older_than_the_cutoff(db, archive,
 def test_retention_off_with_zero(db, archive, key, monkeypatch):
     monkeypatch.setenv("AUDIT_HOT_RETENTION_DAYS", "0")
     add(db, TODAY - timedelta(days=400))
-    audit_tasks.run_export(db, archive, key, TODAY)
-    assert audit_tasks.run_retention(db, archive, key, TODAY) == []
+    audit_jobs.run_export(db, archive, key, TODAY)
+    assert audit_jobs.run_retention(db, archive, key, TODAY) == []
     assert audit_export.day_count(db, TODAY - timedelta(days=400)) == 1
 
 
 def test_retention_stops_at_a_day_without_an_export(db, archive, key, caplog):
     add(db, TODAY - timedelta(days=200))  # never exported
-    assert audit_tasks.run_retention(db, archive, key, TODAY) == []
+    assert audit_jobs.run_retention(db, archive, key, TODAY) == []
     assert "AUDIT_RETENTION_STOPPED" in caplog.text and "no export" in caplog.text
 
 
@@ -303,10 +303,10 @@ def test_retention_stops_when_the_archive_does_not_verify(db, archive, key, capl
     d = TODAY - timedelta(days=120)
     add(db, d, 2)
     add(db, d + timedelta(days=1), 1)
-    audit_tasks.run_export(db, archive, key, d + timedelta(days=2))
+    audit_jobs.run_export(db, archive, key, d + timedelta(days=2))
     path = archive.root / audit_export.file_name(d, 0)
     path.write_bytes(path.read_bytes() + b"x")
-    assert audit_tasks.run_retention(db, archive, key, TODAY) == []
+    assert audit_jobs.run_retention(db, archive, key, TODAY) == []
     assert audit_export.day_count(db, d) == 2 and audit_export.day_count(db, d + timedelta(days=1)) == 1
     assert "AUDIT_RETENTION_STOPPED" in caplog.text
 
@@ -314,9 +314,9 @@ def test_retention_stops_when_the_archive_does_not_verify(db, archive, key, capl
 def test_retention_stops_on_a_count_mismatch(db, archive, key, caplog):
     d = TODAY - timedelta(days=120)
     add(db, d, 2)
-    audit_tasks.run_export(db, archive, key, d + timedelta(days=1))
+    audit_jobs.run_export(db, archive, key, d + timedelta(days=1))
     add(db, d, 1, hour=23)  # a row the export does not hold (no supplement ran for it)
-    assert audit_tasks.run_retention(db, archive, key, TODAY) == []
+    assert audit_jobs.run_retention(db, archive, key, TODAY) == []
     assert audit_export.day_count(db, d) == 3
     assert "3 rows in the table, 2 exported" in caplog.text
 
@@ -361,7 +361,7 @@ def _resign_with(archive, name: str, other) -> None:
 def test_a_key_the_database_never_recorded_is_not_trusted(db, archive, key):
     d = TODAY - timedelta(days=1)
     add(db, d)
-    audit_tasks.run_export(db, archive, key, TODAY)
+    audit_jobs.run_export(db, archive, key, TODAY)
     name = audit_export.manifest_name(d, 0)
     forger = audit_signing.from_seed("forger-" + "f" * 40)
     _resign_with(archive, name, forger)
@@ -375,14 +375,14 @@ def test_a_key_the_database_never_recorded_is_not_trusted(db, archive, key):
 def test_retention_refuses_a_manifest_the_table_does_not_hold(db, archive, key, caplog):
     d = TODAY - timedelta(days=120)
     add(db, d, 2)
-    audit_tasks.run_export(db, archive, key, d + timedelta(days=1))
+    audit_jobs.run_export(db, archive, key, d + timedelta(days=1))
     name = audit_export.manifest_name(d, 0)
     manifest = json.loads(archive.get(name))
     manifest["generated_at"] = "2000-01-01T00:00:00+00:00"  # re-signed with the real key: valid,
     data = audit_export.manifest_bytes(manifest)              # but not what audit_exports recorded
     (archive.root / name).write_bytes(data)
     (archive.root / (name + ".sig")).write_bytes(key.sign(data))
-    assert audit_tasks.run_retention(db, archive, key, TODAY) == []
+    assert audit_jobs.run_retention(db, archive, key, TODAY) == []
     assert audit_export.day_count(db, d) == 2
     assert "does not match audit_exports.manifest_sha256" in caplog.text
 
@@ -391,8 +391,8 @@ def test_a_purge_records_its_check_first(db, archive, key, monkeypatch):
     monkeypatch.setenv("AUDIT_HOT_RETENTION_DAYS", "30")
     old = TODAY - timedelta(days=40)
     add(db, old, 2)
-    audit_tasks.run_export(db, archive, key, TODAY)
-    audit_tasks.run_retention(db, archive, key, TODAY)
+    audit_jobs.run_export(db, archive, key, TODAY)
+    audit_jobs.run_retention(db, archive, key, TODAY)
     [check] = db.execute(sa.select(audit_export_checks)).all()
     [export] = [e for e in exports(db) if e.day == old]
     assert (check.day, check.seq, check.manifest_sha256, check.row_count) == (old, 0, export.manifest_sha256, 2)
@@ -401,7 +401,7 @@ def test_a_purge_records_its_check_first(db, archive, key, monkeypatch):
 def test_verify_database_uses_the_configured_retention(db, archive, key, monkeypatch):
     d = TODAY - timedelta(days=60)
     add(db, d)
-    audit_tasks.run_export(db, archive, key, d + timedelta(days=1))
+    audit_jobs.run_export(db, archive, key, d + timedelta(days=1))
     db.execute(audit_logs.delete())
     db.commit()
     monkeypatch.setenv("AUDIT_HOT_RETENTION_DAYS", "45")
@@ -414,7 +414,7 @@ def test_verify_database_uses_the_configured_retention(db, archive, key, monkeyp
 
 def test_quarantine_is_outside_the_chain(db, archive, key):
     add(db, TODAY - timedelta(days=1))
-    audit_tasks.run_export(db, archive, key, TODAY)
+    audit_jobs.run_export(db, archive, key, TODAY)
     archive.put("quarantine/20261012T000000Z/2026/10/audit-2026-10-30.manifest.json", b"{}")
     assert not any(n.startswith("quarantine/") for n in archive.list())
     assert archive.list("quarantine/")
@@ -425,10 +425,10 @@ def test_a_conflicting_archive_day_names_the_runbook(db, archive, key):
     d = TODAY - timedelta(days=1)
     add(db, d)
     other = FilesystemArchive(archive.root)
-    audit_tasks.run_export(db, other, key, TODAY)
+    audit_jobs.run_export(db, other, key, TODAY)
     db.execute(audit_exports.delete())  # a database restored from before that export (SQLite: no trigger)
     db.execute(audit_logs.delete())
     db.commit()
     add(db, d, 3)
     with pytest.raises(audit_export.AuditExportError, match="Archive newer than the database"):
-        audit_tasks.run_export(db, archive, key, TODAY)
+        audit_jobs.run_export(db, archive, key, TODAY)

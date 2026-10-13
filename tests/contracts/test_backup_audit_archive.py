@@ -78,7 +78,7 @@ def _make_archive(path: Path) -> int:
     import sqlalchemy as sa
     from sqlalchemy.orm import Session
     from sqlalchemy.pool import StaticPool
-    from worker import audit_signing, audit_tasks
+    from worker import audit_jobs, audit_signing
     from worker.audit_archive import FilesystemArchive
     from worker.tables import audit_export_checks, audit_exports, audit_logs
 
@@ -91,7 +91,7 @@ def _make_archive(path: Path) -> int:
                 id=uuid.uuid4(), timestamp=datetime.combine(today - timedelta(days=n), time(9), tzinfo=UTC),
                 user_id=None, tenant_id=None, action="probe", resource_type="probe", resource_id=str(n), detail=None))
         db.commit()
-        written = audit_tasks.run_export(db, FilesystemArchive(path), audit_signing.from_seed("b" * 40), today)
+        written = audit_jobs.run_export(db, FilesystemArchive(path), audit_signing.from_seed("b" * 40), today)
     return len(written)
 
 

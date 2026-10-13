@@ -39,7 +39,7 @@ disable triggers and set `session_replication_role`.
    transaction, writes an `audit.purge` row (day, row count, manifest hashes) and stops at
    the first day that fails a check. While the application connects as the database owner
    these rows are evidence the job wrote, not a barrier against the owner (residual risk).
-3. **Signed daily export** (`worker/audit_tasks.py`, beat 00:45 UTC): for every UTC day
+3. **Signed daily export** (`worker/audit_jobs.py`, run by the `worker/audit_tasks.py` beat task at 00:45 UTC): for every UTC day
    before today not yet exported (so a stopped worker catches up), a gzipped JSON-lines
    file (every column, ordered by timestamp then id), a manifest (day, seq, row count,
    first/last id, file name and SHA-256, previous manifest's SHA-256, key id, time) and
