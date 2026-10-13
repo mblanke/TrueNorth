@@ -70,6 +70,10 @@ all:
           tn_load_shipped_content: true
           tn_publish_shipped_content: true
           tn_load_shipped_demo: true
+          # Owner decision (2026-10-12): the shipped demo staff skip MFA on this test host
+          # only. Honoured only with TN_TEST_HOST (ARC² auto-accept below); audited per use.
+          # Every other privileged account, the bootstrap admin included, enrols TOTP.
+          tn_mfa_demo_exempt: true
           # ARC² Course Studio on the operator's Claude subscription
           # (vault_arc2_claude_oauth_token, from `claude setup-token`; no pay-per-use key).
           tn_arc2_enabled: true
