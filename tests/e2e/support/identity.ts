@@ -35,6 +35,9 @@ function fakeJwt(typ: 'Bearer' | 'Refresh'): string {
     email: 'admin@truenorth.local',
     name: 'Dev Admin',
     realm_access: { roles: ['admin'] },
+    // As Keycloak's tn-browser flow reports a staff sign-in with a one-time code. The API
+    // here runs AUTH_DISABLED and ignores the token; the claim keeps the stub honest.
+    amr: ['pwd', 'otp'],
   };
   return `${b64url({ alg: 'none', typ: 'JWT' })}.${b64url(payload)}.e2e`;
 }

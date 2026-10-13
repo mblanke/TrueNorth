@@ -84,12 +84,22 @@ worker pings, `helm test`).
 - The **scenario-engine** image is not a service: an init container copies it into the
   api pod's `SCENARIO_ENGINE_DIR`.
 
-## Upgrading to v1.2.0: configure the realm for MFA first
+## MFA: the chart configures the realm (v1.2.0)
 
 From v1.2.0 the API refuses admin, instructor, range_ops and observer sign-ins that carry
-no second factor (`docs/identity.md` "MFA"). The chart does not run Keycloak, so it cannot
-configure your realm. **Before** upgrading, run against it, with a realm-admin token on
-stdin (never on the command line):
+no second factor (`docs/identity.md` "MFA"), and in production refuses to start against a
+realm not configured for it. The chart's `keycloak-mfa` pre-install/pre-upgrade hook
+(`keycloakMfa`, on by default) configures it before any api pod starts: give it a Keycloak
+admin (`secrets.keycloakMfaAdminPassword` with `keycloakMfa.adminUser`, or
+`keycloakMfa.adminSecret`) and set `config.keycloak.adminClientId` (e.g.
+`truenorth-api-admin`) with `secrets.keycloakAdminClientSecret`: the hook creates that
+client with exactly `view-realm` and `manage-users`, which the api's startup check and
+`/ad-sync` use. The admin credential is in a hook-scoped Secret deleted after success; the
+api pods never see it. The kind smoke (`infra/k8s/kind/smoke.sh`) installs this way, with
+the check in `refuse` mode.
+
+With `keycloakMfa.enabled: false`, run the same script yourself **before** installing or
+upgrading, with a realm-admin token on stdin (never on the command line):
 
 ```bash
 python3 scripts/keycloak_mfa.py --base https://<keycloak>/auth --realm truenorth \

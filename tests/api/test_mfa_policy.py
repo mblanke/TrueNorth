@@ -178,3 +178,13 @@ def test_auth_disabled_is_unchanged(client):
     get_current_user returns the dev admin before the MFA rule, which needs no change there."""
     assert auth.AUTH_DISABLED
     assert client.get("/users/me").status_code == 200
+
+
+
+def test_auth_me_under_auth_disabled_asks_for_no_step_up(client):
+    """The e2e/cmi5 lanes: get_current_user applies no MFA rule there, so /auth/me must not
+    send the SPA to /mfa-required (CI run 38328702165)."""
+    assert auth.AUTH_DISABLED
+    body = client.get("/auth/me").json()
+    assert body["status"] == "registered" and body["user"]["role"] == "admin"
+    assert body["mfa_required"] is False and body["mfa_satisfied"] is True

@@ -33,6 +33,7 @@ import hmac
 import html
 import http.cookiejar
 import json
+import os
 import re
 import secrets
 import struct
@@ -368,17 +369,17 @@ def main() -> int:
           f"({page_message(s4.page)})")
 
     # (viii) what the API's startup check reads (app/auth_backends/keycloak_mfa_check.py),
-    # with a service account holding view-realm only, as truenorth-api-admin does.
-    realm.admin("POST", "/clients", {"clientId": f"view-only-{tag}", "publicClient": False,
-                                     "serviceAccountsEnabled": True, "standardFlowEnabled": False,
-                                     "secret": "view-only-" + tag + "-secret"})
-    vid = realm.admin("GET", f"/clients?clientId=view-only-{tag}")[0]["id"]
+    # as the client keycloak_mfa.py --ensure-api-client made (the Helm hook's path): its
+    # service account holds view-realm and manage-users, nothing else.
+    client_id = os.environ.get("TN_API_ADMIN_CLIENT_ID", "truenorth-api-admin")
+    secret = os.environ.get("TN_API_ADMIN_CLIENT_SECRET", "")
+    vid = realm.admin("GET", f"/clients?clientId={client_id}")[0]["id"]
     sa = realm.admin("GET", f"/clients/{vid}/service-account-user")["id"]
     rm = realm.admin("GET", "/clients?clientId=realm-management")[0]["id"]
-    view = [r for r in realm.admin("GET", f"/users/{sa}/role-mappings/clients/{rm}/available") if r["name"] == "view-realm"]
-    realm.admin("POST", f"/users/{sa}/role-mappings/clients/{rm}", view)
-    data = urllib.parse.urlencode({"grant_type": "client_credentials", "client_id": f"view-only-{tag}",
-                                   "client_secret": "view-only-" + tag + "-secret"}).encode()
+    held = sorted(r["name"] for r in realm.admin("GET", f"/users/{sa}/role-mappings/clients/{rm}"))
+    check(held == ["manage-users", "view-realm"], f"(viii) the API admin client holds exactly view-realm, manage-users ({held})")
+    data = urllib.parse.urlencode({"grant_type": "client_credentials", "client_id": client_id,
+                                   "client_secret": secret}).encode()
     with urllib.request.urlopen(f"{realm.base}/realms/{realm.realm}/protocol/openid-connect/token", data) as r:
         vtok = json.load(r)["access_token"]
     req = urllib.request.Request(f"{realm.base}/admin/realms/{realm.realm}", headers={"Authorization": f"Bearer {vtok}"})
@@ -387,7 +388,7 @@ def main() -> int:
     attrs = rep_.get("attributes") or {}
     check(rep_.get("browserFlow", "").startswith("tn-browser") and '"mfa"' in str(attrs.get("acr.loa.map"))
           and str(attrs.get("tn.mfa.configured", "")).startswith("1:"),
-          "(viii) a view-realm-only service account sees the flow, acr mfa and tn.mfa.configured (the API's startup check)")
+          "(viii) that client sees the flow, acr mfa and tn.mfa.configured (the API's startup check)")
 
     print(f"\n{len(FAILURES)} failure(s)")
     return 1 if FAILURES else 0

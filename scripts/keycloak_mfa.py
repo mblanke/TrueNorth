@@ -56,6 +56,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import urllib.error
 import urllib.parse
@@ -369,6 +370,40 @@ def ensure_amr_mapper(kc: Admin, clients: list[str]) -> None:
             kc.note(f"{AMR_SCOPE} -> default scope of {client_id}")
 
 
+# ── optional: the API's own Admin API client (Helm; the installer makes it itself) ──
+API_CLIENT_ROLES = ("view-realm", "manage-users")
+
+
+def ensure_api_client(kc: Admin, client_id: str, secret: str) -> None:
+    """A confidential client whose service account holds exactly realm-management
+    view-realm and manage-users: what the API's startup check (view-realm) and /ad-sync
+    (manage-users) use, never the master admin. Secret from TN_API_ADMIN_CLIENT_SECRET."""
+    found = kc.get(f"/clients?clientId={q(client_id)}")
+    body = {"clientId": client_id, "protocol": "openid-connect", "publicClient": False,
+            "serviceAccountsEnabled": True, "standardFlowEnabled": False, "implicitFlowEnabled": False,
+            "directAccessGrantsEnabled": False, "redirectUris": [], "webOrigins": [], "secret": secret}
+    if not found:
+        kc.call("POST", "/clients", body)
+        kc.note(f"client {client_id} created")
+        found = kc.get(f"/clients?clientId={q(client_id)}")
+    cid = found[0]["id"]
+    if (kc.get(f"/clients/{cid}/client-secret") or {}).get("value") != secret:
+        kc.call("PUT", f"/clients/{cid}", {**found[0], "secret": secret})
+        kc.note(f"client {client_id} secret set")
+    sa = kc.get(f"/clients/{cid}/service-account-user")["id"]
+    rm = kc.get("/clients?clientId=realm-management")[0]["id"]
+    have = {r["name"]: r for r in kc.get(f"/users/{sa}/role-mappings/clients/{rm}")}
+    grant = [r for r in kc.get(f"/users/{sa}/role-mappings/clients/{rm}/available")
+             if r["name"] in API_CLIENT_ROLES and r["name"] not in have]
+    if grant:
+        kc.call("POST", f"/users/{sa}/role-mappings/clients/{rm}", grant)
+        kc.note(f"{client_id} granted {', '.join(r['name'] for r in grant)}")
+    extra = [r for n, r in have.items() if n not in API_CLIENT_ROLES]
+    if extra:
+        kc.call("DELETE", f"/users/{sa}/role-mappings/clients/{rm}", extra)
+        kc.note(f"{client_id} lost {', '.join(r['name'] for r in extra)} (least privilege)")
+
+
 # ── 6. the marker the API checks at startup ───────────────────────────
 def mark_configured(kc: Admin, spec: dict) -> None:
     import hashlib
@@ -387,6 +422,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--spec", required=True, help="mfa-spec.json")
     ap.add_argument("--groups", help="comma-separated privileged groups (default: the spec's)")
     ap.add_argument("--rp-id", help="WebAuthn relying-party id (the site's FQDN)")
+    ap.add_argument("--ensure-api-client", metavar="CLIENT_ID",
+                    help="also make the API's Admin API client (view-realm, manage-users); its secret is read "
+                         "from TN_API_ADMIN_CLIENT_SECRET (Helm hook; the installer makes it itself)")
     ap.add_argument("--exempt-users", default="",
                     help="comma-separated usernames that skip the second factor (test hosts only)")
     args = ap.parse_args(argv)
@@ -410,6 +448,11 @@ def main(argv: list[str] | None = None) -> int:
         ensure_user_role(kc, exempt_role, exempt)
         ensure_flow(kc, spec)
         ensure_amr_mapper(kc, spec.get("amr_clients", ["truenorth-web", "truenorth-api"]))
+        if args.ensure_api_client:
+            secret = os.environ.get("TN_API_ADMIN_CLIENT_SECRET", "")
+            if len(secret) < 16:
+                raise KeycloakError("--ensure-api-client needs TN_API_ADMIN_CLIENT_SECRET (16+ characters)")
+            ensure_api_client(kc, args.ensure_api_client, secret)
         mark_configured(kc, spec)
     except KeycloakError as exc:
         print(f"keycloak_mfa: {exc}", file=sys.stderr)

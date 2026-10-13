@@ -108,8 +108,10 @@ class Idp:
         import jwt
 
         now = int(time.time())
+        # amr: signed in with a password and a one-time code, as Keycloak's tn-browser flow
+        # reports it for staff (app/mfa_policy.py). Students are not asked; it is harmless there.
         claims = {"iss": ISSUER, "aud": CLIENT, "azp": CLIENT, "sub": sub, "typ": typ, "iat": now, "exp": now + 3600,
-                  "preferred_username": sub, "email": email}
+                  "preferred_username": sub, "email": email, "amr": ["pwd", "otp"]}
         return jwt.encode(claims, self.pem, algorithm="RS256", headers={"kid": "journey-idp"})
 
 

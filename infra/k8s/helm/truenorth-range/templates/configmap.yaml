@@ -32,7 +32,7 @@ data:
   KEYCLOAK_REALM: {{ .Values.config.keycloak.realm | quote }}
   {{- with .Values.config.mfaKeycloakCheck }}
   # The API's startup check of the realm's MFA configuration: refuse (default in
-  # production) | warn | off. infra/k8s/README.md "Upgrading to v1.2.0".
+  # production) | warn | off. infra/k8s/README.md "MFA: the chart configures the realm".
   TN_MFA_KEYCLOAK_CHECK: {{ . | quote }}
   {{- end }}
   KEYCLOAK_AUDIENCE: {{ required "config.keycloak.audience is required (docs/identity.md); production refuses to start without it" .Values.config.keycloak.audience | quote }}

@@ -306,7 +306,9 @@ it needs an SSH login to the host. That is a recorded risk acceptance.
 (view-realm) at startup and refuses to start when the realm answers without the
 `tn-browser` flow, `acr.loa.map` "mfa" or the `tn.mfa.configured` marker that
 `scripts/keycloak_mfa.py` writes last (`TN_MFA_KEYCLOAK_CHECK`: refuse | warn | off;
-the installer sets warn, Helm keeps refuse; infra/k8s/README.md). A Keycloak that does not
+the installer sets warn, Helm keeps refuse and configures the realm first with its
+`keycloak-mfa` pre-install/pre-upgrade hook, which runs the same script and, with
+`config.keycloak.adminClientId`, creates that client; infra/k8s/README.md). A Keycloak that does not
 answer is logged and never blocks the start.
 
 **Proof.** `scripts/check_keycloak_mfa.sh` (CI job `keycloak-mfa`) runs the pinned

@@ -138,7 +138,7 @@ def enforce_at_startup() -> None:
     lines = [f"Keycloak realm is not configured for the MFA this API enforces ({', '.join(sorted(mfa_policy.mfa_roles()))} "
              "would be locked out):", *problems,
              "Fix: run scripts/keycloak_mfa.py against the realm (installer: playbooks/60-keycloak.yml; "
-             "Helm: infra/k8s/README.md \"Upgrading to v1.2.0\"), then restart. "
+             "Helm: infra/k8s/README.md \"MFA: the chart configures the realm\"; the keycloak-mfa hook), then restart. "
              "TN_MFA_KEYCLOAK_CHECK=warn starts anyway."]
     if current == "refuse":
         raise UnsafeSettingsError(lines)

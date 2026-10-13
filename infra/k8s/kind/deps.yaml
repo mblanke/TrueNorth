@@ -1,7 +1,9 @@
 # Throwaway datastores for the kind smoke test (infra/k8s/kind/smoke.sh) — NOT for
 # production: no persistence, single replicas, OpenSearch without its security plugin.
 # The chart does not run datastores; production points config.* at real ones.
-# Passwords come from the `tn-deps` Secret the smoke script creates.
+# Passwords come from the `tn-deps` Secret the smoke script creates. Keycloak imports the
+# shipped realm (ConfigMap `tn-realm`, from infra/keycloak/realm-truenorth.json); the
+# chart's keycloak-mfa hook then configures it for MFA, as an operator's Keycloak would be.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -104,3 +106,45 @@ metadata: {name: opensearch}
 spec:
   selector: {app: opensearch}
   ports: [{port: 9200, targetPort: 9200}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: keycloak
+  labels: {app: keycloak}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: keycloak}}
+  template:
+    metadata: {labels: {app: keycloak}}
+    spec:
+      containers:
+        - name: keycloak
+          # The pin compose.prod.yml uses (tests/contracts/test_helm_keycloak_mfa.py).
+          image: quay.io/keycloak/keycloak:24.0@sha256:f8ade94c1d0ad2f2fa7734a455fee5392764f402c43ca35e9af6bf63a2541dc9
+          args: ["start-dev", "--import-realm"]
+          env:
+            - {name: KC_HTTP_RELATIVE_PATH, value: /auth}
+            - {name: KEYCLOAK_ADMIN, value: admin}
+            - name: KEYCLOAK_ADMIN_PASSWORD
+              valueFrom: {secretKeyRef: {name: tn-deps, key: KEYCLOAK_ADMIN_PASSWORD}}
+          ports: [{containerPort: 8080}]
+          readinessProbe:
+            httpGet: {path: /auth/realms/truenorth, port: 8080}
+            periodSeconds: 5
+            failureThreshold: 60
+          volumeMounts:
+            - {name: realm, mountPath: /opt/keycloak/data/import, readOnly: true}
+          resources:
+            requests: {cpu: 100m, memory: 512Mi}
+            limits: {cpu: "2", memory: 1536Mi}
+      volumes:
+        - name: realm
+          configMap: {name: tn-realm}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: keycloak}
+spec:
+  selector: {app: keycloak}
+  ports: [{port: 8080, targetPort: 8080}]

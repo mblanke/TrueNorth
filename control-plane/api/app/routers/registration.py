@@ -31,8 +31,8 @@ from fastapi.responses import Response
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from .. import auth, mfa_policy
 from .. import identity as ident
-from .. import mfa_policy
 from ..auth import CurrentUser, TokenPayload, client_ip, get_token_identity
 from ..auth_me_schemas import AuthMeOut
 from ..db import get_db
@@ -125,8 +125,10 @@ def auth_me(
         # MFA state: so the SPA can step up before a route refuses it. mfa_satisfied is
         # "this request would pass the MFA rule" (app/mfa_policy.py), exemptions included.
         # is_platform_admin reads only role and tenant_id, which the row carries.
-        required = mfa_policy.mfa_required_for(user.role)
-        satisfied = mfa_policy.mfa_denial_reason(identity, user.role, user.email) is None
+        # Under AUTH_DISABLED (dev, e2e, itest, cmi5 lanes) get_current_user applies no MFA
+        # rule, so /auth/me must not send the SPA to a step-up no route asks for.
+        required = not auth.AUTH_DISABLED and mfa_policy.mfa_required_for(user.role)
+        satisfied = not required or mfa_policy.mfa_denial_reason(identity, user.role, user.email) is None
         return AuthMeOut(status="registered", user=user, platform_admin=is_platform_admin(user, db),
                          mfa_required=required, mfa_satisfied=satisfied)
 

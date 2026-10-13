@@ -18,6 +18,11 @@ NAME="tn-mfa-check-$$"
 PORT="${KC_CHECK_PORT:-18081}"
 BASE="http://127.0.0.1:$PORT"
 ADMIN_PASSWORD="$(openssl rand -hex 12)"
+# The API's Admin API client, made by keycloak_mfa.py --ensure-api-client (the Helm hook's
+# path) and used by check (viii) as the API's startup check uses it.
+TN_API_ADMIN_CLIENT_ID=truenorth-api-admin
+TN_API_ADMIN_CLIENT_SECRET="$(openssl rand -hex 24)"
+export TN_API_ADMIN_CLIENT_ID TN_API_ADMIN_CLIENT_SECRET
 
 cleanup() { docker rm -f "$NAME" >/dev/null 2>&1 || true; }
 trap cleanup EXIT
@@ -56,9 +61,11 @@ echo "+ groups and the identity scope (as roles/tn_keycloak creates them)"
 printf '%s\n' "$ADMIN_PASSWORD" | python3 "$ROOT/scripts/check_keycloak_mfa.py" --base "$BASE" --create-groups
 
 echo "+ keycloak_mfa.py (first run)"
-admin_token | python3 "$ROOT/scripts/keycloak_mfa.py" --base "$BASE" --realm truenorth --spec "$SPEC"
+admin_token | python3 "$ROOT/scripts/keycloak_mfa.py" --base "$BASE" --realm truenorth --spec "$SPEC" \
+    --ensure-api-client "$TN_API_ADMIN_CLIENT_ID"
 echo "+ keycloak_mfa.py (second run: must report ok)"
-second="$(admin_token | python3 "$ROOT/scripts/keycloak_mfa.py" --base "$BASE" --realm truenorth --spec "$SPEC")"
+second="$(admin_token | python3 "$ROOT/scripts/keycloak_mfa.py" --base "$BASE" --realm truenorth --spec "$SPEC" \
+    --ensure-api-client "$TN_API_ADMIN_CLIENT_ID")"
 echo "$second"
 if [ "$(echo "$second" | tail -1)" != "ok" ]; then
   echo "keycloak_mfa.py is not idempotent: the second run changed something" >&2

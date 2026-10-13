@@ -49,15 +49,18 @@ done
 
 # Generated per run; hex only, so URL-safe for the database and Redis URLs.
 gen() { openssl rand -hex 24; }
-DB_PW=$(gen); REDIS_PW=$(gen)
+DB_PW=$(gen); REDIS_PW=$(gen); KC_PW=$(gen)
 
 log "datastores"
 kubectl create namespace "$NS" --dry-run=client -o yaml | kubectl apply -f -
 kubectl -n "$NS" create secret generic tn-deps \
   --from-literal=DATABASE_PASSWORD="$DB_PW" --from-literal=REDIS_PASSWORD="$REDIS_PW" \
+  --from-literal=KEYCLOAK_ADMIN_PASSWORD="$KC_PW" \
+  --dry-run=client -o yaml | kubectl apply -f -
+kubectl -n "$NS" create configmap tn-realm --from-file=realm-truenorth.json=infra/keycloak/realm-truenorth.json \
   --dry-run=client -o yaml | kubectl apply -f -
 kubectl -n "$NS" apply -f "$HERE/deps.yaml"
-for d in postgres redis opensearch; do
+for d in postgres redis opensearch keycloak; do
   kubectl -n "$NS" rollout status "deploy/$d" --timeout=6m || { dump; exit 1; }
 done
 
@@ -72,6 +75,8 @@ if ! helm install "$RELEASE" "$CHART" -n "$NS" -f "$HERE/values-kind.yaml" \
   --set-string secrets.secretsKey="$(gen)" \
   --set-string secrets.aiServiceToken="$(gen)" \
   --set-string secrets.metricsScrapeToken="$(gen)" \
+  --set-string secrets.keycloakMfaAdminPassword="$KC_PW" \
+  --set-string secrets.keycloakAdminClientSecret="$(gen)" \
   --wait --timeout "$TIMEOUT"; then
   dump; exit 1
 fi
@@ -80,6 +85,14 @@ log "migration hook Job"
 kubectl -n "$NS" get job "$RELEASE-truenorth-range-migrate" \
   -o jsonpath='{.status.succeeded}{"\n"}' | grep -qx 1 || { dump; exit 1; }
 kubectl -n "$NS" logs "job/$RELEASE-truenorth-range-migrate" --tail=5
+
+log "keycloak-mfa hook Job (the realm configured for MFA before the api started)"
+kubectl -n "$NS" get job "$RELEASE-truenorth-range-keycloak-mfa" \
+  -o jsonpath='{.status.succeeded}{"\n"}' | grep -qx 1 || { dump; exit 1; }
+kubectl -n "$NS" logs "job/$RELEASE-truenorth-range-keycloak-mfa" --tail=20
+# The api runs with TN_ENV=production, so TN_MFA_KEYCLOAK_CHECK defaults to refuse.
+check_mode="$(kubectl -n "$NS" get configmap "$RELEASE-truenorth-range-config" -o jsonpath='{.data.TN_MFA_KEYCLOAK_CHECK}')"
+[ -z "$check_mode" ] || [ "$check_mode" = refuse ] || { echo "the smoke must run the startup check in refuse mode (got $check_mode)" >&2; exit 1; }
 
 log "rollouts"
 for d in $(kubectl -n "$NS" get deploy -l app.kubernetes.io/instance="$RELEASE" -o name); do
@@ -97,6 +110,8 @@ done
 echo "$ready"
 echo "$ready" | grep -q '"status": *"healthy"' || { dump; exit 1; }
 kill "$PF_PID"; PF_PID=""
+kubectl -n "$NS" logs "deploy/$RELEASE-truenorth-range-api" --tail=200 \
+  | grep -q "MFA: Keycloak realm configured" || { echo "the api did not confirm the realm's MFA configuration" >&2; dump; exit 1; }
 
 log "worker liveness probe (celery ping of <node>@\$HOSTNAME)"
 for c in worker-provision worker-scenario worker-telemetry; do

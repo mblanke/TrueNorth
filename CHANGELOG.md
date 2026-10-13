@@ -278,8 +278,18 @@ course production with a local-model fallback, and the cleanup of unsupported su
   writes after also installing the AMR mapper), or when no Admin API client is configured
   to check; the log names what is missing. Keycloak down only warns. The installer's
   compose path sets `TN_MFA_KEYCLOAK_CHECK=warn` (60-keycloak configures the realm after
-  the stack starts; 95-smoke-test gates). Helm: run `scripts/keycloak_mfa.py` against the
-  realm before upgrading (infra/k8s/README.md), or set `config.mfaKeycloakCheck: warn`.
+  the stack starts; 95-smoke-test gates). Helm: a `keycloak-mfa` pre-install/pre-upgrade
+  hook Job (`keycloakMfa`, on by default) runs the same `keycloak_mfa.py` (a copy in the
+  chart, kept byte-identical by a contract test) with a hook-only Keycloak admin
+  credential (`secrets.keycloakMfaAdminPassword` or `keycloakMfa.adminSecret`) and, with
+  `config.keycloak.adminClientId`, creates the API's client (`--ensure-api-client`:
+  exactly view-realm and manage-users), so an install works out of the box with the check
+  in refuse mode; the kind smoke now runs a real Keycloak and proves it (infra/k8s/README.md).
+- Test lanes sign staff in with a second factor rather than switching MFA off: tokens the
+  Moodle journey's test IdP and the e2e fake JWT mint carry `amr: ["pwd","otp"]`; the
+  `keycloak-mfa` lane enrols TOTP through the Admin API and computes real codes.
+  `/auth/me` under `AUTH_DISABLED` (local dev, e2e, cmi5) no longer asks for a step-up
+  nothing could satisfy.
 - Break-glass: `playbooks/breakglass-reset-mfa.yml -e tn_breakglass_user=<upn>
   -e tn_breakglass_reason=...` writes an `mfa_reset` audit row first (and stops if it
   cannot, unless `-e tn_breakglass_no_audit=true`, which warns loudly), then deletes the

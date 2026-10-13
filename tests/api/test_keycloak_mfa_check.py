@@ -93,7 +93,9 @@ def test_installer_compose_path_warns_and_helm_can_choose():
     root = Path(__file__).resolve().parents[2]
     assert "TN_MFA_KEYCLOAK_CHECK=warn" in (root / "install/roles/tn_config/templates/env.production.j2").read_text()
     assert "TN_MFA_KEYCLOAK_CHECK" in (root / "infra/k8s/helm/truenorth-range/templates/configmap.yaml").read_text()
-    assert "Upgrading to v1.2.0" in (root / "infra/k8s/README.md").read_text()
+    # Helm keeps refuse and configures the realm itself (keycloak-mfa hook Job).
+    assert "MFA: the chart configures the realm" in (root / "infra/k8s/README.md").read_text()
+    assert (root / "infra/k8s/helm/truenorth-range/templates/job-keycloak-mfa.yaml").is_file()
 
 
 
