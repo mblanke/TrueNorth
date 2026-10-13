@@ -1,0 +1,63 @@
+---
+# The claim contract: a dedicated client scope rather than mappers duplicated per client,
+# so `truenorth-web` and `truenorth-api` cannot drift apart. Sets tn_kc_scope_id; main.yml
+# attaches it to the clients. Also included by tools/ad-test-dc/federate.yml.
+- name: Keycloak — existing client scopes
+  ansible.builtin.uri:
+    url: "{{ tn_kc_realm_url }}/client-scopes"
+    headers: "{{ tn_kc_headers }}"
+    status_code: 200
+  register: tn_kc_scopes
+
+- name: Keycloak — create the truenorth-identity client scope
+  ansible.builtin.uri:
+    url: "{{ tn_kc_realm_url }}/client-scopes"
+    method: POST
+    headers: "{{ tn_kc_headers }}"
+    body:
+      name: truenorth-identity
+      protocol: openid-connect
+      description: >-
+        AD identity claims TrueNorth registration depends on: groups,
+        ad_object_guid, ad_distinguished_name.
+      attributes:
+        include.in.token.scope: "true"
+        display.on.consent.screen: "false"
+      protocolMappers: "{{ tn_kc_protocol_mappers }}"
+    body_format: json
+    status_code: [201, 409]
+  when: "'truenorth-identity' not in (tn_kc_scopes.json | map(attribute='name') | list)"
+
+- name: Keycloak — re-read client scopes
+  ansible.builtin.uri:
+    url: "{{ tn_kc_realm_url }}/client-scopes"
+    headers: "{{ tn_kc_headers }}"
+    status_code: 200
+  register: tn_kc_scopes2
+
+- name: Keycloak — resolve the identity scope id
+  ansible.builtin.set_fact:
+    tn_kc_scope_id: >-
+      {{ (tn_kc_scopes2.json | selectattr('name', 'equalto', 'truenorth-identity') | first).id }}
+
+# The scope's mappers are set when it is created; a scope an earlier install made gets
+# any mapper added since (the API audience) here, every run.
+- name: Keycloak — identity scope's mappers
+  ansible.builtin.uri:
+    url: "{{ tn_kc_realm_url }}/client-scopes/{{ tn_kc_scope_id }}/protocol-mappers/models"
+    headers: "{{ tn_kc_headers }}"
+    status_code: 200
+  register: tn_kc_scope_mappers
+
+- name: Keycloak — add missing identity scope mappers
+  ansible.builtin.uri:
+    url: "{{ tn_kc_realm_url }}/client-scopes/{{ tn_kc_scope_id }}/protocol-mappers/models"
+    method: POST
+    headers: "{{ tn_kc_headers }}"
+    body: "{{ item }}"
+    body_format: json
+    status_code: [201, 409]
+  loop: "{{ tn_kc_protocol_mappers }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: item.name not in (tn_kc_scope_mappers.json | map(attribute='name') | list)

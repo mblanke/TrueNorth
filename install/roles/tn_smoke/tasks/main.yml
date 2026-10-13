@@ -17,14 +17,17 @@
     file: "{{ role_path }}/../tn_keycloak/defaults/main.yml"
 
 # Who the claim-contract check signs in as. With AD: an AD account you name
-# (-e tn_smoke_username=<upn> -e tn_smoke_password=...). Without AD: the local bootstrap
-# administrator 60-keycloak created, whose password is a persisted secret.
+# (-e tn_smoke_username=<upn> -e tn_smoke_password=...). Without AD, or with AD and
+# tn_keycloak_local_admin: the local bootstrap administrator 60-keycloak created, whose
+# password is a persisted secret (the AD claims are then checked by the CI `ad` lane's
+# tests against the directory, not here).
 - name: Smoke — the identity to sign in as
   ansible.builtin.set_fact:
     tn_smoke_user_effective: "{{ tn_smoke_username | default(tn_bootstrap_admin_upn, true) }}"
     tn_smoke_password_effective: >-
       {{ tn_smoke_password | default('', true)
-         or ('' if tn_ldap_enabled | bool else tn_secrets['bootstrap_admin_password']) }}
+         or ('' if tn_ldap_enabled | bool and not tn_keycloak_local_admin | bool
+             else tn_secrets['bootstrap_admin_password']) }}
   no_log: true
 
 # Mandatory: "the services are up" is not an installed platform. The claim contract is
@@ -249,6 +252,31 @@
       Re-run: ansible-playbook playbooks/60-keycloak.yml
     success_msg: >-
       Claim contract OK — groups={{ tn_claims.groups | default([]) | join(',') }}
+
+# With AD and an AD account named (-e tn_smoke_username / tn_smoke_password): the token
+# must come from the directory, with its groups (the local recovery administrator proves
+# neither). With tn_keycloak_local_admin on and no AD account named, say so plainly.
+- name: Smoke — an AD account's token carries the directory claims
+  ansible.builtin.assert:
+    that:
+      - tn_claims.ad_object_guid | default('') | length > 0
+      - tn_claims.groups | intersect(tn_ad_groups) | length > 0
+    fail_msg: >-
+      {{ tn_smoke_user_effective }} signed in, but its token has
+      ad_object_guid={{ tn_claims.ad_object_guid | default('MISSING') }} and
+      groups={{ tn_claims.groups | default([]) }}: it is not federated from AD, or it is in
+      no TN-* group. Name an AD account in a TN-* group.
+    success_msg: "AD claims OK for {{ tn_smoke_user_effective }}"
+  when: tn_ldap_enabled | bool and tn_smoke_username | default('') | length > 0
+
+- name: Smoke — AD claims not proven by this run
+  ansible.builtin.debug:
+    msg: >-
+      WARNING: AD is on, but the claim check signed in as the LOCAL recovery administrator
+      ({{ tn_smoke_user_effective }}), which proves the claim contract, not the directory.
+      60-keycloak checked the TN-* groups arrived from AD; to prove an AD sign-in too, re-run
+      with -e tn_smoke_username=<AD account in a TN-* group> -e tn_smoke_password=...
+  when: tn_ldap_enabled | bool and tn_smoke_username | default('') | length == 0
 
 - name: Smoke — /auth/me answers for that identity
   ansible.builtin.uri:

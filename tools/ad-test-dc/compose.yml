@@ -1,0 +1,111 @@
+# TrueNorth AD test DC: Samba AD + Keycloak (the image compose.prod.yml pins) on one
+# private network, for the CI `ad` lane and local identity work. Driven by run.sh, which
+# writes the secrets and certificates first and always names a project:
+#
+#   tools/ad-test-dc/run.sh up        # = docker compose -p tn-ad-test -f tools/ad-test-dc/compose.yml up
+#
+# Nothing listens beyond the host's loopback: LDAPS and Keycloak are published on
+# 127.0.0.1 only (the tests' client-side TLS checks and Admin REST calls), never 0.0.0.0.
+# 389/88/53 are not published at all. Not for staging or any shared host.
+name: ${AD_PROJECT:-tn-ad-test}
+
+services:
+  dc:
+    build: .
+    image: tn-ad-test-dc:local
+    hostname: dc01
+    domainname: ${AD_DNS_DOMAIN:-tnlab.test}
+    environment:
+      AD_REALM: ${AD_REALM:-TNLAB.TEST}
+      AD_DOMAIN: ${AD_NETBIOS:-TNLAB}
+      AD_COLLISION_EMAIL: ${AD_COLLISION_EMAIL:-}
+    volumes:
+      - samba:/var/lib/samba
+      - ${AD_TEST_DIR:?run tools/ad-test-dc/run.sh, which sets AD_TEST_DIR}/secrets:/secrets:ro
+      # The DC's pair and the CA's PUBLIC certificate only; the CA key stays in
+      # ${AD_TEST_DIR}/ca-private on the host.
+      - ${AD_TEST_DIR}/certs/dc.crt:/certs/dc.crt:ro
+      - ${AD_TEST_DIR}/certs/dc.key:/certs/dc.key:ro
+      - ${AD_TEST_DIR}/certs/ca.crt:/certs/ca.crt:ro
+    ports:
+      - "127.0.0.1:${AD_LDAPS_PORT:-16360}:636"
+    networks:
+      adnet:
+        aliases: ["dc01.${AD_DNS_DOMAIN:-tnlab.test}"]
+
+  # The same image presenting a certificate from a CA nothing trusts (untrusted-CA test).
+  rogue:
+    image: tn-ad-test-dc:local
+    command: ["rogue"]
+    environment:
+      AD_DC_ADDRESS: dc01.${AD_DNS_DOMAIN:-tnlab.test}
+    # Not the image's DC health check (there is no directory here): the listener is up.
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/636"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - ${AD_TEST_DIR}/certs/rogue.crt:/certs/rogue.crt:ro
+      - ${AD_TEST_DIR}/certs/rogue.key:/certs/rogue.key:ro
+    depends_on:
+      dc:
+        condition: service_healthy
+    networks:
+      adnet:
+        aliases: ["rogue.${AD_DNS_DOMAIN:-tnlab.test}"]
+
+  # The same front end with a certificate from the TRUSTED test CA, issued to another name
+  # (dc99.<domain>), reached as misnamed.<domain>: hostname verification must refuse it.
+  misnamed:
+    image: tn-ad-test-dc:local
+    command: ["rogue"]
+    environment:
+      AD_DC_ADDRESS: dc01.${AD_DNS_DOMAIN:-tnlab.test}
+      AD_FRONT_CERT: misnamed
+    volumes:
+      - ${AD_TEST_DIR}/certs/misnamed.crt:/certs/misnamed.crt:ro
+      - ${AD_TEST_DIR}/certs/misnamed.key:/certs/misnamed.key:ro
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/636"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    depends_on:
+      dc:
+        condition: service_healthy
+    networks:
+      adnet:
+        aliases: ["misnamed.${AD_DNS_DOMAIN:-tnlab.test}"]
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:24.0@sha256:f8ade94c1d0ad2f2fa7734a455fee5392764f402c43ca35e9af6bf63a2541dc9
+    command: start-dev
+    environment:
+      KEYCLOAK_ADMIN: admin
+      # run.sh up exports it from the secrets dir (stop/start/exec need no value).
+      KEYCLOAK_ADMIN_PASSWORD: ${AD_KC_ADMIN_PASSWORD:-}
+      KC_HTTP_RELATIVE_PATH: /auth
+      KC_HEALTH_ENABLED: "true"
+      # As in compose.prod.yml: a directory of PEM certificates Keycloak trusts. Here
+      # only the test CA (never the rogue CA).
+      KC_TRUSTSTORE_PATHS: /opt/keycloak/conf/truststores
+    volumes:
+      - ${AD_TEST_DIR}/truststore:/opt/keycloak/conf/truststores:ro
+    ports:
+      - "127.0.0.1:${AD_KC_PORT:-18480}:8080"
+    depends_on:
+      dc:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /auth/health/ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3 && grep -q '200 OK' <&3"]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+    networks: [adnet]
+
+volumes:
+  samba:
+
+networks:
+  adnet:

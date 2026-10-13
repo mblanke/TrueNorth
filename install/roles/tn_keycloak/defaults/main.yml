@@ -106,7 +106,7 @@ tn_kc_ldap_body:
     syncRegistrations: ["false"]
     connectionUrl: ["ldaps://{{ tn_dc_host }}:{{ tn_ldap_port }}"]
     bindDn: ["{{ tn_ldap_bind_dn }}"]
-    bindCredential: ["{{ vault_ldap_bind_password }}"]
+    bindCredential: ["{{ tn_ldap_bind_password }}"]
     usersDn: ["{{ tn_ldap_users_dn }}"]
     usernameLDAPAttribute: ["sAMAccountName"]
     rdnLDAPAttribute: ["cn"]
@@ -117,13 +117,24 @@ tn_kc_ldap_body:
     useTruststoreSpi: ["always"]
     startTls: ["false"]
     pagination: ["true"]
+    # Milliseconds. Without them a sign-in hangs on an unreachable DC (measured: over 60 s,
+    # until the client gave up, with the CI `ad` lane's DC stopped) instead of failing.
+    connectionTimeout: ["5000"]
+    readTimeout: ["10000"]
     batchSizeForSync: ["1000"]
     fullSyncPeriod: ["3600"]
     changedSyncPeriod: ["300"]
     trustEmail: ["true"]
     cachePolicy: ["DEFAULT"]
 
-# Sub-mappers on the federation component.
+# Exactly the TN-* groups, by DN, directly in tn_ldap_groups_dn: a same-named group in a
+# sub-OU (or anywhere else the bind account can read) is never imported or matched, and
+# the mapper's sync count is the TN-* groups AD really has (ldap_sync.yml checks it).
+tn_kc_ldap_groups_filter: >-
+  (|{% for g in tn_ad_groups %}(distinguishedName=CN={{ g }},{{ tn_ldap_groups_dn }}){% endfor %})
+
+# Sub-mappers on the federation component. Reconciled on every run (ldap_federation.yml):
+# an existing mapper whose config differs from this is updated in place.
 tn_kc_ldap_mappers:
   - name: ad-groups
     providerId: group-ldap-mapper
@@ -140,6 +151,7 @@ tn_kc_ldap_mappers:
       user.roles.retrieve.strategy: ["LOAD_GROUPS_BY_MEMBER_ATTRIBUTE"]
       preserve.group.inheritance: ["false"]
       drop.non.existing.groups.during.sync: ["false"]
+      groups.ldap.filter: ["{{ tn_kc_ldap_groups_filter }}"]
 
   # objectGUID is binary; without is.binary.attribute the value arrives mangled.
   - name: ad-object-guid

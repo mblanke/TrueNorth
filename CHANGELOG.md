@@ -259,7 +259,40 @@ course production with a local-model fallback, and the cleanup of unsupported su
 - An IdP token can no longer carry the TrueNorth-only `tn_session` claim
   (`auth.token_from_idp_claims` strips it on HTTP and WebSocket).
 
+### Directory sign-in qualification (M2)
+- **AD test domain** (`tools/ad-test-dc`, CI job `ad`): a pinned Samba AD DC (`TNLAB.TEST`,
+  TN-DC01's OUs, TN-* groups and bind account) with its own test CA (the CA key never
+  mounted), generated 0600 passwords, the pinned Keycloak, and a rogue-CA front end, on
+  loopback under one compose project. The federation is built by the installer's own
+  `tn_keycloak` task files; `tests/integration/test_ad_directory.py` covers group → role and
+  tenant, nested groups (direct membership only), untrusted CA, disabled accounts, group
+  removal with measured propagation, email collision, the Moodle SSO subject and the local
+  recovery path with the DC stopped. The same tests run against a real DC (external mode).
+- Installer: `tn_keycloak_local_admin` keeps the bootstrap administrator a local Keycloak
+  account beside AD (created before federating; preflight keeps its UPN outside the AD
+  domain); the federation gets LDAP connect/read timeouts (an unreachable DC hung sign-ins);
+  the AD import check counts from the sync result instead of listing users (one
+  unimportable AD user broke the listing and the install) and warns on failed imports;
+  turning AD off removes the resolver drop-in; `tn_ldap_bind_password` is the one name for
+  the bind password. `tn_keycloak` tasks split into `local_identity`, `ldap_federation`,
+  `identity_scope` and `ldap_sync`.
+- Registration: an approval never adopts a staff (admin, instructor, range_ops) account by
+  email match, whoever approves (409); roster Students are still adopted. The bootstrap
+  step (`app.bootstrap_admin`) never adopts an instructor or range_ops row by email.
+- Review fixes: the AD group mapper matches exactly the TN-* group DNs (a same-named group
+  in a sub-OU granted its claim); 60-keycloak fails unless all six TN-* groups come from AD
+  (the local recovery admin's groups no longer mask it); sub-mappers are reconciled every
+  run; preflight refuses an empty bind password with AD; turning `tn_keycloak_local_admin`
+  off disables the local account; the smoke test checks AD claims when an AD account is
+  named and warns when it is not; LDAPS hostname verification is tested.
+- Staging inventory: a commented, off-by-default block for the owner's Windows AD DC;
+  install/README.md "AD test domain (CI) and AD on staging" and "Work-domain cut-over and
+  rollback".
+
 ### Known limitations in v1.2.0
+- Directory sign-in is **Samba-tested** only; **Windows AD / AD CS qualification** is pending
+  (external-mode run on staging). Removing an AD group does not remove a TrueNorth role;
+  nested groups are not expanded (`docs/release-notes/v1.2.0.md`).
 - Greyspace, VyOS/OPNsense configs and per-tenant vCenter are proven on vcsim/fakes, not on
   a real vCenter (the live run on TN-MGMT01 is still pending).
 - ARC² test-host content is auto-accepted and unreviewed; never release it to Students.

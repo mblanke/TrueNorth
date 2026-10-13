@@ -261,6 +261,43 @@ def test_roster_student_in_the_target_tenant_is_still_adopted(client, db_session
     assert roster.keycloak_id == req.keycloak_id and roster.source == "ad"
 
 
+@pytest.mark.parametrize("role", [UserRole.admin, UserRole.instructor, UserRole.range_ops])
+@pytest.mark.parametrize("source", ["local", "csv_import"])
+def test_email_match_never_takes_over_a_staff_account_even_for_an_admin(client, db_session, tenant_a, role, source):
+    """M2: a directory identity whose email equals a staff account's never adopts it.
+
+    The admin could grant the role, so _check_adoptable alone would have let the approval
+    rebind the row to the requester's Keycloak subject (the AD email-collision case).
+    """
+    staff = _local_account(db_session, tenant_a.id, role, "ops-lead@alpha.example")
+    staff.source = source
+    kc_before = staff.keycloak_id
+    req = _pending_for(db_session, tenant_a.id, "ops-lead@alpha.example")
+    act_as(real_user(db_session, UserRole.admin, tenant_a.id))
+
+    r = client.post(f"/registration/requests/{req.id}/approve", json={"role": "student", "tenant_id": str(tenant_a.id)})
+
+    assert r.status_code == 409, r.text
+    assert "never takes over a staff account" in r.json()["detail"]
+    db_session.refresh(staff)
+    assert (staff.role, staff.keycloak_id, staff.source) == (role, kc_before, source)
+    db_session.refresh(req)
+    assert req.status == RegistrationStatus.pending
+    assert db_session.query(User).filter(User.keycloak_id == req.keycloak_id).count() == 0
+
+
+def test_admin_still_adopts_a_local_student_row_by_email(client, db_session, tenant_a):
+    row = _local_account(db_session, tenant_a.id, UserRole.student, "learner@alpha.example")
+    req = _pending_for(db_session, tenant_a.id, "learner@alpha.example")
+    act_as(real_user(db_session, UserRole.admin, tenant_a.id))
+
+    r = client.post(f"/registration/requests/{req.id}/approve", json={"role": "student", "tenant_id": str(tenant_a.id)})
+
+    assert r.status_code == 200, r.text
+    db_session.refresh(row)
+    assert row.keycloak_id == req.keycloak_id
+
+
 def test_production_refuses_a_platform_tenant_id_that_is_not_a_uuid(monkeypatch):
     from app.settings import production_problems
 

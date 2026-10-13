@@ -63,6 +63,8 @@ build/itest/
 build/moodle/
 build/vcsim/
 build/greyspace/
+# AD test DC (tools/ad-test-dc/run.sh): generated passwords, the test CA's private key
+build/ad-test-dc/
 tests/e2e/playwright-report/
 tests/e2e/playwright-report-cmi5/
 tests/e2e/test-results/

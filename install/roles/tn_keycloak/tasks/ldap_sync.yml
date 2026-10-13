@@ -1,0 +1,86 @@
+---
+# A full sync of the federation component, then proof it imported users and the TN-*
+# groups. Included by main.yml and tools/ad-test-dc/federate.yml after the local identity
+# and the claim scope exist. Needs tn_keycloak_ldap_component_id (ldap_federation.yml).
+- name: Keycloak — trigger a full AD sync
+  ansible.builtin.uri:
+    url: "{{ tn_kc_realm_url }}/user-storage/{{ tn_keycloak_ldap_component_id }}/sync?action=triggerFullSync"
+    method: POST
+    headers: "{{ tn_kc_headers }}"
+    status_code: [200]
+  register: tn_kc_sync
+
+- name: Keycloak — report sync result
+  ansible.builtin.debug:
+    msg: "AD sync: {{ tn_kc_sync.json | default({}) }}"
+
+# Counted from the sync itself (added + updated: a full sync re-reads every directory
+# user, so a re-run counts them as updated), which only ever counts users of THIS
+# component: local accounts cannot make a federation that imported nobody look like one
+# that works. Not from GET /users: listing users makes Keycloak import directory users on
+# the fly, and one AD user it cannot import (an email a local account already has) fails
+# the whole listing (400, or a truncated 200 body), which the CI `ad` lane measured.
+- name: Keycloak — users this federation synced
+  ansible.builtin.set_fact:
+    tn_kc_user_count: "{{ (tn_kc_sync.json.added | default(0) | int) + (tn_kc_sync.json.updated | default(0) | int) }}"
+    tn_kc_user_failed: "{{ tn_kc_sync.json.failed | default(0) | int }}"
+
+# A federation that imports zero users is the classic silent failure: every
+# object is configured, the bind works, and the search base is wrong.
+- name: Keycloak — assert the federation actually imported users
+  ansible.builtin.assert:
+    that: (tn_kc_user_count | int) > 0
+    fail_msg: >-
+      AD federation is configured but imported 0 users. Check
+      tn_ldap_users_dn ({{ tn_ldap_users_dn }}) — a search base that matches no
+      objects looks exactly like a working configuration until someone tries to
+      log in.
+    success_msg: "{{ tn_kc_user_count }} users federated from {{ tn_domain }}"
+
+# Not fatal (the rest of the directory works), but never silent: each is a person who
+# cannot sign in, and while one remains the Admin Console's user list fails.
+- name: Keycloak — directory users Keycloak refused to import
+  ansible.builtin.debug:
+    msg: >-
+      WARNING: {{ tn_kc_user_failed }} directory user(s) failed to import. Usually an
+      email or username a LOCAL Keycloak account already has (the local recovery
+      administrator, a demo account): Keycloak never merges the two, so that AD user
+      cannot sign in and the local account is untouched. Find them with
+      `docker compose logs keycloak | grep "Can't import user"` and change the AD
+      account's mail, or the local account's.
+  when: (tn_kc_user_failed | int) > 0
+
+# The TN-* groups must come FROM THE DIRECTORY. Listing Keycloak's groups proves nothing:
+# local_identity.yml pre-creates them by name (for the local recovery administrator), so a
+# directory missing every one would still look complete. The group mapper's own sync
+# counts the LDAP groups it found; its filter (tn_kc_ldap_groups_filter) matches exactly
+# the TN-* group DNs in tn_ldap_groups_dn, so the count must equal the TN-* list.
+- name: Keycloak — the AD group mapper
+  ansible.builtin.uri:
+    url: "{{ tn_kc_components_url }}?parent={{ tn_keycloak_ldap_component_id }}&type={{ tn_kc_mapper_type }}&name=ad-groups"
+    headers: "{{ tn_kc_headers }}"
+    status_code: 200
+  register: tn_kc_group_mapper
+
+- name: Keycloak — sync the TN-* groups from AD
+  ansible.builtin.uri:
+    url: >-
+      {{ tn_kc_realm_url }}/user-storage/{{ tn_keycloak_ldap_component_id }}/mappers/{{
+      tn_kc_group_mapper.json[0].id }}/sync?direction=fedToKeycloak
+    method: POST
+    headers: "{{ tn_kc_headers }}"
+    status_code: [200]
+  register: tn_kc_group_sync
+  changed_when: (tn_kc_group_sync.json.added | default(0) | int) > 0
+
+- name: Keycloak — every TN-* group was found in AD
+  vars:
+    _found: "{{ (tn_kc_group_sync.json.added | default(0) | int) + (tn_kc_group_sync.json.updated | default(0) | int) }}"
+  ansible.builtin.assert:
+    that: (_found | int) == (tn_ad_groups | length)
+    fail_msg: >-
+      The AD group mapper found {{ _found }} of the {{ tn_ad_groups | length }} TN-* groups in
+      {{ tn_ldap_groups_dn }} ({{ tn_kc_group_sync.json.status | default('') }}). Each of
+      {{ tn_ad_groups | join(', ') }} must exist directly in that OU, readable by the bind
+      account: without one, nobody in it gets a role suggestion or may register.
+    success_msg: "All {{ tn_ad_groups | length }} TN-* groups found in AD ({{ tn_ldap_groups_dn }})"

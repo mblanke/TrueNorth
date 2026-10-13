@@ -1,0 +1,117 @@
+---
+# The AD/LDAP user-federation component and its sub-mappers, created or updated in place.
+# Included by main.yml (tn_ldap_enabled) and by tools/ad-test-dc/federate.yml, so the CI
+# `ad` lane federates its test directory through exactly these tasks.
+#
+# Needs: tn_kc_headers (admin_token.yml), tn_kc_ldap_body / tn_kc_ldap_mappers (defaults),
+# tn_ldap_bind_password, tn_secrets['secrets_key'] and tn_state_dir (the keyed hash of
+# the bind password last written).
+- name: Keycloak — look for an existing AD federation component
+  ansible.builtin.uri:
+    url: "{{ tn_kc_components_url }}?type={{ tn_kc_provider_type }}&name=corp-ad"
+    headers: "{{ tn_kc_headers }}"
+    status_code: 200
+  register: tn_kc_ldap_existing
+
+- name: Keycloak — create the AD federation component
+  ansible.builtin.uri:
+    url: "{{ tn_kc_components_url }}"
+    method: POST
+    headers: "{{ tn_kc_headers }}"
+    body: "{{ tn_kc_ldap_body }}"
+    body_format: json
+    status_code: [201]
+  when: tn_kc_ldap_existing.json | length == 0
+  register: tn_kc_ldap_created
+  changed_when: true
+  no_log: true
+
+- name: Keycloak — re-read the federation component
+  ansible.builtin.uri:
+    url: "{{ tn_kc_components_url }}?type={{ tn_kc_provider_type }}&name=corp-ad"
+    headers: "{{ tn_kc_headers }}"
+    status_code: 200
+  register: tn_kc_ldap
+
+- name: Keycloak — capture the component id
+  ansible.builtin.set_fact:
+    tn_keycloak_ldap_component_id: "{{ tn_kc_ldap.json[0].id }}"
+
+# Keycloak returns bindCredential masked, so the bind password cannot be compared
+# through the API: a keyed hash of it is kept in the state directory instead.
+- name: Keycloak — the bind password last written
+  ansible.builtin.slurp:
+    src: "{{ tn_state_dir }}/keycloak_ldap_bind.hmac"
+  register: tn_kc_bind_prev
+  failed_when: false
+
+- name: Keycloak — update the federation component in place, when it differs
+  vars:
+    _have: "{{ tn_kc_ldap.json[0].config }}"
+    _want: "{{ tn_kc_ldap_body.config | dict2items | rejectattr('key', 'equalto', 'bindCredential') | items2dict }}"
+    _bind: "{{ (tn_ldap_bind_password ~ ':' ~ tn_secrets['secrets_key']) | hash('sha256') }}"
+  ansible.builtin.uri:
+    url: "{{ tn_kc_components_url }}/{{ tn_keycloak_ldap_component_id }}"
+    method: PUT
+    headers: "{{ tn_kc_headers }}"
+    body: "{{ tn_kc_ldap_body | combine({'id': tn_keycloak_ldap_component_id}) }}"
+    body_format: json
+    status_code: [204]
+  when: >-
+    _have | combine(_want) != _have
+    or (tn_kc_bind_prev.content | default('') | b64decode | trim) != _bind
+  changed_when: true
+  no_log: true
+
+- name: Keycloak — record the bind password written (keyed hash)
+  ansible.builtin.copy:
+    dest: "{{ tn_state_dir }}/keycloak_ldap_bind.hmac"
+    content: "{{ (tn_ldap_bind_password ~ ':' ~ tn_secrets['secrets_key']) | hash('sha256') }}"
+    mode: "0600"
+  no_log: true
+
+# ── Sub-mappers on the federation component ───────────────────────
+# These are what populate User.ad_object_guid and .ad_distinguished_name at
+# registration. Without them those columns stay NULL and re-linking an account
+# after an AD rename degrades to matching on email.
+- name: Keycloak — existing LDAP sub-mappers
+  ansible.builtin.uri:
+    url: "{{ tn_kc_components_url }}?parent={{ tn_keycloak_ldap_component_id }}&type={{ tn_kc_mapper_type }}"
+    headers: "{{ tn_kc_headers }}"
+    status_code: 200
+  register: tn_kc_mappers
+
+- name: Keycloak — create LDAP sub-mappers
+  ansible.builtin.uri:
+    url: "{{ tn_kc_components_url }}"
+    method: POST
+    headers: "{{ tn_kc_headers }}"
+    body: "{{ item }}"
+    body_format: json
+    status_code: [201, 409]
+  loop: "{{ tn_kc_ldap_mappers }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: item.name not in (tn_kc_mappers.json | map(attribute='name') | list)
+  changed_when: true
+
+# Like the component: a mapper someone edited (ad-groups switched to LDAP_ONLY, a GUID or
+# DN mapper made writable, the groups filter dropped) is put back on every run.
+- name: Keycloak — reconcile existing LDAP sub-mappers
+  vars:
+    _have: "{{ tn_kc_mappers.json | selectattr('name', 'equalto', item.name) | first }}"
+  ansible.builtin.uri:
+    url: "{{ tn_kc_components_url }}/{{ _have.id }}"
+    method: PUT
+    headers: "{{ tn_kc_headers }}"
+    body: "{{ item | combine({'id': _have.id, 'config': _have.config | combine(item.config)}) }}"
+    body_format: json
+    status_code: [204]
+  loop: "{{ tn_kc_ldap_mappers }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: >-
+    item.name in (tn_kc_mappers.json | map(attribute='name') | list)
+    and (tn_kc_mappers.json | selectattr('name', 'equalto', item.name) | first).config
+        | combine(item.config) != (tn_kc_mappers.json | selectattr('name', 'equalto', item.name) | first).config
+  changed_when: true

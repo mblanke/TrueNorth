@@ -1,0 +1,139 @@
+---
+# Local groups and a local bootstrap administrator. Without AD this is the whole identity;
+# with AD and tn_keycloak_local_admin it is the break-glass account that keeps working
+# when the directory, the bind account or LDAPS does not (install/README.md "AD on
+# staging"). Keycloak finds a local account before it asks the directory, and preflight
+# keeps its UPN outside the AD domain, so no directory account can shadow it.
+#
+# The same TN-* groups the AD group mapper would bring, as plain Keycloak groups (with AD,
+# the mapper's sync adopts them by name), and the bootstrap administrator as a local
+# account in TN-Platform-Admins with a generated password (bootstrap_admin_password,
+# persisted like every secret). app.bootstrap_admin (80-seed) then finds it like a
+# federated user, and 95-smoke-test signs in as it.
+- name: Keycloak — a bootstrap administrator must be nominated
+  ansible.builtin.assert:
+    that: tn_bootstrap_admin_upn | default('') | length > 0
+    fail_msg: "tn_bootstrap_admin_upn is empty (it names the local admin account to create)."
+    quiet: true
+
+- name: Keycloak — existing groups
+  ansible.builtin.uri:
+    url: "{{ tn_kc_realm_url }}/groups?max=1000"
+    headers: "{{ tn_kc_headers }}"
+    status_code: 200
+  register: tn_kc_local_groups
+
+- name: Keycloak — create the TN-* groups
+  ansible.builtin.uri:
+    url: "{{ tn_kc_realm_url }}/groups"
+    method: POST
+    headers: "{{ tn_kc_headers }}"
+    body: {name: "{{ item }}"}
+    body_format: json
+    status_code: [201, 409]
+  loop: "{{ tn_ad_groups | difference(tn_kc_local_groups.json | map(attribute='name') | list) }}"
+  changed_when: true
+
+- name: Keycloak — re-read the groups
+  ansible.builtin.uri:
+    url: "{{ tn_kc_realm_url }}/groups?max=1000"
+    headers: "{{ tn_kc_headers }}"
+    status_code: 200
+  register: tn_kc_local_groups2
+
+- name: Keycloak — does the bootstrap administrator exist?
+  ansible.builtin.uri:
+    url: "{{ tn_kc_realm_url }}/users?username={{ tn_bootstrap_admin_upn | urlencode }}&exact=true"
+    headers: "{{ tn_kc_headers }}"
+    status_code: 200
+  register: tn_kc_local_admin
+
+# First and last name: Keycloak 24's user profile requires them, or the first sign-in
+# stops at "update your account" (and the smoke test's password grant fails).
+- name: Keycloak — create the bootstrap administrator (local account)
+  ansible.builtin.uri:
+    url: "{{ tn_kc_realm_url }}/users"
+    method: POST
+    headers: "{{ tn_kc_headers }}"
+    body:
+      username: "{{ tn_bootstrap_admin_upn }}"
+      email: "{{ tn_bootstrap_admin_upn }}"
+      emailVerified: true
+      enabled: true
+      firstName: TrueNorth
+      lastName: Administrator
+      requiredActions: []
+      credentials:
+        - {type: password, value: "{{ tn_secrets['bootstrap_admin_password'] }}", temporary: false}
+    body_format: json
+    status_code: [201]
+  when: tn_kc_local_admin.json | length == 0
+  changed_when: true
+  no_log: true
+
+- name: Keycloak — re-read the bootstrap administrator
+  ansible.builtin.uri:
+    url: "{{ tn_kc_realm_url }}/users?username={{ tn_bootstrap_admin_upn | urlencode }}&exact=true"
+    headers: "{{ tn_kc_headers }}"
+    status_code: 200
+  register: tn_kc_local_admin2
+
+# local_admin_retire.yml disables it when tn_keycloak_local_admin is turned off with AD;
+# turning it back on restores it.
+- name: Keycloak — the bootstrap administrator is enabled
+  ansible.builtin.uri:
+    url: "{{ tn_kc_realm_url }}/users/{{ tn_kc_local_admin2.json[0].id }}"
+    method: PUT
+    headers: "{{ tn_kc_headers }}"
+    body: {enabled: true}
+    body_format: json
+    status_code: [204]
+  when: not tn_kc_local_admin2.json[0].enabled | bool
+  changed_when: true
+
+- name: Keycloak — the password last set (keyed hash)
+  ansible.builtin.slurp:
+    src: "{{ tn_state_dir }}/keycloak_bootstrap_admin.hmac"
+  register: tn_kc_admin_pw_prev
+  failed_when: false
+
+# Created with it above; set again only when the persisted secret changed.
+- name: Keycloak — set the bootstrap administrator's password
+  ansible.builtin.uri:
+    url: "{{ tn_kc_realm_url }}/users/{{ tn_kc_local_admin2.json[0].id }}/reset-password"
+    method: PUT
+    headers: "{{ tn_kc_headers }}"
+    body: {type: password, value: "{{ tn_secrets['bootstrap_admin_password'] }}", temporary: false}
+    body_format: json
+    status_code: [204]
+  when: >-
+    tn_kc_local_admin.json | length > 0
+    and (tn_kc_admin_pw_prev.content | default('') | b64decode | trim)
+        != (tn_secrets['bootstrap_admin_password'] ~ ':' ~ tn_secrets['secrets_key']) | hash('sha256')
+  changed_when: true
+  no_log: true
+
+- name: Keycloak — record it (keyed hash)
+  ansible.builtin.copy:
+    dest: "{{ tn_state_dir }}/keycloak_bootstrap_admin.hmac"
+    content: "{{ (tn_secrets['bootstrap_admin_password'] ~ ':' ~ tn_secrets['secrets_key']) | hash('sha256') }}"
+    mode: "0600"
+  no_log: true
+
+- name: Keycloak — the bootstrap administrator's groups
+  ansible.builtin.uri:
+    url: "{{ tn_kc_realm_url }}/users/{{ tn_kc_local_admin2.json[0].id }}/groups"
+    headers: "{{ tn_kc_headers }}"
+    status_code: 200
+  register: tn_kc_local_admin_groups
+
+- name: Keycloak — put the bootstrap administrator in {{ tn_kc_local_admin_group }}
+  vars:
+    _gid: "{{ (tn_kc_local_groups2.json | selectattr('name', 'equalto', tn_kc_local_admin_group) | first).id }}"
+  ansible.builtin.uri:
+    url: "{{ tn_kc_realm_url }}/users/{{ tn_kc_local_admin2.json[0].id }}/groups/{{ _gid }}"
+    method: PUT
+    headers: "{{ tn_kc_headers }}"
+    status_code: [204]
+  when: tn_kc_local_admin_group not in (tn_kc_local_admin_groups.json | map(attribute='name') | list)
+  changed_when: true

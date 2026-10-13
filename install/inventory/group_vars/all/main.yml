@@ -101,6 +101,16 @@ tn_ldap_base_dn: "DC=corp,DC=tnrange,DC=lab"
 tn_ldap_users_dn: "OU=Users,OU=TrueNorth,DC=corp,DC=tnrange,DC=lab"
 tn_ldap_groups_dn: "OU=Groups,OU=TrueNorth,DC=corp,DC=tnrange,DC=lab"
 tn_ldap_bind_dn: "CN=TrueNorth Keycloak Bind,OU=ServiceAccounts,OU=TrueNorth,DC=corp,DC=tnrange,DC=lab"
+# The bind password the LDAPS check (40-tls) and the Keycloak federation (60-keycloak)
+# use. Always the vault's; one name so both read the same value.
+tn_ldap_bind_password: "{{ vault_ldap_bind_password | default('') }}"
+# With AD: keep the bootstrap administrator (tn_bootstrap_admin_upn) a LOCAL Keycloak
+# account too, in TN-Platform-Admins, with its generated password. The recovery path when
+# the directory, the bind account or LDAPS fails, and what staging keeps while AD is
+# being qualified (install/README.md "AD on staging"). The UPN must then be outside
+# tn_domain (preflight checks), so it never names an AD account. Without AD the local
+# administrator is always created and this does nothing.
+tn_keycloak_local_admin: false
 tn_files_dir: "{{ inventory_dir }}/../files"
 # Copied from the deployment repo's certs/. Anchored on inventory_dir because
 # Ansible resolves a bare `files/` against the PLAYBOOK directory, which here

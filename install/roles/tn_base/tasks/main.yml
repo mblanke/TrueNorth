@@ -71,6 +71,16 @@
       delay: 2
       until: tn_dc_resolves.rc == 0
 
+# Rollback (install/README.md "Work-domain cut-over and rollback"): turning AD off again
+# also hands name resolution back to the host's own resolver.
+- name: Base — no AD resolver drop-in without AD
+  ansible.builtin.file:
+    path: /etc/systemd/resolved.conf.d/90-truenorth-ad.conf
+    state: absent
+  become: true
+  notify: Restart systemd-resolved
+  when: not tn_ldap_enabled | bool
+
 # Without AD DNS (tn_manage_etc_hosts): the seed and smoke checks call the service name
 # from this host, where nginx answers on 443.
 - name: Base — pin the service name to this host in /etc/hosts

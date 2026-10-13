@@ -37,6 +37,13 @@ from sqlalchemy.orm import Session
 from .db import SessionLocal
 from .models import Tenant, User, UserRole
 
+# Staff rows an email match must not turn into the bootstrap administrator.
+_NOT_ADOPTED_BY_EMAIL = frozenset({UserRole.instructor, UserRole.range_ops})
+
+
+class AdoptionRefusedError(Exception):
+    """The bootstrap administrator's email belongs to another staff account."""
+
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger("truenorth.bootstrap")
 
@@ -110,6 +117,13 @@ def ensure_admin(db: Session, tenant: Tenant, kc_user: dict) -> User:
         # Adopt a row created by a CSV roster import rather than colliding on
         # the unique email constraint.
         user = db.query(User).filter(User.email == email).first()
+        # Never by email onto someone else's staff account (M2): an instructor or range_ops
+        # row with this address is a different person's, not a stale copy of this admin.
+        if user is not None and user.role in _NOT_ADOPTED_BY_EMAIL:
+            raise AdoptionRefusedError(
+                f"a '{user.role.value}' account (user {user.id}) already has the bootstrap "
+                "administrator's email; it is not adopted. Change the address on one of them."
+            )
 
     if user is None:
         user = User(

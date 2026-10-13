@@ -59,10 +59,11 @@ def test_demo_secrets_exist_only_where_the_demo_is_on() -> None:
 
 def test_keycloak_accounts_are_gated_and_local_only() -> None:
     main = yaml.safe_load((INSTALL / "roles/tn_keycloak/tasks/main.yml").read_text())
-    local = _named(main, "Keycloak — local identity (no AD)")
-    assert local["when"] == "not tn_ldap_enabled | bool"
-    inc = _named(local["block"], "Keycloak — the shipped demo people's sign-in accounts")
+    # Demo accounts are local Keycloak users: never beside a federated directory, even when
+    # the local recovery administrator is kept there (tn_keycloak_local_admin).
+    inc = _named(main, "Keycloak — the shipped demo people's sign-in accounts")
     assert inc["ansible.builtin.include_tasks"] == "demo_accounts.yml"
+    assert "not tn_ldap_enabled | bool" in inc["when"]
     assert DEMO_GATE in inc["when"] and "tn_load_shipped_content | bool" in inc["when"]
 
 

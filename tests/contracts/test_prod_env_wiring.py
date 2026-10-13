@@ -78,5 +78,7 @@ def test_keycloak_puts_the_api_in_the_audience():
     aud = next(m for m in mappers if m["protocolMapper"] == "oidc-audience-mapper")
     assert aud["config"]["included.client.audience"] == "{{ tn_keycloak_api_client }}"
     assert aud["config"]["access.token.claim"] == "true"
-    tasks = (INSTALL / "roles/tn_keycloak/tasks/main.yml").read_text()
+    main = (INSTALL / "roles/tn_keycloak/tasks/main.yml").read_text()
+    assert "include_tasks: identity_scope.yml" in main
+    tasks = (INSTALL / "roles/tn_keycloak/tasks/identity_scope.yml").read_text()
     assert "add missing identity scope mappers" in tasks  # existing installs get it too

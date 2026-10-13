@@ -751,6 +751,58 @@ jobs:
         if: always()
         run: $VCSIM_COMPOSE down -v
 
+  # Directory-backed sign-in (plan M2). tools/ad-test-dc: a Samba AD DC with its own test
+  # CA (TNLAB.TEST, TN-DC01's OUs and TN-* groups), Keycloak (the image compose.prod.yml
+  # pins) trusting only that CA, and a front end presenting a certificate from an untrusted
+  # one, all on loopback under project tn-ad-test. The realm and LDAP federation are made
+  # by install/roles/tn_keycloak's own tasks (federate.yml), then
+  # tests/integration/test_ad_directory.py runs the API in-process on real directory
+  # tokens: group -> role and tenant, nested groups, untrusted CA, disabled accounts, group
+  # removal (with the periodic sync measured: AD_PROPAGATION_WAIT), email collision, the
+  # Moodle SSO subject and the local recovery administrator with the DC stopped. The
+  # measurements are uploaded (ad-report.json). Samba-tested only: Windows AD DS / AD CS
+  # is qualified separately, by the same tests in external mode (tools/ad-test-dc/README.md).
+  ad:
+    runs-on: ubuntu-latest
+    needs: lint-python
+    timeout-minutes: 45
+    env:
+      AD_PROPAGATION_WAIT: "1"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: ./.github/actions/dockerhub-mirror
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: pip install -r requirements-test.txt
+      # The installer's Ansible (as lint-install pins it), on the runner's Python 3.12.
+      - run: pipx install --python python3.12 "ansible-core==2.21.4"
+      - name: Start the AD test DC, the rogue front end and Keycloak
+        run: bash tools/ad-test-dc/run.sh up
+      - name: Realm and LDAP federation through install/roles/tn_keycloak
+        run: bash tools/ad-test-dc/run.sh federate
+      - name: AD tests (fixture mode)
+        run: |
+          rc=0
+          PY=python bash tools/ad-test-dc/run.sh test || rc=$?
+          python scripts/junit_require_pass.py build/ad-test-dc/junit.xml || rc=1
+          exit $rc
+      - name: AD fixture logs
+        if: failure()
+        run: bash tools/ad-test-dc/run.sh logs
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: ad-junit
+          # junit and the measurements (propagation, timings); never the secrets dir
+          path: |
+            build/ad-test-dc/junit.xml
+            build/ad-test-dc/ad-report.json
+          if-no-files-found: ignore
+      - name: Tear down
+        if: always()
+        run: bash tools/ad-test-dc/run.sh clean
+
   # Greyspace (ADR 0007): build the T0 corpus, render the simulated-internet stack from
   # its manifest and run it under its own compose project. The script asserts DNS through
   # the root -> TLD -> authoritative chain, a BGP route learned between the two ISPs,

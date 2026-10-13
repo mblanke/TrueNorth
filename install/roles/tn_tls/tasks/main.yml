@@ -79,7 +79,7 @@
     - name: TLS — write the bind password (0600)
       ansible.builtin.copy:
         dest: "{{ tn_ldap_pwfile.path }}"
-        content: "{{ vault_ldap_bind_password }}"
+        content: "{{ tn_ldap_bind_password }}"
         mode: "0600"
       check_mode: false
       changed_when: false

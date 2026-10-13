@@ -163,6 +163,37 @@
          if tn_ldap_enabled | bool else
          'AD/LDAPS: DISABLED (tn_ldap_enabled=false): no TN-DC01 checks, no LDAPS bind, no Keycloak federation;'
          ~ ' local TN-* groups and a local bootstrap administrator (' ~ tn_bootstrap_admin_upn ~ ') instead.' }}
+      {{ ' Local recovery administrator kept: ' ~ tn_bootstrap_admin_upn ~ ' (tn_keycloak_local_admin).'
+         if tn_ldap_enabled | bool and tn_keycloak_local_admin | bool else '' }}
+
+# The CHANGE_ME check above passes an EMPTY bind password (tn_ldap_bind_password defaults
+# to '' so sites without AD need none). With AD, an empty one would reach Keycloak as an
+# anonymous bind; stop here instead.
+- name: Preflight — AD has a bind password
+  ansible.builtin.assert:
+    that: tn_ldap_bind_password | default('') | string | length > 0
+    fail_msg: >-
+      tn_ldap_enabled is true but the LDAP bind password is empty. Set vault_ldap_bind_password
+      (ansible-vault edit inventory/group_vars/all/vault.yml) to the password of
+      {{ tn_ldap_bind_dn }}.
+    success_msg: "LDAP bind password set (not shown)"
+  when: tn_ldap_enabled | bool
+
+# With AD and a local recovery administrator, the local account must not be able to name
+# (or be confused with) a directory account: a UPN in the AD domain would be one an AD
+# user could hold, and a bare name could equal an sAMAccountName.
+- name: Preflight — the local recovery administrator is outside the AD domain
+  ansible.builtin.assert:
+    that:
+      - tn_bootstrap_admin_upn | default('') is search('@')
+      - not (tn_bootstrap_admin_upn | lower).endswith('@' ~ (tn_domain | lower))
+      - not (tn_bootstrap_admin_upn | lower).endswith('.' ~ (tn_domain | lower))
+    fail_msg: >-
+      tn_keycloak_local_admin is on with AD, so {{ tn_bootstrap_admin_upn | default('(empty)') }}
+      becomes a LOCAL Keycloak account. Give it a UPN outside {{ tn_domain }} (for example
+      tnadmin@{{ inventory_hostname }}.local), or set tn_keycloak_local_admin false.
+    quiet: true
+  when: tn_ldap_enabled | bool and tn_keycloak_local_admin | bool
 
 # ── Container runtime ─────────────────────────────────────────────────
 # roles/tn_docker (playbooks/00-docker.yml) installs it on Ubuntu 24.04 unless

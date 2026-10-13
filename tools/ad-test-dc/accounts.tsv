@@ -1,0 +1,15 @@
+# TrueNorth AD test DC: the accounts provision.sh creates, run.sh makes passwords for,
+# and tests/integration/test_ad_directory.py signs in as. Tab-separated:
+# sAMAccountName  given  surname  ou  groups(,-separated or -)  flags(-|disabled)  mail(-: <sam>@<realm>; COLLISION: $AD_COLLISION_EMAIL)
+svc-keycloak-bind	TrueNorth Keycloak	Bind	ServiceAccounts	-	-	-
+ad.admin	Ada	Admin	Users	TN-Platform-Admins	-	-
+ad.rangeops	Rory	Rangeops	Users	TN-Range-Operators	-	-
+ad.instructor	Ian	Instructor	Users	TN-Instructors	-	-
+ad.author	Aria	Author	Users	TN-Content-Authors	-	-
+ad.student	Sam	Student	Users	TN-Students	-	-
+ad.observer	Olive	Observer	Users	TN-Observers	-	-
+ad.multi	Max	Multi	Users	TN-Students,TN-Instructors	-	-
+ad.nested	Nia	Nested	Users	TN-Cohort-Alpha	-	-
+ad.mover	Mo	Mover	Users	TN-Instructors	-	-
+ad.disabled	Dee	Disabled	Users	TN-Students	disabled	-
+ad.collision	Cole	Collision	Users	TN-Platform-Admins	-	COLLISION

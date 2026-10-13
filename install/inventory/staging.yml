@@ -5,9 +5,9 @@
 #     -e tn_release_version=v1.0.0-rc1
 #
 # Same group_vars as the TN lab (inventory/group_vars/all/ sits beside this file); only
-# what differs is here. This host cannot reach TN-DC01, so AD/LDAPS is off: Keycloak gets
-# local TN-* groups and a local bootstrap administrator (install/README.md "Without
-# Active Directory"). Images come from a signed release, by digest, as in production;
+# what differs is here. AD/LDAPS is off by default: Keycloak gets local TN-* groups and a
+# local bootstrap administrator (install/README.md "Without Active Directory"). The M2
+# block below points it at the owner's Windows DC when AD is being qualified. Images come from a signed release, by digest, as in production;
 # pass the tag with -e tn_release_version.
 all:
   children:
@@ -17,7 +17,28 @@ all:
           ansible_host: 192.168.1.240
           ansible_user: soadmin
           tn_domain_fqdn: tn-staging.corp.tnrange.lab
+          # ── AD qualification (plan M2) against the owner's Windows AD DS / AD CS DC on
+          # this LAN, TN-DC01 (192.168.1.224), through the normal tn_ldap_* path
+          # (install/README.md "AD on staging"). OFF until the M2 run: the coordinator sets
+          # tn_ldap_enabled true and uncomments the three DC lines below. Everything else
+          # (corp.tnrange.lab, OU=TrueNorth with Users/Groups/ServiceAccounts, the six TN-*
+          # groups, the bind DN) is group_vars' TN-DC01 layout, which that DC mirrors.
+          # Before turning it on:
+          #   * vault_ldap_bind_password in the vault (preflight refuses CHANGE_ME or empty),
+          #     and the enterprise root CA corp-TN-DC01-CA at install/files/corp-root-ca.cer
+          #     (40-tls installs it and proves an LDAPS bind before Keycloak is touched; the
+          #     DC's LDAPS certificate must name tn-dc01.corp.tnrange.lab);
+          #   * DNS: this host will resolve EVERYTHING through TN-DC01 (roles/tn_base's
+          #     resolver drop-in). TN-DC01 forwards to 192.168.1.21 and 192.168.1.1 and
+          #     holds the A record tn-staging -> 192.168.1.240 and the PTRs (preflight asks
+          #     it for tn_domain_fqdn and stops without one).
+          # tn_keycloak_local_admin keeps tnadmin@tn-staging.local a LOCAL account beside
+          # AD: the way back in if the DC, the bind or LDAPS fails. Keep it true here.
           tn_ldap_enabled: false
+          tn_keycloak_local_admin: true
+          # tn_dc_host: tn-dc01.corp.tnrange.lab
+          # tn_dc_ip: 192.168.1.224
+          # tn_dns_servers: ["192.168.1.224"]
           # Nothing resolves tn-staging.corp.tnrange.lab for the host itself (no AD DNS).
           tn_manage_etc_hosts: true
           tn_image_source: release

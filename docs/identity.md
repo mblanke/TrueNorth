@@ -163,6 +163,25 @@ clearance claim that nothing emits. A name that matches no active zone refuses
 registration. Registration never applies a zone's MFA rule: an identity with no
 account has no role yet, and the role decides MFA.
 
+The other direction follows: **removing someone from an AD group does not change their
+TrueNorth role.** Their `groups` claim drops (within Keycloak's changed-users sync, 300 s),
+but the role was granted by an approval and stays until someone changes it here. To
+revoke TrueNorth access, disable or re-role the TrueNorth account, or disable the AD
+account (sign-in then stops).
+
+**Nested groups are not expanded.** The federation reads direct membership
+(`LOAD_GROUPS_BY_MEMBER_ATTRIBUTE`): a user in a group that is a member of `TN-Students`
+carries that group, not `TN-Students`.
+
+**An email match never takes over another person's staff account.** Registration
+approval adopts a pre-provisioned roster row by email, but never one holding `admin`,
+`instructor` or `range_ops` (409), whoever approves. The bootstrap step
+(`app.bootstrap_admin`, 80-seed) adopts by email only a roster row or an earlier `admin`
+row (the nominated administrator after a realm rebuild), never an `instructor` or
+`range_ops` row (it stops with an error). Keycloak itself refuses to import an AD user
+whose email a local account already has. All of this is measured against a directory by the CI `ad` lane
+(`tools/ad-test-dc/README.md`).
+
 ---
 
 ## Role vocabulary
