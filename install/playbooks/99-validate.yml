@@ -101,6 +101,17 @@
           playbooks/30-config.yml and 50-stack-up.yml, then prove delivery with
           playbooks/alert-test.yml (install/README.md "Alerting").
       when: tn_alert_delivery.startswith('NOWHERE')
+    # ADR 0011: record this out of band. Without it, someone with root on this host could
+    # re-sign a rewritten audit export with a new key and nothing would tell them apart.
+    - name: Validate — audit export signing key fingerprint
+      ansible.builtin.command:
+        cmd: >-
+          docker compose -f {{ tn_compose_file }} --env-file {{ tn_env_file }}
+          run --rm --no-deps -T --entrypoint python worker-scenario -m worker.audit_signing
+        chdir: "{{ tn_app_dir }}/infra/platform/docker"
+      register: tn_audit_key
+      changed_when: false
+      failed_when: false
 
     - name: Validate — REPORT
       ansible.builtin.debug:
@@ -126,6 +137,7 @@
             {{ ' arc2 studio   : on, runner ' ~ (tn_arc2_state.status.ActiveState | default('unknown'))
                if tn_arc2_enabled | default(false) | bool else ' arc2 studio   : off' }}
           - " cmi5          : {{ 'on, AU credential set' if tn_cmi5_enabled | bool else 'off (launches answer 503)' }}"
+          - " audit key     : {{ tn_audit_key.stdout | default('') | trim or 'UNKNOWN (no AUDIT_SIGNING_SEED?)' }} (record it out of band)"
           - " env file      : {{ tn_env_file }}"
           - " data root     : {{ tn_data_root }}"
           - "──────────────────────────────────────────────────────────────"

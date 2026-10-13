@@ -312,6 +312,37 @@ course production with a local-model fallback, and the cleanup of unsupported su
   needs a Java SPI provider), so AC-8 is recorded as Partial. LTI-launched Students sign in
   through Moodle and do not see it (no Moodle banner, by decision). CI: `keycloak-realm`
   checks the banner, the required box and the localization override on the pinned image.
+- **Audit log integrity (ADR 0011).** `audit_logs` is append-only in PostgreSQL: a trigger
+  refuses UPDATE and TRUNCATE, stamps every insert with the database clock, and lets a row
+  be deleted only by the retention job (transaction-local `tn.audit_purge`, row 30+ days
+  old, its day exported). The worker signs a daily export (gzipped JSON lines, manifest,
+  Ed25519 signature over the manifest, one hash chain across days; catch-up after downtime;
+  supplements for late commits) into `AUDIT_ARCHIVE_PATH` (filesystem adapter,
+  `/srv/truenorth/audit-archive`), and deletes rows older than 90 days
+  (`tn_audit_hot_retention_days`, floor 30, 0 = never) only after the day's export
+  verifies, writing an `audit.purge` row. New secret `audit_signing_seed` (worker-scenario
+  only); the install report prints the key fingerprint to record out of band. `backup.sh`
+  copies and verifies the archive: signatures, hashes, the chain, and against
+  `audit_exports` (exact manifest hashes; signing keys the database recorded), new exit
+  code 6 when it does not verify, which `cron-backup.sh` still uploads and rotates with a
+  SECURITY notice; the critical `AuditArchiveTampered` alert reads its own metric
+  `truenorth_backup_audit_verified`, so an exit 3 cannot hide it (a pre-upgrade backup's 6 stops the upgrade, by
+  design: docs/runbooks/upgrade.md). `restore.sh` restores the archive first and then moves
+  every export the restored database does not list to `quarantine/<time>/` (kept;
+  `RESTORE.json`, an `audit.archive_quarantine` row), so exports continue instead of
+  colliding every night. A purge needs a fresh `audit_export_checks` row matching the
+  export, written by the retention job's re-verification (key ids the database knows,
+  the recorded manifest hash). The drill re-verifies the chain and exercises the
+  quarantine (`python -m worker.audit_verify`).
+  Deep health reports `audit_export`. Residual risk, stated in ADR 0011 and security.md:
+  the database owner (what the application connects as) can disable triggers or write
+  export and check rows; detection by the chain and the fingerprint, not prevention
+  (non-owner role without INSERT on `audit_exports`/`audit_export_checks`, and WORM
+  storage, planned for v1.3). Helm does not yet mount
+  the archive or pass the seed.
+- docs/security.md: AC-8, AU-6, AU-9, AU-11, IA-2 and the FedRAMP MFA and audit-export rows
+  describe what exists; the audit schema, retention and login-event claims are corrected.
+  Restore targets: RPO 24 h, RTO 4 h (docs/operations.md, runbooks/backup-restore.md).
 - **Smoke identity (behaviour change):** 95-smoke-test signs in as the local,
   non-privileged `tn_smoke_local_user` (new secret `smoke_user_password`), not the
   bootstrap admin; AD sites must pass a non-privileged `tn_smoke_username`. It also asserts

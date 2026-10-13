@@ -54,6 +54,47 @@ after_action_reports = sa.Table(
     sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
 )
 
+audit_export_checks = sa.Table(
+    "audit_export_checks",
+    metadata,
+    sa.Column("id", GUID(), primary_key=True),
+    sa.Column("day", sa.Date(), nullable=False),
+    sa.Column("seq", sa.Integer(), nullable=False),
+    sa.Column("manifest_sha256", sa.String(64), nullable=False),
+    sa.Column("row_count", sa.Integer(), nullable=False),
+    sa.Column("key_id", sa.String(16), nullable=False),
+    sa.Column("checked_at", sa.DateTime(timezone=True), nullable=False),
+)
+
+audit_exports = sa.Table(
+    "audit_exports",
+    metadata,
+    sa.Column("day", sa.Date(), primary_key=True),
+    sa.Column("seq", sa.Integer(), primary_key=True),
+    sa.Column("row_count", sa.Integer(), nullable=False),
+    sa.Column("first_id", GUID()),
+    sa.Column("last_id", GUID()),
+    sa.Column("file_name", sa.String(255), nullable=False),
+    sa.Column("file_sha256", sa.String(64), nullable=False),
+    sa.Column("manifest_sha256", sa.String(64), nullable=False),
+    sa.Column("prev_manifest_sha256", sa.String(64)),
+    sa.Column("key_id", sa.String(16), nullable=False),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+)
+
+audit_logs = sa.Table(
+    "audit_logs",
+    metadata,
+    sa.Column("id", GUID(), primary_key=True),
+    sa.Column("timestamp", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("user_id", GUID()),
+    sa.Column("tenant_id", GUID()),
+    sa.Column("action", sa.String(100), nullable=False),
+    sa.Column("resource_type", sa.String(100), nullable=False),
+    sa.Column("resource_id", sa.String(255), nullable=False),
+    sa.Column("detail", sa.Text()),
+)
+
 competencies = sa.Table(
     "competencies",
     metadata,
@@ -450,6 +491,9 @@ users = sa.Table(
 __all__ = [
     "GUID",
     "after_action_reports",
+    "audit_export_checks",
+    "audit_exports",
+    "audit_logs",
     "competencies",
     "competency_assertions",
     "competency_auto_assessments",

@@ -121,3 +121,15 @@ plain text.
   `backups/pre-upgrade/`, which `cron-backup.sh` does not rotate; only the overall size cap
   (`tn_backup_max_total_gb`) can remove it, oldest first, never the newest backup.
 - Update the release notes with the migration head and anything an operator had to do.
+
+## Pre-upgrade backup exit 6: the audit archive does not verify
+
+The installer's pre-upgrade backup (tn_compose) accepts exit `0` and `5` only. Exit `6`
+(`backup.sh`: a signature, file hash, chain link or recorded export of the audit export
+archive is wrong) **stops the upgrade**, by design: a possibly tampered audit trail is
+investigated before the platform changes. The backup itself is kept under
+`pre-upgrade/`. Compare the archive with an older backup and the key fingerprint recorded
+at install (docs/runbooks/backup-restore.md, "Verify the audit export archive"); once
+explained (and, if needed, the damaged days restored from a backup), re-run the upgrade.
+The nightly backup is not stopped by 6: it uploads and rotates, and raises a SECURITY
+alert.

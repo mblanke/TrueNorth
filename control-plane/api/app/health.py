@@ -5,7 +5,8 @@ Tiers (served from app/main.py):
   - /health          - Backward-compatible flags; 503 when the database is down
   - /health/ready    - Readiness probe: 503 unless DB, Redis and (when OPENSEARCH_URL is
                        set) OpenSearch answer
-  - /health/deep     - Full dependency check (DB, Redis, OpenSearch, MinIO, Celery, AI)
+  - /health/deep     - Full dependency check (DB, Redis, OpenSearch, MinIO, Celery, AI,
+                       Keycloak) and the signed audit export's freshness
 """
 
 from __future__ import annotations
@@ -19,6 +20,8 @@ from datetime import UTC, datetime
 from enum import Enum
 
 from fastapi import APIRouter
+
+from . import audit_integrity  # noqa: F401 — registers audit_exports (deep health reads it)
 
 logger = logging.getLogger("truenorth.health")
 
@@ -111,6 +114,7 @@ class HealthChecker:
             self._check_celery(),
             self._check_ai_orchestrator(),
             self._check_keycloak(),
+            self._check_audit_export(),
             return_exceptions=True,
         )
         components = self._resolve_results(results)
@@ -316,6 +320,28 @@ class HealthChecker:
                 message=_failed(exc),
             )
 
+    async def _check_audit_export(self) -> ComponentHealth:
+        """The signed daily audit export is current (ADR 0011). Reads audit_exports only.
+
+        Degraded when audit rows older than yesterday exist but the newest export is
+        older than the day before yesterday: the worker's export (beat 00:45 UTC) is not
+        running, or has no AUDIT_SIGNING_SEED, or its archive refuses writes."""
+        start = time.monotonic()
+        try:
+            from .db import SessionLocal
+
+            db = SessionLocal()
+            try:
+                status, message, details = audit_export_status(db)
+            finally:
+                db.close()
+            return ComponentHealth(name="audit_export", status=status,
+                                   latency_ms=round((time.monotonic() - start) * 1000, 2),
+                                   message=message, details=details)
+        except Exception as exc:
+            return ComponentHealth(name="audit_export", status=HealthStatus.DEGRADED,
+                                   latency_ms=round((time.monotonic() - start) * 1000, 2), message=_failed(exc))
+
     # -- Helpers -----------------------------------------------------------
 
     @staticmethod
@@ -355,6 +381,36 @@ class HealthChecker:
             components=components,
             timestamp=datetime.now(UTC).isoformat(),
         )
+
+
+def audit_export_status(db) -> tuple[HealthStatus, str, dict]:
+    """(status, message, details) of the audit export, from audit_exports and audit_logs."""
+    from datetime import timedelta
+
+    from sqlalchemy import func
+
+    from .audit_integrity import AuditExport
+    from .models import AuditLog
+
+    if db is None:
+        return HealthStatus.HEALTHY, "", {}
+    today = datetime.now(UTC).date()
+    latest = db.query(func.max(AuditExport.day)).scalar()
+    oldest = db.query(func.min(AuditLog.timestamp)).scalar()
+    details = {"latest_export_day": latest.isoformat() if latest else None}
+    if latest is not None and latest >= today - timedelta(days=2):
+        return HealthStatus.HEALTHY, f"exported through {latest}", details
+    if oldest is None:
+        return HealthStatus.HEALTHY, "no audit rows yet", details
+    oldest_day = (oldest if oldest.tzinfo else oldest.replace(tzinfo=UTC)).astimezone(UTC).date()
+    if latest is None and oldest_day >= today - timedelta(days=1):
+        return HealthStatus.HEALTHY, "no finished day to export yet", details
+    return (HealthStatus.DEGRADED,
+            f"audit export behind: latest exported day {latest or 'none'}. worker-scenario's log names the "
+            "cause: no or short AUDIT_SIGNING_SEED; archive not writable (uid 10001); or 'already exists "
+            "and describes other rows', an archive holding days this database does not (a database "
+            "restored without restore.sh; runbook backup-restore.md, \"Archive newer than the database\")",
+            details)
 
 
 # -- FastAPI Router --------------------------------------------------------

@@ -15,6 +15,7 @@ import os
 from datetime import UTC, datetime
 
 from celery import Celery
+from celery.schedules import crontab
 from celery.signals import after_setup_logger, after_setup_task_logger
 from kombu import Exchange, Queue
 
@@ -66,7 +67,7 @@ app.conf.update(
     enable_utc=True,
     # Routing: one table, shared with the API's sender (contracts.py). The API used to
     # keep its own copy, and the two disagreed on delete_snapshot.
-    task_routes={**route_table(), "worker.tasks.*": {"queue": "default"}},
+    task_routes={**route_table(), "worker.tasks.*": {"queue": "default"}, "worker.audit_tasks.*": {"queue": "default"}},
     # Concurrency control
     task_track_started=True,
     task_acks_late=True,  # Don't ack until task completes
@@ -126,6 +127,19 @@ app.conf.beat_schedule = {
         "schedule": 30.0,  # every 30 seconds
         "options": {"expires": 30},
     },
+    # Audit log integrity (ADR 0011, worker/audit_tasks.py): the signed export of every
+    # finished UTC day, then retention. Queue `default` (worker-scenario, which alone has
+    # AUDIT_SIGNING_SEED and the archive volume). A missed run is caught up by the next.
+    "audit-export-daily": {
+        "task": "worker.audit_tasks.export_audit_days",
+        "schedule": crontab(hour=0, minute=45),
+        "options": {"expires": 6 * 3600},
+    },
+    "audit-retention-daily": {
+        "task": "worker.audit_tasks.enforce_audit_retention",
+        "schedule": crontab(hour=2, minute=15),
+        "options": {"expires": 6 * 3600},
+    },
 }
 
 
@@ -161,6 +175,7 @@ def _json_logs(logger: logging.Logger, **_kwargs) -> None:
 # controlled by CHAOS_ENABLED env var.
 from . import (
     aar_tasks,  # noqa: F401, E402
+    audit_tasks,  # noqa: F401, E402
     chaos,  # noqa: F401, E402
     configure_tasks,  # noqa: F401, E402
     exercise_run,  # noqa: F401, E402

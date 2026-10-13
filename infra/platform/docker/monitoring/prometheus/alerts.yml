@@ -296,7 +296,19 @@ groups:
           severity: warning
         annotations:
           summary: "The last backup kept the data but is incomplete (exit {{ $value }})"
-          description: "Exit 3: secrets not escrowed. Exit 5: the OpenSearch telemetry snapshot failed. The manifest says which."
+          description: "Exit 3: secrets not escrowed. Exit 5: the OpenSearch telemetry snapshot failed. Exit 6: see AuditArchiveTampered. The manifest says which."
+
+      # ADR 0011: backup.sh verifies the signed audit export archive (signatures, hashes,
+      # chain, audit_exports). A failure is a security event, not housekeeping. Its own
+      # gauge: the exit code says 3, not 6, when the escrow is missing too.
+      - alert: AuditArchiveTampered
+        expr: truenorth_backup_audit_verified == 0
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: "SECURITY: the audit export archive does not verify"
+          description: "The last backup found a wrong signature, hash, chain link or recorded export in the audit archive. Possible tampering: compare with older backups and the recorded key fingerprint (docs/runbooks/backup-restore.md)."
 
       - alert: BackupStale
         expr: time() - truenorth_backup_last_success_timestamp_seconds > 26 * 3600

@@ -252,7 +252,8 @@ OpenSearch's `_cluster/health`, the Moodle node's container health (only with
 | `MoodleDown` | critical | the Moodle container is not running or unhealthy for 10 min |
 | `Arc2RunnerDown` | warning | `truenorth-arc2-runner` not active for 5 min |
 | `BackupFailed` | critical | the last `backup.sh` run kept no backup |
-| `BackupIncomplete` | warning | the last backup kept the data but exited 3 (no escrow) or 5 (telemetry snapshot failed) |
+| `BackupIncomplete` | warning | the last backup kept the data but exited 3 (no escrow), 5 (telemetry snapshot failed) or 6 |
+| `AuditArchiveTampered` | critical | `truenorth_backup_audit_verified` is 0: the last backup found that the signed audit export archive does not verify (signature, hash, chain or recorded export). A security event: docs/runbooks/backup-restore.md |
 | `BackupStale` | critical | no good backup for more than 26 h (seeded at install, so a cron that never runs alerts too) |
 
 There is no WebSocket-connection alert: the API's `active_websocket_connections` gauge is
@@ -371,6 +372,7 @@ The full procedure, including what the operator must configure, is
 | MinIO — every bucket | `mc mirror` from a container of the stack's pinned MinIO image | Nightly | same |
 | Env file (holds `TN_SECRETS_KEY` and every credential) | AES-256, data key wrapped to the escrow RSA public key | Nightly | same |
 | OpenSearch (telemetry indices) | Snapshot into the `tn_snapshots` filesystem repository (`/srv/truenorth/opensearch-snapshots`), set up by the installer | Nightly | newest 14 snapshots (`tn_opensearch_snapshot_keep`) |
+| Audit export archive (`AUDIT_ARCHIVE_PATH`, `/srv/truenorth/audit-archive`) | Copied whole; every Ed25519 signature and file hash verified with OpenSSL (exit 6 if not) | Nightly | same; the live archive is never pruned by TrueNorth |
 | Redis | Not backed up: broker, cache, rate limits. Restoring it would replay stale tasks | — | — |
 | Configuration | Git repository (the manifest records the commit) | Every commit | indefinite |
 
@@ -378,6 +380,24 @@ A backup is a directory `truenorth-backup-<UTC>/` with `postgres/<db>.dump`,
 `postgres/globals.sql`, `minio/<bucket>/`, `secrets/env.enc` + `secrets/env.key.enc`,
 `manifest.json` and `SHA256SUMS`. It is written under `.partial-…` and renamed only
 when complete, so a directory with that name is always a whole backup.
+
+### Audit log export and retention (ADR 0011)
+
+Two beat entries run on worker-scenario (queue `default`), the only service with
+`AUDIT_SIGNING_SEED` and the archive volume:
+
+| Beat entry | When (UTC) | Does |
+|---|---|---|
+| `audit-export-daily` (`worker.audit_tasks.export_audit_days`) | 00:45 | Signs and writes every finished day not yet exported to `AUDIT_ARCHIVE_PATH` (catches up after downtime); recounts the day before yesterday and writes a supplement for late commits (`AUDIT_EXPORT_MISMATCH` in the log) |
+| `audit-retention-daily` (`worker.audit_tasks.enforce_audit_retention`) | 02:15 | Deletes audit rows older than `AUDIT_HOT_RETENTION_DAYS` (90; floor 30; 0 = never), one day at a time and only after that day's export verifies; stops and logs `AUDIT_RETENTION_STOPPED` at the first day that does not |
+
+`/health/deep` reports `audit_export` **degraded** when the newest export is older than the
+day before yesterday while older rows exist: check worker-scenario's log, its
+`AUDIT_SIGNING_SEED` (32+ characters) and that `AUDIT_ARCHIVE_PATH` is writable by uid 10001.
+Verify the archive by hand:
+`docker compose ... run --rm --no-deps worker-scenario python -m worker.audit_verify --db`.
+The install report prints the signing key fingerprint (`python -m worker.audit_signing`);
+keep it outside the host.
 
 ### Restore
 

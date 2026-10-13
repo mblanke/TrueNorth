@@ -19,6 +19,7 @@ written by the installer before it migrates; [upgrade.md](upgrade.md))
 | `secrets/secrets.tar.enc` | `SECRETS_DIR` (the installer's `/srv/truenorth/config/secrets/`, one file per persisted secret), tarred straight into the same cipher with the same data key; never on disk in clear. `restore-secrets.sh` writes it back. |
 | `moodle/moodledata.tar` | only with the installer's Moodle (`tn_moodle_enabled`; `MOODLE_COMPOSE_FILE` in backup.env): its files, without caches, sessions and temp, archived through a throwaway container of its image. Its database is one of the `postgres/<db>.dump` files (`moodle`). See [moodle.md](moodle.md). |
 | `arc2/runs.tar` | only with the ARC² Course Studio (`tn_arc2_enabled`; `ARC2_RUNS_DIR` in backup.env, default `/srv/truenorth/arc2/runs`): every Studio run and the runner's queue and history. The directory is `tn-arc2:tn-arc2-runs` with files the backup user cannot read, so it is archived as root by a throwaway container of the platform's postgres image (read-only mount, no network), numeric owners and modes kept. See [ARC² runs](#arc-runs). |
+| `audit-archive/` | only with `AUDIT_ARCHIVE_PATH` in backup.env (the installer sets it): the signed daily audit exports (ADR 0011), copied as they are. During the backup every manifest's Ed25519 signature (`keys/<key_id>.pub.pem`) and file SHA-256 is verified with OpenSSL 3, the hash chain is walked, and, when the database has `audit_exports`, every recorded export must be in the archive with its exact hash and every signing key must be one the database recorded (a deleted newest day or a dropped-in key is caught). A copy that does not verify is kept (evidence) and the backup exits `6`. `restore.sh` puts it back before the databases and reconciles it with the restored database afterwards ([Archive newer than the database](#archive-newer-than-the-database-after-a-restore); `--skip-audit` to leave it). |
 | `manifest.json` | databases and sizes, bucket/object counts, the OpenSearch snapshot's repository and name (or `not-backed-up`), Moodle's files (`backed-up`, `not-installed` or `not-configured`), the ARC² runs (same states, plus the runner's state at the time and `changed_while_reading`), escrow status, compose project, git commit |
 | `SHA256SUMS` | checksums of everything above; verified at the end of the backup and before any restore |
 
@@ -98,8 +99,14 @@ Every failure goes to stderr (captured in `backup.log` / cron mail) and to syslo
 non-zero exit, no new `truenorth-backup-*` directory in 26 h, or a `[ALERT]` line.
 Exit codes: `1` failed (nothing kept), `3` data kept but no escrow, `4` offsite upload failed,
 `5` data and secrets kept but the OpenSearch telemetry snapshot (or its pruning) failed — the
-manifest's `opensearch` entry says `"status":"failed"` and why. `3` wins when both apply; both
-alert. `cron-backup.sh` treats `3` and `5` alike: it uploads and rotates the backup and passes
+manifest's `opensearch` entry says `"status":"failed"` and why; `6` everything kept, but the
+audit export archive does **not** verify (a signature or file hash is wrong: tampering or
+damage) — the manifest's `audit_archive` entry has `"verified":false` and the first problem.
+Precedence when several apply: `3`, then `6`, then `5`; each alerts. Treat `6` as a security
+event: compare the archive with an older backup and the key fingerprint recorded at install.
+Because `3` can hide `6`, the archive has its own metric, `truenorth_backup_audit_verified`
+(0 fires the critical `AuditArchiveTampered`), and `cron-backup.sh` sends its SECURITY notice
+from the manifest's `audit_archive.verified`, whatever the exit code. `cron-backup.sh` treats `3` and `5` alike: it uploads and rotates the backup and passes
 the code through.
 
 Prometheus watches the same things: each `backup.sh` run writes
@@ -285,6 +292,47 @@ To leave telemetry out of backups: `tn_opensearch_snapshot_repo: ""` and re-run 
 (the manifest then records `not-backed-up`). Scores, AARs, enrollments and course records are
 in PostgreSQL/MinIO either way.
 
+## Recovery objectives
+
+RPO **24 hours** (nightly backup; nothing in between is recoverable) and RTO **4 hours**
+(owner decision for v1.2.0). The drill below proves the steps on every change; record the
+time of a full-size restore on the target hardware in the release notes.
+
+## Archive newer than the database (after a restore)
+
+A database restored from a backup is older than the live audit export archive: the
+worker kept exporting days after the backup was taken. Those archive files describe rows
+the restored `audit_logs` no longer (or not yet) has, and the next export would collide
+with them every night (`... already exists and describes other rows` in worker-scenario's
+log; `/health/deep` reports `audit_export` degraded).
+
+`restore.sh` reconciles automatically after restoring the databases: every export the
+restored `audit_exports` does not list with that exact hash is **moved** (never deleted)
+to `quarantine/<restore time>/` under `AUDIT_ARCHIVE_PATH`, with `RESTORE.json` listing
+what moved and why, and an `audit.archive_quarantine` row is written to the restored audit
+log. The next export continues the chain from the restored database's last day.
+`quarantine/` is copied by every backup but is not part of the chain or the checks.
+
+If the database was restored some other way, do the same by hand: stop worker-scenario,
+run `python -m worker.audit_verify --db` (in the worker image) to list the manifests "in
+the archive but not in audit_exports", move each with its `.sig` and data file into
+`quarantine/<date>/` (same relative paths), and start worker-scenario again. Keep the
+quarantined files: they are the record of what was exported before the restore.
+
+## Verify the audit export archive
+
+```bash
+cd /srv/truenorth/audit-archive
+openssl pkeyutl -verify -pubin -inkey keys/<key_id>.pub.pem -rawin \
+  -in 2026/10/audit-2026-10-11.manifest.json -sigfile 2026/10/audit-2026-10-11.manifest.json.sig
+# the whole chain, and the database against it (in the worker image):
+docker compose -f compose.prod.yml --env-file /srv/truenorth/config/.env.production \
+  run --rm --no-deps worker-scenario python -m worker.audit_verify --db
+```
+
+`key_id` must match the fingerprint printed at install (`python -m worker.audit_signing`)
+and recorded off the host.
+
 ## Drill
 
 ```bash
@@ -304,6 +352,13 @@ with a missing env file to exit non-zero with an alert. Then it plays a **reinst
 with them, `restore.sh` runs, the state must equal the seed, and the restored database
 passwords must authenticate over TCP while the fresh ones must not. It refuses the project
 names `truenorth`, `docker` and `tn-r0-pg`. Never point it at a live stack.
+
+Audit export archive: `drill_audit_archive.py seed` writes five days of signed exports with
+the worker's own code (needs python3 with the worker's `cryptography` and `SQLAlchemy`);
+the backup must record them verified, the wipe deletes the directory, `restore.sh` brings
+it back, and `python -m worker.audit_verify`'s archive check (signatures, hashes, the
+chain) must give the same summary as before. A backup of a tampered archive must exit `6`
+with an alert.
 
 OpenSearch (on by default, `DRILL_OPENSEARCH=0` to leave it out): `opensearch` runs beside
 them with the snapshot repository bind-mounted from the drill's work directory (so it

@@ -292,7 +292,7 @@ def test_health_judgement():
     yellow = [*ok_[:2], comp("opensearch", "degraded", "Cluster status: yellow"), *ok_[3:]]
     assert acc.judge_components(yellow, set(), acc.DEEP_COMPONENTS) == ([], ["opensearch yellow (single node)"])
     # Degraded for any other reason, or another component degraded, is a problem.
-    ai = [*ok_[:5], comp("ai_orchestrator", "degraded", "HTTP 502"), ok_[6]]
+    ai = [*ok_[:5], comp("ai_orchestrator", "degraded", "HTTP 502"), *ok_[6:]]
     assert acc.judge_components(ai, set(), acc.DEEP_COMPONENTS)[0] == ["ai_orchestrator degraded: HTTP 502"]
     # A component of a facility declared absent is noted, not judged; a required one missing fails.
     minio_down = [*ok_[:3], comp("minio", "unhealthy", "refused"), *ok_[4:]]

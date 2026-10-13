@@ -201,6 +201,14 @@ tn_login_banner_text: >-
   By continuing you consent to monitoring.
 tn_login_banner_ack: I have read and accept this notice
 
+# ── Audit log integrity (ADR 0011; docs/security.md "Audit Logging") ──
+# The signed daily export of audit_logs is written here by worker-scenario (uid 10001),
+# copied and verified by every backup. Never pruned by TrueNorth.
+tn_audit_archive_path: "{{ tn_data_root }}/audit-archive"
+# Days audit rows stay in the database before the retention job deletes them (each day
+# only after its export verifies). Never below 30; 0 keeps them forever.
+tn_audit_hot_retention_days: 90
+
 # ── Multi-factor sign-in (docs/identity.md "MFA") ─────────────────────
 # Roles that must sign in with a second factor (OTP). The API enforces it per request
 # from the database role (TN_MFA_ROLES); 60-keycloak makes the realm ask for it from the

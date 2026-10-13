@@ -29,6 +29,17 @@
 #      a rebuilt host gave tn-arc2 other ids). The ARC² runner must be stopped first
 #      (`sudo systemctl stop truenorth-arc2-runner`); the restore refuses while it is active
 #      and does not start it again;
+#   2b. audit archive (when the backup holds audit-archive/ and AUDIT_ARCHIVE_PATH is set
+#      here): copied back over AUDIT_ARCHIVE_PATH before the databases (its files win over
+#      same-named ones), owners and modes kept;
+#   3b. audit archive reconciliation (after the databases, whenever AUDIT_ARCHIVE_PATH
+#      exists): exports the restored audit_exports does not list (days exported after the
+#      backup, or anything that does not match) are MOVED, never deleted, to
+#      quarantine/<restore time>/ with RESTORE.json saying why, and an
+#      audit.archive_quarantine row is written. Otherwise the next export would find a
+#      manifest for other rows and fail every night (docs/runbooks/backup-restore.md).
+#      --skip-audit skips both 2b and 3b: after a database restore without them, reconcile by
+#      hand (runbook "Archive newer than the database") before worker-scenario runs;
 #   6. start the services stopped in step 2 again (unless --no-restart).
 #
 # It does NOT restore the env file: if it was lost, recover it from the escrow
@@ -43,10 +54,10 @@ umask 077
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 TN_LOG_TAG="truenorth-restore"
 
-usage() { echo "Usage: $0 <backup-dir> [--force] [--no-restart] [--skip-postgres] [--skip-minio] [--skip-opensearch] [--skip-moodle] [--skip-arc2]" >&2; exit 2; }
+usage() { echo "Usage: $0 <backup-dir> [--force] [--no-restart] [--skip-postgres] [--skip-minio] [--skip-opensearch] [--skip-moodle] [--skip-arc2] [--skip-audit]" >&2; exit 2; }
 [[ $# -ge 1 ]] || usage
 BACKUP_PATH="$1"; shift
-FORCE=0; RESTART=1; DO_PG=1; DO_MINIO=1; DO_OS=1; DO_MOODLE=1; DO_ARC2=1
+FORCE=0; RESTART=1; DO_PG=1; DO_MINIO=1; DO_OS=1; DO_MOODLE=1; DO_ARC2=1; DO_AUDIT=1
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --force) FORCE=1 ;;
@@ -56,6 +67,7 @@ while [[ $# -gt 0 ]]; do
         --skip-opensearch) DO_OS=0 ;;
         --skip-moodle) DO_MOODLE=0 ;;
         --skip-arc2) DO_ARC2=0 ;;
+        --skip-audit) DO_AUDIT=0 ;;
         *) usage ;;
     esac
     shift
@@ -141,6 +153,16 @@ if (( DO_ARC2 )) && [[ -f "${BACKUP_PATH}/arc2/runs.tar" ]]; then
     fi
 fi
 
+# The audit export archive comes back where the installer made AUDIT_ARCHIVE_PATH.
+AUDIT_SRC=""
+if (( DO_AUDIT )) && [[ -d "${BACKUP_PATH}/audit-archive" ]]; then
+    if [[ -n "${AUDIT_ARCHIVE_PATH:-}" ]]; then
+        AUDIT_SRC="${BACKUP_PATH}/audit-archive"
+    else
+        log "WARN" "audit: this backup holds the audit export archive, but AUDIT_ARCHIVE_PATH is not set here: it is NOT restored"
+    fi
+fi
+
 if (( ! FORCE )); then
     echo "This OVERWRITES the databases and buckets${OS_SNAP:+ and telemetry indices}${MOODLE_TAR:+ and the Moodle files}${ARC2_TAR:+ and the ARC² runs} of compose project '${PROJECT}' with:"
     echo "  ${BACKUP_PATH}"
@@ -176,6 +198,14 @@ psql_admin() {
     dc exec -T postgres psql -U "${PG_USER}" -d template1 -v ON_ERROR_STOP=1 -q "$@"
 }
 
+# ── Audit export archive (before the databases: it is what they are checked against) ──
+if [[ -n "${AUDIT_SRC}" ]]; then
+    CURRENT_STEP="audit-archive"
+    mkdir -p "${AUDIT_ARCHIVE_PATH}"
+    cp -a "${AUDIT_SRC}/." "${AUDIT_ARCHIVE_PATH}/"
+    log "INFO" "  audit: archive restored to ${AUDIT_ARCHIVE_PATH} ($(find "${AUDIT_SRC}" -type f -name '*.manifest.json' | grep -c . || true) manifests)"
+fi
+
 # ── PostgreSQL ───────────────────────────────────────────────────────────────
 if (( DO_PG )); then
     CURRENT_STEP="postgres:globals"
@@ -196,6 +226,65 @@ if (( DO_PG )); then
         psql_admin -c "DROP DATABASE IF EXISTS ${qdb} WITH (FORCE)"
         dc exec -T postgres pg_restore -U "${PG_USER}" -d template1 --create --exit-on-error <"$dump"
     done
+fi
+
+# ── Audit archive vs the restored database ───────────────────────────────────
+# The restored audit_exports is the truth: an export it does not list (with that exact
+# hash) is moved aside, kept for investigation, and the worker's next export continues
+# the chain from the restored database's last day.
+if (( DO_PG && DO_AUDIT )) && [[ -n "${AUDIT_ARCHIVE_PATH:-}" && -d "${AUDIT_ARCHIVE_PATH}" ]]; then
+    CURRENT_STEP="audit-archive:reconcile"
+    QROWS="$(mktemp)"
+    if audit_db_rows "${QROWS}"; then
+        QTS="$(date -u +%Y%m%dT%H%M%SZ)"
+        QDIR="${AUDIT_ARCHIVE_PATH}/quarantine/${QTS}"
+        moved=()
+        while IFS= read -r m; do
+            [[ -n "$m" ]] || continue
+            rel="${m#"${AUDIT_ARCHIVE_PATH}"/}"
+            base="${m##*/}"; base="${base#audit-}"; base="${base%.manifest.json}"
+            day="${base%%.*}"; seq=0; [[ "$base" == *.s* ]] && seq="${base##*.s}"
+            sha="$("${OPENSSL:-openssl}" dgst -sha256 -r "$m" | cut -d' ' -f1)"
+            grep -qx "${day}|${seq}|${sha}|.*" "${QROWS}" && continue
+            # The manifest is untrusted input and this runs as root: its "file" may only name
+            # this export's own data file, beside the manifest (no '/', no '..').
+            file="$(sed -n 's/.*"file":"\([^"]*\)".*/\1/p' "$m")"
+            fname="${file##*/}"
+            if [[ "${file}" != "$(dirname "${rel}")/${fname}" || "${fname}" == *..* || ! "${fname}" =~ ^audit-[0-9]{4}-[0-9]{2}-[0-9]{2}(\.s[0-9]+)?\.jsonl\.gz$ ]]; then
+                log "WARN" "  audit: ${rel} names an unexpected data file (${file}); only the manifest and signature are moved"
+                file=""
+            fi
+            for f in "$rel" "${rel}.sig" "$file"; do
+                [[ -n "$f" && -e "${AUDIT_ARCHIVE_PATH}/${f}" ]] || continue
+                mkdir -p "$(dirname "${QDIR}/${f}")"
+                mv "${AUDIT_ARCHIVE_PATH}/${f}" "${QDIR}/${f}"
+            done
+            moved+=("${rel}")
+        done < <(find "${AUDIT_ARCHIVE_PATH}" -path "${AUDIT_ARCHIVE_PATH}/quarantine" -prune -o \
+                    -type f -name '*.manifest.json' -print | sort)
+        if (( ${#moved[@]} > 0 )); then
+            list="$(printf '%s\n' "${moved[@]}" | sed 's/.*/"&"/' | paste -sd, -)"
+            printf '{"restored_from":%s,"at":"%s","reason":%s,"moved":[%s]}\n' \
+                "$(json_str "$(basename "${BACKUP_PATH}")")" "${QTS}" \
+                "$(json_str "exports the restored audit_exports does not list (exported after the backup, or not matching it)")" \
+                "${list}" >"${QDIR}/RESTORE.json"
+            # A record in the restored log itself (the insert trigger stamps the time).
+            # psql interpolates :'detail' (quoted safely) only in SQL read from stdin, not -c.
+            # shellcheck disable=SC2016  # the :'detail' is psql's, not the shell's
+            printf '%s\n' "insert into audit_logs (id, timestamp, action, resource_type, resource_id, detail) values (gen_random_uuid(), now(), 'audit.archive_quarantine', 'audit_archive', :'qts', :'detail');" \
+                | dc exec -T postgres psql -U "${PG_USER}" -d "${PG_DB}" -v ON_ERROR_STOP=1 -q \
+                    -v qts="${QTS}" \
+                    -v detail="{\"quarantine\":\"quarantine/${QTS}\",\"manifests\":${#moved[@]},\"backup\":\"$(basename "${BACKUP_PATH}")\"}" \
+                    -f - >/dev/null \
+                || log "WARN" "  audit: could not write the audit.archive_quarantine row (see quarantine/${QTS}/RESTORE.json)"
+            log "WARN" "  audit: ${#moved[@]} archive export(s) newer than (or not matching) the restored database moved to ${QDIR} (kept, not deleted; RESTORE.json)"
+        else
+            log "INFO" "  audit: archive and restored database agree"
+        fi
+    else
+        log "INFO" "  audit: the restored database has no audit_exports table; archive left as it is"
+    fi
+    rm -f "${QROWS}"
 fi
 
 # ── MinIO ────────────────────────────────────────────────────────────────────

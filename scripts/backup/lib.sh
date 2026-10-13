@@ -280,7 +280,8 @@ prune_to_size() {
 # The last success survives a failed run, so BackupStale measures the age of the newest
 # good backup. No METRICS_DIR: nothing is written. Never fails the backup.
 backup_metrics() {
-    local rc="$1" kept="$2" f tmp now last=0
+    # backup_metrics <exit code> <kept 0|1> [<audit archive verified 1|0, empty: not checked>]
+    local rc="$1" kept="$2" audit="${3:-}" f tmp now last=0
     [[ -n "${METRICS_DIR:-}" && -d "${METRICS_DIR}" ]] || return 0
     f="${METRICS_DIR}/truenorth_backup.prom"
     now="$(date +%s)"
@@ -297,13 +298,22 @@ truenorth_backup_last_success_timestamp_seconds ${last}
 # HELP truenorth_backup_last_run_timestamp_seconds When backup.sh last finished, successful or not.
 # TYPE truenorth_backup_last_run_timestamp_seconds gauge
 truenorth_backup_last_run_timestamp_seconds ${now}
-# HELP truenorth_backup_last_exit_code backup.sh's last exit code: 0 ok, 1 failed, 3 no secrets escrow, 5 telemetry snapshot failed.
+# HELP truenorth_backup_last_exit_code backup.sh's last exit code: 0 ok, 1 failed, 3 no secrets escrow, 5 telemetry snapshot failed, 6 audit export archive does not verify (3 wins over 6; see truenorth_backup_audit_verified).
 # TYPE truenorth_backup_last_exit_code gauge
 truenorth_backup_last_exit_code ${rc}
-# HELP truenorth_backup_last_run_success 1 if the last run kept a backup (exit 0, 3 or 5), else 0.
+# HELP truenorth_backup_last_run_success 1 if the last run kept a backup (exit 0, 3, 5 or 6), else 0.
 # TYPE truenorth_backup_last_run_success gauge
 truenorth_backup_last_run_success ${kept}
 EOF
+    # Its own gauge, so a tampered archive is visible whatever the exit code says (an exit 3
+    # for a missing escrow would otherwise hide it). Absent when the archive was not checked.
+    if [[ "${audit}" == 0 || "${audit}" == 1 ]]; then
+        cat >>"${tmp}" <<EOF
+# HELP truenorth_backup_audit_verified 1 if the last backup verified the signed audit export archive, 0 if it did NOT (possible tampering).
+# TYPE truenorth_backup_audit_verified gauge
+truenorth_backup_audit_verified ${audit}
+EOF
+    fi
     chmod 0644 "${tmp}" 2>/dev/null || true   # node_exporter runs as nobody
     mv -f "${tmp}" "$f" 2>/dev/null || rm -f "${tmp}"
 }
@@ -312,4 +322,109 @@ json_str() {
     local s="$1"
     s="${s//\\/\\\\}"; s="${s//\"/\\\"}"
     printf '"%s"' "$s"
+}
+
+# audit_archive_verify <dir> [<db rows file>]: the signed audit exports in <dir>
+# (worker/audit_export.py, ADR 0011), verified with OpenSSL 3 and the shell:
+#   - every manifest's Ed25519 signature (keys/<key_id>.pub.pem) and its file's SHA-256;
+#   - the hash chain: exactly one first manifest (no prev), every prev is a manifest in the
+#     archive, exactly one last manifest (nothing points to it);
+#   - with <db rows file> (lines "day|seq|manifest_sha256|key_id" from audit_exports): every
+#     exported manifest is in the archive with that exact hash (a deleted newest day is
+#     caught here, which the chain alone cannot see), and every manifest's key_id is one the
+#     database recorded (a key someone dropped into keys/ is not trusted).
+# quarantine/ (days restore.sh moved aside) is skipped. Manifests are compact JSON, one
+# line, so sed reads their fields. Prints "<manifests> <last day> <not-in-db>" when all
+# verify; otherwise the first problem on stderr and status 1.
+audit_archive_verify() {
+    local dir="$1" db_rows="${2:-}" n=0 last="" m key file want got day prev sha seq base
+    local chain="" missing=0 heads firsts
+    while IFS= read -r m; do
+        [[ -n "$m" ]] || continue
+        key="$(sed -n 's/.*"key_id":"\([0-9a-f]*\)".*/\1/p' "$m")"
+        file="$(sed -n 's/.*"file":"\([^"]*\)".*/\1/p' "$m")"
+        want="$(sed -n 's/.*"file_sha256":"\([0-9a-f]*\)".*/\1/p' "$m")"
+        day="$(sed -n 's/.*"day":"\([0-9-]*\)".*/\1/p' "$m")"
+        prev="$(sed -n 's/.*"prev_manifest_sha256":"\([0-9a-f]*\)".*/\1/p' "$m")"
+        if [[ -z "$key" || -z "$file" || -z "$want" ]]; then
+            echo "${m#"${dir}"/}: not an audit export manifest" >&2
+            return 1
+        fi
+        if ! "${OPENSSL:-openssl}" pkeyutl -verify -pubin -inkey "${dir}/keys/${key}.pub.pem" -rawin \
+                -in "$m" -sigfile "${m}.sig" >/dev/null 2>&1; then
+            echo "${m#"${dir}"/}: signature does not verify (key ${key})" >&2
+            return 1
+        fi
+        got="$("${OPENSSL:-openssl}" dgst -sha256 -r "${dir}/${file}" 2>/dev/null | cut -d' ' -f1)"
+        if [[ "$got" != "$want" ]]; then
+            echo "${file}: SHA-256 does not match its manifest" >&2
+            return 1
+        fi
+        sha="$("${OPENSSL:-openssl}" dgst -sha256 -r "$m" | cut -d' ' -f1)"
+        base="${m##*/}"; base="${base#audit-}"; base="${base%.manifest.json}"
+        seq=0; [[ "$base" == *.s* ]] && seq="${base##*.s}"
+        chain+="${sha} ${prev:--} ${key} ${day}|${seq}"$'\n'
+        n=$((n + 1))
+        if [[ "$day" > "$last" ]]; then last="$day"; fi
+    done < <(find "$dir" -path "${dir}/quarantine" -prune -o -type f -name '*.manifest.json' -print | sort)
+    if (( n > 0 )); then
+        firsts="$(printf '%s' "$chain" | awk '$2 == "-"' | grep -c . || true)"
+        if [[ "$firsts" != 1 ]]; then
+            echo "chain broken: ${firsts} manifests have no predecessor (expected 1)" >&2
+            return 1
+        fi
+        while IFS=' ' read -r sha prev key day; do
+            [[ -n "$sha" && "$prev" != "-" ]] || continue
+            if ! printf '%s' "$chain" | awk -v p="$prev" '$1 == p {f=1} END {exit !f}'; then
+                echo "chain broken: the manifest of ${day%|*} points back to ${prev:0:16}..., which is not in the archive" >&2
+                return 1
+            fi
+        done <<<"$chain"
+        heads="$(printf '%s' "$chain" | awk '{s[$1]=1; if ($2 != "-") r[$2]=1} END {c=0; for (k in s) if (!(k in r)) c++; print c}')"
+        if [[ "$heads" != 1 ]]; then
+            echo "chain broken: ${heads} manifests have no successor (expected 1)" >&2
+            return 1
+        fi
+    fi
+    if [[ -n "$db_rows" ]]; then
+        local dday dseq dsha _dkey
+        while IFS="|" read -r dday dseq dsha _dkey; do
+            [[ -n "$dday" ]] || continue
+            if ! printf '%s' "$chain" | awk -v s="$dsha" -v d="${dday}|${dseq}" '$1 == s && $4 == d {f=1} END {exit !f}'; then
+                echo "audit_exports lists ${dday} seq ${dseq}, but the archive has no manifest with its hash (deleted or replaced)" >&2
+                return 1
+            fi
+        done <"$db_rows"
+        while IFS=' ' read -r sha prev key day; do
+            [[ -n "$sha" ]] || continue
+            # The newest manifest may be written a moment before its audit_exports row (and,
+            # right after a key rotation, by a key the table has not recorded yet): tolerated
+            # for the one manifest at the head of the chain, not for any other.
+            if ! cut -d'|' -f4 "$db_rows" | grep -qx "$key"; then
+                if [[ "$sha" != "$(printf '%s' "$chain" | awk '{s[$1]=1; if ($2 != "-") r[$2]=1} END {for (k in s) if (!(k in r)) print k}')" ]] \
+                        || cut -d'|' -f3 "$db_rows" | grep -qx "$sha"; then
+                    echo "the manifest of ${day%|*} is signed by key ${key}, which audit_exports never recorded" >&2
+                    return 1
+                fi
+            fi
+            if ! cut -d'|' -f3 "$db_rows" | grep -qx "$sha"; then
+                missing=$((missing + 1))  # written but not yet recorded: an interrupted export
+            fi
+        done <<<"$chain"
+    fi
+    printf '%s %s %s\n' "$n" "${last:-none}" "$missing"
+}
+
+# audit_db_rows <out file>: audit_exports as "day|seq|manifest_sha256|key_id" lines, from the
+# stack's own database (POSTGRES_USER / POSTGRES_DB in the env file). Status 1 (and no
+# file) when the table does not exist there (an older schema, or the drill's database).
+audit_db_rows() {
+    local out="$1" user db exists
+    user="$(env_get POSTGRES_USER)"; db="$(env_get POSTGRES_DB)"
+    exists="$(dc exec -T postgres psql -U "$user" -d "$db" -Atc \
+        "select to_regclass('public.audit_exports') is not null" </dev/null 2>/dev/null | tr -d '\r')" || return 1
+    [[ "$exists" == t ]] || return 1
+    dc exec -T postgres psql -U "$user" -d "$db" -v ON_ERROR_STOP=1 -Atc \
+        "select day::text || '|' || seq || '|' || manifest_sha256 || '|' || key_id from audit_exports order by day, seq" \
+        </dev/null | tr -d '\r' >"$out"
 }

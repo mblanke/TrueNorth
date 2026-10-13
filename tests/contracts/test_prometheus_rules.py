@@ -71,6 +71,7 @@ def test_the_host_written_alerts_have_unit_tests():
     assert host_written == {
         "HostProbesStale", "OpenSearchUnreachable", "OpenSearchClusterRed", "OpenSearchClusterYellow",
         "MoodleDown", "Arc2RunnerDown", "BackupFailed", "BackupIncomplete", "BackupStale",
+        "AuditArchiveTampered",
     }
     assert host_written <= tested
 
