@@ -127,7 +127,14 @@ tn_kc_ldap_body:
     trustEmail: ["true"]
     cachePolicy: ["DEFAULT"]
 
-# Sub-mappers on the federation component.
+# Exactly the TN-* groups, by DN, directly in tn_ldap_groups_dn: a same-named group in a
+# sub-OU (or anywhere else the bind account can read) is never imported or matched, and
+# the mapper's sync count is the TN-* groups AD really has (ldap_sync.yml checks it).
+tn_kc_ldap_groups_filter: >-
+  (|{% for g in tn_ad_groups %}(distinguishedName=CN={{ g }},{{ tn_ldap_groups_dn }}){% endfor %})
+
+# Sub-mappers on the federation component. Reconciled on every run (ldap_federation.yml):
+# an existing mapper whose config differs from this is updated in place.
 tn_kc_ldap_mappers:
   - name: ad-groups
     providerId: group-ldap-mapper
@@ -144,6 +151,7 @@ tn_kc_ldap_mappers:
       user.roles.retrieve.strategy: ["LOAD_GROUPS_BY_MEMBER_ATTRIBUTE"]
       preserve.group.inheritance: ["false"]
       drop.non.existing.groups.during.sync: ["false"]
+      groups.ldap.filter: ["{{ tn_kc_ldap_groups_filter }}"]
 
   # objectGUID is binary; without is.binary.attribute the value arrives mangled.
   - name: ad-object-guid

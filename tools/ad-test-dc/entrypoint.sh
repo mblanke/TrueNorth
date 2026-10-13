@@ -2,15 +2,16 @@
 # TrueNorth AD test DC entrypoint.
 #
 #   entrypoint.sh            provision (first start of a new volume), then run samba
-#   entrypoint.sh rogue      a TLS front end on :636 presenting a certificate from a CA
-#                            Keycloak does NOT trust, forwarding to the DC's LDAPS. The
-#                            untrusted-CA test points a federation test at it.
+#   entrypoint.sh rogue      a TLS front end on :636, forwarding to the DC's LDAPS, that
+#                            presents /certs/$AD_FRONT_CERT.crt (default rogue: from a CA
+#                            Keycloak does NOT trust; "misnamed": from the trusted test CA
+#                            but for another hostname). The trust tests point at these.
 #
 # Inputs (all read-only mounts, written on the host by tools/ad-test-dc/run.sh):
 #   /secrets/<sAMAccountName>   one password per account, 0600 on the host; never printed
 #   /certs/dc.crt dc.key ca.crt the DC's LDAPS certificate, its key, and the test CA's
 #                               PUBLIC certificate. The CA's private key is not mounted.
-#   /certs/rogue.crt rogue.key  (rogue mode only) the untrusted front end's pair
+#   /certs/<front>.crt .key     (rogue mode only) the front end's pair
 set -euo pipefail
 
 REALM="${AD_REALM:-TNLAB.TEST}"
@@ -22,10 +23,11 @@ log() { printf '[ad-test-dc] %s\n' "$*"; }
 
 if [ "${1:-}" = "rogue" ]; then
   : "${AD_DC_ADDRESS:?AD_DC_ADDRESS (the DC name on the test network) is required}"
+  FRONT="${AD_FRONT_CERT:-rogue}"
   install -d -m 0700 /run/rogue
-  install -m 0600 /certs/rogue.key /run/rogue/rogue.key
-  install -m 0644 /certs/rogue.crt /run/rogue/rogue.crt
-  log "rogue TLS front end on :636 -> ${AD_DC_ADDRESS}:636"
+  install -m 0600 "/certs/${FRONT}.key" /run/rogue/rogue.key
+  install -m 0644 "/certs/${FRONT}.crt" /run/rogue/rogue.crt
+  log "${FRONT} TLS front end on :636 -> ${AD_DC_ADDRESS}:636"
   # verify=0: the front end does not authenticate its clients; it only presents the
   # untrusted certificate. Upstream is the DC's LDAPS (the DC's own cert is not checked:
   # nothing that matters ever completes through here).

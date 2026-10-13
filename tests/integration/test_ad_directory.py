@@ -27,8 +27,11 @@ Variables (fixture defaults in parentheses):
   AD_LDAPS_ADDR / AD_DC_HOST / AD_CA_FILE   host:port to reach LDAPS, the name its
                          certificate carries, and the CA that should have issued it
   AD_ROGUE_URL           an ldaps:// URL presenting a certificate from an untrusted CA
+  AD_MISNAMED_URL        an ldaps:// URL presenting a TRUSTED certificate for another name
   AD_GROUP_REMOVE_CMD / AD_GROUP_ADD_CMD / AD_USER_DISABLE_CMD / AD_USER_ENABLE_CMD
                          shell templates ({group}, {user}) that change the directory
+  AD_GROUP_DELETE_CMD / AD_GROUP_CREATE_CMD ({group})   remove/recreate a TN-* group
+  AD_FEDERATE_CMD        re-run the installer's Keycloak tasks (fixture: run.sh federate)
   AD_DC_STOP_CMD / AD_DC_START_CMD   stop/start the DC (recovery-path test)
   AD_PROPAGATION_WAIT=1  also measure the periodic changed-users sync (up to ~7 min)
   AD_REPORT              where the measurements are written as JSON
@@ -204,9 +207,9 @@ def approve(api, db_session, request_id: str, role: str, tenant_id) -> httpx.Res
 
 
 # ── 1. LDAPS trust ───────────────────────────────────────────────────────────
-def _ldaps(ca_file: str) -> dict:
+def _ldaps(ca_file: str, hostname: str | None = None) -> dict:
     addr = os.getenv("AD_LDAPS_ADDR", "")
-    host = os.getenv("AD_DC_HOST", "")
+    host = hostname or os.getenv("AD_DC_HOST", "")
     if not (addr and host):
         pytest.skip("AD_LDAPS_ADDR / AD_DC_HOST are not set")
     h, _, p = addr.rpartition(":")
@@ -244,6 +247,16 @@ def test_ldaps_refuses_a_certificate_from_an_untrusted_ca(tmp_path):
         _ldaps(str(other))
 
 
+def test_ldaps_refuses_the_right_ca_for_the_wrong_name():
+    """Hostname verification on the client side: the DC's certificate, from the trusted CA,
+    asked for under a name it was not issued to."""
+    ca = os.getenv("AD_CA_FILE", "")
+    if not ca:
+        pytest.skip("AD_CA_FILE is not set")
+    with pytest.raises(ssl.SSLCertVerificationError):
+        _ldaps(ca, hostname="not-the-dc.invalid")
+
+
 def _test_ldap(action: str, url: str, comp: dict) -> httpx.Response:
     cfg = comp["config"]
     return httpx.post(f"{KC}/admin/realms/{REALM}/testLDAPConnection", headers=admin_headers(), timeout=60, json={
@@ -267,6 +280,19 @@ def test_keycloak_binds_to_the_dc_and_refuses_an_untrusted_ca():
     assert bad.status_code == 400, f"untrusted CA accepted at {rogue}: {bad.status_code}"
     bad_auth = _test_ldap("testAuthentication", rogue, comp)
     assert bad_auth.status_code == 400
+
+
+def test_keycloak_refuses_a_trusted_certificate_for_another_hostname():
+    """A front end presenting a certificate from the TRUSTED test CA, but issued to another
+    name than the one Keycloak connects to: hostname verification must refuse it, or any
+    certificate the CA ever issued could stand in for the DC."""
+    misnamed = os.getenv("AD_MISNAMED_URL", "").strip()
+    if not misnamed:
+        pytest.skip("AD_MISNAMED_URL is not set")
+    comp = component()
+    for action in ("testConnection", "testAuthentication"):
+        r = _test_ldap(action, misnamed, comp)
+        assert r.status_code == 400, f"{action}: wrong-name certificate accepted at {misnamed}: {r.status_code}"
 
 
 # ── 2. Group -> role mapping and tenant binding ──────────────────────────────
@@ -333,12 +359,18 @@ def test_an_unmapped_group_falls_back_to_the_default_tenant(api, db_session):
 # ── 3. Nested groups: direct membership only (documented policy) ─────────────
 def test_nested_group_membership_is_not_expanded(api):
     """ad.nested is in TN-Cohort-Alpha, which is a member of TN-Students. The federation
-    reads direct membership only (LOAD_GROUPS_BY_MEMBER_ATTRIBUTE): the claim names
-    TN-Cohort-Alpha, not TN-Students, so no role is suggested and registration (limited to
-    the TN-* groups) is refused. Put people directly in a TN-* group."""
+    reads direct membership only (LOAD_GROUPS_BY_MEMBER_ATTRIBUTE) and only the exact TN-*
+    group DNs (groups.ldap.filter), so the claim carries neither TN-Students nor
+    TN-Cohort-Alpha: no role is suggested and registration (limited to the TN-* groups) is
+    refused. Put people directly in a TN-* group.
+
+    ad.nested is also in the fixture's decoy, a group whose cn is TN-Platform-Admins in a
+    sub-OU of Groups: a same-named group elsewhere must never grant that claim."""
     tok = login("NESTED")
     groups = claims(tok["access_token"]).get("groups", [])
     assert "TN-Students" not in groups
+    assert "TN-Platform-Admins" not in groups, "a same-named group in a sub-OU counted"
+    assert not set(groups) - set(TN_GROUPS), f"a non-TN-* group reached the claim: {groups}"
     me = api.get("/auth/me", headers=bearer(tok)).json()
     assert me["suggestions"]["role"] is None
     assert me["suggestions"]["may_register"] is False
@@ -519,7 +551,72 @@ def test_moodle_sso_identity_is_the_truenorth_id(api, db_session):
     assert t["tid"] == str(tenant.id) and t["role"] == "student"
 
 
-# ── 9. The local recovery path (last: it stops the DC) ───────────────────────
+# ── 9. The installer's own checks (fixture: AD_FEDERATE_CMD re-runs federate.yml) ─────
+def _federate(**env: str) -> subprocess.CompletedProcess:
+    cmd = os.getenv("AD_FEDERATE_CMD", "").strip()
+    if not cmd:
+        pytest.skip("AD_FEDERATE_CMD is not set (re-runs the installer's Keycloak tasks)")
+    return subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=600,  # noqa: S602 - operator-supplied
+                          env={**os.environ, **env})
+
+
+def test_turning_the_local_admin_off_disables_it_and_on_restores_it():
+    """tn_keycloak_local_admin false with AD on: the local recovery administrator is
+    disabled, not left as an unmanaged sign-in; true again re-enables it. AD accounts are
+    never touched by it."""
+    assert grant(LOCAL_ADMIN, password("local-admin")).status_code == 200
+    try:
+        off = _federate(AD_KEEP_LOCAL_ADMIN="false")
+        assert off.returncode == 0, off.stdout[-2000:]
+        assert "there is now NO sign-in that works without" in off.stdout
+        assert grant(LOCAL_ADMIN, password("local-admin")).status_code in (400, 401)
+        assert grant(sam("ADMIN"), password(sam("ADMIN"))).status_code == 200
+    finally:
+        on = _federate()
+    assert on.returncode == 0, on.stdout[-2000:]
+    assert grant(LOCAL_ADMIN, password("local-admin")).status_code == 200
+
+
+def _mapper(name: str) -> dict:
+    comp = component()
+    r = httpx.get(f"{KC}/admin/realms/{REALM}/components", headers=admin_headers(), timeout=30,
+                  params={"parent": comp["id"], "name": name})
+    r.raise_for_status()
+    return r.json()[0]
+
+
+def test_installer_puts_an_edited_group_mapper_back():
+    """ldap_federation.yml reconciles sub-mappers like the component: someone switches
+    ad-groups to LDAP_ONLY and drops its filter; the next run restores both."""
+    m = _mapper("ad-groups")
+    want_filter = m["config"]["groups.ldap.filter"]
+    edited = {**m, "config": {**m["config"], "mode": ["LDAP_ONLY"], "groups.ldap.filter": [""]}}
+    httpx.put(f"{KC}/admin/realms/{REALM}/components/{m['id']}", headers=admin_headers(), json=edited,
+              timeout=30).raise_for_status()
+    assert _mapper("ad-groups")["config"]["mode"] == ["LDAP_ONLY"]
+    run = _federate()
+    assert run.returncode == 0, run.stdout[-2000:]
+    back = _mapper("ad-groups")["config"]
+    assert back["mode"] == ["READ_ONLY"] and back["groups.ldap.filter"] == want_filter
+
+
+def test_installer_fails_when_a_tn_group_is_missing_from_ad():
+    """The local recovery administrator's TN-* groups exist in Keycloak whatever AD holds;
+    ldap_sync.yml must still fail when AD lacks one (it counts the mapper's LDAP groups)."""
+    group, member = "TN-Observers", sam("OBSERVER")
+    run_cmd("AD_GROUP_DELETE_CMD", group=group)
+    try:
+        run = _federate()
+        assert run.returncode != 0, "federate passed with a TN-* group missing from AD"
+        assert "found 5 of the 6 TN-* groups" in run.stdout, run.stdout[-2000:]
+    finally:
+        run_cmd("AD_GROUP_CREATE_CMD", group=group)
+        run_cmd("AD_GROUP_ADD_CMD", group=group, user=member)
+    run = _federate()
+    assert run.returncode == 0, run.stdout[-2000:]
+
+
+# ── 10. The local recovery path (last: it stops the DC) ──────────────────────
 def test_zz_local_admin_signs_in_while_the_directory_is_down():
     """Stop the DC: the local recovery administrator still gets a token (Keycloak finds it
     locally and never asks the directory); an AD user fails cleanly and quickly. Start the

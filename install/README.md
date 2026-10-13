@@ -385,25 +385,33 @@ What the measurements mean for operators:
 
 ### AD on staging: turning it on (coordinator)
 
-1. In `inventory/staging.yml` (the M2 block): `tn_ldap_enabled: true`, and `tn_dc_host`,
-   `tn_dc_ip`, `tn_dns_servers` for the owner's DC. Leave `tn_keycloak_local_admin: true`.
+1. In `inventory/staging.yml` (the M2 block): `tn_ldap_enabled: true`, and uncomment
+   `tn_dc_host: tn-dc01.corp.tnrange.lab`, `tn_dc_ip: 192.168.1.224`,
+   `tn_dns_servers: ["192.168.1.224"]` (TN-DC01). Leave `tn_keycloak_local_admin: true`.
 2. `ansible-vault edit inventory/group_vars/all/vault.yml`: `vault_ldap_bind_password` (the
-   `TrueNorth Keycloak Bind` account's).
-3. The DC's AD CS root CA (DER or PEM) at `install/files/corp-root-ca.cer`.
-4. On the DC: DNS forwarder 192.168.1.1 (staging will resolve everything through it), and
-   an A record `tn-staging.corp.tnrange.lab → 192.168.1.240` (preflight asks the DC).
+   `TrueNorth Keycloak Bind` account's). Preflight refuses it empty or `CHANGE_ME`.
+3. The enterprise root CA `corp-TN-DC01-CA` (DER or PEM) at `install/files/corp-root-ca.cer`.
+   TN-DC01's LDAPS certificate must name `tn-dc01.corp.tnrange.lab` (hostname is verified).
+4. DNS (done on TN-DC01 2026-10-12): forwarders 192.168.1.21 and 192.168.1.1 (staging will
+   resolve everything through it), A record `tn-staging.corp.tnrange.lab → 192.168.1.240`
+   and the PTRs (preflight asks the DC).
 5. `ansible-playbook -i inventory/staging.yml site.yml -K --ask-vault-pass -e tn_release_version=<tag>`
    (a full run; or `--tags preflight,base,config,tls,stack,keycloak,seed,smoke,validate`).
    40-tls proves an LDAPS bind as the service account before Keycloak changes;
-   60-keycloak keeps `tnadmin@tn-staging.local` local, federates, syncs, and reports any AD
-   user it could not import; the smoke test still signs in as the local administrator.
+   60-keycloak keeps `tnadmin@tn-staging.local` local, federates, syncs, **fails unless all
+   six TN-* groups are found in `OU=Groups,OU=TrueNorth`**, and reports any AD user it could
+   not import. The smoke test signs in as the local administrator and warns that this does
+   not prove AD; add `-e tn_smoke_username=<AD account in a TN-* group>
+   -e tn_smoke_password=…` (from a vaulted file) to prove an AD sign-in and its claims.
 6. Qualify: `tests/integration/test_ad_directory.py` in external mode
    (`tools/ad-test-dc/README.md`) with test accounts on the DC.
 
 `tn_keycloak_local_admin` (with AD) keeps the bootstrap administrator a **local** Keycloak
 account in `TN-Platform-Admins` with its generated password, beside the directory. Keycloak
 finds local accounts before it asks LDAP, so it still signs in with the DC down, the bind
-password wrong or the CA expired (tested with the DC stopped). Preflight refuses a
+password wrong or the CA expired (tested with the DC stopped). Turning it **off** with AD on
+disables that local account (never deletes it; turning it back on re-enables it), so no
+unmanaged sign-in stays behind. Preflight refuses a
 `tn_bootstrap_admin_upn` inside `tn_domain`, so it can never name an AD account.
 
 ## Work-domain cut-over and rollback
@@ -423,8 +431,7 @@ the result is what makes it "Windows AD / AD CS qualified" for that domain.
    replace `files/corp-root-ca.cer` and `vault_ldap_bind_password`.
 2. Keep `tn_keycloak_local_admin: true` until the first AD administrator has signed in and
    been approved; then decide whether to keep the break-glass account (recommended) or
-   set it false (the local account then stays but its password is no longer managed —
-   disable it in the Keycloak admin console).
+   set it false (60-keycloak then disables the local account; its TrueNorth row stays).
 3. Run `site.yml`. The federation component (`corp-ad`) is updated in place: the users the
    old directory imported keep their Keycloak ids only if the new directory has the same
    objectGUIDs (the same forest). **A different forest is a new identity for everyone**:

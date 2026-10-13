@@ -50,20 +50,37 @@
       account's mail, or the local account's.
   when: (tn_kc_user_failed | int) > 0
 
-- name: Keycloak — check the expected AD groups arrived
+# The TN-* groups must come FROM THE DIRECTORY. Listing Keycloak's groups proves nothing:
+# local_identity.yml pre-creates them by name (for the local recovery administrator), so a
+# directory missing every one would still look complete. The group mapper's own sync
+# counts the LDAP groups it found; its filter (tn_kc_ldap_groups_filter) matches exactly
+# the TN-* group DNs in tn_ldap_groups_dn, so the count must equal the TN-* list.
+- name: Keycloak — the AD group mapper
   ansible.builtin.uri:
-    url: "{{ tn_kc_internal }}/admin/realms/{{ tn_keycloak_realm }}/groups"
+    url: "{{ tn_kc_components_url }}?parent={{ tn_keycloak_ldap_component_id }}&type={{ tn_kc_mapper_type }}&name=ad-groups"
     headers: "{{ tn_kc_headers }}"
     status_code: 200
-  register: tn_kc_groups
+  register: tn_kc_group_mapper
 
-- name: Keycloak — report group mapping coverage
+- name: Keycloak — sync the TN-* groups from AD
+  ansible.builtin.uri:
+    url: >-
+      {{ tn_kc_realm_url }}/user-storage/{{ tn_keycloak_ldap_component_id }}/mappers/{{
+      tn_kc_group_mapper.json[0].id }}/sync?direction=fedToKeycloak
+    method: POST
+    headers: "{{ tn_kc_headers }}"
+    status_code: [200]
+  register: tn_kc_group_sync
+  changed_when: (tn_kc_group_sync.json.added | default(0) | int) > 0
+
+- name: Keycloak — every TN-* group was found in AD
   vars:
-    _found: "{{ tn_kc_groups.json | map(attribute='name') | list }}"
-    _missing: "{{ tn_ad_groups | difference(_found) }}"
-  ansible.builtin.debug:
-    msg: >-
-      {{ (_found | length) }} groups visible.
-      {{ 'All expected TN-* groups present.' if (_missing | length) == 0
-         else 'MISSING: ' ~ (_missing | join(', ')) ~
-              ' — role suggestion will be blank for those cohorts.' }}
+    _found: "{{ (tn_kc_group_sync.json.added | default(0) | int) + (tn_kc_group_sync.json.updated | default(0) | int) }}"
+  ansible.builtin.assert:
+    that: (_found | int) == (tn_ad_groups | length)
+    fail_msg: >-
+      The AD group mapper found {{ _found }} of the {{ tn_ad_groups | length }} TN-* groups in
+      {{ tn_ldap_groups_dn }} ({{ tn_kc_group_sync.json.status | default('') }}). Each of
+      {{ tn_ad_groups | join(', ') }} must exist directly in that OU, readable by the bind
+      account: without one, nobody in it gets a role suggestion or may register.
+    success_msg: "All {{ tn_ad_groups | length }} TN-* groups found in AD ({{ tn_ldap_groups_dn }})"

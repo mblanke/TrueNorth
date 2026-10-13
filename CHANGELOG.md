@@ -277,7 +277,14 @@ course production with a local-model fallback, and the cleanup of unsupported su
   the bind password. `tn_keycloak` tasks split into `local_identity`, `ldap_federation`,
   `identity_scope` and `ldap_sync`.
 - Registration: an approval never adopts a staff (admin, instructor, range_ops) account by
-  email match, whoever approves (409); roster Students are still adopted.
+  email match, whoever approves (409); roster Students are still adopted. The bootstrap
+  step (`app.bootstrap_admin`) never adopts an instructor or range_ops row by email.
+- Review fixes: the AD group mapper matches exactly the TN-* group DNs (a same-named group
+  in a sub-OU granted its claim); 60-keycloak fails unless all six TN-* groups come from AD
+  (the local recovery admin's groups no longer mask it); sub-mappers are reconciled every
+  run; preflight refuses an empty bind password with AD; turning `tn_keycloak_local_admin`
+  off disables the local account; the smoke test checks AD claims when an AD account is
+  named and warns when it is not; LDAPS hostname verification is tested.
 - Staging inventory: a commented, off-by-default block for the owner's Windows AD DC;
   install/README.md "AD test domain (CI) and AD on staging" and "Work-domain cut-over and
   rollback".

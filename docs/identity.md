@@ -173,10 +173,13 @@ account (sign-in then stops).
 (`LOAD_GROUPS_BY_MEMBER_ATTRIBUTE`): a user in a group that is a member of `TN-Students`
 carries that group, not `TN-Students`.
 
-**An email match never takes over a staff account.** Approval adopts a pre-provisioned
-roster row by email, but never one holding `admin`, `instructor` or `range_ops` (409),
-whoever approves; Keycloak itself refuses to import an AD user whose email a local account
-already has. All of this is measured against a directory by the CI `ad` lane
+**An email match never takes over another person's staff account.** Registration
+approval adopts a pre-provisioned roster row by email, but never one holding `admin`,
+`instructor` or `range_ops` (409), whoever approves. The bootstrap step
+(`app.bootstrap_admin`, 80-seed) adopts by email only a roster row or an earlier `admin`
+row (the nominated administrator after a realm rebuild), never an `instructor` or
+`range_ops` row (it stops with an error). Keycloak itself refuses to import an AD user
+whose email a local account already has. All of this is measured against a directory by the CI `ad` lane
 (`tools/ad-test-dc/README.md`).
 
 ---

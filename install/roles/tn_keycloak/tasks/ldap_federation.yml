@@ -94,3 +94,24 @@
     label: "{{ item.name }}"
   when: item.name not in (tn_kc_mappers.json | map(attribute='name') | list)
   changed_when: true
+
+# Like the component: a mapper someone edited (ad-groups switched to LDAP_ONLY, a GUID or
+# DN mapper made writable, the groups filter dropped) is put back on every run.
+- name: Keycloak — reconcile existing LDAP sub-mappers
+  vars:
+    _have: "{{ tn_kc_mappers.json | selectattr('name', 'equalto', item.name) | first }}"
+  ansible.builtin.uri:
+    url: "{{ tn_kc_components_url }}/{{ _have.id }}"
+    method: PUT
+    headers: "{{ tn_kc_headers }}"
+    body: "{{ item | combine({'id': _have.id, 'config': _have.config | combine(item.config)}) }}"
+    body_format: json
+    status_code: [204]
+  loop: "{{ tn_kc_ldap_mappers }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: >-
+    item.name in (tn_kc_mappers.json | map(attribute='name') | list)
+    and (tn_kc_mappers.json | selectattr('name', 'equalto', item.name) | first).config
+        | combine(item.config) != (tn_kc_mappers.json | selectattr('name', 'equalto', item.name) | first).config
+  changed_when: true

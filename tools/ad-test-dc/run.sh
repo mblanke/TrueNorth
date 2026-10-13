@@ -3,7 +3,7 @@
 #
 #   tools/ad-test-dc/run.sh secrets    generate every password (0600, never printed)
 #   tools/ad-test-dc/run.sh certs      the test CA, the DC's LDAPS pair, the rogue pair
-#   tools/ad-test-dc/run.sh up         build + start dc, rogue, keycloak; wait for health
+#   tools/ad-test-dc/run.sh up         build + start dc, rogue, misnamed, keycloak; wait for health
 #   tools/ad-test-dc/run.sh federate   realm + LDAP federation via install/roles/tn_keycloak
 #   tools/ad-test-dc/run.sh test       tests/integration/test_ad_directory.py (fixture mode)
 #   tools/ad-test-dc/run.sh logs       compose logs
@@ -14,7 +14,8 @@
 # Everything lives under AD_TEST_DIR (default build/ad-test-dc, gitignored):
 #   secrets/      one file per account, 0600, in a 0700 directory (mounted read-only)
 #   ca-private/   the test CA's and the rogue CA's private keys (0600; never mounted)
-#   certs/        ca.crt (public), dc.crt/dc.key, rogue.crt/rogue.key, rogue-ca.crt
+#   certs/        ca.crt (public), dc.crt/dc.key, rogue.crt/rogue.key, rogue-ca.crt,
+#                 misnamed.crt/misnamed.key (trusted CA, another hostname)
 #   truststore/   what Keycloak trusts: ca.crt only
 #   state/        the installer's keyed-hash state files (federate)
 #
@@ -97,6 +98,8 @@ cmd_certs() {
   make_ca rogue-ca "Untrusted Rogue CA"
   make_leaf dc ca "dc01.${AD_DNS_DOMAIN}"
   make_leaf rogue rogue-ca "rogue.${AD_DNS_DOMAIN}"
+  # Trusted CA, wrong name: served as misnamed.<domain>, issued to dc99.<domain>.
+  make_leaf misnamed ca "dc99.${AD_DNS_DOMAIN}"
   # The rogue key is read by the container's root; the DC key likewise.
   install -m 0644 "$AD_TEST_DIR/certs/ca.crt" "$AD_TEST_DIR/truststore/tn-ad-test-ca.pem"
   log "test CA (public) $AD_TEST_DIR/certs/ca.crt; CA keys in $AD_TEST_DIR/ca-private (not mounted)"
@@ -109,8 +112,8 @@ kc_env() {
 }
 
 cmd_up() {
-  [ -s "$AD_TEST_DIR/secrets/Administrator" ] || cmd_secrets
-  [ -s "$AD_TEST_DIR/certs/dc.crt" ] || cmd_certs
+  cmd_secrets   # both idempotent: only what is missing is made
+  cmd_certs
   kc_env
   log "starting project $AD_PROJECT (dc, rogue, keycloak)"
   "${COMPOSE[@]}" up -d --build --wait --wait-timeout 600
@@ -132,10 +135,14 @@ cmd_test() {
   AD_CA_FILE="$AD_TEST_DIR/certs/ca.crt" \
   AD_SECRETS_DIR="$AD_TEST_DIR/secrets" \
   AD_ROGUE_URL="ldaps://rogue.${AD_DNS_DOMAIN}:636" \
+  AD_MISNAMED_URL="ldaps://misnamed.${AD_DNS_DOMAIN}:636" \
   AD_GROUP_REMOVE_CMD="docker compose -p $AD_PROJECT -f $HERE/compose.yml exec -T dc samba-tool group removemembers {group} {user}" \
   AD_GROUP_ADD_CMD="docker compose -p $AD_PROJECT -f $HERE/compose.yml exec -T dc samba-tool group addmembers {group} {user}" \
   AD_USER_DISABLE_CMD="docker compose -p $AD_PROJECT -f $HERE/compose.yml exec -T dc samba-tool user disable {user}" \
   AD_USER_ENABLE_CMD="docker compose -p $AD_PROJECT -f $HERE/compose.yml exec -T dc samba-tool user enable {user}" \
+  AD_GROUP_DELETE_CMD="docker compose -p $AD_PROJECT -f $HERE/compose.yml exec -T dc samba-tool group delete {group}" \
+  AD_GROUP_CREATE_CMD="docker compose -p $AD_PROJECT -f $HERE/compose.yml exec -T dc samba-tool group add {group} --groupou=OU=Groups,OU=TrueNorth" \
+  AD_FEDERATE_CMD="bash $HERE/run.sh federate" \
   AD_DC_STOP_CMD="docker compose -p $AD_PROJECT -f $HERE/compose.yml stop dc" \
   AD_DC_START_CMD="docker compose -p $AD_PROJECT -f $HERE/compose.yml start dc" \
     "$PY" -m pytest "$ROOT/tests/integration/test_ad_directory.py" -m integration -rs --tb=short \

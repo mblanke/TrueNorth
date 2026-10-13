@@ -1,0 +1,35 @@
+---
+# AD on and tn_keycloak_local_admin turned OFF: the local recovery administrator an earlier
+# run created must not stay a working sign-in nobody manages any more. Disabled, never
+# deleted (its TrueNorth row and audit trail stay; turning tn_keycloak_local_admin back on
+# re-enables it). An AD account of that name is never touched: only a user with no
+# federation link is a local one.
+- name: Keycloak — is there a local account named {{ tn_bootstrap_admin_upn }}?
+  ansible.builtin.uri:
+    url: "{{ tn_kc_realm_url }}/users?username={{ tn_bootstrap_admin_upn | urlencode }}&exact=true"
+    headers: "{{ tn_kc_headers }}"
+    status_code: 200
+  register: tn_kc_retire_lookup
+
+- name: Keycloak — disable the local recovery administrator
+  ansible.builtin.uri:
+    url: "{{ tn_kc_realm_url }}/users/{{ item.id }}"
+    method: PUT
+    headers: "{{ tn_kc_headers }}"
+    body: {enabled: false}
+    body_format: json
+    status_code: [204]
+  loop: >-
+    {{ tn_kc_retire_lookup.json | rejectattr('federationLink', 'defined')
+       | selectattr('enabled') | list }}
+  loop_control:
+    label: "{{ item.username }}"
+  changed_when: true
+
+- name: Keycloak — say so
+  ansible.builtin.debug:
+    msg: >-
+      WARNING: tn_keycloak_local_admin is false with AD on, so the LOCAL account
+      {{ tn_bootstrap_admin_upn }} is disabled: there is now NO sign-in that works without
+      the directory. Set tn_keycloak_local_admin: true and re-run 60-keycloak to restore it.
+  when: tn_kc_retire_lookup.json | rejectattr('federationLink', 'defined') | list | length > 0

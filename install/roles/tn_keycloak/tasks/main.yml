@@ -333,6 +333,12 @@
   ansible.builtin.include_tasks: local_identity.yml
   when: not tn_ldap_enabled | bool or tn_keycloak_local_admin | bool
 
+- name: Keycloak — retire the local recovery administrator (AD on, tn_keycloak_local_admin off)
+  ansible.builtin.include_tasks: local_admin_retire.yml
+  when: >-
+    tn_ldap_enabled | bool and not tn_keycloak_local_admin | bool
+    and tn_bootstrap_admin_upn | default('') | length > 0
+
 # Staging and demo hosts only (tn_load_shipped_demo is off in group_vars).
 - name: Keycloak — the shipped demo people's sign-in accounts
   ansible.builtin.include_tasks: demo_accounts.yml

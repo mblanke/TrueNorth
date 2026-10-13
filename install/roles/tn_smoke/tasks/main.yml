@@ -253,6 +253,31 @@
     success_msg: >-
       Claim contract OK — groups={{ tn_claims.groups | default([]) | join(',') }}
 
+# With AD and an AD account named (-e tn_smoke_username / tn_smoke_password): the token
+# must come from the directory, with its groups (the local recovery administrator proves
+# neither). With tn_keycloak_local_admin on and no AD account named, say so plainly.
+- name: Smoke — an AD account's token carries the directory claims
+  ansible.builtin.assert:
+    that:
+      - tn_claims.ad_object_guid | default('') | length > 0
+      - tn_claims.groups | intersect(tn_ad_groups) | length > 0
+    fail_msg: >-
+      {{ tn_smoke_user_effective }} signed in, but its token has
+      ad_object_guid={{ tn_claims.ad_object_guid | default('MISSING') }} and
+      groups={{ tn_claims.groups | default([]) }}: it is not federated from AD, or it is in
+      no TN-* group. Name an AD account in a TN-* group.
+    success_msg: "AD claims OK for {{ tn_smoke_user_effective }}"
+  when: tn_ldap_enabled | bool and tn_smoke_username | default('') | length > 0
+
+- name: Smoke — AD claims not proven by this run
+  ansible.builtin.debug:
+    msg: >-
+      WARNING: AD is on, but the claim check signed in as the LOCAL recovery administrator
+      ({{ tn_smoke_user_effective }}), which proves the claim contract, not the directory.
+      60-keycloak checked the TN-* groups arrived from AD; to prove an AD sign-in too, re-run
+      with -e tn_smoke_username=<AD account in a TN-* group> -e tn_smoke_password=...
+  when: tn_ldap_enabled | bool and tn_smoke_username | default('') | length == 0
+
 - name: Smoke — /auth/me answers for that identity
   ansible.builtin.uri:
     url: "https://{{ tn_domain_fqdn }}/api/auth/me"

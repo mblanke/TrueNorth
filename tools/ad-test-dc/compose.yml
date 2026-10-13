@@ -55,6 +55,29 @@ services:
       adnet:
         aliases: ["rogue.${AD_DNS_DOMAIN:-tnlab.test}"]
 
+  # The same front end with a certificate from the TRUSTED test CA, issued to another name
+  # (dc99.<domain>), reached as misnamed.<domain>: hostname verification must refuse it.
+  misnamed:
+    image: tn-ad-test-dc:local
+    command: ["rogue"]
+    environment:
+      AD_DC_ADDRESS: dc01.${AD_DNS_DOMAIN:-tnlab.test}
+      AD_FRONT_CERT: misnamed
+    volumes:
+      - ${AD_TEST_DIR}/certs/misnamed.crt:/certs/misnamed.crt:ro
+      - ${AD_TEST_DIR}/certs/misnamed.key:/certs/misnamed.key:ro
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/636"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    depends_on:
+      dc:
+        condition: service_healthy
+    networks:
+      adnet:
+        aliases: ["misnamed.${AD_DNS_DOMAIN:-tnlab.test}"]
+
   keycloak:
     image: quay.io/keycloak/keycloak:24.0@sha256:f8ade94c1d0ad2f2fa7734a455fee5392764f402c43ca35e9af6bf63a2541dc9
     command: start-dev

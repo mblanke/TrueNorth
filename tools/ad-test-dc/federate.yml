@@ -35,7 +35,8 @@
         tn_ldap_bind_dn: "CN=TrueNorth Keycloak Bind,OU=ServiceAccounts,OU=TrueNorth,{{ _base }}"
         tn_bootstrap_admin_upn: "{{ lookup('ansible.builtin.env', 'AD_LOCAL_ADMIN_UPN') | default('tnadmin@tn-ad-test.local', true) }}"
         tn_ldap_enabled: true
-        tn_keycloak_local_admin: true
+        # AD_KEEP_LOCAL_ADMIN=false exercises main.yml's other branch (retire it).
+        tn_keycloak_local_admin: "{{ lookup('ansible.builtin.env', 'AD_KEEP_LOCAL_ADMIN') | default('true', true) | bool }}"
         tn_load_shipped_demo: false
         tn_ad_test_client: truenorth-ad-test
 
@@ -80,6 +81,13 @@
       ansible.builtin.include_role:
         name: tn_keycloak
         tasks_from: local_identity
+      when: tn_keycloak_local_admin | bool
+
+    - name: Keycloak — retire the local recovery administrator (local_admin_retire.yml)
+      ansible.builtin.include_role:
+        name: tn_keycloak
+        tasks_from: local_admin_retire
+      when: not tn_keycloak_local_admin | bool
 
     - name: Keycloak — AD user federation (ldap_federation.yml)
       ansible.builtin.include_role:

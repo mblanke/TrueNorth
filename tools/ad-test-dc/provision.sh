@@ -61,4 +61,16 @@ while IFS=$'\t' read -r sam given surname ou groups flags mail; do
   fi
 done < "$ACCOUNTS"
 
+# The decoy: a group also named TN-Platform-Admins (cn), in a sub-OU of Groups, holding
+# ad.nested. Only the exact TN-* DNs may count (tn_kc_ldap_groups_filter); if this one
+# did, ad.nested would carry a TN-Platform-Admins claim.
+BASE="$(echo "${AD_REALM:-TNLAB.TEST}" | tr '[:upper:]' '[:lower:]' | sed 's/^/DC=/; s/\./,DC=/g')"
+st ou add "OU=Legacy,OU=Groups,OU=TrueNorth"
+ldbadd -H /var/lib/samba/private/sam.ldb >/dev/null <<EOF
+dn: CN=TN-Platform-Admins,OU=Legacy,OU=Groups,OU=TrueNorth,${BASE}
+objectClass: group
+sAMAccountName: TN-Platform-Admins-Legacy
+EOF
+st group addmembers TN-Platform-Admins-Legacy ad.nested
+
 echo "[ad-test-dc] OUs, groups and $(grep -cv '^#' "$ACCOUNTS") accounts created"

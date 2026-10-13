@@ -78,6 +78,19 @@
     status_code: 200
   register: tn_kc_local_admin2
 
+# local_admin_retire.yml disables it when tn_keycloak_local_admin is turned off with AD;
+# turning it back on restores it.
+- name: Keycloak — the bootstrap administrator is enabled
+  ansible.builtin.uri:
+    url: "{{ tn_kc_realm_url }}/users/{{ tn_kc_local_admin2.json[0].id }}"
+    method: PUT
+    headers: "{{ tn_kc_headers }}"
+    body: {enabled: true}
+    body_format: json
+    status_code: [204]
+  when: not tn_kc_local_admin2.json[0].enabled | bool
+  changed_when: true
+
 - name: Keycloak — the password last set (keyed hash)
   ansible.builtin.slurp:
     src: "{{ tn_state_dir }}/keycloak_bootstrap_admin.hmac"
