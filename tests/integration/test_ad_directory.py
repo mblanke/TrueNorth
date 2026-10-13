@@ -510,13 +510,27 @@ def test_keycloak_never_creates_a_local_account_over_a_directory_email():
 
 
 # ── 7. MFA for AD staff (S-track) ────────────────────────────────────────────
-def test_ad_staff_fall_under_the_mfa_roles():
-    import importlib.util
+def test_an_ad_password_sign_in_is_not_mfa():
+    """app.mfa_policy (on main) decides "was this sign-in MFA" from amr/acr. A real AD
+    password sign-in through Keycloak (acr "1", no otp amr) must not count."""
+    from app import mfa_policy
 
-    if importlib.util.find_spec("app.mfa_policy") is None:
-        pytest.skip("TODO(M2/S1): app.mfa_policy is not on main yet (branch claude/s1-mfa). When it "
-                    "lands: assert an AD TN-Platform-Admins sign-in without OTP is refused staff access")
-    pytest.fail("app.mfa_policy exists: replace this TODO with the assertion that AD admins need OTP")
+    c = claims(login("ADMIN")["access_token"])
+    assert not mfa_policy.mfa_satisfied(c), f"password-only AD sign-in counted as MFA: amr={c.get('amr')} acr={c.get('acr')}"
+
+
+def test_ad_staff_fall_under_the_mfa_roles():
+    """Role-based MFA (S1: mfa_policy.mfa_required_for / mfa_denial_reason) is on branch
+    claude/s1-mfa, not main. When it lands this runs instead of skipping: an AD
+    TN-Platform-Admins password sign-in is refused staff access without a second factor."""
+    from app import mfa_policy
+
+    if not hasattr(mfa_policy, "mfa_required_for"):
+        pytest.skip("TODO(M2/S1): role-based MFA (mfa_policy.mfa_required_for) is not on main yet "
+                    "(branch claude/s1-mfa)")
+    c = claims(login("ADMIN")["access_token"])
+    assert mfa_policy.mfa_required_for("admin")
+    assert mfa_policy.mfa_denial_reason(c, "admin", c.get("email")) is not None
 
 
 # ── 8. Downstream Moodle SSO identity ────────────────────────────────────────

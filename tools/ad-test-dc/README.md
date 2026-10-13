@@ -78,7 +78,7 @@ recovery administrator, first), `ldap_federation.yml`, `identity_scope.yml`,
 | local account over an AD email | Keycloak refuses (409) — why 60-keycloak creates the recovery admin before federating |
 | Moodle SSO ticket | `sub` = TrueNorth user id, never the Keycloak subject, objectGUID or username |
 | DC stopped | local recovery admin signs in (0.14 s); an AD user fails in ~5 s (HTTP 500, `connectionTimeout`); recovers when the DC is back |
-| MFA for AD staff | skipped, TODO: `app.mfa_policy` is not on main (S-track) |
+| MFA for AD staff | an AD password sign-in is not MFA (`mfa_policy.mfa_satisfied` false); the role rule (S1 `mfa_required_for`) skips until it is on main |
 
 Revocation bound for a directory change: `changedSyncPeriod` (300 s) for Keycloak to
 re-read the user, plus up to `accessTokenLifespan` (300 s) for tokens already issued.
