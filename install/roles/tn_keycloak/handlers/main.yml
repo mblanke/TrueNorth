@@ -13,3 +13,15 @@
     pull: never
     wait: true
     wait_timeout: 300
+
+# The truenorth login theme's files changed (tasks/banner.yml): Keycloak caches themes in
+# `start` mode, so it is restarted once. Banner TEXT changes need no restart.
+- name: Restart Keycloak for the login theme
+  community.docker.docker_compose_v2:
+    project_src: "{{ tn_app_dir }}/infra/platform/docker"
+    files: [compose.prod.yml]
+    env_files: ["{{ tn_env_file }}"]
+    services: [keycloak]
+    state: restarted
+    wait: true
+    wait_timeout: 600

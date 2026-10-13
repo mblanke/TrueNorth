@@ -4,6 +4,12 @@
   "enabled": true,
   "displayName": "TrueNorth Range",
   "displayNameHtml": "<strong>TrueNorth Range</strong>",
+  "loginTheme": "truenorth",
+  "internationalizationEnabled": true,
+  "supportedLocales": [
+    "en"
+  ],
+  "defaultLocale": "en",
   "sslRequired": "external",
   "registrationAllowed": false,
   "registrationEmailAsUsername": true,

@@ -1,0 +1,32 @@
+/* TrueNorth login banner (AC-8): high contrast, always visible above the form. */
+.tn-banner {
+  border: 2px solid #b00020;
+  background: #fff8e1;
+  color: #1a1a1a;
+  padding: 1rem 1.25rem;
+  margin: 0 0 1.5rem;
+  border-radius: 4px;
+}
+.tn-banner h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #1a1a1a;
+}
+.tn-banner-text {
+  white-space: pre-line;
+  font-size: 0.95rem;
+  line-height: 1.45;
+}
+.tn-ack {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+.tn-ack input[type="checkbox"] {
+  margin-top: 0.2rem;
+  flex: none;
+}
+.tn-ack label {
+  font-weight: 600;
+}

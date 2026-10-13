@@ -141,6 +141,8 @@ services:
     command: start-dev --import-realm
     volumes:
       - ../../keycloak/realm-truenorth.json:/opt/keycloak/data/import/realm-truenorth.json:ro
+      # The realm's login theme (AC-8 banner); start-dev does not cache it, so edits show at once.
+      - ../../keycloak/themes/truenorth:/opt/keycloak/themes/truenorth:ro
     environment:
       KC_DB: postgres
       KC_DB_URL: jdbc:postgresql://postgres:5432/forge

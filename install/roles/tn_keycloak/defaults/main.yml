@@ -23,6 +23,12 @@ tn_kc_realm_settings:
   offlineSessionMaxLifespan: 604800 # 7 d, however often it is used
   # Local accounts only: AD-federated users' passwords are AD's (READ_ONLY federation).
   passwordPolicy: "length(12) and notUsername(undefined) and passwordHistory(5)"
+  # The AC-8 login banner: the truenorth theme (infra/keycloak/themes/truenorth), its
+  # text set per site by tasks/banner.yml. English only until R1.5 (French).
+  loginTheme: truenorth
+  internationalizationEnabled: true
+  supportedLocales: [en]
+  defaultLocale: en
 
 # The smoke test's own confidential client (roles/tn_smoke): the only one with the
 # password grant. Created disabled; 95-smoke-test enables it for its one token request
@@ -244,3 +250,17 @@ tn_kc_mfa_exempt_users: >-
   {{ (tn_demo_people | selectattr('group', 'in', tn_kc_mfa_groups) | map(attribute='email') | list)
      if tn_mfa_demo_exempt_effective | bool else [] }}
 tn_kc_mfa_spec: "{{ tn_app_dir }}/install/roles/tn_keycloak/files/mfa-spec.json"
+
+# ── Login banner (tasks/banner.yml) ───────────────────────────────────
+# Realm localization overrides for the truenorth theme's banner messages, from the site's
+# wording (group_vars tn_login_banner_*). Java MessageFormat: a quote is doubled and a
+# brace quoted, so any text renders as written. The master realm (break-glass console,
+# loopback only) shows the same banner.
+tn_kc_banner_realms: ["{{ tn_keycloak_realm }}", master]
+tn_kc_banner_messages:
+  tnLoginBannerTitle: >-
+    {{ tn_login_banner_title | replace("'", "''") | replace('{', "'{'") | replace('}', "'}'") }}
+  tnLoginBanner: >-
+    {{ tn_login_banner_text | trim | replace("'", "''") | replace('{', "'{'") | replace('}', "'}'") }}
+  tnLoginBannerAck: >-
+    {{ tn_login_banner_ack | replace("'", "''") | replace('{', "'{'") | replace('}', "'}'") }}
