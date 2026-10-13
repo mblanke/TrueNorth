@@ -179,6 +179,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/fixture-courses/{code}/withdraw": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Withdraw Fixture Course
+         * @description Withdraw a fixture course (C105) from Students: back to draft with its quizzes, and
+         *     hidden (never deleted) in every Moodle it was published to. Enrolments, progress, quiz
+         *     attempts, grades and Moodle results are kept. ``dry_run=true`` (the default) changes
+         *     nothing and lists the records; ``dry_run=false`` applies, audit-logs each change, and
+         *     re-checks both systems. Running it again changes nothing (``changed: false``).
+         *     409 while a publication of the course is running. **Permission: platform administrator**
+         */
+        post: operations["withdraw_fixture_course_admin_fixture_courses__code__withdraw_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/ai-config/backends": {
         parameters: {
             query?: never;
@@ -15048,6 +15073,124 @@ export interface components {
             /** Requires */
             requires: string[];
         };
+        /** WithdrawCourse */
+        WithdrawCourse: {
+            /** Enrolments */
+            enrolments: components["schemas"]["WithdrawEnrolment"][];
+            /** Enrolments Graded */
+            enrolments_graded: number;
+            /** Enrolments Total */
+            enrolments_total: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Published */
+            is_published: boolean;
+            /** Module Progress */
+            module_progress: number;
+            /** Moodle */
+            moodle: components["schemas"]["WithdrawMoodle"][];
+            /** Moodle Results */
+            moodle_results: number;
+            /** Name */
+            name: string;
+            /** Pending Publications */
+            pending_publications: string[];
+            /** Quiz Attempts */
+            quiz_attempts: number;
+            /** Quizzes */
+            quizzes: components["schemas"]["WithdrawQuiz"][];
+            /** Running Publications */
+            running_publications: string[];
+        };
+        /** WithdrawEnrolment */
+        WithdrawEnrolment: {
+            /** Final Grade */
+            final_grade: string | null;
+            /** Final Score */
+            final_score: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Max Score */
+            max_score: number;
+            /** Status */
+            status: string;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
+        /** WithdrawMoodle */
+        WithdrawMoodle: {
+            /**
+             * Error
+             * @default
+             */
+            error?: string;
+            /** Live Idnumber */
+            live_idnumber: string;
+            /**
+             * Platform Id
+             * Format: uuid
+             */
+            platform_id: string;
+            /** Platform Name */
+            platform_name: string;
+            /** Publication States */
+            publication_states: string[];
+            /** Publications */
+            publications: string[];
+            /** Visibility */
+            visibility: string;
+        };
+        /** WithdrawQuiz */
+        WithdrawQuiz: {
+            /** Attempts */
+            attempts: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Published */
+            is_published: boolean;
+            /** Module Id */
+            module_id: string | null;
+            /** Submitted Attempts */
+            submitted_attempts: number;
+            /** Title */
+            title: string;
+        };
+        /** WithdrawReport */
+        WithdrawReport: {
+            /** Changed */
+            changed: boolean;
+            /** Changes */
+            changes: string[];
+            /** Code */
+            code: string;
+            /** Courses */
+            courses: components["schemas"]["WithdrawCourse"][];
+            /** Dry Run */
+            dry_run: boolean;
+            /** Errors */
+            errors: string[];
+            /** Preserved */
+            preserved: {
+                [key: string]: number;
+            };
+            /**
+             * Tenant Id
+             * Format: uuid
+             */
+            tenant_id: string;
+        };
         /** YamlValidateIn */
         YamlValidateIn: {
             /** Yaml */
@@ -15318,6 +15461,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LearningRecommendationOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    withdraw_fixture_course_admin_fixture_courses__code__withdraw_post: {
+        parameters: {
+            query?: {
+                /** @description true (the default): only report what would change */
+                dry_run?: boolean;
+                /** @description the tenant whose course it is; default: the caller's */
+                tenant_id?: string | null;
+            };
+            header?: never;
+            path: {
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WithdrawReport"];
                 };
             };
             /** @description Validation Error */

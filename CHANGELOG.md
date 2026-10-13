@@ -155,7 +155,7 @@ course production with a local-model fallback, and the cleanup of unsupported su
 - ADR 0010: deleting what history depends on is 409; retire/archive instead; no
   NULL-on-delete (pre-existing exceptions listed and frozen by a test).
 - C105 stays a draft: its committed release is a CI/CATAPULT fixture; the shipped-content
-  publish and the ARC² batch skip it. Hosts that published it earlier must unpublish it.
+  publish and the ARC² batch skip it. Hosts that published it earlier withdraw it (R0-B).
 - `scenario-engine/template_engine` deleted (no importers); `runner` kept.
 - Docs: v1.2.0 release notes (simulator-proven list, staging record placeholder), H6
   marked fixed, user-guide telemetry queries rewritten to the closed grammar (tested).
@@ -186,6 +186,13 @@ course production with a local-model fallback, and the cleanup of unsupported su
   tenants' courses stay 404. New `GET /courses/enrollments/mine`.
 - The fictional LMS and readiness previews are off unless `TN_DEMO_PREVIEWS=true`, and then
   carry a "Demo — fictional data" banner.
+- C105 can be retired on hosts that published it before #147: `POST
+  /admin/fixture-courses/{code}/withdraw` (platform administrator, `dry_run=true` by
+  default, fixture codes only) and `scripts/withdraw_fixture_course.py` (in-process). It
+  lists the course, quizzes, enrolments, attempts, grades and Moodle publications; applying
+  puts the course and quizzes back to draft, hides the Moodle course (`set_visible`), stops
+  a stalled publication, re-checks both systems and audit-logs each change. Nothing is
+  deleted; a second run changes nothing. Runbook: `docs/content-library.md`.
 
 ### Alert delivery by email
 - Installer: `tn_alert_email_enabled` (default off; staging off until its SMTP details are known) renders an
