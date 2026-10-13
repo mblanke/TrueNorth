@@ -448,7 +448,9 @@ tampered="$(find "${AUDIT_ARCHIVE_PATH}" -name '*.jsonl.gz' | sort | head -n 1)"
 printf 'x' >>"${tampered}"
 sleep 1  # distinct timestamp
 set +e
-"${HERE}/backup.sh" >/dev/null 2>"${WORK}/audit-fail.err"
+# No OpenSearch snapshot for this one: with OPENSEARCH_SNAPSHOT_KEEP=2 it would prune the
+# first backup's snapshot, which step 8 restores, and upset the retention count below.
+OPENSEARCH_SNAPSHOT_REPO="" "${HERE}/backup.sh" >/dev/null 2>"${WORK}/audit-fail.err"
 audit_rc=$?
 set -e
 (( audit_rc == 6 )) || die "backup.sh with a tampered audit archive exited ${audit_rc}, not 6"
