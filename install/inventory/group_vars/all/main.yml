@@ -174,6 +174,9 @@ tn_registration_group_role_map:
   TN-Content-Authors: instructor
   TN-Students: student
   TN-Observers: observer
+# Auth zone (Admin > Auth zones) whose clearance and network rules apply at
+# registration. Empty: none. There is no default zone; name one explicitly.
+tn_registration_auth_zone: ""
 tn_tenant_name: "TrueNorth Range"
 tn_tenant_slug: default
 # Developmental progression a newly approved trainee is enrolled on (DP1 -> DP2).

@@ -4,7 +4,8 @@
   wrote any tenant's objectives by exercise id.
 - ``/adaptive/users/{user_id}/*`` returned anyone's scores and competency trend to any
   holder of ``exercise:read`` (every Student).
-- ``/audit-log`` returned every tenant's entries to every holder of ``audit:read``.
+- ``/audit-log`` returned every tenant's entries to every holder of ``audit:read``
+  (and, until v1.2.0, to every admin, because every admin holds ``tenant:read``).
 - QSP spine imports / generators and ``/courses/import-*`` needed only a login.
 
 (The hypervisor-connection fixes are tested in ``test_hypervisors_vsphere.py``.)
@@ -193,9 +194,19 @@ class TestAuditLogScope:
         rids = {e["resource_id"] for e in r.json() if e["resource_type"] == "probe"}
         assert rids == {"mine"}
 
-    def test_platform_admin_sees_every_tenant(self, client, entries):
+    def test_platform_admin_sees_every_tenant(self, client, entries, monkeypatch):
+        # Named explicitly: before v1.2.0 this passed for any admin, because holding
+        # tenant:read was taken to mean "platform". The full matrix is in test_audit_scope.py.
+        monkeypatch.setenv("PLATFORM_TENANT_ID", DEV_TENANT)
         rids = {e["resource_id"] for e in client.get("/audit-log").json() if e["resource_type"] == "probe"}
         assert rids == {"mine", "theirs"}
+
+    def test_other_tenants_admin_sees_only_its_own(self, client, entries, monkeypatch):
+        monkeypatch.setenv("PLATFORM_TENANT_ID", DEV_TENANT)
+        with acting_as(UserRole.admin, tenant=OTHER_TENANT):
+            r = client.get("/audit-log")
+        assert r.status_code == 200, r.text
+        assert {e["resource_id"] for e in r.json() if e["resource_type"] == "probe"} == {"theirs"}
 
     def test_writers_record_the_tenant(self, client, db_session):
         r = client.post("/teams", json={"name": "Audit Probe Team"})

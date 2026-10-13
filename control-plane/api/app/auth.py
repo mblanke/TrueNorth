@@ -116,7 +116,18 @@ async def get_token_identity(
             raise HTTPException(status_code=401, detail=str(exc)) from exc
 
     raw_payload = await get_auth_backend().validate_token(credentials.credentials)
-    return TokenPayload(**raw_payload)
+    return token_from_idp_claims(raw_payload)
+
+
+# Claims only TrueNorth itself may set. An IdP token carrying one is not trusted with it:
+# tn_session names how TrueNorth established the session ("lti", "inprocess"), and a
+# realm mapper (or a compromised client scope) could otherwise claim one.
+_TN_ONLY_CLAIMS = ("tn_session",)
+
+
+def token_from_idp_claims(claims: dict) -> TokenPayload:
+    """The identity in a validated IdP token, without TrueNorth-only claims."""
+    return TokenPayload(**{k: v for k, v in claims.items() if k not in _TN_ONLY_CLAIMS})
 
 
 def _unregistered_error(db: Session, identity: TokenPayload) -> HTTPException:

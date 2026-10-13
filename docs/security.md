@@ -611,10 +611,13 @@ source IP address and no user agent.
 ### Querying Audit Logs
 
 The only reader is a paged list, newest first: `GET /audit-log?limit=…&offset=…`
-(`audit:read`; `limit` at most 500). Only the admin role holds `audit:read`. A caller who
-also holds `tenant:read` sees every tenant's entries; the admin role holds every
-permission, so in practice every admin does. The web app shows it under **Admin → Audit Log**. There is no
-filtering by date, user or resource.
+(`audit:read`; `limit` at most 500). Only the admin role holds `audit:read`. It is scoped
+to the caller's tenant; legacy rows with no tenant are not shown. Only the platform
+administrator (an admin of `PLATFORM_TENANT_ID`'s tenant, or of a single-tenant install;
+`rbac.is_platform_admin`) sees every tenant's entries and the legacy rows, and may narrow
+them with `tenant_id`; anyone else asking for another tenant gets 403. (Before v1.2.0 any
+holder of `tenant:read`, so every tenant's admin, read every tenant's log.) The web app
+shows it under **Admin → Audit Log**. There is no filtering by date, user or resource.
 
 For anything else, query the database directly:
 
@@ -784,7 +787,7 @@ repository does it, whatever an operator could add.
 | AC-12 Session Termination | Implemented (Keycloak) | Access token 5 min, SSO idle 30 min, SSO maximum 10 h, offline session 7 days | `install/roles/tn_keycloak/defaults/main.yml` (`tn_kc_realm_settings`) |
 | AU-2 Event Logging | Partial | State changes in most sections write an audit row. Sign-ins, failures and reads are not logged by TrueNorth, and Keycloak's event store is not enabled | `control-plane/api/app/models.py` (`AuditLog`); [Audit Logging](#audit-logging) |
 | AU-3 Content of Audit Records | Partial | Time, user, tenant, action, resource type and id, free-text detail. No source IP, user agent or outcome (success or failure) | `control-plane/api/app/models.py` (`AuditLog`) |
-| AU-6 Audit Review | Partial | A paged, newest-first list (`GET /audit-log`, Admin → Audit Log). No search, filter, correlation, reporting or alerting on audit events | `control-plane/api/app/routers/admin.py` (`list_audit_log`) |
+| AU-6 Audit Review | Partial | A paged, newest-first list (`GET /audit-log`, Admin → Audit Log), scoped per tenant; only the platform administrator (`PLATFORM_TENANT_ID`) reads across tenants, with a `tenant_id` filter. No search, date or user filter, correlation, reporting or alerting on audit events | `control-plane/api/app/routers/admin.py` (`list_audit_log`), `tests/api/test_audit_scope.py` |
 | AU-9 Protection of Audit Information | Being built for v1.2.0; row owned by that work | Append-only table, backup to MinIO | — |
 | AU-11 Audit Record Retention | Being built for v1.2.0; row owned by that work | 90d hot, 365d warm, 7yr cold | — |
 | CA-7 Continuous Monitoring | Partial | Prometheus, Alertmanager and Grafana with unit-tested alert rules. Alert delivery through Alertmanager has not been exercised on staging | `infra/platform/docker/compose.monitoring.yml`, `tests/contracts/test_prometheus_rules.py` |

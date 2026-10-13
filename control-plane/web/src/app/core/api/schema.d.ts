@@ -584,9 +584,11 @@ export interface paths {
          * List Audit Log
          * @description Query the audit log.  **Permission: audit:read**
          *
-         *     Scoped to the caller's tenant. A caller who also holds the platform-level
-         *     ``tenant:read`` (the platform admin, who already lists every tenant) sees every
-         *     tenant's entries, including legacy rows written before writers recorded a tenant.
+         *     Scoped to the caller's tenant; legacy rows with no tenant are not shown. Only the
+         *     platform administrator (``rbac.is_platform_admin``: an admin of PLATFORM_TENANT_ID's
+         *     tenant, or of a single-tenant install) sees every tenant's entries and the legacy
+         *     rows, and may narrow them with ``tenant_id``. Holding ``tenant:read`` is not enough:
+         *     every tenant's admin holds it (the bug fixed in v1.2.0).
          */
         get: operations["list_audit_log_audit_log_get"];
         put?: never;
@@ -16115,6 +16117,8 @@ export interface operations {
             query?: {
                 limit?: number;
                 offset?: number;
+                /** @description Platform administrator only: restrict to one tenant's entries. */
+                tenant_id?: string | null;
             };
             header?: never;
             path?: never;

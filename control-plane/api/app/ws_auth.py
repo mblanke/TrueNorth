@@ -53,7 +53,7 @@ async def ws_user(websocket: WebSocket, db: Session) -> WsIdentity | None:
         if not token:
             return None
         claims = await auth.get_auth_backend().validate_token(token)
-        user = await auth.get_current_user(None, auth.TokenPayload(**claims), db)
+        user = await auth.get_current_user(None, auth.token_from_idp_claims(claims), db)
         exp = claims.get("exp")
         return WsIdentity(user, float(exp) if isinstance(exp, int | float) else None)
     except Exception:  # noqa: BLE001 — an invalid token, an unknown or disabled user: no socket

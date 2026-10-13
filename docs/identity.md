@@ -154,6 +154,15 @@ deterministic rather than dependent on set ordering.
 *apply*; the role on the account is whatever the approver selects. A member of
 `TN-Platform-Admins` who is approved as `student` is a student.
 
+**Auth zone at registration.** `REGISTRATION_AUTH_ZONE` (installer:
+`tn_registration_auth_zone`) names the auth zone whose clearance and IP rules apply
+when someone registers. Empty (the default) applies none. There is no default zone:
+before v1.2.0 an unset zone meant "the first active zone by name", which on every
+install was the seeded "Secret Zone", so registration demanded MFA and a `secret`
+clearance claim that nothing emits. A name that matches no active zone refuses
+registration. Registration never applies a zone's MFA rule: an identity with no
+account has no role yet, and the role decides MFA.
+
 ---
 
 ## Role vocabulary

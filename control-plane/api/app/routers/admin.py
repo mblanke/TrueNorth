@@ -43,7 +43,7 @@ from sqlalchemy.orm import Session
 from ..auth import CurrentUser, get_current_user
 from ..db import get_db
 from ..models import AuditLog, Team, TeamMembership, Tenant, User, UserRole
-from ..rbac import Permission, is_platform_admin, require_permission, user_has_permission
+from ..rbac import Permission, is_platform_admin, require_permission
 from ..schemas import (
     AuditLogOut,
     TeamFullIn,
@@ -407,15 +407,25 @@ def list_audit_log(
     user: CurrentUser = Depends(require_permission(Permission.AUDIT_READ)),
     limit: int = Query(100, le=500),
     offset: int = Query(0, ge=0),
+    tenant_id: uuid.UUID | None = Query(
+        None, description="Platform administrator only: restrict to one tenant's entries."
+    ),
 ) -> list[AuditLog]:
     """Query the audit log.  **Permission: audit:read**
 
-    Scoped to the caller's tenant. A caller who also holds the platform-level
-    ``tenant:read`` (the platform admin, who already lists every tenant) sees every
-    tenant's entries, including legacy rows written before writers recorded a tenant.
+    Scoped to the caller's tenant; legacy rows with no tenant are not shown. Only the
+    platform administrator (``rbac.is_platform_admin``: an admin of PLATFORM_TENANT_ID's
+    tenant, or of a single-tenant install) sees every tenant's entries and the legacy
+    rows, and may narrow them with ``tenant_id``. Holding ``tenant:read`` is not enough:
+    every tenant's admin holds it (the bug fixed in v1.2.0).
     """
     q = db.query(AuditLog)
-    if not user_has_permission(user, Permission.TENANT_READ):
+    if is_platform_admin(user, db):
+        if tenant_id is not None:
+            q = q.filter(AuditLog.tenant_id == tenant_id)
+    else:
+        if tenant_id is not None and str(tenant_id) != user.tenant_id:
+            raise HTTPException(403, "Only the platform administrator reads another tenant's audit log")
         q = q.filter(AuditLog.tenant_id == uuid.UUID(user.tenant_id))
     return q.order_by(AuditLog.timestamp.desc()).offset(offset).limit(limit).all()
 
