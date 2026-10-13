@@ -1,7 +1,9 @@
 # Throwaway datastores for the kind smoke test (infra/k8s/kind/smoke.sh) — NOT for
 # production: no persistence, single replicas, OpenSearch without its security plugin.
 # The chart does not run datastores; production points config.* at real ones.
-# Passwords come from the `tn-deps` Secret the smoke script creates.
+# Passwords come from the `tn-deps` Secret the smoke script creates. Keycloak imports the
+# shipped realm (ConfigMap `tn-realm`, from infra/keycloak/realm-truenorth.json); the
+# chart's keycloak-mfa hook then configures it for MFA, as an operator's Keycloak would be.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -104,3 +106,65 @@ metadata: {name: opensearch}
 spec:
   selector: {app: opensearch}
   ports: [{port: 9200, targetPort: 9200}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: keycloak
+  labels: {app: keycloak}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: keycloak}}
+  template:
+    metadata: {labels: {app: keycloak}}
+    spec:
+      containers:
+        - name: keycloak
+          # Built by smoke.sh from keycloak.Dockerfile (FROM the pin compose.prod.yml uses)
+          # with the Quarkus build done, so the pod never augments at start.
+          image: tn-local/keycloak:ci
+          imagePullPolicy: Never
+          args: ["start", "--optimized", "--import-realm"]
+          env:
+            - {name: KC_HTTP_ENABLED, value: "true"}
+            - {name: KC_HOSTNAME_STRICT, value: "false"}
+            - {name: KC_HOSTNAME_STRICT_HTTPS, value: "false"}
+            # A fixed heap. Keycloak 24's default is 70% of the container limit; with
+            # metaspace (to 256m), code cache and threads on top that ran past the limit
+            # once the hook wrote to the realm: OOMKilled, exit 137 (PR #165 helm-kind).
+            - {name: JAVA_OPTS_KC_HEAP, value: "-XX:MaxHeapFreeRatio=30 -Xms256m -Xmx640m"}
+            - {name: KEYCLOAK_ADMIN, value: admin}
+            - name: KEYCLOAK_ADMIN_PASSWORD
+              valueFrom: {secretKeyRef: {name: tn-deps, key: KEYCLOAK_ADMIN_PASSWORD}}
+          ports: [{containerPort: 8080}]
+          # JVM start plus the realm import: seconds on a free CPU, minutes on a busy
+          # 2-vCPU runner (150 s measured at 0.5 CPU). Nothing restarts it meanwhile: no
+          # liveness probe, and readiness waits for the started probe.
+          startupProbe:
+            httpGet: {path: /auth/health/started, port: 8080}
+            periodSeconds: 5
+            failureThreshold: 120
+          readinessProbe:
+            httpGet: {path: /auth/realms/truenorth, port: 8080}
+            periodSeconds: 5
+            failureThreshold: 12
+          volumeMounts:
+            - {name: realm, mountPath: /opt/keycloak/data/import, readOnly: true}
+            # The dev-file database outlives a container restart (the pod's emptyDir),
+            # so a restart never undoes what the keycloak-mfa hook configured.
+            - {name: h2, mountPath: /opt/keycloak/data/h2}
+          resources:
+            requests: {cpu: 100m, memory: 768Mi}
+            limits: {cpu: "2", memory: 1536Mi}
+      volumes:
+        - name: realm
+          configMap: {name: tn-realm}
+        - name: h2
+          emptyDir: {sizeLimit: 256Mi}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: keycloak}
+spec:
+  selector: {app: keycloak}
+  ports: [{port: 8080, targetPort: 8080}]

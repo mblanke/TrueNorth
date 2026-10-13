@@ -17,10 +17,14 @@ config:
   # MinIO is not deployed in the smoke test: readiness does not depend on it, and the
   # API only checks that its credentials are set and not the defaults.
   minio: {endpoint: "http://minio.invalid:9000"}
+  # The throwaway Keycloak in deps.yaml. The keycloak-mfa hook configures its realm for
+  # MFA and creates truenorth-api-admin, which the api's startup check (refuse, as
+  # production) then reads.
   keycloak:
-    url: http://keycloak.invalid:8080/auth
+    url: http://keycloak:8080/auth
     audience: truenorth-api
     issuer: http://truenorth.kind.test/auth/realms/truenorth
+    adminClientId: truenorth-api-admin
   trustedProxyCidrs: 10.244.0.0/16
   provisionerBackend: mock
 

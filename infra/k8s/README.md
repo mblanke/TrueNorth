@@ -84,6 +84,43 @@ worker pings, `helm test`).
 - The **scenario-engine** image is not a service: an init container copies it into the
   api pod's `SCENARIO_ENGINE_DIR`.
 
+## MFA: the chart configures the realm (v1.2.0)
+
+From v1.2.0 the API refuses admin, instructor, range_ops and observer sign-ins that carry
+no second factor (`docs/identity.md` "MFA"), and in production refuses to start against a
+realm not configured for it. The chart's `keycloak-mfa` pre-install/pre-upgrade hook
+(`keycloakMfa`, on by default) configures it before any api pod starts: give it a Keycloak
+admin (`secrets.keycloakMfaAdminPassword` with `keycloakMfa.adminUser`, or
+`keycloakMfa.adminSecret`) and set `config.keycloak.adminClientId` (e.g.
+`truenorth-api-admin`) with `secrets.keycloakAdminClientSecret`: the hook creates that
+client with exactly `view-realm` and `manage-users`, which the api's startup check and
+`/ad-sync` use. The admin credential is in a hook-scoped Secret deleted after success; the
+api pods never see it. The kind smoke (`infra/k8s/kind/smoke.sh`) installs this way, with
+the check in `refuse` mode.
+
+With `keycloakMfa.enabled: false`, run the same script yourself **before** installing or
+upgrading, with a realm-admin token on stdin (never on the command line):
+
+```bash
+python3 scripts/keycloak_mfa.py --base https://<keycloak>/auth --realm truenorth \
+    --spec install/roles/tn_keycloak/files/mfa-spec.json --rp-id <your host> < admin-token
+```
+
+It builds and binds the `tn-browser` flow (OTP for the privileged groups, step-up),
+gives those groups the `tn-mfa-required` role, puts the AMR mapper on the
+`truenorth-identity` scope of `truenorth-web` and `truenorth-api`, and writes the realm
+attribute `tn.mfa.configured`. Every privileged user then enrols an authenticator at
+the next sign-in. Group names other than the shipped `TN-*` ones: pass `--groups`.
+
+At startup the API checks the realm through `config.keycloak.adminClientId` (a
+service account with realm-management `view-realm`). In production it **refuses to start**
+when the realm answers without `tn-browser`, `acr.loa.map` "mfa" or `tn.mfa.configured`,
+when no admin client is configured, or when Keycloak refuses that client (401/403: wrong
+secret, or no `view-realm`), and its log names what is wrong; a Keycloak that does not
+answer only logs a warning. `config.mfaKeycloakCheck: warn` starts anyway (staff
+will then be refused at sign-in until the realm is configured). Proven on the pinned
+Keycloak by `scripts/check_keycloak_mfa.sh`.
+
 ## Known gaps
 
 - The ingress is written for ingress-nginx (`rewrite-target`, `use-regex`). The compose

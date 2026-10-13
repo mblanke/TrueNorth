@@ -30,6 +30,11 @@ data:
   # Keycloak as the API reaches it (server side), including /auth when it serves there.
   KEYCLOAK_URL: {{ required "config.keycloak.url is required, e.g. http://keycloak:8080/auth" .Values.config.keycloak.url | quote }}
   KEYCLOAK_REALM: {{ .Values.config.keycloak.realm | quote }}
+  {{- with .Values.config.mfaKeycloakCheck }}
+  # The API's startup check of the realm's MFA configuration: refuse (default in
+  # production) | warn | off. infra/k8s/README.md "MFA: the chart configures the realm".
+  TN_MFA_KEYCLOAK_CHECK: {{ . | quote }}
+  {{- end }}
   KEYCLOAK_AUDIENCE: {{ required "config.keycloak.audience is required (docs/identity.md); production refuses to start without it" .Values.config.keycloak.audience | quote }}
   # The realm's PUBLIC issuer (the iss browsers' tokens carry), not KEYCLOAK_URL.
   KEYCLOAK_ISSUER: {{ required "config.keycloak.issuer is required: the realm's public issuer, e.g. https://truenorth.example/auth/realms/truenorth" .Values.config.keycloak.issuer | quote }}

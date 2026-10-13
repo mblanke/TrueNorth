@@ -1,0 +1,139 @@
+{{- if .Values.keycloakMfa.enabled -}}
+{{- /*
+Configure the Keycloak realm for the MFA the API enforces, before any api pod starts
+(docs/identity.md "MFA"; infra/k8s/README.md "MFA: the chart configures the realm"). The same code the
+installer's 60-keycloak runs: files/keycloak/keycloak_mfa.py (a copy of
+scripts/keycloak_mfa.py, kept equal by tests/contracts/test_helm_keycloak_mfa.py) with the
+spec install/roles/tn_keycloak/files/mfa-spec.json. It builds and binds the tn-browser flow,
+gives the privileged groups tn-mfa-required, installs the AMR mapper, writes
+tn.mfa.configured and, with config.keycloak.adminClientId, makes the API's view-realm
+client. Idempotent: an upgrade with nothing to change changes nothing.
+
+A pre-install/pre-upgrade hook (weight 5, after the migration), so the api's startup
+check (TN_MFA_KEYCLOAK_CHECK=refuse in production) finds the realm ready. It needs a
+Keycloak admin credential: keycloakMfa.adminSecret (keys KEYCLOAK_ADMIN_USER,
+KEYCLOAK_ADMIN_PASSWORD), or keycloakMfa.adminUser + secrets.keycloakMfaAdminPassword in a
+hook-scoped Secret deleted after success. The api pods never receive it.
+*/ -}}
+{{- $fullname := include "truenorth-range.fullname" . -}}
+{{- $mfa := .Values.keycloakMfa -}}
+{{- if and .Values.config.keycloak.adminClientId (not $mfa.adminSecret) (not .Values.secrets.keycloakAdminClientSecret) }}
+{{- fail "config.keycloak.adminClientId is set: secrets.keycloakAdminClientSecret is required too (the keycloak-mfa hook creates that client)" }}
+{{- end }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $fullname }}-keycloak-mfa
+  labels:
+    {{- include "truenorth-range.componentLabels" (dict "context" . "component" "keycloak-mfa") | nindent 4 }}
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "4"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+data:
+  keycloak_mfa.py: |-
+    {{- .Files.Get "files/keycloak/keycloak_mfa.py" | nindent 4 }}
+  keycloak_mfa_hook.py: |-
+    {{- .Files.Get "files/keycloak/keycloak_mfa_hook.py" | nindent 4 }}
+  mfa-spec.json: |-
+    {{- .Files.Get "files/keycloak/mfa-spec.json" | nindent 4 }}
+---
+{{- if not $mfa.adminSecret }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $fullname }}-keycloak-mfa
+  labels:
+    {{- include "truenorth-range.componentLabels" (dict "context" . "component" "keycloak-mfa") | nindent 4 }}
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "4"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+type: Opaque
+data:
+  KEYCLOAK_ADMIN_USER: {{ required "keycloakMfa.adminUser is required (or keycloakMfa.adminSecret)" $mfa.adminUser | b64enc | quote }}
+  KEYCLOAK_ADMIN_PASSWORD: {{ required "secrets.keycloakMfaAdminPassword is required with keycloakMfa.enabled (a Keycloak admin, used by this hook only), or set keycloakMfa.adminSecret, or keycloakMfa.enabled=false and run scripts/keycloak_mfa.py yourself (infra/k8s/README.md)" .Values.secrets.keycloakMfaAdminPassword | b64enc | quote }}
+  {{- with .Values.secrets.keycloakAdminClientSecret }}
+  TN_API_ADMIN_CLIENT_SECRET: {{ . | b64enc | quote }}
+  {{- end }}
+---
+{{- end }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ $fullname }}-keycloak-mfa
+  labels:
+    {{- include "truenorth-range.componentLabels" (dict "context" . "component" "keycloak-mfa") | nindent 4 }}
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "5"
+    "helm.sh/hook-delete-policy": before-hook-creation
+spec:
+  backoffLimit: {{ $mfa.backoffLimit }}
+  activeDeadlineSeconds: {{ $mfa.activeDeadlineSeconds }}
+  ttlSecondsAfterFinished: {{ $mfa.ttlSecondsAfterFinished }}
+  template:
+    metadata:
+      labels:
+        {{- include "truenorth-range.componentSelectorLabels" (dict "context" . "component" "keycloak-mfa") | nindent 8 }}
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- include "truenorth-range.podSecurityContext" (dict "root" . "uid" 10001) | nindent 8 }}
+      volumes:
+        {{- include "truenorth-range.scratchVolumes" . | nindent 8 }}
+        - name: keycloak-mfa
+          configMap:
+            name: {{ $fullname }}-keycloak-mfa
+      containers:
+        - name: keycloak-mfa
+          image: {{ include "truenorth-range.image" (dict "name" "api" "root" .) }}
+          imagePullPolicy: {{ include "truenorth-range.imagePullPolicy" (dict "name" "api" "root" .) }}
+          command: ["python", "/opt/keycloak-mfa/keycloak_mfa_hook.py"]
+          securityContext:
+            {{- include "truenorth-range.containerSecurityContext" (dict "uid" 10001) | nindent 12 }}
+          env:
+            - name: KC_URL
+              value: {{ required "config.keycloak.url is required" .Values.config.keycloak.url | quote }}
+            - name: KC_REALM
+              value: {{ .Values.config.keycloak.realm | default "truenorth" | quote }}
+            - name: KC_ADMIN_REALM
+              value: {{ $mfa.adminRealm | quote }}
+            - name: KC_RP_ID
+              value: {{ $mfa.rpId | default .Values.ingress.host | quote }}
+            - name: KC_GROUPS
+              value: {{ $mfa.groups | quote }}
+            - name: KC_WAIT_SECONDS
+              value: {{ $mfa.waitSeconds | quote }}
+            {{- with .Values.config.keycloak.adminClientId }}
+            - name: TN_API_ADMIN_CLIENT_ID
+              value: {{ . | quote }}
+            - name: TN_API_ADMIN_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $mfa.adminSecret | default (printf "%s-keycloak-mfa" $fullname) }}
+                  key: TN_API_ADMIN_CLIENT_SECRET
+            {{- end }}
+            - name: KC_ADMIN_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $mfa.adminSecret | default (printf "%s-keycloak-mfa" $fullname) }}
+                  key: KEYCLOAK_ADMIN_USER
+            - name: KC_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $mfa.adminSecret | default (printf "%s-keycloak-mfa" $fullname) }}
+                  key: KEYCLOAK_ADMIN_PASSWORD
+          volumeMounts:
+            {{- include "truenorth-range.scratchVolumeMounts" . | nindent 12 }}
+            - name: keycloak-mfa
+              mountPath: /opt/keycloak-mfa
+              readOnly: true
+          resources:
+            {{- toYaml $mfa.resources | nindent 12 }}
+{{- end }}

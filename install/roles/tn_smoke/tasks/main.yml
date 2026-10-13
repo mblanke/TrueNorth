@@ -16,30 +16,40 @@
   ansible.builtin.include_vars:
     file: "{{ role_path }}/../tn_keycloak/defaults/main.yml"
 
-# Who the claim-contract check signs in as. With AD: an AD account you name
-# (-e tn_smoke_username=<upn> -e tn_smoke_password=...). Without AD, or with AD and
-# tn_keycloak_local_admin: the local bootstrap administrator 60-keycloak created, whose
-# password is a persisted secret (the AD claims are then checked by the CI `ad` lane's
-# tests against the directory, not here).
+# Who the claim-contract check signs in as: a NON-PRIVILEGED account, never an admin.
+# Since v1.2.0 privileged users sign in with a second factor, which a password grant
+# cannot supply. By default (no AD, or AD with tn_keycloak_local_admin):
+# tn_smoke_local_user, which 60-keycloak created locally in TN-Observers with the
+# persisted secret smoke_user_password (the AD claims are then checked by the CI `ad`
+# lane's tests against the directory, not here). With an AD account named
+# (-e tn_smoke_username=<upn> -e tn_smoke_password=...): that account, which must be
+# non-privileged, e.g. a TN-Students or TN-Observers member with no authenticator enrolled;
+# its token must then carry the directory claims.
 - name: Smoke — the identity to sign in as
   ansible.builtin.set_fact:
-    tn_smoke_user_effective: "{{ tn_smoke_username | default(tn_bootstrap_admin_upn, true) }}"
+    tn_smoke_user_effective: >-
+      {{ tn_smoke_username | default('', true)
+         or ('' if tn_ldap_enabled | bool and not tn_keycloak_local_admin | bool else tn_smoke_local_user) }}
     tn_smoke_password_effective: >-
       {{ tn_smoke_password | default('', true)
          or ('' if tn_ldap_enabled | bool and not tn_keycloak_local_admin | bool
-             else tn_secrets['bootstrap_admin_password']) }}
+             else tn_secrets['smoke_user_password']) }}
   no_log: true
 
 # Mandatory: "the services are up" is not an installed platform. The claim contract is
 # the only check that proves sign-in, the token claims and registration are joined.
 - name: Smoke — the claim-contract check has credentials
   ansible.builtin.assert:
-    that: tn_smoke_password_effective | length > 0
+    that:
+      - tn_smoke_user_effective | trim | length > 0
+      - tn_smoke_password_effective | length > 0
     fail_msg: |
-      No tn_smoke_password. The claim-contract check is mandatory: re-run with
+      No tn_smoke_username/tn_smoke_password. The claim-contract check is mandatory: re-run with
         ansible-playbook playbooks/95-smoke-test.yml -e tn_smoke_username=<AD upn> -e tn_smoke_password=<password>
-      (an AD account in a TN-* group; --ask-vault-pass as usual). Put the password in a
-      vaulted file and pass -e @file rather than typing it on the command line.
+      naming a NON-PRIVILEGED AD account (TN-Students or TN-Observers, no authenticator
+      enrolled): administrators, instructors and range operators need a second factor,
+      which the smoke test's password grant cannot give. --ask-vault-pass as usual; put the
+      password in a vaulted file and pass -e @file rather than typing it on the command line.
     quiet: true
 
 # -a: an exited container (crashed, or a one-shot that should not be there) is invisible
@@ -191,7 +201,7 @@
       changed_when: false # disabled again below
       no_log: true
 
-    - name: Smoke — obtain a token for the bootstrap admin's AD account
+    - name: Smoke — obtain a token for the non-privileged smoke identity
       ansible.builtin.uri:
         url: "https://{{ tn_domain_fqdn }}/auth/realms/{{ tn_keycloak_realm }}/protocol/openid-connect/token"
         method: POST
@@ -201,7 +211,7 @@
           client_id: "{{ tn_kc_smoke_client }}"
           # Confidential: without its secret Keycloak answers 401.
           client_secret: "{{ tn_secrets['keycloak_smoke_client_secret'] }}"
-          username: "{{ tn_smoke_user_effective }}"
+          username: "{{ tn_smoke_user_effective | trim }}"
           password: "{{ tn_smoke_password_effective }}"
           scope: "openid profile email"
         validate_certs: "{{ tn_tls_mode != 'selfsigned' }}"
@@ -272,11 +282,53 @@
 - name: Smoke — AD claims not proven by this run
   ansible.builtin.debug:
     msg: >-
-      WARNING: AD is on, but the claim check signed in as the LOCAL recovery administrator
+      WARNING: AD is on, but the claim check signed in as the LOCAL smoke account
       ({{ tn_smoke_user_effective }}), which proves the claim contract, not the directory.
       60-keycloak checked the TN-* groups arrived from AD; to prove an AD sign-in too, re-run
       with -e tn_smoke_username=<AD account in a TN-* group> -e tn_smoke_password=...
   when: tn_ldap_enabled | bool and tn_smoke_username | default('') | length == 0
+
+# ── MFA wiring: the realm asks privileged users for a second factor, and the token says
+# how the user signed in (amr). Read on the loopback Admin API; a fresh admin token,
+# since the one above may have expired (about 60 s).
+- name: Smoke — Keycloak admin token for the MFA checks (loopback)
+  ansible.builtin.uri:
+    url: "{{ tn_kc_internal }}/realms/master/protocol/openid-connect/token"
+    method: POST
+    body_format: form-urlencoded
+    body:
+      grant_type: password
+      client_id: admin-cli
+      username: "{{ vault_keycloak_admin_user | default('admin') }}"
+      password: "{{ tn_secrets['keycloak_admin_password'] }}"
+    status_code: 200
+  register: tn_smoke_admin2
+  no_log: true
+
+- name: Smoke — the realm and the identity scope
+  ansible.builtin.uri:
+    url: "{{ tn_kc_realm_url }}{{ item }}"
+    headers:
+      Authorization: "Bearer {{ tn_smoke_admin2.json.access_token }}"
+    status_code: 200
+  loop: ["", "/client-scopes"]
+  register: tn_smoke_kc
+
+- name: Smoke — MFA is wired (browser flow tn-browser, AMR mapper on truenorth-identity)
+  vars:
+    _realm: "{{ tn_smoke_kc.results[0].json }}"
+    _scope: "{{ tn_smoke_kc.results[1].json | selectattr('name', 'equalto', 'truenorth-identity') | list }}"
+    _mappers: "{{ (_scope | first).protocolMappers | default([]) | map(attribute='protocolMapper') | list if _scope else [] }}"
+  ansible.builtin.assert:
+    that:
+      - _realm.browserFlow is match('tn-browser')
+      - "'oidc-amr-mapper' in _mappers"
+    fail_msg: >-
+      MFA is not wired: browserFlow={{ _realm.browserFlow | default('?') }}, identity scope
+      mappers={{ _mappers }}. Privileged users would sign in with a password only, or the
+      API could not see their second factor and would refuse them. Re-run
+      playbooks/60-keycloak.yml.
+    success_msg: "MFA wired: browserFlow={{ _realm.browserFlow }}, amr mapper present"
 
 - name: Smoke — /auth/me answers for that identity
   ansible.builtin.uri:
@@ -294,6 +346,6 @@
     msg: >-
       /auth/me for {{ tn_smoke_user_effective }}:
       status={{ tn_authme.json.status | default('?') }}
-      {{ '(the bootstrap admin is registered, as expected)'
+      {{ '(registered)'
          if tn_authme.json.status | default('') == 'registered'
-         else '(an unregistered identity is offered the registration form rather than a 403 — this is the fix working)' }}
+         else '(an unregistered identity is offered the registration form rather than a 403, as expected for the smoke account)' }}

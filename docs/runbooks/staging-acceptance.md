@@ -159,6 +159,13 @@ loop is mandatory on staging (`docs/release-notes/v1.2.0-module-matrix.md`). The
   rendering and sign-in through Keycloak are the Playwright lane's (`e2e`). The Moodle loop
   drives Moodle's pages without a browser; the loop in Chromium is the CI `moodle` lane's, and
   on staging the click-through in `docs/runbooks/moodle.md` ("Student loop on staging").
+- **MFA sign-in.** The suite acts in-process (`tn_session=inprocess`, exempt and audited), so
+  it does not sign in through Keycloak. Run the **MFA drill** by hand on staging
+  (docs/runbooks/break-glass.md "Drill"): an instructor enrols an authenticator at first
+  sign-in (and is asked for one more code: the step-up), signs in again with a code, the
+  break-glass playbook resets it, and the next sign-in shows enrolment again; check the
+  `mfa_reset` audit row. A Student and an LTI-launched Student sign in without a code. The
+  Keycloak half is proven on every change by `scripts/check_keycloak_mfa.sh` (CI).
 - **The edge certificate.** nginx is reached from inside the stack without verifying TLS (the
   installer's certificate is often from an internal CA this container does not carry).
 

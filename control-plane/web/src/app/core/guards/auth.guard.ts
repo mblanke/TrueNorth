@@ -36,6 +36,10 @@ export const authGuard: CanActivateFn = (_route, state): Observable<boolean | Ur
     if (auth.isAuthenticated()) {
       return true;
     }
+    // The role needs a second factor and a step-up did not supply one (v1.2.0).
+    if (auth.mfaBlocked()) {
+      return router.createUrlTree(['/mfa-required']);
+    }
     // Authenticated with AD but no account yet: send them to the right place
     // rather than to a login page they have already passed.
     switch (auth.authState()) {

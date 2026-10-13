@@ -57,14 +57,17 @@ def _range(db, tid) -> Range:
 # ── The socket itself ──────────────────────────────────────────────────
 @pytest.fixture
 def auth_on(monkeypatch, db_session):
-    """Real token checking, with the identity provider stubbed: token 'good-<kc>' is valid."""
+    """Real token checking, with the identity provider stubbed: token 'good-<kc>' is valid
+    and signed in with a second factor; 'pwonly-<kc>' is valid, password only (acr "1")."""
     from fastapi import HTTPException
 
     class Backend:
         async def validate_token(self, token):
-            if not token.startswith("good-"):
-                raise HTTPException(401, "bad token")
-            return {"sub": token[len("good-") :], "email": "x@example.test"}
+            if token.startswith("good-"):
+                return {"sub": token[len("good-") :], "email": "x@example.test", "amr": ["pwd", "otp"]}
+            if token.startswith("pwonly-"):
+                return {"sub": token[len("pwonly-") :], "email": "x@example.test", "amr": ["pwd"], "acr": "1"}
+            raise HTTPException(401, "bad token")
 
     monkeypatch.setattr(auth, "AUTH_DISABLED", False)
     monkeypatch.setattr(auth, "get_auth_backend", lambda: Backend())
@@ -87,6 +90,33 @@ def auth_on(monkeypatch, db_session):
 def test_no_valid_token_no_socket(client, auth_on, protocols):
     kwargs = {"subprotocols": protocols} if protocols else {}
     with pytest.raises(WebSocketDisconnect) as e, client.websocket_connect(f"/ws/tenant.{TENANT_A}", **kwargs):
+        pass
+    assert e.value.code == 1008
+
+
+def test_a_privileged_user_without_mfa_is_refused_1008(client, auth_on):
+    """v1.2.0: the WebSocket applies the same MFA rule as HTTP (get_current_user)."""
+    with (
+        pytest.raises(WebSocketDisconnect) as e,
+        client.websocket_connect(f"/ws/tenant.{TENANT_A}", subprotocols=["bearer", "pwonly-kc-a"]),
+    ):
+        pass
+    assert e.value.code == 1008
+
+
+def test_an_idp_token_cannot_claim_the_inprocess_session(client, auth_on, monkeypatch):
+    """F6: tn_session from the IdP is dropped, so "inprocess" cannot exempt a socket."""
+    from app import auth as auth_mod
+
+    class Forging:
+        async def validate_token(self, token):
+            return {"sub": "kc-a", "email": "x@example.test", "amr": ["pwd"], "tn_session": "inprocess"}
+
+    monkeypatch.setattr(auth_mod, "get_auth_backend", lambda: Forging())
+    with (
+        pytest.raises(WebSocketDisconnect) as e,
+        client.websocket_connect(f"/ws/tenant.{TENANT_A}", subprotocols=["bearer", "anything"]),
+    ):
         pass
     assert e.value.code == 1008
 

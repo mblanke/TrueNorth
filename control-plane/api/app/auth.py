@@ -26,6 +26,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from . import mfa_policy
 from .auth_backends import get_auth_backend
 from .db import get_db
 from .models import RegistrationRequest, RegistrationStatus, User, UserRole
@@ -62,7 +63,9 @@ class TokenPayload(BaseModel):
     # Authentication context, used for auth-zone MFA policy.
     amr: list[str] = []
     acr: str = ""
-    # "lti" for an LTI session hand-off (app/lti_identity/session.py); "" for an IdP token.
+    # "lti" for an LTI session hand-off (app/lti_identity/session.py); "inprocess" for the
+    # host-side harness (scripts/_inprocess_api.py); "" for an IdP token, which can never
+    # set it (token_from_idp_claims strips it).
     tn_session: str = ""
 
 
@@ -175,7 +178,7 @@ async def get_current_user(
     identity: Annotated[TokenPayload, Depends(get_token_identity)],
     db: Session = Depends(get_db),
 ) -> CurrentUser:
-    """Extract and validate user from JWT, resolve from DB."""
+    """Resolve the token to its users row; refuse unknown, disabled, and MFA-less privileged users."""
     if AUTH_DISABLED:
         # Dev mode: return a default admin user
         return CurrentUser(
@@ -201,6 +204,13 @@ async def get_current_user(
             },
             headers={AUTH_STATE_HEADER: "disabled"},
         )
+    # MFA by the database role, on every request and WebSocket (app/mfa_policy.py). After
+    # the disabled check, so a disabled account still reads as disabled.
+    denial = mfa_policy.mfa_denial(identity, user.role, user.email)
+    if denial is not None:
+        raise denial
+    if mfa_policy.uses_demo_exemption(identity, user.role, user.email):
+        mfa_policy.audit_demo_exemption(db, user)
 
     return CurrentUser(
         id=str(user.id),

@@ -244,6 +244,86 @@ both wrong and infuriating.
 
 ---
 
+## MFA (multi-factor sign-in, v1.2.0)
+
+**Who.** `admin`, `instructor` (including `TN-Content-Authors`), `range_ops` and
+`observer` sign in with a password **and** a one-time code from an authenticator app
+(TOTP). Students sign in with a password only; LTI-launched Students never see Keycloak
+and are not affected. The list is `TN_MFA_ROLES` (installer `tn_mfa_roles`); production
+refuses to start unless all four are in it.
+
+**Two halves, one release.**
+
+| Half | What | Where |
+|---|---|---|
+| Keycloak asks | Realm role `tn-mfa-required` on the groups whose role is privileged; the `tn-browser` flow asks those users for an OTP code, and sends anyone without one to enrolment (`CONFIGURE_TOTP`). The `amr` protocol mapper puts how the user signed in in the token. | `scripts/keycloak_mfa.py`, run by `install/roles/tn_keycloak/tasks/mfa.yml`; spec `install/roles/tn_keycloak/files/mfa-spec.json` |
+| The API enforces | `auth.get_current_user` (every route and every WebSocket) refuses a privileged **database** role whose token shows no second factor: 403 `{"code": "mfa_required"}`, header `X-TrueNorth-Auth-State: mfa_required`. MFA means `amr` contains `otp`/`hwk`/`swk`/`mfa`, or `acr` is `mfa`. `acr` `"0"`, `"1"` or `"pwd"` never counts. | `control-plane/api/app/mfa_policy.py` |
+
+The role is the database's (`users.role`), never the token's. If an administrator
+promotes someone in the UI before their Keycloak groups change, the API refuses them and
+the SPA steps up (below): one extra prompt, never access without a second factor.
+
+**Enrolment on next sign-in.** After the upgrade, every privileged user, the bootstrap
+administrator included, is shown "Mobile Authenticator Setup" at the next sign-in: scan
+the QR code with an authenticator app (FreeOTP, Google Authenticator, Microsoft
+Authenticator, ...), type the code, then continue. On Keycloak 24 the code typed while
+enrolling is not recorded as a second factor in that first token, so the SPA asks for one
+more code straight away (step-up, no password). Every later sign-in: password, then code.
+
+**Step-up.** On a 403 `mfa_required`, or when `/auth/me` reports `mfa_required: true`
+and `mfa_satisfied: false`, the SPA signs in again asking for `acr` `mfa`
+(`keycloak.login({acr: {values: ['mfa'], essential: true}})`); the realm's level-2 subflow
+asks for the code. One step-up per five minutes: if the token still does not satisfy the
+API, the app shows `/mfa-required` ("contact your administrator") instead of looping.
+
+**WebAuthn (security keys).** Not in v1.2.0. On Keycloak 24, offering WebAuthn or OTP as
+alternatives to a user with neither configured ends on an error page rather than
+enrolment (proven by `scripts/check_keycloak_mfa.sh`), so the flow is OTP only. The API
+already accepts `amr` `hwk` for when it is added.
+
+**Exempt, and audited.**
+- The in-process harness (`scripts/_inprocess_api.py`: content loading, ARC² batch,
+  staging acceptance) acts with `tn_session="inprocess"`. It needs root and Docker on the
+  host; each user it acts as gets an `inprocess_session` audit row. An IdP token can never
+  carry `tn_session` (`auth.token_from_idp_claims` strips it).
+- Test hosts only: with `tn_mfa_demo_exempt: true`, on a host with `tn_arc2_auto_accept`
+  (`TN_TEST_HOST`) and `tn_load_shipped_demo`, the shipped demo staff
+  (`*.demo@truenorth.test`) hold the realm role `tn-mfa-exempt` and the API sets
+  `TN_MFA_DEMO_EXEMPT`. The API ignores it without `TN_TEST_HOST`, production refuses to
+  start with it and without `TN_TEST_HOST`, and every use writes an `mfa_demo_exempt`
+  audit row (one per user per day per API process). Off by default; without it, the demo
+  instructor enrols an authenticator once and the break-glass playbook resets it.
+- `AUTH_DISABLED` (dev, CI e2e, itest, cmi5 lanes) is unchanged: no token, no MFA.
+
+**Break-glass.** A lost authenticator is reset with
+`playbooks/breakglass-reset-mfa.yml` (`docs/runbooks/break-glass.md`). There is no HTTP
+path around MFA and no password-only privileged account in the `truenorth` realm. The
+Keycloak **master** realm admin stays password-only: it is reachable only on the host's
+loopback port (nginx answers 404 for `/auth/admin` and `/auth/realms/master`), so using
+it needs an SSH login to the host. That is a recorded risk acceptance.
+
+**Startup check.** In production the API reads the realm through its Admin API client
+(view-realm) at startup and refuses to start when the realm answers without the
+`tn-browser` flow, `acr.loa.map` "mfa" or the `tn.mfa.configured` marker that
+`scripts/keycloak_mfa.py` writes last (`TN_MFA_KEYCLOAK_CHECK`: refuse | warn | off;
+the installer sets warn, Helm keeps refuse and configures the realm first with its
+`keycloak-mfa` pre-install/pre-upgrade hook, which runs the same script and, with
+`config.keycloak.adminClientId`, creates that client; infra/k8s/README.md). A Keycloak that does not
+answer is logged and never blocks the start.
+
+**Proof.** `scripts/check_keycloak_mfa.sh` (CI job `keycloak-mfa`) runs the pinned
+Keycloak image, applies `keycloak_mfa.py` twice (the second run must change nothing) and
+drives real browser sign-ins: enrolment forced for privileged groups, `amr`/`acr` in
+tokens, refreshes and SSO re-entry, Students password-only, step-up, the demo exemption,
+and the break-glass reset. `tests/api/test_mfa_policy.py` covers the API rule.
+
+The smoke test (95-smoke-test) no longer signs in as the bootstrap administrator: without
+AD it uses the local, non-privileged `tn_smoke_local_user` (TN-Observers, never
+registered; password `config/secrets/smoke_user_password`); with AD, name a
+non-privileged account with `-e tn_smoke_username=... -e tn_smoke_password=...`.
+
+---
+
 ## Data model
 
 `registration_requests` is a separate table, not a half-formed `users` row.

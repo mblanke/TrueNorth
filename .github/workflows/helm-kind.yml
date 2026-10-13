@@ -35,7 +35,7 @@ jobs:
           helm lint infra/k8s/helm/truenorth-range
           args=(-f infra/k8s/kind/values-kind.yaml --set-string secrets.minioAccessKey=tn-ci)
           for key in databasePassword redisPassword minioSecretKey csrfSecret secretsKey \
-                     aiServiceToken metricsScrapeToken; do
+                     aiServiceToken metricsScrapeToken keycloakMfaAdminPassword keycloakAdminClientSecret; do
             args+=(--set-string "secrets.$key=$(openssl rand -hex 24)")
           done
           helm template tn infra/k8s/helm/truenorth-range -n truenorth "${args[@]}" > /dev/null

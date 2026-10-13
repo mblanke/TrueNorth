@@ -27,6 +27,13 @@ export const routes: Routes = [
     title: 'Request access - TrueNorth Range',
   },
   {
+    // No guard: shown when the API still wants a second factor after a step-up.
+    path: 'mfa-required',
+    loadComponent: () =>
+      import('./features/register/mfa-required.component').then(m => m.MfaRequiredComponent),
+    title: 'Multi-factor sign-in required - TrueNorth Range',
+  },
+  {
     path: 'registration-pending',
     canActivate: [pendingGuard],
     loadComponent: () =>

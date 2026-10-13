@@ -37,6 +37,9 @@ tn_generated_secrets:
   - { name: keycloak_smoke_client_secret, value: "{{ vault_keycloak_smoke_client_secret | default('') }}" }
   # Without AD (tn_ldap_enabled false): the local bootstrap administrator's password.
   - { name: bootstrap_admin_password, value: "{{ vault_bootstrap_admin_password | default('') }}" }
+  # Without AD: the password of tn_smoke_local_user, the non-privileged account
+  # 95-smoke-test signs in as (the bootstrap admin needs a second factor since v1.2.0).
+  - { name: smoke_user_password, value: "{{ vault_smoke_user_password | default('') }}" }
   # Bearer token the api and workers present to the AI orchestrator (and Prometheus,
   # for its /metrics). TN_ENV=production refuses anything shorter than 32 characters.
   - { name: ai_service_token, value: "{{ vault_ai_service_token | default('') }}" }

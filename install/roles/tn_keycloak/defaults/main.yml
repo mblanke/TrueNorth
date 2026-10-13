@@ -210,6 +210,16 @@ tn_kc_protocol_mappers:
       access.token.claim: "true"
       id.token.claim: "true"
 
+  # amr: how the user signed in ("pwd", "otp"), from each authenticator's reference value
+  # in the tn-browser flow (scripts/keycloak_mfa.py). The API's MFA rule reads it
+  # (app/mfa_policy.py); scripts/check_keycloak_mfa.py adds the same mapper in CI.
+  - name: amr
+    protocol: openid-connect
+    protocolMapper: oidc-amr-mapper
+    config:
+      access.token.claim: "true"
+      id.token.claim: "true"
+
   # Puts the API client in the access token's `aud`. The API (TN_ENV=production) only
   # accepts tokens whose aud includes KEYCLOAK_AUDIENCE, which the installer sets to
   # this client: without the mapper every user would be locked out (docs/identity.md).
@@ -220,3 +230,17 @@ tn_kc_protocol_mappers:
       included.client.audience: "{{ tn_keycloak_api_client }}"
       access.token.claim: "true"
       id.token.claim: "false"
+
+# ── Multi-factor sign-in (tasks/mfa.yml, scripts/keycloak_mfa.py) ─────
+# The Keycloak groups whose TrueNorth role is in tn_mfa_roles: derived, never a second
+# hand-kept list. They get the realm role tn-mfa-required, which the tn-browser flow
+# turns into an OTP prompt (enrolment on first sign-in).
+tn_kc_mfa_groups: >-
+  {{ tn_registration_group_role_map | dict2items | selectattr('value', 'in', tn_mfa_roles)
+     | map(attribute='key') | list }}
+# Test hosts only (tn_mfa_demo_exempt_effective): the shipped demo staff hold
+# tn-mfa-exempt. Empty everywhere else, which strips the role from anyone holding it.
+tn_kc_mfa_exempt_users: >-
+  {{ (tn_demo_people | selectattr('group', 'in', tn_kc_mfa_groups) | map(attribute='email') | list)
+     if tn_mfa_demo_exempt_effective | bool else [] }}
+tn_kc_mfa_spec: "{{ tn_app_dir }}/install/roles/tn_keycloak/files/mfa-spec.json"

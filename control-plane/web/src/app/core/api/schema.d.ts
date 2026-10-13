@@ -8137,10 +8137,27 @@ export interface components {
         };
         /**
          * AuthMeOut
-         * @description Identity state for the SPA — always 200 on a valid token. A discriminated union on
-         *     ``status`` so the client never has to interpret an error response to decide where to go.
+         * @description Identity state for the SPA — always 200 on a valid token.
+         *
+         *     A discriminated union on ``status`` so the client never has to interpret an
+         *     error response to decide where to send someone.
+         *
+         *     ``mfa_required`` / ``mfa_satisfied`` (v1.2.0): whether this registered user's role
+         *     needs a second factor and whether this token shows one (app/mfa_policy.py). When
+         *     required and not satisfied, every other route answers 403 ``mfa_required`` and the
+         *     SPA re-authenticates asking for acr "mfa" (step-up).
          */
         AuthMeOut: {
+            /**
+             * Mfa Required
+             * @default false
+             */
+            mfa_required?: boolean;
+            /**
+             * Mfa Satisfied
+             * @default true
+             */
+            mfa_satisfied?: boolean;
             /**
              * Platform Admin
              * @default false

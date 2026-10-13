@@ -520,14 +520,10 @@ def test_an_ad_password_sign_in_is_not_mfa():
 
 
 def test_ad_staff_fall_under_the_mfa_roles():
-    """Role-based MFA (S1: mfa_policy.mfa_required_for / mfa_denial_reason) is on branch
-    claude/s1-mfa, not main. When it lands this runs instead of skipping: an AD
+    """Role-based MFA (S1: mfa_policy.mfa_required_for / mfa_denial_reason): an AD
     TN-Platform-Admins password sign-in is refused staff access without a second factor."""
     from app import mfa_policy
 
-    if not hasattr(mfa_policy, "mfa_required_for"):
-        pytest.skip("TODO(M2/S1): role-based MFA (mfa_policy.mfa_required_for) is not on main yet "
-                    "(branch claude/s1-mfa)")
     c = claims(login("ADMIN")["access_token"])
     assert mfa_policy.mfa_required_for("admin")
     assert mfa_policy.mfa_denial_reason(c, "admin", c.get("email")) is not None

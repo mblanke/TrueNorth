@@ -41,6 +41,8 @@ SECRETS = {
     "secretsKey": "s" * 32,
     "aiServiceToken": "a" * 32,
     "metricsScrapeToken": "t" * 32,
+    "keycloakMfaAdminPassword": "k" * 32,
+    "keycloakAdminClientSecret": "x" * 32,
 }
 WORKERS = {"worker-provision": "provision", "worker-scenario": "scenario", "worker-telemetry": "telemetry"}
 
@@ -73,6 +75,10 @@ def render_error(*extra: str, secrets: dict[str, str] | None = None) -> str:
     proc = _helm("-f", str(KIND_VALUES), *_secret_args(SECRETS if secrets is None else secrets), *extra)
     assert proc.returncode != 0, "render was expected to fail"
     return proc.stderr
+
+
+def migrate_job(docs: list[dict]) -> dict:
+    return next(d for d in docs if d["kind"] == "Job" and d["metadata"]["name"].endswith("-migrate"))
 
 
 def pod_specs(docs: list[dict]) -> dict[str, dict]:
@@ -177,11 +183,12 @@ def test_every_required_secret_is_in_the_secret(docs):
 
 @needs_helm
 def test_existing_secret_replaces_the_charts_secret():
-    docs = render("--set", "secrets.existingSecret=tn-prod", secrets={})
+    # The keycloak-mfa hook takes its admin credential from its own Secret too.
+    docs = render("--set", "secrets.existingSecret=tn-prod", "--set", "keycloakMfa.adminSecret=tn-kc-admin", secrets={})
     assert not [d for d in docs if d["kind"] == "Secret"]
     api = deployment(docs, "api")["spec"]["template"]["spec"]["containers"][0]
     assert {"secretRef": {"name": "tn-prod"}} in api["envFrom"]
-    job = next(d for d in docs if d["kind"] == "Job")
+    job = migrate_job(docs)
     env = {e["name"]: e for e in job["spec"]["template"]["spec"]["containers"][0]["env"]}
     assert env["DATABASE_PASSWORD"]["valueFrom"]["secretKeyRef"]["name"] == "tn-prod"
 
@@ -225,7 +232,7 @@ def test_web_runs_as_the_nginx_user(docs):
 
 @needs_helm
 def test_migrations_are_a_hook_job_not_an_init_container(docs):
-    jobs = [d for d in docs if d["kind"] == "Job"]
+    jobs = [d for d in docs if d["kind"] == "Job" and d["metadata"]["name"].endswith("-migrate")]
     assert len(jobs) == 1
     job = jobs[0]
     ann = job["metadata"]["annotations"]
@@ -246,7 +253,7 @@ def test_migrations_are_a_hook_job_not_an_init_container(docs):
 @needs_helm
 def test_the_migration_jobs_password_exists_before_the_release(docs):
     """Pre-install: the release's Secret does not exist yet, so the Job reads a hook Secret."""
-    job = next(d for d in docs if d["kind"] == "Job")
+    job = migrate_job(docs)
     env = {e["name"]: e for e in job["spec"]["template"]["spec"]["containers"][0]["env"]}
     ref = env["DATABASE_PASSWORD"]["valueFrom"]["secretKeyRef"]["name"]
     hook_secret = next(d for d in docs if d["kind"] == "Secret" and d["metadata"]["name"] == ref)

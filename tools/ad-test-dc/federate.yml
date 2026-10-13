@@ -46,6 +46,7 @@
           keycloak_admin_password: "{{ lookup('ansible.builtin.file', ad_test_dir ~ '/secrets/keycloak-admin') }}"
           bootstrap_admin_password: "{{ lookup('ansible.builtin.file', ad_test_dir ~ '/secrets/local-admin') }}"
           secrets_key: "{{ lookup('ansible.builtin.file', ad_test_dir ~ '/secrets/secrets-key') }}"
+          smoke_user_password: "{{ lookup('ansible.builtin.file', ad_test_dir ~ '/secrets/smoke-user') }}"
         tn_ldap_bind_password: "{{ lookup('ansible.builtin.file', ad_test_dir ~ '/secrets/svc-keycloak-bind') }}"
       no_log: true
 

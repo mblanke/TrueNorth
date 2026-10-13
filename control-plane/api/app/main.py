@@ -72,6 +72,10 @@ async def lifespan(app: FastAPI):
     """
     # TN_ENV=production refuses to start on unsafe or missing settings (app/settings.py).
     logger.info("Starting TrueNorth Range API v%s (TN_ENV=%s)", APP_VERSION, check_startup())
+    # The realm must ask for the second factor this API enforces, or staff are locked out.
+    from .auth_backends.keycloak_mfa_check import enforce_at_startup as _mfa_realm_check
+
+    _mfa_realm_check()
     # Production sets both false (compose.prod.yml, the installer): Alembic owns the
     # schema there, and the hardcoded dev admin must not exist. Until 2026-09-27
     # neither flag was read, so both ran in production regardless of the setting.

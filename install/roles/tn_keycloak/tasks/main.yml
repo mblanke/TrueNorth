@@ -388,3 +388,7 @@
         line: "KEYCLOAK_LDAP_COMPONENT_ID={{ tn_keycloak_ldap_component_id }}"
         mode: "0600"
       notify: Recreate the API with the new environment
+
+# ── Multi-factor sign-in (last: needs the groups and demo accounts above) ──
+- name: Keycloak — MFA for privileged roles
+  ansible.builtin.include_tasks: mfa.yml

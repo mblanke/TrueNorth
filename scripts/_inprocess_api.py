@@ -11,6 +11,13 @@ Two details matter and are easy to get wrong:
   header is read from the cookie jar immediately before each non-GET attempt (including
   each retry after a 429), never once up front.
 * Rate limits answer 429 with ``retry_after``; the request is retried after that.
+
+MFA (v1.2.0): the identity carries ``tn_session="inprocess"``, which app/mfa_policy.py
+exempts from the second-factor rule. Running this needs root and Docker on the host
+(``docker compose run`` in the api image), more than MFA protects; it cannot be forged
+over HTTP (dependency overrides exist only in this process, and the API strips
+``tn_session`` from IdP tokens). Each user it acts as gets one ``inprocess_session``
+audit row per process, naming the script.
 """
 
 from __future__ import annotations
@@ -21,6 +28,7 @@ import time
 from collections.abc import Callable
 from typing import Any
 
+INPROCESS_SESSION = "inprocess"  # app.mfa_policy.INPROCESS_SESSION
 CSRF_COOKIE = "truenorth_csrf"
 CSRF_HEADER = "x-csrf-token"
 SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
@@ -83,6 +91,24 @@ class InProcessApi:
 
     def delete(self, path: str, **kw: Any) -> tuple[int, Any]:
         return self.request("DELETE", path, **kw)
+
+
+_audited: set[str] = set()
+
+
+def audit_inprocess_session(db: Any, user: Any, script: str | None = None) -> None:
+    """One ``inprocess_session`` audit row per user per process: this harness acted as
+    ``user`` without a token (and so without MFA). ``script`` defaults to sys.argv[0]."""
+    from app.models import AuditLog
+
+    key = str(user.id)
+    if key in _audited:
+        return
+    name = script or (sys.argv[0].rsplit("/", 1)[-1] if sys.argv and sys.argv[0] else "python")
+    db.add(AuditLog(user_id=user.id, tenant_id=user.tenant_id, action="inprocess_session",
+                    resource_type="user", resource_id=key, detail=f"in-process harness: {name}"))
+    db.commit()
+    _audited.add(key)
 
 
 class IdentitySwitch:
@@ -148,7 +174,9 @@ class Users:
                 email=user.email,
                 name=user.display_name or user.email,
                 preferred_username=user.email,
+                tn_session=INPROCESS_SESSION,
             )
+            audit_inprocess_session(db, user)
             return ident, getattr(user.role, "value", str(user.role))
         finally:
             db.close()
@@ -195,7 +223,9 @@ def connect(admin_upn: str) -> tuple[Any, InProcessApi] | None:
             email=user.email,
             name=user.display_name or user.email,
             preferred_username=user.email,
+            tn_session=INPROCESS_SESSION,
         )
+        audit_inprocess_session(db, user)
     finally:
         db.close()
     app.dependency_overrides[auth.get_token_identity] = lambda: ident

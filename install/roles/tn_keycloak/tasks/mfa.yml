@@ -1,0 +1,69 @@
+---
+# Multi-factor sign-in for privileged roles (docs/identity.md "MFA").
+#
+# scripts/keycloak_mfa.py does the work: idempotent, standard library only, and the same
+# code CI runs against the pinned Keycloak image (scripts/check_keycloak_mfa.sh). It sets
+# the OTP policy and login/admin events, gives the groups in tn_kc_mfa_groups the realm
+# role tn-mfa-required, builds the tn-browser flow and only then binds it. The admin token
+# goes in on stdin, never on the command line.
+#
+# Runs last in this role: AD groups exist only after the sync above, and the demo accounts
+# (tn_kc_mfa_exempt_users) only after demo_accounts.yml.
+#
+# Rollout: from the next sign-in, every privileged user is asked to enrol an authenticator
+# app (CONFIGURE_TOTP), the bootstrap administrator included. The API enforces MFA in the
+# same release; ship both together (docs/release-notes, docs/runbooks/break-glass.md).
+
+- name: Keycloak MFA — a fresh admin token
+  ansible.builtin.include_tasks: admin_token.yml
+
+- name: Keycloak MFA — configure the realm (scripts/keycloak_mfa.py)
+  ansible.builtin.command:
+    argv:
+      - python3
+      - "{{ tn_app_dir }}/scripts/keycloak_mfa.py"
+      - --base
+      - "{{ tn_kc_internal }}"
+      - --realm
+      - "{{ tn_keycloak_realm }}"
+      - --spec
+      - "{{ tn_kc_mfa_spec }}"
+      - --groups
+      - "{{ tn_kc_mfa_groups | join(',') }}"
+      - --rp-id
+      - "{{ tn_domain_fqdn }}"
+      - --exempt-users
+      - "{{ tn_kc_mfa_exempt_users | join(',') }}"
+    stdin: "{{ tn_kc_token.json.access_token }}"
+  register: tn_kc_mfa
+  changed_when: (tn_kc_mfa.stdout_lines | default(['ok']) | last) == 'changed'
+  no_log: true
+
+- name: Keycloak MFA — report
+  ansible.builtin.debug:
+    msg: >-
+      MFA: second factor (OTP) required for groups {{ tn_kc_mfa_groups | join(', ') }};
+      {{ 'demo exemption ON for ' ~ (tn_kc_mfa_exempt_users | join(', ')) ~ ' (test host)'
+         if tn_kc_mfa_exempt_users | length > 0 else 'no exemptions' }}.
+      {{ (tn_kc_mfa.stdout_lines | default([])) | join(' ') }}
+
+- name: Keycloak MFA — the realm's browser flow is tn-browser
+  ansible.builtin.uri:
+    url: "{{ tn_kc_realm_url }}"
+    headers: "{{ tn_kc_headers }}"
+    status_code: 200
+  register: tn_kc_mfa_realm
+
+- name: Keycloak MFA — assert the flow is bound
+  ansible.builtin.assert:
+    that: tn_kc_mfa_realm.json.browserFlow is match('tn-browser')
+    fail_msg: "browserFlow is {{ tn_kc_mfa_realm.json.browserFlow }}, not tn-browser: privileged users would sign in with a password only"
+    quiet: true
+
+- name: Keycloak MFA — what privileged users will see
+  ansible.builtin.debug:
+    msg: >-
+      Every user in {{ tn_kc_mfa_groups | join(', ') }} (the bootstrap administrator
+      included) is asked to enrol an authenticator app at the next sign-in. A lost
+      authenticator is reset with playbooks/breakglass-reset-mfa.yml
+      (docs/runbooks/break-glass.md).

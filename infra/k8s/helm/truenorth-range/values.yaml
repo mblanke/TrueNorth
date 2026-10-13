@@ -60,6 +60,39 @@ scratch:
 # Migrations — `alembic upgrade head` as a pre-install/pre-upgrade hook Job, once per
 # release change, before any pod rolls (never as an init container: replicas raced).
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Keycloak MFA (pre-install/pre-upgrade hook; templates/job-keycloak-mfa.yaml). Configures
+# the realm for the MFA the API enforces (the tn-browser flow, the AMR mapper, the
+# tn.mfa.configured marker the api's startup check reads) and, with
+# config.keycloak.adminClientId, creates the API's view-realm client. Needs a Keycloak
+# admin: adminSecret (keys KEYCLOAK_ADMIN_USER, KEYCLOAK_ADMIN_PASSWORD, and
+# TN_API_ADMIN_CLIENT_SECRET when adminClientId is set), or adminUser +
+# secrets.keycloakMfaAdminPassword. Only this hook sees it. enabled=false: run
+# scripts/keycloak_mfa.py against the realm yourself before installing (infra/k8s/README.md).
+# ---------------------------------------------------------------------------
+keycloakMfa:
+  enabled: true
+  adminSecret: ""
+  adminUser: admin
+  adminRealm: master
+  # WebAuthn relying party id; empty: ingress.host.
+  rpId: ""
+  # Comma-separated privileged Keycloak groups; empty: the spec's (TN-Platform-Admins,
+  # TN-Range-Operators, TN-Instructors, TN-Content-Authors, TN-Observers).
+  groups: ""
+  # How long to wait for Keycloak to answer.
+  waitSeconds: 300
+  backoffLimit: 2
+  activeDeadlineSeconds: 900
+  ttlSecondsAfterFinished: 86400
+  resources:
+    requests:
+      cpu: 20m
+      memory: 64Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
 migration:
   enabled: true
   backoffLimit: 2
@@ -395,6 +428,9 @@ config:
   minio:
     endpoint: ""            # required, with scheme: https://minio.example.com:9000
     bucket: truenorth-range
+  # The API's startup check that the realm is configured for MFA (scripts/keycloak_mfa.py):
+  # "" = refuse in production; "warn" starts anyway. infra/k8s/README.md.
+  mfaKeycloakCheck: ""
   keycloak:
     # Required: Keycloak as the API reaches it, including /auth if it serves there.
     url: ""
@@ -449,6 +485,9 @@ secrets:
   metricsScrapeToken: ""
   opensearchPassword: ""
   keycloakAdminClientSecret: ""
+  # A Keycloak admin's password, for the keycloak-mfa hook only (keycloakMfa); the pods
+  # never receive it.
+  keycloakMfaAdminPassword: ""
   # The confidential API client's secret, for operators' tooling; the pods do not read it.
   keycloakClientSecret: ""
   openaiApiKey: ""

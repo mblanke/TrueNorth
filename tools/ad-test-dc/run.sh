@@ -57,6 +57,8 @@ cmd_secrets() {
   gen_password "$AD_TEST_DIR/secrets/keycloak-admin"
   gen_password "$AD_TEST_DIR/secrets/local-admin"
   gen_password "$AD_TEST_DIR/secrets/secrets-key"
+  # local_identity.yml also makes the non-privileged smoke-test account (S1, v1.2.0).
+  gen_password "$AD_TEST_DIR/secrets/smoke-user"
   local sam
   while IFS=$'\t' read -r sam _; do
     case "$sam" in ''|'#'*) continue ;; esac
