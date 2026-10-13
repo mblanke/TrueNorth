@@ -129,6 +129,10 @@ spec:
             - {name: KC_HTTP_ENABLED, value: "true"}
             - {name: KC_HOSTNAME_STRICT, value: "false"}
             - {name: KC_HOSTNAME_STRICT_HTTPS, value: "false"}
+            # A fixed heap. Keycloak 24's default is 70% of the container limit; with
+            # metaspace (to 256m), code cache and threads on top that ran past the limit
+            # once the hook wrote to the realm: OOMKilled, exit 137 (PR #165 helm-kind).
+            - {name: JAVA_OPTS_KC_HEAP, value: "-XX:MaxHeapFreeRatio=30 -Xms256m -Xmx640m"}
             - {name: KEYCLOAK_ADMIN, value: admin}
             - name: KEYCLOAK_ADMIN_PASSWORD
               valueFrom: {secretKeyRef: {name: tn-deps, key: KEYCLOAK_ADMIN_PASSWORD}}
@@ -146,12 +150,17 @@ spec:
             failureThreshold: 12
           volumeMounts:
             - {name: realm, mountPath: /opt/keycloak/data/import, readOnly: true}
+            # The dev-file database outlives a container restart (the pod's emptyDir),
+            # so a restart never undoes what the keycloak-mfa hook configured.
+            - {name: h2, mountPath: /opt/keycloak/data/h2}
           resources:
-            requests: {cpu: 100m, memory: 512Mi}
+            requests: {cpu: 100m, memory: 768Mi}
             limits: {cpu: "2", memory: 1536Mi}
       volumes:
         - name: realm
           configMap: {name: tn-realm}
+        - name: h2
+          emptyDir: {sizeLimit: 256Mi}
 ---
 apiVersion: v1
 kind: Service

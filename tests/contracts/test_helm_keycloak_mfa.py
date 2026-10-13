@@ -91,6 +91,13 @@ def test_the_kind_smoke_runs_the_check_in_refuse_mode_against_a_real_keycloak(pa
     assert c["startupProbe"]["httpGet"]["path"] == "/auth/health/started"
     assert c["startupProbe"]["periodSeconds"] * c["startupProbe"]["failureThreshold"] >= 300
     assert "livenessProbe" not in c
+    # A fixed heap well inside the limit (the default 70% of it was OOMKilled), and the
+    # dev-file database on the pod's emptyDir so a restart keeps the hook's work.
+    env = {e["name"]: e.get("value") for e in c["env"]}
+    xmx = re.search(r"-Xmx(\d+)m", env["JAVA_OPTS_KC_HEAP"])
+    limit = c["resources"]["limits"]["memory"]
+    assert xmx and limit.endswith("Mi") and int(xmx.group(1)) + 512 <= int(limit[:-2])
+    assert {"name": "h2", "mountPath": "/opt/keycloak/data/h2"} in c["volumeMounts"]
     smoke = (REPO / "infra/k8s/kind/smoke.sh").read_text()
     assert "truenorth-range-keycloak-mfa" in smoke and "MFA: Keycloak realm configured" in smoke
     assert "secrets.keycloakMfaAdminPassword" in smoke

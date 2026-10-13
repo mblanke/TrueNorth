@@ -134,3 +134,68 @@ def test_the_ci_job_runs_the_check():
     ci = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())
     steps = ci["jobs"]["keycloak-mfa"]["steps"]
     assert any(s.get("run") == "bash scripts/check_keycloak_mfa.sh" for s in steps)
+
+
+# ── A Keycloak that drops the connection (PR #165 helm-kind) ──────────────────
+def _admin_module():
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("keycloak_mfa_under_test", ROOT / "scripts/keycloak_mfa.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+class _Resp:
+    status = 200
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def read(self):
+        return b'{"realm": "truenorth"}'
+
+
+def test_idempotent_requests_are_retried_on_a_dropped_connection(monkeypatch):
+    import http.client
+
+    mod = _admin_module()
+    calls = []
+
+    def urlopen(req, timeout):
+        calls.append(req.get_method())
+        if len(calls) < 3:
+            raise http.client.RemoteDisconnected("Remote end closed connection without response")
+        return _Resp()
+
+    monkeypatch.setattr(mod.urllib.request, "urlopen", urlopen)
+    monkeypatch.setattr(mod.time, "sleep", lambda s: None)
+    assert mod.Admin("http://kc/auth", "truenorth", "t").get("") == {"realm": "truenorth"}
+    assert calls == ["GET", "GET", "GET"]
+
+
+def test_a_post_is_never_retried_and_a_dead_keycloak_is_a_keycloak_error(monkeypatch):
+    import http.client
+
+    import pytest
+
+    mod = _admin_module()
+    calls = []
+
+    def urlopen(req, timeout):
+        calls.append(req.get_method())
+        raise http.client.RemoteDisconnected("gone")
+
+    monkeypatch.setattr(mod.urllib.request, "urlopen", urlopen)
+    monkeypatch.setattr(mod.time, "sleep", lambda s: None)
+    kc = mod.Admin("http://kc/auth", "truenorth", "t")
+    with pytest.raises(mod.KeycloakError, match="no answer after 1 attempt"):
+        kc.call("POST", "/groups", {"name": "x"})
+    assert calls == ["POST"]
+    calls.clear()
+    with pytest.raises(mod.KeycloakError, match="no answer after 5 attempt"):
+        kc.get("")
+    assert calls == ["GET"] * 5

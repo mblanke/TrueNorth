@@ -55,9 +55,11 @@ Exit status: 0 done (``changed`` or ``ok`` printed), 1 Keycloak refused somethin
 from __future__ import annotations
 
 import argparse
+import http.client
 import json
 import os
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -86,21 +88,41 @@ class Admin:
     def url(self, path: str) -> str:
         return f"{self.base}/admin/realms/{urllib.parse.quote(self.realm)}{path}"
 
+    # Idempotent methods are retried, on a fresh connection each time (urllib opens one
+    # per request), when Keycloak drops the connection or answers 502/503/504: a Keycloak
+    # still settling, or behind a proxy that is. POST is never retried (it may have landed).
+    RETRY_METHODS = ("GET", "PUT", "DELETE")
+    RETRY_STATUS = (502, 503, 504)
+    ATTEMPTS = 5
+
     def call(self, method: str, path: str, body: Any = None, ok: tuple[int, ...] = (200, 201, 202, 204)) -> Any:
         data = json.dumps(body).encode() if body is not None else None
-        req = urllib.request.Request(
-            self.url(path),
-            data=data,
-            method=method,
-            headers={"Authorization": f"Bearer {self.token}", "Content-Type": "application/json"},
-        )
-        try:
-            with urllib.request.urlopen(req, timeout=30) as resp:
-                raw = resp.read()
-                status = resp.status
-        except urllib.error.HTTPError as exc:
-            raw = exc.read()
-            status = exc.code
+        attempts = self.ATTEMPTS if method in self.RETRY_METHODS else 1
+        for attempt in range(1, attempts + 1):
+            req = urllib.request.Request(
+                self.url(path),
+                data=data,
+                method=method,
+                headers={"Authorization": f"Bearer {self.token}", "Content-Type": "application/json"},
+            )
+            try:
+                with urllib.request.urlopen(req, timeout=30) as resp:
+                    raw = resp.read()
+                    status = resp.status
+            except urllib.error.HTTPError as exc:
+                raw = exc.read()
+                status = exc.code
+                if status in self.RETRY_STATUS and attempt < attempts:
+                    time.sleep(2 ** attempt)
+                    continue
+            except (urllib.error.URLError, http.client.HTTPException, ConnectionError, TimeoutError) as exc:
+                if attempt == attempts:
+                    raise KeycloakError(f"{method} {path}: no answer after {attempts} attempt(s) "
+                                        f"({type(exc).__name__}: {exc})") from exc
+                print(f"  {method} {path}: {type(exc).__name__}; retrying", file=sys.stderr)
+                time.sleep(2 ** attempt)
+                continue
+            break
         if status not in ok:
             raise KeycloakError(f"{method} {path}: HTTP {status} {raw[:300]!r}")
         if not raw:
