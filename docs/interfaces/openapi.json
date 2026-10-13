@@ -17862,6 +17862,303 @@
         "title": "WindowsRoleOut",
         "type": "object"
       },
+      "WithdrawCourse": {
+        "properties": {
+          "enrolments": {
+            "items": {
+              "$ref": "#/components/schemas/WithdrawEnrolment"
+            },
+            "title": "Enrolments",
+            "type": "array"
+          },
+          "enrolments_graded": {
+            "title": "Enrolments Graded",
+            "type": "integer"
+          },
+          "enrolments_total": {
+            "title": "Enrolments Total",
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_published": {
+            "title": "Is Published",
+            "type": "boolean"
+          },
+          "module_progress": {
+            "title": "Module Progress",
+            "type": "integer"
+          },
+          "moodle": {
+            "items": {
+              "$ref": "#/components/schemas/WithdrawMoodle"
+            },
+            "title": "Moodle",
+            "type": "array"
+          },
+          "moodle_results": {
+            "title": "Moodle Results",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "pending_publications": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Pending Publications",
+            "type": "array"
+          },
+          "quiz_attempts": {
+            "title": "Quiz Attempts",
+            "type": "integer"
+          },
+          "quizzes": {
+            "items": {
+              "$ref": "#/components/schemas/WithdrawQuiz"
+            },
+            "title": "Quizzes",
+            "type": "array"
+          },
+          "running_publications": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Running Publications",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "is_published",
+          "quizzes",
+          "enrolments_total",
+          "enrolments_graded",
+          "enrolments",
+          "module_progress",
+          "quiz_attempts",
+          "moodle_results",
+          "moodle",
+          "pending_publications",
+          "running_publications"
+        ],
+        "title": "WithdrawCourse",
+        "type": "object"
+      },
+      "WithdrawEnrolment": {
+        "properties": {
+          "final_grade": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Final Grade"
+          },
+          "final_score": {
+            "title": "Final Score",
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "max_score": {
+            "title": "Max Score",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "user_id",
+          "status",
+          "final_grade",
+          "final_score",
+          "max_score"
+        ],
+        "title": "WithdrawEnrolment",
+        "type": "object"
+      },
+      "WithdrawMoodle": {
+        "properties": {
+          "error": {
+            "default": "",
+            "title": "Error",
+            "type": "string"
+          },
+          "live_idnumber": {
+            "title": "Live Idnumber",
+            "type": "string"
+          },
+          "platform_id": {
+            "format": "uuid",
+            "title": "Platform Id",
+            "type": "string"
+          },
+          "platform_name": {
+            "title": "Platform Name",
+            "type": "string"
+          },
+          "publication_states": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Publication States",
+            "type": "array"
+          },
+          "publications": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Publications",
+            "type": "array"
+          },
+          "visibility": {
+            "title": "Visibility",
+            "type": "string"
+          }
+        },
+        "required": [
+          "platform_id",
+          "platform_name",
+          "live_idnumber",
+          "publications",
+          "publication_states",
+          "visibility"
+        ],
+        "title": "WithdrawMoodle",
+        "type": "object"
+      },
+      "WithdrawQuiz": {
+        "properties": {
+          "attempts": {
+            "title": "Attempts",
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_published": {
+            "title": "Is Published",
+            "type": "boolean"
+          },
+          "module_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Module Id"
+          },
+          "submitted_attempts": {
+            "title": "Submitted Attempts",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "module_id",
+          "is_published",
+          "attempts",
+          "submitted_attempts"
+        ],
+        "title": "WithdrawQuiz",
+        "type": "object"
+      },
+      "WithdrawReport": {
+        "properties": {
+          "changed": {
+            "title": "Changed",
+            "type": "boolean"
+          },
+          "changes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Changes",
+            "type": "array"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "courses": {
+            "items": {
+              "$ref": "#/components/schemas/WithdrawCourse"
+            },
+            "title": "Courses",
+            "type": "array"
+          },
+          "dry_run": {
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "preserved": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Preserved",
+            "type": "object"
+          },
+          "tenant_id": {
+            "format": "uuid",
+            "title": "Tenant Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "tenant_id",
+          "dry_run",
+          "courses",
+          "changes",
+          "changed",
+          "errors",
+          "preserved"
+        ],
+        "title": "WithdrawReport",
+        "type": "object"
+      },
       "YamlValidateIn": {
         "properties": {
           "yaml": {
@@ -18351,6 +18648,85 @@
         "summary": "Get Recommendation",
         "tags": [
           "adaptive-learning"
+        ]
+      }
+    },
+    "/admin/fixture-courses/{code}/withdraw": {
+      "post": {
+        "description": "Withdraw a fixture course (C105) from Students: back to draft with its quizzes, and\nhidden (never deleted) in every Moodle it was published to. Enrolments, progress, quiz\nattempts, grades and Moodle results are kept. ``dry_run=true`` (the default) changes\nnothing and lists the records; ``dry_run=false`` applies, audit-logs each change, and\nre-checks both systems. Running it again changes nothing (``changed: false``).\n409 while a publication of the course is running. **Permission: platform administrator**",
+        "operationId": "withdraw_fixture_course_admin_fixture_courses__code__withdraw_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          },
+          {
+            "description": "true (the default): only report what would change",
+            "in": "query",
+            "name": "dry_run",
+            "required": false,
+            "schema": {
+              "default": true,
+              "description": "true (the default): only report what would change",
+              "title": "Dry Run",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "the tenant whose course it is; default: the caller's",
+            "in": "query",
+            "name": "tenant_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "the tenant whose course it is; default: the caller's",
+              "title": "Tenant Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WithdrawReport"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Withdraw Fixture Course",
+        "tags": [
+          "course-publications"
         ]
       }
     },

@@ -69,7 +69,39 @@ with `tn_publish_shipped_content` it publishes every course, quiz and learning p
 (`tests/contracts/test_installer_shipped_content.py`). The ARC² batch driver on a test
 host skips C105 the same way, whatever `--courses` says
 (`tests/scripts/test_arc2_batch_inprocess.py`). A host that loaded the content or ran the
-batch before this rule keeps whatever it published then: unpublish C105 there by hand.
+batch before this rule keeps whatever it published then: withdraw C105 there as below.
+
+#### Retiring C105 on a host installed before #147
+
+`POST /admin/fixture-courses/C105/withdraw` (platform administrator only;
+`app/course_publishing/withdraw.py`) puts the course and its quizzes back to draft and hides
+the Moodle course on every Moodle its release was published to (`set_visible(false)` through
+the Moodle backend). Nothing is deleted: enrolments, module progress, quiz attempts, final
+grades and Moodle result records stay as they were, and the Moodle course is hidden, not
+removed. `dry_run=true` is the default and only reports. Each change is audit-logged
+(`withdraw_fixture_course`, one row for TrueNorth and one for Moodle, in the course's
+tenant). Running it again changes nothing and says so. It refuses (409) while a publication
+of the course is running, and stops a requested or stalled one (marked `failed`) so the
+startup resume cannot show the course again. Only the codes in `FIXTURE_CODES` (C105) are
+accepted. The API image must include this route (v1.2.0-rc6 or later).
+
+On the host, as root, first the dry run and then the change (installer default paths):
+
+```bash
+cd /srv/truenorth/app/infra/platform/docker
+sudo docker compose -f compose.prod.yml --env-file /srv/truenorth/config/.env.production \
+  run --rm --no-deps -T -w /app -e PYTHONPATH=/app -v /srv/truenorth/app:/srcapp:ro \
+  --entrypoint python api /srcapp/scripts/withdraw_fixture_course.py --admin <platform-admin upn>
+# read the report, then the same command with --apply
+```
+
+The dry run prints the course, each quiz with its attempts, enrolment, progress and
+Moodle-result counts, each Moodle with the course's visibility there, and the lines it would
+change. `--apply` prints the same report after re-checking both systems (`APPLIED`, then
+`nothing to change` on a second run). Exit status 0 means done or nothing to do; 1 means the
+report lists errors (for example a Moodle that could not be reached: TrueNorth is already
+done, so re-run once it is back); 2 means refused. `--tenant <id>` names another tenant;
+`--json` prints the API's report.
 
 ---
 

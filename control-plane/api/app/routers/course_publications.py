@@ -17,13 +17,13 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from ..auth import CurrentUser
-from ..course_publishing import service
+from ..course_publishing import service, withdraw
 from ..course_publishing.models import CoursePublication
 from ..course_publishing.runner import run_by_id, run_waiting
 from ..course_releases.models import CourseRelease
 from ..db import get_db
-from ..models import ExternalPlatform
-from ..rbac import Permission, require_permission
+from ..models import ExternalPlatform, Tenant
+from ..rbac import Permission, require_permission, require_platform_admin
 from ..tenancy import get_owned
 
 router = APIRouter(tags=["course-publications"])
@@ -147,6 +147,31 @@ def retry_course_publication(
         raise HTTPException(exc.status, str(exc)) from exc
     _start(db, pub, wait, background)
     return _out(pub)
+
+
+@router.post("/admin/fixture-courses/{code}/withdraw", response_model=withdraw.WithdrawReport)
+def withdraw_fixture_course(
+    code: str,
+    dry_run: bool = Query(True, description="true (the default): only report what would change"),
+    tenant_id: uuid.UUID | None = Query(None, description="the tenant whose course it is; default: the caller's"),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_platform_admin()),
+) -> withdraw.WithdrawReport:
+    """Withdraw a fixture course (C105) from Students: back to draft with its quizzes, and
+    hidden (never deleted) in every Moodle it was published to. Enrolments, progress, quiz
+    attempts, grades and Moodle results are kept. ``dry_run=true`` (the default) changes
+    nothing and lists the records; ``dry_run=false`` applies, audit-logs each change, and
+    re-checks both systems. Running it again changes nothing (``changed: false``).
+    409 while a publication of the course is running. **Permission: platform administrator**"""
+    target = tenant_id or _uuid(user.tenant_id)
+    if target is None or db.query(Tenant.id).filter(Tenant.id == target).first() is None:
+        raise HTTPException(404, "tenant not found")
+    try:
+        if dry_run:
+            return withdraw.plan(db, target, code)
+        return withdraw.apply(db, target, code, actor_id=_uuid(user.id))
+    except withdraw.WithdrawRefusedError as exc:
+        raise HTTPException(exc.status, str(exc)) from exc
 
 
 def _uuid(value: str) -> uuid.UUID | None:
