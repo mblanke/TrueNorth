@@ -120,19 +120,30 @@ spec:
     spec:
       containers:
         - name: keycloak
-          # The pin compose.prod.yml uses (tests/contracts/test_helm_keycloak_mfa.py).
-          image: quay.io/keycloak/keycloak:24.0@sha256:f8ade94c1d0ad2f2fa7734a455fee5392764f402c43ca35e9af6bf63a2541dc9
-          args: ["start-dev", "--import-realm"]
+          # Built by smoke.sh from keycloak.Dockerfile (FROM the pin compose.prod.yml uses)
+          # with the Quarkus build done, so the pod never augments at start.
+          image: tn-local/keycloak:ci
+          imagePullPolicy: Never
+          args: ["start", "--optimized", "--import-realm"]
           env:
-            - {name: KC_HTTP_RELATIVE_PATH, value: /auth}
+            - {name: KC_HTTP_ENABLED, value: "true"}
+            - {name: KC_HOSTNAME_STRICT, value: "false"}
+            - {name: KC_HOSTNAME_STRICT_HTTPS, value: "false"}
             - {name: KEYCLOAK_ADMIN, value: admin}
             - name: KEYCLOAK_ADMIN_PASSWORD
               valueFrom: {secretKeyRef: {name: tn-deps, key: KEYCLOAK_ADMIN_PASSWORD}}
           ports: [{containerPort: 8080}]
+          # JVM start plus the realm import: seconds on a free CPU, minutes on a busy
+          # 2-vCPU runner (150 s measured at 0.5 CPU). Nothing restarts it meanwhile: no
+          # liveness probe, and readiness waits for the started probe.
+          startupProbe:
+            httpGet: {path: /auth/health/started, port: 8080}
+            periodSeconds: 5
+            failureThreshold: 120
           readinessProbe:
             httpGet: {path: /auth/realms/truenorth, port: 8080}
             periodSeconds: 5
-            failureThreshold: 60
+            failureThreshold: 12
           volumeMounts:
             - {name: realm, mountPath: /opt/keycloak/data/import, readOnly: true}
           resources:

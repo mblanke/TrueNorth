@@ -5,7 +5,8 @@
 #
 # Needs: kind, kubectl, helm, docker, openssl, and the five images built and tagged
 #   tn-local/{api,worker,web,scenario-engine,ai-orchestrator}:ci
-# (.github/workflows/helm-kind.yml builds them). Run from the repo root:
+# (.github/workflows/helm-kind.yml builds them); it builds tn-local/keycloak:ci itself
+# (keycloak.Dockerfile, for deps.yaml). Run from the repo root:
 #   KIND_CLUSTER=tn-smoke-$$ bash infra/k8s/kind/smoke.sh
 # The cluster is created if missing; set KIND_DELETE=1 to delete it at the end (the
 # workflow leaves that to its runner).
@@ -26,7 +27,10 @@ dump() {
   kubectl -n "$NS" get events --sort-by=.lastTimestamp | tail -40 || true
   for p in $(kubectl -n "$NS" get pods -o name 2>/dev/null); do
     echo "--- $p"
-    kubectl -n "$NS" logs "$p" --all-containers --tail=60 || true
+    # Why a container last stopped (OOMKilled, Error + exit code) and what it said then.
+    kubectl -n "$NS" get "$p" -o jsonpath='{range .status.containerStatuses[*]}{.name}: restarts={.restartCount} last={.lastState.terminated.reason} exit={.lastState.terminated.exitCode}{"\n"}{end}' || true
+    kubectl -n "$NS" logs "$p" --all-containers --previous --tail=80 2>/dev/null | grep -v IndexWrapper || true
+    kubectl -n "$NS" logs "$p" --all-containers --tail=80 | grep -v IndexWrapper || true
   done
 }
 
@@ -46,6 +50,11 @@ log "load images"
 for svc in api worker web scenario-engine ai-orchestrator; do
   kind load docker-image --name "$CLUSTER" "tn-local/$svc:ci"
 done
+# deps.yaml's Keycloak, Quarkus build done here rather than in the pod (keycloak.Dockerfile).
+# --load: the workflow's current builder is setup-buildx's container builder, which
+# otherwise keeps the image to itself.
+docker buildx build --load -t tn-local/keycloak:ci -f "$HERE/keycloak.Dockerfile" "$HERE"
+kind load docker-image --name "$CLUSTER" tn-local/keycloak:ci
 
 # Generated per run; hex only, so URL-safe for the database and Redis URLs.
 gen() { openssl rand -hex 24; }

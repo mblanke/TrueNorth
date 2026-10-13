@@ -79,13 +79,22 @@ def test_the_kind_smoke_runs_the_check_in_refuse_mode_against_a_real_keycloak(pa
     assert values["config"]["keycloak"]["url"] == "http://keycloak:8080/auth"
     assert values["config"]["keycloak"]["adminClientId"] == "truenorth-api-admin"
     assert values["config"].get("mfaKeycloakCheck", "") in ("", "refuse")
-    deps = (REPO / "infra/k8s/kind/deps.yaml").read_text()
     pin = re.search(r"quay.io/keycloak/keycloak:[^\s\"]+",
                     (REPO / "infra/platform/docker/compose.prod.yml").read_text()).group(0)
-    assert f"image: {pin}" in deps
+    dockerfile = (REPO / "infra/k8s/kind/keycloak.Dockerfile").read_text()
+    assert f"FROM {pin}\n" in dockerfile and "kc.sh build" in dockerfile
+    # Pre-built: the pod must not re-augment at start (PR #165: CrashLoopBackOff mid-build).
+    deps = [d for d in yaml.safe_load_all((REPO / "infra/k8s/kind/deps.yaml").read_text()) if d]
+    kc = next(d for d in deps if d["kind"] == "Deployment" and d["metadata"]["name"] == "keycloak")
+    c = kc["spec"]["template"]["spec"]["containers"][0]
+    assert c["image"] == "tn-local/keycloak:ci" and c["args"][:2] == ["start", "--optimized"]
+    assert c["startupProbe"]["httpGet"]["path"] == "/auth/health/started"
+    assert c["startupProbe"]["periodSeconds"] * c["startupProbe"]["failureThreshold"] >= 300
+    assert "livenessProbe" not in c
     smoke = (REPO / "infra/k8s/kind/smoke.sh").read_text()
     assert "truenorth-range-keycloak-mfa" in smoke and "MFA: Keycloak realm configured" in smoke
     assert "secrets.keycloakMfaAdminPassword" in smoke
+    assert "keycloak.Dockerfile" in smoke and "tn-local/keycloak:ci" in smoke and "--previous" in smoke
 
 
 def test_the_hook_runner_reads_the_token_from_its_own_request_not_argv():
