@@ -9,7 +9,8 @@
         "A SKIP stands only when its profile has an entry with its module and check whose reason_contains is in the skip's reason. Any other SKIP is a FAIL, declared or not.",
         "Every check in `checks` must be registered and every registered check must be here; a difference is a FAIL.",
         "A skip never counts as a pass. A skipped core workflow cannot earn readiness (plan of record, section 1).",
-        "Adding an entry is a release decision: change the matrix in the same commit and say why."
+        "Adding an entry is a release decision: change the matrix in the same commit and say why.",
+        "Profiles combine: --skip-profile staging,ai-disabled permits the entries of both. ai-disabled is for a host installed with tn_ai_enabled: false and is added by install/playbooks/acceptance.yml only then."
     ],
     "checks": {
         "infra": [
@@ -106,6 +107,24 @@
                 "reason": "A real deploy installs the noise agent on built range VMs (deploy_noise_agents on worker-provision). Staging provisions nothing.",
                 "alternative_evidence": "tests/integration/test_noise_flow.py and tests/worker/test_noise_inventory_safety.py (CI). On staging, 'profile, dry-run deploy, plan, stop' covers planning and control.",
                 "milestone": "H"
+            }
+        ],
+        "ai-disabled": [
+            {
+                "module": "ai-arc2",
+                "check": "AI orchestrator answers through the API",
+                "reason_contains": "AI disabled on this host",
+                "reason": "The host was installed with tn_ai_enabled: false (no AI server yet). The check SKIPs only when TN_AI_ENABLED=false, deep health reports the orchestrator's ai_configured: false, and POST /ai/detection-draft answers 503 'AI is not configured'; any disagreement is a FAIL.",
+                "alternative_evidence": "tests/ai_orchestrator/test_not_configured.py, tests/ai_orchestrator/test_api_ai_not_configured.py, tests/contracts/test_installer_ai_optional.py; the same check is mandatory on any host with AI enabled.",
+                "milestone": "R0"
+            },
+            {
+                "module": "ai-arc2",
+                "check": "ARC² Course Studio enabled",
+                "reason_contains": "arc2 declared absent",
+                "reason": "With AI disabled, ARC² runs only with a model of its own (preflight); a host with neither has the Studio off and acceptance.yml declares arc2 absent.",
+                "alternative_evidence": "Mandatory in the staging profile (ARC2_STUDIO_ENABLED=true there).",
+                "milestone": "R0"
             }
         ],
         "ci-integration": [

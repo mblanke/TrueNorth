@@ -161,6 +161,7 @@
       register: tn_ai_models_raw
       changed_when: false
       failed_when: false
+      when: tn_ai_enabled | default(true) | bool
 
     - name: Validate — parse the AI model check
       ansible.builtin.set_fact:
@@ -168,6 +169,21 @@
           {{ (tn_ai_models_raw.stdout | from_json)
              if tn_ai_models_raw.rc | default(1) == 0 and (tn_ai_models_raw.stdout | default('')).startswith('{')
              else {'error': 'the ai-orchestrator container did not answer (rc ' ~ (tn_ai_models_raw.rc | default('?')) ~ ')'} }}
+      when: tn_ai_enabled | default(true) | bool
+
+    # tn_ai_enabled: false. Nothing to list; instead the orchestrator must say it has no
+    # backend (its own /health, from inside its container), or AI is on by some other route.
+    - name: Validate — AI orchestrator reports AI not configured
+      ansible.builtin.command:
+        cmd: >-
+          docker compose -f {{ tn_compose_file }} --env-file {{ tn_env_file }}
+          exec -T ai-orchestrator python -c
+          "import json, urllib.request; print(json.dumps(json.load(urllib.request.urlopen('http://localhost:6000/health', timeout=10)).get('ai_configured')))"
+        chdir: "{{ tn_app_dir }}/infra/platform/docker"
+      register: tn_ai_off_health
+      changed_when: false
+      failed_when: false
+      when: not (tn_ai_enabled | default(true) | bool)
 
     - name: Validate — REPORT
       ansible.builtin.debug:
@@ -199,10 +215,13 @@
                if tn_audit_export_now.rc | default(1) == 0
                else 'FAILED: ' ~ (tn_audit_export_now.stderr | default('') | trim | truncate(200))) }}
           - >-
-            {{ ' ai models     : ' ~ ('UNVERIFIED, ' ~ tn_ai_models.error if tn_ai_models.error is defined
+            {{ (' AI            : disabled (tn_ai_enabled: false; AI features show "not configured"; orchestrator ai_configured='
+                ~ (tn_ai_off_health.stdout | default('unknown') | trim) ~ ')')
+               if not (tn_ai_enabled | default(true) | bool) else
+               (' ai models     : ' ~ ('UNVERIFIED, ' ~ tn_ai_models.error if tn_ai_models.error is defined
                else ('MISSING on the endpoint: ' ~ tn_ai_models.missing | join(', ') if tn_ai_models.missing
                      else 'all listed (' ~ (tn_ai_models.configured | dict2items | map(attribute='value')
-                                             | unique | join(', ')) ~ ')')) }}
+                                             | unique | join(', ')) ~ ')'))) }}
           - " env file      : {{ tn_env_file }}"
           - " data root     : {{ tn_data_root }}"
           - "──────────────────────────────────────────────────────────────"
@@ -253,6 +272,7 @@
           or tn_ai_heavy_model / tn_ai_general_model / tn_ai_code_model, to ids it lists, then
           re-run playbooks/30-config.yml and 50-stack-up.yml.
         quiet: true
+      when: tn_ai_enabled | default(true) | bool
 
     - name: Validate — WARNING, the AI models could not be checked
       ansible.builtin.debug:
@@ -260,4 +280,18 @@
           WARNING: the AI orchestrator could not list its endpoint's models ({{ tn_ai_models.error }}),
           so its configured models ({{ tn_ai_models.configured | default({}) | dict2items
           | map(attribute='value') | unique | join(', ') }}) are unverified.
-      when: tn_ai_models.error is defined
+      when:
+        - tn_ai_enabled | default(true) | bool
+        - tn_ai_models.error is defined
+
+    - name: Validate — AI disabled, and the orchestrator agrees
+      ansible.builtin.assert:
+        that:
+          - tn_ai_off_health.rc | default(1) == 0
+          - (tn_ai_off_health.stdout | default('') | trim) == 'false'
+        fail_msg: >-
+          tn_ai_enabled is false, but the AI orchestrator {{ 'reports ai_configured=' ~ (tn_ai_off_health.stdout | trim)
+          if tn_ai_off_health.rc | default(1) == 0 else 'did not answer /health (rc ' ~ (tn_ai_off_health.rc | default('?')) ~ ')' }}.
+          Re-run playbooks/30-config.yml and 50-stack-up.yml so it gets the empty OPENAI_BASE_URL and key.
+        quiet: true
+      when: not (tn_ai_enabled | default(true) | bool)

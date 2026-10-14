@@ -95,7 +95,8 @@ ansible-vault encrypt inventory/group_vars/all/vault.yml
 # 2. Nominate the first administrator — a NAMED AD account (without AD: the local account
 #    60-keycloak creates). Without this the install finishes with an approval queue nobody
 #    can drain. Pin the release to install (docs/release.md): tn_release_version: v1.2.3.
-#    The AI endpoint (tn_ai_base_url) has no default. The backup escrow is REQUIRED
+#    The AI endpoint (tn_ai_base_url) has no default (no AI server yet: tn_ai_enabled:
+#    false, "AI (optional)"). The backup escrow is REQUIRED
 #    ("Backups"). Turn on alert email (tn_alert_email_enabled) or alerts go nowhere
 #    ("Alerting").
 $EDITOR inventory/group_vars/all/main.yml        # or inventory/hosts.yml host vars
@@ -654,7 +655,7 @@ docker run --rm --entrypoint promtool -v "$PWD/prometheus/prometheus.yml:/etc/pr
   timeout. The workers' `stop_grace_period` outlasts them, so `docker compose down` or a
   redeploy lets running tasks finish: stopping `worker-provision` can take up to an hour
   while a range builds.
-- `PROVISIONER_BACKEND`, `OPENAI_BASE_URL`, `OPENAI_API_KEY` (may be set empty) and
+- `PROVISIONER_BACKEND`, `OPENAI_BASE_URL` (empty only with AI disabled), `OPENAI_API_KEY` (may be set empty) and
   `KEYCLOAK_ISSUER` have no defaults (the AI ones used to be one lab's LiteLLM address and
   key); `VSPHERE_VERIFY_SSL` defaults to true (`tn_vsphere_verify_ssl` sets it); the api and
   workers log JSON lines (`LOG_FORMAT=json`).
@@ -677,6 +678,40 @@ fresh import; `tests/contracts/test_keycloak_hardening.py` keeps them equal):
 confidential client, `truenorth-smoke`, with a generated secret. It is **disabled**; the
 smoke test enables it for its one token request and disables it again, however that
 request ends.
+
+## AI (optional)
+
+AI is on by default, and preflight stops without `tn_ai_base_url`, so a site that forgets
+its endpoint fails loudly. A site with no AI server yet (one not attached, say) installs
+without it:
+
+```yaml
+tn_ai_enabled: false   # inventory: group_vars or the host
+```
+
+Then:
+
+- preflight checks no AI endpoint and says `AI disabled (tn_ai_enabled=false): AI features
+  will show 'not configured'`;
+- `30-config` renders `OPENAI_BASE_URL=` and `OPENAI_API_KEY=` empty (even if the vault holds
+  a key) and `TN_AI_ENABLED=false`. The AI orchestrator reports `ai_configured: false` on
+  `/health`. Every generation route (detection and scenario drafts, Course Studio, quizzes,
+  the exercise forge, MESL, AI AAR) answers **503 "AI is not configured on this host"**,
+  never mock text and never a 502. The AI page says "AI is not configured";
+- `99-validate` skips the model check, reports `AI : disabled`, and fails if the orchestrator
+  says it is configured anyway;
+- ARC² does not use the orchestrator. With AI disabled, `tn_arc2_enabled: true` is refused
+  unless ARC² has a model of its own: `tn_arc2_anthropic_base_url`, `tn_arc2_local_url`, or a
+  `vault_arc2_claude_oauth_token` / `vault_arc2_anthropic_api_key` ("ARC² Course Studio");
+- `playbooks/acceptance.yml` runs with `--skip-profile staging,ai-disabled`. The AI check is a
+  declared SKIP ("AI disabled on this host") only when the flag, the orchestrator and the 503
+  agree; otherwise it FAILs.
+
+**Turning AI on later.** Set `tn_ai_enabled: true` and `tn_ai_base_url`, put the key in
+`vault_openai_api_key` (`ansible-vault edit inventory/group_vars/all/vault.yml`; empty only
+for an unauthenticated endpoint), set `tn_ai_default_model` (and `tn_ai_embed_model`) to ids
+the endpoint lists, and re-run `site.yml`. Preflight then probes the endpoint, and `99-validate`
+fails if a configured model is missing.
 
 ## ARC² Course Studio (optional)
 
@@ -904,7 +939,8 @@ actually change:
 | `tn_app_git_version` | *(empty: the installer's own commit)* | The installer and the app stay the same revision. In release mode the manifest's `git_sha` replaces it. |
 | `tn_allow_downgrade` | `false` | Deliberate rollback only (docs/runbooks/upgrade.md). |
 | `tn_ldap_enabled` | `false` (`true` for TN-MGMT01 in `hosts.yml`) | "Without Active Directory". |
-| `tn_ai_base_url` | *(empty — required)* | The LiteLLM endpoint; no committed default. Key: `vault_openai_api_key`. |
+| `tn_ai_enabled` | `true` | `false`: install without AI; AI features say "not configured" ("AI (optional)"). |
+| `tn_ai_base_url` | *(empty — required unless `tn_ai_enabled: false`)* | The LiteLLM endpoint; no committed default. Key: `vault_openai_api_key`. |
 | `tn_backup_escrow_pubkey` / `tn_backup_escrow` | *(empty — one required)* | "Backups". |
 | `tn_backup_min_free_gb` / `tn_backup_max_total_gb` | `20` / `200` | Backup disk floor and cap. |
 | `tn_opensearch_snapshot_repo` / `tn_opensearch_snapshot_keep` | `tn_snapshots` / `14` | Telemetry snapshots per backup ("Backups"); `""` = none. |

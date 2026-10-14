@@ -20,7 +20,8 @@
 # staging the simulator, playbooks/lab-vcenter-sim.yml) for when no connection is registered.
 # The play FAILS when any check FAILs (exit 1) or the suite cannot start (exit 2), after the
 # reports are written. Variables (all optional):
-#   tn_acceptance_strict (true), tn_acceptance_skip_profile (staging),
+#   tn_acceptance_strict (true), tn_acceptance_skip_profile (staging; staging,ai-disabled
+#   with tn_ai_enabled: false, which also declares arc2 absent when ARC² is off),
 #   tn_acceptance_extra_args (e.g. "--moodle-course C105"), tn_acceptance_vsphere_url
 #   (https://tn_vcenter_host:tn_vcenter_port when a vCenter is configured, else none),
 #   tn_acceptance_report_group (the operator's primary group).
@@ -33,7 +34,9 @@
     tn_acceptance_out_dir: "{{ tn_data_root }}/acceptance"
     tn_acceptance_report_dir: "{{ tn_data_root }}/acceptance-reports"
     tn_acceptance_strict: true
-    tn_acceptance_skip_profile: staging
+    # tn_ai_enabled: false adds the ai-disabled profile (docs/release-notes/v1.2.0-permitted-skips.json):
+    # the AI check may then SKIP, and only when the orchestrator also reports AI not configured.
+    tn_acceptance_skip_profile: "{{ 'staging' if tn_ai_enabled | default(true) | bool else 'staging,ai-disabled' }}"
     tn_acceptance_extra_args: ""
     tn_acceptance_vsphere_url: >-
       {{ ('https://' ~ tn_vcenter_host ~ ':' ~ (tn_vcenter_port | default(443)))
@@ -98,6 +101,8 @@
                 if tn_acceptance_vsphere_url | length > 0 else [])
              + (['--vsphere-insecure'] if tn_acceptance_vsphere_url | length > 0
                 and not (tn_vsphere_verify_ssl | default(true) | bool) else [])
+             + (['--absent', 'arc2'] if not (tn_ai_enabled | default(true) | bool)
+                and not (tn_arc2_enabled | default(false) | bool) else [])
              + (tn_acceptance_extra_args | split if tn_acceptance_extra_args | length > 0 else []) }}
         chdir: "{{ tn_app_dir }}/infra/platform/docker"
       environment:

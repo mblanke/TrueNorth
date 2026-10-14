@@ -104,9 +104,20 @@ class ModelRoute:
 
 # ── Fleet config from env ──────────────────────────────────────────────
 # There is no default AI endpoint. Ollama nodes come only from OLLAMA_NODES (or
-# POST /fleet/nodes), cloud backends only from their keys; with none of them the
-# service answers from the mock and /health reports ai_configured=false.
+# POST /fleet/nodes), cloud backends only from their keys; with none of them /health
+# reports ai_configured=false and generation answers 503 "AI is not configured" (only an
+# explicit AI_MODEL_BACKEND=mock answers from the mock).
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+# None when unset (the OpenAI backend then uses its own default); "" when set empty, which is
+# how an install with tn_ai_enabled: false says "no endpoint".
+OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL")
+# The 503 every generation route answers without a backend. The control-plane API matches the
+# header (app/ai_orchestrator_client.py), not the text.
+AI_NOT_CONFIGURED_HEADER = "X-AI-Not-Configured"
+AI_NOT_CONFIGURED_DETAIL = (
+    "AI is not configured on this host: no AI endpoint is set (tn_ai_enabled is false, or "
+    "OPENAI_BASE_URL / the provider key is empty). AI features stay off until an administrator sets one."
+)
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 AUTH_DISABLED = os.getenv("AUTH_DISABLED", "false").lower() in ("1", "true", "yes")
 
@@ -283,16 +294,27 @@ FLEET: dict[str, OllamaNode] = _parse_fleet()
 def ai_configured() -> bool:
     """True when a real backend could answer; mirrors the routing in ``_generate``.
 
-    Without one, generation falls through to the mock rather than calling out.
+    Without one, generation answers 503 (:func:`_refuse_if_not_configured`) unless the
+    primary is the mock. An OPENAI_BASE_URL set but empty is no endpoint, whatever the key.
     """
+    openai_ready = bool(OPENAI_API_KEY) and OPENAI_BASE_URL != ""
     if BackendType.ollama == PRIMARY_BACKEND:
         # The task routes fall back to OpenAI (never Anthropic) when the fleet fails.
-        return bool(FLEET) or bool(OPENAI_API_KEY)
+        return bool(FLEET) or openai_ready
     if BackendType.openai == PRIMARY_BACKEND:
-        return bool(OPENAI_API_KEY)
+        return openai_ready
     if BackendType.anthropic == PRIMARY_BACKEND:
         return bool(ANTHROPIC_API_KEY)
     return False
+
+
+def _refuse_if_not_configured() -> None:
+    """503 instead of mock text when no backend is configured (and the mock was not chosen).
+
+    Mock output on a real host would be persisted as course, quiz and scenario content.
+    """
+    if BackendType.mock != PRIMARY_BACKEND and not ai_configured():
+        raise HTTPException(503, AI_NOT_CONFIGURED_DETAIL, headers={AI_NOT_CONFIGURED_HEADER: "true"})
 
 
 # ── Model tagging ──────────────────────────────────────────────────────
@@ -486,7 +508,7 @@ async def lifespan(app: FastAPI):
         logger.warning("AI_SERVICE_TOKEN is not set: every route is open (TN_ENV=%s)", TN_ENV)
     if not ai_configured():
         logger.warning(
-            "AI is not configured (AI_MODEL_BACKEND=%s, no OLLAMA_NODES or provider key): answering from the mock",
+            "AI is not configured (AI_MODEL_BACKEND=%s, no OLLAMA_NODES, provider key or endpoint): generation answers 503",
             PRIMARY_BACKEND.value,
         )
 
@@ -932,6 +954,7 @@ async def _generate(
 
     Returns: (text, model_used, node_or_backend, usage, cached)
     """
+    _refuse_if_not_configured()
     route = TASK_ROUTES.get(task, TASK_ROUTES[TaskType.general])
     effective_max = max_tokens or route.max_tokens_default
     effective_model = model_override

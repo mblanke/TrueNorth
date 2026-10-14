@@ -98,7 +98,8 @@ def test_issuer_is_required_in_production():
 # ── 14. No committed AI endpoint or key ───────────────────────────────
 def test_ai_endpoint_and_key_have_no_defaults():
     ai = _env(_prod()["services"]["ai-orchestrator"])
-    assert ai["OPENAI_BASE_URL"].startswith("${OPENAI_BASE_URL:?")
+    # Set (no default), but may be empty: an install with tn_ai_enabled: false.
+    assert ai["OPENAI_BASE_URL"].startswith("${OPENAI_BASE_URL?") and ":-" not in ai["OPENAI_BASE_URL"]
     assert ai["OPENAI_API_KEY"].startswith("${OPENAI_API_KEY?")
     dev = _env(yaml.safe_load((DOCKER / "compose.dev.yml").read_text())["services"]["ai-orchestrator"])
     assert dev["OPENAI_API_KEY"] == "${OPENAI_API_KEY:-}"

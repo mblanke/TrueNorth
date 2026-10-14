@@ -73,7 +73,7 @@ Options:
 | `--json <path>` | write the report as JSON; mount a directory the api user (uid 10001) can write |
 | `--absent a,b` | facilities this host does not have; their checks SKIP and say so (`--help` lists them) |
 | `--strict` | any SKIP not listed for `--skip-profile` in `docs/release-notes/v1.2.0-permitted-skips.json` is a FAIL, declared or not; so is a check missing from (or not recorded in) that file's inventory. Exit 2 if the file or profile is unusable |
-| `--skip-profile <name>` | with `--strict`: `staging` (default; only the two hardware skips) or `ci-integration` (what `scripts/itest.sh` uses) |
+| `--skip-profile <name>[,<name>]` | with `--strict`: `staging` (default; only the two hardware skips) or `ci-integration` (what `scripts/itest.sh` uses); add `ai-disabled` on a host installed with `tn_ai_enabled: false` (`staging,ai-disabled`, which `install/playbooks/acceptance.yml` picks itself) |
 | `--permitted-skips <path>` | with `--strict`: another permitted-skips file |
 | `--edge-url` | the edge as the container reaches it (default `https://nginx`) |
 | `--host-config <dir>` | the host's config directory, if mounted (for `backup.env`) |
@@ -139,7 +139,7 @@ expected role — `instructor.demo`, `trainee1.demo` (the participant Student),
 | telemetry | three events indexed into a range, MITRE-tagged, found by administrator and Observer through the search API; a query outside the grammar 422; Students get 404 searching a range they are not on and 403 writing telemetry |
 | detection | a draft booking ties the exercise to C103 (the roster), timed over the exercise's run (a booking seats its course only while it overlaps the exercise); a Student not enrolled there is refused (403); the participant's detection query is credited (`achieved`, score 40/50, objective achieved, `on_target` hidden from them); a repeat is refused 409 |
 | reporting-aar | complete the exercise (twice: 409), generate the AAR (HTML names the exercise, objectives and timeline), the PDF is a real PDF, a Student may read the AAR, a missing one is 404 |
-| ai-arc2 | `/ai/detection-draft` returns text from the configured AI orchestrator; `/arc2/status` enabled and runs listed |
+| ai-arc2 | `/ai/detection-draft` returns text from the configured AI orchestrator; with `TN_AI_ENABLED=false` instead a declared SKIP ("AI disabled on this host") only if deep health reports `ai_configured: false` and the draft answers 503 "AI is not configured", else FAIL; `/arc2/status` enabled and runs listed |
 | ranges-labs | template validation accepts a good template and refuses a broken one; a range is created (recording the backend), a document stored in and read back from MinIO, the range deleted; a Student not enrolled on a course is refused a lab (403); staff list lab sessions |
 | provisioners | the registered vSphere connection (or a temporary one, `--vsphere-url`) passes its connection test and discovery finds hosts; an instructor may not test it; the inventory summary |
 | scheduling | capacity and a one-VM fit check; a booking 45 days out is created, listed, readable by an Observer, refused to a Student, and cancelled |

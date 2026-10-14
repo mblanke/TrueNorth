@@ -23,7 +23,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from .. import mesl as mesl_parse
-from ..ai_orchestrator_client import orchestrator_headers
+from ..ai_orchestrator_client import orchestrator_headers, raise_if_ai_not_configured
 from ..auth import CurrentUser
 from ..db import get_db
 from ..models import Exercise, ExerciseObjective, ExerciseState, MeslEvent, Range
@@ -321,6 +321,8 @@ def generate_mesl(
         resp.raise_for_status()
         raw = resp.json().get("output", "")
     except Exception as exc:  # noqa: BLE001
+        if isinstance(exc, httpx.HTTPStatusError):
+            raise_if_ai_not_configured(exc.response)
         raise HTTPException(status_code=502, detail=f"MESL generation failed: {exc}") from exc
 
     events = _parse_ai_json(raw)

@@ -96,6 +96,8 @@
       (vsphere_api for vSphere, not "vsphere"; the Terraform backends were removed).{% endif %}
     quiet: true
 
+# AI is on unless the inventory says tn_ai_enabled: false; then nothing AI is checked here,
+# 30-config renders no endpoint or key, and the platform says "AI is not configured".
 - name: Preflight — the AI endpoint is configured
   ansible.builtin.assert:
     that: tn_ai_base_url | default('') | length > 0
@@ -103,7 +105,47 @@
       tn_ai_base_url is empty. There is no default (the old one was one lab's internal
       LiteLLM address). Set it in the inventory or with
       -e tn_ai_base_url=http://<litellm-host>:4000/v1, and its key in vault_openai_api_key.
+      Or, for a site with no AI server yet, set tn_ai_enabled: false (install/README.md
+      "AI (optional)").
     quiet: true
+  when: tn_ai_enabled | default(true) | bool
+
+- name: Preflight — AI disabled
+  ansible.builtin.debug:
+    msg: >-
+      AI disabled (tn_ai_enabled=false): AI features will show 'not configured'. No AI endpoint
+      is checked; OPENAI_BASE_URL and OPENAI_API_KEY are rendered empty, so the orchestrator
+      reports ai_configured=false and AI generation answers 503. To turn it on later:
+      install/README.md "AI (optional)".
+  when: not (tn_ai_enabled | default(true) | bool)
+
+# ARC² does not use the AI orchestrator: with AI off it may stay on only with a model of its
+# own. Names what is set, never a value.
+- name: Preflight — ARC² has its own model when AI is disabled
+  vars:
+    _token: "{{ vault_arc2_claude_oauth_token | default('') | string | trim }}"
+    _key: "{{ vault_arc2_anthropic_api_key | default('') | string | trim }}"
+    _credential: >-
+      {{ (_token | length > 0 and _token is not search('CHANGE_ME'))
+         or (_key | length > 0 and _key is not search('CHANGE_ME')) }}
+    _endpoint: >-
+      {{ (tn_arc2_anthropic_base_url | default('') | string | trim | length > 0)
+         or (tn_arc2_local_url | default('') | string | trim | length > 0) }}
+  ansible.builtin.assert:
+    that: _endpoint | bool or _credential | bool
+    fail_msg: >-
+      tn_ai_enabled is false and tn_arc2_enabled is true, but ARC² has no model of its own:
+      tn_arc2_anthropic_base_url {{ 'set' if tn_arc2_anthropic_base_url | default('') | length > 0 else 'NOT set' }},
+      tn_arc2_local_url {{ 'set' if tn_arc2_local_url | default('') | length > 0 else 'NOT set' }},
+      vault_arc2_claude_oauth_token {{ 'set' if (vault_arc2_claude_oauth_token | default('') | string | trim | length > 0)
+      and (vault_arc2_claude_oauth_token | default('') is not search('CHANGE_ME')) else 'NOT set (or CHANGE_ME)' }},
+      vault_arc2_anthropic_api_key {{ 'set' if (vault_arc2_anthropic_api_key | default('') | string | trim | length > 0)
+      and (vault_arc2_anthropic_api_key | default('') is not search('CHANGE_ME')) else 'NOT set (or CHANGE_ME)' }}.
+      Set one of them ("ARC² Course Studio (optional)"), or set tn_arc2_enabled: false.
+    success_msg: "ARC² with AI disabled: it uses its own model endpoint or credential"
+  when:
+    - not (tn_ai_enabled | default(true) | bool)
+    - tn_arc2_enabled | default(false) | bool
 
 # cmi5 (docs/cmi5.md): launches need CMI5_LRS_AUTH, the AU's own LRS credential, or they
 # answer 503. 50-stack-up mints it on the LRS with the LRS admin account unless the vault
@@ -403,6 +445,7 @@
     validate_certs: false
   register: tn_ai_probe
   failed_when: false
+  when: tn_ai_enabled | default(true) | bool
 
 - name: Preflight — report AI endpoint
   ansible.builtin.debug:
@@ -410,6 +453,7 @@
       AI endpoint {{ tn_ai_base_url }}:
       {{ 'reachable (HTTP ' ~ tn_ai_probe.status ~ ')' if (tn_ai_probe.status | default(-1) | int) > 0
          else 'UNREACHABLE — the AI orchestrator will start but every generation will fail.' }}
+  when: tn_ai_enabled | default(true) | bool
 
 # ── ARC² Course Studio (only with tn_arc2_enabled) ────────────────────
 # What 55-arc2 needs before it installs anything. That playbook then probes bubblewrap as
@@ -599,4 +643,7 @@
       - "ldaps port      : {{ 'open (the bind itself is checked in 40-tls)' if tn_ldap_enabled | bool else 'n/a (AD/LDAPS disabled)' }}"
       - "backup escrow   : {{ tn_backup_escrow_pubkey if tn_backup_escrow_pubkey | length > 0 else tn_backup_escrow }}"
       - "app source      : {{ tn_app_source_mode }} ({{ tn_app_git_repo if tn_app_source_mode == 'git' else (tn_app_local_path or tn_app_tarball) }})"
+      - >-
+        ai              : {{ ('enabled (' ~ tn_ai_base_url ~ ')') if tn_ai_enabled | default(true) | bool
+        else 'disabled (tn_ai_enabled=false: AI features show not configured)' }}
       - "arc2 studio     : {{ 'enabled (55-arc2 installs the runner)' if tn_arc2_enabled | default(false) | bool else 'off' }}"
