@@ -128,6 +128,19 @@ course production with a local-model fallback, and the cleanup of unsupported su
   the mock. The orchestrator's unused `OLLAMA_PROXY_URL` (same host) is gone and `/health`
   gains `ai_configured`. Installed sites take the endpoint only from `tn_ai_base_url`.
   Existing backend rows are not touched: delete a seeded one by hand if it is still there.
+- **Installer: AI is optional** (`tn_ai_enabled`, default `true`). `false` installs a site
+  with no AI server yet. Preflight skips the endpoint assert and probe and prints "AI disabled".
+  The env file renders `OPENAI_BASE_URL`/`OPENAI_API_KEY` empty. `99-validate` skips the model
+  check, reports `AI : disabled`, and fails if the orchestrator says it is configured. ARC² stays
+  allowed only with its own endpoint or credential. Acceptance gets an `ai-disabled` skip
+  profile (`--skip-profile staging,ai-disabled`); there the AI check SKIPs only if the flag,
+  `ai_configured: false` and the 503 agree. compose: `OPENAI_BASE_URL` must be set but may be
+  empty. Re-enable: `install/README.md` "AI (optional)".
+  **Behaviour change:** an orchestrator with no backend no longer answers from the mock. Every
+  generation route answers 503 "AI is not configured" (header `X-AI-Not-Configured`), and the
+  API passes that on as a 503 instead of a 502, for drafts, the forge, courses, quizzes, MESL
+  and AI AARs. An empty `OPENAI_BASE_URL` counts as not configured. For mock output (dev, CI),
+  set `AI_MODEL_BACKEND=mock`. Deep health shows `ai_configured`.
 - Installer: cmi5 launches answered 503 on an installed platform (v1.2.0-rc4 on staging): the
   installer never provided `CMI5_LRS_AUTH`. `50-stack-up` now mints the AU's own LRS
   credential on the LRS (scopes statements/write, state, agents_profile, activities_profile),
@@ -432,6 +445,10 @@ course production with a local-model fallback, and the cleanup of unsupported su
 - A range built before connection records with port groups but no VM stays unrecorded until
   destroyed; shared vCenter connections are managed outside the tenant API; an abandoned
   range's leftover VMs and port groups must be removed by hand (`docs/release-notes/v1.2.0.md`).
+- AI disabled (`tn_ai_enabled: false`) is installer-only: the Helm chart still refuses to
+  render without `aiOrchestrator.env.OPENAI_BASE_URL`. The orchestrator treats an openai
+  endpoint with an empty key as not configured, so an unauthenticated endpoint (no key)
+  answers 503 "AI is not configured" too.
 
 ## v1.1.0 — 2026-10-09
 

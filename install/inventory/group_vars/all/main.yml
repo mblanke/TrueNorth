@@ -304,9 +304,16 @@ tn_software_install_timeout: 1800
 tn_fail_on_missing_vsphere_privs: false
 
 # ── AI ────────────────────────────────────────────────────────────────
+# true (default): this host has an AI endpoint, and preflight stops without tn_ai_base_url.
+# false: install without AI (no AI server yet). No endpoint or key is rendered, the AI
+# orchestrator reports ai_configured=false, AI features show "not configured" and answer 503,
+# 99-validate reports "AI: disabled". ARC² then needs its own model (preflight checks).
+# Turning it on later: install/README.md "AI (optional)".
+tn_ai_enabled: true
 # The OpenAI-compatible endpoint (LiteLLM) the AI orchestrator calls, e.g.
-# http://<litellm-host>:4000/v1. REQUIRED: there is no default, and preflight stops
-# without it. Its key is vault_openai_api_key (empty only for an unauthenticated endpoint).
+# http://<litellm-host>:4000/v1. REQUIRED with tn_ai_enabled: there is no default, and
+# preflight stops without it. Its key is vault_openai_api_key (empty only for an
+# unauthenticated endpoint).
 tn_ai_base_url: ""
 # The model ids the endpoint serves (its /models list). The defaults are LiteLLM aliases;
 # another server (Open WebUI, vLLM, Ollama) names its models differently.

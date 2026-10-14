@@ -279,11 +279,18 @@ class HealthChecker:
             async with httpx.AsyncClient(timeout=3) as client:
                 resp = await client.get(f"{base}/health")
             elapsed = (time.monotonic() - start) * 1000
+            # ai_configured=false is a host with AI off (tn_ai_enabled: false), not a fault:
+            # still healthy, but said, so an operator and the acceptance suite can tell.
+            try:
+                configured = resp.json().get("ai_configured") if resp.status_code == 200 else None
+            except Exception:
+                configured = None
             return ComponentHealth(
                 name="ai_orchestrator",
                 status=HealthStatus.HEALTHY if resp.status_code == 200 else HealthStatus.DEGRADED,
                 latency_ms=round(elapsed, 2),
-                message=f"HTTP {resp.status_code}",
+                message=f"HTTP {resp.status_code}" + ("; AI not configured" if configured is False else ""),
+                details={} if configured is None else {"ai_configured": bool(configured)},
             )
         except Exception as exc:
             elapsed = (time.monotonic() - start) * 1000

@@ -45,7 +45,7 @@ from ..aar_html import RESPONSE_HEADERS as AAR_PAGE_HEADERS
 from ..aar_html import pdf_text
 from ..aar_html import render_html as render_aar_html
 from ..aar_report import build_report as build_aar_report
-from ..ai_orchestrator_client import orchestrator_headers
+from ..ai_orchestrator_client import orchestrator_headers, raise_if_ai_not_configured
 from ..auth import CurrentUser
 from ..db import get_db
 from ..detections.redaction import redact_evidence, redact_timeline, sees_answer_key
@@ -779,6 +779,8 @@ async def ai_enhance_aar(
         return aar
 
     except httpx.HTTPError as exc:
+        if isinstance(exc, httpx.HTTPStatusError):
+            raise_if_ai_not_configured(exc.response)
         logger.warning("AI orchestrator unavailable: %s", exc)
         raise HTTPException(503, "AI orchestrator is unavailable. Try again later.") from exc
     except Exception as exc:

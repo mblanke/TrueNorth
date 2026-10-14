@@ -203,6 +203,78 @@ def test_strict_refuses_to_start_without_a_usable_profile(tmp_path, capsys):
     assert acc.main(["--admin", "a@b", "--strict", "--permitted-skips", str(tmp_path / "missing.json")]) == 2
 
 
+# ── AI disabled (tn_ai_enabled: false; profile ai-disabled) ─────────────
+
+
+def test_profiles_combine_and_an_unknown_one_in_the_list_is_refused():
+    staging, _ = acc.load_permitted(acc.PERMITTED_SKIPS, "staging")
+    both, _ = acc.load_permitted(acc.PERMITTED_SKIPS, "staging, ai-disabled")
+    assert both[: len(staging)] == staging
+    assert {(e["module"], e["check"]) for e in both[len(staging):]} == {
+        ("ai-arc2", "AI orchestrator answers through the API"),
+        ("ai-arc2", "ARC² Course Studio enabled"),
+    }
+    with pytest.raises(ValueError, match="no skip profile 'nope'"):
+        acc.load_permitted(acc.PERMITTED_SKIPS, "staging,nope")
+
+
+class FakeAiAdmin:
+    """The admin API as the AI check sees it: deep health and the detection draft."""
+
+    def __init__(self, configured, draft):
+        self.configured, self.draft = configured, draft
+
+    def get(self, path, **kw):
+        assert path == "/health/deep"
+        details = {} if self.configured is None else {"ai_configured": self.configured}
+        return 200, {"components": [{"name": "ai_orchestrator", "status": "healthy", "details": details}]}
+
+    def post(self, path, json=None, **kw):
+        assert path == "/ai/detection-draft"
+        return self.draft
+
+
+NOT_CONFIGURED = (503, {"detail": "AI is not configured on this host. An administrator must set the AI endpoint"})
+DRAFTED = (200, {"output": "title: Suspicious PowerShell\ndetection: {}"})
+AI_CHECK = ("ai-arc2", "AI orchestrator answers through the API")
+
+
+def _ai_check(monkeypatch, enabled, admin, profile=None):
+    monkeypatch.setenv("TN_AI_ENABLED", enabled)
+    permitted = acc.load_permitted(acc.PERMITTED_SKIPS, profile)[0] if profile else None
+    report = acc.Report(strict=profile is not None, permitted=permitted)
+    checks = {"ai-arc2": [(AI_CHECK[1], dict(acc.CHECKS["ai-arc2"])[AI_CHECK[1]])]}
+    acc.run_checks(ctx(admin=admin), ["ai-arc2"], report, checks=checks, log=lambda _: None)
+    [r] = report.results
+    return r
+
+
+def test_ai_disabled_and_not_configured_is_a_declared_skip_permitted_only_with_ai_disabled(monkeypatch):
+    admin = FakeAiAdmin(False, NOT_CONFIGURED)
+    r = _ai_check(monkeypatch, "false", admin, "staging,ai-disabled")
+    assert (r.status, r.declared) == (acc.SKIP, True)
+    assert r.detail.startswith("AI disabled on this host (tn_ai_enabled: false;")
+    assert _ai_check(monkeypatch, "false", admin, "staging").status == acc.FAIL  # never silently
+
+
+def test_ai_disabled_but_the_orchestrator_is_configured_fails(monkeypatch):
+    for configured in (True, None):
+        r = _ai_check(monkeypatch, "false", FakeAiAdmin(configured, DRAFTED), "staging,ai-disabled")
+        assert r.status == acc.FAIL and "ai_configured=" in r.detail
+
+
+def test_ai_disabled_without_the_clear_503_fails(monkeypatch):
+    for draft in (DRAFTED, (502, {"detail": "AI orchestrator failed to generate a draft."})):
+        r = _ai_check(monkeypatch, "false", FakeAiAdmin(False, draft), "staging,ai-disabled")
+        assert r.status == acc.FAIL and "must answer 503" in r.detail
+
+
+def test_ai_enabled_must_draft(monkeypatch):
+    assert _ai_check(monkeypatch, "true", FakeAiAdmin(True, DRAFTED)).status == acc.PASS
+    r = _ai_check(monkeypatch, "true", FakeAiAdmin(False, NOT_CONFIGURED), "staging,ai-disabled")
+    assert r.status == acc.FAIL and "503" in r.detail  # the flag says on: no skip for "not configured"
+
+
 def test_report_refuses_unknown_status_and_flattens_detail():
     r = acc.Report()
     with pytest.raises(ValueError):

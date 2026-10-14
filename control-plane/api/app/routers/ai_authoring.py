@@ -16,7 +16,7 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from ..ai_orchestrator_client import orchestrator_headers
+from ..ai_orchestrator_client import orchestrator_headers, raise_if_ai_not_configured
 from ..auth import CurrentUser
 from ..rbac import Permission, require_permission
 
@@ -51,6 +51,7 @@ async def _proxy(path: str, payload: dict) -> dict:
             resp.raise_for_status()
             return resp.json()
         except httpx.HTTPStatusError as exc:
+            raise_if_ai_not_configured(exc.response)
             logger.error("AI orchestrator %s returned %s: %s", path, exc.response.status_code, exc.response.text)
             raise HTTPException(502, "AI orchestrator failed to generate a draft.") from exc
         except httpx.ConnectError as exc:

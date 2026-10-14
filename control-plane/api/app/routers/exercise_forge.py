@@ -18,7 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from .. import engine_bridge, safe_yaml, scenario_objectives
-from ..ai_orchestrator_client import orchestrator_headers
+from ..ai_orchestrator_client import orchestrator_headers, raise_if_ai_not_configured
 from ..auth import CurrentUser, get_current_user
 from ..db import get_db
 from ..models import (
@@ -419,6 +419,7 @@ async def _call_forge_ai(
             cleaned = _strip_yaml_fences(raw_output)
             return cleaned, model_used
         except httpx.HTTPStatusError as e:
+            raise_if_ai_not_configured(e.response)
             logger.error("AI orchestrator returned %s: %s", e.response.status_code, e.response.text)
             raise HTTPException(502, "AI orchestrator failed to generate exercise.") from e
         except httpx.RequestError as e:

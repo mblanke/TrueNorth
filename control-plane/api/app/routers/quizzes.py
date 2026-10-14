@@ -31,7 +31,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session, joinedload
 
 from .. import curriculum_ingest
-from ..ai_orchestrator_client import orchestrator_headers
+from ..ai_orchestrator_client import orchestrator_headers, raise_if_ai_not_configured
 from ..auth import CurrentUser, get_current_user
 from ..db import get_db
 from ..models import (
@@ -311,6 +311,7 @@ async def generate_quiz(
             )
             resp.raise_for_status()
         except httpx.HTTPStatusError as e:
+            raise_if_ai_not_configured(e.response)
             raise HTTPException(502, "AI orchestrator failed to generate the quiz.") from e
         except httpx.ConnectError as e:
             raise HTTPException(503, "AI orchestrator is unavailable.") from e

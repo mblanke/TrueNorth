@@ -92,13 +92,19 @@ SKIP_ENTRY_KEYS = ("module", "check", "reason_contains", "reason", "alternative_
 
 
 def load_permitted(path: Path, profile: str) -> tuple[list[dict], dict[str, list[str]]]:
-    """(the profile's permitted skips, the check inventory). ValueError when the file or an
-    entry is malformed, or an entry names a check that does not exist."""
+    """(the profile's permitted skips, the check inventory). ``profile`` may name several,
+    comma-separated (``staging,ai-disabled``): their entries together. ValueError when the
+    file, a profile or an entry is malformed, or an entry names a check that does not exist."""
     doc = json.loads(path.read_text(encoding="utf-8"))
     profiles = doc.get("profiles") or {}
-    if profile not in profiles:
-        raise ValueError(f"no skip profile {profile!r} in {path} (has: {', '.join(sorted(profiles))})")
-    entries = list(profiles[profile])
+    names = [p.strip() for p in profile.split(",") if p.strip()]
+    if not names:
+        raise ValueError(f"no skip profile named (has: {', '.join(sorted(profiles))})")
+    entries = []
+    for name in names:
+        if name not in profiles:
+            raise ValueError(f"no skip profile {name!r} in {path} (has: {', '.join(sorted(profiles))})")
+        entries += list(profiles[name])
     for e in entries:
         if lacking := [k for k in SKIP_ENTRY_KEYS if not str(e.get(k) or "").strip()]:
             raise ValueError(f"{path}: {profile} entry {e.get('module')} / {e.get('check')} lacks {', '.join(lacking)}")
@@ -1520,9 +1526,39 @@ def aar_pdf(ctx: Ctx) -> str:
 # ══ ai-arc2 ═════════════════════════════════════════════════════════════
 
 
+AI_DISABLED_REASON = "AI disabled on this host"
+
+
+def ai_enabled_by_install() -> bool:
+    """The installer's tn_ai_enabled, as compose gives it to the api (TN_AI_ENABLED)."""
+    return os.getenv("TN_AI_ENABLED", "true").strip().lower() not in ("0", "false", "no", "off")
+
+
 @check("ai-arc2", "AI orchestrator answers through the API")
 def ai_draft(ctx: Ctx) -> str:
-    st, body = ctx.admin.post("/ai/detection-draft", json={"technique": "T1059.001", "data_source": "sysmon"})
+    draft = {"technique": "T1059.001", "data_source": "sysmon"}
+    if not ai_enabled_by_install():
+        # A SKIP only when all three agree: the install says off, the orchestrator says it has
+        # no backend, and the API answers the clear 503. Anything else is a FAIL, never a pass.
+        deep = ok(ctx.admin.get("/health/deep"), what="GET /health/deep")
+        comp = next((c for c in deep.get("components", []) if c.get("name") == "ai_orchestrator"), {})
+        configured = (comp.get("details") or {}).get("ai_configured")
+        expect(
+            configured is False,
+            f"TN_AI_ENABLED=false (tn_ai_enabled), but the orchestrator reports ai_configured={configured!r}"
+            " (re-run 30-config and 50-stack-up)",
+        )
+        st, body = ctx.admin.post("/ai/detection-draft", json=draft)
+        expect(
+            st == 503 and "not configured" in short(body).lower(),
+            f"AI is disabled, so POST /ai/detection-draft must answer 503 'AI is not configured'; got {st} {short(body)}",
+        )
+        skip(
+            f"{AI_DISABLED_REASON} (tn_ai_enabled: false; the orchestrator reports ai_configured: false;"
+            f" POST /ai/detection-draft => 503 {short(body, 80)})",
+            True,
+        )
+    st, body = ctx.admin.post("/ai/detection-draft", json=draft)
     expect(st == 200, f"POST /ai/detection-draft => {st} {short(body)}")
     text = longest_text(body)
     expect(len(text) >= 20, f"the orchestrator returned no text: {short(body)}")
@@ -1915,7 +1951,9 @@ def main(argv: list[str] | None = None) -> int:
         help="a SKIP not in the permitted-skips file's --skip-profile is a FAIL, as is a check missing from it",
     )
     ap.add_argument(
-        "--skip-profile", default="staging", help="--strict: the permitted-skips profile (staging, ci-integration)"
+        "--skip-profile",
+        default="staging",
+        help="--strict: the permitted-skips profile(s), comma-separated (staging, ci-integration, ai-disabled)",
     )
     ap.add_argument("--permitted-skips", type=Path, default=PERMITTED_SKIPS, help="--strict: the permitted-skips file")
     ap.add_argument("--list", action="store_true", help="list the checks and exit")

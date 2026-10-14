@@ -43,6 +43,12 @@ class _FakeClient:
             raise httpx.ConnectError("unreachable")
         if self.mode == "http_error":
             return _FakeResponse(status_code=500, text="model exploded")
+        if self.mode == "not_configured":
+            r = _FakeResponse(status_code=503, payload={"detail": "AI is not configured on this host"})
+            r.headers = {"X-AI-Not-Configured": "true"}
+            return r
+        if self.mode == "plain_503":
+            return _FakeResponse(status_code=503, text="All backends failed")
         return _FakeResponse(payload={"output": "name: drafted\n", "model_used": "test-model"})
 
 
@@ -77,6 +83,17 @@ class TestScenarioDraft:
 
     def test_orchestrator_error_is_502(self, client, fake_httpx):
         fake_httpx.mode = "http_error"
+        res = client.post("/ai/scenario-draft", json={"objectives": ["x"]})
+        assert res.status_code == 502
+
+    def test_ai_not_configured_is_a_clear_503_not_a_502(self, client, fake_httpx):
+        fake_httpx.mode = "not_configured"
+        res = client.post("/ai/scenario-draft", json={"objectives": ["x"]})
+        assert res.status_code == 503
+        assert res.json()["detail"].startswith("AI is not configured on this host")
+
+    def test_a_plain_503_without_the_header_is_still_502(self, client, fake_httpx):
+        fake_httpx.mode = "plain_503"
         res = client.post("/ai/scenario-draft", json={"objectives": ["x"]})
         assert res.status_code == 502
 
