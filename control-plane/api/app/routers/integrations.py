@@ -254,8 +254,10 @@ async def test_connectivity(
 ):
     """Test connectivity to an external platform.
 
-    The probe goes through app.net_guard (http(s) only, internal addresses refused unless
-    INTEGRATION_ALLOW_PRIVATE_URLS is on, pinned, no redirects) and a failure reads as one
+    The probe goes through app.net_guard (http(s) only, pinned, no redirects; internal
+    addresses refused unless the platform is one of TrueNorth's own Moodle farm nodes or
+    INTEGRATION_ALLOW_PRIVATE_URLS is on, the allowance grade passback has:
+    moodle_farm.may_reach_private) and a failure reads as one
     fixed message per outcome. Before (PR #112 review), it fetched the stored base_url
     unguarded and returned the exception text: an SSRF and a port/host oracle.
     """
@@ -264,7 +266,7 @@ async def test_connectivity(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Platform not found")
 
     url = get_platform_adapter(p.platform_type).health_url(p.base_url or "")
-    allow_private = os.getenv("INTEGRATION_ALLOW_PRIVATE_URLS", "false").strip().lower() in ("1", "true", "yes", "on")
+    allow_private = moodle_farm.may_reach_private(db, p)
     try:
         code = await asyncio.to_thread(net_guard.probe, url, allow_private=allow_private, timeout=10.0)
     except net_guard.DestinationRefusedError:

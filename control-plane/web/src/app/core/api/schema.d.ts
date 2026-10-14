@@ -3193,8 +3193,10 @@ export interface paths {
          * Test Connectivity
          * @description Test connectivity to an external platform.
          *
-         *     The probe goes through app.net_guard (http(s) only, internal addresses refused unless
-         *     INTEGRATION_ALLOW_PRIVATE_URLS is on, pinned, no redirects) and a failure reads as one
+         *     The probe goes through app.net_guard (http(s) only, pinned, no redirects; internal
+         *     addresses refused unless the platform is one of TrueNorth's own Moodle farm nodes or
+         *     INTEGRATION_ALLOW_PRIVATE_URLS is on, the allowance grade passback has:
+         *     moodle_farm.may_reach_private) and a failure reads as one
          *     fixed message per outcome. Before (PR #112 review), it fetched the stored base_url
          *     unguarded and returned the exception text: an SSRF and a port/host oracle.
          */

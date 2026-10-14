@@ -160,6 +160,34 @@ course production with a local-model fallback, and the cleanup of unsupported su
 - Docs: v1.2.0 release notes (simulator-proven list, staging record placeholder), H6
   marked fixed, user-guide telemetry queries rewritten to the closed grammar (tested).
 
+### R0-C: staging acceptance fixes (v1.2.0-rc7: 32 pass, 4 fail, 6 skip)
+- Fix: deep health's `audit_export` was degraded right after an install or upgrade ("latest
+  exported day none") until the first 00:45 UTC export. 99-validate now runs the export once
+  (`python -m worker.audit_export_now` in worker-scenario: the beat task's body, idempotent,
+  exit 1 without a seed, 2 on a failed export) and fails the install, after the report, if it
+  cannot. Health treats "never exported" as pending (`first_export_pending`) for 26 h after
+  the API starts; once a day has been exported, falling behind is degraded at once.
+- Fix: the platform test probe (`POST /integrations/platforms/{id}/test`, the acceptance
+  suite's "Moodle platform reachable") refused a farm node's private address (e.g.
+  `http://moodle-default:8080`) that publishing, pulls and grade passback reach. The probe and
+  grade passback now share one allowance, `moodle_farm.may_reach_private`:
+  farm nodes the installer registered, or `INTEGRATION_ALLOW_PRIVATE_URLS`; never loopback or
+  link-local, and not for a platform unmarked by an API edit.
+- Fix: the AI orchestrator's per-task models were not rendered, so compose's `agent` /
+  `coder-fast` reached endpoints without them (staging: 400 from the router, 502 to the
+  user). New installer vars `tn_ai_heavy_model`, `tn_ai_general_model`, `tn_ai_code_model`,
+  each defaulting to `tn_ai_default_model`, render `AI_HEAVY/GENERAL/CODE_MODEL`.
+  99-validate lists the endpoint's models from inside the orchestrator (the key stays in the
+  container) and fails when a configured model is missing; unlistable is a warning.
+- Fix: the acceptance suite's `web-shell / SPA served through nginx` looked for
+  `<app-root>`; the shell is `<tn-root>` (`SPA_ROOT_SELECTOR`, tested against `index.html`
+  and `AppComponent`).
+- New: `install/playbooks/acceptance.yml` (operator, `-K`): runs the full strict suite with the
+  Keycloak admin credential from the host's secret file (environment only, `no_log`), the
+  config directory read-only and the vCenter URL; reports to
+  `/srv/truenorth/acceptance-reports/latest.{txt,json}` readable by the operator's group;
+  fails on any FAIL. `docs/runbooks/staging-acceptance.md`.
+
 ### R0-B: web correctness and role access
 - Fix: Resume on a paused exercise called `/start` (409 unless pending), so nothing resumed;
   it now calls `POST /exercises/{id}/resume`, sends one request per click and shows the

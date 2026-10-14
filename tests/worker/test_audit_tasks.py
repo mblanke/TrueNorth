@@ -432,3 +432,55 @@ def test_a_conflicting_archive_day_names_the_runbook(db, archive, key):
     add(db, d, 3)
     with pytest.raises(audit_export.AuditExportError, match="Archive newer than the database"):
         audit_jobs.run_export(db, archive, key, TODAY)
+
+
+# ── python -m worker.audit_export_now: the installer's one-off run (99-validate) ──
+@pytest.fixture
+def export_now(db, archive, monkeypatch):
+    """worker.audit_export_now.main with the beat task's own plumbing pointed at the test db/archive."""
+    from contextlib import contextmanager
+
+    from worker import audit_export_now
+
+    @contextmanager
+    def session():
+        yield db
+        db.commit()
+
+    monkeypatch.setattr(audit_tasks, "_db_session", session)
+    monkeypatch.setattr(audit_tasks, "get_archive", lambda: archive)
+    monkeypatch.setattr(audit_tasks, "today_utc", lambda: TODAY)
+    monkeypatch.setenv("AUDIT_SIGNING_SEED", SEED)
+    return audit_export_now.main
+
+
+def test_export_now_exports_through_yesterday_and_a_rerun_writes_nothing(db, export_now, capsys):
+    """A just-upgraded host: rows from before the upgrade, no export. One run makes it current."""
+    add(db, TODAY - timedelta(days=5), 2)
+    add(db, TODAY)
+    assert export_now() == 0
+    out = json.loads(capsys.readouterr().out)
+    assert len(out["exported"]) == 5 and out["key_id"] == audit_signing.from_seed(SEED).key_id
+    assert [r.day for r in exports(db)] == [TODAY - timedelta(days=n) for n in range(5, 0, -1)]
+    assert export_now() == 0  # idempotent: the installer runs it on every install and upgrade
+    assert json.loads(capsys.readouterr().out)["exported"] == []
+    assert len(exports(db)) == 5
+
+
+def test_export_now_without_a_seed_exits_1_and_never_prints_it(db, export_now, monkeypatch, capsys):
+    monkeypatch.setenv("AUDIT_SIGNING_SEED", "short-seed")
+    add(db, TODAY - timedelta(days=2))
+    assert export_now() == 1
+    out = capsys.readouterr()
+    assert out.out == "" and "short-seed" not in out.err
+    assert exports(db) == []
+
+
+def test_export_now_reports_a_failed_export_with_exit_2(db, export_now, monkeypatch, capsys):
+    def refuse():
+        raise AuditArchiveError("archive not writable")
+
+    monkeypatch.setattr(audit_tasks, "get_archive", refuse)
+    add(db, TODAY - timedelta(days=2))
+    assert export_now() == 2
+    assert "AuditArchiveError: archive not writable" in capsys.readouterr().err
