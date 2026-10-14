@@ -281,8 +281,11 @@ AUDIT_VERIFIED=""   # 1 / 0 once checked: truenorth_backup_audit_verified
 if [[ -n "${AUDIT_ARCHIVE_PATH:-}" ]]; then
     if [[ -d "${AUDIT_ARCHIVE_PATH}" ]]; then
         mkdir -p "${WORK_PATH}/audit-archive"
-        cp -a "${AUDIT_ARCHIVE_PATH}/." "${WORK_PATH}/audit-archive/"
-        find "${WORK_PATH}/audit-archive" -type f -name '*.tmp' -delete
+        # Read through a root container: the archive is the worker's (10001, 0750), and this
+        # script runs as the installer's user (lib.sh "The audit export archive").
+        audit_archive_read "${WORK_PATH}/audit-archive" \
+            || die "reading the audit export archive ${AUDIT_ARCHIVE_PATH} failed"
+        audit_owner="$(audit_archive_owner)" || audit_owner=""
         n_files="$(find "${WORK_PATH}/audit-archive" -type f | grep -c . || true)"
         # Against audit_exports too, when this database has it: the exact manifest hashes and
         # the signing keys it recorded (a deleted newest day, or a key dropped into keys/).
@@ -290,14 +293,14 @@ if [[ -n "${AUDIT_ARCHIVE_PATH:-}" ]]; then
         if audit_db_rows "${WORK_PATH}/.audit-db.txt"; then db_rows="${WORK_PATH}/.audit-db.txt"; db_checked=true; fi
         if verdict="$(audit_archive_verify "${WORK_PATH}/audit-archive" "${db_rows}" 2>"${WORK_PATH}/.audit.err")"; then
             IFS=" " read -r v_n v_last v_extra <<<"${verdict}"
-            AUDIT_JSON="{\"status\":\"backed-up\",\"dir\":\"audit-archive\",\"files\":${n_files},\"manifests\":${v_n},\"last_day\":$(json_str "${v_last}"),\"db_checked\":${db_checked},\"not_in_db\":${v_extra},\"verified\":true}"
+            AUDIT_JSON="{\"status\":\"backed-up\",\"dir\":\"audit-archive\",\"files\":${n_files},\"manifests\":${v_n},\"last_day\":$(json_str "${v_last}"),\"db_checked\":${db_checked},\"not_in_db\":${v_extra},\"verified\":true,\"owner\":$(json_str "${audit_owner}")}"
             AUDIT_VERIFIED=1
             log "INFO" "  audit: ${n_files} files, ${v_n} manifests through ${v_last}, signatures, hashes and chain verified (database compared: ${db_checked})"
         else
             AUDIT_FAILED=1
             AUDIT_VERIFIED=0
             AUDIT_ERROR="$(head -c 300 "${WORK_PATH}/.audit.err" | tr -d '\r' | tr '\n\t' '  ')"
-            AUDIT_JSON="{\"status\":\"backed-up\",\"dir\":\"audit-archive\",\"files\":${n_files},\"verified\":false,\"error\":$(json_str "${AUDIT_ERROR}")}"
+            AUDIT_JSON="{\"status\":\"backed-up\",\"dir\":\"audit-archive\",\"files\":${n_files},\"verified\":false,\"error\":$(json_str "${AUDIT_ERROR}"),\"owner\":$(json_str "${audit_owner}")}"
             log "WARN" "  audit: archive copied but does NOT verify: ${AUDIT_ERROR}"
         fi
         rm -f "${WORK_PATH}/.audit.err" "${WORK_PATH}/.audit-db.txt"

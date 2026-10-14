@@ -201,8 +201,16 @@ psql_admin() {
 # ── Audit export archive (before the databases: it is what they are checked against) ──
 if [[ -n "${AUDIT_SRC}" ]]; then
     CURRENT_STEP="audit-archive"
-    mkdir -p "${AUDIT_ARCHIVE_PATH}"
-    cp -a "${AUDIT_SRC}/." "${AUDIT_ARCHIVE_PATH}/"
+    # Written through a root container (lib.sh "The audit export archive"): the archive is
+    # the worker's, 0750. Its files keep the archive directory's owner; a directory that is
+    # not there yet is made with the owner the backup recorded (else the worker's), 0750.
+    audit_new_owner=""
+    if [[ ! -d "${AUDIT_ARCHIVE_PATH}" ]]; then
+        audit_new_owner="$(sed -n 's/.*"audit_archive": {[^}]*"owner":"\([0-9]*:[0-9]*\)".*/\1/p' "${BACKUP_PATH}/manifest.json")"
+        audit_new_owner="${audit_new_owner:-10001:10001}"
+    fi
+    audit_archive_write "${AUDIT_SRC}" "${audit_new_owner}" \
+        || die "writing the audit export archive back to ${AUDIT_ARCHIVE_PATH} failed"
     log "INFO" "  audit: archive restored to ${AUDIT_ARCHIVE_PATH} ($(find "${AUDIT_SRC}" -type f -name '*.manifest.json' | grep -c . || true) manifests)"
 fi
 
@@ -238,36 +246,39 @@ if (( DO_PG && DO_AUDIT )) && [[ -n "${AUDIT_ARCHIVE_PATH:-}" && -d "${AUDIT_ARC
     if audit_db_rows "${QROWS}"; then
         QTS="$(date -u +%Y%m%dT%H%M%SZ)"
         QDIR="${AUDIT_ARCHIVE_PATH}/quarantine/${QTS}"
-        moved=()
-        while IFS= read -r m; do
-            [[ -n "$m" ]] || continue
-            rel="${m#"${AUDIT_ARCHIVE_PATH}"/}"
-            base="${m##*/}"; base="${base#audit-}"; base="${base%.manifest.json}"
+        moved=(); to_move=()
+        # Listed and moved through a root container (lib.sh "The audit export archive"); the
+        # decisions are made here, and only on paths checked here.
+        audit_list="$(audit_archive_manifests)" || die "listing the audit export archive ${AUDIT_ARCHIVE_PATH} failed"
+        while IFS=$'\t' read -r rel sha file; do
+            [[ -n "$rel" ]] || continue
+            # Only the archive's own layout: YYYY/MM/audit-<day>[.s<n>].manifest.json.
+            if [[ ! "${rel}" =~ ^[0-9]{4}/[0-9]{2}/audit-[0-9]{4}-[0-9]{2}-[0-9]{2}(\.s[0-9]+)?\.manifest\.json$ ]]; then
+                log "WARN" "  audit: ${rel} is not where the worker writes manifests; left in place"
+                continue
+            fi
+            base="${rel##*/}"; base="${base#audit-}"; base="${base%.manifest.json}"
             day="${base%%.*}"; seq=0; [[ "$base" == *.s* ]] && seq="${base##*.s}"
-            sha="$("${OPENSSL:-openssl}" dgst -sha256 -r "$m" | cut -d' ' -f1)"
             grep -qx "${day}|${seq}|${sha}|.*" "${QROWS}" && continue
-            # The manifest is untrusted input and this runs as root: its "file" may only name
-            # this export's own data file, beside the manifest (no '/', no '..').
-            file="$(sed -n 's/.*"file":"\([^"]*\)".*/\1/p' "$m")"
+            # The manifest is untrusted input and the move runs as root: its "file" may only
+            # name this export's own data file, beside the manifest (no '/', no '..').
             fname="${file##*/}"
             if [[ "${file}" != "$(dirname "${rel}")/${fname}" || "${fname}" == *..* || ! "${fname}" =~ ^audit-[0-9]{4}-[0-9]{2}-[0-9]{2}(\.s[0-9]+)?\.jsonl\.gz$ ]]; then
                 log "WARN" "  audit: ${rel} names an unexpected data file (${file}); only the manifest and signature are moved"
                 file=""
             fi
-            for f in "$rel" "${rel}.sig" "$file"; do
-                [[ -n "$f" && -e "${AUDIT_ARCHIVE_PATH}/${f}" ]] || continue
-                mkdir -p "$(dirname "${QDIR}/${f}")"
-                mv "${AUDIT_ARCHIVE_PATH}/${f}" "${QDIR}/${f}"
-            done
+            to_move+=("$rel" "${rel}.sig")
+            [[ -n "$file" ]] && to_move+=("$file")
             moved+=("${rel}")
-        done < <(find "${AUDIT_ARCHIVE_PATH}" -path "${AUDIT_ARCHIVE_PATH}/quarantine" -prune -o \
-                    -type f -name '*.manifest.json' -print | sort)
+        done <<<"${audit_list}"
         if (( ${#moved[@]} > 0 )); then
             list="$(printf '%s\n' "${moved[@]}" | sed 's/.*/"&"/' | paste -sd, -)"
-            printf '{"restored_from":%s,"at":"%s","reason":%s,"moved":[%s]}\n' \
+            restore_json="$(printf '{"restored_from":%s,"at":"%s","reason":%s,"moved":[%s]}' \
                 "$(json_str "$(basename "${BACKUP_PATH}")")" "${QTS}" \
                 "$(json_str "exports the restored audit_exports does not list (exported after the backup, or not matching it)")" \
-                "${list}" >"${QDIR}/RESTORE.json"
+                "${list}")"
+            printf '%s\n' "${to_move[@]}" | audit_archive_quarantine "${QTS}" "${restore_json}" \
+                || die "moving audit exports to ${QDIR} failed"
             # A record in the restored log itself (the insert trigger stamps the time).
             # psql interpolates :'detail' (quoted safely) only in SQL read from stdin, not -c.
             # shellcheck disable=SC2016  # the :'detail' is psql's, not the shell's
