@@ -143,6 +143,11 @@ teardown() {
             docker run --rm --user 0 -v "${WORK}/os-snapshots:/s" --entrypoint /bin/sh "${MC_IMAGE}" \
                 -c 'rm -rf /s/* /s/.[!.]* 2>/dev/null; true' >/dev/null 2>&1 || true
         fi
+        # The audit archive may still be the worker's (10001, 0750) if the drill stopped early.
+        if [[ -d "${WORK}/audit-archive" ]]; then
+            docker run --rm --user 0 -v "${WORK}/audit-archive:/a" --entrypoint /bin/sh "${MC_IMAGE}" \
+                -c 'rm -rf /a/* /a/.[!.]* 2>/dev/null; true' >/dev/null 2>&1 || true
+        fi
         rm -rf "${WORK}" 2>/dev/null || log "WARN" "could not remove ${WORK} entirely; delete it by hand"
     fi
     if (( rc != 0 )); then
@@ -376,6 +381,29 @@ AUDIT_BEFORE="$("${AUDIT_PY}" "${HERE}/drill_audit_archive.py" verify "${AUDIT_A
 psql_as "${PG_USER}" "${PG_DB}" "
     create table audit_exports (day date, seq int, manifest_sha256 text, key_id text, primary key (day, seq));
     insert into audit_exports values $("${AUDIT_PY}" "${HERE}/drill_audit_archive.py" rows "${AUDIT_ARCHIVE_PATH}");"
+
+# As on a real host (roles/tn_base): the archive is the worker's, 10001:10001, directories
+# 0750 and files 0640, and backup.sh / restore.sh run as another, unprivileged user (this
+# one), which cannot read it. They must go through their root container (lib.sh "The audit
+# export archive"); the drill hands the archive to itself only for its own checks.
+# shellcheck disable=SC2016 # expanded by the container's sh
+archive_as() {
+    docker run --rm --network none --user 0:0 -v "${AUDIT_ARCHIVE_PATH}:/archive" \
+        --entrypoint sh "$(arc2_tar_image)" -c 'set -eu; chown -R "$1" /archive
+            find /archive -type d -exec chmod 0750 {} +; find /archive -type f -exec chmod 0640 {} +' \
+        archive-as "$1"
+}
+archive_as 10001:10001
+AUDIT_PERMS="archive 10001:10001 0750, backup and restore as uid $(id -u)"
+AUDIT_OWNER_WANT=10001:10001   # what backup.sh must record and restore.sh must leave
+if [[ "$(id -u)" != 0 ]] && ls "${AUDIT_ARCHIVE_PATH}" >/dev/null 2>&1; then
+    # Docker Desktop's file sharing does not apply container chowns to the host's view.
+    [[ "$(uname -s)" == Linux ]] && die "uid $(id -u) can still read the archive after archive_as 10001: the permission case is not exercised"
+    AUDIT_PERMS="NOT exercised: this host's file sharing ignores the container's chown"
+    AUDIT_OWNER_WANT="$(docker run --rm --network none --user 0:0 -v "${AUDIT_ARCHIVE_PATH}:/archive:ro" \
+        --entrypoint stat "$(arc2_tar_image)" -c %u:%g /archive)"
+    log "WARN" "  audit: ${AUDIT_PERMS}"
+fi
 snapshot >"${WORK}/before.txt"
 
 # ── 3. Backup ────────────────────────────────────────────────────────────────
@@ -385,11 +413,13 @@ BACKUP="$(find "${BACKUP_DIR}" -mindepth 1 -maxdepth 1 -type d -name 'truenorth-
 [[ -n "${BACKUP}" ]] || die "backup.sh produced no backup directory"
 grep -q '"audit_archive": {"status":"backed-up","dir":"audit-archive","files":[0-9]*,"manifests":5,' "${BACKUP}/manifest.json" \
     || die "the backup's manifest does not record a verified audit archive of 5 manifests"
-grep -q '"db_checked":true,"not_in_db":0,"verified":true}' "${BACKUP}/manifest.json" \
-    || die "backup.sh did not verify the audit archive against audit_exports"
+grep -q "\"db_checked\":true,\"not_in_db\":0,\"verified\":true,\"owner\":\"${AUDIT_OWNER_WANT}\"}" "${BACKUP}/manifest.json" \
+    || die "backup.sh did not verify the audit archive against audit_exports (or record its owner)"
 # The worker exports another day after the backup: the live archive is now newer than it.
+archive_as "$(id -u):$(id -g)"
 "${AUDIT_PY}" "${HERE}/drill_audit_archive.py" extend "${AUDIT_ARCHIVE_PATH}" >/dev/null \
     || die "extending the audit archive failed"
+archive_as 10001:10001
 
 # ── 4. Wipe ──────────────────────────────────────────────────────────────────
 log "INFO" "Wipe (down -v) and bring up empty..."
@@ -412,6 +442,16 @@ snapshot >"${WORK}/after.txt"
 if ! diff -u "${WORK}/before.txt" "${WORK}/after.txt" >&2; then
     die "restored state differs from the seeded state"
 fi
+# The restore wrote the archive (and its quarantine) as the worker's, without loosening it.
+# shellcheck disable=SC2016 # expanded by the container's sh
+perm_problems="$(docker run --rm --network none --user 0:0 -v "${AUDIT_ARCHIVE_PATH}:/archive:ro" \
+    --entrypoint sh "$(arc2_tar_image)" -c '
+        u="${1%:*}"; g="${1#*:}"
+        [ "$(stat -c %u:%g:%a /archive)" = "$1:750" ] || echo "archive dir: $(stat -c %u:%g:%a /archive)"
+        find /archive \( ! -user "$u" -o ! -group "$g" -o -perm -o=r \) -printf "%P %u:%g %m\n" | head -n 5' \
+    perm-check "${AUDIT_OWNER_WANT}")"
+[[ -z "${perm_problems}" ]] || die "the restored audit archive is not the worker's 0750: ${perm_problems}"
+archive_as "$(id -u):$(id -g)"
 # The audit archive came back whole: signatures, hashes and the chain (worker.audit_verify).
 AUDIT_AFTER="$("${AUDIT_PY}" "${HERE}/drill_audit_archive.py" verify "${AUDIT_ARCHIVE_PATH}")" \
     || die "the restored audit archive does not verify: ${AUDIT_AFTER}"
@@ -446,6 +486,7 @@ grep -q 'ALERT\|ERROR' "${WORK}/fail.err" || die "backup.sh failure produced no 
 cp -a "${AUDIT_ARCHIVE_PATH}" "${WORK}/audit-archive.good"
 tampered="$(find "${AUDIT_ARCHIVE_PATH}" -name '*.jsonl.gz' | sort | head -n 1)"
 printf 'x' >>"${tampered}"
+archive_as 10001:10001
 sleep 1  # distinct timestamp
 set +e
 # No OpenSearch snapshot for this one: with OPENSEARCH_SNAPSHOT_KEEP=2 it would prune the
@@ -455,6 +496,7 @@ audit_rc=$?
 set -e
 (( audit_rc == 6 )) || die "backup.sh with a tampered audit archive exited ${audit_rc}, not 6"
 grep -q 'audit export archive does NOT verify' "${WORK}/audit-fail.err" || die "no alert for the tampered audit archive"
+archive_as "$(id -u):$(id -g)"
 rm -rf "${AUDIT_ARCHIVE_PATH}" && mv "${WORK}/audit-archive.good" "${AUDIT_ARCHIVE_PATH}"
 # Not the latest backup for what follows: step 8 restores ${BACKUP} by name.
 
@@ -581,7 +623,8 @@ fi
     echo "escrow: decrypts to the original env file; TN_SECRETS_KEY not in plain text"
     echo "second backup after restore: ok; failure path: exit ${fail_rc} with alert"
     echo "audit archive: 5 signed exports backed up and verified against audit_exports, restored, chain re-verified;"
-    echo "  a day exported after the backup quarantined (kept) by the restore; tampered copy exits 6"
+    echo "  a day exported after the backup quarantined (kept) by the restore; tampered copy exits 6;"
+    echo "  ${AUDIT_PERMS}"
     echo "reinstalled host: escrowed secrets restored over fresh ones (refused without --force),"
     echo "  data restored, restored DB passwords authenticate over TCP and the fresh ones do not"
     echo "opensearch: ${OS_SUMMARY}"

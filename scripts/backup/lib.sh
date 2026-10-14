@@ -428,3 +428,89 @@ audit_db_rows() {
         "select day::text || '|' || seq || '|' || manifest_sha256 || '|' || key_id from audit_exports order by day, seq" \
         </dev/null | tr -d '\r' >"$out"
 }
+
+# ── The audit export archive, through a root container ─────────────────────────────
+# AUDIT_ARCHIVE_PATH belongs to the worker that writes it (10001:10001, 0750, roles/tn_base);
+# backup.sh and restore.sh run as the installer's user, which may not read it (staging:
+# "cp: cannot stat '/srv/truenorth/audit-archive/.': Permission denied"). As for the ARC²
+# runs, a throwaway root container of the platform's postgres image does the reading and
+# writing, with no network and the archive read-only unless it writes: owners and modes
+# are kept, and the archive's 0750 is never loosened. AUDIT_TOOL_IMAGE overrides the image.
+
+# audit_archive_tool <ro|rw> <script> [args...] — run <script> with sh in that container,
+# the archive at /archive; stdin and stdout pass through.
+audit_archive_tool() {
+    local mode="$1" script="$2" mnt
+    shift 2
+    mnt="${AUDIT_ARCHIVE_PATH}:/archive"
+    [[ "$mode" == ro ]] && mnt+=":ro"
+    docker run --rm -i --network none --user 0:0 -v "$mnt" \
+        --entrypoint sh "${AUDIT_TOOL_IMAGE:-$(arc2_tar_image)}" -c "$script" audit-archive "$@"
+}
+
+# audit_archive_read <dest dir> — the archive's files into <dest> (which this user owns),
+# modes kept; the worker's half-written *.tmp files are left out.
+audit_archive_read() {
+    local dest="$1"
+    audit_archive_tool ro 'tar -C /archive --numeric-owner -cf - .' </dev/null \
+        | tar -C "$dest" --no-same-owner -xpf - || return 1
+    find "$dest" -type f -name '*.tmp' -delete
+}
+
+# audit_archive_owner — "uid:gid" of the archive directory.
+audit_archive_owner() {
+    audit_archive_tool ro 'stat -c %u:%g /archive' </dev/null | tr -d '\r'
+}
+
+# audit_archive_write <src dir> [owner] — <src>'s files over the archive (theirs win; files
+# only in the archive stay). Everything in the archive then belongs to <owner>, by default
+# the archive directory's own owner; with <owner> given (a directory just made) it also
+# becomes 0750.
+audit_archive_write() {
+    local src="$1" owner="${2:-}"
+    # COPYFILE_DISABLE: macOS tar would add AppleDouble ._ files (the drill on a Mac).
+    # shellcheck disable=SC2016 # expanded by the container's sh
+    COPYFILE_DISABLE=1 tar -C "$src" -cf - . | audit_archive_tool rw '
+        set -eu
+        umask 027
+        o="${1:-$(stat -c %u:%g /archive)}"
+        tar -C /archive --no-same-owner -xpf -
+        chown -R "$o" /archive
+        if [ -n "${1:-}" ]; then chmod 0750 /archive; fi' "$owner"
+}
+
+# audit_archive_manifests — every manifest outside quarantine/, one line each:
+# "<relative path><TAB><sha256 of the manifest><TAB><its "file" field>".
+audit_archive_manifests() {
+    # shellcheck disable=SC2016 # expanded by the container's sh
+    audit_archive_tool ro '
+        set -eu
+        cd /archive
+        find . -path ./quarantine -prune -o -type f -name "*.manifest.json" -print | sort \
+        | while IFS= read -r m; do
+            m="${m#./}"
+            s="$(sha256sum "$m" | cut -d" " -f1)"
+            f="$(sed -n "s/.*\"file\":\"\([^\"]*\)\".*/\1/p" "$m")"
+            printf "%s\t%s\t%s\n" "$m" "$s" "$f"
+        done' </dev/null | tr -d '\r'
+}
+
+# audit_archive_quarantine <stamp> <RESTORE.json text> — move the relative paths read from
+# stdin (already checked by the caller) under quarantine/<stamp>/, keeping their layout,
+# write RESTORE.json there, and give it all to the archive's owner.
+audit_archive_quarantine() {
+    # shellcheck disable=SC2016 # expanded by the container's sh
+    audit_archive_tool rw '
+        set -eu
+        umask 027
+        o="$(stat -c %u:%g /archive)"
+        q="/archive/quarantine/$1"
+        mkdir -p "$q"
+        while IFS= read -r f; do
+            [ -n "$f" ] && [ -e "/archive/$f" ] || continue
+            mkdir -p "$(dirname "$q/$f")"
+            mv -- "/archive/$f" "$q/$f"
+        done
+        printf "%s\n" "$2" >"$q/RESTORE.json"
+        chown -R "$o" /archive/quarantine' "$1" "$2"
+}

@@ -37,6 +37,41 @@ pytestmark = pytest.mark.skipif(
 FAKE_DOCKER = r"""#!/usr/bin/env bash
 printf '%s\n' "$*" >> "$FAKE_LOG"
 all="$*"
+if [ "$1" = run ] && [[ "$all" == *":/archive"* ]]; then   # lib.sh audit_archive_tool
+    host=""; prev=""; script=""; args=()
+    for a in "$@"; do
+        [ "$prev" = "-v" ] && { host="${a%%:/archive*}"; }
+        [ "$prev" = "-c" ] && script="$a"
+        prev="$a"
+    done
+    seen=0
+    for a in "$@"; do
+        if (( seen )); then args+=("$a"); fi
+        [ "$a" = audit-archive ] && seen=1
+    done
+    case "$script" in
+        *"--numeric-owner -cf - ."*) COPYFILE_DISABLE=1 tar -C "$host" -cf - . ;;
+        *"stat -c %u:%g /archive"*"tar -C /archive --no-same-owner -xpf -"*) mkdir -p "$host"; tar -C "$host" -xpf - ;;
+        *'q="/archive/quarantine/$1"'*)
+            q="$host/quarantine/${args[0]}"; mkdir -p "$q"
+            while IFS= read -r f; do
+                [ -n "$f" ] && [ -e "$host/$f" ] || continue
+                mkdir -p "$(dirname "$q/$f")"; mv -- "$host/$f" "$q/$f"
+            done
+            printf '%s\n' "${args[1]}" > "$q/RESTORE.json" ;;
+        *"sha256sum"*)
+            (cd "$host" && find . -path ./quarantine -prune -o -type f -name '*.manifest.json' -print | sort \
+             | while IFS= read -r m; do
+                m="${m#./}"
+                s="$(openssl dgst -sha256 -r "$m" | cut -d' ' -f1)"
+                f="$(sed -n 's/.*"file":"\([^"]*\)".*/\1/p' "$m")"
+                printf '%s\t%s\t%s\n' "$m" "$s" "$f"
+             done) ;;
+        *"stat -c %u:%g /archive"*) echo 10001:10001 ;;
+        *) echo "fake docker: unhandled archive script: $script" >&2; exit 99 ;;
+    esac
+    exit $?
+fi
 if [ "$1" = run ]; then   # mc_run
     host=""; prev=""
     for a in "$@"; do [ "$prev" = "-v" ] && host="${a%%:/backup}"; prev="$a"; done
