@@ -1,0 +1,154 @@
+---
+# Post-install acceptance (scripts/staging_acceptance.py), run by the OPERATOR on the host.
+#
+#   ansible-playbook -i inventory/staging.yml playbooks/acceptance.yml -K --ask-vault-pass
+#
+# Not in site.yml. It needs root (-K) for three things, so nobody else needs sudo or the
+# Keycloak admin password to run the full suite:
+#   * the suite's output directory, {{ tn_data_root }}/acceptance (uid 10001, 0700: the api
+#     container's user writes the JSON report there);
+#   * the Keycloak admin credential, read from this host's persisted secret
+#     ({{ tn_config_dir }}/secrets/keycloak_admin_password) and handed to the one-off
+#     container in its environment only (no_log; never on a command line, never echoed);
+#   * the reports the operator reads: {{ tn_data_root }}/acceptance-reports/latest.txt (the
+#     table) and latest.json, plus a timestamped copy of each, group-readable by the
+#     operator's own group (tn_acceptance_report_group).
+#
+# The suite runs as docs/runbooks/staging-acceptance.md describes: in a one-off api container,
+# the host's checkout read-only at /srcapp, the config directory read-only at /hostcfg (for
+# backup.env), as tn_bootstrap_admin_upn, with --strict by default, and with the vCenter (on
+# staging the simulator, playbooks/lab-vcenter-sim.yml) for when no connection is registered.
+# The play FAILS when any check FAILs (exit 1) or the suite cannot start (exit 2), after the
+# reports are written. Variables (all optional):
+#   tn_acceptance_strict (true), tn_acceptance_skip_profile (staging),
+#   tn_acceptance_extra_args (e.g. "--moodle-course C105"), tn_acceptance_vsphere_url
+#   (https://tn_vcenter_host:tn_vcenter_port when a vCenter is configured, else none),
+#   tn_acceptance_report_group (the operator's primary group).
+- name: "Post-install acceptance (staging_acceptance.py)"
+  hosts: platform
+  gather_facts: false
+  become: true
+  tags: [acceptance]
+  vars:
+    tn_acceptance_out_dir: "{{ tn_data_root }}/acceptance"
+    tn_acceptance_report_dir: "{{ tn_data_root }}/acceptance-reports"
+    tn_acceptance_strict: true
+    tn_acceptance_skip_profile: staging
+    tn_acceptance_extra_args: ""
+    tn_acceptance_vsphere_url: >-
+      {{ ('https://' ~ tn_vcenter_host ~ ':' ~ (tn_vcenter_port | default(443)))
+         if (tn_uses_vcenter | default(true) | bool) and (tn_vcenter_host | default('') | length > 0) else '' }}
+
+  tasks:
+    # Once: a play var holding now() would be a new time at each use.
+    - name: Acceptance — this run's timestamp
+      ansible.builtin.set_fact:
+        tn_acceptance_stamp: "{{ now(utc=true, fmt='%Y%m%dT%H%M%SZ') }}"
+
+    - name: Acceptance — the administrator to run as
+      ansible.builtin.assert:
+        that: tn_bootstrap_admin_upn | default('') | length > 0
+        fail_msg: tn_bootstrap_admin_upn is not set; the suite runs as that administrator.
+        quiet: true
+
+    - name: Acceptance — the operator's group (reads the reports)
+      ansible.builtin.command: id -gn
+      become: false
+      register: tn_acceptance_operator_group
+      changed_when: false
+      when: tn_acceptance_report_group is not defined
+
+    - name: Acceptance — output directory for the api container (uid 10001)
+      ansible.builtin.file:
+        path: "{{ tn_acceptance_out_dir }}"
+        state: directory
+        owner: "10001"
+        group: "10001"
+        mode: "0700"
+
+    - name: Acceptance — report directory for the operator
+      ansible.builtin.file:
+        path: "{{ tn_acceptance_report_dir }}"
+        state: directory
+        owner: root
+        group: "{{ tn_acceptance_report_group | default(tn_acceptance_operator_group.stdout) }}"
+        mode: "0750"
+
+    - name: Acceptance — Keycloak admin credential (this host's persisted secret)
+      ansible.builtin.slurp:
+        src: "{{ tn_config_dir }}/secrets/keycloak_admin_password"
+      register: tn_acceptance_kc
+      no_log: true
+
+    # The credentials go to `docker compose` in its environment, and from there to the
+    # container by name (-e NAME, no value): never in argv, so never in `ps` or this log.
+    - name: Acceptance — run the suite
+      ansible.builtin.command:
+        argv: >-
+          {{ ['docker', 'compose', '-f', tn_compose_file, '--env-file', tn_env_file,
+              'run', '--rm', '--no-deps', '-T', '-w', '/app', '-e', 'PYTHONPATH=/app',
+              '-e', 'KEYCLOAK_ADMIN_USER', '-e', 'KEYCLOAK_ADMIN_PASSWORD', '-e', 'ACCEPTANCE_VSPHERE_PASSWORD',
+              '-v', tn_app_dir ~ ':/srcapp:ro', '-v', tn_config_dir ~ ':/hostcfg:ro',
+              '-v', tn_acceptance_out_dir ~ ':/out',
+              '--entrypoint', 'python', 'api', '/srcapp/scripts/staging_acceptance.py',
+              '--admin', tn_bootstrap_admin_upn, '--host-config', '/hostcfg',
+              '--json', '/out/acceptance-' ~ tn_acceptance_stamp ~ '.json']
+             + (['--strict', '--skip-profile', tn_acceptance_skip_profile] if tn_acceptance_strict | bool else [])
+             + (['--vsphere-url', tn_acceptance_vsphere_url, '--vsphere-user', tn_vcenter_user | default('')]
+                if tn_acceptance_vsphere_url | length > 0 else [])
+             + (['--vsphere-insecure'] if tn_acceptance_vsphere_url | length > 0
+                and not (tn_vsphere_verify_ssl | default(true) | bool) else [])
+             + (tn_acceptance_extra_args | split if tn_acceptance_extra_args | length > 0 else []) }}
+        chdir: "{{ tn_app_dir }}/infra/platform/docker"
+      environment:
+        KEYCLOAK_ADMIN_USER: "{{ vault_keycloak_admin_user | default('admin') }}"
+        KEYCLOAK_ADMIN_PASSWORD: "{{ tn_acceptance_kc.content | b64decode | trim }}"
+        ACCEPTANCE_VSPHERE_PASSWORD: "{{ vault_vsphere_password | default('') }}"
+      register: tn_acceptance_run
+      changed_when: true
+      failed_when: false
+      no_log: true
+
+    - name: Acceptance — reports (timestamped, and latest)
+      ansible.builtin.copy:
+        content: "{{ item.content }}"
+        dest: "{{ tn_acceptance_report_dir }}/{{ item.name }}"
+        owner: root
+        group: "{{ tn_acceptance_report_group | default(tn_acceptance_operator_group.stdout) }}"
+        mode: "0640"
+      loop:
+        - { name: "acceptance-{{ tn_acceptance_stamp }}.txt", content: "{{ tn_acceptance_run.stdout | default('') }}\n" }
+        - { name: latest.txt, content: "{{ tn_acceptance_run.stdout | default('') }}\n" }
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: Acceptance — JSON report present
+      ansible.builtin.stat:
+        path: "{{ tn_acceptance_out_dir }}/acceptance-{{ tn_acceptance_stamp }}.json"
+      register: tn_acceptance_json
+
+    - name: Acceptance — JSON report for the operator
+      ansible.builtin.copy:
+        src: "{{ tn_acceptance_out_dir }}/acceptance-{{ tn_acceptance_stamp }}.json"
+        dest: "{{ tn_acceptance_report_dir }}/{{ item }}"
+        remote_src: true
+        owner: root
+        group: "{{ tn_acceptance_report_group | default(tn_acceptance_operator_group.stdout) }}"
+        mode: "0640"
+      loop: ["acceptance-{{ tn_acceptance_stamp }}.json", latest.json]
+      when: tn_acceptance_json.stat.exists
+
+    - name: Acceptance — result
+      ansible.builtin.debug:
+        msg: "{{ (tn_acceptance_run.stdout | default('')).splitlines() + (tn_acceptance_run.stderr | default('')).splitlines()[-20:] }}"
+
+    - name: Acceptance — every check passed
+      ansible.builtin.assert:
+        that: tn_acceptance_run.rc | default(2) == 0
+        fail_msg: >-
+          {{ 'At least one check FAILED' if tn_acceptance_run.rc | default(2) == 1
+             else 'The suite could not start (exit ' ~ (tn_acceptance_run.rc | default('?')) ~ ')' }}.
+          Report: {{ tn_acceptance_report_dir }}/latest.txt
+          {{- ' and latest.json' if tn_acceptance_json.stat.exists else '' }}
+          (docs/runbooks/staging-acceptance.md "When a check fails").
+        success_msg: "All checks passed. Report: {{ tn_acceptance_report_dir }}/latest.txt"

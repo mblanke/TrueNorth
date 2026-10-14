@@ -914,6 +914,11 @@ def core_keycloak_links(ctx: Ctx) -> str:
 # ══ web-shell ═══════════════════════════════════════════════════════════
 
 
+# The Angular shell's root element: index.html's <tn-root> (AppComponent's selector). The
+# contract test tests/scripts/test_staging_acceptance.py reads both and fails on drift.
+SPA_ROOT_SELECTOR = "tn-root"
+
+
 @check("web-shell", "SPA served through nginx")
 def web_spa(ctx: Ctx) -> str:
     for path in ("/", "/dashboard", "/learning/courses"):
@@ -921,7 +926,7 @@ def web_spa(ctx: Ctx) -> str:
         expect(
             r.status_code == 200 and "text/html" in r.headers.get("content-type", ""), f"edge {path} => {r.status_code}"
         )
-        expect("<app-root" in r.text, f"edge {path} is not the Angular shell")
+        expect(f"<{SPA_ROOT_SELECTOR}" in r.text, f"edge {path} is not the Angular shell (no <{SPA_ROOT_SELECTOR}>)")
     return "/, /dashboard and /learning/courses serve the Angular shell"
 
 

@@ -352,6 +352,9 @@ ranges are simulated. Or run a simulated, read-only vCenter on the host first
 does, so the hypervisor dashboards have an inventory. It builds no VM.
 Its AI endpoint is an Open WebUI (`tn_ai_base_url: https://…/api`), so set
 `tn_ai_default_model` and `tn_ai_embed_model` to ids from that server's `/api/models`.
+The orchestrator's per-task models (`tn_ai_heavy_model`, `tn_ai_general_model`,
+`tn_ai_code_model`) follow `tn_ai_default_model` unless set; `99-validate` fails when the
+endpoint does not list one of them (the report's `ai models` line).
 
 ## AD test domain (CI) and AD on staging
 

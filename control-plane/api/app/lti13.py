@@ -385,14 +385,10 @@ def _transient_status(code: int) -> bool:
 
 def _allow_private(db: Session, platform: ExternalPlatform) -> bool:
     """Server-side calls to a platform may reach a private address if it is one of
-    TrueNorth's own farm nodes (the installer registered it: app/moodle_farm), or where the
-    platform test probe may (``INTEGRATION_ALLOW_PRIVATE_URLS``, for every platform).
-    Loopback and link-local never (app/net_guard)."""
-    if os.getenv("INTEGRATION_ALLOW_PRIVATE_URLS", "false").strip().lower() in ("1", "true", "yes", "on"):
-        return True
-    from .moodle_farm.service import is_managed
+    TrueNorth's own farm nodes, or ``INTEGRATION_ALLOW_PRIVATE_URLS`` is on (app/moodle_farm)."""
+    from .moodle_farm.service import may_reach_private
 
-    return is_managed(db, platform)
+    return may_reach_private(db, platform)
 
 
 async def _guarded_post(db: Session, platform: ExternalPlatform, url: str, **kw) -> net_guard.Answer:

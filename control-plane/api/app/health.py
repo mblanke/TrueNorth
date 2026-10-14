@@ -325,14 +325,15 @@ class HealthChecker:
 
         Degraded when audit rows older than yesterday exist but the newest export is
         older than the day before yesterday: the worker's export (beat 00:45 UTC) is not
-        running, or has no AUDIT_SIGNING_SEED, or its archive refuses writes."""
+        running, or has no AUDIT_SIGNING_SEED, or its archive refuses writes. Never exported
+        at all is pending, not degraded, for FIRST_EXPORT_GRACE_S after this API started."""
         start = time.monotonic()
         try:
             from .db import SessionLocal
 
             db = SessionLocal()
             try:
-                status, message, details = audit_export_status(db)
+                status, message, details = audit_export_status(db, uptime_s=self.uptime)
             finally:
                 db.close()
             return ComponentHealth(name="audit_export", status=status,
@@ -383,8 +384,19 @@ class HealthChecker:
         )
 
 
-def audit_export_status(db) -> tuple[HealthStatus, str, dict]:
-    """(status, message, details) of the audit export, from audit_exports and audit_logs."""
+# A host with audit rows but no export at all was just installed, or upgraded to the release
+# that exports (staging, v1.2.0-rc7): beat's first run is the next 00:45 UTC, up to 24 h 45 min
+# after the stack starts. The installer runs the export once (99-validate), so this grace only
+# covers a stack started some other way. It is bounded, and it never applies once one day has
+# been exported: from then on a stale export is degraded at once.
+FIRST_EXPORT_GRACE_S = 26 * 3600
+
+
+def audit_export_status(db, uptime_s: float | None = None) -> tuple[HealthStatus, str, dict]:
+    """(status, message, details) of the audit export, from audit_exports and audit_logs.
+
+    ``uptime_s``, how long this API has been up: under FIRST_EXPORT_GRACE_S a host that has
+    never exported is healthy, with ``first_export_pending`` in the details."""
     from datetime import timedelta
 
     from sqlalchemy import func
@@ -405,6 +417,11 @@ def audit_export_status(db) -> tuple[HealthStatus, str, dict]:
     oldest_day = (oldest if oldest.tzinfo else oldest.replace(tzinfo=UTC)).astimezone(UTC).date()
     if latest is None and oldest_day >= today - timedelta(days=1):
         return HealthStatus.HEALTHY, "no finished day to export yet", details
+    if latest is None and uptime_s is not None and uptime_s < FIRST_EXPORT_GRACE_S:
+        return (HealthStatus.HEALTHY,
+                "first export pending: the daily export runs at 00:45 UTC; to run it now, "
+                "python -m worker.audit_export_now in worker-scenario",
+                details | {"first_export_pending": True})
     return (HealthStatus.DEGRADED,
             f"audit export behind: latest exported day {latest or 'none'}. worker-scenario's log names the "
             "cause: no or short AUDIT_SIGNING_SEED; archive not writable (uid 10001); or 'already exists "

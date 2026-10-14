@@ -113,6 +113,62 @@
       changed_when: false
       failed_when: false
 
+    # The daily export runs at 00:45 UTC; run it once now, so a host just installed or
+    # upgraded is exported through yesterday and deep health's audit_export is current
+    # straight away (staging, v1.2.0-rc7: degraded until the first night). Idempotent: it
+    # exports only days with no export yet. Fails the install below, after the report, if
+    # the export cannot run (no seed, archive not writable, archive ahead of the database).
+    - name: Validate — run the signed audit export once
+      ansible.builtin.command:
+        cmd: >-
+          docker compose -f {{ tn_compose_file }} --env-file {{ tn_env_file }}
+          exec -T worker-scenario python -m worker.audit_export_now
+        chdir: "{{ tn_app_dir }}/infra/platform/docker"
+      register: tn_audit_export_now
+      changed_when: >-
+        tn_audit_export_now.rc == 0 and '"exported": []' not in tn_audit_export_now.stdout
+      failed_when: false
+
+    # The orchestrator lists its own endpoint's models from inside its container, with the
+    # key it already holds: the key never reaches this play or its output. Every chat model
+    # it is configured with (OPENAI_DEFAULT_MODEL, AI_HEAVY/GENERAL/CODE_MODEL) must be
+    # listed; staging rc7 called models its router did not have and answered 502.
+    - name: Validate — AI orchestrator's models exist on its endpoint
+      ansible.builtin.command:
+        cmd: >-
+          docker compose -f {{ tn_compose_file }} --env-file {{ tn_env_file }}
+          exec -T ai-orchestrator python -
+        chdir: "{{ tn_app_dir }}/infra/platform/docker"
+        stdin: |
+          import json, os, sys, urllib.error, urllib.request
+          names = ("OPENAI_DEFAULT_MODEL", "AI_HEAVY_MODEL", "AI_GENERAL_MODEL", "AI_CODE_MODEL")
+          configured = {n: os.environ.get(n, "") for n in names}
+          base, key = os.environ.get("OPENAI_BASE_URL", "").rstrip("/"), os.environ.get("OPENAI_API_KEY", "")
+          req = urllib.request.Request(base + "/models", headers={"Authorization": "Bearer " + key} if key else {})
+          try:
+              with urllib.request.urlopen(req, timeout=20) as r:
+                  body = json.load(r)
+          except urllib.error.HTTPError as exc:
+              print(json.dumps({"error": f"HTTP {exc.code} from {base}/models", "configured": configured}))
+              sys.exit(0)
+          except Exception as exc:
+              print(json.dumps({"error": f"{type(exc).__name__} listing {base}/models", "configured": configured}))
+              sys.exit(0)
+          rows = body.get("data", []) if isinstance(body, dict) else []
+          ids = sorted({str(m.get("id")) for m in rows if isinstance(m, dict) and m.get("id")})
+          missing = sorted({v for v in configured.values() if v and v not in ids})
+          print(json.dumps({"models": ids, "configured": configured, "missing": missing}))
+      register: tn_ai_models_raw
+      changed_when: false
+      failed_when: false
+
+    - name: Validate — parse the AI model check
+      ansible.builtin.set_fact:
+        tn_ai_models: >-
+          {{ (tn_ai_models_raw.stdout | from_json)
+             if tn_ai_models_raw.rc | default(1) == 0 and (tn_ai_models_raw.stdout | default('')).startswith('{')
+             else {'error': 'the ai-orchestrator container did not answer (rc ' ~ (tn_ai_models_raw.rc | default('?')) ~ ')'} }}
+
     - name: Validate — REPORT
       ansible.builtin.debug:
         msg:
@@ -138,6 +194,15 @@
                if tn_arc2_enabled | default(false) | bool else ' arc2 studio   : off' }}
           - " cmi5          : {{ 'on, AU credential set' if tn_cmi5_enabled | bool else 'off (launches answer 503)' }}"
           - " audit key     : {{ tn_audit_key.stdout | default('') | trim or 'UNKNOWN (no AUDIT_SIGNING_SEED?)' }} (record it out of band)"
+          - >-
+            {{ ' audit export  : ' ~ ('current (' ~ (tn_audit_export_now.stdout | default('') | trim) ~ ')'
+               if tn_audit_export_now.rc | default(1) == 0
+               else 'FAILED: ' ~ (tn_audit_export_now.stderr | default('') | trim | truncate(200))) }}
+          - >-
+            {{ ' ai models     : ' ~ ('UNVERIFIED, ' ~ tn_ai_models.error if tn_ai_models.error is defined
+               else ('MISSING on the endpoint: ' ~ tn_ai_models.missing | join(', ') if tn_ai_models.missing
+                     else 'all listed (' ~ (tn_ai_models.configured | dict2items | map(attribute='value')
+                                             | unique | join(', ')) ~ ')')) }}
           - " env file      : {{ tn_env_file }}"
           - " data root     : {{ tn_data_root }}"
           - "──────────────────────────────────────────────────────────────"
@@ -166,3 +231,33 @@
           - " Next: sign in as {{ tn_bootstrap_admin_upn | default('the bootstrap admin') }},"
           - " then Users -> Approvals to admit the first cohort."
           - "══════════════════════════════════════════════════════════════"
+
+    # After the report, so a failed install still shows everything above.
+    - name: Validate — the signed audit export ran
+      ansible.builtin.assert:
+        that: tn_audit_export_now.rc | default(1) == 0
+        fail_msg: >-
+          The audit export could not run (worker-scenario: python -m worker.audit_export_now,
+          exit {{ tn_audit_export_now.rc | default('?') }}): {{ tn_audit_export_now.stderr | default('') | trim }}.
+          Exit 1: AUDIT_SIGNING_SEED is missing or short. Otherwise see
+          docs/runbooks/backup-restore.md ("Archive newer than the database") and that the
+          archive {{ tn_audit_archive_path | default('') }} is writable by uid 10001.
+        quiet: true
+
+    - name: Validate — the AI orchestrator's models exist on its endpoint
+      ansible.builtin.assert:
+        that: tn_ai_models.error is defined or (tn_ai_models.missing | default([]) | length == 0)
+        fail_msg: >-
+          {{ tn_ai_base_url }} does not serve {{ tn_ai_models.missing | default([]) | join(', ') }}
+          (it lists: {{ tn_ai_models.models | default([]) | join(', ') }}). Set tn_ai_default_model,
+          or tn_ai_heavy_model / tn_ai_general_model / tn_ai_code_model, to ids it lists, then
+          re-run playbooks/30-config.yml and 50-stack-up.yml.
+        quiet: true
+
+    - name: Validate — WARNING, the AI models could not be checked
+      ansible.builtin.debug:
+        msg: >-
+          WARNING: the AI orchestrator could not list its endpoint's models ({{ tn_ai_models.error }}),
+          so its configured models ({{ tn_ai_models.configured | default({}) | dict2items
+          | map(attribute='value') | unique | join(', ') }}) are unverified.
+      when: tn_ai_models.error is defined

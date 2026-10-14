@@ -15,6 +15,7 @@ import pytest
 from _shared import act_as, real_tenant, real_user
 from app import net_guard
 from app.models import ExternalPlatform, IntegrationAuthType, UserRole
+from app.moodle_farm import service as farm
 from app.routers.integrations import PROBE_REFUSED, PROBE_UNREACHABLE
 
 PUBLIC_IP = "93.184.216.34"
@@ -123,3 +124,46 @@ def test_private_platforms_need_the_explicit_flag(client, platform, network, mon
 
     assert client.post(f"/integrations/platforms/{platform.id}/test").json()["reachable"] is True
     assert connects == [("10.0.0.5", 80)]
+
+
+# ── TrueNorth's own Moodle farm nodes (#140; staging acceptance lms / Moodle platform reachable) ──
+
+
+def test_a_farm_node_is_probed_at_its_private_address_without_the_flag(client, platform, network, monkeypatch,
+                                                                      db_session):
+    """The installer registers a farm node at its internal address (http://moodle-default:8080).
+    Grade passback may reach it (lti13); the probe has the same allowance."""
+    monkeypatch.delenv("INTEGRATION_ALLOW_PRIVATE_URLS", raising=False)
+    platform.base_url = "http://moodle-default:8080"
+    farm.mark(db_session, platform, "default", "test")
+    connects = network(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n")
+    monkeypatch.setattr(net_guard, "_resolve", _resolve_to("172.18.0.9"))
+
+    body = client.post(f"/integrations/platforms/{platform.id}/test").json()
+
+    assert body == {"platform_id": str(platform.id), "reachable": True, "status_code": 200}
+    assert connects == [("172.18.0.9", 8080)]
+
+
+@pytest.mark.parametrize("ip", ["127.0.0.1", "169.254.169.254"])
+def test_a_farm_node_never_reaches_loopback_or_link_local(client, platform, network, monkeypatch, db_session, ip):
+    monkeypatch.delenv("INTEGRATION_ALLOW_PRIVATE_URLS", raising=False)
+    farm.mark(db_session, platform, "default", "test")
+    connects = network(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n")
+    monkeypatch.setattr(net_guard, "_resolve", _resolve_to(ip))
+
+    assert client.post(f"/integrations/platforms/{platform.id}/test").json()["error"] == PROBE_REFUSED
+    assert connects == []
+
+
+def test_only_farm_nodes_have_the_allowance(client, platform, network, monkeypatch, db_session):
+    """A platform that is not (or no longer: its address changed through the API) a farm node
+    is refused a private address, as before."""
+    monkeypatch.delenv("INTEGRATION_ALLOW_PRIVATE_URLS", raising=False)
+    farm.mark(db_session, platform, "default", "test")
+    farm.unmark(db_session, platform.id)
+    connects = network(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n")
+    monkeypatch.setattr(net_guard, "_resolve", _resolve_to("10.0.0.5"))
+
+    assert client.post(f"/integrations/platforms/{platform.id}/test").json()["error"] == PROBE_REFUSED
+    assert connects == []

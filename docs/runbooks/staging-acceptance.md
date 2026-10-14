@@ -10,7 +10,44 @@ per module (17), each through the API's own routes, permission checks, CSRF and 
 with the installed stack's real services behind them (PostgreSQL, Redis, OpenSearch, MinIO,
 the LRS, the AI orchestrator, the Celery workers, the registered Moodle). Nothing is mocked.
 
-## Run it
+## Run it (operator, from the installer)
+
+The full suite, with the optional checks on and the reports kept, is one playbook. The
+**operator** runs it from `install/` on the control machine; `-K` is their own sudo password
+on the host. Nobody else needs sudo or the Keycloak admin password:
+
+```bash
+cd install
+ansible-playbook -i inventory/staging.yml playbooks/acceptance.yml -K --ask-vault-pass
+```
+
+(`--ask-vault-pass` because the inventory's group_vars hold the vault, as for `site.yml`; the
+vault's `vault_vsphere_password` is the temporary vCenter connection's password, used only
+when no connection is registered.) What it does, as root on the host:
+
+1. creates `/srv/truenorth/acceptance` (owner uid 10001, `0700`), the api container's `/out`,
+   and `/srv/truenorth/acceptance-reports` (`root:<operator's group>`, `0750`);
+2. reads the Keycloak admin credential from the host's persisted secret
+   (`/srv/truenorth/config/secrets/keycloak_admin_password`) and hands it to the one-off
+   container in its environment only (`no_log`, `-e KEYCLOAK_ADMIN_PASSWORD` by name: never on
+   a command line, never echoed);
+3. runs the suite as below, as `tn_bootstrap_admin_upn`, with `/srv/truenorth/config` mounted
+   read-only at `/hostcfg` (`--host-config /hostcfg`), `--strict --skip-profile staging`,
+   `--json /out/acceptance-<UTC timestamp>.json`, and `--vsphere-url
+   https://<tn_vcenter_host>:<tn_vcenter_port>` (staging: the simulator,
+   `playbooks/lab-vcenter-sim.yml`; `--vsphere-insecure` when `tn_vsphere_verify_ssl` is false);
+4. writes the table to `/srv/truenorth/acceptance-reports/latest.txt` and the JSON to
+   `latest.json`, plus `acceptance-<timestamp>.txt` / `.json` copies, mode `0640`, readable
+   by the operator without sudo (`cat /srv/truenorth/acceptance-reports/latest.txt`);
+5. prints the table, and **fails** when any check FAILs (suite exit 1) or the suite cannot
+   start (exit 2): after the reports are written.
+
+Variables (`-e`): `tn_acceptance_strict` (default `true`), `tn_acceptance_skip_profile`
+(`staging`), `tn_acceptance_extra_args` (e.g. `"--moodle-course C105"` or `"--modules lms"`),
+`tn_acceptance_vsphere_url` (empty: no temporary connection), `tn_acceptance_report_group`
+(default: the operator's primary group).
+
+## Run it by hand
 
 On the host, from the compose directory, as the bootstrap administrator:
 
@@ -188,6 +225,23 @@ Moodle grades), and leaves them enrolled on the course. Anything cleanup could n
 
 ## When a check fails
 
+- **infra deep health: `audit export behind: latest exported day none`.** The host has audit
+  rows but has never exported. The installer runs the export once at the end of every install
+  and upgrade (99-validate, "audit export" in the report), and deep health treats "never
+  exported" as pending (`first_export_pending`) for 26 h after the API starts; past that, or
+  when 99-validate's export failed, it is real. Run it now and read its error:
+  `docker compose -f compose.prod.yml --env-file /srv/truenorth/config/.env.production exec -T
+  worker-scenario python -m worker.audit_export_now` (exit 1: no or short
+  `AUDIT_SIGNING_SEED`; exit 2: the export failed, the reason on stderr).
+- **ai-arc2: 502, the orchestrator logs `POST …/chat/completions 400`.** It called a model the
+  endpoint does not serve. The install report's `ai models` line lists what is missing;
+  set `tn_ai_default_model` (and `tn_ai_heavy_model` / `tn_ai_general_model` /
+  `tn_ai_code_model` if they differ) to ids the endpoint lists, re-run
+  `playbooks/30-config.yml` and `50-stack-up.yml`.
+- **lms: `Moodle platform reachable` refused ("must point at an allowed address").** The
+  platform is at a private address and is not a farm node the installer registered (only
+  those may reach private addresses without `INTEGRATION_ALLOW_PRIVATE_URLS`). Re-run
+  `playbooks/85-moodle.yml`, which marks it again after an API edit unmarked it.
 - **detection: `0 events matched`.** Detection credit is windowed on `truenorth.ingested_at`,
   stamped by OpenSearch's ingest pipeline. Re-run the bootstrap the installer runs
   (`python -m telemetry.pipelines.bootstrap`, role `tn_telemetry`).

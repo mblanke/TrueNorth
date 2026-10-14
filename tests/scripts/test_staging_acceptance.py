@@ -537,3 +537,38 @@ def test_the_acceptance_scenario_scores_what_the_checks_expect():
 
     assert [e["action"] for e in doc["timeline"]] == [SimulatedExecutionInjector.name]
     assert SimulatedExecutionInjector.touches_range_hosts is False
+
+
+# ── web-shell: the SPA's root element (staging, v1.2.0-rc7: the check looked for <app-root>) ──
+
+INDEX_HTML = ROOT / "control-plane/web/src/index.html"
+
+
+class _Html:
+    status_code = 200
+    headers = {"content-type": "text/html; charset=utf-8"}
+
+    def __init__(self, text: str) -> None:
+        self.text = text
+
+
+def test_the_spa_root_selector_is_the_shells_own():
+    """The check's selector is the one custom element index.html's body bootstraps, and AppComponent's."""
+    import re
+
+    body = re.search(r"<body[^>]*>(.*?)</body>", INDEX_HTML.read_text(encoding="utf-8-sig"), re.S).group(1)
+    assert re.findall(r"<([a-z][a-z0-9]*-[a-z0-9-]*)[\s>]", body) == [acc.SPA_ROOT_SELECTOR]
+    app = (ROOT / "control-plane/web/src/app/app.component.ts").read_text(encoding="utf-8")
+    assert f"selector: '{acc.SPA_ROOT_SELECTOR}'" in app
+
+
+def test_web_spa_passes_on_the_real_index_and_fails_on_another_page(monkeypatch):
+    index = INDEX_HTML.read_text(encoding="utf-8-sig")
+    seen: list[str] = []
+    monkeypatch.setattr(acc, "edge_get", lambda _c, path: seen.append(path) or _Html(index))
+    assert "Angular shell" in acc.web_spa(ctx())
+    assert seen == ["/", "/dashboard", "/learning/courses"]
+
+    monkeypatch.setattr(acc, "edge_get", lambda _c, _p: _Html("<html><body><app-root></app-root></body></html>"))
+    with pytest.raises(acc.FailedCheckError, match="not the Angular shell"):
+        acc.web_spa(ctx())

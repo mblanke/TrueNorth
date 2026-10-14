@@ -20,7 +20,8 @@ inside the api container (``install_cli register``, or ``install_cli manage`` fo
    (they link explicitly, signed in: lti_identity.links).
 2. **Its server-side traffic may reach a private address** (the node's internal
    ``base_url``, e.g. ``http://moodle-default:8080``) without turning on
-   ``INTEGRATION_ALLOW_PRIVATE_URLS`` for every platform (``lti13._allow_private``).
+   ``INTEGRATION_ALLOW_PRIVATE_URLS`` for every platform (``may_reach_private``): grade
+   passback (``lti13``) and the platform test probe (``routers/integrations.py``).
 
 Changing a farm node's addresses or LTI identity through the API ends its farm status
 (``routers/integrations.py`` update_platform); the installer's next run marks it again.
@@ -29,6 +30,7 @@ Changing a farm node's addresses or LTI identity through the API ends its farm s
 from __future__ import annotations
 
 import logging
+import os
 import uuid
 
 from sqlalchemy.orm import Session
@@ -53,6 +55,15 @@ def is_managed(db: Session, platform: ExternalPlatform | None) -> bool:
         return False
     row = db.get(ManagedMoodleNode, platform.id)  # tenant-safe: compared with the platform's tenant
     return row is not None and row.tenant_id == platform.tenant_id
+
+
+def may_reach_private(db: Session, platform: ExternalPlatform | None) -> bool:
+    """Server-side calls to ``platform`` may reach a private address: it is one of TrueNorth's
+    own farm nodes (the installer registered it), or ``INTEGRATION_ALLOW_PRIVATE_URLS`` is on
+    for every platform. Loopback and link-local never (app/net_guard)."""
+    if os.getenv("INTEGRATION_ALLOW_PRIVATE_URLS", "false").strip().lower() in ("1", "true", "yes", "on"):
+        return True
+    return is_managed(db, platform)
 
 
 def mark(db: Session, platform: ExternalPlatform, node: str, by: str) -> bool:

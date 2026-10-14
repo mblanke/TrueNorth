@@ -312,6 +312,15 @@ tn_ai_base_url: ""
 # another server (Open WebUI, vLLM, Ollama) names its models differently.
 tn_ai_default_model: agent
 tn_ai_embed_model: embed
+# The orchestrator's per-task models (AI_HEAVY_MODEL: courses, quizzes, exercises, AARs,
+# scenarios; AI_GENERAL_MODEL: general; AI_CODE_MODEL: detection rules). Each defaults to
+# tn_ai_default_model, so one model id is enough for an endpoint with one chat model. Before
+# v1.2.0 they were not rendered and compose's agent/agent/coder-fast applied whatever
+# tn_ai_default_model said (staging, rc7: 400 from a router without those). 99-validate
+# fails when the endpoint's /models lists none of these ids.
+tn_ai_heavy_model: "{{ tn_ai_default_model }}"
+tn_ai_general_model: "{{ tn_ai_default_model }}"
+tn_ai_code_model: "{{ tn_ai_default_model }}"
 
 # ── ARC² Course Studio (optional; install/README.md "ARC² Course Studio (optional)") ──
 # Off by default. true: playbooks/55-arc2.yml installs the course-authoring runner on this
