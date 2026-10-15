@@ -157,6 +157,29 @@ describe('InfrastructureComponent (load gauges)', () => {
     expect(labels).toEqual(['CPU load 50 percent', 'Memory load 80 percent', 'Storage load 95 percent']);
   });
 
+  it('Overview (the landing tab) shows the cluster tile first, then one host tile per host', () => {
+    const fixture = render();
+    const el = fixture.nativeElement as HTMLElement;
+    const cluster = el.querySelector('[data-testid="cluster-load"]') as HTMLElement;
+    const grid = el.querySelector('[data-testid="overview-host-load"]') as HTMLElement;
+    expect(cluster).not.toBeNull();
+    expect(grid).not.toBeNull();
+    // Cluster tile precedes the host grid, and both precede the count cards.
+    expect(cluster.compareDocumentPosition(grid) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const firstStat = el.querySelector('.stat-card') as HTMLElement;
+    expect(grid.compareDocumentPosition(firstStat) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    const tiles = grid.querySelectorAll('tn-host-load-tile');
+    expect(tiles.length).toBe(2);
+    expect(tiles[0].textContent).toContain('esxi-01');
+    expect(Array.from(tiles[0].querySelectorAll('tn-load-gauge')).map(g => g.getAttribute('aria-label')))
+      .toEqual(['CPU load 50 percent', 'Memory load 80 percent', 'Storage load 95 percent']);
+    const unreported = Array.from(tiles[1].querySelectorAll('tn-load-gauge'));
+    expect(unreported.length).toBe(3);
+    expect(unreported.every(g => g.classList.contains('band-unknown'))).toBeTrue();
+    expect(tiles[1].textContent).toContain('not reported');
+  });
+
   it('shows CPU/Memory/Storage gauges per host on Compute; unreported figures read "not reported"', async () => {
     const fixture = render();
     (fixture.nativeElement.querySelectorAll('[role="tab"]')[1] as HTMLElement).click();

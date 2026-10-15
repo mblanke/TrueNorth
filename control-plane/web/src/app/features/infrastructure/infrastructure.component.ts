@@ -25,6 +25,7 @@ import { firstValueFrom } from 'rxjs';
 import { CountUpDirective } from '../../shared/motion';
 import { EmptyStateComponent } from '../../shared/components/empty-state/empty-state.component';
 import { LoadGaugeComponent, loadPct } from '../../shared/components/load-gauge/load-gauge.component';
+import { HostLoadTileComponent } from './host-load-tile.component';
 
 /* ── Wire types come from the contract (core/models → core/api/schema.d.ts). The
    narrow unions (HypervisorType, StorageProtocol, NetworkDeviceRole) are UI-side: the
@@ -42,6 +43,7 @@ const DEFAULT_PORT: Record<HypervisorType, number> = {
     MatFormFieldModule, MatInputModule, MatSelectModule,
     MatSlideToggleModule, MatProgressBarModule, MatTooltipModule,
     MatBadgeModule, MatSnackBarModule, CountUpDirective, EmptyStateComponent, LoadGaugeComponent,
+    HostLoadTileComponent,
   ],
   template: `
     <div class="page-container">
@@ -60,6 +62,28 @@ const DEFAULT_PORT: Record<HypervisorType, number> = {
         <mat-tab>
           <ng-template mat-tab-label><mat-icon class="tab-icon">dashboard</mat-icon> Overview</ng-template>
     
+          <!-- Load at a glance: cluster first, then one tile per host -->
+          @if (allNodes.length) {
+            <mat-card class="load-card" data-testid="cluster-load">
+              <mat-card-header>
+                <mat-card-title>Cluster load</mat-card-title>
+                <mat-card-subtitle>{{ clusterLoad.reporting }} of {{ allNodes.length }} hosts reporting</mat-card-subtitle>
+              </mat-card-header>
+              <mat-card-content>
+                <div class="gauge-row">
+                  <tn-load-gauge label="CPU" [value]="clusterLoad.cpu" />
+                  <tn-load-gauge label="Memory" [value]="clusterLoad.memory" />
+                  <tn-load-gauge label="Storage" [value]="clusterLoad.storage" />
+                </div>
+              </mat-card-content>
+            </mat-card>
+            <div class="host-tiles" data-testid="overview-host-load">
+              @for (n of allNodes; track n.id) {
+                <tn-host-load-tile [node]="n" />
+              }
+            </div>
+          }
+
           <!-- Summary cards -->
           @if (hvSummary) {
             <div class="summary-row">
@@ -94,22 +118,6 @@ const DEFAULT_PORT: Record<HypervisorType, number> = {
                 <div class="stat-label">VMs</div>
               </mat-card>
             </div>
-          }
-
-          @if (hvSummary && allNodes.length) {
-            <mat-card class="load-card" data-testid="cluster-load">
-              <mat-card-header>
-                <mat-card-title>Cluster load</mat-card-title>
-                <mat-card-subtitle>{{ clusterLoad.reporting }} of {{ allNodes.length }} hosts reporting</mat-card-subtitle>
-              </mat-card-header>
-              <mat-card-content>
-                <div class="gauge-row">
-                  <tn-load-gauge label="CPU" [value]="clusterLoad.cpu" />
-                  <tn-load-gauge label="Memory" [value]="clusterLoad.memory" />
-                  <tn-load-gauge label="Storage" [value]="clusterLoad.storage" />
-                </div>
-              </mat-card-content>
-            </mat-card>
           }
 
           @if (hvSummary && connections.length > 0 && hvSummary.total_nodes === 0) {
@@ -297,19 +305,7 @@ const DEFAULT_PORT: Record<HypervisorType, number> = {
           @if (allNodes.length) {
             <div class="host-tiles" data-testid="host-load">
               @for (n of allNodes; track n.id) {
-                <mat-card class="host-tile">
-                  <div class="host-tile-head">
-                    <mat-icon [class]="n.status === 'online' ? 'status-online' : 'status-offline'" aria-hidden="true">
-                      {{ n.status === 'online' ? 'check_circle' : 'cancel' }}
-                    </mat-icon>
-                    <span class="host-name">{{ n.node_name }}</span>
-                  </div>
-                  <div class="gauge-row">
-                    <tn-load-gauge label="CPU" [value]="n.cpu_used" />
-                    <tn-load-gauge label="Memory" [value]="loadPct(n.memory_used_gb, n.memory_total_gb)" />
-                    <tn-load-gauge label="Storage" [value]="loadPct(n.storage_used_gb, n.storage_total_gb)" />
-                  </div>
-                </mat-card>
+                <tn-host-load-tile [node]="n" />
               }
             </div>
           }
@@ -736,10 +732,7 @@ const DEFAULT_PORT: Record<HypervisorType, number> = {
     .add-form-card { margin-bottom: 16px; background: var(--bg-card); border: 1px solid var(--accent); }
     .load-card { margin: 16px 0; }
     .gauge-row { display: flex; flex-wrap: wrap; justify-content: space-around; gap: 8px; padding-top: 8px; }
-    .host-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px; margin: 16px 0; }
-    .host-tile { padding: 12px; }
-    .host-tile-head { display: flex; align-items: center; gap: 8px; }
-    .host-name { font-weight: 600; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .host-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(340px, 100%), 1fr)); gap: 16px; margin: 16px 0; }
     .toggle-row { display: flex; flex-direction: column; gap: 4px; margin: 4px 0 8px; }
     .toggle-hint { font-size: 12px; color: var(--text-secondary); }
     .full-width { width: 100%; }
@@ -831,9 +824,6 @@ export class InfrastructureComponent implements OnInit {
     name: '', vendor: '', model: '', management_ip: '',
     role: 'tor' as NetworkDeviceRole, port_count: 48, firmware_version: '',
   };
-
-  /** Gauge percent: null (shown "not reported") when a figure is missing, never 0. */
-  readonly loadPct = loadPct;
 
   /**
    * Cluster-wide load for the Overview gauges. /hypervisors/summary carries totals only (no

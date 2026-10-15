@@ -203,8 +203,9 @@ course production with a local-model fallback, and the cleanup of unsupported su
   Saving an edit without retyping the password no longer sends `password: ""`, which PATCH
   refused for vSphere (422); a blank field now keeps the stored password.
   New on the same page: semicircle load gauges (`shared/components/load-gauge`, inline SVG,
-  no chart library): CPU / Memory / Storage per host tile on Compute and a "Cluster load"
-  tile on Overview, banded normal / warning (≥75 %) / critical (≥90 %) in theme colours,
+  no chart library). The Overview tab (the landing tab) opens with a "Cluster load" tile
+  and, under it, a grid of per-host tiles (CPU / Memory / Storage each; the same tile
+  component also on Compute), banded normal / warning (≥75 %) / critical (≥90 %) in theme colours,
   `role="meter"` with a spoken label. A figure vCenter did not report shows a grey gauge
   "not reported", never 0 %. The summary endpoint carries totals only, so the cluster
   gauges sum used/total over the hosts that report both.
