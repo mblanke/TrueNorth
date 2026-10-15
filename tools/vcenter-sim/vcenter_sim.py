@@ -7,7 +7,7 @@ tn_vsphere role read, so this serves exactly those, from a fixed inventory:
 
     POST/DELETE /api/session                 any username/password
     GET  /api/appliance/system/version       (and /api/vcenter/system/version, the old sim-only path)
-    GET  /api/vcenter/{host,vm,datacenter,cluster,datastore,network}  (?names= ?hosts= ?types=)
+    GET  /api/vcenter/{host,vm,datacenter,cluster,datastore,network}  (?names= ?hosts= ?types= ?power_states=)
     POST /api/vcenter/vm                     403: it builds nothing
 
 Standard library only. TLS with the certificate and key given on the command line:
@@ -135,6 +135,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, _filter(HOSTS, query))
         if kind == "vm":
             vms = [v for v in VMS if "hosts" not in query or v["_host"] in query["hosts"]]
+            if "power_states" in query:
+                vms = [v for v in vms if v["power_state"] in query["power_states"]]
             return self._send(
                 200, [{k: v for k, v in vm.items() if not k.startswith("_")} for vm in _filter(vms, query)]
             )

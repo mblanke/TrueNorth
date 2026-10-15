@@ -110,4 +110,5 @@ def test_dashboard_backend_reads_the_simulator(sim_base, monkeypatch) -> None:
     assert out["nodes_discovered"] == 4
     counts = {n.node_name: (n.status, n.vm_count) for n in added}
     assert counts["10.10.0.11"] == ("online", 5)
+    assert counts["10.10.0.13"] == ("online", 2)  # 3 VMs, tn-ws04 powered off: not counted
     assert counts["10.10.0.14"] == ("offline", 0)

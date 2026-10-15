@@ -1,8 +1,9 @@
 """vSphere is the range platform. These cover what the dashboard relies on.
 
 - Discovery against a (mocked) vCenter records each ESXi host with its real VM count,
-  keeps the vCenter's address out of the host's IP, and leaves CPU/memory empty —
-  the vCenter REST API does not report them, and 0 would read as an idle host.
+  keeps the vCenter's address out of the host's IP, and, without VI/JSON, leaves
+  CPU/memory empty — the vCenter REST API does not report them, and 0 would read as an
+  idle host.
 - ``GET /hypervisors/nodes`` is readable by instructors (INFRA_READ) for the dashboard,
   while every connection route — hosts, usernames, stored credentials — stays INFRA_WRITE.
 """
@@ -63,6 +64,11 @@ def _vcenter(db, tenant: str = DEV_TENANT) -> HypervisorConnection:
 def _mock_vcenter(router: respx.MockRouter, *, vms_for_host2: httpx.Response | None = None) -> None:
     router.post(f"{VCENTER}/api/session").mock(return_value=httpx.Response(201, json="tok"))
     router.delete(f"{VCENTER}/api/session").mock(return_value=httpx.Response(204))
+    router.get(f"{VCENTER}/api/appliance/system/version").mock(
+        return_value=httpx.Response(200, json={"version": "8.0.3.00400"})
+    )
+    # No VI/JSON here (as on vcsim): host capacity is covered in test_vsphere_host_capacity.py.
+    router.get(url__startswith=f"{VCENTER}/sdk/").mock(return_value=httpx.Response(404))
     router.get(f"{VCENTER}/api/vcenter/host").mock(
         return_value=httpx.Response(
             200,
