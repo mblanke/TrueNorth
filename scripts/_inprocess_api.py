@@ -11,6 +11,12 @@ Two details matter and are easy to get wrong:
   header is read from the cookie jar immediately before each non-GET attempt (including
   each retry after a 429), never once up front.
 * Rate limits answer 429 with ``retry_after``; the request is retried after that.
+* The rate limiter is off in this process (``RATE_LIMIT_ENABLED=false`` unless the caller
+  set it). A TestClient used without ``with`` runs each request on a new event loop, while
+  the limiter's async Redis connection stays bound to the first one: every other request
+  logged "attached to a different loop" with a traceback and skipped the limiter anyway.
+  The callers already run as root on the host, which a per-user request budget does not
+  protect against.
 
 MFA (v1.2.0): the identity carries ``tn_session="inprocess"``, which app/mfa_policy.py
 exempts from the second-factor rule. Running this needs root and Docker on the host
@@ -94,6 +100,17 @@ class InProcessApi:
 
 
 _audited: set[str] = set()
+
+
+def _import_app() -> Any:
+    """``app.main.app`` with the rate limiter off unless the caller set RATE_LIMIT_ENABLED
+    (see the module docstring). The env var is read when app.main is first imported."""
+    import os
+
+    os.environ.setdefault("RATE_LIMIT_ENABLED", "false")
+    from app.main import app
+
+    return app
 
 
 def audit_inprocess_session(db: Any, user: Any, script: str | None = None) -> None:
@@ -195,9 +212,9 @@ def connect_users() -> Users:
     """Install the identity switch on the app and return a ``Users`` factory. Imports the
     app, so it runs inside the api image."""
     from app import auth
-    from app.main import app
     from fastapi.testclient import TestClient
 
+    app = _import_app()
     switch = IdentitySwitch()
     app.dependency_overrides[auth.get_token_identity] = switch
     return Users(app, switch, lambda: TestClient(app, base_url="https://api.internal", raise_server_exceptions=False))
@@ -208,10 +225,10 @@ def connect(admin_upn: str) -> tuple[Any, InProcessApi] | None:
     or None when there is no such user. Imports the app, so it runs inside the api image."""
     from app import auth
     from app.db import SessionLocal
-    from app.main import app
     from app.models import User
     from fastapi.testclient import TestClient
 
+    app = _import_app()
     db = SessionLocal()
     try:
         user = db.query(User).filter(User.email == admin_upn).first()

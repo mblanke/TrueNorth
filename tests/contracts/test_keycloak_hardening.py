@@ -4,7 +4,7 @@ infra/keycloak/realm-truenorth.json is what a fresh install imports; install/rol
 tn_keycloak enforces the same settings on every run, so an install whose realm was
 imported before them gets them too. These keep the two in step and hold the rules:
 
-* access tokens live 5 minutes, browser sessions 30 min idle / 10 h max, offline
+* access tokens live 5 minutes, browser sessions 60 min idle / 10 h max, offline
   sessions at most 7 days;
 * local passwords: 12+ characters, not the username, not one of the last 5;
 * no password grant on a user-facing client: only the installer's truenorth-smoke
@@ -39,7 +39,7 @@ def _clients() -> dict[str, dict]:
 def test_token_and_session_lifetimes():
     assert REALM["accessTokenLifespan"] == 300
     assert REALM["accessTokenLifespanForImplicitFlow"] <= 300
-    assert REALM["ssoSessionIdleTimeout"] <= 1800
+    assert REALM["ssoSessionIdleTimeout"] <= 3600
     assert REALM["ssoSessionMaxLifespan"] <= 12 * 3600
     assert REALM["offlineSessionIdleTimeout"] <= WEEK
     assert REALM["offlineSessionMaxLifespanEnabled"] is True

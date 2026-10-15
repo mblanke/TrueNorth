@@ -63,3 +63,18 @@ def test_users_lookup_is_inprocess_and_audited_once(harness, db_session):
     assert ident.tn_session == "inprocess" and role == "admin"
     users.lookup(harness.email)
     assert db_session.query(AuditLog).filter_by(action="inprocess_session").count() == 1
+
+
+def test_import_app_turns_the_rate_limiter_off_unless_set(monkeypatch):
+    # Each TestClient request runs on a new event loop; the limiter's async Redis client
+    # stays bound to the first one and logged "attached to a different loop" on every
+    # other request (seen on the TN-MGMT01 content load, 2026-10-14).
+    monkeypatch.delenv("RATE_LIMIT_ENABLED", raising=False)
+    _inprocess_api._import_app()
+    import os
+
+    assert os.environ["RATE_LIMIT_ENABLED"] == "false"
+
+    monkeypatch.setenv("RATE_LIMIT_ENABLED", "true")
+    _inprocess_api._import_app()
+    assert os.environ["RATE_LIMIT_ENABLED"] == "true"  # an explicit setting wins
