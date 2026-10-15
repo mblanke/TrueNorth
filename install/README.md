@@ -773,8 +773,8 @@ so decide whether that is acceptable for what this platform holds.
 | | |
 |---|---|
 | `tn_arc2_enabled: true` | inventory (group_vars or the host) |
-| A model mode | `tn_arc2_mode`: `subscription` (default; Claude), `local` (only an Anthropic-compatible gateway; jobs never reach `api.anthropic.com`) or `subscription_with_local_fallback`. See "Model mode" below |
-| One model credential | vault; **exactly one** of `vault_arc2_claude_oauth_token` or `vault_arc2_anthropic_api_key`, no default (preflight stops with neither, and with both, so it is never ambiguous which account is billed). Not needed in `local` mode. See "Model credential" below |
+| A model mode | `tn_arc2_mode`: `subscription` (default; Claude), `local` (only an Anthropic-compatible gateway; jobs never reach `api.anthropic.com`), `subscription_with_local_fallback` or `local_with_subscription_fallback`. See "Model mode" below |
+| One model credential | vault; **exactly one** of `vault_arc2_claude_oauth_token` or `vault_arc2_anthropic_api_key`, no default (preflight stops with neither, and with both, so it is never ambiguous which account is billed). Not needed in `local` mode; needed in both fallback modes. See "Model credential" below |
 | HTTPS out to `api.anthropic.com` | from the platform host (preflight checks). Or `tn_arc2_anthropic_base_url`: an Anthropic-compatible gateway, `https://` on port 443 only; Claude Code reads `ANTHROPIC_BASE_URL` and the jobs' proxy then allows that host instead |
 | At install time: PyPI, the npm registry, nodejs.org | or mirrors: `tn_arc2_pip_index_url`, `tn_arc2_npm_registry`, `tn_arc2_node_mirror` |
 | A free gid | `tn_arc2_runs_gid` (`10010`; preflight checks) |
@@ -815,7 +815,12 @@ tailnet name, the host must be on the tailnet) and the unit allows exactly those
 address changes.
 `subscription_with_local_fallback` needs both an Anthropic credential and the gateway: Claude
 runs each step, and a step Claude could not run at all (signed out, usage limit, overloaded)
-is re-run on the gateway. Preflight and `55-arc2` check what each mode needs; the token goes
+is re-run on the gateway. `local_with_subscription_fallback` is the reverse and needs the same
+two: the gateway runs each step, and a step the gateway could not run at all (unreachable, 5xx,
+overloaded, authentication failure) is re-run on Claude with the subscription credential; the
+jobs' proxy allows both `api.anthropic.com` and the gateway's host:port. The job record's
+`engine` says which ran, with `fallback_from` and, for the gateway, `served_model`.
+Preflight and `55-arc2` check what each mode needs; the token goes
 only into `/etc/truenorth-arc2/runner.env` as `ARC2_LOCAL_TOKEN` (`no_log`).
 docs/arc2-course-studio.md §13 "Model mode" has the details.
 

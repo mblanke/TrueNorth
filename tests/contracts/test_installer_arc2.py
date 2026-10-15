@@ -596,7 +596,7 @@ def test_the_installer_refuses_an_app_without_the_wiring():
     assert "ARC2_LOCAL_TOKEN" in runner and "ARC2_AUTO_ACCEPT_GATES" in runner
 
 
-# ── Model mode: subscription | local | subscription_with_local_fallback ──
+# ── Model mode: subscription | local | subscription_with_local_fallback | local_with_subscription_fallback ──
 GATEWAY = {"tn_arc2_local_url": "https://llm-gw.example.org/anthropic", "tn_arc2_local_model": "qwen3-coder"}
 
 
@@ -627,6 +627,10 @@ def test_a_gateway_on_its_own_https_port_is_allowed_as_exactly_that_host_and_por
     assert _egress_allow(tn_arc2_mode="local", **STAGING_GATEWAY) == "atlas.tail8d54ec.ts.net:4443"
     assert (
         _egress_allow(tn_arc2_mode="subscription_with_local_fallback", **STAGING_GATEWAY)
+        == "api.anthropic.com,atlas.tail8d54ec.ts.net:4443"
+    )
+    assert (
+        _egress_allow(tn_arc2_mode="local_with_subscription_fallback", **STAGING_GATEWAY)
         == "api.anthropic.com,atlas.tail8d54ec.ts.net:4443"
     )
     assert (
@@ -680,7 +684,7 @@ def test_the_unit_sets_the_mode_and_the_gateway_but_never_its_token():
     env = _envs(_unit())
     assert env["ARC2_MODE"] == "subscription"
     assert "ARC2_LOCAL_URL" not in env and "ARC2_AUTO_ACCEPT_GATES" not in env
-    for mode in ("local", "subscription_with_local_fallback"):
+    for mode in ("local", "subscription_with_local_fallback", "local_with_subscription_fallback"):
         unit = _unit(tn_arc2_mode=mode, **GATEWAY)
         env = _envs(unit)
         assert env["ARC2_MODE"] == mode
@@ -712,6 +716,18 @@ def test_egress_follows_the_mode_and_local_never_reaches_anthropic():
         _egress_allow(tn_arc2_mode="subscription_with_local_fallback", **GATEWAY)
         == "api.anthropic.com,llm-gw.example.org"
     )
+    # The reverse fallback needs both too: the gateway first, then Claude.
+    assert (
+        _egress_allow(tn_arc2_mode="local_with_subscription_fallback", **GATEWAY)
+        == "api.anthropic.com,llm-gw.example.org"
+    )
+    assert (
+        _egress_allow(
+            tn_arc2_mode="local_with_subscription_fallback", tn_arc2_anthropic_base_url="https://other.example.org",
+            **GATEWAY,
+        )
+        == "other.example.org,llm-gw.example.org"
+    )
 
 
 def test_the_env_file_follows_the_mode():
@@ -726,6 +742,8 @@ def test_the_env_file_follows_the_mode():
         tn_arc2_mode="subscription_with_local_fallback", **GATEWAY, **{**every, TOKEN: "", KEY: "sk-ant-api03-bbbb"}
     )
     assert _settings(both) == {"ANTHROPIC_API_KEY": "sk-ant-api03-bbbb", "ARC2_LOCAL_TOKEN": "gw-key-1234"}
+    reverse = _env_file(tn_arc2_mode="local_with_subscription_fallback", **GATEWAY, **every)
+    assert _settings(reverse) == {"CLAUDE_CODE_OAUTH_TOKEN": "sk-ant-oat01-aaaa", "ARC2_LOCAL_TOKEN": "gw-key-1234"}
     assert "gw-key" not in "".join(line for line in local.splitlines() if line.startswith("#"))
 
 
@@ -774,6 +792,22 @@ MODES = {
     "fallback, both": ({"tn_arc2_mode": "subscription_with_local_fallback", **ONE, **GW}, True),
     "fallback, no Anthropic credential": ({"tn_arc2_mode": "subscription_with_local_fallback", **NONE, **GW}, False),
     "fallback, no gateway": ({"tn_arc2_mode": "subscription_with_local_fallback", **ONE}, False),
+    "local first, both": ({"tn_arc2_mode": "local_with_subscription_fallback", **ONE, **GW}, True),
+    "local first, its own https port": (
+        {"tn_arc2_mode": "local_with_subscription_fallback", **ONE, **GW, **STAGING_GATEWAY},
+        True,
+    ),
+    "local first, no Claude credential": ({"tn_arc2_mode": "local_with_subscription_fallback", **NONE, **GW}, False),
+    "local first, two Claude credentials": (
+        {"tn_arc2_mode": "local_with_subscription_fallback", **ONE, KEY: "sk-ant-api03-bbbb", **GW},
+        False,
+    ),
+    "local first, no gateway": ({"tn_arc2_mode": "local_with_subscription_fallback", **ONE}, False),
+    "local first, no token": ({"tn_arc2_mode": "local_with_subscription_fallback", **ONE, **GATEWAY}, False),
+    "local first, http": (
+        {"tn_arc2_mode": "local_with_subscription_fallback", **ONE, **GW, "tn_arc2_local_url": "http://llm-gw.example.org"},
+        False,
+    ),
     "unknown mode": ({"tn_arc2_mode": "cloud", **ONE, **GW}, False),
 }
 

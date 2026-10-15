@@ -2,8 +2,9 @@
 
 subscription runs Claude; local runs only an Anthropic-compatible gateway (ARC2_LOCAL_*)
 and its jobs can reach nothing else; subscription_with_local_fallback re-runs on the
-gateway only when Claude itself was unavailable. Unset, the older ARC2_FALLBACK* settings
-keep working as before. A fake ``claude`` records the environment it was given, so these
+gateway only when Claude itself was unavailable; local_with_subscription_fallback is the
+reverse, re-running on Claude only when the gateway itself was unavailable. Unset, the older
+ARC2_FALLBACK* settings keep working as before. A fake ``claude`` records the environment it was given, so these
 tests spend nothing and need no network.
 """
 
@@ -29,8 +30,17 @@ with open(calls, "a") as f:
 def emit(e): print(json.dumps(e), flush=True)
 mode = os.environ.get("FAKE_MODE", "ok")
 on_claude = not os.environ.get("ANTHROPIC_BASE_URL")
-if on_claude and mode == "claude-unavailable":
+if on_claude and mode in ("claude-unavailable", "both-unavailable"):
     emit({"type": "result", "is_error": True, "result": "API Error: 529 overloaded"}); sys.exit(1)
+GATEWAY_DOWN = {"gateway-unreachable": "API Error: Connection error.",
+                "gateway-5xx": "API Error: 502 Bad Gateway",
+                "gateway-overloaded": "API Error: 529 overloaded",
+                "gateway-auth": "Failed to authenticate. API Error: 401 invalid x-api-key",
+                "both-unavailable": "API Error: Connection error."}
+if not on_claude and mode in GATEWAY_DOWN:
+    emit({"type": "result", "is_error": True, "result": GATEWAY_DOWN[mode]}); sys.exit(1)
+if not on_claude:
+    emit({"type": "assistant", "message": {"model": "served/" + os.environ["ANTHROPIC_MODEL"], "content": []}})
 if mode == "refused":
     emit({"type": "result", "is_error": True, "result": "merge rejected: STOP"}); sys.exit(1)
 emit({"type": "result", "is_error": False, "result": "Outline ready.", "num_turns": 2})
@@ -212,6 +222,80 @@ def test_fallback_mode_does_not_fall_back_for_anything_else(tmp_path, fake_claud
     assert len(calls(calls_file)) == 1
 
 
+def test_local_first_mode_is_known_and_needs_the_gateway(monkeypatch):
+    gateway_env(monkeypatch, "local_with_subscription_fallback")
+    m = runner.ModelConfig.from_env()
+    assert m.primary is m.local and m.fallback is None and m.claude_fallback
+    assert m.describe() == f"local (local:qwen3-coder at {GATEWAY}), falling back to subscription"
+    for mode in ("subscription", "local", "subscription_with_local_fallback"):
+        gateway_env(monkeypatch, mode)
+        assert not runner.ModelConfig.from_env().claude_fallback, mode
+    monkeypatch.delenv("ARC2_LOCAL_TOKEN")
+    gateway_env(monkeypatch, "local_with_subscription_fallback", token="")
+    with pytest.raises(runner.ModelConfigError, match="set ARC2_LOCAL_TOKEN"):
+        runner.ModelConfig.from_env()
+
+
+def test_local_first_mode_runs_the_gateway_and_never_calls_claude_when_it_works(tmp_path, fake_claude, monkeypatch):
+    exe, calls_file = fake_claude
+    gateway_env(monkeypatch, "local_with_subscription_fallback")
+    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat01-sub")
+    rec = run_one(tmp_path, exe)
+    assert (rec["state"], rec["engine"], rec["mode"]) == ("done", "local:qwen3-coder", "local_with_subscription_fallback")
+    assert rec["served_model"] == "served/qwen3-coder" and "fallback_from" not in rec
+    [call] = calls(calls_file)
+    env = call["env"]
+    assert env["ANTHROPIC_BASE_URL"] == GATEWAY and env["ANTHROPIC_AUTH_TOKEN"] == "gw-secret"
+    assert env["CLAUDE_CODE_OAUTH_TOKEN"] is None and env["ANTHROPIC_API_KEY"] == "", "the gateway never gets it"
+    assert call["args"][call["args"].index("--model") + 1] == "qwen3-coder"
+
+
+@pytest.mark.parametrize("mode", ["gateway-unreachable", "gateway-5xx", "gateway-overloaded", "gateway-auth"])
+def test_local_first_mode_reruns_on_claude_when_the_gateway_cannot_run(tmp_path, fake_claude, monkeypatch, mode):
+    exe, calls_file = fake_claude
+    gateway_env(monkeypatch, "local_with_subscription_fallback")
+    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat01-sub")
+    monkeypatch.setenv("FAKE_MODE", mode)
+    reached = []
+    monkeypatch.setattr(runner.LocalModel, "reachable", lambda self, timeout=3.0: reached.append(1) or True)
+    rec = run_one(tmp_path, exe)
+    assert (rec["state"], rec["engine"], rec["mode"]) == ("done", "claude", "local_with_subscription_fallback")
+    assert runner.should_fall_back({"state": "failed", "error": rec["fallback_from"]})
+    assert "served_model" not in rec, "the gateway served nothing that was kept"
+    first, second = calls(calls_file)
+    assert first["env"]["ANTHROPIC_BASE_URL"] == GATEWAY and first["env"]["CLAUDE_CODE_OAUTH_TOKEN"] is None
+    assert second["env"]["ANTHROPIC_BASE_URL"] is None and second["env"]["ANTHROPIC_AUTH_TOKEN"] is None
+    assert second["env"]["CLAUDE_CODE_OAUTH_TOKEN"] == "sk-ant-oat01-sub" and "--model" not in second["args"]
+    assert reached == [], "no reachability probe: Claude is simply tried"
+
+
+def test_local_first_mode_does_not_fall_back_for_anything_else(tmp_path, fake_claude, monkeypatch):
+    exe, calls_file = fake_claude
+    gateway_env(monkeypatch, "local_with_subscription_fallback")
+    monkeypatch.setenv("FAKE_MODE", "refused")
+    rec = run_one(tmp_path, exe)
+    assert (rec["state"], rec["engine"]) == ("failed", "local:qwen3-coder") and "fallback_from" not in rec
+    assert len(calls(calls_file)) == 1
+
+
+def test_local_first_mode_reruns_once_and_fails_on_claude_when_both_are_down(tmp_path, fake_claude, monkeypatch):
+    exe, calls_file = fake_claude
+    gateway_env(monkeypatch, "local_with_subscription_fallback")
+    monkeypatch.setenv("FAKE_MODE", "both-unavailable")
+    rec = run_one(tmp_path, exe)
+    assert (rec["state"], rec["engine"]) == ("failed", "claude")
+    assert "Connection error" in rec["fallback_from"] and "529 overloaded" in rec["error"]
+    assert len(calls(calls_file)) == 2, "never back to the gateway"
+
+
+def test_the_failure_classification_is_unchanged():
+    assert runner.should_fall_back({"state": "failed", "error": "API Error: 529 overloaded"})
+    assert runner.should_fall_back({"state": "failed", "error": "API Error: Connection error."})
+    assert not runner.should_fall_back({"state": "failed", "error": "merge rejected: STOP"})
+    assert not runner.should_fall_back({"state": "failed", "error": "timed out after 30 min"})
+    assert not runner.should_fall_back({"state": "done", "error": None})
+
+
 def test_local_mode_never_falls_back_to_claude(tmp_path, fake_claude, monkeypatch):
     exe, calls_file = fake_claude
     gateway_env(monkeypatch, "local")
@@ -232,6 +316,8 @@ class _Sandboxed:
     ("local", None, ("llm-gw.example.org",), (443,)),
     ("local", "api.anthropic.com", ("llm-gw.example.org",), (443,)),  # never Anthropic in local mode
     ("subscription_with_local_fallback", None, ("api.anthropic.com", "llm-gw.example.org"), (443,)),
+    ("local_with_subscription_fallback", None, ("api.anthropic.com", "llm-gw.example.org"), (443,)),
+    ("local_with_subscription_fallback", "gw.corp.example", ("gw.corp.example", "llm-gw.example.org"), (443,)),
 ])
 def test_the_egress_proxy_allows_what_the_mode_needs(monkeypatch, mode, egress_allow, hosts, ports):
     if mode != "subscription":
@@ -260,14 +346,15 @@ def test_a_gateway_on_another_port_is_allowed_as_exactly_that_host_and_port(monk
         assert not egress.permits("api.anthropic.com", 443) and not egress.permits("api.anthropic.com", 4443)
     finally:
         egress.close()
-    gateway_env(monkeypatch, "subscription_with_local_fallback", url="https://atlas.tail8d54ec.ts.net:4443")
-    egress, _ = runner.start_egress(_Sandboxed(), runner.ModelConfig.from_env())
-    try:
-        assert egress.allow == ("api.anthropic.com", "atlas.tail8d54ec.ts.net:4443")
-        assert egress.permits("api.anthropic.com", 443) and egress.permits("atlas.tail8d54ec.ts.net", 4443)
-        assert not egress.permits("api.anthropic.com", 4443), "the gateway's port is not opened to other hosts"
-    finally:
-        egress.close()
+    for mode in ("subscription_with_local_fallback", "local_with_subscription_fallback"):
+        gateway_env(monkeypatch, mode, url="https://atlas.tail8d54ec.ts.net:4443")
+        egress, _ = runner.start_egress(_Sandboxed(), runner.ModelConfig.from_env())
+        try:
+            assert egress.allow == ("api.anthropic.com", "atlas.tail8d54ec.ts.net:4443")
+            assert egress.permits("api.anthropic.com", 443) and egress.permits("atlas.tail8d54ec.ts.net", 4443)
+            assert not egress.permits("api.anthropic.com", 4443), "the gateway's port is not opened to other hosts"
+        finally:
+            egress.close()
 
 
 def test_a_remote_gateway_on_any_port_must_still_be_https(monkeypatch):
