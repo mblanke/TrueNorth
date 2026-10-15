@@ -220,6 +220,19 @@ course production with a local-model fallback, and the cleanup of unsupported su
   the tenant has none, password from the environment only and set once (re-set with
   `tn_vcenter_connection_update_password`); then tested and discovered, a failed test warning
   without failing the install.
+- Fix (work install, TN-MGMT01): vSphere hosts showed no vCPU, memory or storage on the
+  Infrastructure page, because the vCenter REST API has no host figures. Discovery now reads
+  them over the VI/JSON API (vCenter 8.0U1+, plain httpx, `hypervisor_backends/vsphere_vijson.py`;
+  release id from the appliance version, e.g. 8.0.3.00400 -> 8.0.3.0, then 8.0.1.0):
+  `cpu_total` = logical CPUs (threads), `cpu_used` = percent busy, memory in GiB, storage =
+  the host's datastores with each shared one split across the hosts mounting it, so the
+  summary and capacity totals count it once. Without VI/JSON (older vCenter, vcsim) the
+  figures stay "not reported", never 0. A host's `vm_count` now counts powered-on VMs only:
+  no powered-off VMs, no templates, not the vCenter appliance (the VM whose guest reports
+  the connection's DNS name or address; not identifiable without VI/JSON), and not vSphere
+  Cluster Services agents (`vCLS`-named VMs managed by ESX Agent Manager,
+  `com.vmware.vim.eam`; by the `vCLS` name alone without VI/JSON). Any other running VM is
+  counted, whatever its name.
 
 ### R0-B: web correctness and role access
 - Fix: Resume on a paused exercise called `/start` (409 unless pending), so nothing resumed;
