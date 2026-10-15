@@ -265,6 +265,19 @@ tn_vsphere_mgmt_network: dPG-TN-MGMT
 # still serves the VMCA's self-signed chain overrides this per host (inventory/hosts.yml
 # says why); a production site never does.
 tn_vsphere_verify_ssl: true
+# 80-seed registers this vCenter as a hypervisor connection of the bootstrap
+# administrator's tenant (scripts/register_vcenter_inprocess.py), so /infrastructure and
+# the acceptance suite's provisioners check see it after an install. Idempotent: an
+# existing connection with this host is reused (username/datacenter/verify_ssl kept in
+# step), never duplicated. Only with tn_uses_vcenter and a tn_vcenter_host. A failed
+# connection test warns, it does not fail the install. install/README.md "Infrastructure
+# page: the installer registers its vCenter".
+tn_register_vcenter_connection: true
+tn_vcenter_connection_name: Range vCenter
+# The connection's password is set from vault_vsphere_password when it is created, and
+# then left alone: an operator may rotate it on the Infrastructure page. After rotating
+# vault_vsphere_password, re-run 80-seed with -e tn_vcenter_connection_update_password=true.
+tn_vcenter_connection_update_password: false
 # Empty: clone the inventory VM templates (tmpl-*). Set once a Content Library exists.
 tn_vsphere_content_library: ""
 tn_vsphere_concurrency: 4

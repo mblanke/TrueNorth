@@ -115,6 +115,62 @@
     msg: "{{ tn_shipped_content.stdout_lines | select('search', '^(\\S|  (ok|FAIL)|  \\w+: )') | list }}"
   when: tn_load_shipped_content | bool
 
+# The worker's vCenter (VSPHERE_* in the env file), registered through the API as a
+# hypervisor connection of the bootstrap administrator's tenant, so /infrastructure is not
+# empty after an install (TN-MGMT01, 2026-10-15). scripts/register_vcenter_inprocess.py:
+# idempotent, in-process as the administrator like the content loader. The password goes
+# to `docker compose` in its environment and on to the container by name (-e NAME, no
+# value): never in argv, so never in `ps` or this log; no_log hides the task's arguments.
+# The script never prints it; the next task shows its output and fails only if the
+# connection could not be registered (a failed connection test is a warning).
+- name: Seed — register the vCenter as a hypervisor connection
+  ansible.builtin.command:
+    argv: >-
+      {{ ['docker', 'compose', '-f', tn_compose_file, '--env-file', tn_env_file,
+          'run', '--rm', '--no-deps', '-T', '-w', '/app', '-e', 'PYTHONPATH=/app',
+          '-e', 'TN_VCENTER_PASSWORD',
+          '-v', tn_app_dir ~ ':/srcapp:ro', '--entrypoint', 'python',
+          'api', '/srcapp/scripts/register_vcenter_inprocess.py',
+          '--admin', tn_bootstrap_admin_upn, '--name', tn_vcenter_connection_name,
+          '--host', tn_vcenter_host, '--port', tn_vcenter_port | string,
+          '--username', tn_vcenter_user, '--datacenter', tn_vsphere_datacenter | default('')]
+         + ([] if tn_vsphere_verify_ssl | default(true) | bool else ['--insecure'])
+         + (['--update-password'] if (tn_vcenter_connection_update_password | default(false) | bool)
+            and (vault_vsphere_password | default('') | length > 0) else []) }}
+    chdir: "{{ tn_app_dir }}/infra/platform/docker"
+  environment:
+    TN_VCENTER_PASSWORD: "{{ vault_vsphere_password | default('') }}"
+  register: tn_vcenter_conn
+  changed_when: "'connection: created' in tn_vcenter_conn.stdout or 'connection: updated' in tn_vcenter_conn.stdout"
+  failed_when: false
+  no_log: true
+  when: >-
+    (tn_register_vcenter_connection | default(true) | bool)
+    and (tn_uses_vcenter | default(true) | bool)
+    and (tn_vcenter_host | default('') | length > 0)
+
+- name: Seed — vCenter connection result
+  ansible.builtin.debug:
+    msg: "{{ (tn_vcenter_conn.stdout_lines + tn_vcenter_conn.stderr_lines[-5:]) | default(['(no output)'], true) }}"
+  when: >-
+    (tn_register_vcenter_connection | default(true) | bool)
+    and (tn_uses_vcenter | default(true) | bool)
+    and (tn_vcenter_host | default('') | length > 0)
+
+- name: Seed — the vCenter connection is registered
+  ansible.builtin.assert:
+    that: tn_vcenter_conn.rc == 0
+    fail_msg: >-
+      The vCenter was not registered as a hypervisor connection (exit {{ tn_vcenter_conn.rc }}; output above).
+      Exit 2: tn_bootstrap_admin_upn is not a TrueNorth user. Exit 1: the API refused it, or
+      vault_vsphere_password is empty. Fix and re-run playbooks/80-seed.yml, or add it on the
+      Infrastructure page and set tn_register_vcenter_connection: false.
+    success_msg: "vCenter connection: registered (a failed test above is a warning only)"
+  when: >-
+    (tn_register_vcenter_connection | default(true) | bool)
+    and (tn_uses_vcenter | default(true) | bool)
+    and (tn_vcenter_host | default('') | length > 0)
+
 # The loader's demo people are roster rows only. Without AD, 60-keycloak gave each a local
 # account (roles/tn_keycloak/tasks/demo_accounts.yml); this points each row at its
 # account's subject, as app.bootstrap_admin does for the administrator, so they can sign
