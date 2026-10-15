@@ -254,6 +254,16 @@ course production with a local-model fallback, and the cleanup of unsupported su
   setting and zero the replicas of every existing index, hidden ones included (admin
   certificate, no password; idempotent; skipped on a multi-node cluster;
   `roles/tn_telemetry/tasks/replicas.yml`). Readiness stays strict.
+- Fix: AI fleet discovery probed a hard-coded home-lab node, so every site showed a fake,
+  online "r7725 / 2x NVIDIA H200" node (TN-MGMT01, a vLLM server on a GB10). Discovery now
+  probes the backend's registered fleet nodes; an OpenAI-compatible backend with none gets one
+  node named after its base URL's host, GPU fields left blank and an operator's entry never
+  overwritten (`LLM_NODE_HOST` is gone). And the installer configured the orchestrator's
+  endpoint but never registered it, so the AI page showed 0 backends: 80-seed now registers
+  it as "Platform AI" (`scripts/register_ai_backend_inprocess.py`, `tn_register_ai_backend`,
+  default on): idempotent by name or base URL, primary when none is, key from the environment
+  only and set once (re-set with `tn_ai_backend_update_key`), a route per configured model id;
+  then discovered, an unreachable endpoint warning without failing the install.
 
 ### R0-B: web correctness and role access
 - Fix: Resume on a paused exercise called `/start` (409 unless pending), so nothing resumed;

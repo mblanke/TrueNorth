@@ -778,6 +778,34 @@ for an unauthenticated endpoint), set `tn_ai_default_model` (and `tn_ai_embed_mo
 the endpoint lists, and re-run `site.yml`. Preflight then probes the endpoint, and `99-validate`
 fails if a configured model is missing.
 
+**The AI page: the installer registers its endpoint.** With AI on, 80-seed also registers
+`tn_ai_base_url` as the AI backend "Platform AI" (type `openai`: vLLM, LiteLLM and OpenAI
+all speak it), so the AI settings page lists it straight after the install instead of
+0 backends. It runs `scripts/register_ai_backend_inprocess.py` in a one-off api container as
+the bootstrap administrator, like the vCenter registration above. Re-running is safe:
+
+- A backend with that name (or that base URL) is reused, never duplicated; its base URL is
+  corrected when it differs from `tn_ai_base_url`.
+- Its **key is set once**, from `vault_openai_api_key` through the environment
+  (`TN_AI_API_KEY`, `no_log`, never on a command line, never printed), when the backend is
+  created, and then left alone. After rotating the vault key, re-run
+  `ansible-playbook playbooks/80-seed.yml -e tn_ai_backend_update_key=true`.
+- It becomes primary when no backend is.
+- `tn_ai_default_model`, `tn_ai_heavy_model`, `tn_ai_general_model` and `tn_ai_code_model`
+  (each id once) get a model route to it, unless a route for that id already exists.
+- It is then discovered: one fleet node, named after the base URL's host, with the models
+  the endpoint lists. GPU model and VRAM are left blank ("not reported"); enter them on the
+  AI page if you want them shown, and discovery keeps them. An unreachable endpoint, or a
+  configured model it does not list, is a `WARNING` and does **not** fail the install.
+
+| Variable | Default | Effect |
+|---|---|---|
+| `tn_register_ai_backend` | `true` | register the endpoint (only with `tn_ai_enabled` and a `tn_ai_base_url`) |
+| `tn_ai_backend_name` | `Platform AI` | the backend's name on the AI page |
+| `tn_ai_backend_update_key` | `false` | also set an existing backend's key from `vault_openai_api_key` |
+
+To manage AI backends only by hand, set `tn_register_ai_backend: false`.
+
 ## ARC² Course Studio (optional)
 
 **Off by default** (`tn_arc2_enabled: false`): nothing is installed, the api gets no `ARC2_*`

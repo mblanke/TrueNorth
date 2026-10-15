@@ -257,7 +257,11 @@ export interface paths {
         put?: never;
         /**
          * Discover Fleet Nodes
-         * @description Scan known Ollama nodes on the LAN, upsert fleet node records, and return results.
+         * @description Probe the backend's registered fleet nodes; record status and served models.
+         *
+         *     An OpenAI-compatible backend (openai, vllm, litellm, ...) with no node gets one,
+         *     derived from its base_url. An Ollama backend with none answers ``scanned: 0``:
+         *     register its nodes first. GPU model and VRAM are never written here.
          */
         post: operations["discover_fleet_nodes_ai_config_backends__backend_id__discover_post"];
         delete?: never;
