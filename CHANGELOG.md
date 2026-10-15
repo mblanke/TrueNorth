@@ -247,6 +247,13 @@ course production with a local-model fallback, and the cleanup of unsupported su
   Cluster Services agents (`vCLS`-named VMs managed by ESX Agent Manager,
   `com.vmware.vim.eam`; by the `vCLS` name alone without VI/JSON). Any other running VM is
   counted, whatever its name.
+- Fix (work install, TN-MGMT01): single-node OpenSearch went yellow because a plugin index
+  (`.opendistro-job-scheduler-lock`) was created with 1 replica, and readiness failed the
+  install. OpenSearch 2.13 ignores compose's node setting `cluster.default_number_of_replicas=0`
+  when creating an index; 70-telemetry and 95-smoke-test now set it as a persistent cluster
+  setting and zero the replicas of every existing index, hidden ones included (admin
+  certificate, no password; idempotent; skipped on a multi-node cluster;
+  `roles/tn_telemetry/tasks/replicas.yml`). Readiness stays strict.
 
 ### R0-B: web correctness and role access
 - Fix: Resume on a paused exercise called `/start` (409 unless pending), so nothing resumed;

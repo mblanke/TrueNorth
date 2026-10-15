@@ -27,6 +27,10 @@
   # worth surfacing but should not tear down a working stack.
   failed_when: tn_os_bootstrap.rc != 0
 
+# One node: no index may wait for a replica (yellow fails readiness in 95-smoke-test).
+- name: Telemetry — single-node replicas
+  ansible.builtin.import_tasks: replicas.yml
+
 - name: Telemetry — confirm index templates exist
   ansible.builtin.command:
     cmd: >-
