@@ -195,6 +195,20 @@ course production with a local-model fallback, and the cleanup of unsupported su
 - Fix: the acceptance suite's `web-shell / SPA served through nginx` looked for
   `<app-root>`; the shell is `<tn-root>` (`SPA_ROOT_SELECTOR`, tested against `index.html`
   and `AppComponent`).
+- Fix (work install, TN-MGMT01): the Infrastructure page's hypervisor connection form had no
+  way to turn off certificate verification, so a vCenter on its own VMCA certificate always
+  failed "Test" with `CERTIFICATE_VERIFY_FAILED`, and no Datacenter field. The form now has a
+  "Verify TLS certificate" toggle (on by default for new connections; edit loads the saved
+  value) and, for vSphere, an optional Datacenter (blank sends null: the platform default).
+  Saving an edit without retyping the password no longer sends `password: ""`, which PATCH
+  refused for vSphere (422); a blank field now keeps the stored password.
+  New on the same page: semicircle load gauges (`shared/components/load-gauge`, inline SVG,
+  no chart library). The Overview tab (the landing tab) opens with a "Cluster load" tile
+  and, under it, a grid of per-host tiles (CPU / Memory / Storage each; the same tile
+  component also on Compute), banded normal / warning (≥75 %) / critical (≥90 %) in theme colours,
+  `role="meter"` with a spoken label. A figure vCenter did not report shows a grey gauge
+  "not reported", never 0 %. The summary endpoint carries totals only, so the cluster
+  gauges sum used/total over the hosts that report both.
 - New: `install/playbooks/acceptance.yml` (operator, `-K`): runs the full strict suite with the
   Keycloak admin credential from the host's secret file (environment only, `no_log`), the
   config directory read-only and the vCenter URL; reports to

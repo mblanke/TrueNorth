@@ -24,6 +24,8 @@ import { InfrastructureApiService } from '@core/services/infrastructure-api.serv
 import { firstValueFrom } from 'rxjs';
 import { CountUpDirective } from '../../shared/motion';
 import { EmptyStateComponent } from '../../shared/components/empty-state/empty-state.component';
+import { LoadGaugeComponent, loadPct } from '../../shared/components/load-gauge/load-gauge.component';
+import { HostLoadTileComponent } from './host-load-tile.component';
 
 /* ── Wire types come from the contract (core/models → core/api/schema.d.ts). The
    narrow unions (HypervisorType, StorageProtocol, NetworkDeviceRole) are UI-side: the
@@ -40,7 +42,8 @@ const DEFAULT_PORT: Record<HypervisorType, number> = {
     MatIconModule, MatTableModule, MatChipsModule, MatDialogModule,
     MatFormFieldModule, MatInputModule, MatSelectModule,
     MatSlideToggleModule, MatProgressBarModule, MatTooltipModule,
-    MatBadgeModule, MatSnackBarModule, CountUpDirective, EmptyStateComponent,
+    MatBadgeModule, MatSnackBarModule, CountUpDirective, EmptyStateComponent, LoadGaugeComponent,
+    HostLoadTileComponent,
   ],
   template: `
     <div class="page-container">
@@ -59,6 +62,28 @@ const DEFAULT_PORT: Record<HypervisorType, number> = {
         <mat-tab>
           <ng-template mat-tab-label><mat-icon class="tab-icon">dashboard</mat-icon> Overview</ng-template>
     
+          <!-- Load at a glance: cluster first, then one tile per host -->
+          @if (allNodes.length) {
+            <mat-card class="load-card" data-testid="cluster-load">
+              <mat-card-header>
+                <mat-card-title>Cluster load</mat-card-title>
+                <mat-card-subtitle>{{ clusterLoad.reporting }} of {{ allNodes.length }} hosts reporting</mat-card-subtitle>
+              </mat-card-header>
+              <mat-card-content>
+                <div class="gauge-row">
+                  <tn-load-gauge label="CPU" [value]="clusterLoad.cpu" />
+                  <tn-load-gauge label="Memory" [value]="clusterLoad.memory" />
+                  <tn-load-gauge label="Storage" [value]="clusterLoad.storage" />
+                </div>
+              </mat-card-content>
+            </mat-card>
+            <div class="host-tiles" data-testid="overview-host-load">
+              @for (n of allNodes; track n.id) {
+                <tn-host-load-tile [node]="n" />
+              }
+            </div>
+          }
+
           <!-- Summary cards -->
           @if (hvSummary) {
             <div class="summary-row">
@@ -94,7 +119,7 @@ const DEFAULT_PORT: Record<HypervisorType, number> = {
               </mat-card>
             </div>
           }
-    
+
           @if (hvSummary && connections.length > 0 && hvSummary.total_nodes === 0) {
             <mat-card class="notice-card">
               <mat-card-content>
@@ -187,8 +212,27 @@ const DEFAULT_PORT: Record<HypervisorType, number> = {
                   </mat-form-field>
                   <mat-form-field appearance="outline">
                     <mat-label>Password / Token</mat-label>
-                    <input matInput type="password" [(ngModel)]="newConn.password">
+                    <input matInput type="password" [(ngModel)]="newConn.password" autocomplete="new-password">
+                    @if (editingConnectionId) {
+                      <mat-hint>Leave blank to keep the saved password</mat-hint>
+                    }
                   </mat-form-field>
+                </div>
+                @if (newConn.hypervisor_type === 'vsphere') {
+                  <div class="form-row">
+                    <mat-form-field appearance="outline">
+                      <mat-label>Datacenter (optional)</mat-label>
+                      <input matInput data-testid="conn-datacenter" [(ngModel)]="newConn.datacenter" placeholder="DC-Lab">
+                      <mat-hint>vCenter datacenter name; blank uses the platform default</mat-hint>
+                    </mat-form-field>
+                  </div>
+                }
+                <div class="toggle-row">
+                  <mat-slide-toggle data-testid="conn-verify-ssl" [(ngModel)]="newConn.verify_ssl"
+                    aria-describedby="conn-verify-ssl-hint">
+                    Verify TLS certificate
+                  </mat-slide-toggle>
+                  <span id="conn-verify-ssl-hint" class="toggle-hint">Turn off for a vCenter using its own (VMCA) certificate</span>
                 </div>
               </mat-card-content>
               <mat-card-actions>
@@ -257,6 +301,15 @@ const DEFAULT_PORT: Record<HypervisorType, number> = {
             </mat-card-content>
           </mat-card>
     
+          <!-- Host load tiles -->
+          @if (allNodes.length) {
+            <div class="host-tiles" data-testid="host-load">
+              @for (n of allNodes; track n.id) {
+                <tn-host-load-tile [node]="n" />
+              }
+            </div>
+          }
+
           <!-- Compute Nodes -->
           @if (allNodes.length) {
             <mat-card style="margin-top:16px">
@@ -677,6 +730,11 @@ const DEFAULT_PORT: Record<HypervisorType, number> = {
     .summary-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 16px; margin: 16px 0; }
     .stat-card { background: var(--bg-card); border: 1px solid var(--border); padding: 16px; text-align: center; }
     .add-form-card { margin-bottom: 16px; background: var(--bg-card); border: 1px solid var(--accent); }
+    .load-card { margin: 16px 0; }
+    .gauge-row { display: flex; flex-wrap: wrap; justify-content: space-around; gap: 8px; padding-top: 8px; }
+    .host-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(340px, 100%), 1fr)); gap: 16px; margin: 16px 0; }
+    .toggle-row { display: flex; flex-direction: column; gap: 4px; margin: 4px 0 8px; }
+    .toggle-hint { font-size: 12px; color: var(--text-secondary); }
     .full-width { width: 100%; }
     .status-online { color: var(--success); }
     .status-offline { color: var(--alert); }
@@ -711,14 +769,21 @@ export class InfrastructureComponent implements OnInit {
   newConn: {
     name: string; hypervisor_type: HypervisorType; host: string;
     port: number; username: string; password: string; verify_ssl: boolean; is_primary: boolean;
+    datacenter: string;
   } = this.blankConnection();
 
-  /** vSphere is the range platform; Proxmox and Hyper-V remain for older sites. */
+  /** vSphere is the range platform; Proxmox and Hyper-V remain for older sites.
+   *  verify_ssl defaults on (secure default); the form lets an operator turn it off. */
   private blankConnection(): InfrastructureComponent['newConn'] {
     return {
       name: '', hypervisor_type: 'vsphere', host: '', port: DEFAULT_PORT.vsphere,
-      username: '', password: '', verify_ssl: true, is_primary: false,
+      username: '', password: '', verify_ssl: true, is_primary: false, datacenter: '',
     };
+  }
+
+  /** Datacenter only means something to vSphere; blank is "not set" (null), not "". */
+  private connDatacenter(): string | null {
+    return this.newConn.hypervisor_type === 'vsphere' ? (this.newConn.datacenter.trim() || null) : null;
   }
 
   /** Move the port with the type, unless someone already typed a non-default one. */
@@ -759,6 +824,28 @@ export class InfrastructureComponent implements OnInit {
     name: '', vendor: '', model: '', management_ip: '',
     role: 'tor' as NetworkDeviceRole, port_count: 48, firmware_version: '',
   };
+
+  /**
+   * Cluster-wide load for the Overview gauges. /hypervisors/summary carries totals only (no
+   * used figures), so this sums used/total over the same de-duplicated hosts it counts.
+   * Each figure covers only hosts that report both numbers; none reporting gives null.
+   * CPU is cpu_used (a percent) weighted by each host's cores.
+   */
+  get clusterLoad(): { cpu: number | null; memory: number | null; storage: number | null; reporting: number } {
+    let cpuW = 0, cores = 0, memU = 0, memT = 0, stoU = 0, stoT = 0;
+    const reporting = new Set<string>();
+    for (const n of this.allNodes) {
+      if (n.cpu_used != null && n.cpu_total) { cpuW += n.cpu_used * n.cpu_total; cores += n.cpu_total; reporting.add(n.id); }
+      if (n.memory_used_gb != null && n.memory_total_gb) { memU += n.memory_used_gb; memT += n.memory_total_gb; reporting.add(n.id); }
+      if (n.storage_used_gb != null && n.storage_total_gb) { stoU += n.storage_used_gb; stoT += n.storage_total_gb; reporting.add(n.id); }
+    }
+    return {
+      cpu: cores ? cpuW / cores : null,
+      memory: loadPct(memT ? memU : null, memT),
+      storage: loadPct(stoT ? stoU : null, stoT),
+      reporting: reporting.size,
+    };
+  }
 
   /** Percent used, clamped to 0-100. Returns 0 when the total is missing or zero. */
   usagePct(used: number | null, total: number | null): number {
@@ -825,7 +912,7 @@ export class InfrastructureComponent implements OnInit {
     });
   }
   createConnection(): void {
-    this.infra.createConnection(this.newConn).subscribe({
+    this.infra.createConnection({ ...this.newConn, datacenter: this.connDatacenter() }).subscribe({
       next: () => { this.showAddConn = false; this.loadConnections(); this.loadHvSummary(); },
       error: e => this.snack.open('Failed to create connection: ' + (e.error?.detail || e.message), 'OK', { duration: 4000 }),
     });
@@ -896,12 +983,22 @@ export class InfrastructureComponent implements OnInit {
     this.newConn = {
       name: c.name, hypervisor_type: c.hypervisor_type as HypervisorType, host: c.host, port: c.port,
       username: c.username, password: '', verify_ssl: c.verify_ssl, is_primary: c.is_primary,
+      datacenter: c.datacenter ?? '',
     };
   }
   updateConnection(): void {
     if (!this.editingConnectionId) return;
     this.connectionSaving = true;
-    this.infra.updateConnection(this.editingConnectionId, this.newConn).subscribe({
+    // The type is fixed once created (not in HypervisorConnectionUpdate). The password is
+    // sent only when retyped: PATCH treats a sent password as a rotation and refuses a blank
+    // one for vSphere (422), so an untouched field must be omitted, not sent as ''.
+    const c = this.newConn;
+    const body: Parameters<InfrastructureApiService['updateConnection']>[1] = {
+      name: c.name, host: c.host, port: c.port, username: c.username,
+      verify_ssl: c.verify_ssl, is_primary: c.is_primary, datacenter: this.connDatacenter(),
+    };
+    if (c.password) body.password = c.password;
+    this.infra.updateConnection(this.editingConnectionId, body).subscribe({
       next: () => {
         this.cancelConnectionEdit();
         this.loadConnections();
