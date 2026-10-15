@@ -341,6 +341,18 @@ tn_ai_embed_model: embed
 tn_ai_heavy_model: "{{ tn_ai_default_model }}"
 tn_ai_general_model: "{{ tn_ai_default_model }}"
 tn_ai_code_model: "{{ tn_ai_default_model }}"
+# 80-seed registers this endpoint as the AI backend "Platform AI"
+# (scripts/register_ai_backend_inprocess.py), with a model route for each id above, so the
+# AI settings page is not empty after an install. Idempotent: an existing backend with this
+# name (or base URL) is reused, its base URL kept in step, never duplicated. Only with
+# tn_ai_enabled and a tn_ai_base_url. An unreachable endpoint warns, it does not fail the
+# install. install/README.md "AI (optional)".
+tn_register_ai_backend: true
+tn_ai_backend_name: Platform AI
+# The backend's key is set from vault_openai_api_key when it is created, and then left
+# alone: an operator may rotate it on the AI page. After rotating vault_openai_api_key,
+# re-run 80-seed with -e tn_ai_backend_update_key=true.
+tn_ai_backend_update_key: false
 
 # ── ARC² Course Studio (optional; install/README.md "ARC² Course Studio (optional)") ──
 # Off by default. true: playbooks/55-arc2.yml installs the course-authoring runner on this

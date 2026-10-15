@@ -18950,7 +18950,7 @@
     },
     "/ai-config/backends/{backend_id}/discover": {
       "post": {
-        "description": "Scan known Ollama nodes on the LAN, upsert fleet node records, and return results.",
+        "description": "Probe the backend's registered fleet nodes; record status and served models.\n\nAn OpenAI-compatible backend (openai, vllm, litellm, ...) with no node gets one,\nderived from its base_url. An Ollama backend with none answers ``scanned: 0``:\nregister its nodes first. GPU model and VRAM are never written here.",
         "operationId": "discover_fleet_nodes_ai_config_backends__backend_id__discover_post",
         "parameters": [
           {
