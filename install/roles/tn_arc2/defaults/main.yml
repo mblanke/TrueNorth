@@ -46,7 +46,7 @@ tn_arc2_tasks_max: 1024
 
 # The hosts the jobs' egress proxy tunnels to (ARC2_EGRESS_ALLOW), from tn_arc2_mode: the
 # Anthropic endpoint (or the tn_arc2_anthropic_base_url gateway), the local gateway, or
-# both. In local mode the runner allows the gateway alone whatever this says
+# both (either fallback mode). In local mode the runner allows the gateway alone whatever this says
 # (arc2/runner.py ModelConfig.egress_hosts); the unit states the same list.
 tn_arc2_anthropic_host: >-
   {{ (tn_arc2_anthropic_base_url | ansible.builtin.urlsplit('hostname'))
@@ -65,7 +65,7 @@ tn_arc2_local_endpoint: >-
 tn_arc2_egress_allow: >-
   {{ tn_arc2_local_endpoint if tn_arc2_mode | default('subscription') == 'local'
      else (tn_arc2_anthropic_host ~ ',' ~ tn_arc2_local_endpoint)
-     if tn_arc2_mode | default('subscription') == 'subscription_with_local_fallback'
+     if tn_arc2_mode | default('subscription') in ['subscription_with_local_fallback', 'local_with_subscription_fallback']
      else tn_arc2_anthropic_host }}
 
 # Host data the runner never needs, masked in its mount namespace (InaccessiblePaths), and
@@ -91,7 +91,7 @@ tn_arc2_inaccessible_paths:
 # reachable: the host resolver (127.0.0.53) and each Linux job's own netbridge. Empty this
 # only if tn_arc2_anthropic_base_url is an internal gateway.
 #
-# A local gateway (tn_arc2_mode local or subscription_with_local_fallback) on one of these
+# A local gateway (tn_arc2_mode other than subscription) on one of these
 # ranges, such as a tailnet host in 100.64.0.0/10, stays reachable: 55-arc2 resolves its host
 # and the unit allows exactly those addresses (IPAddressAllow, which wins over this list);
 # nothing else in the range opens. Set by the role (tasks/install.yml), not by hand.
