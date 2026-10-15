@@ -77,12 +77,20 @@ def _ds(cap_gib: float, free_gib: float) -> dict:
     return {"_typeName": "DatastoreSummary", "capacity": int(cap_gib * GIB), "freeSpace": int(free_gib * GIB)}
 
 
-def _vm(moid: str, power: str = "POWERED_ON") -> dict:
-    return {"vm": moid, "name": moid, "power_state": power}
+def _vm(moid: str, power: str = "POWERED_ON", name: str | None = None) -> dict:
+    return {"vm": moid, "name": name or moid, "power_state": power}
+
+
+def _vm_summary(extension_key: str | None) -> dict:
+    config = {"name": "x", "template": False}
+    if extension_key:
+        config["managedBy"] = {"_typeName": "ManagedByInfo", "extensionKey": extension_key, "type": "cluster-agent"}
+    return {"_typeName": "VirtualMachineSummary", "config": config}
 
 
 def _mock(router: respx.MockRouter, *, version: str = "8.0.3.00400", release: str = "8.0.3.0",
-          host10_summary: httpx.Response | None = None, vcenter_vm: str | None = "vm-1") -> dict:
+          host10_summary: httpx.Response | None = None, vcenter_vm: str | None = "vm-1",
+          vm_summaries: dict[str, httpx.Response] | None = None) -> dict:
     """vCenter 8.0.3 with two hosts: each has a local datastore and both mount a shared one.
 
     host-10 runs the vCenter appliance (``vcenter_vm``) and two range VMs; host-11 one.
@@ -149,7 +157,12 @@ def _mock(router: respx.MockRouter, *, version: str = "8.0.3.00400", release: st
     )
     router.get(f"{sdk}/Datastore/datastore-1/summary").mock(return_value=httpx.Response(200, json=_ds(1000, 400)))
     router.get(f"{sdk}/Datastore/datastore-2/summary").mock(return_value=httpx.Response(200, json=_ds(500, 500)))
-    # Any other VI/JSON release: not served (routes match in order, so this is the last resort).
+    for vm, response in (vm_summaries or {}).items():
+        routes[f"summary:{vm}"] = router.get(f"{sdk}/VirtualMachine/{vm}/summary").mock(return_value=response)
+    routes["vm_reads"] = router.get(url__regex=rf"^{VC}/sdk/vim25/[^/]+/VirtualMachine/").mock(
+        return_value=httpx.Response(404)
+    )
+    # Any other VI/JSON read: not served (routes match in order, so this is the last resort).
     routes["other_sdk"] = router.route(url__startswith=f"{VC}/sdk/").mock(return_value=httpx.Response(404))
     return routes
 
@@ -363,3 +376,51 @@ class TestVmCount:
             discover(conn.id, conn, db_session)
         assert _nodes(db_session, conn)["10.20.0.11"].vm_count == 3  # the vCenter cannot be told apart
         assert not routes["by_ip"].called
+
+
+EAM = "com.vmware.vim.eam"
+HOST10_VMS = [
+    _vm("vm-1"),  # the vCenter appliance
+    _vm("vm-2"),
+    _vm("vm-3"),
+    _vm("vm-50", name="vCLS-ffb74000-1111-2222-3333-444455556666"),
+    _vm("vm-60", name="WIN11-TMPL"),  # a running VM named like a template: a VM, counted
+]
+HOST11_VMS = [_vm("vm-4"), _vm("vm-51", name="vcls-0a1b2c3d"), _vm("vm-52", name="vCLS-not-an-agent")]
+
+
+class TestClusterServiceAgents:
+    """vSphere Cluster Services (vCLS) agent VMs, one per host, are not range VMs."""
+
+    def _discover(self, db_session, *, summaries=None, vi_json=True):
+        conn = _conn(db_session)
+        summaries = summaries or {
+            "vm-50": httpx.Response(200, json=_vm_summary(EAM)),
+            "vm-51": httpx.Response(200, json=_vm_summary(EAM)),
+            "vm-52": httpx.Response(200, json=_vm_summary(None)),  # someone's VM, not EAM's
+        }
+        with respx.mock(assert_all_called=False) as router:
+            routes = _mock(router, vm_summaries=summaries)
+            routes["vms10"].mock(return_value=httpx.Response(200, json=HOST10_VMS))
+            routes["vms11"].mock(return_value=httpx.Response(200, json=HOST11_VMS))
+            if not vi_json:
+                routes["content"].mock(return_value=httpx.Response(404))
+            discover(conn.id, conn, db_session)
+        return _nodes(db_session, conn), routes
+
+    def test_eam_agents_are_not_counted_and_other_running_vms_are(self, db_session):
+        nodes, routes = self._discover(db_session)
+        assert nodes["10.20.0.11"].vm_count == 3  # vm-2, vm-3, WIN11-TMPL
+        assert nodes["10.20.0.12"].vm_count == 2  # vm-4 and vCLS-not-an-agent (not managed by EAM)
+        assert all(routes[f"summary:{vm}"].called for vm in ("vm-50", "vm-51", "vm-52"))
+        assert not routes["vm_reads"].called  # only vCLS-named VMs are read
+
+    def test_an_unreadable_agent_summary_falls_back_to_the_name(self, db_session):
+        nodes, _ = self._discover(db_session, summaries={"vm-50": httpx.Response(500)})
+        assert nodes["10.20.0.11"].vm_count == 3
+
+    def test_without_vi_json_vcls_names_are_not_counted(self, db_session):
+        nodes, routes = self._discover(db_session, vi_json=False)
+        assert nodes["10.20.0.11"].vm_count == 4  # vm-1 (vCenter, not identifiable), vm-2, vm-3, WIN11-TMPL
+        assert nodes["10.20.0.12"].vm_count == 1  # by name only
+        assert not routes["summary:vm-52"].called

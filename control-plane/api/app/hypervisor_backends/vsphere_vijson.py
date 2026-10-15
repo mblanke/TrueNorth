@@ -12,6 +12,7 @@ keeps pyVmomi in the worker's provisioners).
     GET  /sdk/vim25/{release}/HostSystem/{moid}/datastore    Datastore references
     GET  /sdk/vim25/{release}/Datastore/{moid}/summary       capacity, freeSpace (bytes)
     POST /sdk/vim25/{release}/SearchIndex/{moid}/FindByDnsName | FindByIp   the vCenter's VM
+    GET  /sdk/vim25/{release}/VirtualMachine/{moid}/summary  vCLS agent? (managedBy)
     POST /sdk/vim25/{release}/SessionManager/{moid}/Logout
 
 ``release`` must be a release vCenter knows ("release" or a made-up id is a 500 "Unknown
@@ -205,6 +206,30 @@ def host_capacity(vi: ViJson, host_ids: Iterable[str]) -> dict[str, dict]:
         out[h]["storage_total_gb"] = round(total / GIB, 1)
         out[h]["storage_used_gb"] = round(used / GIB, 1)
     return {h: v for h, v in out.items() if v}
+
+
+EAM_EXTENSION = "com.vmware.vim.eam"  # ESX Agent Manager, which deploys the vCLS agent VMs
+
+
+def agent_vms(vi: ViJson, vcls_named: Iterable[str]) -> set[str]:
+    """Which ``vCLS``-named VMs are vSphere Cluster Services agents.
+
+    An agent is managed by ESX Agent Manager (``summary.config.managedBy.extensionKey``).
+    Only VMs already named ``vCLS`` are read (one summary each, about one per host), so a
+    VM someone named vCLS-test that EAM does not manage is still counted. A VM whose
+    summary cannot be read is taken for an agent by its name, as without VI/JSON.
+    """
+    agents: set[str] = set()
+    for vm in vcls_named:
+        try:
+            summary = vi.get("VirtualMachine", vm, "summary")
+            managed_by = ((summary.get("config") or {}).get("managedBy") or {}).get("extensionKey")
+        except _READ_ERRORS:
+            agents.add(vm)
+            continue
+        if managed_by == EAM_EXTENSION:
+            agents.add(vm)
+    return agents
 
 
 def appliance_vms(vi: ViJson, dns_name: str | None, ips: Iterable[str]) -> set[str]:

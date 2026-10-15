@@ -228,8 +228,11 @@ course production with a local-model fallback, and the cleanup of unsupported su
   the host's datastores with each shared one split across the hosts mounting it, so the
   summary and capacity totals count it once. Without VI/JSON (older vCenter, vcsim) the
   figures stay "not reported", never 0. A host's `vm_count` now counts powered-on VMs only:
-  no powered-off VMs, no templates, and not the vCenter appliance (the VM whose guest reports
-  the connection's DNS name or address; without VI/JSON only the power filter applies).
+  no powered-off VMs, no templates, not the vCenter appliance (the VM whose guest reports
+  the connection's DNS name or address; not identifiable without VI/JSON), and not vSphere
+  Cluster Services agents (`vCLS`-named VMs managed by ESX Agent Manager,
+  `com.vmware.vim.eam`; by the `vCLS` name alone without VI/JSON). Any other running VM is
+  counted, whatever its name.
 
 ### R0-B: web correctness and role access
 - Fix: Resume on a paused exercise called `/start` (409 unless pending), so nothing resumed;

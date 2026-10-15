@@ -209,16 +209,24 @@ def _vcenter_addresses(conn) -> tuple[str | None, list[str]]:
     return host, ips
 
 
-def _vijson_read(s: _Session, conn, password: str, host_ids: list) -> tuple[dict[str, dict], set[str]]:
-    """Over VI/JSON: host CPU/memory/storage columns by host id, and the vCenter's own VM ids.
+def _is_vcls_name(vm: dict) -> bool:
+    """vSphere Cluster Services agent VMs are named ``vCLS-<uuid>`` (``vCLS (n)`` before 7.0U3)."""
+    return str(vm.get("name") or "").casefold().startswith("vcls")
 
-    Both are empty when VI/JSON is unavailable; then hosts keep their figures as they were
-    and VM counts are filtered by power state only. Best effort: only the /api dialect
-    (vCenter 7.0U2+) can have VI/JSON, the release id comes from the appliance version,
-    and no failure here fails discovery.
+
+def _vijson_read(
+    s: _Session, conn, password: str, host_ids: list, vcls_named: set[str]
+) -> tuple[dict[str, dict], set[str]]:
+    """Over VI/JSON: host CPU/memory/storage columns by host id, and the ids of VMs that are
+    not range VMs: the vCenter appliance and the vCLS agents among ``vcls_named``.
+
+    When VI/JSON is unavailable, hosts keep their figures as they were, the appliance cannot
+    be told apart, and every ``vCLS``-named VM is taken for an agent. Best effort: only the
+    /api dialect (vCenter 7.0U2+) can have VI/JSON, the release id comes from the appliance
+    version, and no failure here fails discovery.
     """
     if s.dialect != API:
-        return {}, set()
+        return {}, set(vcls_named)
     try:
         ver = s.version()
     except (httpx.HTTPError, ValueError):  # ValueError: a body that is not JSON
@@ -226,10 +234,11 @@ def _vijson_read(s: _Session, conn, password: str, host_ids: list) -> tuple[dict
     version = ver.get("version") if isinstance(ver, dict) else None
     vi = vsphere_vijson.login(s.client, version, conn.username, password)
     if vi is None:
-        return {}, set()
+        return {}, set(vcls_named)
     try:
         name, ips = _vcenter_addresses(conn)
-        return vsphere_vijson.host_capacity(vi, host_ids), vsphere_vijson.appliance_vms(vi, name, ips)
+        not_range = vsphere_vijson.appliance_vms(vi, name, ips) | vsphere_vijson.agent_vms(vi, vcls_named)
+        return vsphere_vijson.host_capacity(vi, host_ids), not_range
     finally:
         vi.logout()
 
@@ -243,9 +252,11 @@ def discover(conn_id, conn: HypervisorConnection, db) -> dict:
     host's read fails, they are left as they were (None, "not reported" on a new host),
     never 0, which would read as an idle host.
 
-    ``vm_count`` is the host's powered-on VMs: not powered-off ones, not templates (which
-    cannot be powered on), and not the vCenter appliance itself when VI/JSON can identify
-    it (``vsphere_vijson.appliance_vms``). Without VI/JSON only the power filter applies.
+    ``vm_count`` is the host's powered-on range VMs: not powered-off ones, not templates
+    (which cannot be powered on), not the vCenter appliance when VI/JSON can identify it
+    (``vsphere_vijson.appliance_vms``), and not vSphere Cluster Services agents (``vCLS``
+    named and, with VI/JSON, managed by ESX Agent Manager: ``vsphere_vijson.agent_vms``).
+    A powered-on VM is otherwise counted, whatever its name (WIN11-TMPL is a VM).
     """
     password = unseal(conn.password_encrypted) or ""  # outside the try, as in check_connection
     try:
@@ -259,7 +270,21 @@ def discover(conn_id, conn: HypervisorConnection, db) -> dict:
             if not isinstance(hosts, list):
                 raise RuntimeError(f"unexpected host list from vCenter: {hosts!r}")
 
-            capacity, appliance = _vijson_read(s, conn, password, [h.get("host") for h in hosts])
+            # Powered on (asked of vCenter, checked again here in case a server ignores the
+            # filter). None: the read failed; keep the last known count, not an empty host.
+            vm_lists: dict[str, list[dict] | None] = {}
+            for h in hosts:
+                if h.get("host"):
+                    try:
+                        vms = s.vms_on(h["host"])
+                    except httpx.HTTPError:
+                        vms = None
+                    vm_lists[h["host"]] = (
+                        [v for v in vms if v.get("power_state", "POWERED_ON") == "POWERED_ON"]
+                        if isinstance(vms, list) else None
+                    )
+            vcls_named = {v.get("vm") for vms in vm_lists.values() for v in vms or [] if _is_vcls_name(v)}
+            capacity, not_range = _vijson_read(s, conn, password, [h.get("host") for h in hosts], vcls_named)
             now = datetime.utcnow()
             discovered = 0
             for h in hosts:
@@ -273,19 +298,9 @@ def discover(conn_id, conn: HypervisorConnection, db) -> dict:
                 status = "online" if h.get("connection_state") == "CONNECTED" else "offline"
 
                 vm_count = existing.vm_count if existing else 0
-                if h.get("host"):
-                    try:
-                        vms = s.vms_on(h["host"])
-                        if isinstance(vms, list):
-                            # Powered on (asked of vCenter, checked again here in case a
-                            # server ignores the filter), and not the vCenter appliance.
-                            vm_count = sum(
-                                1 for v in vms
-                                if v.get("power_state", "POWERED_ON") == "POWERED_ON"
-                                and v.get("vm") not in appliance
-                            )
-                    except httpx.HTTPError:
-                        pass  # keep the last known count rather than report an empty host
+                vms = vm_lists.get(h.get("host"))
+                if vms is not None:
+                    vm_count = sum(1 for v in vms if v.get("vm") not in not_range)
 
                 figures = capacity.get(h.get("host"), {})
                 if existing:
