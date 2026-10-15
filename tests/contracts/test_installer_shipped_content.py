@@ -46,7 +46,9 @@ def test_the_loader_replaces_only_the_token_check() -> None:
     assert "from _inprocess_api import connect" in src
     assert "dependency_overrides[auth.get_token_identity]" in src
     assert "x-csrf-token" in src  # CSRF stays on: the loader echoes the cookie like a browser
-    # No credential of any kind: no bearer header, no Keycloak secret, no env lookups.
+    # No credential of any kind: no bearer header, no Keycloak secret, no env lookups. The one
+    # environment write allowed turns the rate limiter off (it breaks across TestClient loops).
+    src = src.replace('os.environ.setdefault("RATE_LIMIT_ENABLED", "false")', "")
     assert "Authorization" not in src and "KEYCLOAK" not in src and "os.environ" not in src
 
 

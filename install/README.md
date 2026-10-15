@@ -117,6 +117,14 @@ ansible-playbook site.yml -K --ask-vault-pass -e tn_smoke_username=<upn> -e tn_s
 Put the smoke-test password in a vaulted vars file and pass `-e @smoke.yml` rather than
 typing it on a command line.
 
+Then browse to `https://<tn_domain_fqdn>`, **by name, never by IP address**. Keycloak's
+issuer and redirect URIs are the hostname, so opening `https://<ip>` loads an empty page
+(the sign-in check is refused as `invalid_redirect_uri`). The workstation must resolve the
+name: use the AD DNS (TN-DC01), or add a hosts-file line for the platform host.
+
+A production install starts with an empty catalogue; see
+[Shipped content](#shipped-content-optional) to load the repository's.
+
 ## Stages
 
 Each is independently re-runnable: `ansible-playbook playbooks/60-keycloak.yml`
