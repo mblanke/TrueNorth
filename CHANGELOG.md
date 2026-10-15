@@ -212,6 +212,14 @@ course production with a local-model fallback, and the cleanup of unsupported su
   3600; the 10 h maximum is unchanged). The installer enforces it on every run
   (`tn_kc_realm_settings`); `realm-truenorth.json`, security.md AC-12 and
   `test_keycloak_hardening.py` follow.
+- Fix: the installer configured the worker's vCenter but never registered it, so
+  `/infrastructure` was empty after an install and the acceptance provisioners check found
+  "no vSphere connection registered" (TN-MGMT01). 80-seed now registers it as the bootstrap
+  administrator (`scripts/register_vcenter_inprocess.py`, `tn_register_vcenter_connection`,
+  default on): idempotent by host, username/datacenter/verify_ssl kept in step, primary when
+  the tenant has none, password from the environment only and set once (re-set with
+  `tn_vcenter_connection_update_password`); then tested and discovered, a failed test warning
+  without failing the install.
 
 ### R0-B: web correctness and role access
 - Fix: Resume on a paused exercise called `/start` (409 unless pending), so nothing resumed;

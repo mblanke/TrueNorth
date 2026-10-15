@@ -482,6 +482,43 @@ On a staging host loaded this way, `scripts/staging_acceptance.py` then proves e
 key flow end to end against the installed stack, in the same kind of one-off container
 (docs/runbooks/staging-acceptance.md).
 
+## Infrastructure page: the installer registers its vCenter
+
+The worker's vCenter is configured from `tn_vcenter_host`, `tn_vcenter_port`,
+`tn_vcenter_user`, `tn_vsphere_datacenter`, `tn_vsphere_verify_ssl` and
+`vault_vsphere_password`. 80-seed also registers it as a hypervisor connection of the
+bootstrap administrator's tenant, so `/infrastructure` lists it (with its discovered hosts)
+straight after the install and the acceptance suite's provisioners check finds it. Before
+this, an installed host showed an empty Infrastructure page until someone added the
+vCenter by hand.
+
+| Variable | Default | Effect |
+|---|---|---|
+| `tn_register_vcenter_connection` | `true` | register the vCenter (only with `tn_uses_vcenter` and a `tn_vcenter_host`) |
+| `tn_vcenter_connection_name` | `Range vCenter` | the connection's name on the Infrastructure page |
+| `tn_vcenter_connection_update_password` | `false` | also set an existing connection's password from `vault_vsphere_password` |
+
+It runs `scripts/register_vcenter_inprocess.py` in a one-off api container as the bootstrap
+administrator, like the content loader. The password reaches it only through the
+environment (`TN_VCENTER_PASSWORD`, `no_log`), never on a command line, and is never
+printed. Re-running is safe:
+
+- A vSphere connection of that tenant with the same host is reused, never duplicated.
+  Its username, datacenter and `verify_ssl` are corrected when they differ from the
+  inventory; its host and port are not changed (a different port is reported).
+- Its **password is set once**, when the connection is created, and then left alone: an
+  operator may have rotated it on the Infrastructure page. After rotating
+  `vault_vsphere_password`, re-run with
+  `ansible-playbook playbooks/80-seed.yml -e tn_vcenter_connection_update_password=true`.
+- If the tenant has no primary vSphere connection, this one becomes primary.
+- The connection is then tested and discovered. A failed test or discovery (vCenter
+  unreachable, wrong password, certificate) is printed as a `WARNING` and does **not**
+  fail the install: the connection stays registered, and Test on the Infrastructure page
+  re-checks it once fixed. The install fails here only if the connection could not be
+  registered at all (the bootstrap administrator does not exist, or the API refused it).
+
+To manage the connection only by hand, set `tn_register_vcenter_connection: false`.
+
 ## Images: deploy by digest
 
 `compose.prod.yml` builds nothing. The four TrueNorth images run as `${TN_IMAGE_API}`,
