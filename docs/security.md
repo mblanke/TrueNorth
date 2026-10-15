@@ -155,7 +155,7 @@ and `tests/contracts/test_keycloak_hardening.py` keeps the two equal):
   "maxDeltaTimeSeconds": 3600,
   "passwordPolicy": "length(12) and notUsername(undefined) and passwordHistory(5)",
   "accessTokenLifespan": 300,
-  "ssoSessionIdleTimeout": 1800,
+  "ssoSessionIdleTimeout": 3600,
   "ssoSessionMaxLifespan": 36000,
   "offlineSessionIdleTimeout": 604800,
   "clients": [
@@ -844,7 +844,7 @@ repository does it, whatever an operator could add.
 | AC-6 Least Privilege | Partial | Five roles with distinct permission sets. The admin role holds every permission, including cross-tenant reads | `control-plane/api/app/rbac.py` (`ROLE_PERMISSIONS`) |
 | AC-7 Unsuccessful Logon Attempts | Implemented (Keycloak) | Brute-force detection after 5 failures, temporary lockout growing by 60 s up to 300 s; no permanent lockout. AD-federated accounts are also subject to the directory's own policy | `infra/keycloak/realm-truenorth.json`, `tests/contracts/test_keycloak_hardening.py` |
 | AC-8 System Use Notification | Partial | The Keycloak `truenorth` login theme shows the site's notice (`tn_login_banner_text`, set per site as realm localization) above the sign-in form on each interactive sign-in (each SSO session, at most 10 h), on the loopback-only master console too. Gaps: the acknowledgement box is enforced by the browser only (HTML `required`); Keycloak 24 has no per-sign-in server-side acknowledgement (Terms and Conditions records one acceptance per user; anything else needs a Java SPI authenticator). LTI-launched Students sign in through Moodle, which shows no banner (owner decision) | `infra/keycloak/themes/truenorth/login/login.ftl`, `install/roles/tn_keycloak/tasks/banner.yml`, `scripts/check_keycloak_realm.sh` |
-| AC-12 Session Termination | Implemented (Keycloak) | Access token 5 min, SSO idle 30 min, SSO maximum 10 h, offline session 7 days | `install/roles/tn_keycloak/defaults/main.yml` (`tn_kc_realm_settings`) |
+| AC-12 Session Termination | Implemented (Keycloak) | Access token 5 min, SSO idle 60 min, SSO maximum 10 h, offline session 7 days | `install/roles/tn_keycloak/defaults/main.yml` (`tn_kc_realm_settings`) |
 | AU-2 Event Logging | Partial | State changes in most sections write an audit row. Sign-ins, failures, sign-outs and authenticator changes are Keycloak login events (event store and admin events enabled by 60-keycloak, kept 90 days), not TrueNorth audit rows; reads are not logged | `control-plane/api/app/models.py` (`AuditLog`), `install/roles/tn_keycloak/files/mfa-spec.json`; [Audit Logging](#audit-logging) |
 | AU-3 Content of Audit Records | Partial | Time, user, tenant, action, resource type and id, free-text detail. No source IP, user agent or outcome (success or failure) | `control-plane/api/app/models.py` (`AuditLog`) |
 | AU-6 Audit Review | Partial | A paged, newest-first list (`GET /audit-log`, Admin → Audit Log), scoped per tenant; only the platform administrator (`PLATFORM_TENANT_ID`) reads across tenants, with a `tenant_id` filter. No search, date or user filter, correlation, reporting or alerting on audit events | `control-plane/api/app/routers/admin.py` (`list_audit_log`), `tests/api/test_audit_scope.py` |

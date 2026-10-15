@@ -16,7 +16,7 @@ tn_kc_mapper_type: org.keycloak.storage.ldap.mappers.LDAPStorageMapper
 tn_kc_realm_settings:
   accessTokenLifespan: 300 # 5 min; the SPA refreshes silently
   accessTokenLifespanForImplicitFlow: 300
-  ssoSessionIdleTimeout: 1800 # 30 min idle signs a browser out
+  ssoSessionIdleTimeout: 3600 # 60 min idle signs a browser out
   ssoSessionMaxLifespan: 36000 # 10 h: one training day, then sign in again
   offlineSessionIdleTimeout: 604800 # 7 d
   offlineSessionMaxLifespanEnabled: true

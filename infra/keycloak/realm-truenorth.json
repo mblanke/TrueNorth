@@ -28,7 +28,7 @@
   "passwordPolicy": "length(12) and notUsername(undefined) and passwordHistory(5)",
   "accessTokenLifespan": 300,
   "accessTokenLifespanForImplicitFlow": 300,
-  "ssoSessionIdleTimeout": 1800,
+  "ssoSessionIdleTimeout": 3600,
   "ssoSessionMaxLifespan": 36000,
   "offlineSessionIdleTimeout": 604800,
   "offlineSessionMaxLifespanEnabled": true,

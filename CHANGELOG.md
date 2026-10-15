@@ -208,6 +208,10 @@ course production with a local-model fallback, and the cleanup of unsupported su
 - Docs: browse to the hostname, never the IP (Keycloak's redirect URIs are the hostname; the
   IP gives an empty page), and a production install's catalogue starts empty
   (`install/README.md`).
+- Change: browser sessions sign out after **60 minutes** idle, was 30 (`ssoSessionIdleTimeout`
+  3600; the 10 h maximum is unchanged). The installer enforces it on every run
+  (`tn_kc_realm_settings`); `realm-truenorth.json`, security.md AC-12 and
+  `test_keycloak_hardening.py` follow.
 
 ### R0-B: web correctness and role access
 - Fix: Resume on a paused exercise called `/start` (409 unless pending), so nothing resumed;
