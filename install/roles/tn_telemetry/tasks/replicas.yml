@@ -1,0 +1,38 @@
+---
+# Single-node OpenSearch holds no replicas.
+#
+# compose.prod.yml runs one node (discovery.type=single-node). An index asking for a
+# replica can never have it assigned, so the cluster stays yellow and readiness fails
+# (TN-MGMT01, 2026-10-15: .opendistro-job-scheduler-lock with 1 replica). The node setting
+# cluster.default_number_of_replicas=0 in compose is accepted by OpenSearch 2.13 but not
+# used when an index is created; the same setting as a persistent cluster setting is.
+#
+# files/opensearch_replicas.sh, inside the opensearch container:
+#   1. persistent cluster.default_number_of_replicas=0 (every new index, hidden and plugin
+#      ones included);
+#   2. number_of_replicas=0 on every existing index (expand_wildcards=all) that asks for more.
+# Nothing when OpenSearch has more than one node. It authenticates with the admin client
+# certificate already mounted there (CN=tn-opensearch-admin, the authcz.admin_dn): no
+# password is on the command line, in stdin or in the output.
+#
+# Run by 70-telemetry after the bootstrap, and by 95-smoke-test before readiness (an index
+# a plugin created in between, from before this default existed, is fixed, then checked).
+
+- name: OpenSearch — single node, no replicas (new indices default to 0, existing ones set to 0)
+  ansible.builtin.command:
+    cmd: >-
+      docker compose -f {{ tn_compose_file }} --env-file {{ tn_env_file }}
+      exec -T opensearch sh -s
+    chdir: "{{ tn_app_dir }}/infra/platform/docker"
+    stdin: "{{ lookup('ansible.builtin.file', role_path ~ '/files/opensearch_replicas.sh') }}"
+  register: tn_os_replicas
+  # The security index may still be initialising just after a (re)start.
+  retries: 6
+  delay: 10
+  until: tn_os_replicas.rc == 0
+  changed_when: tn_os_replicas.stdout is search('^changed:', multiline=True)
+
+- name: OpenSearch — replicas report
+  ansible.builtin.debug:
+    msg: "OpenSearch replicas: {{ tn_os_replicas.stdout | trim }}"
+  when: tn_os_replicas is changed or 'multi-node' in tn_os_replicas.stdout

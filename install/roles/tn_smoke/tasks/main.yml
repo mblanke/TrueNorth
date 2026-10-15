@@ -101,6 +101,15 @@
     fail_msg: "API reports degraded dependencies: {{ tn_health.json }}"
     success_msg: "API healthy: {{ tn_health.json }}"
 
+# A single node cannot assign replicas: an index a plugin created asking for one (the
+# job-scheduler lock, TN-MGMT01 2026-10-15) turns the cluster yellow and readiness below
+# degraded. Set them to 0 first (idempotent; nothing on a multi-node cluster). Readiness
+# stays strict: yellow or red for any other reason still fails.
+- name: Smoke — OpenSearch single-node replicas
+  ansible.builtin.include_role:
+    name: tn_telemetry
+    tasks_from: replicas
+
 # /health reports the database and Redis; readiness adds OpenSearch (telemetry, scoring
 # evidence), which the API treats as critical whenever it is configured.
 - name: Smoke — readiness, including OpenSearch

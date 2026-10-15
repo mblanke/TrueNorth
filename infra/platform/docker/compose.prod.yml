@@ -269,6 +269,9 @@ services:
       - discovery.type=single-node
       # One node holds no replica: with the default (1) every index the plugins create
       # (ISM config/history, job-scheduler lock) stays yellow and /health/deep "degraded".
+      # 2.13 accepts this as a node setting but ignores it when creating an index (verified
+      # 2026-10-15); the installer also sets it as a persistent cluster setting, which is
+      # used, and zeroes existing indices (install/roles/tn_telemetry/tasks/replicas.yml).
       - cluster.default_number_of_replicas=0
       - plugins.index_state_management.history.number_of_replicas=0
       # Security plugin ON: TLS on HTTP and transport with the installer's internal CA

@@ -281,6 +281,26 @@ docker compose -f compose.prod.yml --env-file /srv/truenorth/config/.env.product
 docker compose -f compose.prod.yml --env-file /srv/truenorth/config/.env.production up -d
 ```
 
+**One node, no replicas.** OpenSearch runs as a single node, which can never assign a
+replica: an index asking for one leaves the cluster yellow, and readiness in
+`95-smoke-test` fails ("Readiness: degraded … opensearch Cluster status: yellow"; on
+TN-MGMT01 it was the job-scheduler plugin's `.opendistro-job-scheduler-lock`). OpenSearch
+2.13 ignores `cluster.default_number_of_replicas` as a node setting when it creates an
+index, so `70-telemetry` (and `95-smoke-test`, again, before readiness) runs
+`roles/tn_telemetry/tasks/replicas.yml` in the opensearch container, authenticated with the
+admin certificate (no password): it sets that default as a **persistent cluster setting**
+(applies to every new index, hidden and plugin ones included) and sets
+`number_of_replicas: 0` on any existing index, hidden ones included, that asks for more.
+Changed only when something was changed; nothing on a multi-node cluster. Any other cause
+of yellow or red still fails readiness. By hand, the same check:
+
+```bash
+cd /srv/truenorth/app/infra/platform/docker
+docker compose -f compose.prod.yml --env-file /srv/truenorth/config/.env.production exec opensearch \
+  curl -s --cacert config/certs/ca.pem --cert config/certs/admin.pem --key config/certs/admin-key.pem \
+  'https://localhost:9200/_cat/indices?h=index,rep,health&expand_wildcards=all'
+```
+
 **Lab/dev override only:** `-e tn_opensearch_disable_security=true` renders
 `OPENSEARCH_DISABLE_SECURITY=true`, `OPENSEARCH_URL=http://opensearch:9200` and an empty
 `OPENSEARCH_USER`: no authentication, plain http on `tn-backend`. Never on a platform
