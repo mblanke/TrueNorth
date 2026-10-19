@@ -8,6 +8,7 @@
 #   ./build.sh variant win11-analyst    # build one or more custom variants
 #   ./build.sh variants                 # build every variant under variants/
 #   ./build.sh register win11-analyst   # (re-)register a built variant with the API
+#   ./build.sh replicate srv2022 [esx02 esx03]   # copy a built template to each range host
 #
 # For each template: packer build -force -only='*.<builder>.<name>' . with a per-template log
 # under logs/. A variant adds -var-file=variants/<name>.pkrvars.hcl and builds the
@@ -18,11 +19,24 @@
 #   variant       POST /golden-images (create or update) from the variant file's metadata,
 #                 so it is offered in the Range Designer
 #
+# Replicate (ADR 0012 decision 6; needs govc and GOVC_URL pointing at vCenter): clone the
+# inventory template <id> to each range host's local datastore as <id>@<host>-<yyyymmdd>
+# and mark it a template. The provisioner clones the newest copy on a VM's own host.
+#   RANGE_HOSTS          hosts when none are named (default "esx02 esx03 esx04")
+#   RANGE_DATASTORE_FMT  printf format for a host's datastore (default "%s-local")
+#   TEMPLATE_FOLDER      inventory folder path for the copies (default: the template's own folder)
+#   REPLICATE_AFTER_BUILD=1  replicate every template right after it builds
+#   DRY_RUN=1            print the govc changes instead of making them
+#
 # packer init + packer validate run once up front.
 set -euo pipefail
 
 cd "$(dirname "$0")"
 mkdir -p logs
+
+RANGE_HOSTS="${RANGE_HOSTS:-esx02 esx03 esx04}"
+RANGE_DATASTORE_FMT="${RANGE_DATASTORE_FMT:-%s-local}"
+TEMPLATE_FOLDER="${TEMPLATE_FOLDER:-}"
 
 # Build-sheet order. ISO builds first, then the vsphere-clone derived images.
 ORDER=(
@@ -183,6 +197,91 @@ check_variant_base() {
   fi
 }
 
+# --- replicate: a copy of the template on every range host's local datastore ----------
+# The hosts have local VMFS only, so a clone from a template on another host copies its
+# disks across the network. Idempotent: today's copy that exists is left alone (a copy
+# whose clone landed but whose mark-as-template did not is marked now).
+run_govc() {
+  if [ -n "${DRY_RUN:-}" ]; then
+    echo "DRY_RUN: govc $*"
+  else
+    govc "$@"
+  fi
+}
+
+# The inventory path of the one VM or template called exactly $1 (empty: none).
+find_vm() {
+  govc find / -type m -name "$1" 2>/dev/null | head -n1
+}
+
+# The inventory path of host $1: its exact name, else <name>.<domain> (esx03 -> esx03.truenorth.lab).
+find_host() {
+  local h="$1" path
+  path="$(govc find / -type h -name "$h" 2>/dev/null | head -n1)"
+  [ -n "$path" ] || path="$(govc find / -type h -name "${h}.*" 2>/dev/null | head -n1)"
+  echo "$path"
+}
+
+replicate_one() {
+  local id="$1" host="$2" date="$3" source="$4" folder="$5" short ds copy existing host_path
+  short="${host%%.*}"
+  copy="${id}@${short}-${date}"
+  # shellcheck disable=SC2059 # the format is the operator's RANGE_DATASTORE_FMT
+  ds="$(printf "$RANGE_DATASTORE_FMT" "$short")"
+  existing="$(find_vm "$copy")"
+  if [ -n "$existing" ]; then
+    if [ "$(govc object.collect -s "$existing" config.template 2>/dev/null)" = "true" ]; then
+      echo "replicate: ${copy} already exists; skipped"
+      return 0
+    fi
+    echo "replicate: ${copy} exists but is not a template yet; marking it"
+    run_govc vm.markastemplate "$existing"
+    return 0
+  fi
+  host_path="$(find_host "$short")"
+  if [ -z "$host_path" ]; then
+    echo "FAIL: replicate ${id}: host '${short}' is not in vCenter inventory" >&2
+    return 1
+  fi
+  echo "replicate: ${id} -> ${copy} on ${host_path} [${ds}]"
+  run_govc vm.clone -vm "$source" -on=false -template=false -link=false \
+    -host="$host_path" -ds="$ds" -folder="$folder" "$copy" || {
+    echo "FAIL: replicate ${id}: clone to ${short} failed" >&2
+    return 1
+  }
+  run_govc vm.markastemplate "${folder%/}/${copy}" || {
+    echo "FAIL: replicate ${id}: ${copy} cloned but not marked a template (re-run replicate to finish)" >&2
+    return 1
+  }
+  echo "replicate: OK ${copy}"
+}
+
+replicate() {
+  local id="$1" date source folder failed=0 h hosts=()
+  shift
+  if [ "$#" -gt 0 ]; then hosts=("$@"); else read -r -a hosts <<< "$RANGE_HOSTS"; fi
+  if ! command -v govc >/dev/null 2>&1 || [ -z "${GOVC_URL:-}" ]; then
+    echo "replicate: govc and GOVC_URL (the vCenter) are required" >&2
+    return 1
+  fi
+  # Against vCenter only: vm.markastemplate on a vCenter-managed ESXi host desyncs inventory.
+  if [ "$(govc about 2>/dev/null | sed -n -E 's/^API type:[[:space:]]*([^[:space:]]+).*/\1/p' | head -n1)" != "VirtualCenter" ]; then
+    echo "replicate: GOVC_URL must point at vCenter, not an ESXi host" >&2
+    return 1
+  fi
+  source="$(find_vm "$id")"
+  if [ -z "$source" ]; then
+    echo "FAIL: replicate: template '${id}' is not in vCenter inventory; build it first (./build.sh ${id})" >&2
+    return 1
+  fi
+  folder="${TEMPLATE_FOLDER:-$(dirname "$source")}"  # default: next to the template it copies
+  date="${REPLICA_DATE:-$(date +%Y%m%d)}"
+  for h in "${hosts[@]}"; do
+    replicate_one "$id" "$h" "$date" "$source" "$folder" || failed=1
+  done
+  return "$failed"
+}
+
 build_one() {
   local name="$1" builder log ts
   builder="$(builder_of "$name")"
@@ -194,6 +293,9 @@ build_one() {
   if packer build -force -only="*.${builder}.${name}" . 2>&1 | tee "$log"; then
     echo "OK: ${name}"
     register_back "$name"
+    if [ "${REPLICATE_AFTER_BUILD:-}" = "1" ]; then
+      replicate "$name" || return 1
+    fi
   else
     echo "FAIL: ${name} (see ${log})" >&2
     return 1
@@ -235,13 +337,18 @@ main() {
   if [ "$#" -eq 0 ]; then
     print_list
     echo
-    echo "Pass 'all', 'variants', 'variant <name>...', 'register <name>...', or template names." >&2
+    echo "Pass 'all', 'variants', 'variant <name>...', 'register <name>...', 'replicate <id> [host...]', or template names." >&2
     exit 2
   fi
 
   local failed=0 n VARIANTS=()
   case "$1" in
     list) print_list; exit 0 ;;
+    replicate)
+      shift
+      [ "$#" -gt 0 ] || { echo "replicate: name a template id, then optionally hosts" >&2; exit 2; }
+      replicate "$@" || failed=1
+      exit "$failed" ;;
     register)
       shift
       [ "$#" -gt 0 ] || { echo "register: name at least one variant" >&2; exit 2; }

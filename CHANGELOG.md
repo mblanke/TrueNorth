@@ -272,6 +272,19 @@ course production with a local-model fallback, and the cleanup of unsupported su
   default on): idempotent by name or base URL, primary when none is, key from the environment
   only and set once (re-set with `tn_ai_backend_update_key`), a route per configured model id;
   then discovered, an unreachable endpoint warning without failing the install.
+- Golden templates (work vCenter, ADR 0012 decisions 1, 6, 8): the hosts have local
+  datastores only, so `build.sh replicate <id> [hosts]` copies a built template to each
+  range host (`RANGE_HOSTS`, default esx02–04) as `<id>@<host>-<yyyymmdd>` on `<host>-local`,
+  idempotently, and the vSphere provisioner clones the newest copy that resides on the VM's
+  placed host, else the plain template (logged, and recorded as `vms[].template`). The
+  worker task `worker.template_tasks.prune_template_copies` removes superseded copies no
+  undestroyed range used: dry run by default, daily beat report, deletes only with
+  `dry_run=false` / `TEMPLATE_COPY_PRUNE=delete`, never while a range provisions. Catalogue:
+  VyOS enabled (rolling 2026.10.01, aliases `vyos`, `vyos-1.4`), `win10-ltsc` alias on
+  win10-22h2, new srv2025 / debian13 / parrot rows, kali 2026.1, rocky 10.2; small-enterprise
+  assets name their OS, and a test checks every `os:` in content/ranges resolves to an
+  enabled image. CI job `packer-vsphere` runs `packer init`, `fmt -check` and
+  `validate -syntax-only` on `infra/vsphere/packer` (the README named a job that did not exist).
 
 ### R0-B: web correctness and role access
 - Fix: Resume on a paused exercise called `/start` (409 unless pending), so nothing resumed;

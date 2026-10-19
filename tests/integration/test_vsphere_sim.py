@@ -556,3 +556,49 @@ def test_greyspace_gs_core_is_built_wired_and_torn_down(env, si, range_id, monke
     assert gone.status == "ok", gone.errors
     assert _named(si, vim.VirtualMachine, gs["name"]) is None
     assert _portgroups(si, f"tn-{range_id[:8]}-") == {}
+
+
+def test_host_local_template_copies_are_cloned_and_pruned(env, si, range_id, template):
+    """ADR 0012 decision 6 on real managed objects: each VM clones the newest
+    ``<template>@<host>-<yyyymmdd>`` copy registered on its own host (``VirtualMachine.datastore``
+    and the property-collector listing as vCenter serves them); pruning removes only the
+    superseded copy. vcsim's hosts share LocalDS_0, so residence holds on every host here;
+    the per-host datastore check is covered by the fakes."""
+    from worker.provisioners import template_copies
+
+    cluster = _named(si, vim.ClusterComputeResource, CLUSTER)
+    made = []
+    for host in cluster.host:
+        short = template_copies.host_short_name(host.name)
+        for date in ("20261001", "20261019"):
+            spec = vim.vm.CloneSpec(powerOn=False, location=vim.vm.RelocateSpec(
+                host=host, pool=cluster.resourcePool, datastore=host.datastore[0]))
+            task = template.CloneVM_Task(folder=template.parent, name=f"{TEMPLATE_VM}@{short}-{date}", spec=spec)
+            _wait(si, task)
+            task.info.result.MarkAsTemplate()
+            made.append(task.info.result)
+    try:
+        prov = mod.VsphereAPIProvisioner()
+        tpl = _template(range_id)
+        built = _run(prov.provision(range_id, tpl, _reserve(prov, range_id, tpl)))
+        assert built.status == "ok", built.errors
+        for out in built.vms:
+            short = template_copies.host_short_name(out["host"])
+            assert out["template"] == f"{TEMPLATE_VM}@{short}-20261019"
+            assert vim.VirtualMachine(out["vm_id"], si._stub).runtime.host.name == out["host"]
+
+        in_use = template_copies.names_in_use([{"vms": built.vms}])
+        report = _run(mod.VsphereAPIProvisioner().prune_template_copies(in_use))
+        assert report["dry_run"] and report["deleted"] == []
+        assert len(report["deletable"]) == len(cluster.host) and all(n.endswith("-20261001")
+                                                                      for n in report["deletable"])
+        done = _run(mod.VsphereAPIProvisioner().prune_template_copies(in_use, dry_run=False))
+        assert sorted(done["deleted"]) == sorted(report["deletable"]) and done["errors"] == []
+        left = {_name(vm) for vm in _all(si, vim.VirtualMachine)}
+        assert not left & set(done["deleted"]) and TEMPLATE_VM in left
+        assert all(f"{TEMPLATE_VM}@{template_copies.host_short_name(h.name)}-20261019" in left for h in cluster.host)
+        _run(mod.VsphereAPIProvisioner().destroy(range_id, {"vms": built.vms, "networks": built.networks}))
+    finally:
+        for vm in made:
+            with contextlib.suppress(Exception):
+                _wait(si, vm.Destroy_Task())

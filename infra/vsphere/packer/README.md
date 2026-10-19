@@ -105,6 +105,7 @@ The variables you must set per site:
 ./build.sh variant win11-analyst   # custom variants, see "Custom images (variants)"
 ./build.sh variants                # every variants/*.pkrvars.hcl
 ./build.sh register win11-analyst  # (re-)register a built variant with the API
+./build.sh replicate srv2022       # copy a built template to every range host (below)
 ```
 
 `build.sh` runs `packer init` and `packer validate` once, then for each name runs
@@ -120,6 +121,38 @@ the derived images, then any variants (`./build.sh variants`, not part of `all`)
 the Linux/Windows bases before their derived clones. The derived builds clone
 `base_ubuntu_template` / `base_win10_template` from inventory, and each variant clones
 its own `variant_base`.
+
+### Host-local copies (`replicate`)
+
+The range hosts have local VMFS datastores only, so a clone from a template on another
+host copies its disks across the network (20–40 GB per Windows VM). ADR 0012 decision 6
+keeps a copy of each template on every range host:
+
+```sh
+export GOVC_URL=https://<vcenter> GOVC_USERNAME=... GOVC_PASSWORD=... GOVC_INSECURE=1
+./build.sh replicate srv2022                 # esx02, esx03, esx04 (RANGE_HOSTS)
+./build.sh replicate srv2022 esx03           # just one host
+REPLICATE_AFTER_BUILD=1 ./build.sh srv2022   # build, register, then replicate
+DRY_RUN=1 ./build.sh replicate srv2022       # print the govc changes only
+```
+
+For each host it clones the inventory template `<id>` powered off onto that host and its
+datastore (`RANGE_DATASTORE_FMT`, default `%s-local`), as `<id>@<host>-<yyyymmdd>`, in the
+template's own folder (or `TEMPLATE_FOLDER`), then `govc vm.markastemplate`. It is
+idempotent: today's copy that exists is skipped, and one that was cloned but not yet
+marked is marked. It refuses to run unless `GOVC_URL` is a vCenter (see the warning
+below about ESXi). An unknown host or a template that is not built yet exits non-zero;
+the other hosts are still copied.
+
+The `vsphere_api` provisioner then clones, for each VM, the newest copy that resides on
+the datastore of the host placement chose (`VSPHERE_PLACEMENT=spread`). The host's short
+name is the first label of its vCenter name (`esx03.truenorth.lab` → `esx03`). With no
+copy on that host it clones the plain `<id>` as before; it logs which one it used and
+records it as `vms[].template` in the range's output. Copies older than the newest on a
+host, that no undestroyed range records, are removed by the worker task
+`worker.template_tasks.prune_template_copies`: a dry run by default (beat runs it daily at
+03:30 UTC and reports), deleting only with `dry_run=false` or `TEMPLATE_COPY_PRUNE=delete`
+on beat, and never while a range is provisioning.
 
 ### Register-back
 
@@ -268,5 +301,9 @@ recorded as an open item in `docs/vm-build-sheet.md` §8.
 ## Validation
 
 `packer init . && packer fmt -check -recursive . && packer validate .` should all pass with
-a filled var file. CI (`.github/workflows/packer-build.yml`, job `vsphere-validate`) runs
-`init` + `fmt -check` + `validate -syntax-only` on every change, with no secrets.
+a filled var file. CI (`.github/workflows/ci.yml`, job `packer-vsphere`, Packer 1.16.0) runs
+`packer init`, `packer fmt -check -recursive` and `packer validate -syntax-only` on every
+push and pull request to `main`, with no secrets and no vCenter, so variable values,
+ISO names and the builds themselves are not checked there. (`packer-build.yml` is the
+older, manually dispatched Proxmox workflow; it does not touch this directory.)
+`tests/contracts/test_packer_replicate.py` runs `build.sh replicate` against a stub govc.

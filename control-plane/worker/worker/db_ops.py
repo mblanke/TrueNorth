@@ -104,6 +104,15 @@ def active_ranges(db) -> list:
     return db.execute(stmt).fetchall()
 
 
+def undestroyed_range_outputs(db) -> list:
+    """(id, state, provisioner_output) of every range not ``destroyed``: whatever may still
+    have VMs (template_tasks reads which template each was cloned from)."""
+    stmt = sa.select(ranges.c.id, ranges.c.state, ranges.c.provisioner_output).where(
+        sa.cast(ranges.c.state, sa.Text) != "destroyed"
+    )
+    return db.execute(stmt).fetchall()
+
+
 def touch_range(db, range_id: str) -> None:
     db.execute(sa.update(ranges).where(ranges.c.id == range_id).values(updated_at=_now()))
 
@@ -136,6 +145,16 @@ def _connection_cols():
     hc = hypervisor_connections
     return (hc.c.host, hc.c.port, hc.c.username, hc.c.password_encrypted, hc.c.api_token, hc.c.verify_ssl,
             hc.c.datacenter, hc.c.id)
+
+
+def active_connection_creds(db, hypervisor_type: str) -> list[dict]:
+    """Endpoint and login of every active connection of a hypervisor type, every tenant's
+    and the shared ones: for platform maintenance that is not a range's (template_tasks)."""
+    hc = hypervisor_connections
+    stmt = (sa.select(*_connection_cols())
+            .where(hc.c.hypervisor_type == hypervisor_type, hc.c.is_active == sa.true())
+            .order_by(hc.c.created_at.asc(), hc.c.id.asc()))
+    return [_creds(row) for row in db.execute(stmt).fetchall()]
 
 
 def range_tenant(db, range_id: str):

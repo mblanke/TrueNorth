@@ -61,6 +61,7 @@ ADDED_SINCE_SPLIT = {
     "worker.tasks.run_scenario_execution",  # worker/exercise_run.py (POST /scenarios/execute)
     "worker.audit_tasks.export_audit_days",  # worker/audit_tasks.py (beat, ADR 0011)
     "worker.audit_tasks.enforce_audit_retention",  # worker/audit_tasks.py (beat, ADR 0011)
+    "worker.template_tasks.prune_template_copies",  # worker/template_tasks.py (beat, ADR 0012)
 }
 
 
