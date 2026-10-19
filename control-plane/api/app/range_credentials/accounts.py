@@ -11,8 +11,15 @@
         notes: Domain admin      # optional
 
 The JSON Schema (scenario-engine/schemas/template.schema.json) checks the shape; this
-module adds what a schema cannot: the machine exists in the template, and a username
-appears once per machine (case-insensitively: Windows account names are).
+module adds what a schema cannot: the machine exists in the template, a username appears
+once per machine (case-insensitively: Windows account names are), and a typed-in password
+for a Windows machine meets Windows complexity.
+
+A typed-in password is never stored as typed: ``seal_yaml`` replaces it in the stored
+template with a sealed token (app/secretbox.py, ``tnsec:v1:...``) on create and update;
+``parse`` unseals it where it is used (the credentials sync). ``redact_yaml`` masks
+passwords for readers who may not see them, from the parsed document (decoded keys), never
+by searching the text.
 """
 
 from __future__ import annotations
@@ -25,7 +32,7 @@ from typing import Any
 
 import yaml
 
-from .. import safe_yaml
+from .. import safe_yaml, secretbox
 
 ROLES = ("admin", "user")
 FIELDS = frozenset({"machine", "username", "password", "generate", "student_visible", "role", "notes"})
@@ -56,6 +63,36 @@ class AccountSpec:
     @property
     def key(self) -> tuple[str, str]:
         return self.machine, self.username.casefold()
+
+
+def machine_os(doc: dict[str, Any]) -> dict[str, str]:
+    """Machine id -> its ``os`` (lower case) as the template states it ('' when unknown)."""
+    out: dict[str, str] = {}
+    for node in doc.get("nodes") or []:
+        if isinstance(node, dict) and node.get("id") not in (None, ""):
+            out[str(node["id"])] = str(node.get("os") or node.get("os_template") or "").lower()
+    return out
+
+
+def is_windows(os_name: str) -> bool:
+    """As the worker decides (vsphere_infra.os_family): an OS naming Windows."""
+    return "win" in (os_name or "").lower()
+
+
+def windows_password_problem(password: str, username: str) -> str | None:
+    """Why Windows would refuse ``password`` for ``username``, or None: at least 8 characters,
+    three of upper case, lower case, digits and other characters, and not containing the
+    account name (Windows checks names of 3 or more characters, case-insensitively)."""
+    if len(password) < 8:
+        return "Windows requires at least 8 characters"
+    classes = sum((any(c.isupper() for c in password), any(c.islower() for c in password),
+                   any(c.isdigit() for c in password), any(not c.isalnum() for c in password)))
+    if classes < 3:
+        return "Windows requires three of: upper case, lower case, digits, other characters"
+    name = username.rsplit("\\", 1)[-1].split("@", 1)[0]
+    if len(name) >= 3 and name.casefold() in password.casefold():
+        return "Windows refuses a password that contains the account name"
+    return None
 
 
 def machines(doc: dict[str, Any]) -> dict[str, str]:
@@ -90,6 +127,7 @@ def parse(doc: dict[str, Any] | None) -> tuple[list[AccountSpec], list[dict[str,
     if len(raw) > MAX_ACCOUNTS:
         return [], [{"path": "accounts", "message": f"at most {MAX_ACCOUNTS} accounts"}]
     known = machines(doc)
+    os_of = machine_os(doc)
     specs: list[AccountSpec] = []
     errors: list[dict[str, str]] = []
     seen: dict[tuple[str, str], int] = {}
@@ -114,6 +152,13 @@ def parse(doc: dict[str, Any] | None) -> tuple[list[AccountSpec], list[dict[str,
         if not isinstance(username, str) or not USERNAME_RE.match(username):
             bad("username is required: letters, digits and . _ @ - \\ (at most 104)", "username")
         password = item.get("password")
+        if isinstance(password, str) and secretbox.is_sealed(password):
+            try:
+                password = secretbox.unseal(password)
+            except (secretbox.SecretUnreadableError, secretbox.SecretKeyMissingError):
+                bad("password is sealed (tnsec:) but this platform cannot unseal it; type the password or use "
+                    "generate: true", "password")
+                password = ""
         generate = item.get("generate", False)
         if not isinstance(generate, bool):
             bad("generate must be true or false", "generate")
@@ -125,6 +170,10 @@ def parse(doc: dict[str, Any] | None) -> tuple[list[AccountSpec], list[dict[str,
         elif password == REDACTED:
             bad("password is the placeholder a redacted copy shows; set the real password or generate: true",
                 "password")
+        elif (isinstance(password, str) and isinstance(username, str) and machine_id is not None
+              and is_windows(os_of.get(machine_id, ""))
+              and (why := windows_password_problem(password, username))):
+            bad(f"password for a Windows machine: {why}", "password")
         if (password is not None) == bool(generate):
             bad("set exactly one of password and generate: true")
         visible = item.get("student_visible")
@@ -163,31 +212,63 @@ def parse_yaml(text: str | None) -> tuple[list[AccountSpec], list[dict[str, str]
     return parse(doc if isinstance(doc, dict) else None)
 
 
-def generate_password(length: int = GENERATED_LENGTH) -> str:
-    """A random password with an upper, a lower, a digit and a symbol (Windows complexity)."""
+def generate_password(username: str = "", length: int = GENERATED_LENGTH) -> str:
+    """A random password with an upper, a lower, a digit and a symbol, starting with a letter
+    or digit, that Windows accepts for ``username`` (``windows_password_problem``)."""
     while True:
         pw = "".join(secrets.choice(_ALPHABET) for _ in range(length))
         if (pw[0].isalnum() and any(c.isupper() for c in pw) and any(c.islower() for c in pw)
-                and any(c.isdigit() for c in pw) and any(c in _SYMBOLS for c in pw)):
+                and any(c.isdigit() for c in pw) and any(c in _SYMBOLS for c in pw)
+                and windows_password_problem(pw, username) is None):
             return pw
 
 
-def redact_yaml(text: str | None) -> str | None:
-    """Template YAML with every ``accounts[].password`` replaced by ``REDACTED``.
+def _load(text: str | None) -> Any:
+    return safe_yaml.load(text or "")
 
-    Unchanged (formatting and comments kept) when there is no password to hide; a document
-    that does not parse is returned as it is, since it declares no usable account."""
-    if not text or "password" not in text:
-        return text
+
+def seal_yaml(text: str | None) -> str | None:
+    """The template to store: every typed-in ``accounts[].password`` sealed (``tnsec:v1:``).
+
+    Unchanged (formatting and comments kept) when there is nothing to seal. Call after
+    ``parse`` accepted the document: a sealed value that does not unseal is refused there."""
     try:
-        doc = safe_yaml.load(text)
-    except yaml.YAMLError:  # safe_yaml refusals included
+        doc = _load(text)
+    except yaml.YAMLError:  # refused elsewhere; nothing is acted on
         return text
     if not isinstance(doc, dict) or not isinstance(doc.get("accounts"), list):
         return text
     changed = False
     for item in doc["accounts"]:
-        if isinstance(item, dict) and item.get("password") is not None:
-            item["password"] = REDACTED
+        pw = item.get("password") if isinstance(item, dict) else None
+        if isinstance(pw, str) and pw and not secretbox.is_sealed(pw):
+            item["password"] = secretbox.seal(pw)
             changed = True
     return yaml.safe_dump(doc, sort_keys=False, allow_unicode=True) if changed else text
+
+
+def redact_yaml(text: str | None) -> str:
+    """Template YAML for a reader who may not see passwords: every ``accounts[].password``
+    (sealed or not) is ``REDACTED``, and so is a password repeated in that account's notes.
+
+    Decided on the parsed document, so an escaped key (``"passwor\\x64"``) is still a
+    password. A document that does not parse (or YAML the API refuses, such as aliases) is
+    withheld entirely ("")."""
+    try:
+        doc = _load(text)
+    except yaml.YAMLError:
+        return ""
+    if not isinstance(doc, dict) or not isinstance(doc.get("accounts"), list):
+        return text or ""
+    for item in doc["accounts"]:
+        if not isinstance(item, dict) or item.get("password") is None:
+            continue
+        pw = item["password"]
+        try:
+            plain = secretbox.unseal(pw) if isinstance(pw, str) else None
+        except (secretbox.SecretUnreadableError, secretbox.SecretKeyMissingError):
+            plain = None
+        item["password"] = REDACTED
+        if plain and isinstance(item.get("notes"), str):
+            item["notes"] = item["notes"].replace(plain, REDACTED)
+    return yaml.safe_dump(doc, sort_keys=False, allow_unicode=True)

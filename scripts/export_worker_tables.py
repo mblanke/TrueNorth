@@ -39,6 +39,7 @@ WORKER_TABLES = (
     "golden_images",
     "hypervisor_connections",
     "inject_records",
+    "lab_sessions",
     "learning_recommendations",
     "network_reservations",
     "objectives",
@@ -81,6 +82,7 @@ def _type_src(t) -> str:
 def render() -> str:
     import app.audit_integrity  # noqa: F401 — audit_exports
     import app.greyspace.models  # noqa: F401
+    import app.lab_sessions  # noqa: F401 — lab_sessions (worker/range_accounts.py: no default login on labs)
     import app.network_inventory  # noqa: F401 — section models register their tables on import
     import app.range_credentials  # noqa: F401
     import app.range_leases  # noqa: F401

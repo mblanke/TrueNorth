@@ -8,16 +8,23 @@ Rows (``RangeCredential``) are written:
   ``accounts:``. A generated password is made once per range and kept across rebuilds; a
   literal one follows the template; an account the template no longer declares goes.
 * when the template changes, for the ranges of it that are not built (``created``,
-  ``destroyed``): the next build applies what the template now says.
+  ``destroyed``): the next build applies what the template now says. This runs after the
+  response (``regenerate_for_template``), for every tenant's ranges of that template.
+
+Every sync marks the rows not ``applied``; the worker marks applied what a build reports it
+set (worker/range_accounts.py). A generated password is issued by ``_issue``, the one place
+a per-account rotation would call.
 
 Reads (ADR 0012 §13), all tenant-scoped (another tenant's range is 404):
 
 ==================================  ==============================================
 admin, instructor, range_ops         every account (``range:credentials_read``)
-Student                              ``student_visible`` accounts of a range they take
-                                     part in: their own lab session's range, or an
+Student                              ``student_visible`` accounts the last build set
+                                     (``applied``), of a range they take part in: an
                                      exercise running or paused on it whose booked
-                                     course they are rostered on. Otherwise 404.
+                                     course they are rostered on. Otherwise 404. Lab
+                                     sessions are not covered yet (their ranges hold no
+                                     credentials; their VMs keep random passwords).
 observer and anyone else             403
 ==================================  ==============================================
 
@@ -29,6 +36,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from contextlib import closing
 
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
@@ -44,8 +52,6 @@ logger = logging.getLogger("truenorth.range_credentials")
 # A range in these states has no VMs a change would leave behind: its next build applies it.
 UNBUILT = (RangeState.created, RangeState.destroyed)
 ACTIVE_EXERCISE = (ExerciseState.running, ExerciseState.paused)
-# Template updates re-sync at most this many of its ranges in one request.
-MAX_RANGES_PER_TEMPLATE_UPDATE = 500
 
 ALL = "all"
 STUDENT = "student"
@@ -84,23 +90,32 @@ def sync(db: Session, rng: Range) -> int:
     for spec in specs:
         row = rows.pop(spec.key, None)
         if row is None:
-            db.add(RangeCredential(
+            row = RangeCredential(
                 tenant_id=rng.tenant_id, range_id=rng.id, machine=spec.machine, username=spec.username,
-                password=spec.password if spec.password is not None else account_rules.generate_password(),
-                generated=spec.generate, student_visible=spec.student_visible, role=spec.role, notes=spec.notes,
-            ))
+                password=spec.password, generated=False, student_visible=spec.student_visible, role=spec.role,
+                notes=spec.notes, applied=False,
+            )
+            if spec.generate:
+                _issue(row)
+            db.add(row)
             continue
-        row.username, row.student_visible, row.role, row.notes = (
-            spec.username, spec.student_visible, spec.role, spec.notes)
+        row.username, row.student_visible, row.role, row.notes, row.applied = (
+            spec.username, spec.student_visible, spec.role, spec.notes, False)
         if spec.generate:
             if not row.generated:  # was a literal: make one up now, once
-                row.password, row.generated = account_rules.generate_password(), True
+                _issue(row)
         elif row.generated or row.password != spec.password:
             row.password, row.generated = spec.password, False
     for gone in rows.values():
         db.delete(gone)
     db.flush()
     return len(specs)
+
+
+def _issue(row: RangeCredential) -> None:
+    """Give ``row`` a newly generated password. Once per range today; rotating one account
+    (ADR 0012, M1 pending) is this plus ``applied = False`` and a rebuild or in-guest change."""
+    row.password, row.generated = account_rules.generate_password(row.username), True
 
 
 def forget(db: Session, range_id: uuid.UUID) -> None:
@@ -145,27 +160,53 @@ def on_build_succeeded(db: Session, rng: Range) -> None:
     _document(db, rng, None)
 
 
-def on_template_updated(db: Session, tmpl: Template, actor: CurrentUser) -> None:
-    """Re-sync the template's unbuilt ranges in the caller's tenant and refresh every page."""
-    ranges = (
-        db.query(Range)
-        .filter(Range.template_id == tmpl.id, Range.tenant_id == uuid.UUID(actor.tenant_id),
-                Range.deleted_at.is_(None))
-        .order_by(Range.created_at.desc())
-        .limit(MAX_RANGES_PER_TEMPLATE_UPDATE + 1)
-        .all()
-    )
-    if len(ranges) > MAX_RANGES_PER_TEMPLATE_UPDATE:
-        logger.warning("template %s has more than %d ranges; only the newest were re-documented",
-                       tmpl.id, MAX_RANGES_PER_TEMPLATE_UPDATE)
-        ranges = ranges[:MAX_RANGES_PER_TEMPLATE_UPDATE]
-    for rng in ranges:
-        if rng.state in UNBUILT:
-            try:
-                sync(db, rng)
-            except InvalidAccountsError as exc:  # a template stored before validation existed
-                logger.warning("range %s keeps its credentials: %s", rng.id, exc)
-        _document(db, rng, actor)
+def regenerate_for_template(template_id: uuid.UUID) -> None:
+    """After a template change (run after the response, ``BackgroundTasks``): re-sync every
+    unbuilt range of it and regenerate every range's page, in every tenant (each range's own
+    tenant, its own page). Batched, one commit per range; never raises."""
+    try:
+        _regenerate_for_template(template_id)
+    except Exception as exc:  # noqa: BLE001 — after the response there is nobody to tell but the log
+        logger.warning("template %s: its ranges were not refreshed (%s)", template_id, type(exc).__name__)
+
+
+def _regenerate_for_template(template_id: uuid.UUID) -> None:
+    with session_factory() as db:
+        last: uuid.UUID | None = None
+        while True:
+            q = db.query(Range).filter(Range.template_id == template_id, Range.deleted_at.is_(None))
+            if last is not None:
+                q = q.filter(Range.id > last)
+            batch = q.order_by(Range.id).limit(BATCH).all()
+            if not batch:
+                return
+            for rng in batch:
+                last = rng.id
+                try:
+                    if rng.state in UNBUILT:
+                        sync(db, rng)
+                    _document(db, rng, None)
+                    db.commit()
+                except InvalidAccountsError as exc:  # a template stored before validation existed
+                    db.rollback()
+                    logger.warning("range %s keeps its credentials: %s", rng.id, exc)
+                except Exception as exc:  # noqa: BLE001
+                    db.rollback()
+                    logger.warning("range %s: credentials/page not refreshed (%s)", rng.id, type(exc).__name__)
+
+
+BATCH = 200
+
+
+def _default_factory():
+    """A session of its own (the request's is closed by the time background work runs)."""
+    from ..db import SessionLocal
+
+    return closing(SessionLocal())
+
+
+# A context manager yielding a session; tests point it at theirs.
+session_factory = _default_factory
 
 
 def on_range_deleted(db: Session, rng: Range) -> None:
@@ -185,8 +226,9 @@ def _document(db: Session, rng: Range, actor: CurrentUser | None) -> None:
     try:
         with db.begin_nested():
             wiki_doc.upsert(db, rng, _rows(db, rng), actor_id(actor))
-    except Exception:  # noqa: BLE001
-        logger.exception("could not regenerate the wiki page of range %s", rng.id)
+    except Exception as exc:  # noqa: BLE001
+        # The type only: a database error's text carries the statement and its parameters.
+        logger.warning("could not regenerate the wiki page of range %s (%s)", rng.id, type(exc).__name__)
 
 
 # ── Reads ───────────────────────────────────────────────────────────────
@@ -214,14 +256,10 @@ def takes_part(db: Session, user: CurrentUser, rng: Range) -> bool:
     """Whether a Student takes part in ``rng`` (module docstring). ``rng`` is in their tenant."""
     from ..enrollment import rostered_course_ids
     from ..exercise_participants import roster_courses
-    from ..telemetry_access import _own_lab
-
     try:
         uid = uuid.UUID(str(user.id))
     except ValueError:
         return False
-    if _own_lab(db, uid, rng.id):
-        return True
     exercises = (
         db.query(Exercise)
         .filter(
@@ -262,7 +300,7 @@ def readable_range(db: Session, range_id: uuid.UUID, user: CurrentUser, scope: s
 
 def visible_accounts(db: Session, rng: Range, scope: str) -> list[RangeCredential]:
     rows = _rows(db, rng)
-    return rows if scope == ALL else [r for r in rows if r.student_visible]
+    return rows if scope == ALL else [r for r in rows if r.student_visible and r.applied]
 
 
 def audit_read(db: Session, user: CurrentUser, rng: Range, scope: str, rows: list[RangeCredential]) -> None:

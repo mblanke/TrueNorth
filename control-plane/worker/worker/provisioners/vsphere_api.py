@@ -148,6 +148,9 @@ TN_DEPOT_APT_PROXY: str = os.environ.get("TN_DEPOT_APT_PROXY", "")
 TN_DEPOT_PORTS: str = os.environ.get("TN_DEPOT_PORTS", "8081,3142")
 # Per VM, for all of its installs together.
 TN_SOFTWARE_INSTALL_TIMEOUT: int = int(os.environ.get("TN_SOFTWARE_INSTALL_TIMEOUT", "1800"))
+# Per Linux VM with range accounts (ADR 0012): how long to wait for cloud-init to have
+# applied them before their hashes are scrubbed from the VM's guestinfo anyway.
+VSPHERE_ACCOUNT_SCRUB_TIMEOUT: int = int(os.environ.get("VSPHERE_ACCOUNT_SCRUB_TIMEOUT", "900"))
 # Per VM, for its Windows Server roles together (features, reboots, forest promotion).
 VSPHERE_ROLE_TIMEOUT: int = int(os.environ.get("VSPHERE_ROLE_TIMEOUT", "1800"))
 # No new work starts once a provision has run this long: Celery redelivers a task that is
@@ -465,6 +468,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
         self._depot_ports = tuple(int(p) for p in TN_DEPOT_PORTS.replace(" ", "").split(",") if p)
         self._install_timeout = TN_SOFTWARE_INSTALL_TIMEOUT
         self._role_timeout = VSPHERE_ROLE_TIMEOUT
+        self._scrub_timeout = VSPHERE_ACCOUNT_SCRUB_TIMEOUT
         self._budget = VSPHERE_PROVISION_BUDGET
         self._guest_poll = 5.0
         self._library_id: str | None = None
@@ -1465,6 +1469,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
                                                           vm_defs, vms_out, errors, warnings)
                     await self._install_roles(si, vm_defs, vms_out, start, errors)
                     await self._install_software(si, vm_defs, vms_out, start, errors, warnings)
+                    await self._scrub_accounts(si, vm_defs, vms_out, start, warnings)
                 except Exception as exc:
                     errors.append(self._redact(exc, *vm_defs))
                 if not vms_out:
@@ -1474,7 +1479,8 @@ class VsphereAPIProvisioner(BaseProvisioner):
         finally:
             self._soap_si = None
             for vm_def in vm_defs:  # the guest passwords end with this call
-                for key in ("_guest", "_accounts", "_default_login"):
+                for key in ("_guest", "_accounts", "_default_login", "_scrub", "_scrubbed", "_will_set",
+                            "_cloud_init_ok"):
                     vm_def.pop(key, None)
 
         built = {v["name"] for v in vms_out}
@@ -1729,11 +1735,15 @@ class VsphereAPIProvisioner(BaseProvisioner):
         session = guest.GuestSession(si.content, vm, creds, poll=self._guest_poll)
         result = guest.install(session, commands, deadline, cleanup)
         if creds.family == "linux":
+            # The install user logged in: cloud-init has run its users module (ADR 0012).
+            vm_def["_cloud_init_ok"] = bool(result["packages"]) and all(
+                p["status"] != "not_run" for p in result["packages"])
             # The install user is gone (or expiring); take it out of the guestinfo too.
             try:
                 macs = [card.macAddress for card in infra.nic_cards(vm.config.hardware.device)]
                 spec = vim.vm.ConfigSpec(extraConfig=infra.linux_guestinfo(vm_def, macs))
                 self._wait(vm.ReconfigVM_Task(spec=spec), si)
+                vm_def["_scrubbed"] = True  # the range accounts went with it (ADR 0012)
             except Exception as exc:  # noqa: BLE001
                 result.setdefault("error", f"could not scrub the install user from guestinfo: "
                                            f"{guest.redact(str(exc), creds)}")
@@ -1793,21 +1803,80 @@ class VsphereAPIProvisioner(BaseProvisioner):
 
     @staticmethod
     def _plan_accounts(vm_defs: list[dict], warnings: list[str]) -> None:
-        """Say which declared accounts (ADR 0012) this build does not set: on Windows only
-        the built-in Administrator is set (Sysprep), other accounts are scenario content;
-        on Linux, names useradd refuses; on appliances, none (they keep their own config)."""
+        """What this build sets of each VM's declared accounts (ADR 0012).
+
+        Windows: only the built-in Administrator (Sysprep); other accounts are scenario
+        content. Linux: every name useradd accepts (cloud-init). Appliances: none (they keep
+        their own config). ``_will_set`` names what will be set (the build reports it as
+        ``accounts_applied``); the rest is a warning. A Linux VM whose cloud-config will
+        carry account hashes or the default login is marked ``_scrub`` and given the
+        ephemeral install login, used after first boot to see cloud-init finish before the
+        hashes are taken out of its guestinfo (``_scrub_accounts``)."""
         for vm_def in vm_defs:
-            names = [a.username for a in vm_def.get("_accounts") or []]
+            accounts = vm_def.get("_accounts") or []
+            names = [a.username for a in accounts]
             family = infra.os_family(vm_def)
             if family == "windows":
-                left = [n for n in names if n.casefold() != guest.WINDOWS_ADMIN]
+                will = [n for n in names if n.casefold() == guest.WINDOWS_ADMIN]
             elif family == "linux":
-                left = guest.account_users(vm_def.get("_accounts") or [])[1]
+                skipped = guest.account_users(accounts)[1]
+                will = [n for n in names if n not in skipped]
+                if will or vm_def.get("_default_login") is not None:
+                    vm_def["_scrub"] = True
+                    vm_def.setdefault("_guest", guest.linux_credentials())
             else:
-                left = names
-            if left:
+                will = []
+            vm_def["_will_set"] = will
+            if left := [n for n in names if n not in will]:
                 warnings.append(f"VM {vm_def['name']}: declared account(s) not set at deploy on this {family} "
                                 f"machine: {', '.join(left)}")
+
+    def _scrub_sync(self, si, vm_def: dict, vm_id: str, deadline: float) -> bool:
+        """Wait (as the install user) for cloud-init to finish, remove that user, then rewrite
+        the VM's guestinfo without account hashes, default login or install user. The rewrite
+        happens whether or not cloud-init could be seen to finish. Returns whether it was."""
+        vm = self._vm(si, vm_id)
+        confirmed = bool(vm_def.get("_cloud_init_ok"))
+        if not vm_def.get("_software"):  # no install ran, so nobody has logged in yet
+            session = guest.GuestSession(si.content, vm, vm_def["_guest"], poll=self._guest_poll)
+            result = guest.install(session, guest.linux_commands([], self._apt_proxy), deadline,
+                                   guest.linux_cleanup_command())
+            confirmed = "error" not in result
+        macs = [card.macAddress for card in infra.nic_cards(vm.config.hardware.device)]
+        self._wait(vm.ReconfigVM_Task(spec=vim.vm.ConfigSpec(extraConfig=infra.linux_guestinfo(vm_def, macs))), si)
+        vm_def["_scrubbed"] = True
+        return confirmed
+
+    async def _scrub_accounts(self, si, vm_defs: list[dict], vms_out: list[dict], start: float,
+                              warnings: list[str]) -> None:
+        """Every built VM: report ``accounts_applied`` (usernames only). Every built Linux VM
+        marked ``_scrub``: take the account material out of its guestinfo once cloud-init has
+        applied it (``_scrub_sync``), VSPHERE_CONCURRENCY at a time, at most
+        VSPHERE_ACCOUNT_SCRUB_TIMEOUT each. A VM whose accounts could not be seen applied
+        reports none and gets a warning; a failed rewrite is a warning naming what remains."""
+        by_name = {v["name"]: v for v in vm_defs}
+        gate = asyncio.Semaphore(self._concurrency)
+        hard_stop = start + self._budget
+
+        async def one(vm_def: dict, out: dict) -> None:
+            confirmed = True
+            if vm_def.get("_scrub") and not vm_def.get("_scrubbed"):
+                async with gate:
+                    deadline = max(min(time.monotonic() + self._scrub_timeout, hard_stop), time.monotonic() + 60)
+                    try:
+                        confirmed = await asyncio.to_thread(self._scrub_sync, si, vm_def, out["vm_id"], deadline)
+                    except Exception as exc:  # noqa: BLE001
+                        confirmed = False
+                        warnings.append(f"VM {out['name']}: could not remove the range account hashes from its "
+                                        f"guestinfo: {self._redact(exc, vm_def)}")
+            elif vm_def.get("_scrub"):
+                confirmed = bool(vm_def.get("_cloud_init_ok"))
+            if not confirmed and vm_def.get("_will_set"):
+                warnings.append(f"VM {out['name']}: cloud-init could not be seen applying its accounts; they are "
+                                "recorded as not set")
+            out["accounts_applied"] = list(vm_def.get("_will_set") or []) if confirmed else []
+
+        await asyncio.gather(*(one(by_name[o["name"]], o) for o in vms_out if o["name"] in by_name))
 
     def _roles_sync(self, si, vm_def: dict, vm_id: str, deadline: float) -> dict[str, dict]:
         session = guest.GuestSession(si.content, self._vm(si, vm_id), vm_def["_guest"], poll=self._guest_poll)

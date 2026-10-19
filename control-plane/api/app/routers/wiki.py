@@ -10,7 +10,7 @@ Endpoint                                            Permission(s)
 GET    /wiki/spaces                                 WIKI_READ
 POST   /wiki/spaces                                 WIKI_ADMIN
 GET    /wiki/spaces/{slug}                          WIKI_READ
-PUT    /wiki/spaces/{slug}                          WIKI_ADMIN (409: opening a space of generated range pages)
+PUT    /wiki/spaces/{slug}                          WIKI_ADMIN
 DELETE /wiki/spaces/{slug}  (archives)              WIKI_ADMIN
 GET    /wiki/spaces/{slug}/tree                     WIKI_READ
 POST   /wiki/spaces/{slug}/pages                    WIKI_EDIT
@@ -24,7 +24,10 @@ GET    /wiki/search?q=                              WIKI_READ
 ==================================================  ==========================
 
 Visibility: a space marked ``staff`` is invisible (404, never 403) to anyone without
-WIKI_EDIT, and so are unpublished pages. Saving a page requires the ``base_revision``
+WIKI_EDIT, and so are unpublished pages. A ``system_owned`` space (the generated range
+pages, ADR 0012 §14) is always treated as ``staff`` and its visibility cannot be changed
+(409); its generated pages show their credential tokens expanded, and an edit keeps their
+generated block (app/range_credentials/wiki_doc.py). Saving a page requires the ``base_revision``
 the editor started from; a stale one is a 409 carrying the current page, so concurrent
 editors cannot silently overwrite each other.
 
@@ -51,6 +54,7 @@ from ..auth import CurrentUser
 from ..db import get_db
 from ..models import AuditLog, User
 from ..models_wiki import WikiPage, WikiRevision, WikiSpace
+from ..range_credentials import wiki_doc
 from ..rbac import Permission, require_permission, user_has_permission
 from ..tenancy import get_owned, tenant_uuid
 
@@ -100,6 +104,7 @@ class WikiSpaceOut(BaseModel):
     icon: str
     visibility: str
     is_archived: bool
+    system_owned: bool = False
     created_at: datetime
     updated_at: datetime
 
@@ -203,6 +208,11 @@ def _staff(user: CurrentUser) -> bool:
     return user_has_permission(user, Permission.WIKI_EDIT)
 
 
+def _staff_only(space: WikiSpace) -> bool:
+    """Hidden from anyone without WIKI_EDIT: staff visibility, or owned by the platform."""
+    return space.visibility == "staff" or bool(space.system_owned)
+
+
 def _slugify(text: str) -> str:
     slug = re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
     return (slug or "page")[:200]
@@ -227,7 +237,7 @@ def _space(db: Session, slug: str, user: CurrentUser) -> WikiSpace:
         )
         .first()
     )
-    hidden = space is not None and (space.visibility == "staff" or space.is_archived)
+    hidden = space is not None and (_staff_only(space) or space.is_archived)
     if not space or (hidden and not _staff(user)):
         raise HTTPException(404, "Space not found")
     return space
@@ -242,7 +252,7 @@ def _writable(space: WikiSpace) -> None:
 def _page(db: Session, page_id: uuid.UUID, user: CurrentUser) -> tuple[WikiPage, WikiSpace]:
     page = get_owned(db, WikiPage, page_id, user, not_found="Page not found")
     space = get_owned(db, WikiSpace, page.space_id, user, not_found="Page not found")
-    if not _staff(user) and (space.visibility == "staff" or space.is_archived or not page.is_published):
+    if not _staff(user) and (_staff_only(space) or space.is_archived or not page.is_published):
         raise HTTPException(404, "Page not found")
     return page, space
 
@@ -273,6 +283,8 @@ def _page_out(db: Session, page: WikiPage, space: WikiSpace, user: CurrentUser) 
     out.breadcrumbs = crumbs
     out.children = [WikiPageRef(id=c.id, title=c.title) for c in children]
     out.last_editor_name = _names(db, user, {page.last_editor_id}).get(page.last_editor_id, "")
+    if wiki_doc.is_generated(page, space) and _staff(user):
+        out.body = wiki_doc.expand(db, page, page.body)  # the passwords, for staff, never stored here
     return out
 
 
@@ -360,7 +372,7 @@ def list_spaces(
 ) -> list[WikiSpace]:
     q = db.query(WikiSpace).filter(WikiSpace.tenant_id == tenant_uuid(user), WikiSpace.deleted_at.is_(None))
     if not _staff(user):
-        q = q.filter(WikiSpace.visibility == "all")
+        q = q.filter(WikiSpace.visibility == "all", WikiSpace.system_owned.is_(False))
     if not include_archived or not _staff(user):
         q = q.filter(WikiSpace.is_archived.is_(False))
     return q.order_by(WikiSpace.name).all()
@@ -406,13 +418,8 @@ def update_space(
     user: CurrentUser = Depends(require_permission(Permission.WIKI_ADMIN)),
 ) -> WikiSpace:
     space = _space(db, slug, user)
-    if body.visibility == "all" and space.visibility == "staff":
-        from ..range_credentials.wiki_doc import holds_generated_pages
-
-        if holds_generated_pages(db, space):  # ADR 0012 §14: they hold range passwords
-            raise HTTPException(
-                409, "This space holds generated range pages with passwords; it must stay staff-only."
-            )
+    if space.system_owned and body.visibility not in (None, "staff"):
+        raise HTTPException(409, "This space is managed by TrueNorth (range credentials); it is always staff-only.")
     for k, v in body.model_dump(exclude_unset=True).items():
         if v is not None:
             setattr(space, k, v)
@@ -500,7 +507,14 @@ def get_page(
     user: CurrentUser = Depends(require_permission(Permission.WIKI_READ)),
 ) -> WikiPageOut:
     page, space = _page(db, page_id, user)
-    return _page_out(db, page, space, user)
+    out = _page_out(db, page, space, user)
+    if wiki_doc.is_generated(page, space) and _staff(user):
+        # The page shows the range's passwords: audited like GET /ranges/{id}/credentials.
+        rid = wiki_doc.range_of(page)
+        db.add(AuditLog(user_id=uuid.UUID(user.id), tenant_id=page.tenant_id, action="range_credentials_read",
+                        resource_type="range", resource_id=str(rid), detail=f"scope=all; via=wiki page {page.id}"))
+        db.commit()
+    return out
 
 
 @router.put("/pages/{page_id}", response_model=WikiPageOut)
@@ -514,6 +528,8 @@ def update_page(
     _writable(space)
     if body.base_revision != page.revision_number:
         return _conflict(db, page.id, user)
+    if body.body is not None and wiki_doc.is_generated(page, space):
+        body.body = wiki_doc.keep_generated(page.body or "", body.body)  # only the notes are the editor's
 
     new_parent = None if body.move_to_root else (body.parent_id if body.parent_id is not None else page.parent_id)
     if new_parent is not None and new_parent != page.parent_id:
@@ -714,7 +730,8 @@ def search(
         )
     )
     if not _staff(user):
-        query = query.filter(WikiSpace.visibility == "all", WikiPage.is_published.is_(True))
+        query = query.filter(WikiSpace.visibility == "all", WikiSpace.system_owned.is_(False),
+                             WikiPage.is_published.is_(True))
     rows = query.order_by(WikiPage.updated_at.desc()).limit(limit * 2).all()
     ql = q.lower()
     rows.sort(key=lambda r: 0 if ql in r[0].title.lower() else 1)

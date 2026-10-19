@@ -253,10 +253,10 @@ class FakeGuestOps:
     def _check(self, vm, auth):
         self.passwords_seen.add(auth.password)
         expected = vm.guest_password(auth.username) or ""
-        if expected.startswith("hashed:"):  # glibc: cloud-init got a SHA-512 crypt hash
-            import crypt  # noqa: PLC0415 -- only where the worker itself produced a hash
+        if expected.startswith("hashed:"):  # cloud-init got a SHA-512-crypt hash (always, ADR 0012)
+            from worker.provisioners.sha512_crypt import sha512_crypt  # noqa: PLC0415
 
-            ok = crypt.crypt(auth.password, expected[7:]) == expected[7:]
+            ok = sha512_crypt(auth.password, expected[7:].split("$")[2]) == expected[7:]
         else:
             ok = bool(expected) and auth.password == expected
         if not ok:

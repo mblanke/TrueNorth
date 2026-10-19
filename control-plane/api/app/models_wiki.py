@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import Boolean, ForeignKey, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, ForeignKey, Index, Integer, String, Text, UniqueConstraint, false
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .db import Base
@@ -41,6 +41,9 @@ class WikiSpace(TimestampMixin, SoftDeleteMixin, Base):
     visibility: Mapped[str] = mapped_column(String(10), default="all")
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
     created_by: Mapped[uuid.UUID | None] = mapped_column(GUID(), nullable=True)
+    # Owned by the platform (the generated range pages, ADR 0012 §14): always staff-only,
+    # whatever ``visibility`` says, and its visibility cannot be changed (routers/wiki.py).
+    system_owned: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=false())
 
 
 class WikiPage(TimestampMixin, SoftDeleteMixin, Base):

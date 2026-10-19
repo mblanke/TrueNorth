@@ -227,6 +227,55 @@ class TestRanges:
             assert secret not in stored
             assert secret not in repr(dc_accounts)
 
+    def test_the_build_records_which_accounts_it_set(self, world, monkeypatch):
+        """M2: a VM's ``accounts_applied`` becomes ``applied`` on exactly those rows."""
+        from app.range_credentials import RangeCredential
+
+        db = world.db
+        world.template.yaml = "nodes:\n  - id: dc01\n    os: windows-server-2022\n"
+        world.range.state = m.RangeState.provisioning
+        admin, other = _add(
+            db,
+            RangeCredential(tenant_id=world.tenant.id, range_id=world.range.id, machine="dc01",
+                            username="Administrator", password="Dc-Pass-1!", role="admin"),
+            RangeCredential(tenant_id=world.tenant.id, range_id=world.range.id, machine="dc01",
+                            username="jsmith", password="Js-Pass-1!", role="user", student_visible=True),
+        )
+        built = [{"name": f"{str(world.range.id)[:8]}-dc01", "node_id": "dc01", "accounts_applied": ["Administrator"]}]
+        backend = _fake_backend(provision=ProvisionResult(status="ok", vms=built, networks=[]))
+        monkeypatch.setattr(tasks, "_get_backend", lambda name=None, range_id=None, **kw: backend)
+
+        tasks.provision_range(str(world.range.id))
+
+        assert (_fresh(db, admin).applied, _fresh(db, other).applied) == (True, False)
+
+    def test_a_lab_sessions_range_gets_no_default_login(self, world, monkeypatch):
+        """H2: the lab's VMs keep a random password each, as before ADR 0012."""
+        from app.course_releases.models import CourseRelease, CourseReleaseBlob
+        from app.lab_sessions.models import LabSession
+
+        db = world.db
+        world.template.yaml = "nodes:\n  - id: web\n    os: ubuntu-2404\n"
+        world.range.state = m.RangeState.provisioning
+        sha = uuid.uuid4().hex * 2
+        course = _add(db, m.Course(id=uuid.uuid4(), name="C", tenant_id=world.tenant.id))
+        _add(db, CourseReleaseBlob(sha256=sha, size=1, data=b"x"))
+        rel = _add(db, CourseRelease(id=uuid.uuid4(), tenant_id=world.tenant.id, course_id=course.id,
+                                     catalogue_code="c", arc2_code="a", run_id="r", slug="s", title="T", version=1,
+                                     release_digest=sha, learner_digest=sha, platform_digest=sha,
+                                     instructor_digest=sha, blob_sha256=sha, meta="{}"))
+        _add(db, LabSession(tenant_id=world.tenant.id, user_id=world.user.id, release_id=rel.id,
+                            activity_id="m", state="provisioning", profile_id="p", profile_digest="0" * 64,
+                            backend="vsphere_api", range_id=world.range.id))
+        monkeypatch.setenv("TN_RANGE_DEFAULT_PASSWORD", "Default-Pass-3!")
+        backend = _fake_backend(provision=ProvisionResult(status="ok", vms=[{"name": "web"}], networks=[]))
+        monkeypatch.setattr(tasks, "_get_backend", lambda name=None, range_id=None, **kw: backend)
+
+        tasks.provision_range(str(world.range.id))
+
+        vms = backend.provision.await_args.args[1]["vms"]
+        assert vms and all("_default_login" not in vm and "_accounts" not in vm for vm in vms)
+
     def test_another_tenants_rows_never_reach_a_build(self, world):
         from app.range_credentials import RangeCredential
 
@@ -883,6 +932,8 @@ PG_CALLS = {
     "hypervisor_creds_by_id": lambda db: db_ops.hypervisor_creds_by_id(db, "vsphere", ID, ID),
     "enabled_golden_images": lambda db: db_ops.enabled_golden_images(db, "vsphere"),
     "range_accounts": lambda db: db_ops.range_accounts(db, ID),
+    "is_lab_range": lambda db: db_ops.is_lab_range(db, ID),
+    "mark_accounts_applied": lambda db: db_ops.mark_accounts_applied(db, ID, [("dc01", "Administrator")]),
     "exercise_scenario_yaml": lambda db: db_ops.exercise_scenario_yaml(db, ID),
     "exercise_scores_and_yaml": lambda db: db_ops.exercise_scores_and_yaml(db, ID),
     "start_exercise": lambda db: db_ops.start_exercise(db, ID),

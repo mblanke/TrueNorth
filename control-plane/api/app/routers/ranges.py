@@ -56,6 +56,7 @@ from ..models import (
 )
 from ..network_inventory import NetworkReservation, NetworkReservationOut
 from ..provisioner_choice import configured_backend
+from ..range_credentials import accounts as template_accounts
 from ..range_credentials import service as range_credentials
 from ..range_ops import service as ops
 from ..range_ops.lease_status import LeaseStatusOut
@@ -450,8 +451,11 @@ def save_range_topology(
             parsed = loaded if isinstance(loaded, dict) else {}
         except pyyaml.YAMLError:
             parsed = {}
+    foreign = current is not None and current.tenant_id != rng.tenant_id
     for key, value in parsed.items():
-        if key not in _DESIGNER_KEYS:
+        # Another tenant's (public or shared) template lends its keys, never its accounts:
+        # their passwords are that tenant's (ADR 0012). Declare this range's own instead.
+        if key not in _DESIGNER_KEYS and not (foreign and key == "accounts"):
             template.setdefault(key, value)
     if isinstance(parsed.get("network"), dict):
         for key, value in parsed["network"].items():
@@ -461,7 +465,11 @@ def save_range_topology(
 
     if network_placement_keys(template):
         raise HTTPException(422, "a topology may not set port_group; lab networks are assigned by the platform")
-    text = pyyaml.safe_dump(template, sort_keys=False)
+    _, account_errors = template_accounts.parse(template)
+    if account_errors:  # e.g. an account on a machine the new topology no longer has
+        raise HTTPException(422, {"message": "The template's accounts do not fit this topology; fix them in the "
+                                             "template", "errors": account_errors[:20]})
+    text = template_accounts.seal_yaml(pyyaml.safe_dump(template, sort_keys=False))
 
     # Claim the range first: a conditional UPDATE that only matches while the range is
     # still editable. On Postgres it holds the row lock until commit, so a concurrent

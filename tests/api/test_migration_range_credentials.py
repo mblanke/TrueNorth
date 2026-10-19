@@ -1,9 +1,10 @@
-"""c8d9e0f1a2b3 adds range_credentials, and only that (ADR 0012).
+"""c8d9e0f1a2b3 adds range_credentials and wiki_spaces.system_owned, and only that (ADR 0012).
 
-Upgrade from its parent onto a database that already holds a tenant, a template and a
-range: the table appears empty with its unique key and indexes, the existing rows are
-untouched, and a sealed row can be written and read back through the ORM. Downgrade drops
-it again; re-upgrade restores it. SQLite here; test_migration_populated_upgrade.py covers
+Upgrade from its parent onto a database that already holds a tenant, a template, a range
+and a wiki space: the table appears empty with its unique key and indexes, the existing
+space is not system-owned, the existing rows are untouched, and a sealed row can be
+written and read back through the ORM. Downgrade drops both again, keeping the space;
+re-upgrade restores them. SQLite here; test_migration_populated_upgrade.py covers
 PostgreSQL in CI (TEST_POSTGRES_ADMIN_URL).
 """
 
@@ -45,13 +46,21 @@ def test_upgrade_adds_an_empty_sealed_table_and_downgrade_removes_it(tmp_path):
         db.flush()
         db.add(Range(id=rng, name="r", template_id=template, tenant_id=tenant, state=RangeState.ready))
         db.commit()
+    with engine.begin() as db:  # a person's space, before system_owned existed
+        db.execute(sa.text("INSERT INTO wiki_spaces (id, tenant_id, name, slug, description, icon, visibility, "
+                           "is_archived) VALUES (:id, :t, 'Ranges', 'ranges', '', 'folder', 'all', 0)"),
+                   {"id": str(uuid.uuid4()), "t": str(tenant)})
     assert "range_credentials" not in sa.inspect(engine).get_table_names()
 
     _alembic(url, "upgrade", REVISION)
     insp = sa.inspect(engine)
     cols = {c["name"]: c for c in insp.get_columns("range_credentials")}
     assert set(cols) == {"id", "tenant_id", "range_id", "machine", "username", "password", "generated",
-                         "student_visible", "role", "notes", "created_at", "updated_at"}
+                         "student_visible", "applied", "role", "notes", "created_at", "updated_at"}
+    assert not {c["name"]: c for c in insp.get_columns("wiki_spaces")}["system_owned"]["nullable"]
+    with engine.connect() as db:  # the existing space is a person's, and stays as it was
+        row = db.execute(sa.text("SELECT visibility, system_owned FROM wiki_spaces")).one()
+        assert (row[0], bool(row[1])) == ("all", False)
     assert not any(cols[c]["nullable"] for c in ("tenant_id", "range_id", "machine", "username", "password"))
     assert {tuple(u["column_names"]) for u in insp.get_unique_constraints("range_credentials")} == {
         ("range_id", "machine", "username")}
@@ -77,6 +86,9 @@ def test_upgrade_adds_an_empty_sealed_table_and_downgrade_removes_it(tmp_path):
 
     _alembic(url, "downgrade", PARENT)
     assert "range_credentials" not in sa.inspect(engine).get_table_names()
+    assert "system_owned" not in {c["name"] for c in sa.inspect(engine).get_columns("wiki_spaces")}
+    with engine.connect() as db:
+        assert db.execute(sa.text("SELECT slug FROM wiki_spaces")).scalar() == "ranges"  # kept
     _alembic(url, "upgrade", "head")
     assert "range_credentials" in sa.inspect(engine).get_table_names()
     engine.dispose()

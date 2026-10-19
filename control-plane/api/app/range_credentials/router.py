@@ -36,6 +36,9 @@ class RangeCredentialOut(BaseModel):
     role: str = Field(description="admin | user")
     student_visible: bool = Field(description="Handed to Students who take part in the range")
     generated: bool = Field(description="TrueNorth made the password up for this range")
+    applied: bool = Field(description="The last build reported setting it. False: not set by TrueNorth "
+                                      "(Windows accounts other than Administrator, appliances, other backends, "
+                                      "or not built yet). Students only ever get applied accounts")
     notes: str = ""
 
 
@@ -62,9 +65,10 @@ def get_range_credentials(
     """The accounts on a range's machines, with their passwords, as the caller may see them.
 
     **Permission: range:read**, then by role: staff with ``range:credentials_read`` see every
-    account; a Student sees the ``student_visible`` accounts of a range they take part in
-    (their lab session's range, or an exercise running on it whose booked course they are
-    rostered on) and gets 404 for any other; an observer gets 403. Audited per read.
+    account (``applied`` false: not set by TrueNorth); a Student sees the ``student_visible``
+    accounts the last build set, of a range they take part in (an exercise running on it
+    whose booked course they are rostered on; lab sessions are not covered yet) and gets 404
+    for any other; an observer gets 403. Audited per read.
     """
     scope = service.access_scope(user)
     rng = service.readable_range(db, range_id, user, scope)
@@ -74,7 +78,8 @@ def get_range_credentials(
         scope=scope,
         accounts=[
             RangeCredentialOut(machine=r.machine, username=r.username, password=r.password or "", role=r.role,
-                               student_visible=r.student_visible, generated=r.generated, notes=r.notes or "")
+                               student_visible=r.student_visible, generated=r.generated, applied=r.applied,
+                               notes=r.notes or "")
             for r in rows
         ],
     )

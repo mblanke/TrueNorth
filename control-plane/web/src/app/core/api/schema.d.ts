@@ -5573,9 +5573,10 @@ export interface paths {
          * @description The accounts on a range's machines, with their passwords, as the caller may see them.
          *
          *     **Permission: range:read**, then by role: staff with ``range:credentials_read`` see every
-         *     account; a Student sees the ``student_visible`` accounts of a range they take part in
-         *     (their lab session's range, or an exercise running on it whose booked course they are
-         *     rostered on) and gets 404 for any other; an observer gets 403. Audited per read.
+         *     account (``applied`` false: not set by TrueNorth); a Student sees the ``student_visible``
+         *     accounts the last build set, of a range they take part in (an exercise running on it
+         *     whose booked course they are rostered on; lab sessions are not covered yet) and gets 404
+         *     for any other; an observer gets 403. Audited per read.
          */
         get: operations["get_range_credentials_ranges__range_id__credentials_get"];
         put?: never;
@@ -7021,8 +7022,10 @@ export interface paths {
          * Get Template
          * @description Retrieve a single template.  **Permission: template:read**
          *
-         *     Its ``accounts[].password`` values are shown only to holders of range:credentials_read
-         *     in the template's own tenant; anyone else reads them as ``********`` (ADR 0012 §13).
+         *     Typed-in ``accounts[].password`` values are stored sealed (``tnsec:v1:...``). Holders of
+         *     range:credentials_read in the template's own tenant read them so (an edit sends them back
+         *     unchanged); anyone else reads ``********`` (ADR 0012 §13), and an unparseable document
+         *     not at all.
          */
         get: operations["get_template_templates__template_id__get"];
         /**
@@ -12636,6 +12639,11 @@ export interface components {
         /** RangeCredentialOut */
         RangeCredentialOut: {
             /**
+             * Applied
+             * @description The last build reported setting it. False: not set by TrueNorth (Windows accounts other than Administrator, appliances, other backends, or not built yet). Students only ever get applied accounts
+             */
+            applied: boolean;
+            /**
              * Generated
              * @description TrueNorth made the password up for this range
              */
@@ -15086,6 +15094,11 @@ export interface components {
             name: string;
             /** Slug */
             slug: string;
+            /**
+             * System Owned
+             * @default false
+             */
+            system_owned?: boolean;
             /**
              * Updated At
              * Format: date-time

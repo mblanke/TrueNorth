@@ -200,26 +200,38 @@ searches a range's events.
 A range template can declare the accounts its machines get at deploy (`accounts:`): the
 Windows `Administrator`, the Linux install user, and accounts for Students. Each has a
 fixed password or `generate: true` (TrueNorth makes one up once per range and keeps it
-across rebuilds). Passwords are stored encrypted.
+across rebuilds). Passwords are stored encrypted, including a fixed password typed into a
+template: the saved template shows it as a `tnsec:` token. A fixed password for a Windows
+machine must meet Windows complexity (8+ characters, three of upper case, lower case,
+digits and symbols, not containing the account name), or the template is refused.
 
 - **Admins, instructors and Range Ops** open the range's page (`/ranges/:id`) and use the
   **Credentials** panel: **Show accounts** loads the list, each password stays masked until
   you click the eye, and the copy buttons copy a username or password without showing it.
-  Every time the list is loaded is recorded in the audit log.
+  Every time the list is loaded is recorded in the audit log. An account marked **Not set
+  by TrueNorth** was not set by the last build (or the range is not built yet).
 - **Students** see a **Your accounts** panel on the exercise page, listing only the
-  accounts handed to Students, and only for a range they take part in (their own lab, or a
-  running exercise booked to a course they are enrolled on).
+  accounts handed to Students that the last build actually set, and only for a range they
+  take part in (a running exercise booked to a course they are enrolled on). Lab sessions do
+  not show accounts yet; their machines get a random password each.
 - **Observers** do not see credentials.
 
-Each range also gets a page in the staff-only wiki space **Ranges**: its machines,
-addresses, networks and the full credential table. TrueNorth rewrites that page when the
-range is created, renamed or built, or its template changes. Write your own notes under its
-**Notes** heading; they are kept. Students cannot open this space.
+Each range also gets a page in the wiki space **Ranges**, which TrueNorth owns: it is
+always staff-only and cannot be opened to everyone. The page lists the machines,
+addresses, networks and the full credential table (passwords appear when staff open the
+page; they are not stored in the wiki, its history or its search). TrueNorth rewrites the
+generated part when the range is created, renamed or built, or its template changes. Write
+your own notes under its **Notes** heading; they are kept, and edits to the generated part
+are discarded.
 
-A machine with no declared account gets the platform's generic password if the installer
-set one (`vault_range_default_password`), otherwise a random password nobody is told.
-On Windows only the `Administrator` account is set at deploy; other Windows accounts
-are listed but must be created by the scenario (the build reports them as a warning).
+What deploy sets (vSphere): on Windows only the `Administrator` account (other Windows
+accounts must be created by the scenario; the build reports them as a warning); on Linux
+every declared account (an admin gets `sudo`, except the image's own user such as
+`ubuntu`, which keeps the passwordless `sudo` it has). After first boot TrueNorth removes
+the accounts' password hashes from the VM's vCenter settings. Appliances and other
+backends set nothing. A machine with no declared account gets the platform's generic
+password if the installer set one (`vault_range_default_password`), otherwise a random
+password nobody is told.
 
 ### Stopping and Starting a Range
 

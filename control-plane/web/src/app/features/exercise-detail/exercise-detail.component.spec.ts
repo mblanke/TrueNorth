@@ -218,7 +218,7 @@ describe('ExerciseDetailComponent range accounts (ADR 0012)', () => {
     creds = jasmine.createSpyObj('RangeCredentialsApiService', ['getCredentials']);
     creds.getCredentials.and.returnValue(of({ range_id: 'r1', scope: 'student', accounts: [
       { machine: 'jump01', username: 'analyst', password: 'Jump-Secret-2!', role: 'user', student_visible: true,
-        generated: true, notes: 'The way in' }] }));
+        generated: true, applied: true, notes: 'The way in' }] }));
     await TestBed.configureTestingModule({
       imports: [ExerciseDetailComponent, NoopAnimationsModule],
       providers: [

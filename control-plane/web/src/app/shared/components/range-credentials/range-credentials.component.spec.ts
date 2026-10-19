@@ -12,12 +12,15 @@ import { RangeCredentialsComponent } from './range-credentials.component';
 const STAFF_VIEW: RangeCredentials = {
   range_id: 'r1', scope: 'all', accounts: [
     { machine: 'dc01', username: 'Administrator', password: 'Dc-Secret-1!', role: 'admin', student_visible: false,
-      generated: false, notes: 'Domain admin' },
+      generated: false, applied: true, notes: 'Domain admin' },
     { machine: 'jump01', username: 'analyst', password: 'Jump-Secret-2!', role: 'user', student_visible: true,
-      generated: true, notes: 'The way in' },
+      generated: true, applied: false, notes: 'The way in' },
   ],
 };
-const STUDENT_VIEW: RangeCredentials = { range_id: 'r1', scope: 'student', accounts: [STAFF_VIEW.accounts[1]] };
+// The API gives a Student only accounts a build set.
+const STUDENT_VIEW: RangeCredentials = {
+  range_id: 'r1', scope: 'student', accounts: [{ ...STAFF_VIEW.accounts[1], applied: true }],
+};
 
 describe('RangeCredentialsComponent', () => {
   let fixture: ComponentFixture<RangeCredentialsComponent>;
@@ -121,6 +124,20 @@ describe('RangeCredentialsComponent', () => {
     await render('observer');
     expect(el.querySelector('section')).toBeNull();
     expect(api.getCredentials).not.toHaveBeenCalled();
+  });
+
+  it('flags to staff the accounts TrueNorth did not set', async () => {
+    await render('range_ops');
+    show();
+    const rows = Array.from(el.querySelectorAll('tbody tr'));
+    expect(rows[0].textContent).not.toContain('Not set by TrueNorth');  // Administrator: applied
+    expect(rows[1].textContent).toContain('Not set by TrueNorth');      // analyst: not applied
+  });
+
+  it('never shows a Student the not-set badge', async () => {
+    await render('student', STUDENT_VIEW);
+    show();
+    expect(el.textContent).not.toContain('Not set by TrueNorth');
   });
 
   it('says when the template declares no accounts', async () => {

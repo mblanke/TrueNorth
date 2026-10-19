@@ -167,7 +167,7 @@ def provision_range(self, range_id: str, noise_mgmt: dict | None = None):
         template = greyspace.plan_host(range_id, backend, template)  # + gs-core on HOSTED backends (ADR 0007)
         provisioner = _get_backend(backend, range_id, build=True)  # its tenant's connection (H6), recorded
         allocations.update(range_alloc.reserve_for_build(_db_session, range_id, provisioner, template))
-        result = run_async(provisioner.provision(range_id, range_accounts.attach(template, _db_session, range_id), allocations))
+        result = run_async(range_accounts.provision(provisioner, range_id, template, allocations, _db_session))
 
         if result.status == "failed":
             raise RuntimeError("; ".join(result.errors) or "Provisioning failed")

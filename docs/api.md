@@ -705,20 +705,29 @@ in fact still running, its work continues beside whatever runs next.
 template declares (`accounts:`), with their passwords, stored sealed:
 
 - `range:credentials_read` (admin, instructor, range_ops): every account, `scope: "all"`;
-- a Student: only `student_visible` accounts, `scope: "student"`, of a range they take part
-  in (their own lab session's range, or an exercise running or paused on it that is booked
-  to a course they are rostered on). Any other range is 404;
+  `applied: false` marks one the last build did not set (Windows accounts other than
+  `Administrator`, appliances, non-vSphere backends, or not built yet);
+- a Student: only `student_visible` accounts with `applied: true`, `scope: "student"`, of a
+  range they take part in (an exercise running or paused on it that is booked to a course
+  they are rostered on). Any other range is 404. Lab sessions are not covered yet;
 - an observer (any other role): 403. Another tenant's range: 404.
 
 ```json
 {"range_id": "7b1f…", "scope": "student",
  "accounts": [{"machine": "jump01", "username": "analyst", "password": "Xk7…", "role": "user",
-               "student_visible": true, "generated": true, "notes": "The way in"}]}
+               "student_visible": true, "generated": true, "applied": true, "notes": "The way in"}]}
 ```
 
 Every read writes an audit row (`range_credentials_read`: scope, account count, machines;
 never a password). Responses carry `Cache-Control: no-store`. Rows are written when the
-range is created and when a build is accepted; a generated password is made once per range.
+range is created and when a build is accepted (which resets `applied`; the worker sets it
+for what the build reports it set); a generated password is made once per range.
+
+Templates: a typed-in `accounts[].password` is stored sealed (`tnsec:v1:…`) on create and
+update; `GET /templates/{id}` shows the token to `range:credentials_read` holders of the
+template's tenant and `********` to anyone else. A typed-in password for a Windows machine
+must meet Windows complexity, and a `tnsec:` value that does not unseal is refused (422).
+A template change regenerates its ranges' pages after the response, across tenants.
 
 ---
 

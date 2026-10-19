@@ -66,7 +66,14 @@ const MASK = '••••••••••';
               <tbody>
                 @for (a of list; track key(a)) {
                   <tr>
-                    <td><code>{{ a.machine }}</code></td>
+                    <td>
+                      <code>{{ a.machine }}</code>
+                      @if (staff() && !a.applied) {
+                        <span class="badge" matTooltip="The last build did not set this account (or the range is not built): Windows accounts other than Administrator, appliances and other backends are scenario content. Students are not shown it.">
+                          Not set by TrueNorth
+                        </span>
+                      }
+                    </td>
                     <td>
                       <code>{{ a.username }}</code>
                       <button mat-icon-button (click)="copy(a.username, 'Username')" matTooltip="Copy username"
@@ -110,6 +117,8 @@ const MASK = '••••••••••';
     .pw { white-space: nowrap; }
     .secret { display: inline-block; min-width: 11ch; }
     .notes { font-size: 13px; }
+    .badge { display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 8px; font-size: 11px;
+      border: 1px solid var(--warning, #f59e0b); color: var(--text-secondary); white-space: nowrap; }
     code { font-family: var(--font-mono); font-size: 12px; }
     .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   `],

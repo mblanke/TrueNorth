@@ -65,7 +65,7 @@ describe('RangeDetailComponent', () => {
     credentialsApi = jasmine.createSpyObj('RangeCredentialsApiService', ['getCredentials']);
     credentialsApi.getCredentials.and.returnValue(of({ range_id: 'r1', scope: 'all', accounts: [
       { machine: 'dc01', username: 'Administrator', password: 'Dc-Secret-1!', role: 'admin', student_visible: false,
-        generated: true, notes: '' }] }));
+        generated: true, applied: true, notes: '' }] }));
     dialogResult = { reason: 'vCenter checked: no tasks for this range' };
     dialogOpen = jasmine.createSpy('open').and.callFake(() => ({ afterClosed: () => of(dialogResult) }));
 

@@ -287,26 +287,40 @@ course production with a local-model fallback, and the cleanup of unsupported su
   `validate -syntax-only` on `infra/vsphere/packer` (the README named a job that did not exist).
 - New: range credentials (ADR 0012 §12-14). A range template may declare `accounts:`
   (`machine`, `username`, `password` or `generate: true`, `student_visible`, `role`,
-  `notes`); the machine must be a node of the template and a username appears once per
-  machine (schema plus `range_credentials/accounts.py`; template create/update refuse invalid
-  ones, 422). Each range's accounts are stored sealed in `range_credentials` (migration
-  `c8d9e0f1a2b3`), written at range create and at build acceptance; a generated password is
-  made once per range and kept across rebuilds. At deploy (vSphere) Windows gets the declared
-  `Administrator` password through Sysprep (and software/role installs log in with it), Linux
-  gets each declared account as a cloud-init user (hashed; sudo for `role: admin`); with none
-  declared, `TN_RANGE_DEFAULT_PASSWORD` (installer: `vault_range_default_password`), else a
-  random password as before. `GET /ranges/{id}/credentials`: admin, instructor and range_ops
-  (new permission `range:credentials_read`) see every account; a Student sees only the
-  `student_visible` accounts of a range they take part in (their lab session, or a running
-  exercise booked to a course they are rostered on; 404 otherwise); observers 403; another
-  tenant 404; every read audited without the password, `Cache-Control: no-store`. The range
-  page has a Credentials panel and the exercise page a "Your accounts" panel (fetched on
-  request, masked, reveal and copy per account). Each range gets a generated page in a
-  staff-only wiki space "Ranges" (machines, OS, addresses, networks, the credential table),
-  rewritten on range create, rename, template edit and build, keeping its `## Notes`; the
-  space cannot be opened to all while it holds them. `GET /templates/{id}` shows template
-  passwords only to `range:credentials_read` holders. `medium-enterprise` and `soc-training`
-  declare their accounts (all generated).
+  `notes`); the machine must be a node of the template, a username appears once per machine,
+  and a typed-in password for a Windows machine meets Windows complexity (schema plus
+  `range_credentials/accounts.py`; template create/update and the designer's save refuse
+  invalid ones, 422). A typed-in password is stored sealed inside the template (`tnsec:v1:`);
+  a `tnsec:` value that does not unseal is refused; readers without `range:credentials_read`
+  see `********` (decided on the parsed document). The designer's save never copies another
+  tenant's accounts. Each range's accounts are stored sealed in `range_credentials`
+  (migration `c8d9e0f1a2b3`, which also adds `wiki_spaces.system_owned`), written at range
+  create and at build acceptance; a generated password is made once per range and kept
+  across rebuilds. At deploy (vSphere) Windows gets the declared `Administrator` password
+  through Sysprep (and software/role installs log in with it); Linux gets each declared
+  account as a cloud-init user (always a SHA-512-crypt hash, pure Python, never plain text;
+  sudo for `role: admin` except an image default user such as `ubuntu`, which keeps its
+  passwordless sudo); with none declared, `TN_RANGE_DEFAULT_PASSWORD` (installer:
+  `vault_range_default_password`), else a random password as before. Lab-session ranges get
+  neither (random per VM). After first boot every Linux VM with account material is waited
+  on (`cloud-init status --wait` as the ephemeral install user, then that user is deleted)
+  and its guestinfo rewritten without hashes, default login or install user, whether or not
+  software was installed (`VSPHERE_ACCOUNT_SCRUB_TIMEOUT`, default 900 s). Each build reports
+  which accounts it set; the worker records them `applied` (reset at build acceptance).
+  `GET /ranges/{id}/credentials`: admin, instructor and range_ops (new permission
+  `range:credentials_read`) see every account, with `applied`; a Student sees only
+  `student_visible`, applied accounts of a range they take part in (a running exercise
+  booked to a course they are rostered on; 404 otherwise; lab sessions not covered yet);
+  observers 403; another tenant 404; every read audited without the password,
+  `Cache-Control: no-store`. The range page has a Credentials panel ("Not set by TrueNorth"
+  badge) and the exercise page a "Your accounts" panel (fetched on request, masked, reveal
+  and copy per account). Each range gets a generated page in a system-owned wiki space
+  "Ranges" (always staff-only; its visibility cannot be changed, 409): machines, OS,
+  addresses, networks and the credential table, as tokens the wiki expands for staff on
+  read, so no wiki row, revision or search holds a password; an editor's save keeps the
+  generated block and their `## Notes`. It is rewritten on range create, rename and build,
+  and after a template edit for every tenant's ranges of it (after the response).
+  `medium-enterprise` and `soc-training` declare their accounts (all generated).
 
 ### R0-B: web correctness and role access
 - Fix: Resume on a paused exercise called `/start` (409 unless pending), so nothing resumed;

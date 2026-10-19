@@ -11732,6 +11732,11 @@
       },
       "RangeCredentialOut": {
         "properties": {
+          "applied": {
+            "description": "The last build reported setting it. False: not set by TrueNorth (Windows accounts other than Administrator, appliances, other backends, or not built yet). Students only ever get applied accounts",
+            "title": "Applied",
+            "type": "boolean"
+          },
           "generated": {
             "description": "TrueNorth made the password up for this range",
             "title": "Generated",
@@ -11772,7 +11777,8 @@
           "password",
           "role",
           "student_visible",
-          "generated"
+          "generated",
+          "applied"
         ],
         "title": "RangeCredentialOut",
         "type": "object"
@@ -17745,6 +17751,11 @@
           "slug": {
             "title": "Slug",
             "type": "string"
+          },
+          "system_owned": {
+            "default": false,
+            "title": "System Owned",
+            "type": "boolean"
           },
           "updated_at": {
             "format": "date-time",
@@ -34459,7 +34470,7 @@
     },
     "/ranges/{range_id}/credentials": {
       "get": {
-        "description": "The accounts on a range's machines, with their passwords, as the caller may see them.\n\n**Permission: range:read**, then by role: staff with ``range:credentials_read`` see every\naccount; a Student sees the ``student_visible`` accounts of a range they take part in\n(their lab session's range, or an exercise running on it whose booked course they are\nrostered on) and gets 404 for any other; an observer gets 403. Audited per read.",
+        "description": "The accounts on a range's machines, with their passwords, as the caller may see them.\n\n**Permission: range:read**, then by role: staff with ``range:credentials_read`` see every\naccount (``applied`` false: not set by TrueNorth); a Student sees the ``student_visible``\naccounts the last build set, of a range they take part in (an exercise running on it\nwhose booked course they are rostered on; lab sessions are not covered yet) and gets 404\nfor any other; an observer gets 403. Audited per read.",
         "operationId": "get_range_credentials_ranges__range_id__credentials_get",
         "parameters": [
           {
@@ -38951,7 +38962,7 @@
         ]
       },
       "get": {
-        "description": "Retrieve a single template.  **Permission: template:read**\n\nIts ``accounts[].password`` values are shown only to holders of range:credentials_read\nin the template's own tenant; anyone else reads them as ``********`` (ADR 0012 \u00a713).",
+        "description": "Retrieve a single template.  **Permission: template:read**\n\nTyped-in ``accounts[].password`` values are stored sealed (``tnsec:v1:...``). Holders of\nrange:credentials_read in the template's own tenant read them so (an edit sends them back\nunchanged); anyone else reads ``********`` (ADR 0012 \u00a713), and an unparseable document\nnot at all.",
         "operationId": "get_template_templates__template_id__get",
         "parameters": [
           {

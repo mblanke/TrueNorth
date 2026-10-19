@@ -21,7 +21,7 @@ from __future__ import annotations
 import logging
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Path, Query
 from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -209,7 +209,7 @@ def create_template(
     tmpl = Template(
         name=body.name,
         version=body.version,
-        yaml=body.yaml,
+        yaml=template_accounts.seal_yaml(body.yaml),  # typed-in account passwords stored sealed (ADR 0012)
         is_public=body.is_public,
         tenant_id=uuid.UUID(user.tenant_id),
     )
@@ -252,8 +252,10 @@ def get_template(
 ) -> Template:
     """Retrieve a single template.  **Permission: template:read**
 
-    Its ``accounts[].password`` values are shown only to holders of range:credentials_read
-    in the template's own tenant; anyone else reads them as ``********`` (ADR 0012 §13).
+    Typed-in ``accounts[].password`` values are stored sealed (``tnsec:v1:...``). Holders of
+    range:credentials_read in the template's own tenant read them so (an edit sends them back
+    unchanged); anyone else reads ``********`` (ADR 0012 §13), and an unparseable document
+    not at all.
     """
     tmpl = get_owned(db, Template, template_id, user, not_found="Template not found")
     own = tmpl.tenant_id is None or tmpl.tenant_id == uuid.UUID(user.tenant_id)
@@ -266,6 +268,7 @@ def get_template(
 def update_template(
     template_id: uuid.UUID,
     body: TemplateUpdate,
+    background: BackgroundTasks,
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_permission(Permission.TEMPLATE_UPDATE)),
 ) -> Template:
@@ -277,11 +280,13 @@ def update_template(
     update_data = body.model_dump(exclude_unset=True)
     if "yaml" in update_data:
         _refuse_network_placement(update_data["yaml"])
+        update_data["yaml"] = template_accounts.seal_yaml(update_data["yaml"])  # stored sealed (ADR 0012)
     for key, value in update_data.items():
         setattr(tmpl, key, value)
-    if "yaml" in update_data or "name" in update_data or "version" in update_data:
-        range_credentials.on_template_updated(db, tmpl, user)  # its unbuilt ranges' accounts, its ranges' pages
     db.commit()
+    if {"yaml", "name", "version"} & set(update_data):
+        # Its unbuilt ranges' accounts and every range's page, in every tenant, after the response.
+        background.add_task(range_credentials.regenerate_for_template, tmpl.id)
     db.refresh(tmpl)
     _audit(db, user, "update", "template", str(tmpl.id))
     db.commit()

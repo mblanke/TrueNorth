@@ -39,5 +39,8 @@ class RangeCredential(TimestampMixin, Base):
     # True: TrueNorth made the password up for this range (``generate: true``).
     generated: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     student_visible: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # True once a build reported it set this account (worker/range_accounts.py); reset when a
+    # build is accepted. Students see only applied accounts; staff see the rest flagged.
+    applied: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     role: Mapped[str] = mapped_column(String(16), nullable=False, default="user")  # admin | user
     notes: Mapped[str] = mapped_column(Text, nullable=False, default="")
