@@ -223,12 +223,19 @@ nodes:
     services: [autopsy, volatility3, plaso, yara]
 
   # --- Network Monitoring (VLAN 203) ---
+  # Set up at deploy as a STANDALONE node (airgap): management on soc_tools, monitoring on
+  # the NIC that receives the monitoring-mirror copies. so_allow: who else reaches its console.
   - id: seconion01
     name: Security Onion
     role: network_monitor
     os: securityonion
-    vlan: network_monitoring
-    ip: "10.60.203.10"
+    vlan: soc_tools
+    ip: "10.60.202.60"
+    interfaces:
+      - vlan: soc_tools
+      - vlan: network_monitoring
+        monitor: true
+    so_allow: [management]
     specs: { cores: 8, memory_mb: 16384, disk_gb: 500 }
     services: [zeek, suricata, elasticsearch, kibana, strelka]
 
@@ -298,8 +305,10 @@ resource_totals:
 # and shown, sealed at rest, on the range's Credentials panel and staff-only wiki page.
 # Windows: the built-in Administrator (Sysprep). Linux: cloud-init users; `ubuntu` is the
 # template's install user (`kali` on Kali). Students get the `analyst` accounts on the SOC
-# tools and the jump host. Not here: the pfSense firewall (its appliance config login) and
-# Security Onion (its so-setup runs per range at deploy; ADR 0012 §8).
+# tools and the jump host. Not here: the pfSense firewall (its appliance config login).
+# Security Onion: its per-range so-setup (ADR 0012 §8) makes the first `role: admin` account
+# the node's OS admin and the first `role: user` account its SOC console (web) login, which
+# must be an e-mail address (worker/provisioners/vsphere_securityonion.py).
 accounts:
   # Attacker infrastructure
   - { machine: c2-server, username: kali, generate: true, role: admin, student_visible: false }
@@ -333,6 +342,10 @@ accounts:
   - { machine: dfir-ws01, username: analyst, generate: true, role: user, student_visible: true,
       notes: "DFIR workstation: Autopsy, Volatility 3, Plaso, YARA" }
   # Network monitoring
+  - { machine: seconion01, username: tnadmin, generate: true, role: admin, student_visible: false,
+      notes: "Security Onion OS admin (sudo), set by its per-range setup" }
+  - { machine: seconion01, username: analyst@range.local, generate: true, role: user, student_visible: true,
+      notes: "Security Onion Console (SOC) web login: https://10.60.202.60" }
   - { machine: zeek01, username: ubuntu, generate: true, role: admin, student_visible: false }
   - { machine: pcap01, username: ubuntu, generate: true, role: admin, student_visible: false }
   # Management

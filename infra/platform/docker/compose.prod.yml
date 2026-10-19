@@ -729,6 +729,11 @@ services:
       TN_RANGE_DEFAULT_PASSWORD: ${TN_RANGE_DEFAULT_PASSWORD:-}
       # Per VM, its Windows Server roles (features, reboots, forest promotion).
       VSPHERE_ROLE_TIMEOUT: ${VSPHERE_ROLE_TIMEOUT:-1800}
+      # Security Onion so-setup per range (vmware-site-runbook.md 7.2): the template's build
+      # login (guest operations + sudo) and how long to wait for a healthy node.
+      VSPHERE_SO_INSTALL_USER: ${VSPHERE_SO_INSTALL_USER:-}
+      VSPHERE_SO_INSTALL_PASSWORD: ${VSPHERE_SO_INSTALL_PASSWORD:-}
+      VSPHERE_SO_SETUP_TIMEOUT: ${VSPHERE_SO_SETUP_TIMEOUT:-3600}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       LOG_FORMAT: ${LOG_FORMAT:-json} # worker/celery_app.py: JSON lines
     volumes:
