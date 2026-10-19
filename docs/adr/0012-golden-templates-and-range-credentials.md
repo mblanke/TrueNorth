@@ -1,14 +1,16 @@
 # ADR 0012: Golden templates are prebuilt, host-local and key-free; ranges declare their credentials
 
-- **Status:** proposed, 2026-10-19. Owner decisions from a design review of the work-vCenter template build. Accepted when the owner signs off; no template is built before then.
+- **Status:** accepted 2026-10-19 (owner sign-off). Proposed the same day from a design review of the work-vCenter template build.
 - **Date:** 2026-10-19
 - **Numbering:** 0008 is left free for an open branch (see ADR 0010). 0007 is Greyspace.
-- **Code:** none yet. This ADR comes before the work it describes:
-  - per-host template copies: `control-plane/worker/worker/provisioners/vsphere_api.py`, `infra/vsphere/packer/build.sh`;
-  - range-declared accounts: range template schema, `_customize_sync`, a credentials API and UI;
-  - generated range wiki pages;
-  - the Security Onion per-range setup;
-  - catalogue fixes in `content/catalogue/vm_iso_catalogue.csv`.
+- **Code:**
+  - host-local copies, prune task, catalogue, Packer CI: #182;
+  - range credentials, sealed and role-filtered, with staff-only wiki pages: #183;
+  - template-default logins: #185;
+  - Security Onion per-range setup: #184;
+  - the work-site build kit: #186;
+  - Packer depot paths, VS media, generic Linux login and role sources: #187.
+- **Exception to decision 1:** the Exchange 2019, SharePoint SE and MECM role images are built, but their catalogue rows stay disabled until TrueNorth can run their domain-dependent setup at deploy time (#187).
 
 ## Context
 
