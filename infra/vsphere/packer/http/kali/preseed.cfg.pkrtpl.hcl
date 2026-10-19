@@ -1,7 +1,8 @@
 # TrueNorth Range — Kali Linux preseed (vSphere). Ported from the Proxmox seed with the
-# guest agent switched from qemu-guest-agent to open-vm-tools for VMware. Served over
-# Packer's HTTP server ({{ .HTTPIP }}:{{ .HTTPPort }}), so the build network must be able
-# to reach the Packer host (see README).
+# guest agent switched from qemu-guest-agent to open-vm-tools for VMware. Rendered by
+# templatefile() in linux.pkr.hcl (user = ssh_username, password_hash = ssh_password_hash,
+# apt_proxy) and served over Packer's HTTP server (http_content), so the build network
+# must be able to reach the Packer host (see README).
 
 # Locale and keyboard
 d-i debian-installer/locale string en_US.UTF-8
@@ -18,7 +19,9 @@ d-i netcfg/hostname string kali
 d-i mirror/country string enter information manually
 d-i mirror/http/hostname string http.kali.org
 d-i mirror/http/directory string /kali
-d-i mirror/http/proxy string
+# Build-time apt proxy (apt_proxy: TN-DEPOT01 apt-cacher-ng); empty = none. cleanup.sh
+# removes it from the installed system.
+d-i mirror/http/proxy string ${apt_proxy}
 
 # Clock and timezone
 d-i clock-setup/utc boolean true
@@ -35,14 +38,13 @@ d-i partman/confirm_nooverwrite boolean true
 d-i partman-lvm/confirm boolean true
 d-i partman-lvm/confirm_nooverwrite boolean true
 
-# Root account disabled; use kali user
+# Root account disabled; use the build user
 d-i passwd/root-login boolean false
 
-# Default kali user
-d-i passwd/user-fullname string Kali User
-d-i passwd/username string kali
-d-i passwd/user-password password kali
-d-i passwd/user-password-again password kali
+# Generic build login (ADR 0012 decision 5)
+d-i passwd/user-fullname string TrueNorth build user
+d-i passwd/username string ${user}
+d-i passwd/user-password-crypted password ${password_hash}
 d-i user-setup/allow-password-weak boolean true
 d-i user-setup/encrypt-home boolean false
 
@@ -55,8 +57,8 @@ d-i pkgsel/upgrade select full-upgrade
 d-i preseed/late_command string \
   in-target systemctl enable ssh ; \
   in-target systemctl enable open-vm-tools ; \
-  echo "kali ALL=(ALL) NOPASSWD:ALL" > /target/etc/sudoers.d/kali ; \
-  chmod 0440 /target/etc/sudoers.d/kali ; \
+  echo "${user} ALL=(ALL) NOPASSWD:ALL" > /target/etc/sudoers.d/${user} ; \
+  chmod 0440 /target/etc/sudoers.d/${user} ; \
   in-target sed -i 's/^#PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config ; \
   in-target sed -i 's/^#PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config
 

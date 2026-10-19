@@ -273,6 +273,14 @@ build {
     "source.vsphere-clone.cloudlog-emu",
     "source.vsphere-clone.c2-server",
   ]
+  # Every role script's apt-get goes through the build proxy (apt_proxy, TN-DEPOT01
+  # apt-cacher-ng) on the isolated build network; cleanup.sh removes it at the end.
+  # Installers fetched over https (REMnux, SIFT, Docker's repo) cannot use it: apt-cacher-ng
+  # refuses CONNECT tunnels. Those steps need egress or depot-staged media (README).
+  provisioner "shell" {
+    environment_vars = ["APT_PROXY=${var.apt_proxy}"]
+    script           = "${path.root}/files/linux/apt-proxy.sh"
+  }
   provisioner "shell" {
     only   = ["vsphere-clone.remnux"]
     script = "${path.root}/files/linux/roles/remnux.sh"
@@ -291,8 +299,9 @@ build {
     destination = "/tmp/greyspace-images"
   }
   provisioner "shell" {
-    only   = ["vsphere-clone.greyspace-host"]
-    script = "${path.root}/files/linux/roles/greyspace-host.sh"
+    only             = ["vsphere-clone.greyspace-host"]
+    environment_vars = ["TN_APT_PROXY=${var.apt_proxy}"]
+    script           = "${path.root}/files/linux/roles/greyspace-host.sh"
   }
   provisioner "shell" {
     only   = ["vsphere-clone.ca-host"]

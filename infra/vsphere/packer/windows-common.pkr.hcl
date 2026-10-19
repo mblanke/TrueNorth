@@ -15,4 +15,11 @@ locals {
 
   # ISO path builders.
   iso_dir = "[${var.iso_datastore}] ${var.iso_folder}"
+
+  # Edition selection. Visual Studio business media need the edition's image name and its
+  # GVLK; Evaluation media (the *_eval switches) have one image and take no key.
+  win10_image_name    = var.win10_eval ? "Windows 10 Enterprise Evaluation" : var.win10_image_name
+  win10_product_key   = var.win10_eval ? "" : var.gvlk_win10
+  srv2019_image_name  = var.srv2019_eval ? "Windows Server 2019 Standard Evaluation (Desktop Experience)" : var.srv2019_image_name
+  srv2019_product_key = var.srv2019_eval ? "" : var.gvlk_srv2019
 }

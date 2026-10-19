@@ -142,7 +142,7 @@ source "vsphere-iso" "srv2025" {
   }
 }
 
-# ---- Server 2019 (eval media; ISO must be uploaded first) ---------------------------
+# ---- Server 2019 (VS media + GVLK, or eval media with srv2019_eval; upload ISO first) -
 source "vsphere-iso" "srv2019" {
   vcenter_server      = var.vcenter_server
   username            = var.vcenter_username
@@ -175,8 +175,8 @@ source "vsphere-iso" "srv2019" {
   cd_label  = "PROVISION"
   cd_content = {
     "autounattend.xml" = templatefile("${path.root}/files/windows/autounattend.pkrtpl.hcl", {
-      image_name          = "Windows Server 2019 Standard (Desktop Experience)"
-      product_key         = ""
+      image_name          = local.srv2019_image_name
+      product_key         = local.srv2019_product_key
       computer_name       = "SRV2019"
       admin_password      = var.windows_admin_password
       labconfig           = false
@@ -272,7 +272,7 @@ source "vsphere-iso" "srv2016" {
   }
 }
 
-# ---- Windows 10 22H2 Enterprise (eval media; ISO must be uploaded first) ------------
+# ---- Windows 10 22H2 Enterprise (VS business media + GVLK, or eval with win10_eval) --
 source "vsphere-iso" "win10-22h2" {
   vcenter_server      = var.vcenter_server
   username            = var.vcenter_username
@@ -305,8 +305,8 @@ source "vsphere-iso" "win10-22h2" {
   cd_label  = "PROVISION"
   cd_content = {
     "autounattend.xml" = templatefile("${path.root}/files/windows/autounattend.pkrtpl.hcl", {
-      image_name          = "Windows 10 Enterprise Evaluation"
-      product_key         = ""
+      image_name          = local.win10_image_name
+      product_key         = local.win10_product_key
       computer_name       = "WIN10"
       admin_password      = var.windows_admin_password
       labconfig           = false
@@ -489,9 +489,13 @@ build {
     destination = "C:/Windows/Temp/sysprep-unattend.xml"
   }
 
+  # Chocolatey from the depot feed's own .nupkg (no install.ps1 on Nexus), then the baseline.
   provisioner "powershell" {
-    environment_vars = ["DEPOT_URL=${var.depot_url}"]
-    script           = "${path.root}/files/windows/setup.ps1"
+    environment_vars = ["DEPOT_URL=${var.depot_url}", "CHOCOLATEY_VERSION=${var.chocolatey_version}"]
+    scripts = [
+      "${path.root}/files/windows/choco-bootstrap.ps1",
+      "${path.root}/files/windows/setup.ps1",
+    ]
   }
 
   # Final: generalize and shut down. Keep this last.

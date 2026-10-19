@@ -104,6 +104,10 @@ tn_depot_nexus_repos:
       storage: { writePolicy: ALLOW }
       docker: { v1Enabled: false, forceBasicAuth: false, httpPort: "{{ tn_depot_nexus_docker_hosted_port }}" }
   # Vendor media and offline prerequisites (build sheet §6): Office, Exchange, SQL, ...
+  # Paths the Packer tree reads (<depot_url> = http://<depot>:8081/repository):
+  #   <depot_url>/installers/office/office-ltsc.zip          variants/scripts/office-ltsc-from-depot.ps1
+  #   <depot_url>/installers/roles/<exchange2019|sharepointse|mecm>/<file>
+  #                                                          files/windows/role-image.ps1 (README "Role images")
   - name: installers
     format: raw
     type: hosted

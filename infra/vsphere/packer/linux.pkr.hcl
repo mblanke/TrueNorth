@@ -5,6 +5,18 @@
 # Shared Linux provisioning: pin cloud-init datasources (99-vmware.cfg), ensure
 # open-vm-tools + cloud-init, then cleanup.sh. ISOs are pre-staged on the host-local
 # datastore, so host/datastore are pinned to the ISO host.
+#
+# Every seed under http/ is a templatefile rendered with local.linux_seed (below): one
+# generic build login (ssh_username / ssh_password, hash ssh_password_hash) on every Linux
+# template, ADR 0012 decision 5, and the optional build apt proxy (apt_proxy).
+
+locals {
+  linux_seed = {
+    user          = var.ssh_username
+    password_hash = var.ssh_password_hash
+    apt_proxy     = var.apt_proxy
+  }
+}
 
 # ---- ubuntu-lts (24.04 autoinstall via cidata CD) -----------------------------------
 source "vsphere-iso" "ubuntu-lts" {
@@ -36,8 +48,11 @@ source "vsphere-iso" "ubuntu-lts" {
   }
 
   iso_paths = ["${local.iso_dir}/${var.iso_ubuntu}"]
-  cd_files  = ["${path.root}/http/ubuntu/user-data", "${path.root}/http/ubuntu/meta-data"]
-  cd_label  = "cidata"
+  cd_content = {
+    "user-data" = templatefile("${path.root}/http/ubuntu/user-data.pkrtpl.hcl", local.linux_seed)
+    "meta-data" = file("${path.root}/http/ubuntu/meta-data")
+  }
+  cd_label = "cidata"
 
   boot_wait = "5s"
   boot_command = [
@@ -93,8 +108,10 @@ source "vsphere-iso" "rocky" {
   }
 
   iso_paths = ["${local.iso_dir}/${var.iso_rocky}"]
-  cd_files  = ["${path.root}/http/rocky/ks.cfg"]
-  cd_label  = "OEMDRV"
+  cd_content = {
+    "ks.cfg" = templatefile("${path.root}/http/rocky/ks.cfg.pkrtpl.hcl", local.linux_seed)
+  }
+  cd_label = "OEMDRV"
 
   boot_wait = "5s"
   boot_command = [
@@ -103,8 +120,8 @@ source "vsphere-iso" "rocky" {
     "<leftCtrlOn>x<leftCtrlOff>"
   ]
 
-  ssh_username = "rocky"
-  ssh_password = "rocky"
+  ssh_username = var.ssh_username
+  ssh_password = var.ssh_password
   ssh_timeout  = "30m"
 
   convert_to_template = true
@@ -148,8 +165,10 @@ source "vsphere-iso" "kali" {
     network_card = "vmxnet3"
   }
 
-  iso_paths         = ["${local.iso_dir}/${var.iso_kali}"]
-  http_directory    = "${path.root}/http"
+  iso_paths = ["${local.iso_dir}/${var.iso_kali}"]
+  http_content = {
+    "/kali/preseed.cfg" = templatefile("${path.root}/http/kali/preseed.cfg.pkrtpl.hcl", local.linux_seed)
+  }
   http_bind_address = var.http_bind_address
   http_port_min     = var.http_port_min
   http_port_max     = var.http_port_max
@@ -162,8 +181,8 @@ source "vsphere-iso" "kali" {
     "<enter>"
   ]
 
-  ssh_username = "kali"
-  ssh_password = "kali"
+  ssh_username = var.ssh_username
+  ssh_password = var.ssh_password
   ssh_timeout  = "40m"
 
   convert_to_template = true
@@ -207,8 +226,10 @@ source "vsphere-iso" "debian13" {
     network_card = "vmxnet3"
   }
 
-  iso_paths         = ["${local.iso_dir}/${var.iso_debian}"]
-  http_directory    = "${path.root}/http"
+  iso_paths = ["${local.iso_dir}/${var.iso_debian}"]
+  http_content = {
+    "/debian/preseed.cfg" = templatefile("${path.root}/http/debian/preseed.cfg.pkrtpl.hcl", local.linux_seed)
+  }
   http_bind_address = var.http_bind_address
   http_port_min     = var.http_port_min
   http_port_max     = var.http_port_max
@@ -221,8 +242,8 @@ source "vsphere-iso" "debian13" {
     "<enter>"
   ]
 
-  ssh_username = "debian"
-  ssh_password = "debian"
+  ssh_username = var.ssh_username
+  ssh_password = var.ssh_password
   ssh_timeout  = "30m"
 
   convert_to_template = true
@@ -266,8 +287,10 @@ source "vsphere-iso" "parrot" {
     network_card = "vmxnet3"
   }
 
-  iso_paths         = ["${local.iso_dir}/${var.iso_parrot}"]
-  http_directory    = "${path.root}/http"
+  iso_paths = ["${local.iso_dir}/${var.iso_parrot}"]
+  http_content = {
+    "/parrot/preseed.cfg" = templatefile("${path.root}/http/parrot/preseed.cfg.pkrtpl.hcl", local.linux_seed)
+  }
   http_bind_address = var.http_bind_address
   http_port_min     = var.http_port_min
   http_port_max     = var.http_port_max
@@ -280,8 +303,8 @@ source "vsphere-iso" "parrot" {
     "<enter>"
   ]
 
-  ssh_username = "parrot"
-  ssh_password = "parrot"
+  ssh_username = var.ssh_username
+  ssh_password = var.ssh_password
   ssh_timeout  = "40m"
 
   convert_to_template = true
@@ -312,14 +335,19 @@ build {
     destination = "/tmp/99-vmware.cfg"
   }
 
-  # Debian/Ubuntu family: ensure tools + cloud-init, pin datasource, optional depot mirror.
+  # Build apt/dnf proxy (apt_proxy -> TN-DEPOT01 apt-cacher-ng); a no-op when empty.
+  # The guests keep their stock http:// sources; the proxy is a forward cache, not a mirror.
   provisioner "shell" {
-    except           = ["vsphere-iso.rocky"]
-    environment_vars = ["DEPOT_URL=${var.depot_url}"]
+    environment_vars = ["APT_PROXY=${var.apt_proxy}"]
+    script           = "${path.root}/files/linux/apt-proxy.sh"
+  }
+
+  # Debian/Ubuntu family: ensure tools + cloud-init, pin datasource.
+  provisioner "shell" {
+    except = ["vsphere-iso.rocky"]
     inline = [
       "sudo install -m 0644 /tmp/99-vmware.cfg /etc/cloud/cloud.cfg.d/99-vmware.cfg",
       "export DEBIAN_FRONTEND=noninteractive",
-      "if [ -n \"$DEPOT_URL\" ]; then echo \"deb $DEPOT_URL/apt $(. /etc/os-release; echo $VERSION_CODENAME) main\" | sudo tee /etc/apt/sources.list.d/truenorth-depot.list; fi",
       "sudo apt-get update || true",
       "sudo apt-get install -y open-vm-tools cloud-init curl wget git net-tools || echo 'apt baseline skipped (no reachable mirror)'",
       "sudo systemctl enable open-vm-tools || true",
@@ -341,7 +369,7 @@ build {
     only = ["vsphere-iso.kali"]
     inline = [
       "export DEBIAN_FRONTEND=noninteractive",
-      "sudo apt-get install -y kali-linux-default || echo 'kali-linux-default skipped (no reachable mirror); install at deploy from depot'",
+      "sudo -E apt-get install -y kali-linux-default || echo 'kali-linux-default skipped (no reachable mirror); install at deploy from depot'",
     ]
   }
 

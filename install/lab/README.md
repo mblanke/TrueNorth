@@ -311,9 +311,8 @@ cd /srv/truenorth/template-kit
 # TN_TEMPLATE_LINUX_USER, TN_TEMPLATE_LINUX_PASSWORD come from .env.production when the
 # installer wrote them there. Otherwise you are prompted (passwords hidden).
 sudo python3 scripts/lab/pkrvars-work.py
-#   exit 3 = the Linux credentials do not match the Ubuntu seed's: keep the user `ubuntu`, and
-#   either use the seed's password or add --write-ubuntu-seed (rewrites the hash in THIS
-#   checkout only; never commit it).
+#   Any Linux user/password works: every Linux seed is a Packer templatefile, and the vars
+#   file carries ssh_password_hash (openssl passwd -6). Nothing in the checkout is rewritten.
 
 # ── 3. TN-MGMT01: prerequisites ───────────────────────────────────────
 sudo scripts/lab/build-phase.sh status
@@ -337,7 +336,8 @@ sudo scripts/lab/build-phase.sh base --admin <admin upn>
 sudo scripts/lab/build-phase.sh appliances --admin <admin upn>   # pfsense vyos securityonion
 
 # ── 7. Depot-dependent images ─────────────────────────────────────────
-sudo python3 scripts/lab/pkrvars-work.py --depot   # depot_url = http://10.30.31.30:8081/repository
+sudo python3 scripts/lab/pkrvars-work.py --depot   # depot_url = http://10.30.31.30:8081/repository,
+                                                   # apt_proxy = http://10.30.31.30:3142
 sudo scripts/lab/build-phase.sh derived  --admin <admin upn>
 sudo scripts/lab/build-phase.sh roles    --admin <admin upn>
 sudo scripts/lab/build-phase.sh variants --admin <admin upn>
@@ -351,10 +351,18 @@ Subscription Edition, MECM. Put each file on `[esx01-local] ISO/<folder>/`, repl
 
 ```bash
 sudo scripts/lab/build-phase.sh prereq                   # copies it to esx04-local
-sudo python3 scripts/lab/pkrvars-work.py [--depot]       # writes iso_win10 / iso_srv2019
+sudo python3 scripts/lab/pkrvars-work.py [--depot]       # writes iso_win10 / iso_srv2019 / iso_exchange2019 ...
 sudo scripts/lab/build-phase.sh base --only "win10-22h2 srv2019" --admin <admin upn>
-sudo scripts/lab/build-phase.sh roles --admin <admin upn>   # precomp-host, detonation-host clone win10-22h2
+sudo scripts/lab/build-phase.sh roles --admin <admin upn>   # precomp-host, detonation-host clone win10-22h2;
+                                                            # srv2022-exchange2019/-sharepointse/-mecm clone srv2022
 ```
+
+The server role images also need their vendor prerequisites in the depot's raw
+`installers` repository (`infra/vsphere/packer/README.md`, "Role images"). They install
+prerequisites and stage the media only; Exchange, SharePoint and ConfigMgr setup need the
+range's domain and stay a deploy-time step, so their catalogue rows stay `enabled=no`.
+`iso_sql2022` (`enu_sql_server_2022_enterprise_edition_x64_dvd_aa36de9e.iso`) is on esx01
+but its folder is not recorded yet: fill its `PENDING` line before building `srv2022-mecm`.
 
 Every phase can be re-run. Existing templates are not rebuilt unless `--rebuild`, and
 replicate skips today's copies. Registration skips images that are already built. A test
@@ -364,23 +372,16 @@ but does not register.
 
 ### Known gaps (read before the derived, roles and variants phases)
 
-- **The Packer tree's depot contract does not match TN-DEPOT01.**
-  - Windows builds append `/chocolatey` to `depot_url`, which is why `--depot` writes
-    `http://10.30.31.30:8081/repository` and not `http://10.30.31.30:8081`.
-  - Without Chocolatey installed, they first fetch `<depot_url>/chocolatey/install.ps1`.
-    Nexus does not serve that file, and the depot phase warns when it is missing.
-  - With `depot_url` set, the Debian-family bases write a `deb <depot_url>/apt ...` source
-    that does not exist. That is one reason the bases are built with `depot_url` empty.
-  - The Linux derived role scripts need an apt proxy (`http://10.30.31.30:3142`). The
-    Packer tree does not configure one yet, so expect the derived phase to fail on the
-    isolated build network until it does.
-- **win10-22h2 and srv2019 were written for Evaluation media.** win10-22h2 has image
-  `Windows 10 Enterprise Evaluation` and srv2019 has no key. Visual Studio business media
-  need the edition's image name and GVLK in `windows.pkr.hcl` before those builds can
-  pass.
-- **Linux seeds:** only ubuntu-lts (and its clones) uses `ssh_username`/`ssh_password`.
-  rocky, kali, debian13 and parrot keep their own fixed build users (`rocky`, `kali`,
-  `debian`, `parrot`, with the same word as the password).
+- **The depot must hold the `chocolatey` package.** Windows builds and variants bootstrap
+  Chocolatey from the `.nupkg` in `<depot_url>/chocolatey` (Nexus serves no `install.ps1`).
+  `prefetch.yml` caches it (`tn_prefetch_choco_extra`), but the kit does not run prefetch
+  here (below), so cache it once through `chocolatey-proxy` during an online window. The
+  depot phase's step 4/4 warns when the feed has no `chocolatey` package.
+- **apt-cacher-ng serves only what it has cached and only http:// repositories.** With
+  `apt_proxy` set, apt and dnf go through it, but the depot is offline by default
+  (`Offlinemode: 1`). Debian, Kali and Parrot packages are not in the prefetch list, and
+  https sources (Docker's repo for greyspace-host, the REMnux and SIFT installers) cannot
+  use it because it refuses CONNECT. Those steps need an online window or depot-staged media.
 - **Prefetch** (`prefetch.yml`) runs its containers and vendor downloads on the build
   host, so here it would need internet egress from TN-MGMT01. The kit does not run it.
   The depot reaches upstream through dPG-TN-MGMT's gateway, and `depot-uplink.sh` does not

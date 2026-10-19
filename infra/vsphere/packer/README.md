@@ -22,16 +22,21 @@ linux.pkr.hcl                ubuntu-lts, rocky, kali, debian13, parrot
 appliances.pkr.hcl           pfsense, securityonion, vyos (keystroke builds)
 derived.pkr.hcl              vsphere-clone: remnux, sift, svc-emulators, greyspace-host, ca-host, usersim,
                              cloudlog-emu, c2-server, precomp-host, detonation-host
+roles.pkr.hcl                vsphere-clone of srv2022: srv2022-exchange2019, srv2022-sharepointse,
+                             srv2022-mecm (server role images; see "Role images")
 variants.pkr.hcl             vsphere-clone: variant-windows, variant-linux (custom images)
 variants/<name>.pkrvars.hcl  one custom image each: base + packages + scripts
 variants/scripts/            extra .ps1/.sh a variant can run
-http/                        network-served seeds (kali, debian, parrot preseed)
-  ubuntu/{user-data,meta-data}   autoinstall (delivered as a 'cidata' CD)
-  rocky/ks.cfg                   kickstart (delivered as an 'OEMDRV' CD)
+http/                        Linux seeds, all templatefiles (*.pkrtpl.hcl) rendered with the
+                             generic build login and apt_proxy (local.linux_seed)
+  ubuntu/user-data.pkrtpl.hcl    autoinstall (cd_content on a 'cidata' CD, with meta-data)
+  rocky/ks.cfg.pkrtpl.hcl        kickstart (cd_content on an 'OEMDRV' CD)
+  {kali,debian,parrot}/preseed.cfg.pkrtpl.hcl   preseed (http_content)
   pfsense/config.xml             pfSense bootstrap (vmx0/vmx1); applied at deploy
-files/windows/               autounattend.pkrtpl.hcl, setup.ps1, sysprep.ps1, sysprep-unattend.xml,
-                             variant-packages.ps1
-files/linux/                 99-vmware.cfg, cleanup.sh, roles/<name>.sh, variant-packages.sh
+files/windows/               autounattend.pkrtpl.hcl, choco-bootstrap.ps1, setup.ps1, sysprep.ps1,
+                             sysprep-unattend.xml, variant-packages.ps1, role-image.ps1
+files/linux/                 99-vmware.cfg, apt-proxy.sh, cleanup.sh, roles/<name>.sh,
+                             variant-packages.sh
 build.sh                     build driver (order, logging, register-back)
 lab.auto.pkrvars.hcl.example copy to lab.auto.pkrvars.hcl (git-ignored) and fill in
 ```
@@ -94,14 +99,17 @@ The variables you must set per site:
 | `build_network` | `dPG-TN-BUILD` (DHCP + reachability to the Packer host + WAN egress) |
 | `content_library`, `publish_to_library` | `TrueNorth-Templates`, `true` |
 | `windows_admin_password` | build-time Administrator password (reset by sysprep) |
-| `ssh_username` / `ssh_password` | build-time Linux user (`ubuntu`/`ubuntu`; matches the seed) |
+| `ssh_username` / `ssh_password` / `ssh_password_hash` | the one generic Linux build login (ADR 0012 decision 5), created by every Linux seed. The hash is `openssl passwd -6` of the password (`scripts/lab/pkrvars-work.py` writes it); defaults `ubuntu`/`ubuntu` |
+| `win10_image_name` + `gvlk_win10`, `srv2019_image_name` + `gvlk_srv2019` | edition select for Visual Studio media (defaults: Windows 10 Enterprise / Server 2019 Standard Desktop Experience and their public GVLKs). Evaluation ISOs: `win10_eval = true` / `srv2019_eval = true` |
+| `win11_vtpm` | `false` unless you have a vCenter key provider |
+| `depot_url` | TN-DEPOT01 Nexus base, `http://<depot>:8081/repository`. Windows: Chocolatey is bootstrapped from the `chocolatey` .nupkg in `<depot_url>/chocolatey` (`choco-bootstrap.ps1`; Nexus serves no `install.ps1`) and every package comes from that feed. Vendor files: `<depot_url>/installers/...` (raw repository). Empty: offline |
+| `apt_proxy` | apt-cacher-ng on the depot, `http://<depot>:3142`: the apt/dnf forward proxy for the Ubuntu autoinstall (`apt: proxy`), the Debian/Kali/Parrot preseeds (`mirror/http/proxy`), Rocky (`dnf proxy=`, repos on the http baseurl) and every derived/variant clone (`files/linux/apt-proxy.sh`). `cleanup.sh` removes it, so no template ships a proxy. Empty: offline |
+| `iso_exchange2019`, `iso_sharepointse`, `iso_mecm`, `iso_sql2022` | media for the server role images |
 
 The templates keep these build logins (ADR 0012 §5). Give the installer the same values
 (`vault_template_windows_admin_password`, `tn_template_linux_user`,
 `vault_template_linux_password`; install/README.md "Range credentials") so staff see them as
 the "template default" login of machines with no declared account.
-| `win11_vtpm` | `false` unless you have a vCenter key provider |
-| `depot_url` | optional TN-DEPOT01 base URL to pull baseline apps from |
 
 ## Building
 
@@ -197,10 +205,11 @@ The deploy provisioner can use either, so keeping both costs only datastore spac
 | Image | Builder | Confidence | Notes |
 |---|---|---|---|
 | srv2022 | iso | **Solid** | Classic Setup engine; honours Autounattend reliably. GVLK edition-select key. Build first |
-| win10-22h2 | iso | **Solid** | Eval media (upload ISO first). No product key |
+| win10-22h2 | iso | **Solid** (once ISO uploaded) | VS "business editions" media: image `win10_image_name` (Windows 10 Enterprise) + public GVLK `gvlk_win10`. Evaluation media: `win10_eval = true` |
 | win10-ltsc | iso | **Solid** (once ISO uploaded) | Enterprise LTSC 2021, 2 vCPU / 4 GB / 60 GB, classic engine. VL media use `gvlk_win10_ltsc`; eval media: set it to `""` and `win10_ltsc_image_name` to the eval image name. Catalogue row is `enabled=no` until built |
 | ubuntu-lts | iso | **Solid** | 24.04.4 autoinstall via `cidata` CD. Or register `tmpl-ubuntu-2404` instead |
-| srv2019 / srv2016 | iso | **Solid** (once ISO uploaded) | Eval media; classic engine |
+| srv2019 | iso | **Solid** (once ISO uploaded) | VS media, latest refresh: `srv2019_image_name` (Standard, Desktop Experience) + public GVLK `gvlk_srv2019`; some media name the image `Windows Server 2019 SERVERSTANDARD` (check with `dism /Get-WimInfo`). Evaluation media: `srv2019_eval = true` |
+| srv2016 | iso | **Solid** (once ISO uploaded) | Eval media; classic engine |
 | rocky | iso | **Solid** | Rocky 10 kickstart via `OEMDRV` CD |
 | debian13 | iso | **Likely** | Debian installer preseed over Packer HTTP |
 | kali | iso | **Likely** | Preseed over Packer HTTP; the `kali-linux-default` metapackage is online-only (best-effort, skipped offline) |
@@ -216,6 +225,33 @@ The deploy provisioner can use either, so keeping both costs only datastore spac
 | c2-server-cs | — | **Not built here** | Cobalt Strike image: production only, needs licensed media, never built in the lab |
 | precomp-host, detonation-host | clone | **Partial** | Clone `win10-22h2` and template only (`communicator="none"`); `files/windows/<name>.ps1` is applied at deploy via a guest-customization spec. detonation-host stays sterile (no sensor, no egress). The variant WinRM mechanism below could bake these too; not switched over yet |
 | variants | clone | **Likely** | `variants.pkr.hcl`; see "Custom images (variants)". Windows variants depend on vSphere guest customization succeeding on the sysprepped base |
+| srv2022-exchange2019, srv2022-sharepointse, srv2022-mecm | clone | **Not run yet; partial by design** | `roles.pkr.hcl`: prerequisites installed and media staged; the domain-dependent setup is a deploy-time step. See "Role images". Catalogue rows `enabled=no` |
+
+All Linux images (bases, derived, variants) log in with the one generic build login
+(`ssh_username` / `ssh_password`), which every seed creates from `ssh_password_hash`.
+
+## Role images
+
+`roles.pkr.hcl` builds the images `control-plane/api/app/windows_roles.py` names for its
+"image" roles. Each clones `srv2022` (`base_srv2022_template`), gets WinRM back with the
+same guest customization the Windows variants use, attaches its media as extra CD-ROMs,
+and runs `files/windows/role-image.ps1` twice with a reboot in between, then sysprep.
+`depot_url` is required. Files that are not on the product media come from the depot's raw
+`installers` repository, `<depot_url>/installers/roles/<image>/`. Upload them once as the
+`tn-prefetch` user, for example
+`curl -u tn-prefetch --upload-file vcredist2012_x64.exe http://10.30.30.30:8081/repository/installers/roles/exchange2019/vcredist2012_x64.exe`.
+
+| Image | Media (CD-ROMs) | Depot files (`installers/roles/…`) | Installed at build | Left to deploy time (needs the range domain) |
+|---|---|---|---|---|
+| srv2022-exchange2019 | `iso_exchange2019` (CU15) | `exchange2019/vcredist2012_x64.exe`, `vcredist2013_x64.exe`, `rewrite_amd64_en-US.msi`; optional `ndp48-x86-x64-allos-enu.exe`, `UcmaRuntimeSetup.exe` | Exchange 2019 Windows features (Microsoft Learn, "Exchange Server prerequisites", Server 2022 Desktop Experience list), VC++ 2012/2013, URL Rewrite, UCMA 4.0 from `\UCMARedist`; media in `C:\TrueNorth\media\exchange2019` | `Setup.exe /PrepareSchema`, `/PrepareAD`, `/Mode:Install /Roles:Mailbox`: Exchange Setup needs a domain member and Enterprise/Schema Admin |
+| srv2022-sharepointse | `iso_sharepointse` | `sharepointse/VC_redist.x64.exe` | VC++ 2015-2022, `prerequisiteinstaller.exe /unattended` (run twice); media in `C:\TrueNorth\media\sharepointse` | `setup.exe /config` with the site's product key (no keys in templates, ADR 0012 decision 3), then `psconfig` against the range's SQL Server |
+| srv2022-mecm | `iso_mecm`, `iso_sql2022`, `iso_srv2022` (for .NET 3.5 `sources\sxs`) | `mecm/adk.zip`, `adkwinpe.zip` (`adksetup /layout` output, zipped); optional `msodbcsql18.msi`, `configmgr-prereqs.zip` (setupdl output) | .NET 3.5/4.8, BITS/IIS/RDC site-server features, ADK + WinPE add-on, SQL Server 2022 Database Engine as a SysPrep prepared image (`/ACTION=PrepareImage`); ConfigMgr media in `C:\TrueNorth\media\mecm` | SQL `/ACTION=CompleteImage`, the AD schema extension (`extadsch`) and System Management container, ConfigMgr `setup.exe /SCRIPT` |
+
+`C:\TrueNorth\role-image.json` in each image lists what was installed and the deploy-time
+commands. TrueNorth does not run those steps yet, so the catalogue rows stay `enabled=no`:
+an enabled row resolves before it is built, and the worker would report the role as
+installed. There is no Packer source for `srv2022-sql2022` or `srv2019-sharepoint2019` yet
+(their ISOs are listed in `install/lab/work-site/isos.conf`).
 
 ## Custom images (variants)
 
@@ -299,8 +335,13 @@ egress that `packer init` and the online package steps need. Its firewall rules 
 
 ## Windows product keys (deferred)
 
-The lab's Server 2022/2025 and Windows 11 ISOs are retail/volume media, so the Autounattend
-passes Microsoft's **public** KMS client setup key (GVLK) to pick the edition. Activation is
+The lab's Server 2022/2025 and Windows 11 ISOs are retail/volume media, and Windows 10 22H2
+and Server 2019 come from Visual Studio business media, so the Autounattend passes
+Microsoft's **public** KMS client setup key (GVLK) to pick the edition. The GVLKs in
+`variables.pkr.hcl` are from Microsoft Learn, "Key Management Services (KMS) client
+activation and product keys"
+(<https://learn.microsoft.com/windows-server/get-started/kms-client-activation-keys>,
+checked 2026-10-19). Activation is
 paused. KMS (TN-KMS01) is future integration and testing. Until then, templates and clones
 run unactivated. This departs from the build sheet's "no keys in any template" rule and is
 recorded as an open item in `docs/vm-build-sheet.md` §8.

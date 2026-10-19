@@ -4,8 +4,9 @@
 
   $env:VARIANT_CHOCO_PACKAGES  ';'-separated Chocolatey ids; "id@1.2.3" pins a version
   $env:DEPOT_URL               TN-DEPOT01 base URL; when set, its /chocolatey feed is the
-                               only source. Else the community feed (the build network
-                               has egress).
+                               only source, and choco-bootstrap.ps1 (run before this
+                               script) installed Chocolatey from it. Else the community
+                               feed, which needs egress the work-site build network lacks.
 
   Unlike setup.ps1, a variant fails the build when it cannot install a package: a variant
   that silently lacks its software would only be noticed inside a no-egress range.
@@ -22,8 +23,10 @@ if ($packages.Count -eq 0) {
 }
 
 $depot = $env:DEPOT_URL
+if (-not (Get-Command choco -ErrorAction SilentlyContinue)) { $env:Path += ";$env:ProgramData\chocolatey\bin" }
 if (-not (Get-Command choco -ErrorAction SilentlyContinue)) {
-  $installer = if ($depot) { "$depot/chocolatey/install.ps1" } else { 'https://community.chocolatey.org/install.ps1' }
+  if ($depot) { throw 'choco not installed: choco-bootstrap.ps1 must run before this script' }
+  $installer = 'https://community.chocolatey.org/install.ps1'
   Write-Host "Bootstrapping Chocolatey from $installer"
   Invoke-Expression ((New-Object System.Net.WebClient).DownloadString($installer))
   $env:Path += ";$env:ProgramData\chocolatey\bin"
