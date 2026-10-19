@@ -226,7 +226,9 @@ def render_topology(
 
     Windows Server nodes whose ``services`` name roles (windows_roles.py) are sized to at
     least their roles' minimum, clone the role's image when it has one, and carry
-    ``roles`` / ``role_features`` (and, for DCs, ``ad_domain`` / ``ad_forest_root``).
+    ``roles`` / ``role_features`` (and, for DCs, ``ad_domain`` / ``ad_forest_root``; for a
+    member whose role needs AD, ``ad_join``: its ``ad_domain``, else the template's, else the
+    first forest a DC names).
     ``role_errors`` lists placements that cannot be built (two product images on one VM).
     """
     range_name = template.get("name") or template.get("id") or range_id
@@ -259,7 +261,13 @@ def render_topology(
     role_errors, _ = windows_roles.check_nodes(
         [{**n, "os": canonical_os(_node_os(n))} for n in nodes if isinstance(n, dict)]
     )
+    # The first forest a DC of the template names: the domain a member server joins when
+    # neither it nor the template names one (large-enterprise: corp.truenorth.local).
+    first_forest = next((str(n.get("ad_domain") or n.get("ad_forest")) for n in nodes if isinstance(n, dict)
+                         and (n.get("ad_domain") or n.get("ad_forest"))
+                         and "ad-ds" in windows_roles.roles_of(n.get("services"))), "")
     default_domain = str(template.get("ad_domain") or template.get("domain") or "range.local")
+    join_domain = str(template.get("ad_domain") or template.get("domain") or first_forest or "range.local")
     forests: set[str] = set()  # AD domains whose first (forest-root) DC is already assigned
     for node in nodes:
         if (not node.get("os") and not node.get("os_template")
@@ -306,6 +314,10 @@ def render_topology(
                     role_plan["ad_domain"] = domain
                     role_plan["ad_forest_root"] = domain not in forests
                     forests.add(domain)
+                elif any(("in_range", "ad-ds") in windows_roles.BY_ID[r].get("requires", ()) for r in roles):
+                    # A member server's domain: the deploy-time product setup joins it
+                    # (provisioners/vsphere_products.py; Exchange, SharePoint SE, MECM).
+                    role_plan["ad_join"] = str(node.get("ad_domain") or join_domain)
             gateway = netinfo["gateway"] if netinfo else ""
             netmask = str(netinfo["net"].netmask) if netinfo else "255.255.255.0"
             prefix = netinfo["net"].prefixlen if netinfo else 24

@@ -229,7 +229,7 @@ The deploy provisioner can use either, so keeping both costs only datastore spac
 | c2-server-cs | — | **Not built here** | Cobalt Strike image: production only, needs licensed media, never built in the lab |
 | precomp-host, detonation-host | clone | **Partial** | Clone `win10-22h2` and template only (`communicator="none"`); `files/windows/<name>.ps1` is applied at deploy via a guest-customization spec. detonation-host stays sterile (no sensor, no egress). The variant WinRM mechanism below could bake these too; not switched over yet |
 | variants | clone | **Likely** | `variants.pkr.hcl`; see "Custom images (variants)". Windows variants depend on vSphere guest customization succeeding on the sysprepped base |
-| srv2022-exchange2019, srv2022-sharepointse, srv2022-mecm | clone | **Not run yet; partial by design** | `roles.pkr.hcl`: prerequisites installed and media staged; the domain-dependent setup is a deploy-time step. See "Role images". Catalogue rows `enabled=no` |
+| srv2022-exchange2019, srv2022-sharepointse, srv2022-mecm | clone | **Not run yet; partial by design** | `roles.pkr.hcl`: prerequisites installed and media staged; the worker runs the domain-dependent setup at deploy (`vsphere_products.py`, `vmware-site-runbook.md` §7.3). See "Role images". Catalogue rows `enabled=yes`: build them before a range that uses them |
 
 All Linux images (bases, derived, variants) log in with the one generic build login
 (`ssh_username` / `ssh_password`), which every seed creates from `ssh_password_hash`.
@@ -248,13 +248,18 @@ and runs `files/windows/role-image.ps1` twice with a reboot in between, then sys
 | Image | Media (CD-ROMs) | Depot files (`installers/roles/…`) | Installed at build | Left to deploy time (needs the range domain) |
 |---|---|---|---|---|
 | srv2022-exchange2019 | `iso_exchange2019` (CU15) | `exchange2019/vcredist2012_x64.exe`, `vcredist2013_x64.exe`, `rewrite_amd64_en-US.msi`; optional `ndp48-x86-x64-allos-enu.exe`, `UcmaRuntimeSetup.exe` | Exchange 2019 Windows features (Microsoft Learn, "Exchange Server prerequisites", Server 2022 Desktop Experience list), VC++ 2012/2013, URL Rewrite, UCMA 4.0 from `\UCMARedist`; media in `C:\TrueNorth\media\exchange2019` | `Setup.exe /PrepareSchema`, `/PrepareAD`, `/Mode:Install /Roles:Mailbox`: Exchange Setup needs a domain member and Enterprise/Schema Admin |
-| srv2022-sharepointse | `iso_sharepointse` | `sharepointse/VC_redist.x64.exe` | VC++ 2015-2022, `prerequisiteinstaller.exe /unattended` (run twice); media in `C:\TrueNorth\media\sharepointse` | `setup.exe /config` with the site's product key (no keys in templates, ADR 0012 decision 3), then `psconfig` against the range's SQL Server |
+| srv2022-sharepointse | `iso_sharepointse`, `iso_sql2022` | `sharepointse/VC_redist.x64.exe` | VC++ 2015-2022, `prerequisiteinstaller.exe /unattended` (run twice), SQL Server 2022 Database Engine as a SysPrep prepared image (the farm's own database); media in `C:\TrueNorth\media\sharepointse` | SQL `/ACTION=CompleteImage`, `setup.exe /config` with the site's product key (`TN_SHAREPOINT_PRODUCT_KEY`; no keys in templates, ADR 0012 decision 3), then the farm (`New-SPConfigurationDatabase`, single server) |
 | srv2022-mecm | `iso_mecm`, `iso_sql2022`, `iso_srv2022` (for .NET 3.5 `sources\sxs`) | `mecm/adk.zip`, `adkwinpe.zip` (`adksetup /layout` output, zipped); optional `msodbcsql18.msi`, `configmgr-prereqs.zip` (setupdl output) | .NET 3.5/4.8, BITS/IIS/RDC site-server features, ADK + WinPE add-on, SQL Server 2022 Database Engine as a SysPrep prepared image (`/ACTION=PrepareImage`); ConfigMgr media in `C:\TrueNorth\media\mecm` | SQL `/ACTION=CompleteImage`, the AD schema extension (`extadsch`) and System Management container, ConfigMgr `setup.exe /SCRIPT` |
 
 `C:\TrueNorth\role-image.json` in each image lists what was installed and the deploy-time
-commands. TrueNorth does not run those steps yet, so the catalogue rows stay `enabled=no`:
-an enabled row resolves before it is built, and the worker would report the role as
-installed. There is no Packer source for `srv2022-sql2022` or `srv2019-sharepoint2019` yet
+commands. It is also the staged-image marker: the worker
+(`control-plane/worker/worker/provisioners/vsphere_products.py`) runs those steps at deploy
+only on a clone whose `role-image.json` names the image, after the range's DC is up and the
+VM has joined its domain (`docs/deployment/vmware-site-runbook.md` §7.3). The catalogue rows
+are `enabled=yes`, so an enabled row resolves before it is built: build these images before
+a range that uses them, as for every other enabled template (ADR 0012 decision 1).
+`configmgr-prereqs.zip` (setupdl.exe output) on the depot at build time is staged into the
+MECM image; without it each range downloads it from the depot at deploy. There is no Packer source for `srv2022-sql2022` or `srv2019-sharepoint2019` yet
 (their ISOs are listed in `install/lab/work-site/isos.conf`).
 
 ## Custom images (variants)

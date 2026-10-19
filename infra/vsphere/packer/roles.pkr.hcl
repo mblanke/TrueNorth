@@ -12,21 +12,25 @@
 # depot's raw "installers" repository, <depot_url>/installers/roles/<image>/ (README,
 # "Role images"). sysprep.ps1 generalizes the result like every other Windows template.
 #
-# What is NOT done at build time, and why (every one of these needs the range's domain):
+# What is NOT done at build time, and why (every one of these needs the range's domain).
+# TrueNorth runs it at deploy (control-plane/worker/worker/provisioners/vsphere_products.py)
+# on a clone whose C:\TrueNorth\role-image.json names the image: join the range domain,
+# then the product setup below, as the domain Administrator.
 #   exchange2019  Exchange Setup (/PrepareSchema, /PrepareAD, /Mode:Install) requires the
 #                 server to be a domain member and an Enterprise/Schema Admin. The image has
 #                 every Windows feature and prerequisite installed and the CU15 media staged
 #                 in C:\TrueNorth\media\exchange2019.
 #   sharepointse  The binaries need the site's product key (ADR 0012 decision 3: no keys in
-#                 templates) and psconfig needs the domain and the range's SQL Server. The
-#                 image has the prerequisites installed and the media staged.
+#                 templates; TN_SHAREPOINT_PRODUCT_KEY at deploy) and the farm needs the
+#                 domain. The image has the prerequisites installed, the media staged, and
+#                 SQL Server 2022 as a SysPrep prepared image for the farm's own database.
 #   mecm          ConfigMgr setup needs the domain, the AD schema extension (extadsch) and
 #                 the System Management container. SQL Server 2022 is installed as a
 #                 SysPrep "prepared image" (/ACTION=PrepareImage) and completed at deploy
 #                 (/ACTION=CompleteImage); ADK + WinPE add-on are installed; the ConfigMgr
 #                 media are staged.
 # C:\TrueNorth\role-image.json in each image records what was installed and the deploy step
-# still to run. The catalogue rows stay enabled=no until that deploy step exists.
+# still to run; the worker reads it as the staged-image marker.
 #
 # Build one with:  ./build.sh srv2022-exchange2019   (or packer build -only='*.vsphere-clone.<id>' .)
 
@@ -40,8 +44,8 @@ locals {
       disk_mb = 204800
     }
     "srv2022-sharepointse" = {
-      notes   = "TrueNorth role image: Server 2022 + SharePoint Subscription Edition prerequisites, media staged (setup at deploy)"
-      isos    = ["${local.iso_dir}/${var.iso_sharepointse}"]
+      notes   = "TrueNorth role image: Server 2022 + SharePoint Subscription Edition prerequisites + SQL 2022 (prepared), media staged (setup at deploy)"
+      isos    = ["${local.iso_dir}/${var.iso_sharepointse}", "${local.iso_dir}/${var.iso_sql2022}"]
       cpus    = 4
       ram_mb  = 16384
       disk_mb = 204800

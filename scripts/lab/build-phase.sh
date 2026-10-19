@@ -82,7 +82,7 @@ DERIVED_IDS="remnux sift svc-emulators greyspace-host ca-host usersim cloudlog-e
 ROLE_IDS="precomp-host detonation-host"
 # Server role images (roles.pkr.hcl): <id>:<iso vars it needs, comma-separated>. Each clones
 # srv2022 and installs prerequisites from the depot; added once their media are in.
-ROLE_SERVER="srv2022-exchange2019:iso_exchange2019 srv2022-sharepointse:iso_sharepointse srv2022-mecm:iso_mecm,iso_sql2022"
+ROLE_SERVER="srv2022-exchange2019:iso_exchange2019 srv2022-sharepointse:iso_sharepointse,iso_sql2022 srv2022-mecm:iso_mecm,iso_sql2022"
 role_server_ids() { local p; for p in $ROLE_SERVER; do printf '%s ' "${p%%:*}"; done; }
 
 test_mode() {
@@ -415,7 +415,7 @@ phase_roles() {
       fi
     done
   fi
-  info "server role images stage media and prerequisites only; the domain-dependent setup is a deploy-time step (roles.pkr.hcl). Their catalogue rows stay enabled=no."
+  info "server role images stage media and prerequisites only; the worker runs the domain-dependent setup at deploy (vsphere_products.py)."
   run_phase "Windows role images" ${ids[@]+"${ids[@]}"}
 }
 

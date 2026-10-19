@@ -28,6 +28,7 @@ from worker import pfsense_config, render, vlan_pool
 from worker.provisioners import vsphere_api as mod
 from worker.provisioners import vsphere_guest as guest_mod
 from worker.provisioners import vsphere_infra as infra
+from worker.provisioners import vsphere_products as products_mod
 from worker.provisioners import vsphere_roles as roles_mod
 from worker.provisioners import vsphere_securityonion as so_mod
 
@@ -1336,6 +1337,104 @@ class TestWindowsRoles:
         _run(_prov(vc).provision(RANGE_ID, _rendered(ROLE_TEMPLATE), {}))
         spec = next(s for _, name, s in vc.templates["tmpl-win2022"].clone_specs if name == f"{R8}-exch")
         assert (spec.config.numCPUs, spec.config.memoryMB) == (4, 16384)
+
+
+# --------------------------------------------------------------------------- #
+# Exchange / SharePoint SE / MECM role images: setup at deploy (vsphere_products.py)
+# --------------------------------------------------------------------------- #
+
+PRODUCT_IMAGES = {**IMAGES, **{i: i for i in products_mod.SETUP_IMAGES}}
+PRODUCT_TEMPLATE = {**TEMPLATE, "name": "Product Range", "nodes": [
+    TEMPLATE["nodes"][0],
+    {"id": "exch", "os": WS22, "vlan": "victim_network", "services": ["exchange", "owa"]},
+    {"id": "sp", "os": WS22, "vlan": "victim_network", "services": ["sharepoint_se"]},
+    {"id": "dc01", "os": WS22, "vlan": "victim_network", "ip": "10.60.201.10",
+     "services": ["active_directory", "dns"], "ad_forest": "corp.range.local"},
+]}
+
+
+class TestProductSetup:
+    """The provision flow around vsphere_products: when it runs, against which DC, as which
+    login, and how its outcome lands on the range. The guest steps are faked here (their
+    commands are tested in test_vsphere_products.py)."""
+
+    @pytest.fixture
+    def flow(self, vc, monkeypatch):
+        for image in products_mod.SETUP_IMAGES:  # the role images exist on the vCenter
+            tmpl = FakeVM(image, [], template=True)
+            tmpl.config.hardware = FreshHardware(MGMT)
+            vc.templates[image] = tmpl
+            vc.dc.vmFolder.childEntity.append(tmpl)
+        prov = _prov(vc)
+        events: list[tuple] = []
+        state = {"dc": "ok", "run": "running"}
+
+        def roles_sync(si, vm_def, vm_id, deadline):
+            events.append(("roles", vm_def["name"]))
+            ok = {"status": "ok", "detail": "installed"}
+            return {"ad-ds": {"status": state["dc"], "detail": "x"}, "dns": ok}
+
+        def prepare(session_for, plan, deadline, reboot_fn=None):
+            events.append(("prepare", plan.name, plan.dc_name, plan.domain_user, plan.domain_password.reveal()))
+            return None
+
+        def run(session_for, plan, deadline, budget_end, **kw):
+            events.append(("run", plan.name))
+            return products_mod.outcome(plan, state["run"], "last status: Exchange: installing the Mailbox role")
+
+        monkeypatch.setattr(prov, "_roles_sync", roles_sync)
+        monkeypatch.setattr(products_mod, "prepare", prepare)
+        monkeypatch.setattr(products_mod, "run", run)
+        monkeypatch.delenv(products_mod.PRODUCT_KEY_ENV, raising=False)
+        built = render.render_topology(PRODUCT_TEMPLATE, RANGE_ID, PRODUCT_IMAGES.get)
+        template = {"name": "Product Range", "vms": built["vm_definitions"], "networks": built["network_definitions"]}
+        return prov, template, events, state
+
+    def test_setup_runs_after_the_dc_is_promoted_as_its_administrator(self, flow, vc):
+        prov, template, events, _ = flow
+        result = _run(prov.provision(RANGE_ID, template, {}))
+        assert result.status == "ok", result.errors  # a setup still running is a warning, not partial
+        names = [e[:2] for e in events]
+        assert names.index(("roles", f"{R8}-dc01")) < names.index(("prepare", f"{R8}-exch")) \
+            < names.index(("run", f"{R8}-exch"))
+        prep = next(e for e in events if e[0] == "prepare")
+        dc_password = vc.vms[_vm_out(result, "dc01")["vm_id"]].guest_password("Administrator")
+        assert prep[2:] == (f"{R8}-dc01", "CORP\\Administrator", dc_password)  # the DC's Sysprep Administrator
+        exch = _vm_out(result, "exch")
+        assert exch["roles"]["exchange"]["status"] == "running"
+        assert exch["role_setup"]["image"] == "srv2022-exchange2019"
+        assert exch["role_setup"]["organization"] == "Product Range"
+        assert any(w.startswith(f"VM {R8}-exch: Exchange 2019 setup running") for w in result.warnings)
+        dumped = json.dumps(result.__dict__, default=str)
+        assert dc_password not in dumped
+
+    def test_sharepoint_without_a_key_is_staged_and_never_touched(self, flow):
+        prov, template, events, _ = flow
+        result = _run(prov.provision(RANGE_ID, template, {}))
+        sp = _vm_out(result, "sp")
+        assert sp["roles"]["sharepoint"]["status"] == "skipped"
+        assert sp["roles"]["sharepoint"]["detail"].startswith("staged (no product key)")
+        assert sp["role_setup"]["image"] == "srv2022-sharepointse"
+        assert not [e for e in events if e[0] != "roles" and e[1] == f"{R8}-sp"]
+        assert any("SharePoint SE setup skipped: staged (no product key)" in w for w in result.warnings)
+        assert not [e for e in result.errors if "sharepoint" in e]
+
+    def test_a_dc_that_was_not_promoted_skips_the_setup(self, flow):
+        prov, template, events, state = flow
+        state["dc"] = "failed"
+        result = _run(prov.provision(RANGE_ID, template, {}))
+        exch = _vm_out(result, "exch")["roles"]["exchange"]
+        assert exch["status"] == "skipped" and f"domain controller {R8}-dc01 is not ready (ad-ds failed)" in exch["detail"]
+        assert not [e for e in events if e[0] in ("prepare", "run")]
+        assert result.status == "partial"  # for the DC's own error only
+        assert [e for e in result.errors if "exchange" in e] == []
+
+    def test_a_finished_setup_is_ok_on_the_role(self, flow):
+        prov, template, _, state = flow
+        state["run"] = "ok"
+        result = _run(prov.provision(RANGE_ID, template, {}))
+        assert _vm_out(result, "exch")["roles"]["exchange"]["status"] == "ok"
+        assert not [w for w in result.warnings if "Exchange 2019 setup" in w]
 
 
 # --------------------------------------------------------------------------- #

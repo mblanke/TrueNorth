@@ -49,7 +49,7 @@ LINUX_CLONE_SOURCES = ("remnux", "sift", "svc-emulators", "greyspace-host", "ca-
                        "c2-server", "variant-linux")
 ROLE_IMAGES = {
     "srv2022-exchange2019": ["iso_exchange2019"],
-    "srv2022-sharepointse": ["iso_sharepointse"],
+    "srv2022-sharepointse": ["iso_sharepointse", "iso_sql2022"],
     "srv2022-mecm": ["iso_mecm", "iso_sql2022", "iso_srv2022"],
 }
 
@@ -331,17 +331,63 @@ def test_role_image_script_covers_each_image_and_needs_the_depot():
         assert not [ln for ln in runs if never in ln], never
 
 
-def test_role_images_are_built_by_build_sh_and_catalogued_disabled():
+def test_role_images_are_built_by_build_sh_and_catalogued():
     order = _text("build.sh")
     rows = {r["template_id"]: r for r in csv.DictReader(
         (ROOT / "content/catalogue/vm_iso_catalogue.csv").open(encoding="utf-8-sig"))}
     for image in ROLE_IMAGES:
         assert f" {image}" in order and f"|{image}" in order  # ORDER and is_clone
-        row = rows[image]
-        assert row["enabled"] == "no", image  # an enabled row resolves before it is built
-        assert "NOT built" in row["notes"] and "deploy" in row["notes"], image
+        assert "STAGED MEDIA" in rows[image]["notes"] and "at deploy" in rows[image]["notes"], image
     phase = (ROOT / "scripts/lab/build-phase.sh").read_text()
     assert "srv2022-mecm:iso_mecm,iso_sql2022" in phase
+    assert "srv2022-sharepointse:iso_sharepointse,iso_sql2022" in phase
+
+
+# Role images whose role needs no guest work at deploy: the image is the finished product.
+# Add one here only when that is true; otherwise give it a deploy step (vsphere_products.py).
+FINISHED_ROLE_IMAGES = {"srv2022-sql2022", "srv2022-entraconnect-sim", "srv2022-erp-app", "srv2019-historian-sim"}
+
+
+def test_every_enabled_role_image_has_a_deploy_path():
+    """An enabled catalogue row resolves at render time, so a range clones that image. A role
+    image that only stages its product must then have the deploy-time step that finishes it
+    (worker/provisioners/vsphere_products.py), or its role would report installed when it is not."""
+    from worker import windows_roles  # noqa: PLC0415
+    from worker.provisioners import vsphere_products  # noqa: PLC0415
+
+    rows = {r["template_id"]: r for r in csv.DictReader(
+        (ROOT / "content/catalogue/vm_iso_catalogue.csv").open(encoding="utf-8-sig"))}
+    images = {img for r in windows_roles.ROLES if r["install"]["method"] == "image"
+              for img in r["install"]["images"].values()}
+    enabled = {i for i in images if rows.get(i, {}).get("enabled") == "yes"}
+    assert {"srv2022-exchange2019", "srv2022-sharepointse", "srv2022-mecm"} <= enabled
+    for image in enabled:
+        assert image in vsphere_products.SETUP_IMAGES or image in FINISHED_ROLE_IMAGES, image
+    for image, role in vsphere_products.SETUP_IMAGES.items():
+        assert windows_roles.BY_ID[role]["install"]["images"]["windows-server-2022"] == image
+    # The marker the deploy step reads is the one role-image.ps1 writes.
+    script = (PK / "files/windows/role-image.ps1").read_text()
+    assert "role-image.json" in script and "staged = $staged" in script
+    assert vsphere_products.MARKER == "C:\\TrueNorth\\role-image.json"
+    assert script.count("sql = 'prepared'") == 2  # SharePoint's farm database and MECM's site database
+
+
+def test_sharepoint_product_key_reaches_the_worker_only_and_no_template():
+    vault = (ROOT / "install/inventory/group_vars/all/vault.yml.example").read_text()
+    assert re.search(r'^vault_sharepoint_product_key: ""$', vault, re.M)
+    main = (ROOT / "install/inventory/group_vars/all/main.yml").read_text()
+    assert "tn_sharepoint_product_key: \"{{ vault_sharepoint_product_key | default('') }}\"" in main
+    env = (ROOT / "install/roles/tn_config/templates/env.production.j2").read_text()
+    assert "TN_SHAREPOINT_PRODUCT_KEY='{{ tn_sharepoint_product_key }}'" in env
+    assert "VSPHERE_ROLE_SETUP_TIMEOUT={{ tn_vsphere_role_setup_timeout }}" in env
+    compose = (ROOT / "infra/platform/docker/compose.prod.yml").read_text()
+    # Once, next to the worker's other deploy-time settings.
+    assert compose.count("TN_SHAREPOINT_PRODUCT_KEY: ${TN_SHAREPOINT_PRODUCT_KEY:-}") == 1
+    assert compose.index("VSPHERE_SO_SETUP_TIMEOUT:") < compose.index("TN_SHAREPOINT_PRODUCT_KEY:")
+    assert "vault_sharepoint_product_key" in (ROOT / "install/roles/tn_preflight/tasks/main.yml").read_text()
+    # ADR 0012 decision 3: the image build never sees a product key.
+    assert "product_key" not in _text("variables.pkr.hcl").lower()
+    assert "$env:TN_SHAREPOINT_PRODUCT_KEY" not in (PK / "files/windows/role-image.ps1").read_text()
 
 
 # ── 5. Chocolatey from the depot feed ─────────────────────────────────

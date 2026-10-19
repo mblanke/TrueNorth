@@ -46,6 +46,13 @@ vault_range_default_password: ""
 vault_template_windows_admin_password: ""
 vault_template_linux_password: ""
 
+# ── SharePoint Server Subscription Edition product key (optional) ─────
+# The site's key (XXXXX-XXXXX-XXXXX-XXXXX-XXXXX), from the Visual Studio subscription.
+# The worker installs SharePoint SE at deploy on VMs cloned from srv2022-sharepointse
+# (vmware-site-runbook.md §7.3). Never in a template (ADR 0012 decision 3), never logged.
+# Empty: SharePoint stays staged and the role is reported "staged (no product key)".
+vault_sharepoint_product_key: ""
+
 # ── Keycloak admin (bootstrap only; not an end-user account) ───────────
 # The master-realm admin. Only the installer uses it; the API has its own
 # least-privilege service account (truenorth-api-admin).

@@ -70,7 +70,7 @@ except ImportError:  # only the snapshot operations need it
     Disconnect = SmartConnect = vim = vmodl = None  # type: ignore[assignment]
 
 from .. import pfsense_config, software_catalogue, uplink_pool, vlan_pool, vyos_config
-from . import template_copies, vsphere_roles
+from . import template_copies, vsphere_products, vsphere_roles
 from . import vsphere_guest as guest
 from . import vsphere_infra as infra
 from . import vsphere_securityonion as seconion
@@ -1474,7 +1474,15 @@ class VsphereAPIProvisioner(BaseProvisioner):
 
                     async def roles_then_software() -> None:
                         await self._install_roles(si, vm_defs, vms_out, start, errors)
-                        await self._install_software(si, vm_defs, vms_out, start, errors, warnings)
+                        # Exchange / SharePoint SE / MECM images: after every role, so the
+                        # range's DC is promoted; their own software runs after the domain join.
+                        names = {v["name"] for v in vm_defs if vsphere_products.needs_setup(v)}
+                        products = [o for o in vms_out if o["name"] in names]
+                        await asyncio.gather(
+                            self._install_software(si, vm_defs, [o for o in vms_out if o["name"] not in names],
+                                                   start, errors, warnings),
+                            self._setup_products(si, str(template.get("name") or range_id), vm_defs, products,
+                                                 vms_out, start, errors, warnings))
 
                     # Security Onion setup runs in its guest on its own; start it with the rest.
                     await asyncio.gather(roles_then_software(), self._setup_securityonion(
@@ -1805,10 +1813,12 @@ class VsphereAPIProvisioner(BaseProvisioner):
 
     @staticmethod
     def _plan_roles(vm_defs: list[dict]) -> None:
-        """A Windows VM with feature roles to install needs a known Administrator password:
-        the one software installs use, or its own (``_guest``, set by Sysprep)."""
+        """A Windows VM with feature roles to install, or a product image to set up
+        (vsphere_products.py), needs a known Administrator password: the one software
+        installs use, or its own (``_guest``, set by Sysprep)."""
         for vm_def in vm_defs:
-            if vsphere_roles.needs_guest(vm_def) and infra.os_family(vm_def) == "windows":
+            if ((vsphere_roles.needs_guest(vm_def) or vsphere_products.needs_setup(vm_def))
+                    and infra.os_family(vm_def) == "windows"):
                 vm_def.setdefault("_guest", guest.windows_credentials(guest.admin_password(vm_def)))
 
     @staticmethod
@@ -1955,10 +1965,77 @@ class VsphereAPIProvisioner(BaseProvisioner):
                     if detail:
                         for rid in vsphere_roles.feature_roles(vm_def):
                             status[rid] = {"status": state, "detail": detail}
+            # A product image's role is set up later (_setup_products), which reports it.
+            product = vsphere_products.setup_role(vm_def)
+            if product:
+                status[product] = {"status": "pending", "detail": "deploy-time setup after the domain controller"}
             out["roles"] = status
-            errors.extend(vsphere_roles.errors(out["name"], status))
+            errors.extend(vsphere_roles.errors(out["name"], {k: v for k, v in status.items() if k != product}))
 
         await asyncio.gather(*(one(by_name[o["name"]], o) for o in vms_out if by_name[o["name"]].get("roles")))
+
+    def _product_session(self, si, vm_id: str):
+        vm = self._vm(si, vm_id)
+        return lambda creds: guest.GuestSession(si.content, vm, creds, poll=self._guest_poll)
+
+    def _product_prepare_sync(self, si, plan, vm_id: str, deadline: float) -> dict | None:
+        return vsphere_products.prepare(self._product_session(si, vm_id), plan, deadline)
+
+    def _product_run_sync(self, si, plan, vm_id: str, deadline: float, budget_end: float) -> dict:
+        return vsphere_products.run(self._product_session(si, vm_id), plan, deadline, budget_end)
+
+    async def _setup_products(self, si, range_name: str, vm_defs: list[dict], todo: list[dict],
+                              vms_out: list[dict], start: float, errors: list[str], warnings: list[str]) -> None:
+        """Exchange 2019 / SharePoint SE / MECM role images (vsphere_products.py). Runs after
+        every VM's roles, so the forest-root DC of the VM's domain is promoted, or not: then
+        the setup is ``skipped``. Per VM: staged-image check and domain join (VSPHERE_CONCURRENCY
+        at a time), the VM's own software, then the product setup, detached in the guest and
+        polled until VSPHERE_ROLE_SETUP_TIMEOUT or VSPHERE_PROVISION_BUDGET. Every outcome but
+        ``ok`` is a warning, never a partial range; ``accounts_applied`` is unchanged."""
+        by_name = {v["name"]: v for v in vm_defs}
+        built = {o["name"]: o for o in vms_out}
+        budget_end = start + self._budget
+        gate = asyncio.Semaphore(self._concurrency)
+
+        async def one(out: dict) -> None:
+            vm_def = by_name[out["name"]]
+            role = vsphere_products.setup_role(vm_def) or ""
+            plan, res = None, None
+            try:
+                plan = vsphere_products.plan(vm_def, vm_defs, range_name, self._depot_url)
+            except vsphere_products.PlanError as exc:
+                res = vsphere_products.outcome(None, exc.status, str(exc), vsphere_products.setup_image(vm_def) or "")
+            if plan is not None:
+                warnings.extend(f"VM {out['name']}: {n}" for n in plan.notes)
+                dc_state = ((built.get(plan.dc_name) or {}).get("roles") or {}).get("ad-ds", {}).get("status")
+                if dc_state != "ok":
+                    res = vsphere_products.outcome(plan, "skipped", f"domain controller {plan.dc_name} is not ready "
+                                                                    f"(ad-ds {dc_state or 'not built'})")
+            deadline = time.monotonic() + vsphere_products.VSPHERE_ROLE_SETUP_TIMEOUT
+            if plan is not None and res is None:
+                async with gate:
+                    if budget_end - time.monotonic() < vsphere_products.MIN_START:
+                        res = vsphere_products.outcome(plan, "skipped", "the provision time budget "
+                                                                        "(VSPHERE_PROVISION_BUDGET) is spent")
+                    else:
+                        try:
+                            res = await asyncio.to_thread(self._product_prepare_sync, si, plan, out["vm_id"],
+                                                          min(deadline, budget_end))
+                        except Exception as exc:  # noqa: BLE001
+                            res = vsphere_products.outcome(plan, "failed", self._redact(exc, vm_def))
+            await self._install_software(si, vm_defs, [out], start, errors, warnings)
+            if plan is not None and res is None:
+                try:
+                    res = await asyncio.to_thread(self._product_run_sync, si, plan, out["vm_id"], deadline, budget_end)
+                except Exception as exc:  # noqa: BLE001
+                    res = vsphere_products.outcome(plan, "failed", self._redact(exc, vm_def))
+            res = res or vsphere_products.outcome(plan, "failed", "no outcome")
+            out["role_setup"] = res
+            out.setdefault("roles", {})[role] = {"status": res["status"], "detail": res["detail"]}
+            if res["status"] != "ok":
+                warnings.append(vsphere_products.warning(out["name"], role, res))
+
+        await asyncio.gather(*(one(o) for o in todo))
 
     def _securityonion_sync(self, si, vm_def: dict, vm_id: str, networks: list[dict], dst_vlans: set[int],
                             deadline: float, budget_end: float) -> tuple[dict, list[str]]:

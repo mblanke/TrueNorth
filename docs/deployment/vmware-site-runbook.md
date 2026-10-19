@@ -406,6 +406,9 @@ Use soc-training, or a small PO range. Check:
 - [ ] Security Onion is set up (`securityonion.status` `ok`, see **7.2**) and sees traffic
       on the monitoring port group (promiscuous mode is enabled only there)
 - [ ] port mirroring (see **7.1**) copies each zone named in a `mirror` rule to the sensors
+- [ ] in a range with Exchange, SharePoint SE or MECM (red-vs-blue, large-enterprise): the
+      VM joined the range domain and `vms[].role_setup.status` reaches `ok` (see **7.3**;
+      `running` at the end of the build is normal for Exchange: read `C:\TrueNorth\deploy\status`)
 - [ ] the full lifecycle works: scenario → telemetry in OpenSearch → AAR → destroy, with
       nothing left in vCenter
 
@@ -538,6 +541,83 @@ Check after the build:
 Only a real vCenter can show that the template has open-vm-tools running and that the
 install login has sudo. The status is then `failed: could not start …`, or
 `guest operations not ready`.
+
+### 7.3 Exchange, SharePoint SE and MECM (product setup at deploy)
+
+The role images `srv2022-exchange2019`, `srv2022-sharepointse` and `srv2022-mecm`
+(`infra/vsphere/packer/roles.pkr.hcl`) carry the prerequisites and the staged media only.
+Each product needs the range's domain, so the worker finishes it per range
+(`worker/provisioners/vsphere_products.py`). It runs on a VM whose node names the role
+(`exchange`, `sharepoint_se`, `sccm` …, `windows-server-2022`) and which was cloned from the
+role image. A bare-OS fallback (image not registered) gets nothing and reports `skipped`.
+
+Order, per VM:
+1. After every VM's Windows roles, so the forest-root DC of the VM's domain has been
+   promoted. The domain is the node's `ad_domain`, else the template's `ad_domain`, else
+   the first `ad_forest` a DC names. If that DC did not end `ad-ds: ok`, the setup is
+   `skipped`.
+2. As the VM's local Administrator: check `C:\TrueNorth\role-image.json` (the staged-image
+   marker the image build writes; missing = `skipped`, nothing runs). Then set DNS to the
+   DC, wait for it (up to 15 min), `Add-Computer`, reboot.
+3. The VM's own deploy-time software (§4.1a), so no package install races the product's
+   installer.
+4. Stage `C:\TrueNorth\deploy` (Administrators and SYSTEM only). Register the one-shot
+   scheduled task "TrueNorth role setup" as `<DOMAIN>\Administrator`, highest privileges,
+   and start it. The runner deletes the task and its stored password when it ends.
+   - **Exchange 2019**: `Setup.exe /PrepareSchema`, `/PrepareAD /OrganizationName:"<range name>"`,
+     `/Mode:Install /Role:Mailbox`, each with `/IAcceptExchangeServerLicenseTerms_DiagnosticDataOFF`.
+   - **SharePoint SE**: only with a product key. It completes the image's own SQL Server 2022
+     (`/ACTION=CompleteImage`), runs `setup.exe /config` with the key, then builds a
+     single-server farm (`New-SPConfigurationDatabase -LocalServerRole SingleServerFarm`,
+     Central Administration on port 9999, farm account `<DOMAIN>\Administrator`). A range
+     SQL VM is not used: TrueNorth does not build `srv2022-sql2022` or join SQL VMs to the
+     domain (a warning says so).
+   - **MECM**: SQL `/ACTION=CompleteImage` (`SQL_Latin1_General_CP1_CI_AS`), `extadsch.exe`,
+     the `System Management` container (Full Control for the site server's computer
+     account), then `setup.exe /SCRIPT <ini> /NOUSERINPUT`. The ini makes a primary site:
+     `ProductID=EVAL` (180 days from install, longer than a range lives), site code `T` plus
+     the first two hex digits of the range id, SDK/MP/DP on the server, no service
+     connection point.
+5. Poll the runner's status until it ends, `VSPHERE_ROLE_SETUP_TIMEOUT` or the provision
+   budget. Exchange takes 1–2 hours, so with the default `VSPHERE_PROVISION_BUDGET` (3300 s)
+   it usually ends `running`. Setup carries on in the guest either way.
+
+The domain Administrator is the DC's built-in Administrator after forest promotion. Its
+password is the range's declared `Administrator` account for the DC (`accounts:`, §7.0a),
+else the template default (`TN_TEMPLATE_WINDOWS_ADMIN_PASSWORD`), else the random password
+Sysprep set (then nobody knows it after the build: declare the DC's Administrator for any
+range with these roles).
+
+Settings (worker):
+
+| Setting | Value |
+|---|---|
+| `TN_SHAREPOINT_PRODUCT_KEY` (installer `vault_sharepoint_product_key`) | the site's SharePoint SE key from the Visual Studio subscription. SharePoint SE has no free key. Empty: the role is `skipped`, "staged (no product key)", and nothing runs on the VM. Never logged; preflight checks its form. |
+| `VSPHERE_ROLE_SETUP_TIMEOUT` (installer `tn_vsphere_role_setup_timeout`) | seconds to wait per VM from its domain join, default `3600`. The wait also stops at `VSPHERE_PROVISION_BUDGET`. |
+| `TN_DEPOT_URL` | MECM only. When the image has no `C:\TrueNorth\media\mecm-prereqs`, the runner downloads `<TN_DEPOT_URL>:8081/repository/installers/roles/mecm/configmgr-prereqs.zip` through the range uplink. |
+
+**ConfigMgr prerequisite files.** ConfigMgr setup needs the files `setupdl.exe` downloads
+(`SMSSETUP\BIN\X64\setupdl.exe <folder>` on a machine with internet, same ConfigMgr
+version as the ISO). Zip that folder's contents and upload it once as the `tn-prefetch`
+user:
+`curl -u tn-prefetch --upload-file configmgr-prereqs.zip http://10.30.30.30:8081/repository/installers/roles/mecm/configmgr-prereqs.zip`.
+With it on the depot at image build time, `role-image.ps1` stages it in the image and no
+range downloads it. Also put `msodbcsql18.msi` there: current ConfigMgr setup refuses a
+site server without ODBC Driver 18.
+
+Check after the build:
+1. `provisioner_output.vms[].role_setup.status` (also on `roles.<role>`). Anything other
+   than `ok` is a warning, never a partial range:
+   - `running`: the provision budget ran out first; `timeout`: `VSPHERE_ROLE_SETUP_TIMEOUT` did;
+   - `failed`, with a reason: see `C:\TrueNorth\deploy\runner.log` and the product log the
+     reason names (`C:\ExchangeSetupLogs`, `C:\ConfigMgrSetup.log`, `C:\ExtADSch.log`, the
+     SharePoint Setup log in `C:\TrueNorth\deploy`);
+   - `skipped`: no product key (SharePoint), not a staged image, no DC of the domain, the DC
+     not promoted, or no budget left.
+   The current state is a number in `C:\TrueNorth\deploy\status`: 0 done, 2–9 running, 10+
+   failed (`vsphere_products.STATUS`). The runner never starts twice on one VM: a
+   redelivered build finds that status file and only polls it.
+2. `accounts_applied` is unchanged: the VM's own Administrator, verified as on any Windows VM.
 
 ---
 

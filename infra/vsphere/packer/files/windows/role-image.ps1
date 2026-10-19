@@ -21,6 +21,12 @@
   Domain-dependent steps are NOT run here (they cannot be: the build VM is in a
   workgroup). roles.pkr.hcl lists them; role-image.json in the image repeats them.
 
+  C:\TrueNorth\role-image.json is also the STAGED-IMAGE MARKER: at deploy the worker
+  (control-plane/worker/worker/provisioners/vsphere_products.py) runs the domain-dependent
+  setup only on a clone whose role-image.json names this image and whose "staged" folder
+  exists. Keep its keys: image, staged, sql ("prepared" when SQL Server 2022 was run with
+  /ACTION=PrepareImage: MECM's site database, SharePoint's farm database).
+
   Sources: Exchange Server prerequisites (Microsoft Learn, exchange/plan-and-deploy/
   prerequisites, Exchange 2019 on Windows Server 2022 Desktop Experience); SQL Server
   SysPrep "Prepare image" / "Complete image" (Microsoft Learn, sql/database-engine/
@@ -86,6 +92,13 @@ function Copy-Media([string]$from, [string]$name) {
   if ($LASTEXITCODE -ge 8) { throw "role-image: robocopy $from -> $to failed ($LASTEXITCODE)" }
   $global:LASTEXITCODE = 0
   return $to
+}
+
+# SQL Server 2022 Database Engine as a SysPrep prepared image; CompleteImage runs at deploy.
+function Initialize-PreparedSql {
+  $sql = Find-Media @('setup.exe', 'x64') @('SMSSETUP', 'sources\install.wim', 'prerequisiteinstaller.exe')
+  if (-not $sql) { throw 'role-image: SQL Server 2022 media not found on any CD-ROM' }
+  Invoke-Installer (Join-Path $sql 'setup.exe') '/Q /ACTION=PrepareImage /FEATURES=SQLEngine /INSTANCEID=MSSQLSERVER /IACCEPTSQLSERVERLICENSETERMS /SUPPRESSPRIVACYSTATEMENTNOTICE' | Out-Null
 }
 
 function Write-RoleManifest([hashtable]$m) {
@@ -168,8 +181,9 @@ switch ($image) {
     Write-RoleManifest @{
       installed = @('Exchange 2019 Mailbox Windows features', 'VC++ 2012', 'VC++ 2013', 'IIS URL Rewrite', 'UCMA 4.0')
       staged = $staged
+      sql = 'none'
       deploy_time = @(
-        'Join the range domain (Exchange cannot be installed on a workgroup server).',
+        'Join the range domain (Exchange cannot be installed on a workgroup server; TrueNorth, vsphere_products.py).',
         "As an Enterprise + Schema Admin: $staged\Setup.exe /IAcceptExchangeServerLicenseTerms_DiagnosticDataOFF /PrepareSchema, then /PrepareAD /OrganizationName:<org>",
         "$staged\Setup.exe /Mode:Install /Roles:Mailbox /IAcceptExchangeServerLicenseTerms_DiagnosticDataOFF"
       )
@@ -180,17 +194,21 @@ switch ($image) {
     if (-not $sp) { throw 'role-image: SharePoint media not found on any CD-ROM' }
     Step 'SharePoint prerequisite installer, second run (must now report 0)'
     $code = Invoke-Installer (Join-Path $sp 'prerequisiteinstaller.exe') '/unattended' @(0, 1001, 3010)
-    if ($code -ne 0) { Write-Warning "prerequisiteinstaller returned $code on the second run; the deploy-time step runs it once more" }
+    if ($code -ne 0) { Write-Warning "prerequisiteinstaller returned $code on the second run; SharePoint setup at deploy needs 0: rebuild if setup reports missing prerequisites" }
+    Step "SQL Server 2022: SysPrep Prepare Image for the farm's own database (Complete Image runs at deploy)"
+    Initialize-PreparedSql
     Step 'stage the SharePoint Subscription Edition media'
     $staged = Copy-Media $sp 'sharepointse'
     Write-RoleManifest @{
-      installed = @('VC++ 2015-2022', 'SharePoint prerequisites (prerequisiteinstaller /unattended)')
+      installed = @('VC++ 2015-2022', 'SharePoint prerequisites (prerequisiteinstaller /unattended)',
+                    'SQL Server 2022 Database Engine (prepared image, not configured)')
       staged = $staged
+      sql = 'prepared'
       deploy_time = @(
-        'Join the range domain; the range SQL Server must be up (windows_roles: sharepoint requires sql-server).',
-        "$staged\prerequisiteinstaller.exe /unattended (no-op when already complete)",
-        "$staged\setup.exe /config <config.xml with the site's PIDKEY> (no product key in templates, ADR 0012 decision 3)",
-        'psconfig.exe -cmd configdb -create ... against the range SQL Server, then the farm services'
+        'Join the range domain (TrueNorth, vsphere_products.py).',
+        'Complete SQL Server (/ACTION=CompleteImage, collation Latin1_General_CI_AS_KS_WS); the farm uses this instance.',
+        "$staged\setup.exe /config <config.xml with the site's PIDKEY: TN_SHAREPOINT_PRODUCT_KEY> (no product key in templates, ADR 0012 decision 3; without it the binaries stay staged)",
+        'New-SPConfigurationDatabase -LocalServerRole SingleServerFarm and the psconfig steps (help, security, services, features, Central Administration on 9999)'
       )
     }
   }
@@ -207,9 +225,7 @@ switch ($image) {
     }
 
     Step 'SQL Server 2022: SysPrep Prepare Image (Database Engine); Complete Image runs at deploy'
-    $sql = Find-Media @('setup.exe', 'x64') @('SMSSETUP', 'sources\install.wim')
-    if (-not $sql) { throw 'role-image: SQL Server 2022 media not found on any CD-ROM' }
-    Invoke-Installer (Join-Path $sql 'setup.exe') '/Q /ACTION=PrepareImage /FEATURES=SQLEngine /INSTANCEID=MSSQLSERVER /IACCEPTSQLSERVERLICENSETERMS /SUPPRESSPRIVACYSTATEMENTNOTICE' | Out-Null
+    Initialize-PreparedSql
 
     Step 'stage the ConfigMgr media (and setupdl prerequisites when the depot has them)'
     $cm = Find-Media @('SMSSETUP\BIN\X64\setup.exe')
@@ -221,8 +237,9 @@ switch ($image) {
       installed = @('.NET 3.5 + 4.8', 'BITS/IIS/RDC site-server features', 'Windows ADK + WinPE add-on',
                     'SQL Server 2022 Database Engine (prepared image, not configured)')
       staged = $staged
+      sql = 'prepared'
       deploy_time = @(
-        'Join the range domain.',
+        'Join the range domain (TrueNorth, vsphere_products.py).',
         "Complete SQL (the prepared instance's Start-menu 'Complete' shortcut, or its local Setup Bootstrap setup.exe): /Q /ACTION=CompleteImage /INSTANCENAME=MSSQLSERVER /INSTANCEID=MSSQLSERVER /SQLSYSADMINACCOUNTS=<domain admins> /SQLCOLLATION=SQL_Latin1_General_CP1_CI_AS /IACCEPTSQLSERVERLICENSETERMS (product key: the media's default or the site's)",
         "Extend the AD schema ($staged\SMSSETUP\BIN\X64\extadsch.exe) and create CN=System Management with rights for this computer",
         "$staged\SMSSETUP\BIN\X64\setup.exe /SCRIPT <ini> (prerequisites: $mediaRoot\mecm-prereqs when staged)"

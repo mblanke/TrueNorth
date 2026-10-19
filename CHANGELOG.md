@@ -431,6 +431,32 @@ course production with a local-model fallback, and the cleanup of unsupported su
   10.30.31.30 BUILD) is the only machine with internet egress. The earlier TN-BUILD01 /
   10.30.32.10 design is kept as dated "superseded" notes. How ranges reach the depot at the
   work site is recorded as an open item; no code, IP or default changed.
+- New: Exchange 2019, SharePoint SE and MECM are finished at deploy (ADR 0012; the exception
+  to decision 1 is closed). A VM cloned from `srv2022-exchange2019`, `srv2022-sharepointse`
+  or `srv2022-mecm` is set up per range by `worker/provisioners/vsphere_products.py`. Tested
+  with fake guest sessions and a fake vCenter only; nothing has run on a real role image.
+  - Order: after every VM's Windows roles, so the forest-root DC of its domain (the node's
+    `ad_domain`, the template's, else the first `ad_forest` a DC names; render's new
+    `ad_join`) is promoted. A DC that did not end `ad-ds: ok` skips the setup. As the local
+    Administrator: the image's `C:\TrueNorth\role-image.json` must name it (the staged-image
+    marker; no prerequisite is installed again), then DNS to the DC, `Add-Computer`, reboot,
+    then the VM's own software, then the product.
+  - The product runs detached, as a one-shot scheduled task under `<DOMAIN>\Administrator`
+    (the DC's declared Administrator, else the template default) with highest privileges,
+    which deletes itself. Exchange: `/PrepareSchema`, `/PrepareAD /OrganizationName:<range>`,
+    `/Mode:Install /Role:Mailbox`. SharePoint SE: SQL CompleteImage on its own prepared SQL
+    Server 2022 (newly added to the image), `setup.exe /config`, a single-server farm. MECM:
+    SQL CompleteImage, `extadsch`, the System Management container, `setup.exe /SCRIPT`
+    (primary site, EVAL) with setupdl prerequisites from the image or the depot.
+  - SharePoint SE needs the site's key: new optional `TN_SHAREPOINT_PRODUCT_KEY` (installer
+    `vault_sharepoint_product_key`, preflight checks its form, never logged). Without it the
+    role is `skipped`, "staged (no product key)", and nothing runs.
+  - Outcome in `vms[].role_setup` and `roles.<role>`: ok / failed / timeout / running /
+    skipped. Anything but `ok` is a warning, never a partial range. New
+    `VSPHERE_ROLE_SETUP_TIMEOUT` (default 3600 s); the wait also stops at the provision
+    budget, and setup carries on in the guest. `accounts_applied` is unchanged.
+  - The three catalogue rows are `enabled=yes`; a contract test keeps every enabled role
+    image tied to a deploy path. Runbook: `vmware-site-runbook.md` §7.3.
 
 ### R0-B: web correctness and role access
 - Fix: Resume on a paused exercise called `/start` (409 unless pending), so nothing resumed;

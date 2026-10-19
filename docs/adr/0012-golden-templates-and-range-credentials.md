@@ -9,8 +9,9 @@
   - template-default logins: #185;
   - Security Onion per-range setup: #184;
   - the work-site build kit: #186;
-  - Packer depot paths, VS media, generic Linux login and role sources: #187.
-- **Exception to decision 1:** the Exchange 2019, SharePoint SE and MECM role images are built, but their catalogue rows stay disabled until TrueNorth can run their domain-dependent setup at deploy time (#187).
+  - Packer depot paths, VS media, generic Linux login and role sources: #187;
+  - Exchange 2019, SharePoint SE and MECM setup at deploy: branch `claude/role-images-deploy-setup`.
+- **Exception to decision 1 (closed):** the Exchange 2019, SharePoint SE and MECM role images were built with their catalogue rows disabled until TrueNorth could run their domain-dependent setup at deploy time (#187). That setup now exists (`worker/provisioners/vsphere_products.py`, `vmware-site-runbook.md` §7.3): after the range's DC, the VM joins the domain and the product is set up as the domain Administrator; SharePoint SE only with the site's product key (`TN_SHAREPOINT_PRODUCT_KEY`), else it stays staged. The rows are enabled, so decision 1 applies to them like any other template.
 
 ## Context
 

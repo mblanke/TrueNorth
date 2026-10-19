@@ -743,6 +743,10 @@ services:
       VSPHERE_SO_INSTALL_USER: ${VSPHERE_SO_INSTALL_USER:-}
       VSPHERE_SO_INSTALL_PASSWORD: ${VSPHERE_SO_INSTALL_PASSWORD:-}
       VSPHERE_SO_SETUP_TIMEOUT: ${VSPHERE_SO_SETUP_TIMEOUT:-3600}
+      # Exchange / SharePoint SE / MECM role images finished at deploy (runbook 7.3): how long
+      # to wait for each, and SharePoint's product key (empty: left staged). Never logged.
+      VSPHERE_ROLE_SETUP_TIMEOUT: ${VSPHERE_ROLE_SETUP_TIMEOUT:-3600}
+      TN_SHAREPOINT_PRODUCT_KEY: ${TN_SHAREPOINT_PRODUCT_KEY:-}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       LOG_FORMAT: ${LOG_FORMAT:-json} # worker/celery_app.py: JSON lines
     volumes:
