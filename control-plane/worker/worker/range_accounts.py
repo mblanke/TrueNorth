@@ -6,7 +6,7 @@ passwords are made there, once per range). ``provision`` wraps a build:
 * ``attach`` reads and unseals them and returns a copy of the rendered template whose VMs
   carry, in memory only, ``_accounts`` (``RangeAccount``; passwords in ``Secret``, which
   neither prints nor pickles), matched on the VM's template node id, and
-  ``_default_login`` (``TN_RANGE_DEFAULT_PASSWORD`` as a ``Secret``, when set: what a
+  ``_default_login`` (``default_password()`` as a ``Secret``, when set: what a
   Windows VM with no declared Administrator gets instead of a random password; Linux VMs
   keep their template's build password, ADR 0012 §5);
 * a lab session's range gets neither: its VMs keep a random password per VM, as before
@@ -32,14 +32,22 @@ from .provisioners.vsphere_guest import RangeAccount, Secret
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_PASSWORD_ENV = "TN_RANGE_DEFAULT_PASSWORD"
+TEMPLATE_WINDOWS_PASSWORD_ENV = "TN_TEMPLATE_WINDOWS_ADMIN_PASSWORD"
+DEFAULT_PASSWORD_ENV = "TN_RANGE_DEFAULT_PASSWORD"  # deprecated alias, used only when the above is unset
 Session = Callable[[], AbstractContextManager]
 
 
 def default_password() -> Secret | None:
-    """The platform's generic range password (installer: vault ``vault_range_default_password``)."""
-    value = os.getenv(DEFAULT_PASSWORD_ENV, "").strip()
-    return Secret(value) if value else None
+    """The Administrator password of a Windows VM with no declared Administrator: the golden
+    templates' generic, documented build password (installer
+    ``vault_template_windows_admin_password``), so the "template default" staff see is the
+    live one; else the deprecated ``TN_RANGE_DEFAULT_PASSWORD``; else None (random per VM).
+    The API decides the same way (app/range_credentials/template_defaults.py)."""
+    for env in (TEMPLATE_WINDOWS_PASSWORD_ENV, DEFAULT_PASSWORD_ENV):
+        value = os.getenv(env, "").strip()
+        if value:
+            return Secret(value)
+    return None
 
 
 def load(session: Session, range_id: str) -> tuple[dict[str, list[RangeAccount]], bool]:

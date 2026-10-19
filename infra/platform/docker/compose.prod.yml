@@ -468,6 +468,12 @@ services:
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
       # Seals stored credentials (app/secretbox.py); the workers need the same value.
       TN_SECRETS_KEY: ${TN_SECRETS_KEY:?set TN_SECRETS_KEY (see .env.production.example)}
+      # The golden templates' build login, shown to staff as "template default" (ADR 0012 §5).
+      TN_TEMPLATE_WINDOWS_ADMIN_PASSWORD: ${TN_TEMPLATE_WINDOWS_ADMIN_PASSWORD:-}
+      TN_TEMPLATE_LINUX_USER: ${TN_TEMPLATE_LINUX_USER:-ubuntu}
+      TN_TEMPLATE_LINUX_PASSWORD: ${TN_TEMPLATE_LINUX_PASSWORD:-}
+      # Deprecated alias of TN_TEMPLATE_WINDOWS_ADMIN_PASSWORD (as the worker reads it).
+      TN_RANGE_DEFAULT_PASSWORD: ${TN_RANGE_DEFAULT_PASSWORD:-}
       # Production fail-fast (app/settings.py): the API refuses to start, naming every
       # missing or unsafe setting (CSRF_SECRET, KEYCLOAK_AUDIENCE, default passwords...).
       TN_ENV: ${TN_ENV:-production}
@@ -727,6 +733,9 @@ services:
       # A Windows range VM's Administrator password when its template declares no
       # account for it (ADR 0012). Empty: random per VM, as before. Never logged.
       TN_RANGE_DEFAULT_PASSWORD: ${TN_RANGE_DEFAULT_PASSWORD:-}
+      # Sysprep's Administrator password for a Windows VM with no declared Administrator: the
+      # templates' generic build password (TN_RANGE_DEFAULT_PASSWORD only when this is unset).
+      TN_TEMPLATE_WINDOWS_ADMIN_PASSWORD: ${TN_TEMPLATE_WINDOWS_ADMIN_PASSWORD:-}
       # Per VM, its Windows Server roles (features, reboots, forest promotion).
       VSPHERE_ROLE_TIMEOUT: ${VSPHERE_ROLE_TIMEOUT:-1800}
       # Security Onion so-setup per range (vmware-site-runbook.md 7.2): the template's build

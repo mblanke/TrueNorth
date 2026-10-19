@@ -327,6 +327,25 @@ def visible_accounts(db: Session, rng: Range, scope: str) -> list[RangeCredentia
     return rows if scope == ALL else [r for r in rows if r.student_visible and r.applied]
 
 
+def template_logins(db: Session, rng: Range, rows: list[RangeCredential], scope: str) -> list:
+    """The golden templates' build login for each machine with no declared account
+    (``template_defaults``). Staff only: a Student's scope gets none, not even a row."""
+    if scope != ALL:
+        return []
+    from . import template_defaults, wiki_doc
+
+    return template_defaults.logins(wiki_doc.template_doc(db, rng), {r.machine for r in rows},
+                                    windows_random=windows_random(db, rng))
+
+
+def windows_random(db: Session, rng: Range) -> bool:
+    """A lab session's range: the worker gives its Windows VMs a random password each
+    (worker/range_accounts.py attaches nothing to labs), whatever the template setting."""
+    from ..lab_sessions.service import lab_range_ids
+
+    return rng.id in lab_range_ids(db, [rng.id])
+
+
 def audit_read(db: Session, user: CurrentUser, rng: Range, scope: str, rows: list[RangeCredential]) -> None:
     """One audit row per read: who, which range, how many accounts. Never a password."""
     machines = sorted({r.machine for r in rows})

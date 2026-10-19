@@ -312,11 +312,19 @@ tn_depot_url: ""
 tn_depot_choco_feed: ""
 tn_depot_apt_proxy: ""
 tn_software_install_timeout: 1800
-# The generic range password (ADR 0012): what a Windows range VM's Administrator gets when
-# its range template declares no Administrator account (Linux keeps the template's build
-# password). Set it in
-# the vault (vault_range_default_password); empty keeps a random, unrecorded password.
+# DEPRECATED (ADR 0012): the Windows Administrator password of VMs with no declared
+# Administrator is now vault_template_windows_admin_password (below). This one is used only
+# while that is empty; preflight warns when it is set. Both empty: random per VM.
 tn_range_default_password: "{{ vault_range_default_password | default('') }}"
+# The golden templates' generic build login (ADR 0012 §5): the same values as Packer's
+# lab.auto.pkrvars.hcl (windows_admin_password, ssh_username / ssh_password). The API shows
+# them to staff (range:credentials_read) as "template default" for machines with no declared
+# account; never to Students or observers. The Windows one is also what Sysprep sets on those
+# machines, so the row is the live password. Empty: Windows random per VM (the row says so),
+# Linux "not configured".
+tn_template_windows_admin_password: "{{ vault_template_windows_admin_password | default('') }}"
+tn_template_linux_user: ubuntu
+tn_template_linux_password: "{{ vault_template_linux_password | default('') }}"
 # Report rather than fail when the provisioning role is unassigned — see
 # roles/tn_vsphere. Flip to true once the role has been granted.
 tn_fail_on_missing_vsphere_privs: false

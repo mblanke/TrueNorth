@@ -41,6 +41,23 @@ CASES.update({
 })
 
 
+CASES.update({
+    "appliances": {"nodes": [{"id": "fw", "os": "pfsense"}, {"id": "r", "os": "vyos-1.4"},
+                             {"id": "g", "os": "ubuntu-2404", "role": "gateway"}, {"id": "o", "os": "opnsense"},
+                             {"id": "l", "os": "ubuntu-2404", "role": "web_server"}]},
+})
+
+
+@pytest.mark.parametrize("name", sorted(CASES))
+def test_machine_families_match(name):
+    """template_defaults.family (which machines get a template build login) == os_family."""
+    from app.range_credentials import template_defaults
+
+    doc = CASES[name]
+    rendered = render_topology(doc, RANGE_ID, lambda alias: None)["vm_definitions"]
+    assert template_defaults.machine_families(doc) == {str(vm["node_id"]): os_family(vm) for vm in rendered}, name
+
+
 @pytest.mark.parametrize("name", sorted(CASES))
 def test_windows_machines_match(name):
     doc = CASES[name]

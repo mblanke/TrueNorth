@@ -351,6 +351,35 @@ class TestAttach:
         assert {vm["_default_login"].reveal() for vm in out["vms"]} == {DEFAULT_PW}
         assert DEFAULT_PW not in repr(out)
 
+    def test_an_undeclared_windows_vm_gets_the_template_password_through_sysprep(self, vc, monkeypatch):
+        """Owner decision: the generic, documented Windows build password is what Sysprep sets
+        on a Windows VM with no declared Administrator (the deprecated alias loses to it)."""
+        @contextmanager
+        def session():
+            yield None
+
+        monkeypatch.setattr(range_accounts.db_ops, "range_accounts", lambda db, rid: [])
+        monkeypatch.setattr(range_accounts.db_ops, "is_lab_range", lambda db, rid: False)
+        monkeypatch.setenv("TN_TEMPLATE_WINDOWS_ADMIN_PASSWORD", "Win-Build-Pass-1!")
+        monkeypatch.setenv(range_accounts.DEFAULT_PASSWORD_ENV, "Old-Default-1!")
+        tpl = range_accounts.attach(_rendered(), session, RANGE_ID)
+        result = _run(_prov(vc).provision(RANGE_ID, tpl, {}))
+        assert result.status == "ok", result.errors
+        assert vc.vms[_vm_out(result, "dc01")["vm_id"]].guest_password("Administrator") == "Win-Build-Pass-1!"
+        assert "users" not in _first_userdata(vc.vms[_vm_out(result, "web01")["vm_id"]])  # Linux untouched
+
+    def test_neither_setting_leaves_windows_random(self, monkeypatch):
+        @contextmanager
+        def session():
+            yield None
+
+        monkeypatch.setattr(range_accounts.db_ops, "range_accounts", lambda db, rid: [])
+        monkeypatch.setattr(range_accounts.db_ops, "is_lab_range", lambda db, rid: False)
+        monkeypatch.delenv("TN_TEMPLATE_WINDOWS_ADMIN_PASSWORD", raising=False)
+        monkeypatch.delenv(range_accounts.DEFAULT_PASSWORD_ENV, raising=False)
+        out = range_accounts.attach(_rendered(), session, RANGE_ID)
+        assert all("_default_login" not in vm for vm in out["vms"])  # Sysprep: random per VM
+
     def test_a_lab_sessions_range_keeps_random_passwords(self, monkeypatch):
         """H2: no shared default on lab VMs (and no accounts: labs hold none)."""
         @contextmanager

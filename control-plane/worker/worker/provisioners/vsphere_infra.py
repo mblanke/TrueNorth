@@ -462,7 +462,7 @@ def windows_customization(vm_def: dict, password: str | None = None):
     """Sysprep spec: computer name, workgroup RANGE, a static IP per NIC.
 
     The local Administrator password is ``password``: the range's declared Administrator
-    account (ADR 0012, stored sealed by the API), else TN_RANGE_DEFAULT_PASSWORD (both via
+    account (ADR 0012, stored sealed by the API), else TN_TEMPLATE_WINDOWS_ADMIN_PASSWORD (both via
     vsphere_guest.admin_password), else random per VM as before. Never logged.
     """
     c = vim.vm.customization

@@ -214,6 +214,10 @@ digits and symbols, not containing the account name), or the template is refused
   accounts handed to Students that the last build actually set, and only for a range they
   take part in (a running exercise booked to a course they are enrolled on). Lab sessions do
   not show accounts yet; their machines get a random password each.
+  Machines with no declared account show the golden template's generic build login with a
+  **Template default** badge: the live login (on Windows, TrueNorth sets that password at
+  deploy). If the installer was not given it, Windows shows "random per VM — not
+  recoverable" and Linux "not configured".
 - **Observers** do not see credentials.
 
 Each range also gets a page in the wiki space **Ranges**, which TrueNorth owns: it is
@@ -230,9 +234,9 @@ every declared account (an admin gets `sudo`, except the image's own user such a
 `ubuntu`, which keeps the passwordless `sudo` it has). After first boot TrueNorth removes
 the accounts' password hashes from the VM's vCenter settings. Appliances and other
 backends set nothing. A Windows machine with no declared Administrator gets the
-platform's generic password if the installer set one (`vault_range_default_password`),
-otherwise a random password nobody is told; a Linux machine with no declared account
-keeps its template's generic build password. TrueNorth reports an account as set only
+templates' generic Windows password if the installer set one
+(`vault_template_windows_admin_password`), otherwise a random password nobody is told; a
+Linux machine with no declared account keeps its template's generic build password. TrueNorth reports an account as set only
 after checking it exists on the machine; a range built from another organisation's
 public template takes none of its accounts.
 

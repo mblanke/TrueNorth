@@ -93,6 +93,11 @@ The variables you must set per site:
 | `content_library`, `publish_to_library` | `TrueNorth-Templates`, `true` |
 | `windows_admin_password` | build-time Administrator password (reset by sysprep) |
 | `ssh_username` / `ssh_password` | build-time Linux user (`ubuntu`/`ubuntu`; matches the seed) |
+
+The templates keep these build logins (ADR 0012 §5). Give the installer the same values
+(`vault_template_windows_admin_password`, `tn_template_linux_user`,
+`vault_template_linux_password`; install/README.md "Range credentials") so staff see them as
+the "template default" login of machines with no declared account.
 | `win11_vtpm` | `false` unless you have a vCenter key provider |
 | `depot_url` | optional TN-DEPOT01 base URL to pull baseline apps from |
 

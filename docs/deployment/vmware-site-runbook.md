@@ -427,9 +427,11 @@ for vCenter's event retention period. Check `Monitor > Events` / the task detail
 VM's first reconfigure, and shorten event retention or restrict read access to range VMs if
 they show.
 
-Machines with no declared account: Windows gets `TN_RANGE_DEFAULT_PASSWORD` (if set) as its
-Administrator password; Linux keeps the template's generic build password (ADR 0012 §5),
-which is not repeated in cloud-config.
+Machines with no declared account: Windows gets `TN_TEMPLATE_WINDOWS_ADMIN_PASSWORD` (the
+templates' generic Windows password; the deprecated `TN_RANGE_DEFAULT_PASSWORD` only when
+it is unset; random per VM when neither is) as its Administrator password; Linux keeps the
+template's generic build password (ADR 0012 §5), which is not repeated in cloud-config.
+Staff see both as "template default" on the range's Credentials panel.
 
 ### 7.1 Port mirroring (SPAN / TAP zones)
 

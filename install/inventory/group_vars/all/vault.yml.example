@@ -26,7 +26,8 @@ vault_ldap_bind_password: "CHANGE_ME"
 # ── vCenter service account ───────────────────────────────────────────
 vault_vsphere_password: "CHANGE_ME"
 
-# ── Range machines' generic password (ADR 0012) ───────────────────────
+# ── DEPRECATED: range machines' generic password (ADR 0012) ───────────
+# Use vault_template_windows_admin_password below. This is used only while that is empty.
 # Given to a Windows range VM's Administrator when its range template declares no
 # Administrator account (Linux VMs keep the template's generic build password). Empty: a random password per VM that
 # nobody is told (the behaviour before ADR 0012). Not generated on target. Document it
@@ -34,6 +35,16 @@ vault_vsphere_password: "CHANGE_ME"
 # Windows complexity applies (upper, lower, digit, symbol; 8+ characters); no single
 # quote ('), no newline.
 vault_range_default_password: ""
+
+# ── Golden templates' build login (ADR 0012 §5) ───────────────────────
+# The passwords the templates were built with: Packer's lab.auto.pkrvars.hcl
+# windows_admin_password and ssh_password (user: tn_template_linux_user, default ubuntu).
+# Shown to staff only, as the "template default" login of machines with no declared
+# account. The Windows one is also what Sysprep sets on those machines (Windows complexity
+# applies). Not generated on target; empty: Windows random per VM, Linux "not configured".
+# No single quote or newline.
+vault_template_windows_admin_password: ""
+vault_template_linux_password: ""
 
 # ── Keycloak admin (bootstrap only; not an end-user account) ───────────
 # The master-realm admin. Only the installer uses it; the API has its own
