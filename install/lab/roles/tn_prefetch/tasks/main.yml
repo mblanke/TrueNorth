@@ -44,7 +44,10 @@
           ansible.builtin.copy:
             dest: "{{ tn_prefetch_workdir }}/choco.json"
             mode: "0600"
-            content: "{{ (tn_prefetch_sw | selectattr('value.windows.choco', 'defined') | map(attribute='value.windows') | list + tn_prefetch_choco_extra) | to_nice_json }}"
+            content: >-
+              {{ (tn_prefetch_sw | selectattr('value.windows.choco', 'defined')
+                  | map(attribute='value.windows') | list
+                  + tn_prefetch_choco_extra) | to_nice_json }}
 
         - name: Prefetch — Chocolatey helper
           ansible.builtin.copy:
