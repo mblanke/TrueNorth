@@ -172,6 +172,7 @@ course production with a local-model fallback, and the cleanup of unsupported su
 - `scenario-engine/template_engine` deleted (no importers); `runner` kept.
 - Docs: v1.2.0 release notes (simulator-proven list, staging record placeholder), H6
   marked fixed, user-guide telemetry queries rewritten to the closed grammar (tested).
+- Docs: rc11 evidence in `docs/release-notes/v1.2.0-module-matrix.md` (CI run 39316247753: U 17/17, CI-I 30 pass / 0 fail / 12 permitted skips, CI Playwright 24/24; S and H not run, so all 17 modules stay blocked).
 
 ### R0-C: staging acceptance fixes (v1.2.0-rc7: 32 pass, 4 fail, 6 skip)
 - Fix: deep health's `audit_export` was degraded right after an install or upgrade ("latest
