@@ -3,7 +3,8 @@
   Runs over WinRM during the Packer build, after Windows is installed.
 
   - Installs VMware Tools silently from the mounted Tools ISO (any CD drive).
-  - Baseline apps via Chocolatey, from the depot feed when $env:DEPOT_URL is set,
+  - Baseline apps via Chocolatey, from the depot feed when $env:DEPOT_URL is set
+    (choco-bootstrap.ps1 runs first and installs Chocolatey itself from that feed),
     else from the community feed only if the internet is reachable, else skipped
     gracefully (no-egress builds stay green).
   - Power / hibernation tuning.
@@ -47,11 +48,10 @@ function Test-Online {
 $canInstall = $false
 if ($depot) {
   Write-Host "Using depot Chocolatey feed: $depot/chocolatey"
-  if (-not (Get-Command choco -ErrorAction SilentlyContinue)) {
-    # Bootstrap choco from the depot (install.ps1 mirrored under the depot).
-    [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
-    Invoke-Expression ((New-Object System.Net.WebClient).DownloadString("$depot/chocolatey/install.ps1"))
-  }
+  # choco-bootstrap.ps1 (the previous script of this provisioner) installed Chocolatey from
+  # the feed's .nupkg; this process may predate the machine PATH change.
+  if (-not (Get-Command choco -ErrorAction SilentlyContinue)) { $env:Path += ";$env:ProgramData\chocolatey\bin" }
+  if (-not (Get-Command choco -ErrorAction SilentlyContinue)) { throw 'choco not installed: choco-bootstrap.ps1 must run first' }
   choco source add -n truenorth -s "$depot/chocolatey" --priority 1 | Out-Null
   choco source disable -n chocolatey | Out-Null
   $canInstall = $true

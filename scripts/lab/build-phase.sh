@@ -7,7 +7,8 @@
 #   sudo scripts/lab/build-phase.sh base          # offline bases
 #   sudo scripts/lab/build-phase.sh appliances    # pfsense vyos securityonion (heads-up each)
 #   sudo scripts/lab/build-phase.sh derived       # Linux images cloned from ubuntu-lts (depot)
-#   sudo scripts/lab/build-phase.sh roles         # Windows role images (precomp/detonation-host)
+#   sudo scripts/lab/build-phase.sh roles         # Windows role images (precomp/detonation-host,
+#                                                 #   srv2022-exchange2019/-sharepointse/-mecm)
 #   sudo scripts/lab/build-phase.sh variants      # infra/vsphere/packer/variants/*.pkrvars.hcl
 #
 # Options:
@@ -36,7 +37,7 @@ set -euo pipefail
 # shellcheck source-path=SCRIPTDIR source=lib.sh
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
-usage() { sed -n '2,36p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+usage() { sed -n '2,35p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 REPO="$(cd "$LAB_DIR/../.." && pwd)"
 PACKER_DIR="$REPO/infra/vsphere/packer"
 PKRVARS="${TN_PKRVARS:-$PACKER_DIR/lab.auto.pkrvars.hcl}"   # TN_PKRVARS: tests only (Packer reads the default)
@@ -79,7 +80,10 @@ BASE_PENDING="win10-22h2:iso_win10 srv2019:iso_srv2019"   # added once their ISO
 APPLIANCE_IDS="pfsense vyos securityonion"
 DERIVED_IDS="remnux sift svc-emulators greyspace-host ca-host usersim cloudlog-emu"  # c2-server: gated
 ROLE_IDS="precomp-host detonation-host"
-ROLE_PENDING="Exchange 2019 CU15, SharePoint Subscription Edition, MECM (no Packer source yet)"
+# Server role images (roles.pkr.hcl): <id>:<iso vars it needs, comma-separated>. Each clones
+# srv2022 and installs prerequisites from the depot; added once their media are in.
+ROLE_SERVER="srv2022-exchange2019:iso_exchange2019 srv2022-sharepointse:iso_sharepointse srv2022-mecm:iso_mecm,iso_sql2022"
+role_server_ids() { local p; for p in $ROLE_SERVER; do printf '%s ' "${p%%:*}"; done; }
 
 test_mode() {
   case "$1" in
@@ -216,9 +220,9 @@ preflight() {
 phase_status() {
   step "Templates (inventory) and host-local copies"
   local id copies
-  for id in $BASE_IDS win10-22h2 srv2019 $APPLIANCE_IDS $DERIVED_IDS $ROLE_IDS; do
+  for id in $BASE_IDS win10-22h2 srv2019 $APPLIANCE_IDS $DERIVED_IDS $ROLE_IDS $(role_server_ids); do
     copies="$(govc find / -type m -name "${id}@*" 2>/dev/null | sed 's#.*/##' | tr '\n' ' ')"
-    printf '  %-16s %-8s %s\n' "$id" "$(exists "$id" && echo built || echo -)" "${copies:-}"
+    printf '  %-22s %-8s %s\n' "$id" "$(exists "$id" && echo built || echo -)" "${copies:-}"
   done
   step "Depot"
   if exists "$DEPOT_VM"; then info "$DEPOT_VM exists"; else info "$DEPOT_VM not deployed"; fi
@@ -338,10 +342,13 @@ phase_depot() {
   for url in "http://${DEPOT_BUILD_IP}:8081/repository/chocolatey/" "http://${DEPOT_BUILD_IP}:3142/acng-report.html"; do
     if curl -fsS -m 10 -o /dev/null "$url"; then info "ok    $url"; else warn "no answer: $url"; ok=0; fi
   done
-  if curl -fsS -m 10 -o /dev/null "${DEPOT_URL_DEFAULT}/chocolatey/install.ps1"; then info "ok    ${DEPOT_URL_DEFAULT}/chocolatey/install.ps1"
-  else warn "${DEPOT_URL_DEFAULT}/chocolatey/install.ps1 is not served: a Windows build or variant without Chocolatey cannot bootstrap it from the depot (setup.ps1, variant-packages.ps1)"; fi
+  # Windows builds bootstrap Chocolatey from the feed's own chocolatey .nupkg
+  # (files/windows/choco-bootstrap.ps1), so the feed must list it.
+  local probe="${DEPOT_URL_DEFAULT}/chocolatey/FindPackagesById()?id='chocolatey'"
+  if curl -fsS -m 20 "$probe" 2>/dev/null | grep -q '<entry'; then info "ok    chocolatey package in ${DEPOT_URL_DEFAULT}/chocolatey"
+  else warn "the depot feed has no 'chocolatey' package: Windows builds and variants cannot bootstrap Chocolatey (choco-bootstrap.ps1). Cache it: prefetch (tn_prefetch_choco_extra) or one install through chocolatey-proxy during an online window"; fi
   if [[ "$ok" == "1" ]]; then
-    info "next: sudo python3 $LAB_DIR/pkrvars-work.py --depot   (depot_url = $DEPOT_URL_DEFAULT)"
+    info "next: sudo python3 $LAB_DIR/pkrvars-work.py --depot   (depot_url = $DEPOT_URL_DEFAULT, apt_proxy = http://${DEPOT_BUILD_IP}:3142)"
   fi
 }
 
@@ -385,15 +392,30 @@ phase_derived() {
 }
 
 phase_roles() {
-  local ids
+  local ids=() pair id var ready
   if ! exists win10-22h2; then
     warn "win10-22h2 is not built (its ISO is pending): precomp-host and detonation-host clone it"
-    ids=()
   else
     # shellcheck disable=SC2086 # the id lists are space-separated words
     read -r -a ids <<<"$(filter_only $ROLE_IDS)"
   fi
-  info "pending role images: $ROLE_PENDING"
+  # Server role images: srv2022 built, the depot set (prerequisites), every ISO ready.
+  if ! exists srv2022; then
+    warn "srv2022 is not built: the server role images clone it"
+  elif ! depot_url_set; then
+    warn "server role images install prerequisites from the depot: run pkrvars-work.py --depot first"
+  else
+    for pair in $ROLE_SERVER; do
+      id="${pair%%:*}"; ready=1
+      for var in $(tr ',' ' ' <<<"${pair#*:}"); do iso_ready "$var" || ready=0; done
+      if [[ "$ready" == "1" ]]; then
+        [[ -n "$(filter_only "$id")" ]] && ids+=("$id")
+      else
+        info "skip  $id: $(tr ',' ' ' <<<"${pair#*:}") PENDING in isos.conf, not on esx04-local, or not in the vars file yet"
+      fi
+    done
+  fi
+  info "server role images stage media and prerequisites only; the domain-dependent setup is a deploy-time step (roles.pkr.hcl). Their catalogue rows stay enabled=no."
   run_phase "Windows role images" ${ids[@]+"${ids[@]}"}
 }
 

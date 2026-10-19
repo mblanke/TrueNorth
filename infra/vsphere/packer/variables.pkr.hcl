@@ -93,8 +93,13 @@ variable "iso_srv2025" {
   default = "en-us_windows_server_2025_updated_july_2026_x64_dvd_4e6f5a42.iso"
 }
 variable "iso_srv2019" {
-  type    = string
-  default = "MUST-UPLOAD-FIRST_SERVER_2019_EVAL_x64FRE_en-us.iso"
+  description = <<-EOT
+    Windows Server 2019 media. Visual Studio ISO, latest refresh, file name like
+    en-us_windows_server_2019_updated_<month>_<year>_x64_dvd_<id>.iso (srv2019_image_name +
+    gvlk_srv2019), or the Evaluation ISO with srv2019_eval = true.
+  EOT
+  type        = string
+  default     = "MUST-UPLOAD-FIRST_SERVER_2019_x64_en-us.iso"
 }
 variable "iso_srv2016" {
   type    = string
@@ -109,8 +114,13 @@ variable "iso_win11_26h1" {
   default = "en-us_windows_11_consumer_editions_version_26h1_updated_july_2026_x64_dvd_f69a9a1e.iso"
 }
 variable "iso_win10" {
-  type    = string
-  default = "MUST-UPLOAD-FIRST_Win10_Enterprise_Eval_x64.iso"
+  description = <<-EOT
+    Windows 10 22H2 media. Visual Studio "business editions" ISO, file name like
+    en-us_windows_10_business_editions_version_22h2_updated_<month>_<year>_x64_dvd_<id>.iso
+    (win10_image_name + gvlk_win10), or the Evaluation ISO with win10_eval = true.
+  EOT
+  type        = string
+  default     = "MUST-UPLOAD-FIRST_Win10_22H2_business_editions_x64.iso"
 }
 variable "iso_win10_ltsc" {
   description = "Windows 10 Enterprise LTSC 2021 media (eval or volume-licence)"
@@ -148,6 +158,29 @@ variable "iso_securityonion" {
 variable "iso_vyos" {
   type    = string
   default = "MUST-UPLOAD-FIRST_vyos-1.4-generic-amd64.iso"
+}
+
+# Server-product media for the Windows role images (roles.pkr.hcl). Each is attached to a
+# clone of srv2022 as an extra CD-ROM.
+variable "iso_exchange2019" {
+  description = "Exchange Server 2019 CU15 ISO (Visual Studio / Volume Licensing download)"
+  type        = string
+  default     = "MUST-UPLOAD-FIRST_ExchangeServer2019-x64-cu15.iso"
+}
+variable "iso_sharepointse" {
+  description = "SharePoint Server Subscription Edition ISO"
+  type        = string
+  default     = "MUST-UPLOAD-FIRST_SharePoint_Server_Subscription_Edition_x64.iso"
+}
+variable "iso_mecm" {
+  description = "Microsoft Configuration Manager current branch baseline media (ISO with SMSSETUP\\)"
+  type        = string
+  default     = "MUST-UPLOAD-FIRST_ConfigMgr_current_branch_x64.iso"
+}
+variable "iso_sql2022" {
+  description = "SQL Server 2022 media, used by srv2022-mecm (SQL is prepared, not configured, at build)"
+  type        = string
+  default     = "enu_sql_server_2022_enterprise_edition_x64_dvd_aa36de9e.iso"
 }
 
 variable "vmtools_iso_path" {
@@ -218,10 +251,36 @@ variable "publish_to_library" {
 # ----------------------------------------------------------------------------
 variable "depot_url" {
   description = <<-EOT
-    Base URL of the internal software depot (TN-DEPOT01). When set, Windows builds point
-    Chocolatey at the depot /chocolatey feed and Linux builds may use an apt mirror under it.
+    Base URL of TN-DEPOT01's Nexus repositories, e.g. http://10.30.31.30:8081/repository.
+    Windows builds use <depot_url>/chocolatey (the NuGet v2 group feed): Chocolatey itself
+    is bootstrapped from the chocolatey .nupkg in that feed (files/windows/choco-bootstrap.ps1)
+    and every package comes from it. Role images and variant scripts fetch vendor files
+    from <depot_url>/installers/... (the raw "installers" repository).
     Empty means "use the internet if reachable, otherwise skip baseline apps gracefully".
   EOT
+  type        = string
+  default     = ""
+}
+
+variable "apt_proxy" {
+  description = <<-EOT
+    HTTP forward proxy for apt and dnf during the build: TN-DEPOT01's apt-cacher-ng,
+    e.g. http://10.30.31.30:3142. Applied in the Ubuntu autoinstall (apt: proxy), the
+    Debian/Kali/Parrot preseeds (mirror/http/proxy), Rocky (dnf proxy=) and the derived
+    and variant clones (files/linux/apt-proxy.sh). cleanup.sh removes it again, so no
+    template ships with a build-network proxy; ranges pass TN_DEPOT_APT_PROXY at deploy.
+    Empty means no proxy (offline builds).
+  EOT
+  type        = string
+  default     = ""
+  validation {
+    condition     = var.apt_proxy == "" || can(regex("^http://[^/\\s]+/?$", var.apt_proxy))
+    error_message = "The apt_proxy must be empty or a plain http://host:port URL (apt-cacher-ng refuses CONNECT tunnels)."
+  }
+}
+
+variable "chocolatey_version" {
+  description = "Chocolatey version to bootstrap from the depot feed; empty takes the newest stable one there"
   type        = string
   default     = ""
 }
@@ -240,24 +299,86 @@ variable "windows_admin_password" {
   default     = "TN-Build-Pass1!"
 }
 
+# One generic Linux build login for every Linux template (ADR 0012 decision 5): every seed
+# (ubuntu user-data, rocky ks.cfg, debian/kali/parrot preseed) is rendered with templatefile
+# from these, and the derived images and variants log in with the same pair.
 variable "ssh_username" {
-  description = "Build SSH user baked into the Linux seeds"
+  description = "Generic Linux build user, created by every Linux seed (sudo without a password)"
   type        = string
   default     = "ubuntu"
+  validation {
+    condition     = can(regex("^[a-z_][a-z0-9_-]{0,31}$", var.ssh_username)) && !contains(["root"], var.ssh_username)
+    error_message = "The ssh_username must be a lowercase POSIX user name (not root)."
+  }
 }
 
 variable "ssh_password" {
-  description = "Build SSH password baked into the Linux seeds (hash lives in the seed files)"
+  description = "Generic Linux build password: what Packer logs in with over SSH"
   type        = string
   sensitive   = true
   default     = "ubuntu"
+}
+
+variable "ssh_password_hash" {
+  description = <<-EOT
+    SHA-512 crypt ($6$) of ssh_password, written into every Linux seed. It must be the hash
+    of ssh_password or the SSH login fails. scripts/lab/pkrvars-work.py computes it with
+    `openssl passwd -6`; by hand: printf '%s\n' "$PW" | openssl passwd -6 -stdin.
+    The default is the hash of the default password "ubuntu".
+  EOT
+  type        = string
+  sensitive   = true
+  default     = "$6$truenorthpkr$bVdgsetfx5CL7JMrDQFcHUqCOak0SE9VomTEvLepAaIO.OLaaIqggPw9zrNQ1AuWF73ChZfbTQKJOnkAIKymj0"
+  validation {
+    condition     = can(regex("^\\$6\\$(rounds=[0-9]+\\$)?[./A-Za-z0-9]{1,16}\\$[./A-Za-z0-9]{86}$", var.ssh_password_hash))
+    error_message = "The ssh_password_hash must be a SHA-512 crypt string ($6$salt$hash), e.g. from openssl passwd -6."
+  }
 }
 
 # ----------------------------------------------------------------------------
 # Windows edition-select keys (public GVLK / generic keys — NOT activation, NOT secret)
 # These only tell Setup which edition of the install.wim to lay down so the install
 # proceeds unattended. Eval media ignore them; retail/VL media require one.
+# GVLKs: Microsoft Learn, "Key Management Services (KMS) client activation and product
+# keys", https://learn.microsoft.com/windows-server/get-started/kms-client-activation-keys
+# (checked 2026-10-19 against the page dated 2025-06-25).
 # ----------------------------------------------------------------------------
+variable "win10_eval" {
+  description = "true when iso_win10 is the Evaluation ISO: image \"Windows 10 Enterprise Evaluation\", no key"
+  type        = bool
+  default     = false
+}
+variable "win10_image_name" {
+  description = <<-EOT
+    install.wim image name on the Windows 10 22H2 business-editions ISO (ignored when
+    win10_eval). Check with `dism /Get-WimInfo /WimFile:<iso>\sources\install.wim`.
+  EOT
+  type        = string
+  default     = "Windows 10 Enterprise"
+}
+variable "gvlk_win10" {
+  description = "Windows 10 Enterprise GVLK (public KMS client setup key; ignored when win10_eval)"
+  type        = string
+  default     = "NPPR9-FWDCX-D2C8J-H872K-2YT43"
+}
+variable "srv2019_eval" {
+  description = "true when iso_srv2019 is the Evaluation ISO: Standard Evaluation image, no key"
+  type        = bool
+  default     = false
+}
+variable "srv2019_image_name" {
+  description = <<-EOT
+    install.wim image name on the Server 2019 ISO (ignored when srv2019_eval). Some media
+    name it "Windows Server 2019 SERVERSTANDARD"; check with dism /Get-WimInfo.
+  EOT
+  type        = string
+  default     = "Windows Server 2019 Standard (Desktop Experience)"
+}
+variable "gvlk_srv2019" {
+  description = "Server 2019 Standard GVLK (public KMS client setup key; ignored when srv2019_eval)"
+  type        = string
+  default     = "N69G4-B89J2-4G8F4-WWYCC-J464C"
+}
 variable "gvlk_srv2022" {
   description = "Server 2022 Standard GVLK (public KMS client setup key)"
   type        = string
@@ -314,6 +435,11 @@ variable "base_win10_template" {
   description = "Inventory template name the Windows derived images clone from"
   type        = string
   default     = "win10-22h2"
+}
+variable "base_srv2022_template" {
+  description = "Inventory template name the Windows Server role images (roles.pkr.hcl) clone from"
+  type        = string
+  default     = "srv2022"
 }
 
 # ----------------------------------------------------------------------------

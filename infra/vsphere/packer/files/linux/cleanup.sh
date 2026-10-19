@@ -3,6 +3,13 @@
 # every Linux build so clones get a fresh identity under vSphere/cloud-init.
 set -euo pipefail
 
+echo "=== remove the build apt/dnf proxy (ranges pass TN_DEPOT_APT_PROXY at deploy)"
+# apt-proxy.sh, Ubuntu autoinstall (curtin) and debian-installer (mirror/http/proxy) each
+# leave one behind; none of them is reachable from a range.
+sudo rm -f /etc/apt/apt.conf.d/90tn-build-proxy /etc/apt/apt.conf.d/90curtin-aptproxy || true
+if [ -f /etc/apt/apt.conf ]; then sudo sed -i '/^Acquire::http::Proxy /d' /etc/apt/apt.conf || true; fi
+if [ -f /etc/dnf/dnf.conf ]; then sudo sed -i '/^# tn-build-proxy$/,+1d' /etc/dnf/dnf.conf || true; fi
+
 echo "=== cloud-init clean"
 sudo cloud-init clean --logs || true
 
