@@ -15,10 +15,10 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import time
 import uuid
 from datetime import UTC, datetime
+from urllib.parse import urlparse
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -218,78 +218,84 @@ def update_model_route(route_id: uuid.UUID, payload: AIModelRouteUpdate, db: Ses
     return route
 
 
-# -- Known Fleet Nodes (legacy Ollama LAN discovery) -----------------------
-# NOTE: this deployment serves models via vLLM behind LiteLLM (OpenAI-compatible,
-# host :4000), not Ollama. This discovery path is dormant; the entry below
-# describes the R7725 GPU node for reference only. The host comes from the
-# environment (LLM_NODE_HOST) so no site address is committed.
-KNOWN_OLLAMA_NODES = [
-    {"node_name": "r7725", "host": os.getenv("LLM_NODE_HOST", "llm.example.internal"), "port": 11434, "gpu_model": "2x NVIDIA H200 NVL (144GB ea)", "gpu_vram_gb": 288},
-]
+# -- Discovery -------------------------------------------------------------
+# Discovery probes the backend's REGISTERED fleet nodes and nothing else. Until
+# 2026-10-15 it probed a hard-coded home-lab node ("r7725", 2x H200) on every site;
+# an OpenAI-compatible engine answers at the backend's base_url whatever the node's
+# host, so a site without that node showed a fake, online "2x H200" node
+# (TN-MGMT01). GPU fields are the operator's to enter: discovery never writes them,
+# so "not reported" stays null and an operator's entry is never overwritten.
+OLLAMA_DEFAULT_PORT = 11434
+
+
+def _base_url_node(db: Session, backend: AIBackendConfig) -> AIFleetNode:
+    """The one node of an OpenAI-compatible backend that has none registered: the
+    engine at its base_url, named after the base_url's host. No GPU figures."""
+    node = AIFleetNode(
+        backend_id=backend.id,
+        node_name=urlparse(backend.base_url).hostname or backend.base_url or backend.name,
+        url=backend.base_url,
+        status="unknown",
+        max_requests=10,
+    )
+    db.add(node)
+    return node
+
+
+def _probe_node(engine, node: AIFleetNode, api_key: str | None) -> dict:
+    if engine.uses_fleet_nodes:
+        # Ollama: every node is its own engine at host:port.
+        parsed = urlparse(node.url if "//" in node.url else f"http://{node.url}")
+        return engine.probe(
+            base_url=node.url,
+            api_key=api_key,
+            host=parsed.hostname or "",
+            port=parsed.port or OLLAMA_DEFAULT_PORT,
+        )
+    # OpenAI-compatible (and mock): the node's url is an engine base URL.
+    return engine.probe(base_url=node.url, api_key=api_key)
 
 
 @router.post("/backends/{backend_id}/discover")
 def discover_fleet_nodes(backend_id: uuid.UUID, db: Session = Depends(get_db)):
-    """Scan known Ollama nodes on the LAN, upsert fleet node records, and return results."""
+    """Probe the backend's registered fleet nodes; record status and served models.
+
+    An OpenAI-compatible backend (openai, vllm, litellm, ...) with no node gets one,
+    derived from its base_url. An Ollama backend with none answers ``scanned: 0``:
+    register its nodes first. GPU model and VRAM are never written here."""
     backend = _backend(db, backend_id)
 
-    # The adapter decides what to probe: OpenAI-compatible engines (LiteLLM/vLLM)
-    # serve models at the backend base_url, Ollama per LAN node. Unknown types
-    # are probed as Ollama nodes, as before.
+    # The adapter decides how a node is probed. Unknown types are probed as Ollama
+    # nodes, as before.
     engine = get_ai_engine(backend.backend_type, default="ollama")
     api_key = unseal(backend.api_key_encrypted)  # app/secretbox.py
+    # tenant-safe: platform-wide config (module docstring).
+    nodes = (
+        db.query(AIFleetNode)
+        .filter(AIFleetNode.backend_id == str(backend_id))
+        .order_by(AIFleetNode.node_name)
+        .all()
+    )
+    if not nodes and not engine.uses_fleet_nodes:
+        nodes = [_base_url_node(db, backend)]
+
     scan_results = []
-    for known in KNOWN_OLLAMA_NODES:
-        probe = engine.probe(
-            base_url=backend.base_url,
-            api_key=api_key,
-            host=known["host"],
-            port=known["port"],
-        )
-
-        # Upsert fleet node
-        existing = (
-            db.query(AIFleetNode)
-            .filter(
-                AIFleetNode.backend_id == str(backend_id),
-                AIFleetNode.node_name == known["node_name"],
-            )
-            .first()
-        )
-
+    now = datetime.now(UTC)
+    for node in nodes:
+        probe = _probe_node(engine, node, api_key)
         model_names = [m["name"] for m in probe["models"]]
-        now = datetime.now(UTC)
-
-        if existing:
-            existing.url = probe["url"]
-            existing.status = "online" if probe["online"] else "offline"
-            existing.gpu_model = known.get("gpu_model")
-            existing.gpu_vram_gb = known.get("gpu_vram_gb")
-            existing.loaded_models = json.dumps(model_names) if model_names else existing.loaded_models
-            existing.last_health_check = now
-            node_record = existing
-        else:
-            node_record = AIFleetNode(
-                backend_id=str(backend_id),
-                node_name=known["node_name"],
-                url=probe["url"],
-                status="online" if probe["online"] else "offline",
-                gpu_model=known.get("gpu_model"),
-                gpu_vram_gb=known.get("gpu_vram_gb"),
-                loaded_models=json.dumps(model_names),
-                max_requests=10,
-                last_health_check=now,
-            )
-            db.add(node_record)
-
+        node.status = "online" if probe["online"] else "offline"
+        if model_names:
+            node.loaded_models = json.dumps(model_names)
+        node.last_health_check = now
         scan_results.append(
             {
-                "node_name": known["node_name"],
-                "url": probe["url"],
+                "node_name": node.node_name,
+                "url": node.url,
                 "online": probe["online"],
                 "version": probe["version"],
-                "gpu_model": known.get("gpu_model"),
-                "gpu_vram_gb": known.get("gpu_vram_gb"),
+                "gpu_model": node.gpu_model,
+                "gpu_vram_gb": node.gpu_vram_gb,
                 "model_count": len(probe["models"]),
                 "models": probe["models"],
                 "running": probe["running"],
@@ -297,7 +303,7 @@ def discover_fleet_nodes(backend_id: uuid.UUID, db: Session = Depends(get_db)):
         )
 
     db.commit()
-    return {"scanned": len(KNOWN_OLLAMA_NODES), "results": scan_results}
+    return {"scanned": len(nodes), "results": scan_results}
 
 
 # -- Test Generate (real backend routing) --------------------------------

@@ -171,6 +171,63 @@
     and (tn_uses_vcenter | default(true) | bool)
     and (tn_vcenter_host | default('') | length > 0)
 
+# The AI orchestrator's endpoint (OPENAI_* in the env file), registered through the API as
+# the AI backend with a route per configured model id, so the AI settings page is not
+# empty after an install (TN-MGMT01, 2026-10-15). scripts/register_ai_backend_inprocess.py:
+# idempotent, in-process as the administrator, like the vCenter above. The key goes to
+# `docker compose` in its environment and on to the container by name (-e NAME, no value):
+# never in argv, so never in `ps` or this log; no_log hides the task's arguments. The
+# install fails only if the backend could not be registered (an unreachable endpoint warns).
+- name: Seed — register the AI endpoint as an AI backend
+  ansible.builtin.command:
+    argv: >-
+      {{ ['docker', 'compose', '-f', tn_compose_file, '--env-file', tn_env_file,
+          'run', '--rm', '--no-deps', '-T', '-w', '/app', '-e', 'PYTHONPATH=/app',
+          '-e', 'TN_AI_API_KEY',
+          '-v', tn_app_dir ~ ':/srcapp:ro', '--entrypoint', 'python',
+          'api', '/srcapp/scripts/register_ai_backend_inprocess.py',
+          '--admin', tn_bootstrap_admin_upn, '--name', tn_ai_backend_name | default('Platform AI'),
+          '--base-url', tn_ai_base_url,
+          '--models', ([tn_ai_default_model,
+                        tn_ai_heavy_model | default(tn_ai_default_model),
+                        tn_ai_general_model | default(tn_ai_default_model),
+                        tn_ai_code_model | default(tn_ai_default_model)] | unique | join(','))]
+         + (['--update-key'] if (tn_ai_backend_update_key | default(false) | bool)
+            and (vault_openai_api_key | default('') | length > 0) else []) }}
+    chdir: "{{ tn_app_dir }}/infra/platform/docker"
+  environment:
+    TN_AI_API_KEY: "{{ vault_openai_api_key | default('') }}"
+  register: tn_ai_backend_reg
+  changed_when: "'backend: created' in tn_ai_backend_reg.stdout or 'backend: updated' in tn_ai_backend_reg.stdout or 'route: added' in tn_ai_backend_reg.stdout"
+  failed_when: false
+  no_log: true
+  when: >-
+    (tn_register_ai_backend | default(true) | bool)
+    and (tn_ai_enabled | default(true) | bool)
+    and (tn_ai_base_url | default('') | length > 0)
+
+- name: Seed — AI backend result
+  ansible.builtin.debug:
+    msg: "{{ (tn_ai_backend_reg.stdout_lines + tn_ai_backend_reg.stderr_lines[-5:]) | default(['(no output)'], true) }}"
+  when: >-
+    (tn_register_ai_backend | default(true) | bool)
+    and (tn_ai_enabled | default(true) | bool)
+    and (tn_ai_base_url | default('') | length > 0)
+
+- name: Seed — the AI backend is registered
+  ansible.builtin.assert:
+    that: tn_ai_backend_reg.rc == 0
+    fail_msg: >-
+      The AI endpoint was not registered as an AI backend (exit {{ tn_ai_backend_reg.rc }}; output above).
+      Exit 2: tn_bootstrap_admin_upn is not a TrueNorth user. Exit 1: the API refused it.
+      Fix and re-run playbooks/80-seed.yml, or add it on the AI page and set
+      tn_register_ai_backend: false.
+    success_msg: "AI backend: registered (an unreachable endpoint above is a warning only)"
+  when: >-
+    (tn_register_ai_backend | default(true) | bool)
+    and (tn_ai_enabled | default(true) | bool)
+    and (tn_ai_base_url | default('') | length > 0)
+
 # The loader's demo people are roster rows only. Without AD, 60-keycloak gave each a local
 # account (roles/tn_keycloak/tasks/demo_accounts.yml); this points each row at its
 # account's subject, as app.bootstrap_admin does for the administrator, so they can sign
