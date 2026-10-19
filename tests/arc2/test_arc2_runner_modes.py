@@ -423,3 +423,16 @@ def test_a_gateway_without_a_model_list_is_checked_with_a_head(gateway):
 
 def test_an_unreachable_gateway_is_not_reachable():
     assert not runner.LocalModel("http://127.0.0.1:9", "m", "t", kind="gateway").reachable(timeout=1)
+
+
+def test_gateway_request_timeout_falls_back_only_in_local_first_mode():
+    # The GB10 gateway swaps models with minutes of cold load: its request timeouts are its
+    # usual failure, so local_with_subscription_fallback re-runs those on Claude.
+    timeout = {"state": "failed", "error": "API Error: Request timed out."}
+    assert runner.should_fall_back(timeout, gateway_first=True)
+    # subscription_with_local_fallback (Claude first) keeps the old classification.
+    assert not runner.should_fall_back(timeout)
+    # The runner's own step timeout never falls back, in either mode.
+    step = {"state": "failed", "error": "timed out after 240 min"}
+    assert not runner.should_fall_back(step, gateway_first=True)
+    assert not runner.should_fall_back(step)

@@ -257,6 +257,11 @@ FALLBACK_ERRORS = (
     "usage limit", "rate limit", "rate_limit", "overloaded", "credit balance",
     "could not connect", "connection error", "api error: 5", "service unavailable",
 )
+# A gateway's per-request timeouts, only for local_with_subscription_fallback: a local gateway
+# that swaps models (minutes of cold load) times out requests far more often than it fails
+# outright. Never the runner's own step timeout ("timed out after ..."), which would double
+# the step's wall time on Claude. subscription_with_local_fallback keeps FALLBACK_ERRORS alone.
+GATEWAY_TIMEOUT_ERRORS = ("request timed out", "etimedout", "read timeout", "gateway timeout", "api error: 408")
 
 
 class ModelConfigError(ValueError):
@@ -448,12 +453,16 @@ def _models(models: ModelConfig | LocalModel | None) -> ModelConfig:
     return ModelConfig("subscription")
 
 
-def should_fall_back(record: dict) -> bool:
+def should_fall_back(record: dict, gateway_first: bool = False) -> bool:
     """Only when the model itself was unavailable (Claude, or in
-    local_with_subscription_fallback the gateway); never for a STOP, a merge refusal or a
-    timeout."""
+    local_with_subscription_fallback the gateway); never for a STOP, a merge refusal or the
+    runner's own step timeout. ``gateway_first`` (local_with_subscription_fallback) also counts
+    the gateway's per-request timeouts (GATEWAY_TIMEOUT_ERRORS)."""
     error = str(record.get("error") or "").lower()
-    return record.get("state") == "failed" and any(marker in error for marker in FALLBACK_ERRORS)
+    if record.get("state") != "failed" or error.startswith("timed out after"):
+        return False
+    markers = FALLBACK_ERRORS + (GATEWAY_TIMEOUT_ERRORS if gateway_first else ())
+    return any(marker in error for marker in markers)
 
 
 def claim(queue: Path, jobs: Path, owner: dict | None = None) -> tuple[dict, Path] | None:
@@ -596,7 +605,7 @@ def run_job(record: dict, path: Path, claude: str, timeout: int = DEFAULT_TIMEOU
                           confinement.wrap(command_for(record, claude, primary.model if primary else None), jail),
                           primary.env(env) if primary else env, timeout,
                           append=False, stdin_text=prompt_for(record))
-        if models.claude_fallback and should_fall_back(record):
+        if models.claude_fallback and should_fall_back(record, gateway_first=True):
             record.pop("served_model", None)
             record.update(fallback_from=record["error"], engine="claude", state="running", error=None,
                           result=None, exit_code=None, finished_at=None, current_agent=None)
