@@ -10,6 +10,7 @@ import { NotificationService } from '@core/services/notification.service';
 import {
   RangeLeaseStatus, RangeOperation, RangeRecoveryApiService,
 } from '@core/services/range-recovery-api.service';
+import { RangeCredentialsApiService } from '@core/services/range-credentials-api.service';
 import { RangeDetailComponent, leftOnHypervisor } from './range-detail.component';
 import { rangeCapabilities } from './range-capabilities';
 
@@ -43,6 +44,7 @@ describe('RangeDetailComponent', () => {
   let notify: jasmine.SpyObj<NotificationService>;
   let dialogOpen: jasmine.Spy;
   let dialogResult: { reason: string } | null;
+  let credentialsApi: jasmine.SpyObj<RangeCredentialsApiService>;
 
   async function render(role: UserRole, opts: { ops?: RangeOperation[]; lease?: RangeLeaseStatus; fail?: boolean;
     platformAdmin?: boolean } = {}) {
@@ -60,6 +62,10 @@ describe('RangeDetailComponent', () => {
     ]));
     api.listSnapshots.and.returnValue(of([]));
     notify = jasmine.createSpyObj('NotificationService', ['success', 'error', 'info']);
+    credentialsApi = jasmine.createSpyObj('RangeCredentialsApiService', ['getCredentials']);
+    credentialsApi.getCredentials.and.returnValue(of({ range_id: 'r1', scope: 'all', accounts: [
+      { machine: 'dc01', username: 'Administrator', password: 'Dc-Secret-1!', role: 'admin', student_visible: false,
+        generated: true, applied: true, notes: '' }] }));
     dialogResult = { reason: 'vCenter checked: no tasks for this range' };
     dialogOpen = jasmine.createSpy('open').and.callFake(() => ({ afterClosed: () => of(dialogResult) }));
 
@@ -68,6 +74,7 @@ describe('RangeDetailComponent', () => {
       providers: [
         provideRouter([]),
         { provide: RangeRecoveryApiService, useValue: api },
+        { provide: RangeCredentialsApiService, useValue: credentialsApi },
         { provide: NotificationService, useValue: notify },
         { provide: AuthService, useValue: { user: signal({ id: 'u1', role }),
           isPlatformAdmin: signal(opts.platformAdmin ?? false) } },
@@ -92,6 +99,17 @@ describe('RangeDetailComponent', () => {
     expect(el.textContent).toContain('Abandoned by admin');
     expect(el.textContent).toContain('No worker holds this range.');
     expect(el.textContent).toContain('dvs-1');
+  });
+
+  it('has a credentials panel that reads nothing until asked, then masks the passwords', async () => {
+    await render('range_ops');
+    expect(el.textContent).toContain('Credentials');
+    expect(credentialsApi.getCredentials).not.toHaveBeenCalled();
+    buttons('Show accounts')[0].click();
+    fixture.detectChanges();
+    expect(credentialsApi.getCredentials).toHaveBeenCalledOnceWith('r1');
+    expect(el.textContent).toContain('Administrator');
+    expect(el.textContent).not.toContain('Dc-Secret-1!');
   });
 
   it('shows the API error for a section instead of an empty list', async () => {

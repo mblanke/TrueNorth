@@ -91,3 +91,19 @@ nodes:
     vlan: management
     ip: "10.10.40.1"
     specs: { cores: 2, memory_mb: 2048, disk_gb: 20 }
+
+# Accounts TrueNorth sets at deploy (ADR 0012 §12). Passwords are generated once per range
+# and shown, sealed at rest, on the range's Credentials panel and staff-only wiki page.
+# Windows: the built-in Administrator (Sysprep). Linux: cloud-init users; `ubuntu` is the
+# template's install user. The pfSense firewall keeps its appliance config login.
+accounts:
+  - { machine: dc01, username: Administrator, generate: true, role: admin, student_visible: false,
+      notes: "Local Administrator; also the first domain admin once AD DS is promoted" }
+  - { machine: fs01, username: Administrator, generate: true, role: admin, student_visible: false }
+  - { machine: ws01, username: Administrator, generate: true, role: admin, student_visible: false }
+  - { machine: ws02, username: Administrator, generate: true, role: admin, student_visible: false }
+  - { machine: web01, username: ubuntu, generate: true, role: admin, student_visible: false }
+  - { machine: mail01, username: ubuntu, generate: true, role: admin, student_visible: false }
+  - { machine: siem01, username: ubuntu, generate: true, role: admin, student_visible: false }
+  - { machine: siem01, username: analyst, generate: true, role: user, student_visible: true,
+      notes: "Student analyst login to the SIEM host (OS account; OpenSearch logins are scenario content)" }

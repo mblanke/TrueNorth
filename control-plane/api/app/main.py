@@ -311,6 +311,7 @@ app.state.ws_manager = ws_manager
 
 # -- Routers (fine-grained RBAC via require_permission) --------------------
 from .cmi5.router import router as cmi5_router  # noqa: E402 (also registers the cmi5 tables)
+from .range_credentials.router import router as range_credentials_router  # noqa: E402 (ADR 0012; + its table)
 from .routers import (
     ad_sync_router,
     adaptive_learning_router,
@@ -373,6 +374,7 @@ app.include_router(onboarding_router)
 
 # Core routers
 app.include_router(ranges_router)
+app.include_router(range_credentials_router)  # GET /ranges/{id}/credentials (app/range_credentials)
 app.include_router(exercises_router)
 app.include_router(detections_router)
 app.include_router(collective_exercises_router)

@@ -56,6 +56,8 @@ from ..models import (
 )
 from ..network_inventory import NetworkReservation, NetworkReservationOut
 from ..provisioner_choice import configured_backend
+from ..range_credentials import accounts as template_accounts
+from ..range_credentials import service as range_credentials
 from ..range_ops import service as ops
 from ..range_ops.lease_status import LeaseStatusOut
 from ..range_ops.lease_status import assess as assess_lease
@@ -210,6 +212,9 @@ def create_range(
         provisioner_backend=configured_backend(),  # 409 for a switched-off experimental backend
     )
     db.add(rng)
+    db.flush()
+    # Its declared accounts (422 if they do not validate) and its staff-only wiki page (ADR 0012).
+    range_credentials.on_range_created(db, rng, user)
     db.commit()
     db.refresh(rng)
     _audit(db, user, "create", "range", str(rng.id))
@@ -280,6 +285,7 @@ def update_range(
     rng = _changeable_range(db, range_id, user)
     for field, value in body.model_dump(exclude_unset=True).items():
         setattr(rng, field, value)
+    range_credentials.on_range_updated(db, rng, user)  # its wiki page follows the new name
     db.commit()
     db.refresh(rng)
     _audit(db, user, "update", "range", str(rng.id))
@@ -317,6 +323,7 @@ def delete_range(
     # Snapshots and documents cascade with the range (Range.snapshots/.documents).
     # The documents' stored bytes do not, so note them for removal after the commit.
     stored = [doc.minio_key for doc in rng.documents if doc.minio_key]
+    range_credentials.on_range_deleted(db, rng)  # its passwords, and its wiki page
     db.delete(rng)
     try:
         db.commit()
@@ -444,8 +451,11 @@ def save_range_topology(
             parsed = loaded if isinstance(loaded, dict) else {}
         except pyyaml.YAMLError:
             parsed = {}
+    foreign = current is not None and current.tenant_id != rng.tenant_id
     for key, value in parsed.items():
-        if key not in _DESIGNER_KEYS:
+        # Another tenant's (public or shared) template lends its keys, never its accounts:
+        # their passwords are that tenant's (ADR 0012). Declare this range's own instead.
+        if key not in _DESIGNER_KEYS and not (foreign and key == "accounts"):
             template.setdefault(key, value)
     if isinstance(parsed.get("network"), dict):
         for key, value in parsed["network"].items():
@@ -455,7 +465,11 @@ def save_range_topology(
 
     if network_placement_keys(template):
         raise HTTPException(422, "a topology may not set port_group; lab networks are assigned by the platform")
-    text = pyyaml.safe_dump(template, sort_keys=False)
+    _, account_errors = template_accounts.parse(template)
+    if account_errors:  # e.g. an account on a machine the new topology no longer has
+        raise HTTPException(422, {"message": "The template's accounts do not fit this topology; fix them in the "
+                                             "template", "errors": account_errors[:20]})
+    text = template_accounts.seal_yaml(pyyaml.safe_dump(template, sort_keys=False))
 
     # Claim the range first: a conditional UPDATE that only matches while the range is
     # still editable. On Postgres it holds the row lock until commit, so a concurrent

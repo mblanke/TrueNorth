@@ -251,6 +251,9 @@ def accept(
     _check(db, rng, action)
     if action == "provision":
         _reserve_for_provision(db, rng)
+        from ..range_credentials import service as range_credentials
+
+        range_credentials.on_build_accepted(db, rng)  # its declared accounts; generated passwords made once
     generation = (
         db.query(func.max(RangeOperation.generation)).filter(RangeOperation.range_id == rng.id).scalar() or 0
     ) + 1
@@ -381,6 +384,10 @@ def reconcile(db: Session, rng: Range) -> None:
             release_range(db, rng.id)  # its addresses and VLANs are free for other ranges
         if outcome == "failed":
             op.error = {"code": "range_failed", "message": (rng.error_message or "The worker reported a failure")[:500]}
+        if op.action == "provision" and outcome == "succeeded":
+            from ..range_credentials import service as range_credentials
+
+            range_credentials.on_build_succeeded(db, rng)  # its wiki page, with the built addresses
     # Sessions here do not autoflush: write the outcomes now, so the in-flight check that
     # follows (accept) sees them, not the stale 'dispatched' rows.
     db.flush()

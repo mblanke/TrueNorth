@@ -403,6 +403,34 @@ Use soc-training, or a small PO range. Check:
 - [ ] the full lifecycle works: scenario → telemetry in OpenSearch → AAR → destroy, with
       nothing left in vCenter
 
+### 7.0a Range accounts (ADR 0012)
+
+A range template's `accounts:` are set at deploy: Windows `Administrator` through Sysprep,
+Linux accounts through cloud-init (SHA-512-crypt hashes in the VM's `guestinfo.userdata`).
+After first boot the worker logs in to each such Linux VM as the throwaway `tn-install`
+user, waits for `cloud-init status --wait`, checks every account with `getent passwd`,
+deletes `tn-install`, and rewrites `guestinfo.userdata` without the hashes. It waits at most
+`VSPHERE_ACCOUNT_SCRUB_TIMEOUT` (default 300 s) and rewrites the guestinfo either way. The
+build's warnings say what did not work:
+
+- `the install login failed, so the ephemeral tn-install user may remain`: the VM keeps a
+  passwordless-sudo `tn-install` account (random password, never shown) until it expires
+  two days after deploy. Remove it by hand if the range lives longer or is shared:
+  `sudo userdel -r tn-install` on that VM.
+- `account(s) not verified, recorded as not set`: those accounts are shown to staff as
+  "Not set by TrueNorth" and never to Students.
+
+**To verify on the real vCenter (not yet done):** vCenter's events and task history may keep
+the VM's `extraConfig` as it was before the rewrite (the reconfigure task's arguments), so
+the account hashes may stay readable there to anyone with read access to the VM's events,
+for vCenter's event retention period. Check `Monitor > Events` / the task details of a range
+VM's first reconfigure, and shorten event retention or restrict read access to range VMs if
+they show.
+
+Machines with no declared account: Windows gets `TN_RANGE_DEFAULT_PASSWORD` (if set) as its
+Administrator password; Linux keeps the template's generic build password (ADR 0012 §5),
+which is not repeated in cloud-config.
+
 ### 7.1 Port mirroring (SPAN / TAP zones)
 
 A `mirror` rule becomes two sessions on `vDS-10G` per sensor zone (`vsphere_infra.py`,

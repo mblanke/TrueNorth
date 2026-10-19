@@ -27,6 +27,7 @@ from sqlalchemy.orm import Session, sessionmaker
 tasks = pytest.importorskip("worker.tasks")
 from worker import base_tasks, configure_tasks, greyspace, greyspace_host, vyos_config  # noqa: E402
 from worker.provisioners.base import GuestLogin  # noqa: E402
+from worker.provisioners.sha512_crypt import sha512_crypt  # noqa: E402
 
 RANGE = "0f0f0f0f-1111-2222-3333-444444444444"
 
@@ -131,8 +132,10 @@ class TestHostVm:
         [user] = cc["users"]
         assert user["name"] == "tn-greyspace" and "docker" in user["groups"]
         password = greyspace_host.host_password(RANGE)
-        if greyspace_host._sha512_crypt("probe") is not None:  # glibc (the worker image); not macOS
-            assert password not in json.dumps(vm) and user["hashed_passwd"].startswith("$6$")
+        # Always a SHA-512-crypt hash, on every platform; never plain text.
+        assert password not in json.dumps(vm) and "plain_text_passwd" not in user
+        hashed = user["hashed_passwd"]
+        assert hashed.startswith("$6$") and sha512_crypt(password, hashed.split("$")[2]) == hashed
         assert cc["runcmd"] == [["/opt/greyspace/bootstrap.sh", "unpack"]]
         assert "vmware-rpctool" in next(f for f in cc["write_files"] if f["path"].endswith("bootstrap.sh"))["content"]
 

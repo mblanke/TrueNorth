@@ -34,9 +34,11 @@ from .tables import (
     golden_images,
     hypervisor_connections,
     inject_records,
+    lab_sessions,
     learning_recommendations,
     network_reservations,
     objectives,
+    range_credentials,
     range_snapshots,
     ranges,
     scenario_executions,
@@ -188,6 +190,41 @@ def hypervisor_creds_by_id(db, hypervisor_type: str, connection_id: str, range_i
     )
     row = db.execute(stmt).first()
     return {} if row is None else _creds(row)
+
+
+def range_accounts(db, range_id: str) -> list[tuple[str, str, str, str]]:
+    """(machine, username, password, role) of every account the range declares (ADR 0012).
+    Written and sealed by the API (app/range_credentials) when the build was accepted;
+    unsealed here. Of the range's own tenant only."""
+    rc = range_credentials
+    stmt = (
+        sa.select(rc.c.machine, rc.c.username, rc.c.password, rc.c.role)
+        .join(ranges, ranges.c.id == rc.c.range_id)
+        .where(rc.c.range_id == range_id, rc.c.tenant_id == ranges.c.tenant_id)
+        .order_by(rc.c.machine, rc.c.username)
+    )
+    return [(m, u, secretbox.unseal(p) or "", r) for m, u, p, r in db.execute(stmt)]
+
+
+def is_lab_range(db, range_id: str) -> bool:
+    """Whether a lab session builds this range (its current range; a rebuild makes a new one)."""
+    return db.execute(sa.select(lab_sessions.c.id).where(lab_sessions.c.range_id == range_id).limit(1)).first() \
+        is not None
+
+
+def mark_accounts_applied(db, range_id: str, pairs: Iterable[tuple[str, str]]) -> None:
+    """Set ``applied`` on the range's (machine, username) accounts the build set (ADR 0012).
+    The API resets every row to not applied when it accepts a build."""
+    by_machine: dict[str, list[str]] = {}
+    for machine, username in pairs:
+        by_machine.setdefault(machine, []).append(username)
+    rc = range_credentials
+    for machine, names in sorted(by_machine.items()):
+        db.execute(
+            sa.update(rc)
+            .where(rc.c.range_id == range_id, rc.c.machine == machine, rc.c.username.in_(sorted(names)))
+            .values(applied=True, updated_at=_now())
+        )
 
 
 def enabled_golden_images(db, hypervisor: str) -> list:

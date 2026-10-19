@@ -7,9 +7,10 @@ the network into the range. The worker asks vCenter to start a process inside th
 reach only through the range pfSense's WAN uplink.
 
 Guest credentials never leave the worker process:
-- Windows: the random per-VM Administrator password that Sysprep customization sets
-  (vsphere_infra.windows_customization), handed from the customization step to the
-  install step inside the same provision call.
+- Windows: the Administrator password that Sysprep customization sets
+  (vsphere_infra.windows_customization): the range's declared Administrator account
+  (ADR 0012), else TN_RANGE_DEFAULT_PASSWORD, else random per VM. Handed from the
+  customization step to the install step inside the same provision call.
 - Linux: an ephemeral ``tn-install`` user with a random password, created by cloud-init
   from the guestinfo userdata, locked and deleted by the last install command, expiring
   on its own after two days if that command never runs. The provisioner rewrites the
@@ -23,10 +24,10 @@ from __future__ import annotations
 import contextlib
 import datetime as _dt
 import logging
+import re
 import secrets
 import shlex
 import time
-import warnings
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
@@ -36,6 +37,7 @@ except ImportError:  # the provisioner reports the missing SDK when it is used
     vim = None  # type: ignore[assignment]
 
 from ..software_catalogue import InstallSpec
+from .sha512_crypt import sha512_crypt
 
 logger = logging.getLogger(__name__)
 
@@ -74,16 +76,84 @@ class GuestCredentials:
     password: Secret = field(repr=False)
 
 
-def windows_credentials() -> GuestCredentials:
-    """The built-in Administrator with a random password that meets Windows complexity rules."""
-    return GuestCredentials("windows", "Administrator", Secret(secrets.token_urlsafe(18) + "!9a"))
+@dataclass(frozen=True)
+class RangeAccount:
+    """An account the range declares on a VM (ADR 0012; worker/range_accounts.py)."""
+
+    username: str
+    password: Secret = field(repr=False)
+    admin: bool = False
+
+
+WINDOWS_ADMIN = "administrator"
+# What cloud-init (useradd) accepts as a Linux login name.
+POSIX_USERNAME = re.compile(r"^[a-z_][a-z0-9_.-]{0,31}$")
+
+
+def windows_credentials(password: str | None = None) -> GuestCredentials:
+    """The built-in Administrator: ``password``, else a random one that meets Windows complexity rules."""
+    return GuestCredentials("windows", "Administrator", Secret(password or secrets.token_urlsafe(18) + "!9a"))
+
+
+def admin_password(vm_def: dict) -> str | None:
+    """The Administrator password a Windows VM is given: its declared ``Administrator``
+    account (``_accounts``), else the platform default (``_default_login``), else None
+    (random, as before). Read where it is used; never stored in the VM's plan."""
+    for acct in vm_def.get("_accounts") or []:
+        if acct.username.casefold() == WINDOWS_ADMIN:
+            return acct.password.reveal()
+    default = vm_def.get("_default_login")
+    return default.reveal() if default is not None else None
+
+
+# Images' default (cloud-init "default") users. Their image already gives them passwordless
+# sudo (cloud-init's default user, or the Packer build user's sudoers file), which scripts
+# rely on: a declared admin account of one of these names gets its password and no new
+# sudo rule, since a password-required rule could override the image's (sudo: last match).
+IMAGE_DEFAULT_USERS = frozenset({"ubuntu", "debian", "kali", "cloud-user", "ec2-user", "centos", "fedora",
+                                 "rocky", "almalinux", "admin"})
+
+
+def account_users(accounts: list[RangeAccount]) -> tuple[list[dict], list[str]]:
+    """cloud-config ``users`` entries for a Linux VM's declared accounts, and the names
+    skipped because Linux does not accept them. Persistent (unlike the install user); an
+    admin gets sudo with its password, except an image default user (``IMAGE_DEFAULT_USERS``),
+    which keeps the sudo its image gives it. Always a SHA-512-crypt hash, never plain text.
+    For a user the image already has (``ubuntu``) cloud-init sets the password and does not
+    create it again."""
+    users, skipped = [], []
+    for acct in accounts:
+        if not POSIX_USERNAME.match(acct.username):
+            skipped.append(acct.username)
+            continue
+        user: dict = {"name": acct.username, "gecos": "TrueNorth range account", "shell": "/bin/bash",
+                      "lock_passwd": False, "hashed_passwd": _sha512_crypt(acct.password.reveal())}
+        if acct.admin and acct.username not in IMAGE_DEFAULT_USERS:
+            user["sudo"] = "ALL=(ALL:ALL) ALL"
+        users.append(user)
+    return users, skipped
+
+
+ACCOUNT_CHECK = "account:"
+
+
+def account_checks(names: list[str]) -> list[GuestCommand]:
+    """One ``getent passwd <name>`` per account (as the install user; no root needed): exit 0
+    when the account exists. Labelled ``account:<name>``; ``accounts_found`` reads them back."""
+    return [GuestCommand(f"{ACCOUNT_CHECK}{n}", "/usr/bin/getent", f"passwd {shlex.quote(n)}") for n in names]
+
+
+def accounts_found(result: dict) -> list[str]:
+    """The accounts whose ``account_checks`` command succeeded in an ``install`` result."""
+    return [p["name"][len(ACCOUNT_CHECK):] for p in result.get("packages") or []
+            if p["name"].startswith(ACCOUNT_CHECK) and p["status"] == "ok"]
 
 
 def linux_credentials() -> GuestCredentials:
     return GuestCredentials("linux", INSTALL_USER, Secret(secrets.token_urlsafe(24)))
 
 
-def redact(text: str, *creds: GuestCredentials | None) -> str:
+def redact(text: str, *creds: GuestCredentials | RangeAccount | None) -> str:
     out = str(text)
     for c in creds:
         if c is not None and c.password.reveal():
@@ -91,39 +161,27 @@ def redact(text: str, *creds: GuestCredentials | None) -> str:
     return out
 
 
-def _sha512_crypt(password: str) -> str | None:
-    """A SHA-512 crypt hash where the platform's crypt(3) makes one (glibc does), else None."""
-    try:
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", DeprecationWarning)
-            import crypt  # removed in Python 3.13; the worker image runs 3.11
-        hashed = crypt.crypt(password, crypt.mksalt(crypt.METHOD_SHA512))
-    except Exception:  # noqa: BLE001 — no crypt module or no SHA-512 support
-        return None
-    return hashed if hashed and hashed.startswith("$6$") else None
+def _sha512_crypt(password: str) -> str:
+    """A SHA-512-crypt hash (``$6$``), pure Python: never the plain password, on any platform."""
+    return sha512_crypt(password)
 
 
 def cloud_init_user(creds: GuestCredentials, today: _dt.date | None = None) -> dict:
     """cloud-config ``users`` entry for the ephemeral install user (passwordless sudo).
 
-    Hashed where possible, so the guestinfo vCenter readers can see holds no plaintext.
+    Hashed (SHA-512-crypt), so the guestinfo vCenter readers can see holds no plaintext.
     The account expires after two days even if the clean-up command never runs.
     """
     expires = (today or _dt.datetime.now(_dt.UTC).date()) + _dt.timedelta(days=2)
-    user = {
+    return {
         "name": creds.username,
         "gecos": "TrueNorth deploy-time installer (removed after install)",
         "shell": "/bin/sh",
         "sudo": "ALL=(ALL) NOPASSWD:ALL",
         "lock_passwd": False,
         "expiredate": expires.isoformat(),
+        "hashed_passwd": _sha512_crypt(creds.password.reveal()),
     }
-    hashed = _sha512_crypt(creds.password.reveal())
-    if hashed:
-        user["hashed_passwd"] = hashed
-    else:
-        user["plain_text_passwd"] = creds.password.reveal()
-    return user
 
 
 # --------------------------------------------------------------------------- #

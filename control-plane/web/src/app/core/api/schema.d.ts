@@ -5561,6 +5561,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/ranges/{range_id}/credentials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Range Credentials
+         * @description The accounts on a range's machines, with their passwords, as the caller may see them.
+         *
+         *     **Permission: range:read**, then by role: staff with ``range:credentials_read`` see every
+         *     account (``applied`` false: not set by TrueNorth); a Student sees the ``student_visible``
+         *     accounts the last build set, of a range they take part in (an exercise running on it
+         *     whose booked course they are rostered on; lab sessions are not covered yet) and gets 404
+         *     for any other; an observer gets 403. Audited per read.
+         */
+        get: operations["get_range_credentials_ranges__range_id__credentials_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/ranges/{range_id}/description/import": {
         parameters: {
             query?: never;
@@ -6995,6 +7021,11 @@ export interface paths {
         /**
          * Get Template
          * @description Retrieve a single template.  **Permission: template:read**
+         *
+         *     Typed-in ``accounts[].password`` values are stored sealed (``tnsec:v1:...``). Holders of
+         *     range:credentials_read in the template's own tenant read them so (an edit sends them back
+         *     unchanged); anyone else reads ``********`` (ADR 0012 §13), and an unparseable document
+         *     not at all.
          */
         get: operations["get_template_templates__template_id__get"];
         /**
@@ -7545,7 +7576,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get Page */
+        /**
+         * Get Page
+         * @description A generated range page (ADR 0012 §14) is the one place the wiki shows passwords: its
+         *     credential tokens are filled in here, and only for ``range:credentials_read`` holders,
+         *     audited like GET /ranges/{id}/credentials and ``Cache-Control: no-store``. Every other
+         *     response (create, edit, restore, a 409's body) returns the tokens.
+         */
         get: operations["get_page_wiki_pages__page_id__get"];
         /** Update Page */
         put: operations["update_page_wiki_pages__page_id__put"];
@@ -12605,6 +12642,58 @@ export interface components {
             /** Reason */
             reason: string;
         };
+        /** RangeCredentialOut */
+        RangeCredentialOut: {
+            /**
+             * Applied
+             * @description The last build reported setting it. False: not set by TrueNorth (Windows accounts other than Administrator, appliances, other backends, or not built yet). Students only ever get applied accounts
+             */
+            applied: boolean;
+            /**
+             * Generated
+             * @description TrueNorth made the password up for this range
+             */
+            generated: boolean;
+            /**
+             * Machine
+             * @description The template node id (or asset role) the account is on
+             */
+            machine: string;
+            /**
+             * Notes
+             * @default
+             */
+            notes?: string;
+            /** Password */
+            password: string;
+            /**
+             * Role
+             * @description admin | user
+             */
+            role: string;
+            /**
+             * Student Visible
+             * @description Handed to Students who take part in the range
+             */
+            student_visible: boolean;
+            /** Username */
+            username: string;
+        };
+        /** RangeCredentialsOut */
+        RangeCredentialsOut: {
+            /** Accounts */
+            accounts: components["schemas"]["RangeCredentialOut"][];
+            /**
+             * Range Id
+             * Format: uuid
+             */
+            range_id: string;
+            /**
+             * Scope
+             * @description all: every account (staff); student: only those handed to Students
+             */
+            scope: string;
+        };
         /** RangeDocumentOut */
         RangeDocumentOut: {
             /**
@@ -15011,6 +15100,11 @@ export interface components {
             name: string;
             /** Slug */
             slug: string;
+            /**
+             * System Owned
+             * @default false
+             */
+            system_owned?: boolean;
             /**
              * Updated At
              * Format: date-time
@@ -25191,6 +25285,51 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["RangeOut"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_range_credentials_ranges__range_id__credentials_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                range_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RangeCredentialsOut"];
+                };
+            };
+            /** @description The caller's role sees no range credentials (observers) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such range in the caller's tenant, or a Student who does not take part in it */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

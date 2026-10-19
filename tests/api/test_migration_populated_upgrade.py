@@ -69,6 +69,7 @@ EXPECTED_NEW_TABLES = {
     "scenario_executions",
     "inject_records",
     "range_greyspace",
+    "range_credentials",
     "detection_submissions",
     "exercise_runs",
     "xapi_legacy_identities",

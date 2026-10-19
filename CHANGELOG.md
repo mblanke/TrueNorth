@@ -285,6 +285,50 @@ course production with a local-model fallback, and the cleanup of unsupported su
   assets name their OS, and a test checks every `os:` in content/ranges resolves to an
   enabled image. CI job `packer-vsphere` runs `packer init`, `fmt -check` and
   `validate -syntax-only` on `infra/vsphere/packer` (the README named a job that did not exist).
+- New: range credentials (ADR 0012 §12-14). A range template may declare `accounts:`
+  (`machine`, `username`, `password` or `generate: true`, `student_visible`, `role`,
+  `notes`); the machine must be one the worker builds, a username appears once per machine,
+  and a typed-in password for a Windows machine (decided as the worker's `os_family` does,
+  contract-tested) meets Windows complexity (schema plus `range_credentials/accounts.py`;
+  template create/update and the designer's save refuse invalid ones, 422). A typed-in
+  password is stored sealed inside the template with a purpose-bound range-credential seal
+  (`tnsec:rc1:`, HKDF-derived key); any other `tnsec:` value (a hypervisor, AI or LTI secret)
+  is refused; readers without `range:credentials_read` see `********`, and every one of the
+  template's passwords is masked wherever it appears. A range built from another tenant's
+  public template (a booking, the designer) takes none of its accounts. Each range's accounts
+  are stored sealed in `range_credentials` (migration `c8d9e0f1a2b3`, which also adds
+  `wiki_spaces.system_owned`), written at range create and at build acceptance; a generated
+  password is made once per range and kept across rebuilds. At deploy (vSphere) Windows gets
+  the declared `Administrator` password through Sysprep (else `TN_RANGE_DEFAULT_PASSWORD`,
+  installer `vault_range_default_password`, else random as before); Linux gets each declared
+  account as a cloud-init user (always a SHA-512-crypt hash, pure Python, never plain text;
+  sudo for `role: admin` except an image default user such as `ubuntu`, which keeps its
+  passwordless sudo); a Linux VM with none declared keeps its template's build password
+  (nothing is added to its cloud-config). Lab-session ranges get no accounts and no default
+  (random per VM). After first boot every Linux VM with declared accounts is logged in to as
+  the ephemeral install user: `cloud-init status --wait`, `getent passwd` per account, the
+  install user deleted, the guestinfo rewritten without hashes, with or without software
+  (`VSPHERE_ACCOUNT_SCRUB_TIMEOUT`, default 300 s; a failed login warns that `tn-install`
+  may remain). An account is recorded `applied` only when verified to exist (Linux getent;
+  Windows a guest login with the declared password); reset at build acceptance.
+  `GET /ranges/{id}/credentials`: admin, instructor and range_ops (new permission
+  `range:credentials_read`) see every account, with `applied`; a Student sees only
+  `student_visible`, applied accounts of a range they take part in (a running exercise
+  booked to a course they are rostered on; 404 otherwise; lab sessions not covered yet);
+  observers 403; another tenant 404; every read audited without the password,
+  `Cache-Control: no-store`. The range page has a Credentials panel ("Not set by TrueNorth"
+  badge) and the exercise page a "Your accounts" panel (fetched on request, masked, reveal
+  and copy per account). Each range gets a generated page in a system-owned wiki space
+  "Ranges" (always staff-only; its visibility cannot be changed, 409): machines, OS,
+  addresses, networks and the credential table as tokens, so no wiki row, revision or
+  search holds a password; only `GET /wiki/pages/{id}` fills them in, for
+  `range:credentials_read` holders (audited, `no-store`); an editor's save keeps the
+  generated block and their `## Notes`. It is rewritten on range create, rename and build,
+  and after a template edit for that template's tenant's ranges (after the response).
+  Greyspace's service account is hashed the same way (no plain-text fallback).
+  `medium-enterprise` and `soc-training` declare their accounts (all generated). Nothing of
+  this was released before (rc10 predates it), so no clean-up migration of earlier wiki
+  revisions is needed.
 
 ### R0-B: web correctness and role access
 - Fix: Resume on a paused exercise called `/start` (409 unless pending), so nothing resumed;

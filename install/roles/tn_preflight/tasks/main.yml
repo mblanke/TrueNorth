@@ -49,6 +49,23 @@
       ones marked "generated on target if empty".
     success_msg: "vault: no CHANGE_ME placeholders"
 
+# The range machines' generic password (ADR 0012) goes into .env.production single-quoted,
+# and Windows refuses a Sysprep password without complexity. Never prints the value.
+- name: Preflight — the generic range password is usable
+  vars:
+    _pw: "{{ tn_range_default_password | default('') | string }}"
+  ansible.builtin.assert:
+    that: >-
+      _pw | length == 0 or (
+        _pw | length >= 8 and _pw | length <= 128
+        and "'" not in _pw and '\n' not in _pw and '\r' not in _pw
+        and _pw is search('[A-Z]') and _pw is search('[a-z]') and _pw is search('[0-9]')
+        and _pw is search('[^A-Za-z0-9]'))
+    fail_msg: >-
+      vault_range_default_password must be empty, or 8-128 characters with an upper-case
+      letter, a lower-case letter, a digit and a symbol, and no single quote or newline.
+    success_msg: "range default password: {{ 'set' if _pw | length else 'not set (random per VM)' }}"
+
 # Alert email (tn_alert_email_enabled): everything Alertmanager needs to send, or the
 # install stops here rather than render a receiver that cannot deliver. Names what is
 # missing; never prints a credential.

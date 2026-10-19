@@ -6,6 +6,7 @@ import { ApiService, Detection } from '@core/services/api.service';
 import { AuthService, UserRole } from '@core/services/auth.service';
 import { fakeAuth } from '@core/auth/fake-auth';
 import { NotificationService } from '@core/services/notification.service';
+import { RangeCredentialsApiService } from '@core/services/range-credentials-api.service';
 import { InjectRecord } from '@core/models';
 import { ExerciseDetailComponent } from './exercise-detail.component';
 
@@ -195,5 +196,62 @@ describe('ExerciseDetailComponent inject log', () => {
     const el = await setup(throwError(() => new Error('500')));
     expect(el.querySelectorAll('.inj').length).toBe(0);
     expect(el.textContent).toContain('No injects recorded yet.');
+  });
+});
+
+describe('ExerciseDetailComponent range accounts (ADR 0012)', () => {
+  let fixture: ComponentFixture<ExerciseDetailComponent>;
+  let creds: jasmine.SpyObj<RangeCredentialsApiService>;
+
+  async function render(role: UserRole): Promise<HTMLElement> {
+    const api = jasmine.createSpyObj('ApiService', [
+      'get', 'listInjects', 'getRange', 'getRangeDiagram', 'listDetections', 'listRangeDocuments']);
+    api.listRangeDocuments.and.returnValue(of([]));
+    api.get.and.returnValue(of({
+      exercise_id: 'ex-1', exercise_name: 'Hunt', state: 'completed', total_score: 0, max_score: 0, range_id: 'r1',
+      scenario_name: 's', po_id: '', environment: '', duration_min: 0, timeline: [], noise_floor: null, objectives: [],
+    } as any));
+    api.getRange.and.returnValue(of({ id: 'r1', name: 'SOC range', state: 'ready', description: '' } as any));
+    api.getRangeDiagram.and.returnValue(of({ range_id: 'r1', diagram_json: null }));
+    api.listInjects.and.returnValue(of([]));
+    api.listDetections.and.returnValue(of([]));
+    creds = jasmine.createSpyObj('RangeCredentialsApiService', ['getCredentials']);
+    creds.getCredentials.and.returnValue(of({ range_id: 'r1', scope: 'student', accounts: [
+      { machine: 'jump01', username: 'analyst', password: 'Jump-Secret-2!', role: 'user', student_visible: true,
+        generated: true, applied: true, notes: 'The way in' }] }));
+    await TestBed.configureTestingModule({
+      imports: [ExerciseDetailComponent, NoopAnimationsModule],
+      providers: [
+        provideRouter([]),
+        { provide: ApiService, useValue: api },
+        { provide: RangeCredentialsApiService, useValue: creds },
+        { provide: NotificationService, useValue: jasmine.createSpyObj('NotificationService', ['success', 'error']) },
+        { provide: AuthService, useValue: fakeAuth(role) },
+        { provide: ActivatedRoute, useValue: { snapshot: { paramMap: convertToParamMap({ id: 'ex-1' }) } } },
+      ],
+    }).compileComponents();
+    fixture = TestBed.createComponent(ExerciseDetailComponent);
+    fixture.detectChanges();
+    return fixture.nativeElement as HTMLElement;
+  }
+
+  afterEach(() => fixture?.destroy());
+
+  it("offers a Student their own accounts for the exercise's range, on request", async () => {
+    const el = await render('student');
+    expect(el.textContent).toContain('Your accounts');
+    expect(creds.getCredentials).not.toHaveBeenCalled();
+    const show = Array.from(el.querySelectorAll('button')).find(b => b.textContent?.includes('Show accounts'))!;
+    show.click();
+    fixture.detectChanges();
+    expect(creds.getCredentials).toHaveBeenCalledOnceWith('r1');
+    expect(el.textContent).toContain('analyst');
+    expect(el.textContent).not.toContain('Jump-Secret-2!');
+  });
+
+  it('shows observers no accounts panel', async () => {
+    const el = await render('observer');
+    expect(el.textContent).not.toContain('Your accounts');
+    expect(el.textContent).not.toContain('Show accounts');
   });
 });
