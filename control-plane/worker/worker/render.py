@@ -289,10 +289,9 @@ def render_topology(
             role_image = windows_roles.role_image(roles, os_alias)
             template_name = resolve_template(role_image) if role_image else None
             missing_image = role_image if role_image and template_name is None else ""
+            os_template = next((t for t in map(resolve_template, os_alias_candidates(given_os)) if t), None)
             if template_name is None:
-                template_name = next(
-                    (t for t in map(resolve_template, os_alias_candidates(given_os)) if t), None
-                )
+                template_name = os_template
             if template_name is None:
                 unresolved.append(os_alias)
                 template_name = os_alias  # best-effort; provisioning will surface the miss
@@ -309,6 +308,10 @@ def render_topology(
                 role_plan = {"roles": roles, "role_features": windows_roles.role_features(roles)}
                 if missing_image:
                     role_plan["role_image_missing"] = missing_image
+                elif role_image and os_template and os_template != template_name:
+                    # The plain OS to build instead when the role image is not on the
+                    # hypervisor after all (vsphere_api: _role_image_fallback).
+                    role_plan["role_fallback_template"] = os_template
                 if "ad-ds" in roles:
                     domain = str(node.get("ad_domain") or node.get("ad_forest") or default_domain)
                     role_plan["ad_domain"] = domain
@@ -371,15 +374,23 @@ def render_topology(
 
 
 def golden_image_resolver(db, hypervisor: str = "vsphere") -> Callable[[str], str | None]:
-    """Build an os-alias -> template_name resolver from the golden_images table."""
+    """Build an os-alias -> template_name resolver from the golden_images table.
+
+    A Windows Server role image (windows_roles.py) resolves only once it is ``built``: an
+    enabled row for an image not built yet would clone a template that does not exist, so
+    render_topology builds the plain OS instead and the role reports itself not installed."""
     import json as _json
 
-    from .db_ops import enabled_golden_images
+    from .db_ops import enabled_golden_images, unbuilt_golden_images
 
     rows = enabled_golden_images(db, hypervisor)
+    role_images = {img for r in windows_roles.ROLES for img in r["install"].get("images", {}).values()}
+    unbuilt = unbuilt_golden_images(db, hypervisor) & role_images
     by_id: dict[str, str] = {}
     by_alias: dict[str, str] = {}
     for cid, tname, aliases_json in rows:
+        if cid in unbuilt:
+            continue
         tn = tname or cid
         by_id[cid] = tn
         try:

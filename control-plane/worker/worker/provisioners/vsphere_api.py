@@ -1144,7 +1144,9 @@ class VsphereAPIProvisioner(BaseProvisioner):
                 for n in vm_def["nics"]
             ]
 
-        wanted = {v["template_name"] for v in vm_defs}
+        # A role image's plain-OS fallback too (``_use_role_fallback``).
+        wanted = {v["template_name"] for v in vm_defs} | {
+            v["role_fallback_template"] for v in vm_defs if v.get("role_fallback_template")}
         view = si.content.viewManager.CreateContainerView(dc.vmFolder, [vim.VirtualMachine], True)
         try:
             # The plain templates and their host-local copies <id>@<host>-<yyyymmdd> (ADR 0012).
@@ -1473,7 +1475,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
                                                           vm_defs, vms_out, errors, warnings)
 
                     async def roles_then_software() -> None:
-                        await self._install_roles(si, vm_defs, vms_out, start, errors)
+                        await self._install_roles(si, vm_defs, vms_out, start, errors, warnings)
                         # Exchange / SharePoint SE / MECM images: after every role, so the
                         # range's DC is promoted; their own software runs after the domain join.
                         names = {v["name"] for v in vm_defs if vsphere_products.needs_setup(v)}
@@ -1938,10 +1940,12 @@ class VsphereAPIProvisioner(BaseProvisioner):
         return vsphere_roles.install(session, vm_def, deadline)
 
     async def _install_roles(self, si, vm_defs: list[dict], vms_out: list[dict], start: float,
-                             errors: list[str]) -> None:
+                             errors: list[str], warnings: list[str] | None = None) -> None:
         """Windows Server roles of each built VM (vsphere_roles.py), before its software:
         VSPHERE_CONCURRENCY VMs at a time, VSPHERE_ROLE_TIMEOUT each, never past
-        VSPHERE_PROVISION_BUDGET. Every role that does not end ``ok`` is an error."""
+        VSPHERE_PROVISION_BUDGET. Every role that does not end ``ok`` is an error, except an
+        Exchange / SharePoint SE / MECM role: set up later (``_setup_products``), or, when its
+        image was not built and the plain OS was, a warning and ``role_setup`` ``skipped``."""
         by_name = {v["name"]: v for v in vm_defs}
         hard_stop = start + self._budget
         gate = asyncio.Semaphore(self._concurrency)
@@ -1969,6 +1973,13 @@ class VsphereAPIProvisioner(BaseProvisioner):
             product = vsphere_products.setup_role(vm_def)
             if product:
                 status[product] = {"status": "pending", "detail": "deploy-time setup after the domain controller"}
+            elif fallback := vsphere_products.not_built(vm_def):
+                product = fallback[0]
+                res = vsphere_products.not_built_outcome(vm_def)
+                status[product] = {"status": res["status"], "detail": res["detail"]}
+                out["role_setup"] = res
+                if warnings is not None:
+                    warnings.append(f"VM {out['name']}: {res['detail']}")
             out["roles"] = status
             errors.extend(vsphere_roles.errors(out["name"], {k: v for k, v in status.items() if k != product}))
 
@@ -2127,6 +2138,24 @@ class VsphereAPIProvisioner(BaseProvisioner):
         except Exception as exc:
             errors.append(f"cleanup after the failed build: {exc}")
 
+    @staticmethod
+    def _role_image_absent(site: dict, vm_def: dict) -> bool:
+        """The VM's role image is neither a library item (checked by the caller) nor an
+        inventory template or host-local copy on this vCenter, and it has a plain OS to fall
+        back to (render.py ``role_fallback_template``)."""
+        return bool(vm_def.get("role_fallback_template")) and not vm_def.get("_local_copy") \
+            and vm_def["template_name"] not in site["templates"]
+
+    def _use_role_fallback(self, site: dict, vm_def: dict) -> None:
+        """Build the plain OS instead; the role then reports itself not installed
+        (``_install_roles``), as for an image the registry does not list as built."""
+        image = vm_def["template_name"]
+        vm_def["role_image_missing"] = image
+        vm_def["template_name"] = vm_def.pop("role_fallback_template")
+        vm_def["_local_copy"] = self._local_copy(site["templates"], vm_def)
+        logger.warning("VM %s: role image %s is not on the vCenter; building %s", vm_def["name"], image,
+                       vm_def["template_name"])
+
     async def _provision_one_vm(self, client: httpx.AsyncClient, si, site: dict, vm_def: dict) -> dict:
         """Create one VM (OVF item or inventory clone), wire and customize it, power it on."""
         vm_id = None
@@ -2136,6 +2165,10 @@ class VsphereAPIProvisioner(BaseProvisioner):
                 # else the plain inventory template, as before.
                 item = None if vm_def.get("_local_copy") else await self._find_library_item(
                     client, vm_def["template_name"])
+                if item is None and self._role_image_absent(site, vm_def):
+                    self._use_role_fallback(site, vm_def)
+                    item = None if vm_def.get("_local_copy") else await self._find_library_item(
+                        client, vm_def["template_name"])
                 if item:
                     vm_def["_source"] = f"library:{vm_def['template_name']}"
                     vm_id = await self._deploy_ovf(client, item, vm_def, site)

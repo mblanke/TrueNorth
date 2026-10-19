@@ -455,6 +455,11 @@ course production with a local-model fallback, and the cleanup of unsupported su
     skipped. Anything but `ok` is a warning, never a partial range. New
     `VSPHERE_ROLE_SETUP_TIMEOUT` (default 3600 s); the wait also stops at the provision
     budget, and setup carries on in the guest. `accounts_applied` is unchanged.
+  - Not built yet: a role image whose golden-image row is not `build_status=built`, or whose
+    template is not on the vCenter, is replaced by the plain OS (`srv2022`, render's resolver
+    and the clone step), with the warning "role image <id> not built — using srv2022; <role>
+    not installed" and `role_setup` `skipped`; the range is not partial for it. So enabling
+    the rows does not break red-vs-blue or large-enterprise before the images exist.
   - The three catalogue rows are `enabled=yes`; a contract test keeps every enabled role
     image tied to a deploy path. Runbook: `vmware-site-runbook.md` §7.3.
 

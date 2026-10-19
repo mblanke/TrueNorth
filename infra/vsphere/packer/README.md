@@ -229,7 +229,7 @@ The deploy provisioner can use either, so keeping both costs only datastore spac
 | c2-server-cs | — | **Not built here** | Cobalt Strike image: production only, needs licensed media, never built in the lab |
 | precomp-host, detonation-host | clone | **Partial** | Clone `win10-22h2` and template only (`communicator="none"`); `files/windows/<name>.ps1` is applied at deploy via a guest-customization spec. detonation-host stays sterile (no sensor, no egress). The variant WinRM mechanism below could bake these too; not switched over yet |
 | variants | clone | **Likely** | `variants.pkr.hcl`; see "Custom images (variants)". Windows variants depend on vSphere guest customization succeeding on the sysprepped base |
-| srv2022-exchange2019, srv2022-sharepointse, srv2022-mecm | clone | **Not run yet; partial by design** | `roles.pkr.hcl`: prerequisites installed and media staged; the worker runs the domain-dependent setup at deploy (`vsphere_products.py`, `vmware-site-runbook.md` §7.3). See "Role images". Catalogue rows `enabled=yes`: build them before a range that uses them |
+| srv2022-exchange2019, srv2022-sharepointse, srv2022-mecm | clone | **Not run yet; partial by design** | `roles.pkr.hcl`: prerequisites installed and media staged; the worker runs the domain-dependent setup at deploy (`vsphere_products.py`, `vmware-site-runbook.md` §7.3). See "Role images". Catalogue rows `enabled=yes`; until built, ranges get plain `srv2022` and a warning |
 
 All Linux images (bases, derived, variants) log in with the one generic build login
 (`ssh_username` / `ssh_password`), which every seed creates from `ssh_password_hash`.
@@ -256,8 +256,8 @@ commands. It is also the staged-image marker: the worker
 (`control-plane/worker/worker/provisioners/vsphere_products.py`) runs those steps at deploy
 only on a clone whose `role-image.json` names the image, after the range's DC is up and the
 VM has joined its domain (`docs/deployment/vmware-site-runbook.md` §7.3). The catalogue rows
-are `enabled=yes`, so an enabled row resolves before it is built: build these images before
-a range that uses them, as for every other enabled template (ADR 0012 decision 1).
+are `enabled=yes`. Until an image is `built` (golden-image registry) and present on the vCenter, a range builds the plain OS (`srv2022`) instead, with the warning "role image <id> not built — using srv2022; <role> not installed" and `role_setup` `skipped`: red-vs-blue and
+large-enterprise keep building before these images exist.
 `configmgr-prereqs.zip` (setupdl.exe output) on the depot at build time is staged into the
 MECM image; without it each range downloads it from the depot at deploy. There is no Packer source for `srv2022-sql2022` or `srv2019-sharepoint2019` yet
 (their ISOs are listed in `install/lab/work-site/isos.conf`).

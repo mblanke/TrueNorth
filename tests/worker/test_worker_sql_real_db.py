@@ -931,6 +931,7 @@ PG_CALLS = {
     "hypervisor_creds": lambda db: db_ops.hypervisor_creds(db, "vsphere", ID),
     "hypervisor_creds_by_id": lambda db: db_ops.hypervisor_creds_by_id(db, "vsphere", ID, ID),
     "enabled_golden_images": lambda db: db_ops.enabled_golden_images(db, "vsphere"),
+    "unbuilt_golden_images": lambda db: db_ops.unbuilt_golden_images(db, "vsphere"),
     "range_accounts": lambda db: db_ops.range_accounts(db, ID),
     "is_lab_range": lambda db: db_ops.is_lab_range(db, ID),
     "mark_accounts_applied": lambda db: db_ops.mark_accounts_applied(db, ID, [("dc01", "Administrator")]),

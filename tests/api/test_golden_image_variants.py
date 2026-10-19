@@ -160,3 +160,36 @@ def test_catalogue_reimport_keeps_the_variant(client, db_session):
     assert img.notes.startswith("origin=variant")
     r = client.get("/golden-images/resolve", params={"os": "windows-11-analyst"})
     assert r.status_code == 200 and r.json()["template_name"] == "win11-analyst"
+
+
+def test_a_role_image_resolves_only_once_built(db_session):
+    """An enabled role image row (srv2022-exchange2019, catalogue enabled=yes) that is not
+    built yet must not resolve: the range builds the plain OS instead (vsphere_products.py
+    reports the role not installed). Built, it resolves and the deploy-time setup runs."""
+    from worker import render
+
+    db_session.add_all([
+        GoldenImage(catalogue_id="srv2022", os_family="windows", hypervisor="vsphere", template_name="srv2022",
+                    os_aliases='["windows-server-2022"]', build_status="built", enabled=True),
+        GoldenImage(catalogue_id="srv2022-exchange2019", os_family="windows", hypervisor="vsphere",
+                    template_name="srv2022-exchange2019", os_aliases="[]", build_status="planned", enabled=True),
+    ])
+    db_session.flush()
+    nodes = [{"id": "dc01", "os": "windows-server-2022", "services": ["active_directory"], "ad_forest": "corp.test"},
+             {"id": "exch", "os": "windows-server-2022", "services": ["exchange"]}]
+
+    def exch():
+        resolve = golden_image_resolver(db_session, "vsphere")
+        vms = render.render_topology({"name": "t", "nodes": nodes}, "ab12cd34", resolve)["vm_definitions"]
+        return resolve, next(v for v in vms if v["node_id"] == "exch")
+
+    resolve, vm = exch()
+    assert resolve("srv2022-exchange2019") is None and resolve("windows-server-2022") == "srv2022"
+    assert vm["template_name"] == "srv2022" and vm["role_image_missing"] == "srv2022-exchange2019"
+
+    row = db_session.query(GoldenImage).filter_by(catalogue_id="srv2022-exchange2019").one()
+    row.build_status = "built"
+    db_session.flush()
+    resolve, vm = exch()
+    assert vm["template_name"] == "srv2022-exchange2019" and "role_image_missing" not in vm
+    assert vm["role_fallback_template"] == "srv2022"  # if the vCenter turns out not to have it

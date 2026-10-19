@@ -236,6 +236,16 @@ def enabled_golden_images(db, hypervisor: str) -> list:
     return db.execute(stmt).fetchall()
 
 
+def unbuilt_golden_images(db, hypervisor: str) -> set[str]:
+    """Catalogue ids of enabled, undeleted images for a hypervisor whose build_status is not ``built``."""
+    gi = golden_images
+    stmt = sa.select(gi.c.catalogue_id).where(
+        gi.c.hypervisor == hypervisor, gi.c.enabled == sa.true(), gi.c.deleted_at.is_(None),
+        gi.c.build_status != "built",
+    )
+    return {row[0] for row in db.execute(stmt).fetchall()}
+
+
 # -- exercises + objectives --------------------------------------------------
 def _exercise_scenario_join():
     return exercises.join(scenarios, exercises.c.scenario_id == scenarios.c.id)

@@ -1429,6 +1429,43 @@ class TestProductSetup:
         assert result.status == "partial"  # for the DC's own error only
         assert [e for e in result.errors if "exchange" in e] == []
 
+    def test_a_built_role_image_is_cloned_and_set_up(self, flow, vc):
+        prov, template, events, _ = flow
+        _run(prov.provision(RANGE_ID, template, {}))
+        assert [n for _, n, _ in vc.templates["srv2022-exchange2019"].clone_specs] == [f"{R8}-exch"]
+        assert not [n for _, n, _ in vc.templates["tmpl-win2022"].clone_specs if n == f"{R8}-exch"]
+        assert ("run", f"{R8}-exch") in [e[:2] for e in events]
+
+    def test_an_unbuilt_role_image_builds_srv2022_and_warns(self, flow, vc):
+        prov, _, events, _ = flow
+        # The registry lists the role images but not as built: the resolver leaves them out.
+        built = render.render_topology(PRODUCT_TEMPLATE, RANGE_ID, IMAGES.get)
+        template = {"name": "Product Range", "vms": built["vm_definitions"], "networks": built["network_definitions"]}
+        result = _run(prov.provision(RANGE_ID, template, {}))
+        assert result.status == "ok", result.errors  # not partial: the range still builds
+        exch = _vm_out(result, "exch")
+        detail = "role image srv2022-exchange2019 not built — using tmpl-win2022; exchange not installed"
+        assert exch["roles"]["exchange"] == {"status": "skipped", "detail": detail}
+        assert exch["role_setup"] == {"status": "skipped", "detail": detail, "image": "srv2022-exchange2019"}
+        assert f"VM {R8}-exch: {detail}" in result.warnings
+        assert any(n == f"{R8}-exch" for _, n, _ in vc.templates["tmpl-win2022"].clone_specs)
+        assert not vc.templates["srv2022-exchange2019"].clone_specs
+        assert not [e for e in events if e[0] in ("prepare", "run") and e[1] == f"{R8}-exch"]
+
+    def test_a_role_image_missing_on_the_vcenter_falls_back_too(self, flow, vc):
+        prov, template, events, _ = flow
+        gone = vc.templates.pop("srv2022-exchange2019")  # registered as built, but not in vCenter
+        vc.dc.vmFolder.childEntity.remove(gone)
+        result = _run(prov.provision(RANGE_ID, template, {}))
+        assert result.status == "ok", result.errors
+        exch = _vm_out(result, "exch")
+        assert exch["role_setup"]["status"] == "skipped"
+        assert exch["role_setup"]["detail"].startswith("role image srv2022-exchange2019 not built — using tmpl-win2022")
+        assert exch["template"] == "tmpl-win2022"
+        assert any(n == f"{R8}-exch" for _, n, _ in vc.templates["tmpl-win2022"].clone_specs)
+        assert not [e for e in events if e[0] in ("prepare", "run") and e[1] == f"{R8}-exch"]
+        assert ("run", f"{R8}-exch") not in [e[:2] for e in events]
+
     def test_a_finished_setup_is_ok_on_the_role(self, flow):
         prov, template, _, state = flow
         state["run"] = "ok"

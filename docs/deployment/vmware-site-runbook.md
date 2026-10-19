@@ -549,7 +549,7 @@ The role images `srv2022-exchange2019`, `srv2022-sharepointse` and `srv2022-mecm
 Each product needs the range's domain, so the worker finishes it per range
 (`worker/provisioners/vsphere_products.py`). It runs on a VM whose node names the role
 (`exchange`, `sharepoint_se`, `sccm` …, `windows-server-2022`) and which was cloned from the
-role image. A bare-OS fallback (image not registered) gets nothing and reports `skipped`.
+role image. Until an image is `built` (golden-image registry) and present on the vCenter, a range builds the plain OS (`srv2022`) instead, with the warning "role image <id> not built — using srv2022; <role> not installed" and `role_setup` `skipped`. Nothing is set up on it, and the range is not partial for it.
 
 Order, per VM:
 1. After every VM's Windows roles, so the forest-root DC of the VM's domain has been
