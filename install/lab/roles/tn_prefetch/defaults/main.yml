@@ -15,6 +15,12 @@ tn_prefetch_rocky_image: "rockylinux/rockylinux:9"
 
 tn_prefetch_choco_upstream: "https://community.chocolatey.org/api/v2/"
 
+# Chocolatey packages prefetched in addition to the software catalogue. "chocolatey" itself:
+# Windows Packer builds bootstrap Chocolatey from this .nupkg in the depot feed
+# (infra/vsphere/packer/files/windows/choco-bootstrap.ps1); Nexus does not serve install.ps1.
+tn_prefetch_choco_extra:
+  - { choco: chocolatey }
+
 # Offline Chocolatey packages (content/choco/*.yaml): scripts/lab/choco-internalize.py
 # downloads each vendor installer, puts it in the raw "installers" repo and pushes a
 # same-id package to chocolatey-hosted. Those ids are skipped by the community prefetch.

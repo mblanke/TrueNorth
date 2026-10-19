@@ -5,8 +5,9 @@ Contracts kept here, in CI, where there is no vCenter, govc or TN-MGMT01:
 * scripts/register_golden_image_inprocess.py marks a catalogue image built (PATCH only what
   differs), creates a missing variant, and fails on a missing catalogue image.
 * scripts/lab/pkrvars-work.py writes lab.auto.pkrvars.hcl mode 0600 with every variable the
-  work site needs, never prints a password, escapes HCL template sequences, and refuses
-  Linux credentials the Ubuntu seed cannot log in with.
+  work site needs, never prints a password, escapes HCL template sequences, and
+  hashes the one generic Linux build password for every Linux seed (ssh_password_hash),
+  and sets the depot feed + apt proxy with --depot.
 * scripts/lab/iso-sync-esx04.sh copies only what is missing or differs (stub govc).
 * The shell scripts parse (bash -n) and are shellcheck-clean when shellcheck is installed.
 * The work-site inventory reuses tn_build without touching TN-MGMT01's Docker.
@@ -18,6 +19,7 @@ is simulator evidence, not a vCenter run.
 from __future__ import annotations
 
 import importlib.util
+import json
 import os
 import re
 import shutil
@@ -31,12 +33,12 @@ import yaml
 ROOT = Path(__file__).resolve().parents[2]
 LAB = ROOT / "scripts/lab"
 WORK = ROOT / "install/lab/work-site"
-SEED = ROOT / "infra/vsphere/packer/http/ubuntu/user-data"
+VARIABLES = ROOT / "infra/vsphere/packer/variables.pkr.hcl"
 SHELL_SCRIPTS = ["build-phase.sh", "test-clone.sh", "iso-sync-esx04.sh", "lib.sh", "deploy-mgmt-vm.sh"]
 
 VC_SECRET = "Vc-S3cret-${HOME}-%{x}"
 WIN_SECRET = "Win-Generic-Pw1!"
-LINUX_SECRET = "ubuntu"  # the committed Ubuntu seed's build password
+LINUX_SECRET = "Generic-Linux-Pw9"  # any value: every Linux seed is rendered from its hash
 
 
 def _load(name: str, path: Path):
@@ -156,19 +158,31 @@ def site(tmp_path, monkeypatch):
         "VSPHERE_VERIFY_SSL=false\n"
         f"TN_TEMPLATE_WINDOWS_ADMIN_PASSWORD='{WIN_SECRET}'\n"
     )
-    seed = tmp_path / "user-data"
-    shutil.copy(SEED, seed)
+    if shutil.which("openssl") is None:
+        pytest.skip("openssl hashes the Linux build password (pkrvars-work.py needs it)")
     for name in ("TN_TEMPLATE_WINDOWS_ADMIN_PASSWORD", "TN_TEMPLATE_LINUX_USER", "TN_TEMPLATE_LINUX_PASSWORD"):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("TN_TEMPLATE_LINUX_USER", "ubuntu")
     monkeypatch.setenv("TN_TEMPLATE_LINUX_PASSWORD", LINUX_SECRET)
     out = tmp_path / "lab.auto.pkrvars.hcl"
-    args = ["--env-file", str(env), "--out", str(out), "--seed", str(seed), "--allow-non-root", "--non-interactive"]
-    return {"env": env, "out": out, "seed": seed, "args": args}
+    args = ["--env-file", str(env), "--out", str(out), "--allow-non-root", "--non-interactive"]
+    return {"env": env, "out": out, "args": args}
 
 
 def _hcl(path: Path) -> dict[str, str]:
     return dict(re.findall(r"^([a-z0-9_]+) = (.*?)(?:  # .*)?$", path.read_text(), re.M))
+
+
+def _crypt(password: str, salt: str) -> str:
+    """Independent of pkrvars-work.py: openssl passwd -6, password on stdin."""
+    r = subprocess.run(["openssl", "passwd", "-6", "-salt", salt, "-stdin"], input=password + "\n",
+                       capture_output=True, text=True, check=True)
+    return r.stdout.strip()
+
+
+def _verifies(digest: str, password: str) -> bool:
+    m = re.fullmatch(r"\$6\$([./A-Za-z0-9]{1,16})\$[./A-Za-z0-9]{86}", digest)
+    return bool(m) and _crypt(password, m.group(1)) == digest
 
 
 def test_pkrvars_writes_every_required_variable_privately(pk, site, capsys):
@@ -184,7 +198,10 @@ def test_pkrvars_writes_every_required_variable_privately(pk, site, capsys):
     assert vals["http_bind_address"] == '"10.30.31.20"'
     assert vals["content_library"] == '"TrueNorth-Templates"'
     assert vals["insecure_connection"] == "true"
-    assert vals["depot_url"] == '""'
+    assert vals["depot_url"] == vals["apt_proxy"] == '""'  # offline bases
+    assert vals["ssh_username"] == '"ubuntu"' and vals["ssh_password"] == f'"{LINUX_SECRET}"'
+    digest = json.loads(vals["ssh_password_hash"])
+    assert _verifies(digest, LINUX_SECRET) and LINUX_SECRET not in digest
     assert vals["iso_folder"] == '"ISO"'
     assert vals["iso_srv2022"] == '"windows/en-us_windows_server_2022_updated_july_2026_x64_dvd_75aa9e18.iso"'
     assert vals["iso_vyos"] == '"appliances/vyos-2026.10.01-0035-rolling-generic-amd64.iso"'
@@ -192,17 +209,21 @@ def test_pkrvars_writes_every_required_variable_privately(pk, site, capsys):
     # HCL template sequences in a password are escaped, so Packer reads the literal text.
     assert vals["vcenter_password"] == '"Vc-S3cret-$${HOME}-%%{x}"'
     printed = capsys.readouterr()
-    for secret in (VC_SECRET, WIN_SECRET, "Vc-S3cret"):
+    for secret in (VC_SECRET, WIN_SECRET, "Vc-S3cret", LINUX_SECRET, digest):
         assert secret not in printed.out and secret not in printed.err
     assert "vcenter_password         <set>" in printed.out
+    assert "ssh_password_hash        <set>" in printed.out
 
 
 def test_pkrvars_depot_and_check(pk, site, capsys):
     assert pk.main([*site["args"], "--depot"]) == 0
-    assert _hcl(site["out"])["depot_url"] == '"http://10.30.31.30:8081/repository"'
+    vals = _hcl(site["out"])
+    assert vals["depot_url"] == '"http://10.30.31.30:8081/repository"'
+    assert vals["apt_proxy"] == '"http://10.30.31.30:3142"'  # apt-cacher-ng on the depot's BUILD NIC
     capsys.readouterr()
     assert pk.main(["--check", "--allow-non-root", "--out", str(site["out"])]) == 0
-    assert "depot_url=http://10.30.31.30:8081/repository" in capsys.readouterr().out
+    checked = capsys.readouterr().out
+    assert "depot_url=http://10.30.31.30:8081/repository" in checked and "apt_proxy=http://10.30.31.30:3142" in checked
     site["out"].chmod(0o644)
     assert pk.main(["--check", "--allow-non-root", "--out", str(site["out"])]) == 1
     assert "want 0600" in capsys.readouterr().out
@@ -236,32 +257,49 @@ def test_pkrvars_requires_root_by_default(pk, site):
     assert not site["out"].exists()
 
 
-@pytest.mark.skipif(shutil.which("openssl") is None, reason="openssl hashes the seed password")
-def test_pkrvars_refuses_a_linux_password_the_seed_cannot_use(pk, site, monkeypatch, capsys):
-    monkeypatch.setenv("TN_TEMPLATE_LINUX_PASSWORD", "Generic-Linux-Pw9")
-    assert pk.main(site["args"]) == 3
-    assert not site["out"].exists()
-    assert "Generic-Linux-Pw9" not in capsys.readouterr().err
-    before = site["seed"].read_text()
-    assert pk.main([*site["args"], "--write-ubuntu-seed"]) == 0
-    after = site["seed"].read_text()
-    assert after != before and "Generic-Linux-Pw9" not in after
-    assert pk.seed_check(site["seed"], "ubuntu", "Generic-Linux-Pw9") == "match"
-    # Only the hash changed: user, sudoers line, everything else stays.
-    assert [a for a in after.splitlines() if "password:" not in a] == [
-        b for b in before.splitlines() if "password:" not in b
-    ]
-
-
-def test_pkrvars_refuses_another_linux_user(pk, site, monkeypatch):
+def test_pkrvars_any_generic_linux_login_works_without_touching_the_seeds(pk, site, monkeypatch):
+    """ADR 0012 decision 5: the seeds are templatefiles, so another user or password is just
+    another vars file. No exit 3, no rewriting of committed files."""
+    seeds = sorted((ROOT / "infra/vsphere/packer/http").glob("*/*.pkrtpl.hcl"))
+    before = {p: p.read_bytes() for p in seeds}
     monkeypatch.setenv("TN_TEMPLATE_LINUX_USER", "tnbuild")
-    assert pk.main(site["args"]) == 3
+    monkeypatch.setenv("TN_TEMPLATE_LINUX_PASSWORD", "Another-Pw 7$")
+    assert pk.main(site["args"]) == 0
+    vals = _hcl(site["out"])
+    assert vals["ssh_username"] == '"tnbuild"'
+    assert _verifies(json.loads(vals["ssh_password_hash"]), "Another-Pw 7$")
+    assert {p: p.read_bytes() for p in seeds} == before
 
 
-def test_the_committed_seed_matches_the_documented_default(pk):
+def test_pkrvars_new_password_new_hash_same_password_same_file(pk, site, monkeypatch):
+    assert pk.main(site["args"]) == 0
+    first = json.loads(_hcl(site["out"])["ssh_password_hash"])
+    monkeypatch.setenv("TN_TEMPLATE_LINUX_PASSWORD", "Changed-Pw1")
+    assert pk.main(site["args"]) == 0
+    second = json.loads(_hcl(site["out"])["ssh_password_hash"])
+    assert second != first and _verifies(second, "Changed-Pw1") and not _verifies(second, LINUX_SECRET)
+
+
+@pytest.mark.parametrize("user", ["root", "Tn Build", "Administrator", "-x"])
+def test_pkrvars_refuses_a_linux_user_no_seed_can_create(pk, site, monkeypatch, user):
+    monkeypatch.setenv("TN_TEMPLATE_LINUX_USER", user)
+    assert pk.main(site["args"]) == 2
+    assert not site["out"].exists()
+
+
+def test_pkrvars_refuses_an_https_apt_proxy(pk, site):
+    assert pk.main([*site["args"], "--depot", "--apt-proxy", "https://10.30.31.30:3142"]) == 2
+
+
+def test_the_default_linux_hash_is_the_default_password():
     if shutil.which("openssl") is None:
         pytest.skip("openssl")
-    assert pk.seed_check(SEED, "ubuntu", "ubuntu") == "match"
+    text = VARIABLES.read_text()
+    block = text[text.index('variable "ssh_password_hash"'):]
+    digest = re.search(r'default\s*=\s*"([^"]+)"', block).group(1)
+    pw_block = text[text.index('variable "ssh_password"'):]
+    password = re.search(r'default\s*=\s*"([^"]+)"', pw_block).group(1)
+    assert _verifies(digest, password)
 
 
 def test_isos_conf_names_declared_packer_variables(pk):
@@ -271,7 +309,9 @@ def test_isos_conf_names_declared_packer_variables(pk):
     )
     assert set(isos) <= declared
     assert len(isos) == 11
-    assert any(p.startswith("iso_win10") for p in pending) and any(p.startswith("iso_srv2019") for p in pending)
+    pending_vars = {p.split()[0] for p in pending} - {"-"}
+    assert pending_vars <= declared  # a PENDING line names a variable Packer already has
+    assert {"iso_win10", "iso_srv2019", "iso_exchange2019", "iso_sharepointse", "iso_mecm", "iso_sql2022"} <= pending_vars
 
 
 # ── shell scripts ─────────────────────────────────────────────────────

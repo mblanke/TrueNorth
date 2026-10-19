@@ -397,6 +397,27 @@ course production with a local-model fallback, and the cleanup of unsupported su
   - Known gaps, all in the work-site README: the Packer tree's depot contract (no
     `install.ps1`, no apt proxy for the derived images), Evaluation-media assumptions in
     win10-22h2 and srv2019, and the fixed users in the non-Ubuntu Linux seeds.
+- **Packer tree closes the work-site kit's gaps (ADR 0012).** Checked with `packer
+  validate` and contract tests only; nothing has been built on the work vCenter.
+  - Depot paths. Chocolatey is bootstrapped from the `chocolatey` .nupkg in the Nexus feed
+    (`choco-bootstrap.ps1`, Chocolatey's documented offline install), and prefetch caches it.
+    The nonexistent `<depot_url>/apt` source is gone. A new `apt_proxy` variable
+    (apt-cacher-ng, `http://10.30.31.30:3142`) is applied in the Ubuntu autoinstall, the
+    Debian/Kali/Parrot preseeds, Rocky's dnf and every derived and variant clone, and
+    `cleanup.sh` removes it before templating. Office LTSC and the role images read
+    `<depot_url>/installers/...`.
+  - Visual Studio media. win10-22h2 and srv2019 select Windows 10 Enterprise and Server 2019
+    Standard by image name and public GVLK, checked against Microsoft Learn's KMS client key
+    list. Evaluation ISOs still build with `win10_eval` / `srv2019_eval`.
+  - One generic Linux login (decision 5). Every Linux seed is a templatefile that takes
+    `ssh_username` and `ssh_password_hash`, and every Linux source logs in with them.
+    `pkrvars-work.py` writes the hash (`openssl passwd -6`, idempotent) and `apt_proxy`.
+    Its exit-3 seed check and `--write-ubuntu-seed` are gone.
+  - Server role images `srv2022-exchange2019`, `srv2022-sharepointse` and `srv2022-mecm`
+    (`roles.pkr.hcl`) clone srv2022. They install the prerequisites (MECM: SQL 2022 as a
+    SysPrep prepared image, ADK + WinPE) and stage the media. Exchange, SharePoint and
+    ConfigMgr setup need the range domain (and SharePoint a product key), so that step is
+    left to deploy time. Their catalogue rows are `enabled=no` until TrueNorth runs it.
 
 ### R0-B: web correctness and role access
 - Fix: Resume on a paused exercise called `/start` (409 unless pending), so nothing resumed;

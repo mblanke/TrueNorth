@@ -33,7 +33,7 @@ tn_build_packages:
   - git
   - rsync
   - unzip
-  - openssl # pkrvars-work.py checks the Linux build password against the Ubuntu seed
+  - openssl # pkrvars-work.py hashes the Linux build password (ssh_password_hash)
   - xorriso # Packer cd_files (Ubuntu cidata, Rocky OEMDRV)
   - genisoimage
   - python3-venv

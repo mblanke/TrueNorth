@@ -7,8 +7,8 @@
 #
 #   variant-windows  clone a sysprepped Windows base, get WinRM back via vSphere guest
 #                    customization, choco install, run scripts, sysprep again
-#   variant-linux    clone a Linux base, SSH in as the build user, apt/dnf install, run
-#                    scripts, cleanup.sh
+#   variant-linux    clone a Linux base, SSH in as the build user, set the build apt/dnf
+#                    proxy (apt_proxy), apt/dnf install, run scripts, cleanup.sh
 #
 # Build one with build.sh, which picks the source from variant_os_family:
 #   ./build.sh variant win11-analyst
@@ -46,11 +46,11 @@ locals {
   variant_notes = "TrueNorth variant ${var.variant_name}: ${var.variant_description} (cloned from ${var.variant_base} by Packer)"
 
   variant_windows_scripts = concat(
-    ["${path.root}/files/windows/variant-packages.ps1"],
+    ["${path.root}/files/windows/choco-bootstrap.ps1", "${path.root}/files/windows/variant-packages.ps1"],
     [for s in var.variant_scripts : "${path.root}/variants/scripts/${s}"],
   )
   variant_linux_scripts = concat(
-    ["${path.root}/files/linux/variant-packages.sh"],
+    ["${path.root}/files/linux/apt-proxy.sh", "${path.root}/files/linux/variant-packages.sh"],
     [for s in var.variant_scripts : "${path.root}/variants/scripts/${s}"],
   )
 
@@ -183,6 +183,7 @@ build {
     only = ["vsphere-clone.variant-windows"]
     environment_vars = [
       "DEPOT_URL=${var.depot_url}",
+      "CHOCOLATEY_VERSION=${var.chocolatey_version}",
       "VARIANT_NAME=${var.variant_name}",
       "VARIANT_CHOCO_PACKAGES=${join(";", var.variant_choco_packages)}",
     ]
@@ -200,6 +201,7 @@ build {
     only = ["vsphere-clone.variant-linux"]
     environment_vars = [
       "DEPOT_URL=${var.depot_url}",
+      "APT_PROXY=${var.apt_proxy}",
       "VARIANT_NAME=${var.variant_name}",
       "VARIANT_PACKAGES=${join(" ", var.variant_apt_packages)}",
     ]

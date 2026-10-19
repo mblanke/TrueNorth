@@ -2,9 +2,10 @@
   Variant script (win10-office): install Microsoft Office LTSC from TN-DEPOT01, if present.
 
   Office is not on the community Chocolatey feed and needs volume-licence media, so it is
-  staged on the depot by hand as ONE zip:
+  staged on the depot by hand as ONE zip, in the raw "installers" repository
+  (install/lab/roles/tn_depot):
 
-    $DEPOT_URL/office/office-ltsc.zip
+    $DEPOT_URL/installers/office/office-ltsc.zip
       setup.exe            Office Deployment Tool (ODT) setup.exe
       configuration.xml    ODT config: Product ID (e.g. ProPlus2024Volume), PIDKEY (the
                            public GVLK; activation is KMS, deferred), Display Level="None",
@@ -20,11 +21,11 @@ $ErrorActionPreference = 'Stop'
 
 $depot = $env:DEPOT_URL
 if (-not $depot) {
-  Write-Warning 'office-ltsc: DEPOT_URL not set; Office LTSC NOT installed. Stage office/office-ltsc.zip on the depot and rebuild.'
+  Write-Warning 'office-ltsc: DEPOT_URL not set; Office LTSC NOT installed. Stage installers/office/office-ltsc.zip on the depot and rebuild.'
   exit 0
 }
 
-$url = "$depot/office/office-ltsc.zip"
+$url = "$($depot.TrimEnd('/'))/installers/office/office-ltsc.zip"
 try {
   Invoke-WebRequest -Uri $url -Method Head -UseBasicParsing -TimeoutSec 15 | Out-Null
 } catch {
