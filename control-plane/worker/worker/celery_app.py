@@ -67,7 +67,9 @@ app.conf.update(
     enable_utc=True,
     # Routing: one table, shared with the API's sender (contracts.py). The API used to
     # keep its own copy, and the two disagreed on delete_snapshot.
-    task_routes={**route_table(), "worker.tasks.*": {"queue": "default"}, "worker.audit_tasks.*": {"queue": "default"}},
+    task_routes={**route_table(), "worker.tasks.*": {"queue": "default"}, "worker.audit_tasks.*": {"queue": "default"},
+                 # vCenter work: worker-provision (-Q provision,destroy) has VSPHERE_* and egress.
+                 "worker.template_tasks.*": {"queue": "destroy"}},
     # Concurrency control
     task_track_started=True,
     task_acks_late=True,  # Don't ack until task completes
@@ -140,6 +142,14 @@ app.conf.beat_schedule = {
         "schedule": crontab(hour=2, minute=15),
         "options": {"expires": 6 * 3600},
     },
+    # Host-local golden-template copies (ADR 0012, worker/template_tasks.py): a report of
+    # the superseded ones unless TEMPLATE_COPY_PRUNE=delete, then they are deleted.
+    "template-copies-prune-daily": {
+        "task": "worker.template_tasks.prune_template_copies",
+        "schedule": crontab(hour=3, minute=30),
+        "kwargs": {"dry_run": os.getenv("TEMPLATE_COPY_PRUNE", "").strip().lower() != "delete"},
+        "options": {"expires": 6 * 3600},
+    },
 }
 
 
@@ -184,4 +194,5 @@ from . import (
     power_tasks,  # noqa: F401, E402
     tasks,  # noqa: F401, E402
     telemetry_tasks,  # noqa: F401, E402
+    template_tasks,  # noqa: F401, E402
 )

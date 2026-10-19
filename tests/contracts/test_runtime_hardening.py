@@ -109,7 +109,11 @@ def test_exactly_one_beat_sends_the_periodic_tasks():
 def test_beat_schedule_names_contracted_tasks_that_expire():
     schedule = worker_app.conf.beat_schedule
     # Beat-only daily jobs the API never dispatches (no API contract); routed by name.
-    daily = {"worker.audit_tasks.export_audit_days", "worker.audit_tasks.enforce_audit_retention"}
+    # Each with the queue its worker consumes: audit on worker-scenario (AUDIT_SIGNING_SEED),
+    # template copies on worker-provision (VSPHERE_* and egress, -Q provision,destroy).
+    daily = {"worker.audit_tasks.export_audit_days": ("worker.audit_tasks.*", "default"),
+             "worker.audit_tasks.enforce_audit_retention": ("worker.audit_tasks.*", "default"),
+             "worker.template_tasks.prune_template_copies": ("worker.template_tasks.*", "destroy")}
     assert {e["task"] for e in schedule.values()} == {
         "worker.tasks.health_check_ranges",
         "worker.tasks.collect_range_metrics",
@@ -120,7 +124,8 @@ def test_beat_schedule_names_contracted_tasks_that_expire():
         if entry["task"] in daily:
             # A missed daily run is caught up by the next one; drop it within the day.
             assert 0 < entry["options"]["expires"] <= 24 * 3600, name
-            assert worker_app.conf.task_routes["worker.audit_tasks.*"] == {"queue": "default"}
+            pattern, queue = daily[entry["task"]]
+            assert worker_app.conf.task_routes[pattern] == {"queue": queue}
             continue
         assert entry["task"] in contracted, name
         # A run nobody picked up is dropped before the next is due: no backlog of stale

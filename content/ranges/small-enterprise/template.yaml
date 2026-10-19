@@ -10,14 +10,17 @@ outputs:
 assets:
   - role: jump
     type: vm
+    os: ubuntu-2404
     count: 1
     tags: [mgmt]
   - role: dc
     type: vm
+    os: windows-server-2022
     count: 1
     tags: [srv]
   - role: user
     type: vm
+    os: windows-11
     count: 3
     tags: [user]
 policies:

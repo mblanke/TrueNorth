@@ -236,6 +236,41 @@ class TestRanges:
         assert _fresh(db, world.range).updated_at == before  # reading metrics is not a change to the range
 
 
+# -- host-local template copies (ADR 0012, worker/template_tasks.py) ---------------------
+class TestTemplateCopyPrune:
+    def test_reads_undestroyed_outputs_and_every_active_vsphere_connection(self, world, monkeypatch):
+        from worker import template_tasks
+
+        db = world.db
+        world.range.state = m.RangeState.ready
+        world.range.provisioner_output = json.dumps({"vms": [{"name": "a", "template": "srv@esx02-20261001"}]})
+        gone = m.Range(name="r2", template_id=world.template.id, state=m.RangeState.destroyed,
+                       provisioner_output=json.dumps({"vms": [{"template": "srv@esx03-20261001"}]}))
+        _add(db, gone,
+             m.HypervisorConnection(name="a", hypervisor_type="vsphere", host="vc-a", port=443, username="u",
+                                    is_active=True),
+             m.HypervisorConnection(name="off", hypervisor_type="vsphere", host="vc-off", port=443, username="u",
+                                    is_active=False))
+        monkeypatch.delenv("VSPHERE_URL", raising=False)
+        seen = []
+
+        class Prov:
+            def __init__(self, creds):
+                self.creds = creds
+
+            def connection_record(self):
+                return {"id": self.creds.get("connection_id"), "host": self.creds.get("host")}
+
+            async def prune_template_copies(self, in_use, *, dry_run):
+                seen.append((self.creds["host"], set(in_use), dry_run))
+                return {"deletable": [], "kept_in_use": [], "deleted": [], "errors": []}
+
+        monkeypatch.setattr(template_tasks, "get_provisioner", lambda backend, creds=None, **kw: Prov(creds or {}))
+        out = template_tasks.prune_template_copies()
+        assert seen == [("vc-a", {"srv@esx02-20261001"}, True)]  # the destroyed range holds nothing back
+        assert out["status"] == "ok" and out["dry_run"] is True
+
+
 # -- exercises + objectives ----------------------------------------------------------
 def _objective(ex, ref, points, **kw):
     return m.Objective(exercise_id=ex.id, ref_id=ref, objective_type=m.ObjectiveType.detection,
@@ -788,6 +823,8 @@ PG_CALLS = {
     "range_template_and_backend": lambda db: db_ops.range_template_and_backend(db, ID),
     "range_output_and_backend": lambda db: db_ops.range_output_and_backend(db, ID),
     "active_ranges": db_ops.active_ranges,
+    "undestroyed_range_outputs": db_ops.undestroyed_range_outputs,
+    "active_connection_creds": lambda db: db_ops.active_connection_creds(db, "vsphere"),
     "touch_range": lambda db: db_ops.touch_range(db, ID),
     "first_range_for_tenant": lambda db: db_ops.first_range_for_tenant(db, ID),
     "hypervisor_connection": lambda db: db_ops.hypervisor_connection(db, "vsphere", ID),

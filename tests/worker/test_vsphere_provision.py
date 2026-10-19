@@ -2074,3 +2074,162 @@ def test_nic_order_follows_unit_numbers_not_device_keys():
     disk = vim.vm.device.VirtualDisk(key=2000, unitNumber=0)
     assert infra.nic_cards([added, disk, template_card]) == [template_card, added]
     assert infra.nic_cards([vim.vm.device.VirtualVmxnet3(key=4001), template_card])[0] is template_card
+
+
+# --------------------------------------------------------------------------- #
+# Host-local template copies (ADR 0012 decision 6): <template>@<host>-<yyyymmdd>
+# --------------------------------------------------------------------------- #
+
+ONLY_ESX02 = "esx01.truenorth.lab,esx03.truenorth.lab,esx04.truenorth.lab"
+
+
+def _host(vc, short: str):
+    return next(h for h in vc.hosts if h.name.split(".")[0] == short)
+
+
+def _add_copy(vc, name: str, on: str) -> FakeVM:
+    """An inventory template ``name`` whose disks are on host ``on``'s local datastore."""
+    tmpl = FakeVM(name, [], template=True)
+    tmpl.config.hardware = FreshHardware(MGMT)
+    tmpl.datastore = list(_host(vc, on).datastore)
+    vc.templates[name] = tmpl
+    vc.dc.vmFolder.childEntity.append(tmpl)
+    return tmpl
+
+
+ONE_LINUX = {**TEMPLATE, "nodes": [TEMPLATE["nodes"][1]]}
+
+
+class TestHostLocalTemplateCopies:
+    def test_each_vm_clones_the_copy_on_its_own_host(self, vc, caplog):
+        for short in ("esx02", "esx03", "esx04"):
+            for base in ("tmpl-ubuntu-2404", "tmpl-win2022", "tmpl-pfsense"):
+                _add_copy(vc, f"{base}@{short}-20261019", short)
+        caplog.set_level("INFO", logger=mod.__name__)
+        result = _run(_prov(vc).provision(RANGE_ID, _rendered(), {}))
+        assert result.status == "ok", result.errors
+        assert len({vm["host"] for vm in result.vms}) > 1  # spread: the test covers several hosts
+        for vm in result.vms:
+            short = vm["host"].split(".")[0]
+            assert vm["template"].endswith(f"@{short}-20261019")
+            (clone,) = [s for s in vc.templates[vm["template"]].clone_specs if s[1] == vm["name"]]
+            assert clone[2].location.datastore in _host(vc, short).datastore
+        assert not any(vc.templates[b].clone_specs for b in ("tmpl-ubuntu-2404", "tmpl-win2022", "tmpl-pfsense"))
+        assert "host-local template copy 'tmpl-ubuntu-2404@" in caplog.text
+
+    def test_the_newest_date_wins(self, vc, monkeypatch):
+        monkeypatch.setattr(mod, "VSPHERE_EXCLUDE_HOSTS", ONLY_ESX02)
+        for date in ("20260701", "20261019", "20261001"):
+            _add_copy(vc, f"tmpl-ubuntu-2404@esx02-{date}", "esx02")
+        result = _run(_prov(vc).provision(RANGE_ID, _rendered(ONE_LINUX), {}))
+        assert result.status == "ok", result.errors
+        assert result.vms[0]["template"] == "tmpl-ubuntu-2404@esx02-20261019"
+        assert not vc.templates["tmpl-ubuntu-2404@esx02-20261001"].clone_specs
+
+    def test_no_copy_on_the_host_falls_back_to_the_plain_name(self, vc, monkeypatch, caplog):
+        monkeypatch.setattr(mod, "VSPHERE_EXCLUDE_HOSTS", ONLY_ESX02)
+        _add_copy(vc, "tmpl-ubuntu-2404@esx03-20261019", "esx03")  # another host's copy: not used
+        caplog.set_level("INFO", logger=mod.__name__)
+        result = _run(_prov(vc).provision(RANGE_ID, _rendered(ONE_LINUX), {}))
+        assert result.status == "ok", result.errors
+        assert result.vms[0]["host"] == "esx02.truenorth.lab"
+        assert result.vms[0]["template"] == "tmpl-ubuntu-2404"
+        assert vc.templates["tmpl-ubuntu-2404"].clone_specs
+        assert not vc.templates["tmpl-ubuntu-2404@esx03-20261019"].clone_specs
+        assert "no host-local copy on esx02.truenorth.lab" in caplog.text
+
+    def test_a_copy_named_for_the_host_but_stored_elsewhere_is_not_used(self, vc, monkeypatch):
+        monkeypatch.setattr(mod, "VSPHERE_EXCLUDE_HOSTS", ONLY_ESX02)
+        _add_copy(vc, "tmpl-ubuntu-2404@esx02-20261019", "esx03")  # misnamed, or moved by hand
+        result = _run(_prov(vc).provision(RANGE_ID, _rendered(ONE_LINUX), {}))
+        assert result.vms[0]["template"] == "tmpl-ubuntu-2404"
+
+    def test_no_copy_anywhere_still_clones_the_plain_template(self, vc):
+        result = _run(_prov(vc).provision(RANGE_ID, _rendered(ONE_LINUX), {}))
+        assert result.status == "ok", result.errors
+        assert result.vms[0]["template"] == "tmpl-ubuntu-2404"
+
+    def test_a_copy_without_the_plain_template_still_builds_on_that_host(self, vc, monkeypatch):
+        monkeypatch.setattr(mod, "VSPHERE_EXCLUDE_HOSTS", ONLY_ESX02)
+        _add_copy(vc, "tmpl-ubuntu-2404@esx02-20261019", "esx02")
+        vc.templates.pop("tmpl-ubuntu-2404")
+        result = _run(_prov(vc).provision(RANGE_ID, _rendered(ONE_LINUX), {}))
+        assert result.status == "ok", result.errors
+
+    def test_a_host_local_copy_is_used_before_the_content_library(self, vc, monkeypatch):
+        monkeypatch.setattr(mod, "VSPHERE_EXCLUDE_HOSTS", ONLY_ESX02)
+        monkeypatch.setattr(mod, "VSPHERE_CONTENT_LIBRARY", "TrueNorth-Templates")
+        vc.library = {"name": "TrueNorth-Templates", "items": {"tmpl-ubuntu-2404": "item-ubuntu"}}
+        _add_copy(vc, "tmpl-ubuntu-2404@esx02-20261019", "esx02")
+        result = _run(_prov(vc).provision(RANGE_ID, _rendered(ONE_LINUX), {}))
+        assert result.vms[0]["template"] == "tmpl-ubuntu-2404@esx02-20261019"
+        assert not any("/ovf/library-item/" in path for _, path, _ in vc.requests)
+
+    def test_the_library_path_is_unchanged_without_a_copy(self, vc, monkeypatch):
+        monkeypatch.setattr(mod, "VSPHERE_CONTENT_LIBRARY", "TrueNorth-Templates")
+        vc.library = {"name": "TrueNorth-Templates", "items": {"tmpl-ubuntu-2404": "item-ubuntu"}}
+        result = _run(_prov(vc).provision(RANGE_ID, _rendered(ONE_LINUX), {}))
+        assert result.vms[0]["template"] == "library:tmpl-ubuntu-2404"
+        assert not vc.templates["tmpl-ubuntu-2404"].clone_specs
+
+    def test_cluster_placement_has_no_host_and_uses_the_plain_name(self, vc, monkeypatch):
+        monkeypatch.setattr(mod, "VSPHERE_PLACEMENT", "cluster")
+        monkeypatch.setattr(mod, "VSPHERE_DATASTORE", "esx02-local")
+        _add_copy(vc, "tmpl-ubuntu-2404@esx02-20261019", "esx02")
+        result = _run(_prov(vc).provision(RANGE_ID, _rendered(ONE_LINUX), {}))
+        assert result.status == "ok", result.errors
+        assert result.vms[0]["template"] == "tmpl-ubuntu-2404"
+
+
+class FakeCopy:
+    def __init__(self, vm_id, name, template=True, fail=None):
+        self._moId, self.name, self.fail, self.destroyed = vm_id, name, fail, False
+        self.config = SimpleNamespace(template=template)
+
+    def Destroy_Task(self):  # noqa: N802
+        self.destroyed = True
+        return FakeTask(fail=self.fail, label=f"destroy-template:{self.name}")
+
+
+class TestPruneTemplateCopies:
+    @pytest.fixture
+    def inv(self, vc):
+        objs = {o._moId: o for o in (
+            FakeCopy("vm-1", "srv@esx02-20260701"), FakeCopy("vm-2", "srv@esx02-20261001"),
+            FakeCopy("vm-3", "srv@esx02-20261019"), FakeCopy("vm-4", "srv@esx03-20260701"),
+            FakeCopy("vm-5", "srv"), FakeCopy("vm-6", "web@esx02-20260101", template=False),
+            FakeCopy("vm-7", "web@esx02-20261019"))}
+        prov = _prov(vc)
+        listed = [(o._moId, o.name, "", o.config.template) for o in objs.values()]  # as listed, before any change
+        prov._vm_rows_sync = lambda si: listed
+        prov._vm = lambda si, vm_id: objs[vm_id]
+        return prov, objs
+
+    def test_dry_run_is_the_default_and_deletes_nothing(self, inv):
+        prov, objs = inv
+        out = _run(prov.prune_template_copies(set()))
+        assert out["dry_run"] is True and out["deleted"] == []
+        assert out["deletable"] == ["srv@esx02-20260701", "srv@esx02-20261001"]
+        assert not any(o.destroyed for o in objs.values())
+
+    def test_deletes_the_superseded_copies_not_in_use(self, inv):
+        prov, objs = inv
+        out = _run(prov.prune_template_copies({"srv@esx02-20260701"}, dry_run=False))
+        assert out["deleted"] == ["srv@esx02-20261001"] and out["kept_in_use"] == ["srv@esx02-20260701"]
+        # The newest per host, the only copy on esx03, the plain template and a VM are never touched.
+        assert [o.name for o in objs.values() if o.destroyed] == ["srv@esx02-20261001"]
+        assert out["errors"] == []
+
+    def test_a_failed_delete_is_reported_and_the_rest_go_on(self, inv):
+        prov, objs = inv
+        objs["vm-1"].fail = "locked by a clone"
+        out = _run(prov.prune_template_copies(set(), dry_run=False))
+        assert out["deleted"] == ["srv@esx02-20261001"]
+        assert out["errors"] == ["srv@esx02-20260701 (vm-1): locked by a clone"]
+
+    def test_an_object_that_is_no_longer_that_template_is_left_alone(self, inv):
+        prov, objs = inv
+        objs["vm-2"].config.template = False  # converted to a VM since the listing
+        out = _run(prov.prune_template_copies(set(), dry_run=False))
+        assert not objs["vm-2"].destroyed
+        assert out["errors"] == ["srv@esx02-20261001 (vm-2): no longer that template, left alone"]

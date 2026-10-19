@@ -68,9 +68,9 @@ except ImportError:  # only the snapshot operations need it
     Disconnect = SmartConnect = vim = vmodl = None  # type: ignore[assignment]
 
 from .. import pfsense_config, software_catalogue, uplink_pool, vlan_pool, vyos_config
+from . import template_copies, vsphere_roles
 from . import vsphere_guest as guest
 from . import vsphere_infra as infra
-from . import vsphere_roles
 from .base import AllocationNeed, BaseProvisioner, ConnectionBindingError
 from .results import (
     DestroyResult,
@@ -1140,9 +1140,14 @@ class VsphereAPIProvisioner(BaseProvisioner):
         wanted = {v["template_name"] for v in vm_defs}
         view = si.content.viewManager.CreateContainerView(dc.vmFolder, [vim.VirtualMachine], True)
         try:
-            templates = {vm.name: vm for vm in view.view if vm.name in wanted and vm.config.template}
+            # The plain templates and their host-local copies <id>@<host>-<yyyymmdd> (ADR 0012).
+            templates = {vm.name: vm for vm in view.view
+                         if (vm.name in wanted or getattr(template_copies.parse(vm.name), "base", None) in wanted)
+                         and vm.config.template}
         finally:
             view.Destroy()
+        for vm_def in vm_defs:
+            vm_def["_local_copy"] = self._local_copy(templates, vm_def)
         folder = infra.ensure_folder(dc, f"{self._range_folder}/{range_id[:8]}")
         return {"dc": dc, "cluster": cluster, "pool": self._pool(cluster), "folder": folder, "templates": templates,
                 "dvs": dvs, "notes": site_notes}
@@ -1167,9 +1172,32 @@ class VsphereAPIProvisioner(BaseProvisioner):
         if name not in lab_port_groups():
             raise RuntimeError(f"port group {name!r} is not a lab network (LAB_PORT_GROUPS)")
 
+    @staticmethod
+    def _local_copy(templates: dict, vm_def: dict) -> str | None:
+        """The newest ``<template>@<host>-<yyyymmdd>`` copy that resides on the VM's placed
+        host's datastore, or None (no per-host placement, or no copy there: the plain name).
+
+        ADR 0012 decision 6: the hosts have local storage only, so a clone from a template
+        on another host copies its disks across the network."""
+        host, datastore = vm_def.get("_placement") or (None, None)
+        if host is None or datastore is None:
+            return None
+        here = getattr(datastore, "_moId", None)
+
+        def resides(vm) -> bool:
+            stores = getattr(vm, "datastore", None) or []
+            return any(d is datastore or (here and getattr(d, "_moId", None) == here) for d in stores)
+
+        local = [name for name, vm in templates.items()
+                 if template_copies.is_copy_of(name, vm_def["template_name"]) and resides(vm)]
+        return template_copies.newest_on_host(local, vm_def["template_name"], host.name)
+
     def _clone_sync(self, si, site: dict, vm_def: dict):
-        """Clone the inventory VM template onto the placed host and datastore, NICs wired, powered off."""
-        template = site["templates"].get(vm_def["template_name"])
+        """Clone the inventory VM template onto the placed host and datastore, NICs wired, powered off.
+
+        From the host-local copy when there is one (``_local_copy``), else the plain template."""
+        source = vm_def.get("_local_copy") or vm_def["template_name"]
+        template = site["templates"].get(source)
         if template is None:
             raise RuntimeError(
                 f"template {vm_def['template_name']!r} is neither a Content Library item nor an inventory VM template"
@@ -1184,7 +1212,13 @@ class VsphereAPIProvisioner(BaseProvisioner):
             template=False,
             config=config,
         )
-        logger.info("Cloning %r from template %r", vm_def["name"], vm_def["template_name"])
+        if vm_def.get("_local_copy"):
+            logger.info("Cloning %r from host-local template copy %r on %s", vm_def["name"], source,
+                        host.name if host else "?")
+        else:
+            logger.info("Cloning %r from template %r (no host-local copy on %s)", vm_def["name"], source,
+                        host.name if host else "the cluster")
+        vm_def["_source"] = source
         task = template.CloneVM_Task(folder=site["folder"], name=vm_def["name"], spec=spec)
         self._wait(task, si)
         vm = task.info.result
@@ -1839,8 +1873,12 @@ class VsphereAPIProvisioner(BaseProvisioner):
         vm_id = None
         async with self._semaphore:
             try:
-                item = await self._find_library_item(client, vm_def["template_name"])
+                # A host-local inventory copy first (ADR 0012); else the Content Library item,
+                # else the plain inventory template, as before.
+                item = None if vm_def.get("_local_copy") else await self._find_library_item(
+                    client, vm_def["template_name"])
                 if item:
+                    vm_def["_source"] = f"library:{vm_def['template_name']}"
                     vm_id = await self._deploy_ovf(client, item, vm_def, site)
                     vm = self._vm(si, vm_id)
                     await asyncio.to_thread(self._reconfigure_sync, si, vm, vm_def)
@@ -1877,6 +1915,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
             ],
             "host": host.name if host else "",
             "datastore": getattr(datastore, "name", ""),
+            "template": vm_def.get("_source", vm_def["template_name"]),  # template_copies.names_in_use
             "tools_ready": tools_ready,
         }
 
@@ -1926,6 +1965,43 @@ class VsphereAPIProvisioner(BaseProvisioner):
             if not template and (name.startswith(name_prefix) or qualified.startswith(name_prefix)):
                 out.append({"vm_id": vm_id, "name": name, "range_id": rid})
         return out
+
+    async def prune_template_copies(self, in_use: set[str], *, dry_run: bool = True) -> dict:
+        """Delete host-local template copies (``<id>@<host>-<yyyymmdd>``) older than the newest
+        copy of the same template on the same host, unless a range VM records it was cloned
+        from one (``in_use``). ``dry_run`` (the default) only reports. Only inventory
+        *templates* whose names parse as copies are candidates; plain templates and VMs never
+        are, and each is re-checked to still be a template just before it is destroyed.
+
+        Returns ``{"deletable", "kept_in_use", "deleted", "errors", "dry_run"}`` (names)."""
+        if SmartConnect is None:
+            raise RuntimeError("pyvmomi is required to prune vSphere template copies (pip install pyvmomi)")
+
+        def run() -> dict:
+            with self._vim() as si:
+                ids: dict[str, list[str]] = {}
+                for vm_id, name, _annotation, template in self._vm_rows_sync(si):
+                    if template and template_copies.parse(name):
+                        ids.setdefault(name, []).append(vm_id)
+                deletable, kept = template_copies.stale(ids, in_use)
+                deleted: list[str] = []
+                errors: list[str] = []
+                for name in [] if dry_run else deletable:
+                    for vm_id in ids[name]:
+                        try:
+                            vm = self._vm(si, vm_id)
+                            if vm.name != name or not vm.config.template:
+                                errors.append(f"{name} ({vm_id}): no longer that template, left alone")
+                                continue
+                            self._wait(vm.Destroy_Task(), si)
+                            deleted.append(name)
+                            logger.warning("Deleted stale template copy %r (%s)", name, vm_id)
+                        except Exception as exc:  # noqa: BLE001 -- one failure does not stop the rest
+                            errors.append(f"{name} ({vm_id}): {exc}")
+                return {"deletable": deletable, "kept_in_use": kept, "deleted": deleted, "errors": errors,
+                        "dry_run": dry_run}
+
+        return await asyncio.to_thread(run)
 
     async def destroy(
         self,
