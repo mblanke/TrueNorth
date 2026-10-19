@@ -29,6 +29,7 @@ from worker.provisioners import vsphere_api as mod
 from worker.provisioners import vsphere_guest as guest_mod
 from worker.provisioners import vsphere_infra as infra
 from worker.provisioners import vsphere_roles as roles_mod
+from worker.provisioners import vsphere_securityonion as so_mod
 
 RANGE_ID = "abcdef12-3456-7890-abcd-ef1234567890"
 R8 = RANGE_ID[:8]
@@ -2233,3 +2234,127 @@ class TestPruneTemplateCopies:
         out = _run(prov.prune_template_copies(set(), dry_run=False))
         assert not objs["vm-2"].destroyed
         assert out["errors"] == ["srv@esx02-20261001 (vm-2): no longer that template, left alone"]
+
+
+# --------------------------------------------------------------------------- #
+# Security Onion: so-setup per range (vsphere_securityonion.py)
+# --------------------------------------------------------------------------- #
+
+SO_TEMPLATE = {
+    "name": "soc",
+    "network": {"vlans": [
+        {"id": 201, "name": "victim_network", "cidr": "10.60.201.0/24"},
+        {"id": 202, "name": "soc_tools", "cidr": "10.60.202.0/24"},
+        {"id": 203, "name": "network_monitoring", "cidr": "10.60.203.0/24"},
+    ], "firewall_rules": [{"name": "monitoring-mirror", "src": "*", "dst": "network_monitoring", "action": "mirror"}]},
+    "nodes": [
+        {"id": "fw", "role": "firewall", "os": "pfsense", "vlan": "soc_tools",
+         "interfaces": [{"vlan": "victim_network"}, {"vlan": "soc_tools"}, {"vlan": "network_monitoring"}]},
+        {"id": "web01", "role": "server", "os": "ubuntu-2404", "vlan": "victim_network", "ip": "10.60.201.20"},
+        # Monitor NIC not flagged: the provisioner takes the NIC on the mirror destination.
+        {"id": "seconion01", "role": "network_monitor", "os": "securityonion", "vlan": "soc_tools",
+         "ip": "10.60.202.60", "interfaces": [{"vlan": "soc_tools"}, {"vlan": "network_monitoring"}],
+         "services": ["zeek", "suricata"]},
+    ],
+}
+
+
+class TestSecurityOnion:
+    @pytest.fixture
+    def so_vc(self, vc, monkeypatch):
+        monkeypatch.setenv("VSPHERE_SO_INSTALL_USER", "soadmin")
+        monkeypatch.setenv("VSPHERE_SO_INSTALL_PASSWORD", "Build-Pass-77")
+        monkeypatch.setattr(so_mod, "VSPHERE_SO_POLL", 0)
+        real = FakeVM.guest_password
+        monkeypatch.setattr(FakeVM, "guest_password", lambda self, user: "Build-Pass-77" if (
+            user == "soadmin" and self.name.endswith("seconion01")) else real(self, user))
+        return vc
+
+    @staticmethod
+    def _build(vc):
+        images = {**IMAGES, "securityonion": "tmpl-ubuntu-2404"}
+        out = render.render_topology(SO_TEMPLATE, RANGE_ID, images.get)
+        tpl = {"name": "soc", "vms": out["vm_definitions"], "networks": out["network_definitions"],
+               "network": SO_TEMPLATE["network"]}
+        return _run(_prov(vc).provision(RANGE_ID, tpl, {}))
+
+    def test_sensor_is_set_up_standalone_monitoring_the_mirror_zone(self, so_vc, caplog):
+        caplog.set_level("DEBUG")
+        vc = so_vc
+        vc.guest_ops.exit_codes = {"[!0-9]": 0}  # the status read: healthy
+        result = self._build(vc)
+        assert result.status == "ok", result.errors
+
+        so_out = _vm_out(result, "seconion01")
+        vm = vc.vms[so_out["vm_id"]]
+        pg_name = {p.key: p.name for p in vc.dvs.portgroup}
+        mac_on = {pg_name[c.backing.port.portgroupKey]: c.macAddress.lower()
+                  for c in infra.nic_cards(vm.config.hardware.device)}
+        zone_pg = {n["name"]: n["portgroup"] for n in result.networks if n.get("portgroup")}
+        mgmt_mac, mon_mac = mac_on[zone_pg["soc_tools"]], mac_on[zone_pg["network_monitoring"]]
+        assert mgmt_mac != mon_mac
+
+        sec = so_out["securityonion"]
+        assert sec["status"] == "ok" and (sec["management_mac"], sec["monitor_mac"]) == (mgmt_mac, mon_mac)
+        # The answer file the staging command writes maps the NICs by MAC.
+        started = [s for s in vc.guest_ops.started if s[0].endswith("seconion01")]
+        assert [s[1] for s in started] == ["soadmin", "soadmin"]  # stage, then one status read
+        b64 = re.search(r"printf %s ([A-Za-z0-9+/=]+) \| base64 -d > /root/tn-so-answers\.env",
+                        started[0][3]).group(1)
+        answers = base64.b64decode(b64).decode()
+        assert f"TN_MGMT_MAC={mgmt_mac}" in answers and f"TN_MON_MAC={mon_mac}" in answers
+        assert "manager_ip_mask=10.60.202.60/24" in answers.splitlines()
+        assert "MGATEWAY=10.60.202.1" in answers.splitlines()
+        # Its services come with so-setup: no catalogue install was tried on it.
+        assert "software" not in so_out
+        # The monitor NIC receives the mirror session's copies; its port group is promiscuous.
+        local = _sessions(vc)[f"tn-{R8}-network_monitoring"]
+        assert set(_nic_ports(vc, "seconion01", zone_pg["network_monitoring"])) <= set(local.destinationPort.portKey)
+        mon_pg = next(p for p in vc.dvs.portgroup if p.name == zone_pg["network_monitoring"])
+        assert mon_pg.spec.defaultPortConfig.securityPolicy.allowPromiscuous.value is True
+        # Only the generated web password notice, which never holds the password.
+        (note,) = [w for w in result.warnings if "Security Onion" in w]
+        assert "generated password" in note
+        assert "Build-Pass-77" not in caplog.text + repr(result)
+
+    def test_declared_accounts_become_the_admin_and_the_soc_web_login(self, so_vc, caplog):
+        """As worker/range_accounts.attach hands them over: ``_accounts`` on the VM."""
+        caplog.set_level("DEBUG")
+        vc = so_vc
+        vc.guest_ops.exit_codes = {"[!0-9]": 0}
+        images = {**IMAGES, "securityonion": "tmpl-ubuntu-2404"}
+        out = render.render_topology(SO_TEMPLATE, RANGE_ID, images.get)
+        for vm in out["vm_definitions"]:
+            if vm["node_id"] == "seconion01":
+                vm["_accounts"] = [
+                    guest_mod.RangeAccount("analyst@range.local", guest_mod.Secret("Web-Gen.Pass#1"), False),
+                    guest_mod.RangeAccount("tnadmin", guest_mod.Secret("Adm-Gen.Pass#2"), True)]
+        tpl = {"name": "soc", "vms": out["vm_definitions"], "networks": out["network_definitions"],
+               "network": SO_TEMPLATE["network"]}
+        result = _run(_prov(vc).provision(RANGE_ID, tpl, {}))
+        assert result.status == "ok", result.errors
+        sec = _vm_out(result, "seconion01")["securityonion"]
+        assert (sec["status"], sec["web_user"], sec["web_password"], sec["admin_user"]) == (
+            "ok", "analyst@range.local", "range account", "tnadmin")
+        stage = next(s for s in vc.guest_ops.started if s[0].endswith("seconion01"))[3]
+        b64 = re.search(r"printf %s ([A-Za-z0-9+/=]+) \| base64 -d > /root/tn-so-answers\.env", stage).group(1)
+        answers = base64.b64decode(b64).decode().splitlines()
+        assert "WEBUSER=analyst@range.local" in answers and "TN_ADMIN_USER=tnadmin" in answers
+        # Its accounts are its setup's to set and report: no "not set at deploy" warning, no notice.
+        assert not [w for w in result.warnings if "seconion01" in w]
+        so_out = _vm_out(result, "seconion01")
+        assert so_out["accounts_applied"] == ["analyst@range.local", "tnadmin"]  # verified (getent, so-user)
+        labels = [s[3] for s in vc.guest_ops.started if s[0].endswith("seconion01")]
+        assert any("so-user list" in a for a in labels) and any("getent passwd tnadmin" in a for a in labels)
+        # Not through cloud-init: no account hashes in its guestinfo, nothing left to scrub.
+        assert "users" not in _userdata(vc.vms[so_out["vm_id"]])
+        assert "Web-Gen.Pass#1" not in caplog.text + repr(result)
+        assert "Adm-Gen.Pass#2" not in caplog.text + repr(result)
+
+    def test_failed_setup_is_a_warning_not_a_partial_range(self, so_vc):
+        vc = so_vc
+        vc.guest_ops.exit_codes = {"[!0-9]": 13}
+        result = self._build(vc)
+        assert result.status == "ok", result.errors
+        assert _vm_out(result, "seconion01")["securityonion"]["status"] == "failed"
+        assert any("Security Onion setup failed: so-setup failed" in w for w in result.warnings)

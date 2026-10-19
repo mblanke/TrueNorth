@@ -329,6 +329,33 @@ course production with a local-model fallback, and the cleanup of unsupported su
   `medium-enterprise` and `soc-training` declare their accounts (all generated). Nothing of
   this was released before (rc10 predates it), so no clean-up migration of earlier wiki
   revisions is needed.
+- New: Security Onion is set up per range (ADR 0012, decision 8). Each VM of catalogue id
+  `securityonion` (an OS-only template) becomes a STANDALONE node in airgap mode, offline
+  from its ISO. Management is on its non-monitor NIC, with the range plan's static
+  address, gateway and DNS. Monitoring is on the NIC on the mirror destination zone, or one
+  flagged `monitor: true`. The guest matches both NICs by MAC address.
+  - SO 2.4 has no answer file, so so-setup runs with its test profile, the hard-coded
+    answers replaced by the range's (`vsphere_securityonion.py`). Every answer is checked
+    first against so-setup's own rules; under a test profile a bad answer loops forever.
+  - Setup runs detached through VMware guest operations as the template's build login:
+    `VSPHERE_SO_INSTALL_USER` / `VSPHERE_SO_INSTALL_PASSWORD`. Without it, the machine's
+    `role: admin` account logs in. The worker polls until
+    `so-status` is healthy, `VSPHERE_SO_SETUP_TIMEOUT` (default 3600 s) or the provision
+    budget.
+  - The outcome is in `vms[].securityonion`. Anything but `ok` is a warning, never a
+    partial range.
+  - Range credentials: the machine's first `role: admin` account becomes the node's OS
+    admin (created, password set, `wheel`). Its first `role: user` account (by username) is
+    the SOC console login, an e-mail address. Neither goes through cloud-init. They are
+    `accounts_applied` only once verified in the guest: the admin by `getent passwd`, the
+    web login by `so-user list`. With no web login declared, it is `analyst@<domain>` with
+    a worker-generated password. That password is never logged or shown: every role can read
+    `provisioner_output`, so it is stored sealed there and in a root-only file in the guest.
+  - soc-training's `seconion01` now has its management NIC on `soc_tools` (10.60.202.60) and
+    its monitor NIC on `network_monitoring`. It declares `tnadmin` (admin) and
+    `analyst@range.local` (SOC console, Student-visible), both generated. Mirroring and the
+    promiscuous monitoring port group were already in place.
+  - Runbook: `vmware-site-runbook.md` §7.2.
 
 ### R0-B: web correctness and role access
 - Fix: Resume on a paused exercise called `/start` (409 unless pending), so nothing resumed;

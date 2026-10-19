@@ -18,7 +18,9 @@ VSPHERE_MGMT_NETWORK: a range VM on the management network is a range that is no
 isolated.
 
 Software named in a node's ``services`` is installed after power-on through VMware
-guest operations (vsphere_guest.py), from the depot behind the uplink.
+guest operations (vsphere_guest.py), from the depot behind the uplink. A Security Onion
+VM is set up as a standalone node monitoring the range's mirror zone, offline from its
+ISO (vsphere_securityonion.py).
 
 Each pfSense or OPNsense VM gets a per-range config.xml (worker/pfsense_config.py: zone
 gateways, WAN, NAT, the template's firewall rules, depot-only egress) in its guestinfo
@@ -71,6 +73,7 @@ from .. import pfsense_config, software_catalogue, uplink_pool, vlan_pool, vyos_
 from . import template_copies, vsphere_roles
 from . import vsphere_guest as guest
 from . import vsphere_infra as infra
+from . import vsphere_securityonion as seconion
 from .base import AllocationNeed, BaseProvisioner, ConnectionBindingError
 from .results import (
     DestroyResult,
@@ -1288,7 +1291,9 @@ class VsphereAPIProvisioner(BaseProvisioner):
         if family == "linux":
             macs = [card.macAddress for card in infra.nic_cards(vm.config.hardware.device)]
             user = guest.cloud_init_user(creds) if creds else None
-            accounts, _ = guest.account_users(vm_def.get("_accounts") or [])
+            # Security Onion: its accounts are set by its setup (vsphere_securityonion.py).
+            accounts = ([] if seconion.is_securityonion(vm_def)
+                        else guest.account_users(vm_def.get("_accounts") or [])[0])
             login = {"ssh_pwauth": True} if accounts else None
             # ``guestinfo``: more keys the guest reads itself (gs-core's bundle chunks).
             more = [vim.option.OptionValue(key=k, value=v) for k, v in (vm_def.get("guestinfo") or {}).items()
@@ -1466,8 +1471,14 @@ class VsphereAPIProvisioner(BaseProvisioner):
                     if mirror_plans and vms_out:
                         mirrors = await asyncio.to_thread(self._mirror_sync, si, site, range_id, mirror_plans,
                                                           vm_defs, vms_out, errors, warnings)
-                    await self._install_roles(si, vm_defs, vms_out, start, errors)
-                    await self._install_software(si, vm_defs, vms_out, start, errors, warnings)
+
+                    async def roles_then_software() -> None:
+                        await self._install_roles(si, vm_defs, vms_out, start, errors)
+                        await self._install_software(si, vm_defs, vms_out, start, errors, warnings)
+
+                    # Security Onion setup runs in its guest on its own; start it with the rest.
+                    await asyncio.gather(roles_then_software(), self._setup_securityonion(
+                        si, vm_defs, vms_out, networks, mirror_plans, start, warnings))
                     await self._verify_accounts(si, vm_defs, vms_out, start, warnings)
                 except Exception as exc:
                     errors.append(self._redact(exc, *vm_defs))
@@ -1688,7 +1699,8 @@ class VsphereAPIProvisioner(BaseProvisioner):
         something guest credentials (``_guest``) and their install specs (``_software``).
 
         Without an uplink or a depot, nothing installs: a warning, not a failure."""
-        wanted = [v for v in vm_defs if v.get("services") and infra.os_family(v) in ("windows", "linux")]
+        wanted = [v for v in vm_defs if v.get("services") and infra.os_family(v) in ("windows", "linux")
+                  and not seconion.is_securityonion(v)]  # its services come with so-setup
         if not wanted:
             return
         try:
@@ -1811,6 +1823,10 @@ class VsphereAPIProvisioner(BaseProvisioner):
         install login, used after first boot to see cloud-init finish, check each account
         exists and take the hashes out of its guestinfo (``_verify_accounts``)."""
         for vm_def in vm_defs:
+            if seconion.is_securityonion(vm_def):
+                # Its setup sets (and verifies) its admin and SOC web login; no cloud-init.
+                vm_def["_will_set"] = []
+                continue
             accounts = vm_def.get("_accounts") or []
             names = [a.username for a in accounts]
             family = infra.os_family(vm_def)
@@ -1903,7 +1919,9 @@ class VsphereAPIProvisioner(BaseProvisioner):
                                 f"{', '.join(missing)}")
             out["accounts_applied"] = [n for n in planned if n in verified]
 
-        await asyncio.gather(*(one(by_name[o["name"]], o) for o in vms_out if o["name"] in by_name))
+        # Security Onion VMs report their own (``_setup_securityonion``).
+        await asyncio.gather(*(one(by_name[o["name"]], o) for o in vms_out if o["name"] in by_name
+                               and not seconion.is_securityonion(by_name[o["name"]])))
 
     def _roles_sync(self, si, vm_def: dict, vm_id: str, deadline: float) -> dict[str, dict]:
         session = guest.GuestSession(si.content, self._vm(si, vm_id), vm_def["_guest"], poll=self._guest_poll)
@@ -1941,6 +1959,42 @@ class VsphereAPIProvisioner(BaseProvisioner):
             errors.extend(vsphere_roles.errors(out["name"], status))
 
         await asyncio.gather(*(one(by_name[o["name"]], o) for o in vms_out if by_name[o["name"]].get("roles")))
+
+    def _securityonion_sync(self, si, vm_def: dict, vm_id: str, networks: list[dict], dst_vlans: set[int],
+                            deadline: float, budget_end: float) -> tuple[dict, list[str]]:
+        vm = self._vm(si, vm_id)
+        macs = [str(card.macAddress) for card in infra.nic_cards(vm.config.hardware.device)]
+        return seconion.setup(lambda creds: guest.GuestSession(si.content, vm, creds, poll=self._guest_poll),
+                              vm_def, macs, networks, dst_vlans, deadline, budget_end)
+
+    async def _setup_securityonion(self, si, vm_defs: list[dict], vms_out: list[dict], networks: list[dict],
+                                   mirror_plans: list[dict], start: float, warnings: list[str]) -> None:
+        """Each built Security Onion VM becomes a standalone node, monitoring the range's
+        mirror zone (vsphere_securityonion.py). VSPHERE_SO_SETUP_TIMEOUT each, waiting
+        never past VSPHERE_PROVISION_BUDGET; setup carries on in the guest either way.
+        Every outcome but ``ok`` is a warning: the range is not partial for it."""
+        by_name = {v["name"]: v for v in vm_defs}
+        todo = [(by_name[o["name"]], o) for o in vms_out if seconion.is_securityonion(by_name[o["name"]])]
+        if not todo:
+            return
+        dst_vlans = {int(p["dst_vlan"]) for p in mirror_plans}
+        budget_end = start + self._budget
+
+        async def one(vm_def: dict, out: dict) -> None:
+            deadline = time.monotonic() + seconion.VSPHERE_SO_SETUP_TIMEOUT
+            try:
+                res, notes = await asyncio.to_thread(self._securityonion_sync, si, vm_def, out["vm_id"], networks,
+                                                     dst_vlans, deadline, budget_end)
+            except Exception as exc:  # noqa: BLE001
+                detail = self._redact(exc, vm_def)
+                res, notes = {"status": "failed", "detail": detail}, [f"VM {out['name']}: Security Onion setup "
+                                                                       f"failed: {detail}"]
+            # Its declared accounts verified in the guest (worker/range_accounts.record_applied).
+            out["accounts_applied"] = list(res.pop("accounts_applied", None) or [])
+            out["securityonion"] = res
+            warnings.extend(notes)
+
+        await asyncio.gather(*(one(v, o) for v, o in todo))
 
     # ------------------------------------------------------------------ #
     # Commands in a guest after the build (BaseProvisioner.run_in_guest)

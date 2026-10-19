@@ -184,7 +184,11 @@ def _render_nics(node: dict, vlan_name: str, vid: int, ip: str, vlan_map: dict, 
     nics: list[dict] = []
     for name in names:
         info = net_by_name.get(name)
-        if name == vlan_name:
+        # A sensor's monitor NIC (`monitor: true`) sniffs: it has no address of its own.
+        monitor = bool(name in by_name and isinstance(by_name[name], dict) and by_name[name].get("monitor"))
+        if monitor:
+            nic_ip = ""
+        elif name == vlan_name:
             nic_ip = ip
         else:
             nic_ip = str(by_name[name].get("ip") or "") if single else ""
@@ -200,6 +204,8 @@ def _render_nics(node: dict, vlan_name: str, vid: int, ip: str, vlan_map: dict, 
         }
         if info and info.get("port_group"):
             nic["port_group"] = info["port_group"]
+        if monitor:
+            nic["monitor"] = True
         nics.append(nic)
     return nics
 
@@ -318,6 +324,8 @@ def render_topology(
                 "disk_gb": specs.get("disk_gb", 60),
                 "services": node.get("services", []),
                 **role_plan,
+                # Security Onion: zones/CIDRs besides its management zone that may reach its console.
+                **({"so_allow": list(node["so_allow"])} if isinstance(node.get("so_allow"), list) else {}),
                 # The range's edge firewall (WAN uplink to the depot); see vsphere_infra.pick_edge.
                 **({"edge": True} if node.get("edge") or node.get("wan") else {}),
             })
