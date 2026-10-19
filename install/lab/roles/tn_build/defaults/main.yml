@@ -26,3 +26,18 @@ tn_build_packages:
   # prefetch.yml warms the depot from throwaway ubuntu:24.04 / rocky:9 containers, so
   # the dependency closure is that of a minimal system, not of this build host.
   - docker.io
+
+# The admin user joins the docker group (prefetch.yml runs throwaway containers). Off on a
+# host whose Docker someone else manages (TN-MGMT01: the TrueNorth installer owns it).
+tn_build_manage_docker_group: true
+
+# Commands whose first output line goes in the report.
+tn_build_version_commands:
+  - packer version
+  - /usr/local/bin/govc version
+  - ansible --version
+  - xorriso -version
+
+tn_build_report_next: >-
+  Next: in {{ tn_build_repo_dir }}/infra/vsphere/packer copy lab.auto.pkrvars.hcl.example
+  to lab.auto.pkrvars.hcl and fill in the secrets ON THIS HOST (never commit it).

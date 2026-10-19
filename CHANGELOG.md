@@ -373,6 +373,30 @@ course production with a local-model fallback, and the cleanup of unsupported su
   only while it is unset (preflight warns). Neither set: random per VM, shown as "random per
   VM — not recoverable" with no password; lab-session VMs stay random per VM. Worker and API
   choose the same password (contract test).
+- **Work-site template kit (ADR 0012).** Builds the golden templates on the work vCenter
+  with TN-MGMT01 as the build host (esx04, callbacks on `dPG-TN-BUILD` 10.30.31.20). The
+  operator runs it. Nothing has run against the work vCenter yet.
+  - `install/lab/work-site/`: an inventory that reuses `tn_build` for only what is missing.
+    New role toggles: Packer only if absent, the docker group optional, repo mode `none`.
+  - TN-DEPOT01 is dual-homed: 10.30.30.30 on MGMT and 10.30.31.30 on BUILD
+    (`deploy-mgmt-vm.sh --site work`).
+  - `scripts/lab/pkrvars-work.py` writes `lab.auto.pkrvars.hcl` from `.env.production` and
+    the generic template credentials, mode 0600 and root-owned, printing no password. It
+    escapes HCL `${`/`%{`, and refuses Linux credentials the Ubuntu seed cannot log in with.
+  - `iso-sync-esx04.sh` makes a server-side copy from esx01-local to esx04-local and skips
+    files of the same size.
+  - `build-phase.sh` runs prereq, depot, base, appliances, derived, roles and variants.
+    prereq covers packer init/validate, the ISO copy and the DRS should-rule TN-MGMT01 →
+    esx04. Every vCenter change asks y/N unless `--yes`, and each build phase is approved
+    once.
+  - After each build: `build.sh replicate`, then `test-clone.sh`, which checks that a
+    customized name and IP come up on esx02-04 and then destroys the clone.
+  - `scripts/register_golden_image_inprocess.py` then marks the image `built` in-process.
+  - Tested with a fake API and with the real `/golden-images` router; the vars file
+    passed `packer validate`. The scripts ran end to end on vcsim only.
+  - Known gaps, all in the work-site README: the Packer tree's depot contract (no
+    `install.ps1`, no apt proxy for the derived images), Evaluation-media assumptions in
+    win10-22h2 and srv2019, and the fixed users in the non-Ubuntu Linux seeds.
 
 ### R0-B: web correctness and role access
 - Fix: Resume on a paused exercise called `/start` (409 unless pending), so nothing resumed;

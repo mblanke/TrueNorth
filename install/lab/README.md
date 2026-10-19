@@ -14,6 +14,9 @@ This is separate from `install/` (which targets TN-MGMT01 only) and has its own
 inventory, vault and `ansible.cfg`. Run everything below from the repo root unless
 a `cd` says otherwise.
 
+**The work site has no TN-BUILD01**: TN-MGMT01 builds the templates there (ADR 0012).
+See [Work site (TN-MGMT01 build host)](#work-site-tn-mgmt01-build-host) at the end.
+
 ## How the depot gets packages (read this first)
 
 **The depot fetches upstream itself.** A Nexus proxy repository and apt-cacher-ng both
@@ -251,3 +254,140 @@ needed for this step (it is for the rest of `prefetch.yml`).
   a human sets `tn_depot_nexus_accept_eula: true`.
 - **Nexus admin on 8081** is reachable from ranges (anonymous is read-only). Use a long
   random `vault_nexus_admin_password`.
+
+## Work site (TN-MGMT01 build host)
+
+The work vCenter (192.168.1.10, `DC-Lab` / `CL-Lab`, esx01-04, local VMFS only) has no
+TN-BUILD01. ADR 0012 decides how its golden templates are built:
+- **TN-MGMT01** (10.30.30.20) builds them on **esx04**, next to itself. Packer's HTTP, WinRM
+  and SSH callbacks reach its second NIC `ens224`, 10.30.31.20 on `dPG-TN-BUILD` (VLAN 31,
+  isolated, no gateway). `tn-build-dhcp.service` (dnsmasq) hands out 10.30.31.100-199.
+- **TN-DEPOT01** is dual-homed: 10.30.30.30 on `dPG-TN-MGMT` (gateway .1, DNS 10.30.30.10)
+  and 10.30.31.30 on `dPG-TN-BUILD`. It runs apt-cacher-ng on 3142 and the Nexus Chocolatey
+  feed on 8081 (`tn_depot`, unchanged).
+- The ISOs are copied from `[esx01-local] ISO/` to `[esx04-local] ISO/`, keeping the same
+  sub-folders.
+- After each build, the template is copied to esx02-04 (`build.sh replicate`). A test clone
+  on each host must take a customized name and IP. Only then is the template marked
+  `built` in TrueNorth (decision 9).
+
+**ADR 0012 is still `proposed`.** It says no template is built before the owner signs it
+off. `status`, `prereq` and `--dry-run` change nothing that a build depends on. Run the
+build phases only after sign-off.
+
+| Piece | What |
+|---|---|
+| `install/lab/work-site/` | Inventory (TN-MGMT01 as `build`, TN-DEPOT01 as `depot`), group_vars, `ansible.cfg` (`roles_path = ../roles`), `vault.yml.example`. Run the shared playbooks from it: `ansible-playbook ../build.yml` |
+| `install/lab/work-site/isos.conf` | The ISO list: Packer variable → path under `ISO/`. `PENDING` lines are skipped until filled in |
+| `scripts/lab/pkrvars-work.py` | Writes `infra/vsphere/packer/lab.auto.pkrvars.hcl`: vCenter from `.env.production`, generic template credentials, esx04 / esx04-local / dPG-TN-BUILD / 10.30.31.20, ISO names, `--depot`. Mode 0600, root, never printed |
+| `scripts/lab/iso-sync-esx04.sh` | Server-side copy esx01-local → esx04-local (`govc datastore.cp`), skips files of the same size; `--stream` copies through the host instead |
+| `scripts/lab/build-phase.sh` | The phases below. y/N before every vCenter change unless `--yes`; one approval per build phase |
+| `scripts/lab/test-clone.sh` | Clone `<id>` (the host's newest `<id>@<host>-<date>` copy) on each range host, customize name + IP, wait for Tools to report them, destroy |
+| `scripts/register_golden_image_inprocess.py` | Marks the image `built` with its template name (`PATCH /golden-images/{id}`), or creates a variant, in-process as an administrator (no token) |
+| `scripts/lab/deploy-mgmt-vm.sh TN-DEPOT01 --site work` | The dual-homed depot on esx04, cloned from `ubuntu-lts` |
+
+`tn_build` is reused on TN-MGMT01 for only what is missing: govc, xorriso/genisoimage,
+openssl, and Packer if `packer version` fails. It leaves Docker alone
+(`tn_build_manage_docker_group: false`, no `docker.io`). The kit goes in its own checkout,
+`/srv/truenorth/template-kit`, never in the installed app's `/srv/truenorth/app`.
+
+### Operator sequence
+
+```bash
+# ── 1. Mac: TN-MGMT01 tooling and the kit checkout ─────────────────────
+cd install/lab/work-site
+ansible-galaxy collection install -r ../requirements.yml
+$EDITOR inventory/group_vars/all/main.yml       # tn_work_admin_user: your sudo login on TN-MGMT01
+cp inventory/group_vars/all/vault.yml.example inventory/group_vars/all/vault.yml
+$EDITOR inventory/group_vars/all/vault.yml      # two long random Nexus passwords
+ansible-vault encrypt inventory/group_vars/all/vault.yml
+ansible-playbook ../build.yml                   # govc, xorriso; rsync of this checkout
+ansible-playbook ../build.yml                   # second run: no changes
+
+# ── 2. TN-MGMT01: Packer variables (offline bases: no depot yet) ───────
+ssh <you>@10.30.30.20
+cd /srv/truenorth/template-kit
+# Generic template credentials (ADR 0012 decision 5): TN_TEMPLATE_WINDOWS_ADMIN_PASSWORD,
+# TN_TEMPLATE_LINUX_USER, TN_TEMPLATE_LINUX_PASSWORD come from .env.production when the
+# installer wrote them there. Otherwise you are prompted (passwords hidden).
+sudo python3 scripts/lab/pkrvars-work.py
+#   exit 3 = the Linux credentials do not match the Ubuntu seed's: keep the user `ubuntu`, and
+#   either use the seed's password or add --write-ubuntu-seed (rewrites the hash in THIS
+#   checkout only; never commit it).
+
+# ── 3. TN-MGMT01: prerequisites ───────────────────────────────────────
+sudo scripts/lab/build-phase.sh status
+sudo scripts/lab/build-phase.sh prereq          # packer init/validate, ISO copy (y/N),
+                                                # DRS should-rule TN-MGMT01 -> esx04 (y/N)
+
+# ── 4. Depot ──────────────────────────────────────────────────────────
+sudo scripts/lab/build-phase.sh depot --ssh-key /home/<you>/.ssh/id_ed25519_lab.pub --admin <admin upn>
+#   builds + replicates + tests + registers ubuntu-lts if it is missing, then deploys
+#   TN-DEPOT01 (y/N). Then, from the Mac:
+cd install/lab/work-site && ansible-playbook ../depot.yml --ask-vault-pass
+#   back on TN-MGMT01: re-run the depot phase; step 4/4 checks the depot on 10.30.31.30.
+sudo scripts/lab/build-phase.sh depot --admin <admin upn>
+
+# ── 5. Offline bases (still no depot_url) ─────────────────────────────
+sudo scripts/lab/build-phase.sh base --admin <admin upn>
+#   srv2022 ubuntu-lts win11-24h2 kali rocky debian13 parrot srv2025, plus win10-22h2 and
+#   srv2019 once their ISOs are in (below)
+
+# ── 6. Appliances: one heads-up each, watch the console in vCenter ────
+sudo scripts/lab/build-phase.sh appliances --admin <admin upn>   # pfsense vyos securityonion
+
+# ── 7. Depot-dependent images ─────────────────────────────────────────
+sudo python3 scripts/lab/pkrvars-work.py --depot   # depot_url = http://10.30.31.30:8081/repository
+sudo scripts/lab/build-phase.sh derived  --admin <admin upn>
+sudo scripts/lab/build-phase.sh roles    --admin <admin upn>
+sudo scripts/lab/build-phase.sh variants --admin <admin upn>
+sudo scripts/lab/build-phase.sh status
+```
+
+**Pending media** (Visual Studio downloads): Windows 10 22H2 business editions, Server 2019
+(latest refresh), Exchange 2019 CU15 (`ExchangeServer2019-x64-cu15.iso`), SharePoint
+Subscription Edition, MECM. Put each file on `[esx01-local] ISO/<folder>/`, replace its
+`PENDING` in `isos.conf` with the path, then:
+
+```bash
+sudo scripts/lab/build-phase.sh prereq                   # copies it to esx04-local
+sudo python3 scripts/lab/pkrvars-work.py [--depot]       # writes iso_win10 / iso_srv2019
+sudo scripts/lab/build-phase.sh base --only "win10-22h2 srv2019" --admin <admin upn>
+sudo scripts/lab/build-phase.sh roles --admin <admin upn>   # precomp-host, detonation-host clone win10-22h2
+```
+
+Every phase can be re-run. Existing templates are not rebuilt unless `--rebuild`, and
+replicate skips today's copies. Registration skips images that are already built. A test
+clone that fails is kept for diagnosis, and the script prints its `govc vm.destroy`
+command. Use `--dry-run` to see what a phase would do. `--no-test` builds and replicates
+but does not register.
+
+### Known gaps (read before the derived, roles and variants phases)
+
+- **The Packer tree's depot contract does not match TN-DEPOT01.**
+  - Windows builds append `/chocolatey` to `depot_url`, which is why `--depot` writes
+    `http://10.30.31.30:8081/repository` and not `http://10.30.31.30:8081`.
+  - Without Chocolatey installed, they first fetch `<depot_url>/chocolatey/install.ps1`.
+    Nexus does not serve that file, and the depot phase warns when it is missing.
+  - With `depot_url` set, the Debian-family bases write a `deb <depot_url>/apt ...` source
+    that does not exist. That is one reason the bases are built with `depot_url` empty.
+  - The Linux derived role scripts need an apt proxy (`http://10.30.31.30:3142`). The
+    Packer tree does not configure one yet, so expect the derived phase to fail on the
+    isolated build network until it does.
+- **win10-22h2 and srv2019 were written for Evaluation media.** win10-22h2 has image
+  `Windows 10 Enterprise Evaluation` and srv2019 has no key. Visual Studio business media
+  need the edition's image name and GVLK in `windows.pkr.hcl` before those builds can
+  pass.
+- **Linux seeds:** only ubuntu-lts (and its clones) uses `ssh_username`/`ssh_password`.
+  rocky, kali, debian13 and parrot keep their own fixed build users (`rocky`, `kali`,
+  `debian`, `parrot`, with the same word as the password).
+- **Prefetch** (`prefetch.yml`) runs its containers and vendor downloads on the build
+  host, so here it would need internet egress from TN-MGMT01. The kit does not run it.
+  The depot reaches upstream through dPG-TN-MGMT's gateway, and `depot-uplink.sh` does not
+  apply here.
+- **VLAN 31 reaches only esx04.** Test clones on esx02/esx03 sit on an unconnected
+  `dPG-TN-BUILD`. That is fine for the check: Tools reports the customized static IP
+  (10.30.31.241-243) whether or not anything answers.
+- **Proven on vcsim only.** ISO sync, the DRS rule, replicate and test clones (customize
+  mode) ran against vcsim, and the generated vars file passed `packer validate` (1.16.1).
+  None of it has run against the work vCenter yet.

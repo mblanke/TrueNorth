@@ -47,7 +47,9 @@ lab.auto.pkrvars.hcl.example copy to lab.auto.pkrvars.hcl (git-ignored) and fill
   builds). In the lab that host is **TN-BUILD01** on `dPG-TN-BUILD`. **Do not build on
   TN-MGMT01**, even though the deployment repo installed Packer there. The build sheet
   (§1, §8) keeps internet egress off the platform VM, and TN-BUILD01 is the only host
-  allowed to have it.
+  allowed to have it. **Exception: the work site** (ADR 0012) has no TN-BUILD01. There,
+  TN-MGMT01 builds on the isolated `dPG-TN-BUILD`, which has no egress, from a separate
+  checkout. See `install/lab/README.md`, "Work site (TN-MGMT01 build host)".
 
 ## One-time setup
 

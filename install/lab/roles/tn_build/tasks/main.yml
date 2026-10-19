@@ -17,51 +17,65 @@
     cache_valid_time: 3600
   become: true
 
-- name: Build — keyring directory
-  ansible.builtin.file:
-    path: /etc/apt/keyrings
-    state: directory
-    mode: "0755"
-  become: true
-
-- name: Build — HashiCorp signing key
-  ansible.builtin.get_url:
-    url: "{{ tn_build_hashicorp_key_url }}"
-    dest: /etc/apt/keyrings/hashicorp.asc
-    mode: "0644"
-  become: true
-
-- name: Build — HashiCorp key fingerprint
-  ansible.builtin.command: gpg --show-keys --with-colons /etc/apt/keyrings/hashicorp.asc
-  register: tn_build_hc_key
+- name: Build — installed Packer version
+  ansible.builtin.command: packer version
+  register: tn_build_packer_installed
   changed_when: false
+  failed_when: false
 
-- name: Build — the key is HashiCorp's
-  ansible.builtin.assert:
-    that: >-
-      tn_build_hashicorp_key_fpr in (tn_build_hc_key.stdout_lines
-      | select('match', '^fpr:') | map('split', ':') | map(attribute=9) | list)
-    fail_msg: >-
-      /etc/apt/keyrings/hashicorp.asc does not carry fingerprint {{ tn_build_hashicorp_key_fpr }}.
-      Check HashiCorp's published fingerprint before trusting it.
+# A host that already has Packer (TN-MGMT01 at the work site: 1.16.0) is left alone unless
+# tn_build_packer_version pins a different one. The HashiCorp repo is added only to install.
+- name: Build — Packer from the HashiCorp apt repository
+  when: >-
+    tn_build_packer_installed.rc != 0
+    or (tn_build_packer_version | length > 0
+        and tn_build_packer_version not in (tn_build_packer_installed.stdout | default('')))
+  block:
+    - name: Build — keyring directory
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: "0755"
+      become: true
 
-- name: Build — HashiCorp apt repository
-  ansible.builtin.deb822_repository:
-    name: hashicorp
-    types: [deb]
-    uris: https://apt.releases.hashicorp.com
-    suites: ["{{ ansible_distribution_release }}"]
-    components: [main]
-    signed_by: /etc/apt/keyrings/hashicorp.asc
-  become: true
-  register: tn_build_hc_repo
+    - name: Build — HashiCorp signing key
+      ansible.builtin.get_url:
+        url: "{{ tn_build_hashicorp_key_url }}"
+        dest: /etc/apt/keyrings/hashicorp.asc
+        mode: "0644"
+      become: true
 
-- name: Build — Packer
-  ansible.builtin.apt:
-    name: "packer{{ '=' ~ tn_build_packer_version if tn_build_packer_version else '' }}"
-    state: present
-    update_cache: "{{ tn_build_hc_repo is changed }}"
-  become: true
+    - name: Build — HashiCorp key fingerprint
+      ansible.builtin.command: gpg --show-keys --with-colons /etc/apt/keyrings/hashicorp.asc
+      register: tn_build_hc_key
+      changed_when: false
+
+    - name: Build — the key is HashiCorp's
+      ansible.builtin.assert:
+        that: >-
+          tn_build_hashicorp_key_fpr in (tn_build_hc_key.stdout_lines
+          | select('match', '^fpr:') | map('split', ':') | map(attribute=9) | list)
+        fail_msg: >-
+          /etc/apt/keyrings/hashicorp.asc does not carry fingerprint {{ tn_build_hashicorp_key_fpr }}.
+          Check HashiCorp's published fingerprint before trusting it.
+
+    - name: Build — HashiCorp apt repository
+      ansible.builtin.deb822_repository:
+        name: hashicorp
+        types: [deb]
+        uris: https://apt.releases.hashicorp.com
+        suites: ["{{ ansible_distribution_release }}"]
+        components: [main]
+        signed_by: /etc/apt/keyrings/hashicorp.asc
+      become: true
+      register: tn_build_hc_repo
+
+    - name: Build — Packer
+      ansible.builtin.apt:
+        name: "packer{{ '=' ~ tn_build_packer_version if tn_build_packer_version else '' }}"
+        state: present
+        update_cache: "{{ tn_build_hc_repo is changed }}"
+      become: true
 
 - name: Build — installed govc version
   ansible.builtin.command: /usr/local/bin/govc version
@@ -95,12 +109,14 @@
     append: true
   become: true
   register: tn_build_docker_group
+  when: tn_build_manage_docker_group | bool
 
 - name: Build — pick up the docker group in this run
   ansible.builtin.meta: reset_connection
   when: tn_build_docker_group is changed
 
 # ── The TrueNorth checkout ────────────────────────────────────────────
+# tn_build_repo_mode none: the checkout is already there (the assert below still checks it).
 - name: Build — checkout directory
   ansible.builtin.file:
     path: "{{ tn_build_repo_dir }}"
@@ -109,6 +125,7 @@
     group: "{{ ansible_user }}"
     mode: "0755"
   become: true
+  when: tn_build_repo_mode in ['git', 'local']
 
 - name: Build — clone or update TrueNorth at {{ tn_build_repo_ref }}
   ansible.builtin.git:
@@ -153,11 +170,7 @@
 
 - name: Build — versions
   ansible.builtin.command: "{{ item }}"
-  loop:
-    - packer version
-    - /usr/local/bin/govc version
-    - ansible --version
-    - xorriso -version
+  loop: "{{ tn_build_version_commands }}"
   register: tn_build_versions
   changed_when: false
 
@@ -165,6 +178,4 @@
   ansible.builtin.debug:
     msg:
       - "{{ tn_build_versions.results | map(attribute='stdout_lines') | map('first') | list }}"
-      - >-
-        Next: in {{ tn_build_repo_dir }}/infra/vsphere/packer copy lab.auto.pkrvars.hcl.example
-        to lab.auto.pkrvars.hcl and fill in the secrets ON THIS HOST (never commit it).
+      - "{{ tn_build_report_next }}"
