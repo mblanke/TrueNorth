@@ -35,6 +35,14 @@ vault_vsphere_password: "CHANGE_ME"
 # quote ('), no newline.
 vault_range_default_password: ""
 
+# ── Golden templates' build login (ADR 0012 §5) ───────────────────────
+# The passwords the templates were built with: Packer's lab.auto.pkrvars.hcl
+# windows_admin_password and ssh_password (user: tn_template_linux_user, default ubuntu).
+# Shown to staff only, as the "template default" login of machines with no declared
+# account. Not generated on target; empty shows "not configured". No single quote or newline.
+vault_template_windows_admin_password: ""
+vault_template_linux_password: ""
+
 # ── Keycloak admin (bootstrap only; not an end-user account) ───────────
 # The master-realm admin. Only the installer uses it; the API has its own
 # least-privilege service account (truenorth-api-admin).

@@ -1023,6 +1023,25 @@ every launch answers 503. With `tn_cmi5_enabled` (the default):
 
 `tn_cmi5_enabled: false` renders no credential: launches answer 503 (fail closed).
 
+## Range credentials
+
+Range templates declare their machines' accounts (ADR 0012); TrueNorth sets them at deploy.
+Two vault settings cover machines with no declared account:
+
+- `vault_range_default_password`: the Administrator password a **Windows** VM is given
+  (Sysprep) when its template declares no Administrator; empty means random per VM.
+- `vault_template_windows_admin_password`, `tn_template_linux_user` (default `ubuntu`) and
+  `vault_template_linux_password`: the golden templates' build login. **Use the same values
+  as Packer's `lab.auto.pkrvars.hcl`** (`windows_admin_password`, `ssh_username` /
+  `ssh_password`). The API shows them to staff (admin, instructor, range_ops) on the range's
+  Credentials panel and its staff-only wiki page as "template default"; Students and
+  observers never see them. Empty: the row says "template default not configured". Linux
+  VMs keep this login; on Windows, Sysprep replaces it with `vault_range_default_password`
+  (or a random one), so set the two to the same value if staff should use it.
+
+None of them is logged; they reach `.env.production` single-quoted (preflight refuses a
+quote or a newline).
+
 ## Key variables
 
 `inventory/group_vars/all/main.yml` is commented throughout. The ones you will

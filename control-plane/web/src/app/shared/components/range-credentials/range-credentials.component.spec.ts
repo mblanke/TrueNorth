@@ -140,6 +140,24 @@ describe('RangeCredentialsComponent', () => {
     expect(el.textContent).not.toContain('Not set by TrueNorth');
   });
 
+  it('shows staff the template default login, and says when it is not configured', async () => {
+    await render('range_ops', { range_id: 'r1', scope: 'all', accounts: [
+      { machine: 'web01', username: 'ubuntu', password: 'Build-Pass-1!', source: 'template_default', role: 'admin',
+        student_visible: false, generated: false, applied: false, notes: 'Template build login' },
+      { machine: 'ws01', username: 'Administrator', password: null, source: 'template_default', role: 'admin',
+        student_visible: false, generated: false, applied: false, notes: 'template default not configured' },
+    ] });
+    show();
+    const rows = Array.from(el.querySelectorAll('tbody tr'));
+    expect(rows[0].textContent).toContain('Template default');
+    expect(rows[0].textContent).not.toContain('Not set by TrueNorth');
+    expect(rows[0].textContent).not.toContain('Build-Pass-1!');  // masked like any password
+    button('Copy password of ubuntu on web01').click();
+    expect(clipboard.copy).toHaveBeenCalledWith('Build-Pass-1!');
+    expect(rows[1].textContent).toContain('not configured');
+    expect(button('Copy password of Administrator on ws01')).toBeUndefined();
+  });
+
   it('says when the template declares no accounts', async () => {
     await render('instructor', { range_id: 'r1', scope: 'all', accounts: [] });
     show();

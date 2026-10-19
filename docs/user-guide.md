@@ -214,6 +214,10 @@ digits and symbols, not containing the account name), or the template is refused
   accounts handed to Students that the last build actually set, and only for a range they
   take part in (a running exercise booked to a course they are enrolled on). Lab sessions do
   not show accounts yet; their machines get a random password each.
+  Machines with no declared account show the golden template's build login with a
+  **Template default** badge (or "not configured" if the installer was not given it); on
+  Windows this is the live password only if the platform's generic range password is the
+  same.
 - **Observers** do not see credentials.
 
 Each range also gets a page in the wiki space **Ranges**, which TrueNorth owns: it is

@@ -66,6 +66,20 @@
       letter, a lower-case letter, a digit and a symbol, and no single quote or newline.
     success_msg: "range default password: {{ 'set' if _pw | length else 'not set (random per VM)' }}"
 
+# The templates' build login goes into .env.production single-quoted. Never prints a value.
+- name: Preflight — the template build login is usable
+  vars:
+    _vals: >-
+      {{ [tn_template_windows_admin_password | default('') | string,
+          tn_template_linux_user | default('') | string,
+          tn_template_linux_password | default('') | string] }}
+  ansible.builtin.assert:
+    that: _vals | select('search', "['\\n\\r]") | list | length == 0
+    fail_msg: >-
+      vault_template_windows_admin_password, tn_template_linux_user and
+      vault_template_linux_password must not contain a single quote or a newline.
+    success_msg: "template build login: no quotes or newlines"
+
 # Alert email (tn_alert_email_enabled): everything Alertmanager needs to send, or the
 # install stops here rather than render a receiver that cannot deliver. Names what is
 # missing; never prints a credential.

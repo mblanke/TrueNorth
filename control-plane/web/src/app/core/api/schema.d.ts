@@ -5576,7 +5576,10 @@ export interface paths {
          *     account (``applied`` false: not set by TrueNorth); a Student sees the ``student_visible``
          *     accounts the last build set, of a range they take part in (an exercise running on it
          *     whose booked course they are rostered on; lab sessions are not covered yet) and gets 404
-         *     for any other; an observer gets 403. Audited per read.
+         *     for any other; an observer gets 403. Staff also get, for each Windows or Linux machine
+         *     with no declared account, the golden template's build login (``source:
+         *     "template_default"``; no password when the installer did not configure it). Audited per
+         *     read.
          */
         get: operations["get_range_credentials_ranges__range_id__credentials_get"];
         put?: never;
@@ -12664,13 +12667,23 @@ export interface components {
              * @default
              */
             notes?: string;
-            /** Password */
-            password: string;
+            /**
+             * Password
+             * @description None only for a template default that is not configured
+             */
+            password: string | null;
             /**
              * Role
              * @description admin | user
              */
             role: string;
+            /**
+             * Source
+             * @description declared: the range template's accounts:. template_default (staff only): the golden template's build login on a machine with no declared account
+             * @default declared
+             * @enum {string}
+             */
+            source?: "declared" | "template_default";
             /**
              * Student Visible
              * @description Handed to Students who take part in the range

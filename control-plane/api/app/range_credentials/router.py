@@ -16,6 +16,7 @@ Responses are ``Cache-Control: no-store``: they carry passwords.
 from __future__ import annotations
 
 import uuid
+from typing import Literal
 
 from fastapi import APIRouter, Depends, Path, Response
 from pydantic import BaseModel, Field
@@ -32,7 +33,10 @@ router = APIRouter(prefix="/ranges", tags=["ranges"])
 class RangeCredentialOut(BaseModel):
     machine: str = Field(description="The template node id (or asset role) the account is on")
     username: str
-    password: str
+    password: str | None = Field(description="None only for a template default that is not configured")
+    source: Literal["declared", "template_default"] = Field(
+        "declared", description="declared: the range template's accounts:. template_default (staff only): the "
+                                "golden template's build login on a machine with no declared account")
     role: str = Field(description="admin | user")
     student_visible: bool = Field(description="Handed to Students who take part in the range")
     generated: bool = Field(description="TrueNorth made the password up for this range")
@@ -68,11 +72,15 @@ def get_range_credentials(
     account (``applied`` false: not set by TrueNorth); a Student sees the ``student_visible``
     accounts the last build set, of a range they take part in (an exercise running on it
     whose booked course they are rostered on; lab sessions are not covered yet) and gets 404
-    for any other; an observer gets 403. Audited per read.
+    for any other; an observer gets 403. Staff also get, for each Windows or Linux machine
+    with no declared account, the golden template's build login (``source:
+    "template_default"``; no password when the installer did not configure it). Audited per
+    read.
     """
     scope = service.access_scope(user)
     rng = service.readable_range(db, range_id, user, scope)
     rows = service.visible_accounts(db, rng, scope)
+    defaults = service.template_logins(db, rng, rows, scope)  # [] unless staff
     out = RangeCredentialsOut(
         range_id=rng.id,
         scope=scope,
@@ -81,9 +89,14 @@ def get_range_credentials(
                                student_visible=r.student_visible, generated=r.generated, applied=r.applied,
                                notes=r.notes or "")
             for r in rows
+        ] + [
+            RangeCredentialOut(machine=d.machine, username=d.username, password=d.password,
+                               source="template_default", role="admin", student_visible=False, generated=False,
+                               applied=False, notes=d.notes)
+            for d in defaults
         ],
     )
-    service.audit_read(db, user, rng, scope, rows)
+    service.audit_read(db, user, rng, scope, [*rows, *defaults])
     db.commit()
     response.headers["Cache-Control"] = "no-store"
     return out

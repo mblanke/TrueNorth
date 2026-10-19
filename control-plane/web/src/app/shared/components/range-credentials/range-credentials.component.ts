@@ -68,7 +68,11 @@ const MASK = '••••••••••';
                   <tr>
                     <td>
                       <code>{{ a.machine }}</code>
-                      @if (staff() && !a.applied) {
+                      @if (a.source === 'template_default') {
+                        <span class="badge" matTooltip="No account is declared for this machine: this is the golden template's build login (installer settings).">
+                          Template default
+                        </span>
+                      } @else if (staff() && !a.applied) {
                         <span class="badge" matTooltip="The last build did not set this account (or the range is not built): Windows accounts other than Administrator, appliances and other backends are scenario content. Students are not shown it.">
                           Not set by TrueNorth
                         </span>
@@ -82,16 +86,20 @@ const MASK = '••••••••••';
                       </button>
                     </td>
                     <td class="pw">
-                      <code class="secret" [attr.data-revealed]="isRevealed(a)">{{ isRevealed(a) ? a.password : mask }}</code>
-                      <button mat-icon-button (click)="toggle(a)" [matTooltip]="isRevealed(a) ? 'Hide password' : 'Show password'"
-                              [attr.aria-pressed]="isRevealed(a)"
-                              [attr.aria-label]="(isRevealed(a) ? 'Hide' : 'Show') + ' password of ' + a.username + ' on ' + a.machine">
-                        <mat-icon>{{ isRevealed(a) ? 'visibility_off' : 'visibility' }}</mat-icon>
-                      </button>
-                      <button mat-icon-button (click)="copy(a.password, 'Password')" matTooltip="Copy password"
-                              [attr.aria-label]="'Copy password of ' + a.username + ' on ' + a.machine">
-                        <mat-icon>content_copy</mat-icon>
-                      </button>
+                      @if (a.password; as pw) {
+                        <code class="secret" [attr.data-revealed]="isRevealed(a)">{{ isRevealed(a) ? pw : mask }}</code>
+                        <button mat-icon-button (click)="toggle(a)" [matTooltip]="isRevealed(a) ? 'Hide password' : 'Show password'"
+                                [attr.aria-pressed]="isRevealed(a)"
+                                [attr.aria-label]="(isRevealed(a) ? 'Hide' : 'Show') + ' password of ' + a.username + ' on ' + a.machine">
+                          <mat-icon>{{ isRevealed(a) ? 'visibility_off' : 'visibility' }}</mat-icon>
+                        </button>
+                        <button mat-icon-button (click)="copy(pw, 'Password')" matTooltip="Copy password"
+                                [attr.aria-label]="'Copy password of ' + a.username + ' on ' + a.machine">
+                          <mat-icon>content_copy</mat-icon>
+                        </button>
+                      } @else {
+                        <span class="muted">not configured</span>
+                      }
                     </td>
                     @if (staff()) {
                       <td>{{ a.role }}</td>

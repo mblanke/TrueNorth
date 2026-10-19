@@ -74,7 +74,7 @@ class AccountSpec:
 DEFAULT_OS = "ubuntu-2404"  # worker/render.py DEFAULT_OS
 
 
-def _built_from(doc: dict[str, Any]) -> list[dict[str, Any]]:
+def built_from(doc: dict[str, Any]) -> list[dict[str, Any]]:
     """What the worker builds machines from (render._extract_nodes): ``nodes`` when there
     are any, else one machine per ``assets`` entry (id = its role)."""
     nodes = doc.get("nodes")
@@ -89,7 +89,7 @@ def machine_os(doc: dict[str, Any]) -> dict[str, str]:
     ``os``, else ``os_template``, else ``type``, else the default."""
     return {
         str(n["id"]): str(n.get("os") or n.get("os_template") or n.get("type") or DEFAULT_OS).lower()
-        for n in _built_from(doc) if n.get("id") not in (None, "")
+        for n in built_from(doc) if n.get("id") not in (None, "")
     }
 
 
@@ -117,12 +117,12 @@ def windows_password_problem(password: str, username: str) -> str | None:
 def machines(doc: dict[str, Any]) -> dict[str, str]:
     """Every name a template's machines can be referred to by -> the machine's id.
 
-    Only machines the worker builds (``_built_from``): a node by its ``id`` or its
+    Only machines the worker builds (``built_from``): a node by its ``id`` or its
     ``name``, or, in a template without nodes, an asset by its ``role``. An id wins over
     another node's name of the same spelling."""
     out: dict[str, str] = {}
     by_id: dict[str, str] = {}
-    for node in _built_from(doc):
+    for node in built_from(doc):
         if node.get("id") not in (None, ""):
             nid = str(node["id"])
             by_id[nid] = nid

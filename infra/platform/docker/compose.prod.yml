@@ -468,6 +468,10 @@ services:
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
       # Seals stored credentials (app/secretbox.py); the workers need the same value.
       TN_SECRETS_KEY: ${TN_SECRETS_KEY:?set TN_SECRETS_KEY (see .env.production.example)}
+      # The golden templates' build login, shown to staff as "template default" (ADR 0012 §5).
+      TN_TEMPLATE_WINDOWS_ADMIN_PASSWORD: ${TN_TEMPLATE_WINDOWS_ADMIN_PASSWORD:-}
+      TN_TEMPLATE_LINUX_USER: ${TN_TEMPLATE_LINUX_USER:-ubuntu}
+      TN_TEMPLATE_LINUX_PASSWORD: ${TN_TEMPLATE_LINUX_PASSWORD:-}
       # Production fail-fast (app/settings.py): the API refuses to start, naming every
       # missing or unsafe setting (CSRF_SECRET, KEYCLOAK_AUDIENCE, default passwords...).
       TN_ENV: ${TN_ENV:-production}

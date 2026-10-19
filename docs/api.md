@@ -734,6 +734,11 @@ complexity (Windows decided as the worker does), and any `tnsec:` value that is 
 range-credential seal this platform made (for example a hypervisor secret) is refused (422).
 A template change regenerates the pages of its own tenant's ranges after the response.
 
+Template defaults: for staff, `accounts` also lists, for each Windows or Linux machine with
+no declared account, the golden template's build login with `source: "template_default"`
+(`password` null and notes "template default not configured" when the installer did not
+set it). Declared accounts have `source: "declared"`. Students never get these rows.
+
 Wiki: a generated range page stores tokens; `GET /wiki/pages/{id}` fills in the passwords
 for `range:credentials_read` holders only (audited, `Cache-Control: no-store`); every other
 wiki response returns the tokens.

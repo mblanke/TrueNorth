@@ -356,6 +356,18 @@ course production with a local-model fallback, and the cleanup of unsupported su
     `analyst@range.local` (SOC console, Student-visible), both generated. Mirroring and the
     promiscuous monitoring port group were already in place.
   - Runbook: `vmware-site-runbook.md` §7.2.
+- New: template default logins (owner decision). For every Windows or Linux machine of a
+  range with no declared account, staff (`range:credentials_read`) see the golden template's
+  build login (`source: "template_default"`; `GET /ranges/{id}/credentials` gains `source`,
+  and `password` is null when not configured) on the Credentials panel ("Template default"
+  badge) and the generated wiki page (a token filled in on GET for credential readers only).
+  Students and observers never see these rows. Values: installer
+  `vault_template_windows_admin_password`, `tn_template_linux_user` (default `ubuntu`),
+  `vault_template_linux_password`, rendered to the API as `TN_TEMPLATE_WINDOWS_ADMIN_PASSWORD`,
+  `TN_TEMPLATE_LINUX_USER`, `TN_TEMPLATE_LINUX_PASSWORD` (the same values as Packer's
+  `lab.auto.pkrvars.hcl`); unset shows "template default not configured". Appliances and
+  Security Onion get none. On Windows the row carries a caveat: Sysprep sets the
+  Administrator password at deploy (`TN_RANGE_DEFAULT_PASSWORD` or random).
 
 ### R0-B: web correctness and role access
 - Fix: Resume on a paused exercise called `/start` (409 unless pending), so nothing resumed;

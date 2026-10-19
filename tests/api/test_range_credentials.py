@@ -329,7 +329,9 @@ class TestStorageAndAudit:
             range_lifecycle.begin_provision(db_session, rng)
         act_as(world["foreign_instructor"])
         resp = _creds(client, rng)
-        assert resp.status_code == 200 and resp.json()["accounts"] == [] and DC_PW not in resp.text
+        assert resp.status_code == 200 and DC_PW not in resp.text
+        # None of tenant A's declared accounts; only the platform's template build logins.
+        assert {a["source"] for a in resp.json()["accounts"]} <= {"template_default"}
 
     def test_a_failing_background_refresh_never_fails_the_template_edit(self, client, db_session, world,
                                                                        monkeypatch, caplog):
@@ -670,6 +672,97 @@ class TestWikiPage:
         page = self._page(db_session, rng)
         space = db_session.get(WikiSpace, page.space_id)
         assert (space.slug, space.system_owned, space.visibility) == ("ranges-generated", True, "staff")
+
+
+# ── Template default logins (owner decision, 2026-10-19) ───────────────────
+MIXED_YAML = f"""
+name: mixed
+nodes:
+  - {{id: dc01, os: windows-server-2022}}
+  - {{id: ws01, os: windows-11}}
+  - {{id: web01, os: ubuntu-2404}}
+  - {{id: fw01, os: pfsense, role: firewall}}
+  - {{id: so01, os: securityonion}}
+accounts:
+  - {{machine: dc01, username: Administrator, password: "{DC_PW}", role: admin, student_visible: true}}
+"""
+WIN_BUILD = "Win-Build-Pass-1!"
+LINUX_BUILD = "Linux-Build-Pass-2!"
+
+
+class TestTemplateDefaults:
+    @pytest.fixture
+    def configured(self, monkeypatch):
+        monkeypatch.setenv("TN_TEMPLATE_WINDOWS_ADMIN_PASSWORD", WIN_BUILD)
+        monkeypatch.setenv("TN_TEMPLATE_LINUX_PASSWORD", LINUX_BUILD)
+        monkeypatch.delenv("TN_TEMPLATE_LINUX_USER", raising=False)
+
+    def _range(self, client, db, world) -> Range:
+        tmpl = _template(db, world["a"].id, MIXED_YAML)
+        act_as(world["instructor"])
+        return db.get(Range, uuid.UUID(client.post("/ranges", json={"name": "Mixed", "template_id": str(tmpl.id)})
+                                        .json()["id"]))
+
+    @pytest.mark.parametrize("role", ["admin", "instructor", "range_ops"])
+    def test_staff_see_the_build_login_of_machines_with_no_declared_account(self, client, db_session, world,
+                                                                             configured, role):
+        rng = self._range(client, db_session, world)
+        act_as(world[role])
+        accts = _accounts(_creds(client, rng))
+        assert set(accts) == {("dc01", "Administrator"), ("ws01", "Administrator"), ("web01", "ubuntu")}
+        assert accts[("dc01", "Administrator")]["source"] == "declared"  # declared wins: no default row
+        assert accts[("dc01", "Administrator")]["password"] == DC_PW
+        assert (accts[("ws01", "Administrator")]["source"], accts[("ws01", "Administrator")]["password"]) == (
+            "template_default", WIN_BUILD)
+        assert (accts[("web01", "ubuntu")]["source"], accts[("web01", "ubuntu")]["password"]) == (
+            "template_default", LINUX_BUILD)
+        assert all(not a["student_visible"] for a in accts.values() if a["source"] == "template_default")
+        # Appliances and Security Onion: no row (their logins are their own config).
+        assert not {m for m, _ in accts} & {"fw01", "so01"}
+
+    def test_the_linux_user_is_configurable(self, client, db_session, world, configured, monkeypatch):
+        monkeypatch.setenv("TN_TEMPLATE_LINUX_USER", "packer")
+        rng = self._range(client, db_session, world)
+        assert ("web01", "packer") in _accounts(_creds(client, rng))
+
+    def test_unset_shows_the_row_without_a_password(self, client, db_session, world, monkeypatch):
+        for name in ("TN_TEMPLATE_WINDOWS_ADMIN_PASSWORD", "TN_TEMPLATE_LINUX_PASSWORD", "TN_TEMPLATE_LINUX_USER"):
+            monkeypatch.delenv(name, raising=False)
+        rng = self._range(client, db_session, world)
+        accts = _accounts(_creds(client, rng))
+        for key in (("ws01", "Administrator"), ("web01", "ubuntu")):
+            assert accts[key]["password"] is None and accts[key]["notes"] == "template default not configured"
+
+    def test_students_and_observers_never_see_them(self, client, db_session, world, configured):
+        rng = self._range(client, db_session, world)
+        _on_the_course(db_session, rng, world["student"])
+        _apply(db_session, rng)
+        act_as(world["student"])
+        resp = _creds(client, rng)
+        assert resp.status_code == 200
+        assert [(a["machine"], a["source"]) for a in resp.json()["accounts"]] == [("dc01", "declared")]
+        assert WIN_BUILD not in resp.text and LINUX_BUILD not in resp.text
+        act_as(world["observer"])
+        assert _creds(client, rng).status_code == 403
+
+    def test_the_wiki_page_holds_tokens_filled_in_on_get_for_credential_readers(self, client, db_session, world,
+                                                                              configured, monkeypatch):
+        rng = self._range(client, db_session, world)
+        db_session.expire_all()
+        page = db_session.query(WikiPage).filter(WikiPage.tags.contains(f"range:{rng.id}")).one()
+        assert "{{tn-credential:template-windows}}" in page.body and "{{tn-credential:template-linux}}" in page.body
+        assert WIN_BUILD not in page.body and LINUX_BUILD not in page.body
+        revs = db_session.query(WikiRevision).filter(WikiRevision.page_id == page.id).all()
+        assert all(WIN_BUILD not in r.body and LINUX_BUILD not in r.body for r in revs)
+        act_as(world["instructor"])
+        got = client.get(f"/wiki/pages/{page.id}")
+        assert got.headers["cache-control"] == "no-store"
+        assert WIN_BUILD in got.json()["body"] and LINUX_BUILD in got.json()["body"]
+        assert "fw01" in got.json()["body"] and got.json()["body"].count("template default |") == 2
+        monkeypatch.delenv("TN_TEMPLATE_LINUX_PASSWORD")  # read when shown, not when written
+        assert "(template default not configured)" in client.get(f"/wiki/pages/{page.id}").json()["body"]
+        act_as(world["student"])
+        assert client.get(f"/wiki/pages/{page.id}").status_code == 404
 
 
 # ── The range designer's save (Low a) ──────────────────────────────────────
