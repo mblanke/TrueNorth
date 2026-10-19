@@ -1,0 +1,85 @@
+# ADR 0012: Golden templates are prebuilt, host-local and key-free; ranges declare their credentials
+
+- **Status:** proposed, 2026-10-19. Owner decisions from a design review of the work-vCenter template build. Accepted when the owner signs off; no template is built before then.
+- **Date:** 2026-10-19
+- **Numbering:** 0008 is left free for an open branch (see ADR 0010). 0007 is Greyspace.
+- **Code:** none yet. This ADR comes before the work it describes:
+  - per-host template copies: `control-plane/worker/worker/provisioners/vsphere_api.py`, `infra/vsphere/packer/build.sh`;
+  - range-declared accounts: range template schema, `_customize_sync`, a credentials API and UI;
+  - generated range wiki pages;
+  - the Security Onion per-range setup;
+  - catalogue fixes in `content/catalogue/vm_iso_catalogue.csv`.
+
+## Context
+
+The first real range build on the work vCenter (2026-10-15, "Medium Enterprise Network") stopped before cloning anything: `template 'srv2022' is neither a Content Library item nor an inventory VM template`. The vCenter had no golden templates.
+
+What there was:
+- three hand-made Linux items in the `TrueNorth-Templates` Content Library, of unknown provenance;
+- a Packer tree (`infra/vsphere/packer/`) that had never run against this vCenter.
+
+The site constrains everything below:
+- **No shared storage.** Four ESXi hosts, each with only its own local VMFS datastore. Placement (`VSPHERE_PLACEMENT=spread`) puts each VM on its host's local datastore. So cloning from a template on another host is a full copy over the network, 20–40 GB per Windows VM.
+- **Ranges land on esx02–04.** esx01 is excluded from ranges; it holds the ISOs.
+- **No route out from the build network.** It must be isolated from the management network. `dPG-TN-BUILD`, VLAN 31, was created for this: no gateway, DHCP from TN-MGMT01 on `10.30.31.0/24`.
+- **Licensing.** Windows and server-product media for test comes from the owner's Visual Studio subscription. Production will have a KMS server.
+- **Credentials are documented.** Every range setup is to be documented in the TrueNorth wiki, credentials included, and readers' roles differ.
+
+## Decision
+
+### Templates
+
+1. **Every enabled catalogue template is built ahead of time.** That covers the base OS images, appliances, derived images, Windows role images and variants, so a range deployment only ever clones. `c2-server` stays disabled; it is built later, on its own branch, with explicit approval.
+2. **Every template is built by Packer from the repo.** The hand-made library items are rebuilt and retired once their replacements pass. A template nobody can reproduce can't be trusted.
+3. **Templates carry no product keys.** They use VS media marked "No key required" or the public KMS client (GVLK) keys. Evaluation editions are not used, because they expire and evaluation Servers then shut down. Test ranges run unactivated: fully functional, with a watermark.
+   - Production activation is a **Windows activation** setting in the admin portal, alongside the hypervisor connections: a KMS host and port (1688), optionally a MAK key, stored sealed. It is applied at deploy (`slmgr /skms`, `/ato`), with a warning when a VM doesn't activate, never baked into a template.
+   - That setting is **built when the production KMS server is set up**, so it is tested against a real KMS server.
+4. **Builds have no internet.**
+   - A mirror VM, **TN-DEPOT01** (apt cache plus a Chocolatey feed, on the management and build networks), is built first and is the only machine that reaches out.
+   - Templates are as current as their ISOs. They are **rebuilt quarterly** from refreshed VS ISOs, which Microsoft updates monthly. A single update file from the Update Catalog can be added to a build for an urgent fix.
+   - **No WSUS.** Windows updates are cumulative, so fresh ISOs give the same result without a server to run. WSUS also must not sit on the domain controller.
+   - Patch level per scenario (deliberately vulnerable states) belongs to range content, not to templates.
+5. **Templates use a generic build password, documented in the wiki.** Admins may change it after the build. Deployed VMs don't keep it: see "Range credentials".
+6. **A copy of each template lives on every range host.**
+   - After each build, the template is cloned to esx02, esx03 and esx04 as `<id>@<host>-<yyyymmdd>`.
+   - The provisioner clones the newest copy on the VM's target host, so the clone stays on that host's disk. It falls back to the plain name.
+   - Old copies are removed once no range uses them. Storage cost is about 3× the template set; each host has about 1.5 TB free.
+   - Shared storage (NFS, iSCSI or vSAN) is the long-term fix and belongs in the production hardware plan.
+7. **The build network stays isolated.**
+   - Builds run on esx04, next to TN-MGMT01, which serves the Packer HTTP, WinRM and SSH callbacks on `10.30.31.20`.
+   - VLAN 31 is to be trunked to every host. Until then, a DRS "should run on esx04" rule keeps TN-MGMT01 there.
+8. **Versions:**
+   - VyOS uses the free rolling build `2026.10.01`, pinned in the catalogue, for both the `vyos` and `vyos-1.4` aliases. If it proves unstable, switch to the free VyOS Stream. No subscription.
+   - The Security Onion template is OS-only. Its `so-setup` (standalone node, monitoring on the range's mirror network) runs per range at deploy, scripted.
+9. **A template counts as built when:**
+   - a test clone takes TrueNorth's customization: the Windows Sysprep name, IP and range password, or Linux cloud-init;
+   - it is marked `built` in the golden-image list;
+   - the test clone is deleted.
+10. **The build-out is accepted when "Medium Enterprise Network" and "SOC Analyst" build end to end** on the work vCenter, with Security Onion seeing the mirrored traffic. The forensics range (C208) is a separate project.
+11. **Builds are approved once per phase:** depot, offline bases, appliances, depot-dependent images, role images and variants. There is a heads-up before each fragile appliance (pfSense, VyOS, Security Onion), whose installers type keystrokes blind.
+
+### Range credentials
+
+12. **A range template declares its accounts:**
+    - the Administrator or install user, plus scenario users per machine;
+    - each with a password (or "generate");
+    - each with whether it is handed to Students.
+
+    TrueNorth sets exactly those at deploy, replacing today's random per-VM Sysprep password, and falls back to the generic default. Credentials are stored sealed, like hypervisor passwords.
+13. **Who sees credentials:**
+
+    | Role | Sees |
+    |---|---|
+    | admin, instructor, range_ops | every account |
+    | Student | only the accounts for machines their exercise uses |
+    | observer | none |
+14. **Range documentation is generated.** Each range gets a wiki page built from its range template (machines, networks, template versions, credentials) in a staff-only space. It is regenerated when the range or a template changes, and keeps a hand-written "Notes" section. A wiki page can't be filtered per reader, so Students see their accounts on their own lab view instead.
+
+## Consequences
+
+- **Faster deploys.** Range deploys are clones only, and local ones. A range no longer waits for a build or a cross-host disk copy, except when a host's copy is missing.
+- **Cost of the template set.** About 30 templates × 3 hosts of storage, and a quarterly rebuild: roughly a day of supervised builds per quarter.
+- **Activation isn't proven until production.** Test ranges are unactivated, and activation is untested until the KMS server exists.
+- **Credentials can be documented truthfully.** Passwords are intentional and visible to the right roles. A random password nobody can tell a Student is gone. Range templates now carry secrets, so their storage and API are tenant-scoped and role-filtered (ADR 0005 and the S-track controls apply).
+- **Security Onion becomes deploy-time work.** It moves from "a VM that boots" to "a configured sensor", which the SOC range needs to mean anything.
+- **Isolation at a cost.** No internet in builds keeps the template supply chain auditable: everything comes from the ISO, the depot or the repo. In exchange, TN-DEPOT01 becomes a required piece of lab infrastructure.
