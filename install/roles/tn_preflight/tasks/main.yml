@@ -51,6 +51,30 @@
 
 # The range machines' generic password (ADR 0012) goes into .env.production single-quoted,
 # and Windows refuses a Sysprep password without complexity. Never prints the value.
+- name: Preflight — the Windows template password is usable (Sysprep sets it)
+  vars:
+    _pw: "{{ tn_template_windows_admin_password | default('') | string }}"
+  ansible.builtin.assert:
+    that: >-
+      _pw | length == 0 or (
+        _pw | length >= 8 and _pw | length <= 128
+        and _pw is search('[A-Z]') and _pw is search('[a-z]') and _pw is search('[0-9]')
+        and _pw is search('[^A-Za-z0-9]'))
+    fail_msg: >-
+      vault_template_windows_admin_password must be empty, or 8-128 characters with an
+      upper-case letter, a lower-case letter, a digit and a symbol (Sysprep sets it).
+    success_msg: "Windows template password: {{ 'set' if _pw | length else 'not set' }}"
+
+- name: Preflight — vault_range_default_password is deprecated
+  ansible.builtin.debug:
+    msg: >-
+      DEPRECATED: vault_range_default_password. Set vault_template_windows_admin_password (the
+      templates' Windows build password) instead; the old setting is used only while that is
+      empty{{ ' (it is empty now, so the old one is in use)'
+            if not (tn_template_windows_admin_password | default('') | string | length) else
+            ' (it is set, so the old one is ignored)' }}.
+  when: tn_range_default_password | default('') | string | length > 0
+
 - name: Preflight — the generic range password is usable
   vars:
     _pw: "{{ tn_range_default_password | default('') | string }}"

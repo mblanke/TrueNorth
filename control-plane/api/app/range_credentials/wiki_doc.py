@@ -97,7 +97,10 @@ def _page(db: Session, space: WikiSpace, rng: Range) -> WikiPage | None:
 def upsert(db: Session, rng: Range, rows: list[RangeCredential], actor: uuid.UUID) -> WikiPage | None:
     """Create or regenerate the range's page. Does not commit. None when a concurrent save
     won (the next change regenerates)."""
-    generated = render(rng, rows, template_doc(db, rng))  # every read before any write
+    from .service import windows_random
+
+    # every read before any write
+    generated = render(rng, rows, template_doc(db, rng), windows_random=windows_random(db, rng))
     space = system_space(db, rng.tenant_id, actor)
     title = (rng.name or str(rng.id))[:500]
     page = _page(db, space, rng)
@@ -175,7 +178,7 @@ def expand(db: Session, page: WikiPage, body: str) -> str:
     ) if row_ids else []
     by_id = {str(r.id).lower(): r.password or "" for r in rows}
     for token in (template_defaults.TOKEN_WINDOWS, template_defaults.TOKEN_LINUX):
-        by_id[token] = template_defaults.password_for(token) or f"({template_defaults.NOT_CONFIGURED})"
+        by_id[token] = template_defaults.password_for(token) or f"({template_defaults.unset_text(token)})"
 
     def fill(m: re.Match) -> str:
         return by_id.get(m.group(1).lower(), "(removed)").replace("|", "\\|")  # inside a table cell
@@ -262,7 +265,7 @@ def _addresses(vm: dict[str, Any] | None, planned: str) -> str:
     return ", ".join(dict.fromkeys(str(i) for i in ips)) or "—"
 
 
-def render(rng: Range, rows: list[RangeCredential], doc: dict[str, Any]) -> str:
+def render(rng: Range, rows: list[RangeCredential], doc: dict[str, Any], *, windows_random: bool = False) -> str:
     tmpl = doc.get("_tn_template") or {}
     built = _built(rng)
     lines = [
@@ -311,7 +314,7 @@ def render(rng: Range, rows: list[RangeCredential], doc: dict[str, Any]) -> str:
     lines += ["", "## Credentials", ""]
     from . import template_defaults
 
-    defaults = template_defaults.logins(doc, {r.machine for r in rows})
+    defaults = template_defaults.logins(doc, {r.machine for r in rows}, windows_random=windows_random)
     if rows or defaults:
         lines += ["| Machine | Username | Password | Role | Set at deploy | Handed to Students | Notes |",
                   "|---|---|---|---|---|---|---|"]
@@ -323,15 +326,18 @@ def render(rng: Range, rows: list[RangeCredential], doc: dict[str, Any]) -> str:
                 f"{_cell(r.role)} | {applied} | {'yes' if r.student_visible else 'no'} | {_cell(r.notes)} |"
             )
         for d in defaults:  # no declared account: the golden template's build login (staff only)
-            note = template_defaults.WINDOWS_NOTE if d.token == template_defaults.TOKEN_WINDOWS else \
-                template_defaults.LINUX_NOTE
+            random_vm = d.token == template_defaults.TOKEN_WINDOWS and windows_random
+            cell = f"_{template_defaults.RANDOM_PER_VM}_" if random_vm else f"`{{{{tn-credential:{d.token}}}}}`"
+            note = template_defaults.RANDOM_PER_VM if random_vm else (
+                template_defaults.WINDOWS_NOTE if d.token == template_defaults.TOKEN_WINDOWS
+                else template_defaults.LINUX_NOTE)
             lines.append(
-                f"| `{_cell(d.machine)}` | {_code(d.username)} | `{{{{tn-credential:{d.token}}}}}` | admin | "
-                f"template default | no | {_cell(note)} |"
+                f"| `{_cell(d.machine)}` | {_code(d.username)} | {cell} | admin | template default | no | "
+                f"{_cell(note)} |"
             )
     else:
-        lines.append("_The template declares no accounts. Machines without one get the platform's default "
-                     "password (TN_RANGE_DEFAULT_PASSWORD) if it is set, else a random one nobody is told._")
+        lines.append("_The template declares no accounts, and its machines are appliances: they keep the "
+                     "login of their own configuration._")
     return "\n".join(lines) + "\n"
 
 

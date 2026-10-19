@@ -11,9 +11,12 @@ Only holders of ``range:credentials_read`` see these rows (``service.visible_acc
 never Students, never observers. Appliances (pfSense, OPNsense, VyOS, routers) and Security
 Onion get none: their logins are their own config, with no per-appliance setting yet.
 
-Windows caveat: at deploy, Sysprep sets the Administrator password of a Windows VM with no
-declared Administrator to ``TN_RANGE_DEFAULT_PASSWORD`` (when set) or a random one, so the
-template's build password is the live login only where those are the same.
+Windows: at deploy, Sysprep sets the Administrator password of a Windows VM with no
+declared Administrator to this same template password (worker/range_accounts.py
+``default_password``), so the row staff see is the live one. ``TN_RANGE_DEFAULT_PASSWORD`` is
+a deprecated alias used only when the template setting is unset. With neither, the worker
+sets a random password per VM: the row then says so and shows none. A lab session's VMs
+are always random per VM.
 """
 
 from __future__ import annotations
@@ -25,12 +28,13 @@ from typing import Any
 from . import accounts as account_rules
 
 WINDOWS_PASSWORD_ENV = "TN_TEMPLATE_WINDOWS_ADMIN_PASSWORD"
+RANGE_DEFAULT_ENV = "TN_RANGE_DEFAULT_PASSWORD"  # deprecated alias (worker/range_accounts.py)
 LINUX_USER_ENV = "TN_TEMPLATE_LINUX_USER"
 LINUX_PASSWORD_ENV = "TN_TEMPLATE_LINUX_PASSWORD"
 DEFAULT_LINUX_USER = "ubuntu"
 NOT_CONFIGURED = "template default not configured"
-WINDOWS_NOTE = ("Template build login. Sysprep sets this machine's Administrator password at deploy: it is "
-                "this one only if TN_RANGE_DEFAULT_PASSWORD is set to it")
+RANDOM_PER_VM = "random per VM — not recoverable"
+WINDOWS_NOTE = "Template default: the generic Administrator password, set by Sysprep at deploy"
 LINUX_NOTE = "Template build login (no account declared for this machine)"
 # Token names in the generated wiki page (wiki_doc.TOKEN_RE).
 TOKEN_WINDOWS = "template-windows"
@@ -71,22 +75,32 @@ def _env(name: str) -> str | None:
     return os.getenv(name, "").strip() or None
 
 
+def windows_password() -> str | None:
+    """What Sysprep gives an undeclared Administrator (as the worker decides), or None: random."""
+    return _env(WINDOWS_PASSWORD_ENV) or _env(RANGE_DEFAULT_ENV)
+
+
 def password_for(token: str) -> str | None:
     """The configured password a wiki token names, or None."""
-    return {TOKEN_WINDOWS: _env(WINDOWS_PASSWORD_ENV), TOKEN_LINUX: _env(LINUX_PASSWORD_ENV)}.get(token)
+    return {TOKEN_WINDOWS: windows_password(), TOKEN_LINUX: _env(LINUX_PASSWORD_ENV)}.get(token)
 
 
-def logins(doc: dict[str, Any], declared_machines: set[str]) -> list[TemplateLogin]:
-    """A template login for each Windows or Linux machine of ``doc`` with no declared account."""
+def unset_text(token: str) -> str:
+    """What a token with no password says: Windows is then random per VM."""
+    return RANDOM_PER_VM if token == TOKEN_WINDOWS else NOT_CONFIGURED
+
+
+def logins(doc: dict[str, Any], declared_machines: set[str], *, windows_random: bool = False) -> list[TemplateLogin]:
+    """A template login for each Windows or Linux machine of ``doc`` with no declared account.
+    ``windows_random``: the range's Windows VMs got a random password each (a lab session)."""
     os_of = account_rules.machine_os(doc)
     out = []
     for machine, fam in sorted(machine_families(doc).items()):
         if machine in declared_machines or fam == "appliance" or os_of.get(machine, "").startswith(NO_TEMPLATE_LOGIN):
             continue
         if fam == "windows":
-            pw = _env(WINDOWS_PASSWORD_ENV)
-            out.append(TemplateLogin(machine, "Administrator", pw, TOKEN_WINDOWS,
-                                     WINDOWS_NOTE if pw else NOT_CONFIGURED))
+            pw = None if windows_random else windows_password()
+            out.append(TemplateLogin(machine, "Administrator", pw, TOKEN_WINDOWS, WINDOWS_NOTE if pw else RANDOM_PER_VM))
         else:
             pw = _env(LINUX_PASSWORD_ENV)
             out.append(TemplateLogin(machine, _env(LINUX_USER_ENV) or DEFAULT_LINUX_USER, pw, TOKEN_LINUX,

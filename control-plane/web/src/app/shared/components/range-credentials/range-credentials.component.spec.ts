@@ -145,7 +145,7 @@ describe('RangeCredentialsComponent', () => {
       { machine: 'web01', username: 'ubuntu', password: 'Build-Pass-1!', source: 'template_default', role: 'admin',
         student_visible: false, generated: false, applied: false, notes: 'Template build login' },
       { machine: 'ws01', username: 'Administrator', password: null, source: 'template_default', role: 'admin',
-        student_visible: false, generated: false, applied: false, notes: 'template default not configured' },
+        student_visible: false, generated: false, applied: false, notes: 'random per VM — not recoverable' },
     ] });
     show();
     const rows = Array.from(el.querySelectorAll('tbody tr'));
@@ -154,7 +154,8 @@ describe('RangeCredentialsComponent', () => {
     expect(rows[0].textContent).not.toContain('Build-Pass-1!');  // masked like any password
     button('Copy password of ubuntu on web01').click();
     expect(clipboard.copy).toHaveBeenCalledWith('Build-Pass-1!');
-    expect(rows[1].textContent).toContain('not configured');
+    expect(rows[1].textContent).toContain('random per VM — not recoverable');
+    expect(rows[1].textContent).toContain('none shown');
     expect(button('Copy password of Administrator on ws01')).toBeUndefined();
   });
 

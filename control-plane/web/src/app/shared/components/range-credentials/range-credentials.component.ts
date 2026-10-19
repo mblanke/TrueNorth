@@ -98,7 +98,7 @@ const MASK = '••••••••••';
                           <mat-icon>content_copy</mat-icon>
                         </button>
                       } @else {
-                        <span class="muted">not configured</span>
+                        <span class="muted">none shown (see notes)</span>
                       }
                     </td>
                     @if (staff()) {

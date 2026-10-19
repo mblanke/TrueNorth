@@ -696,6 +696,7 @@ class TestTemplateDefaults:
         monkeypatch.setenv("TN_TEMPLATE_WINDOWS_ADMIN_PASSWORD", WIN_BUILD)
         monkeypatch.setenv("TN_TEMPLATE_LINUX_PASSWORD", LINUX_BUILD)
         monkeypatch.delenv("TN_TEMPLATE_LINUX_USER", raising=False)
+        monkeypatch.delenv("TN_RANGE_DEFAULT_PASSWORD", raising=False)
 
     def _range(self, client, db, world) -> Range:
         tmpl = _template(db, world["a"].id, MIXED_YAML)
@@ -725,13 +726,44 @@ class TestTemplateDefaults:
         rng = self._range(client, db_session, world)
         assert ("web01", "packer") in _accounts(_creds(client, rng))
 
-    def test_unset_shows_the_row_without_a_password(self, client, db_session, world, monkeypatch):
-        for name in ("TN_TEMPLATE_WINDOWS_ADMIN_PASSWORD", "TN_TEMPLATE_LINUX_PASSWORD", "TN_TEMPLATE_LINUX_USER"):
+    def test_unset_is_honest_random_on_windows_and_not_configured_on_linux(self, client, db_session, world,
+                                                                          monkeypatch):
+        """Neither TN_TEMPLATE_WINDOWS_ADMIN_PASSWORD nor the deprecated alias: Sysprep set a
+        random password per VM, so the row shows none and says so."""
+        for name in ("TN_TEMPLATE_WINDOWS_ADMIN_PASSWORD", "TN_RANGE_DEFAULT_PASSWORD", "TN_TEMPLATE_LINUX_PASSWORD",
+                     "TN_TEMPLATE_LINUX_USER"):
             monkeypatch.delenv(name, raising=False)
         rng = self._range(client, db_session, world)
         accts = _accounts(_creds(client, rng))
-        for key in (("ws01", "Administrator"), ("web01", "ubuntu")):
-            assert accts[key]["password"] is None and accts[key]["notes"] == "template default not configured"
+        assert accts[("ws01", "Administrator")]["password"] is None
+        assert accts[("ws01", "Administrator")]["notes"] == "random per VM — not recoverable"
+        assert accts[("web01", "ubuntu")]["password"] is None
+        assert accts[("web01", "ubuntu")]["notes"] == "template default not configured"
+        act_as(world["instructor"])
+        page = db_session.query(WikiPage).filter(WikiPage.tags.contains(f"range:{rng.id}")).one()
+        body = client.get(f"/wiki/pages/{page.id}").json()["body"]
+        assert "(random per VM — not recoverable)" in body and "(template default not configured)" in body
+
+    def test_the_deprecated_alias_is_used_when_the_template_setting_is_unset(self, client, db_session, world,
+                                                                            monkeypatch):
+        monkeypatch.delenv("TN_TEMPLATE_WINDOWS_ADMIN_PASSWORD", raising=False)
+        monkeypatch.setenv("TN_RANGE_DEFAULT_PASSWORD", "Old-Default-1!")
+        rng = self._range(client, db_session, world)
+        assert _accounts(_creds(client, rng))[("ws01", "Administrator")]["password"] == "Old-Default-1!"
+        monkeypatch.setenv("TN_TEMPLATE_WINDOWS_ADMIN_PASSWORD", WIN_BUILD)  # the template setting wins
+        assert _accounts(_creds(client, rng))[("ws01", "Administrator")]["password"] == WIN_BUILD
+
+    def test_a_lab_sessions_windows_vms_are_random_whatever_the_setting(self, client, db_session, world,
+                                                                      configured, monkeypatch):
+        """The worker attaches no default login to a lab session's range (random per VM)."""
+        from app.lab_sessions import service as lab_service
+
+        rng = self._range(client, db_session, world)
+        monkeypatch.setattr(lab_service, "lab_range_ids", lambda db, ids: {rng.id})
+        accts = _accounts(_creds(client, rng))
+        assert accts[("ws01", "Administrator")]["password"] is None
+        assert accts[("ws01", "Administrator")]["notes"] == "random per VM — not recoverable"
+        assert accts[("web01", "ubuntu")]["password"] == LINUX_BUILD  # Linux keeps the template login
 
     def test_students_and_observers_never_see_them(self, client, db_session, world, configured):
         rng = self._range(client, db_session, world)

@@ -9,7 +9,7 @@ reach only through the range pfSense's WAN uplink.
 Guest credentials never leave the worker process:
 - Windows: the Administrator password that Sysprep customization sets
   (vsphere_infra.windows_customization): the range's declared Administrator account
-  (ADR 0012), else TN_RANGE_DEFAULT_PASSWORD, else random per VM. Handed from the
+  (ADR 0012), else TN_TEMPLATE_WINDOWS_ADMIN_PASSWORD, else random per VM. Handed from the
   customization step to the install step inside the same provision call.
 - Linux: an ephemeral ``tn-install`` user with a random password, created by cloud-init
   from the guestinfo userdata, locked and deleted by the last install command, expiring
