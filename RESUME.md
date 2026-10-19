@@ -48,6 +48,7 @@ Capture the exit code: piping into `tail` hides failures.
 | helm-lint, keycloak-realm | chart lint; realm imports into the pinned Keycloak | yes |
 | integration | itest stack (`scripts/itest.sh`), `tests/integration`; zero passed = fail | yes |
 | e2e | Playwright (lockfile, `npm ci`) on itest + keycloak + web | yes |
+| journeys | Playwright (Python) with auth enforced: wiki, helpdesk + inbox, Resume, own AAR, self-enrolment, detection, each re-read as the person and refused for the wrong role (`tests/integration/test_browser_journeys.py`) | job fails on failure or zero passed; new 2026-10-19, not yet confirmed as a required check |
 | load-smoke | k6, every scenario at 1 VU for 30 s (`tests/load/README.md`) | yes (since #107) |
 | moodle, vsphere-sim, greyspace, cmi5 | disposable Moodle publish, vcsim provisioner, Greyspace T0 stack, ADL CATAPULT judging the cmi5 runtime (C105 release fixture) | yes |
 

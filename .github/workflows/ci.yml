@@ -502,6 +502,80 @@ jobs:
         if: always()
         run: bash scripts/itest.sh down
 
+  # Browser journeys with auth enforced (tests/integration/test_browser_journeys.py): the
+  # rc11 evidence gaps, each a role's action in Chromium followed by its persisted outcome
+  # (re-read through the API as that person, or after a reload) and the refusal of the role
+  # that must not: wiki (space, page, edit, history; a staff-only space hidden from a
+  # Student), helpdesk (ticket, assignment, the assignee's inbox; another Student cannot see
+  # it), Resume on a paused exercise (one request on a double click), a Student's own AAR
+  # and not another's, self-enrolment (double click, retired and draft refused) and a
+  # Student's detection (ADR 0005 credit). Unlike the e2e lane the API runs with
+  # AUTH_DISABLED=false: the production SPA build and the API are served by the test on
+  # :18096 with tokens from a test identity provider (as the moodle lane's journey), on
+  # SQLite, plus a disposable OpenSearch for the detection. BROWSER_JOURNEYS_REQUIRED=1: a
+  # missing SPA build, Chromium or OpenSearch fails the lane rather than skipping.
+  journeys:
+    runs-on: ubuntu-latest
+    needs: lint-python
+    timeout-minutes: 30
+    env:
+      JOURNEY_SPA: ${{ github.workspace }}/control-plane/web/dist/truenorth-range-web/browser
+      JOURNEY_PORT: "18096"
+      OPENSEARCH_URL: http://127.0.0.1:19200
+      BROWSER_JOURNEYS_REQUIRED: "1"
+      BROWSER_JOURNEYS_ARTIFACTS: ${{ github.workspace }}/build/journeys
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: ./.github/actions/dockerhub-mirror
+      - name: Start OpenSearch (security plugin off, as compose.itest.yml)
+        run: |
+          docker run -d --name tn-journeys-os -p 127.0.0.1:19200:9200 \
+            -e discovery.type=single-node -e DISABLE_SECURITY_PLUGIN=true \
+            -e "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m" opensearchproject/opensearch:2.13.0
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: pip install -r requirements-test.txt
+      - run: python -m playwright install --with-deps chromium
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: control-plane/web/package-lock.json
+      - name: Build the SPA (production configuration, as the web image does)
+        working-directory: control-plane/web
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build:prod
+      - name: Wait for OpenSearch
+        run: |
+          for _ in $(seq 1 60); do
+            curl -fsS -o /dev/null 'http://127.0.0.1:19200/_cluster/health?wait_for_status=yellow&timeout=5s' && exit 0
+            sleep 5
+          done
+          echo "OpenSearch did not answer within 5 minutes" >&2
+          exit 1
+      - name: Browser journeys
+        run: |
+          rc=0
+          pytest tests/integration/test_browser_journeys.py -m integration -rs --tb=short \
+            --junitxml=build/journeys/junit.xml || rc=$?
+          python scripts/junit_require_pass.py build/journeys/junit.xml || rc=1
+          exit $rc
+      - name: OpenSearch logs
+        if: failure()
+        run: docker logs --tail 300 tn-journeys-os
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: browser-journeys
+          # junit, the server log and each browser profile's Playwright trace
+          path: build/journeys
+          if-no-files-found: ignore
+      - name: Tear down
+        if: always()
+        run: docker rm -f tn-journeys-os
+
   # k6 smoke: every scenario in tests/load/scenarios at 1 VU for 30 s against the itest
   # stack (API on 127.0.0.1:18081, mock provisioner, AUTH_DISABLED), with PROFILE=smoke:
   # smoke thresholds (no failed request, read p95 < 1 s, write p95 < 2 s, every check)
