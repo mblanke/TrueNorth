@@ -509,7 +509,8 @@ because bubblewrap must mount a fresh `/proc` for the job's PID namespace.
 **Egress.** Jobs have their own network namespace and reach only the runner's proxy, which
 tunnels `CONNECT` to `ARC2_EGRESS_ALLOW`: `api.anthropic.com` (or the
 `tn_arc2_anthropic_base_url` gateway's host) on 443 in `subscription` mode, the local gateway
-alone in `local` mode, both in `subscription_with_local_fallback` (`tn_arc2_egress_allow`,
+alone in `local` mode, both in `subscription_with_local_fallback` and
+`local_with_subscription_fallback` (`tn_arc2_egress_allow`,
 built from `tn_arc2_mode`). A bare host in the list means port 443 only; a local gateway on
 another https port is listed as exactly `host:port` (staging:
 `atlas.tail8d54ec.ts.net:4443`, Tailscale Serve), which opens that port on that host and no
@@ -524,6 +525,7 @@ there is no Ollama on the platform host.
 | `subscription` (default) | Claude | exactly one of `CLAUDE_CODE_OAUTH_TOKEN` / `ANTHROPIC_API_KEY` (installer: the two vault variables below) | `api.anthropic.com` (or `ARC2_EGRESS_ALLOW`) |
 | `local` | an Anthropic-compatible gateway, e.g. a LiteLLM router exposing `/v1/messages` | `ARC2_LOCAL_URL` (https), `ARC2_LOCAL_MODEL`, `ARC2_LOCAL_TOKEN` (installer: `tn_arc2_local_url`, `tn_arc2_local_model`, `vault_arc2_local_token`) | the gateway's host only, whatever `ARC2_EGRESS_ALLOW` says: a job never reaches `api.anthropic.com`, and no Anthropic credential is written for it |
 | `subscription_with_local_fallback` | Claude; a step Claude could not run at all (signed out, usage limit, overloaded, unreachable: `FALLBACK_ERRORS`) is re-run on the gateway, never after a STOP, a refused merge or a timeout | both of the above | both hosts |
+| `local_with_subscription_fallback` (2026-10-15) | the reverse: the gateway runs every step; a step the gateway could not run at all (the same `FALLBACK_ERRORS`: unreachable / connection error, `API Error: 5xx`, overloaded, rate limit, authentication failure) is re-run on Claude with the subscription credential, never after a STOP, a refused merge or the runner's own timeout | both of the above: the gateway's URL, model and token, and exactly one Claude credential | both hosts |
 
 On the gateway the runner points Claude Code at `ARC2_LOCAL_URL` (`ANTHROPIC_BASE_URL`), passes
 the token as `ANTHROPIC_AUTH_TOKEN` (bearer), clears `ANTHROPIC_API_KEY` and
@@ -534,7 +536,12 @@ when the gateway has no model list; it spends no tokens. The runner refuses to s
 on an unknown mode, a missing URL or model, a remote gateway without https or without a token.
 A gateway on `localhost` may be plain http without a token and is reached directly (its port
 opened in the sandbox, bridged on Linux) rather than through the proxy. Each job record carries
-`mode` and `engine` (`claude` or `local:<model>`).
+`mode` and `engine` (`claude` or `local:<model>`: the backend whose run was kept), and after a
+re-run on the other backend `fallback_from` (the error that caused it). When a gateway ran the
+step, `served_model` is the model id its replies named (what the router actually served, which
+may differ from the alias in `ARC2_LOCAL_MODEL`). In `local_with_subscription_fallback` the
+runner does not probe Claude before re-running: the Claude attempt is made once, and if it too
+fails the job fails with Claude's error (`engine: claude`, `fallback_from` the gateway's).
 
 `ARC2_MODE` unset keeps the behaviour from before it existed, for runners on a Mac: Claude,
 re-run on a local Ollama (`ARC2_FALLBACK_URL`, default `http://127.0.0.1:11434`;
@@ -545,7 +552,7 @@ through the new settings: `ARC2_MODE=subscription_with_local_fallback`,
 
 Preflight and `55-arc2` check each mode: `local` needs the URL (`https://host[:port][/path]`,
 any port, never http), the model and the token; `subscription` needs exactly one Anthropic
-credential (#128's rules); the fallback mode needs both sets. In `local` mode an Anthropic
+credential (#128's rules); both fallback modes need both sets. In `local` mode an Anthropic
 credential left in the vault is ignored and not written. The unit denies private and CGNAT
 ranges (`tn_arc2_ip_deny`, including Tailscale's `100.64.0.0/10`), and a tailnet or internal
 gateway sits in one: `55-arc2` resolves the gateway's host on the platform host

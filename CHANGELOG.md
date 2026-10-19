@@ -219,6 +219,14 @@ course production with a local-model fallback, and the cleanup of unsupported su
   the rate limiter's Redis connection stayed bound to the first, logging "attached to a
   different loop" with a traceback on every other request. The harness now runs with
   `RATE_LIMIT_ENABLED=false` unless the caller sets it; it already runs as root on the host.
+- New (work install): ARC² model mode `tn_arc2_mode: local_with_subscription_fallback`
+  (`ARC2_MODE`), the reverse of `subscription_with_local_fallback`: the gateway
+  (`tn_arc2_local_url` / `tn_arc2_local_model` / `vault_arc2_local_token`) runs every step,
+  and a step it cannot run at all (the same `FALLBACK_ERRORS`: unreachable, 5xx, overloaded,
+  auth failure) is re-run on Claude with exactly one of `vault_arc2_claude_oauth_token` /
+  `vault_arc2_anthropic_api_key`. Preflight and 55-arc2 require both sets; the jobs' proxy
+  allows `api.anthropic.com` and the gateway's host:port. Job records keep `engine`,
+  `fallback_from` and, when a gateway ran, `served_model`. Existing modes unchanged.
 - Docs: browse to the hostname, never the IP (Keycloak's redirect URIs are the hostname; the
   IP gives an empty page), and a production install's catalogue starts empty
   (`install/README.md`).

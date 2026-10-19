@@ -38,10 +38,12 @@ edits to the job's run and Bash to the few commands ``/arc2`` needs.
 
 Which model runs a job is ``ARC2_MODE`` (see ``ModelConfig``): ``subscription`` (Claude),
 ``local`` (an Anthropic-compatible gateway, ``ARC2_LOCAL_*``; jobs never reach
-api.anthropic.com) or ``subscription_with_local_fallback`` (Claude; if Claude cannot be
-used at all, the same step is re-run on the gateway). Unset, the older ``ARC2_FALLBACK*``
+api.anthropic.com), ``subscription_with_local_fallback`` (Claude; if Claude cannot be
+used at all, the same step is re-run on the gateway) or ``local_with_subscription_fallback``
+(the gateway; if the gateway cannot be used at all, the same step is re-run on Claude). Unset, the older ``ARC2_FALLBACK*``
 settings decide, as before: Claude with a local Ollama fallback. The job record's
-``engine`` says which ran.
+``engine`` says which ran (``fallback_from`` the error that made it re-run; ``served_model``
+the model a gateway answered as).
 
 On a test host, ``ARC2_AUTO_ACCEPT_GATES`` makes the runner accept the outline and preview
 gates itself when a job stops at one with nothing failing (``maybe_auto_accept``); the
@@ -239,12 +241,15 @@ def command_for(job: dict, claude: str, model: str | None = None) -> list[str]:
 #   subscription_with_local_fallback  Claude; when Claude cannot be used at all (signed out,
 #                                     usage limit, overloaded, unreachable: FALLBACK_ERRORS)
 #                                     the step is re-run on the gateway.
+#   local_with_subscription_fallback  the reverse: the gateway; when the gateway cannot be
+#                                     used at all (the same FALLBACK_ERRORS) the step is
+#                                     re-run on Claude with the subscription credential.
 #
 # With ARC2_MODE unset the older settings decide, unchanged: Claude, with a local Ollama
 # fallback (ARC2_FALLBACK_URL, default http://127.0.0.1:11434; ARC2_FALLBACK_MODEL) unless
 # ARC2_FALLBACK=off. ARC2_FALLBACK* are ignored once ARC2_MODE is set.
 
-MODES = ("subscription", "local", "subscription_with_local_fallback")
+MODES = ("subscription", "local", "subscription_with_local_fallback", "local_with_subscription_fallback")
 LOOPBACK = ("localhost", "127.0.0.1", "::1")
 
 FALLBACK_ERRORS = (
@@ -252,6 +257,11 @@ FALLBACK_ERRORS = (
     "usage limit", "rate limit", "rate_limit", "overloaded", "credit balance",
     "could not connect", "connection error", "api error: 5", "service unavailable",
 )
+# A gateway's per-request timeouts, only for local_with_subscription_fallback: a local gateway
+# that swaps models (minutes of cold load) times out requests far more often than it fails
+# outright. Never the runner's own step timeout ("timed out after ..."), which would double
+# the step's wall time on Claude. subscription_with_local_fallback keeps FALLBACK_ERRORS alone.
+GATEWAY_TIMEOUT_ERRORS = ("request timed out", "etimedout", "read timeout", "gateway timeout", "api error: 408")
 
 
 class ModelConfigError(ValueError):
@@ -349,18 +359,24 @@ Fallback = LocalModel  # the name before ARC2_MODE; ``Fallback.from_env()`` is t
 
 class ModelConfig:
     """Which backend runs a job (``primary``: None means Claude) and which one, if any,
-    re-runs it when Claude is unavailable (``fallback``)."""
+    re-runs it when Claude is unavailable (``fallback``), or, in
+    ``local_with_subscription_fallback``, whether Claude re-runs a step the gateway could
+    not run (``claude_fallback``)."""
 
     def __init__(self, mode: str, local: LocalModel | None = None, legacy: bool = False):
         self.mode, self.local, self.legacy = mode, local, legacy
 
     @property
     def primary(self) -> LocalModel | None:
-        return self.local if self.mode == "local" else None
+        return self.local if self.mode in ("local", "local_with_subscription_fallback") else None
 
     @property
     def fallback(self) -> LocalModel | None:
         return self.local if self.mode == "subscription_with_local_fallback" else None
+
+    @property
+    def claude_fallback(self) -> bool:
+        return self.mode == "local_with_subscription_fallback"
 
     @classmethod
     def from_env(cls, environ: dict | None = None) -> ModelConfig:
@@ -404,7 +420,7 @@ class ModelConfig:
             gateway = (self.local.host if port == 443 else f"{self.local.host}:{port}",)
         if self.mode == "local":
             return gateway
-        if self.mode == "subscription_with_local_fallback" and not self.legacy:
+        if self.mode in ("subscription_with_local_fallback", "local_with_subscription_fallback") and not self.legacy:
             return tuple(dict.fromkeys((*allowed_hosts(), *gateway)))
         return allowed_hosts()
 
@@ -423,6 +439,8 @@ class ModelConfig:
         where = f"{self.local.label} at {self.local.url}" if self.local else "?"
         if self.mode == "local":
             return f"local ({where})"
+        if self.mode == "local_with_subscription_fallback":
+            return f"local ({where}), falling back to subscription"
         return f"subscription, falling back to {where}" + (" (ARC2_FALLBACK*)" if self.legacy else "")
 
 
@@ -435,10 +453,16 @@ def _models(models: ModelConfig | LocalModel | None) -> ModelConfig:
     return ModelConfig("subscription")
 
 
-def should_fall_back(record: dict) -> bool:
-    """Only when Claude itself was unavailable; never for a STOP, a merge refusal or a timeout."""
+def should_fall_back(record: dict, gateway_first: bool = False) -> bool:
+    """Only when the model itself was unavailable (Claude, or in
+    local_with_subscription_fallback the gateway); never for a STOP, a merge refusal or the
+    runner's own step timeout. ``gateway_first`` (local_with_subscription_fallback) also counts
+    the gateway's per-request timeouts (GATEWAY_TIMEOUT_ERRORS)."""
     error = str(record.get("error") or "").lower()
-    return record.get("state") == "failed" and any(marker in error for marker in FALLBACK_ERRORS)
+    if record.get("state") != "failed" or error.startswith("timed out after"):
+        return False
+    markers = FALLBACK_ERRORS + (GATEWAY_TIMEOUT_ERRORS if gateway_first else ())
+    return any(marker in error for marker in markers)
 
 
 def claim(queue: Path, jobs: Path, owner: dict | None = None) -> tuple[dict, Path] | None:
@@ -528,7 +552,9 @@ def run_job(record: dict, path: Path, claude: str, timeout: int = DEFAULT_TIMEOU
             models: ModelConfig | LocalModel | None = None, confinement: Confinement | None = None,
             runs: Path | None = None, egress: EgressProxy | None = None) -> dict:
     """Run one job on its backend (``ModelConfig``): Claude, or the local gateway in
-    ``local`` mode; with a fallback, a step Claude could not run is run again on it.
+    ``local`` mode; with a fallback, a step Claude could not run is run again on it. In
+    ``local_with_subscription_fallback`` the gateway runs first and a step it could not run
+    (``should_fall_back``) is run again on Claude, with the job's Claude credential.
 
     Every attempt runs inside ``confinement`` (arc2/confine.py). Confined, a job gets a
     fresh home of its own (Claude config, sessions, temp), deleted afterwards, and an
@@ -579,7 +605,14 @@ def run_job(record: dict, path: Path, claude: str, timeout: int = DEFAULT_TIMEOU
                           confinement.wrap(command_for(record, claude, primary.model if primary else None), jail),
                           primary.env(env) if primary else env, timeout,
                           append=False, stdin_text=prompt_for(record))
-        if fallback and should_fall_back(record) and fallback.reachable():
+        if models.claude_fallback and should_fall_back(record, gateway_first=True):
+            record.pop("served_model", None)
+            record.update(fallback_from=record["error"], engine="claude", state="running", error=None,
+                          result=None, exit_code=None, finished_at=None, current_agent=None)
+            write_record(path, record)
+            record = _attempt(record, path, confinement.wrap(command_for(record, claude, None), jail),
+                              env, timeout, append=True, stdin_text=prompt_for(record))
+        elif fallback and should_fall_back(record) and fallback.reachable():
             record.update(fallback_from=record["error"], engine=fallback.label, state="running", error=None,
                           result=None, exit_code=None, finished_at=None, current_agent=None)
             write_record(path, record)
@@ -689,6 +722,10 @@ def _consume(record: dict, line: str, log) -> bool:
     agent = agent_from_event(event)
     if agent:
         record["current_agent"] = agent
+    if str(record.get("engine") or "").startswith("local:") and event.get("type") == "assistant":
+        served = (event.get("message") or {}).get("model")
+        if isinstance(served, str) and served:
+            record["served_model"] = served[:200]  # what the gateway answered as, which may not be the alias
     if event.get("type") == "result":
         record["result"] = str(event.get("result") or "")[-4000:]
         record["cost_usd"] = event.get("total_cost_usd")
