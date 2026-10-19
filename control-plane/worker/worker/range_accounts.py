@@ -6,11 +6,12 @@ passwords are made there, once per range). ``provision`` wraps a build:
 * ``attach`` reads and unseals them and returns a copy of the rendered template whose VMs
   carry, in memory only, ``_accounts`` (``RangeAccount``; passwords in ``Secret``, which
   neither prints nor pickles), matched on the VM's template node id, and
-  ``_default_login`` (``TN_RANGE_DEFAULT_PASSWORD`` as a ``Secret``, when set: what a VM
-  with no declared admin account gets instead of a random password);
+  ``_default_login`` (``TN_RANGE_DEFAULT_PASSWORD`` as a ``Secret``, when set: what a
+  Windows VM with no declared Administrator gets instead of a random password; Linux VMs
+  keep their template's build password, ADR 0012 §5);
 * a lab session's range gets neither: its VMs keep a random password per VM, as before
   (lab credentials are not part of ADR 0012's first slice);
-* afterwards, ``record_applied`` marks the accounts the build reports it actually set
+* afterwards, ``record_applied`` marks the accounts the build verified exist
   (``accounts_applied`` on each built VM: usernames only) ``applied``; the API shows
   Students nothing else. A provisioner that reports nothing (mock, Proxmox, Hyper-V)
   leaves every account ``applied = false``.

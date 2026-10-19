@@ -229,9 +229,12 @@ accounts must be created by the scenario; the build reports them as a warning); 
 every declared account (an admin gets `sudo`, except the image's own user such as
 `ubuntu`, which keeps the passwordless `sudo` it has). After first boot TrueNorth removes
 the accounts' password hashes from the VM's vCenter settings. Appliances and other
-backends set nothing. A machine with no declared account gets the platform's generic
-password if the installer set one (`vault_range_default_password`), otherwise a random
-password nobody is told.
+backends set nothing. A Windows machine with no declared Administrator gets the
+platform's generic password if the installer set one (`vault_range_default_password`),
+otherwise a random password nobody is told; a Linux machine with no declared account
+keeps its template's generic build password. TrueNorth reports an account as set only
+after checking it exists on the machine; a range built from another organisation's
+public template takes none of its accounts.
 
 ### Stopping and Starting a Range
 

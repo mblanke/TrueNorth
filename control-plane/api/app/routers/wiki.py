@@ -283,9 +283,7 @@ def _page_out(db: Session, page: WikiPage, space: WikiSpace, user: CurrentUser) 
     out.breadcrumbs = crumbs
     out.children = [WikiPageRef(id=c.id, title=c.title) for c in children]
     out.last_editor_name = _names(db, user, {page.last_editor_id}).get(page.last_editor_id, "")
-    if wiki_doc.is_generated(page, space) and _staff(user):
-        out.body = wiki_doc.expand(db, page, page.body)  # the passwords, for staff, never stored here
-    return out
+    return out  # a generated page's credential tokens stay tokens: only get_page fills them in
 
 
 def _conflict(db: Session, page_id: uuid.UUID, user: CurrentUser, *, rollback: bool = False) -> JSONResponse:
@@ -502,18 +500,24 @@ def create_page(
 # ── Pages ───────────────────────────────────────────────────────────────
 @router.get("/pages/{page_id}", response_model=WikiPageOut)
 def get_page(
+    response: Response,
     page_id: uuid.UUID = Path(...),
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_permission(Permission.WIKI_READ)),
 ) -> WikiPageOut:
+    """A generated range page (ADR 0012 §14) is the one place the wiki shows passwords: its
+    credential tokens are filled in here, and only for ``range:credentials_read`` holders,
+    audited like GET /ranges/{id}/credentials and ``Cache-Control: no-store``. Every other
+    response (create, edit, restore, a 409's body) returns the tokens."""
     page, space = _page(db, page_id, user)
     out = _page_out(db, page, space, user)
-    if wiki_doc.is_generated(page, space) and _staff(user):
-        # The page shows the range's passwords: audited like GET /ranges/{id}/credentials.
+    if wiki_doc.is_generated(page, space) and user_has_permission(user, Permission.RANGE_CREDENTIALS_READ):
+        out.body = wiki_doc.expand(db, page, page.body)
         rid = wiki_doc.range_of(page)
         db.add(AuditLog(user_id=uuid.UUID(user.id), tenant_id=page.tenant_id, action="range_credentials_read",
                         resource_type="range", resource_id=str(rid), detail=f"scope=all; via=wiki page {page.id}"))
         db.commit()
+        response.headers["Cache-Control"] = "no-store"
     return out
 
 

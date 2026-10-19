@@ -42,13 +42,13 @@ import ipaddress
 import json
 import os
 import tarfile
-import warnings
 from pathlib import Path
 
 from . import secretbox
 from .greyspace_runtime import config, fixture
 from .greyspace_runtime.manifest import Manifest, ManifestError, parse_manifest
 from .provisioners.base import GuestLogin, GuestStep
+from .provisioners.sha512_crypt import sha512_crypt
 
 HOST_NODE = "gs-core"
 ROOT = "/opt/greyspace"
@@ -148,15 +148,9 @@ def login(range_id: str) -> GuestLogin:
     return GuestLogin(SERVICE_USER, host_password(range_id), "linux")
 
 
-def _sha512_crypt(password: str) -> str | None:
-    try:
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", DeprecationWarning)
-            import crypt  # removed in Python 3.13; the worker image runs 3.11
-        hashed = crypt.crypt(password, crypt.mksalt(crypt.METHOD_SHA512))
-    except Exception:  # noqa: BLE001
-        return None
-    return hashed if hashed and hashed.startswith("$6$") else None
+def _sha512_crypt(password: str) -> str:
+    """SHA-512-crypt, pure Python (provisioners/sha512_crypt.py): never the plain password."""
+    return sha512_crypt(password)
 
 
 def load_manifest(tier: str) -> Manifest | None:
@@ -249,11 +243,7 @@ def cloud_config(range_id: str) -> dict:
         "groups": ["docker"],
         "lock_passwd": False,
     }
-    hashed = _sha512_crypt(password)
-    if hashed:
-        user["hashed_passwd"] = hashed
-    else:
-        user["plain_text_passwd"] = password
+    user["hashed_passwd"] = _sha512_crypt(password)
     return {
         "users": [user],
         "write_files": [

@@ -7576,7 +7576,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get Page */
+        /**
+         * Get Page
+         * @description A generated range page (ADR 0012 §14) is the one place the wiki shows passwords: its
+         *     credential tokens are filled in here, and only for ``range:credentials_read`` holders,
+         *     audited like GET /ranges/{id}/credentials and ``Cache-Control: no-store``. Every other
+         *     response (create, edit, restore, a 409's body) returns the tokens.
+         */
         get: operations["get_page_wiki_pages__page_id__get"];
         /** Update Page */
         put: operations["update_page_wiki_pages__page_id__put"];

@@ -45,6 +45,7 @@ from app.models import (
 from app.models_wiki import WikiPage, WikiRevision, WikiSpace
 from app.range_credentials import RangeCredential, wiki_doc
 from app.range_credentials import accounts as account_rules
+from app.range_credentials import seal as rc_seal
 from app.range_credentials import service as cred_service
 from app.range_ops import RangeOperation
 from app.range_ops import service as ops
@@ -291,21 +292,44 @@ class TestStorageAndAudit:
         assert accts[("dc01", "Administrator")]["password"] == "Dc-Changed-2!"
         assert accts[("web01", "analyst")]["password"] == generated
 
-    def test_a_template_edit_reaches_every_tenants_ranges_of_it(self, client, db_session, world):
-        """Low (b): after the response, across tenants: another tenant's range built from a
-        public template is re-synced and re-documented in its own tenant's space."""
+    def test_another_tenants_range_never_takes_a_public_templates_accounts(self, client, db_session, world):
+        """Review 2, item 1: a range of tenant B built from tenant A's public template (a
+        booking, the designer) gets none of A's accounts, at build acceptance or when A edits
+        the template; A's edit refreshes A's ranges only."""
         tmpl = _template(db_session, world["a"].id, public=True)
+        ours = Range(name="Our range", template_id=tmpl.id, tenant_id=world["a"].id, state=RangeState.created)
         theirs = Range(name="Their range", template_id=tmpl.id, tenant_id=world["b"].id, state=RangeState.created)
-        db_session.add(theirs)
+        db_session.add_all([ours, theirs])
         db_session.commit()
+        cred_service.on_build_accepted(db_session, theirs)
+        db_session.commit()
+        assert db_session.query(RangeCredential).filter(RangeCredential.range_id == theirs.id).count() == 0
         act_as(world["range_ops"])
         assert client.put(f"/templates/{tmpl.id}",
                           json={"yaml": TEMPLATE_YAML.replace(DC_PW, "Dc-Changed-2!")}).status_code == 200
-        rows = db_session.query(RangeCredential).filter(RangeCredential.range_id == theirs.id).all()
-        assert {r.tenant_id for r in rows} == {world["b"].id} and len(rows) == 3
+        assert db_session.query(RangeCredential).filter(RangeCredential.range_id == theirs.id).count() == 0
+        assert db_session.query(WikiPage).filter(WikiPage.tags.contains(f"range:{theirs.id}")).count() == 0
+        rows = db_session.query(RangeCredential).filter(RangeCredential.range_id == ours.id).all()
         assert next(r.password for r in rows if r.username == "Administrator") == "Dc-Changed-2!"
-        page = db_session.query(WikiPage).filter(WikiPage.tags.contains(f"range:{theirs.id}")).one()
-        assert db_session.get(WikiSpace, page.space_id).tenant_id == world["b"].id
+        act_as(world["foreign_instructor"])
+        assert "Dc-Changed-2!" not in _creds(client, theirs).text
+
+    def test_the_reviewers_booking_probe(self, client, db_session, world):
+        """The scheduler path of probe2/test_probe_xtenant.py: create_for_booking, begin_provision."""
+        from unittest import mock
+
+        from app import range_lifecycle
+
+        act_as(world["range_ops"])
+        r = client.post("/templates", json={"name": "pub", "yaml": TEMPLATE_YAML, "is_public": True})
+        rng = range_lifecycle.create_for_booking(db_session, tenant_id=world["b"].id,
+                                                 template_id=uuid.UUID(r.json()["id"]), name="b-range")
+        db_session.commit()
+        with mock.patch.object(ops, "dispatch", lambda *a, **k: None):
+            range_lifecycle.begin_provision(db_session, rng)
+        act_as(world["foreign_instructor"])
+        resp = _creds(client, rng)
+        assert resp.status_code == 200 and resp.json()["accounts"] == [] and DC_PW not in resp.text
 
     def test_a_failing_background_refresh_never_fails_the_template_edit(self, client, db_session, world,
                                                                        monkeypatch, caplog):
@@ -375,14 +399,36 @@ class TestTemplates:
         resp = client.post("/templates", json={"name": "t", "version": "1", "yaml": TEMPLATE_YAML})
         assert resp.status_code == 201, resp.text
         stored = db_session.get(Template, uuid.UUID(resp.json()["id"])).yaml
-        assert DC_PW not in stored and secretbox.PREFIX in stored
+        assert DC_PW not in stored and rc_seal.PREFIX in stored
         assert DC_PW not in resp.text
         shown = client.get(f"/templates/{resp.json()['id']}").json()["yaml"]
-        assert DC_PW not in shown and secretbox.PREFIX in shown  # staff: the sealed token, editable
+        assert DC_PW not in shown and rc_seal.PREFIX in shown  # staff: the sealed token, editable
         assert client.put(f"/templates/{resp.json()['id']}", json={"yaml": shown}).status_code == 200
         rng = client.post("/ranges", json={"name": "r", "template_id": resp.json()["id"]}).json()
         accts = {a["username"]: a for a in client.get(f"/ranges/{rng['id']}/credentials").json()["accounts"]}
         assert accts["Administrator"]["password"] == DC_PW
+
+    @pytest.mark.parametrize("purpose", ["hypervisor", "other_key"])
+    def test_a_seal_made_for_another_purpose_is_refused(self, client, world, purpose, monkeypatch):
+        """Review 2, item 3: a hypervisor/AI/LTI secret (app/secretbox) pasted into accounts,
+        or a range seal another key made, is not unsealed into a readable password."""
+        if purpose == "hypervisor":
+            token = secretbox.seal("Vcenter-Admin-1!")
+        else:
+            monkeypatch.setenv(secretbox.KEY_ENV, "another-platforms-key-0123456789abcdef")
+            token = rc_seal.seal("Vcenter-Admin-1!")
+            monkeypatch.undo()
+        act_as(world["range_ops"])
+        forged = TEMPLATE_YAML.replace(DC_PW, token)
+        resp = client.post("/templates", json={"name": "t", "version": "1", "yaml": forged})
+        assert resp.status_code == 422 and "not a range-account seal" in resp.text
+        assert "Vcenter-Admin-1!" not in account_rules.redact_yaml(forged)
+
+    def test_range_seals_are_their_own(self):
+        token = rc_seal.seal("Pw-Range-1!")
+        assert token.startswith("tnsec:rc1:") and rc_seal.unseal(token) == "Pw-Range-1!"
+        with pytest.raises(secretbox.SecretUnreadableError):  # secretbox does not open it either
+            secretbox.unseal("tnsec:v1:" + token[len(rc_seal.PREFIX):])
 
     def test_a_sealed_value_that_does_not_unseal_is_refused(self, client, world):
         act_as(world["range_ops"])
@@ -424,6 +470,20 @@ class TestTemplates:
         anchors = ('name: t\nx: &a {username: Administrator, password: "Hunter2Hunter2!"}\n'
                    'accounts:\n  - {<<: *a, machine: dc01}\n')
         assert account_rules.redact_yaml(anchors) == ""
+
+    def test_every_password_is_masked_everywhere_in_the_document(self):
+        """Review 2, item 4 (probe2 test_notes_cross_account): another account's notes, the
+        description, a key: the union of the template's passwords, sealed or typed."""
+        doc = ('name: t\ndescription: "lab admin is Alpha-Pass-1!"\n'
+               'nodes: [{id: a, os: linux}, {id: b, os: linux}]\n'
+               'Bravo-Pass-2!: odd key\n'
+               'accounts:\n'
+               '  - {machine: a, username: alice, password: "Alpha-Pass-1!", student_visible: false}\n'
+               '  - {machine: b, username: bob, password: "Bravo-Pass-2!", student_visible: true, '
+               'notes: "root on a is Alpha-Pass-1!"}\n')
+        for stored in (doc, account_rules.seal_yaml(doc)):
+            out = account_rules.redact_yaml(stored)
+            assert "Alpha-Pass-1!" not in out and "Bravo-Pass-2!" not in out, out
 
     def test_passwords_in_a_template_are_hidden_from_who_may_not_read_them(self, client, db_session, world):
         own = _template(db_session, world["a"].id)
@@ -474,13 +534,28 @@ class TestWikiPage:
         rng = _create_range(client, db_session, world)
         page = self._page(db_session, rng)
         act_as(world["instructor"])
-        shown = client.get(f"/wiki/pages/{page.id}").json()["body"]
+        got = client.get(f"/wiki/pages/{page.id}")
+        assert got.headers["cache-control"] == "no-store"
+        shown = got.json()["body"]
         assert all(pw in shown for pw in self._passwords(db_session)) and DC_PW in shown
         assert not wiki_doc.TOKEN_RE.search(shown)
         assert client.get("/wiki/search", params={"q": DC_PW}).json() == []  # not even for staff
         audit = db_session.query(AuditLog).filter(AuditLog.action == "range_credentials_read").one()
         assert (audit.resource_id, str(audit.user_id)) == (str(rng.id), world["instructor"].id)
         assert "via=wiki" in audit.detail and DC_PW not in audit.detail
+
+    def test_wiki_edit_alone_does_not_fill_in_passwords(self, client, db_session, world, monkeypatch):
+        """Review 2, item 5: the fill-in is gated on range:credentials_read, not wiki:edit."""
+        from app import rbac
+
+        rng = _create_range(client, db_session, world)
+        page = self._page(db_session, rng)
+        perms = set(rbac.ROLE_PERMISSIONS[UserRole.instructor]) - {rbac.Permission.RANGE_CREDENTIALS_READ}
+        monkeypatch.setitem(rbac.ROLE_PERMISSIONS, UserRole.instructor, perms)
+        act_as(world["instructor"])
+        got = client.get(f"/wiki/pages/{page.id}")
+        assert got.status_code == 200 and DC_PW not in got.text and wiki_doc.TOKEN_RE.search(got.json()["body"])
+        assert db_session.query(AuditLog).filter(AuditLog.action == "range_credentials_read").count() == 0
 
     def test_an_editor_cannot_store_passwords_through_the_generated_block(self, client, db_session, world):
         rng = _create_range(client, db_session, world)
@@ -492,6 +567,11 @@ class TestWikiPage:
         resp = client.put(f"/wiki/pages/{page.id}", json={"base_revision": shown["revision_number"],
                                                           "body": tampered})
         assert resp.status_code == 200, resp.text
+        # Review 2, item 5: only GET fills passwords in; an edit's response carries the tokens.
+        assert DC_PW not in resp.text and wiki_doc.TOKEN_RE.search(resp.json()["body"])
+        stale = client.put(f"/wiki/pages/{page.id}", json={"base_revision": shown["revision_number"],
+                                                           "body": tampered})
+        assert stale.status_code == 409 and DC_PW not in stale.text  # the conflict body too
         stored = self._page(db_session, rng).body
         assert stored.split(wiki_doc.END)[0] == page.body.split(wiki_doc.END)[0]  # the block as generated
         assert stored.rstrip().endswith("Editor's note.")
@@ -627,7 +707,7 @@ class TestDesignerSave:
         resp = client.post(f"/ranges/{rng.id}/topology", json={"diagram_json": _DESIGN})
         assert resp.status_code == 200, resp.text
         saved = db_session.get(Template, uuid.UUID(resp.json()["template_id"])).yaml
-        assert "Theirs-Secret-9!" not in saved and secretbox.PREFIX in saved  # still sealed
+        assert "Theirs-Secret-9!" not in saved and rc_seal.PREFIX in saved  # still sealed
         renamed = json.loads(json.dumps(_DESIGN))
         renamed["cells"][1]["nodeData"]["label"] = "WEB01"  # dc01 is gone: its account no longer fits
         resp = client.post(f"/ranges/{rng.id}/topology", json={"diagram_json": renamed})
@@ -637,11 +717,28 @@ class TestDesignerSave:
 # ── Pure parts ──────────────────────────────────────────────────────────
 class TestAccountRules:
     def test_machines_resolve_by_id_name_or_asset_role(self):
-        doc = {"nodes": [{"id": "dc01", "name": "DC"}], "assets": [{"role": "kali", "type": "vm", "count": 2}],
-               "accounts": [{"machine": "DC", "username": "a", "generate": True, "student_visible": False},
-                            {"machine": "kali", "username": "kali", "password": "k", "student_visible": True}]}
+        doc = {"nodes": [{"id": "dc01", "name": "DC"}],
+               "accounts": [{"machine": "DC", "username": "a", "generate": True, "student_visible": False}]}
         specs, errors = account_rules.parse(doc)
-        assert errors == [] and [(s.machine, s.generate) for s in specs] == [("dc01", True), ("kali", False)]
+        assert errors == [] and [(s.machine, s.generate) for s in specs] == [("dc01", True)]
+        assets = {"assets": [{"role": "kali", "type": "vm", "count": 2}],
+                  "accounts": [{"machine": "kali", "username": "kali", "password": "k", "student_visible": True}]}
+        specs, errors = account_rules.parse(assets)
+        assert errors == [] and [s.machine for s in specs] == ["kali"]
+
+    def test_assets_beside_nodes_are_not_machines(self):
+        """As worker/render.py: with nodes, assets build nothing, so they take no accounts."""
+        doc = {"nodes": [{"id": "dc01"}], "assets": [{"role": "kali", "type": "vm", "count": 1}],
+               "accounts": [{"machine": "kali", "username": "kali", "generate": True, "student_visible": False}]}
+        assert "not a node or asset" in account_rules.parse(doc)[1][0]["message"]
+
+    def test_windows_complexity_follows_the_workers_os(self):
+        """Review 2, item 7: an asset's os, a node's os_template or type decide it too."""
+        weak = {"username": "Administrator", "password": "weakpass", "student_visible": False}
+        for doc in ({"assets": [{"role": "dc", "os": "windows-server-2022"}], "accounts": [{**weak, "machine": "dc"}]},
+                    {"nodes": [{"id": "dc", "type": "windows-11"}], "accounts": [{**weak, "machine": "dc"}]},
+                    {"nodes": [{"id": "dc", "os_template": "win-2019"}], "accounts": [{**weak, "machine": "dc"}]}):
+            assert any("Windows" in e["message"] for e in account_rules.parse(doc)[1]), doc
 
     def test_generated_passwords_meet_windows_complexity(self):
         """M3: what Windows checks, for the account it is made for."""

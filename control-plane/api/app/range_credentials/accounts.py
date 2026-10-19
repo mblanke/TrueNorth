@@ -16,14 +16,19 @@ once per machine (case-insensitively: Windows account names are), and a typed-in
 for a Windows machine meets Windows complexity.
 
 A typed-in password is never stored as typed: ``seal_yaml`` replaces it in the stored
-template with a sealed token (app/secretbox.py, ``tnsec:v1:...``) on create and update;
-``parse`` unseals it where it is used (the credentials sync). ``redact_yaml`` masks
-passwords for readers who may not see them, from the parsed document (decoded keys), never
-by searching the text.
+template with a range-credential seal (``seal.py``, ``tnsec:rc1:...``, a key derived for
+this purpose only) on create and update; ``parse`` unseals it where it is used (the
+credentials sync) and refuses any other sealed value (a hypervisor, AI or LTI secret pasted
+in). ``redact_yaml`` masks passwords for readers who may not see them, from the parsed
+document (decoded keys), never by searching the text.
+
+Which machines are Windows is decided as the worker decides it (``machine_os`` mirrors
+worker/render.py and vsphere_infra.os_family; tests/contracts/test_account_os_matches_worker.py).
 """
 
 from __future__ import annotations
 
+import contextlib
 import re
 import secrets
 import string
@@ -32,7 +37,8 @@ from typing import Any
 
 import yaml
 
-from .. import safe_yaml, secretbox
+from .. import safe_yaml
+from . import seal as rc_seal
 
 ROLES = ("admin", "user")
 FIELDS = frozenset({"machine", "username", "password", "generate", "student_visible", "role", "notes"})
@@ -65,17 +71,30 @@ class AccountSpec:
         return self.machine, self.username.casefold()
 
 
+DEFAULT_OS = "ubuntu-2404"  # worker/render.py DEFAULT_OS
+
+
+def _built_from(doc: dict[str, Any]) -> list[dict[str, Any]]:
+    """What the worker builds machines from (render._extract_nodes): ``nodes`` when there
+    are any, else one machine per ``assets`` entry (id = its role)."""
+    nodes = doc.get("nodes")
+    if nodes:
+        return [n for n in nodes if isinstance(n, dict)]
+    return [{"id": a.get("role", "vm"), "os": a.get("os", DEFAULT_OS)}
+            for a in doc.get("assets") or [] if isinstance(a, dict)]
+
+
 def machine_os(doc: dict[str, Any]) -> dict[str, str]:
-    """Machine id -> its ``os`` (lower case) as the template states it ('' when unknown)."""
-    out: dict[str, str] = {}
-    for node in doc.get("nodes") or []:
-        if isinstance(node, dict) and node.get("id") not in (None, ""):
-            out[str(node["id"])] = str(node.get("os") or node.get("os_template") or "").lower()
-    return out
+    """Machine id -> the OS the worker builds it with (lower case): render._node_os, i.e.
+    ``os``, else ``os_template``, else ``type``, else the default."""
+    return {
+        str(n["id"]): str(n.get("os") or n.get("os_template") or n.get("type") or DEFAULT_OS).lower()
+        for n in _built_from(doc) if n.get("id") not in (None, "")
+    }
 
 
 def is_windows(os_name: str) -> bool:
-    """As the worker decides (vsphere_infra.os_family): an OS naming Windows."""
+    """As vsphere_infra.os_family decides: an OS naming Windows."""
     return "win" in (os_name or "").lower()
 
 
@@ -98,19 +117,17 @@ def windows_password_problem(password: str, username: str) -> str | None:
 def machines(doc: dict[str, Any]) -> dict[str, str]:
     """Every name a template's machines can be referred to by -> the machine's id.
 
-    A node by its ``id`` or its ``name``; an asset (``assets:``) by its ``role``. An id
-    wins over another node's name of the same spelling."""
+    Only machines the worker builds (``_built_from``): a node by its ``id`` or its
+    ``name``, or, in a template without nodes, an asset by its ``role``. An id wins over
+    another node's name of the same spelling."""
     out: dict[str, str] = {}
     by_id: dict[str, str] = {}
-    for node in doc.get("nodes") or []:
-        if isinstance(node, dict) and node.get("id") not in (None, ""):
+    for node in _built_from(doc):
+        if node.get("id") not in (None, ""):
             nid = str(node["id"])
             by_id[nid] = nid
             if node.get("name"):
                 out.setdefault(str(node["name"]), nid)
-    for asset in doc.get("assets") or []:
-        if isinstance(asset, dict) and asset.get("role"):
-            by_id.setdefault(str(asset["role"]), str(asset["role"]))
     out.update(by_id)
     return out
 
@@ -152,12 +169,12 @@ def parse(doc: dict[str, Any] | None) -> tuple[list[AccountSpec], list[dict[str,
         if not isinstance(username, str) or not USERNAME_RE.match(username):
             bad("username is required: letters, digits and . _ @ - \\ (at most 104)", "username")
         password = item.get("password")
-        if isinstance(password, str) and secretbox.is_sealed(password):
+        if rc_seal.looks_sealed(password):
             try:
-                password = secretbox.unseal(password)
-            except (secretbox.SecretUnreadableError, secretbox.SecretKeyMissingError):
-                bad("password is sealed (tnsec:) but this platform cannot unseal it; type the password or use "
-                    "generate: true", "password")
+                password = rc_seal.unseal(password)
+            except rc_seal.NotARangeSealError:
+                bad("password is a sealed value (tnsec:) that is not a range-account seal this platform made, "
+                    "so it cannot unseal it; type the password or use generate: true", "password")
                 password = ""
         generate = item.get("generate", False)
         if not isinstance(generate, bool):
@@ -228,7 +245,7 @@ def _load(text: str | None) -> Any:
 
 
 def seal_yaml(text: str | None) -> str | None:
-    """The template to store: every typed-in ``accounts[].password`` sealed (``tnsec:v1:``).
+    """The template to store: every typed-in ``accounts[].password`` sealed (``tnsec:rc1:``).
 
     Unchanged (formatting and comments kept) when there is nothing to seal. Call after
     ``parse`` accepted the document: a sealed value that does not unseal is refused there."""
@@ -241,15 +258,16 @@ def seal_yaml(text: str | None) -> str | None:
     changed = False
     for item in doc["accounts"]:
         pw = item.get("password") if isinstance(item, dict) else None
-        if isinstance(pw, str) and pw and not secretbox.is_sealed(pw):
-            item["password"] = secretbox.seal(pw)
+        if isinstance(pw, str) and pw and not rc_seal.looks_sealed(pw):
+            item["password"] = rc_seal.seal(pw)
             changed = True
     return yaml.safe_dump(doc, sort_keys=False, allow_unicode=True) if changed else text
 
 
 def redact_yaml(text: str | None) -> str:
     """Template YAML for a reader who may not see passwords: every ``accounts[].password``
-    (sealed or not) is ``REDACTED``, and so is a password repeated in that account's notes.
+    (sealed or not) is ``REDACTED``, and so is any of the template's passwords wherever else
+    it appears in the document (another account's notes, a description, a key).
 
     Decided on the parsed document, so an escaped key (``"passwor\\x64"``) is still a
     password. A document that does not parse (or YAML the API refuses, such as aliases) is
@@ -260,15 +278,28 @@ def redact_yaml(text: str | None) -> str:
         return ""
     if not isinstance(doc, dict) or not isinstance(doc.get("accounts"), list):
         return text or ""
+    plains: set[str] = set()
     for item in doc["accounts"]:
         if not isinstance(item, dict) or item.get("password") is None:
             continue
         pw = item["password"]
-        try:
-            plain = secretbox.unseal(pw) if isinstance(pw, str) else None
-        except (secretbox.SecretUnreadableError, secretbox.SecretKeyMissingError):
-            plain = None
+        if isinstance(pw, str) and pw:
+            plains.add(pw)  # the stored token, or a password typed in before sealing
+            with contextlib.suppress(Exception):  # not ours, or no key: masked as stored
+                plains.add(rc_seal.unseal(pw))
         item["password"] = REDACTED
-        if plain and isinstance(item.get("notes"), str):
-            item["notes"] = item["notes"].replace(plain, REDACTED)
-    return yaml.safe_dump(doc, sort_keys=False, allow_unicode=True)
+    # Longest first, so a password containing another is masked whole.
+    return yaml.safe_dump(_mask(doc, sorted(plains, key=len, reverse=True)), sort_keys=False, allow_unicode=True)
+
+
+def _mask(value: Any, plains: list[str]) -> Any:
+    """``value`` with every one of ``plains`` replaced by ``REDACTED`` in every string, keys too."""
+    if isinstance(value, str):
+        for p in plains:
+            value = value.replace(p, REDACTED)
+        return value
+    if isinstance(value, dict):
+        return {_mask(k, plains): _mask(v, plains) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_mask(v, plains) for v in value]
+    return value

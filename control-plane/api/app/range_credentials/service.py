@@ -67,9 +67,20 @@ def template_of(db: Session, rng: Range) -> Template | None:
     return db.get(Template, rng.template_id) if rng.template_id else None
 
 
+def foreign_template_allowed(tmpl: Template | None, rng: Range) -> bool:
+    """Whether ``rng`` may take accounts from ``tmpl``: its own tenant's, or a global one."""
+    return tmpl is None or tmpl.tenant_id is None or tmpl.tenant_id == rng.tenant_id
+
+
 def declared(db: Session, rng: Range) -> list[account_rules.AccountSpec]:
-    """The accounts the range's template declares. ``InvalidAccountsError`` if they do not validate."""
+    """The accounts the range's template declares. ``InvalidAccountsError`` if they do not validate.
+
+    None from another tenant's template (a public one, reached through a booking or the
+    designer): its passwords are that tenant's. The range's VMs then get the platform default
+    or a random password, as the range designer's save already decides (routers/ranges.py)."""
     tmpl = template_of(db, rng)
+    if not foreign_template_allowed(tmpl, rng):
+        return []
     specs, errors = account_rules.parse_yaml(tmpl.yaml if tmpl else "")
     if errors:
         detail = "; ".join(f"{e['path']}: {e['message']}" for e in errors[:5])
@@ -162,8 +173,10 @@ def on_build_succeeded(db: Session, rng: Range) -> None:
 
 def regenerate_for_template(template_id: uuid.UUID) -> None:
     """After a template change (run after the response, ``BackgroundTasks``): re-sync every
-    unbuilt range of it and regenerate every range's page, in every tenant (each range's own
-    tenant, its own page). Batched, one commit per range; never raises."""
+    unbuilt range of it and regenerate their pages, in the template's own tenant only (a
+    global template's ranges in every tenant only while it declares no accounts). Another
+    tenant's range never takes this template's accounts (``declared``), so there is nothing
+    of it to refresh. Batched, one commit per range; never raises."""
     try:
         _regenerate_for_template(template_id)
     except Exception as exc:  # noqa: BLE001 — after the response there is nobody to tell but the log
@@ -172,9 +185,20 @@ def regenerate_for_template(template_id: uuid.UUID) -> None:
 
 def _regenerate_for_template(template_id: uuid.UUID) -> None:
     with session_factory() as db:
+        # tenant-safe: the template by id, to read its own tenant (the scope below).
+        tmpl = db.get(Template, template_id)
+        if tmpl is None:
+            return
+        scope = [Range.template_id == template_id, Range.deleted_at.is_(None)]
+        if tmpl.tenant_id is not None:
+            scope.append(Range.tenant_id == tmpl.tenant_id)
+        elif account_rules.parse_yaml(tmpl.yaml)[0]:
+            logger.warning("global template %s declares accounts; its ranges refresh at their next build",
+                           template_id)
+            return
         last: uuid.UUID | None = None
         while True:
-            q = db.query(Range).filter(Range.template_id == template_id, Range.deleted_at.is_(None))
+            q = db.query(Range).filter(*scope)
             if last is not None:
                 q = q.filter(Range.id > last)
             batch = q.order_by(Range.id).limit(BATCH).all()

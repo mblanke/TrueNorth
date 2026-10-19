@@ -7,12 +7,15 @@ On the fake vCenter of test_vsphere_provision.py:
   TN_RANGE_DEFAULT_PASSWORD; with neither, a random one per VM (as before);
 * Linux: each declared account is a cloud-init user (a SHA-512-crypt hash, never plain
   text; sudo for an admin other than the image's default user, which keeps its own;
-  password logins on); with none declared, the default password goes to the image's user;
-* H1: on EVERY Linux VM that got account material, with or without software, the worker
-  logs in as the ephemeral install user once cloud-init has run, removes that user, and
-  rewrites the guestinfo without hashes, default login or install user; if it cannot see
-  cloud-init finish, it rewrites it anyway and records the accounts as not set;
-* each built VM reports ``accounts_applied`` (usernames), which the worker records;
+  password logins on); with none declared, nothing (the template keeps its generic
+  build password, ADR 0012 §5: the platform default is not put into cloud-config);
+* H1: on EVERY Linux VM with declared accounts, with or without software, the worker logs
+  in as the ephemeral install user once cloud-init has run, checks each account exists
+  (``getent passwd``), removes that user, and rewrites the guestinfo without hashes or
+  install user; if it cannot log in, it rewrites it anyway, warns that tn-install may
+  remain and records the accounts as not set;
+* each built VM reports ``accounts_applied``: only accounts verified to exist (Linux:
+  getent; Windows: a guest-operations login with the declared Administrator password);
 * a lab session's range gets no default login (random per VM, as before; H2);
 * passwords never reach the result, the logs or an error.
 """
@@ -144,14 +147,15 @@ class TestLinux:
         # Applied by then: the guestinfo is rewritten without any account.
         assert "users" not in _userdata(web)
 
-    def test_default_password_for_the_image_user_when_nothing_is_declared(self, vc):
+    def test_no_default_login_in_cloud_config_when_nothing_is_declared(self, vc):
+        """Item 2: the template already carries the generic build password (ADR 0012 §5)."""
         result = _run(_prov(vc).provision(RANGE_ID, _with(_rendered(), {}, DEFAULT_PW), {}))
         assert result.status == "ok", result.errors
-        web = vc.vms[_vm_out(result, "web01")["vm_id"]]
-        doc = _first_userdata(web)
-        assert _crypt_ok(doc["password"], DEFAULT_PW)  # a hash, never the password
-        assert doc["chpasswd"] == {"expire": False} and doc["ssh_pwauth"] is True
-        assert not {"password", "ssh_pwauth", "users"} & set(_userdata(web))  # scrubbed after first boot
+        for vm in vc.vms.values():
+            for doc in _all_userdata(vm):
+                assert not {"users", "password", "chpasswd", "ssh_pwauth"} & set(doc), vm.name
+        assert vc.guest_ops.started == []  # no install user, no scrub: nothing to take out
+        assert vc.vms[_vm_out(result, "dc01")["vm_id"]].guest_password("Administrator") == DEFAULT_PW  # Windows
 
     def test_nothing_changes_without_accounts_or_default(self, vc):
         result = _run(_prov(vc).provision(RANGE_ID, _rendered(), {}))
@@ -178,9 +182,21 @@ class TestGuestinfoScrub:
         web = vc.vms[_vm_out(result, "web01")["vm_id"]]
         assert "users" not in _userdata(web), "range account credential material persists in VM extraConfig"
         steps = [s for s in vc.guest_ops.started if s[0] == f"{R8}-web01"]
-        assert [s[1] for s in steps] == ["tn-install", "tn-install"]  # wait for cloud-init, then clean up
-        assert "cloud-init status --wait" in steps[0][3] and "userdel" in steps[1][3]
+        assert [s[1] for s in steps] == ["tn-install"] * 3  # wait for cloud-init, check, clean up
+        assert "cloud-init status --wait" in steps[0][3]
+        assert (steps[1][2], steps[1][3]) == ("/usr/bin/getent", "passwd ubuntu")
+        assert "userdel" in steps[2][3]
         assert _vm_out(result, "web01")["accounts_applied"] == ["ubuntu"]
+
+    def test_only_accounts_that_exist_are_reported_applied(self, vc):
+        """Item 6: getent per account; one cloud-init did not create is not applied."""
+        vc.guest_ops.exit_codes = {"passwd analyst": 2}
+        tpl = _with(_rendered(), {"web01": [_acct("opsadmin", WEB_PW, True), _acct("analyst", ANALYST_PW)]})
+        result = _run(_prov(vc).provision(RANGE_ID, tpl, {}))
+        assert result.status == "ok", result.errors
+        assert _vm_out(result, "web01")["accounts_applied"] == ["opsadmin"]
+        assert any(f"{R8}-web01" in w and "not verified" in w and "analyst" in w for w in result.warnings)
+        assert "users" not in _userdata(vc.vms[_vm_out(result, "web01")["vm_id"]])
 
     def test_nothing_in_any_guestinfo_is_ever_plain_text(self, depot):
         vc = depot
@@ -213,6 +229,32 @@ class TestGuestinfoScrub:
         assert "users" not in _userdata(web)
         assert _vm_out(result, "web01")["accounts_applied"] == []  # M2: not seen applied, not claimed
         assert any(f"{R8}-web01" in w and "recorded as not set" in w for w in result.warnings)
+        assert any(f"{R8}-web01" in w and "tn-install user may remain" in w for w in result.warnings)
+
+    def test_a_windows_administrator_is_applied_only_when_its_password_logs_in(self, vc):
+        """Item 6: Windows is verified by a guest-operations login with the declared password."""
+        tpl = _with(_rendered(), {"dc01": [_acct("Administrator", DC_PW, True)]})
+        result = _run(_prov(vc).provision(RANGE_ID, tpl, {}))
+        assert result.status == "ok", result.errors
+        assert _vm_out(result, "dc01")["accounts_applied"] == ["Administrator"]
+        assert DC_PW in vc.guest_ops.passwords_seen
+
+    def test_a_windows_administrator_that_does_not_log_in_is_not_applied(self, vc, monkeypatch):
+        def refuse(vm, auth):
+            raise _vsp.vim.fault.InvalidGuestLogin()
+
+        vc.guest_ops.ValidateCredentialsInGuest = refuse
+        prov = _prov(vc)
+        prov._install_timeout = 0
+        clock = [0.0]
+        real = time.monotonic
+        monkeypatch.setattr(_vsp.guest_mod, "time", SimpleNamespace(
+            monotonic=lambda: real() + clock[0], sleep=lambda s: clock.__setitem__(0, clock[0] + 50)))
+        result = _run(prov.provision(RANGE_ID, _with(_rendered(), {"dc01": [_acct("Administrator", DC_PW, True)]}),
+                                     {}))
+        assert result.status == "ok", result.errors
+        assert _vm_out(result, "dc01")["accounts_applied"] == []
+        assert any(f"{R8}-dc01" in w and "not verified" in w for w in result.warnings)
 
     def test_vms_without_account_material_are_not_touched(self, vc):
         result = _run(_prov(vc).provision(RANGE_ID, _rendered(), {}))

@@ -134,10 +134,19 @@ def account_users(accounts: list[RangeAccount]) -> tuple[list[dict], list[str]]:
     return users, skipped
 
 
-def default_login(password: Secret) -> dict:
-    """cloud-config giving the image's default user ``password`` (a SHA-512-crypt hash, which
-    cloud-init applies as one) and allowing password logins."""
-    return {"password": _sha512_crypt(password.reveal()), "chpasswd": {"expire": False}, "ssh_pwauth": True}
+ACCOUNT_CHECK = "account:"
+
+
+def account_checks(names: list[str]) -> list[GuestCommand]:
+    """One ``getent passwd <name>`` per account (as the install user; no root needed): exit 0
+    when the account exists. Labelled ``account:<name>``; ``accounts_found`` reads them back."""
+    return [GuestCommand(f"{ACCOUNT_CHECK}{n}", "/usr/bin/getent", f"passwd {shlex.quote(n)}") for n in names]
+
+
+def accounts_found(result: dict) -> list[str]:
+    """The accounts whose ``account_checks`` command succeeded in an ``install`` result."""
+    return [p["name"][len(ACCOUNT_CHECK):] for p in result.get("packages") or []
+            if p["name"].startswith(ACCOUNT_CHECK) and p["status"] == "ok"]
 
 
 def linux_credentials() -> GuestCredentials:
