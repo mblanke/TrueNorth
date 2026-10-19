@@ -1,0 +1,65 @@
+---
+# TrueNorth work site - build/depot variables (non-secret). Secrets: vault.yml, from
+# vault.yml.example next to this file (two Nexus passwords; ansible-vault encrypt it).
+
+# Private key for tnadmin@TN-DEPOT01 (its .pub goes to `build-phase.sh depot --ssh-key`)
+# and for TN-MGMT01 unless your account there uses another (then -e tn_lab_ssh_key=...).
+tn_lab_ssh_key: "~/.ssh/id_ed25519_lab"
+# The sudo-capable account you log in to TN-MGMT01 with. CHANGE to yours.
+tn_work_admin_user: tnadmin
+
+# ── Addresses ─────────────────────────────────────────────────────────
+tn_build_ip: 10.30.31.20 # TN-MGMT01 ens224 (dPG-TN-BUILD): Packer HTTP/WinRM/SSH callbacks
+# What TrueNorth (and prefetch from TN-MGMT01) uses: the depot's MGMT address. Nexus and
+# apt-cacher-ng listen on every interface, so builds reach the same services on BUILD.
+tn_depot_ip: 10.30.30.30
+# What Packer builds use: the depot's BUILD address (pkrvars-work.py --depot).
+tn_depot_build_ip: 10.30.31.30
+
+tn_depot_nexus_port: 8081
+tn_depot_acng_port: 3142
+tn_depot_nexus_url: "http://{{ tn_depot_ip }}:{{ tn_depot_nexus_port }}"
+tn_depot_apt_proxy_url: "http://{{ tn_depot_ip }}:{{ tn_depot_acng_port }}"
+
+# ── tn_build on TN-MGMT01: only what is missing ───────────────────────
+# Packer 1.16.0 is already installed, so the role leaves it alone (it installs Packer only
+# when `packer version` fails or tn_build_packer_version pins another). No docker.io: the
+# installer's Docker runs there and the Ubuntu package would conflict with it. No
+# ansible-core: Ansible runs on the control node.
+tn_build_packages:
+  - ca-certificates
+  - curl
+  - jq
+  - git
+  - rsync
+  - unzip
+  - openssl # pkrvars-work.py checks the Linux build password against the Ubuntu seed
+  - xorriso # Packer cd_files (Ubuntu cidata, Rocky OEMDRV)
+  - genisoimage
+  - python3-venv
+tn_build_manage_docker_group: false
+tn_build_version_commands:
+  - packer version
+  - /usr/local/bin/govc version
+  - xorriso -version
+
+# The template kit: a checkout of this repo NEXT TO the installed app. /srv/truenorth/app
+# is the installer's; never build from it. local: rsync from the control node's checkout
+# (lab.auto.pkrvars.hcl, vault.yml and *.env are never copied). On TN-MGMT01 itself, clone
+# the repo there by hand and pass -e tn_build_repo_mode=none.
+tn_build_repo_mode: local
+tn_build_repo_local_path: "{{ playbook_dir }}/../.."
+tn_build_repo_url: ""
+tn_build_repo_ref: ""
+tn_build_repo_dir: /srv/truenorth/template-kit
+
+tn_build_report_next: >-
+  Next, on TN-MGMT01: sudo python3 {{ tn_build_repo_dir }}/scripts/lab/pkrvars-work.py,
+  then sudo {{ tn_build_repo_dir }}/scripts/lab/build-phase.sh prereq
+  (install/lab/README.md, "Work site (TN-MGMT01 build host)").
+
+# ── TN-DEPOT01 ────────────────────────────────────────────────────────
+# The work-site depot reaches upstream through dPG-TN-MGMT's gateway: there is no uplink
+# NIC to disconnect, so scripts/lab/depot-uplink.sh does not apply. Egress control is the
+# caches' offline mode (tn_depot_upstream_online: false, the role default) plus the MGMT
+# firewall.

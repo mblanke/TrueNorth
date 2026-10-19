@@ -11,7 +11,11 @@
 #                      esx01 holds the VCSA and is always refused.
 #   --data-disk SIZE   TN-DEPOT01 only: extra thin data disk, mounted at /srv/depot (default 1T)
 #   --no-uplink        TN-DEPOT01 only: no second NIC on dPG-TN-BUILD (see below)
-#   --template NAME    default tmpl-ubuntu-2404
+#   --template NAME    default tmpl-ubuntu-2404 (ubuntu-lts with --site work)
+#   --site work        the work site (TN-MGMT01 is the build host, ADR 0012): TN-DEPOT01 only,
+#                      dual-homed and always connected, on esx04 (VLAN 31 reaches only esx04):
+#                        NIC 0 dPG-TN-MGMT  10.30.30.30/24 gw .1, DNS 10.30.30.10 (TN-DC01)
+#                        NIC 1 dPG-TN-BUILD 10.30.31.30/24, no gateway (isolated build net)
 #   --apply            actually change vCenter (default: plan only, read-only)
 #
 #   VM          NIC 0 (port group / IP)               vCPU  RAM    disk
@@ -33,12 +37,13 @@ set -euo pipefail
 # shellcheck source-path=SCRIPTDIR source=lib.sh
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
-usage() { sed -n '2,34p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+usage() { sed -n '2,38p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 
-NAME=""; SSH_KEY=""; HOST_ARG=""; DATA_DISK="1T"; UPLINK=1; TEMPLATE="tmpl-ubuntu-2404"
+NAME=""; SSH_KEY=""; HOST_ARG=""; DATA_DISK="1T"; UPLINK=1; TEMPLATE=""; SITE="lab"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --apply) APPLY=1 ;;
+    --site) SITE="$2"; shift ;;
     --ssh-key) SSH_KEY="$2"; shift ;;
     --host) HOST_ARG="$2"; shift ;;
     --data-disk) DATA_DISK="$2"; shift ;;
@@ -51,15 +56,25 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
-case "$NAME" in
-  TN-BUILD01) CPU=8; MEM_MB=16384; OS_DISK=200G; PG=dPG-TN-BUILD; IP=10.30.31.10; GW=10.30.31.1
+# BUILD_NIC_ALWAYS=1 (work site): NIC 1 stays connected; it is how builds reach the depot.
+BUILD_NIC_ALWAYS=0
+case "$SITE:$NAME" in
+  lab:TN-BUILD01) CPU=8; MEM_MB=16384; OS_DISK=200G; PG=dPG-TN-BUILD; IP=10.30.31.10; GW=10.30.31.1
               DNS=10.30.31.1; HN=tn-build01; DATA_DISK=""; UPLINK=0 ;;
-  TN-DEPOT01) CPU=4; MEM_MB=16384; OS_DISK=100G; PG=dPG-TN-SVC;   IP=10.30.32.10; GW=10.30.32.1
+  lab:TN-DEPOT01) CPU=4; MEM_MB=16384; OS_DISK=100G; PG=dPG-TN-SVC;   IP=10.30.32.10; GW=10.30.32.1
               DNS=10.30.31.1; HN=tn-depot01
               UPLINK_PG=dPG-TN-BUILD; UPLINK_IP=10.30.31.11; UPLINK_GW=10.30.31.1 ;;
-  "") usage 2 ;;
-  *) die "unknown VM '$NAME' (TN-BUILD01 or TN-DEPOT01)" ;;
+  work:TN-DEPOT01) CPU=4; MEM_MB=16384; OS_DISK=100G; PG=dPG-TN-MGMT; IP=10.30.30.30; GW=10.30.30.1
+              DNS=10.30.30.10; HN=tn-depot01
+              UPLINK_PG=dPG-TN-BUILD; UPLINK_IP=10.30.31.30; UPLINK_GW=""; BUILD_NIC_ALWAYS=1
+              [[ "$UPLINK" == "1" ]] || die "--no-uplink: the work-site depot needs its dPG-TN-BUILD NIC (builds reach it there)"
+              : "${HOST_ARG:=esx04}"; : "${TEMPLATE:=ubuntu-lts}" ;;
+  work:TN-BUILD01) die "the work site has no TN-BUILD01: TN-MGMT01 is the build host (install/lab/work-site)" ;;
+  *:"") usage 2 ;;
+  lab:*|work:*) die "unknown VM '$NAME' (TN-BUILD01 or TN-DEPOT01)" ;;
+  *) die "unknown --site '$SITE' (lab or work)" ;;
 esac
+: "${TEMPLATE:=tmpl-ubuntu-2404}"
 PREFIX=24
 
 [[ -n "$SSH_KEY" ]] || die "--ssh-key PATH (the PUBLIC key for tnadmin) is required"
@@ -132,6 +147,16 @@ EOF
       routes: [{to: default, via: ${GW}}]
       nameservers: {addresses: [${DNS}]}
 EOF
+  elif [[ "$BUILD_NIC_ALWAYS" == "1" ]]; then
+    # Work-site depot: the default route is MGMT's. The build NIC is on-link only:
+    # dPG-TN-BUILD has no gateway, and builds (10.30.31.0/24) are on the same subnet.
+    cat <<EOF
+      routes: [{to: default, via: ${GW}}]
+      nameservers: {addresses: [${DNS}]}
+    nic1:
+      match: {macaddress: "$2"}
+      addresses: [${UPLINK_IP}/${PREFIX}]
+EOF
   else
     # Depot: NIC 0 carries no main-table default route. Anything sourced from the SVC
     # address goes back out NIC 0 (table 32), so ranges and BUILD01 get symmetric
@@ -185,7 +210,13 @@ EOF
 step "Plan for $NAME"
 info "clone $TEMPLATE -> $NAME on $HOST_SHORT / $DS, ${CPU} vCPU, $((MEM_MB/1024)) GB, OS disk ${OS_DISK}"
 info "NIC 0: $PG, ${IP}/${PREFIX} gw ${GW}"
-[[ -n "${UPLINK_PG:-}" && "$UPLINK" == "1" ]] && info "NIC 1: $UPLINK_PG, ${UPLINK_IP}/${PREFIX} gw ${UPLINK_GW}, DISCONNECTED (depot-uplink.sh)"
+if [[ -n "${UPLINK_PG:-}" && "$UPLINK" == "1" ]]; then
+  if [[ "$BUILD_NIC_ALWAYS" == "1" ]]; then
+    info "NIC 1: $UPLINK_PG, ${UPLINK_IP}/${PREFIX}, no gateway, CONNECTED (Packer builds reach the depot here)"
+  else
+    info "NIC 1: $UPLINK_PG, ${UPLINK_IP}/${PREFIX} gw ${UPLINK_GW}, DISCONNECTED (depot-uplink.sh)"
+  fi
+fi
 [[ -n "$DATA_DISK" ]] && info "data disk: ${DATA_DISK} thin -> /srv/depot"
 info "cloud-init user-data:"
 render_userdata | sed 's/^/    | /'
@@ -199,7 +230,13 @@ if [[ "$APPLY" != "1" ]]; then
 EOF
   [[ -n "$DATA_DISK" ]] && echo "  [plan] govc vm.disk.create -vm $NAME -name $NAME/${NAME}_data -size $DATA_DISK -ds $DS"
   echo "  [plan] govc vm.network.change -vm $NAME -net $PG ethernet-0"
-  [[ -n "${UPLINK_PG:-}" && "$UPLINK" == "1" ]] && echo "  [plan] govc vm.network.add -vm $NAME -net $UPLINK_PG -net.adapter vmxnet3; govc device.disconnect -vm $NAME ethernet-1"
+  if [[ -n "${UPLINK_PG:-}" && "$UPLINK" == "1" ]]; then
+    if [[ "$BUILD_NIC_ALWAYS" == "1" ]]; then
+      echo "  [plan] govc vm.network.add -vm $NAME -net $UPLINK_PG -net.adapter vmxnet3 (stays connected)"
+    else
+      echo "  [plan] govc vm.network.add -vm $NAME -net $UPLINK_PG -net.adapter vmxnet3; govc device.disconnect -vm $NAME ethernet-1"
+    fi
+  fi
   echo "  [plan] set guestinfo.metadata / guestinfo.userdata (base64), power on, wait for ${IP}"
   echo; echo "Plan only. Re-run with --apply to change vCenter."
   exit 0
@@ -224,9 +261,13 @@ nic1=""
 if [[ -n "${UPLINK_PG:-}" && "$UPLINK" == "1" ]]; then
   act govc vm.network.add -vm "$VM" -net "$UPLINK_PG" -net.adapter vmxnet3
   nic1="$(govc device.ls -vm "$VM" | awk '/^ethernet-/{print $1}' | grep -vx "$nic0" | head -n1)"
-  act govc device.disconnect -vm "$VM" "$nic1"
-  start="$(govc device.info -json -vm "$VM" "$nic1" | jq -r "$JQ_CI"' ci("startConnected")[0]')"
-  [[ "$start" == "false" ]] || die "$nic1 is still set to connect at power-on; disconnect it before powering on"
+  if [[ "$BUILD_NIC_ALWAYS" == "1" ]]; then
+    act govc device.connect -vm "$VM" "$nic1"
+  else
+    act govc device.disconnect -vm "$VM" "$nic1"
+    start="$(govc device.info -json -vm "$VM" "$nic1" | jq -r "$JQ_CI"' ci("startConnected")[0]')"
+    [[ "$start" == "false" ]] || die "$nic1 is still set to connect at power-on; disconnect it before powering on"
+  fi
 fi
 
 mac() { govc device.info -json -vm "$VM" "$1" | jq -r "$JQ_CI"' ci("macAddress")[0]'; }
@@ -252,7 +293,9 @@ cat <<EOF
 
 RESULT: $NAME on $HOST_SHORT / $DS, ${IP}. Log in: ssh -i <private key> tnadmin@${IP}
 EOF
-if [[ -n "$nic1" ]]; then
+if [[ -n "$nic1" && "$BUILD_NIC_ALWAYS" == "1" ]]; then
+  echo "Build NIC $nic1 on $UPLINK_PG: ${UPLINK_IP} (connected; builds use http://${UPLINK_IP}:8081)"
+elif [[ -n "$nic1" ]]; then
   echo "Uplink NIC $nic1 is DISCONNECTED. Connect it for the depot install and prefetch:"
   echo "  scripts/lab/depot-uplink.sh on --apply   ...   scripts/lab/depot-uplink.sh off --apply"
 fi

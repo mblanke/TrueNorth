@@ -11,6 +11,8 @@
 
 set -euo pipefail
 
+# Set when the operator gave GOVC_URL; govc_from_env_file then leaves it alone.
+TN_GOVC_URL_SET="${GOVC_URL:+1}"
 : "${GOVC_URL:=https://192.168.1.10/sdk}"
 : "${GOVC_INSECURE:=1}"
 : "${TN_DC:=DC-Lab}"
@@ -72,6 +74,41 @@ act() {
   else
     echo "  [plan] $*"
   fi
+}
+
+# y/N before a vCenter change (work-site scripts). ASSUME_YES=1 (--yes) answers yes. With
+# no terminal to ask on, the answer is no.
+confirm() {
+  if [[ "${ASSUME_YES:-0}" == "1" ]]; then echo "  $* -> yes (--yes)"; return 0; fi
+  local ans=""
+  { read -r -p "  $* [y/N] " ans </dev/tty; } 2>/dev/null || ans=""
+  [[ "$ans" =~ ^[Yy]([Ee][Ss])?$ ]]
+}
+
+# vCenter credentials for govc from the TrueNorth server's env file (TN-MGMT01:
+# /srv/truenorth/config/.env.production, VSPHERE_URL/USERNAME/PASSWORD), for whatever is
+# not already in the environment. Nothing is printed. Call BEFORE lab_preflight.
+govc_from_env_file() {
+  local file="$1" line key val url="" user="" pass=""
+  [[ -r "$file" ]] || die "cannot read $file (run as root on TN-MGMT01, or export GOVC_USERNAME/GOVC_PASSWORD)"
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line="${line#export }"
+    key="${line%%=*}"; val="${line#*=}"
+    [[ "$line" == *=* ]] || continue
+    if [[ "$val" == \"*\" || "$val" == \'*\' ]]; then val="${val:1:${#val}-2}"; fi
+    case "$key" in
+      VSPHERE_URL) url="$val" ;;
+      VSPHERE_USERNAME) user="$val" ;;
+      VSPHERE_PASSWORD) pass="$val" ;;
+    esac
+  done < "$file"
+  if [[ -z "${GOVC_USERNAME:-}" && -n "$user" ]]; then GOVC_USERNAME="$user"; fi
+  if [[ -z "${GOVC_PASSWORD:-}" && -n "$pass" ]]; then GOVC_PASSWORD="$pass"; fi
+  if [[ -n "$url" && -z "${TN_GOVC_URL_SET:-}" ]]; then
+    url="${url#*://}"; url="${url%%/*}"
+    GOVC_URL="https://${url}/sdk"
+  fi
+  export GOVC_URL GOVC_USERNAME GOVC_PASSWORD
 }
 
 # pyVmomi helper for the two things govc cannot set (port group security policy,

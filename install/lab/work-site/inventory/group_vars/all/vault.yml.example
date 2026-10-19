@@ -1,0 +1,17 @@
+---
+# TrueNorth lab - build/depot secrets.
+#
+#   cp vault.yml.example vault.yml
+#   ansible-vault encrypt vault.yml
+#
+# vault.yml is gitignored (install/lab/.gitignore). Never commit the decrypted file.
+
+# Nexus "admin". On first boot Nexus writes a random password to
+# /srv/depot/nexus-data/admin.password; depot.yml uses it once to set this value, and
+# Nexus then deletes that file. Range students can reach port 8081 (anonymous read), so
+# make this long and random.
+vault_nexus_admin_password: "CHANGE_ME"
+
+# Nexus user that TN-BUILD01 uses to upload Chocolatey packages and vendor media
+# (chocolatey-hosted, installers, docker-hosted). Not an admin.
+vault_nexus_prefetch_password: "CHANGE_ME"
