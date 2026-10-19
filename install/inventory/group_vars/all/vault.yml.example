@@ -26,6 +26,15 @@ vault_ldap_bind_password: "CHANGE_ME"
 # ── vCenter service account ───────────────────────────────────────────
 vault_vsphere_password: "CHANGE_ME"
 
+# ── Range machines' generic password (ADR 0012) ───────────────────────
+# Given to a range VM's Administrator (Windows) or default user (Linux) when its range
+# template declares no account for that machine. Empty: a random password per VM that
+# nobody is told (the behaviour before ADR 0012). Not generated on target. Document it
+# in the wiki for staff; Students get only the accounts a template hands to them.
+# Windows complexity applies (upper, lower, digit, symbol; 8+ characters); no single
+# quote ('), no newline.
+vault_range_default_password: ""
+
 # ── Keycloak admin (bootstrap only; not an end-user account) ───────────
 # The master-realm admin. Only the installer uses it; the API has its own
 # least-privilege service account (truenorth-api-admin).

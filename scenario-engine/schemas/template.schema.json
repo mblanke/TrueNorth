@@ -80,6 +80,95 @@
     "network": {
       "type": "object"
     },
+    "accounts": {
+      "description": "Accounts TrueNorth sets on the range's machines at deploy (ADR 0012 §12). The API also checks that each machine is a node id or name, or an asset role, of this template and that a username appears once per machine (control-plane/api/app/range_credentials/accounts.py).",
+      "type": [
+        "array",
+        "null"
+      ],
+      "maxItems": 500,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "machine",
+          "username",
+          "student_visible"
+        ],
+        "properties": {
+          "machine": {
+            "type": [
+              "string",
+              "integer"
+            ],
+            "description": "A node id or name, or an asset role"
+          },
+          "username": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._@\\\\-]{0,103}$"
+          },
+          "password": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "generate": {
+            "type": "boolean",
+            "description": "true: TrueNorth makes the password up, once per range"
+          },
+          "student_visible": {
+            "type": "boolean",
+            "description": "Handed to Students taking part in the range"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "admin",
+              "user"
+            ]
+          },
+          "notes": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 500
+          }
+        },
+        "oneOf": [
+          {
+            "required": [
+              "password"
+            ],
+            "not": {
+              "required": [
+                "generate"
+              ],
+              "properties": {
+                "generate": {
+                  "const": true
+                }
+              }
+            }
+          },
+          {
+            "required": [
+              "generate"
+            ],
+            "properties": {
+              "generate": {
+                "const": true
+              }
+            },
+            "not": {
+              "required": [
+                "password"
+              ]
+            }
+          }
+        ]
+      }
+    },
     "greyspace": {
       "description": "Attach a Greyspace simulated internet (ADR 0007). Same fields as the API's GreyspaceBlock.",
       "type": "object",

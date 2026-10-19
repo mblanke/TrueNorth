@@ -7,9 +7,10 @@ the network into the range. The worker asks vCenter to start a process inside th
 reach only through the range pfSense's WAN uplink.
 
 Guest credentials never leave the worker process:
-- Windows: the random per-VM Administrator password that Sysprep customization sets
-  (vsphere_infra.windows_customization), handed from the customization step to the
-  install step inside the same provision call.
+- Windows: the Administrator password that Sysprep customization sets
+  (vsphere_infra.windows_customization): the range's declared Administrator account
+  (ADR 0012), else TN_RANGE_DEFAULT_PASSWORD, else random per VM. Handed from the
+  customization step to the install step inside the same provision call.
 - Linux: an ephemeral ``tn-install`` user with a random password, created by cloud-init
   from the guestinfo userdata, locked and deleted by the last install command, expiring
   on its own after two days if that command never runs. The provisioner rewrites the
@@ -23,6 +24,7 @@ from __future__ import annotations
 import contextlib
 import datetime as _dt
 import logging
+import re
 import secrets
 import shlex
 import time
@@ -74,16 +76,72 @@ class GuestCredentials:
     password: Secret = field(repr=False)
 
 
-def windows_credentials() -> GuestCredentials:
-    """The built-in Administrator with a random password that meets Windows complexity rules."""
-    return GuestCredentials("windows", "Administrator", Secret(secrets.token_urlsafe(18) + "!9a"))
+@dataclass(frozen=True)
+class RangeAccount:
+    """An account the range declares on a VM (ADR 0012; worker/range_accounts.py)."""
+
+    username: str
+    password: Secret = field(repr=False)
+    admin: bool = False
+
+
+WINDOWS_ADMIN = "administrator"
+# What cloud-init (useradd) accepts as a Linux login name.
+POSIX_USERNAME = re.compile(r"^[a-z_][a-z0-9_.-]{0,31}$")
+
+
+def windows_credentials(password: str | None = None) -> GuestCredentials:
+    """The built-in Administrator: ``password``, else a random one that meets Windows complexity rules."""
+    return GuestCredentials("windows", "Administrator", Secret(password or secrets.token_urlsafe(18) + "!9a"))
+
+
+def admin_password(vm_def: dict) -> str | None:
+    """The Administrator password a Windows VM is given: its declared ``Administrator``
+    account (``_accounts``), else the platform default (``_default_login``), else None
+    (random, as before). Read where it is used; never stored in the VM's plan."""
+    for acct in vm_def.get("_accounts") or []:
+        if acct.username.casefold() == WINDOWS_ADMIN:
+            return acct.password.reveal()
+    default = vm_def.get("_default_login")
+    return default.reveal() if default is not None else None
+
+
+def account_users(accounts: list[RangeAccount]) -> tuple[list[dict], list[str]]:
+    """cloud-config ``users`` entries for a Linux VM's declared accounts, and the names
+    skipped because Linux does not accept them. Persistent (unlike the install user); an
+    admin gets sudo with its password. Hashed where possible, like ``cloud_init_user``.
+    For a user the image already has (``ubuntu``) cloud-init sets the password and sudo
+    rule and does not create it again."""
+    users, skipped = [], []
+    for acct in accounts:
+        if not POSIX_USERNAME.match(acct.username):
+            skipped.append(acct.username)
+            continue
+        user: dict = {"name": acct.username, "gecos": "TrueNorth range account", "shell": "/bin/bash",
+                      "lock_passwd": False}
+        if acct.admin:
+            user["sudo"] = "ALL=(ALL:ALL) ALL"
+        hashed = _sha512_crypt(acct.password.reveal())
+        if hashed:
+            user["hashed_passwd"] = hashed
+        else:
+            user["plain_text_passwd"] = acct.password.reveal()
+        users.append(user)
+    return users, skipped
+
+
+def default_login(password: Secret) -> dict:
+    """cloud-config giving the image's default user ``password`` (a crypt hash where the
+    platform makes one; cloud-init accepts either) and allowing password logins."""
+    return {"password": _sha512_crypt(password.reveal()) or password.reveal(), "chpasswd": {"expire": False},
+            "ssh_pwauth": True}
 
 
 def linux_credentials() -> GuestCredentials:
     return GuestCredentials("linux", INSTALL_USER, Secret(secrets.token_urlsafe(24)))
 
 
-def redact(text: str, *creds: GuestCredentials | None) -> str:
+def redact(text: str, *creds: GuestCredentials | RangeAccount | None) -> str:
     out = str(text)
     for c in creds:
         if c is not None and c.password.reveal():

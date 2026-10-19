@@ -37,6 +37,7 @@ from .tables import (
     learning_recommendations,
     network_reservations,
     objectives,
+    range_credentials,
     range_snapshots,
     ranges,
     scenario_executions,
@@ -188,6 +189,20 @@ def hypervisor_creds_by_id(db, hypervisor_type: str, connection_id: str, range_i
     )
     row = db.execute(stmt).first()
     return {} if row is None else _creds(row)
+
+
+def range_accounts(db, range_id: str) -> list[tuple[str, str, str, str]]:
+    """(machine, username, password, role) of every account the range declares (ADR 0012).
+    Written and sealed by the API (app/range_credentials) when the build was accepted;
+    unsealed here. Of the range's own tenant only."""
+    rc = range_credentials
+    stmt = (
+        sa.select(rc.c.machine, rc.c.username, rc.c.password, rc.c.role)
+        .join(ranges, ranges.c.id == rc.c.range_id)
+        .where(rc.c.range_id == range_id, rc.c.tenant_id == ranges.c.tenant_id)
+        .order_by(rc.c.machine, rc.c.username)
+    )
+    return [(m, u, secretbox.unseal(p) or "", r) for m, u, p, r in db.execute(stmt)]
 
 
 def enabled_golden_images(db, hypervisor: str) -> list:

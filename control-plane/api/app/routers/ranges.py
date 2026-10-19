@@ -56,6 +56,7 @@ from ..models import (
 )
 from ..network_inventory import NetworkReservation, NetworkReservationOut
 from ..provisioner_choice import configured_backend
+from ..range_credentials import service as range_credentials
 from ..range_ops import service as ops
 from ..range_ops.lease_status import LeaseStatusOut
 from ..range_ops.lease_status import assess as assess_lease
@@ -210,6 +211,9 @@ def create_range(
         provisioner_backend=configured_backend(),  # 409 for a switched-off experimental backend
     )
     db.add(rng)
+    db.flush()
+    # Its declared accounts (422 if they do not validate) and its staff-only wiki page (ADR 0012).
+    range_credentials.on_range_created(db, rng, user)
     db.commit()
     db.refresh(rng)
     _audit(db, user, "create", "range", str(rng.id))
@@ -280,6 +284,7 @@ def update_range(
     rng = _changeable_range(db, range_id, user)
     for field, value in body.model_dump(exclude_unset=True).items():
         setattr(rng, field, value)
+    range_credentials.on_range_updated(db, rng, user)  # its wiki page follows the new name
     db.commit()
     db.refresh(rng)
     _audit(db, user, "update", "range", str(rng.id))
@@ -317,6 +322,7 @@ def delete_range(
     # Snapshots and documents cascade with the range (Range.snapshots/.documents).
     # The documents' stored bytes do not, so note them for removal after the commit.
     stored = [doc.minio_key for doc in rng.documents if doc.minio_key]
+    range_credentials.on_range_deleted(db, rng)  # its passwords, and its wiki page
     db.delete(rng)
     try:
         db.commit()

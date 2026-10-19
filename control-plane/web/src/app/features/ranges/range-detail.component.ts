@@ -16,6 +16,7 @@ import { NotificationService } from '@core/services/notification.service';
 import {
   ImpactDialogComponent, ImpactDialogData, ImpactDialogResult,
 } from '../../shared/components/impact-dialog/impact-dialog.component';
+import { RangeCredentialsComponent } from '../../shared/components/range-credentials/range-credentials.component';
 import { RangeSnapshotsComponent } from './range-snapshots.component';
 import { apiError, rangeCapabilities } from './range-capabilities';
 
@@ -34,7 +35,7 @@ const POLL_MS = 10_000;
 @Component({
   selector: 'tn-range-detail',
   imports: [CommonModule, RouterLink, MatButtonModule, MatCardModule, MatIconModule, MatTooltipModule,
-    RangeSnapshotsComponent],
+    RangeCredentialsComponent, RangeSnapshotsComponent],
   template: `
     <div class="page-container">
       <a mat-button routerLink="/authoring/ranges" class="back"><mat-icon>arrow_back</mat-icon> Ranges</a>
@@ -181,6 +182,11 @@ const POLL_MS = 10_000;
               </tbody>
             </table>
           }
+        </mat-card>
+
+        <!-- Machine accounts (ADR 0012): masked, fetched on request, audited by the API -->
+        <mat-card class="section">
+          <tn-range-credentials [rangeId]="r.id" />
         </mat-card>
 
         <tn-range-snapshots class="section" [rangeId]="r.id" [rangeState]="r.state"

@@ -11730,6 +11730,81 @@
         "title": "RangeAbandonIn",
         "type": "object"
       },
+      "RangeCredentialOut": {
+        "properties": {
+          "generated": {
+            "description": "TrueNorth made the password up for this range",
+            "title": "Generated",
+            "type": "boolean"
+          },
+          "machine": {
+            "description": "The template node id (or asset role) the account is on",
+            "title": "Machine",
+            "type": "string"
+          },
+          "notes": {
+            "default": "",
+            "title": "Notes",
+            "type": "string"
+          },
+          "password": {
+            "title": "Password",
+            "type": "string"
+          },
+          "role": {
+            "description": "admin | user",
+            "title": "Role",
+            "type": "string"
+          },
+          "student_visible": {
+            "description": "Handed to Students who take part in the range",
+            "title": "Student Visible",
+            "type": "boolean"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "machine",
+          "username",
+          "password",
+          "role",
+          "student_visible",
+          "generated"
+        ],
+        "title": "RangeCredentialOut",
+        "type": "object"
+      },
+      "RangeCredentialsOut": {
+        "properties": {
+          "accounts": {
+            "items": {
+              "$ref": "#/components/schemas/RangeCredentialOut"
+            },
+            "title": "Accounts",
+            "type": "array"
+          },
+          "range_id": {
+            "format": "uuid",
+            "title": "Range Id",
+            "type": "string"
+          },
+          "scope": {
+            "description": "all: every account (staff); student: only those handed to Students",
+            "title": "Scope",
+            "type": "string"
+          }
+        },
+        "required": [
+          "range_id",
+          "scope",
+          "accounts"
+        ],
+        "title": "RangeCredentialsOut",
+        "type": "object"
+      },
       "RangeDocumentOut": {
         "properties": {
           "created_at": {
@@ -34382,6 +34457,61 @@
         ]
       }
     },
+    "/ranges/{range_id}/credentials": {
+      "get": {
+        "description": "The accounts on a range's machines, with their passwords, as the caller may see them.\n\n**Permission: range:read**, then by role: staff with ``range:credentials_read`` see every\naccount; a Student sees the ``student_visible`` accounts of a range they take part in\n(their lab session's range, or an exercise running on it whose booked course they are\nrostered on) and gets 404 for any other; an observer gets 403. Audited per read.",
+        "operationId": "get_range_credentials_ranges__range_id__credentials_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "range_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Range Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RangeCredentialsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "The caller's role sees no range credentials (observers)"
+          },
+          "404": {
+            "description": "No such range in the caller's tenant, or a Student who does not take part in it"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Range Credentials",
+        "tags": [
+          "ranges"
+        ]
+      }
+    },
     "/ranges/{range_id}/description/import": {
       "post": {
         "description": "Replace the range description with the contents of a text file.\n\nText in, text on the range \u2014 the file is not retained, so the description\nstays editable and searchable afterwards. Use the documents endpoints when\nthe original file itself needs to be kept.",
@@ -38821,7 +38951,7 @@
         ]
       },
       "get": {
-        "description": "Retrieve a single template.  **Permission: template:read**",
+        "description": "Retrieve a single template.  **Permission: template:read**\n\nIts ``accounts[].password`` values are shown only to holders of range:credentials_read\nin the template's own tenant; anyone else reads them as ``********`` (ADR 0012 \u00a713).",
         "operationId": "get_template_templates__template_id__get",
         "parameters": [
           {

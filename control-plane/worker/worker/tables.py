@@ -333,6 +333,23 @@ objectives = sa.Table(
     sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
 )
 
+range_credentials = sa.Table(
+    "range_credentials",
+    metadata,
+    sa.Column("id", GUID(), primary_key=True),
+    sa.Column("tenant_id", GUID(), nullable=False),
+    sa.Column("range_id", GUID(), nullable=False),
+    sa.Column("machine", sa.String(255), nullable=False),
+    sa.Column("username", sa.String(128), nullable=False),
+    sa.Column("password", sa.Text(), nullable=False),
+    sa.Column("generated", sa.Boolean(), nullable=False),
+    sa.Column("student_visible", sa.Boolean(), nullable=False),
+    sa.Column("role", sa.String(16), nullable=False),
+    sa.Column("notes", sa.Text(), nullable=False),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+)
+
 range_greyspace = sa.Table(
     "range_greyspace",
     metadata,
@@ -508,6 +525,7 @@ __all__ = [
     "metadata",
     "network_reservations",
     "objectives",
+    "range_credentials",
     "range_greyspace",
     "range_leases",
     "range_snapshots",

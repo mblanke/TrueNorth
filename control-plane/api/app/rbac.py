@@ -38,6 +38,10 @@ class Permission(str, Enum):
     # Force-release an abandoned operation's lease tombstone (app/range_ops/service.py).
     # Admin only: done wrong, a hung worker's vCenter work runs beside the next build.
     RANGE_LEASE_FORCE_RELEASE = "range:lease_force_release"
+    # Every account of a range, passwords included (ADR 0012 §13). Students hold only
+    # RANGE_READ: GET /ranges/{id}/credentials gives them their exercise's student_visible
+    # accounts (app/range_credentials/service.py); observers get nothing.
+    RANGE_CREDENTIALS_READ = "range:credentials_read"
 
     # Template management
     TEMPLATE_CREATE = "template:create"
@@ -156,6 +160,7 @@ ROLE_PERMISSIONS: dict[UserRole, set[Permission]] = {
         Permission.RANGE_PROVISION,
         Permission.RANGE_DESTROY,
         Permission.RANGE_BATCH_PROVISION,
+        Permission.RANGE_CREDENTIALS_READ,
         # Templates
         Permission.TEMPLATE_READ,
         Permission.TEMPLATE_CREATE,
@@ -219,6 +224,7 @@ ROLE_PERMISSIONS: dict[UserRole, set[Permission]] = {
         Permission.RANGE_PROVISION,
         Permission.RANGE_DESTROY,
         Permission.RANGE_BATCH_PROVISION,
+        Permission.RANGE_CREDENTIALS_READ,
         Permission.TEMPLATE_READ,
         Permission.TEMPLATE_CREATE,
         Permission.TEMPLATE_UPDATE,

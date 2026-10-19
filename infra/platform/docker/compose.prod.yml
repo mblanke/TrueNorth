@@ -724,6 +724,9 @@ services:
       TN_DEPOT_APT_PROXY: ${TN_DEPOT_APT_PROXY:-}
       TN_DEPOT_PORTS: ${TN_DEPOT_PORTS:-8081,3142}
       TN_SOFTWARE_INSTALL_TIMEOUT: ${TN_SOFTWARE_INSTALL_TIMEOUT:-1800}
+      # A range VM's Administrator / default-user password when its template declares no
+      # account for it (ADR 0012). Empty: random per VM, as before. Never logged.
+      TN_RANGE_DEFAULT_PASSWORD: ${TN_RANGE_DEFAULT_PASSWORD:-}
       # Per VM, its Windows Server roles (features, reboots, forest promotion).
       VSPHERE_ROLE_TIMEOUT: ${VSPHERE_ROLE_TIMEOUT:-1800}
       LOG_LEVEL: ${LOG_LEVEL:-info}

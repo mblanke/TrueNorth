@@ -312,6 +312,10 @@ tn_depot_url: ""
 tn_depot_choco_feed: ""
 tn_depot_apt_proxy: ""
 tn_software_install_timeout: 1800
+# The generic range password (ADR 0012): what a range VM's Administrator (Windows) or
+# default user (Linux) gets when its range template declares no account for it. Set it in
+# the vault (vault_range_default_password); empty keeps a random, unrecorded password.
+tn_range_default_password: "{{ vault_range_default_password | default('') }}"
 # Report rather than fail when the provisioning role is unassigned — see
 # roles/tn_vsphere. Flip to true once the role has been granted.
 tn_fail_on_missing_vsphere_privs: false

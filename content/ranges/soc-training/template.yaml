@@ -293,3 +293,50 @@ resource_totals:
   total_cores: 76
   total_memory_gb: 192
   total_disk_gb: 3920
+
+# Accounts TrueNorth sets at deploy (ADR 0012 §12). Passwords are generated once per range
+# and shown, sealed at rest, on the range's Credentials panel and staff-only wiki page.
+# Windows: the built-in Administrator (Sysprep). Linux: cloud-init users; `ubuntu` is the
+# template's install user (`kali` on Kali). Students get the `analyst` accounts on the SOC
+# tools and the jump host. Not here: the pfSense firewall (its appliance config login) and
+# Security Onion (its so-setup runs per range at deploy; ADR 0012 §8).
+accounts:
+  # Attacker infrastructure
+  - { machine: c2-server, username: kali, generate: true, role: admin, student_visible: false }
+  - { machine: phish-server, username: ubuntu, generate: true, role: admin, student_visible: false }
+  - { machine: staging01, username: ubuntu, generate: true, role: admin, student_visible: false }
+  - { machine: redir01, username: ubuntu, generate: true, role: admin, student_visible: false }
+  # Victim network
+  - { machine: v-dc01, username: Administrator, generate: true, role: admin, student_visible: false,
+      notes: "Local Administrator; also the first domain admin once AD DS is promoted" }
+  - { machine: v-fs01, username: Administrator, generate: true, role: admin, student_visible: false }
+  - { machine: v-web01, username: ubuntu, generate: true, role: admin, student_visible: false }
+  - { machine: v-ws01, username: Administrator, generate: true, role: admin, student_visible: false }
+  - { machine: v-ws02, username: Administrator, generate: true, role: admin, student_visible: false }
+  - { machine: v-ws03, username: Administrator, generate: true, role: admin, student_visible: false }
+  - { machine: v-ws04, username: Administrator, generate: true, role: admin, student_visible: false }
+  - { machine: v-mail01, username: ubuntu, generate: true, role: admin, student_visible: false }
+  # SOC tools
+  - { machine: siem01, username: ubuntu, generate: true, role: admin, student_visible: false }
+  - { machine: siem01, username: analyst, generate: true, role: user, student_visible: true,
+      notes: "Analyst login to the SIEM host (OS account; OpenSearch Dashboards logins are scenario content)" }
+  - { machine: velociraptor01, username: ubuntu, generate: true, role: admin, student_visible: false }
+  - { machine: velociraptor01, username: analyst, generate: true, role: user, student_visible: true,
+      notes: "Analyst login to the Velociraptor host (OS account)" }
+  - { machine: thehive01, username: ubuntu, generate: true, role: admin, student_visible: false }
+  - { machine: thehive01, username: analyst, generate: true, role: user, student_visible: true,
+      notes: "Analyst login to the TheHive/Cortex host (OS account)" }
+  - { machine: misp01, username: ubuntu, generate: true, role: admin, student_visible: false }
+  - { machine: misp01, username: analyst, generate: true, role: user, student_visible: true,
+      notes: "Analyst login to the MISP host (OS account)" }
+  - { machine: dfir-ws01, username: ubuntu, generate: true, role: admin, student_visible: false }
+  - { machine: dfir-ws01, username: analyst, generate: true, role: user, student_visible: true,
+      notes: "DFIR workstation: Autopsy, Volatility 3, Plaso, YARA" }
+  # Network monitoring
+  - { machine: zeek01, username: ubuntu, generate: true, role: admin, student_visible: false }
+  - { machine: pcap01, username: ubuntu, generate: true, role: admin, student_visible: false }
+  # Management
+  - { machine: jump01, username: ubuntu, generate: true, role: admin, student_visible: false }
+  - { machine: jump01, username: analyst, generate: true, role: user, student_visible: true,
+      notes: "The way in: SSH or Guacamole on the jump host" }
+  - { machine: log-agg01, username: ubuntu, generate: true, role: admin, student_visible: false }

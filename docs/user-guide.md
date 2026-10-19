@@ -195,6 +195,32 @@ creation time, with links to the Range Designer, background noise and range note
 exercise's page shows its range topology, and the Telemetry Explorer (`/telemetry`)
 searches a range's events.
 
+### Machine Accounts (Credentials)
+
+A range template can declare the accounts its machines get at deploy (`accounts:`): the
+Windows `Administrator`, the Linux install user, and accounts for Students. Each has a
+fixed password or `generate: true` (TrueNorth makes one up once per range and keeps it
+across rebuilds). Passwords are stored encrypted.
+
+- **Admins, instructors and Range Ops** open the range's page (`/ranges/:id`) and use the
+  **Credentials** panel: **Show accounts** loads the list, each password stays masked until
+  you click the eye, and the copy buttons copy a username or password without showing it.
+  Every time the list is loaded is recorded in the audit log.
+- **Students** see a **Your accounts** panel on the exercise page, listing only the
+  accounts handed to Students, and only for a range they take part in (their own lab, or a
+  running exercise booked to a course they are enrolled on).
+- **Observers** do not see credentials.
+
+Each range also gets a page in the staff-only wiki space **Ranges**: its machines,
+addresses, networks and the full credential table. TrueNorth rewrites that page when the
+range is created, renamed or built, or its template changes. Write your own notes under its
+**Notes** heading; they are kept. Students cannot open this space.
+
+A machine with no declared account gets the platform's generic password if the installer
+set one (`vault_range_default_password`), otherwise a random password nobody is told.
+On Windows only the `Administrator` account is set at deploy; other Windows accounts
+are listed but must be created by the scenario (the build reports them as a warning).
+
 ### Stopping and Starting a Range
 
 1. Click **Stop** on a `ready` or `running` range; the VMs are powered off

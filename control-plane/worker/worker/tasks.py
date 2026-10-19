@@ -22,7 +22,7 @@ from contextlib import contextmanager
 
 from celery import group
 
-from . import ai_client, db_ops, greyspace, range_alloc, range_metrics, range_sweep, windows_roles
+from . import ai_client, db_ops, greyspace, range_accounts, range_alloc, range_metrics, range_sweep, windows_roles
 from .base_tasks import ReliableTask, _get_backend, db_connect_args
 from .celery_app import app
 from .fencing import FINAL_ERRORS, fenced, guarded_range_update, run_async, snapshot_back_to_ready
@@ -167,7 +167,7 @@ def provision_range(self, range_id: str, noise_mgmt: dict | None = None):
         template = greyspace.plan_host(range_id, backend, template)  # + gs-core on HOSTED backends (ADR 0007)
         provisioner = _get_backend(backend, range_id, build=True)  # its tenant's connection (H6), recorded
         allocations.update(range_alloc.reserve_for_build(_db_session, range_id, provisioner, template))
-        result = run_async(provisioner.provision(range_id, template, allocations))
+        result = run_async(provisioner.provision(range_id, range_accounts.attach(template, _db_session, range_id), allocations))
 
         if result.status == "failed":
             raise RuntimeError("; ".join(result.errors) or "Provisioning failed")

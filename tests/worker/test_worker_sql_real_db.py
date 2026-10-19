@@ -22,6 +22,7 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import app.range_credentials  # noqa: F401 — registers range_credentials (ADR 0012; worker/range_accounts.py)
 import app.range_leases  # noqa: F401 — registers range_leases (the range tasks' lease, worker/fencing.py)
 import pytest
 from app import models as m
@@ -185,6 +186,55 @@ class TestRanges:
         r = _fresh(db, world.range)
         assert r.state == m.RangeState.ready
         assert json.loads(r.provisioner_output)["provider"] == "vsphere_api"
+
+    def test_provision_hands_the_declared_accounts_to_the_build_and_nowhere_else(self, world, monkeypatch):
+        """ADR 0012: the rows the API sealed reach the provisioner unsealed, on the VM of
+        their machine, in memory only: the stored output and the caller's template hold none."""
+        from app.range_credentials import RangeCredential
+
+        db = world.db
+        world.template.yaml = (
+            "nodes:\n  - id: dc01\n    os: windows-server-2022\n  - id: web\n    os: ubuntu-2404\n"
+            "  - id: other\n    os: ubuntu-2404\n"
+        )
+        world.range.state = m.RangeState.provisioning
+        _add(
+            db,
+            RangeCredential(tenant_id=world.tenant.id, range_id=world.range.id, machine="dc01",
+                            username="Administrator", password="Dc-Pass-1!", role="admin"),
+            RangeCredential(tenant_id=world.tenant.id, range_id=world.range.id, machine="web",
+                            username="analyst", password="Web-Pass-2!", role="user", student_visible=True),
+        )
+        from sqlalchemy import text
+
+        raw = db.execute(text("SELECT password FROM range_credentials")).scalars().all()
+        assert raw and all(v.startswith("tnsec:v1:") for v in raw)  # sealed at rest
+        monkeypatch.setenv("TN_RANGE_DEFAULT_PASSWORD", "Default-Pass-3!")
+        backend = _fake_backend(provision=ProvisionResult(status="ok", vms=[{"name": "dc01"}], networks=[]))
+        monkeypatch.setattr(tasks, "_get_backend", lambda name=None, range_id=None, **kw: backend)
+
+        tasks.provision_range(str(world.range.id))
+
+        vms = {vm["node_id"]: vm for vm in backend.provision.await_args.args[1]["vms"]}
+        dc_accounts = vms["dc01"]["_accounts"]
+        assert [(a.username, a.password.reveal(), a.admin) for a in dc_accounts] == [
+            ("Administrator", "Dc-Pass-1!", True)]
+        assert [a.username for a in vms["web"]["_accounts"]] == ["analyst"]
+        assert "_accounts" not in vms["other"]  # nothing declared: the default login only
+        assert {vm["_default_login"].reveal() for vm in vms.values()} == {"Default-Pass-3!"}
+        stored = _fresh(db, world.range).provisioner_output
+        for secret in ("Dc-Pass-1!", "Web-Pass-2!", "Default-Pass-3!"):
+            assert secret not in stored
+            assert secret not in repr(dc_accounts)
+
+    def test_another_tenants_rows_never_reach_a_build(self, world):
+        from app.range_credentials import RangeCredential
+
+        other = _add(world.db, m.Tenant(name="t2", slug="t2"))
+        _add(world.db, RangeCredential(tenant_id=other.id, range_id=world.range.id, machine="dc01",
+                                       username="Administrator", password="Foreign-1!", role="admin"))
+        with tasks._db_session() as s:
+            assert db_ops.range_accounts(s, str(world.range.id)) == []
 
     def test_provision_failure_marks_failed(self, world, monkeypatch):
         world.range.state = m.RangeState.provisioning
@@ -832,6 +882,7 @@ PG_CALLS = {
     "hypervisor_creds": lambda db: db_ops.hypervisor_creds(db, "vsphere", ID),
     "hypervisor_creds_by_id": lambda db: db_ops.hypervisor_creds_by_id(db, "vsphere", ID, ID),
     "enabled_golden_images": lambda db: db_ops.enabled_golden_images(db, "vsphere"),
+    "range_accounts": lambda db: db_ops.range_accounts(db, ID),
     "exercise_scenario_yaml": lambda db: db_ops.exercise_scenario_yaml(db, ID),
     "exercise_scores_and_yaml": lambda db: db_ops.exercise_scores_and_yaml(db, ID),
     "start_exercise": lambda db: db_ops.start_exercise(db, ID),

@@ -285,6 +285,28 @@ course production with a local-model fallback, and the cleanup of unsupported su
   assets name their OS, and a test checks every `os:` in content/ranges resolves to an
   enabled image. CI job `packer-vsphere` runs `packer init`, `fmt -check` and
   `validate -syntax-only` on `infra/vsphere/packer` (the README named a job that did not exist).
+- New: range credentials (ADR 0012 §12-14). A range template may declare `accounts:`
+  (`machine`, `username`, `password` or `generate: true`, `student_visible`, `role`,
+  `notes`); the machine must be a node of the template and a username appears once per
+  machine (schema plus `range_credentials/accounts.py`; template create/update refuse invalid
+  ones, 422). Each range's accounts are stored sealed in `range_credentials` (migration
+  `c8d9e0f1a2b3`), written at range create and at build acceptance; a generated password is
+  made once per range and kept across rebuilds. At deploy (vSphere) Windows gets the declared
+  `Administrator` password through Sysprep (and software/role installs log in with it), Linux
+  gets each declared account as a cloud-init user (hashed; sudo for `role: admin`); with none
+  declared, `TN_RANGE_DEFAULT_PASSWORD` (installer: `vault_range_default_password`), else a
+  random password as before. `GET /ranges/{id}/credentials`: admin, instructor and range_ops
+  (new permission `range:credentials_read`) see every account; a Student sees only the
+  `student_visible` accounts of a range they take part in (their lab session, or a running
+  exercise booked to a course they are rostered on; 404 otherwise); observers 403; another
+  tenant 404; every read audited without the password, `Cache-Control: no-store`. The range
+  page has a Credentials panel and the exercise page a "Your accounts" panel (fetched on
+  request, masked, reveal and copy per account). Each range gets a generated page in a
+  staff-only wiki space "Ranges" (machines, OS, addresses, networks, the credential table),
+  rewritten on range create, rename, template edit and build, keeping its `## Notes`; the
+  space cannot be opened to all while it holds them. `GET /templates/{id}` shows template
+  passwords only to `range:credentials_read` holders. `medium-enterprise` and `soc-training`
+  declare their accounts (all generated).
 
 ### R0-B: web correctness and role access
 - Fix: Resume on a paused exercise called `/start` (409 unless pending), so nothing resumed;

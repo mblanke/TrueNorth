@@ -11,6 +11,7 @@ import { AuthService } from '@core/services/auth.service';
 import type { InjectRecord } from '@core/models';
 import { DetectionPanelComponent, isDetectionObjective } from './detection-panel.component';
 import { RangeNotesComponent } from '../../shared/components/range-notes/range-notes.component';
+import { RangeCredentialsComponent } from '../../shared/components/range-credentials/range-credentials.component';
 
 interface TimelineStep {
   t: string;
@@ -69,6 +70,7 @@ const NODE_ICON: Record<string, string> = {
     MatProgressBarModule,
     MatSnackBarModule,
     RangeNotesComponent,
+    RangeCredentialsComponent,
     DetectionPanelComponent,
 ],
   template: `
@@ -216,6 +218,10 @@ const NODE_ICON: Record<string, string> = {
             @if (d.range_id) {
               <div class="range-notes">
                 <tn-range-notes [rangeId]="d.range_id" [description]="rangeDescription" [readOnly]="true" />
+              </div>
+              <!-- A Student sees only the accounts handed to them; staff see every one (ADR 0012) -->
+              <div class="range-notes">
+                <tn-range-credentials [rangeId]="d.range_id" />
               </div>
             }
             <div class="range-btns">

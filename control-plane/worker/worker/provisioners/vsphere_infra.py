@@ -421,12 +421,18 @@ def netplan(nics: list[dict], macs: list[str], dns: list[str] | None = None,
     return {"version": 2, "ethernets": ethernets}
 
 
-def linux_guestinfo(vm_def: dict, macs: list[str], install_user: dict | None = None) -> list:
+def linux_guestinfo(vm_def: dict, macs: list[str], install_user: dict | None = None,
+                    range_users: list[dict] | None = None, login: dict | None = None) -> list:
     """extraConfig for cloud-init's VMware datasource: hostname and static IPs.
 
     ``install_user`` (a cloud-config ``users`` entry, vsphere_guest.cloud_init_user) adds
     the ephemeral deploy-time install account next to the image's default user. The
-    provisioner rewrites the userdata without it once the install is over.
+    provisioner rewrites the userdata without it once the install is over (and without
+    the range's accounts, which cloud-init has applied by then).
+
+    ``range_users`` are the range's declared accounts (vsphere_guest.account_users);
+    ``login`` is more top-level cloud-config for them or for the default user's password
+    (vsphere_guest.default_login, ``ssh_pwauth``). ADR 0012.
     """
     name = hostname(vm_def)
     metadata = {"instance-id": vm_def["name"], "local-hostname": name, "network": netplan(vm_def["nics"], macs, vm_def.get("dns"),
@@ -434,8 +440,8 @@ def linux_guestinfo(vm_def: dict, macs: list[str], install_user: dict | None = N
     userdata = f"#cloud-config\nhostname: {name}\npreserve_hostname: false\n"
     # ``cloud_config``: more cloud-config from the worker for this VM (gs-core: its service
     # account, bootstrap script and first-boot command; worker/greyspace_host.py).
-    extra = dict(vm_def.get("cloud_config") or {})
-    users = [u for u in [install_user, *extra.pop("users", [])] if u]
+    extra = {**(login or {}), **dict(vm_def.get("cloud_config") or {})}
+    users = [u for u in [install_user, *(range_users or []), *extra.pop("users", [])] if u]
     if users:
         userdata += yaml.safe_dump({"users": ["default", *users]}, sort_keys=False)
     if extra:
@@ -455,10 +461,9 @@ def linux_guestinfo(vm_def: dict, macs: list[str], install_user: dict | None = N
 def windows_customization(vm_def: dict, password: str | None = None):
     """Sysprep spec: computer name, workgroup RANGE, a static IP per NIC.
 
-    The local Administrator password is random per VM and is neither logged nor
-    stored: there is no credential store for range VMs yet, so templates must carry
-    their own range accounts. The provisioner passes ``password`` in (still random,
-    still in memory only) when it installs software in the guest afterwards.
+    The local Administrator password is ``password``: the range's declared Administrator
+    account (ADR 0012, stored sealed by the API), else TN_RANGE_DEFAULT_PASSWORD (both via
+    vsphere_guest.admin_password), else random per VM as before. Never logged.
     """
     c = vim.vm.customization
     password = password or secrets.token_urlsafe(18) + "!9a"  # meets Windows complexity rules

@@ -10,7 +10,7 @@ Endpoint                                            Permission(s)
 GET    /wiki/spaces                                 WIKI_READ
 POST   /wiki/spaces                                 WIKI_ADMIN
 GET    /wiki/spaces/{slug}                          WIKI_READ
-PUT    /wiki/spaces/{slug}                          WIKI_ADMIN
+PUT    /wiki/spaces/{slug}                          WIKI_ADMIN (409: opening a space of generated range pages)
 DELETE /wiki/spaces/{slug}  (archives)              WIKI_ADMIN
 GET    /wiki/spaces/{slug}/tree                     WIKI_READ
 POST   /wiki/spaces/{slug}/pages                    WIKI_EDIT
@@ -406,6 +406,13 @@ def update_space(
     user: CurrentUser = Depends(require_permission(Permission.WIKI_ADMIN)),
 ) -> WikiSpace:
     space = _space(db, slug, user)
+    if body.visibility == "all" and space.visibility == "staff":
+        from ..range_credentials.wiki_doc import holds_generated_pages
+
+        if holds_generated_pages(db, space):  # ADR 0012 §14: they hold range passwords
+            raise HTTPException(
+                409, "This space holds generated range pages with passwords; it must stay staff-only."
+            )
     for k, v in body.model_dump(exclude_unset=True).items():
         if v is not None:
             setattr(space, k, v)

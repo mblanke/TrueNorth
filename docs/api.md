@@ -699,6 +699,27 @@ has no lease; 409 when the lease is a live task's, not a tombstone; 422 when
 `confirm_range_id` differs. Audited as `force_release_lease`. If the abandoned worker is
 in fact still running, its work continues beside whatever runs next.
 
+### `GET /ranges/{range_id}/credentials`
+
+**Permission: `range:read`, then by role (ADR 0012 §13).** The accounts the range's
+template declares (`accounts:`), with their passwords, stored sealed:
+
+- `range:credentials_read` (admin, instructor, range_ops): every account, `scope: "all"`;
+- a Student: only `student_visible` accounts, `scope: "student"`, of a range they take part
+  in (their own lab session's range, or an exercise running or paused on it that is booked
+  to a course they are rostered on). Any other range is 404;
+- an observer (any other role): 403. Another tenant's range: 404.
+
+```json
+{"range_id": "7b1f…", "scope": "student",
+ "accounts": [{"machine": "jump01", "username": "analyst", "password": "Xk7…", "role": "user",
+               "student_visible": true, "generated": true, "notes": "The way in"}]}
+```
+
+Every read writes an audit row (`range_credentials_read`: scope, account count, machines;
+never a password). Responses carry `Cache-Control: no-store`. Rows are written when the
+range is created and when a build is accepted; a generated password is made once per range.
+
 ---
 
 ### `POST /ranges/batch-provision`
@@ -1270,6 +1291,7 @@ The auto-generated OpenAPI specification is available at:
 | 30a | `POST` | `/ranges/{id}/start` | `range:provision` | Start range (power on) |
 | 31 | `POST` | `/ranges/batch-provision` | `range:batch_provision` | Batch provision |
 | 31a | `POST` | `/ranges/{id}/lease/force-release` | `range:lease_force_release` | Force-release an abandoned operation's lease tombstone (admin) |
+| 31b | `GET` | `/ranges/{id}/credentials` | `range:read` + role rule | Machine accounts: staff all (`range:credentials_read`), Students theirs, observers 403 |
 | 32 | `POST` | `/exercises` | `exercise:create` | Create exercise |
 | 33 | `GET` | `/exercises` | `exercise:read` | List exercises |
 | 34 | `GET` | `/exercises/{id}` | `exercise:read` | Get exercise |

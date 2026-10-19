@@ -31,7 +31,9 @@ from ..auth import CurrentUser
 from ..db import get_db
 from ..delete_guard import commit_delete, refuse_if
 from ..models import AuditLog, Range, RangeObjectiveMap, Template, UserRole
-from ..rbac import Permission, require_permission
+from ..range_credentials import accounts as template_accounts
+from ..range_credentials import service as range_credentials
+from ..rbac import Permission, require_permission, user_has_permission
 from ..scheduler import service as scheduler
 from ..schemas import TemplateIn, TemplateListOut, TemplateOut, TemplateUpdate
 from ..tenancy import get_owned
@@ -71,6 +73,11 @@ def _refuse_network_placement(text: str | None) -> None:
         raise HTTPException(
             422, f"templates may not set port_group ({', '.join(keys)}); lab networks are assigned by the platform"
         )
+    _, account_errors = template_accounts.parse(doc if isinstance(doc, dict) else None)
+    if account_errors:  # ADR 0012: a range built from it could never be given its accounts
+        raise HTTPException(
+            422, "invalid accounts: " + "; ".join(f"{e['path']}: {e['message']}" for e in account_errors[:10])
+        )
 
 
 def _audit(db: Session, user: CurrentUser, action: str, rtype: str, rid: str) -> None:
@@ -99,6 +106,9 @@ def validate_template(
         result["errors"] = result["errors"] + [{"path": "nodes", "message": m} for m in errors]
         result["valid"] = not result["errors"]
         result["warnings"] = warnings
+    if isinstance(doc, dict):  # accounts: the machine exists, one username per machine (ADR 0012)
+        result["errors"] = result["errors"] + template_accounts.parse(doc)[1]
+        result["valid"] = not result["errors"]
     return result
 
 
@@ -240,9 +250,16 @@ def get_template(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_permission(Permission.TEMPLATE_READ)),
 ) -> Template:
-    """Retrieve a single template.  **Permission: template:read**"""
+    """Retrieve a single template.  **Permission: template:read**
+
+    Its ``accounts[].password`` values are shown only to holders of range:credentials_read
+    in the template's own tenant; anyone else reads them as ``********`` (ADR 0012 §13).
+    """
     tmpl = get_owned(db, Template, template_id, user, not_found="Template not found")
-    return tmpl
+    own = tmpl.tenant_id is None or tmpl.tenant_id == uuid.UUID(user.tenant_id)
+    if own and user_has_permission(user, Permission.RANGE_CREDENTIALS_READ):
+        return tmpl
+    return TemplateOut.model_validate(tmpl).model_copy(update={"yaml": template_accounts.redact_yaml(tmpl.yaml)})
 
 
 @router.put("/{template_id}", response_model=TemplateOut)
@@ -262,6 +279,8 @@ def update_template(
         _refuse_network_placement(update_data["yaml"])
     for key, value in update_data.items():
         setattr(tmpl, key, value)
+    if "yaml" in update_data or "name" in update_data or "version" in update_data:
+        range_credentials.on_template_updated(db, tmpl, user)  # its unbuilt ranges' accounts, its ranges' pages
     db.commit()
     db.refresh(tmpl)
     _audit(db, user, "update", "template", str(tmpl.id))
