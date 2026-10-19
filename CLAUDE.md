@@ -4,6 +4,29 @@ Operating model and roles: `docs/AGENTS.md`. Detailed skills: `SKILLS/` (index a
 `docs/SKILLS.md`). Current operational state, modes and gotchas: `RESUME.md`.
 Task-specific skills and 15 additional specialist roles: `docs/agent-toolkit.md`.
 Load only those relevant to the current task; model selection stays inherited.
+Vocabulary (Student, range, golden template, lab session, ...): `docs/GLOSSARY.md`.
+Name things with its terms in code, tickets and docs.
+
+## Agent skills
+
+### Issue tracker
+GitHub Issues on mblanke/TrueNorth (gh CLI). See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+Five default triage roles plus category labels (R0–R3, H, security, owner-decision, blocked-on-site, needs-adversarial-review). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+Single-context: `docs/GLOSSARY.md` + `docs/adr/`. See `docs/agents/domain.md`.
+
+### Plugin skills (mattpocock-skills)
+- Load yourself only: `tdd`, `diagnosing-bugs`, `code-review`, `codebase-design`,
+  `domain-modeling`, `research`, `prototype`, `wizard`, `pr`, `grilling`,
+  `writing-for-agents`. The rest are started by the owner.
+- They add to our rules and replace none: the gate still decides done, and auth,
+  tenancy and provisioning changes still get `adversarial-reviewer`. Plugin
+  `code-review` runs in addition to both.
+- Keep `git-guardrails-claude-code` uninstalled: it blocks the PR flow.
+- Which skill fits each phase: `docs/agent-toolkit.md`, "Plugin skills".
 
 ## The gate
 

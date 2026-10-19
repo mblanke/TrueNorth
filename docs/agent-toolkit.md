@@ -70,6 +70,59 @@ Example Claude Code prompt:
 For implementation, replace the last sentence with the concrete slice to implement.
 These examples do not grant deployment or live infrastructure permissions.
 
+## Plugin skills (mattpocock-skills)
+
+The `mattpocock-skills` plugin (1.3.1) adds general engineering skills. They sit at points
+in the TrueNorth cycle; they do not replace the `tn-*` skills, `tn-epic-planning`,
+`tn-change-review` or `adversarial-reviewer`. Tracker: GitHub Issues on
+`mblanke/TrueNorth`; labels and domain docs are wired in `docs/agents/`
+([issue tracker](agents/issue-tracker.md), [triage labels](agents/triage-labels.md),
+[domain docs](agents/domain.md)). Vocabulary: [GLOSSARY.md](GLOSSARY.md).
+
+### Guardrails
+
+- The gate (`scripts/dod.sh`) decides done, whichever skill produced the change.
+- Auth, tenancy and provisioning changes get `adversarial-reviewer`. Plugin `code-review`
+  checks the change against its ticket and standards in addition to that review and the
+  gate, never instead of either.
+- Keep `git-guardrails-claude-code` uninstalled: it blocks the PR flow.
+
+### Who starts which skill
+
+Checked against each skill's `disable-model-invocation` flag in plugin 1.3.1.
+
+| Who | Skills |
+|---|---|
+| Agents may load these themselves | `tdd`, `diagnosing-bugs`, `code-review`, `codebase-design`, `domain-modeling`, `research`, `prototype`, `wizard`, `pr`, `grilling`, `writing-for-agents` |
+| Owner only (typed as `/mattpocock-skills:<name>`) | `setup-matt-pocock-skills`, `to-spec`, `to-tickets`, `wayfinder`, `triage`, `implement`, `implement-spec`, `grill-me`, `grill-with-docs`, `handoff`, `claude-handoff`, `retro`, `teach`, `to-questionnaire`, `improve-codebase-architecture`, `chief-of-staff`, `ask-matt` |
+| Not used here (TypeScript, course or article work, or conflicts with the PR flow) | `migrate-to-shoehorn`, `setup-ts-deep-modules`, `setup-pre-commit`, `scaffold-exercises`, `writing-beats`, `writing-fragments`, `writing-shape`, `git-guardrails-claude-code`, `loop-me`, `wait-what` |
+
+An agent that needs an owner-only skill says which one and why, and stops; it does not
+imitate the skill.
+
+### Which skill fits each phase
+
+| Phase | Skill (who) | Fits with |
+|---|---|---|
+| Shape an idea | `grilling` (agent) or `grill-with-docs` (owner; also writes ADRs) | Every new feature, before building |
+| Spec it | `to-spec` (owner) | Turns the grilled conversation into a spec issue |
+| Break it down | `to-tickets` (owner) | Complements `tn-epic-planning`; one PR per ticket |
+| Big multi-session work | `wayfinder` (owner) | Decision tickets resolved one at a time (R1–R3) |
+| Build | `tdd` (agent); `implement` / `implement-spec` (owner hands a ticket over) | The gate stays the definition of done |
+| Debug | `diagnosing-bugs` (agent) | Pairs with `tn-incident-diagnosis` |
+| Design a module | `codebase-design` (agent); `improve-codebase-architecture` (owner) | MOSA and section isolation (ADR 0003) |
+| Review | `code-review` (agent) **plus** `adversarial-reviewer` on auth, tenancy, provisioning | Plugin review checks the ticket; ours checks security |
+| PR | `pr` (agent) | PR body from the ticket, with `Closes #n` |
+| Owner-only steps | `wizard` (agent) | Interactive script for vault, DC and site steps |
+| Questions for other people | `to-questionnaire` (owner) | Network, licensing, PCTE/ARC² partners |
+| Prototype UI | `prototype` (agent) | Pairs with `tn-navigation-design` |
+| Learn the system | `teach` (owner) | |
+| Keep context | `handoff` / `claude-handoff` (owner) | Before compaction or a long break; pairs with `tn-docs-handoff` |
+| Improve the process | `retro` (owner) | After each release candidate or work visit |
+| Investigate | `research` (agent) | Vendor facts with sources |
+| Name things | `domain-modeling` (agent) | Keeps `docs/GLOSSARY.md` current |
+| Write agent docs | `writing-for-agents` (agent) | `CLAUDE.md`, this file, `SKILLS/` |
+
 ## Verification and limits
 
 Skills were written against the source inspected on 2026-09-26. Recheck pointers and
