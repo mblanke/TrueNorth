@@ -11,7 +11,7 @@ provenance: unsourced
 status: draft
 is_published: false
 qsp_code: ALJQ
-# Prerequisites by subject: PROPOSED 2026-10-20, pending programme owner approval.
+# Prerequisites by subject: approved by the programme owner 2026-10-20 (PR #229).
 prerequisites:
 - C206
 source:
