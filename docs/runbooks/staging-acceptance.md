@@ -32,7 +32,8 @@ when no connection is registered.) What it does, as root on the host:
    container in its environment only (`no_log`, `-e KEYCLOAK_ADMIN_PASSWORD` by name: never on
    a command line, never echoed);
 3. runs the suite as below, as `tn_bootstrap_admin_upn`, with `/srv/truenorth/config` mounted
-   read-only at `/hostcfg` (`--host-config /hostcfg`), `--strict --skip-profile staging`,
+   read-only at `/hostcfg` (`--host-config /hostcfg`), the signed audit archive
+   (`tn_audit_archive_path`) read-only at `/auditarchive` (`--audit-archive /auditarchive`), `--strict --skip-profile staging`,
    `--json /out/acceptance-<UTC timestamp>.json`, and `--vsphere-url
    https://<tn_vcenter_host>:<tn_vcenter_port>` (staging: the simulator,
    `playbooks/lab-vcenter-sim.yml`; `--vsphere-insecure` when `tn_vsphere_verify_ssl` is false);
@@ -73,10 +74,11 @@ Options:
 | `--json <path>` | write the report as JSON; mount a directory the api user (uid 10001) can write |
 | `--absent a,b` | facilities this host does not have; their checks SKIP and say so (`--help` lists them) |
 | `--strict` | any SKIP not listed for `--skip-profile` in `docs/release-notes/v1.2.0-permitted-skips.json` is a FAIL, declared or not; so is a check missing from (or not recorded in) that file's inventory. Exit 2 if the file or profile is unusable |
-| `--skip-profile <name>[,<name>]` | with `--strict`: `staging` (default; only the two hardware skips) or `ci-integration` (what `scripts/itest.sh` uses); add `ai-disabled` on a host installed with `tn_ai_enabled: false` (`staging,ai-disabled`, which `install/playbooks/acceptance.yml` picks itself) |
+| `--skip-profile <name>[,<name>]` | with `--strict`: `staging` (default; only the hardware skips: lab build, noise agents, Security Onion setup) or `ci-integration` (what `scripts/itest.sh` uses); add `ai-disabled` on a host installed with `tn_ai_enabled: false` (`staging,ai-disabled`, which `install/playbooks/acceptance.yml` picks itself) |
 | `--permitted-skips <path>` | with `--strict`: another permitted-skips file |
 | `--edge-url` | the edge as the container reaches it (default `https://nginx`) |
 | `--host-config <dir>` | the host's config directory, if mounted (for `backup.env`) |
+| `--audit-archive <dir>` | the worker's signed audit archive, if mounted read-only (to verify the newest export's signature; default `/srv/truenorth/audit-archive`) |
 | `--lms-course <code>` | the catalogue course for the LMS checks (default `C103`) |
 | `--moodle-course <code>` | the catalogue course for the Moodle loop (default: `--lms-course`); it must be published to the tenant's Moodle from an accepted release |
 | `--vsphere-url`, `--vsphere-user`, `--vsphere-insecure` | when no vSphere connection is registered: a temporary one (password from `ACCEPTANCE_VSPHERE_PASSWORD`), removed afterwards |
@@ -91,9 +93,10 @@ sudo install -d -o 10001 -m 0700 /srv/truenorth/acceptance
 docker compose -p docker -f compose.prod.yml --env-file /srv/truenorth/config/.env.production \
   run --rm --no-deps -T -w /app -e PYTHONPATH=/app -v /srv/truenorth/app:/srcapp:ro \
   -v /srv/truenorth/acceptance:/out -v /srv/truenorth/config:/hostcfg:ro \
+  -v /srv/truenorth/audit-archive:/auditarchive:ro \
   -e KEYCLOAK_ADMIN_USER=admin -e KEYCLOAK_ADMIN_PASSWORD="$(sudo cat /srv/truenorth/config/secrets/keycloak_admin_password)" \
   --entrypoint python api /srcapp/scripts/staging_acceptance.py --admin <upn> \
-  --host-config /hostcfg --json /out/acceptance-$(date -u +%Y%m%dT%H%M%SZ).json
+  --host-config /hostcfg --audit-archive /auditarchive --json /out/acceptance-$(date -u +%Y%m%dT%H%M%SZ).json
 ```
 
 `backup.env` is checked for presence and for the variables it must set; values are never
@@ -130,7 +133,7 @@ expected role — `instructor.demo`, `trainee1.demo` (the participant Student),
 | Module | Checks |
 |---|---|
 | infra | `/health/live`, `/health/ready`; `/health/deep` with all seven components plus `audit_export` (the signed daily audit export is current; ADR 0011) (OpenSearch yellow passes: a single node cannot place replicas; anything else not healthy fails); `/metrics` 401 without `METRICS_SCRAPE_TOKEN`, Prometheus text with it; through nginx: `/health` and `/api/health` 200, `/api/metrics` 404; `backup.env` present and sets `BACKUP_DIR` |
-| platform-core | a user for each role; Student and Observer refused staff routes (403: audit log, users, booking, ranges, exercises), instructor refused AI config; tenant scoping (every role in the admin's tenant, rows carry it, foreign ids 404); the audit log records the exercise's create and start; demo accounts' subjects match Keycloak (needs the admin credential) |
+| platform-core | a user for each role; Student and Observer refused staff routes (403: audit log, users, booking, ranges, exercises), instructor refused AI config; tenant scoping (every role in the admin's tenant, rows carry it, foreign ids 404); the audit log records the exercise's create and start; demo accounts' subjects match Keycloak (needs the admin credential); the login banner (AC-8): the realm's theme is `truenorth`, its localization holds the site's banner, and its sign-in page shows it with a required acknowledgement (same credential); the audit log is append-only: PostgreSQL refuses an UPDATE and a DELETE of the newest row (rolled back); the audit export: one hash chain in `audit_exports`, current, and the newest manifest's hash, Ed25519 signature and file verified in the archive (`--audit-archive`) |
 | web-shell | the Angular shell served through nginx for `/`, `/dashboard`, `/learning/courses`; for 17 main routes, the API endpoint each page loads answers each role as `app/rbac.py` says (50 role checks) |
 | content | all shipped course files (`content/courses/*.yaml`, 44) have their catalogue course with modules; every shipped template, scenario and Sigma rule is loaded; the VM image catalogue is not empty |
 | curriculum | QSP qualifications with performance objectives, learning paths, developmental progression, the curriculum map; a Student's own map |
@@ -140,12 +143,12 @@ expected role — `instructor.demo`, `trainee1.demo` (the participant Student),
 | detection | a draft booking ties the exercise to C103 (the roster), timed over the exercise's run (a booking seats its course only while it overlaps the exercise); a Student not enrolled there is refused (403); the participant's detection query is credited (`achieved`, score 40/50, objective achieved, `on_target` hidden from them); a repeat is refused 409 |
 | reporting-aar | complete the exercise (twice: 409), generate the AAR (HTML names the exercise, objectives and timeline), the PDF is a real PDF, a Student may read the AAR, a missing one is 404 |
 | ai-arc2 | `/ai/detection-draft` returns text from the configured AI orchestrator; with `TN_AI_ENABLED=false` instead a declared SKIP ("AI disabled on this host") only if deep health reports `ai_configured: false` and the draft answers 503 "AI is not configured", else FAIL; `/arc2/status` enabled and runs listed |
-| ranges-labs | template validation accepts a good template and refuses a broken one; a range is created (recording the backend), a document stored in and read back from MinIO, the range deleted; a Student not enrolled on a course is refused a lab (403); staff list lab sessions |
-| provisioners | the registered vSphere connection (or a temporary one, `--vsphere-url`) passes its connection test and discovery finds hosts; an instructor may not test it; the inventory summary |
+| ranges-labs | template validation accepts a good template and refuses a broken one; a range is created (recording the backend), a document stored in and read back from MinIO, the range deleted; a Student not enrolled on a course is refused a lab (403); staff list lab sessions; range credentials: on `acceptance-credentials-<tag>` (from `acceptance-credentials-template`, one typed-in and one generated account) administrator and instructor read both passwords, Students not on the range 404, an Observer 403, a Student reading the template sees no password, and the database holds both sealed (`templates.yaml`, `range_credentials`), each read audited without a password |
+| provisioners | the registered vSphere connection (or a temporary one, `--vsphere-url`) passes its connection test and discovery finds hosts; an instructor may not test it; the inventory summary; for each discovered ESXi host, a copy named as `build.sh replicate` names it is the one the provisioner clones from there, and the prune keeps the newest and the in-use copy (pure, nothing cloned); Security Onion so-setup: declared SKIP (H) |
 | scheduling | capacity and a one-VM fit check; a booking 45 days out is created, listed, readable by an Observer, refused to a Student, and cancelled |
 | noise-engine | presets; on a range from a noise-enabled template: not configured at first, a dry-run deploy plans the agent and registers nothing, the profile enables at level 100 and stops at 0; a template without a `noise:` block 409; a Student 403 |
 | greyspace | corpus `t0` available; a range from the shipped Greyspace template reads its block, attaches it (`configured`, no problems), the config plans DNS, resolver and web farm, an unknown site pack 422, detach |
-| wiki-helpdesk | a wiki space and published page (a Student reads it); a ticket assigned to the instructor reaches the instructor's inbox, is marked read, is not in the actor's inbox and is 404 to anyone else |
+| wiki-helpdesk | a wiki space and published page (a Student reads it); a ticket assigned to the instructor reaches the instructor's inbox, is marked read, is not in the actor's inbox and is 404 to anyone else; the Ranges space is system-owned and staff-only (opening it 409), holds the credentials range's page (staff see the password; the stored page only tokens), and is 404 to Students and Observers |
 
 ### lms / Moodle loop (integration, bypasses browser)
 
@@ -192,6 +195,10 @@ loop is mandatory on staging (`docs/release-notes/v1.2.0-module-matrix.md`). The
 - **Lab builds** (declared SKIP): cloning lab VMs and waiting for VMware Tools needs a
   writable, real vCenter (`tests/integration/test_lab_sessions_vsphere.py`).
 - **Noise agents on VMs** (declared SKIP): a real deploy installs agents on built range VMs.
+- **Security Onion setup** (declared SKIP): so-setup runs per range on a built securityonion VM
+  over guest operations (ADR 0012 decision 8).
+- **Audit retention** (the purge of exported days): it deletes data and needs rows older than 30
+  days; the suite proves the guard and the signed export it depends on.
 - **The browser.** The SPA is checked as served HTML plus the API each page loads, per role;
   rendering and sign-in through Keycloak are the Playwright lane's (`e2e`). The Moodle loop
   drives Moodle's pages without a browser; the loop in Chromium is the CI `moodle` lane's, and
@@ -210,9 +217,9 @@ loop is mandatory on staging (`docs/release-notes/v1.2.0-module-matrix.md`). The
 
 Everything is named `acceptance-…`. Removed afterwards (unless `--keep`): the temporary range,
 noise and Greyspace ranges, the booking (cancelled), the roster booking, the wiki space
-(archived), the ticket, a temporary vSphere connection, users this suite created (deactivated).
+(archived), the ticket, the credentials range `acceptance-credentials-<tag>` (its Ranges page is retired with it), a temporary vSphere connection, users this suite created (deactivated).
 Kept and reused by name on the next run, because exercises keep them as history:
-`acceptance-template`, `acceptance-range`, `acceptance-telemetry-range`,
+`acceptance-template`, `acceptance-credentials-template`, `acceptance-range`, `acceptance-telemetry-range`,
 `acceptance-scenario`, `acceptance-noise-template`, `acceptance-plan-<scenario>` (when there
 is no demo exercise). Each run adds one completed `acceptance-exercise-<tag>` (exercises
 cannot be deleted) and leaves the participant enrolled on C103 (and on the cmi5 course), with
@@ -233,6 +240,19 @@ Moodle grades), and leaves them enrolled on the course. Anything cleanup could n
   `docker compose -f compose.prod.yml --env-file /srv/truenorth/config/.env.production exec -T
   worker-scenario python -m worker.audit_export_now` (exit 1: no or short
   `AUDIT_SIGNING_SEED`; exit 2: the export failed, the reason on stderr).
+- **platform-core audit export: SKIP `… is not visible in this container`.** The archive is
+  not mounted; `--strict` fails it on staging. Mount `tn_audit_archive_path` read-only and pass
+  `--audit-archive` (the playbook does both). The archive is uid 10001, mode 0750, which is
+  the api container's user.
+- **platform-core audit export: `signature does not verify` / `does not hash to …`.** The
+  archive no longer matches what `audit_exports` recorded. Run
+  `python -m worker.audit_verify --db` in worker-scenario for the full report, and treat it
+  as an integrity incident (ADR 0011).
+- **provisioners host-local template copies: `host '10.x.x.x': build.sh names its copy …`.**
+  The vCenter registers that host by IP address. `build.sh replicate` names its copy up to the
+  first dot (`<id>@10-<date>`) and the provisioner looks for the whole address, so no copy is
+  ever resolved there and every clone copies disks across the network (ADR 0012 decision 6).
+  Register the hosts by name in vCenter, or fix the naming in one of the two.
 - **ai-arc2: 502, the orchestrator logs `POST …/chat/completions 400`.** It called a model the
   endpoint does not serve. The install report's `ai models` line lists what is missing;
   set `tn_ai_default_model` (and `tn_ai_heavy_model` / `tn_ai_general_model` /

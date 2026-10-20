@@ -185,7 +185,9 @@ def test_the_suite_runs_as_the_runbook_says_and_the_play_fails_on_a_fail():
     argv = _task(ACCEPTANCE, "Acceptance — run the suite")["ansible.builtin.command"]["argv"]
     for piece in ("'/srcapp/scripts/staging_acceptance.py'", "'--admin', tn_bootstrap_admin_upn",
                   "'--host-config', '/hostcfg'", "tn_config_dir ~ ':/hostcfg:ro'", "'--json', '/out/acceptance-'",
-                  "'--strict'", "'--vsphere-url', tn_acceptance_vsphere_url"):
+                  "'--strict'", "'--vsphere-url', tn_acceptance_vsphere_url",
+                  # the signed audit export is verified against the archive (#192), read-only
+                  "tn_audit_archive_path ~ ':/auditarchive:ro'", "'--audit-archive', '/auditarchive'"):
         assert piece in argv, piece
     names = [t["name"] for t in ACCEPTANCE["tasks"]]
     gate = names.index("Acceptance — every check passed")

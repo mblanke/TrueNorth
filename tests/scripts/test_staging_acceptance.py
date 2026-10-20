@@ -7,6 +7,8 @@ from __future__ import annotations
 import importlib.util
 import json
 import sys
+import uuid
+from datetime import UTC, datetime, time, timedelta
 from pathlib import Path
 
 import pytest
@@ -119,7 +121,11 @@ def test_runner_passes_the_declared_flag_and_absent_facilities_declare():
 
 
 def test_the_by_design_skips_are_declared():
-    for module, name in (("ranges-labs", "lab build on the hypervisor"), ("noise-engine", "deploy to agents")):
+    for module, name in (
+        ("ranges-labs", "lab build on the hypervisor"),
+        ("noise-engine", "deploy to agents"),
+        ("provisioners", "Security Onion per-range setup (so-setup)"),
+    ):
         fn = dict(acc.CHECKS[module])[name]
         with pytest.raises(acc.SkippedCheckError) as err:
             fn(ctx())
@@ -144,11 +150,13 @@ def test_the_shipped_inventory_is_exactly_the_registered_checks():
     assert acc.inventory_drift(acc.CHECKS, inventory, acc.MODULES) == []
 
 
-def test_staging_permits_only_the_two_hardware_skips():
+def test_staging_permits_only_the_hardware_skips():
+    """The two of the rc4 freeze, and Security Onion's so-setup (2026-10-20 amendment, #192)."""
     entries, _ = acc.load_permitted(acc.PERMITTED_SKIPS, "staging")
     assert {(e["module"], e["check"], e["milestone"]) for e in entries} == {
         ("ranges-labs", "lab build on the hypervisor", "H"),
         ("noise-engine", "deploy to agents", "H"),
+        ("provisioners", "Security Onion per-range setup (so-setup)", "H"),
     }
 
 
@@ -160,7 +168,8 @@ def test_each_permitted_skip_matches_the_reason_its_check_gives(profile):
     absent = {"edge", "keycloak", "minio", "lrs", "moodle", "backup", "vsphere", "metrics-token", "arc2"}
     for e in entries:
         with pytest.raises(acc.SkippedCheckError) as err:
-            dict(acc.CHECKS[e["module"]])[e["check"]](ctx(absent=absent))
+            # A database with no audit export and no audit rows: the CI stack's state.
+            dict(acc.CHECKS[e["module"]])[e["check"]](ctx(absent=absent, options={"sql": lambda q, p: []}))
         assert e["reason_contains"] in str(err.value), (e["module"], e["check"], str(err.value))
 
 
@@ -644,3 +653,469 @@ def test_web_spa_passes_on_the_real_index_and_fails_on_another_page(monkeypatch)
     monkeypatch.setattr(acc, "edge_get", lambda _c, _p: _Html("<html><body><app-root></app-root></body></html>"))
     with pytest.raises(acc.FailedCheckError, match="not the Angular shell"):
         acc.web_spa(ctx())
+
+
+# ── checks added by the 2026-10-20 amendment (#192) ─────────────────────
+# Each against fakes of the API and of the database as stored; the audit export against an
+# archive the worker's own writer produced, and the append-only guard against PostgreSQL.
+
+AMENDED = {
+    ("platform-core", "login banner (AC-8) on the realm's sign-in page"),
+    ("platform-core", "audit log append-only: UPDATE and DELETE refused"),
+    ("platform-core", "audit export: latest signed, chained, verifiable"),
+    ("ranges-labs", "range credentials: staff read, Student 404, sealed at rest"),
+    ("provisioners", "host-local template copies resolve per discovered host"),
+    ("provisioners", "Security Onion per-range setup (so-setup)"),
+    ("wiki-helpdesk", "Ranges space: system-owned, staff-only, no password stored"),
+}
+
+
+def test_the_amendment_adds_exactly_its_checks_to_existing_modules():
+    doc = json.loads(acc.PERMITTED_SKIPS.read_text(encoding="utf-8"))
+    [amendment] = doc["amendments"]
+    assert (amendment["date"], amendment["issue"]) == ("2026-10-20", "#192")
+    assert {tuple(c) for c in amendment["added_checks"]} == AMENDED
+    registered = {(m, n) for m in acc.MODULES for n, _ in acc.CHECKS[m]}
+    assert registered >= AMENDED and len(registered) == 49 and len(acc.MODULES) == 17
+    matrix = (ROOT / doc["matrix"]).read_text(encoding="utf-8")
+    assert "Amendment 2026-10-20" in matrix
+    for module, name in AMENDED:
+        assert f"`{module} / {name}`" in matrix, (module, name)
+
+
+def _profile_report(profile: str) -> acc.Report:
+    return acc.Report(strict=True, permitted=acc.load_permitted(acc.PERMITTED_SKIPS, profile)[0])
+
+
+@pytest.mark.parametrize(
+    ("module", "name", "reason", "ci", "staging"),
+    [
+        ("platform-core", "login banner (AC-8) on the realm's sign-in page",
+         "keycloak declared absent on this stack (--absent)", acc.SKIP, acc.FAIL),
+        ("platform-core", "audit export: latest signed, chained, verifiable",
+         f"no audit export yet ...: {acc.NOTHING_TO_EXPORT}", acc.SKIP, acc.FAIL),
+        ("platform-core", "audit export: latest signed, chained, verifiable",
+         "/srv/truenorth/audit-archive is not visible in this container", acc.FAIL, acc.FAIL),
+        ("provisioners", "host-local template copies resolve per discovered host",
+         f"{acc.NEEDS_VCENTER}: no vSphere connection registered", acc.SKIP, acc.FAIL),
+        ("provisioners", "Security Onion per-range setup (so-setup)",
+         "... it needs a provisioned range on a writable vCenter", acc.SKIP, acc.SKIP),
+        ("ranges-labs", "range credentials: staff read, Student 404, sealed at rest", "anything", acc.FAIL, acc.FAIL),
+        ("wiki-helpdesk", "Ranges space: system-owned, staff-only, no password stored", "anything", acc.FAIL, acc.FAIL),
+        ("platform-core", "audit log append-only: UPDATE and DELETE refused", "not PostgreSQL", acc.FAIL, acc.FAIL),
+    ],
+)
+def test_amended_skips_stand_only_where_the_profile_lists_them(module, name, reason, ci, staging):
+    for profile, want in (("ci-integration", ci), ("staging", staging), ("staging,ai-disabled", staging)):
+        assert _profile_report(profile).add(module, name, acc.SKIP, reason, declared=True).status == want, profile
+
+
+class Api:
+    """One role's API: (METHOD, path) -> (status, body), or a callable(json, params) giving it.
+    An unexpected request answers 599 (and is recorded), so a check that wanders fails."""
+
+    def __init__(self, role: str, routes: dict, user_id: str = "uid") -> None:
+        self.role, self.routes, self.user_id, self.tenant_id = role, dict(routes), user_id, "t1"
+        self.calls: list[tuple] = []
+
+    def request(self, method, path, json=None, params=None, **kw):
+        key = (method.upper(), path)
+        self.calls.append((*key, json))
+        if key not in self.routes:
+            return 599, f"unexpected {key}"
+        r = self.routes[key]
+        return r(json, params) if callable(r) else r
+
+    def get(self, path, **kw):
+        return self.request("GET", path, **kw)
+
+    def post(self, path, **kw):
+        return self.request("POST", path, **kw)
+
+    def put(self, path, **kw):
+        return self.request("PUT", path, **kw)
+
+    def delete(self, path, **kw):
+        return self.request("DELETE", path, **kw)
+
+
+def with_personas(c: acc.Ctx, **apis: Api) -> acc.Ctx:
+    c._personas.update(apis)
+    return c
+
+
+# -- ranges-labs / range credentials --------------------------------------
+
+RID, TPL = "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222"
+GENERATED = "Gen3rated-Pw.4acceptance"
+STAFF_READ = (200, {"range_id": RID, "scope": "all", "accounts": [
+    {"machine": "ws01", "username": "acceptance-analyst", "password": acc.CREDENTIALS_LITERAL, "source": "declared",
+     "generated": False, "student_visible": True, "applied": False},
+    {"machine": "ws01", "username": "acceptance-admin", "password": GENERATED, "source": "declared",
+     "generated": True, "student_visible": False, "applied": False},
+]})
+
+
+def credentials_world(student=(404, {"detail": "Range not found"}), stored_yaml="name: x\n  password: tnsec:rc1:gAAA",
+                      stored_passwords=("tnsec:v1:aaa", "tnsec:v1:bbb")):
+    admin = Api("admin", {
+        ("GET", "/templates"): (200, []),
+        ("POST", "/templates"): lambda j, p: (201, {"id": TPL, **j}),
+        ("POST", "/ranges"): lambda j, p: (201, {"id": RID, "name": j["name"], "state": "created"}),
+        ("GET", f"/ranges/{RID}/credentials"): STAFF_READ,
+        ("GET", "/audit-log"): (200, [{"action": "range_credentials_read", "resource_id": RID,
+                                       "detail": "scope=all; accounts=2"}] * 2),
+        ("DELETE", f"/ranges/{RID}"): (204, None),
+    })
+    personas = {
+        "instructor": Api("instructor", {("GET", f"/ranges/{RID}/credentials"): STAFF_READ}),
+        "student": Api("student", {("GET", f"/ranges/{RID}/credentials"): student,
+                                   ("GET", f"/templates/{TPL}"): (200, {"yaml": "password: '********'"})}),
+        "outsider": Api("student", {("GET", f"/ranges/{RID}/credentials"): (404, {"detail": "Range not found"})}),
+        "observer": Api("observer", {("GET", f"/ranges/{RID}/credentials"): (403, {"detail": "no"})}),
+    }
+
+    def sql(query, params):
+        if "FROM templates" in query:
+            assert str(params["id"]) == TPL
+            return [(stored_yaml,)]
+        if "FROM range_credentials" in query:
+            assert str(params["id"]) == RID
+            return [(p,) for p in stored_passwords]
+        raise AssertionError(query)
+
+    return admin, with_personas(ctx(admin=admin, options={"sql": sql}), **personas)
+
+
+def test_range_credentials_pass_and_create_from_the_declaring_template():
+    admin, c = credentials_world()
+    detail = acc.ranges_credentials(c)
+    assert "Students 404, Observer 403" in detail and "2 reads audited" in detail
+    posted = next(j for m, p, j in admin.calls if (m, p) == ("POST", "/templates"))
+    assert posted["name"] == acc.CREDENTIALS_TEMPLATE and acc.CREDENTIALS_LITERAL in posted["yaml"]
+    assert c.cleanup() == [] and admin.calls[-1][:2] == ("DELETE", f"/ranges/{RID}")
+
+
+def test_the_credentials_template_declares_what_the_check_expects():
+    """It validates as the API does (accounts rules, ADR 0012 §12): one typed-in, one generated."""
+    import yaml
+    from app.range_credentials import accounts
+
+    specs, errors = accounts.parse_yaml(acc.CREDENTIALS_TEMPLATE_YAML)
+    assert errors == []
+    assert {s.username: ("generated" if s.generate else "declared literal") for s in specs} == acc.CREDENTIALS_ACCOUNTS
+    assert yaml.safe_load(acc.CREDENTIALS_TEMPLATE_YAML)["accounts"][0]["password"] == acc.CREDENTIALS_LITERAL
+
+
+@pytest.mark.parametrize(
+    ("world", "message"),
+    [
+        ({"student": STAFF_READ}, "expected 404"),
+        ({"stored_yaml": f"password: {acc.CREDENTIALS_LITERAL}"}, "not sealed"),
+        ({"stored_passwords": ("tnsec:v1:aaa", GENERATED)}, "stored unsealed"),
+    ],
+)
+def test_range_credentials_fail_on_a_leak(world, message):
+    _, c = credentials_world(**world)
+    with pytest.raises(acc.FailedCheckError, match=message):
+        acc.ranges_credentials(c)
+
+
+# -- wiki-helpdesk / Ranges space -----------------------------------------
+
+PID = "33333333-3333-3333-3333-333333333333"
+
+
+def wiki_world(put=(409, {"detail": "managed by TrueNorth"}), student_page=(404, {"detail": "Page not found"}),
+               stored="## Accounts\n{{tn-credential:44444444-4444-4444-4444-444444444444}}"):
+    name = f"{acc.PREFIX}credentials-t1"
+    admin = Api("admin", {
+        ("GET", "/wiki/spaces"): (200, [{"slug": "ranges", "system_owned": True, "visibility": "staff"},
+                                        {"slug": "howto", "system_owned": False, "visibility": "all"}]),
+        ("PUT", "/wiki/spaces/ranges"): put,
+        ("GET", "/wiki/spaces/ranges/tree"): (200, [{"id": "x", "title": "Other", "children": [
+            {"id": PID, "title": name, "children": []}]}]),
+    })
+    instructor = Api("instructor", {("GET", f"/wiki/pages/{PID}"): (200, {
+        "id": PID, "tags": f"range-doc,range:{RID}", "body": f"analyst / {acc.CREDENTIALS_LITERAL}"})})
+
+    def reader(role):
+        return Api(role, {("GET", "/wiki/spaces"): (200, [{"slug": "howto"}]),
+                          ("GET", "/wiki/spaces/ranges"): (404, {"detail": "Space not found"}),
+                          ("GET", f"/wiki/pages/{PID}"): student_page})
+
+    def sql(query, params):
+        assert "FROM wiki_pages" in query and str(params["id"]) == PID
+        return [(stored,)]
+
+    c = with_personas(ctx(admin=admin, options={"sql": sql}), instructor=instructor, student=reader("student"),
+                      observer=reader("observer"))
+    c._memo["the credentials range"] = ({"id": RID, "name": name, "template_id": TPL}, None, False)
+    return c
+
+
+def test_ranges_space_passes_when_system_owned_and_hidden():
+    assert "space 'ranges' system-owned and staff-only" in acc.wiki_ranges_space(wiki_world())
+
+
+@pytest.mark.parametrize(
+    ("world", "message"),
+    [
+        ({"put": (200, {"slug": "ranges", "visibility": "all"})}, "expected 409"),
+        ({"student_page": (200, {"body": "x"})}, "as student => 200, expected 404"),
+        ({"stored": f"analyst / {acc.CREDENTIALS_LITERAL}"}, "no credential tokens"),
+    ],
+)
+def test_ranges_space_fails_when_open_or_storing_passwords(world, message):
+    with pytest.raises(acc.FailedCheckError, match=message):
+        acc.wiki_ranges_space(wiki_world(**world))
+
+
+# -- provisioners / host-local template copies ------------------------------
+
+
+def copies_world(hosts):
+    admin = Api("admin", {
+        ("GET", "/hypervisors/connections"): (200, [{"id": "c1", "name": "vc", "hypervisor_type": "vsphere",
+                                                     "is_primary": True}]),
+        ("GET", "/hypervisors/connections/c1/nodes"): (200, [{"node_name": h} for h in hosts]),
+    })
+    return ctx(admin=admin)
+
+
+def test_template_copies_resolve_for_named_hosts():
+    detail = acc.provisioners_template_copies(copies_world(["esx01.truenorth.lab", "ESX02.truenorth.lab", "esx03"]))
+    assert detail.startswith("vc: 3 hosts")
+
+
+def test_template_copies_fail_where_build_sh_and_the_provisioner_disagree():
+    """A host registered by IP address: build.sh names its copy <id>@10-<date> (up to the first
+    dot), the provisioner looks for <id>@10.30.30.21-<date>, which cannot even parse."""
+    with pytest.raises(acc.FailedCheckError, match=r"host '10\.30\.30\.21'"):
+        acc.provisioners_template_copies(copies_world(["esx01.truenorth.lab", "10.30.30.21"]))
+
+
+def test_template_copies_skip_without_a_vcenter():
+    with pytest.raises(acc.SkippedCheckError, match=acc.NEEDS_VCENTER) as err:
+        acc.provisioners_template_copies(ctx(absent={"vsphere"}))
+    assert err.value.declared is True
+    admin = Api("admin", {("GET", "/hypervisors/connections"): (200, [])})
+    with pytest.raises(acc.SkippedCheckError, match=acc.NEEDS_VCENTER) as err:
+        acc.provisioners_template_copies(ctx(admin=admin))
+    assert err.value.declared is False
+
+
+def test_replicate_name_is_build_sh_naming():
+    script = (ROOT / "infra/vsphere/packer/build.sh").read_text(encoding="utf-8")
+    assert 'short="${host%%.*}"' in script and 'copy="${id}@${short}-${date}"' in script
+    assert acc.replicate_name("srv2022", "esx03.truenorth.lab", "20261019") == "srv2022@esx03-20261019"
+
+
+# -- platform-core / login banner ------------------------------------------
+
+BANNER = "Site notice: it''s '{'monitored'}'. Use is recorded."
+SIGN_IN = ('<div id="tn-banner"><div class="tn-banner-text">Site notice: it&#39;s {monitored}. Use is recorded.'
+           '</div></div><form><input type="checkbox" id="tn-ack" name="tn_ack" required></form>')
+
+
+def banner_world(monkeypatch, *, theme="truenorth", l10n=None, page=SIGN_IN):
+    monkeypatch.setenv("KEYCLOAK_ADMIN_PASSWORD", "x")
+    monkeypatch.setattr(acc, "_keycloak_token", lambda base: "tok")
+    if l10n is None:
+        l10n = {"tnLoginBannerTitle": "Notice", "tnLoginBanner": BANNER, "tnLoginBannerAck": "I accept"}
+
+    def get(url, token=None, params=None):
+        if url.endswith("/admin/realms/truenorth"):
+            return 200, {"realm": "truenorth", "loginTheme": theme}
+        if url.endswith("/localization/en"):
+            return 200, l10n
+        if url.endswith("/clients"):
+            assert params == {"clientId": "truenorth-web"} and token == "tok"
+            return 200, [{"clientId": "truenorth-web", "redirectUris": ["https://tn.example/*"]}]
+        assert url.endswith("/realms/truenorth/protocol/openid-connect/auth") and token is None
+        assert params["redirect_uri"] == "https://tn.example/" and params["code_challenge_method"] == "S256"
+        return 200, page
+
+    monkeypatch.setattr(acc, "_http_get", get)
+
+
+def test_login_banner_passes_when_the_page_shows_the_realms_text(monkeypatch):
+    banner_world(monkeypatch)
+    assert "theme truenorth" in acc.core_login_banner(ctx())
+
+
+@pytest.mark.parametrize(
+    ("world", "message"),
+    [
+        ({"theme": "keycloak"}, "loginTheme is 'keycloak'"),
+        ({"l10n": {"tnLoginBannerTitle": "Notice"}}, "no site text"),
+        ({"page": SIGN_IN.replace(" required", "")}, "no required acknowledgement"),
+        ({"page": SIGN_IN.replace("Site notice", "Old notice")}, "does not show the realm's banner text"),
+    ],
+)
+def test_login_banner_fails(monkeypatch, world, message):
+    banner_world(monkeypatch, **world)
+    with pytest.raises(acc.FailedCheckError, match=message):
+        acc.core_login_banner(ctx())
+
+
+def test_login_banner_skips_without_keycloak_or_its_credential(monkeypatch):
+    with pytest.raises(acc.SkippedCheckError, match="keycloak declared absent"):
+        acc.core_login_banner(ctx(absent={"keycloak"}))
+    monkeypatch.delenv("KEYCLOAK_ADMIN_PASSWORD", raising=False)
+    with pytest.raises(acc.SkippedCheckError, match="KEYCLOAK_ADMIN_PASSWORD"):
+        acc.core_login_banner(ctx())
+
+
+def test_message_text_undoes_the_installers_escaping():
+    assert acc.message_text(BANNER) == "Site notice: it's {monitored}. Use is recorded."
+
+
+# -- platform-core / audit log append-only ----------------------------------
+
+GUARD_UPDATE = "audit_logs rows are never changed (row x)"
+GUARD_DELETE = "audit_logs rows are deleted only by retention after a verified export (row x)"
+
+
+def append_only_ctx(update=GUARD_UPDATE, delete=GUARD_DELETE):
+    tried = []
+
+    def refuses(statement, params):
+        tried.append(statement.split()[0])
+        return update if statement.startswith("UPDATE") else delete
+
+    c = ctx(options={"sql": lambda q, p: [("row-1",)], "refuses": refuses, "dialect": "postgresql"})
+    return c, tried
+
+
+def test_append_only_passes_when_both_are_refused_by_the_guard():
+    c, tried = append_only_ctx()
+    assert "UPDATE refused" in acc.core_audit_append_only(c) and tried == ["UPDATE", "DELETE"]
+
+
+@pytest.mark.parametrize(
+    ("kw", "message"),
+    [
+        ({"update": None}, "UPDATE of audit row row-1 was accepted"),
+        ({"delete": None}, "DELETE of audit row row-1 was accepted"),
+        ({"delete": "permission denied for table audit_logs"}, "not by the audit guard"),
+    ],
+)
+def test_append_only_fails_without_the_guard(kw, message):
+    with pytest.raises(acc.FailedCheckError, match=message):
+        acc.core_audit_append_only(append_only_ctx(**kw)[0])
+
+
+def test_append_only_skips_off_postgresql():
+    with pytest.raises(acc.SkippedCheckError, match="not PostgreSQL"):
+        acc.core_audit_append_only(ctx(options={"dialect": "sqlite"}))
+
+
+def test_append_only_on_postgresql_changes_nothing(postgres_engine):
+    """The real guard (migration b7c8d9e0f1a2): both refused, the row as it was."""
+    from sqlalchemy import text
+
+    rid = uuid.uuid4()
+    with postgres_engine.begin() as conn:
+        conn.execute(text("INSERT INTO audit_logs (id, timestamp, action, resource_type, resource_id, detail) "
+                          "VALUES (:id, now(), 'probe', 'probe', 'x', 'kept')"), {"id": rid})
+    assert "DELETE refused" in acc.core_audit_append_only(ctx(options={"engine": postgres_engine}))
+    with postgres_engine.connect() as conn:
+        assert conn.execute(text("SELECT detail FROM audit_logs WHERE id = :id"), {"id": rid}).scalar() == "kept"
+
+
+# -- platform-core / signed audit export ------------------------------------
+# The archive is written by the worker's own code (worker/audit_jobs.run_export), so the
+# check's independent verifier is held to the format the worker actually writes.
+
+
+@pytest.fixture
+def exported(tmp_path):
+    import sqlalchemy as sa
+    from sqlalchemy.orm import Session
+    from sqlalchemy.pool import StaticPool
+    from worker import audit_jobs, audit_signing
+    from worker.audit_archive import FilesystemArchive
+    from worker.tables import audit_export_checks, audit_exports, audit_logs
+
+    eng = sa.create_engine("sqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False})
+    audit_logs.metadata.create_all(eng, tables=[audit_logs, audit_exports, audit_export_checks])
+    today = datetime.now(UTC).date()
+    with Session(eng) as db:
+        for days_ago in (3, 1):
+            db.execute(audit_logs.insert().values(
+                id=uuid.uuid4(), timestamp=datetime.combine(today - timedelta(days=days_ago), time(12), tzinfo=UTC),
+                action="probe", resource_type="probe", resource_id="x"))
+        db.commit()
+        written = audit_jobs.run_export(db, FilesystemArchive(tmp_path / "archive"),
+                                        audit_signing.from_seed("acceptance-seed-" + "x" * 40), today)
+    assert len(written) == 3  # three days, one of them empty: still a manifest
+    yield eng, tmp_path / "archive"
+    eng.dispose()
+
+
+def export_ctx(eng, archive):
+    return ctx(options={"engine": eng, "audit_archive": str(archive)})
+
+
+def test_audit_export_verifies_the_workers_archive(exported):
+    detail = acc.core_audit_export(export_ctx(*exported))
+    assert detail.startswith("3 exports in one chain") and "verified with its file" in detail
+
+
+def _newest_manifest(archive):
+    return sorted(archive.rglob("*.manifest.json"))[-1]
+
+
+def test_audit_export_fails_on_a_changed_file(exported):
+    eng, archive = exported
+    data = sorted(archive.rglob("*.jsonl.gz"))[-1]
+    data.write_bytes(data.read_bytes() + b"x")
+    with pytest.raises(acc.FailedCheckError, match="does not match its file_sha256"):
+        acc.core_audit_export(export_ctx(eng, archive))
+
+
+def test_audit_export_fails_on_a_signature_by_another_key(exported):
+    from worker import audit_signing
+
+    eng, archive = exported
+    m = _newest_manifest(archive)
+    other = audit_signing.from_seed("another-seed-" + "y" * 40)
+    m.with_name(m.name + ".sig").write_bytes(other.sign(m.read_bytes()))
+    with pytest.raises(acc.FailedCheckError, match="signature does not verify"):
+        acc.core_audit_export(export_ctx(eng, archive))
+
+
+def test_audit_export_fails_on_an_edited_manifest(exported):
+    eng, archive = exported
+    m = _newest_manifest(archive)
+    m.write_bytes(m.read_bytes().replace(b'"schema":1', b'"schema":2'))
+    with pytest.raises(acc.FailedCheckError, match="does not hash to audit_exports.manifest_sha256"):
+        acc.core_audit_export(export_ctx(eng, archive))
+
+
+def test_export_chain_finds_a_missing_link_and_a_fork():
+    def row(sha, prev):
+        return ("2026-10-10", 0, "f", "h", sha, prev, "k")
+
+    assert acc.export_chain([row("a", None), row("b", "a"), row("c", "b")])[0] == []
+    assert "does not hold" in acc.export_chain([row("a", None), row("c", "b")])[0][0]
+    assert "2 exports have no successor" in acc.export_chain([row("a", None), row("b", "a"), row("c", "a")])[0][-1]
+
+
+def test_audit_export_without_the_archive_mounted_skips(exported):
+    eng, archive = exported
+    with pytest.raises(acc.SkippedCheckError, match="mount the audit archive read-only"):
+        acc.core_audit_export(export_ctx(eng, archive.parent / "not-mounted"))
+
+
+def test_audit_export_none_yet():
+    now = datetime.now(UTC)
+
+    def world(oldest):
+        return ctx(options={"sql": lambda q, p: [] if "audit_exports" in q else [(oldest,)]})
+
+    with pytest.raises(acc.SkippedCheckError, match=acc.NOTHING_TO_EXPORT):
+        acc.core_audit_export(world(now - timedelta(hours=20)))
+    with pytest.raises(acc.FailedCheckError, match="no export at all"):
+        acc.core_audit_export(world(now - timedelta(days=4)))

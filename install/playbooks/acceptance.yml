@@ -16,7 +16,9 @@
 #
 # The suite runs as docs/runbooks/staging-acceptance.md describes: in a one-off api container,
 # the host's checkout read-only at /srcapp, the config directory read-only at /hostcfg (for
-# backup.env), as tn_bootstrap_admin_upn, with --strict by default, and with the vCenter (on
+# backup.env), the signed audit archive read-only at /auditarchive (tn_audit_archive_path, uid
+# 10001 0750, which is the api container's user: the export's signature is verified there,
+# #192), as tn_bootstrap_admin_upn, with --strict by default, and with the vCenter (on
 # staging the simulator, playbooks/lab-vcenter-sim.yml) for when no connection is registered.
 # The play FAILS when any check FAILs (exit 1) or the suite cannot start (exit 2), after the
 # reports are written. Variables (all optional):
@@ -92,9 +94,10 @@
               'run', '--rm', '--no-deps', '-T', '-w', '/app', '-e', 'PYTHONPATH=/app',
               '-e', 'KEYCLOAK_ADMIN_USER', '-e', 'KEYCLOAK_ADMIN_PASSWORD', '-e', 'ACCEPTANCE_VSPHERE_PASSWORD',
               '-v', tn_app_dir ~ ':/srcapp:ro', '-v', tn_config_dir ~ ':/hostcfg:ro',
+              '-v', tn_audit_archive_path ~ ':/auditarchive:ro',
               '-v', tn_acceptance_out_dir ~ ':/out',
               '--entrypoint', 'python', 'api', '/srcapp/scripts/staging_acceptance.py',
-              '--admin', tn_bootstrap_admin_upn, '--host-config', '/hostcfg',
+              '--admin', tn_bootstrap_admin_upn, '--host-config', '/hostcfg', '--audit-archive', '/auditarchive',
               '--json', '/out/acceptance-' ~ tn_acceptance_stamp ~ '.json']
              + (['--strict', '--skip-profile', tn_acceptance_skip_profile] if tn_acceptance_strict | bool else [])
              + (['--vsphere-url', tn_acceptance_vsphere_url, '--vsphere-user', tn_vcenter_user | default('')]

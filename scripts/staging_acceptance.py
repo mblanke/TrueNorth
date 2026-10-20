@@ -467,6 +467,51 @@ class Ctx:
                 raise FailedCheckError(f"timed out after {timeout:.0f}s waiting for {what}")
             self.sleep(interval)
 
+    # -- the database, read as stored -------------------------------------
+    # A few checks (sealed at rest, append-only, the export chain) must see what PostgreSQL
+    # holds, not what the API makes of it: the API unseals on load. Same database, same
+    # credentials as the api container this suite runs in (app.db.engine). Tests pass
+    # ``options={"engine": ...}`` (a real PostgreSQL) or ``options={"sql": ..., "refuses": ...}``.
+
+    def _engine(self) -> Any:
+        engine = self.opt.get("engine")
+        if engine is None:
+            from app.db import engine
+        return engine
+
+    def sql(self, query: str, **params: Any) -> list[tuple]:
+        """Rows of a read-only query, as the database holds them. Always rolled back."""
+        if "sql" in self.opt:
+            return [tuple(r) for r in self.opt["sql"](query, params)]
+        from sqlalchemy import text
+
+        with self._engine().connect() as conn:
+            try:
+                return [tuple(r) for r in conn.execute(text(query), params)]
+            finally:
+                conn.rollback()
+
+    def refuses(self, statement: str, **params: Any) -> str | None:
+        """The database's error for ``statement``, or None when it ran. Run in a transaction
+        that is rolled back whatever happens, so a statement the database should have refused
+        changes nothing even when it was not refused."""
+        if "refuses" in self.opt:
+            return self.opt["refuses"](statement, params)
+        from sqlalchemy import text
+        from sqlalchemy.exc import DBAPIError
+
+        with self._engine().connect() as conn:
+            try:
+                conn.execute(text(statement), params)
+                return None
+            except DBAPIError as exc:
+                return " ".join(str(getattr(exc, "orig", exc)).split())
+            finally:
+                conn.rollback()
+
+    def dialect(self) -> str:
+        return self.opt.get("dialect") or self._engine().dialect.name
+
     # -- users ----------------------------------------------------------
 
     def persona(self, key: str) -> Any:
@@ -915,6 +960,215 @@ def core_keycloak_links(ctx: Ctx) -> str:
     if not linked:
         skip("no demo accounts on this host (tn_load_shipped_demo off)")
     return f"{linked} demo accounts match their Keycloak subjects"
+
+
+# ── platform-core: S2 login banner, S3 append-only audit log and signed export ──
+# (added by the 2026-10-20 amendment, #192; docs/release-notes/v1.2.0-module-matrix.md)
+
+BANNER_MESSAGES = ("tnLoginBannerTitle", "tnLoginBanner", "tnLoginBannerAck")  # roles/tn_keycloak banner.yml
+LOGIN_THEME = "truenorth"
+WEB_CLIENT = "truenorth-web"
+# Any well-formed S256 challenge renders the sign-in page (scripts/check_keycloak_realm.sh).
+PKCE_CHALLENGE = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"
+
+
+def _keycloak_base() -> tuple[str, str]:
+    base = os.getenv("KEYCLOAK_URL", "http://keycloak:8080").rstrip("/")
+    return (base if base.endswith("/auth") else base + "/auth"), os.getenv("KEYCLOAK_REALM", "truenorth")
+
+
+def _keycloak_token(base: str) -> str:
+    from app.bootstrap_admin import _keycloak_admin_token
+
+    return _keycloak_admin_token(base, os.getenv("KEYCLOAK_ADMIN_USER", "admin"), os.getenv("KEYCLOAK_ADMIN_PASSWORD", ""))
+
+
+def _http_get(url: str, token: str | None = None, params: dict | None = None) -> tuple[int, Any]:
+    """(status, JSON body or text). Tests replace this."""
+    import httpx
+
+    headers = {"Authorization": f"Bearer {token}"} if token else {}
+    r = httpx.get(url, params=params, headers=headers, timeout=30, follow_redirects=False)
+    try:
+        return r.status_code, r.json()
+    except ValueError:
+        return r.status_code, r.text
+
+
+def message_text(value: str) -> str:
+    """A Java MessageFormat message as displayed: '' is a quote, '{' and '}' are braces."""
+    return re.sub(r"'([{}])'", r"\1", value).replace("''", "'")
+
+
+@check("platform-core", "login banner (AC-8) on the realm's sign-in page")
+def core_login_banner(ctx: Ctx) -> str:
+    """S2: the realm uses the truenorth login theme, its English localization carries the
+    site's banner, and the sign-in page shows that text with a required acknowledgement."""
+    import html
+
+    ctx.require("keycloak")
+    if not os.getenv("KEYCLOAK_ADMIN_PASSWORD", ""):
+        skip(
+            "KEYCLOAK_ADMIN_PASSWORD is not in this container's environment (pass -e KEYCLOAK_ADMIN_USER "
+            "-e KEYCLOAK_ADMIN_PASSWORD to read the realm's theme and banner text)"
+        )
+    base, realm = _keycloak_base()
+    token = _keycloak_token(base)
+    st, rep = _http_get(f"{base}/admin/realms/{realm}", token)
+    expect(st == 200 and isinstance(rep, dict), f"GET realm {realm} => {st} {short(rep)}")
+    expect(rep.get("loginTheme") == LOGIN_THEME, f"realm {realm} loginTheme is {rep.get('loginTheme')!r}, not {LOGIN_THEME!r}")
+    st, l10n = _http_get(f"{base}/admin/realms/{realm}/localization/en", token)
+    expect(st == 200 and isinstance(l10n, dict), f"GET realm {realm} localization/en => {st} {short(l10n)}")
+    blank = [k for k in BANNER_MESSAGES if not str(l10n.get(k) or "").strip()]
+    expect(not blank, f"realm {realm} has no site text for {blank} (re-run 60-keycloak: roles/tn_keycloak banner.yml)")
+    st, clients = _http_get(f"{base}/admin/realms/{realm}/clients", token, {"clientId": WEB_CLIENT})
+    redirect = next((u for c in (clients if isinstance(clients, list) else []) for u in c.get("redirectUris") or []), "")
+    expect(redirect, f"client {WEB_CLIENT} in realm {realm} has no redirect URI ({st})")
+    st, page = _http_get(
+        f"{base}/realms/{realm}/protocol/openid-connect/auth",
+        params={
+            "client_id": WEB_CLIENT,
+            "response_type": "code",
+            "scope": "openid",
+            "redirect_uri": redirect.rstrip("*"),
+            "code_challenge": PKCE_CHALLENGE,
+            "code_challenge_method": "S256",
+        },
+    )
+    expect(st == 200 and isinstance(page, str), f"the {realm} sign-in page => {st} {short(page, 120)}")
+    expect('id="tn-banner"' in page, f"the {realm} sign-in page has no banner (id=\"tn-banner\")")
+    expect(re.search(r'<input[^>]*name="tn_ack"[^>]*required', page), "no required acknowledgement box (tn_ack)")
+    want = " ".join(message_text(str(l10n["tnLoginBanner"])).split())[:60]
+    shown = " ".join(html.unescape(page).split())
+    expect(want in shown, f"the sign-in page does not show the realm's banner text ({want!r}…)")
+    return (
+        f"realm {realm}: theme {LOGIN_THEME}, site banner text set, sign-in page shows it "
+        f"({len(str(l10n['tnLoginBanner']))} chars) with a required acknowledgement"
+    )
+
+
+@check("platform-core", "audit log append-only: UPDATE and DELETE refused")
+def core_audit_append_only(ctx: Ctx) -> str:
+    """S3 (ADR 0011, migration b7c8d9e0f1a2): PostgreSQL itself refuses to change or delete
+    an audit row outside the retention path. Tried on the newest row, in a transaction that
+    is rolled back whatever happens."""
+    dialect = ctx.dialect()
+    if dialect != "postgresql":
+        skip(f"the database is {dialect}, not PostgreSQL: the append-only triggers exist only there")
+    rows = ctx.sql("SELECT id FROM audit_logs ORDER BY timestamp DESC LIMIT 1")
+    expect(rows, "audit_logs is empty: nothing to try")
+    rid = rows[0][0]
+    upd = ctx.refuses("UPDATE audit_logs SET detail = detail WHERE id = :id", id=rid)
+    expect(upd is not None, f"UPDATE of audit row {rid} was accepted (rolled back): the guard trigger is missing")
+    expect("never changed" in upd, f"UPDATE refused, but not by the audit guard: {short(upd, 160)}")
+    dele = ctx.refuses("DELETE FROM audit_logs WHERE id = :id", id=rid)
+    expect(dele is not None, f"DELETE of audit row {rid} was accepted (rolled back): the guard trigger is missing")
+    expect("deleted only by retention" in dele, f"DELETE refused, but not by the audit guard: {short(dele, 160)}")
+    return "the newest audit row: UPDATE refused (never changed), DELETE refused (retention only); rolled back"
+
+
+AUDIT_EXPORT_COLUMNS = "day, seq, file_name, file_sha256, manifest_sha256, prev_manifest_sha256, key_id"
+NOTHING_TO_EXPORT = "nothing finished to export"
+
+
+def _as_date(value: Any) -> Any:
+    from datetime import date
+
+    if isinstance(value, datetime):
+        return (value if value.tzinfo else value.replace(tzinfo=UTC)).astimezone(UTC).date()
+    return value if isinstance(value, date) else datetime.fromisoformat(str(value)).date()
+
+
+def export_chain(rows: list[tuple]) -> tuple[list[str], dict | None]:
+    """(problems, head) of audit_exports rows: one chain through ``prev_manifest_sha256``
+    from the newest manifest (nothing points at it) back to the first (prev null)."""
+    by_sha = {r[4]: dict(zip(AUDIT_EXPORT_COLUMNS.split(", "), r, strict=True)) for r in rows}
+    problems = [f"{len(rows) - len(by_sha)} exports share a manifest hash"] if len(by_sha) != len(rows) else []
+    referenced = {e["prev_manifest_sha256"] for e in by_sha.values() if e["prev_manifest_sha256"]}
+    problems += [f"an export points back to {s[:16]}…, which audit_exports does not hold" for s in referenced - set(by_sha)]
+    heads = [e for s, e in by_sha.items() if s not in referenced]
+    if len(heads) != 1:
+        return problems + [f"{len(heads)} exports have no successor (expected 1)"], None
+    seen, sha = set(), heads[0]["manifest_sha256"]
+    while sha and sha in by_sha and sha not in seen:
+        seen.add(sha)
+        sha = by_sha[sha]["prev_manifest_sha256"]
+    if len(seen) != len(by_sha):
+        problems.append(f"the chain from the newest export reaches {len(seen)} of {len(by_sha)} exports")
+    return problems, heads[0]
+
+
+def verify_export(archive: Path, export: dict) -> str:
+    """Check one export in the archive against its audit_exports row: the manifest's bytes
+    hash to the recorded manifest_sha256, it is signed (Ed25519) by the key whose id it and
+    the row carry (keys/<key_id>.pub.pem, key id = SHA-256 of the raw public key, 16 hex),
+    and its file hashes to file_sha256. Independent of the worker's code (worker/audit_export.py
+    writes this format). Returns the manifest's day; FailedCheckError on any mismatch."""
+    import hashlib
+
+    from cryptography.exceptions import InvalidSignature
+    from cryptography.hazmat.primitives import serialization
+
+    fname = str(export["file_name"])
+    mname = fname.removesuffix(".jsonl.gz") + ".manifest.json"
+    try:
+        mbytes = (archive / mname).read_bytes()
+        sig = (archive / (mname + ".sig")).read_bytes()
+        pem = (archive / "keys" / f"{export['key_id']}.pub.pem").read_bytes()
+        data = (archive / fname).read_bytes()
+    except OSError as exc:
+        raise FailedCheckError(f"audit archive {archive}: {type(exc).__name__}: {exc}") from exc
+    expect(hashlib.sha256(mbytes).hexdigest() == export["manifest_sha256"],
+           f"{mname} does not hash to audit_exports.manifest_sha256")
+    manifest = json.loads(mbytes)
+    for key in ("file_sha256", "prev_manifest_sha256", "key_id"):
+        expect(manifest.get(key) == export[key], f"{mname}: {key} differs from audit_exports")
+    public = serialization.load_pem_public_key(pem)
+    raw = public.public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
+    expect(hashlib.sha256(raw).hexdigest()[:16] == export["key_id"], f"keys/{export['key_id']}.pub.pem is another key")
+    try:
+        public.verify(sig, mbytes)
+    except InvalidSignature:
+        raise FailedCheckError(f"{mname}: the signature does not verify with key {export['key_id']}") from None
+    expect(hashlib.sha256(data).hexdigest() == export["file_sha256"], f"{fname} does not match its file_sha256")
+    return str(manifest.get("day"))
+
+
+@check("platform-core", "audit export: latest signed, chained, verifiable")
+def core_audit_export(ctx: Ctx) -> str:
+    """S3 (ADR 0011): audit_exports forms one hash chain, the newest export day is current
+    (as deep health judges it), and the newest manifest in the archive verifies: its hash,
+    its Ed25519 signature by the recorded key, and its file's hash. The archive is the
+    worker's; mount it read-only (``--audit-archive``)."""
+    rows = ctx.sql(f"SELECT {AUDIT_EXPORT_COLUMNS} FROM audit_exports")
+    today = datetime.now(UTC).date()
+    if not rows:
+        oldest = ctx.sql("SELECT min(timestamp) FROM audit_logs")
+        first = oldest[0][0] if oldest else None
+        if first is None or _as_date(first) >= today - timedelta(days=1):
+            skip(
+                f"no audit export yet and no audit row older than yesterday ({first or 'no rows'}): "
+                f"{NOTHING_TO_EXPORT} (the daily export runs at 00:45 UTC for days before yesterday's)"
+            )
+        raise FailedCheckError(
+            f"audit rows since {_as_date(first)} but no export at all (python -m worker.audit_export_now "
+            "in worker-scenario names the cause)"
+        )
+    problems, head = export_chain(rows)
+    expect(not problems and head, "audit_exports chain broken: " + "; ".join(problems))
+    latest = max(_as_date(r[0]) for r in rows)
+    expect(latest >= today - timedelta(days=2), f"audit export behind: latest exported day {latest}")
+    archive = Path(ctx.opt.get("audit_archive") or "/srv/truenorth/audit-archive")
+    if not archive.is_dir():
+        skip(
+            f"{archive} is not visible in this container; mount the audit archive read-only "
+            "(-v /srv/truenorth/audit-archive:/auditarchive:ro --audit-archive /auditarchive) to verify the signature"
+        )
+    day = verify_export(archive, head)
+    return (
+        f"{len(rows)} exports in one chain, latest day {latest}; newest manifest ({day}, seq {head['seq']}) "
+        f"signed by key {head['key_id']} and verified with its file"
+    )
 
 
 # ══ web-shell ═══════════════════════════════════════════════════════════
@@ -1633,6 +1887,109 @@ def labs_build(ctx: Ctx) -> str:
     )
 
 
+# ── ranges-labs: ADR 0012 range credentials (2026-10-20 amendment, #192) ──
+
+CREDENTIALS_TEMPLATE = PREFIX + "credentials-template"
+# A typed-in account password, as a template author writes one. Not a secret: it is in this
+# file. What the check proves is that the platform never stores it as typed.
+CREDENTIALS_LITERAL = "acceptance-typed-in-7Qx!not-a-secret"
+CREDENTIALS_ACCOUNTS = {"acceptance-analyst": "declared literal", "acceptance-admin": "generated"}
+CREDENTIALS_TEMPLATE_YAML = (
+    f"name: {CREDENTIALS_TEMPLATE}\n"
+    "description: Post-install acceptance (scripts/staging_acceptance.py); declared accounts; never provisioned.\n"
+    "environment: enterprise\n"
+    "nodes:\n"
+    "  - id: ws01\n    role: workstation\n    os: ubuntu22\n    vcpu: 1\n    ram_mb: 512\n    disk_gb: 8\n"
+    "accounts:\n"
+    f"  - {{machine: ws01, username: acceptance-analyst, password: \"{CREDENTIALS_LITERAL}\", role: user,"
+    " student_visible: true, notes: acceptance}\n"
+    "  - {machine: ws01, username: acceptance-admin, generate: true, role: admin, student_visible: false}\n"
+)
+
+
+def fx_credentials_range(ctx: Ctx) -> dict:
+    """A range (``acceptance-credentials-<tag>``, removed afterwards, never provisioned) from
+    a template declaring one typed-in and one generated account (kept and reused by name,
+    like ``acceptance-template``). Creating it syncs its credential rows and writes its page
+    in the Ranges wiki space (ADR 0012 §12-14)."""
+
+    def make() -> dict:
+        tpl = find_named(ctx.admin, "/templates", CREDENTIALS_TEMPLATE)
+        if tpl is None:
+            tpl = ok(
+                ctx.admin.post(
+                    "/templates", json={"name": CREDENTIALS_TEMPLATE, "yaml": CREDENTIALS_TEMPLATE_YAML, "is_public": False}
+                ),
+                200,
+                201,
+                what="POST /templates (declared accounts)",
+            )
+        name = f"{PREFIX}credentials-{ctx.tag}"
+        rng = ok(ctx.admin.post("/ranges", json={"name": name, "template_id": tpl["id"]}), 201, what="POST /ranges")
+        rid = str(rng["id"])
+        ctx.on_cleanup(f"range {name}", lambda: _left(ctx.admin.delete(f"/ranges/{rid}"), 204, 404))
+        return {"id": rid, "name": name, "template_id": str(tpl["id"])}
+
+    return ctx.memo("the credentials range", make)
+
+
+def _sealed(value: Any) -> bool:
+    return isinstance(value, str) and value.startswith("tnsec:")
+
+
+@check("ranges-labs", "range credentials: staff read, Student 404, sealed at rest")
+def ranges_credentials(ctx: Ctx) -> str:
+    """ADR 0012 §12-13: staff read every declared account with its password; Students who do
+    not take part in the range get 404 and observers 403; a Student reading the template sees
+    no password; and PostgreSQL holds neither password as typed or generated (the stored
+    template and the credential rows are sealed)."""
+    rng = fx_credentials_range(ctx)
+    rid = rng["id"]
+    staff = {}
+    for who, api in (("administrator", ctx.admin), ("instructor", ctx.persona("instructor"))):
+        body = ok(api.get(f"/ranges/{rid}/credentials"), what=f"GET /ranges/{{id}}/credentials as {who}")
+        expect(body.get("scope") == "all", f"{who} read scope {body.get('scope')!r}, expected 'all'")
+        staff[who] = {a["username"]: a for a in body.get("accounts", []) if a.get("source", "declared") == "declared"}
+    got = staff["administrator"]
+    expect(set(got) == set(CREDENTIALS_ACCOUNTS), f"accounts {sorted(got)}, the template declares {sorted(CREDENTIALS_ACCOUNTS)}")
+    expect(got["acceptance-analyst"].get("password") == CREDENTIALS_LITERAL, "the typed-in account's password differs")
+    generated = str(got["acceptance-admin"].get("password") or "")
+    expect(got["acceptance-admin"].get("generated") is True and len(generated) >= 12, "no generated password")
+    expect(staff["instructor"].keys() == got.keys(), f"the instructor reads {sorted(staff['instructor'])}")
+    for key in ("student", "outsider"):
+        st, body = ctx.persona(key).get(f"/ranges/{rid}/credentials")
+        expect(st == 404, f"a Student ({key}) not taking part in the range => {st} {short(body)}, expected 404")
+    st, body = ctx.persona("observer").get(f"/ranges/{rid}/credentials")
+    expect(st == 403, f"an Observer => {st} {short(body)}, expected 403")
+    st, tpl = ctx.persona("student").get(f"/templates/{rng['template_id']}")
+    expect(st == 200 and CREDENTIALS_LITERAL not in str(tpl) and not _sealed_in(tpl),
+           f"a Student reading the template => {st}: the password (or its seal) is shown")
+
+    stored = ctx.sql("SELECT yaml FROM templates WHERE id = :id", id=uuid.UUID(rng["template_id"]))
+    expect(stored, "the template row is not in the database")
+    expect(CREDENTIALS_LITERAL not in stored[0][0] and "tnsec:rc1:" in stored[0][0],
+           "templates.yaml holds the typed-in password as typed (not sealed)")
+    rows = ctx.sql("SELECT password FROM range_credentials WHERE range_id = :id", id=uuid.UUID(rid))
+    expect(len(rows) == len(CREDENTIALS_ACCOUNTS), f"{len(rows)} range_credentials rows for the range")
+    plain = [r for r in rows if not _sealed(r[0]) or CREDENTIALS_LITERAL in r[0] or generated in r[0]]
+    expect(not plain, f"{len(plain)} range_credentials passwords stored unsealed")
+    audited = [
+        r for r in ok(ctx.admin.get("/audit-log", params={"limit": 500}), what="GET /audit-log")
+        if r.get("action") == "range_credentials_read" and r.get("resource_id") == rid
+    ]
+    expect(len(audited) >= 2, f"{len(audited)} range_credentials_read audit rows for the range, expected one per staff read")
+    expect(all(CREDENTIALS_LITERAL not in str(r) and generated not in str(r) for r in audited), "an audit row holds a password")
+    return (
+        f"{rng['name']}: administrator and instructor read 2 accounts (typed-in and generated); Students 404, "
+        f"Observer 403, the template shows a Student no password; stored sealed (templates, range_credentials); "
+        f"{len(audited)} reads audited without passwords"
+    )
+
+
+def _sealed_in(body: Any) -> bool:
+    return "tnsec:" in json.dumps(body, default=str)
+
+
 # ══ provisioners ════════════════════════════════════════════════════════
 
 
@@ -1695,6 +2052,86 @@ def provisioners_summary(ctx: Ctx) -> str:
     for key in ("total_connections", "total_nodes", "online_nodes"):
         expect(key in s, f"summary lacks {key}")
     return f"{s['total_connections']} connections, {s['online_nodes']}/{s['total_nodes']} hosts online"
+
+
+# ── provisioners: ADR 0012 host-local template copies, Security Onion (2026-10-20 amendment, #192) ──
+
+NEEDS_VCENTER = "needs vCenter"
+
+
+def template_copies_module() -> Any:
+    """worker/provisioners/template_copies.py, loaded by path: pure functions, no vendor SDK,
+    and not the worker package (whose __init__ the api image cannot import)."""
+    import importlib.util
+
+    name = "tn_acceptance_template_copies"
+    if name in sys.modules:
+        return sys.modules[name]
+    path = SRC / "control-plane/worker/worker/provisioners/template_copies.py"
+    spec = importlib.util.spec_from_file_location(name, path)
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[name] = mod  # its dataclass looks its module up
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def replicate_name(base: str, host_name: str, date: str) -> str:
+    """The copy name ``infra/vsphere/packer/build.sh replicate`` gives a host: the host name up
+    to its first dot (``short="${host%%.*}"``), as written; ``<id>@<short>-<yyyymmdd>``."""
+    return f"{base}@{str(host_name).split('.', 1)[0]}-{date}"
+
+
+def copy_resolution_problems(tc: Any, hosts: list[str], base: str = "acceptance-base") -> list[str]:
+    """For each host, what the provisioner (``newest_on_host``) and the prune (``stale``) make
+    of copies named the way build.sh replicate names them on that host."""
+    problems = []
+    for host in hosts:
+        old, new = replicate_name(base, host, "20261001"), replicate_name(base, host, "20261019")
+        others = [replicate_name(base, h, "20261020") for h in hosts if h != host] or [f"{base}@elsewhere-20261020"]
+        names = [base, old, new, *others]
+        got = tc.newest_on_host(names, base, host)
+        if got != new:
+            problems.append(f"host {host!r}: build.sh names its copy {new!r}, the provisioner resolves {got!r}")
+            continue
+        if tc.stale(names, {old}) != ([], [old]) or tc.stale(names, set()) != ([old], []):
+            problems.append(f"host {host!r}: pruning would not keep the newest copy and the one in use")
+    return problems
+
+
+@check("provisioners", "host-local template copies resolve per discovered host")
+def provisioners_template_copies(ctx: Ctx) -> str:
+    """ADR 0012 decision 6, against the configured vCenter's inventory: for every ESXi host
+    its discovery found, a copy named as ``build.sh replicate`` names it there is the one the
+    vSphere provisioner clones from on that host (newest wins, other hosts' copies and the
+    plain template ignored), and the prune keeps the newest and any copy a range uses. A pure
+    check on the real host names; nothing is cloned or deleted."""
+    if "vsphere" in ctx.absent:
+        skip(f"{NEEDS_VCENTER}: vsphere declared absent on this stack (--absent): {FACILITIES['vsphere']}", True)
+    conns = [c for c in listing(ctx.admin, "/hypervisors/connections") if c.get("hypervisor_type") == "vsphere"]
+    if not conns:
+        skip(f"{NEEDS_VCENTER}: no vSphere connection registered (the vSphere connection check creates one with --vsphere-url)")
+    conn = next((c for c in conns if c.get("is_primary")), conns[0])
+    nodes = ok(ctx.admin.get(f"/hypervisors/connections/{conn['id']}/nodes"), what="nodes")
+    if not nodes:
+        ok(ctx.admin.post(f"/hypervisors/connections/{conn['id']}/discover"), what="discover")
+        nodes = ok(ctx.admin.get(f"/hypervisors/connections/{conn['id']}/nodes"), what="nodes")
+    hosts = sorted({str(n.get("node_name") or "") for n in nodes} - {""})
+    expect(hosts, f"{conn['name']}: discovery found no hosts")
+    problems = copy_resolution_problems(template_copies_module(), hosts)
+    expect(not problems, "; ".join(problems))
+    return (
+        f"{conn['name']}: {len(hosts)} hosts ({', '.join(hosts[:4])}{'…' if len(hosts) > 4 else ''}); each resolves "
+        "its own newest build.sh copy; prune keeps the newest and the in-use copy"
+    )
+
+
+@check("provisioners", "Security Onion per-range setup (so-setup)")
+def provisioners_securityonion(ctx: Ctx) -> str:
+    skip(
+        "so-setup runs per range on a built securityonion VM over guest operations (ADR 0012 decision 8, "
+        "worker/provisioners/vsphere_securityonion.py): it needs a provisioned range on a writable vCenter",
+        True,
+    )
 
 
 # ══ scheduling ══════════════════════════════════════════════════════════
@@ -1917,6 +2354,49 @@ def helpdesk_flow(ctx: Ctx) -> str:
     return f"page published; {t['key']} assigned; in the instructor's inbox, marked read; private to them"
 
 
+def _tree_pages(nodes: list[dict]) -> list[dict]:
+    out = []
+    for n in nodes or []:
+        out += [n, *_tree_pages(n.get("children") or [])]
+    return out
+
+
+@check("wiki-helpdesk", "Ranges space: system-owned, staff-only, no password stored")
+def wiki_ranges_space(ctx: Ctx) -> str:
+    """ADR 0012 §14 (2026-10-20 amendment, #192): creating a range writes its page in the
+    tenant's Ranges space, which TrueNorth owns: always staff-only (its visibility cannot be
+    changed, 409), invisible to Students and Observers (404). Staff read the page with the
+    passwords filled in; the stored page holds only tokens."""
+    rng = fx_credentials_range(ctx)
+    spaces = [s for s in listing(ctx.admin, "/wiki/spaces") if s.get("system_owned")]
+    expect(len(spaces) == 1, f"{len(spaces)} system-owned wiki spaces in this tenant, expected the one Ranges space")
+    space = spaces[0]
+    slug = space["slug"]
+    expect(space.get("visibility") == "staff", f"the Ranges space ({slug}) has visibility {space.get('visibility')!r}")
+    st, body = ctx.admin.put(f"/wiki/spaces/{slug}", json={"visibility": "all"})
+    expect(st == 409, f"opening the Ranges space to everyone => {st} {short(body)}, expected 409")
+    tree = ok(ctx.admin.get(f"/wiki/spaces/{slug}/tree"), what="GET Ranges space tree")
+    page = next((p for p in _tree_pages(tree) if p.get("title") == rng["name"]), None)
+    expect(page is not None, f"no page for {rng['name']} in the Ranges space")
+    staff = ok(ctx.persona("instructor").get(f"/wiki/pages/{page['id']}"), what="the range page as instructor")
+    expect(f"range:{rng['id']}" in staff.get("tags", ""), f"the page is not tagged for the range: {staff.get('tags')!r}")
+    expect(CREDENTIALS_LITERAL in staff.get("body", ""), "staff do not see the account's password on the page")
+    for key in ("student", "observer"):
+        api = ctx.persona(key)
+        listed = {s.get("slug") for s in listing(api, "/wiki/spaces")}
+        expect(slug not in listed, f"the Ranges space is listed to the {key}")
+        for path in (f"/wiki/spaces/{slug}", f"/wiki/pages/{page['id']}"):
+            st, _ = api.get(path)
+            expect(st == 404, f"GET {path} as {key} => {st}, expected 404")
+    stored = ctx.sql("SELECT body FROM wiki_pages WHERE id = :id", id=uuid.UUID(str(page["id"])))
+    expect(stored and "{{tn-credential:" in stored[0][0], "the stored page has no credential tokens")
+    expect(CREDENTIALS_LITERAL not in stored[0][0], "wiki_pages.body holds an account password")
+    return (
+        f"space {slug!r} system-owned and staff-only (opening it 409); {rng['name']}'s page shows staff the "
+        "password, stores only tokens; Student and Observer 404"
+    )
+
+
 # ── main ────────────────────────────────────────────────────────────────
 
 
@@ -1937,6 +2417,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     ap.add_argument("--edge-url", default="https://nginx", help="the edge, as this container reaches it")
     ap.add_argument("--host-config", default="/srv/truenorth/config", help="the host's config dir, if mounted")
+    ap.add_argument(
+        "--audit-archive",
+        default="/srv/truenorth/audit-archive",
+        help="the worker's signed audit archive (tn_audit_archive_path), if mounted read-only",
+    )
     ap.add_argument("--lms-course", default="C103", help="catalogue course for the LMS checks (default C103)")
     ap.add_argument(
         "--moodle-course", help="catalogue course for the Moodle loop, published to Moodle (default: --lms-course)"
@@ -1998,6 +2483,7 @@ def main(argv: list[str] | None = None) -> int:
         options={
             "edge_url": args.edge_url,
             "host_config": args.host_config,
+            "audit_archive": args.audit_archive,
             "lms_course": args.lms_course,
             "moodle_course": args.moodle_course,
             "scenario": args.scenario,
