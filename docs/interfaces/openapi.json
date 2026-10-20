@@ -21095,7 +21095,7 @@
     },
     "/class-setup/mine": {
       "get": {
-        "description": "The courses you teach and the exercises you run: a live booking (not draft, not\ncancelled) in your tenant names you its instructor (app/class_setup/scope.py).\n\n**Permission: enrollment:manage_own or team:manage_own**",
+        "description": "The courses you teach and the exercises you run: your own upcoming or running booking\n(not ended; not draft, cancelled or completed) in your tenant names you its instructor\n(app/class_setup/scope.py). A change is still refused (409) while another instructor's\nsession of the same course or exercise is running.\n\n**Permission: enrollment:manage_own or team:manage_own**",
         "operationId": "my_classes_class_setup_mine_get",
         "responses": {
           "200": {
@@ -23750,7 +23750,7 @@
     },
     "/courses/{course_id}/enroll": {
       "post": {
-        "description": "Enroll a user in a course: a Student's self-enrolment, or staff enrolling someone.\n\nEnrolling someone *other* than yourself needs ``user:update`` (an admin: anyone in the\ntenant) or ``enrollment:manage_own`` (an instructor: a Student of the tenant, on a course\nthey teach, i.e. a live booking names them its instructor; app/class_setup/scope.py).\nAnother tenant's person is 404; a course you do not teach, or staff, is 403. Enrolling\nsomeone else is audited (``enrollment_create`` / ``enrollment_update``) and reopens their\nwithdrawn enrolment; your own withdrawn enrolment stays withdrawn.\nThe server decides eligibility, whatever the client shows:\n\n- the course is in the caller's catalogue: their tenant's, or a global (shared) one \u2014\n  another tenant's is 404, as for any read;\n- it is published, unless the caller authors courses \u2014 a draft is 404, as on every read;\n- it is not retired (a stub superseded by authored content) \u2014 409.\n\nIdempotent: enrolling again answers 200 with the existing enrolment (it used to be 409,\nso a second click read as a failure). Two racing requests make one row (unique\n``uq_user_course``; the loser's IntegrityError returns the winner's row).\n\nSource (app/enrollment.py): enrolling yourself is ``self`` \u2014 the course's content, but\nno seat in an exercise someone booked for the course. Enrolling someone else is\n``assigned``, and upgrades their own ``self`` row.",
+        "description": "Enroll a user in a course: a Student's self-enrolment, or staff enrolling someone.\n\nEnrolling someone *other* than yourself needs ``user:update`` (an admin: anyone in the\ntenant) or ``enrollment:manage_own`` (an instructor: a Student of the tenant, on the\ncourse of their own upcoming or running session; app/class_setup/scope.py). Another\ntenant's person is 404; a course you do not teach, or staff, is 403; while another\ninstructor's session of the course is running, 409. Enrolling someone else is audited\n(``enrollment_create`` / ``enrollment_update``) and reopens their withdrawn enrolment if\nit has no outcome (to ``in_progress`` if it had started); your own withdrawn enrolment\nstays withdrawn. A ``failed`` or ``in_progress`` outcome is never reset.\nThe server decides eligibility, whatever the client shows:\n\n- the course is in the caller's catalogue: their tenant's, or a global (shared) one \u2014\n  another tenant's is 404, as for any read;\n- it is published, unless the caller authors courses \u2014 a draft is 404, as on every read;\n- it is not retired (a stub superseded by authored content) \u2014 409.\n\nIdempotent: enrolling again answers 200 with the existing enrolment (it used to be 409,\nso a second click read as a failure). Two racing requests make one row (unique\n``uq_user_course``; the loser's IntegrityError returns the winner's row).\n\nSource (app/enrollment.py): enrolling yourself is ``self`` \u2014 the course's content, but\nno seat in an exercise someone booked for the course. Enrolling someone else is\n``assigned``, and upgrades their own ``self`` row.",
         "operationId": "enroll_user_courses__course_id__enroll_post",
         "parameters": [
           {
@@ -23783,7 +23783,7 @@
                 }
               }
             },
-            "description": "Already enrolled: the existing enrolment, unchanged"
+            "description": "Already enrolled: the existing enrolment. Unchanged, except when staff enrol someone else: a self-enrolment becomes assigned, and a withdrawn enrolment with no outcome (no completion, no grade) is reopened, to in_progress if it had started, else enrolled"
           },
           "201": {
             "content": {
@@ -23986,7 +23986,7 @@
     },
     "/courses/{course_id}/withdraw/{user_id}": {
       "post": {
-        "description": "Withdraw (unenrol) someone from a course.\n\nThe enrolment is kept, as a record, with status ``withdrawn``: it no longer seats them\nin the class's exercises, labs or launches. Enrolling them again reopens it.\n\n**Permission: user:update** (anyone in the tenant) **or enrollment:manage_own** (a\nStudent of the tenant, on a course you teach). Another tenant's course or person: 404;\nno enrolment: 404; a completed one: 409 (it is the Student's record). Audited\n(``enrollment_withdraw``). Withdrawing again answers the withdrawn row unchanged.",
+        "description": "Withdraw (unenrol) someone from a course.\n\nThe enrolment is kept, as a record, with status ``withdrawn``: it no longer seats them\nin the class's exercises, labs or launches. Enrolling them again reopens it.\n\n**Permission: user:update** (anyone in the tenant) **or enrollment:manage_own** (a\nStudent of the tenant, on the course of your own upcoming or running session; 409 while\nanother instructor's session of it runs). Another tenant's course or person: 404; no\nenrolment: 404; a completed or failed one: 409 (an outcome is the Student's record).\nAudited (``enrollment_withdraw``). Withdrawing again answers the withdrawn row unchanged.",
         "operationId": "withdraw_enrollment_courses__course_id__withdraw__user_id__post",
         "parameters": [
           {
@@ -39018,7 +39018,7 @@
         ]
       },
       "post": {
-        "description": "Create a team with full schema (type, color, max_members, etc).\n\n**Permission: user:update, or team:manage_own** with ``exercise_id`` naming an exercise\nyou run (a live booking names you its instructor; app/class_setup/scope.py). Another\ntenant's exercise is 404; an exercise you do not run, or no exercise, is 403.",
+        "description": "Create a team with full schema (type, color, max_members, etc).\n\n**Permission: user:update, or team:manage_own** with ``exercise_id`` naming the exercise\nof your own upcoming or running session (app/class_setup/scope.py). Another tenant's\nexercise is 404; an exercise you do not run, or no exercise, is 403; a completed or\ncancelled exercise, or another instructor's running session of it, is 409. ``ou_id``\nmust be an OU of your tenant and ``nation_id`` a known nation (422).",
         "operationId": "create_team_teams_post",
         "requestBody": {
           "content": {
@@ -39065,7 +39065,7 @@
     },
     "/teams/{team_id}": {
       "delete": {
-        "description": "Delete a team and its memberships.  **Permission: user:update, or team:manage_own**\nfor a team of an exercise you run.",
+        "description": "Delete a team and its memberships.  **Permission: user:update, or team:manage_own**\nfor a team of an exercise you run that has only Students on it (staff on a team are an\nadmin's to move: 403). Audited (``delete``, with the members removed).",
         "operationId": "delete_team_teams__team_id__delete",
         "parameters": [
           {
@@ -39215,7 +39215,7 @@
         ]
       },
       "post": {
-        "description": "Add a user to a team.  **Permission: user:update** (anyone in the tenant), **or\nteam:manage_own** (a Student, to a team of an exercise you run).",
+        "description": "Add a user to a team.  **Permission: user:update** (anyone in the tenant), **or\nteam:manage_own** (a Student enrolled in your session's course, to a team of an\nexercise you run). Never to a completed or cancelled exercise's team (409): membership\nopens that run's after-action report.",
         "operationId": "add_team_member_teams__team_id__members_post",
         "parameters": [
           {

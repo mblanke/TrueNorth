@@ -17,7 +17,16 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from _shared import act_as, real_exercise, real_tenant, real_user
 from app.enrollment import ASSIGNED, ensure_enrollment
-from app.models import AuditLog, Course, Enrollment, EnrollmentStatus, Team, TeamMembership, UserRole
+from app.models import (
+    AuditLog,
+    Course,
+    Enrollment,
+    EnrollmentStatus,
+    ExerciseState,
+    Team,
+    TeamMembership,
+    UserRole,
+)
 from app.scheduler.models import EventState, ScheduledEvent
 
 NOW = datetime.now(UTC)
@@ -123,12 +132,19 @@ def test_a_draft_or_cancelled_booking_does_not_make_you_its_teacher(client, db_s
     assert _row(db_session, w["student"], course) is None
 
 
-def test_a_completed_booking_still_counts(client, db_session, world):
+def test_a_completed_or_past_booking_grants_nothing(client, db_session, world):
+    """Rule (a): only an upcoming or running booking of your own gives scope."""
     w = world
     course = _course(db_session, w["a"].id, "Taught last week")
     _book(db_session, w["a"].id, w["instructor"], course=course, state=EventState.completed)
+    ended = _book(db_session, w["a"].id, w["instructor"], course=course)  # scheduled, but already over
+    ended.start_time, ended.end_time = NOW - timedelta(days=8), NOW - timedelta(days=7)
+    db_session.flush()
     act_as(w["instructor"])
-    assert _enrol(client, course, w["student"]).status_code == 201
+    assert _enrol(client, course, w["student"]).status_code == 403
+    ensure_enrollment(db_session, user_id=uuid.UUID(w["student"].id), course_id=course.id, tenant_id=w["a"].id)
+    assert client.post(f"/courses/{course.id}/withdraw/{w['student'].id}").status_code == 403
+    assert str(course.id) not in {c["id"] for c in client.get("/class-setup/mine").json()["courses"]}
 
 
 def test_instructor_cannot_enrol_on_a_course_someone_else_teaches(client, db_session, world):
@@ -284,6 +300,8 @@ def _team_audits(db, actor, action, team_id):
 
 def test_instructor_sets_up_the_teams_of_an_exercise_they_run(client, db_session, world):
     w = world
+    # The Student is in the class: assigned to the course of the instructor's booking of ex.
+    ensure_enrollment(db_session, user_id=uuid.UUID(w["student"].id), course_id=w["mine"].id, tenant_id=w["a"].id)
     act_as(w["instructor"])
     r = _team(client, w["ex"])
     assert r.status_code == 201, r.text
@@ -333,9 +351,16 @@ def test_instructor_team_refusals(client, db_session, world):
     mine = _team(client, w["ex"]).json()["id"]
     assert client.post(f"/teams/{mine}/members", params={"user_id": w["colleague"].id}).status_code == 403  # staff
     assert client.post(f"/teams/{mine}/members", params={"user_id": w["b_student"].id}).status_code == 404
+    # A Student of the tenant who is not in the class (not assigned to the session's course).
+    r = client.post(f"/teams/{mine}/members", params={"user_id": w["student2"].id})
+    assert r.status_code == 403 and "enrolled in your session's course" in r.json()["detail"]
+    # Self-enrolment is no seat either.
+    ensure_enrollment(db_session, user_id=uuid.UUID(w["student2"].id), course_id=w["mine"].id,
+                      tenant_id=w["a"].id, source="self")
+    assert client.post(f"/teams/{mine}/members", params={"user_id": w["student2"].id}).status_code == 403
 
 
-def test_instructor_cannot_remove_staff_an_admin_placed(client, db_session, world):
+def test_instructor_cannot_remove_staff_an_admin_placed_nor_delete_their_team(client, db_session, world):
     w = world
     team = Team(id=uuid.uuid4(), name="Mine", tenant_id=w["a"].id, exercise_id=w["ex"].id)
     db_session.add(team)
@@ -344,6 +369,28 @@ def test_instructor_cannot_remove_staff_an_admin_placed(client, db_session, worl
     db_session.flush()
     act_as(w["instructor"])
     assert client.delete(f"/teams/{team.id}/members/{w['colleague'].id}").status_code == 403
+    assert client.delete(f"/teams/{team.id}").status_code == 403
+    db_session.expire_all()
+    assert db_session.query(TeamMembership).filter(TeamMembership.team_id == team.id).count() == 1
+    assert _team_audits(db_session, w["instructor"], "delete", team.id) == []
+    # An admin deletes it; the audit row names the members removed.
+    act_as(w["admin"])
+    assert client.delete(f"/teams/{team.id}").status_code == 204
+    [row] = _team_audits(db_session, w["admin"], "delete", team.id)
+    assert w["colleague"].id in row.detail
+
+
+def test_instructor_deletes_a_students_only_team_audited_with_its_members(client, db_session, world):
+    w = world
+    team = Team(id=uuid.uuid4(), name="Mine", tenant_id=w["a"].id, exercise_id=w["ex"].id)
+    db_session.add(team)
+    db_session.flush()
+    db_session.add(TeamMembership(team_id=team.id, user_id=uuid.UUID(w["student"].id)))
+    db_session.flush()
+    act_as(w["instructor"])
+    assert client.delete(f"/teams/{team.id}").status_code == 204
+    [row] = _team_audits(db_session, w["instructor"], "delete", team.id)
+    assert w["student"].id in row.detail
 
 
 @pytest.mark.parametrize("caller", ["student", "observer"])
@@ -368,3 +415,177 @@ def test_admin_teams_unchanged(client, db_session, world):
     assert client.post(f"/teams/{tid}/members", params={"user_id": w["colleague"].id}).status_code == 201
     assert _team(client, w["other_ex"]).status_code == 201  # any exercise of the tenant
     assert _team(client, w["b_ex"]).status_code == 404
+
+
+# ── Rule (a): your own upcoming or running session; never into another's running one ──
+
+
+def _running(db, tenant_id, instructor, **kw):
+    evt = _book(db, tenant_id, instructor, state=EventState.active, **kw)
+    evt.start_time, evt.end_time = NOW - timedelta(hours=1), NOW + timedelta(hours=3)
+    db.flush()
+    return evt
+
+
+def test_two_instructors_same_course_past_one_has_no_scope_current_one_does(client, db_session, world):
+    w = world
+    course = _course(db_session, w["a"].id, "Shared class")
+    past = _book(db_session, w["a"].id, w["colleague"], course=course, state=EventState.completed)
+    past.start_time, past.end_time = NOW - timedelta(days=30), NOW - timedelta(days=29)
+    _book(db_session, w["a"].id, w["instructor"], course=course)  # upcoming
+    db_session.flush()
+    act_as(w["colleague"])
+    assert _enrol(client, course, w["student"]).status_code == 403
+    act_as(w["instructor"])
+    assert _enrol(client, course, w["student"]).status_code == 201
+
+
+def test_a_colleagues_running_session_is_409_for_enrolment_and_teams(client, db_session, world):
+    w = world
+    course = _course(db_session, w["a"].id, "Live class")
+    ex = real_exercise(db_session, w["a"].id)
+    _running(db_session, w["a"].id, w["colleague"], course=course, exercise=ex)
+    _book(db_session, w["a"].id, w["instructor"], course=course, exercise=ex)  # own, upcoming
+    ensure_enrollment(db_session, user_id=uuid.UUID(w["student"].id), course_id=course.id, tenant_id=w["a"].id)
+    team = Team(id=uuid.uuid4(), name="Their live team", tenant_id=w["a"].id, exercise_id=ex.id)
+    db_session.add(team)
+    db_session.flush()
+    act_as(w["instructor"])
+    r = _enrol(client, course, w["student2"])
+    assert r.status_code == 409 and "is running" in r.json()["detail"]
+    assert _withdraw(client, course, w["student"]).status_code == 409
+    assert _team(client, ex).status_code == 409
+    assert client.patch(f"/teams/{team.id}", json={"name": "x"}).status_code == 409
+    assert client.post(f"/teams/{team.id}/members", params={"user_id": w["student"].id}).status_code == 409
+    assert client.delete(f"/teams/{team.id}").status_code == 409
+    assert _row(db_session, w["student"], course).status == EnrollmentStatus.enrolled
+    # The colleague running it is not blocked by their own session; an admin never is.
+    act_as(w["colleague"])
+    assert _enrol(client, course, w["student2"]).status_code == 201
+    act_as(w["admin"])
+    assert _withdraw(client, course, w["student2"]).status_code == 200
+
+
+def test_mallorys_future_zero_resource_booking_cannot_touch_alices_live_run(client, db_session, world):
+    """The first review's PoC 1, through the real booking API."""
+    w = world
+    alice, mallory = w["instructor"], w["colleague"]
+    course = _course(db_session, w["a"].id, "Alice's class")
+    ex = real_exercise(db_session, w["a"].id, state=ExerciseState.running, started_at=NOW - timedelta(hours=1))
+    _running(db_session, w["a"].id, alice, course=course, exercise=ex)
+    db_session.add(Enrollment(user_id=uuid.UUID(w["student"].id), course_id=course.id, tenant_id=w["a"].id,
+                              source=ASSIGNED, status=EnrollmentStatus.in_progress, started_at=NOW))
+    team = Team(id=uuid.uuid4(), name="Alice's team", tenant_id=w["a"].id, exercise_id=ex.id)
+    db_session.add(team)
+    db_session.flush()
+
+    act_as(mallory)
+    year = NOW + timedelta(days=365)
+    r = client.post("/schedule/events", json={
+        "name": "mine now", "course_id": str(course.id), "exercise_id": str(ex.id),
+        "start_time": year.isoformat(), "end_time": (year + timedelta(hours=1)).isoformat()})
+    assert r.status_code == 201, r.text  # bookings stay self-service
+    assert _withdraw(client, course, w["student"]).status_code == 409
+    assert _enrol(client, course, w["student2"]).status_code == 409
+    assert client.patch(f"/teams/{team.id}", json={"name": "mine"}).status_code == 409
+    assert client.delete(f"/teams/{team.id}").status_code == 409
+    assert _row(db_session, w["student"], course).status == EnrollmentStatus.in_progress
+
+
+# ── Teams can't open a finished run's AAR (ADR 0005 §5) ──────────────────────
+
+
+def test_team_membership_cannot_grant_a_completed_runs_aar(client, db_session, world):
+    """The first review's PoC 2: book a completed exercise, team a Student onto it, read its AAR."""
+    from app.aar_access import took_part
+
+    w = world
+    ex = real_exercise(db_session, w["a"].id, state=ExerciseState.completed,
+                       started_at=NOW - timedelta(days=3), completed_at=NOW - timedelta(days=2))
+    old_team = Team(id=uuid.uuid4(), name="Old team", tenant_id=w["a"].id, exercise_id=ex.id)
+    db_session.add(old_team)
+    db_session.flush()
+    outsider = uuid.UUID(w["student2"].id)
+    assert not took_part(db_session, ex, outsider)
+
+    act_as(w["colleague"])
+    later = NOW + timedelta(days=300)
+    r = client.post("/schedule/events", json={
+        "name": "peek", "exercise_id": str(ex.id), "course_id": str(w["theirs"].id),
+        "start_time": later.isoformat(), "end_time": (later + timedelta(hours=1)).isoformat()})
+    assert r.status_code == 201, r.text
+    ensure_enrollment(db_session, user_id=outsider, course_id=w["theirs"].id, tenant_id=w["a"].id)
+    assert _team(client, ex).status_code == 409
+    assert client.post(f"/teams/{old_team.id}/members", params={"user_id": str(outsider)}).status_code == 409
+    act_as(w["admin"])  # nobody adds members to a finished run's team
+    assert client.post(f"/teams/{old_team.id}/members", params={"user_id": str(outsider)}).status_code == 409
+    db_session.expire_all()
+    assert not took_part(db_session, ex, outsider)
+
+
+def test_a_live_exercise_team_takes_only_the_sessions_enrolled_students(client, db_session, world):
+    """A booking of the exercise with no course has no class: an instructor teams nobody onto it."""
+    from app.aar_access import took_part
+
+    w = world
+    ex = real_exercise(db_session, w["a"].id)
+    _book(db_session, w["a"].id, w["colleague"], exercise=ex)  # no course
+    db_session.flush()
+    act_as(w["colleague"])
+    tid = _team(client, ex).json()["id"]
+    assert client.post(f"/teams/{tid}/members", params={"user_id": w["student"].id}).status_code == 403
+    db_session.expire_all()
+    assert not took_part(db_session, ex, uuid.UUID(w["student"].id))
+
+
+# ── Outcomes are not laundered ───────────────────────────────────────────────
+
+
+def test_failed_is_not_withdrawn_and_reopening_keeps_progress(client, db_session, world):
+    w = world
+    sid, s2 = uuid.UUID(w["student"].id), uuid.UUID(w["student2"].id)
+    db_session.add_all([
+        Enrollment(user_id=sid, course_id=w["mine"].id, tenant_id=w["a"].id, source=ASSIGNED,
+                   status=EnrollmentStatus.failed, completed_at=NOW, final_grade="F"),
+        Enrollment(user_id=s2, course_id=w["mine"].id, tenant_id=w["a"].id, source=ASSIGNED,
+                   status=EnrollmentStatus.in_progress, started_at=NOW - timedelta(days=1)),
+    ])
+    db_session.flush()
+    act_as(w["instructor"])
+    r = _withdraw(client, w["mine"], w["student"])
+    assert r.status_code == 409 and "failed" in r.json()["detail"]
+    # Re-enrolling a failed Student does not reset the outcome.
+    assert _enrol(client, w["mine"], w["student"]).json()["status"] == "failed"
+
+    assert _withdraw(client, w["mine"], w["student2"]).json()["status"] == "withdrawn"
+    assert _enrol(client, w["mine"], w["student2"]).json()["status"] == "in_progress"  # not reset to enrolled
+
+
+def test_a_withdrawn_enrolment_with_a_grade_is_not_reopened(client, db_session, world):
+    w = world
+    db_session.add(Enrollment(user_id=uuid.UUID(w["student"].id), course_id=w["mine"].id, tenant_id=w["a"].id,
+                              source=ASSIGNED, status=EnrollmentStatus.withdrawn, final_grade="D"))
+    db_session.flush()
+    act_as(w["admin"])
+    assert _enrol(client, w["mine"], w["student"]).json()["status"] == "withdrawn"
+
+
+# ── Team references stay in the tenant ───────────────────────────────────────
+
+
+@pytest.mark.parametrize("caller", ["admin", "instructor"])
+def test_team_ou_and_nation_must_be_valid_for_the_tenant(client, db_session, world, caller):
+    from app.models import Nation, OrganizationalUnit
+
+    w = world
+    b_ou = OrganizationalUnit(id=uuid.uuid4(), name="B unit", slug="b-unit", tenant_id=w["b"].id)
+    a_ou = OrganizationalUnit(id=uuid.uuid4(), name="A unit", slug="a-unit", tenant_id=w["a"].id)
+    nation = Nation(id=uuid.uuid4(), name="Testland", iso_alpha2="TQ", iso_alpha3="TQL")
+    db_session.add_all([b_ou, a_ou, nation])
+    db_session.flush()
+    act_as(w[caller])
+    base = {"name": "Refs", "exercise_id": str(w["ex"].id)}
+    assert client.post("/teams", json={**base, "ou_id": str(b_ou.id)}).status_code == 422
+    assert client.post("/teams", json={**base, "nation_id": str(uuid.uuid4())}).status_code == 422
+    r = client.post("/teams", json={**base, "ou_id": str(a_ou.id), "nation_id": str(nation.id)})
+    assert r.status_code == 201, r.text

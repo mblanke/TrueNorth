@@ -26,6 +26,19 @@ course production with a local-model fallback, and the cleanup of unsupported su
   LTI hand-off session for LTI-created Students; quiz/exercise launch targets; tool-config
   endpoint; staff deep linking after an explicit, browser-bound one-time link (closes the
   v1.0.0 limitation); LTI base URLs from one source (gap #6).
+- **Instructors set up their own class** (#200): new `enrollment:manage_own` and
+  `team:manage_own` (`user:update` not broadened). While their own Schedule session of a
+  course or exercise is upcoming or running, an instructor enrols and withdraws Students
+  (new `POST /courses/{id}/withdraw/{user_id}`, record kept) and creates and edits the
+  exercise's teams (`TeamFullIn.exercise_id`), with the session's enrolled Students only.
+  A colleague's running session of the same course or exercise is 409; past and completed
+  sessions grant nothing. New `GET /class-setup/mine`. Student progress and Team membership
+  gain the controls. Every change is audited.
+- **Records hold their outcomes** (#200): `completed` and `failed` enrolments are not
+  withdrawn; staff re-enrolling reopens only a withdrawn enrolment with no outcome (to
+  `in_progress` if it had started). Nobody adds members to a completed or cancelled
+  exercise's team (team membership opens its AAR). A team's `ou_id` and `nation_id` are
+  checked (422). Team edits and deletes are audited.
 
 ### ARC² Course Studio
 - Test-host gate auto-accept, recorded as `accepted_by: auto (test host)` and badged

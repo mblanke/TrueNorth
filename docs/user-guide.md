@@ -518,14 +518,17 @@ remove anyone. The API is `GET`/`POST /teams/{team_id}/members` and
 
 ### Setting up your own class (instructors)
 
-An instructor sets up the class they teach without an admin (#200). A class is yours when a
-session on the **Schedule** names you its instructor (a draft or cancelled session does
-not count):
+An instructor sets up the class they teach without an admin (#200). A class is yours while
+your own session of it on the **Schedule** is upcoming or running. Draft, cancelled,
+completed and past sessions do not count, and nothing can be changed while another
+instructor's session of the same course or exercise is running:
 
 1. **Students**: open **Student progress**, pick the course, choose a Student and click
-   **Enrol**. **Withdraw** takes a Student out of the class; their record is kept.
+   **Enrol**. **Withdraw** takes a Student out of the class; their record is kept. A
+   completed or failed result cannot be withdrawn.
 2. **Teams**: open **Team membership**. Under **Exercise you run**, pick the session's
-   exercise, name the team, click **Create team**, then add Students to it.
+   exercise, name the team, click **Create team**, then add Students to it. Enrol them on
+   the session's course first. A completed or cancelled exercise's teams cannot be changed.
 
 Other courses, standing teams and staff accounts stay an admin's. Every change is in the
 audit log under your name.

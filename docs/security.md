@@ -328,17 +328,29 @@ Complete role-to-permission mapping as defined in `rbac.py`:
 | `schedule:admin` | X (platform tenant only when `PLATFORM_TENANT_ID` is set) | | | | |
 
 **An instructor's own class (#200).** `enrollment:manage_own` and `team:manage_own` are
-scoped in `app/class_setup/scope.py`: an instructor *teaches* a course, or *runs* an
-exercise, when a live booking (state not `draft`, not `cancelled`) in their tenant names
-them its `instructor_id` and that `course_id` / `exercise_id`. Courses and exercises have no
-owner column; the calendar is the only record of who teaches what. On those they enrol and
-withdraw Students, and create, edit and delete the exercise's teams and their Student
-members. Another course or exercise, a standing team (no exercise) and any staff target are
-403; another tenant's course, exercise, team or person is 404. Every change is audited
-(`enrollment_create`, `enrollment_update`, `enrollment_withdraw`; team `create`, `update`,
-`delete`, `add_member`, `remove_member`). An instructor can book themselves (`schedule:write`),
-so within the tenant the booking is a recorded, visible assignment rather than a hard wall;
-the tenant is the hard wall. `user:update` (admins) is unchanged.
+scoped in `app/class_setup/scope.py` (rule (a)). An instructor *teaches* a course, or
+*runs* an exercise, only while their **own** booking of it is upcoming or running: it names
+them its `instructor_id`, it has not ended, and it is not `draft`, `cancelled` or
+`completed`. A past or completed booking grants nothing. While **another** booking of the
+same course or exercise is running (not theirs, including one with no instructor), every
+change is refused with 409. Courses and exercises have no owner column; the calendar is the
+only record of who teaches what, and bookings stay self-service (`schedule:write`), so the
+running guard is what keeps a self-made booking out of a colleague's live class.
+
+Within scope an instructor enrols and withdraws Students, and creates, edits and deletes the
+exercise's teams. Team members must be Students enrolled by staff (still active) in the
+course of the instructor's own session of that exercise, because team membership opens the
+exercise's after-action report (`aar_access.took_part`, ADR 0005 §5). Nobody, admins
+included, adds members to the team of a `completed` or `cancelled` exercise (409). An
+instructor cannot delete a team with staff on it, withdraw a `completed` or `failed`
+enrolment (409), or reset an outcome by re-enrolling: only a withdrawn enrolment with no
+completion and no grade reopens, to `in_progress` if it had started. A team's `ou_id` must
+be an OU of the caller's tenant and `nation_id` a known nation (422). Another course or
+exercise, a standing team (no exercise) and any staff target are 403; another tenant's
+course, exercise, team or person is 404. Every change is audited (`enrollment_create`,
+`enrollment_update`, `enrollment_withdraw`; team `create`, `update`, `delete` with the
+members removed, `add_member`, `remove_member`). `user:update` (admins) is unchanged apart
+from the finished-exercise and team-reference checks.
 
 **Platform-shared curriculum.** The QSP qualification spine (`/qsp/import-crosswalk`,
 `/qsp/import-competency-crosswalk`) and the competency catalogue (`POST

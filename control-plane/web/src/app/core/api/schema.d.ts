@@ -718,8 +718,10 @@ export interface paths {
         };
         /**
          * My Classes
-         * @description The courses you teach and the exercises you run: a live booking (not draft, not
-         *     cancelled) in your tenant names you its instructor (app/class_setup/scope.py).
+         * @description The courses you teach and the exercises you run: your own upcoming or running booking
+         *     (not ended; not draft, cancelled or completed) in your tenant names you its instructor
+         *     (app/class_setup/scope.py). A change is still refused (409) while another instructor's
+         *     session of the same course or exercise is running.
          *
          *     **Permission: enrollment:manage_own or team:manage_own**
          */
@@ -1568,11 +1570,13 @@ export interface paths {
          * @description Enroll a user in a course: a Student's self-enrolment, or staff enrolling someone.
          *
          *     Enrolling someone *other* than yourself needs ``user:update`` (an admin: anyone in the
-         *     tenant) or ``enrollment:manage_own`` (an instructor: a Student of the tenant, on a course
-         *     they teach, i.e. a live booking names them its instructor; app/class_setup/scope.py).
-         *     Another tenant's person is 404; a course you do not teach, or staff, is 403. Enrolling
-         *     someone else is audited (``enrollment_create`` / ``enrollment_update``) and reopens their
-         *     withdrawn enrolment; your own withdrawn enrolment stays withdrawn.
+         *     tenant) or ``enrollment:manage_own`` (an instructor: a Student of the tenant, on the
+         *     course of their own upcoming or running session; app/class_setup/scope.py). Another
+         *     tenant's person is 404; a course you do not teach, or staff, is 403; while another
+         *     instructor's session of the course is running, 409. Enrolling someone else is audited
+         *     (``enrollment_create`` / ``enrollment_update``) and reopens their withdrawn enrolment if
+         *     it has no outcome (to ``in_progress`` if it had started); your own withdrawn enrolment
+         *     stays withdrawn. A ``failed`` or ``in_progress`` outcome is never reset.
          *     The server decides eligibility, whatever the client shows:
          *
          *     - the course is in the caller's catalogue: their tenant's, or a global (shared) one —
@@ -1690,9 +1694,10 @@ export interface paths {
          *     in the class's exercises, labs or launches. Enrolling them again reopens it.
          *
          *     **Permission: user:update** (anyone in the tenant) **or enrollment:manage_own** (a
-         *     Student of the tenant, on a course you teach). Another tenant's course or person: 404;
-         *     no enrolment: 404; a completed one: 409 (it is the Student's record). Audited
-         *     (``enrollment_withdraw``). Withdrawing again answers the withdrawn row unchanged.
+         *     Student of the tenant, on the course of your own upcoming or running session; 409 while
+         *     another instructor's session of it runs). Another tenant's course or person: 404; no
+         *     enrolment: 404; a completed or failed one: 409 (an outcome is the Student's record).
+         *     Audited (``enrollment_withdraw``). Withdrawing again answers the withdrawn row unchanged.
          */
         post: operations["withdraw_enrollment_courses__course_id__withdraw__user_id__post"];
         delete?: never;
@@ -6864,9 +6869,11 @@ export interface paths {
          * Create Team
          * @description Create a team with full schema (type, color, max_members, etc).
          *
-         *     **Permission: user:update, or team:manage_own** with ``exercise_id`` naming an exercise
-         *     you run (a live booking names you its instructor; app/class_setup/scope.py). Another
-         *     tenant's exercise is 404; an exercise you do not run, or no exercise, is 403.
+         *     **Permission: user:update, or team:manage_own** with ``exercise_id`` naming the exercise
+         *     of your own upcoming or running session (app/class_setup/scope.py). Another tenant's
+         *     exercise is 404; an exercise you do not run, or no exercise, is 403; a completed or
+         *     cancelled exercise, or another instructor's running session of it, is 409. ``ou_id``
+         *     must be an OU of your tenant and ``nation_id`` a known nation (422).
          */
         post: operations["create_team_teams_post"];
         delete?: never;
@@ -6888,7 +6895,8 @@ export interface paths {
         /**
          * Delete Team
          * @description Delete a team and its memberships.  **Permission: user:update, or team:manage_own**
-         *     for a team of an exercise you run.
+         *     for a team of an exercise you run that has only Students on it (staff on a team are an
+         *     admin's to move: 403). Audited (``delete``, with the members removed).
          */
         delete: operations["delete_team_teams__team_id__delete"];
         options?: never;
@@ -6923,7 +6931,9 @@ export interface paths {
         /**
          * Add Team Member
          * @description Add a user to a team.  **Permission: user:update** (anyone in the tenant), **or
-         *     team:manage_own** (a Student, to a team of an exercise you run).
+         *     team:manage_own** (a Student enrolled in your session's course, to a team of an
+         *     exercise you run). Never to a completed or cancelled exercise's team (409): membership
+         *     opens that run's after-action report.
          */
         post: operations["add_team_member_teams__team_id__members_post"];
         delete?: never;
@@ -18620,7 +18630,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Already enrolled: the existing enrolment, unchanged */
+            /** @description Already enrolled: the existing enrolment. Unchanged, except when staff enrol someone else: a self-enrolment becomes assigned, and a withdrawn enrolment with no outcome (no completion, no grade) is reopened, to in_progress if it had started, else enrolled */
             200: {
                 headers: {
                     [name: string]: unknown;

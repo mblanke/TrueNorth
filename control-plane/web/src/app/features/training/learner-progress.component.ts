@@ -99,7 +99,7 @@ interface Opened {
               </button>
             </form>
           } @else if (managesOwn()) {
-            <p class="muted">You enrol Students only on a course you teach (a session booked with you as instructor).</p>
+            <p class="muted">You enrol Students only on a course you teach: one of your own upcoming or running sessions on the Schedule.</p>
           }
           @if (outcome()) { <p class="outcome" role="status" aria-live="polite">{{ outcome() }}</p> }
           @if (usersError()) { <p class="muted">{{ usersError() }}</p> }

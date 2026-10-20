@@ -26,8 +26,10 @@ _Not to be confused with_: Admin. An Instructor can see platform health but cann
 reconfigure infrastructure.
 
 **Teaches** (a course) / **runs** (an exercise):
-A live booking (not draft, not cancelled) in the instructor's tenant names them its
-instructor and that course or exercise (`control-plane/api/app/class_setup/scope.py`).
+The instructor's own booking of that course or exercise is upcoming or running: it names
+them its instructor, has not ended, and is not draft, cancelled or completed
+(`control-plane/api/app/class_setup/scope.py`). A past class grants nothing, and nothing is
+changed while another instructor's session of it is running.
 Courses and exercises have no owner of their own; the calendar is the record.
 _Not to be confused with_: authored (`course:author` is tenant-wide), or booked by
 (`created_by`: an admin may book a session for an instructor).

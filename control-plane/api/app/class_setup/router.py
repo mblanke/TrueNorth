@@ -41,8 +41,10 @@ def my_classes(
         require_any_permission(Permission.ENROLLMENT_MANAGE_OWN, Permission.TEAM_MANAGE_OWN)
     ),
 ) -> MyClassesOut:
-    """The courses you teach and the exercises you run: a live booking (not draft, not
-    cancelled) in your tenant names you its instructor (app/class_setup/scope.py).
+    """The courses you teach and the exercises you run: your own upcoming or running booking
+    (not ended; not draft, cancelled or completed) in your tenant names you its instructor
+    (app/class_setup/scope.py). A change is still refused (409) while another instructor's
+    session of the same course or exercise is running.
 
     **Permission: enrollment:manage_own or team:manage_own**
     """

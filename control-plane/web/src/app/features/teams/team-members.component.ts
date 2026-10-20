@@ -225,7 +225,10 @@ export class TeamMembersComponent implements OnInit {
   });
   readonly subtitle = computed(() => {
     if (this.isAdmin()) return '';
-    if (this.managesOwn()) return 'You change the teams of the exercises you run; the others are read-only.';
+    if (this.managesOwn()) {
+      return 'You change the teams of the exercises of your upcoming or running sessions, with the Students '
+        + 'enrolled in their course; the others are read-only.';
+    }
     return 'Read-only for your role.';
   });
   /** Active people not on the team; an instructor places Students only, as the API requires. */

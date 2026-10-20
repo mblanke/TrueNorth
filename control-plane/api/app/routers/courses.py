@@ -539,7 +539,11 @@ def _existing_enrollment(db: Session, user_id: uuid.UUID, course_id: uuid.UUID) 
     "/{course_id}/enroll",
     response_model=EnrollmentOut,
     status_code=status.HTTP_201_CREATED,
-    responses={200: {"model": EnrollmentOut, "description": "Already enrolled: the existing enrolment, unchanged"}},
+    responses={200: {"model": EnrollmentOut, "description": (
+        "Already enrolled: the existing enrolment. Unchanged, except when staff enrol someone else: "
+        "a self-enrolment becomes assigned, and a withdrawn enrolment with no outcome (no completion, "
+        "no grade) is reopened, to in_progress if it had started, else enrolled"
+    )}},
 )
 def enroll_user(
     course_id: uuid.UUID,
@@ -551,11 +555,13 @@ def enroll_user(
     """Enroll a user in a course: a Student's self-enrolment, or staff enrolling someone.
 
     Enrolling someone *other* than yourself needs ``user:update`` (an admin: anyone in the
-    tenant) or ``enrollment:manage_own`` (an instructor: a Student of the tenant, on a course
-    they teach, i.e. a live booking names them its instructor; app/class_setup/scope.py).
-    Another tenant's person is 404; a course you do not teach, or staff, is 403. Enrolling
-    someone else is audited (``enrollment_create`` / ``enrollment_update``) and reopens their
-    withdrawn enrolment; your own withdrawn enrolment stays withdrawn.
+    tenant) or ``enrollment:manage_own`` (an instructor: a Student of the tenant, on the
+    course of their own upcoming or running session; app/class_setup/scope.py). Another
+    tenant's person is 404; a course you do not teach, or staff, is 403; while another
+    instructor's session of the course is running, 409. Enrolling someone else is audited
+    (``enrollment_create`` / ``enrollment_update``) and reopens their withdrawn enrolment if
+    it has no outcome (to ``in_progress`` if it had started); your own withdrawn enrolment
+    stays withdrawn. A ``failed`` or ``in_progress`` outcome is never reset.
     The server decides eligibility, whatever the client shows:
 
     - the course is in the caller's catalogue: their tenant's, or a global (shared) one —
@@ -592,9 +598,9 @@ def enroll_user(
         if source == ASSIGNED and existing.source != ASSIGNED:
             ensure_enrollment(db, user_id=body.user_id, course_id=course_id, tenant_id=user.tenant_id, source=source)
             changed.append("now assigned")
-        if other and existing.status == EnrollmentStatus.withdrawn:
-            existing.status = EnrollmentStatus.enrolled  # staff putting a withdrawn Student back
-            changed.append("withdrawn -> enrolled")
+        if other and _reopenable(existing):  # staff putting a withdrawn Student back
+            existing.status = EnrollmentStatus.in_progress if existing.started_at else EnrollmentStatus.enrolled
+            changed.append(f"withdrawn -> {existing.status.value}")
         if changed:
             class_scope.audit(db, user, "enrollment_update", "enrollment", str(existing.id),
                               f"course {course_id} for user {body.user_id}: {', '.join(changed)}")
@@ -627,6 +633,15 @@ def enroll_user(
     return enrollment
 
 
+def _reopenable(enrollment: Enrollment) -> bool:
+    """Withdrawn, with no outcome on record (never completed, never graded)."""
+    return (
+        enrollment.status == EnrollmentStatus.withdrawn
+        and enrollment.completed_at is None
+        and not enrollment.final_grade
+    )
+
+
 def _may_enrol_others(user: CurrentUser) -> bool:
     return user_has_permission(user, Permission.USER_UPDATE) or user_has_permission(
         user, Permission.ENROLLMENT_MANAGE_OWN
@@ -646,9 +661,10 @@ def withdraw_enrollment(
     in the class's exercises, labs or launches. Enrolling them again reopens it.
 
     **Permission: user:update** (anyone in the tenant) **or enrollment:manage_own** (a
-    Student of the tenant, on a course you teach). Another tenant's course or person: 404;
-    no enrolment: 404; a completed one: 409 (it is the Student's record). Audited
-    (``enrollment_withdraw``). Withdrawing again answers the withdrawn row unchanged.
+    Student of the tenant, on the course of your own upcoming or running session; 409 while
+    another instructor's session of it runs). Another tenant's course or person: 404; no
+    enrolment: 404; a completed or failed one: 409 (an outcome is the Student's record).
+    Audited (``enrollment_withdraw``). Withdrawing again answers the withdrawn row unchanged.
     """
     course = get_owned_or_global(db, Course, course_id, user, not_found="Course not found")
     class_scope.authorize_enrolment_of_other(db, user, course, user_id)
@@ -656,8 +672,11 @@ def withdraw_enrollment(
     enrollment = _existing_enrollment(db, user_id, course_id)
     if enrollment is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Enrollment not found")
-    if enrollment.status == EnrollmentStatus.completed:
-        raise HTTPException(status.HTTP_409_CONFLICT, "The course is completed; a completed record is not withdrawn")
+    if enrollment.status in (EnrollmentStatus.completed, EnrollmentStatus.failed):
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"The course is {enrollment.status.value}; an outcome is the Student's record and is not withdrawn",
+        )
     if enrollment.status != EnrollmentStatus.withdrawn:
         previous = enrollment.status.value
         enrollment.status = EnrollmentStatus.withdrawn
