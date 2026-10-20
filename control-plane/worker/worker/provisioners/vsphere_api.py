@@ -2177,10 +2177,18 @@ class VsphereAPIProvisioner(BaseProvisioner):
             try:
                 for v in products:
                     info = (v.get("role_setup") or {}).get("reconcile") or {}
-                    if (expired := vsphere_products.timed_out(info)) is not None:
-                        changes[v["name"]] = {"role_setup": expired, "role": info.get("role", "")}
-                        continue  # past the timeout: no guest operation (VM may be off or unreachable)
                     secret = domain_passwords.get(info.get("dc_node"))
+                    if (expired := vsphere_products.timed_out(info)) is not None:
+                        # Terminal whether or not the VM answers; then, if it does, delete any
+                        # secret file the setup left (bounded, best effort).
+                        changes[v["name"]] = {"role_setup": expired, "role": info.get("role", "")}
+                        if secret and v["vm_id"] not in missing and (deadline := vm_deadline()) is not None:
+                            creds = guest.GuestCredentials("windows", f"{info['netbios']}\\Administrator",
+                                                           guest.Secret(secret))
+                            vsphere_products.cleanup(guest.GuestSession(
+                                si.content, self._vm(si, v["vm_id"]), creds, poll=self._guest_poll),
+                                min(deadline, time.monotonic() + 30))
+                        continue
                     if v["vm_id"] in missing or not secret or (deadline := vm_deadline()) is None:
                         if not secret:
                             warnings.append(f"VM {v['name']}: cannot reconcile {info.get('role')}: no Administrator "
@@ -2195,11 +2203,16 @@ class VsphereAPIProvisioner(BaseProvisioner):
                         changes[v["name"]] = {"role_setup": res, "role": info.get("role", "")}
                 for v in sos:
                     info = (v.get("securityonion") or {}).get("reconcile") or {}
+                    login = so_logins.get(info.get("node"))
                     if (expired := seconion.timed_out(info)) is not None:
                         changes[v["name"]] = {"securityonion": expired, "accounts_applied": [],
                                               "node": info.get("node")}
-                        continue  # past the timeout: no guest operation
-                    login = so_logins.get(info.get("node"))
+                        if login and v["vm_id"] not in missing and (deadline := vm_deadline()) is not None:
+                            install = guest.GuestCredentials("linux", login[0], guest.Secret(login[1]))
+                            seconion.cleanup(guest.GuestSession(si.content, self._vm(si, v["vm_id"]), install,
+                                                                poll=self._guest_poll),
+                                             install, min(deadline, time.monotonic() + 30))
+                        continue
                     if login is None or v["vm_id"] in missing or (deadline := vm_deadline()) is None:
                         continue
                     vm_ref = self._vm(si, v["vm_id"])

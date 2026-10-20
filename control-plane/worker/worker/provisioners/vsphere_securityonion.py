@@ -736,6 +736,18 @@ def timed_out(info: dict, *, epoch: Callable[[], float] | None = None) -> dict |
             "detail": f"not healthy within VSPHERE_SO_SETUP_TIMEOUT; see {STATUS_FILE} and {RUNNER_LOG} in the guest"}
 
 
+def cleanup(session, install: guest.GuestCredentials, deadline: float) -> bool:
+    """Best effort, bounded, for a terminal reconcile (timeout): remove the answer file (it
+    holds the SOC web password) if setup never got as far as removing it. Never raises."""
+    try:
+        session.wait_ready(deadline)
+        result, _ = session.run(as_root("so-cleanup", f"rm -f {ANSWERS_FILE}", install),
+                                max(deadline, session._clock() + 60))
+    except Exception:  # noqa: BLE001 -- unreachable: nothing to clean from here
+        return False
+    return result == "ok"
+
+
 def _login_works(session_for, username: str, password: guest.Secret, stop: float) -> bool:
     """Whether a guest-operations login as ``username`` with ``password`` is accepted."""
     try:

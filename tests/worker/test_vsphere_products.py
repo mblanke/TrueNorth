@@ -33,6 +33,9 @@ def _decode(arguments: str) -> str:
     return base64.b64decode(arguments.rsplit(" ", 1)[1]).decode("utf-16-le")
 
 
+DENIED = b"\x00access-denied"  # a fake file the domain Administrator may not read
+
+
 def eval_poll_script(script: str, files: dict[str, bytes]) -> int:
     """The exit code the REAL status-read script gives against a guest filesystem, read from
     the script's own text (no PowerShell here or in CI): its missing-file branch, the status
@@ -43,6 +46,10 @@ def eval_poll_script(script: str, files: dict[str, bytes]) -> int:
     path, missing = m.group(1), int(m.group(2))
     if path not in files:
         return missing
+    if files[path] == DENIED:  # the file is there but reading it is refused
+        denied = re.search(r"catch \[System\.UnauthorizedAccessException\] \{ exit (\d+) \}", script)
+        assert denied, "the status-read script does not tell an access-denied read apart"
+        return int(denied.group(1))
     if num := re.match(r"^\s*(\d+)", files[path].decode("utf-8", "replace")):
         return int(num.group(1))
     return int(re.findall(r"exit (\d+)", script)[-1])
@@ -57,13 +64,15 @@ class FakeSession:
     (never command lines) are kept in ``files``."""
 
     def __init__(self, codes: dict | None = None, status=None, raise_on: str = "", started: bool = False,
-                 clock=None, raise_status: int = 0):
+                 clock=None, raise_status: int = 0, timeouts=(), raw_status=None):
         self.vm = SimpleNamespace(name="r-exch", guest=SimpleNamespace(toolsRunningStatus="guestToolsRunning"))
         self.creds = None
         self.codes = {k: list(v) for k, v in (codes or {}).items()}
         self.status = list(status) if status is not None else []
         self.raise_on = raise_on
         self.raise_status = raise_status
+        self.timeouts = set(timeouts)  # labels whose guest command times out (and is killed)
+        self.raw_status = list(raw_status) if raw_status is not None else None  # exit codes not from the script
         self.started = started
         self.ran: list[tuple[str, str]] = []  # (label, script)
         self.files: dict[str, bytes] = {}
@@ -101,6 +110,11 @@ class FakeSession:
         self.ran.append((cmd.label, script))
         if self.raise_on and self.raise_on == cmd.label:
             raise RuntimeError(f"guest ops refused for {DC_PASSWORD} and {KEY}")
+        if cmd.label in self.timeouts:
+            return "timeout", None  # killed: its own finally never ran
+        if cmd.label == "role-setup-status" and self.raw_status:
+            code = self.raw_status.pop(0) if len(self.raw_status) > 1 else self.raw_status[0]
+            return ("ok" if code in cmd.ok_codes else "failed"), code
         if cmd.label == "role-setup-status":
             if self.raise_status > 0:
                 self.raise_status -= 1
@@ -300,7 +314,7 @@ def test_a_status_read_hiccup_is_retried_not_taken_as_already_running():
     assert out["status"] == "running" and s.detached  # started once the read worked
     s = FakeSession(raise_status=10_000)
     out = vp.run(_session_for(s), _plan(), 200, 200, build_wait=0, poll=30)
-    assert out["status"] == "failed" and "status file" in out["detail"] and not s.detached
+    assert out["status"] == "skipped" and "status file" in out["detail"] and not s.detached  # never "failed"
 
 
 def test_a_failed_start_removes_the_uploaded_secrets():
@@ -308,6 +322,56 @@ def test_a_failed_start_removes_the_uploaded_secrets():
     out = vp.run(_session_for(s), _plan("sharepoint"), 10_000, 10_000, build_wait=0, poll=1)
     assert out["status"] == "failed" and "could not start" in out["detail"]
     assert "role-setup-cleanup" in s.labels() and vp.SECRETS_FILE not in s.files
+
+
+def test_a_timed_out_join_removes_the_password_file():
+    s = FakeSession(timeouts={"domain-join"})
+    out = vp.prepare(_session_for(s), _plan(), 100)
+    assert out["status"] == "failed" and "timeout" in out["detail"]
+    assert "role-setup-cleanup" in s.labels() and vp.JOIN_SECRET not in s.files
+
+
+@pytest.mark.parametrize("code", [31, 1])
+def test_a_failed_join_exit_removes_the_password_file(code):
+    s = FakeSession({"domain-join": [code]})
+    vp.prepare(_session_for(s), _plan(), 100)
+    assert "role-setup-cleanup" in s.labels() and vp.JOIN_SECRET not in s.files
+
+
+def test_an_unprotected_state_folder_gets_no_secret():
+    s = FakeSession({"role-setup-init": [34]})
+    out = vp.prepare(_session_for(s), _plan(), 100)
+    assert out["status"] == "failed" and "icacls" in out["detail"]
+    assert not s.uploads and "domain-join" not in s.labels()
+    init = _decode(vp.init_command().arguments)
+    assert init.index("icacls.exe") < init.index("if ($LASTEXITCODE -ne 0) { exit 34 }") < init.index("Remove-Item")
+
+
+@pytest.mark.parametrize("raw", [1, 0xC000013A, 77])
+def test_an_exit_code_the_script_never_gives_is_unknown_not_a_result(raw):
+    # Not a status: never "failed", never "already in progress"; retried until the deadline.
+    s = FakeSession(raw_status=[raw])
+    out = vp.run(_session_for(s), _plan(), 200, 200, build_wait=0, poll=30)
+    assert out["status"] == "skipped" and "could not read" in out["detail"] and not s.detached
+    assert vp.reconcile(FakeSession(raw_status=[raw], started=True), _info(), epoch=lambda: 10.0) is None
+
+
+def test_an_unreadable_status_file_is_a_clear_uac_warning():
+    s = FakeSession()
+    s.files[vp.STATUS_FILE] = DENIED
+    assert eval_poll_script(_decode(vp.poll_command().arguments), s.files) == vp.STATUS_UNREADABLE
+    out = vp.run(_session_for(s), _plan(), 10_000, 10_000, build_wait=0, poll=1)
+    assert out["status"] == "failed" and "UAC" in out["detail"] and not s.detached
+    rec = FakeSession(started=False)
+    rec.files[vp.STATUS_FILE] = DENIED
+    res = vp.reconcile(rec, _info(), epoch=lambda: 10.0)
+    assert res["status"] == "failed" and "access denied" in res["detail"]
+
+
+def test_a_terminal_timeout_cleans_up_when_the_guest_answers():
+    s = FakeSession(started=True)
+    s.files[vp.SECRETS_FILE] = b"{}"
+    assert vp.cleanup(s, 100) is True and vp.SECRETS_FILE not in s.files
 
 
 def test_a_failed_join_removes_the_password_file():
@@ -431,7 +495,7 @@ def test_an_earlier_start_is_never_repeated():
 
 
 @pytest.mark.parametrize("code, text", [(12, "Exchange /Mode:Install failed"), (18, "ConfigMgr prerequisite"),
-                                        (20, "stopped unexpectedly"), (77, "status 77")])
+                                        (20, "stopped unexpectedly")])
 def test_a_runner_failure_is_reported(code, text):
     out = vp.run(_session_for(FakeSession(status=[3, code])), _plan(), 10_000, 10_000, build_wait=100, poll=1)
     assert out["status"] == "failed" and text in out["detail"]
@@ -462,7 +526,7 @@ def test_reconcile_finalises_ok_and_cleans_up():
     assert "role-setup-cleanup" in s.labels()
 
 
-@pytest.mark.parametrize("code, text", [(12, "Exchange /Mode:Install failed"), (77, "status 77")])
+@pytest.mark.parametrize("code, text", [(12, "Exchange /Mode:Install failed"), (20, "stopped unexpectedly")])
 def test_reconcile_finalises_failure(code, text):
     out = vp.reconcile(FakeSession(status=[code], started=True), _info(), epoch=lambda: 10.0)
     assert out["status"] == "failed" and text in out["detail"]

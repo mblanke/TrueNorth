@@ -473,7 +473,11 @@ course production with a local-model fallback, and the cleanup of unsupported su
     site-wide default password, and marks accounts applied in the same transaction as the
     guarded output write. Security Onion: the web login is recorded under its declared
     username, and an admin that is the install login gets its declared password (chpasswd)
-    first; an admin is applied only once a login with its declared password works.
+    first; an admin is applied only once a login with its declared password works. Secrets
+    are cleaned up on every non-ok path (a timed-out, killed join included) and on a terminal
+    reconcile when the guest answers; the state folder must lock down (icacls) before any
+    secret is written; a status read that is denied (exit 201, likely a UAC-filtered token) is
+    reported as such, and any exit code the script never gives is retried, never a result.
   - **Cross-range isolation of the domain admin.** A range with a product role image gets a
     per-range *generated* Administrator for the product VM and the domain controllers when the
     template declares none (the credential service, #183; staff-visible, sealed), instead of

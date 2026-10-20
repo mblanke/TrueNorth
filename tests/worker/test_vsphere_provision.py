@@ -1562,6 +1562,28 @@ class TestProductSetup:
         assert changes[f"{R8}-exch"]["role_setup"]["status"] == "timeout"
         assert changes[f"{R8}-so"]["securityonion"]["status"] == "timeout"
 
+    def test_a_terminal_timeout_still_cleans_up_secrets_when_the_guest_answers(self, vc, monkeypatch):
+        prov = _prov(vc)
+        for vid in ("vm-exch", "vm-so"):
+            vc.vms[vid] = FakeVM(vid, [])
+        cleaned = []
+
+        async def screen(range_id, vms):
+            return [], [], set()
+
+        monkeypatch.setattr(prov, "_screen", screen)
+        monkeypatch.setattr(products_mod, "cleanup",
+                            lambda session, deadline: cleaned.append(("product", session.creds.username, deadline)))
+        monkeypatch.setattr(so_mod, "cleanup",
+                            lambda session, install, deadline: cleaned.append(("so", install.username, deadline)))
+        changes, _ = _run(prov.reconcile_setups(
+            RANGE_ID, self._running_output(0.0), domain_passwords={"dc01": "Dc-Pass-1!"},
+            so_logins={"seconion01": ("soadmin", "So-Pass-1!", "")}))
+        assert changes[f"{R8}-exch"]["role_setup"]["status"] == "timeout"
+        assert changes[f"{R8}-so"]["securityonion"]["status"] == "timeout"
+        assert [(k, u) for k, u, _ in cleaned] == [("product", "CORP\\Administrator"), ("so", "soadmin")]
+        assert all(d - mod.time.monotonic() <= 30 for _, _, d in cleaned)  # bounded
+
     def test_reconcile_setups_warns_when_a_dc_admin_is_undeclared(self, vc, monkeypatch):
         prov = _prov(vc)
         vc.vms["vm-exch"] = FakeVM("vm-exch", [])

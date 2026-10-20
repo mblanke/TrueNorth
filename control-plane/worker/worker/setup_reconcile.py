@@ -42,7 +42,14 @@ LIVE_STATES = LIVE_RANGE_STATES
 RANGE_SECONDS = float(os.getenv("SETUP_RECONCILE_RANGE_SECONDS", "240"))
 RUN_SECONDS = float(os.getenv("SETUP_RECONCILE_RUN_SECONDS", "1200"))
 LOCK_KEY = "truenorth:setup-reconcile:lock"
-LOCK_SECONDS = int(RUN_SECONDS) + 300  # outlives a run; a dead worker's lock expires
+LOCK_MARGIN = 300
+
+
+def lock_ttl() -> int:
+    """The lock outlives the longest a run can last: the task's soft time limit (and RUN_SECONDS),
+    plus a margin, so a slow run never loses it to the next beat; a dead worker's lock expires."""
+    soft = app.conf.task_soft_time_limit or 0
+    return int(max(soft, RUN_SECONDS)) + LOCK_MARGIN
 
 
 @contextmanager
@@ -58,12 +65,12 @@ def _single_run(redis_client=None):
 
             from .tasks import REDIS_URL
             client = redis.Redis.from_url(REDIS_URL, socket_timeout=5)
-            acquired = bool(client.set(LOCK_KEY, token, nx=True, ex=LOCK_SECONDS))
+            acquired = bool(client.set(LOCK_KEY, token, nx=True, ex=lock_ttl()))
         except Exception as exc:  # noqa: BLE001
             logger.warning("[reconcile] no lock (%s); running without it", type(exc).__name__)
             client, acquired = None, True
     else:
-        acquired = bool(client.set(LOCK_KEY, token, nx=True, ex=LOCK_SECONDS))
+        acquired = bool(client.set(LOCK_KEY, token, nx=True, ex=lock_ttl()))
     try:
         yield acquired
     finally:
@@ -101,11 +108,16 @@ def _domain_passwords(declared: dict, products: list[dict]) -> dict:
     return out
 
 
-def _so_logins(declared: dict, sos: list[dict], env: dict) -> dict:
-    """Security Onion node id -> (install user, install password, declared admin password or
-    ""): the template build login from the environment, else the machine's declared admin
-    account; the admin's declared password is what the reconcile sets and verifies."""
+def _so_logins(declared: dict, sos: list[dict], env: dict) -> tuple[dict, list[str]]:
+    """(Security Onion node id -> (install user, install password, declared admin password or
+    ""), warnings). The template build login from the environment, else the machine's declared
+    admin account; the admin's declared password is what the reconcile sets and verifies.
+
+    When the admin is the build login itself (``admin_last``) its password is still the build
+    one until the reconcile changes it, so the declared password cannot log in: without
+    VSPHERE_SO_INSTALL_* on this worker that node is skipped with a warning, never tried."""
     out: dict[str, tuple[str, str, str]] = {}
+    warnings: list[str] = []
     for v in sos:
         info = v["securityonion"]["reconcile"]
         node = str(info.get("node") or "")
@@ -113,8 +125,32 @@ def _so_logins(declared: dict, sos: list[dict], env: dict) -> dict:
         admin_pw = admin.password.reveal() if admin is not None else ""
         if info.get("install_from_env") and env.get("VSPHERE_SO_INSTALL_USER") and env.get("VSPHERE_SO_INSTALL_PASSWORD"):
             out[node] = (env["VSPHERE_SO_INSTALL_USER"], env["VSPHERE_SO_INSTALL_PASSWORD"], admin_pw)
+        elif info.get("admin_last"):
+            warnings.append(f"VM {v.get('name')}: Security Onion reconcile skipped: its admin is the build login, "
+                            "and VSPHERE_SO_INSTALL_USER / VSPHERE_SO_INSTALL_PASSWORD are not set on this worker")
         elif admin is not None:
             out[node] = (admin.username, admin_pw, admin_pw)
+    return out, warnings
+
+
+def _expired(products: list[dict], sos: list[dict], now: float) -> dict:
+    """Terminal ``timeout`` changes for every running setup past its timeout, worked out from
+    the stored record alone: no backend, vCenter connection or guest operation, so an
+    unreachable vCenter or a screening refusal still ends them."""
+    out: dict[str, dict] = {}
+    for key, vms in (("role_setup", products), ("securityonion", sos)):
+        for v in vms:
+            info = v[key]["reconcile"]
+            timeout = float(info.get("timeout") or 0)
+            if timeout and now - float(info.get("since") or 0) > timeout:
+                change = {key: {"status": "timeout", "detail": f"not finished within its setup timeout "
+                                                                f"({int(timeout)}s); see {info.get('status_file', '')} "
+                                                                "in the guest"}}
+                if key == "role_setup":
+                    change["role"] = info.get("role", "")
+                else:
+                    change.update(accounts_applied=[], node=info.get("node"))
+                out[v["name"]] = change
     return out
 
 
@@ -138,6 +174,12 @@ def _merge(output: dict, changes: dict) -> tuple[dict, list[dict]]:
                 vm.setdefault("roles", {})[role] = {"status": change["role_setup"]["status"],
                                                     "detail": change["role_setup"]["detail"]}
         if "securityonion" in change:
+            info = (vm.get("securityonion") or {}).get("reconcile") or {}
+            admin = info.get("admin_user")
+            if info.get("admin_last") and admin and admin in (change.get("accounts_applied") or []):
+                # The reconcile gave the admin (the build login) its declared password.
+                warnings = [w for w in warnings if not (w.startswith(f"VM {vm.get('name')}: ")
+                                                        and f"admin account {admin} (also the build login)" in w)]
             vm["securityonion"] = {**(vm.get("securityonion") or {}), **change["securityonion"]}
             vm["securityonion"].pop("reconcile", None)
             if change.get("accounts_applied"):
@@ -161,20 +203,29 @@ def _reconcile_range(range_id: str, name: str, output: dict, backend: str) -> No
     products, sos = _running(output)
     if not products and not sos:
         return
+    # Timeouts first, from the record alone: they end even if what follows cannot run.
+    changes: dict[str, dict] = _expired(products, sos, time.time())
     declared, lab = range_accounts.load(_db_session, range_id)
     if lab:
         # A lab session's range has no range credentials (random per VM) and no product role
         # images; never fall back to the site default password for it.
-        logger.info("[reconcile] range %s is a lab session's: skipped", range_id)
-        return
-    provisioner = _get_backend(backend, range_id, output=output)
-    if not getattr(provisioner, "supports_setup_reconcile", False):
-        return
-    changes, warnings = run_async(provisioner.reconcile_setups(
-        range_id, output, domain_passwords=_domain_passwords(declared, products),
-        so_logins=_so_logins(declared, sos, os.environ), run_seconds=RANGE_SECONDS))
-    for w in warnings:
-        logger.warning("[reconcile] range %s: %s", range_id, w)
+        logger.info("[reconcile] range %s is a lab session's: no guest reconcile", range_id)
+    else:
+        so_logins, notes = _so_logins(declared, sos, os.environ)
+        try:
+            provisioner = _get_backend(backend, range_id, output=output)
+            if getattr(provisioner, "supports_setup_reconcile", False):
+                found, warnings = run_async(provisioner.reconcile_setups(
+                    range_id, output, domain_passwords=_domain_passwords(declared, products),
+                    so_logins=so_logins, run_seconds=RANGE_SECONDS))
+                changes.update(found)  # a guest-read outcome (and its clean-up) wins over the record's
+                notes += warnings
+        except SoftTimeLimitExceeded:
+            raise
+        except Exception as exc:  # noqa: BLE001 — vCenter unreachable, connection gone: timeouts still recorded
+            notes.append(f"guest reconcile not possible this round: {type(exc).__name__}: {exc}")
+        for w in notes:
+            logger.warning("[reconcile] range %s: %s", range_id, w)
     if not changes:
         return
     # Re-read under the row lock; write back, and mark the verified accounts applied, in the

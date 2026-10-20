@@ -620,7 +620,9 @@ present. The site-wide template default is no longer the fallback for these mach
 > assumed to get a full (unfiltered) token under the default UAC policy, so a guest-operations
 > process started as it can run Exchange / ConfigMgr / SharePoint setup. If a real build shows
 > a filtered token, that is a follow-up (a stored-credential scheduled task would be the
-> fallback), not this change. The worker must also reach each ESXi host on **443** for the
+> fallback), not this change. A filtered token shows up as `failed` with "the status file ...
+> exists but the domain Administrator cannot read it (access denied)" (status read exit 201).
+> The worker must also reach each ESXi host on **443** for the
 > guest file transfer (mblanke/TrueNorth#194); if it cannot, the setup is `failed` with that
 > reason and nothing is left half-done.
 

@@ -413,6 +413,7 @@ INIT_SCRIPT = """$ErrorActionPreference = 'Stop'
 $dir = '__DIR__'
 New-Item -ItemType Directory -Force -Path $dir | Out-Null
 & icacls.exe $dir /inheritance:r /grant:r '*S-1-5-32-544:(OI)(CI)F' '*S-1-5-18:(OI)(CI)F' | Out-Null
+if ($LASTEXITCODE -ne 0) { exit 34 }  # never write a secret into a folder that is not locked down
 Remove-Item -Force -ErrorAction SilentlyContinue '__SECRET__', '__JOINSECRET__', (Join-Path $dir 'config.xml')
 if (Test-Path '__STATUS__') { exit 5 }
 exit 0
@@ -441,9 +442,13 @@ exit 0
 """
 
 # Exit codes: the status number; 200 (STATUS_MISSING) when there is no status file yet, so
-# nothing was started; 2 when the file exists but is not a number yet (the runner is writing it).
+# nothing was started; 201 (STATUS_UNREADABLE) when it exists but reading it is denied (the
+# login's token cannot read the Administrators-only folder: likely a UAC-filtered token);
+# 2 when it exists but is not a number yet or is being written (a sharing violation).
 POLL_SCRIPT = """if (-not (Test-Path -LiteralPath '__STATUS__')) { exit 200 }
-$c = Get-Content -Raw -LiteralPath '__STATUS__' -ErrorAction SilentlyContinue
+try { $c = Get-Content -Raw -LiteralPath '__STATUS__' -ErrorAction Stop }
+catch [System.UnauthorizedAccessException] { exit 201 }
+catch { exit 2 }
 if ($c -match '^\\s*(\\d+)') { exit [int]$Matches[1] }
 exit 2
 """
@@ -651,6 +656,14 @@ Finish 0
 
 
 STATUS_MISSING = 200  # the status file is not there yet (the runner has not written it)
+STATUS_UNREADABLE = 201  # it is there but reading it is denied (see POLL_SCRIPT)
+# Every exit code the status read can legitimately give; anything else (1, an NTSTATUS such
+# as 0xC000013A, a guest-ops error) is "unknown": retried, never a result.
+KNOWN_STATUS = frozenset({*STATUS, STATUS_MISSING, STATUS_UNREADABLE})
+UNREADABLE_DETAIL = (f"the status file {STATUS_FILE} exists but the domain Administrator cannot read it (access "
+                     "denied): most likely a UAC-filtered token for guest operations (runbook 7.3, verify on the "
+                     "first real build)")
+JOIN_CODES[34] = f"could not lock {STATE_DIR} down to Administrators and SYSTEM (icacls); nothing was delivered"
 
 
 def command(label: str, script: str, ok_codes) -> guest.GuestCommand:
@@ -679,8 +692,8 @@ def reboot_pending_command() -> guest.GuestCommand:
 
 
 def poll_command() -> guest.GuestCommand:
-    # The status number is the process exit code; _read_status uses it whatever it is.
-    return command("role-setup-status", _fill(POLL_SCRIPT, status=STATUS_FILE), frozenset(range(256)))
+    # The status number is the process exit code; only KNOWN_STATUS codes are a result.
+    return command("role-setup-status", _fill(POLL_SCRIPT, status=STATUS_FILE), KNOWN_STATUS)
 
 
 def cleanup_command() -> guest.GuestCommand:
@@ -757,6 +770,7 @@ def prepare(session_for: Callable[[guest.GuestCredentials], object], p: SetupPla
     that file) and reboot. None: ready for the VM's software and then ``run``; else the VM's
     final outcome. No secret touches a command line."""
     session = session_for(p.local)
+    uploaded = False
     try:
         session.wait_ready(deadline)
         result, code = session.run(marker_command(p.image), deadline)
@@ -766,32 +780,59 @@ def prepare(session_for: Callable[[guest.GuestCredentials], object], p: SetupPla
             return outcome(p, "skipped" if code == 20 else "failed", MARKER_CODES[code])
         result, code = session.run(init_command(), deadline)
         if result != "ok":
-            return outcome(p, "failed", f"could not create {STATE_DIR} ({result}, exit {code})")
+            why = JOIN_CODES.get(code, f"could not create {STATE_DIR} ({result}, exit {code})")
+            return outcome(p, "failed", why)
         if code == 5:  # a status file already there: an earlier build started the setup
             logger.info("role setup on %s: already started by an earlier build", p.name)
             return None
         logger.info("role setup on %s: staged %s; joining %s", p.name, p.image, p.domain)
+        uploaded = True
         session.upload(JOIN_SECRET, p.domain_password.reveal().encode("utf-8"), deadline)
         result, code = session.run(join_command(p), deadline)
         if result != "ok":
+            # A timed-out join was killed (TerminateProcessInGuest): its finally never ran.
+            _cleanup(session, deadline)
             return outcome(p, "failed", f"domain join: {JOIN_CODES.get(code, f'{result} (exit {code})')}")
         if code == vsphere_roles.EXIT_REBOOT:
             reboot_fn(session, deadline)
     except Exception as exc:  # noqa: BLE001 — reported (scrubbed) per VM, never raised past it
-        with contextlib.suppress(Exception):  # the join may not have run: the file must not stay
-            session.run(cleanup_command(), deadline)
+        if uploaded:  # the join may not have run: the file must not stay
+            _cleanup(session, deadline)
         return outcome(p, "failed", f"guest operations: {_err(exc)}")
     return None
 
 
+CLEANUP_GRACE = 60  # seconds a clean-up gets even when the step before it used the deadline
+
+
+def _cleanup(session, deadline: float) -> bool:
+    """Best effort, bounded: delete every secret file in the guest. True when it ran ok."""
+    try:
+        result, _ = session.run(cleanup_command(), max(deadline, session._clock() + CLEANUP_GRACE))
+    except Exception:  # noqa: BLE001 — INIT and the next reconcile try again
+        return False
+    return result == "ok"
+
+
+def cleanup(session, deadline: float) -> bool:
+    """For a terminal reconcile (timeout) with no other guest step: log in, then clean up. Never raises."""
+    try:
+        session.wait_ready(deadline)
+    except Exception:  # noqa: BLE001 — unreachable: nothing to clean from here
+        return False
+    return _cleanup(session, deadline)
+
+
 def _read_status(session, deadline: float) -> int | None:
     """The runner's status number (the status-read process's exit code), STATUS_MISSING if the
-    file is not there, or None on a guest-ops hiccup."""
+    file is not there, STATUS_UNREADABLE if reading it is denied; None for anything else (a
+    guest-ops error, a timeout, an exit code the script never gives: 1, 0xC000013A, ...), which
+    callers retry and never take for a result or for "already in progress"."""
     try:
-        _result, code = session.run(poll_command(), deadline)
+        result, code = session.run(poll_command(), deadline)
     except Exception:  # noqa: BLE001 — the deadline bounds the caller's loop
         return None
-    return code
+    return code if result == "ok" and code in KNOWN_STATUS else None
 
 
 def run(session_for: Callable[[guest.GuestCredentials], object], p: SetupPlan, deadline: float,
@@ -823,7 +864,9 @@ def run(session_for: Callable[[guest.GuestCredentials], object], p: SetupPlan, d
                 session._sleep(max(0.0, min(wait, stop - now())))
             code = _read_status(session, min(stop, now() + 120))
         if code is None:
-            return outcome(p, "failed", "could not read the setup status file (guest operations); not started")
+            return outcome(p, "skipped", "could not read the setup status file (guest operations); not started")
+        if code == STATUS_UNREADABLE:
+            return outcome(p, "failed", UNREADABLE_DETAIL)
         if code == STATUS_MISSING:
             # Right before the product setup: a reboot the software installs left pending
             # would fail it. Reboot first and wait for VMware Tools (reboot_fn does).
@@ -853,6 +896,8 @@ def run(session_for: Callable[[guest.GuestCredentials], object], p: SetupPlan, d
                 session.run(cleanup_command(), min(stop, now() + 120))
             logger.info("role setup on %s: %s set up", p.name, p.role)
             return outcome(p, "ok", f"{LABELS[p.role]} {STATUS[0]} in {p.domain}")
+        if code == STATUS_UNREADABLE:
+            return outcome(p, "failed", UNREADABLE_DETAIL)
         if code is not None and code not in RUNNING and code != STATUS_MISSING:
             with contextlib.suppress(Exception):
                 session.run(cleanup_command(), min(stop, now() + 120))
@@ -910,6 +955,8 @@ def reconcile(session, info: dict, *, clock: Callable[[], float] | None = None,
     code = _read_status(session, min(stop, now() + 120))
     if code is None:
         return None
+    if code == STATUS_UNREADABLE:
+        return {**base, "status": "failed", "detail": UNREADABLE_DETAIL}
     if code == 0:
         with contextlib.suppress(Exception):
             session.run(cleanup_command(), min(stop, now() + 120))
