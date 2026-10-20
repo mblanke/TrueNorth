@@ -246,7 +246,11 @@ def build(db: Session, ex: Exercise, *, sees_key: bool, now: datetime | None = N
     for r in attempts:
         per_user.setdefault(r.user_id, []).append(r)
 
-    rng = db.get(Range, ex.range_id) if ex.range_id is not None else None
+    rng = (
+        db.query(Range).filter(Range.id == ex.range_id, Range.tenant_id == ex.tenant_id).first()
+        if ex.range_id is not None
+        else None
+    )
     return ExerciseClassOut(
         exercise_id=ex.id,
         exercise_name=ex.name,
