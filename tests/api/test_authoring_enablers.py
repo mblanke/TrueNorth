@@ -78,6 +78,14 @@ class TestTemplateValidate:
         assert res["valid"] is False
         assert any("mainframe" in e["message"] for e in res["errors"])
 
+    def test_verify_ip_opt_out_is_a_boolean_per_template_and_per_node(self, client):
+        """A Tools-less vulnerable image opts out of build-time guest IP verification."""
+        ok = "name: t\nverify_ip: true\nnodes:\n  - id: xp01\n    os: windows-xp\n    verify_ip: false\n"
+        assert client.post("/templates/validate", json={"yaml": ok}).json()["valid"] is True
+        for bad in ("name: t\nnodes:\n  - id: xp01\n    verify_ip: 'no'\n", "name: t\nverify_ip: off-please\n"):
+            res = client.post("/templates/validate", json={"yaml": bad}).json()
+            assert res["valid"] is False and any("verify_ip" in e["path"] for e in res["errors"]), res
+
 
 class TestInjectorCatalogue:
     def test_catalogue_lists_the_registry(self, client):

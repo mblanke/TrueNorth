@@ -130,6 +130,19 @@ class FakeHost(vim.HostSystem):
         self.configManager.networkSystem.RemovePortGroup.side_effect = remove
 
 
+class FakeView(vim.view.ContainerView):
+    """A real ContainerView reference (a traversal spec type-checks it) listing ``objs``."""
+
+    view = None
+
+    def __init__(self, objs):
+        super().__init__(f"session[fake]view-{next(_ids)}", None)
+        self.view = objs
+
+    def Destroy(self):  # noqa: N802
+        pass
+
+
 class FakeFolder:
     def __init__(self, name: str, parent=None):
         self.name = name
@@ -389,6 +402,7 @@ class FakeVM:
         if not FAKE.clone_drops_annotation:  # vCenter applies the clone spec's annotation; vcsim does not
             vm.config.annotation = spec.config.annotation
         vm.placed = spec.location
+        vm.parent = folder
         folder.childEntity.append(vm)
         FAKE.vms[vm._moId] = vm
         return FakeTask(result=vm, label=f"clone:{name}")
@@ -486,7 +500,7 @@ class FakeVCenter:
                 vim.Datastore: [d for h in self.hosts for d in h.datastore],
                 vim.VirtualMachine: list(self.templates.values()),
             }[kind]
-            return SimpleNamespace(view=objs, Destroy=lambda: None)
+            return FakeView(objs) if kind is vim.VirtualMachine else SimpleNamespace(view=objs, Destroy=lambda: None)
 
         collector = SimpleNamespace(CreatePropertyCollector=lambda: SimpleNamespace(
             DestroyPropertyCollector=lambda: None), RetrievePropertiesEx=self.retrieve)
@@ -500,14 +514,23 @@ class FakeVCenter:
         (spec,) = specSet
         paths = list(spec.propSet[0].pathSet)
         objects = []
-        for o in spec.objectSet:
-            vm = self.vms.get(o.obj._moId)
-            if vm is None:
-                raise vmodl.fault.ManagedObjectNotFound(obj=o.obj)
+        if isinstance(spec.objectSet[0].obj, FakeView):  # a container-view traversal: every VM
+            assert spec.objectSet[0].selectSet[0].path == "view"
+            self.inventory_reads = getattr(self, "inventory_reads", 0) + 1
+            pairs = [(vim.VirtualMachine(vm._moId, None), vm) for vm in [*self.vms.values(), *self.templates.values()]]
+        else:
+            pairs = []
+            for o in spec.objectSet:
+                vm = self.vms.get(o.obj._moId)
+                if vm is None:
+                    raise vmodl.fault.ManagedObjectNotFound(obj=o.obj)
+                pairs.append((o.obj, vm))
+        for ref, vm in pairs:
             vals = {"name": vm.name, "config.annotation": getattr(vm.config, "annotation", None),
-                    "config.hardware.device": vm.config.hardware.device}
-            objects.append(SimpleNamespace(obj=o.obj, propSet=[SimpleNamespace(name=p, val=vals.get(p))
-                                                               for p in paths]))
+                    "config.hardware.device": vm.config.hardware.device, "config.template": vm.config.template,
+                    "parent": getattr(vm, "parent", None)}
+            objects.append(SimpleNamespace(obj=ref, propSet=[SimpleNamespace(name=p, val=vals.get(p))
+                                                             for p in paths]))
         return SimpleNamespace(objects=objects, token=None)
 
     def wait(self, task, si, timeout):
@@ -2868,19 +2891,47 @@ class TestMacRace:
         assert [c.macAddress for c in cards] == [n["mac"] for n in out["nics"]]
         assert out["ip"] == "10.60.201.10" and out["ip_verified"] is True
 
-    def test_a_reserved_mac_already_on_the_range_networks_is_refused_before_any_clone(self, vc):
-        noise = SimpleNamespace(name=NOISE_PG, _moId="network-4001", config=None)
-        squatter = FakeVM("someone-elses-vm", [_card(4000, NOISE_PG)])
-        squatter.config.hardware.device[0].macAddress = "00:50:56:3C:00:01"  # by hand, from our slice
-        vc.vms[squatter._moId] = squatter
-        noise.vm = [squatter]
-        vc.networks.append(noise)
-        result = _run(_prov(vc).provision(RANGE_ID, {"vms": [_noise_vm()], "networks": []}, {}))
+    @staticmethod
+    def _squatter(vc, mac: str, name: str = "someone-elses-vm", annotation: str | None = None, folder=None):
+        """A VM on no network of the range (a NIC on some unrelated port group) holding ``mac``."""
+        vm = FakeVM(name, [_card(4000, "some-other-pg")])
+        vm.config.hardware.device[0].macAddress = mac
+        vm.config.annotation = annotation
+        vm.parent = folder
+        vc.vms[vm._moId] = vm
+        return vm
+
+    def test_a_reserved_mac_anywhere_in_the_vcenter_is_refused_before_any_clone(self, vc):
+        """Any VM, on any network (another install sharing the slice, a VM left by an
+        abandoned range), not only VMs on the range's own port groups."""
+        squatter = self._squatter(vc, "00:50:56:3C:00:01")  # by hand, or another install
+        self._squatter(vc, "00:50:56:aa:00:00", name="outside-the-pool")  # not in the slice: never read as a clash
+        result = _run(_prov(vc).provision(RANGE_ID, _rendered(STARTER), {}))
         assert result.status == "failed" and result.vms == []
-        assert any("MAC 00:50:56:3c:00:01" in e and "someone-elses-vm" in e and NOISE_PG in e
-                   for e in result.errors), result.errors
+        (err,) = [e for e in result.errors if "MAC" in e]
+        assert f"MAC 00:50:56:3c:00:01 (for {R8}-ubu02#nic0) is already used by VM 'someone-elses-vm' " \
+               f"({squatter._moId}), which is not this range's" in err
+        assert "each install on a shared vCenter needs its own slice" in err and "outside-the-pool" not in err
+        assert vc.inventory_reads == 1  # one property-collector query over every VM
         assert not vc.templates["tmpl-ubuntu-2404"].clone_specs  # nothing cloned
         assert vc.dvs.portgroup == []  # and the port group it made is rolled back
+
+    def test_a_redelivered_build_does_not_refuse_its_own_vms(self, vc):
+        """The first delivery's VMs hold the same reserved MACs: by annotation, or (its tag
+        not yet written) by sitting in the range's own folder, they are this range's."""
+        folder = infra.ensure_folder(vc.dc, f"truenorth/ranges/{R8}")
+        self._squatter(vc, "00:50:56:3c:00:00", name=f"{R8}-ubu01-attempt1", annotation=mod.range_annotation(RANGE_ID))
+        self._squatter(vc, "00:50:56:3c:00:01", name=f"{R8}-ubu02-attempt1", folder=folder)
+        result = _run(_prov(vc).provision(RANGE_ID, _rendered(STARTER), {}))
+        assert not [e for e in result.errors if "MAC" in e], result.errors
+        assert result.status == "ok", result.errors
+
+    def test_another_ranges_vm_with_the_mac_is_named_not_blamed_on_this_range(self, vc):
+        other = "99999999-0000-0000-0000-000000000000"
+        self._squatter(vc, "00:50:56:3c:00:02", name="99999999-web", annotation=mod.range_annotation(other))
+        result = _run(_prov(vc).provision(RANGE_ID, _rendered(STARTER), {}))
+        assert result.status == "failed"
+        assert any("VM '99999999-web'" in e and "not this range's" in e for e in result.errors), result.errors
 
     def test_a_clone_without_its_reserved_mac_is_never_configured_or_powered_on(self, vc, monkeypatch):
         monkeypatch.setattr(mod, "VSPHERE_EXCLUDE_HOSTS", ONLY_ESX02)
@@ -2944,6 +2995,30 @@ class TestSpreadPlacement:
         placed = infra.place([a, b], _vms(1), "spread", 4, local=lambda v, h: local.get(h.name, frozenset()))
         assert (placed[0][0].name, placed[0][1]) == ("esx03", "esx03-small")
 
+    def test_spread_deals_across_the_hosts_with_a_local_copy_before_any_cross_host_copy(self):
+        hosts = [_cap("esx02"), _cap("esx03"), _cap("esx04")]
+        copies = {"esx02": frozenset({"esx02-local"}), "esx03": frozenset({"esx03-local"})}
+        names = [h.name for h, _ in infra.place(hosts, _vms(4, cores=2), "spread", 4,
+                                                local=lambda v, h: copies.get(h.name, frozenset()))]
+        assert sorted(names) == ["esx02", "esx02", "esx03", "esx03"]  # esx04 would copy disks across hosts
+        # Only when the hosts with a copy are full does a VM go to one without.
+        hosts = [_cap("esx02", vcpus=60), _cap("esx03", vcpus=60), _cap("esx04")]  # 4 vCPU headroom each
+        names = [h.name for h, _ in infra.place(hosts, _vms(3, cores=4), "spread", 4,
+                                                local=lambda v, h: copies.get(h.name, frozenset()))]
+        assert sorted(names) == ["esx02", "esx03", "esx04"]
+
+    @pytest.mark.parametrize("exclude", ["esx01", "ESX01", "esx01.truenorth.lab", "esx01.other.domain"])
+    def test_the_excluded_host_matches_by_short_name_or_fqdn(self, vc, monkeypatch, exclude):
+        monkeypatch.setattr(mod, "VSPHERE_EXCLUDE_HOSTS", exclude)
+        prov = _prov(vc)
+        assert [h.name for h in prov._eligible_hosts(vc.cluster)] == [
+            "esx02.truenorth.lab", "esx03.truenorth.lab", "esx04.truenorth.lab"]
+        vc.hosts[0].name = "esx01"  # vCenter lists the host by its short name
+        assert "esx01" not in [h.name for h in prov._eligible_hosts(vc.cluster)]
+        monkeypatch.setattr(mod, "VSPHERE_EXCLUDE_HOSTS", "10.30.30.11")
+        vc.hosts[0].name = "10.30.30.1"  # an IP is never cut down to "10"
+        assert "10.30.30.1" in [h.name for h in _prov(vc)._eligible_hosts(vc.cluster)]
+
     def test_an_unknown_mode_is_an_error_not_silently_spread(self):
         with pytest.raises(infra.PlacementError, match="unknown VSPHERE_PLACEMENT"):
             infra.place([_cap("esx02")], _vms(1), "packed", 4)
@@ -2987,6 +3062,30 @@ class TestReadiness:
         stored = range_alloc.stored_output("vsphere_api", RANGE_ID, result)
         assert stored["not_ready"] == [f"{R8}-ubu02"] and len(stored["vms"]) == 3  # destroy finds them all
 
+    def test_no_roles_software_or_setups_on_a_vm_already_not_ready(self, vc):
+        seen: dict[str, list] = {}
+
+        def spy(name):
+            async def record(si, vm_defs, outs, *a, **k):
+                seen[name] = sorted(o["name"] for o in outs)
+            return record
+
+        def no_address_on_ubu02(request):
+            path = request.url.path
+            if path.endswith("/guest/networking/interfaces") and vc.vms[path.split("/")[4]].name.endswith("ubu02"):
+                return httpx.Response(200, json=[])
+            return None
+
+        prov = _with_handler(_prov(vc), vc, no_address_on_ubu02)
+        for name in ("_install_roles", "_install_software", "_setup_securityonion", "_verify_accounts"):
+            setattr(prov, name, spy(name))
+        result = _run(prov.provision(RANGE_ID, _rendered(STARTER), {}))
+        assert result.not_ready == [f"{R8}-ubu02"]
+        ready = [f"{R8}-ubu01", f"{R8}-ubu03"]
+        assert seen == {"_install_roles": ready, "_install_software": ready, "_setup_securityonion": ready,
+                        "_verify_accounts": ready}
+        assert f"roles, software and setups skipped on VMs not ready: {R8}-ubu02" in result.warnings
+
     def test_tools_that_never_start_fail_a_linux_vm(self, vc):
         prov = _with_handler(_prov(vc), vc, lambda r: httpx.Response(200, json={"run_state": "NOT_RUNNING"})
                              if r.url.path.endswith("/tools") else None)
@@ -3010,13 +3109,76 @@ class TestReadiness:
         assert result.status == "ok", result.errors
         assert len(polls) == 3 and result.vms[0]["ip_verified"] is True
 
-    def test_the_wait_never_outlasts_the_build_budget(self, vc):
+    def test_a_vm_powered_on_just_before_the_budget_ends_is_left_to_reconcile_not_failed(self, vc, monkeypatch):
+        """Powered on ~40 s before the build's ``finish_by`` with a slow Sysprep/cloud-init:
+        the budget, not VSPHERE_GUEST_IP_TIMEOUT, ends the wait. Not failed: the check is
+        left running for the reconcile task, which later records it ready."""
+        import time as real_time
+
+        class Clock:  # 10 s pass per look at the clock, so the test takes none of them
+            t = real_time.monotonic()
+            sleep = staticmethod(lambda s: None)
+            time = staticmethod(real_time.time)
+
+            def monotonic(self):
+                Clock.t += 10
+                return Clock.t
+
+        monkeypatch.setattr(mod, "time", Clock())
+        slow = {"on": True}
         prov = _with_handler(_prov(vc), vc, lambda r: httpx.Response(200, json=[])
-                             if r.url.path.endswith("/guest/networking/interfaces") else None)
-        prov._guest_ip_timeout = 3600
-        prov._budget = 0  # spent: one look, then the verdict
-        result = _run(asyncio.wait_for(prov.provision(RANGE_ID, _rendered(ONE_STARTER), {}), 10))
-        assert result.not_ready == [f"{R8}-ubu01"]
+                             if slow["on"] and r.url.path.endswith("/guest/networking/interfaces") else None)
+        prov._guest_ip_timeout = 600
+        result = _run(prov.provision(RANGE_ID, _rendered(ONE_STARTER), {"finish_by": Clock.t + 60}))
+        assert result.status == "ok" and result.not_ready == [], result.errors
+        (out,) = result.vms
+        assert out["ip_verified"] is None and out["ip"] == ""  # pending: neither verified nor the plan shown
+        check = out["ip_check"]
+        assert check["status"] == "running" and check["planned"] == ["10.70.10.11"]
+        assert real_time.time() + 500 < check["deadline"] <= real_time.time() + 600  # the window's end, epoch
+        assert any("guest network not verified yet" in w for w in result.warnings)
+        assert range_alloc.build_outcome(result) == ("ready", None)
+        stored = range_alloc.stored_output("vsphere_api", RANGE_ID, result)
+        assert '"running"' in json.dumps(stored)  # what db_ops.ranges_with_running_setups selects on
+
+        # Later, the reconcile: the guest has its address now.
+        slow["on"] = False
+        settled = _run(_prov(vc).reconcile_guest_ips(RANGE_ID, stored))
+        assert settled == {out["name"]: {"guest_ips": ["10.70.10.11"], "ip": "10.70.10.11", "ip_verified": True,
+                                         "ip_check": {"status": "ok"}}}
+
+    def test_reconcile_leaves_a_check_open_inside_its_window_and_fails_it_after(self, vc):
+        built = _run(_prov(vc).provision(RANGE_ID, _rendered(ONE_STARTER), {}))
+        out = dict(built.vms[0], ip_check={"status": "running", "planned": ["10.70.10.99"], "deadline": 1000.0})
+        prov = _prov(vc)
+        assert _run(prov.reconcile_guest_ips(RANGE_ID, {"vms": [out]}, now=999.0)) == {}
+        (verdict,) = _run(prov.reconcile_guest_ips(RANGE_ID, {"vms": [out]}, now=1001.0)).values()
+        assert verdict["ip_verified"] is False and verdict["ip_check"]["status"] == "failed"
+        assert "planned address 10.70.10.99 not reported" in verdict["not_ready"]
+        assert verdict["guest_ips"] == ["10.70.10.11"]  # what Tools does report, recorded
+
+    def test_reconcile_never_reads_a_vm_that_is_not_this_ranges(self, vc):
+        built = _run(_prov(vc).provision(RANGE_ID, _rendered(ONE_STARTER), {}))
+        out = dict(built.vms[0], ip_check={"status": "running", "planned": ["10.70.10.11"], "deadline": 0})
+        vc.vms[out["vm_id"]].config.annotation = mod.range_annotation("another-range-entirely")
+        assert _run(_prov(vc).reconcile_guest_ips(RANGE_ID, {"vms": [out]}, now=1.0)) == {}
+
+    def test_a_node_opted_out_with_verify_ip_false_is_recorded_unverified_not_failed(self, vc):
+        """A deliberately Tools-less vulnerable image: ``verify_ip: false`` on the node (or
+        the template's default) keeps it from failing the range."""
+        tpl = {**STARTER, "nodes": [{**STARTER["nodes"][0], "verify_ip": False}, STARTER["nodes"][1]]}
+        rendered = _rendered(tpl)
+        assert [v.get("verify_ip") for v in rendered["vms"]] == [False, None]
+        assert [v.get("verify_ip") for v in _rendered({**STARTER, "verify_ip": False})["vms"]] == [False] * 3
+        node_wins = {**STARTER, "verify_ip": False, "nodes": [{**STARTER["nodes"][0], "verify_ip": True}]}
+        assert _rendered(node_wins)["vms"][0].get("verify_ip") is None
+        prov = _with_handler(_prov(vc), vc, lambda r: httpx.Response(200, json={"run_state": "NOT_RUNNING"})
+                             if r.url.path.endswith("/tools") else None)  # no Tools anywhere
+        result = _run(prov.provision(RANGE_ID, rendered, {}))
+        assert result.not_ready == [f"{R8}-ubu02"]  # the one still held to it
+        opted = next(v for v in result.vms if v["name"] == f"{R8}-ubu01")
+        assert (opted["ip_verified"], opted["ip"], opted["tools_ready"]) == (None, "10.70.10.11", False)
+        assert not [e for e in result.errors if "ubu01" in e]
 
     def test_an_appliance_without_tools_is_recorded_unverified_not_failed(self, vc):
         result = _run(_prov(vc).provision(RANGE_ID, _rendered(), {}))

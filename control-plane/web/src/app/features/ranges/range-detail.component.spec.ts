@@ -199,11 +199,23 @@ describe('RangeDetailComponent', () => {
     const data = dialogOpen.calls.mostRecent().args[1].data;
     expect(data.impact.join(' ')).toContain('WITHOUT calling the hypervisor');
     expect(data.impact.join(' ')).toContain('removed by hand');
-    expect(api.abandonRange).toHaveBeenCalledWith('r1', 'vCenter checked: no tasks for this range');
+    expect(api.abandonRange).toHaveBeenCalledWith('r1', 'vCenter checked: no tasks for this range', false);
+    expect(data.impact.join(' ')).not.toContain('NIC MAC');  // records no VMs: nothing to release on their behalf
     fixture.detectChanges();
     expect(el.textContent).toContain('Range is now destroyed.');
     expect(el.textContent).toContain('r-dc01');
     expect(el.textContent).toContain('pg-210');
+  });
+
+  it('names the recorded VMs and releases their VLANs and MACs only through that confirmation', async () => {
+    await render('admin', { platformAdmin: true });
+    const withVms = { ...RANGE, provisioner_output: JSON.stringify({ vms: [{ name: 'r-ubu01', vm_id: 'vm-1' }] }) };
+    api.abandonRange.and.returnValue(of({ ...withVms, state: 'destroyed' } as any));
+    component.abandonRange(withVms as any);
+    const data = dialogOpen.calls.mostRecent().args[1].data;
+    expect(data.impact.join(' ')).toContain('records 1 VM(s) (r-ubu01)');
+    expect(data.impact.join(' ')).toContain('VLANs and NIC MAC addresses');
+    expect(api.abandonRange).toHaveBeenCalledWith('r1', 'vCenter checked: no tasks for this range', true);
   });
 
   it('shows a refusal as a refusal, not a success', async () => {

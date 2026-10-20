@@ -351,6 +351,32 @@ def test_reserved_manual_macs_land_and_spread_uses_every_host(env, si, range_id)
         assert _run(mod.VsphereAPIProvisioner().destroy(range_id, output)).status == "ok"
 
 
+def test_a_vm_anywhere_holding_a_reserved_mac_refuses_the_build(env, si, range_id):
+    """The MAC pre-check reads every VM in the vCenter (one property-collector query), not
+    only the range's networks: here vcsim's own DC0_C0_RP0_VM1, given a MAC from the slice."""
+    squatter = _named(si, vim.VirtualMachine, "DC0_C0_RP0_VM1")
+    (card,) = infra.nic_cards(squatter.config.hardware.device)[:1]
+    old_type, old_mac = card.addressType, card.macAddress
+    prov = mod.VsphereAPIProvisioner()
+    template = _template(range_id)
+    allocations = _reserve(prov, range_id, template)
+    taken = allocations["nic_macs"][f"{range_id[:8]}-victim#nic0"]
+
+    def set_mac(address_type, mac):
+        card.addressType, card.macAddress = address_type, mac
+        edit = vim.vm.device.VirtualDeviceSpec(operation="edit", device=card)
+        _wait(si, squatter.ReconfigVM_Task(spec=vim.vm.ConfigSpec(deviceChange=[edit])))
+
+    set_mac("manual", taken)
+    try:
+        built = _run(prov.provision(range_id, template, allocations))
+        assert built.status == "failed" and built.vms == []
+        assert any(f"MAC {taken}" in e and "DC0_C0_RP0_VM1" in e for e in built.errors), built.errors
+        assert _portgroups(si, f"tn-{range_id[:8]}-") == {}
+    finally:
+        set_mac(old_type, old_mac)
+
+
 def test_readiness_refuses_a_range_whose_guests_report_nothing(env, si, range_id, monkeypatch):
     """Tools never runs in vcsim, so with the check on no VM can show its planned address:
     the build says so per VM instead of the range being reported ready."""

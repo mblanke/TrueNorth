@@ -127,13 +127,15 @@ def place(hosts: list[HostCapacity], vm_defs: list[dict], mode: str, ratio: floa
           local: LocalCopies | None = None) -> list[tuple[HostCapacity, object]]:
     """Choose a (host, datastore) for every VM, in ``vm_defs`` order.
 
-    ``spread``: the range's VMs are dealt round the hosts that fit them. Each VM goes to
-    the fitting host holding the fewest of this range's VMs so far, then one with a
-    host-local copy of its template (``local``), then the most vCPU headroom, then free
-    RAM; on that host, the datastore holding the copy when it has room. Capacity is
-    tallied as it goes, so a full host drops out and a range larger than one host spans
-    hosts (the vDS port groups exist on every host). Until 2026-10-20 spread was "most
-    vCPU headroom first" alone, which packs rather than spreads: a host with more
+    ``spread``: the range's VMs are dealt round the hosts that fit them, those holding a
+    host-local copy of the VM's template (``local``) first: a host without one means a
+    full cross-host copy of the template's disks (local storage only, ADR 0012), dearer
+    than an uneven spread. Among them, the host holding the fewest of this range's VMs so
+    far, then the most vCPU headroom, then free RAM; on that host, the datastore holding
+    the copy when it has room. Capacity is tallied as it goes, so a full host drops out
+    (and only then does a VM go to a host without a copy) and a range larger than one host
+    spans hosts (the vDS port groups exist on every host). Until 2026-10-20 spread was
+    "most vCPU headroom first" alone, which packs rather than spreads: a host with more
     headroom than the whole range needs (esx02 beside busier esx03/esx04) took every VM.
     ``per-range-host``: the whole range on the one host with the most free RAM that fits
     all of it. A host fits when RAM, the vCPU overcommit cap (threads x ``ratio``,
@@ -165,7 +167,7 @@ def place(hosts: list[HostCapacity], vm_defs: list[dict], mode: str, ratio: floa
             reasons = "; ".join(r for h in hosts if (r := _why_not(h, cores, mem, disk, ratio)))
             raise PlacementError(f"no host fits VM {vm_def.get('name')!r}: {reasons}")
         copies = {h.name: frozenset(local(vm_def, h)) if local else frozenset() for h in fitting}
-        best = min(fitting, key=lambda h: (count[h.name], not copies[h.name], -h.vcpu_headroom(ratio),
+        best = min(fitting, key=lambda h: (not copies[h.name], count[h.name], -h.vcpu_headroom(ratio),
                                            -h.free_mem_mb))
         count[best.name] += 1
         out.append(_take(best, cores, mem, disk, copies[best.name]))

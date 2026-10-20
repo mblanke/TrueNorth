@@ -12383,6 +12383,11 @@
       "RangeAbandonIn": {
         "description": "Why the range is written off; recorded on the range and in the audit log.",
         "properties": {
+          "force_release_resources": {
+            "default": false,
+            "title": "Force Release Resources",
+            "type": "boolean"
+          },
           "reason": {
             "maxLength": 500,
             "minLength": 10,
@@ -35254,7 +35259,7 @@
     },
     "/ranges/{range_id}/abandon": {
       "post": {
-        "description": "DANGEROUS. Record a ``failed`` range destroyed without touching the hypervisor.\n\nFor a range whose destroy cannot succeed, typically one that does not record which\nvCenter built it and none of whose VMs exist where it now resolves. Whatever is still\non a hypervisor stays there: ``provisioner_output.abandoned`` and the audit log name\nits VMs and port groups for removal by hand. ``reason`` is required.\n**Permission: platform administrator**",
+        "description": "DANGEROUS. Record a ``failed`` range destroyed without touching the hypervisor.\n\nFor a range whose destroy cannot succeed, typically one that does not record which\nvCenter built it and none of whose VMs exist where it now resolves. Whatever is still\non a hypervisor stays there: ``provisioner_output.abandoned`` and the audit log name\nits VMs and port groups for removal by hand. ``reason`` is required. A range that\nrecords VMs is refused (409) unless ``force_release_resources`` is true: abandoning frees\nits VLANs and NIC MACs for other ranges while those VMs may still exist.\n**Permission: platform administrator**",
         "operationId": "abandon_range_ranges__range_id__abandon_post",
         "parameters": [
           {

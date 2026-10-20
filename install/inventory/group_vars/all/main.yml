@@ -282,6 +282,15 @@ tn_vcenter_connection_update_password: false
 tn_vsphere_content_library: ""
 tn_vsphere_concurrency: 4
 tn_vsphere_tools_timeout: 120
+# Readiness: how long (s) after power-on each Linux/Windows range VM has to show its planned
+# IPs in VMware Tools before the range is failed; "off" only for a simulator without Tools.
+tn_vsphere_guest_ip_timeout: 600
+tn_vsphere_guest_ip_check: require
+# Range NIC MACs come from this slice of VMware's manual range (00:50:56:00:00:00-
+# 00:50:56:3f:ff:ff), reserved per NIC. EACH TrueNorth install on a shared vCenter needs its
+# OWN, non-overlapping slice (two installs on one slice hand out the same MACs). Empty: the
+# whole TrueNorth default, 00:50:56:3c:00:00-00:50:56:3f:ff:ff. Set per install (hosts.yml).
+tn_vsphere_mac_pool: ""
 tn_vsphere_snapshot_timeout: 1800
 # Range networks: per-range port groups on VLANs reserved for ranges, trunked on vDS-10G.
 tn_vsphere_range_switch_mode: vds

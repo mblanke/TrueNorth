@@ -5634,7 +5634,9 @@ export interface paths {
          *     For a range whose destroy cannot succeed, typically one that does not record which
          *     vCenter built it and none of whose VMs exist where it now resolves. Whatever is still
          *     on a hypervisor stays there: ``provisioner_output.abandoned`` and the audit log name
-         *     its VMs and port groups for removal by hand. ``reason`` is required.
+         *     its VMs and port groups for removal by hand. ``reason`` is required. A range that
+         *     records VMs is refused (409) unless ``force_release_resources`` is true: abandoning frees
+         *     its VLANs and NIC MACs for other ranges while those VMs may still exist.
          *     **Permission: platform administrator**
          */
         post: operations["abandon_range_ranges__range_id__abandon_post"];
@@ -13117,6 +13119,11 @@ export interface components {
          * @description Why the range is written off; recorded on the range and in the audit log.
          */
         RangeAbandonIn: {
+            /**
+             * Force Release Resources
+             * @default false
+             */
+            force_release_resources?: boolean;
             /** Reason */
             reason: string;
         };

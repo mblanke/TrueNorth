@@ -10,7 +10,9 @@ from __future__ import annotations
 _RANGE_TRANSITIONS: dict[str, list[str]] = {
     "created": ["provisioning", "destroyed"],
     "provisioning": ["ready", "failed"],
-    "ready": ["running", "stopping", "destroying"],
+    # failed: the worker's setup reconcile, when a VM's guest network check the build left
+    # running ends without its planned addresses (worker/setup_reconcile.py).
+    "ready": ["running", "stopping", "destroying", "failed"],
     "running": ["stopping", "destroying"],
     # destroying too: a power task that was lost must not strand the range (the
     # destroy waits for the range's lease if the power task is in fact still running).

@@ -92,6 +92,32 @@ def _running(output: dict) -> tuple[list[dict], list[dict]]:
     return products, sos
 
 
+def _ip_pending(output: dict) -> list[dict]:
+    """VMs whose guest network check the build left ``running`` (its budget ended the wait;
+    provisioners/vsphere_readiness.py): settled here like a long setup."""
+    return [v for v in output.get("vms") or [] if (v.get("ip_check") or {}).get("status") == "running"]
+
+
+def _merge_ips(output: dict, settled: dict) -> list[str]:
+    """Store the settled guest network checks on their VMs; drop their "not verified yet"
+    warning. Returns the reasons of the VMs that are not ready (they fail the range)."""
+    warnings = list(output.get("warnings") or [])
+    failed: list[str] = []
+    for vm in output.get("vms") or []:
+        change = settled.get(vm.get("name"))
+        if not change:
+            continue
+        reason = change.pop("not_ready", "")
+        vm.update(change)
+        warnings = [w for w in warnings if not (w.startswith(f"VM {vm.get('name')}: ")
+                                                and "guest network not verified yet" in w)]
+        if reason:
+            failed.append(f"VM {vm.get('name')}: {reason}")
+            output["not_ready"] = sorted(set(output.get("not_ready") or []) | {vm.get("name")})
+    output["warnings"] = warnings + failed
+    return failed
+
+
 def _domain_passwords(declared: dict, products: list[dict]) -> dict:
     """DC node id -> its Administrator password: the range's own account (declared, or the
     per-range one the credential service generates for a range with product role images).
@@ -197,14 +223,37 @@ def _merge(output: dict, changes: dict) -> tuple[dict, list[dict]]:
 
 
 def _reconcile_range(range_id: str, name: str, output: dict, backend: str) -> None:
-    from . import db_ops, range_accounts
-    from .tasks import _db_session, _get_backend
+    from .tasks import _get_backend
 
     products, sos = _running(output)
-    if not products and not sos:
+    ip_pending = _ip_pending(output)
+    if not products and not sos and not ip_pending:
         return
     # Timeouts first, from the record alone: they end even if what follows cannot run.
     changes: dict[str, dict] = _expired(products, sos, time.time())
+    ip_settled: dict[str, dict] = {}
+    if ip_pending:  # one Tools read per VM; no guest login, so a lab session's range too
+        try:
+            settle = getattr(_get_backend(backend, range_id, output=output), "reconcile_guest_ips", None)
+            if callable(settle):
+                ip_settled = run_async(settle(range_id, output))
+        except SoftTimeLimitExceeded:
+            raise
+        except Exception as exc:  # noqa: BLE001 — retried next beat; the window's end is in the record
+            logger.warning("[reconcile] range %s: guest network check not possible this round: %s", range_id, exc)
+    if products or sos:
+        _reconcile_guest_setups(range_id, output, backend, products, sos, changes)
+    if not changes and not ip_settled:
+        return
+    _record(range_id, output, changes, ip_settled)
+
+
+def _reconcile_guest_setups(range_id: str, output: dict, backend: str, products: list[dict], sos: list[dict],
+                            changes: dict) -> None:
+    """Read the running product / Security Onion setups in their guests into ``changes``."""
+    from . import range_accounts
+    from .tasks import _db_session, _get_backend
+
     declared, lab = range_accounts.load(_db_session, range_id)
     if lab:
         # A lab session's range has no range credentials (random per VM) and no product role
@@ -226,18 +275,32 @@ def _reconcile_range(range_id: str, name: str, output: dict, backend: str) -> No
             notes.append(f"guest reconcile not possible this round: {type(exc).__name__}: {exc}")
         for w in notes:
             logger.warning("[reconcile] range %s: %s", range_id, w)
-    if not changes:
-        return
-    # Re-read under the row lock; write back, and mark the verified accounts applied, in the
-    # same transaction, and only while the range is still in a live state.
+
+
+def _record(range_id: str, output: dict, changes: dict, ip_settled: dict) -> None:
+    """Re-read under the row lock; write back, and mark the verified accounts applied, in the
+    same transaction, and only while the range is still in a live state."""
+    from . import db_ops
+    from .tasks import _db_session
+
     with _db_session() as db:
         db_ops.lock_range(db, range_id)
         row = db_ops.range_output_and_backend(db, range_id)
         current = json.loads(row[0]) if row and row[0] else output
         merged, applied = _merge(current, changes)
+        not_ready = _merge_ips(merged, ip_settled)
         if not db_ops.set_range_output(db, range_id, json.dumps(merged), only_states=LIVE_STATES):
             logger.info("[reconcile] range %s left the live states; nothing recorded", range_id)
             return
+        if not_ready:
+            # As a build that waited it out would have (range_alloc.build_outcome): failed, with
+            # the reason. Only from ready: a range Students have started keeps running, and
+            # says why in its warnings.
+            error = f"{len(not_ready)} VM(s) built but not ready: " + "; ".join(not_ready)
+            if db_ops.update_range_state(db, range_id, "failed", error=error, only_from=("ready",)):
+                from .tasks import _notify_api
+                _notify_api("range", {"id": range_id, "state": "failed", "error": error})
+            logger.warning("[reconcile] range %s: %s", range_id, error)
         if pairs := {(str(vm["node_id"]), str(n)) for vm in applied if vm.get("node_id")
                      for n in vm["accounts_applied"]}:
             db_ops.mark_accounts_applied(db, range_id, pairs)

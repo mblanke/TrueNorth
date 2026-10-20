@@ -149,6 +149,65 @@ def test_a_lab_sessions_range_is_skipped(world):
     assert world["backend_calls"] == 0 and world["written"] is None
 
 
+def _ip_pending_vm(name="r1-ubu02"):
+    return {"name": name, "vm_id": "vm-2", "ip": "", "planned_ip": "10.70.10.12", "ip_verified": None,
+            "ip_check": {"status": "running", "planned": ["10.70.10.12"], "deadline": time.time() + 600}}
+
+
+@pytest.fixture
+def ip_world(world, monkeypatch):
+    """A range the build left ready with a guest network check still running (its budget
+    ran out first, vsphere_readiness.assess); the provisioner's verdict is ``world["ips"]``."""
+    import worker.tasks as tasks
+
+    output = {"vms": [_ip_pending_vm()], "warnings": [
+        "VM r1-ubu02: guest network not verified yet (the build's time ran out within 40s of power-on); x"]}
+    world.update(ips={}, states=[], notified=[])
+
+    class Prov:
+        async def reconcile_guest_ips(self, range_id, out):
+            return world["ips"]
+
+    def state(db, range_id, new_state, **kw):
+        world["states"].append((new_state, kw))
+        return 1
+
+    monkeypatch.setattr(tasks, "_get_backend", lambda *a, **k: Prov())
+    monkeypatch.setattr(tasks, "_notify_api", lambda channel, msg: world["notified"].append(msg))
+    monkeypatch.setattr(db_ops, "update_range_state", state)
+    monkeypatch.setattr(db_ops, "range_output_and_backend", lambda db, rid: (json.dumps(output), "v"))
+    return output
+
+
+def test_a_guest_network_check_left_running_settles_ready_once_the_address_shows(ip_world, world):
+    world["ips"] = {"r1-ubu02": {"ip": "10.70.10.12", "guest_ips": ["10.70.10.12"], "ip_verified": True,
+                                 "ip_check": {"status": "ok"}}}
+    assert sr._ip_pending(ip_world) == ip_world["vms"]
+    sr._reconcile_range("r1", "Range 1", ip_world, "vsphere")
+    (vm,) = world["written"]["vms"]
+    assert (vm["ip"], vm["ip_verified"], vm["ip_check"]) == ("10.70.10.12", True, {"status": "ok"})
+    assert world["written"]["warnings"] == []  # "not verified yet" gone
+    assert world["states"] == [] and world["notified"] == []  # still ready
+
+
+def test_a_guest_network_check_past_its_window_fails_the_ready_range(ip_world, world):
+    reason = "planned address 10.70.10.12 not reported by VMware Tools before its readiness window ended"
+    world["ips"] = {"r1-ubu02": {"ip": "", "guest_ips": [], "ip_verified": False,
+                                 "ip_check": {"status": "failed", "detail": reason}, "not_ready": reason}}
+    sr._reconcile_range("r1", "Range 1", ip_world, "vsphere")
+    assert world["written"]["not_ready"] == ["r1-ubu02"] and "not_ready" not in world["written"]["vms"][0]
+    ((new, kw),) = world["states"]
+    assert new == "failed" and kw["only_from"] == ("ready",)  # never over a range Students started
+    assert kw["error"] == f"1 VM(s) built but not ready: VM r1-ubu02: {reason}"
+    assert world["notified"] == [{"id": "r1", "state": "failed", "error": kw["error"]}]
+
+
+def test_a_guest_network_check_still_inside_its_window_writes_nothing(ip_world, world):
+    world["ips"] = {}  # the provisioner's settle: None while the window is open
+    sr._reconcile_range("r1", "Range 1", ip_world, "vsphere")
+    assert world["written"] is None and world["states"] == []
+
+
 def test_the_query_covers_every_live_state():
     from sqlalchemy.dialects import postgresql
 

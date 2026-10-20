@@ -88,6 +88,11 @@ all:
           tn_backup_max_total_gb: 30
           # vcsim serves a self-signed certificate.
           tn_vsphere_verify_ssl: false
+          # VMware Tools never runs in a vcsim VM: record guest IPs, do not fail ranges on them.
+          tn_vsphere_guest_ip_check: "off"
+          # Its own MAC slice, apart from the work install's (hosts.yml), should both ever
+          # share a vCenter.
+          tn_vsphere_mac_pool: "00:50:56:3e:00:00-00:50:56:3e:ff:ff"
           # Staging is a test host: the ARC² runner accepts the outline and preview gates
           # itself (accepted_by "auto (test host)"; the Studio marks such runs TEST CONTENT).
           # Only matters once tn_arc2_enabled is on.

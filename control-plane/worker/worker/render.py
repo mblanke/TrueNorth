@@ -343,6 +343,10 @@ def render_topology(
                 **({"so_allow": list(node["so_allow"])} if isinstance(node.get("so_allow"), list) else {}),
                 # The range's edge firewall (WAN uplink to the depot); see vsphere_infra.pick_edge.
                 **({"edge": True} if node.get("edge") or node.get("wan") else {}),
+                # ``verify_ip: false`` (the node's, else the template's): a deliberately Tools-less
+                # image whose addresses are recorded unverified, never failing the range
+                # (provisioners/vsphere_readiness.py).
+                **({"verify_ip": False} if node.get("verify_ip", template.get("verify_ip", True)) is False else {}),
             })
 
     noise_net, noise_nics = noise_mgmt_plan(template, noise_mgmt)
