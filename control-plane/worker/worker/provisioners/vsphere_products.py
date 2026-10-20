@@ -1,6 +1,7 @@
-"""TrueNorth Range - deploy-time setup of the Exchange, SharePoint SE and MECM role images.
+"""TrueNorth Range - deploy-time setup of the Exchange 2019, SharePoint (SE and 2019) and MECM role images.
 
-The role images ``srv2022-exchange2019``, ``srv2022-sharepointse`` and ``srv2022-mecm``
+The role images ``srv2022-exchange2019``, ``srv2022-sharepointse``, ``srv2022-sharepoint2019``
+and ``srv2022-mecm`` (SETUP_IMAGES)
 (infra/vsphere/packer/roles.pkr.hcl) install prerequisites and STAGE the product media
 only: every product setup needs the range's domain, which a template cannot have. Packer's
 ``role-image.ps1`` writes ``C:\\TrueNorth\\role-image.json`` into each image (``image``,
@@ -51,8 +52,9 @@ What each product runs
   ``/Mode:Install /Role:Mailbox``. Run as the forest root's Administrator (Schema and
   Enterprise Admins).
 * SharePoint Server Subscription Edition: needs the site's product key,
-  TN_SHAREPOINT_PRODUCT_KEY (installer ``vault_sharepoint_product_key``). SharePoint SE has
-  no free key and templates carry none (ADR 0012 decision 3). Without it the role is
+  TN_SHAREPOINT_PRODUCT_KEY (installer ``vault_sharepoint_product_key``): the key for the
+  SharePoint version the site's ranges use (a mismatched one fails setup, status 13).
+  Templates carry none (ADR 0012 decision 3). Without it the role is
   ``skipped``, "staged (no product key)": nothing runs, the binaries stay staged. With it:
   ``setup.exe /config <config.xml with PIDKEY>``, then the PowerShell form of psconfig
   (``New-SPConfigurationDatabase -LocalServerRole SingleServerFarm``,
@@ -64,8 +66,10 @@ What each product runs
   (a lab range).
 * SharePoint Server 2019 (``srv2022-sharepoint2019``, role ``sharepoint-2019``; Large
   Enterprise): exactly as SharePoint SE, with the same site key variable. Its prerequisites
-  are in the image (installed one by one: its prerequisite installer does not support
-  Windows Server 2022, Microsoft Learn sharepoint/install/hardware-and-software-requirements-2019).
+  are in the image, installed one by one from the depot (offline, deterministic; the
+  documented alternative is prerequisiteinstaller.exe with local-file switches). Microsoft
+  Learn sharepoint/install/hardware-and-software-requirements-2019 lists Windows Server 2022 and
+  SQL Server 2022 as supported.
 * MECM current branch: SQL Server ``/ACTION=CompleteImage`` (collation
   SQL_Latin1_General_CP1_CI_AS), ``extadsch.exe`` (success read from C:\\ExtADSch.log), the
   System Management container with Full Control for the site server's computer account on

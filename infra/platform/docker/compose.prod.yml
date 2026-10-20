@@ -743,7 +743,7 @@ services:
       VSPHERE_SO_INSTALL_USER: ${VSPHERE_SO_INSTALL_USER:-}
       VSPHERE_SO_INSTALL_PASSWORD: ${VSPHERE_SO_INSTALL_PASSWORD:-}
       VSPHERE_SO_SETUP_TIMEOUT: ${VSPHERE_SO_SETUP_TIMEOUT:-7200}
-      # Exchange / SharePoint SE / MECM role images finished at deploy (runbook 7.3). The build
+      # Exchange 2019 / SharePoint (SE, 2019) / MECM role images finished at deploy (runbook 7.3). The build
       # starts the setup, waits at most VSPHERE_SETUP_BUILD_WAIT and leaves it running; the
       # reconcile beat task finishes it within VSPHERE_ROLE_SETUP_TIMEOUT. SharePoint's product
       # key (empty: left staged). Never logged.

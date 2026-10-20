@@ -374,8 +374,9 @@ def test_every_enabled_role_image_has_a_deploy_path():
 
 
 def test_sharepoint_2019_installs_its_prerequisites_one_by_one_on_server_2022():
-    """SharePoint Server 2019's prerequisite installer does not support Windows Server 2022, so
-    the image installs each prerequisite from the depot; the SE image still uses the installer."""
+    """The SharePoint Server 2019 image installs each prerequisite from the depot: offline and
+    deterministic (prerequisiteinstaller.exe with local-file switches is the documented
+    alternative); the SE image still uses the installer."""
     script = (PK / "files/windows/role-image.ps1").read_text()
     body = script[script.index("'srv2022-sharepoint2019' {"):script.index("'srv2022-mecm' {")]
     assert "prerequisiteinstaller.exe') '/unattended'" not in body

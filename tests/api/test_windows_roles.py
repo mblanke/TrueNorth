@@ -91,9 +91,27 @@ def test_largest_minimum_wins_per_resource():
 
 def test_image_role_replaces_the_os_template_and_features_are_merged():
     assert api_roles.role_image(["exchange"], WS22) == "srv2022-exchange2019"
+    assert api_roles.role_image(["sharepoint"], "windows-server-2019") == "srv2019-sharepoint2019"  # as on main
     assert api_roles.role_image(["sharepoint-2019"], "windows-server-2019") == "srv2019-sharepoint2019"
     assert api_roles.role_image(["sharepoint-2019"], WS22) == "srv2022-sharepoint2019"
-    assert api_roles.role_image(["sharepoint"], WS22) == "srv2022-sharepointse"
+    assert api_roles.role_image(["sharepoint"], WS22) == "srv2022-sharepointse"  # bare sharepoint on 2022: SE
+
+
+@pytest.mark.parametrize("service", ["sharepoint", "sharepoint_se", "sharepoint_2019"])
+def test_saved_sharepoint_templates_on_server_2019_keep_resolving(service):
+    """Before SharePoint 2019 was its own role, every SharePoint name on Windows Server 2019 gave
+    srv2019-sharepoint2019. Saved templates must still build: the same image, never an error
+    (unbuilt, render falls back to plain srv2019 with a "not built" warning)."""
+    errors, _ = api_roles.check_nodes([{"name": "dc", "os": WS22, "services": ["ad-ds"]},
+                                       {"name": "sp", "os": "windows-server-2019", "services": [service]}])
+    assert errors == []
+    assert api_roles.role_image(api_roles.roles_of([service]), "windows-server-2019") == "srv2019-sharepoint2019"
+    out = worker_render.render_topology(
+        _tpl({"id": "sp", "os": "windows-server-2019", "services": [service]}), "r-test",
+        {"windows-server-2019": "srv2019"}.get)
+    (vm,) = out["vm_definitions"]
+    assert vm["template_name"] == "srv2019" and vm["role_image_missing"] == "srv2019-sharepoint2019"
+    assert out["role_errors"] == []
     assert api_roles.role_image(["dns"], WS22) is None
     feats = api_roles.role_features(["ad-ds", "dns"])
     assert feats.count("DNS") == 1 and "AD-Domain-Services" in feats

@@ -1490,7 +1490,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
 
                     async def roles_then_software() -> None:
                         await self._install_roles(si, vm_defs, vms_out, start, errors, warnings)
-                        # Exchange / SharePoint SE / MECM images: after every role, so the
+                        # Exchange 2019 / SharePoint (SE, 2019) / MECM images: after every role, so the
                         # range's DC is promoted; their own software runs after the domain join.
                         names = {v["name"] for v in vm_defs if vsphere_products.needs_setup(v)}
                         products = [o for o in vms_out if o["name"] in names]
@@ -1962,7 +1962,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
         """Windows Server roles of each built VM (vsphere_roles.py), before its software:
         VSPHERE_CONCURRENCY VMs at a time, VSPHERE_ROLE_TIMEOUT each, never past
         VSPHERE_PROVISION_BUDGET. Every role that does not end ``ok`` is an error, except an
-        Exchange / SharePoint SE / MECM role: set up later (``_setup_products``), or, when its
+        Exchange 2019 / SharePoint (SE, 2019) / MECM role: set up later (``_setup_products``), or, when its
         image was not built and the plain OS was, a warning and ``role_setup`` ``skipped``."""
         by_name = {v["name"]: v for v in vm_defs}
         hard_stop = self._budget_end
@@ -2022,7 +2022,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
     async def _setup_products(self, si, range_name: str, vm_defs: list[dict], todo: list[dict],
                               vms_out: list[dict], start: float, errors: list[str], warnings: list[str],
                               gate: asyncio.Semaphore) -> None:
-        """Exchange 2019 / SharePoint SE / MECM role images (vsphere_products.py). Runs after
+        """Exchange 2019 / SharePoint (SE, 2019) / MECM role images (vsphere_products.py). Runs after
         every VM's roles, so the forest-root DC of the VM's domain is promoted, or not: then
         the setup is ``skipped``. Per VM, under the shared concurrency ``gate``: staged-image
         check and domain join as the local Administrator, the VM's own software, then the

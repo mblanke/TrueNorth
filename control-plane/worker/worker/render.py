@@ -319,7 +319,7 @@ def render_topology(
                     forests.add(domain)
                 elif any(("in_range", "ad-ds") in windows_roles.BY_ID[r].get("requires", ()) for r in roles):
                     # A member server's domain: the deploy-time product setup joins it
-                    # (provisioners/vsphere_products.py; Exchange, SharePoint SE, MECM).
+                    # (provisioners/vsphere_products.py; Exchange 2019 / SharePoint (SE, 2019) / MECM).
                     role_plan["ad_join"] = str(node.get("ad_domain") or join_domain)
             gateway = netinfo["gateway"] if netinfo else ""
             netmask = str(netinfo["net"].netmask) if netinfo else "255.255.255.0"
@@ -381,8 +381,8 @@ DEPLOY_SETUP_IMAGES = frozenset({"srv2022-exchange2019", "srv2022-sharepointse",
 def golden_image_resolver(db, hypervisor: str = "vsphere") -> Callable[[str], str | None]:
     """Build an os-alias -> template_name resolver from the golden_images table.
 
-    The three product role images with a deploy-time setup (``DEPLOY_SETUP_IMAGES``:
-    Exchange 2019, SharePoint SE, MECM) resolve only once they are ``built``: their rows are
+    The product role images with a deploy-time setup (``DEPLOY_SETUP_IMAGES``:
+    Exchange 2019 / SharePoint (SE, 2019) / MECM) resolve only once they are ``built``: their rows are
     enabled before the images exist, so render_topology builds the plain OS instead and the
     role reports itself not installed. Every other image (srv2022-sql2022,
     srv2019-sharepoint2019, ERP, historian, ...) resolves as before, whatever its build_status."""

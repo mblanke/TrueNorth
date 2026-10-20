@@ -117,9 +117,13 @@ ROLES: tuple[dict, ...] = (
      "requires": [("in_range", "ad-ds")],
      "conflicts": ["ad-ds"],
      "aliases": ["exchange_2019", "exchange_se"]},
+    # A bare ``sharepoint`` on Windows Server 2022 is SharePoint SE. On Windows Server 2019 it
+    # keeps resolving to the 2019 image, as before SharePoint 2019 became a role of its own, so
+    # saved templates do not break (until that image is built: plain srv2019 and a warning).
     {"id": "sharepoint", "label": "SharePoint Server Subscription Edition", "group": "Apps",
      "min": {"vcpu": 4, "ram_mb": 16384, "disk_gb": 200},
-     "install": {"method": "image", "images": {_WS2022: "srv2022-sharepointse"}},
+     "install": {"method": "image", "images": {_WS2019: "srv2019-sharepoint2019",
+                                                _WS2022: "srv2022-sharepointse"}},
      "requires": [("in_range", "ad-ds"), ("in_range", "sql-server")],
      "conflicts": ["ad-ds"],
      "aliases": ["sharepoint_se"]},

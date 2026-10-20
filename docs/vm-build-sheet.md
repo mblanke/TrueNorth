@@ -407,9 +407,9 @@ These are repo issues the build team will hit. They are listed here and not fixe
    a mailbox database). Use ≥150 GB.
 8. **Exchange 2019 and SharePoint 2019 reached end of support on 14 Oct 2025.** That is fine
    for a deliberately vulnerable range. **Decided: build both 2019 and SE** (§8). The current
-   versions are Exchange SE and SharePoint SE. Also, **SharePoint 2019 is not supported on
-   Windows Server 2022** (large-enterprise `sp01` is `windows-server-2022`). Use srv2019, or
-   SharePoint SE.
+   versions are Exchange SE and SharePoint SE. SharePoint 2019 runs on Windows Server 2022
+   (Microsoft Learn's SharePoint 2019 requirements list it): large-enterprise `sp01` uses
+   `srv2022-sharepoint2019` (2026-10-20 owner decision; runbook §7.3).
 9. **CrackMapExec** (red-team YAML) is unmaintained. Its successor is NetExec.
 10. `small-enterprise/template.yaml` uses a different schema (`assets`/`count`) with no specs,
     so capacity cannot be computed for it.

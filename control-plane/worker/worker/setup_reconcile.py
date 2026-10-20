@@ -1,6 +1,6 @@
 """Finish long in-guest setups a build left ``running`` (ADR 0012).
 
-A product role image (Exchange, SharePoint SE, MECM) and Security Onion each take 20 min to
+A product role image (Exchange 2019 / SharePoint (SE, 2019) / MECM) and Security Onion each take 20 min to
 2 h in the guest, far longer than a provision may run before the Celery soft time limit
 (worker/fencing.py). So the build starts the setup, records it ``running`` with the status
 file to read and when it started, and finishes within its budget. This periodic task then

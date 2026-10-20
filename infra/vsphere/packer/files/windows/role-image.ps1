@@ -21,8 +21,11 @@
                   (Information Protection and Control Client 2.1), WcfDataServices.exe (WCF Data
                   Services 5.6), vcredist_x64.exe (VC++ 2012), VC_redist.x64.exe (VC++ 2015-2022),
                   WindowsServerAppFabricSetup_x64.exe and AppFabric-KB3092423-x64-ENU.exe (CU7):
-                  installed one by one, because SharePoint Server 2019's prerequisite installer
-                  does not support Windows Server 2022 (Microsoft Learn, below)
+                  installed one by one: offline and deterministic (no internet on the build
+                  network; each file pinned on the depot). The documented alternative is
+                  prerequisiteinstaller.exe with local files (/SQLNCli: /Sync: /AppFabric:
+                  /IDFX11: /MSIPCClient: /KB3092423: /WCFDataServices56: /DotNet472:
+                  /MSVCRT11: /MSVCRT141:)
     mecm          adk.zip (adksetup.exe /layout), adkwinpe.zip (adkwinpesetup.exe /layout)
                   optional: msodbcsql18.msi, configmgr-prereqs.zip (setupdl.exe output)
 
@@ -35,10 +38,9 @@
   exists. Keep its keys: image, staged, sql ("prepared" when SQL Server 2022 was run with
   /ACTION=PrepareImage: MECM's site database, SharePoint's farm database).
 
-  SharePoint Server 2019 on Windows Server 2022: Microsoft Learn, sharepoint/install/
-  hardware-and-software-requirements-2019 (supported operating systems, and the list of
-  prerequisites to install manually where the prerequisite installer is not supported).
-  Verify that page on the first build: it was cited from knowledge, not fetched.
+  SharePoint Server 2019: Microsoft Learn, sharepoint/install/hardware-and-software-requirements-2019
+  lists Windows Server 2022 and SQL Server 2022 as supported, and documents installing the
+  prerequisites from local files with prerequisiteinstaller.exe switches.
 
   Sources: Exchange Server prerequisites (Microsoft Learn, exchange/plan-and-deploy/
   prerequisites, Exchange 2019 on Windows Server 2022 Desktop Experience); SQL Server
@@ -175,7 +177,10 @@ if ($pass -eq 1) {
         Web-Basic-Auth, Web-Windows-Auth, Web-Filtering, Web-Digest-Auth, Web-Performance,
         Web-Stat-Compression, Web-Dyn-Compression, Web-Mgmt-Tools, Web-Mgmt-Console, WAS, WAS-Process-Model,
         WAS-NET-Environment, WAS-Config-APIs, Windows-Identity-Foundation | Out-Host
-      Step 'SharePoint Server 2019 prerequisites, one by one from the depot (no prerequisite installer on Server 2022)'
+      Step '.NET Framework 4.7.2 or later (Server 2022 ships 4.8)'
+      $release = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full' -ErrorAction SilentlyContinue).Release
+      if ($release -lt 461808) { throw "role-image: SharePoint Server 2019 needs .NET Framework 4.7.2 or later (release 461808); this image has $release" }
+      Step 'SharePoint Server 2019 prerequisites, one by one from the depot (offline, deterministic)'
       Invoke-Installer (Get-DepotFile 'sqlncli.msi') 'IACCEPTSQLNCLILICENSETERMS=YES' | Out-Null
       Invoke-Installer (Get-DepotFile 'Synchronization.msi') '' | Out-Null
       Invoke-Installer (Get-DepotFile 'MicrosoftIdentityExtensions-64.msi') '' | Out-Null
@@ -183,7 +188,19 @@ if ($pass -eq 1) {
       Invoke-Installer (Get-DepotFile 'WcfDataServices.exe') '/quiet /norestart' | Out-Null
       Invoke-Installer (Get-DepotFile 'vcredist_x64.exe') '/install /quiet /norestart' @(0, 1638, 1641, 3010) | Out-Null
       Invoke-Installer (Get-DepotFile 'VC_redist.x64.exe') '/install /quiet /norestart' @(0, 1638, 1641, 3010) | Out-Null
-      Invoke-Installer (Get-DepotFile 'WindowsServerAppFabricSetup_x64.exe') '/i CacheClient,CachingService,CacheAdmin /gac' | Out-Null
+      # AppFabric 1.1 setup fails with 1603 when the machine PSModulePath holds more than the
+      # Windows default: install with the default, then put the original back (keeping the
+      # module path AppFabric adds).
+      $psmpMachine = [Environment]::GetEnvironmentVariable('PSModulePath', 'Machine')
+      $psmpDefault = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\Modules"
+      [Environment]::SetEnvironmentVariable('PSModulePath', $psmpDefault, 'Machine')
+      try {
+        Invoke-Installer (Get-DepotFile 'WindowsServerAppFabricSetup_x64.exe') '/i CacheClient,CachingService,CacheAdmin /gac' | Out-Null
+      } finally {
+        $added = @([Environment]::GetEnvironmentVariable('PSModulePath', 'Machine') -split ';' |
+          Where-Object { $_ -and $_ -ne $psmpDefault -and ($psmpMachine -split ';') -notcontains $_ })
+        [Environment]::SetEnvironmentVariable('PSModulePath', ((@($psmpMachine -split ';') + $added) -join ';'), 'Machine')
+      }
       Invoke-Installer (Get-DepotFile 'AppFabric-KB3092423-x64-ENU.exe') '/quiet /norestart' | Out-Null
     }
     'srv2022-mecm' {
