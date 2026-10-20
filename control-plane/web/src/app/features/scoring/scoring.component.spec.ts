@@ -214,6 +214,43 @@ describe('ScoringComponent (after-action review)', () => {
     expect(fixture.nativeElement.querySelector('iframe.aar-frame')).toBeNull();
   });
 
+  // Issue #201: on a running exercise the page asked for the AAR and logged a 404.
+  it('does not ask for the AAR of a running exercise, and says when it will exist', async () => {
+    api.getExercise.and.returnValue(of({ ...exercise, state: 'running' } as Exercise));
+    query = { exercise: 'e1' };
+    await create();
+    fixture.detectChanges();
+    expect(api.getAAR).not.toHaveBeenCalled();
+    expect(api.getAARHtml).not.toHaveBeenCalled();
+    expect(fixture.nativeElement.querySelector('[data-testid="aar-pending"]')?.textContent)
+      .toContain('once the exercise ends');
+    expect(generateButton()).toBeUndefined();
+    expect(fixture.nativeElement.querySelector('[data-testid="aar-none"]')).toBeNull();
+  });
+
+  it('shows who detected what instead of the stored evidence JSON', async () => {
+    api.listObjectives.and.returnValue(of([
+      { id: 'o1', exercise_id: 'e1', ref_id: 'detect_c2', objective_type: 'detection', description: 'detect_c2',
+        validator: 'opensearch_query', points: 40, achieved: true, achieved_at: '2026-10-19T10:00:00Z',
+        evidence: JSON.stringify({ source: 'student_detection', submission_id: 's1', student_id: 'u1',
+          student: 'Sam Student', events_matched: 3, on_target: 3 }) },
+      { id: 'o2', exercise_id: 'e1', ref_id: 'write_report', objective_type: 'deliverable', description: '',
+        validator: 'deliverable_check', points: 10, achieved: false },
+    ] as Objective[]));
+    query = { exercise: 'e1' };
+    await create();
+    fixture.detectChanges();
+    const text: string = fixture.nativeElement.textContent;
+    expect(text).toContain('Detected by Sam Student: 3 events matched, 3 of the attack');
+    expect(text).not.toContain('student_detection');
+    expect(text).not.toContain('submission_id');
+    const titles = Array.from(fixture.nativeElement.querySelectorAll('mat-card-title') as NodeListOf<HTMLElement>)
+      .map(t => t.textContent?.trim());
+    expect(titles).toContain('Detect C2');
+    expect(titles).toContain('Write report');
+    expect(text).toContain('Deliverable · instructor sign-off');
+  });
+
   it('says the report failed to load rather than that there is none', async () => {
     auth = fakeAuth('observer');
     api.getAAR.and.returnValue(throwError(() => ({ status: 500 })));

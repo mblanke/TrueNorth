@@ -9,6 +9,7 @@ import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { ApiService, Detection } from '@core/services/api.service';
 import { AuthService } from '@core/services/auth.service';
 import type { InjectRecord } from '@core/models';
+import { objectiveKind, objectiveName } from '@shared/objective-display';
 import { DetectionPanelComponent, isDetectionObjective } from './detection-panel.component';
 import { RangeNotesComponent } from '../../shared/components/range-notes/range-notes.component';
 import { RangeCredentialsComponent } from '../../shared/components/range-credentials/range-credentials.component';
@@ -22,6 +23,8 @@ interface TimelineStep {
 }
 interface ObjectiveRow {
   ref_id: string;
+  /** The objective's name (empty when the scenario gave none). */
+  description?: string;
   type: string;
   points: number;
   achieved: boolean;
@@ -75,15 +78,26 @@ const NODE_ICON: Record<string, string> = {
 ],
   template: `
     @if (detail; as d) {
-      <div class="xd">
+      <div class="xd page-container">
         <header class="xd-head">
           <div>
-            <a routerLink="/learning/career-path" class="back"><mat-icon>arrow_back</mat-icon> Career path</a>
+            <!-- A Student reaches an assessment from their career path; staff from Exercises (#201). -->
+            @if (isStudent()) {
+              <a routerLink="/learning/career-path" class="back"><mat-icon>arrow_back</mat-icon> Career path</a>
+            } @else {
+              <a routerLink="/exercises" class="back"><mat-icon>arrow_back</mat-icon> Exercises</a>
+            }
             <div class="kicker">Individual Assessment</div>
             <h2>{{ d.exercise_name }}</h2>
             <div class="meta">
-              <span class="chip" [class.done]="d.state==='completed'" [class.run]="d.state==='running'">{{ d.state }}</span>
-              <span class="muted">{{ d.environment }} · {{ fmtDuration(d.duration_min) }} · {{ d.po_id }}</span>
+              @if (d.state === 'running') {
+                <span class="chip run live" data-testid="live" role="status"><span class="dot" aria-hidden="true"></span>Live</span>
+              } @else {
+                <span class="chip" [class.done]="d.state==='completed'">{{ d.state }}</span>
+              }
+              @if (metaLine(d); as m) {
+                <span class="muted">{{ m }}</span>
+              }
               @if (d.duration_min >= 480) {
                 <span class="chip warn"
                 title="Unusually long assessment (8h+) — verify the duration is intentional">⚠ long</span>
@@ -91,12 +105,18 @@ const NODE_ICON: Record<string, string> = {
             </div>
           </div>
           <div class="run-box">
-            @if (auth.isInstructor()) {
-              <!-- Staff run and replay a team exercise; a replay clears every objective (sweep M3). -->
-              <button mat-flat-button color="primary" (click)="run()" [disabled]="running || d.state==='running'">
+            @if (auth.isInstructor() && d.state !== 'running' && d.state !== 'paused') {
+              <!-- Staff run and replay a team exercise; a replay clears every objective (sweep M3).
+                   A running exercise shows Live instead of a disabled button (#201). -->
+              <button mat-flat-button color="primary" (click)="run()" [disabled]="running">
                 <mat-icon>{{ d.state === 'completed' ? 'replay' : 'play_arrow' }}</mat-icon>
-                {{ d.state === 'running' ? 'Running…' : 'Provision & Run (simulated)' }}
+                {{ running ? 'Starting…' : 'Provision & Run (simulated)' }}
               </button>
+            }
+            @if ((d.state === 'running' || d.state === 'paused') && auth.canOpen('opsCenter')) {
+              <a mat-stroked-button [routerLink]="['/ops-center', d.exercise_id]">
+                <mat-icon>radar</mat-icon> Open in Ops Center
+              </a>
             }
             @if (d.state === 'paused' && auth.can('exercise:pause')) {
               <!-- POST /exercises/{id}/resume: the run carries on from its next unfired inject. -->
@@ -129,8 +149,8 @@ const NODE_ICON: Record<string, string> = {
             @for (o of d.objectives; track o.ref_id) {
               <div class="obj" [class.ok]="o.achieved">
                 <mat-icon>{{ o.achieved ? 'check_circle' : 'radio_button_unchecked' }}</mat-icon>
-                <span class="obj-ref">{{ o.ref_id }}</span>
-                <span class="obj-type">{{ o.type }}</span>
+                <span class="obj-ref" [attr.title]="o.ref_id">{{ nameOf(o) }}</span>
+                <span class="obj-type">{{ kindOf(o) }}</span>
                 <span class="spacer"></span>
                 <span class="pts">{{ o.points }} pts</span>
               </div>
@@ -255,7 +275,10 @@ const NODE_ICON: Record<string, string> = {
     `,
   styles: [
     `
-      .xd { padding: 4px 2px 24px; }
+      .chip.live { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; }
+      .chip.live .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--warning); animation: live-pulse 1.6s ease-in-out infinite; }
+      @keyframes live-pulse { 50% { opacity: .35; } }
+      @media (prefers-reduced-motion: reduce) { .chip.live .dot { animation: none; } }
       .xd-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
       .back { display: inline-flex; align-items: center; gap: 4px; font-size: 0.85rem; color: var(--text-muted); text-decoration: none; }
       .kicker { font-size: 0.72rem; letter-spacing: .06em; text-transform: uppercase; color: var(--accent); font-weight: 700; margin-top: 6px; }
@@ -336,6 +359,20 @@ export class ExerciseDetailComponent implements OnInit, OnDestroy {
 
   isDetection(o: ObjectiveRow): boolean {
     return isDetectionObjective(o.validator);
+  }
+
+  readonly isStudent = () => this.auth.user()?.role === 'student';
+  nameOf(o: ObjectiveRow): string {
+    return objectiveName(o);
+  }
+  kindOf(o: ObjectiveRow): string {
+    return objectiveKind(o);
+  }
+
+  /** Environment, duration and PO, leaving out whichever the scenario does not give. */
+  metaLine(d: ScenarioDetail): string {
+    return [d.environment, d.duration_min ? this.fmtDuration(d.duration_min) : '', d.po_id]
+      .map(s => (s ?? '').trim()).filter(Boolean).join(' · ');
   }
 
   attemptsFor(refId: string): Detection[] {

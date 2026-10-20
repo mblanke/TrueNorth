@@ -16,6 +16,10 @@ import { ApiService } from '@core/services/api.service';
 import { NotificationService } from '@core/services/notification.service';
 import { AuthService } from '@core/services/auth.service';
 import { Exercise, ExerciseSummary, Objective, AAR } from '@core/models';
+import { evidenceText, objectiveKind, objectiveName } from '@shared/objective-display';
+
+/** Exercise states with a report to read (ExerciseState in models.py). */
+const ENDED_STATES: string[] = ['completed', 'cancelled'];
 
 @Component({
   selector: 'tn-scoring',
@@ -71,14 +75,13 @@ import { Exercise, ExerciseSummary, Objective, AAR } from '@core/models';
                 <mat-icon mat-card-avatar [style.color]="obj.achieved ? 'var(--success)' : 'var(--text-muted)'">
                   {{ obj.achieved ? 'check_circle' : 'radio_button_unchecked' }}
                 </mat-icon>
-                <mat-card-title>{{ obj.ref_id }}</mat-card-title>
-                <mat-card-subtitle>{{ obj.objective_type | uppercase }} — {{ obj.points }} pts</mat-card-subtitle>
+                <mat-card-title [attr.title]="obj.ref_id">{{ nameOf(obj) }}</mat-card-title>
+                <mat-card-subtitle>{{ kindOf(obj) }} — {{ obj.points }} pts</mat-card-subtitle>
               </mat-card-header>
               <mat-card-content>
-                <p>{{ obj.description }}</p>
                 @if (obj.achieved) {
                   <p class="meta">Achieved: {{ obj.achieved_at | date:'medium' }}</p>
-                  @if (obj.evidence) { <p class="meta">Evidence: {{ obj.evidence }}</p> }
+                  @if (evidenceOf(obj); as ev) { <p class="meta evidence">{{ ev }}</p> }
                 }
               </mat-card-content>
               <mat-card-actions>
@@ -94,7 +97,12 @@ import { Exercise, ExerciseSummary, Objective, AAR } from '@core/models';
 
         <div class="mt-3 aar-actions">
           <!-- aar:generate: instructors and admins. Observers and Students only read. -->
-          @if (canGenerate()) {
+          @if (aarState() === 'pending') {
+            <!-- An AAR is the report of an ended exercise: not asked for while it runs (#201). -->
+            <p class="meta" data-testid="aar-pending">
+              The after-action report can be generated once the exercise ends.
+            </p>
+          } @else if (canGenerate()) {
             <button mat-raised-button color="primary" (click)="generateAAR()">
               <mat-icon>assessment</mat-icon> {{ aar() ? 'Regenerate AAR' : 'Generate AAR' }}
             </button>
@@ -150,7 +158,17 @@ export class ScoringComponent implements OnInit {
   readonly isStudent = () => this.auth.user()?.role === 'student';
   /** 'none': the API has no report this caller may read (404, which is also its answer for
    *  a Student who did not take part); 'error': anything else. Never shown as empty data. */
-  readonly aarState = signal<'unknown' | 'ready' | 'none' | 'error'>('unknown');
+  readonly aarState = signal<'unknown' | 'pending' | 'ready' | 'none' | 'error'>('unknown');
+
+  nameOf(o: Objective): string {
+    return objectiveName(o);
+  }
+  kindOf(o: Objective): string {
+    return objectiveKind(o);
+  }
+  evidenceOf(o: Objective): string {
+    return evidenceText(o.evidence);
+  }
 
   private route = inject(ActivatedRoute);
 
@@ -183,9 +201,22 @@ export class ScoringComponent implements OnInit {
     if (!this.selectedExerciseId) return;
     this.aarHtml.set(null);
     this.aarState.set('unknown');
-    this.api.getExercise(this.selectedExerciseId).subscribe(e => this.selectedExercise.set(e));
-    this.api.listObjectives(this.selectedExerciseId).subscribe(o => this.objectives.set(o));
-    this.api.getAAR(this.selectedExerciseId).subscribe({
+    this.aar.set(null);
+    const id = this.selectedExerciseId;
+    this.api.getExercise(id).subscribe({
+      next: e => {
+        this.selectedExercise.set(e);
+        // The AAR reports an ended exercise; asking for one mid-run only earns a 404 (#201).
+        if (ENDED_STATES.includes(e.state)) this.loadAAR(id);
+        else this.aarState.set('pending');
+      },
+      error: () => this.aarState.set('error'),
+    });
+    this.api.listObjectives(id).subscribe(o => this.objectives.set(o));
+  }
+
+  private loadAAR(id: string): void {
+    this.api.getAAR(id).subscribe({
       next: a => { this.aar.set(a); this.aarState.set('ready'); this.viewAARHtml(); },
       error: (err) => { this.aar.set(null); this.aarState.set(err?.status === 404 ? 'none' : 'error'); },
     });

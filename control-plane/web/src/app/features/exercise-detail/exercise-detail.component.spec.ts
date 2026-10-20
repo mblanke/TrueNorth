@@ -255,3 +255,92 @@ describe('ExerciseDetailComponent range accounts (ADR 0012)', () => {
     expect(el.textContent).not.toContain('Show accounts');
   });
 });
+
+// Issue #201: what an instructor saw on a real render of a running exercise.
+describe('ExerciseDetailComponent instructor polish (#201)', () => {
+  let fixture: ComponentFixture<ExerciseDetailComponent>;
+
+  const base = {
+    exercise_id: 'ex-1', exercise_name: 'Hunt', state: 'running', total_score: 0, max_score: 30, range_id: '',
+    scenario_name: 's', po_id: '', environment: '', duration_min: 0, timeline: [], noise_floor: null,
+    objectives: [
+      { ref_id: 'detect_c2', description: 'Detect the C2 beacon', type: 'detection', points: 10, achieved: false,
+        evidence: '', validator: 'opensearch_query', competency_code: '' },
+      { ref_id: 'contain_ws07', description: 'contain_ws07', type: 'response', points: 10, achieved: false,
+        evidence: '', validator: 'manual_ack', competency_code: '' },
+      { ref_id: 'write_report', description: '', type: 'deliverable', points: 10, achieved: false,
+        evidence: '', validator: 'deliverable_check', competency_code: '' },
+    ],
+  };
+
+  async function render(role: UserRole, patch: Record<string, unknown> = {}): Promise<HTMLElement> {
+    const api = jasmine.createSpyObj('ApiService', ['get', 'listInjects', 'getRange', 'getRangeDiagram', 'listDetections']);
+    api.get.and.returnValue(of({ ...base, ...patch } as any));
+    api.listInjects.and.returnValue(of([]));
+    api.listDetections.and.returnValue(of([]));
+    await TestBed.configureTestingModule({
+      imports: [ExerciseDetailComponent, NoopAnimationsModule],
+      providers: [
+        provideRouter([]),
+        { provide: ApiService, useValue: api },
+        { provide: AuthService, useValue: fakeAuth(role) },
+        { provide: ActivatedRoute, useValue: { snapshot: { paramMap: convertToParamMap({ id: 'ex-1' }) } } },
+      ],
+    }).compileComponents();
+    fixture = TestBed.createComponent(ExerciseDetailComponent);
+    fixture.detectChanges();
+    return fixture.nativeElement as HTMLElement;
+  }
+
+  afterEach(() => fixture?.destroy());
+
+  it('takes staff back to Exercises, and a Student back to their career path', async () => {
+    let back = (await render('instructor')).querySelector<HTMLAnchorElement>('a.back')!;
+    expect(back.textContent).toContain('Exercises');
+    expect(back.getAttribute('href')).toBe('/exercises');
+    fixture.destroy();
+    TestBed.resetTestingModule();
+    back = (await render('student')).querySelector<HTMLAnchorElement>('a.back')!;
+    expect(back.textContent).toContain('Career path');
+    expect(back.getAttribute('href')).toBe('/learning/career-path');
+  });
+
+  it('shows a running exercise as live, not as a greyed-out Running… button', async () => {
+    const el = await render('instructor');
+    const buttons = Array.from(el.querySelectorAll('button'));
+    expect(buttons.some(b => b.textContent?.includes('Running'))).toBeFalse();
+    expect(buttons.some(b => b.textContent?.includes('Provision & Run'))).toBeFalse();
+    expect(el.querySelector('[data-testid="live"]')?.textContent).toContain('Live');
+    const ops = Array.from(el.querySelectorAll<HTMLAnchorElement>('a')).find(a => a.textContent?.includes('Ops Center'));
+    expect(ops?.getAttribute('href')).toBe('/ops-center/ex-1');
+  });
+
+  it('leaves out empty metadata instead of printing "· — ·"', async () => {
+    let meta = (await render('instructor')).querySelector('.meta')!.textContent!;
+    expect(meta).not.toContain('·');
+    expect(meta).not.toContain('—');
+    fixture.destroy();
+    TestBed.resetTestingModule();
+    meta = (await render('instructor', { environment: 'enterprise', duration_min: 90, po_id: 'PO 401' }))
+      .querySelector('.meta')!.textContent!;
+    expect(meta).toContain('enterprise · 1h 30m · PO 401');
+  });
+
+  it('names objectives and labels instructor-judged ones as sign-off', async () => {
+    const el = await render('instructor');
+    const rows = Array.from(el.querySelectorAll('.obj')).map(r => r.textContent ?? '');
+    expect(rows[0]).toContain('Detect the C2 beacon');
+    expect(rows[0]).toContain('Detection');
+    expect(rows[1]).toContain('Contain WS07');
+    expect(rows[1]).toContain('Instructor sign-off');
+    expect(rows[1]).not.toContain('contain_ws07');
+    expect(rows[2]).toContain('Write report');
+    expect(rows[2]).toContain('instructor sign-off');
+    expect(rows[2]).not.toMatch(/\bdeliverable\b/);
+  });
+
+  it('pads the page like every other page', async () => {
+    const el = await render('instructor');
+    expect(el.querySelector('.xd')?.classList).toContain('page-container');
+  });
+});

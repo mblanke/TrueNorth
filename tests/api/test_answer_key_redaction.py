@@ -97,3 +97,16 @@ def test_every_shipped_scenario_briefing_leaks_no_objective_key():
                 assert render(query, doc.get("variables")) not in briefing, (path.parent.name, obj["id"])
         for value in (doc.get("variables") or {}).values():
             assert str(value) not in briefing, (path.parent.name, value)
+
+
+def test_scenario_detail_names_each_objective_for_staff_and_students(client, db_session, exercise):
+    # Issue #201: the detail view showed raw ref ids. An objective's name is briefing
+    # (OBJECTIVE_KEYS), so a Student gets it as staff do.
+    db_session.query(Objective).filter(Objective.exercise_id == exercise.id).update(
+        {"description": "Detect the C2 beacon"})
+    db_session.commit()
+    for role in (UserRole.instructor, UserRole.student):
+        with acting_as(role):
+            detail = client.get(f"/exercises/{exercise.id}/scenario-detail").json()
+        assert [(o["ref_id"], o["description"]) for o in detail["objectives"]] == [
+            ("detect_c2", "Detect the C2 beacon")], role

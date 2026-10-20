@@ -273,6 +273,8 @@ def scenario_detail(
         "objectives": [
             {
                 "ref_id": o.ref_id,
+                # The objective's name (briefing, OBJECTIVE_KEYS): what the view shows, not the id.
+                "description": o.description or "",
                 "type": o.objective_type.value,
                 "points": o.points,
                 "achieved": o.achieved,
