@@ -32,10 +32,16 @@ if ($left.Count -gt 0) {
   exit 1
 }
 
+# This script is Packer's shutdown_command: it must return at once and let Packer wait for the
+# power-off. Run synchronously, sysprep powered the VM off under the open WinRM call and Packer
+# failed the build ("error sending shutdown command", 2026-10-20).
 $unattend = 'C:\Windows\Temp\sysprep-unattend.xml'
+$sysprepArgs = @('/oobe', '/generalize', '/shutdown', '/quiet')
 if (-not (Test-Path $unattend)) {
   Write-Warning "sysprep-unattend.xml not staged at $unattend; running sysprep without it."
-  & "$env:SystemRoot\System32\Sysprep\sysprep.exe" /oobe /generalize /shutdown /quiet
 } else {
-  & "$env:SystemRoot\System32\Sysprep\sysprep.exe" /oobe /generalize /shutdown /quiet /unattend:$unattend
+  $sysprepArgs += "/unattend:$unattend"
 }
+Start-Process -FilePath "$env:SystemRoot\System32\Sysprep\sysprep.exe" -ArgumentList $sysprepArgs
+Write-Host 'sysprep started; it shuts the VM down when generalized.'
+exit 0
