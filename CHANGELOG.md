@@ -327,6 +327,20 @@ course production with a local-model fallback, and the cleanup of unsupported su
   assets name their OS, and a test checks every `os:` in content/ranges resolves to an
   enabled image. CI job `packer-vsphere` runs `packer init`, `fmt -check` and
   `validate -syntax-only` on `infra/vsphere/packer` (the README named a job that did not exist).
+- vCenter organisation (ADR 0012 follow-up): one `TrueNorth` VM-folder tree. Range folders
+  are `TrueNorth/Ranges/<range-name>-<id8>` (`VSPHERE_RANGE_FOLDER` / `tn_vsphere_range_folder`
+  default, was `truenorth/ranges/<id8>`), found by the id8 suffix on destroy, old layout
+  included. Single-cardinality vCenter tags `tn-type` / `tn-os` / `tn-template` / `tn-range`:
+  the provisioner tags range VMs at clone (CIS tagging API, both REST dialects; best effort,
+  `VSPHERE_TAGS=false` turns it off) and deletes the range's tag on destroy; `build.sh`
+  and `test-clone.sh` tag templates, host copies and test clones (`TN_TAGS=0`: off).
+  `scripts/lab/vcenter-organize.sh [--dry-run]` moves existing objects out of `truenorth/`
+  (unknown templates to `TrueNorth/Templates/_retired`, never deleted), names range folders
+  from the database, removes only empty old folders and tags everything TrueNorth's; it
+  refuses while a range provisions or is destroyed. Infrastructure gets a **Virtual
+  machines** tab (`GET /hypervisors/connections/{id}/vms`, read live): Golden templates /
+  Host copies / Range VMs / Other by `tn-type`; host VM counts unchanged. The depot's
+  online-window guard checks both range roots.
 - New: range credentials (ADR 0012 §12-14). A range template may declare `accounts:`
   (`machine`, `username`, `password` or `generate: true`, `student_visible`, `role`,
   `notes`); the machine must be one the worker builds, a username appears once per machine,

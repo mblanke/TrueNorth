@@ -188,7 +188,8 @@ def env(monkeypatch, template):
         "VSPHERE_NETWORK": "", "VSPHERE_MGMT_NETWORK": "VM Network", "VSPHERE_RANGE_SWITCH_MODE": "vds",
         "VSPHERE_RANGE_DVS": DVS, "VSPHERE_VLAN_POOL": "100-199", "VSPHERE_PLACEMENT": "spread",
         "VSPHERE_EXCLUDE_HOSTS": "", "VSPHERE_RANGE_UPLINK_NETWORK": "", "TN_DEPOT_URL": "",
-        "VSPHERE_TOOLS_TIMEOUT": 0, "VSPHERE_RESOURCE_POOL": "", "VSPHERE_RANGE_FOLDER": "truenorth/ranges",
+        "VSPHERE_TOOLS_TIMEOUT": 0, "VSPHERE_RESOURCE_POOL": "", "VSPHERE_RANGE_FOLDER": "TrueNorth/Ranges",
+        "VSPHERE_TAGS": True,
         # Tools never runs in a vcsim VM: record what it reports, do not fail on it
         # (test_readiness_refuses_a_range_whose_guests_report_nothing turns it on).
         "VSPHERE_GUEST_IP_TIMEOUT": 0, "VSPHERE_GUEST_IP_CHECK": False, "VSPHERE_MAC_POOL": "",
@@ -221,6 +222,44 @@ def _reserve(prov, range_id: str, template: dict, taken=()) -> dict:
         got = dict(zip(need.holders, free, strict=False))
         allocations[need.key] = got[need.holders[0]] if need.single else got
     return allocations
+
+
+def _cis(fn):
+    """``fn(client, headers)`` on a fresh legacy REST session (the simulator's tagging API)."""
+    with httpx.Client(base_url=URL, verify=False) as c:
+        h = {"vmware-api-session-id": c.post("/rest/com/vmware/cis/session", auth=(USER, PASSWORD)).json()["value"]}
+        try:
+            return fn(c, h)
+        finally:
+            c.delete("/rest/com/vmware/cis/session", headers=h)
+
+
+_TAGGING = "/rest/com/vmware/cis/tagging"
+
+
+def _tags_on(vm_id: str) -> dict[str, str]:
+    """category -> tag name on a VM, read back from the simulator."""
+    def read(c, h):
+        ids = c.post(f"{_TAGGING}/tag-association?~action=list-attached-tags", headers=h,
+                     json={"object_id": {"type": "VirtualMachine", "id": vm_id}}).json()["value"]
+        out = {}
+        for tid in ids:
+            tag = c.get(f"{_TAGGING}/tag/id:{tid}", headers=h).json()["value"]
+            out[c.get(f"{_TAGGING}/category/id:{tag['category_id']}", headers=h).json()["value"]["name"]] = tag["name"]
+        return out
+    return _cis(read)
+
+
+def _tag_names(category: str) -> set[str]:
+    def read(c, h):
+        names = set()
+        for cid in c.get(f"{_TAGGING}/category", headers=h).json()["value"]:
+            if c.get(f"{_TAGGING}/category/id:{cid}", headers=h).json()["value"]["name"] == category:
+                listed = c.post(f"{_TAGGING}/tag/id:{cid}?~action=list-tags-for-category", headers=h).json()
+                for tid in listed["value"] or []:  # vcsim answers null for none
+                    names.add(c.get(f"{_TAGGING}/tag/id:{tid}", headers=h).json()["value"]["name"])
+        return names
+    return _cis(read)
 
 
 def _portgroups(si, prefix: str) -> dict:
@@ -279,7 +318,7 @@ def test_a_two_network_range_lifecycle(env, si, range_id):
                            "nic_macs": {f"{r8}-attacker#nic0": "00:50:56:3c:00:00",
                                         f"{r8}-victim#nic0": "00:50:56:3c:00:01"}}
 
-    built = _run(prov.provision(range_id, template, allocations))
+    built = _run(prov.provision(range_id, template, {**allocations, "range_name": "Sim Range"}))
     assert built.status == "ok", built.errors
     assert prov._dialect == "rest"
 
@@ -296,7 +335,9 @@ def test_a_two_network_range_lifecycle(env, si, range_id):
         assert [n.backing.port.portgroupKey for n in nics] == [want[vm.name]]
         assert mod.annotated_range(vm.config.annotation) == range_id
         assert vm.runtime.powerState == "poweredOn"
-        assert vm.parent.name == r8 and vm.parent.parent.name == "ranges"
+        assert vm.parent.name == f"sim-range-{r8}" and vm.parent.parent.name == "Ranges"
+        assert _tags_on(out["vm_id"]) == {"tn-type": "range-vm", "tn-os": "ubuntu-2404", "tn-template": TEMPLATE_VM,
+                                          "tn-range": f"sim-range-{r8}"}
     assert {v["vm_id"] for v in _run(prov.find_vms(f"{range_id}-"))} == {v["vm_id"] for v in built.vms}
 
     # What provision_range stores (range_alloc.stored_output): with the vCenter it was built
@@ -317,6 +358,8 @@ def test_a_two_network_range_lifecycle(env, si, range_id):
     names = {_name(vm) for vm in _all(si, vim.VirtualMachine)}
     assert not names & set(want)
     assert _portgroups(si, f"tn-{r8}-") == {}
+    assert f"sim-range-{r8}" not in _tag_names("tn-range")  # the range's tag went with its VMs
+    assert not [f for f in _named(si, vim.Folder, "Ranges").childEntity if f.name.endswith(r8)]
     assert _run(mod.VsphereAPIProvisioner().find_vms(f"{range_id}-")) == []
     again = _run(mod.VsphereAPIProvisioner().destroy(range_id, output))
     assert again.status == "ok", again.errors  # a retried destroy finds everything gone

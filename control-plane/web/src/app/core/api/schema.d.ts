@@ -2965,6 +2965,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/hypervisors/connections/{conn_id}/vms": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Vms
+         * @description The connection's VMs, read live from the hypervisor and grouped by their tn-type tag
+         *     (golden templates, host copies, range VMs, other). Read only; host VM counts unchanged.
+         */
+        get: operations["list_vms_hypervisors_connections__conn_id__vms_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/hypervisors/discovery": {
         parameters: {
             query?: never;
@@ -11460,6 +11481,30 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /** InventoryVmOut */
+        InventoryVmOut: {
+            /**
+             * Group
+             * @description golden: tn-type golden-template; copies: template-copy; ranges: range-vm; other: anything else (test clones, depot, untagged)
+             * @enum {string}
+             */
+            group: "golden" | "copies" | "ranges" | "other";
+            /** Host */
+            host?: string | null;
+            /** Name */
+            name: string;
+            /** Power State */
+            power_state?: string | null;
+            /**
+             * Tags
+             * @description TrueNorth's tn-* vCenter tags: category -> value
+             */
+            tags?: {
+                [key: string]: string;
+            };
+            /** Vm Id */
+            vm_id: string;
+        };
         /** JobView */
         JobView: {
             /** Action */
@@ -15434,6 +15479,28 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+        };
+        /** VmInventoryOut */
+        VmInventoryOut: {
+            /**
+             * Groups
+             * @description VMs per group
+             */
+            groups?: {
+                [key: string]: number;
+            };
+            /**
+             * Message
+             * @default
+             */
+            message?: string;
+            /**
+             * Supported
+             * @description False: this hypervisor type cannot list its VMs here
+             */
+            supported: boolean;
+            /** Vms */
+            vms?: components["schemas"]["InventoryVmOut"][];
         };
         /** WikiPageIn */
         WikiPageIn: {
@@ -21392,6 +21459,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HypervisorTestResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_vms_hypervisors_connections__conn_id__vms_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conn_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VmInventoryOut"];
                 };
             };
             /** @description Validation Error */

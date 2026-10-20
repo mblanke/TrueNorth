@@ -14,7 +14,7 @@
 # to offline mode (apt-cacher-ng Offlinemode, Nexus proxies blocked) at the end of a
 # window; the two controls are independent on purpose.
 #
-# `on` refuses while range VMs exist (folder truenorth/ranges) unless --force: during a
+# `on` refuses while range VMs exist (TrueNorth/Ranges, truenorth/ranges) unless --force: during a
 # window a range could pull packages from upstream through the depot.
 #
 # Earlier (TN-BUILD01) design only. The work-site depot (ADR 0012, #214: NICs on MGMT,
@@ -25,7 +25,8 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 usage() { sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 CMD=""; FORCE=0; VM_NAME="TN-DEPOT01"; UPLINK_PG="dPG-TN-BUILD"
-: "${TN_RANGE_FOLDER:=truenorth/ranges}"
+# Range VM folders: today's and the earlier root (TN_RANGE_FOLDER: one folder instead).
+TN_RANGE_FOLDERS="${TN_RANGE_FOLDER:-TrueNorth/Ranges truenorth/ranges}"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     on|off|status) CMD="$1" ;;
@@ -75,12 +76,15 @@ info "$VM_NAME $nic on $UPLINK_PG: $(state)"
 case "$CMD" in
   status) exit 0 ;;
   on)
-    ranges="$(govc find "/$GOVC_DATACENTER/vm/$TN_RANGE_FOLDER" -type m 2>/dev/null | wc -l | tr -d ' ')"
+    ranges=0
+    for f in $TN_RANGE_FOLDERS; do
+      ranges=$(( ranges + $(govc find "/$GOVC_DATACENTER/vm/$f" -type m 2>/dev/null | wc -l | tr -d ' ') ))
+    done
     if [[ "$ranges" != "0" ]]; then
       if [[ "$FORCE" == "1" ]]; then
         warn "$ranges range VM(s) exist; connecting anyway (--force). Their pfSense WANs can reach the depot's caches while it is online"
       else
-        die "$ranges range VM(s) exist under $TN_RANGE_FOLDER. Destroy them, or pass --force to accept that they can pull from upstream through the depot during the window"
+        die "$ranges range VM(s) exist under $TN_RANGE_FOLDERS. Destroy them, or pass --force to accept that they can pull from upstream through the depot during the window"
       fi
     fi
     act govc device.connect -vm "$VM" "$nic"

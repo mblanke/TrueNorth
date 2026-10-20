@@ -18,6 +18,8 @@ from dataclasses import dataclass, field
 
 import yaml
 
+from .vsphere_tags import range_folder_id8
+
 try:
     from pyVmomi import vim
 except ImportError:  # the provisioner reports the missing SDK when it is used
@@ -205,6 +207,27 @@ def ensure_folder(dc, path: str):
                 found = _child(folder, part)
         folder = found
     return folder
+
+
+def find_range_folders(dc, roots, range_id: str) -> list:
+    """The range's VM folders under any of ``roots``: named ``<id8>`` (earlier builds) or
+    ``<anything>-<id8>`` (``vsphere_tags.range_label``). Matched by id, never by name, so a
+    renamed range, or one whose folder an operator moved between the roots, is found."""
+    out, seen = [], set()
+    for root in roots:
+        parent = find_folder(dc, root)
+        for child in getattr(parent, "childEntity", None) or []:
+            if hasattr(child, "childEntity") and range_folder_id8(child.name, range_id) and id(child) not in seen:
+                seen.add(id(child))
+                out.append(child)
+    return out
+
+
+def ensure_range_folder(dc, root: str, range_id: str, label: str):
+    """The range's folder: an existing one under ``root`` (a retried build), else
+    ``<root>/<label>``, created."""
+    found = find_range_folders(dc, [root], range_id)
+    return found[0] if found else ensure_folder(dc, f"{root}/{label}")
 
 
 def portgroup_name(range_id: str, physical_vlan: int) -> str:

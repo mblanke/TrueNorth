@@ -24,6 +24,7 @@ import httpx
 import pytest
 import yaml
 from pyVmomi import vim, vmodl
+from vsphere_cis_fake import FakeCis
 from worker import pfsense_config, range_alloc, render, vlan_pool
 from worker.provisioners import vsphere_api as mod
 from worker.provisioners import vsphere_guest as guest_mod
@@ -33,6 +34,7 @@ from worker.provisioners import vsphere_products as products_mod
 from worker.provisioners import vsphere_readiness as readiness
 from worker.provisioners import vsphere_roles as roles_mod
 from worker.provisioners import vsphere_securityonion as so_mod
+from worker.provisioners import vsphere_tags as tags_mod
 
 RANGE_ID = "abcdef12-3456-7890-abcd-ef1234567890"
 R8 = RANGE_ID[:8]
@@ -478,6 +480,7 @@ class FakeVCenter:
         self.generated_mac: str | None = None  # every generated MAC is this one (the esx02 race)
         self.ignore_manual = False  # treat manual MACs as generated ones
         self.reassigned: list[tuple[str, str, str]] = []  # (vm, old MAC, new MAC) vCenter changed at power-on
+        self.cis = FakeCis()  # vCenter tags (vsphere_tags.py)
 
     def on_power_on(self, vm) -> None:
         """vCenter's late duplicate check: a *generated* MAC another VM already has is
@@ -552,6 +555,8 @@ class FakeVCenter:
         if self.fail_401:
             self.fail_401 -= 1
             return httpx.Response(401, json={"error_type": "UNAUTHENTICATED"})
+        if self.cis.handles(path):
+            return self.cis(request)
         if path == "/api/content/library" and query == "action=find":
             return httpx.Response(200, json=["lib-1"] if self.library and body["name"] == self.library["name"] else [])
         if path == "/api/content/library/item" and query == "action=find":
@@ -704,7 +709,7 @@ class TestProvisionClone:
         # Named <range8>-<node> exactly once, in the range's own folder.
         names = sorted(vm["name"] for vm in result.vms)
         assert names == sorted(f"{R8}-{n}" for n in ("fw", "web01", "dc01", "sensor"))
-        folder = infra.find_folder(vc.dc, f"truenorth/ranges/{R8}")
+        folder = infra.find_folder(vc.dc, f"TrueNorth/Ranges/{R8}")
         assert sorted(v.name for v in folder.childEntity) == names
         assert all(vc.power[vm["vm_id"]] == "POWERED_ON" for vm in result.vms)
         assert vc.logins == 1  # four VMs reach REST together; one vCenter session between them
@@ -792,7 +797,7 @@ class TestProvisionClone:
         result = _run(prov.provision(RANGE_ID, _rendered(), {}))
         assert result.status == "failed"
         assert vc.dvs.portgroup == []  # rolled back, so a retry starts clean
-        assert infra.find_folder(vc.dc, f"truenorth/ranges/{R8}") is None
+        assert infra.find_folder(vc.dc, f"TrueNorth/Ranges/{R8}") is None
         # The reservation still names the port groups, for the destroy that follows.
         assert {n["portgroup"] for n in result.networks if "portgroup" in n} == {
             f"tn-{R8}-v100", f"tn-{R8}-v101", f"tn-{R8}-v102"}
@@ -876,7 +881,7 @@ class TestProvisionOvf:
         placed = next(h for h in vc.hosts if h.name == result.vms[0]["host"])
         assert body["target"] == filt["target"] == {
             "resource_pool_id": "resgroup-8",
-            "folder_id": infra.find_folder(vc.dc, f"truenorth/ranges/{R8}")._moId,
+            "folder_id": infra.find_folder(vc.dc, f"TrueNorth/Ranges/{R8}")._moId,
             "host_id": placed._moId,
         }
         spec = body["deployment_spec"]
@@ -940,9 +945,10 @@ class TestDestroy:
         assert result.status == "ok", result.errors
         assert result.resources_removed == 4 + 3
         assert not vc.vms and vc.dvs.portgroup == []
-        assert infra.find_folder(vc.dc, f"truenorth/ranges/{R8}") is None
-        assert infra.find_folder(vc.dc, "truenorth/ranges") is not None  # shared parent stays
-        assert sum(1 for r in vc.requests if r[0] == "DELETE") == 4
+        assert infra.find_folder(vc.dc, f"TrueNorth/Ranges/{R8}") is None
+        assert infra.find_folder(vc.dc, "TrueNorth/Ranges") is not None  # shared parent stays
+        assert sum(1 for r in vc.requests if r[0] == "DELETE" and r[1].startswith("/api/vcenter/vm/")) == 4
+        assert [t["name"] for t in vc.cis.tags.values() if t["name"] == R8] == []  # its tn-range tag went too
 
     def test_is_idempotent(self, vc):
         output = self._built(vc)
@@ -2254,6 +2260,8 @@ def _legacy(vc, token=True):
             return httpx.Response(200, json={"value": f"token-{vc.logins}" if token else None})
         if path == "/rest/com/vmware/cis/session" and request.method == "DELETE":
             return httpx.Response(200)
+        if path.startswith("/rest/com/vmware/cis/tagging/"):  # vcsim serves the legacy tagging API
+            return vc.cis(request)
         return httpx.Response(404, text="404 page not found")
 
     prov = _prov(vc)
@@ -2269,7 +2277,9 @@ def _legacy(vc, token=True):
 
 
 def _only_sessions(vc) -> bool:
-    return {p for _, p in vc.legacy_calls} <= {"/api/session", "/rest/com/vmware/cis/session"}
+    """Nothing but logins and the legacy tagging API (which vcsim serves): never the missing /api."""
+    return {p for _, p in vc.legacy_calls if not p.startswith("/rest/com/vmware/cis/tagging/")} <= {
+        "/api/session", "/rest/com/vmware/cis/session"}
 
 
 class TestLegacyDialect:
@@ -2916,15 +2926,27 @@ class TestMacRace:
         assert not vc.templates["tmpl-ubuntu-2404"].clone_specs  # nothing cloned
         assert vc.dvs.portgroup == []  # and the port group it made is rolled back
 
-    def test_a_redelivered_build_does_not_refuse_its_own_vms(self, vc):
+    @pytest.mark.parametrize("path", [f"truenorth/ranges/{R8}", f"TrueNorth/Ranges/{R8}",
+                                      f"TrueNorth/Ranges/ubuntu-starter-01-{R8}", f"TrueNorth/Ranges/renamed-{R8}"])
+    def test_a_redelivered_build_does_not_refuse_its_own_vms(self, vc, path):
         """The first delivery's VMs hold the same reserved MACs: by annotation, or (its tag
-        not yet written) by sitting in the range's own folder, they are this range's."""
-        folder = infra.ensure_folder(vc.dc, f"truenorth/ranges/{R8}")
+        not yet written) by sitting in the range's own folder, they are this range's. The
+        folder is found by its id8 suffix (vsphere_tags), old layout, new layout or renamed."""
+        folder = infra.ensure_folder(vc.dc, path)
         self._squatter(vc, "00:50:56:3c:00:00", name=f"{R8}-ubu01-attempt1", annotation=mod.range_annotation(RANGE_ID))
         self._squatter(vc, "00:50:56:3c:00:01", name=f"{R8}-ubu02-attempt1", folder=folder)
         result = _run(_prov(vc).provision(RANGE_ID, _rendered(STARTER), {}))
         assert not [e for e in result.errors if "MAC" in e], result.errors
         assert result.status == "ok", result.errors
+
+    def test_a_vm_in_another_ranges_folder_is_not_taken_for_this_ranges(self, vc):
+        """Only this range's id8 suffix counts: a folder ending in another id (or merely
+        containing this one) does not exempt its VMs."""
+        for path in ("TrueNorth/Ranges/other-99999999", f"TrueNorth/Ranges/{R8}-copy"):
+            self._squatter(vc, "00:50:56:3c:00:01", name="parked", folder=infra.ensure_folder(vc.dc, path))
+            result = _run(_prov(vc).provision(RANGE_ID, _rendered(STARTER), {}))
+            assert result.status == "failed" and any("VM 'parked'" in e for e in result.errors), (path, result.errors)
+            vc.vms.clear()
 
     def test_another_ranges_vm_with_the_mac_is_named_not_blamed_on_this_range(self, vc):
         other = "99999999-0000-0000-0000-000000000000"
@@ -3193,3 +3215,109 @@ class TestReadiness:
         result = _run(prov.provision(RANGE_ID, _rendered(ONE_STARTER), {}))
         assert result.status == "ok" and result.not_ready == []
         assert result.vms[0]["ip_verified"] is False and result.vms[0]["ip"] == ""  # recorded, not invented
+
+
+# --------------------------------------------------------------------------- #
+# Range folders <root>/<range-name>-<id8> and vCenter tags (vsphere_tags.py)
+# --------------------------------------------------------------------------- #
+
+
+def _vm_obj(vc, name: str) -> str:
+    return next(i for i, v in vc.vms.items() if v.name == name)
+
+
+def _output(prov, result) -> dict:
+    return {"vms": result.vms, "networks": result.networks, "connection": prov.connection_record()}
+
+
+class TestRangeFolderAndTags:
+    def test_folder_is_named_for_the_range_and_its_id(self, vc):
+        result = _run(_prov(vc).provision(RANGE_ID, _rendered(), {"range_name": "Blue Team 3"}))
+        assert result.status == "ok", result.errors
+        folder = infra.find_folder(vc.dc, f"TrueNorth/Ranges/blue-team-3-{R8}")
+        assert folder is not None and {v.name for v in folder.childEntity} == {v["name"] for v in result.vms}
+
+    def test_every_range_vm_is_tagged(self, vc):
+        result = _run(_prov(vc).provision(RANGE_ID, _rendered(), {"range_name": "Blue Team 3"}))
+        assert result.status == "ok", result.errors
+        web = vc.cis.tags_of(_vm_obj(vc, f"{R8}-web01"))
+        assert web == {"tn-type": "range-vm", "tn-os": "ubuntu-2404", "tn-template": "tmpl-ubuntu-2404",
+                       "tn-range": f"blue-team-3-{R8}"}
+        assert vc.cis.tags_of(_vm_obj(vc, f"{R8}-dc01"))["tn-os"] == "windows-server-2022"
+        assert vc.cis.tags_of(_vm_obj(vc, f"{R8}-fw"))["tn-template"] == "tmpl-pfsense"
+        for name in tags_mod.CATEGORIES:  # created once, single cardinality, for VMs
+            (cat,) = [c for c in vc.cis.categories.values() if c["name"] == name]
+            assert cat["cardinality"] == "SINGLE" and cat["associable_types"] == ["VirtualMachine"]
+        assert sum(1 for t in vc.cis.tags.values() if t["name"] == f"blue-team-3-{R8}") == 1
+
+    def test_a_vm_from_a_host_copy_is_tagged_with_the_catalogue_id(self, vc, monkeypatch):
+        monkeypatch.setattr(mod, "VSPHERE_EXCLUDE_HOSTS", ONLY_ESX02)
+        _add_copy(vc, "tmpl-ubuntu-2404@esx02-20261019", "esx02")
+        result = _run(_prov(vc).provision(RANGE_ID, _rendered(ONE_LINUX), {}))
+        assert result.vms[0]["template"] == "tmpl-ubuntu-2404@esx02-20261019"
+        assert vc.cis.tags_of(result.vms[0]["vm_id"])["tn-template"] == "tmpl-ubuntu-2404"
+        assert vc.cis.tags_of(result.vms[0]["vm_id"])["tn-range"] == R8  # no range name given: the id
+
+    def test_existing_categories_and_tags_are_reused(self, vc):
+        vc.cis.add_tag("tn-type", "range-vm")
+        result = _run(_prov(vc).provision(RANGE_ID, _rendered(ONE_LINUX), {"range_name": "x"}))
+        assert result.status == "ok", result.errors
+        assert sum(1 for c in vc.cis.categories.values() if c["name"] == "tn-type") == 1
+        assert sum(1 for t in vc.cis.tags.values() if t["name"] == "range-vm") == 1
+        assert vc.cis.tags_of(result.vms[0]["vm_id"])["tn-type"] == "range-vm"
+
+    def test_a_tagging_failure_never_fails_the_build(self, vc, caplog):
+        vc.cis.fail = "*"
+        caplog.set_level("WARNING", logger=mod.__name__)
+        result = _run(_prov(vc).provision(RANGE_ID, _rendered(), {"range_name": "r"}))
+        assert result.status == "ok", result.errors
+        assert len(result.vms) == 4 and not result.errors
+        assert "vCenter tags not applied (the build goes on)" in caplog.text
+
+    def test_a_destroy_whose_tag_delete_fails_is_still_ok(self, vc):
+        result = _run(_prov(vc).provision(RANGE_ID, _rendered(ONE_LINUX), {"range_name": "r"}))
+        vc.cis.fail = "*"
+        gone = _run(_prov(vc).destroy(RANGE_ID, _output(_prov(vc), result)))
+        assert gone.status == "ok", gone.errors
+
+    def test_tags_can_be_switched_off(self, vc, monkeypatch):
+        monkeypatch.setattr(mod, "VSPHERE_TAGS", False)
+        result = _run(_prov(vc).provision(RANGE_ID, _rendered(ONE_LINUX), {}))
+        assert result.status == "ok", result.errors
+        assert _run(_prov(vc).destroy(RANGE_ID, _output(_prov(vc), result))).status == "ok"
+        assert vc.cis.calls == []
+
+    def test_a_retried_build_reuses_the_ranges_folder(self, vc):
+        infra.ensure_folder(vc.dc, f"TrueNorth/Ranges/old-name-{R8}")
+        result = _run(_prov(vc).provision(RANGE_ID, _rendered(ONE_LINUX), {"range_name": "new name"}))
+        assert result.status == "ok", result.errors
+        assert infra.find_folder(vc.dc, f"TrueNorth/Ranges/new-name-{R8}") is None
+        assert infra.find_folder(vc.dc, f"TrueNorth/Ranges/old-name-{R8}").childEntity
+
+    @pytest.mark.parametrize("path", [f"truenorth/ranges/{R8}", f"TrueNorth/Ranges/{R8}",
+                                      f"TrueNorth/Ranges/renamed-since-{R8}"])
+    def test_destroy_finds_the_folder_by_id_in_old_and_new_layouts(self, vc, path):
+        result = _run(_prov(vc).provision(RANGE_ID, _rendered(ONE_LINUX), {"range_name": "r"}))
+        built = infra.find_folder(vc.dc, f"TrueNorth/Ranges/r-{R8}")
+        target = infra.ensure_folder(vc.dc, path)  # where an operator (or vcenter-organize.sh) put it
+        target.childEntity.extend(built.childEntity)
+        built.parent.childEntity.remove(built)
+        gone = _run(_prov(vc).destroy(RANGE_ID, _output(_prov(vc), result)))
+        assert gone.status == "ok", gone.errors
+        assert infra.find_folder(vc.dc, path) is None
+
+    def test_destroy_leaves_other_ranges_folders_and_tags(self, vc):
+        other = infra.ensure_folder(vc.dc, "TrueNorth/Ranges/other-0badc0de")
+        other.CreateFolder("keep")
+        keep = vc.cis.add_tag("tn-range", "other-0badc0de")
+        result = _run(_prov(vc).provision(RANGE_ID, _rendered(ONE_LINUX), {"range_name": "r"}))
+        assert _run(_prov(vc).destroy(RANGE_ID, _output(_prov(vc), result))).status == "ok"
+        assert infra.find_folder(vc.dc, "TrueNorth/Ranges/other-0badc0de") is not None
+        assert keep in vc.cis.tags and not any(t["name"] == f"r-{R8}" for t in vc.cis.tags.values())
+
+    def test_the_legacy_dialect_tags_over_the_legacy_api(self, vc):
+        prov = _legacy(vc)
+        result = _run(prov.provision(RANGE_ID, _rendered(ONE_LINUX), {"range_name": "sim"}))
+        assert result.status == "ok", result.errors
+        assert vc.cis.tags_of(result.vms[0]["vm_id"])["tn-range"] == f"sim-{R8}"
+        assert vc.cis.calls and all(p.startswith("/rest/com/vmware/cis/tagging/") for _, p in vc.cis.calls)

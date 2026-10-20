@@ -21,6 +21,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
+from .. import vm_inventory
 from ..auth import CurrentUser, get_current_user
 from ..db import get_db
 from ..delete_guard import commit_delete
@@ -46,6 +47,7 @@ from ..schemas import (
 )
 from ..secretbox import seal
 from ..tenancy import get_owned, tenant_uuid
+from ..vm_inventory.schemas import VmInventoryOut
 
 # Router-level authentication is read-level, so the host inventory and summary can feed the
 # dashboard for anyone who may see platform health (instructors included). Every connection
@@ -218,6 +220,14 @@ def discovery_status(db: Session = Depends(get_db), user: CurrentUser = Depends(
 def list_nodes(conn_id: uuid.UUID, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)):
     _conn(db, conn_id, user)
     return db.query(HypervisorNode).filter(HypervisorNode.connection_id == str(conn_id)).all()
+
+
+@router.get("/connections/{conn_id}/vms", response_model=VmInventoryOut, dependencies=WRITE)
+def list_vms(conn_id: uuid.UUID, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)):
+    """The connection's VMs, read live from the hypervisor and grouped by their tn-type tag
+    (golden templates, host copies, range VMs, other). Read only; host VM counts unchanged."""
+    conn = _conn(db, conn_id, user)
+    return vm_inventory.inventory(get_hypervisor_backend(conn.hypervisor_type), conn)
 
 
 @router.get("/connections/{conn_id}/pools", response_model=list[HypervisorPoolOut], dependencies=WRITE)

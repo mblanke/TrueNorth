@@ -8170,6 +8170,66 @@
         "title": "InstructorInjectIn",
         "type": "object"
       },
+      "InventoryVmOut": {
+        "properties": {
+          "group": {
+            "description": "golden: tn-type golden-template; copies: template-copy; ranges: range-vm; other: anything else (test clones, depot, untagged)",
+            "enum": [
+              "golden",
+              "copies",
+              "ranges",
+              "other"
+            ],
+            "title": "Group",
+            "type": "string"
+          },
+          "host": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Host"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "power_state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Power State"
+          },
+          "tags": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "TrueNorth's tn-* vCenter tags: category -> value",
+            "title": "Tags",
+            "type": "object"
+          },
+          "vm_id": {
+            "title": "Vm Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "vm_id",
+          "name",
+          "group"
+        ],
+        "title": "InventoryVmOut",
+        "type": "object"
+      },
       "JobView": {
         "properties": {
           "action": {
@@ -18086,6 +18146,48 @@
           "type"
         ],
         "title": "ValidationError",
+        "type": "object"
+      },
+      "VmInventoryOut": {
+        "properties": {
+          "groups": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "description": "VMs per group",
+            "propertyNames": {
+              "enum": [
+                "golden",
+                "copies",
+                "ranges",
+                "other"
+              ]
+            },
+            "title": "Groups",
+            "type": "object"
+          },
+          "message": {
+            "default": "",
+            "title": "Message",
+            "type": "string"
+          },
+          "supported": {
+            "description": "False: this hypervisor type cannot list its VMs here",
+            "title": "Supported",
+            "type": "boolean"
+          },
+          "vms": {
+            "items": {
+              "$ref": "#/components/schemas/InventoryVmOut"
+            },
+            "title": "Vms",
+            "type": "array"
+          }
+        },
+        "required": [
+          "supported"
+        ],
+        "title": "VmInventoryOut",
         "type": "object"
       },
       "WikiPageIn": {
@@ -28034,6 +28136,55 @@
           }
         ],
         "summary": "Test Connection",
+        "tags": [
+          "Infrastructure"
+        ]
+      }
+    },
+    "/hypervisors/connections/{conn_id}/vms": {
+      "get": {
+        "description": "The connection's VMs, read live from the hypervisor and grouped by their tn-type tag\n(golden templates, host copies, range VMs, other). Read only; host VM counts unchanged.",
+        "operationId": "list_vms_hypervisors_connections__conn_id__vms_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conn_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conn Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VmInventoryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Vms",
         "tags": [
           "Infrastructure"
         ]

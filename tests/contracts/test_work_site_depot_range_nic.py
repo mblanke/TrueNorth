@@ -586,18 +586,54 @@ def test_going_online_is_refused_while_range_vms_exist_and_shuts_the_range_nic_f
     # be looked up (not read as "no ranges"), then range VMs.
     assert by_name["Range guard — refuse without vCenter"]["when"] == "tn_depot_guard_about.rc != 0"
     assert by_name["Range guard — refuse when the datacenter is not confirmed"]["when"] == "tn_depot_guard_dc.rc != 0"
-    assert by_name["Range guard — refuse when the range folder cannot be looked up"]["when"] \
-        == "tn_depot_guard_folder.rc != 0"
-    assert "failed_when" not in by_name["Range guard — VMs in the range folder"]  # a failing find fails the play
-    assert "when" not in by_name["Range guard — VMs in the range folder"]
-    assert by_name["Range guard — refuse while range VMs exist"]["when"] == "tn_depot_guard_vms.stdout_lines | length > 0"
+    assert by_name["Range guard — refuse when no range folder can be looked up"]["when"] \
+        == "tn_depot_guard_folder.results | selectattr('rc', 'equalto', 0) | list | length == 0"
+    assert "failed_when" not in by_name["Range guard — VMs in the range folders"]  # a failing find fails the play
+    assert "when" not in by_name["Range guard — VMs in the range folders"]
+    assert by_name["Range guard — refuse while range VMs exist"]["when"] \
+        == "tn_depot_guard_vms.results | map(attribute='stdout_lines') | flatten | length > 0"
     assert order.index("Range guard — refuse when the datacenter is not confirmed") \
-        < order.index("Range guard — refuse when the range folder cannot be looked up") \
-        < order.index("Range guard — VMs in the range folder")
+        < order.index("Range guard — refuse when no range folder can be looked up") \
+        < order.index("Range guard — VMs in the range folders")
     # GOVC_DATACENTER comes from the inventory, never from whatever the shell had.
     assert block["environment"] == {"GOVC_DATACENTER": "{{ tn_depot_vcenter_datacenter }}"}
     assert DEFAULTS["tn_depot_vcenter_datacenter"] == KIT["tn_depot_vcenter_datacenter"] == "DC-Lab"
     assert DEFAULTS["tn_depot_force_online"] is False
+
+
+def _guard_expr(expr: str, **ctx):
+    """An Ansible ``when`` / template of the range guard, evaluated with Jinja (Ansible's
+    ``flatten`` and ``lookup('env', ...)`` imitated here)."""
+    env = jinja2.Environment()
+    env.filters["flatten"] = lambda xs: [y for x in xs for y in (x if isinstance(x, list) else [x])]
+    shell = ctx.pop("_env", {})
+    env.globals["lookup"] = lambda kind, name: shell.get(name, "")
+    return env.compile_expression(expr)(**ctx)
+
+
+@pytest.mark.parametrize(("folders", "vms", "refuse_lookup", "refuse_vms"), [
+    ({"TrueNorth/Ranges": 0, "truenorth/ranges": 0}, {}, False, False),  # both there, empty
+    ({"TrueNorth/Ranges": 1, "truenorth/ranges": 0}, {"truenorth/ranges": ["/DC/vm/truenorth/ranges/a/a-x"]},
+     False, True),  # a range not moved yet still counts
+    ({"TrueNorth/Ranges": 0, "truenorth/ranges": 1}, {"TrueNorth/Ranges": ["/DC/vm/TrueNorth/Ranges/r-a/a-x"]},
+     False, True),
+    ({"TrueNorth/Ranges": 1, "truenorth/ranges": 1}, {}, True, False),  # neither: fail closed
+])
+def test_the_range_guard_checks_the_new_and_the_old_range_folder(folders, vms, refuse_lookup, refuse_vms):
+    assert _guard_expr(DEFAULTS["tn_depot_range_vm_folders"].strip("{} ")) == ["TrueNorth/Ranges", "truenorth/ranges"]
+    assert _guard_expr(DEFAULTS["tn_depot_range_vm_folders"].strip("{} "),
+                       _env={"TN_RANGE_FOLDER": "custom/r"}) == ["custom/r"]
+    block = next(t for t in yaml.safe_load((ROLE / "tasks/range_guard.yml").read_text()) if "block" in t)
+    by_name = {t["name"]: t for t in block["block"]}
+    looked = {"results": [{"item": f, "rc": rc} for f, rc in folders.items()]}
+    assert _guard_expr(by_name["Range guard — refuse when no range folder can be looked up"]["when"],
+                       tn_depot_guard_folder=looked) is refuse_lookup
+    checked = _guard_expr(by_name["Range guard — VMs in the range folders"]["loop"].strip("{} "),
+                          tn_depot_guard_folder=looked)
+    assert checked == [f for f, rc in folders.items() if rc == 0]
+    found = {"results": [{"item": f, "stdout_lines": vms.get(f, [])} for f in checked]}
+    assert _guard_expr(by_name["Range guard — refuse while range VMs exist"]["when"],
+                       tn_depot_guard_vms=found) is refuse_vms
 
 
 def test_apt_cacher_ng_is_not_an_open_proxy_and_its_admin_pages_need_auth():

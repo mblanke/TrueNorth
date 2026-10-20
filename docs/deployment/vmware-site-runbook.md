@@ -116,7 +116,7 @@ In `install/inventory/group_vars/all/main.yml` (most values are already set for 
 
 Each `tn_vsphere_*` variable maps to a `VSPHERE_*` environment variable in
 `.env.production`. The provisioner creates range port groups as `tn-<range8>-v<vlan>`,
-puts VMs in folder `truenorth/ranges/<range8>`, and records the VLANs it uses in the
+puts VMs in folder `TrueNorth/Ranges/<range-name>-<range8>` (tagged `tn-type=range-vm`, `tn-range`), and records the VLANs it uses in the
 range's `provisioner_output`.
 
 > Windows range VMs are sysprepped at deploy with a **random local Administrator password

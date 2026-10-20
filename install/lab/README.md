@@ -138,7 +138,7 @@ ansible-playbook prefetch.yml --ask-vault-pass
 #    and restart the worker.
 ```
 
-`depot-uplink.sh on` refuses while range VMs exist (folder `truenorth/ranges`) unless
+`depot-uplink.sh on` refuses while range VMs exist (`TrueNorth/Ranges` or the earlier `truenorth/ranges`) unless
 `--force`: during a window a range could pull from upstream through the depot.
 
 Repeat steps 5–6 (`on` → `prefetch.yml` → `off`) whenever the catalogue changes or
@@ -503,6 +503,65 @@ Linux, root, nft and ip, so CI skips it (no such lane). Run it as root on Linux,
 python3-pytest/-jinja2/-yaml, then
 `python3 -m pytest --noconftest -p no:cacheprovider tests/contracts/test_work_site_depot_range_nic.py -k "netns or syntax"`.
 None of it ran against the work vCenter or TN-DEPOT01.
+
+### vCenter folders and tags
+
+One VM-folder tree, `TrueNorth`, for everything TrueNorth puts in vCenter:
+
+| Folder | What |
+|---|---|
+| `TrueNorth/Templates/` | Golden templates `<id>` and their host copies `<id>@<host>-<yyyymmdd>`, flat (the kit's `vsphere_folder`) |
+| `TrueNorth/Templates/_retired/` | Old hand-made templates such as `kali-linux`: moved here by `vcenter-organize.sh`, never deleted by it (deleting is the owner's call, ADR 0012 decision 2) |
+| `TrueNorth/Ranges/<range-name>-<id8>/` | One folder per range (`VSPHERE_RANGE_FOLDER`, installer `tn_vsphere_range_folder`, default `TrueNorth/Ranges` since 2026-10-20) |
+
+The worker finds a range's folder by the `-<id8>` suffix, never by its name, so a renamed
+range, and the id-only folders of earlier builds under `truenorth/ranges`, are still
+found and removed on destroy. Templates and copies are found by name anywhere in the
+inventory (provisioner, `build.sh replicate`, `test-clone.sh`, `prune_template_copies`),
+so moving them between folders changes nothing.
+
+Four vCenter tag categories, single-cardinality, on VMs:
+
+| Category | Values | Set by |
+|---|---|---|
+| `tn-type` | `golden-template`, `template-copy`, `range-vm`, `test-clone`, `depot`, `mgmt` | kit (`build.sh`, `test-clone.sh`), worker (range VMs), `vcenter-organize.sh` |
+| `tn-os` | OS alias: `windows-server-2022`, `ubuntu-2404`, `pfsense`, ... (catalogue `os_aliases_in_ranges`, first entry) | same |
+| `tn-template` | catalogue id the VM came from: `ubuntu-lts`, `srv2022`, ... | same |
+| `tn-range` | `<range-name>-<id8>`; one tag per range, deleted when the range is destroyed | worker, `vcenter-organize.sh` |
+
+Tagging is best effort everywhere: a tag that cannot be applied is a warning, never a
+failed build, replicate, test clone or range. The vCenter tagging privileges
+(`InventoryService.Tagging.*`) are in svc-truenorth's role. `VSPHERE_TAGS=false` (worker)
+or `TN_TAGS=0` (kit) turns it off. In vCenter: Inventory > Tags & Custom Attributes, or
+filter a VM list by tag. In TrueNorth: **Infrastructure > Virtual machines**, Load VMs,
+then Golden templates / Host copies / Range VMs / Other (by `tn-type`; untagged VMs are
+Other).
+
+**Tidying an existing vCenter** (once, after the templates are built; safe to re-run):
+
+```bash
+# On TN-MGMT01, from the template-kit checkout. Read-only first:
+sudo scripts/lab/vcenter-organize.sh --dry-run
+# Then (prints the plan again, asks y/N):
+sudo scripts/lab/vcenter-organize.sh
+```
+
+It reads vCenter credentials from `/srv/truenorth/config/.env.production` (never printed)
+and the range list read-only from the installed app's database (`docker compose run ... api`,
+`scripts/lab/tn_ranges_inprocess.py`: ids, names, states, VM names and templates only). It
+creates the folders above, moves `truenorth/templates/*` to `TrueNorth/Templates` (catalogue
+ids and their copies) or `_retired` (anything else), moves `truenorth/ranges/<id8>` to
+`TrueNorth/Ranges/<range-name>-<id8>`, deletes each old `truenorth` folder only when vCenter
+reports it empty at that moment, and tags golden templates, copies, test clones
+(`tn-testclone-*`), range VMs, TN-DEPOT01 and TN-MGMT01. Nothing else is touched (WIN11-TMPL,
+the VCSA, vCLS agents). Moving a VM between folders does not touch the VM itself.
+
+It refuses to apply while a TrueNorth range is provisioning or destroying, without the range
+list (`--no-db` to proceed anyway: folders then keep id-only names), and while
+`VSPHERE_RANGE_FOLDER` in the env file is not `TrueNorth/Ranges` (new ranges would land in
+the old folder again; upgrade TrueNorth first, or `--force-folder`). The depot's online-window
+guard (`range_guard.yml`, `depot-uplink.sh`) counts range VMs under both `TrueNorth/Ranges`
+and `truenorth/ranges`.
 
 ### Known gaps (read before the derived, roles and variants phases)
 

@@ -27,6 +27,7 @@ import { CountUpDirective } from '../../shared/motion';
 import { EmptyStateComponent } from '../../shared/components/empty-state/empty-state.component';
 import { LoadGaugeComponent, loadPct } from '../../shared/components/load-gauge/load-gauge.component';
 import { HostLoadTileComponent } from './host-load-tile.component';
+import { VmInventoryComponent } from './vm-inventory.component';
 
 /* ── Wire types come from the contract (core/models → core/api/schema.d.ts). The
    narrow unions (HypervisorType, StorageProtocol, NetworkDeviceRole) are UI-side: the
@@ -44,7 +45,7 @@ const DEFAULT_PORT: Record<HypervisorType, number> = {
     MatFormFieldModule, MatInputModule, MatSelectModule,
     MatSlideToggleModule, MatProgressBarModule, MatTooltipModule,
     MatBadgeModule, MatSnackBarModule, CountUpDirective, EmptyStateComponent, LoadGaugeComponent,
-    HostLoadTileComponent,
+    HostLoadTileComponent, VmInventoryComponent,
   ],
   template: `
     <div class="page-container">
@@ -439,7 +440,13 @@ const DEFAULT_PORT: Record<HypervisorType, number> = {
             </mat-card>
           }
         </mat-tab>
-    
+
+        <!-- ═══════════════ VIRTUAL MACHINES TAB ═══════════════ -->
+        <mat-tab>
+          <ng-template mat-tab-label><mat-icon class="tab-icon">view_list</mat-icon> Virtual machines</ng-template>
+          <tn-vm-inventory [connections]="connections" />
+        </mat-tab>
+
         <!-- ═══════════════ STORAGE TAB ═══════════════ -->
         <mat-tab>
           <ng-template mat-tab-label><mat-icon class="tab-icon">inventory_2</mat-icon> Storage</ng-template>

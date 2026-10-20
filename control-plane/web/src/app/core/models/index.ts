@@ -132,6 +132,12 @@ export type HypervisorSummary = S['HypervisorSummaryOut'];
 export type InfraDiscovery = S['InfraDiscoveryOut'];
 export type ConnectionDiscovery = S['ConnectionDiscoveryOut'];
 
+/** GET /hypervisors/connections/:id/vms: the connection's VMs read live, grouped by their
+ *  TrueNorth tn-type vCenter tag (golden | copies | ranges | other). */
+export type VmInventory = S['VmInventoryOut'];
+export type InventoryVm = S['InventoryVmOut'];
+export type VmGroup = InventoryVm['group'];
+
 // ── AI Models ─────────────────────────────────────────────────────
 export type AIBackendType = 'ollama' | 'openai' | 'azure_openai' | 'vllm' | 'custom';
 

@@ -87,3 +87,24 @@ The site constrains everything below:
 - **Credentials can be documented truthfully.** Passwords are intentional and visible to the right roles. A random password nobody can tell a Student is gone. Range templates now carry secrets, so their storage and API are tenant-scoped and role-filtered (ADR 0005 and the S-track controls apply).
 - **Security Onion becomes deploy-time work.** It moves from "a VM that boots" to "a configured sensor", which the SOC range needs to mean anything.
 - **Isolation at a cost.** No internet in builds keeps the template supply chain auditable: everything comes from the ISO, the depot or the repo. In exchange, TN-DEPOT01 becomes a required piece of lab infrastructure.
+
+## Follow-up (2026-10-20): one vCenter folder tree and tn-* tags
+
+Not a change to the decisions above; it records where their objects live in vCenter.
+
+- **Folders.** Everything TrueNorth creates is under one `TrueNorth` VM folder:
+  `TrueNorth/Templates/` (golden templates and their host copies, flat, as decision 6 names
+  them), `TrueNorth/Templates/_retired/` (old hand-made templates waiting for decision 2's
+  retirement; moved, never deleted by tooling) and `TrueNorth/Ranges/<range-name>-<id8>/`
+  (the provisioner's `VSPHERE_RANGE_FOLDER`, previously `truenorth/ranges/<id8>`). Range
+  folders are found by the `-<id8>` suffix, never by name, under both roots. Templates and
+  copies are found by name anywhere, so folder moves are safe.
+- **Tags.** Single-cardinality categories on VMs: `tn-type` (golden-template, template-copy,
+  range-vm, test-clone, depot, mgmt), `tn-os`, `tn-template`, `tn-range`. The template kit
+  tags at build, replicate and test clone; the provisioner tags range VMs at clone and deletes
+  the range's `tn-range` tag on destroy. Best effort everywhere: tagging never fails a build
+  or a range. One definition in `worker/provisioners/vsphere_tags.py`, mirrored in
+  `scripts/lab/vcenter_organize.py` (contract-tested).
+- **Existing objects.** `scripts/lab/vcenter-organize.sh` moves the earlier `truenorth/...`
+  objects into this layout and tags them, idempotently, refusing while a range is being built
+  or destroyed. The Infrastructure page lists a connection's VMs grouped by `tn-type`.
