@@ -42,6 +42,11 @@ export type RangeState =
 export type Range = S['RangeOut'];
 /** One row of GET /ranges: no template_id, tenant_id or provisioner fields. */
 export type RangeSummary = S['RangeListOut'];
+/**
+ * GET /ranges/{id}/diagram: the saved designer diagram, else one drawn from the range's
+ * template and its last build (`generated`, `source: 'template'`).
+ */
+export type RangeDiagram = S['RangeDiagramOut'];
 
 /** A supporting file attached to a range. */
 export type RangeDocument = S['RangeDocumentOut'];

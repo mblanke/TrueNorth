@@ -12506,6 +12506,52 @@
         "title": "RangeCredentialsOut",
         "type": "object"
       },
+      "RangeDiagramOut": {
+        "description": "A range's topology for the 2D and 3D views.",
+        "properties": {
+          "diagram_json": {
+            "additionalProperties": true,
+            "description": "JointJS graph JSON: {cells: [...]}",
+            "title": "Diagram Json",
+            "type": "object"
+          },
+          "generated": {
+            "default": false,
+            "description": "True when drawn from the template, not saved in the designer",
+            "title": "Generated",
+            "type": "boolean"
+          },
+          "notes": {
+            "description": "What a generated picture can and cannot show",
+            "items": {
+              "type": "string"
+            },
+            "title": "Notes",
+            "type": "array"
+          },
+          "range_id": {
+            "title": "Range Id",
+            "type": "string"
+          },
+          "source": {
+            "description": "saved: the designer diagram; template: generated from the range's template; none: nothing to draw",
+            "enum": [
+              "saved",
+              "template",
+              "none"
+            ],
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "range_id",
+          "diagram_json",
+          "source"
+        ],
+        "title": "RangeDiagramOut",
+        "type": "object"
+      },
       "RangeDocumentOut": {
         "properties": {
           "created_at": {
@@ -35504,7 +35550,7 @@
     },
     "/ranges/{range_id}/diagram": {
       "get": {
-        "description": "Retrieve persisted JointJS diagram for a range.  **Permission: range:read**",
+        "description": "A range's topology for the 2D and 3D views.  **Permission: range:read**\n\nThe saved Range Designer diagram when there is one (``source: saved``). Otherwise\none drawn from the range's template and what its last build recorded\n(``generated: true``, ``source: template``), so a range built from a template still\nhas a picture. ``source: none`` when the template declares no hosts.",
         "operationId": "get_range_diagram_ranges__range_id__diagram_get",
         "parameters": [
           {
@@ -35523,9 +35569,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Get Range Diagram Ranges  Range Id  Diagram Get",
-                  "type": "object"
+                  "$ref": "#/components/schemas/RangeDiagramOut"
                 }
               }
             },

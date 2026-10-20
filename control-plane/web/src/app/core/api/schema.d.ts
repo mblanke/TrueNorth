@@ -5728,7 +5728,12 @@ export interface paths {
         };
         /**
          * Get Range Diagram
-         * @description Retrieve persisted JointJS diagram for a range.  **Permission: range:read**
+         * @description A range's topology for the 2D and 3D views.  **Permission: range:read**
+         *
+         *     The saved Range Designer diagram when there is one (``source: saved``). Otherwise
+         *     one drawn from the range's template and what its last build recorded
+         *     (``generated: true``, ``source: template``), so a range built from a template still
+         *     has a picture. ``source: none`` when the template declares no hosts.
          */
         get: operations["get_range_diagram_ranges__range_id__diagram_get"];
         /**
@@ -13188,6 +13193,38 @@ export interface components {
              * @description all: every account (staff); student: only those handed to Students
              */
             scope: string;
+        };
+        /**
+         * RangeDiagramOut
+         * @description A range's topology for the 2D and 3D views.
+         */
+        RangeDiagramOut: {
+            /**
+             * Diagram Json
+             * @description JointJS graph JSON: {cells: [...]}
+             */
+            diagram_json: {
+                [key: string]: unknown;
+            };
+            /**
+             * Generated
+             * @description True when drawn from the template, not saved in the designer
+             * @default false
+             */
+            generated?: boolean;
+            /**
+             * Notes
+             * @description What a generated picture can and cannot show
+             */
+            notes?: string[];
+            /** Range Id */
+            range_id: string;
+            /**
+             * Source
+             * @description saved: the designer diagram; template: generated from the range's template; none: nothing to draw
+             * @enum {string}
+             */
+            source: "saved" | "template" | "none";
         };
         /** RangeDocumentOut */
         RangeDocumentOut: {
@@ -26019,9 +26056,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["RangeDiagramOut"];
                 };
             };
             /** @description Validation Error */
