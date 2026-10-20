@@ -315,7 +315,7 @@ def make_plan(inv: Inventory, ranges: list[dict] | None, os_map: dict[str, str],
         name = rel.rsplit("/", 1)[1]
         label = label_for(name)
         target = f"{RANGES}/{label}"
-        existing = next((f for f in folders if f.startswith(f"{RANGES}/") and f.count("/") == 2
+        existing = next((f for f in sorted(folders) if f.startswith(f"{RANGES}/") and f.count("/") == 2
                          and folder_id8(f.rsplit("/", 1)[1]) == folder_id8(name) and folder_id8(name)), None)
         if existing:  # the range already has a folder in the new tree: move its VMs in
             for vm in legacy_vms:
@@ -356,7 +356,7 @@ def make_plan(inv: Inventory, ranges: list[dict] | None, os_map: dict[str, str],
     left = {p for p in final.values() if p.startswith(f"{LEGACY}/")}
     gone_folders = set(moved_folders)
     for rel in sorted((f for f in inv.folders if f == LEGACY or f.startswith(f"{LEGACY}/")),
-                      key=lambda f: -f.count("/")):
+                      key=lambda f: (-f.count("/"), f)):  # deepest first; stable across runs
         if rel in gone_folders or any(rel.startswith(f"{m}/") for m in moved_folders):
             gone_folders.add(rel)  # moved along with its parent
             continue

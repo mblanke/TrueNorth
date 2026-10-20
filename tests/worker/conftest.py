@@ -53,7 +53,7 @@ def db(tmp_path, monkeypatch):
         conn.execute(sa.text("CREATE TABLE templates (id TEXT PRIMARY KEY, yaml TEXT)"))
         conn.execute(
             sa.text(
-                "CREATE TABLE ranges (id TEXT PRIMARY KEY, template_id TEXT, state TEXT, provisioner_backend TEXT, "
+                "CREATE TABLE ranges (id TEXT PRIMARY KEY, name TEXT, template_id TEXT, state TEXT, provisioner_backend TEXT, "
                 "provisioner_output TEXT, error_message TEXT, updated_at TIMESTAMP)"
             )
         )
