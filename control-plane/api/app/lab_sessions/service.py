@@ -899,6 +899,55 @@ def lab_range_ids(db: Session, range_ids: list[uuid.UUID]) -> set[uuid.UUID]:
     return found
 
 
+def sessions_in_window(
+    db: Session,
+    tenant_id: uuid.UUID,
+    start: datetime,
+    end: datetime,
+    *,
+    user_ids: list[uuid.UUID] | None,
+    course_ids: list[uuid.UUID] | None = None,
+    range_id: uuid.UUID | None = None,
+) -> list[LabSession]:
+    """Lab sessions of ``user_ids`` that existed during ``start``..``end``, newest first
+    (the live class, issue #199): created by ``end`` and either still holding resources or
+    changed since ``start``. That bounds the read to one run, not the tenant's history.
+
+    ``user_ids`` None: anyone's (for the range link, which finds who has a lab on it).
+    Which labs: those launched from a release of one of ``course_ids`` (each lab session
+    builds its own range, so this is the link to a class booked for those courses), and
+    those on ``range_id`` itself, now or before a rebuild (an exercise run on a lab's range).
+    """
+    if user_ids is not None and not user_ids:
+        return []
+    if not course_ids and range_id is None:
+        return []
+    links = []
+    if course_ids:
+        releases = db.query(CourseRelease.id).filter(
+            CourseRelease.tenant_id == tenant_id, CourseRelease.course_id.in_(course_ids)
+        )
+        links.append(LabSession.release_id.in_(releases))
+    if range_id is not None:
+        links.append(LabSession.range_id == range_id)
+        links.append(LabSession.retired_ranges.contains(str(range_id)))
+    q = db.query(LabSession).filter(
+        LabSession.tenant_id == tenant_id,
+        LabSession.created_at <= end,
+        or_(LabSession.state.in_(HOLDS_RESOURCES), LabSession.updated_at >= start),
+        or_(*links),
+    )
+    if user_ids is not None:
+        q = q.filter(LabSession.user_id.in_(user_ids))
+    rows = q.order_by(LabSession.created_at.desc()).all()
+    course_set = set(course_ids or [])
+    if not course_set:
+        # Only the range link: keep what really is on it (the LIKE above is a prefilter).
+        rid = str(range_id)
+        rows = [s for s in rows if s.range_id == range_id or rid in json.loads(s.retired_ranges or "[]")]
+    return rows
+
+
 def console(db: Session, session: LabSession, node: str | None = None) -> dict[str, Any]:
     from ..console_backends import ConsoleError, get_console_backend
 

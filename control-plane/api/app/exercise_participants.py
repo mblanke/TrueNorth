@@ -60,14 +60,14 @@ def _bookings(db: Session, ex: Exercise):
     )
 
 
-def roster_courses(db: Session, ex: Exercise) -> set[uuid.UUID]:
+def roster_courses(db: Session, ex: Exercise, now: datetime | None = None) -> set[uuid.UUID]:
     """Courses of the live bookings (``_bookings``) whose time overlaps the exercise's
     (``exercise_window``). Until 2026-10-11 any non-cancelled booking counted, however long
     ago: a range is reused class after class, so every past class on it stayed a
-    participant of every later exercise there."""
+    participant of every later exercise there. ``now``: the caller's clock (one per request)."""
     from .scheduler.models import ScheduledEvent
 
-    start, end = exercise_window(ex)
+    start, end = exercise_window(ex, now)
     query = _bookings(db, ex).filter(ScheduledEvent.start_time <= end, ScheduledEvent.end_time >= start)
     return {cid for (cid,) in query}
 

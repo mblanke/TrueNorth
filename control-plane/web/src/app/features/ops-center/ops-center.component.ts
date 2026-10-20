@@ -1,4 +1,4 @@
-import { Component, OnDestroy, OnInit, signal, inject } from '@angular/core';
+import { Component, OnDestroy, OnInit, signal, inject, viewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
@@ -15,7 +15,9 @@ import { MatBadgeModule } from '@angular/material/badge';
 import { ApiService } from '@core/services/api.service';
 import { NotificationService } from '@core/services/notification.service';
 import { AuthService } from '@core/services/auth.service';
-import { CountUpDirective, EnterStaggerDirective } from '../../shared/motion';
+import { MatTooltipModule } from '@angular/material/tooltip';
+import type { ExerciseClass } from '@core/services/api.service';
+import { LiveClassComponent } from './live-class/live-class.component';
 
 interface Annotation {
   id: string;
@@ -51,71 +53,45 @@ interface OpsStats {
   imports: [
     CommonModule, FormsModule, RouterLink, MatCardModule, MatButtonModule, MatIconModule,
     MatTabsModule, MatInputModule, MatFormFieldModule, MatSelectModule,
-    MatChipsModule, MatListModule, MatBadgeModule, EnterStaggerDirective, CountUpDirective,
+    MatChipsModule, MatListModule, MatBadgeModule, MatTooltipModule, LiveClassComponent,
   ],
   template: `
     <div class="page-container">
       <a class="back-link" routerLink="/ops-center/select">← Choose another exercise</a>
       <div class="page-header">
         <div class="header-left">
-          <mat-icon class="page-icon">radar</mat-icon>
+          <mat-icon class="page-icon" aria-hidden="true">radar</mat-icon>
           <div>
-            <h1>Ops Center</h1>
-            <p class="subtitle">Live exercise collaboration — Exercise {{ exerciseId }}</p>
+            <div class="tn-kicker">Ops Center · Live class</div>
+            <h1 data-testid="exercise-name">{{ exerciseName() || 'Ops Center' }}</h1>
+            <p class="subtitle meta-line">
+              @if (exerciseState()) { <span [class]="'status-chip ' + exerciseState()">{{ exerciseState() }}</span> }
+              <span>Elapsed <strong>{{ formatElapsed(stats()?.elapsed_seconds || 0) }}</strong></span>
+              <span>Objectives achieved <strong>{{ stats()?.objectives_completed || 0 }} of {{ stats()?.objectives_total || 0 }}</strong></span>
+              <!-- WebSocket connections to this exercise's live channel (ops_center.py), not attendance (#199). -->
+              <span class="viewers" data-testid="ops-viewers" tabindex="0"
+                    matTooltip="People with this exercise's live view open right now. Not attendance: see the roster.">
+                Live viewers <strong>{{ stats()?.active_analysts || 0 }}</strong>
+              </span>
+            </p>
           </div>
         </div>
         <div class="header-actions">
           <a mat-stroked-button [routerLink]="['/exercises', exerciseId]">Exercise details</a>
-          <button mat-stroked-button (click)="refreshAll()">
+          <button mat-stroked-button type="button" (click)="refreshAll()">
             <mat-icon>refresh</mat-icon> Refresh
           </button>
         </div>
       </div>
 
-      <!-- Stats Bar -->
-      <div class="stats-row" tnEnterStagger>
-        <mat-card class="stat-card">
-          <mat-card-content>
-            <mat-icon color="primary">group</mat-icon>
-            <div class="stat-value" [tnCountUp]="stats()?.active_analysts || 0"></div>
-            <div class="stat-label">Active Analysts</div>
-          </mat-card-content>
-        </mat-card>
-        <mat-card class="stat-card">
-          <mat-card-content>
-            <mat-icon color="primary">note_add</mat-icon>
-            <div class="stat-value" [tnCountUp]="stats()?.annotations_count || 0"></div>
-            <div class="stat-label">Annotations</div>
-          </mat-card-content>
-        </mat-card>
-        <mat-card class="stat-card">
-          <mat-card-content>
-            <mat-icon color="primary">terminal</mat-icon>
-            <div class="stat-value" [tnCountUp]="stats()?.shared_commands_count || 0"></div>
-            <div class="stat-label">Shared Commands</div>
-          </mat-card-content>
-        </mat-card>
-        <mat-card class="stat-card">
-          <mat-card-content>
-            <mat-icon color="primary">flag</mat-icon>
-            <div class="tn-ring objectives-ring" [style.--ring-pct]="objectivesPct()">
-              <span class="ring-text">{{ stats()?.objectives_completed || 0 }}/{{ stats()?.objectives_total || 0 }}</span>
-            </div>
-            <div class="stat-label">Objectives</div>
-          </mat-card-content>
-        </mat-card>
-        <mat-card class="stat-card">
-          <mat-card-content>
-            <mat-icon color="primary">timer</mat-icon>
-            <div class="stat-value">{{ formatElapsed(stats()?.elapsed_seconds || 0) }}</div>
-            <div class="stat-label">Elapsed</div>
-          </mat-card-content>
-        </mat-card>
-      </div>
+      @if (exerciseId) {
+        <tn-live-class #liveClass [exerciseId]="exerciseId" (loaded)="onClassLoaded($event)" />
+      }
 
+      <h2 class="collab-title">Annotations and shared commands</h2>
       <mat-tab-group class="mt-2">
         <!-- Annotations Tab -->
-        <mat-tab label="Annotations">
+        <mat-tab [label]="'Annotations (' + (stats()?.annotations_count || 0) + ')'">
           <div class="tab-content">
             <!-- Writing here needs exercise:create (routers/ops_center.py): observers and
                  range ops watch, so the input cards and the Instructor tab are not shown. -->
@@ -176,7 +152,7 @@ interface OpsStats {
         </mat-tab>
 
         <!-- Shared Commands Tab -->
-        <mat-tab label="Shared Commands">
+        <mat-tab [label]="'Shared commands (' + (stats()?.shared_commands_count || 0) + ')'">
           <div class="tab-content">
             @if (canWrite()) {
             <mat-card class="input-card">
@@ -262,10 +238,10 @@ interface OpsStats {
     .subtitle { margin-bottom: 16px; }
     .back-link { display: inline-block; color: var(--text-muted); font-size: 12px; margin-bottom: 16px; text-underline-offset: 3px; }
     .header-actions { display: flex; flex-wrap: wrap; gap: 8px; }
-    .stats-row { display: flex; gap: 16px; flex-wrap: wrap; }
-    .stats-row mat-card { flex: 1; min-width: 120px; text-align: center; }
-    .objectives-ring { --ring-size: 72px; --ring-width: 8px; margin: 4px auto; }
-    .objectives-ring .ring-text { font-size: 14px; font-weight: 600; color: var(--text-primary); }
+    .meta-line { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; font-size: 13px; }
+    .meta-line strong { color: var(--text-primary); }
+    .viewers { cursor: help; text-decoration: underline dotted; text-underline-offset: 3px; }
+    .collab-title { font-size: 14px; margin: 24px 0 0; }
     .tab-content { padding: 16px 0; }
     .mt-2 { margin-top: 16px; }
     .input-card { margin-bottom: 16px; }
@@ -292,6 +268,10 @@ export class OpsCenterComponent implements OnInit, OnDestroy {
   readonly canWrite = () => this.auth.can('exercise:create');
 
   exerciseId = '';
+  /** The exercise's name for the header (#199: not its id), from GET /exercises/{id}, then the class. */
+  exerciseName = signal('');
+  exerciseState = signal('');
+  private liveClass = viewChild<LiveClassComponent>('liveClass');
   annotations = signal<Annotation[]>([]);
   sharedCommands = signal<SharedCmd[]>([]);
   stats = signal<OpsStats | null>(null);
@@ -309,6 +289,10 @@ export class OpsCenterComponent implements OnInit, OnDestroy {
   ngOnInit() {
     this.exerciseId = this.route.snapshot.paramMap.get('exerciseId') || '';
     if (this.exerciseId) {
+      this.api.getExercise(this.exerciseId).subscribe({
+        next: ex => { this.exerciseName.set(ex.name); this.exerciseState.set(ex.state); },
+        error: () => {},
+      });
       this.refreshAll();
       this.refreshInterval = setInterval(() => this.loadStats(), 15000);
     }
@@ -324,6 +308,12 @@ export class OpsCenterComponent implements OnInit, OnDestroy {
     this.loadAnnotations();
     this.loadCommands();
     this.loadStats();
+    this.liveClass()?.refresh();
+  }
+
+  onClassLoaded(c: ExerciseClass) {
+    this.exerciseName.set(c.exercise_name);
+    this.exerciseState.set(c.state);
   }
 
   loadAnnotations() {

@@ -904,6 +904,54 @@
         "title": "AttemptSubmitIn",
         "type": "object"
       },
+      "AttentionOut": {
+        "description": "Something an instructor may want to look at. Only what the data says today:\n\n- ``lab_fault``: the Student's lab is failed, expired or being cleaned up (not their doing)\n- ``lab_wait``: their lab is queued, building or resetting\n- ``learning``: ``learning_signal_misses`` or more judged misses on one objective, no credit\n- ``not_seen``: no detection and no lab heartbeat for ``not_seen_minutes`` (neutral)",
+        "properties": {
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "lab_fault",
+              "lab_wait",
+              "learning",
+              "not_seen"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "objective_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Objective Ref"
+          },
+          "since": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Since"
+          }
+        },
+        "required": [
+          "kind",
+          "detail"
+        ],
+        "title": "AttentionOut",
+        "type": "object"
+      },
       "AuditLogOut": {
         "properties": {
           "action": {
@@ -2030,6 +2078,425 @@
           "created_at"
         ],
         "title": "CertificationOut",
+        "type": "object"
+      },
+      "ClassAttemptOut": {
+        "description": "One detection attempt in this run. ``query`` and ``precision`` only for staff who may\nsee the answer key (``scenario:update``), as ``GET /exercises/{id}/detections``.",
+        "properties": {
+          "events_matched": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Events Matched"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "objective_ref": {
+            "title": "Objective Ref",
+            "type": "string"
+          },
+          "precision": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Precision"
+          },
+          "query": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Query"
+          },
+          "submitted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submitted At"
+          },
+          "verdict": {
+            "title": "Verdict",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "objective_ref",
+          "verdict"
+        ],
+        "title": "ClassAttemptOut",
+        "type": "object"
+      },
+      "ClassLabOut": {
+        "description": "One of the Student's lab sessions tied to this run (see ``ClassStudentOut.labs``).",
+        "properties": {
+          "activity_id": {
+            "default": "",
+            "description": "the course module the lab was launched for, e.g. mod_003",
+            "title": "Activity Id",
+            "type": "string"
+          },
+          "attempt": {
+            "default": 1,
+            "title": "Attempt",
+            "type": "integer"
+          },
+          "error": {
+            "default": "",
+            "title": "Error",
+            "type": "string"
+          },
+          "idle_expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Idle Expires At"
+          },
+          "last_seen_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Seen At"
+          },
+          "max_expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Expires At"
+          },
+          "ready_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ready At"
+          },
+          "session_id": {
+            "format": "uuid",
+            "title": "Session Id",
+            "type": "string"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_id",
+          "state"
+        ],
+        "title": "ClassLabOut",
+        "type": "object"
+      },
+      "ClassObjectiveOut": {
+        "properties": {
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "objective_type": {
+            "title": "Objective Type",
+            "type": "string"
+          },
+          "points": {
+            "default": 0,
+            "title": "Points",
+            "type": "integer"
+          },
+          "ref_id": {
+            "title": "Ref Id",
+            "type": "string"
+          },
+          "validator": {
+            "default": "",
+            "title": "Validator",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ref_id",
+          "objective_type"
+        ],
+        "title": "ClassObjectiveOut",
+        "type": "object"
+      },
+      "ClassObjectiveStateOut": {
+        "description": "One objective as this Student stands on it, from their own attempts only.",
+        "properties": {
+          "credited_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Credited At"
+          },
+          "misses": {
+            "default": 0,
+            "title": "Misses",
+            "type": "integer"
+          },
+          "ref_id": {
+            "title": "Ref Id",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "credited",
+              "pending",
+              "missed",
+              "not_attempted"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ref_id",
+          "state"
+        ],
+        "title": "ClassObjectiveStateOut",
+        "type": "object"
+      },
+      "ClassRangeOut": {
+        "description": "The exercise's own range: a fault here is the exercise's, not any Student's.",
+        "properties": {
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "state"
+        ],
+        "title": "ClassRangeOut",
+        "type": "object"
+      },
+      "ClassStudentOut": {
+        "properties": {
+          "attempts": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ClassAttemptOut"
+            },
+            "title": "Attempts",
+            "type": "array"
+          },
+          "attempts_credited": {
+            "default": 0,
+            "title": "Attempts Credited",
+            "type": "integer"
+          },
+          "attempts_total": {
+            "default": 0,
+            "description": "judged or pending attempts in this run",
+            "title": "Attempts Total",
+            "type": "integer"
+          },
+          "attention": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/AttentionOut"
+            },
+            "title": "Attention",
+            "type": "array"
+          },
+          "credited_refs": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Credited Refs",
+            "type": "array"
+          },
+          "current_objective": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "inferred: the objective of the latest unresolved attempt, else the first not credited",
+            "title": "Current Objective"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "labs": {
+            "default": [],
+            "description": "every lab of this Student tied to the run, newest first. More than one is possible (two modules, or two exercises booked to one course): act on a lab by its session_id, never by position",
+            "items": {
+              "$ref": "#/components/schemas/ClassLabOut"
+            },
+            "title": "Labs",
+            "type": "array"
+          },
+          "last_activity_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "latest of a detection or a lab heartbeat",
+            "title": "Last Activity At"
+          },
+          "last_detection_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Detection At"
+          },
+          "objectives": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ClassObjectiveStateOut"
+            },
+            "title": "Objectives",
+            "type": "array"
+          },
+          "score": {
+            "default": 0,
+            "description": "points of the objectives this Student's own detections were credited for",
+            "title": "Score",
+            "type": "integer"
+          },
+          "team": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ClassTeamOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "display_name"
+        ],
+        "title": "ClassStudentOut",
+        "type": "object"
+      },
+      "ClassTeamOut": {
+        "properties": {
+          "color_hex": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Color Hex"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "ClassTeamOut",
         "type": "object"
       },
       "CloneRequest": {
@@ -4938,6 +5405,101 @@
           "kind"
         ],
         "title": "EvidenceIn",
+        "type": "object"
+      },
+      "ExerciseClassOut": {
+        "properties": {
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "exercise_id": {
+            "format": "uuid",
+            "title": "Exercise Id",
+            "type": "string"
+          },
+          "exercise_name": {
+            "title": "Exercise Name",
+            "type": "string"
+          },
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "learning_signal_misses": {
+            "title": "Learning Signal Misses",
+            "type": "integer"
+          },
+          "max_score": {
+            "default": 0,
+            "title": "Max Score",
+            "type": "integer"
+          },
+          "not_seen_minutes": {
+            "title": "Not Seen Minutes",
+            "type": "integer"
+          },
+          "objectives": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ClassObjectiveOut"
+            },
+            "title": "Objectives",
+            "type": "array"
+          },
+          "range": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ClassRangeOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          },
+          "students": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ClassStudentOut"
+            },
+            "title": "Students",
+            "type": "array"
+          }
+        },
+        "required": [
+          "exercise_id",
+          "exercise_name",
+          "state",
+          "learning_signal_misses",
+          "not_seen_minutes",
+          "generated_at"
+        ],
+        "title": "ExerciseClassOut",
         "type": "object"
       },
       "ExerciseIn": {
@@ -31060,6 +31622,55 @@
           }
         ],
         "summary": "Delete Annotation",
+        "tags": [
+          "ops-center"
+        ]
+      }
+    },
+    "/ops/exercises/{exercise_id}/class": {
+      "get": {
+        "description": "The roster of a live exercise: each Student's team, lab, detection attempts, credit\nearned from them, last activity and what may need attention.\n**Permission: exercise:read + telemetry:read** (staff and observers; never Students).",
+        "operationId": "get_exercise_class_ops_exercises__exercise_id__class_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "exercise_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Exercise Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExerciseClassOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Exercise Class",
         "tags": [
           "ops-center"
         ]
