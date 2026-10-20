@@ -45,7 +45,10 @@ source "vsphere-iso" "srv2022" {
   cd_label  = "PROVISION"
   cd_content = {
     "autounattend.xml" = templatefile("${path.root}/files/windows/autounattend.pkrtpl.hcl", {
-      image_name          = "Windows Server 2022 Standard (Desktop Experience)"
+      # install.wim index 2 = Standard (Desktop Experience). /IMAGE/NAME takes the WIM NAME,
+      # not the display name Setup shows, and "...Standard (Desktop Experience)" matched nothing
+      # (Setup stopped at the image picker, 2026-10-20). A number here selects /IMAGE/INDEX.
+      image_name          = "2"
       product_key         = var.gvlk_srv2022
       computer_name       = "SRV2022"
       admin_password      = var.windows_admin_password
@@ -110,7 +113,10 @@ source "vsphere-iso" "srv2025" {
   cd_label  = "PROVISION"
   cd_content = {
     "autounattend.xml" = templatefile("${path.root}/files/windows/autounattend.pkrtpl.hcl", {
-      image_name          = "Windows Server 2025 Standard (Desktop Experience)"
+      # install.wim index 2 = Standard (Desktop Experience). /IMAGE/NAME takes the WIM NAME,
+      # not the display name Setup shows, and "...Standard (Desktop Experience)" matched nothing
+      # (Setup stopped at the image picker, 2026-10-20). A number here selects /IMAGE/INDEX.
+      image_name          = "2"
       product_key         = var.gvlk_srv2025
       computer_name       = "SRV2025"
       admin_password      = var.windows_admin_password

@@ -174,11 +174,16 @@ source "vsphere-iso" "kali" {
   http_port_max     = var.http_port_max
 
   boot_wait = "10s"
+  # EFI boots GRUB, not isolinux: type the kernel line on GRUB's command line (as
+  # ubuntu-lts does). The isolinux "<esc> auto url=..." form selected a menu entry here and
+  # left the installer at an interactive prompt (2026-10-20, ESXi 8.0.3). no_default_route
+  # and get_nameservers (the build DHCP gives no DNS) are on the kernel line because netcfg
+  # runs before the preseed file is fetched.
   boot_command = [
-    "<esc><wait>",
-    "auto url=http://{{ .HTTPIP }}:{{ .HTTPPort }}/kali/preseed.cfg ",
-    "locale=en_US keymap=us hostname=kali domain=range.local ",
-    "<enter>"
+    "c<wait>",
+    "linux /install.amd/vmlinuz auto=true priority=critical netcfg/no_default_route=true netcfg/get_nameservers=127.0.0.1 url=http://{{ .HTTPIP }}:{{ .HTTPPort }}/kali/preseed.cfg locale=en_US.UTF-8 keymap=us hostname=kali domain=range.local --- quiet<enter><wait>",
+    "initrd /install.amd/initrd.gz<enter><wait>",
+    "boot<enter>"
   ]
 
   ssh_username = var.ssh_username
@@ -235,11 +240,16 @@ source "vsphere-iso" "debian13" {
   http_port_max     = var.http_port_max
 
   boot_wait = "5s"
+  # EFI boots GRUB, not isolinux: type the kernel line on GRUB's command line (as
+  # ubuntu-lts does). The isolinux "<esc> auto url=..." form selected a menu entry here and
+  # left the installer at an interactive prompt (2026-10-20, ESXi 8.0.3). no_default_route
+  # and get_nameservers (the build DHCP gives no DNS) are on the kernel line because netcfg
+  # runs before the preseed file is fetched.
   boot_command = [
-    "<esc><wait>",
-    "auto url=http://{{ .HTTPIP }}:{{ .HTTPPort }}/debian/preseed.cfg ",
-    "locale=en_US keymap=us hostname=debian13 domain=range.local ",
-    "<enter>"
+    "c<wait>",
+    "linux /install.amd/vmlinuz auto=true priority=critical netcfg/no_default_route=true netcfg/get_nameservers=127.0.0.1 url=http://{{ .HTTPIP }}:{{ .HTTPPort }}/debian/preseed.cfg locale=en_US.UTF-8 keymap=us hostname=debian13 domain=range.local --- quiet<enter><wait>",
+    "initrd /install.amd/initrd.gz<enter><wait>",
+    "boot<enter>"
   ]
 
   ssh_username = var.ssh_username
@@ -346,7 +356,7 @@ build {
   provisioner "shell" {
     except = ["vsphere-iso.rocky"]
     inline = [
-      "sudo install -m 0644 /tmp/99-vmware.cfg /etc/cloud/cloud.cfg.d/99-vmware.cfg",
+      "sudo install -D -m 0644 /tmp/99-vmware.cfg /etc/cloud/cloud.cfg.d/99-vmware.cfg",
       "export DEBIAN_FRONTEND=noninteractive",
       "sudo apt-get update || true",
       "sudo apt-get install -y open-vm-tools cloud-init curl wget git net-tools || echo 'apt baseline skipped (no reachable mirror)'",

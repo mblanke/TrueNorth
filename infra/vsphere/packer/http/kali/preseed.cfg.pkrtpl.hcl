@@ -13,15 +13,24 @@ d-i console-keymaps-at/keymap select us
 d-i netcfg/choose_interface select auto
 d-i netcfg/get_hostname string kali
 d-i netcfg/get_domain string range.local
+# dPG-TN-BUILD has no gateway (ADR 0012): without this the installer stops and asks.
+d-i netcfg/no_default_route boolean true
 d-i netcfg/hostname string kali
 
 # Mirror
+%{ if apt_proxy != "" }
 d-i mirror/country string enter information manually
 d-i mirror/http/hostname string http.kali.org
 d-i mirror/http/directory string /kali
 # Build-time apt proxy (apt_proxy: TN-DEPOT01 apt-cacher-ng); empty = none. cleanup.sh
 # removes it from the installed system.
 d-i mirror/http/proxy string ${apt_proxy}
+%{ else }
+# Offline base (no depot yet): install from the ISO only, no network mirror.
+d-i apt-setup/use_mirror boolean false
+d-i apt-setup/services-select multiselect
+d-i apt-setup/non-free-firmware boolean true
+%{ endif }
 
 # Clock and timezone
 d-i clock-setup/utc boolean true
@@ -50,8 +59,14 @@ d-i user-setup/encrypt-home boolean false
 
 # Package selection — open-vm-tools instead of qemu-guest-agent
 tasksel tasksel/first multiselect standard
+# No cloud-init: it is not on the Kali installer ISO (offline build); VMware guest
+# customization works through open-vm-tools without it.
 d-i pkgsel/include string openssh-server open-vm-tools sudo curl wget git net-tools
+%{ if apt_proxy != "" }
 d-i pkgsel/upgrade select full-upgrade
+%{ else }
+d-i pkgsel/upgrade select none
+%{ endif }
 
 # Enable SSH and VMware tools
 d-i preseed/late_command string \
@@ -69,5 +84,4 @@ d-i grub-installer/bootdev string default
 # Avoid the last prompt about install being complete
 d-i finish-install/reboot_in_progress note
 
-# Power off after install so Packer can detect completion
-d-i debian-installer/exit/poweroff boolean true
+# Reboot (not power off): vsphere-iso waits for the installed system's IP and SSH.
