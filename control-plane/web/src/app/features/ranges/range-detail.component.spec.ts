@@ -11,6 +11,7 @@ import {
   RangeLeaseStatus, RangeOperation, RangeRecoveryApiService,
 } from '@core/services/range-recovery-api.service';
 import { RangeCredentialsApiService } from '@core/services/range-credentials-api.service';
+import { ApiService } from '@core/services/api.service';
 import { RangeDetailComponent, leftOnHypervisor } from './range-detail.component';
 import { rangeCapabilities } from './range-capabilities';
 
@@ -45,6 +46,7 @@ describe('RangeDetailComponent', () => {
   let dialogOpen: jasmine.Spy;
   let dialogResult: { reason: string } | null;
   let credentialsApi: jasmine.SpyObj<RangeCredentialsApiService>;
+  let diagramApi: jasmine.SpyObj<ApiService>;
 
   async function render(role: UserRole, opts: { ops?: RangeOperation[]; lease?: RangeLeaseStatus; fail?: boolean;
     platformAdmin?: boolean } = {}) {
@@ -66,6 +68,17 @@ describe('RangeDetailComponent', () => {
     credentialsApi.getCredentials.and.returnValue(of({ range_id: 'r1', scope: 'all', accounts: [
       { machine: 'dc01', username: 'Administrator', password: 'Dc-Secret-1!', role: 'admin', student_visible: false,
         generated: true, applied: true, notes: '' }] }));
+    diagramApi = jasmine.createSpyObj('ApiService', ['getRangeDiagram']);
+    diagramApi.getRangeDiagram.and.returnValue(of({
+      range_id: 'r1', generated: true, source: 'template', notes: ['Drawn from Medium Enterprise Network v1.0.'],
+      diagram_json: { cells: [
+        { id: 'z', nodeType: 'subnet', position: { x: 0, y: 0 }, size: { width: 400, height: 200 },
+          nodeData: { label: 'servers', cidr: '10.10.200.0/24' } },
+        { id: 'dc01', nodeType: 'dc', position: { x: 20, y: 52 }, size: { width: 170, height: 64 },
+          nodeData: { label: 'Domain Controller', os_template: 'windows-server-2022', ip: '10.10.200.10',
+            runtime: { status: 'planned', built: false } } },
+      ] },
+    }));
     dialogResult = { reason: 'vCenter checked: no tasks for this range' };
     dialogOpen = jasmine.createSpy('open').and.callFake(() => ({ afterClosed: () => of(dialogResult) }));
 
@@ -75,6 +88,7 @@ describe('RangeDetailComponent', () => {
         provideRouter([]),
         { provide: RangeRecoveryApiService, useValue: api },
         { provide: RangeCredentialsApiService, useValue: credentialsApi },
+        { provide: ApiService, useValue: diagramApi },
         { provide: NotificationService, useValue: notify },
         { provide: AuthService, useValue: { user: signal({ id: 'u1', role }),
           isPlatformAdmin: signal(opts.platformAdmin ?? false) } },
@@ -99,6 +113,19 @@ describe('RangeDetailComponent', () => {
     expect(el.textContent).toContain('Abandoned by admin');
     expect(el.textContent).toContain('No worker holds this range.');
     expect(el.textContent).toContain('dvs-1');
+  });
+
+  it('shows the topology, drawn from the template when none was saved, with 3D and designer links', async () => {
+    await render('range_ops');
+    expect(diagramApi.getRangeDiagram).toHaveBeenCalledWith('r1');
+    const topo = el.querySelector('tn-range-topology')!;
+    expect(topo.textContent).toContain('Drawn from the template');
+    expect(topo.querySelector('svg.topo-svg')).not.toBeNull();
+    expect(topo.textContent).toContain('Domain Controller');
+    expect(topo.textContent).toContain('10.10.200.10');
+    const hrefs = Array.from(el.querySelectorAll('a')).map(a => a.getAttribute('href') ?? '');
+    expect(hrefs).toContain('/topology-3d?range=r1');
+    expect(hrefs).toContain('/authoring/ranges/designer?range=r1');
   });
 
   it('has a credentials panel that reads nothing until asked, then masks the passwords', async () => {

@@ -4,7 +4,7 @@ import { Observable } from 'rxjs';
 import { environment } from '@env/environment';
 import {
   AAR, Exercise, ExerciseSummary, HealthResponse, HypervisorNode, InjectRecord, Objective, Range,
-  RangeDocument, RangeSummary, Scenario, ScenarioSummary, Team, Template, TemplateSummary,
+  RangeDiagram, RangeDocument, RangeSummary, Scenario, ScenarioSummary, Team, Template, TemplateSummary,
   Tenant, TelemetryEvent, User,
 } from '../models';
 import type { components } from '../api/schema';
@@ -228,8 +228,8 @@ export class ApiService {
   destroyRange(id: string): Observable<Range> {
     return this.http.post<Range>(`${this.base}/ranges/${id}/destroy`, {});
   }
-  getRangeDiagram(id: string): Observable<{ range_id: string; diagram_json: any }> {
-    return this.http.get<{ range_id: string; diagram_json: any }>(`${this.base}/ranges/${id}/diagram`);
+  getRangeDiagram(id: string): Observable<RangeDiagram> {
+    return this.http.get<RangeDiagram>(`${this.base}/ranges/${id}/diagram`);
   }
   saveRangeDiagram(id: string, diagram: any): Observable<{ range_id: string; diagram_json: any }> {
     return this.http.put<{ range_id: string; diagram_json: any }>(`${this.base}/ranges/${id}/diagram`, diagram);

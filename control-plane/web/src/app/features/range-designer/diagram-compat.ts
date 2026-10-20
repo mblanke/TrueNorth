@@ -25,3 +25,20 @@ function upgradeLabel(holder: any): void {
     label.position = { name: label.position };
   }
 }
+
+/**
+ * A diagram GET /ranges/{id}/diagram generated from the template carries what the last
+ * build recorded in `nodeData.runtime`. That is a reading, not a design: it is dropped
+ * before the designer loads the cells, so a Save never freezes it into the range.
+ */
+export function withoutRuntime<T extends { cells?: unknown[] }>(diagram: T | null | undefined): T | null | undefined {
+  if (!diagram || !Array.isArray(diagram.cells)) return diagram;
+  const cells = diagram.cells.map(cell => {
+    const data = (cell as { nodeData?: Record<string, unknown> })?.nodeData;
+    if (!data || typeof data !== 'object' || !('runtime' in data)) return cell;
+    const rest = { ...data };
+    delete rest['runtime'];
+    return { ...(cell as object), nodeData: rest };
+  });
+  return { ...diagram, cells };
+}

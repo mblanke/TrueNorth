@@ -22,7 +22,7 @@ import { Observable } from 'rxjs';
 import * as joint from '@joint/core';
 import { FilterCategoryPipe } from './filter-category.pipe';
 import { GraphHistory } from './graph-history';
-import { upgradeDiagramJson } from './diagram-compat';
+import { upgradeDiagramJson, withoutRuntime } from './diagram-compat';
 import { importTemplateYaml, YamlImportOutcome } from './range-designer-yaml-import';
 import { GREYSPACE_DEFAULTS, GreyspaceSettings, greyspaceSettings } from './greyspace-stencil';
 import { YamlImportErrorsDialogComponent, YamlImportErrorsData } from './yaml-import-errors-dialog.component';
@@ -1822,16 +1822,17 @@ export class RangeDesignerComponent implements AfterViewInit, OnDestroy {
     });
     this.api.getRangeDiagram(id).subscribe({
       next: (res) => {
-        const diagram = res?.diagram_json;
+        const diagram = withoutRuntime(res?.diagram_json as { cells?: unknown[] } | undefined);
         if (!diagram || !diagram.cells || !diagram.cells.length) {
           this.snack.open('No saved diagram for this range — starting blank', '', { duration: 2500 });
           return;
         }
+        const generated = !!res?.generated;
         // A load is a new baseline, not an edit: the restored cells must not
         // arrive on the stack as something to undo, nor mark the range dirty.
         this.suppressHistory = true;
         try {
-          this.graph.fromJSON(upgradeDiagramJson(diagram));
+          this.graph.fromJSON(upgradeDiagramJson(diagram) as any);
         } catch {
           this.snack.open('Saved diagram was corrupted — starting blank', 'Dismiss', { duration: 4000, panelClass: 'snack-error' });
           return;
@@ -1842,7 +1843,13 @@ export class RangeDesignerComponent implements AfterViewInit, OnDestroy {
         // Non-fatal cosmetics: a fit/scale hiccup must not blank an otherwise-valid diagram.
         try { this.updateCounts(); } catch { /* ignore */ }
         try { this.paper.scaleContentToFit({ padding: 40, maxScale: 1.5 }); } catch { /* ignore */ }
-        this.snack.open('Diagram loaded', '', { duration: 1500, panelClass: 'snack-success' });
+        if (generated) {
+          // Not saved: nothing is written until the author presses Save.
+          this.snack.open("No saved diagram: drawn from the range's template. Save to keep it as this range's design.",
+            'OK', { duration: 6000 });
+        } else {
+          this.snack.open('Diagram loaded', '', { duration: 1500, panelClass: 'snack-success' });
+        }
       },
       error: (err) => this.snack.open(err?.error?.detail || 'Load failed', 'Dismiss', { duration: 4000, panelClass: 'snack-error' }),
     });
@@ -1972,7 +1979,7 @@ export class RangeDesignerComponent implements AfterViewInit, OnDestroy {
         if (diagram && diagram.cells && diagram.cells.length) {
           this.suppressHistory = true;
           try {
-            this.graph.fromJSON(upgradeDiagramJson(diagram));
+            this.graph.fromJSON(upgradeDiagramJson(diagram) as any);
           } catch {
             this.snack.open('Template preview was unusable — starting blank', '', { duration: 3000 });
           } finally {

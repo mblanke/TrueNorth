@@ -834,7 +834,9 @@ def diagram_to_template(diagram: dict, name: str = "Range Design", *, range_id: 
                 if wants_default:
                     default_vlan = vlan_name
                 warnings.append(f"{label}: outside every zone; placed on VLAN {vid} ({cidr})")
-            if ntype in _MULTI_HOMED_TYPES:
+            extra_ifaces = (data.get("template_extra") or {}).get("interfaces") if isinstance(
+                data.get("template_extra"), dict) else None
+            if ntype in _MULTI_HOMED_TYPES and not extra_ifaces:
                 warnings.append(f"{label}: a {ntype} outside the zones has a single NIC and will not route between them")
 
         extra = data.get("template_extra")

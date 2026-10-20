@@ -17,6 +17,7 @@ import {
   ImpactDialogComponent, ImpactDialogData, ImpactDialogResult,
 } from '../../shared/components/impact-dialog/impact-dialog.component';
 import { RangeCredentialsComponent } from '../../shared/components/range-credentials/range-credentials.component';
+import { RangeTopologyComponent } from '../../shared/components/range-topology/range-topology.component';
 import { RangeSnapshotsComponent } from './range-snapshots.component';
 import { apiError, rangeCapabilities } from './range-capabilities';
 
@@ -35,7 +36,7 @@ const POLL_MS = 10_000;
 @Component({
   selector: 'tn-range-detail',
   imports: [CommonModule, RouterLink, MatButtonModule, MatCardModule, MatIconModule, MatTooltipModule,
-    RangeCredentialsComponent, RangeSnapshotsComponent],
+    RangeCredentialsComponent, RangeSnapshotsComponent, RangeTopologyComponent],
   template: `
     <div class="page-container">
       <a mat-button routerLink="/authoring/ranges" class="back"><mat-icon>arrow_back</mat-icon> Ranges</a>
@@ -74,6 +75,21 @@ const POLL_MS = 10_000;
             <button mat-button (click)="outcome.set(null)">Dismiss</button>
           </div>
         }
+
+        <!-- Topology: the saved design, else drawn from the template and the last build -->
+        <mat-card class="section">
+          <div class="section-head">
+            <h2>Topology</h2>
+            <span class="spacer"></span>
+            <a mat-stroked-button [routerLink]="['/topology-3d']" [queryParams]="{ range: r.id }">
+              <mat-icon>3d_rotation</mat-icon> Open 3D
+            </a>
+            <a mat-stroked-button [routerLink]="['/authoring/ranges/designer']" [queryParams]="{ range: r.id }">
+              <mat-icon>architecture</mat-icon> Open in designer
+            </a>
+          </div>
+          <tn-range-topology [rangeId]="r.id" />
+        </mat-card>
 
         <!-- Operations -->
         <mat-card class="section">
@@ -201,6 +217,9 @@ const POLL_MS = 10_000;
     .header-actions { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
     .section { display: block; margin-top: 16px; padding: 16px; }
     h2 { margin: 0 0 8px; font-size: 18px; }
+    .section-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+    .section-head h2 { margin: 0; }
+    .spacer { flex: 1; }
     h3 { margin: 16px 0 4px; font-size: 15px; }
     .muted { color: var(--text-secondary); font-size: 13px; }
     .error-text { color: var(--alert, #ef4444); }

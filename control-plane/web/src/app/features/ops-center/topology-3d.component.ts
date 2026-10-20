@@ -9,7 +9,7 @@ import { MatSelectModule } from '@angular/material/select';
 import { MatTooltipModule } from '@angular/material/tooltip';
 
 import { ApiService } from '@core/services/api.service';
-import { RangeSummary } from '@core/models';
+import { RangeDiagram, RangeSummary } from '@core/models';
 import { MotionService } from '../../shared/motion';
 import { HoverInfo, TopologyScene, parseDiagram } from './topology-scene';
 
@@ -60,11 +60,22 @@ import { HoverInfo, TopologyScene, parseDiagram } from './topology-scene';
             <mat-icon class="spin">sync</mat-icon> Loading topology…
           </div>
         }
-        @if (!loading() && empty()) {
-          <div class="overlay-message">
+        @if (!loading() && failed()) {
+          <div class="overlay-message" role="alert">
+            <mat-icon>error_outline</mat-icon>
+            <p>Could not load this range's topology.</p>
+            <p class="hint">Check the connection and pick the range again.</p>
+          </div>
+        } @else if (!loading() && empty()) {
+          <div class="overlay-message" role="status">
             <mat-icon>category</mat-icon>
-            <p>No saved diagram for this range.</p>
-            <p class="hint">Draw one in the Range Designer and hit Save — it will appear here in 3D.</p>
+            <p>Nothing to draw for this range.</p>
+            <p class="hint">{{ notes()[0] || 'It has no saved diagram and its template declares no hosts.' }}</p>
+          </div>
+        }
+        @if (!loading() && generated()) {
+          <div class="source-chip" role="note" [matTooltip]="notes().join(' ')">
+            <mat-icon inline>auto_awesome</mat-icon> Drawn from the template · not a saved design
           </div>
         }
 
@@ -76,6 +87,7 @@ import { HoverInfo, TopologyScene, parseDiagram } from './topology-scene';
             @if (h.node.data['os']) { <div class="tip-row"><span>OS</span>{{ h.node.data['os'] }}</div> }
             @if (h.node.data['vcpu']) { <div class="tip-row"><span>vCPU</span>{{ h.node.data['vcpu'] }}</div> }
             @if (h.node.data['ram_mb']) { <div class="tip-row"><span>RAM</span>{{ h.node.data['ram_mb'] }} MB</div> }
+            @if (h.node.data['status']) { <div class="tip-row"><span>Status</span>{{ h.node.data['status'] }}</div> }
           </div>
         }
       </div>
@@ -104,6 +116,11 @@ import { HoverInfo, TopologyScene, parseDiagram } from './topology-scene';
     }
     .overlay-message mat-icon { font-size: 42px; width: 42px; height: 42px; color: var(--border-light); }
     .overlay-message .hint { font-size: 12px; }
+    .source-chip {
+      position: absolute; top: 12px; left: 12px; display: inline-flex; align-items: center; gap: 4px;
+      padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 600;
+      border: 1px solid var(--accent); color: var(--accent); background: var(--glass-bg);
+    }
     @keyframes spin { to { transform: rotate(360deg); } }
     .spin { animation: spin 1.2s linear infinite; }
 
@@ -135,6 +152,10 @@ export class Topology3dComponent implements OnInit, AfterViewInit, OnDestroy {
   ranges = signal<RangeSummary[]>([]);
   loading = signal(false);
   empty = signal(false);
+  failed = signal(false);
+  /** Drawn by the API from the range's template (no saved designer diagram). */
+  generated = signal(false);
+  notes = signal<string[]>([]);
   hover = signal<HoverInfo | null>(null);
 
   selectedRangeId = '';
@@ -153,7 +174,7 @@ export class Topology3dComponent implements OnInit, AfterViewInit, OnDestroy {
           if (this.viewReady) this.loadDiagram();
         }
       },
-      error: () => this.empty.set(true),
+      error: () => this.failed.set(true),
     });
   }
 
@@ -169,16 +190,23 @@ export class Topology3dComponent implements OnInit, AfterViewInit, OnDestroy {
     this.teardownScene();
     this.loading.set(true);
     this.empty.set(false);
+    this.failed.set(false);
+    this.generated.set(false);
+    this.notes.set([]);
     this.api.getRangeDiagram(this.selectedRangeId).subscribe({
-      next: ({ diagram_json }) => this.buildScene(diagram_json),
+      next: (res: RangeDiagram) => {
+        this.generated.set(!!res.generated);
+        this.notes.set(res.notes ?? []);
+        this.buildScene(res.diagram_json);
+      },
       error: () => {
         this.loading.set(false);
-        this.empty.set(true);
+        this.failed.set(true);
       },
     });
   }
 
-  private buildScene(diagramJson: any): void {
+  private buildScene(diagramJson: { cells?: unknown } | null | undefined): void {
     const graph = parseDiagram(diagramJson);
     if (!graph.nodes.length && !graph.zones.length) {
       this.loading.set(false);
@@ -198,7 +226,7 @@ export class Topology3dComponent implements OnInit, AfterViewInit, OnDestroy {
         })
         .catch(() => this.zone.run(() => {
           this.loading.set(false);
-          this.empty.set(true);
+          this.failed.set(true);
         }));
     });
   }

@@ -42,7 +42,7 @@ from fastapi.responses import Response
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from .. import object_store, range_abandon, range_ops
+from .. import object_store, range_abandon, range_diagram, range_ops
 from ..auth import CurrentUser
 from ..db import get_db
 from ..models import (
@@ -340,15 +340,21 @@ def delete_range(
 
 
 # ── Diagram (range designer persistence) ───────────────────────────────
-@router.get("/{range_id}/diagram")
+@router.get("/{range_id}/diagram", response_model=range_diagram.RangeDiagramOut)
 def get_range_diagram(
     range_id: uuid.UUID = Path(...),
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_permission(Permission.RANGE_READ)),
 ) -> dict:
-    """Retrieve persisted JointJS diagram for a range.  **Permission: range:read**"""
+    """A range's topology for the 2D and 3D views.  **Permission: range:read**
+
+    The saved Range Designer diagram when there is one (``source: saved``). Otherwise
+    one drawn from the range's template and what its last build recorded
+    (``generated: true``, ``source: template``), so a range built from a template still
+    has a picture. ``source: none`` when the template declares no hosts.
+    """
     rng = _readable_range(db, range_id, user)
-    return {"range_id": str(rng.id), "diagram_json": rng.diagram_json or {"cells": []}}
+    return range_diagram.range_diagram(rng)
 
 
 @router.put("/{range_id}/diagram")

@@ -13,6 +13,7 @@ import { objectiveKind, objectiveName } from '@shared/objective-display';
 import { DetectionPanelComponent, isDetectionObjective } from './detection-panel.component';
 import { RangeNotesComponent } from '../../shared/components/range-notes/range-notes.component';
 import { RangeCredentialsComponent } from '../../shared/components/range-credentials/range-credentials.component';
+import { RangeTopologyComponent } from '../../shared/components/range-topology/range-topology.component';
 
 interface TimelineStep {
   t: string;
@@ -48,20 +49,6 @@ interface ScenarioDetail {
   objectives: ObjectiveRow[];
 }
 
-interface SvgZone { x: number; y: number; w: number; h: number; label: string; cidr: string; color: string; }
-interface SvgNode { x: number; y: number; label: string; ip: string; type: string; color: string; }
-
-const NODE_COLORS: Record<string, string> = {
-  workstation: '#42A5F5', server: '#66BB6A', dc: '#AB47BC', kali: '#EF5350',
-  switch: '#FFA726', router: '#26C6DA', cloud: '#78909C',
-  firewall: '#FF7043', seconion: '#5C6BC0', subnet: '#29B6F6', dmz: '#FFCA28',
-};
-
-const NODE_ICON: Record<string, string> = {
-  workstation: '🖥️', server: '🗄️', dc: '🏛️', kali: '🐉', firewall: '🛡️',
-  seconion: '🧅', router: '🌐', switch: '🔀', cloud: '☁️',
-};
-
 @Component({
   selector: 'tn-exercise-detail',
   imports: [
@@ -74,6 +61,7 @@ const NODE_ICON: Record<string, string> = {
     MatSnackBarModule,
     RangeNotesComponent,
     RangeCredentialsComponent,
+    RangeTopologyComponent,
     DetectionPanelComponent,
 ],
   template: `
@@ -217,23 +205,8 @@ const NODE_ICON: Record<string, string> = {
             <p class="muted">{{ rangeName || 'Assessment range' }} @if (rangeState) {
               <span>· {{ rangeState }}</span>
             } · simulated (mock)</p>
-            @if (svgNodes.length) {
-              <div class="topo">
-                <svg [attr.viewBox]="viewBox" preserveAspectRatio="xMidYMid meet" class="topo-svg">
-                  @for (z of svgZones; track z.label) {
-                    <rect [attr.x]="z.x" [attr.y]="z.y" [attr.width]="z.w" [attr.height]="z.h" rx="12"
-                      [attr.fill]="z.color + '12'" [attr.stroke]="z.color" stroke-width="1.5" stroke-dasharray="9 6" />
-                    <text [attr.x]="z.x + 14" [attr.y]="z.y + 25" [attr.fill]="z.color" font-size="15" font-weight="700">{{ z.label }}</text>
-                    <text [attr.x]="z.x + 14" [attr.y]="z.y + 43" [attr.fill]="z.color" font-size="12" opacity="0.8">{{ z.cidr }}</text>
-                  }
-                  @for (n of svgNodes; track n.label) {
-                    <rect class="node-box" [attr.x]="n.x" [attr.y]="n.y" width="150" height="54" rx="9" [attr.stroke]="n.color" stroke-width="1.5" />
-                    <rect [attr.x]="n.x" [attr.y]="n.y" width="6" height="54" rx="3" [attr.fill]="n.color" />
-                    <text class="node-title" [attr.x]="n.x + 16" [attr.y]="n.y + 22" font-size="13" font-weight="600">{{ iconFor(n.type) }} {{ n.label }}</text>
-                    <text class="node-sub" [attr.x]="n.x + 16" [attr.y]="n.y + 40" font-size="11">{{ n.ip }} · {{ n.type }}</text>
-                  }
-                </svg>
-              </div>
+            @if (d.range_id) {
+              <tn-range-topology [rangeId]="d.range_id" />
             }
             @if (d.range_id) {
               <div class="range-notes">
@@ -314,11 +287,6 @@ const NODE_ICON: Record<string, string> = {
       /* Theme-driven canvas: this used to be a hardcoded dark slab that sat as a
          black rectangle in the middle of the light theme. Node accent strips keep
          their categorical colours; the surfaces follow the theme. */
-      .topo { width: 100%; overflow: auto; border-radius: 10px; background: var(--bg-secondary); border: 1px solid var(--border); margin: 10px 0; }
-      .topo-svg { width: 100%; height: auto; min-height: 240px; max-height: 460px; display: block; }
-      .topo-svg .node-box { fill: var(--bg-surface); }
-      .topo-svg .node-title { fill: var(--text-primary); }
-      .topo-svg .node-sub { fill: var(--text-muted); }
       .loading { padding: 16px; }
       .error-panel { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 40px 16px; color: var(--text-secondary); }
       .error-panel mat-icon { font-size: 42px; width: 42px; height: 42px; color: var(--text-muted); }
@@ -352,9 +320,6 @@ export class ExerciseDetailComponent implements OnInit, OnDestroy {
   /** Attempts grouped by objective ref; stable arrays so bindings do not churn. */
   private attemptsByRef = new Map<string, Detection[]>();
   private readonly noAttempts: Detection[] = [];
-  svgZones: SvgZone[] = [];
-  svgNodes: SvgNode[] = [];
-  viewBox = '0 0 800 400';
   private poll: ReturnType<typeof setInterval> | null = null;
 
   isDetection(o: ObjectiveRow): boolean {
@@ -400,10 +365,6 @@ export class ExerciseDetailComponent implements OnInit, OnDestroy {
     });
   }
 
-  iconFor(t: string): string {
-    return NODE_ICON[t] ?? '•';
-  }
-
   fmtDuration(min: number): string {
     if (!min) return '—';
     if (min < 60) return `${min} min`;
@@ -416,35 +377,6 @@ export class ExerciseDetailComponent implements OnInit, OnDestroy {
       return `${h} h`;
     }
     return `${Math.floor(min / 60)}h ${min % 60}m`;
-  }
-
-  private parseDiagram(diagram: { cells?: any[] } | null | undefined): void {
-    const cells = diagram?.cells ?? [];
-    const zones: SvgZone[] = [];
-    const nodes: SvgNode[] = [];
-    let minX = 1e9, minY = 1e9, maxX = -1e9, maxY = -1e9;
-    for (const c of cells) {
-      if (typeof c.type === 'string' && c.type.toLowerCase().includes('link')) continue;
-      const nt = c.nodeType || 'workstation';
-      const pos = c.position || { x: 0, y: 0 };
-      const color = NODE_COLORS[nt] || '#66BB6A';
-      if (nt === 'subnet' || nt === 'dmz') {
-        const size = c.size || { width: 600, height: 150 };
-        zones.push({ x: pos.x, y: pos.y, w: size.width, h: size.height, label: c.nodeData?.label || '', cidr: c.nodeData?.cidr || '', color });
-        minX = Math.min(minX, pos.x); minY = Math.min(minY, pos.y);
-        maxX = Math.max(maxX, pos.x + size.width); maxY = Math.max(maxY, pos.y + size.height);
-      } else {
-        nodes.push({ x: pos.x, y: pos.y, label: c.nodeData?.label || nt, ip: c.nodeData?.ip || '', type: nt, color });
-        minX = Math.min(minX, pos.x); minY = Math.min(minY, pos.y);
-        maxX = Math.max(maxX, pos.x + 150); maxY = Math.max(maxY, pos.y + 54);
-      }
-    }
-    this.svgZones = zones;
-    this.svgNodes = nodes;
-    if (nodes.length || zones.length) {
-      const pad = 26;
-      this.viewBox = `${minX - pad} ${minY - pad} ${maxX - minX + pad * 2} ${maxY - minY + pad * 2}`;
-    }
   }
 
   ngOnInit(): void {
@@ -474,12 +406,6 @@ export class ExerciseDetailComponent implements OnInit, OnDestroy {
             },
             error: () => {},
           });
-          if (!this.svgNodes.length) {
-            this.api.getRangeDiagram(d.range_id).subscribe({
-              next: (res: any) => this.parseDiagram(res?.diagram_json ?? res),
-              error: () => {},
-            });
-          }
         }
         if (d.state === 'running' && !this.poll) this.startPolling();
         this.loadInjects();
