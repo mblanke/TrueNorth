@@ -69,7 +69,10 @@ d-i pkgsel/upgrade select none
 %{ endif }
 
 # Enable SSH and VMware tools
+# The installed system must bring its NIC up by DHCP (Packer waits for the IP). Kali's core
+# set here has no NetworkManager and no ifupdown config: fall back to systemd-networkd.
 d-i preseed/late_command string \
+  in-target sh -c 'dpkg -s network-manager >/dev/null 2>&1 || { mkdir -p /etc/systemd/network; printf "[Match]\\nName=en* eth*\\n\\n[Network]\\nDHCP=yes\\n" > /etc/systemd/network/20-tn-dhcp.network; systemctl enable systemd-networkd; }' ; \
   in-target systemctl enable ssh ; \
   in-target systemctl enable open-vm-tools ; \
   echo "${user} ALL=(ALL) NOPASSWD:ALL" > /target/etc/sudoers.d/${user} ; \

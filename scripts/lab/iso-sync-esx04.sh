@@ -98,7 +98,9 @@ failed=0
 for item in "${plan[@]}"; do
   IFS='|' read -r path want how <<<"$item"
   act govc datastore.mkdir -p -ds "$DST_DS" "$(dirname "$path")"
-  force=(); [[ "$how" == "replace" ]] && force=(-f)
+  # Always overwrite: a copy only happens when the sizes differ, and a destination that exists
+  # with no reported size (a 0-byte leftover of an interrupted copy) reads as "missing" above.
+  force=(-f)
   if [[ "$STREAM" == "1" ]]; then
     echo "  + govc datastore.download -ds $SRC_DS $path - | govc datastore.upload -ds $DST_DS - $path"
     govc datastore.download -ds "$SRC_DS" "$path" - | govc datastore.upload -ds "$DST_DS" - "$path" || true

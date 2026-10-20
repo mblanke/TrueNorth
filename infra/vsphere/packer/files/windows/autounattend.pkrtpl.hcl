@@ -136,12 +136,13 @@
       </AutoLogon>
       <TimeZone>UTC</TimeZone>
       <FirstLogonCommands>
-        <!-- VMware Tools first, from whichever CD holds setup64.exe (vmtools_iso_path): Windows
+        <!-- VMware Tools first, from the Tools CD (vmtools_iso_path; the drive with VMwareToolsUpgrader.exe:
+             the Windows ISO has a setup.exe too). setup64.exe on older Tools, setup.exe on 12.x. Windows
              has no inbox vmxnet3 driver, so without it there is no network, no IP for Packer and
              no WinRM. REBOOT=R: the driver loads now; setup.ps1 re-runs it harmlessly. -->
         <SynchronousCommand wcm:action="add">
           <Order>1</Order>
-          <CommandLine>powershell -NoProfile -ExecutionPolicy Bypass -Command "$s = Get-PSDrive -PSProvider FileSystem | ForEach-Object { Join-Path $_.Root 'setup64.exe' } | Where-Object { Test-Path $_ } | Select-Object -First 1; if ($s) { Start-Process $s -ArgumentList '/S /v \"/qn REBOOT=R\"' -Wait }"</CommandLine>
+          <CommandLine>powershell -NoProfile -ExecutionPolicy Bypass -Command "$d = Get-PSDrive -PSProvider FileSystem | Where-Object { Test-Path (Join-Path $_.Root 'VMwareToolsUpgrader.exe') } | Select-Object -First 1; if ($d) { $s = @('setup64.exe','setup.exe') | ForEach-Object { Join-Path $d.Root $_ } | Where-Object { Test-Path $_ } | Select-Object -First 1; if ($s) { Start-Process $s -ArgumentList '/S /v \"/qn REBOOT=R\"' -Wait } }"</CommandLine>
           <Description>Install VMware Tools (vmxnet3 driver)</Description>
         </SynchronousCommand>
         <!-- The build network is unidentified (Public); winrm quickconfig refuses on Public. -->
