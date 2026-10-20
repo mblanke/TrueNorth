@@ -1,0 +1,12 @@
+# {{ ansible_managed }}
+# Re-checks the range NIC's firewall every minute; the NIC goes DOWN if it is gone (#214).
+[Unit]
+Description=TrueNorth depot - re-check the range NIC firewall every minute
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=60s
+AccuracySec=5s
+
+[Install]
+WantedBy=timers.target

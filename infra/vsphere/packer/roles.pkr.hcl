@@ -322,7 +322,7 @@ build {
 
   # Pass 1: grow C:, Windows features, prerequisites from the depot.
   provisioner "powershell" {
-    environment_vars = ["DEPOT_URL=${var.depot_url}", "TN_ROLE_IMAGE=${source.name}", "TN_ROLE_PASS=1"]
+    environment_vars = ["DEPOT_URL=${var.depot_url}", "DEPOT_USER=${var.depot_user}", "DEPOT_PASSWORD=${var.depot_password}", "TN_ROLE_IMAGE=${source.name}", "TN_ROLE_PASS=1"]
     script           = "${path.root}/files/windows/role-image.ps1"
   }
   provisioner "windows-restart" {
@@ -331,7 +331,7 @@ build {
   # Pass 2: what needs the reboot first (SharePoint prerequisite installer, SQL
   # PrepareImage, ADK), then stage the media and write C:\TrueNorth\role-image.json.
   provisioner "powershell" {
-    environment_vars = ["DEPOT_URL=${var.depot_url}", "TN_ROLE_IMAGE=${source.name}", "TN_ROLE_PASS=2"]
+    environment_vars = ["DEPOT_URL=${var.depot_url}", "DEPOT_USER=${var.depot_user}", "DEPOT_PASSWORD=${var.depot_password}", "TN_ROLE_IMAGE=${source.name}", "TN_ROLE_PASS=2"]
     script           = "${path.root}/files/windows/role-image.ps1"
   }
   # sysprep refuses to run with a reboot pending.

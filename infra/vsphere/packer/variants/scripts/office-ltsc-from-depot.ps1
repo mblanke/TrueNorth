@@ -26,8 +26,14 @@ if (-not $depot) {
 }
 
 $url = "$($depot.TrimEnd('/'))/installers/office/office-ltsc.zip"
+# The installers repository is not anonymous (#214): Basic auth as DEPOT_USER (tn-build-read).
+$depotHeaders = @{}
+if ($env:DEPOT_USER) {
+  $pair = [Text.Encoding]::UTF8.GetBytes("$($env:DEPOT_USER):$($env:DEPOT_PASSWORD)")
+  $depotHeaders['Authorization'] = 'Basic ' + [Convert]::ToBase64String($pair)
+}
 try {
-  Invoke-WebRequest -Uri $url -Method Head -UseBasicParsing -TimeoutSec 15 | Out-Null
+  Invoke-WebRequest -Uri $url -Headers $depotHeaders -Method Head -UseBasicParsing -TimeoutSec 15 | Out-Null
 } catch {
   Write-Warning "office-ltsc: $url not found on the depot; Office LTSC NOT installed."
   exit 0
@@ -38,7 +44,7 @@ New-Item -ItemType Directory -Force -Path $work | Out-Null
 $zip = Join-Path $work 'office-ltsc.zip'
 Write-Host "office-ltsc: downloading $url"
 $ProgressPreference = 'SilentlyContinue'
-Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing
+Invoke-WebRequest -Uri $url -Headers $depotHeaders -OutFile $zip -UseBasicParsing
 Expand-Archive -Path $zip -DestinationPath $work -Force
 
 $setup = Join-Path $work 'setup.exe'

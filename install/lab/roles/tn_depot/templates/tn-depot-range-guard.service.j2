@@ -1,0 +1,7 @@
+# {{ ansible_managed }}
+[Unit]
+Description=TrueNorth depot - range NIC guard: firewall table loaded, forwarding off, else NIC down
+
+[Service]
+Type=oneshot
+ExecStart={{ tn_depot_range_guard }} check

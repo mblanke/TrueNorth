@@ -1,13 +1,17 @@
 # {{ ansible_managed }}
-# TN-DEPOT01 range uplink NIC (#214): on-link only. No gateway, no DNS, no DHCP, no IPv6:
-# range firewall WANs are on {{ tn_depot_range_subnet }}, so replies never need a route, and the
-# default route stays on the management NIC.
+# TN-DEPOT01 range uplink NIC (#214): matched by its MAC and renamed {{ tn_depot_range_if }}, which
+# is the name the firewall (table inet tn_depot_range) matches. On-link only: no gateway,
+# no DNS, no DHCP, no IPv6; range firewall WANs are on {{ tn_depot_range_subnet }}.
+# activation-mode manual: systemd-networkd never brings the link up. Only
+# tn-depot-range-link.service does, after the firewall unit and a check of the live table.
 network:
   version: 2
   ethernets:
-    tn-range-uplink:
+    {{ tn_depot_range_if }}:
       match:
-        macaddress: "{{ tn_depot_range_hwaddr }}"
+        macaddress: "{{ tn_depot_range_hwaddr | lower }}"
+      set-name: {{ tn_depot_range_if }}
+      activation-mode: manual
       dhcp4: false
       dhcp6: false
       accept-ra: false

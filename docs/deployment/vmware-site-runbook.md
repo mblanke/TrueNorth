@@ -169,7 +169,7 @@ work-site README.
 firewall WANs sit on the range uplink network (`dPG-TN-SVC`, VLAN 32), and TN-DEPOT01 has
 a NIC there at 10.30.32.10. The range firewalls' `TN_DEPOT` rule is unchanged, and no range
 gets a path to MGMT: the alternative (routing ranges to 10.30.30.30) was rejected for that
-reason. Three controls hold on the depot itself (`install/lab/roles/tn_depot`):
+reason. These controls hold on the depot itself (`install/lab/roles/tn_depot`):
 - **Host firewall** on that NIC (`nft` table `inet tn_depot_range`, loaded before the
   network at boot): only new TCP connections from 10.30.32.0/24 to 10.30.32.10 on 8081 and
   3142 come in. No SSH, no ICMP, no Docker registry ports (8082/8083), no other depot
@@ -179,8 +179,20 @@ reason. Three controls hold on the depot itself (`install/lab/roles/tn_depot`):
   kernel's values back after Nexus is up and fails if any is on.
 - **No route out of it:** the NIC has no gateway and no DNS; the default route stays on
   MGMT. `depot.yml` fails if the default route is on it.
-Order matters: cloud-init leaves the NIC unaddressed, and `depot.yml` loads the firewall
-before it puts 10.30.32.10 on it.
+- **Fail closed:** the NIC is taken by its MAC only and renamed `tnrange0`; the firewall
+  also matches the range subnet on any NIC. netplan never brings it up
+  (`activation-mode: manual`); `tn-depot-range-link.service` does, after the firewall unit
+  and a check of the live table, and `tn-depot-range-guard.timer` sets it DOWN within a
+  minute if the table disappears (e.g. Ubuntu's `nftables.service` flushing the ruleset)
+  or forwarding comes on.
+- **Online windows:** going online (`prefetch.yml`) is refused while range VMs exist
+  (override `tn_depot_force_online`), and the range network gets nothing while online.
+- **Least privilege on the services:** apt-cacher-ng serves only Remap-ed repositories
+  (`ForceManaged`, port 80; not an open proxy) and its admin pages need a depot-generated
+  `AdminAuth`; Nexus anonymous reads only the Chocolatey feed, and Packer reads
+  `installers` as `tn-build-read` with a secret generated on TN-MGMT01.
+Order matters: cloud-init leaves the NIC unaddressed and DOWN, and `depot.yml` loads the
+firewall before it puts 10.30.32.10 on it and before anything brings the link up.
 
 > **Superseded design (noted 2026-10-19, #212).** Until ADR 0012 this section described a
 > separate **TN-BUILD01** (10.30.31.10, "the only host with internet") and a depot on its

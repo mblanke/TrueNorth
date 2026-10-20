@@ -15,3 +15,9 @@ vault_nexus_admin_password: "CHANGE_ME"
 # Nexus user that TN-BUILD01 uses to upload Chocolatey packages and vendor media
 # (chocolatey-hosted, installers, docker-hosted). Not an admin.
 vault_nexus_prefetch_password: "CHANGE_ME"
+
+# Earlier (TN-BUILD01) design only: tn-build-read, which Packer uses to read the raw
+# "installers" repository (anonymous reads only the Chocolatey feed, #214). 24+ random
+# characters. At the work site the environment's TN_DEPOT_BUILD_READ_PASSWORD (generated
+# by build-phase.sh depot on TN-MGMT01) is used instead.
+vault_nexus_build_read_password: "CHANGE_ME"

@@ -1,0 +1,8 @@
+# {{ ansible_managed }}
+# Drop-in for Ubuntu's nftables.service, whose /etc/nftables.conf starts with
+# `flush ruleset`: re-load the depot's range NIC table right after it (#214). Stopping
+# nftables.service still flushes everything; tn-depot-range-guard.timer then takes the
+# range NIC down within a minute.
+[Service]
+ExecStartPost=-/usr/sbin/nft -f {{ tn_depot_range_nft }}
+ExecReload=-/usr/sbin/nft -f {{ tn_depot_range_nft }}

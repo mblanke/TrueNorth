@@ -1,0 +1,39 @@
+#!/bin/bash
+# {{ ansible_managed }}
+# TN-DEPOT01 range uplink NIC guard (#214). Fails closed.
+#   up     check, then bring {{ tn_depot_range_if }} up (tn-depot-range-link.service)
+#   check  check; on failure set {{ tn_depot_range_if }} DOWN (tn-depot-range-guard.timer, every minute)
+# The check: the nft table inet tn_depot_range is loaded with its range rules, and IPv4
+# and IPv6 forwarding are off. Anything that flushes the ruleset (nftables.service start,
+# stop or reload, `nft flush ruleset`) or turns forwarding on takes the range NIC down.
+set -u
+IF="{{ tn_depot_range_if }}"
+SUBNET="{{ tn_depot_range_subnet }}"
+# Overridable for tests only; systemd runs this with a clean environment.
+NFT="${TN_GUARD_NFT:-/usr/sbin/nft}"
+IPCMD="${TN_GUARD_IP:-/usr/sbin/ip}"
+SYSCTL="${TN_GUARD_SYSCTL:-/usr/sbin/sysctl}"
+
+healthy() {
+  local t
+  t="$("$NFT" list table inet tn_depot_range 2>/dev/null)" || return 1
+  grep -q "ip saddr ${SUBNET} jump from_range" <<<"$t" || return 1
+  grep -q "iifname \"${IF}\" counter" <<<"$t" || return 1
+  [[ "$("$SYSCTL" -n net.ipv4.ip_forward)" == "0" ]] || return 1
+  [[ "$("$SYSCTL" -n net.ipv6.conf.all.forwarding)" == "0" ]] || return 1
+}
+
+take_down() {
+  "$IPCMD" link set "$IF" down 2>/dev/null
+  logger -t tn-depot-range-guard -p auth.crit "$1: $IF set DOWN" 2>/dev/null
+  echo "tn-depot-range-guard: $1: $IF set DOWN" >&2
+}
+
+case "${1:-check}" in
+  up)
+    if healthy; then "$IPCMD" link set "$IF" up
+    else take_down "firewall table missing or forwarding on, not bringing it up"; exit 1; fi ;;
+  check)
+    healthy || { take_down "firewall table missing or forwarding on"; exit 1; } ;;
+  *) echo "usage: $0 up|check" >&2; exit 2 ;;
+esac

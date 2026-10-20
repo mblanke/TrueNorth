@@ -17,6 +17,16 @@ Offlinemode: {{ 0 if (tn_depot_upstream_online | bool) else 1 }}
 # instead (apt-cacher-ng's "http://HTTPS///host/path" form) and baked into the template.
 PassThroughPattern: ^$
 
+# Not an open forward proxy. ForceManaged: only repositories named by a Remap line are
+# served (the package's acng.conf brings debrep, uburep, fedora, epel, ...; ours follow);
+# a request for any other host or URL - 10.30.30.0/24, the metadata service, the
+# internet at large - is refused. AllowUserPorts: upstream port 80 only.
+ForceManaged: 1
+AllowUserPorts: 80
+{% for r in tn_depot_acng_remaps %}
+Remap-{{ r.name }}: {{ r.merge }} ; {{ r.backends }}
+{% endfor %}
+
 # RPM repositories (Rocky through dnf --setopt=proxy=). repomd.xml is the volatile index;
 # the hashed repodata files and packages it names are immutable.
 VfilePatternEx: (^|/)repodata/repomd\.xml(\.asc|\.key)?$

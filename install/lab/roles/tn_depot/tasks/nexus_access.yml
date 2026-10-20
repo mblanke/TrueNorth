@@ -1,0 +1,132 @@
+---
+# Nexus least privilege (#214). Range guests reach Nexus anonymously on 10.30.32.10:8081;
+# they get read/browse on the Chocolatey group feed and nothing else (no PyPI, Docker or
+# raw installers). Packer builds read the raw "installers" repository as tn-build-read,
+# whose password comes from TN-MGMT01 (build-phase.sh depot) in the environment.
+# Secrets are no_log throughout.
+
+- name: Nexus access — the Packer read password is provided
+  ansible.builtin.assert:
+    that: tn_depot_build_read_password | length >= 24
+    fail_msg: >-
+      TN_DEPOT_BUILD_READ_PASSWORD is not in the environment. It is generated on TN-MGMT01 by
+      `sudo scripts/lab/build-phase.sh depot` (/srv/truenorth/config/depot-build.env, root
+      only), which passes it to this play. From the Mac, without printing it:
+      export TN_DEPOT_BUILD_READ_PASSWORD="$(ssh <you>@10.30.30.20 sudo sed -n
+      's/^TN_DEPOT_BUILD_READ_PASSWORD=//p' /srv/truenorth/config/depot-build.env)"
+    quiet: true
+
+- name: Nexus access — roles (anonymous feed reader, Packer installers reader)
+  ansible.builtin.uri:
+    url: "{{ tn_depot_nexus_api }}/v1/security/roles/{{ item.id }}"
+    user: admin
+    password: "{{ vault_nexus_admin_password }}"
+    force_basic_auth: true
+    status_code: [200, 404]
+  loop:
+    - { id: "{{ tn_depot_anonymous_role }}", privileges: "{{ tn_depot_anonymous_privileges }}", what: "anonymous: Chocolatey feed read only" }
+    - { id: "{{ tn_depot_build_read_user }}", privileges: "{{ tn_depot_build_read_privileges }}", what: "Packer builds: installers read only" }
+  loop_control: { label: "{{ item.id }}" }
+  register: tn_nexus_access_roles
+  no_log: true
+
+- name: Nexus access — create or correct the roles
+  ansible.builtin.uri:
+    url: "{{ tn_depot_nexus_api }}/v1/security/roles{{ '' if item.status == 404 else '/' ~ item.item.id }}"
+    method: "{{ 'POST' if item.status == 404 else 'PUT' }}"
+    user: admin
+    password: "{{ vault_nexus_admin_password }}"
+    force_basic_auth: true
+    body_format: json
+    body:
+      id: "{{ item.item.id }}"
+      name: "{{ item.item.id }}"
+      description: "{{ item.item.what }}"
+      privileges: "{{ item.item.privileges }}"
+      roles: []
+    status_code: [200, 204]
+  loop: "{{ tn_nexus_access_roles.results }}"
+  loop_control: { label: "{{ item.item.id }}" }
+  when: item.status == 404 or (item.json.privileges | sort) != (item.item.privileges | sort)
+  no_log: true
+  changed_when: true
+
+- name: Nexus access — the anonymous user
+  ansible.builtin.uri:
+    url: "{{ tn_depot_nexus_api }}/v1/security/users?userId={{ tn_nexus_anon.json.userId | default('anonymous') }}"
+    user: admin
+    password: "{{ vault_nexus_admin_password }}"
+    force_basic_auth: true
+  register: tn_nexus_anon_user
+  no_log: true
+
+- name: Nexus access — the anonymous user has only the feed reader role (not nx-anonymous)
+  vars:
+    tn_anon: "{{ tn_nexus_anon_user.json | selectattr('userId', 'equalto', tn_nexus_anon.json.userId | default('anonymous')) | first }}"
+  ansible.builtin.uri:
+    url: "{{ tn_depot_nexus_api }}/v1/security/users/{{ tn_anon.userId }}"
+    method: PUT
+    user: admin
+    password: "{{ vault_nexus_admin_password }}"
+    force_basic_auth: true
+    body_format: json
+    body: "{{ tn_anon | combine({'roles': [tn_depot_anonymous_role]}) }}"
+    status_code: [204]
+  when: tn_anon.roles | sort != [tn_depot_anonymous_role]
+  no_log: true
+  changed_when: true
+
+- name: Nexus access — tn-build-read user exists
+  ansible.builtin.uri:
+    url: "{{ tn_depot_nexus_api }}/v1/security/users?userId={{ tn_depot_build_read_user }}"
+    user: admin
+    password: "{{ vault_nexus_admin_password }}"
+    force_basic_auth: true
+  register: tn_nexus_build_user
+  no_log: true
+
+- name: Nexus access — create tn-build-read
+  ansible.builtin.uri:
+    url: "{{ tn_depot_nexus_api }}/v1/security/users"
+    method: POST
+    user: admin
+    password: "{{ vault_nexus_admin_password }}"
+    force_basic_auth: true
+    body_format: json
+    body:
+      userId: "{{ tn_depot_build_read_user }}"
+      firstName: TrueNorth
+      lastName: Packer read
+      emailAddress: "{{ tn_depot_build_read_user }}@depot.invalid"
+      password: "{{ tn_depot_build_read_password }}"
+      status: active
+      roles: ["{{ tn_depot_build_read_user }}"]
+    status_code: [200]
+  when: tn_nexus_build_user.json | selectattr('userId', 'equalto', tn_depot_build_read_user) | list | length == 0
+  no_log: true
+  changed_when: true
+
+# 401 = wrong password; 200/404 = authenticated (an empty repository root may be 404).
+- name: Nexus access — does the tn-build-read password work
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ tn_depot_nexus_port }}/repository/installers/"
+    user: "{{ tn_depot_build_read_user }}"
+    password: "{{ tn_depot_build_read_password }}"
+    force_basic_auth: true
+    status_code: [200, 401, 403, 404]
+  register: tn_nexus_build_auth
+  no_log: true
+
+- name: Nexus access — set the tn-build-read password
+  ansible.builtin.uri:
+    url: "{{ tn_depot_nexus_api }}/v1/security/users/{{ tn_depot_build_read_user }}/change-password"
+    method: PUT
+    user: admin
+    password: "{{ vault_nexus_admin_password }}"
+    force_basic_auth: true
+    headers: { Content-Type: text/plain }
+    body: "{{ tn_depot_build_read_password }}"
+    status_code: [204]
+  when: tn_nexus_build_auth.status == 401
+  no_log: true
+  changed_when: true

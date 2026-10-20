@@ -1,0 +1,18 @@
+# {{ ansible_managed }}
+# Brings the range uplink NIC up only behind its firewall (#214). netplan configures it
+# with activation-mode manual (networkd never sets it up): without this unit it stays DOWN. If the firewall
+# unit failed, this one does not run (Requires=), so the NIC stays DOWN.
+[Unit]
+Description=TrueNorth depot - range uplink NIC {{ tn_depot_range_if }} up, behind its firewall
+Requires=tn-depot-range-fw.service
+After=tn-depot-range-fw.service systemd-networkd.service sys-subsystem-net-devices-{{ tn_depot_range_if }}.device
+Wants=sys-subsystem-net-devices-{{ tn_depot_range_if }}.device
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart={{ tn_depot_range_guard }} up
+ExecStop=/usr/sbin/ip link set {{ tn_depot_range_if }} down
+
+[Install]
+WantedBy=multi-user.target

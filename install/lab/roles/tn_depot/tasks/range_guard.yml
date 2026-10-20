@@ -1,0 +1,55 @@
+---
+# Refuse to put the depot's caches online while range VMs exist (#214), the same check as
+# scripts/lab/depot-uplink.sh `on`: VMs under <datacenter>/vm/<TN_RANGE_FOLDER>. Runs once,
+# on the control node, with govc and GOVC_URL / GOVC_USERNAME / GOVC_PASSWORD from the
+# environment (never printed). Fails closed: no govc, no credentials or no answer from
+# vCenter is a refusal too. -e tn_depot_force_online=true overrides (the range NIC still
+# drops everything from the range network while online, range_fw.yml).
+
+- name: Range guard — skipped by tn_depot_force_online
+  ansible.builtin.debug:
+    msg: "tn_depot_force_online: going online without checking for range VMs. The range NIC firewall still shuts the range network out."
+  when: tn_depot_force_online | bool
+
+- name: Range guard — check vCenter
+  when: not (tn_depot_force_online | bool)
+  delegate_to: localhost
+  run_once: true
+  become: false
+  block:
+    - name: Range guard — vCenter answers (govc on the control node)
+      ansible.builtin.command: govc about
+      register: tn_depot_guard_about
+      changed_when: false
+      failed_when: false
+
+    - name: Range guard — refuse without vCenter
+      ansible.builtin.fail:
+        msg: >-
+          Cannot ask vCenter whether range VMs exist (govc about: rc {{ tn_depot_guard_about.rc }}).
+          Export GOVC_URL, GOVC_USERNAME and GOVC_PASSWORD (scripts/lab/lib.sh) on the control
+          node, or pass -e tn_depot_force_online=true to go online anyway.
+      when: tn_depot_guard_about.rc != 0
+
+    - name: Range guard — the range folder
+      ansible.builtin.command: govc folder.info "/{{ tn_depot_vcenter_datacenter }}/vm/{{ tn_depot_range_vm_folder }}"
+      register: tn_depot_guard_folder
+      changed_when: false
+      failed_when: false
+
+    - name: Range guard — VMs in the range folder
+      ansible.builtin.command: govc find "/{{ tn_depot_vcenter_datacenter }}/vm/{{ tn_depot_range_vm_folder }}" -type m
+      register: tn_depot_guard_vms
+      changed_when: false
+      when: tn_depot_guard_folder.rc == 0
+
+    - name: Range guard — refuse while range VMs exist
+      ansible.builtin.fail:
+        msg: >-
+          {{ tn_depot_guard_vms.stdout_lines | length }} range VM(s) exist under
+          /{{ tn_depot_vcenter_datacenter }}/vm/{{ tn_depot_range_vm_folder }}. While the depot is
+          online its caches fetch whatever they are asked for. Destroy them, or pass
+          -e tn_depot_force_online=true to accept it (the range NIC still drops everything).
+      when:
+        - tn_depot_guard_folder.rc == 0
+        - tn_depot_guard_vms.stdout_lines | length > 0

@@ -59,6 +59,10 @@ DEPOT_URL_DEFAULT="http://${DEPOT_BUILD_IP}:8081/repository"
 # create it with scripts/lab/create-portgroups.sh --site work, or pass --range-pg.
 RANGE_UPLINK_PG="${TN_RANGE_UPLINK_PG:-dPG-TN-SVC}"
 DEPOT_RANGE_IP="10.30.32.10"; DEPOT_RANGE_MAC=""
+# Packer reads the depot's raw "installers" repository as tn-build-read (#214). Its password
+# is generated here, on TN-MGMT01, into this root-only file and never printed; depot.yml
+# gets it in its environment, pkrvars-work.py --depot copies it into the vars file.
+DEPOT_BUILD_ENV="${TN_DEPOT_BUILD_ENV:-/srv/truenorth/config/depot-build.env}"
 RANGE_HOSTS="${RANGE_HOSTS:-esx02 esx03 esx04}"
 DRS_VM_GROUP="tn-mgmt01-vm"; DRS_HOST_GROUP="tn-build-host"; DRS_RULE="tn-mgmt01-should-run-on-${BUILD_HOST}"
 
@@ -84,7 +88,10 @@ done
 export ASSUME_YES="${ASSUME_YES:-0}"
 # act() (lib.sh) only prints unless APPLY=1. Every act below is behind a y/N (confirm) and
 # skipped in --dry-run, so outside a dry run the confirmed change is made. Not exported:
-# child scripts get their own --apply.
+# child scripts get their own --apply. An APPLY inherited from the caller's environment
+# (lib.sh reads it) never counts: a --dry-run must stay a dry run.
+unset APPLY
+APPLY=0
 [[ "$DRY" == "1" ]] || APPLY=1
 
 # ── phase contents (ADR 0012 decision 11) ─────────────────────────────
@@ -327,6 +334,28 @@ nic_on_pg() {
   done
 }
 
+# TN_DEPOT_BUILD_READ_PASSWORD (#214): the Nexus tn-build-read password Packer uses for the
+# installers repository. Generated once into $DEPOT_BUILD_ENV (0600, root), read into the
+# environment for depot.yml. Never printed, never on a command line.
+depot_build_secret() {
+  local value=""
+  if [[ -f "$DEPOT_BUILD_ENV" ]]; then
+    value="$(sed -n 's/^TN_DEPOT_BUILD_READ_PASSWORD=//p' "$DEPOT_BUILD_ENV" | head -n1)"
+  fi
+  if [[ -z "$value" ]]; then
+    if [[ "$DRY" == "1" ]]; then echo "  [dry-run] would generate TN_DEPOT_BUILD_READ_PASSWORD into $DEPOT_BUILD_ENV"; return 0; fi
+    need openssl "apt install openssl"
+    value="$(openssl rand -hex 24)"
+    ( umask 077; mkdir -p "$(dirname "$DEPOT_BUILD_ENV")"
+      printf '# TN-DEPOT01 tn-build-read (Packer reads the installers repository; #214). Root only.\nTN_DEPOT_BUILD_READ_PASSWORD=%s\n' "$value" >>"$DEPOT_BUILD_ENV" )
+    chmod 0600 "$DEPOT_BUILD_ENV"
+    info "ok    generated TN_DEPOT_BUILD_READ_PASSWORD into $DEPOT_BUILD_ENV (0600; not shown)"
+  else
+    info "ok    TN_DEPOT_BUILD_READ_PASSWORD in $DEPOT_BUILD_ENV (not shown)"
+  fi
+  export TN_DEPOT_BUILD_READ_PASSWORD="$value"
+}
+
 # The depot's range uplink NIC (#214): present, connected and starting connected. Adds or
 # connects it after a y/N each. Sets DEPOT_RANGE_MAC for depot.yml (tn_depot_range_mac),
 # which puts 10.30.32.10/24 on it and its host firewall in front of it.
@@ -398,10 +427,12 @@ phase_depot() {
 
   step "4/5 depot software (install/lab/depot.yml: apt-cacher-ng :3142, Nexus Chocolatey feed :8081, range NIC firewall, no forwarding)"
   local vault="$WORK_SITE/inventory/group_vars/all/vault.yml"
-  local as=(); [[ -n "${SUDO_USER:-}" && "${SUDO_USER}" != "root" ]] && as=(sudo -u "$SUDO_USER" -H)
+  depot_build_secret
+  # --preserve-env: the secret reaches depot.yml in the environment, never on a command line.
+  local as=(); [[ -n "${SUDO_USER:-}" && "${SUDO_USER}" != "root" ]] && as=(sudo --preserve-env=TN_DEPOT_BUILD_READ_PASSWORD -u "$SUDO_USER" -H)
   local extra=(); [[ -n "$DEPOT_RANGE_MAC" ]] && extra=(-e "tn_depot_range_mac=$DEPOT_RANGE_MAC")
   if ! command -v ansible-playbook >/dev/null 2>&1; then
-    warn "ansible-playbook is not on this host. From the control node: cd install/lab/work-site && ansible-playbook ../depot.yml --ask-vault-pass${DEPOT_RANGE_MAC:+ -e tn_depot_range_mac=$DEPOT_RANGE_MAC}"
+    warn "ansible-playbook is not on this host. From the control node: cd install/lab/work-site && ansible-playbook ../depot.yml --ask-vault-pass${DEPOT_RANGE_MAC:+ -e tn_depot_range_mac=$DEPOT_RANGE_MAC}, with TN_DEPOT_BUILD_READ_PASSWORD exported from $DEPOT_BUILD_ENV (install/lab/README.md; never print it)"
   elif [[ ! -f "$vault" ]]; then
     warn "no $vault: cp vault.yml.example vault.yml, fill two long random passwords, ansible-vault encrypt it; then re-run"
   elif [[ "$DRY" == "1" ]]; then echo "  [dry-run] (cd $WORK_SITE && ansible-playbook ../depot.yml --ask-vault-pass ${extra[*]-})"
@@ -411,9 +442,11 @@ phase_depot() {
   fi
 
   step "5/5 the depot answers on the build network"
-  local url ok=1
+  local url ok=1 code
+  # 401 counts as an answer: apt-cacher-ng's report page is behind AdminAuth.
   for url in "http://${DEPOT_BUILD_IP}:8081/repository/chocolatey/" "http://${DEPOT_BUILD_IP}:3142/acng-report.html"; do
-    if curl -fsS -m 10 -o /dev/null "$url"; then info "ok    $url"; else warn "no answer: $url"; ok=0; fi
+    code="$(curl -sS -m 10 -o /dev/null -w '%{http_code}' "$url" 2>/dev/null || true)"
+    if [[ "$code" == "200" || "$code" == "401" ]]; then info "ok    $url ($code)"; else warn "no answer: $url (${code:-none})"; ok=0; fi
   done
   # Windows builds bootstrap Chocolatey from the feed's own chocolatey .nupkg
   # (files/windows/choco-bootstrap.ps1), so the feed must list it.

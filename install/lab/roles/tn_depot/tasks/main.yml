@@ -77,6 +77,27 @@
     - { path: "{{ tn_depot_nexus_data }}", owner: "200" }
   become: true
 
+# Maintenance pages behind AdminAuth. The password is made here, on the depot, the first
+# time and kept only in security.conf (root:apt-cacher-ng 0640); never printed.
+- name: Depot — apt-cacher-ng AdminAuth (generated on the depot once, never printed)
+  ansible.builtin.shell: |
+    set -eu
+    f=/etc/apt-cacher-ng/security.conf
+    touch "$f"
+    chown root:apt-cacher-ng "$f"
+    chmod 0640 "$f"
+    if grep -q '^AdminAuth:' "$f"; then echo unchanged; exit 0; fi
+    printf 'AdminAuth: %s:%s\n' "$TN_ACNG_USER" "$(openssl rand -hex 24)" >> "$f"
+    echo created
+  args:
+    executable: /bin/bash
+  environment:
+    TN_ACNG_USER: "{{ tn_depot_acng_admin_user }}"
+  register: tn_depot_acng_auth
+  changed_when: "'created' in tn_depot_acng_auth.stdout"
+  no_log: true
+  become: true
+
 - name: Depot — apt-cacher-ng config and upstream state
   ansible.builtin.include_tasks: upstream.yml
 
@@ -84,7 +105,7 @@
   ansible.builtin.systemd_service:
     name: apt-cacher-ng
     enabled: true
-    state: started
+    state: "{{ 'restarted' if tn_depot_acng_auth is changed else 'started' }}"
   become: true
 
 # ── Nexus ─────────────────────────────────────────────────────────────
@@ -135,10 +156,11 @@
     url: "http://127.0.0.1:{{ tn_depot_nexus_port }}/repository/chocolatey/"
     status_code: 200
 
+# 401: the report page answers and is behind AdminAuth (both mean apt-cacher-ng is up).
 - name: Depot — apt-cacher-ng answers
   ansible.builtin.uri:
     url: "http://127.0.0.1:{{ tn_depot_acng_port }}/acng-report.html"
-    status_code: 200
+    status_code: [200, 401]
 
 # Forwarding again, now that dockerd and Nexus are running.
 - name: Depot — still no routing between its NICs
@@ -149,11 +171,19 @@
 - name: Depot — Nexus and apt-cacher-ng answer on the range address {{ tn_depot_range_ip }}
   ansible.builtin.uri:
     url: "{{ item }}"
-    status_code: 200
+    status_code: [200, 401]
   loop:
     - "http://{{ tn_depot_range_ip }}:{{ tn_depot_nexus_port }}/repository/chocolatey/"
     - "http://{{ tn_depot_range_ip }}:{{ tn_depot_acng_port }}/acng-report.html"
-  when: tn_depot_range_ip | length > 0
+  when:
+    - tn_depot_range_ip | length > 0
+    - not (tn_depot_upstream_online | bool)   # online: the range firewall drops even this
+
+# Anonymous reads only the Chocolatey feed now (nexus.yml).
+- name: Depot — anonymous cannot read the installers repository
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ tn_depot_nexus_port }}/repository/installers/"
+    status_code: [401, 403]
 
 - name: Depot — report
   vars:

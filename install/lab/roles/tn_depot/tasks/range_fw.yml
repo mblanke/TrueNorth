@@ -1,0 +1,58 @@
+---
+# The range NIC firewall (#214): render, load, read back. From range_nic.yml, and from
+# upstream.yml on every online/offline switch (online: the range network gets nothing).
+# Uses no facts, so it can run in a play with gather_facts: false (prefetch.yml).
+
+- name: Range firewall — rules directory
+  ansible.builtin.file:
+    path: "{{ tn_depot_range_nft | dirname }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+
+- name: Range firewall — rules, only the depot ports from the uplink subnet (none while online)
+  ansible.builtin.template:
+    src: depot-range-fw.nft.j2
+    dest: "{{ tn_depot_range_nft }}"
+    owner: root
+    group: root
+    mode: "0644"
+    validate: nft -c -f %s
+  become: true
+  register: tn_depot_range_rules
+
+- name: Range firewall — unit (loads before the network at boot)
+  ansible.builtin.template:
+    src: tn-depot-range-fw.service.j2
+    dest: /etc/systemd/system/tn-depot-range-fw.service
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  register: tn_depot_range_unit
+
+- name: Range firewall — loaded and enabled
+  ansible.builtin.systemd_service:
+    name: tn-depot-range-fw
+    enabled: true
+    state: "{{ 'restarted' if (tn_depot_range_rules is changed or tn_depot_range_unit is changed) else 'started' }}"
+    daemon_reload: "{{ tn_depot_range_unit is changed }}"
+  become: true
+
+- name: Range firewall — the table is in the kernel
+  ansible.builtin.command: nft list table inet tn_depot_range
+  become: true
+  register: tn_depot_range_live
+  changed_when: false
+
+- name: Range firewall — the live rules match the mode
+  ansible.builtin.assert:
+    that:
+      - ('ip saddr ' ~ tn_depot_range_subnet ~ ' jump from_range') in tn_depot_range_live.stdout
+      - ('iifname != "' ~ tn_depot_range_if ~ '" accept') in tn_depot_range_live.stdout
+      - ('oifname "' ~ tn_depot_range_if ~ '"') in tn_depot_range_live.stdout
+      - (('tcp dport' in tn_depot_range_live.stdout) != (tn_depot_upstream_online | bool))
+    fail_msg: "nft list table inet tn_depot_range does not show the expected rules: {{ tn_depot_range_live.stdout }}"
+    quiet: true

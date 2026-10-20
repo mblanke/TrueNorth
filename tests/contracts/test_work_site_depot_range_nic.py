@@ -9,14 +9,21 @@ Contracts kept here, in CI, where there is no vCenter, depot or nft:
   (tn_depot_*, the range uplink pool/gateway, TN_DEPOT_PORTS in .env.production) and the
   Packer example (depot_url WITH :8081/repository, on the BUILD address).
 * The depot's range NIC firewall (tn_depot depot-range-fw.nft.j2), rendered with the kit's
-  values: only TCP 8081/3142 from the uplink subnet to 10.30.32.10 comes in on that NIC;
-  nothing else in, nothing new out, nothing forwarded. It is loaded before the address.
+  values: only TCP 8081/3142 from the uplink subnet to 10.30.32.10 comes in; matched both
+  by interface (tnrange0, renamed by MAC) and by source subnet on any interface; nothing
+  new out, nothing forwarded; nothing at all while the caches are online. Loaded before
+  the address; the link comes up only behind it; a guard timer downs it if the table goes.
 * No forwarding: sysctl and dockerd settings, and the role reads them back from the kernel.
+* Going online is refused while range VMs exist; apt-cacher-ng is not an open proxy
+  (ForceManaged, port 80) and its admin pages need AdminAuth; Nexus anonymous reads only
+  the Chocolatey feed; Packer reads installers as tn-build-read (secret never printed).
 * build-phase.sh depot adds/validates the third NIC after a y/N per vCenter change (a stub
   govc records what it was asked to do).
+* A network-namespace test loads the rendered table into a real kernel and probes it; it
+  needs Linux, root, nft and ip, so it is skipped in CI (no such lane) and on the Mac.
 
-Rendered/static evidence and a stubbed govc only. That ranges reach the depot, and nothing
-else, is checked on site (install/lab/README.md, "Ranges reach the depot").
+Rendered/static evidence, stubs and (where root) a netns probe. That ranges reach the depot,
+and nothing else, is checked on site (install/lab/README.md, "Ranges reach the depot").
 """
 
 from __future__ import annotations
@@ -46,7 +53,8 @@ DEFAULTS = yaml.safe_load((ROLE / "defaults/main.yml").read_text())
 
 RANGE_IP = "10.30.32.10"
 RANGE_NET = ipaddress.ip_network("10.30.32.0/24")
-RANGE_IF = "ens256"  # any name: the template only matches on it
+RANGE_IF = "tnrange0"  # the fixed name netplan gives the range NIC (matched by MAC)
+MAC = "00:50:56:aa:bb:cc"
 
 
 def _sh_default(path: Path, pattern: str) -> str:
@@ -58,6 +66,7 @@ def _sh_default(path: Path, pattern: str) -> str:
 def _env() -> jinja2.Environment:
     env = jinja2.Environment(undefined=jinja2.StrictUndefined, keep_trailing_newline=True)
     env.filters["to_nice_json"] = lambda v: json.dumps(v, indent=4, sort_keys=True)
+    env.filters["bool"] = lambda v: v if isinstance(v, bool) else str(v).strip().lower() in ("1", "true", "yes", "on")
     return env
 
 
@@ -163,27 +172,37 @@ def _chains(nft: str) -> dict[str, list[str]]:
     return chains
 
 
+PORTS_RULE = f"ip daddr {RANGE_IP} tcp dport {{ 8081, 3142 }}"
+
+
 def test_firewall_admits_only_the_depot_ports_from_the_uplink_subnet():
-    nft = _render("depot-range-fw.nft.j2", tn_depot_range_if=RANGE_IF)
+    assert DEFAULTS["tn_depot_range_if"] == RANGE_IF
+    nft = _render("depot-range-fw.nft.j2")
     # Replaces only its own table: Docker's rules survive a reload.
     assert "flush ruleset" not in nft
     assert nft.index("delete table inet tn_depot_range") < nft.index("table inet tn_depot_range {")
     chains = _chains(nft)
-    assert set(chains) == {"input", "forward", "output"}
+    assert set(chains) == {"from_range", "input", "forward", "output"}
+    # By source subnet, on ANY interface (a renamed or extra NIC fails closed).
+    assert chains["from_range"] == [f"{PORTS_RULE} return", "counter drop"]
     assert chains["input"] == [
         "type filter hook input priority filter - 10; policy accept;",
+        "ip saddr 10.30.32.0/24 jump from_range",
         f'iifname != "{RANGE_IF}" accept',
         "ct state established,related accept",
-        f"ip saddr 10.30.32.0/24 ip daddr {RANGE_IP} tcp dport {{ 8081, 3142 }} ct state new accept",
+        f"ip saddr 10.30.32.0/24 {PORTS_RULE} ct state new accept",
         "counter drop",
     ]
     assert chains["forward"] == [
         "type filter hook forward priority filter - 10; policy accept;",
         f'iifname "{RANGE_IF}" counter drop',
         f'oifname "{RANGE_IF}" counter drop',
+        "ip saddr 10.30.32.0/24 counter drop",
+        "ip daddr 10.30.32.0/24 counter drop",
     ]
     assert chains["output"] == [
         "type filter hook output priority filter - 10; policy accept;",
+        f"ip daddr 10.30.32.0/24 ip daddr != {RANGE_IP} ct state new counter drop",
         f'oifname != "{RANGE_IF}" accept',
         "ct state established,related accept",
         "counter drop",
@@ -196,14 +215,71 @@ def test_firewall_admits_only_the_depot_ports_from_the_uplink_subnet():
         assert not re.search(rf"\b{re.escape(closed)}\b", opens[0])
 
 
-def test_firewall_syntax_with_nft_when_available(tmp_path):
+def test_firewall_while_online_lets_nothing_in_from_the_range_network():
+    chains = _chains(_render("depot-range-fw.nft.j2", tn_depot_upstream_online=True))
+    assert chains["from_range"] == ["counter drop"]
+    assert not any("dport" in ln or ln.endswith("new accept") for ln in chains["input"])
+    assert chains["input"][-1] == "counter drop"
+
+
+@pytest.mark.parametrize("online", [False, True])
+def test_firewall_syntax_with_nft_when_available(tmp_path, online):
     nft_bin = shutil.which("nft")
     if nft_bin is None or not hasattr(os, "geteuid") or os.geteuid() != 0:
-        pytest.skip("nft -c needs nft and root (Linux)")
+        pytest.skip("nft -c needs nft and root (Linux); no CI lane has both")
     f = tmp_path / "range.nft"
-    f.write_text(_render("depot-range-fw.nft.j2", tn_depot_range_if=RANGE_IF))
+    f.write_text(_render("depot-range-fw.nft.j2", tn_depot_upstream_online=online))
     r = subprocess.run([nft_bin, "-c", "-f", str(f)], capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
+
+
+# A real kernel: the rendered table in a network namespace, probed from a "range WAN"
+# namespace over a veth pair. Needs Linux, root, nft, ip and python3 in the namespaces.
+# CI has no lane with root and nft, so this is skipped there (and on the Mac); run it as
+# root on a Linux box or in a privileged container (install/lab/README.md).
+NETNS_PROBE = r"""
+set -u
+D=tnd$$; R=tnr$$
+PIDS=""
+cleanup() { kill $PIDS 2>/dev/null; ip netns del "$D" 2>/dev/null; ip netns del "$R" 2>/dev/null; }
+trap cleanup EXIT
+ip netns add "$D"; ip netns add "$R"
+ip link add tnrange0 netns "$D" type veth peer name wan0 netns "$R"
+ip -n "$D" link set lo up; ip -n "$R" link set lo up
+ip -n "$D" addr add 10.30.32.10/24 dev tnrange0; ip -n "$D" link set tnrange0 up
+ip -n "$D" link add mgmt0 type dummy; ip -n "$D" addr add 10.30.30.30/24 dev mgmt0; ip -n "$D" link set mgmt0 up
+ip -n "$R" addr add 10.30.32.101/24 dev wan0; ip -n "$R" link set wan0 up
+ip -n "$R" route add 10.30.30.30/32 via 10.30.32.10
+ip netns exec "$D" nft -f "$NFT_FILE" || exit 3
+for p in 8081 3142 22 8082 8083; do
+  ip netns exec "$D" python3 -c "import socket,sys;s=socket.socket();s.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1);s.bind(('0.0.0.0',int(sys.argv[1])));s.listen(8);import time;time.sleep(30)" "$p" &
+  PIDS="$PIDS $!"
+done
+sleep 1
+probe() { ip netns exec "$R" python3 -c "import socket,sys;s=socket.socket();s.settimeout(1.5);
+try: s.connect((sys.argv[1],int(sys.argv[2]))); print('open')
+except Exception: print('closed')" "$1" "$2"; }
+for t in 10.30.32.10:8081 10.30.32.10:3142 10.30.32.10:22 10.30.32.10:8082 10.30.32.10:8083 10.30.30.30:8081; do
+  echo "$t $(probe "${t%:*}" "${t#*:}")"
+done
+"""
+
+
+@pytest.mark.parametrize("online", [False, True])
+def test_netns_range_side_reaches_only_the_depot_ports(tmp_path, online):
+    if sys.platform != "linux" or not hasattr(os, "geteuid") or os.geteuid() != 0 \
+            or not all(shutil.which(t) for t in ("nft", "ip", "python3")):
+        pytest.skip("netns probe needs Linux, root, nft, ip and python3; CI has no such lane")
+    f = tmp_path / "range.nft"
+    f.write_text(_render("depot-range-fw.nft.j2", tn_depot_upstream_online=online))
+    r = subprocess.run(["bash", "-c", NETNS_PROBE], capture_output=True, text=True, timeout=120,
+                       env={**os.environ, "NFT_FILE": str(f)})
+    assert r.returncode == 0, r.stderr
+    got = dict(line.split() for line in r.stdout.splitlines() if line.count(" ") == 1)
+    want_open = set() if online else {"10.30.32.10:8081", "10.30.32.10:3142"}
+    assert got == {t: ("open" if t in want_open else "closed") for t in (
+        "10.30.32.10:8081", "10.30.32.10:3142", "10.30.32.10:22", "10.30.32.10:8082", "10.30.32.10:8083",
+        "10.30.30.30:8081")}, r.stdout
 
 
 def test_firewall_loads_before_the_network_and_is_never_unloaded():
@@ -216,21 +292,78 @@ def test_firewall_loads_before_the_network_and_is_never_unloaded():
 
 def test_the_range_nic_gets_its_address_only_after_its_firewall_and_no_route():
     names = _task_names(ROLE / "tasks/range_nic.yml")
-    fw = next(i for i, n in enumerate(names) if n.startswith("Range NIC — firewall loaded"))
-    live = next(i for i, n in enumerate(names) if n.startswith("Range NIC — the live rules"))
+    fw = names.index("Range NIC — firewall (rules, unit, live check)")
+    guard = names.index("Range NIC — guard script")
     addr = names.index("Range NIC — netplan, the address with no gateway")
     apply = names.index("Range NIC — netplan apply")
-    assert fw < live < addr < apply
-    tasks = yaml.safe_load((ROLE / "tasks/range_nic.yml").read_text())
-    rules = next(t for t in tasks if t.get("name", "").startswith("Range NIC — firewall rules, "))
+    up = names.index("Range NIC — link up behind the firewall, guard timer on")
+    assert fw < guard < addr < apply < up < names.index("Range NIC — the guard passes now")
+    fw_tasks = yaml.safe_load((ROLE / "tasks/range_fw.yml").read_text())
+    rules = next(t for t in fw_tasks if t.get("name", "").startswith("Range firewall — rules, "))
     assert rules["ansible.builtin.template"]["validate"] == "nft -c -f %s"
 
-    plan = yaml.safe_load(_render("netplan-range.yaml.j2", tn_depot_range_hwaddr="00:50:56:aa:bb:cc"))
-    (nic,) = plan["network"]["ethernets"].values()
-    assert nic["match"] == {"macaddress": "00:50:56:aa:bb:cc"}
+    plan = yaml.safe_load(_render("netplan-range.yaml.j2", tn_depot_range_hwaddr=MAC.upper()))
+    nic = plan["network"]["ethernets"][RANGE_IF]
+    assert nic["match"] == {"macaddress": MAC} and nic["set-name"] == RANGE_IF
+    assert nic["activation-mode"] == "manual"  # networkd never brings it up; the link unit does
     assert nic["addresses"] == [f"{RANGE_IP}/24"]
     assert nic["dhcp4"] is False and nic["dhcp6"] is False and nic["accept-ra"] is False
     assert not {"routes", "gateway4", "nameservers"} & set(nic)  # on-link only
+
+
+def test_the_nic_is_taken_by_mac_only_never_guessed():
+    text = (ROLE / "tasks/range_nic.yml").read_text()
+    assert "unaddressed" not in text and "vmxnet3" not in text
+    tasks = yaml.safe_load(text)
+    check = next(t for t in tasks if t.get("name") == "Range NIC — the MAC names exactly this NIC")
+    that = check["ansible.builtin.assert"]["that"]
+    assert "tn_depot_range_mac | length > 0 and tn_depot_range_by_mac | length > 0" in that
+    assert "tn_depot_range_mac | length == 0 and tn_depot_range_renamed" in that  # re-run: renamed by MAC before
+
+
+def test_the_link_comes_up_only_behind_the_firewall_and_goes_down_without_it():
+    link = _render("tn-depot-range-link.service.j2")
+    assert "Requires=tn-depot-range-fw.service" in link and "After=tn-depot-range-fw.service" in link
+    assert f"ExecStart={DEFAULTS['tn_depot_range_guard']} up" in link
+    timer = _render("tn-depot-range-guard.timer.j2")
+    assert "OnUnitActiveSec=60s" in timer and "WantedBy=timers.target" in timer
+    assert f"ExecStart={DEFAULTS['tn_depot_range_guard']} check" in _render("tn-depot-range-guard.service.j2")
+    dropin = _render("nftables-tn-depot-range.conf.j2")  # Ubuntu's nftables.service flushes the ruleset
+    assert f"ExecStartPost=-/usr/sbin/nft -f {DEFAULTS['tn_depot_range_nft']}" in dropin
+    assert f"ExecReload=-/usr/sbin/nft -f {DEFAULTS['tn_depot_range_nft']}" in dropin
+
+
+def _guard(tmp_path, mode: str, *, table: bool, forward: str = "0"):
+    script = tmp_path / "guard.sh"
+    script.write_text(_render("tn-depot-range-guard.sh.j2"))
+    live = _render("depot-range-fw.nft.j2")[_render("depot-range-fw.nft.j2").index("table inet tn_depot_range {"):]
+    (tmp_path / "live.nft").write_text(live.replace("counter drop", "counter packets 0 bytes 0 drop"))
+    stubs = {
+        "nft": f"#!/bin/sh\n{'cat ' + str(tmp_path / 'live.nft') if table else 'echo no such table >&2; exit 1'}\n",
+        "ip": f"#!/bin/sh\necho \"$@\" >> {tmp_path / 'ip.calls'}\n",
+        "sysctl": f"#!/bin/sh\necho {forward}\n",
+    }
+    for name, body in stubs.items():
+        (tmp_path / name).write_text(body)
+        (tmp_path / name).chmod(0o755)
+    env = {"PATH": "/usr/bin:/bin", "TN_GUARD_NFT": str(tmp_path / "nft"), "TN_GUARD_IP": str(tmp_path / "ip"),
+           "TN_GUARD_SYSCTL": str(tmp_path / "sysctl")}
+    r = subprocess.run(["bash", str(script), mode], capture_output=True, text=True, env=env)
+    calls = (tmp_path / "ip.calls").read_text().splitlines() if (tmp_path / "ip.calls").exists() else []
+    return r.returncode, calls
+
+
+@pytest.mark.parametrize(("mode", "table", "forward", "rc", "calls"), [
+    ("up", True, "0", 0, [f"link set {RANGE_IF} up"]),
+    ("up", False, "0", 1, [f"link set {RANGE_IF} down"]),      # firewall unit failed: stays down
+    ("check", True, "0", 0, []),
+    ("check", False, "0", 1, [f"link set {RANGE_IF} down"]),   # nftables.service flushed the ruleset
+    ("check", True, "1", 1, [f"link set {RANGE_IF} down"]),    # forwarding came back on
+])
+def test_guard_fails_closed(tmp_path, mode, table, forward, rc, calls):
+    if shutil.which("bash") is None:
+        pytest.skip("bash")
+    assert _guard(tmp_path, mode, table=table, forward=forward) == (rc, calls)
 
     main = _task_names(ROLE / "tasks/main.yml")
     assert main.index("Depot — no routing between its NICs (dockerd, sysctl)") \
@@ -346,7 +479,8 @@ def depot_phase(tmp_path):
         (state / "calls").write_text("")
         env = {"PATH": f"{bindir}:/usr/bin:/bin", "HOME": str(tmp_path), "STUB_STATE": str(state),
                "STUB_PGS": json.dumps(pgs), "GOVC_USERNAME": "u", "GOVC_PASSWORD": "p",
-               "GOVC_URL": "https://vcsa.test/sdk", "TN_ALLOW_NON_ROOT": "1"}
+               "GOVC_URL": "https://vcsa.test/sdk", "TN_ALLOW_NON_ROOT": "1",
+               "TN_DEPOT_BUILD_ENV": str(state / "depot-build.env")}
         # start_new_session: no controlling terminal, so confirm() (reads /dev/tty) answers no.
         r = subprocess.run(["bash", str(LAB / "build-phase.sh"), "depot", *args], capture_output=True,
                            text=True, env=env, stdin=subprocess.DEVNULL, start_new_session=True, timeout=120)
@@ -406,3 +540,93 @@ def test_depot_uplink_refuses_the_work_site_depot():
     text = (LAB / "depot-uplink.sh").read_text()
     guard = text.index("this is the work-site depot")
     assert guard < text.index('case "$CMD" in')  # before any connect/disconnect
+
+
+def test_depot_phase_generates_the_packer_read_secret_privately_and_never_prints_it(depot_phase, tmp_path):
+    r, _, _ = depot_phase("--yes")
+    assert r.returncode == 0, r.stdout + r.stderr
+    env_file = tmp_path / "state/depot-build.env"
+    assert oct(env_file.stat().st_mode & 0o777) == "0o600"
+    (value,) = re.findall(r"^TN_DEPOT_BUILD_READ_PASSWORD=([0-9a-f]{48})$", env_file.read_text(), re.M)
+    assert value not in r.stdout + r.stderr and "not shown" in r.stdout
+    r2, _, _ = depot_phase("--yes")  # kept, not regenerated
+    assert re.findall(r"^TN_DEPOT_BUILD_READ_PASSWORD=(\S+)$", env_file.read_text(), re.M) == [value]
+    assert value not in r2.stdout + r2.stderr
+    phase = (LAB / "build-phase.sh").read_text()
+    assert "sudo --preserve-env=TN_DEPOT_BUILD_READ_PASSWORD" in phase  # environment, not argv
+    assert not re.search(r"-e\s+\"?tn_depot_build_read_password", phase)
+
+
+def test_build_phase_ignores_an_inherited_apply():
+    phase = (LAB / "build-phase.sh").read_text()
+    lines = phase.splitlines()
+    i = lines.index('[[ "$DRY" == "1" ]] || APPLY=1')
+    assert lines[i - 2:i] == ["unset APPLY", "APPLY=0"]
+
+
+# ── prefetch / online windows ─────────────────────────────────────────
+def test_going_online_is_refused_while_range_vms_exist_and_shuts_the_range_nic_first():
+    up = _task_names(ROLE / "tasks/upstream.yml")
+    tasks = yaml.safe_load((ROLE / "tasks/upstream.yml").read_text())
+    inc = [(t.get("name"), t.get("ansible.builtin.include_tasks"), t.get("when")) for t in tasks]
+    acng = next(i for i, n in enumerate(up) if n.startswith("Upstream — apt-cacher-ng Offlinemode"))
+    assert inc[0][1] == "range_guard.yml" and inc[0][2] == "tn_depot_upstream_online | bool"
+    assert inc[1][1] == "range_fw.yml" and "tn_depot_upstream_online | bool" in inc[1][2] and acng > 1
+    assert inc[-1][1] == "range_fw.yml" and "not (tn_depot_upstream_online | bool)" in inc[-1][2]
+    prefetch = yaml.safe_load((ROOT / "install/lab/prefetch.yml").read_text())
+    first = prefetch[0]["tasks"][0]["ansible.builtin.include_role"]
+    assert first == {"name": "tn_depot", "tasks_from": "range_guard.yml"}
+
+    guard = yaml.safe_load((ROLE / "tasks/range_guard.yml").read_text())
+    block = next(t for t in guard if "block" in t)
+    assert block["delegate_to"] == "localhost" and block["when"] == "not (tn_depot_force_online | bool)"
+    by_name = {t["name"]: t for t in block["block"]}
+    assert by_name["Range guard — refuse without vCenter"]["when"] == "tn_depot_guard_about.rc != 0"  # fails closed
+    assert "tn_depot_guard_vms.stdout_lines | length > 0" in by_name["Range guard — refuse while range VMs exist"]["when"]
+    assert DEFAULTS["tn_depot_force_online"] is False
+
+
+def test_apt_cacher_ng_is_not_an_open_proxy_and_its_admin_pages_need_auth():
+    conf = _render("acng.conf.j2", tn_depot_apt_proxy_url="http://10.30.30.30:3142")
+    lines = [ln.strip() for ln in conf.splitlines() if ln.strip() and not ln.startswith("#")]
+    assert "ForceManaged: 1" in lines and "AllowUserPorts: 80" in lines and "PassThroughPattern: ^$" in lines
+    assert "Remap-tnrocky: dl.rockylinux.org/pub/rocky ; dl.rockylinux.org/pub/rocky" in lines
+    tasks = yaml.safe_load((ROLE / "tasks/main.yml").read_text())
+    auth = next(t for t in tasks if t.get("name", "").startswith("Depot — apt-cacher-ng AdminAuth"))
+    script = auth["ansible.builtin.shell"]
+    assert auth["no_log"] is True and "openssl rand -hex 24" in script and "chmod 0640" in script
+    assert "echo created" in script and not re.search(r"echo[^\n]*AdminAuth", script)  # value only into the file
+    names = [t.get("name") for t in tasks]
+    assert names.index(auth["name"]) < names.index("Depot — apt-cacher-ng enabled")
+
+
+def test_nexus_anonymous_reads_only_the_feed_and_packer_reads_installers_as_its_own_user():
+    assert DEFAULTS["tn_depot_anonymous_privileges"] == [
+        "nx-repository-view-nuget-chocolatey-read", "nx-repository-view-nuget-chocolatey-browse"]
+    assert DEFAULTS["tn_depot_build_read_privileges"] == [
+        "nx-repository-view-raw-installers-read", "nx-repository-view-raw-installers-browse"]
+    assert "TN_DEPOT_BUILD_READ_PASSWORD" in DEFAULTS["tn_depot_build_read_password"]
+    access = yaml.safe_load((ROLE / "tasks/nexus_access.yml").read_text())
+    assert all(t.get("no_log") is True for t in access if "ansible.builtin.uri" in t)
+    anon = next(t for t in access if t["name"].startswith("Nexus access — the anonymous user has only"))
+    assert "'roles': [tn_depot_anonymous_role]" in anon["ansible.builtin.uri"]["body"]
+    nexus = _task_names(ROLE / "tasks/nexus.yml")
+    assert nexus.index("Nexus — anonymous role and the Packer read user") > nexus.index("Nexus — create missing repositories")
+    main = yaml.safe_load((ROLE / "tasks/main.yml").read_text())
+    probe = next(t for t in main if t.get("name") == "Depot — anonymous cannot read the installers repository")
+    assert probe["ansible.builtin.uri"]["status_code"] == [401, 403]
+
+
+def test_packer_authenticates_for_installers_and_keeps_the_password_sensitive():
+    pk = ROOT / "infra/vsphere/packer"
+    variables = (pk / "variables.pkr.hcl").read_text()
+    block = variables[variables.index('variable "depot_password"'):]
+    assert "sensitive   = true" in block[:block.index("\n}\n")]
+    for f in ("roles.pkr.hcl", "variants.pkr.hcl"):
+        text = (pk / f).read_text()
+        assert text.count("DEPOT_USER=${var.depot_user}") == text.count("DEPOT_PASSWORD=${var.depot_password}") >= 1
+    for script in ("files/windows/role-image.ps1", "variants/scripts/office-ltsc-from-depot.ps1"):
+        ps = (pk / script).read_text()
+        calls = [ln for ln in ps.splitlines() if "Invoke-WebRequest" in ln]  # every depot request
+        assert calls and all("-Headers $depotHeaders" in c for c in calls), script
+        assert "'Basic ' + [Convert]::ToBase64String" in ps

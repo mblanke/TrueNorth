@@ -4,6 +4,21 @@
 #
 # This is the software half of the egress control. The other half is vCenter:
 # scripts/lab/depot-uplink.sh connects/disconnects the only NIC with a route out.
+#
+# Going online (#214): refused while range VMs exist (range_guard.yml, unless
+# tn_depot_force_online), and the range NIC firewall drops everything from the range
+# network BEFORE the caches go online. Going offline: the caches first, then the range
+# firewall opens 8081/3142 again (end of this file).
+
+- name: Upstream — no range VMs exist (going online)
+  ansible.builtin.include_tasks: range_guard.yml
+  when: tn_depot_upstream_online | bool
+
+- name: Upstream — range network shut out before the caches go online
+  ansible.builtin.include_tasks: range_fw.yml
+  when:
+    - tn_depot_upstream_online | bool
+    - tn_depot_range_ip | length > 0
 
 - name: Upstream — apt-cacher-ng Offlinemode={{ 0 if (tn_depot_upstream_online | bool) else 1 }}
   ansible.builtin.template:
@@ -66,3 +81,9 @@
         - item.status == 200
         - (item.json.httpClient.blocked | default(false) | bool) != (not (tn_depot_upstream_online | bool))
       changed_when: true
+
+- name: Upstream — range network gets 8081/3142 back after the caches are offline
+  ansible.builtin.include_tasks: range_fw.yml
+  when:
+    - not (tn_depot_upstream_online | bool)
+    - tn_depot_range_ip | length > 0
