@@ -14,7 +14,9 @@ const API = environment.apiUrl;
 /**
  * rc12: the Nation dropdown on "Request access" was empty because it read
  * /directory/nations (user:read), which an applicant does not hold. It now reads
- * /registration/nations, which any valid token may call.
+ * /registration/nations, which any valid token may call. The Qualification dropdown had
+ * the same fault (/qsp/qualifications needs a users row) and now reads
+ * /registration/qualifications.
  */
 describe('RegisterComponent', () => {
   let fixture: ComponentFixture<RegisterComponent>;
@@ -25,6 +27,7 @@ describe('RegisterComponent', () => {
     { id: 'n-1', name: 'Canada', iso_alpha2: 'CA', iso_alpha3: 'CAN', flag_emoji: '🇨🇦' },
     { id: 'n-2', name: 'Norway', iso_alpha2: 'NO', iso_alpha3: 'NOR', flag_emoji: '🇳🇴' },
   ];
+  const QUALS = [{ id: 'q-1', qsp_code: 'ALJQ', title: 'Cyber Operator' }];
 
   beforeEach(async () => {
     const auth = jasmine.createSpyObj('AuthService', ['bootstrap']);
@@ -56,18 +59,29 @@ describe('RegisterComponent', () => {
 
     http.expectNone(`${API}/directory/nations`);
     http.expectOne({ method: 'GET', url: `${API}/registration/nations` }).flush(NATIONS);
-    http.expectOne(`${API}/qsp/qualifications`).flush([]);
+    http.expectOne(`${API}/registration/qualifications`).flush([]);
 
     expect(component.nations().map(n => n.name)).toEqual(['Canada', 'Norway']);
   });
 
-  it('leaves the list empty, and the form usable, when the call fails', async () => {
+  it('fills the Qualification dropdown from /registration/qualifications, never /qsp', async () => {
+    await init();
+
+    http.expectNone(`${API}/qsp/qualifications`);
+    http.expectOne(`${API}/registration/nations`).flush([]);
+    http.expectOne({ method: 'GET', url: `${API}/registration/qualifications` }).flush(QUALS);
+
+    expect(component.qualifications().map(q => q.qsp_code)).toEqual(['ALJQ']);
+  });
+
+  it('leaves the list empty, and the form usable, when the reference calls fail', async () => {
     await init();
 
     http.expectOne(`${API}/registration/nations`).flush('nope', { status: 500, statusText: 'Server Error' });
-    http.expectOne(`${API}/qsp/qualifications`).flush([]);
+    http.expectOne(`${API}/registration/qualifications`).flush('nope', { status: 500, statusText: 'Server Error' });
 
     expect(component.nations()).toEqual([]);
+    expect(component.qualifications()).toEqual([]);
     expect(component.loading()).toBeFalse();
   });
 });

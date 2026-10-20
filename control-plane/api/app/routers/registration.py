@@ -49,7 +49,7 @@ from ..models import (
     UserRole,
 )
 from ..rbac import STAFF_GRANTED_BY_ADMIN_ONLY, Permission, grant_refusal, is_platform_admin, require_permission
-from ..registration_schemas import ApplicantNationOut
+from ..registration_schemas import ApplicantNationOut, ApplicantQualificationOut
 from ..schemas import (
     RegistrationApproveIn,
     RegistrationBulkApproveIn,
@@ -254,6 +254,38 @@ def list_registration_nations(
     Any valid token may read it; the directory router keeps its permission.
     """
     return db.query(Nation).filter(Nation.is_active).order_by(Nation.name).all()
+
+
+def _requestable_tenant(db: Session, identity: TokenPayload) -> uuid.UUID | None:
+    """The tenant whose qualifications this caller may ask for.
+
+    A registered account: its own tenant (what onboarding's select-path accepts). An
+    applicant: the tenant their AD groups suggest (what approval defaults to).
+    """
+    user = db.query(User).filter(User.keycloak_id == identity.sub).first()
+    if user is not None:
+        return user.tenant_id
+    tenant = ident.suggest_tenant(db, ident.normalise_groups(identity.groups))
+    return tenant.id if tenant else None
+
+
+@router.get("/registration/qualifications", response_model=list[ApplicantQualificationOut])
+def list_registration_qualifications(
+    identity: TokenPayload = Depends(get_token_identity),
+    db: Session = Depends(get_db),
+) -> list[Qualification]:
+    """Qualifications the caller may request: shared ones plus their own (or suggested) tenant's.
+
+    ``/qsp/qualifications`` needs a ``users`` row, so an applicant got 403 and an empty
+    Qualification dropdown. Qualifications have no draft state; the scope is the one
+    approval (``_enroll_for``) and onboarding (``get_owned_or_global``) enforce, so a
+    listed qualification is one that request would actually honour.
+    """
+    tenant_id = _requestable_tenant(db, identity)
+    scope = Qualification.tenant_id.is_(None)
+    if tenant_id is not None:
+        scope = scope | (Qualification.tenant_id == tenant_id)
+    return db.query(Qualification).filter(scope).order_by(Qualification.qsp_code).all()
 
 
 @router.delete(

@@ -6199,6 +6199,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/registration/qualifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Registration Qualifications
+         * @description Qualifications the caller may request: shared ones plus their own (or suggested) tenant's.
+         *
+         *     ``/qsp/qualifications`` needs a ``users`` row, so an applicant got 403 and an empty
+         *     Qualification dropdown. Qualifications have no draft state; the scope is the one
+         *     approval (``_enroll_for``) and onboarding (``get_owned_or_global``) enforce, so a
+         *     listed qualification is one that request would actually honour.
+         */
+        get: operations["list_registration_qualifications_registration_qualifications_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/registration/requests": {
         parameters: {
             query?: never;
@@ -8249,6 +8274,24 @@ export interface components {
             iso_alpha3: string;
             /** Name */
             name: string;
+        };
+        /**
+         * ApplicantQualificationOut
+         * @description A qualification an applicant may request (register) or a Student may pick (onboarding).
+         *
+         *     Only what the dropdown shows. ``/qsp/qualifications`` carries more (NQUAL, PO count)
+         *     and is for signed-in accounts.
+         */
+        ApplicantQualificationOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Qsp Code */
+            qsp_code: string;
+            /** Title */
+            title: string;
         };
         /**
          * Arc2Status
@@ -26901,6 +26944,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApplicantNationOut"][];
+                };
+            };
+        };
+    };
+    list_registration_qualifications_registration_qualifications_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApplicantQualificationOut"][];
                 };
             };
         };

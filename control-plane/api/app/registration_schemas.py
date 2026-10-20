@@ -21,3 +21,16 @@ class ApplicantNationOut(BaseModel):
     iso_alpha2: str
     iso_alpha3: str
     flag_emoji: str
+
+
+class ApplicantQualificationOut(BaseModel):
+    """A qualification an applicant may request (register) or a Student may pick (onboarding).
+
+    Only what the dropdown shows. ``/qsp/qualifications`` carries more (NQUAL, PO count)
+    and is for signed-in accounts.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    qsp_code: str
+    title: str
