@@ -91,3 +91,6 @@ Credentials_*
 truenorth-content-pack/truenorth-content/qsp_source/*.docx
 truenorth-content-pack/truenorth-content/qsp_source/*.pdf
 truenorth-content-pack/truenorth-content/qsp_source/approval_letters/
+
+# dev-only live-class demo state (scripts/dev/live_class_demo.sh): DB, keys, test credentials
+.demo/
