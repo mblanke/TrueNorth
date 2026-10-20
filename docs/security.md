@@ -312,6 +312,8 @@ Complete role-to-permission mapping as defined in `rbac.py`:
 | `user:read` | X | X | | | |
 | `user:update` | X | | | | |
 | `user:delete` | X | | | | |
+| `enrollment:manage_own` (#200: enrol/withdraw Students on a course you teach) | X | X | | | |
+| `team:manage_own` (#200: create/edit teams of an exercise you run; Students only) | X | X | | | |
 | `tenant:create` | X | | | | |
 | `tenant:read` | X | | | | |
 | `tenant:update` | X | | | | |
@@ -324,6 +326,19 @@ Complete role-to-permission mapping as defined in `rbac.py`:
 | `schedule:read` | X | X | | X | X |
 | `schedule:write` | X | X | | | |
 | `schedule:admin` | X (platform tenant only when `PLATFORM_TENANT_ID` is set) | | | | |
+
+**An instructor's own class (#200).** `enrollment:manage_own` and `team:manage_own` are
+scoped in `app/class_setup/scope.py`: an instructor *teaches* a course, or *runs* an
+exercise, when a live booking (state not `draft`, not `cancelled`) in their tenant names
+them its `instructor_id` and that `course_id` / `exercise_id`. Courses and exercises have no
+owner column; the calendar is the only record of who teaches what. On those they enrol and
+withdraw Students, and create, edit and delete the exercise's teams and their Student
+members. Another course or exercise, a standing team (no exercise) and any staff target are
+403; another tenant's course, exercise, team or person is 404. Every change is audited
+(`enrollment_create`, `enrollment_update`, `enrollment_withdraw`; team `create`, `update`,
+`delete`, `add_member`, `remove_member`). An instructor can book themselves (`schedule:write`),
+so within the tenant the booking is a recorded, visible assignment rather than a hard wall;
+the tenant is the hard wall. `user:update` (admins) is unchanged.
 
 **Platform-shared curriculum.** The QSP qualification spine (`/qsp/import-crosswalk`,
 `/qsp/import-competency-crosswalk`) and the competency catalogue (`POST

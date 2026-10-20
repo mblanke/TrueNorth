@@ -12,7 +12,7 @@ import { AuthService } from '@core/services/auth.service';
 import { roleCan } from '@core/auth/permissions';
 import { NotificationService } from '@core/services/notification.service';
 import {
-  CourseDetail, CourseEnrollment, CourseSummary, DirectoryUser, ModuleProgress, OperatorRecordsApiService,
+  CourseDetail, CourseEnrollment, CourseSummary, DirectoryUser, ModuleProgress, MyClasses, OperatorRecordsApiService,
 } from '@core/services/operator-records-api.service';
 import {
   ImpactDialogComponent, ImpactDialogData, ImpactDialogResult,
@@ -45,6 +45,9 @@ interface Opened {
  * instructors and admins (learning_record:read / learning_record:write in rbac.py). The
  * grade on completion is computed by the API from recorded progress; this screen never
  * supplies one, and shows the grade the API returns.
+ *
+ * Enrol and withdraw (#200): admins (user:update) on any course; an instructor
+ * (enrollment:manage_own) on the courses they teach (GET /class-setup/mine), Students only.
  */
 @Component({
   selector: 'tn-learner-progress',
@@ -81,6 +84,23 @@ interface Opened {
 
       @if (courseId()) {
         <mat-card class="panel">
+          @if (canEnrol()) {
+            <form class="enrol" (ngSubmit)="enrol()" aria-label="Enrol a Student">
+              <mat-form-field appearance="outline" class="grow">
+                <mat-label>Student</mat-label>
+                <mat-select name="student" [(ngModel)]="newStudentId" panelClass="tn-select-panel" required>
+                  @for (u of enrolCandidates(); track u.id) {
+                    <mat-option [value]="u.id">{{ u.display_name }} ({{ u.email }})</mat-option>
+                  }
+                </mat-select>
+              </mat-form-field>
+              <button mat-raised-button color="primary" type="submit" [disabled]="!newStudentId || busy()">
+                <mat-icon>person_add</mat-icon> Enrol
+              </button>
+            </form>
+          } @else if (managesOwn()) {
+            <p class="muted">You enrol Students only on a course you teach (a session booked with you as instructor).</p>
+          }
           @if (outcome()) { <p class="outcome" role="status" aria-live="polite">{{ outcome() }}</p> }
           @if (usersError()) { <p class="muted">{{ usersError() }}</p> }
           @if (enrollmentsError()) {
@@ -111,6 +131,10 @@ interface Opened {
                       @if (canComplete() && e.status !== 'completed' && hasProgress(e)) {
                         <button mat-stroked-button color="primary" (click)="complete(e)" [disabled]="busy()"
                                 [attr.aria-label]="'Mark ' + nameOf(e.user_id) + ' complete'">Mark complete</button>
+                      }
+                      @if (canEnrol() && e.status !== 'completed' && e.status !== 'withdrawn') {
+                        <button mat-stroked-button color="warn" (click)="withdraw(e)" [disabled]="busy()"
+                                [attr.aria-label]="'Withdraw ' + nameOf(e.user_id)">Withdraw</button>
                       }
                     </td>
                   </tr>
@@ -163,6 +187,8 @@ interface Opened {
     .inner { margin: 4px 0 8px; font-size: 13px; }
     .progress-cell { background: var(--bg-surface); }
     .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    .enrol { display: flex; gap: 12px; align-items: flex-start; flex-wrap: wrap; }
+    .grow { flex: 1; min-width: 260px; }
     .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   `],
 })
@@ -184,14 +210,37 @@ export class LearnerProgressComponent implements OnInit {
   busy = signal(false);
   outcome = signal('');
 
+  newStudentId = '';
+  /** The caller's classes (GET /class-setup/mine), for an instructor. */
+  mine = signal<MyClasses | null>(null);
+
   /** learning_record:write (core/auth/permissions.ts, mirrored from rbac.py). */
   readonly canComplete = computed(() => roleCan(this.auth.user()?.role, 'learning_record:write'));
+  readonly isAdmin = computed(() => roleCan(this.auth.user()?.role, 'user:update'));
+  readonly managesOwn = computed(() => !this.isAdmin() && roleCan(this.auth.user()?.role, 'enrollment:manage_own'));
+  /** Enrol and withdraw on the chosen course: an admin always; an instructor on a course they teach. */
+  readonly canEnrol = computed(() => {
+    if (this.isAdmin()) return true;
+    const id = this.courseId();
+    return this.managesOwn() && !!id && (this.mine()?.courses ?? []).some(c => c.id === id);
+  });
+  /** Active Students not actively enrolled (a withdrawn one may be enrolled again). */
+  readonly enrolCandidates = computed(() => {
+    const on = new Set((this.enrollments() ?? []).filter(e => e.status !== 'withdrawn').map(e => e.user_id));
+    return [...this.users().values()].filter(u => u.is_active && u.role === 'student' && !on.has(u.id));
+  });
 
   ngOnInit(): void {
     this.api.listCourses().subscribe({
       next: page => this.courses.set(page.items),
       error: err => this.coursesError.set(apiError(err)),
     });
+    if (this.managesOwn()) {
+      this.api.myClasses().subscribe({
+        next: m => this.mine.set(m),
+        error: err => this.outcome.set(`Your classes could not be loaded: ${apiError(err)}`),
+      });
+    }
     this.api.listUsers().subscribe({
       next: list => this.users.set(new Map(list.map(u => [u.id, u]))),
       error: err => this.usersError.set(`Names could not be loaded (${apiError(err)}); Students are shown by id.`),
@@ -253,6 +302,65 @@ export class LearnerProgressComponent implements OnInit {
       next: p => this.opened.set({ enrollment: e, progress: p, error: '' }),
       error: err => this.opened.set({ enrollment: e, progress: null, error: apiError(err) }),
     });
+  }
+
+  /** POST /courses/{id}/enroll for the chosen Student. */
+  enrol(): void {
+    const courseId = this.courseId();
+    const who = this.newStudentId;
+    if (!courseId || !who) return;
+    this.busy.set(true);
+    this.api.enrol(courseId, who).subscribe({
+      next: out => {
+        this.busy.set(false);
+        this.outcome.set(`${this.nameOf(who)}: ${out.status} on ${this.course()?.name ?? 'the course'}.`);
+        this.newStudentId = '';
+        this.loadEnrollments();
+      },
+      error: err => {
+        this.busy.set(false);
+        const msg = apiError(err);
+        this.outcome.set(`Not enrolled: ${msg}`);
+        this.notify.error(msg);
+      },
+    });
+  }
+
+  /** POST /courses/{id}/withdraw/{uid}, after the impact dialog. */
+  withdraw(e: CourseEnrollment): void {
+    const who = this.nameOf(e.user_id);
+    const data: ImpactDialogData = {
+      title: `Withdraw ${who}?`,
+      impact: [
+        'They lose their place in this class: its booked exercises, labs and launches.',
+        'Their enrolment and progress are kept as a record, marked withdrawn; enrolling them again reopens it.',
+        'This is recorded in the audit log under your name.',
+      ],
+      confirmText: 'Withdraw',
+      danger: true,
+    };
+    this.dialog
+      .open<ImpactDialogComponent, ImpactDialogData, ImpactDialogResult | null>(ImpactDialogComponent, {
+        width: '520px', data,
+      })
+      .afterClosed()
+      .subscribe(ok => {
+        if (!ok) return;
+        this.busy.set(true);
+        this.api.withdraw(e.course_id, e.user_id).subscribe({
+          next: out => {
+            this.busy.set(false);
+            this.outcome.set(`${who}: ${out.status}.`);
+            this.loadEnrollments();
+          },
+          error: err => {
+            this.busy.set(false);
+            const msg = apiError(err);
+            this.outcome.set(`Not withdrawn: ${msg}`);
+            this.notify.error(msg);
+          },
+        });
+      });
   }
 
   complete(e: CourseEnrollment): void {

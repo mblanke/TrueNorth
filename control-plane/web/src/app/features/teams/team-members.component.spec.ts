@@ -13,6 +13,10 @@ const TEAMS = [
   { id: 't1', name: 'Blue Cell', max_members: 2, is_persistent: true, created_at: '', updated_at: '' },
   { id: 't2', name: 'Red Cell', max_members: null, is_persistent: true, created_at: '', updated_at: '' },
 ];
+/** A team of exercise x1, which the instructor runs (GET /class-setup/mine), first in the list. */
+const EX_TEAM = { id: 't3', name: 'Exercise Blue', max_members: null, is_persistent: false, exercise_id: 'x1',
+  created_at: '', updated_at: '' };
+const MINE = { courses: [], exercises: [{ id: 'x1', name: 'Op Northwind' }] };
 const MEMBERS = [{ user_id: 'u1', display_name: 'Alice', email: 'a@x.test', role: 'lead', joined_at: '2026-10-01T00:00:00Z' }];
 const USERS = [
   { id: 'u1', display_name: 'Alice', email: 'a@x.test', role: 'student', is_active: true },
@@ -27,10 +31,11 @@ describe('TeamMembersComponent', () => {
   let api: jasmine.SpyObj<OperatorRecordsApiService>;
   let dialogOpen: jasmine.Spy;
 
-  async function render(role: UserRole, teams: unknown = of(TEAMS)) {
+  async function render(role: UserRole, teams: unknown = of(TEAMS), mine: unknown = of(MINE)) {
     api = jasmine.createSpyObj('OperatorRecordsApiService', ['listTeams', 'listTeamMembers', 'addTeamMember',
-      'removeTeamMember', 'listUsers']);
+      'removeTeamMember', 'listUsers', 'myClasses', 'createTeam']);
     api.listTeams.and.returnValue(teams as any);
+    api.myClasses.and.returnValue(mine as any);
     api.listTeamMembers.and.returnValue(of(MEMBERS));
     api.listUsers.and.returnValue(of(USERS as any));
     dialogOpen = jasmine.createSpy('open').and.callFake(() => ({ afterClosed: () => of({ reason: '' }) }));
@@ -68,12 +73,63 @@ describe('TeamMembersComponent', () => {
     expect(red.getAttribute('aria-current')).toBe('true');
   });
 
-  it('an instructor reads but gets no add or remove', async () => {
+  it('an instructor reads a team of an exercise they do not run, with no add or remove', async () => {
     await render('instructor');
+    expect(el.textContent).toContain('the others are read-only');
+    expect(el.textContent).not.toContain('Read-only for your role.');
+    expect(component.selected()?.id).toBe('t1');
+    expect(el.querySelector('form[aria-label="Add a member"]')).toBeNull();
+    expect(el.textContent).not.toContain('Remove');
+  });
+
+  it('an instructor adds Students to a team of an exercise they run (#200)', async () => {
+    await render('instructor', of([EX_TEAM, ...TEAMS]));
+    expect(component.selected()?.id).toBe('t3');
+    expect(el.querySelector('form[aria-label="Add a member"]')).not.toBeNull();
+    expect(el.textContent).toContain('Remove');
+    // Students only: the API refuses staff for team:manage_own.
+    const withStaff = [...USERS, { id: 'i9', display_name: 'Ivy', email: 'i@x.test', role: 'instructor', is_active: true }];
+    component.users.set(withStaff as any);
+    expect(component.candidates().map(u => u.id)).toEqual(['u2']);
+  });
+
+  it('an instructor creates a team for an exercise they run and it is selected (#200)', async () => {
+    await render('instructor');
+    const form = el.querySelector('form[aria-label="New team for an exercise you run"]');
+    expect(form).not.toBeNull();
+    api.createTeam.and.returnValue(of({ ...EX_TEAM, id: 't9', name: 'Red Team' } as any));
+    component.newExerciseId = 'x1';
+    component.newTeamName = 'Red Team';
+    component.create();
+    fixture.detectChanges();
+    expect(api.createTeam).toHaveBeenCalledWith({ name: 'Red Team', exercise_id: 'x1', is_persistent: false });
+    expect(component.selected()?.id).toBe('t9');
+    expect(el.textContent).toContain('Team Red Team created for Op Northwind.');
+    expect(el.querySelector('form[aria-label="Add a member"]')).not.toBeNull();
+  });
+
+  it('shows the API refusal when creating a team', async () => {
+    await render('instructor');
+    api.createTeam.and.returnValue(throwError(() => new HttpErrorResponse({
+      status: 403, error: { detail: 'You can create teams only for an exercise you run' } })));
+    component.newExerciseId = 'x1';
+    component.newTeamName = 'X';
+    component.create();
+    fixture.detectChanges();
+    expect(el.textContent).toContain('Not created: You can create teams only for an exercise you run');
+  });
+
+  it('an instructor who runs no exercise gets no create form', async () => {
+    await render('instructor', of(TEAMS), of({ courses: [], exercises: [] }));
+    expect(el.querySelector('form[aria-label="New team for an exercise you run"]')).toBeNull();
+  });
+
+  it('an observer reads only', async () => {
+    await render('observer');
     expect(el.textContent).toContain('Read-only for your role.');
     expect(el.querySelector('form')).toBeNull();
-    expect(el.textContent).not.toContain('Remove');
     expect(api.listUsers).not.toHaveBeenCalled();
+    expect(api.myClasses).not.toHaveBeenCalled();
   });
 
   it('offers only active people not already on the team', async () => {

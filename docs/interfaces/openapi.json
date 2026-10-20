@@ -2150,6 +2150,25 @@
         "title": "ClassAttemptOut",
         "type": "object"
       },
+      "ClassItemOut": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "ClassItemOut",
+        "type": "object"
+      },
       "ClassLabOut": {
         "description": "One of the Student's lab sessions tied to this run (see ``ClassStudentOut.labs``).",
         "properties": {
@@ -9504,6 +9523,31 @@
         "title": "MoodleSyncStatusOut",
         "type": "object"
       },
+      "MyClassesOut": {
+        "description": "Taught courses and run exercises, by name. Each list is sorted by name.",
+        "properties": {
+          "courses": {
+            "items": {
+              "$ref": "#/components/schemas/ClassItemOut"
+            },
+            "title": "Courses",
+            "type": "array"
+          },
+          "exercises": {
+            "items": {
+              "$ref": "#/components/schemas/ClassItemOut"
+            },
+            "title": "Exercises",
+            "type": "array"
+          }
+        },
+        "required": [
+          "courses",
+          "exercises"
+        ],
+        "title": "MyClassesOut",
+        "type": "object"
+      },
       "MySessionOut": {
         "description": "A session as a Student sees it: no capacity, no other people.",
         "properties": {
@@ -15287,6 +15331,19 @@
             ],
             "title": "Description"
           },
+          "exercise_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The exercise the team is for (your tenant's). Required for an instructor: one they run.",
+            "title": "Exercise Id"
+          },
           "is_persistent": {
             "default": true,
             "title": "Is Persistent",
@@ -21036,6 +21093,33 @@
         ]
       }
     },
+    "/class-setup/mine": {
+      "get": {
+        "description": "The courses you teach and the exercises you run: a live booking (not draft, not\ncancelled) in your tenant names you its instructor (app/class_setup/scope.py).\n\n**Permission: enrollment:manage_own or team:manage_own**",
+        "operationId": "my_classes_class_setup_mine_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyClassesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "My Classes",
+        "tags": [
+          "class-setup"
+        ]
+      }
+    },
     "/cmi5/fetch/{secret}": {
       "post": {
         "description": "cmi5 fetch URL: the session's auth token, once. Errors are HTTP 200 with\n``error-code`` 1 (already returned or expired) or 2 (unknown), as cmi5 8.2 requires.",
@@ -23666,7 +23750,7 @@
     },
     "/courses/{course_id}/enroll": {
       "post": {
-        "description": "Enroll a user in a course: a Student's self-enrolment, or an admin enrolling someone.\n\nEnrolling someone *other* than yourself is an administrative act (``user:update``, own\ntenant). The server decides eligibility, whatever the client shows:\n\n- the course is in the caller's catalogue: their tenant's, or a global (shared) one \u2014\n  another tenant's is 404, as for any read;\n- it is published, unless the caller authors courses \u2014 a draft is 404, as on every read;\n- it is not retired (a stub superseded by authored content) \u2014 409.\n\nIdempotent: enrolling again answers 200 with the existing enrolment (it used to be 409,\nso a second click read as a failure). Two racing requests make one row (unique\n``uq_user_course``; the loser's IntegrityError returns the winner's row).\n\nSource (app/enrollment.py): enrolling yourself is ``self`` \u2014 the course's content, but\nno seat in an exercise someone booked for the course. Enrolling someone else is\n``assigned``, and upgrades their own ``self`` row.",
+        "description": "Enroll a user in a course: a Student's self-enrolment, or staff enrolling someone.\n\nEnrolling someone *other* than yourself needs ``user:update`` (an admin: anyone in the\ntenant) or ``enrollment:manage_own`` (an instructor: a Student of the tenant, on a course\nthey teach, i.e. a live booking names them its instructor; app/class_setup/scope.py).\nAnother tenant's person is 404; a course you do not teach, or staff, is 403. Enrolling\nsomeone else is audited (``enrollment_create`` / ``enrollment_update``) and reopens their\nwithdrawn enrolment; your own withdrawn enrolment stays withdrawn.\nThe server decides eligibility, whatever the client shows:\n\n- the course is in the caller's catalogue: their tenant's, or a global (shared) one \u2014\n  another tenant's is 404, as for any read;\n- it is published, unless the caller authors courses \u2014 a draft is 404, as on every read;\n- it is not retired (a stub superseded by authored content) \u2014 409.\n\nIdempotent: enrolling again answers 200 with the existing enrolment (it used to be 409,\nso a second click read as a failure). Two racing requests make one row (unique\n``uq_user_course``; the loser's IntegrityError returns the winner's row).\n\nSource (app/enrollment.py): enrolling yourself is ``self`` \u2014 the course's content, but\nno seat in an exercise someone booked for the course. Enrolling someone else is\n``assigned``, and upgrades their own ``self`` row.",
         "operationId": "enroll_user_courses__course_id__enroll_post",
         "parameters": [
           {
@@ -23895,6 +23979,65 @@
           }
         ],
         "summary": "Get User Progress",
+        "tags": [
+          "courses"
+        ]
+      }
+    },
+    "/courses/{course_id}/withdraw/{user_id}": {
+      "post": {
+        "description": "Withdraw (unenrol) someone from a course.\n\nThe enrolment is kept, as a record, with status ``withdrawn``: it no longer seats them\nin the class's exercises, labs or launches. Enrolling them again reopens it.\n\n**Permission: user:update** (anyone in the tenant) **or enrollment:manage_own** (a\nStudent of the tenant, on a course you teach). Another tenant's course or person: 404;\nno enrolment: 404; a completed one: 409 (it is the Student's record). Audited\n(``enrollment_withdraw``). Withdrawing again answers the withdrawn row unchanged.",
+        "operationId": "withdraw_enrollment_courses__course_id__withdraw__user_id__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "course_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Course Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnrollmentOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Withdraw Enrollment",
         "tags": [
           "courses"
         ]
@@ -38875,7 +39018,7 @@
         ]
       },
       "post": {
-        "description": "Create a team with full schema (type, color, max_members, etc).  **Permission: user:update**",
+        "description": "Create a team with full schema (type, color, max_members, etc).\n\n**Permission: user:update, or team:manage_own** with ``exercise_id`` naming an exercise\nyou run (a live booking names you its instructor; app/class_setup/scope.py). Another\ntenant's exercise is 404; an exercise you do not run, or no exercise, is 403.",
         "operationId": "create_team_teams_post",
         "requestBody": {
           "content": {
@@ -38922,7 +39065,7 @@
     },
     "/teams/{team_id}": {
       "delete": {
-        "description": "Delete a team and its memberships.  **Permission: user:update**",
+        "description": "Delete a team and its memberships.  **Permission: user:update, or team:manage_own**\nfor a team of an exercise you run.",
         "operationId": "delete_team_teams__team_id__delete",
         "parameters": [
           {
@@ -38962,7 +39105,7 @@
         ]
       },
       "patch": {
-        "description": "Update a team.  **Permission: user:update**\n\nUntil 2026-10-07 this needed only a login: a student could rename or resize\nany team in their tenant.",
+        "description": "Update a team.  **Permission: user:update, or team:manage_own** for a team of an\nexercise you run. Audited (``update``, the fields changed).\n\nUntil 2026-10-07 this needed only a login: a student could rename or resize\nany team in their tenant.",
         "operationId": "update_team_teams__team_id__patch",
         "parameters": [
           {
@@ -39072,7 +39215,7 @@
         ]
       },
       "post": {
-        "description": "Add a user to a team.  **Permission: user:update**",
+        "description": "Add a user to a team.  **Permission: user:update** (anyone in the tenant), **or\nteam:manage_own** (a Student, to a team of an exercise you run).",
         "operationId": "add_team_member_teams__team_id__members_post",
         "parameters": [
           {
@@ -39141,7 +39284,7 @@
     },
     "/teams/{team_id}/members/{member_user_id}": {
       "delete": {
-        "description": "Remove a user from a team.  **Permission: user:update**",
+        "description": "Remove a user from a team.  **Permission: user:update** (anyone), **or\nteam:manage_own** (a Student, from a team of an exercise you run).",
         "operationId": "remove_team_member_teams__team_id__members__member_user_id__delete",
         "parameters": [
           {

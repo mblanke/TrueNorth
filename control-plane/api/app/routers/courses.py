@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from .. import course_content_ingest, moodle_sso, programme_ingest, qsp_paths
 from ..auth import CurrentUser, get_current_user
+from ..class_setup import scope as class_scope
 from ..course_publishing.models import CoursePublication
 from ..course_releases.models import CourseRelease
 from ..db import get_db
@@ -28,6 +29,7 @@ from ..models import (
     Course,
     CourseModule,
     Enrollment,
+    EnrollmentStatus,
     ExternalActivity,
     ExternalPlatform,
     LearningPath,
@@ -43,7 +45,7 @@ from ..models import (
     SecurityGroupMembership,
     User,
 )
-from ..rbac import Permission, require_permission, user_has_permission
+from ..rbac import Permission, require_any_permission, require_permission, user_has_permission
 from ..scheduler import service as scheduler
 from ..schemas import (
     CourseIn,
@@ -546,10 +548,15 @@ def enroll_user(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ):
-    """Enroll a user in a course: a Student's self-enrolment, or an admin enrolling someone.
+    """Enroll a user in a course: a Student's self-enrolment, or staff enrolling someone.
 
-    Enrolling someone *other* than yourself is an administrative act (``user:update``, own
-    tenant). The server decides eligibility, whatever the client shows:
+    Enrolling someone *other* than yourself needs ``user:update`` (an admin: anyone in the
+    tenant) or ``enrollment:manage_own`` (an instructor: a Student of the tenant, on a course
+    they teach, i.e. a live booking names them its instructor; app/class_setup/scope.py).
+    Another tenant's person is 404; a course you do not teach, or staff, is 403. Enrolling
+    someone else is audited (``enrollment_create`` / ``enrollment_update``) and reopens their
+    withdrawn enrolment; your own withdrawn enrolment stays withdrawn.
+    The server decides eligibility, whatever the client shows:
 
     - the course is in the caller's catalogue: their tenant's, or a global (shared) one —
       another tenant's is 404, as for any read;
@@ -564,9 +571,11 @@ def enroll_user(
     no seat in an exercise someone booked for the course. Enrolling someone else is
     ``assigned``, and upgrades their own ``self`` row.
     """
-    # Self, or user:update over someone in your own tenant — never across tenants.
-    authorize_record_access(db, user, body.user_id, permission=Permission.USER_UPDATE)
-    source = SELF if str(body.user_id) == str(user.id) else ASSIGNED
+    other = str(body.user_id) != str(user.id)
+    source = ASSIGNED if other else SELF
+    # Someone else, without either permission: refused before any lookup discloses anything.
+    if other and not _may_enrol_others(user):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, f"Missing permission: {Permission.USER_UPDATE.value}")
 
     # Global courses (tenant NULL) are the standard programme every tenant enrols on;
     # get_owned 404'd on them, so a Student could not enrol on the shared catalogue.
@@ -574,11 +583,21 @@ def enroll_user(
     if not course.is_published and not _sees_drafts(user):
         # A draft is invisible to non-authors, so it cannot be enrolled on either.
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Course not found")
+    if other:  # admin: anyone in the tenant; instructor: a Student, on a course they teach
+        class_scope.authorize_enrolment_of_other(db, user, course, body.user_id)
 
     existing = _existing_enrollment(db, body.user_id, course_id)
     if existing:
+        changed = []
         if source == ASSIGNED and existing.source != ASSIGNED:
             ensure_enrollment(db, user_id=body.user_id, course_id=course_id, tenant_id=user.tenant_id, source=source)
+            changed.append("now assigned")
+        if other and existing.status == EnrollmentStatus.withdrawn:
+            existing.status = EnrollmentStatus.enrolled  # staff putting a withdrawn Student back
+            changed.append("withdrawn -> enrolled")
+        if changed:
+            class_scope.audit(db, user, "enrollment_update", "enrollment", str(existing.id),
+                              f"course {course_id} for user {body.user_id}: {', '.join(changed)}")
             db.commit()
             db.refresh(existing)
         response.status_code = status.HTTP_200_OK
@@ -599,8 +618,53 @@ def enroll_user(
             raise
         response.status_code = status.HTTP_200_OK
         return existing
+    if other:
+        class_scope.audit(db, user, "enrollment_create", "enrollment", str(enrollment.id),
+                          f"course {course_id} for user {body.user_id}")
+        db.commit()
     db.refresh(enrollment)
     logger.info("User %s enrolled in course %s", body.user_id, course_id)
+    return enrollment
+
+
+def _may_enrol_others(user: CurrentUser) -> bool:
+    return user_has_permission(user, Permission.USER_UPDATE) or user_has_permission(
+        user, Permission.ENROLLMENT_MANAGE_OWN
+    )
+
+
+@router.post("/{course_id}/withdraw/{user_id}", response_model=EnrollmentOut)
+def withdraw_enrollment(
+    course_id: uuid.UUID,
+    user_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_any_permission(Permission.USER_UPDATE, Permission.ENROLLMENT_MANAGE_OWN)),
+):
+    """Withdraw (unenrol) someone from a course.
+
+    The enrolment is kept, as a record, with status ``withdrawn``: it no longer seats them
+    in the class's exercises, labs or launches. Enrolling them again reopens it.
+
+    **Permission: user:update** (anyone in the tenant) **or enrollment:manage_own** (a
+    Student of the tenant, on a course you teach). Another tenant's course or person: 404;
+    no enrolment: 404; a completed one: 409 (it is the Student's record). Audited
+    (``enrollment_withdraw``). Withdrawing again answers the withdrawn row unchanged.
+    """
+    course = get_owned_or_global(db, Course, course_id, user, not_found="Course not found")
+    class_scope.authorize_enrolment_of_other(db, user, course, user_id)
+    # tenant-safe: the subject was just checked to be in the caller's tenant.
+    enrollment = _existing_enrollment(db, user_id, course_id)
+    if enrollment is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Enrollment not found")
+    if enrollment.status == EnrollmentStatus.completed:
+        raise HTTPException(status.HTTP_409_CONFLICT, "The course is completed; a completed record is not withdrawn")
+    if enrollment.status != EnrollmentStatus.withdrawn:
+        previous = enrollment.status.value
+        enrollment.status = EnrollmentStatus.withdrawn
+        class_scope.audit(db, user, "enrollment_withdraw", "enrollment", str(enrollment.id),
+                          f"course {course_id} for user {user_id}: {previous} -> withdrawn")
+        db.commit()
+        db.refresh(enrollment)
     return enrollment
 
 

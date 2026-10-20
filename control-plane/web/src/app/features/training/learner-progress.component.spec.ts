@@ -18,6 +18,14 @@ const ENROLLMENT = {
 const PROGRESS = [{ id: 'p1', enrollment_id: 'e1', module_id: 'm1', status: 'completed', score: 90, max_score: 100,
   attempts: 1, completed_at: '2026-10-02T00:00:00Z' }];
 
+const USERS = [
+  { id: 'u1', display_name: 'Sam', email: 's@x.test', role: 'student', is_active: true },
+  { id: 'u2', display_name: 'Kim', email: 'k@x.test', role: 'student', is_active: true },
+  { id: 'i2', display_name: 'Ivy', email: 'i@x.test', role: 'instructor', is_active: true },
+];
+/** GET /class-setup/mine: this instructor teaches c1. */
+const MINE = { courses: [{ id: 'c1', name: 'SOC Analyst I' }], exercises: [] };
+
 describe('LearnerProgressComponent', () => {
   let fixture: ComponentFixture<LearnerProgressComponent>;
   let component: LearnerProgressComponent;
@@ -26,9 +34,10 @@ describe('LearnerProgressComponent', () => {
   let dialogOpen: jasmine.Spy;
   let confirmed: boolean;
 
-  async function render(role: UserRole, users: unknown = of([{ id: 'u1', display_name: 'Sam', email: 's@x.test' }])) {
+  async function render(role: UserRole, users: unknown = of(USERS), mine: unknown = of(MINE)) {
     api = jasmine.createSpyObj('OperatorRecordsApiService', ['listCourses', 'getCourse', 'listEnrollments',
-      'getProgress', 'markComplete', 'listUsers']);
+      'getProgress', 'markComplete', 'listUsers', 'myClasses', 'enrol', 'withdraw']);
+    api.myClasses.and.returnValue(mine as any);
     api.listCourses.and.returnValue(of(COURSES as any));
     api.getCourse.and.returnValue(of(COURSE as any));
     api.listEnrollments.and.returnValue(of([ENROLLMENT as any]));
@@ -141,6 +150,61 @@ describe('LearnerProgressComponent', () => {
     await render('instructor', throwError(() => new HttpErrorResponse({ status: 403 })));
     expect(el.textContent).toContain('Students are shown by id');
     expect(el.textContent).toContain('u1');
+  });
+
+  it('an instructor enrols a Student on a course they teach (#200)', async () => {
+    await render('instructor');
+    expect(api.myClasses).toHaveBeenCalled();
+    expect(el.querySelector('form[aria-label="Enrol a Student"]')).not.toBeNull();
+    // Only Students not already on the roster: Sam is enrolled, Ivy is staff.
+    expect(component.enrolCandidates().map(u => u.id)).toEqual(['u2']);
+    api.enrol.and.returnValue(of({ ...ENROLLMENT, id: 'e2', user_id: 'u2', status: 'enrolled' } as any));
+    component.newStudentId = 'u2';
+    component.enrol();
+    fixture.detectChanges();
+    expect(api.enrol).toHaveBeenCalledWith('c1', 'u2');
+    expect(el.textContent).toContain('Kim (k@x.test): enrolled on SOC Analyst I.');
+    expect(api.listEnrollments).toHaveBeenCalledTimes(2);
+  });
+
+  it('an instructor withdraws a Student only after the impact dialog (#200)', async () => {
+    await render('instructor');
+    api.withdraw.and.returnValue(of({ ...ENROLLMENT, status: 'withdrawn' } as any));
+    button('Withdraw')!.click();
+    expect(dialogOpen.calls.mostRecent().args[1].data.impact.join(' ')).toContain('kept as a record');
+    expect(api.withdraw).toHaveBeenCalledWith('c1', 'u1');
+    fixture.detectChanges();
+    expect(el.textContent).toContain('Sam (s@x.test): withdrawn.');
+  });
+
+  it('an instructor gets no enrol or withdraw on a course they do not teach', async () => {
+    await render('instructor', of(USERS), of({ courses: [], exercises: [] }));
+    expect(el.querySelector('form[aria-label="Enrol a Student"]')).toBeNull();
+    expect(button('Withdraw')).toBeUndefined();
+    expect(el.textContent).toContain('only on a course you teach');
+  });
+
+  it('shows the API refusal when enrolling', async () => {
+    await render('instructor');
+    api.enrol.and.returnValue(throwError(() => new HttpErrorResponse({
+      status: 403, error: { detail: 'You can enrol Students only on a course you teach' } })));
+    component.newStudentId = 'u2';
+    component.enrol();
+    fixture.detectChanges();
+    expect(el.textContent).toContain('Not enrolled: You can enrol Students only on a course you teach');
+  });
+
+  it('an admin enrols on any course without asking for their classes', async () => {
+    await render('admin');
+    expect(api.myClasses).not.toHaveBeenCalled();
+    expect(el.querySelector('form[aria-label="Enrol a Student"]')).not.toBeNull();
+  });
+
+  it('observers get no enrolment controls', async () => {
+    await render('observer');
+    expect(api.myClasses).not.toHaveBeenCalled();
+    expect(el.querySelector('form[aria-label="Enrol a Student"]')).toBeNull();
+    expect(button('Withdraw')).toBeUndefined();
   });
 
   it('shows the API error for enrollments instead of an empty roster', async () => {

@@ -350,12 +350,15 @@ Deactivate a user (soft delete). **Permission: `user:delete`**
 
 ### `POST /teams`
 
-Create a team. **Permission: `user:update`**
+Create a team. **Permission: `user:update`**, or **`team:manage_own`** with `exercise_id`
+naming an exercise you run (#200; `docs/security.md`, "An instructor's own class").
+Without `exercise_id` an instructor gets 403; another tenant's exercise is 404.
 
 **Request:**
 ```json
 {
-  "name": "Blue Team Alpha"
+  "name": "Blue Team Alpha",
+  "exercise_id": "7d1e0f52-3a8b-4c6d-9e0f-1a2b3c4d5e6f"
 }
 ```
 
@@ -382,9 +385,37 @@ List teams in the caller's tenant. **Permission: `user:read`**
 
 ### `DELETE /teams/{team_id}`
 
-Delete a team. **Permission: `user:update`**
+Delete a team. **Permission: `user:update`**, or **`team:manage_own`** for a team of an
+exercise you run. `PATCH /teams/{id}` and the member routes follow the same rule; with
+`team:manage_own` only Students are added or removed.
 
 **Response `204 No Content`**
+
+---
+
+### `GET /class-setup/mine`
+
+The courses you teach and the exercises you run (#200). **Permission:
+`enrollment:manage_own` or `team:manage_own`**
+
+**Response `200 OK`:**
+```json
+{
+  "courses": [{"id": "21ed2043-5788-41a7-8d80-1a05a95c1a2c", "name": "SOC Analyst I"}],
+  "exercises": [{"id": "7d1e0f52-3a8b-4c6d-9e0f-1a2b3c4d5e6f", "name": "Op Northwind"}]
+}
+```
+
+---
+
+### `POST /courses/{course_id}/withdraw/{user_id}`
+
+Withdraw a Student from a course; the enrolment is kept with status `withdrawn`
+(`POST /courses/{id}/enroll` by staff reopens it). **Permission: `user:update`**, or
+**`enrollment:manage_own`** for a Student on a course you teach. 404 for another tenant's
+course or person or no enrolment; 409 for a completed one. Audited.
+
+**Response `200 OK`:** the enrolment, `"status": "withdrawn"`.
 
 ---
 
@@ -1291,9 +1322,9 @@ The auto-generated OpenAPI specification is available at:
 | 6 | `GET` | `/users` | `user:read` | List users |
 | 7 | `POST` | `/users` | `user:create` | Create user |
 | 8 | `DELETE` | `/users/{id}` | `user:delete` | Delete user |
-| 9 | `POST` | `/teams` | `user:update` | Create team |
+| 9 | `POST` | `/teams` | `user:update` or `team:manage_own` | Create team |
 | 10 | `GET` | `/teams` | `user:read` | List teams |
-| 11 | `DELETE` | `/teams/{id}` | `user:update` | Delete team |
+| 11 | `DELETE` | `/teams/{id}` | `user:update` or `team:manage_own` | Delete team |
 | 12 | `POST` | `/templates` | `template:create` | Create template |
 | 13 | `GET` | `/templates` | `template:read` | List templates |
 | 14 | `GET` | `/templates/{id}` | `template:read` | Get template |

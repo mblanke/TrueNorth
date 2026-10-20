@@ -19,9 +19,18 @@ enrolment and credentials belong to the Student.
 
 **Instructor**:
 Staff who run training in their own tenant: ranges, scenarios, exercises, bookings for
-their classes, and their courses' releases (`UserRole.instructor`).
+their classes, and their courses' releases (`UserRole.instructor`). Sets up their own
+class: enrols Students on the courses they teach and builds the teams of the exercises they
+run (see **Teaches**).
 _Not to be confused with_: Admin. An Instructor can see platform health but cannot
 reconfigure infrastructure.
+
+**Teaches** (a course) / **runs** (an exercise):
+A live booking (not draft, not cancelled) in the instructor's tenant names them its
+instructor and that course or exercise (`control-plane/api/app/class_setup/scope.py`).
+Courses and exercises have no owner of their own; the calendar is the record.
+_Not to be confused with_: authored (`course:author` is tenant-wide), or booked by
+(`created_by`: an admin may book a session for an instructor).
 
 **Observer**:
 A read-only evaluator or auditor of ranges and exercises (`UserRole.observer`). Sees no

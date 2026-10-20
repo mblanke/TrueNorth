@@ -24,6 +24,7 @@ export type Permission =
   | 'ai_config:read' | 'ai_config:write'
   | 'integration:read' | 'integration:write'
   | 'learning_record:read' | 'learning_record:write'
+  | 'enrollment:manage_own' | 'team:manage_own'
   | 'course:author' | 'course:release'
   | 'schedule:read' | 'schedule:write' | 'schedule:admin'
   | 'tenant:create' | 'tenant:read' | 'tenant:update'
@@ -46,6 +47,7 @@ export const ALL_PERMISSIONS: readonly Permission[] = [
   'ai_config:read', 'ai_config:write',
   'integration:read', 'integration:write',
   'learning_record:read', 'learning_record:write',
+  'enrollment:manage_own', 'team:manage_own',
   'course:author', 'course:release',
   'schedule:read', 'schedule:write', 'schedule:admin',
   'tenant:create', 'tenant:read', 'tenant:update',
@@ -70,6 +72,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     'registration:read', 'registration:approve',
     'infra:read', 'ai_config:read', 'integration:read',
     'learning_record:read', 'learning_record:write',
+    'enrollment:manage_own', 'team:manage_own',
     'course:author', 'course:release',
     'stats:read', 'aar:generate', 'aar:read', 'telemetry:read', 'telemetry:write',
     'noise:read', 'noise:control',
@@ -163,7 +166,7 @@ export const PAGE_ACCESS = {
   wiki: { all: ['wiki:read'] },
   /** A range's operations, lease, reservations and snapshots (R0-B): those who act on ranges. */
   rangeRecovery: { all: ['range:read'], any: ['range:provision', 'range:destroy'] },
-  /** GET /teams/{id}/members; adding and removing needs user:update (admins). */
+  /** GET /teams/{id}/members; changing a team needs user:update (admins) or team:manage_own (its exercise is yours). */
   teams: { all: ['user:read'] },
   /** GET /courses/{id}/enrollments and /progress/{uid}; mark-complete needs learning_record:write. */
   learnerProgress: { all: ['learning_record:read'] },
