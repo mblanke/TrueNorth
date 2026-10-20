@@ -39065,7 +39065,7 @@
     },
     "/teams/{team_id}": {
       "delete": {
-        "description": "Delete a team and its memberships.  **Permission: user:update, or team:manage_own**\nfor a team of an exercise you run that has only Students on it (staff on a team are an\nadmin's to move: 403). Audited (``delete``, with the members removed).",
+        "description": "Delete a team and its memberships.  **Permission: user:update, or team:manage_own**\nfor a team of an exercise you run that has only Students on it (staff on a team are an\nadmin's to move: 403). A completed or cancelled exercise's team is frozen (409, admins\ntoo). Audited (``delete``, with the members removed).",
         "operationId": "delete_team_teams__team_id__delete",
         "parameters": [
           {
@@ -39105,7 +39105,7 @@
         ]
       },
       "patch": {
-        "description": "Update a team.  **Permission: user:update, or team:manage_own** for a team of an\nexercise you run. Audited (``update``, the fields changed).\n\nUntil 2026-10-07 this needed only a login: a student could rename or resize\nany team in their tenant.",
+        "description": "Update a team.  **Permission: user:update, or team:manage_own** for a team of an\nexercise you run. A completed or cancelled exercise's team is frozen (409, admins too).\nAudited (``update``, the fields changed).\n\nUntil 2026-10-07 this needed only a login: a student could rename or resize\nany team in their tenant.",
         "operationId": "update_team_teams__team_id__patch",
         "parameters": [
           {
@@ -39284,7 +39284,7 @@
     },
     "/teams/{team_id}/members/{member_user_id}": {
       "delete": {
-        "description": "Remove a user from a team.  **Permission: user:update** (anyone), **or\nteam:manage_own** (a Student, from a team of an exercise you run).",
+        "description": "Remove a user from a team.  **Permission: user:update** (anyone), **or\nteam:manage_own** (a Student, from a team of an exercise you run). A completed or\ncancelled exercise's team is frozen (409, admins too): removing a member would take\ntheir own run's AAR from them.",
         "operationId": "remove_team_member_teams__team_id__members__member_user_id__delete",
         "parameters": [
           {

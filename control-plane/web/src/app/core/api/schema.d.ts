@@ -6896,7 +6896,8 @@ export interface paths {
          * Delete Team
          * @description Delete a team and its memberships.  **Permission: user:update, or team:manage_own**
          *     for a team of an exercise you run that has only Students on it (staff on a team are an
-         *     admin's to move: 403). Audited (``delete``, with the members removed).
+         *     admin's to move: 403). A completed or cancelled exercise's team is frozen (409, admins
+         *     too). Audited (``delete``, with the members removed).
          */
         delete: operations["delete_team_teams__team_id__delete"];
         options?: never;
@@ -6904,7 +6905,8 @@ export interface paths {
         /**
          * Update Team
          * @description Update a team.  **Permission: user:update, or team:manage_own** for a team of an
-         *     exercise you run. Audited (``update``, the fields changed).
+         *     exercise you run. A completed or cancelled exercise's team is frozen (409, admins too).
+         *     Audited (``update``, the fields changed).
          *
          *     Until 2026-10-07 this needed only a login: a student could rename or resize
          *     any team in their tenant.
@@ -6955,7 +6957,9 @@ export interface paths {
         /**
          * Remove Team Member
          * @description Remove a user from a team.  **Permission: user:update** (anyone), **or
-         *     team:manage_own** (a Student, from a team of an exercise you run).
+         *     team:manage_own** (a Student, from a team of an exercise you run). A completed or
+         *     cancelled exercise's team is frozen (409, admins too): removing a member would take
+         *     their own run's AAR from them.
          */
         delete: operations["remove_team_member_teams__team_id__members__member_user_id__delete"];
         options?: never;

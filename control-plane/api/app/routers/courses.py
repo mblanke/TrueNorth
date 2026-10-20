@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import logging
 import uuid
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, status
 from fastapi.responses import Response
@@ -600,6 +601,9 @@ def enroll_user(
             changed.append("now assigned")
         if other and _reopenable(existing):  # staff putting a withdrawn Student back
             existing.status = EnrollmentStatus.in_progress if existing.started_at else EnrollmentStatus.enrolled
+            # Rostered again from now: runs held while they were withdrawn are not theirs
+            # (aar_access._rostered_during_run reads enrolled_at as "rostered since").
+            existing.enrolled_at = datetime.now(UTC)
             changed.append(f"withdrawn -> {existing.status.value}")
         if changed:
             class_scope.audit(db, user, "enrollment_update", "enrollment", str(existing.id),

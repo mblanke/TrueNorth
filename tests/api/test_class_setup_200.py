@@ -589,3 +589,199 @@ def test_team_ou_and_nation_must_be_valid_for_the_tenant(client, db_session, wor
     assert client.post("/teams", json={**base, "nation_id": str(uuid.uuid4())}).status_code == 422
     r = client.post("/teams", json={**base, "ou_id": str(a_ou.id), "nation_id": str(nation.id)})
     assert r.status_code == 201, r.text
+
+
+# ── Second review (r2) ───────────────────────────────────────────────────────
+
+
+def _completed_run_of(db, w, course):
+    """A completed run of a fresh exercise, booked for ``course`` (its roster) yesterday."""
+    ex = real_exercise(db, w["a"].id, state=ExerciseState.completed,
+                       started_at=NOW - timedelta(days=1, hours=4), completed_at=NOW - timedelta(days=1))
+    evt = _book(db, w["a"].id, w["colleague"], course=course, exercise=ex, state=EventState.completed)
+    evt.start_time, evt.end_time = NOW - timedelta(days=1, hours=5), NOW - timedelta(days=1)
+    db.flush()
+    return ex
+
+
+def test_r2_reopening_after_a_run_does_not_seat_the_student_in_it(client, db_session, world):
+    """Item 1: enrolled_at is "rostered since"; reopening moves it to now."""
+    from app.aar_access import took_part
+
+    w = world
+    ex = _completed_run_of(db_session, w, w["mine"])
+    before = NOW - timedelta(days=3)
+    sid, s2 = uuid.UUID(w["student"].id), uuid.UUID(w["student2"].id)
+    db_session.add_all([
+        # Withdrawn before the run.
+        Enrollment(user_id=sid, course_id=w["mine"].id, tenant_id=w["a"].id, source=ASSIGNED,
+                   status=EnrollmentStatus.withdrawn, created_at=before, enrolled_at=before),
+        # Seated through the run (the control).
+        Enrollment(user_id=s2, course_id=w["mine"].id, tenant_id=w["a"].id, source=ASSIGNED,
+                   status=EnrollmentStatus.enrolled, created_at=before, enrolled_at=before),
+    ])
+    db_session.flush()
+    assert took_part(db_session, ex, s2) is True
+    assert took_part(db_session, ex, sid) is False
+
+    act_as(w["instructor"])  # holds next week's booking of "mine"
+    r = _enrol(client, w["mine"], w["student"])
+    assert r.status_code == 200 and r.json()["status"] == "enrolled"
+    db_session.expire_all()
+    assert took_part(db_session, ex, sid) is False
+
+
+def test_r2_a_self_enrolment_turned_assigned_after_a_run_is_not_seated_in_it(client, db_session, world):
+    from app.aar_access import took_part
+
+    w = world
+    ex = _completed_run_of(db_session, w, w["mine"])
+    before = NOW - timedelta(days=3)
+    sid = uuid.UUID(w["student"].id)
+    db_session.add(Enrollment(user_id=sid, course_id=w["mine"].id, tenant_id=w["a"].id, source="self",
+                              status=EnrollmentStatus.enrolled, created_at=before, enrolled_at=before))
+    db_session.flush()
+    act_as(w["instructor"])
+    assert _enrol(client, w["mine"], w["student"]).status_code == 200
+    db_session.expire_all()
+    assert _row(db_session, w["student"], w["mine"]).source == ASSIGNED
+    assert took_part(db_session, ex, sid) is False
+
+
+def test_r2_a_range_linked_running_booking_is_the_same_exercise(client, db_session, world):
+    """Item 2: a colleague's running booking that names the exercise's range, not the exercise."""
+    w = world
+    ex = real_exercise(db_session, w["a"].id)
+    evt = _running(db_session, w["a"].id, w["colleague"], exercise=ex)
+    evt.exercise_id = None  # booked by range only
+    _book(db_session, w["a"].id, w["instructor"], exercise=ex)
+    team = Team(id=uuid.uuid4(), name="Live", tenant_id=w["a"].id, exercise_id=ex.id)
+    db_session.add(team)
+    db_session.flush()
+    act_as(w["instructor"])
+    assert client.patch(f"/teams/{team.id}", json={"name": "x"}).status_code == 409
+
+
+def test_r2_a_running_exercise_is_409_unless_the_running_session_is_yours(client, db_session, world):
+    """Item 2: started by hand or overrunning its booking, the run itself blocks."""
+    w = world
+    ex = real_exercise(db_session, w["a"].id, state=ExerciseState.running, started_at=NOW - timedelta(hours=6))
+    over = _book(db_session, w["a"].id, w["colleague"], exercise=ex, state=EventState.completed)
+    over.start_time, over.end_time = NOW - timedelta(hours=6), NOW - timedelta(hours=1)
+    _book(db_session, w["a"].id, w["instructor"], exercise=ex)  # next week
+    team = Team(id=uuid.uuid4(), name="Live", tenant_id=w["a"].id, exercise_id=ex.id)
+    db_session.add(team)
+    db_session.flush()
+    act_as(w["instructor"])
+    r = client.patch(f"/teams/{team.id}", json={"name": "x"})
+    assert r.status_code == 409 and "running outside your own session" in r.json()["detail"]
+    assert _team(client, ex).status_code == 409
+    # Paused counts too.
+    ex.state = ExerciseState.paused
+    db_session.flush()
+    assert client.delete(f"/teams/{team.id}").status_code == 409
+
+    # The instructor whose own booking is running it now is not blocked by their own run.
+    ex.state = ExerciseState.running
+    own = real_exercise(db_session, w["a"].id, state=ExerciseState.running, started_at=NOW - timedelta(minutes=30))
+    _running(db_session, w["a"].id, w["instructor"], exercise=own)
+    mine = Team(id=uuid.uuid4(), name="Mine live", tenant_id=w["a"].id, exercise_id=own.id)
+    db_session.add(mine)
+    db_session.flush()
+    assert client.patch(f"/teams/{mine.id}", json={"name": "renamed"}).status_code == 200
+
+
+def test_r2_overrunning_run_blocks_enrol_and_withdraw_on_its_course(client, db_session, world):
+    """Item 2: the course's booking ended, its exercise still runs and still seats the course."""
+    w = world
+    course = _course(db_session, w["a"].id, "Overrun")
+    ex = real_exercise(db_session, w["a"].id, state=ExerciseState.running, started_at=NOW - timedelta(hours=6))
+    over = _book(db_session, w["a"].id, w["colleague"], course=course, exercise=ex, state=EventState.completed)
+    over.start_time, over.end_time = NOW - timedelta(hours=6), NOW - timedelta(hours=1)
+    _book(db_session, w["a"].id, w["instructor"], course=course)  # next week
+    ensure_enrollment(db_session, user_id=uuid.UUID(w["student"].id), course_id=course.id, tenant_id=w["a"].id)
+    db_session.flush()
+    act_as(w["instructor"])
+    r = _withdraw(client, course, w["student"])
+    assert r.status_code == 409 and "is running" in r.json()["detail"]
+    assert _enrol(client, course, w["student2"]).status_code == 409
+    assert _row(db_session, w["student"], course).status == EnrollmentStatus.enrolled
+    # Once the run ends, next week's instructor may change the class.
+    ex.state, ex.completed_at = ExerciseState.completed, NOW
+    db_session.flush()
+    assert _enrol(client, course, w["student2"]).status_code == 201
+
+
+@pytest.mark.parametrize("caller", ["admin", "instructor"])
+def test_r2_a_finished_exercises_teams_are_frozen_for_everyone(client, db_session, world, caller):
+    """Item 3: no update, delete or member removal on a completed or cancelled exercise's team."""
+    from app.aar_access import took_part
+
+    w = world
+    for state in (ExerciseState.completed, ExerciseState.cancelled):
+        ex = real_exercise(db_session, w["a"].id, state=state,
+                           started_at=NOW - timedelta(days=2), completed_at=NOW - timedelta(days=1))
+        _book(db_session, w["a"].id, w["instructor"], exercise=ex)  # a replay booking next week
+        team = Team(id=uuid.uuid4(), name="Record", tenant_id=w["a"].id, exercise_id=ex.id)
+        db_session.add(team)
+        db_session.flush()
+        db_session.add(TeamMembership(team_id=team.id, user_id=uuid.UUID(w["student"].id), joined_at=NOW))
+        db_session.flush()
+        act_as(w[caller])
+        assert client.patch(f"/teams/{team.id}", json={"name": "x"}).status_code == 409
+        assert client.delete(f"/teams/{team.id}/members/{w['student'].id}").status_code == 409
+        assert client.delete(f"/teams/{team.id}").status_code == 409
+        db_session.expire_all()
+        assert db_session.query(TeamMembership).filter(TeamMembership.team_id == team.id).count() == 1
+        if state == ExerciseState.completed:
+            assert took_part(db_session, ex, uuid.UUID(w["student"].id)) is True
+
+
+def _put_event(client, evt, **extra):
+    body = {"name": evt.name, "start_time": evt.start_time.isoformat(), "end_time": evt.end_time.isoformat(),
+            "course_id": str(evt.course_id) if evt.course_id else None, **extra}
+    return client.put(f"/schedule/events/{evt.id}", json=body)
+
+
+def _schedule_audits(db, actor, evt):
+    db.expire_all()
+    return [a for a in _audits(db, actor, "update") if a.resource_type == "schedule" and a.resource_id == str(evt.id)]
+
+
+def test_r2_only_an_admin_moves_a_booking_between_instructors(client, db_session, world):
+    """Item 4: taking a colleague's booking would take their class (scope follows the booking)."""
+    w = world
+    course = _course(db_session, w["a"].id, "Taken")
+    evt = _book(db_session, w["a"].id, w["colleague"], course=course)
+    evt.start_time, evt.end_time = NOW + timedelta(days=5), NOW + timedelta(days=5, hours=2)  # a free slot
+    db_session.flush()
+    act_as(w["instructor"])
+    r = _put_event(client, evt, instructor_id=w["instructor"].id)
+    assert r.status_code == 403, r.text
+    assert _enrol(client, course, w["student"]).status_code == 403
+    db_session.expire_all()
+    assert db_session.get(ScheduledEvent, evt.id).instructor_id == uuid.UUID(w["colleague"].id)
+
+    # The booking's own instructor hands it on; the audit row says who to whom.
+    act_as(w["colleague"])
+    assert _put_event(client, evt, instructor_id=w["instructor"].id).status_code == 200
+    [row] = _schedule_audits(db_session, w["colleague"], evt)
+    assert row.detail == f"instructor {w['colleague'].id} -> {w['instructor'].id}"
+
+    # An admin moves it anywhere.
+    act_as(w["admin"])
+    assert _put_event(client, evt, instructor_id=w["colleague"].id).status_code == 200
+    assert _schedule_audits(db_session, w["admin"], evt)
+
+
+def test_r2_an_instructor_takes_an_unassigned_booking_only_for_themselves(client, db_session, world):
+    w = world
+    evt = _book(db_session, w["a"].id, w["admin"])
+    evt.instructor_id = None
+    evt.start_time, evt.end_time = NOW + timedelta(days=5), NOW + timedelta(days=5, hours=2)  # a free slot
+    db_session.flush()
+    act_as(w["instructor"])
+    assert _put_event(client, evt, instructor_id=w["colleague"].id).status_code == 403
+    assert _put_event(client, evt, instructor_id=w["instructor"].id).status_code == 200
+    # Editing without naming an instructor leaves it as it is (no handover check to fail).
+    assert _put_event(client, evt).status_code == 200

@@ -70,7 +70,12 @@ def ensure_enrollment(
     )
     if existing:
         if source == ASSIGNED and existing.source != ASSIGNED:
+            from datetime import UTC, datetime
+
             existing.source = ASSIGNED
+            # Seated from now (#200): ``enrolled_at`` is "rostered since" for the AAR roster
+            # (aar_access._rostered_during_run); a self-enrolment seated no earlier run.
+            existing.enrolled_at = datetime.now(UTC)
             db.flush()
         return existing
 
@@ -202,6 +207,26 @@ def ensure_path_enrollment(
 
 # -- Who is in a course (the scheduler's class of Students, ADR 0004) ----------
 ACTIVE_STATUSES = (EnrollmentStatus.enrolled, EnrollmentStatus.in_progress)
+
+
+def rostered_since(created_at, enrolled_at):
+    """When an assigned enrolment's current seat began (#200): the later of ``created_at``
+    and ``enrolled_at``. ``enrolled_at`` moves to now when staff reopen a withdrawn enrolment
+    or turn a self-enrolment into an assigned one (``ensure_enrollment``, routers/courses.py),
+    so a seat is one unbroken period from here; withdrawal ends it. None if neither is set."""
+    from datetime import UTC
+
+    stamps = [t if t.tzinfo else t.replace(tzinfo=UTC) for t in (created_at, enrolled_at) if t is not None]
+    return max(stamps) if stamps else None
+
+
+def seated_by(created_at, enrolled_at, when) -> bool:
+    """Whether a (not withdrawn) assigned enrolment held its seat by ``when`` (aware): the one
+    rule for "was rostered for a run" (aar_access). Not withdrawn plus seated by the run's
+    end means the seat overlaps the run; a run held while the Student was withdrawn ends
+    before the reopened seat begins."""
+    since = rostered_since(created_at, enrolled_at)
+    return since is not None and since <= when
 
 
 def active_students(db: Session, course_id: uuid.UUID) -> list[User]:

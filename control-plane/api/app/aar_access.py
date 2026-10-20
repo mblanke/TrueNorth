@@ -34,7 +34,7 @@ from sqlalchemy.orm import Session
 
 from .auth import CurrentUser
 from .detections.models import DetectionSubmission
-from .enrollment import ACTIVE_STATUSES, ASSIGNED
+from .enrollment import ACTIVE_STATUSES, ASSIGNED, seated_by
 from .exercise_participants import roster_courses
 from .models import Enrollment, EnrollmentStatus, Exercise, ExerciseState, Team, TeamMembership, UserRole
 
@@ -56,25 +56,33 @@ def _rostered_during_run(
     active_only: bool = False,
     now: datetime | None = None,
 ) -> set[uuid.UUID]:
-    """Who holds an assigned enrolment in a course booked over the run, made before the run
+    """Who holds an assigned enrolment in a course booked over the run, seated before the run
     ended (``user_id`` narrows it to one person).
 
     Not ``enrollment.rostered_course_ids``, which is "assigned and still studying, now":
     that let a later cohort assigned to the same course read an earlier run's report (its
     answer key, ADR 0005 §5) before sitting the same scenario, and shut out a real
-    participant once their enrolment was completed. Here: created no later than the run's
+    participant once their enrolment was completed. Here: seated no later than the run's
     end, any status but withdrawn (completed counts).
 
     ``active_only`` (the live class, ``participants``): only enrolments still being studied
     (``enrollment.ACTIVE_STATUSES``), the rule ``exercise_participants.may_submit`` applies
     to who sits this run now. Without it a booked course's earlier cohorts (completed, a
     year ago) would be on today's class. This stays the one roster query for both uses.
+
+    "Seated" is ``enrollment.seated_by`` (#200), the one rule for both uses: the seat began
+    at the later of ``created_at`` and ``enrolled_at``. ``enrolled_at`` moves to the moment
+    staff reopen a withdrawn enrolment or turn a self-enrolment into an assigned one, so a
+    Student withdrawn before a run and re-enrolled after it is not a participant of that run,
+    and one whose own self-enrolment pre-dates a run is not seated in it retroactively.
+    Known limitation: only the current seat is recorded, so re-enrolling after a run the
+    Student sat on the roster drops that run (unless a team or detection ties them to it).
     """
     courses = roster_courses(db, ex, now)
     if not courses:
         return set()
     run_end = _aware(ex.completed_at or now or datetime.now(UTC))
-    q = db.query(Enrollment.user_id, Enrollment.created_at).filter(
+    q = db.query(Enrollment.user_id, Enrollment.created_at, Enrollment.enrolled_at).filter(
         Enrollment.course_id.in_(courses),
         Enrollment.source == ASSIGNED,
         Enrollment.status != EnrollmentStatus.withdrawn,
@@ -83,7 +91,7 @@ def _rostered_during_run(
         q = q.filter(Enrollment.status.in_(ACTIVE_STATUSES))
     if user_id is not None:
         q = q.filter(Enrollment.user_id == user_id)
-    return {uid for uid, created in q.all() if created is not None and _aware(created) <= run_end}
+    return {uid for uid, created, enrolled in q.all() if seated_by(created, enrolled, run_end)}
 
 
 def _on_a_team(db: Session, ex: Exercise, user_id: uuid.UUID | None = None) -> set[uuid.UUID]:

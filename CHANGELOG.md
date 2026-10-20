@@ -31,13 +31,19 @@ course production with a local-model fallback, and the cleanup of unsupported su
   course or exercise is upcoming or running, an instructor enrols and withdraws Students
   (new `POST /courses/{id}/withdraw/{user_id}`, record kept) and creates and edits the
   exercise's teams (`TeamFullIn.exercise_id`), with the session's enrolled Students only.
-  A colleague's running session of the same course or exercise is 409; past and completed
-  sessions grant nothing. New `GET /class-setup/mine`. Student progress and Team membership
-  gain the controls. Every change is audited.
+  A colleague's running session of the same course or exercise (by the exercise or its
+  range), a running or paused exercise not under your own running session, and a running
+  exercise rostered through the course are 409; past and completed sessions grant nothing.
+  Only an administrator moves a booking from one instructor to another (you hand on your
+  own, or take an unassigned one); the audit row records before and after. New
+  `GET /class-setup/mine`. Student progress and Team membership gain the controls. Every
+  change is audited in the same transaction.
 - **Records hold their outcomes** (#200): `completed` and `failed` enrolments are not
   withdrawn; staff re-enrolling reopens only a withdrawn enrolment with no outcome (to
-  `in_progress` if it had started). Nobody adds members to a completed or cancelled
-  exercise's team (team membership opens its AAR). A team's `ou_id` and `nation_id` are
+  `in_progress` if it had started) and seats it from now: `enrolled_at` is "rostered since",
+  so the AAR roster never counts a run held while the Student was withdrawn (nor one before
+  a self-enrolment became assigned). A completed or cancelled exercise's teams are frozen
+  for everyone (team membership opens its AAR). A team's `ou_id` and `nation_id` are
   checked (422). Team edits and deletes are audited.
 
 ### ARC² Course Studio

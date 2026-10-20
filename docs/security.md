@@ -333,18 +333,31 @@ scoped in `app/class_setup/scope.py` (rule (a)). An instructor *teaches* a cours
 them its `instructor_id`, it has not ended, and it is not `draft`, `cancelled` or
 `completed`. A past or completed booking grants nothing. While **another** booking of the
 same course or exercise is running (not theirs, including one with no instructor), every
-change is refused with 409. Courses and exercises have no owner column; the calendar is the
-only record of who teaches what, and bookings stay self-service (`schedule:write`), so the
-running guard is what keeps a self-made booking out of a colleague's live class.
+change is refused with 409. A booking of an exercise is one naming the exercise or its range
+(as `exercise_participants` links them). The run itself also counts: while the exercise is
+`running` or `paused` and no running booking of it is the caller's (started by hand, or
+overrunning its booking), its teams are 409; while any exercise rostered through a course
+(`roster_courses`) is running or paused and not under the caller's own running booking,
+that course's enrolments are 409. Courses and exercises have no owner column; the calendar
+is the only record of who teaches what. Bookings stay self-service (`schedule:write`), but
+only an administrator (`schedule:admin`) moves a booking from one instructor to another: an
+instructor hands on their own booking, or takes one with no instructor for themselves, and
+the audit row records the instructor before and after.
 
 Within scope an instructor enrols and withdraws Students, and creates, edits and deletes the
-exercise's teams. Team members must be Students enrolled by staff (still active) in the
-course of the instructor's own session of that exercise, because team membership opens the
-exercise's after-action report (`aar_access.took_part`, ADR 0005 §5). Nobody, admins
-included, adds members to the team of a `completed` or `cancelled` exercise (409). An
-instructor cannot delete a team with staff on it, withdraw a `completed` or `failed`
-enrolment (409), or reset an outcome by re-enrolling: only a withdrawn enrolment with no
-completion and no grade reopens, to `in_progress` if it had started. A team's `ou_id` must
+exercise's teams. Team members must be Students with an active enrolment of `source =
+"assigned"` (staff enrolments, approvals, imports, LTI/Moodle sync and lab launches; never a
+self-enrolment) in the course of the instructor's own session of that exercise, because team
+membership opens the exercise's after-action report (`aar_access.took_part`, ADR 0005 §5).
+A `completed` or `cancelled` exercise's teams are frozen for everyone, admins included: no
+team created, edited or deleted, no member added or removed (409). An instructor cannot
+delete a team with staff on it, withdraw a `completed` or `failed` enrolment (409), or
+reset an outcome by re-enrolling: only a withdrawn enrolment with no completion and no
+grade reopens, to `in_progress` if it had started. Reopening, like turning a self-enrolment
+into an assigned one, moves `enrollments.enrolled_at` to now: it is the start of the
+current seat ("rostered since"), and the AAR roster counts an enrolment for a run only if
+the later of `created_at` and `enrolled_at` is no later than the run's end, so re-enrolling
+never seats a Student in a run held while they were withdrawn. A team's `ou_id` must
 be an OU of the caller's tenant and `nation_id` a known nation (422). Another course or
 exercise, a standing team (no exercise) and any staff target are 403; another tenant's
 course, exercise, team or person is 404. Every change is audited (`enrollment_create`,

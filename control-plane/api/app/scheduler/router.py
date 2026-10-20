@@ -18,7 +18,13 @@ from sqlalchemy.orm import Session
 
 from ..auth import CurrentUser, get_current_user
 from ..db import get_db
-from ..rbac import Permission, is_platform_admin, require_permission, require_platform_admin
+from ..rbac import (
+    Permission,
+    is_platform_admin,
+    require_permission,
+    require_platform_admin,
+    user_has_permission,
+)
 from ..tenancy import get_owned, tenant_uuid
 from . import calendar_backends, clock, feed, invites, lifecycle, service
 from .capacity import PROVISION_LEAD, TEARDOWN_GRACE, Resources, available, get_capacity_provider
@@ -257,6 +263,21 @@ def _same_instant(a: datetime, b: datetime) -> bool:
     return a.replace(tzinfo=a.tzinfo or UTC) == b.replace(tzinfo=b.tzinfo or UTC)
 
 
+def _check_handover(user: CurrentUser, current: uuid.UUID | None, new: uuid.UUID | None) -> None:
+    """Who may change a booking's instructor (#200: the booking is what gives an instructor
+    authority over a class, app/class_setup/scope.py). An administrator (schedule:admin):
+    anyone. Otherwise only the booking's own instructor hands it on, or a booking with no
+    instructor is taken by the caller themselves. Taking a colleague's booking is 403."""
+    if current == new or user_has_permission(user, Permission.SCHEDULE_ADMIN):
+        return
+    me = service.user_uuid(user)
+    if current is not None and current == me:
+        return  # handing your own session to someone else
+    if current is None and new == me:
+        return  # taking an unassigned session yourself
+    raise HTTPException(403, "Only an administrator can move a session from one instructor to another")
+
+
 def _check_times(body) -> None:
     if body.end_time <= body.start_time:
         raise HTTPException(400, "end_time must be after start_time")
@@ -318,6 +339,7 @@ def update_event(
     instructor_id = (
         service.resolve_instructor(db, user, body.instructor_id) if body.instructor_id else evt.instructor_id
     )
+    _check_handover(user, evt.instructor_id, instructor_id)
     typed = Resources(body.vcpu_total, body.ram_mb_total, body.disk_gb_total)
     demand = service.demand_for(db, user, body.template_id, typed, body.vm_count)
     warnings = (
@@ -346,7 +368,12 @@ def update_event(
     evt.exercise_id = exercise_id
     if evt.state != EventState.draft:  # a draft was never sent to a calendar
         evt.sequence = (evt.sequence or 0) + 1  # calendars replace their copy
-    service.audit(db, user, "update", str(evt.id))
+    detail = (
+        f"instructor {previous_instructor or 'none'} -> {instructor_id or 'none'}"
+        if previous_instructor != instructor_id
+        else ""
+    )
+    service.audit(db, user, "update", str(evt.id), detail)
     _audit_warnings(db, user, evt, warnings)
     db.commit()
     db.refresh(evt)
