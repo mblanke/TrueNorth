@@ -1,0 +1,183 @@
+---
+# The work-site depot's range uplink NIC (#214): range firewall WANs reach Nexus (8081) and
+# apt-cacher-ng (3142) on tn_depot_range_ip and nothing else. Order matters: the firewall
+# is loaded before the address goes on the NIC, so nothing on the depot (sshd, the Docker
+# registry ports) is ever reachable from the range uplink network.
+
+- name: Range NIC — settings
+  ansible.builtin.assert:
+    that:
+      - tn_depot_range_ip is match('^[0-9]{1,3}(\.[0-9]{1,3}){3}$')
+      - tn_depot_range_subnet is match('^[0-9]{1,3}(\.[0-9]{1,3}){3}/[0-9]{1,2}$')
+      - tn_depot_range_ports | length > 0
+      - tn_depot_range_ip not in [ansible_host | default(''), tn_depot_ip | default(''), tn_depot_build_ip | default('')]
+    fail_msg: >-
+      tn_depot_range_ip ({{ tn_depot_range_ip }}) needs tn_depot_range_subnet (e.g. 10.30.32.0/24)
+      and tn_depot_range_ports, and must not be the depot's MGMT or BUILD address.
+    quiet: true
+
+# Which NIC: the one that already holds the address (a re-run), else the one with
+# tn_depot_range_mac, else the only vmxnet3 NIC with no IPv4 address (a fresh deploy:
+# deploy-mgmt-vm.sh adds the NIC but leaves it unaddressed).
+- name: Range NIC — find it
+  ansible.builtin.set_fact:
+    tn_depot_range_by_ip: >-
+      {%- set ns = namespace(dev='') -%}
+      {%- for i in ansible_interfaces -%}
+      {%- set f = ansible_facts[i | replace('-', '_')] | default({}) -%}
+      {%- set addrs = [f.ipv4.address | default('')] + (f.ipv4_secondaries | default([]) | map(attribute='address') | list) -%}
+      {%- if tn_depot_range_ip in addrs -%}{%- set ns.dev = i -%}{%- endif -%}
+      {%- endfor -%}{{ ns.dev }}
+    tn_depot_range_by_mac: >-
+      {%- set ns = namespace(dev='') -%}
+      {%- for i in ansible_interfaces -%}
+      {%- set f = ansible_facts[i | replace('-', '_')] | default({}) -%}
+      {%- if tn_depot_range_mac | length > 0 and (f.macaddress | default('') | lower) == (tn_depot_range_mac | lower) -%}{%- set ns.dev = i -%}{%- endif -%}
+      {%- endfor -%}{{ ns.dev }}
+    tn_depot_range_unaddressed: >-
+      {%- set ns = namespace(devs=[]) -%}
+      {%- for i in ansible_interfaces -%}
+      {%- set f = ansible_facts[i | replace('-', '_')] | default({}) -%}
+      {%- if (f.module | default('')) == 'vmxnet3' and f.ipv4 is not defined -%}{%- set ns.devs = ns.devs + [i] -%}{%- endif -%}
+      {%- endfor -%}{{ ns.devs }}
+
+- name: Range NIC — exactly one candidate
+  ansible.builtin.assert:
+    that: >-
+      tn_depot_range_by_ip | length > 0 or tn_depot_range_by_mac | length > 0 or
+      (tn_depot_range_mac | length == 0 and tn_depot_range_unaddressed | length == 1)
+    fail_msg: >-
+      Cannot tell which NIC is the range uplink NIC: no interface holds {{ tn_depot_range_ip }},
+      {{ ('none has MAC ' ~ tn_depot_range_mac) if tn_depot_range_mac
+         else ('unaddressed vmxnet3 NICs: ' ~ (tn_depot_range_unaddressed | join(', ') or 'none')) }}.
+      Add it (scripts/lab/build-phase.sh depot, step 3/5), then pass its MAC:
+      -e tn_depot_range_mac=<MAC>.
+    quiet: true
+
+- name: Range NIC — chosen
+  ansible.builtin.set_fact:
+    tn_depot_range_if: >-
+      {{ tn_depot_range_by_ip or tn_depot_range_by_mac or tn_depot_range_unaddressed[0] }}
+
+- name: Range NIC — it is not the management or build NIC, and carries no default route
+  ansible.builtin.assert:
+    that:
+      - (ansible_facts[tn_depot_range_if | replace('-', '_')].ipv4.address | default(tn_depot_range_ip)) == tn_depot_range_ip
+      - (ansible_default_ipv4.interface | default('')) != tn_depot_range_if
+    fail_msg: >-
+      {{ tn_depot_range_if }} already has {{ ansible_facts[tn_depot_range_if | replace('-', '_')].ipv4.address | default('-') }}
+      or holds the default route: it is the management or build NIC, not the range uplink NIC.
+      Check tn_depot_range_mac against vCenter (the NIC on the range uplink port group).
+    quiet: true
+
+- name: Range NIC — its MAC
+  ansible.builtin.set_fact:
+    tn_depot_range_hwaddr: "{{ ansible_facts[tn_depot_range_if | replace('-', '_')].macaddress | lower }}"
+
+# ── Firewall first ────────────────────────────────────────────────────
+- name: Range NIC — nftables is installed
+  ansible.builtin.apt:
+    name: nftables
+    state: present
+  become: true
+
+- name: Range NIC — firewall rules directory
+  ansible.builtin.file:
+    path: "{{ tn_depot_range_nft | dirname }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+
+- name: Range NIC — firewall rules, only the depot ports from the uplink subnet
+  ansible.builtin.template:
+    src: depot-range-fw.nft.j2
+    dest: "{{ tn_depot_range_nft }}"
+    owner: root
+    group: root
+    mode: "0644"
+    validate: nft -c -f %s
+  become: true
+  register: tn_depot_range_rules
+
+- name: Range NIC — firewall unit (loads before the network at boot)
+  ansible.builtin.template:
+    src: tn-depot-range-fw.service.j2
+    dest: /etc/systemd/system/tn-depot-range-fw.service
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  register: tn_depot_range_unit
+
+- name: Range NIC — firewall loaded and enabled
+  ansible.builtin.systemd_service:
+    name: tn-depot-range-fw
+    enabled: true
+    state: "{{ 'restarted' if (tn_depot_range_rules is changed or tn_depot_range_unit is changed) else 'started' }}"
+    daemon_reload: "{{ tn_depot_range_unit is changed }}"
+  become: true
+
+- name: Range NIC — the firewall table is in the kernel
+  ansible.builtin.command: nft list table inet tn_depot_range
+  become: true
+  register: tn_depot_range_live
+  changed_when: false
+
+- name: Range NIC — the live rules admit only the depot ports from the uplink subnet
+  ansible.builtin.assert:
+    that:
+      - ('iifname != "' ~ tn_depot_range_if ~ '" accept') in tn_depot_range_live.stdout
+      - ('ip saddr ' ~ tn_depot_range_subnet) in tn_depot_range_live.stdout
+      - ('oifname "' ~ tn_depot_range_if ~ '"') in tn_depot_range_live.stdout
+    fail_msg: "nft list table inet tn_depot_range does not show the expected rules: {{ tn_depot_range_live.stdout }}"
+    quiet: true
+
+# ── Then the address ──────────────────────────────────────────────────
+- name: Range NIC — our netplan file
+  ansible.builtin.stat:
+    path: "{{ tn_depot_range_netplan }}"
+  register: tn_depot_range_np
+
+# Written when we address the NIC (or did before). A NIC something else already addressed
+# with this IP is left to it.
+- name: Range NIC — netplan, the address with no gateway
+  ansible.builtin.template:
+    src: netplan-range.yaml.j2
+    dest: "{{ tn_depot_range_netplan }}"
+    owner: root
+    group: root
+    mode: "0600"
+  become: true
+  register: tn_depot_range_netplan_file
+  when: tn_depot_range_by_ip | length == 0 or tn_depot_range_np.stat.exists
+
+- name: Range NIC — netplan generate (validates every netplan file)
+  ansible.builtin.command: netplan generate
+  become: true
+  changed_when: false
+  when: tn_depot_range_netplan_file is changed
+
+- name: Range NIC — netplan apply
+  ansible.builtin.command: netplan apply
+  become: true
+  changed_when: true
+  when: tn_depot_range_netplan_file is changed
+
+- name: Range NIC — re-read the network facts
+  ansible.builtin.setup:
+    gather_subset: [network]
+  when: tn_depot_range_netplan_file is changed
+
+- name: Range NIC — it holds the range address and not the default route
+  ansible.builtin.assert:
+    that:
+      - tn_depot_range_ip in
+        ([ansible_facts[tn_depot_range_if | replace('-', '_')].ipv4.address | default('')]
+         + (ansible_facts[tn_depot_range_if | replace('-', '_')].ipv4_secondaries | default([]) | map(attribute='address') | list))
+      - (ansible_default_ipv4.interface | default('')) != tn_depot_range_if
+    fail_msg: >-
+      {{ tn_depot_range_if }} does not hold {{ tn_depot_range_ip }}, or the default route moved
+      to it. Check `ip -br addr`, `ip route` and `netplan get`.
+    quiet: true

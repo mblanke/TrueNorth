@@ -21,6 +21,32 @@ tn_depot_require_data_mount: true
 # prefetch.yml flips this to true for the prefetch window, then back.
 tn_depot_upstream_online: false
 
+# ── No routing, ever ──────────────────────────────────────────────────
+# The depot is multi-homed (work site: MGMT, BUILD and the range uplink network) and must
+# never route between its NICs. Nexus runs with host networking, so Docker needs no
+# forwarding, and dockerd is told not to turn it on (by default it does, at every start).
+# forwarding.yml applies this and verify.yml checks it after Nexus is up.
+tn_depot_sysctl_file: /etc/sysctl.d/60-tn-depot.conf
+tn_depot_docker_daemon:
+  ip-forward: false
+
+# ── Range uplink NIC (work site, #214) ────────────────────────────────
+# Range firewall WANs reach the depot on its own NIC on the range uplink network. Empty
+# tn_depot_range_ip: no range NIC (the earlier TN-BUILD01 design, where the depot's SVC
+# NIC was NIC 0). With it set, range_nic.yml finds the NIC (by this address, by
+# tn_depot_range_mac, or as the only unaddressed vmxnet3 NIC), loads the firewall
+# (table inet tn_depot_range: only TCP tn_depot_range_ports from tn_depot_range_subnet
+# to tn_depot_range_ip in, nothing new out, nothing forwarded), and only then puts the
+# address on it: no gateway, no DNS, no DHCP.
+tn_depot_range_ip: ""
+tn_depot_range_prefix: 24
+tn_depot_range_subnet: ""
+# A NIC with no address yet is matched by MAC. build-phase.sh depot passes it.
+tn_depot_range_mac: ""
+tn_depot_range_ports: "{{ [tn_depot_nexus_port | int, tn_depot_acng_port | int] }}"
+tn_depot_range_nft: /etc/truenorth/depot-range-fw.nft
+tn_depot_range_netplan: /etc/netplan/60-tn-depot-range.yaml
+
 # ── apt-cacher-ng ─────────────────────────────────────────────────────
 tn_depot_acng_dir: "{{ tn_depot_data_dir }}/apt-cacher-ng"
 

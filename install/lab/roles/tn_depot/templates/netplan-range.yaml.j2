@@ -1,0 +1,15 @@
+# {{ ansible_managed }}
+# TN-DEPOT01 range uplink NIC (#214): on-link only. No gateway, no DNS, no DHCP, no IPv6:
+# range firewall WANs are on {{ tn_depot_range_subnet }}, so replies never need a route, and the
+# default route stays on the management NIC.
+network:
+  version: 2
+  ethernets:
+    tn-range-uplink:
+      match:
+        macaddress: "{{ tn_depot_range_hwaddr }}"
+      dhcp4: false
+      dhcp6: false
+      accept-ra: false
+      link-local: []
+      addresses: ["{{ tn_depot_range_ip }}/{{ tn_depot_range_prefix }}"]

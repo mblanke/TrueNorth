@@ -20,6 +20,8 @@
 #   --admin UPN      TrueNorth administrator to register as (or TN_ADMIN_UPN); without it the
 #                    registration command is printed instead
 #   --ssh-key PUB    depot: public key for tnadmin@TN-DEPOT01
+#   --range-pg PG    depot: the range uplink port group for the depot's third NIC
+#                    (10.30.32.10, #214). Default $TN_RANGE_UPLINK_PG, else dPG-TN-SVC.
 #   --dry-run        print what each phase would do; change nothing
 #   --env-file FILE  default /srv/truenorth/config/.env.production (vCenter for govc)
 #   --app-dir DIR    installed app (compose file), default /srv/truenorth/app
@@ -37,7 +39,7 @@ set -euo pipefail
 # shellcheck source-path=SCRIPTDIR source=lib.sh
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
-usage() { sed -n '2,35p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+usage() { sed -n '2,37p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 REPO="$(cd "$LAB_DIR/../.." && pwd)"
 PACKER_DIR="$REPO/infra/vsphere/packer"
 PKRVARS="${TN_PKRVARS:-$PACKER_DIR/lab.auto.pkrvars.hcl}"   # TN_PKRVARS: tests only (Packer reads the default)
@@ -51,6 +53,12 @@ BUILD_HOST="${TN_BUILD_HOST:-esx04}"
 BUILD_IP="10.30.31.20"
 DEPOT_VM="TN-DEPOT01"; DEPOT_BUILD_IP="10.30.31.30"
 DEPOT_URL_DEFAULT="http://${DEPOT_BUILD_IP}:8081/repository"
+# The depot's third NIC (#214): range firewall WANs reach it there. TODO(site): the work
+# site has no range uplink port group configured yet (the installer's
+# tn_vsphere_range_uplink_network is empty). dPG-TN-SVC (VLAN 32) is the planned name:
+# create it with scripts/lab/create-portgroups.sh --site work, or pass --range-pg.
+RANGE_UPLINK_PG="${TN_RANGE_UPLINK_PG:-dPG-TN-SVC}"
+DEPOT_RANGE_IP="10.30.32.10"; DEPOT_RANGE_MAC=""
 RANGE_HOSTS="${RANGE_HOSTS:-esx02 esx03 esx04}"
 DRS_VM_GROUP="tn-mgmt01-vm"; DRS_HOST_GROUP="tn-build-host"; DRS_RULE="tn-mgmt01-should-run-on-${BUILD_HOST}"
 
@@ -63,6 +71,7 @@ while [[ $# -gt 0 ]]; do
     --no-test) NO_TEST=1 ;;
     --admin) ADMIN="$2"; shift ;;
     --ssh-key) SSH_PUB="$2"; shift ;;
+    --range-pg) RANGE_UPLINK_PG="$2"; shift ;;
     --dry-run) DRY=1 ;;
     --env-file) ENV_FILE="$2"; shift ;;
     --app-dir) APP_DIR="$2"; shift ;;
@@ -73,6 +82,10 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 export ASSUME_YES="${ASSUME_YES:-0}"
+# act() (lib.sh) only prints unless APPLY=1. Every act below is behind a y/N (confirm) and
+# skipped in --dry-run, so outside a dry run the confirmed change is made. Not exported:
+# child scripts get their own --apply.
+[[ "$DRY" == "1" ]] || APPLY=1
 
 # ── phase contents (ADR 0012 decision 11) ─────────────────────────────
 BASE_IDS="srv2022 ubuntu-lts win11-24h2 kali rocky debian13 parrot srv2025"
@@ -304,8 +317,61 @@ phase_prereq() {
   info "sudo $0 depot --ssh-key <your .pub> [--admin <upn>]"
 }
 
+# The ethernet-N of VM path $1 backed by port group path $2 (never guessed by position).
+nic_on_pg() {
+  local vm="$1" key dev k
+  key="$(govc object.collect -s "$2" key)"
+  for dev in $(govc device.ls -vm "$vm" | awk '/^ethernet-/{print $1}'); do
+    k="$(govc device.info -json -vm "$vm" "$dev" | jq -r "$JQ_CI"' ci("portgroupKey")[0] // empty')"
+    if [[ -n "$k" && "$k" == "$key" ]]; then echo "$dev"; return 0; fi
+  done
+}
+
+# The depot's range uplink NIC (#214): present, connected and starting connected. Adds or
+# connects it after a y/N each. Sets DEPOT_RANGE_MAC for depot.yml (tn_depot_range_mac),
+# which puts 10.30.32.10/24 on it and its host firewall in front of it.
+depot_range_nic() {
+  local vm pg nic power state
+  case "$RANGE_UPLINK_PG" in
+    ""|dPG-TN-MGMT|dPG-TN-BUILD)
+      die "range uplink port group '$RANGE_UPLINK_PG': ranges must never share the depot's management or build network" ;;
+  esac
+  pg="$(govc find / -type g -name "$RANGE_UPLINK_PG" | head -n1)"
+  if [[ -z "$pg" ]]; then
+    warn "port group $RANGE_UPLINK_PG does not exist. TODO(site): create the range uplink network (scripts/lab/create-portgroups.sh --site work --apply, then its UniFi checklist), or pass --range-pg <name>. Until then ranges cannot reach the depot"
+    return 1
+  fi
+  vm="$(govc find / -type m -name "$DEPOT_VM" | head -n1)"
+  [[ -n "$vm" ]] || die "$DEPOT_VM not found"
+  nic="$(nic_on_pg "$vm" "$pg")"
+  if [[ -z "$nic" ]]; then
+    info "plan  govc vm.network.add -vm $DEPOT_VM -net $RANGE_UPLINK_PG -net.adapter vmxnet3   (third NIC, for ${DEPOT_RANGE_IP})"
+    if [[ "$DRY" == "1" ]]; then echo "  [dry-run] not added"; return 1; fi
+    confirm "Add a third NIC on $RANGE_UPLINK_PG to $DEPOT_VM (range firewalls reach the depot there)?" \
+      || { warn "range NIC not added: ranges cannot reach the depot"; return 1; }
+    act govc vm.network.add -vm "$vm" -net "$RANGE_UPLINK_PG" -net.adapter vmxnet3
+    nic="$(nic_on_pg "$vm" "$pg")"
+    [[ -n "$nic" ]] || die "no NIC on $RANGE_UPLINK_PG after adding one"
+  else
+    info "ok    $nic is on $RANGE_UPLINK_PG"
+  fi
+  power="$(govc object.collect -s "$vm" runtime.powerState 2>/dev/null || true)"
+  state="$(govc device.info -json -vm "$vm" "$nic" \
+    | jq -r "$JQ_CI"' ci("connectable")[0] | "\(ci("connected")[0]) \(ci("startConnected")[0])"')"
+  if [[ "${state#* }" != "true" || ( "$power" == "poweredOn" && "${state%% *}" != "true" ) ]]; then
+    info "plan  govc device.connect -vm $DEPOT_VM $nic   (now: connected/startConnected = $state)"
+    if [[ "$DRY" == "1" ]]; then echo "  [dry-run] not connected"
+    elif confirm "Connect $nic of $DEPOT_VM (and at power-on)?"; then act govc device.connect -vm "$vm" "$nic"
+    else warn "$nic left disconnected: ranges cannot reach the depot"; return 1; fi
+  else
+    info "ok    $nic connected, connects at power-on"
+  fi
+  DEPOT_RANGE_MAC="$(govc device.info -json -vm "$vm" "$nic" | jq -r "$JQ_CI"' ci("macAddress")[0] // empty')"
+  info "ok    MAC $DEPOT_RANGE_MAC: depot.yml puts ${DEPOT_RANGE_IP}/24 on it, no gateway, firewalled to tcp/8081,3142"
+}
+
 phase_depot() {
-  step "1/4 ubuntu-lts (TN-DEPOT01 is a clone of it)"
+  step "1/5 ubuntu-lts (TN-DEPOT01 is a clone of it)"
   if exists ubuntu-lts; then info "ok    ubuntu-lts exists"
   else
     pkrvars_check >/dev/null || die "run: sudo python3 $LAB_DIR/pkrvars-work.py"
@@ -313,31 +379,38 @@ phase_depot() {
     build_and_post ubuntu-lts customize || die "ubuntu-lts did not pass; the depot needs it"
   fi
 
-  step "2/4 $DEPOT_VM (10.30.30.30 MGMT + ${DEPOT_BUILD_IP} BUILD, on $BUILD_HOST)"
-  if exists "$DEPOT_VM"; then info "ok    $DEPOT_VM exists (left alone)"
+  step "2/5 $DEPOT_VM (10.30.30.30 MGMT + ${DEPOT_BUILD_IP} BUILD + ${DEPOT_RANGE_IP} on $RANGE_UPLINK_PG, on $BUILD_HOST)"
+  if exists "$DEPOT_VM"; then info "ok    $DEPOT_VM exists (left alone; step 3/5 checks its range NIC)"
   else
     [[ -n "$SSH_PUB" ]] || die "--ssh-key <public key for tnadmin> is needed to deploy $DEPOT_VM"
-    local deploy=("$LAB_DIR/deploy-mgmt-vm.sh" "$DEPOT_VM" --site work --ssh-key "$SSH_PUB" --data-disk "${TN_DEPOT_DATA_DISK:-500G}")
+    local deploy=("$LAB_DIR/deploy-mgmt-vm.sh" "$DEPOT_VM" --site work --ssh-key "$SSH_PUB" --data-disk "${TN_DEPOT_DATA_DISK:-500G}"
+                  --range-pg "$RANGE_UPLINK_PG")
     "${deploy[@]}"   # plan only
     if [[ "$DRY" == "1" ]]; then echo "  [dry-run] ${deploy[*]} --apply"
     elif confirm "Deploy $DEPOT_VM as planned above?"; then "${deploy[@]}" --apply
     else die "$DEPOT_VM not deployed"; fi
   fi
 
-  step "3/4 depot software (install/lab/depot.yml: apt-cacher-ng :3142, Nexus Chocolatey feed :8081)"
+  step "3/5 range uplink NIC (${DEPOT_RANGE_IP} on $RANGE_UPLINK_PG, #214)"
+  local range_ok=1
+  if exists "$DEPOT_VM"; then depot_range_nic || range_ok=0
+  else info "skip  $DEPOT_VM is not deployed yet"; range_ok=0; fi
+
+  step "4/5 depot software (install/lab/depot.yml: apt-cacher-ng :3142, Nexus Chocolatey feed :8081, range NIC firewall, no forwarding)"
   local vault="$WORK_SITE/inventory/group_vars/all/vault.yml"
   local as=(); [[ -n "${SUDO_USER:-}" && "${SUDO_USER}" != "root" ]] && as=(sudo -u "$SUDO_USER" -H)
+  local extra=(); [[ -n "$DEPOT_RANGE_MAC" ]] && extra=(-e "tn_depot_range_mac=$DEPOT_RANGE_MAC")
   if ! command -v ansible-playbook >/dev/null 2>&1; then
-    warn "ansible-playbook is not on this host. From the control node: cd install/lab/work-site && ansible-playbook ../depot.yml --ask-vault-pass"
+    warn "ansible-playbook is not on this host. From the control node: cd install/lab/work-site && ansible-playbook ../depot.yml --ask-vault-pass${DEPOT_RANGE_MAC:+ -e tn_depot_range_mac=$DEPOT_RANGE_MAC}"
   elif [[ ! -f "$vault" ]]; then
     warn "no $vault: cp vault.yml.example vault.yml, fill two long random passwords, ansible-vault encrypt it; then re-run"
-  elif [[ "$DRY" == "1" ]]; then echo "  [dry-run] (cd $WORK_SITE && ansible-playbook ../depot.yml --ask-vault-pass)"
+  elif [[ "$DRY" == "1" ]]; then echo "  [dry-run] (cd $WORK_SITE && ansible-playbook ../depot.yml --ask-vault-pass ${extra[*]-})"
   else
     (cd "$WORK_SITE" && ${as[@]+"${as[@]}"} ansible-galaxy collection install -r ../requirements.yml >/dev/null \
-      && ${as[@]+"${as[@]}"} ansible-playbook ../depot.yml --ask-vault-pass) || die "depot.yml failed"
+      && ${as[@]+"${as[@]}"} ansible-playbook ../depot.yml --ask-vault-pass ${extra[@]+"${extra[@]}"}) || die "depot.yml failed"
   fi
 
-  step "4/4 the depot answers on the build network"
+  step "5/5 the depot answers on the build network"
   local url ok=1
   for url in "http://${DEPOT_BUILD_IP}:8081/repository/chocolatey/" "http://${DEPOT_BUILD_IP}:3142/acng-report.html"; do
     if curl -fsS -m 10 -o /dev/null "$url"; then info "ok    $url"; else warn "no answer: $url"; ok=0; fi
@@ -349,6 +422,14 @@ phase_depot() {
   else warn "the depot feed has no 'chocolatey' package: Windows builds and variants cannot bootstrap Chocolatey (choco-bootstrap.ps1). Cache it: prefetch (tn_prefetch_choco_extra) or one install through chocolatey-proxy during an online window"; fi
   if [[ "$ok" == "1" ]]; then
     info "next: sudo python3 $LAB_DIR/pkrvars-work.py --depot   (depot_url = $DEPOT_URL_DEFAULT, apt_proxy = http://${DEPOT_BUILD_IP}:3142)"
+  fi
+  # TN-MGMT01 is not on the range uplink network and the depot's firewall admits only that
+  # subnet there, so the range side is checked by depot.yml (on the depot) and on site from
+  # a test range's firewall (install/lab/README.md, "Ranges reach the depot").
+  if [[ "$range_ok" == "1" ]]; then
+    info "ranges: TN_DEPOT_URL=http://${DEPOT_RANGE_IP}, TN_DEPOT_PORTS=8081,3142; set tn_vsphere_range_uplink_network=$RANGE_UPLINK_PG last (install/lab/README.md)"
+  else
+    warn "the range uplink NIC is not in place: ranges cannot reach the depot yet (step 3/5)"
   fi
 }
 

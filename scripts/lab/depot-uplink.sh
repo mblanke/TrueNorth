@@ -16,11 +16,14 @@
 #
 # `on` refuses while range VMs exist (folder truenorth/ranges) unless --force: during a
 # window a range could pull packages from upstream through the depot.
+#
+# Earlier (TN-BUILD01) design only. The work-site depot (ADR 0012, #214: NICs on MGMT,
+# BUILD and the range uplink network) has no uplink NIC; the script refuses it.
 set -euo pipefail
 # shellcheck source-path=SCRIPTDIR source=lib.sh
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
-usage() { sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+usage() { sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 CMD=""; FORCE=0; VM_NAME="TN-DEPOT01"; UPLINK_PG="dPG-TN-BUILD"
 : "${TN_RANGE_FOLDER:=truenorth/ranges}"
 while [[ $# -gt 0 ]]; do
@@ -42,6 +45,18 @@ VM="$(govc find / -type m -name "$VM_NAME")"
 pg_path="$(govc find / -type g -name "$UPLINK_PG")"
 [[ -n "$pg_path" ]] || die "port group $UPLINK_PG not found"
 pg_key="$(govc object.collect -s "$pg_path" key)"
+
+# The work-site depot (ADR 0012, #214) has its NIC 0 on dPG-TN-MGMT and reaches upstream
+# through MGMT's gateway. Its dPG-TN-BUILD NIC is how builds reach it, not an uplink:
+# disconnecting it would break every build. This script is for the earlier design only.
+mgmt_path="$(govc find / -type g -name "${TN_MGMT_PG:-dPG-TN-MGMT}" | head -n1)"
+if [[ -n "$mgmt_path" ]]; then
+  mgmt_key="$(govc object.collect -s "$mgmt_path" key)"
+  for dev in $(govc device.ls -vm "$VM" | awk '/^ethernet-/{print $1}'); do
+    key="$(govc device.info -json -vm "$VM" "$dev" | jq -r "$JQ_CI"' ci("portgroupKey")[0] // empty')"
+    [[ "$key" != "$mgmt_key" ]] || die "$VM_NAME has a NIC on ${TN_MGMT_PG:-dPG-TN-MGMT}: this is the work-site depot (ADR 0012), which has no uplink NIC. depot-uplink.sh does not apply; its $UPLINK_PG NIC must stay connected"
+  done
+fi
 
 # The uplink is the NIC whose backing is dPG-TN-BUILD. Never guess by position.
 nic=""

@@ -1,0 +1,18 @@
+---
+# Read back from the kernel, not from our own files: forwarding is off for IPv4 and IPv6.
+- name: Forwarding — read the kernel's forwarding switches
+  ansible.builtin.command: >-
+    sysctl -n net.ipv4.ip_forward net.ipv4.conf.all.forwarding net.ipv6.conf.all.forwarding
+  register: tn_depot_forwarding
+  changed_when: false
+
+- name: Forwarding — the depot does not route between its NICs
+  ansible.builtin.assert:
+    that: tn_depot_forwarding.stdout_lines | map('trim') | unique | list == ['0']
+    fail_msg: >-
+      IP forwarding is on ({{ tn_depot_forwarding.stdout_lines | join(' ') }} for
+      net.ipv4.ip_forward, net.ipv4.conf.all.forwarding, net.ipv6.conf.all.forwarding).
+      The depot would route between the range uplink, build and management networks.
+      Check /etc/docker/daemon.json ("ip-forward": false), {{ tn_depot_sysctl_file }} and
+      `grep -r forward /etc/sysctl.d /usr/lib/sysctl.d /run/sysctl.d`.
+    quiet: true
