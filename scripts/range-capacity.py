@@ -10,7 +10,7 @@ numbers are what provisioning would actually request:
 
 * ``nodes:`` templates: ``specs.cores`` / ``specs.memory_mb`` / ``specs.disk_gb``, with the
   legacy designer keys ``vcpu`` / ``ram_mb`` / ``disk_gb`` as fallback; ``count`` multiplies.
-* ``assets:`` templates (small-enterprise): one VM per ``count`` with the asset's ``specs``
+* ``assets:`` templates (none ship today; Designer sketches): one VM per ``count`` with the asset's ``specs``
   if it has any, else the renderer defaults.
 * Missing specs fall back to the renderer defaults: 2 vCPU, 4096 MB, 60 GB.
 

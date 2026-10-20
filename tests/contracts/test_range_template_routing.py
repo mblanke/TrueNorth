@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import copy
 import ipaddress
+import re
 import sys
 from pathlib import Path
 
@@ -45,37 +46,14 @@ RANGE_ID = "abcdef12-3456-7890-abcd-ef1234567890"
 SENSOR_ROLES = frozenset({"network_monitor", "network_sensor", "network_ids", "ids_sensor", "ids_ips",
                           "packet_capture"})
 
-# Design questions (see the PR that added this test). Each entry is an exact finding.
-KNOWN: dict[str, set[str]] = {
-    "large-enterprise": {
-        # ot-fw01 holds the OT gateway but has no second NIC, and the worker renders no
-        # transit network or static routes between appliances, so OT is air-gapped.
-        "network ot_scada is not routed to the rest of the range (mark it isolated: true if intended)",
-        "edge fw01 has no NIC on ot_scada",
-        "sensor ids01 has no monitor NIC and is not on a mirror destination",
-    },
-    "red-vs-blue": {
-        "sensor nids01 has no monitor NIC and is not on a mirror destination",
-        "sensor ids01 has no monitor NIC and is not on a mirror destination",
-    },
-    "small-enterprise": {
-        # The 0.1 `assets` sketch: no host is placed on a network, none has an address and
-        # nothing routes. Scenarios address its hosts by tag (user, dc), so the conversion
-        # to `nodes` needs a decision.
-        "VM jump is on no network the template defines",
-        "VM dc is on no network the template defines",
-        "VM user-0 is on no network the template defines",
-        "VM user-1 is on no network the template defines",
-        "VM user-2 is on no network the template defines",
-        "network mgmt has no router/firewall holding its gateway 10.10.0.1",
-        "network user has no router/firewall holding its gateway 10.20.0.1",
-        "network srv has no router/firewall holding its gateway 10.30.0.1",
-        "network mgmt is not routed to the rest of the range (mark it isolated: true if intended)",
-        "network user is not routed to the rest of the range (mark it isolated: true if intended)",
-        "network srv is not routed to the rest of the range (mark it isolated: true if intended)",
-        "the range has 3 routed networks and no edge appliance",
-    },
-}
+# Open design questions, each an exact finding (none at present).
+#
+# Not findings, by design until issue #235 (chained firewalls / transit networks) lands:
+# large-enterprise's ot_scada is `isolated: true` (ot-fw01 has no leg toward fw01), and
+# red-vs-blue's perimeter firewalls fw01/fw02 sit on management only, off the traffic
+# path, while rtr01 routes every zone. A single-NIC appliance raises no finding here;
+# test_issue_235_stopgaps_are_still_in_place below fails if either changes unannounced.
+KNOWN: dict[str, set[str]] = {}
 
 
 def _host(vm: dict) -> str:
@@ -230,6 +208,97 @@ def test_template_routes_between_its_networks(path):
 
 def test_known_entries_name_shipped_templates():
     assert set(KNOWN) <= {p.parent.name for p in TEMPLATES}
+
+
+def _load(name: str) -> dict:
+    return yaml.safe_load((ROOT / "content/ranges" / name / "template.yaml").read_text())
+
+
+def _forward_verdict(commands: list[str], src: str, dst: str, port: int) -> tuple[str, str]:
+    """(action, rule description) VyOS's forward filter gives a new TCP/UDP flow: rules in
+    number order, first match wins, default drop (worker/vyos_config.py)."""
+    zones = [ipaddress.ip_network(c.split("'")[1]) for c in commands
+             if c.startswith("set firewall group network-group TN_ZONES network ")]
+    rules: dict[int, dict] = {}
+    for c in commands:
+        m = re.match(r"set firewall ipv4 forward filter rule (\d+) (.+)", c)
+        if m:
+            rules.setdefault(int(m.group(1)), {})[m.group(2).rsplit(" ", 1)[0]] = m.group(2).rsplit(" ", 1)[1]
+    s, d = ipaddress.ip_address(src), ipaddress.ip_address(dst)
+
+    def side(rule: dict, which: str, addr) -> bool:
+        if f"{which} address" in rule:
+            return addr in ipaddress.ip_network(rule[f"{which} address"].strip("'"))
+        if rule.get(f"{which} group network-group") == "'TN_ZONES'":
+            return any(addr in z for z in zones)
+        return True
+
+    def port_ok(rule: dict) -> bool:
+        if "destination port" not in rule:
+            return True
+        for p in rule["destination port"].strip("'").split(","):
+            lo, _, hi = p.partition("-")
+            if int(lo) <= port <= int(hi or lo):
+                return True
+        return False
+
+    for n in sorted(rules):
+        r = rules[n]
+        if "state" in r or "destination group address-group" in r:
+            continue  # established/related, and the depot rule
+        if side(r, "source", s) and side(r, "destination", d) and port_ok(r):
+            return r["action"].strip("'"), r.get("description", "").strip("'")
+    return "drop", "default"
+
+
+def test_red_vs_blue_rules_allow_domain_join_and_logging_and_keep_red_out():
+    t = _load("red-vs-blue")
+    built = render_topology(copy.deepcopy(t), RANGE_ID, lambda alias: alias)
+    rtr = next(vm for vm in built["vm_definitions"] if vm["node_id"] == "rtr01")
+    cfg = vyos_config.build_config(rtr, networks=built["network_definitions"], rules=t["network"]["firewall_rules"])
+    assert cfg.notes == []
+    ip = {n["id"]: n["ip"] for n in t["nodes"]}
+
+    def verdict(src, dst, port):
+        return _forward_verdict(cfg.commands, ip[src], ip[dst], port)
+
+    for port in (53, 88, 123, 135, 389, 445, 464, 636, 49152, 50000, 65535):  # domain join and logon
+        assert verdict("ws01", "dc01", port) == ("accept", "corp-to-server-ad"), port
+    assert verdict("lnx01", "db01", 3306) == ("accept", "corp-to-server")
+    assert verdict("ws01", "dc01", 3389)[0] == "drop"  # nothing else from corp to the servers
+    for src in ("ws01", "web01", "dc01", "blue01", "honey01"):  # every zone ships logs
+        for port in (514, 5044, 9200):
+            assert verdict(src, "siem01", port)[0] == "accept", (src, port)
+    assert verdict("web01", "siem01", 22)[0] == "drop"  # logs only
+    # Red stays in its enclave: the deny rules come before the log rule.
+    for port in (514, 5044, 9200, 443):
+        assert verdict("red-op01", "siem01", port) == ("drop", "red-to-mgmt-deny"), port
+    assert verdict("red-op01", "dc01", 88) == ("drop", "red-to-server-deny")
+    assert verdict("red-op01", "ws01", 445) == ("drop", "red-to-corp-deny")
+    assert verdict("red-op01", "web01", 443) == ("accept", "red-to-dmz")
+
+
+def test_issue_235_stopgaps_are_still_in_place():
+    """The worker cannot chain appliances yet (issue #235). Until it can, OT is an enclave
+    and Red vs Blue's perimeter firewalls are off the path; whoever fixes #235 updates both
+    templates and this test together."""
+    le = _load("large-enterprise")
+    ot = next(v for v in le["network"]["vlans"] if v["name"] == "ot_scada")
+    assert ot.get("isolated") is True
+    otfw = next(n for n in le["nodes"] if n["id"] == "ot-fw01")
+    assert not otfw.get("interfaces")
+    findings = check(le)
+    assert not [f for f in findings if "ot_scada" in f]
+    # Without the flag the gap is a finding again: the enclave is a declared choice.
+    del ot["isolated"]
+    assert "network ot_scada is not routed to the rest of the range (mark it isolated: true if intended)" \
+        in check(le)
+
+    rvb = _load("red-vs-blue")
+    for fw in ("fw01", "fw02"):
+        node = next(n for n in rvb["nodes"] if n["id"] == fw)
+        assert node["vlan"] == "management" and not node.get("interfaces")
+    assert next(n for n in rvb["nodes"] if n["id"] == "rtr01").get("edge") is True
 
 
 # ── the checks catch the faults they are for ───────────────────────────

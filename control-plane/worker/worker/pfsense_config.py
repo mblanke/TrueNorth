@@ -340,7 +340,10 @@ def build_config(
             proto, port = "", ""
             if ports:
                 proto = "tcp/udp"
-                port = ports[0] if len(ports) == 1 else fr.alias(f"TN_P_{name}", "port", ports, name)
+                # Templates write a range as "49152-65535" (VyOS takes it as is). A rule's own
+                # port field takes that form too; a port alias needs "49152:65535".
+                port = ports[0] if len(ports) == 1 else fr.alias(
+                    f"TN_P_{name}", "port", [p.replace("-", ":") for p in ports], name)
             kind = "pass" if action in ("allow", "pass") else "block" if action in ("deny", "block") else "reject"
             descr = f"{name}: {rule.get('note') or rule.get('description') or ''}".strip().rstrip(":")
             for z in srcs:

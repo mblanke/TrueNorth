@@ -76,7 +76,7 @@ MGMT_VMS = [
 # for the templates shipped on 2026-10-07.
 RANGE_SIZES_FALLBACK = [
     {"name": "greyspace-internet", "vms": 4, "vcpu": 10, "ram_gb": 18.0, "disk_tb": 0.22},
-    {"name": "small-enterprise", "vms": 5, "vcpu": 10, "ram_gb": 20.0, "disk_tb": 0.29},
+    {"name": "small-enterprise", "vms": 6, "vcpu": 12, "ram_gb": 22.0, "disk_tb": 0.31},  # nodes form, 2026-10-20
     {"name": "medium-enterprise", "vms": 8, "vcpu": 20, "ram_gb": 44.0, "disk_tb": 1.02},
     {"name": "cloud-security", "vms": 16, "vcpu": 52, "ram_gb": 126.0, "disk_tb": 1.7},
     {"name": "soc-training", "vms": 23, "vcpu": 69, "ram_gb": 157.0, "disk_tb": 3.83},

@@ -36,5 +36,5 @@ objectives:
     type: response
     validator: manual_ack
     params:
-      prompt: "Isolate host USER-02 (document steps)"
+      prompt: "Isolate host WS-02 (document steps)"
     points: 25
