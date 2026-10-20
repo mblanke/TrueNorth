@@ -42,6 +42,12 @@ if (-not (Test-Path $unattend)) {
 } else {
   $sysprepArgs += "/unattend:$unattend"
 }
-Start-Process -FilePath "$env:SystemRoot\System32\Sysprep\sysprep.exe" -ArgumentList $sysprepArgs
-Write-Host 'sysprep started; it shuts the VM down when generalized.'
+# Not Start-Process: WinRM runs each command in a job object and kills every process it started
+# when the command returns, so a detached sysprep died during validation (win11, 2026-10-20).
+# A one-off SYSTEM scheduled task runs outside that job.
+$task = 'TN-Sysprep-Once'
+$action = New-ScheduledTaskAction -Execute "$env:SystemRoot\System32\Sysprep\sysprep.exe" -Argument ($sysprepArgs -join ' ')
+Register-ScheduledTask -TaskName $task -Action $action -User 'SYSTEM' -RunLevel Highest -Force | Out-Null
+Start-ScheduledTask -TaskName $task
+Write-Host "sysprep started (scheduled task $task); it shuts the VM down when generalized."
 exit 0
