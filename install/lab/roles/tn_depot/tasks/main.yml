@@ -179,11 +179,31 @@
     - tn_depot_range_ip | length > 0
     - not (tn_depot_upstream_online | bool)   # online: the range firewall drops even this
 
-# Anonymous reads only the Chocolatey feed now (nexus.yml).
-- name: Depot — anonymous cannot read the installers repository
+# Anonymous (nexus_access.yml): the vendor media behind tn-build-read stay closed ...
+- name: Depot — anonymous cannot read installers/roles or installers/office
   ansible.builtin.uri:
-    url: "http://127.0.0.1:{{ tn_depot_nexus_port }}/repository/installers/"
+    url: "http://127.0.0.1:{{ tn_depot_nexus_port }}/repository/installers/{{ item }}"
     status_code: [401, 403]
+  loop:
+    - roles/exchange2019/ExchangeServer2019-x64-cu15.iso
+    - office/office-ltsc.zip
+
+# ... and every in-house Chocolatey package's installer is readable without credentials,
+# at the exact URL its chocolateyInstall.ps1 builds (choco-internalize.py raw_path):
+# installers/<id>/<version>/<file>. 200 once uploaded; 404 = allowed but not uploaded yet.
+# With tn_depot_require_choco_installers (after prefetch) only 200 passes. 401/403 means
+# the content selector does not cover the package: range installs would fail.
+- name: Depot — anonymous reads every in-house Chocolatey package's installer
+  vars:
+    tn_def: "{{ lookup('file', item) | from_yaml }}"
+    tn_inst: "{{ tn_def.installers[0] }}"
+    tn_file: "{{ tn_inst.file | default(tn_inst.url | urlsplit('path') | basename, true) }}"
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ tn_depot_nexus_port }}/repository/installers/{{ tn_def.name }}/{{ tn_def.version }}/{{ tn_file | urlencode }}"
+    method: HEAD
+    status_code: "{{ [200] if (tn_depot_require_choco_installers | default(false) | bool) else [200, 404] }}"
+  loop: "{{ query('fileglob', tn_depot_choco_defs ~ '/*.yaml') | sort }}"
+  loop_control: { label: "{{ item | basename }}" }
 
 - name: Depot — report
   vars:

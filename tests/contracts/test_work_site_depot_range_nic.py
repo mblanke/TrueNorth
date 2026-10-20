@@ -581,8 +581,22 @@ def test_going_online_is_refused_while_range_vms_exist_and_shuts_the_range_nic_f
     block = next(t for t in guard if "block" in t)
     assert block["delegate_to"] == "localhost" and block["when"] == "not (tn_depot_force_online | bool)"
     by_name = {t["name"]: t for t in block["block"]}
-    assert by_name["Range guard — refuse without vCenter"]["when"] == "tn_depot_guard_about.rc != 0"  # fails closed
-    assert "tn_depot_guard_vms.stdout_lines | length > 0" in by_name["Range guard — refuse while range VMs exist"]["when"]
+    order = [t["name"] for t in block["block"]]
+    # Fails closed at every step: no vCenter, an unconfirmed datacenter, a folder that cannot
+    # be looked up (not read as "no ranges"), then range VMs.
+    assert by_name["Range guard — refuse without vCenter"]["when"] == "tn_depot_guard_about.rc != 0"
+    assert by_name["Range guard — refuse when the datacenter is not confirmed"]["when"] == "tn_depot_guard_dc.rc != 0"
+    assert by_name["Range guard — refuse when the range folder cannot be looked up"]["when"] \
+        == "tn_depot_guard_folder.rc != 0"
+    assert "failed_when" not in by_name["Range guard — VMs in the range folder"]  # a failing find fails the play
+    assert "when" not in by_name["Range guard — VMs in the range folder"]
+    assert by_name["Range guard — refuse while range VMs exist"]["when"] == "tn_depot_guard_vms.stdout_lines | length > 0"
+    assert order.index("Range guard — refuse when the datacenter is not confirmed") \
+        < order.index("Range guard — refuse when the range folder cannot be looked up") \
+        < order.index("Range guard — VMs in the range folder")
+    # GOVC_DATACENTER comes from the inventory, never from whatever the shell had.
+    assert block["environment"] == {"GOVC_DATACENTER": "{{ tn_depot_vcenter_datacenter }}"}
+    assert DEFAULTS["tn_depot_vcenter_datacenter"] == KIT["tn_depot_vcenter_datacenter"] == "DC-Lab"
     assert DEFAULTS["tn_depot_force_online"] is False
 
 
@@ -602,7 +616,8 @@ def test_apt_cacher_ng_is_not_an_open_proxy_and_its_admin_pages_need_auth():
 
 def test_nexus_anonymous_reads_only_the_feed_and_packer_reads_installers_as_its_own_user():
     assert DEFAULTS["tn_depot_anonymous_privileges"] == [
-        "nx-repository-view-nuget-chocolatey-read", "nx-repository-view-nuget-chocolatey-browse"]
+        "nx-repository-view-nuget-chocolatey-read", "nx-repository-view-nuget-chocolatey-browse",
+        "{{ tn_depot_choco_installers_privilege }}"]  # installers/<choco id>/** via the content selector
     assert DEFAULTS["tn_depot_build_read_privileges"] == [
         "nx-repository-view-raw-installers-read", "nx-repository-view-raw-installers-browse"]
     assert "TN_DEPOT_BUILD_READ_PASSWORD" in DEFAULTS["tn_depot_build_read_password"]
@@ -612,9 +627,10 @@ def test_nexus_anonymous_reads_only_the_feed_and_packer_reads_installers_as_its_
     assert "'roles': [tn_depot_anonymous_role]" in anon["ansible.builtin.uri"]["body"]
     nexus = _task_names(ROLE / "tasks/nexus.yml")
     assert nexus.index("Nexus — anonymous role and the Packer read user") > nexus.index("Nexus — create missing repositories")
-    main = yaml.safe_load((ROLE / "tasks/main.yml").read_text())
-    probe = next(t for t in main if t.get("name") == "Depot — anonymous cannot read the installers repository")
-    assert probe["ansible.builtin.uri"]["status_code"] == [401, 403]
+    names = _task_names(ROLE / "tasks/nexus_access.yml")
+    # The selector and its privilege exist before the anonymous role names the privilege.
+    assert names.index("Nexus access — create the selector privilege") \
+        < names.index("Nexus access — create or correct the roles")
 
 
 def test_packer_authenticates_for_installers_and_keeps_the_password_sensitive():
@@ -630,3 +646,98 @@ def test_packer_authenticates_for_installers_and_keeps_the_password_sensitive():
         calls = [ln for ln in ps.splitlines() if "Invoke-WebRequest" in ln]  # every depot request
         assert calls and all("-Headers $depotHeaders" in c for c in calls), script
         assert "'Basic ' + [Convert]::ToBase64String" in ps
+
+
+# ── anonymous installers/<choco id>/** (in-house Chocolatey packages) ──
+CHOCO_DEFS = ROOT / "content/choco"
+
+
+def _choco_internalize():
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("choco_internalize_214", LAB / "choco-internalize.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _selector() -> tuple[list[str], str]:
+    """The role's own defaults, resolved as Ansible would from install/lab (depot.yml)."""
+    import glob
+
+    env = _env()
+    env.globals["query"] = lambda kind, pattern: sorted(glob.glob(pattern)) if kind == "fileglob" else []
+    env.filters["basename"] = os.path.basename
+    env.filters["regex_replace"] = lambda s, pat, rep: re.sub(pat, rep, s)
+    v = {**_role_vars(), "playbook_dir": str(ROOT / "install/lab")}
+    v["tn_depot_choco_defs"] = env.from_string(DEFAULTS["tn_depot_choco_defs"]).render(**v)
+    ids = ast.literal_eval(env.from_string(DEFAULTS["tn_depot_choco_ids"]).render(**v).strip())
+    expr = env.from_string(DEFAULTS["tn_depot_choco_selector_expression"]).render(tn_depot_choco_ids=ids).strip()
+    return ids, expr
+
+
+def test_the_selector_is_generated_from_the_package_ids_and_matches_their_download_urls():
+    ci = _choco_internalize()
+    defs = ci.load_definitions(CHOCO_DEFS)  # also enforces name == file name
+    ids, expr = _selector()
+    assert ids == sorted(p.stem for p in CHOCO_DEFS.glob("*.yaml")) == sorted(d["name"] for d in defs)
+    assert len(ids) >= 7 and {"googlechrome", "vscode", "firefoxesr", "adobereader", "vcredist140",
+                              "powershell-core", "sysinternals"} <= set(ids)
+    m = re.fullmatch(r'format == "raw" and path =~ "(.+)"', expr)
+    assert m, expr
+    selector = re.compile(m.group(1))  # Nexus CSEL `=~` must match the whole path
+    assert ci.RAW_REPO == "installers"
+    for d in defs:
+        ps1 = ci.render_install_ps1(d, "http://depot.invalid:8081")
+        assert f"$depot/repository/{ci.RAW_REPO}" in ps1  # what range guests and Packer request
+        for inst in d["installers"]:
+            path = ci.raw_path(d, inst)
+            assert f'"$installers/{ci.urllib.parse.quote(path)}"' in ps1  # <installers>/<id>/<ver>/<file>
+            assert selector.fullmatch("/" + path), path  # anonymous may read it
+    for closed in ("/roles/exchange2019/ExchangeServer2019-x64-cu15.iso", "/roles/mecm/x.iso",
+                   "/office/office-ltsc.zip", "/vscode", "/vscode/", "/googlechrome-evil/1/x.exe",
+                   "/xvscode/1/x.exe"):
+        assert not selector.fullmatch(closed), closed
+    assert not {"roles", "office"} & set(ids)
+
+    access = yaml.safe_load((ROLE / "tasks/nexus_access.yml").read_text())
+    priv = next(t for t in access if t["name"] == "Nexus access — create the selector privilege")
+    body = priv["ansible.builtin.uri"]["body"]
+    assert (body["repository"], body["format"], body["actions"]) == ("installers", "raw", ["READ", "BROWSE"])
+    assert body["contentSelector"] == "{{ tn_depot_choco_selector }}"
+
+
+def test_depot_yml_checks_choco_paths_open_and_roles_office_closed_to_anonymous():
+    main = yaml.safe_load((ROLE / "tasks/main.yml").read_text())
+    closed = next(t for t in main if t.get("name") == "Depot — anonymous cannot read installers/roles or installers/office")
+    assert closed["ansible.builtin.uri"]["status_code"] == [401, 403]
+    assert {p.split("/")[0] for p in closed["loop"]} == {"roles", "office"}
+    open_ = next(t for t in main if t.get("name") == "Depot — anonymous reads every in-house Chocolatey package's installer")
+    uri = open_["ansible.builtin.uri"]
+    # The exact shape choco-internalize.py raw_path() builds: installers/<id>/<version>/<file>.
+    assert uri["url"].endswith("/repository/installers/{{ tn_def.name }}/{{ tn_def.version }}/{{ tn_file | urlencode }}")
+    assert "user" not in uri and "password" not in uri  # anonymous, like a range guest
+    assert uri["status_code"] == "{{ [200] if (tn_depot_require_choco_installers | default(false) | bool) else [200, 404] }}"
+    assert open_["loop"] == "{{ query('fileglob', tn_depot_choco_defs ~ '/*.yaml') | sort }}"
+
+
+def test_sysprep_clears_build_secrets_and_powershell_logs_first():
+    pk = ROOT / "infra/vsphere/packer"
+    ps = (pk / "files/windows/sysprep.ps1").read_text()
+    run = ps.index("Sysprep\\sysprep.exe")
+    for step in ("'packer-ps-env-vars-*'", "'Microsoft-Windows-PowerShell/Operational'", "'Windows PowerShell'",
+                 "wevtutil.exe cl", "PowerShell_transcript*", "PSReadLine", "exit 1"):
+        assert -1 < ps.index(step) < run, step
+    # Every Windows flow ends in sysprep.ps1: last script of the bases, shutdown of roles/variants.
+    win = (pk / "windows.pkr.hcl").read_text()
+    assert win.rindex('script = "${path.root}/files/windows/sysprep.ps1"') > win.rindex("environment_vars")
+    for f in ("roles.pkr.hcl", "variants.pkr.hcl"):
+        text = (pk / f).read_text()
+        assert "-File C:\\\\Windows\\\\Temp\\\\sysprep.ps1" in text, f
+
+
+def test_readme_says_online_switches_bounce_the_range_nic():
+    text = (ROOT / "install/lab/README.md").read_text()
+    assert "Every online/offline switch briefly bounces the range NIC" in text
+    link = _render("tn-depot-range-link.service.j2")
+    assert "Requires=tn-depot-range-fw.service" in link  # why a firewall reload restarts the link

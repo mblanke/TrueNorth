@@ -30,6 +30,9 @@ tn_depot_range_subnet: 10.30.32.0/24
 # (TN_RANGE_UPLINK_PG or --range-pg override both), and the installer's
 # tn_vsphere_range_uplink_network must name the same port group.
 tn_depot_range_portgroup: dPG-TN-SVC
+# vCenter datacenter whose vm/truenorth/ranges folder prefetch/online windows check for
+# range VMs (tn_depot range_guard.yml). Work vCenter 192.168.1.10: DC-Lab.
+tn_depot_vcenter_datacenter: DC-Lab
 
 tn_depot_nexus_port: 8081
 tn_depot_acng_port: 3142

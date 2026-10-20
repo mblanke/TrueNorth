@@ -1,8 +1,9 @@
 ---
 # Nexus least privilege (#214). Range guests reach Nexus anonymously on 10.30.32.10:8081;
-# they get read/browse on the Chocolatey group feed and nothing else (no PyPI, Docker or
-# raw installers). Packer builds read the raw "installers" repository as tn-build-read,
-# whose password comes from TN-MGMT01 (build-phase.sh depot) in the environment.
+# they get read/browse on the Chocolatey group feed and on installers/<choco id>/** (what
+# the in-house Chocolatey packages download, through a content selector), nothing else
+# (no PyPI, Docker, installers/roles or installers/office). Packer reads those as
+# tn-build-read, whose password comes from TN-MGMT01 (build-phase.sh depot).
 # Secrets are no_log throughout.
 
 - name: Nexus access — the Packer read password is provided
@@ -15,6 +16,84 @@
       export TN_DEPOT_BUILD_READ_PASSWORD="$(ssh <you>@10.30.30.20 sudo sed -n
       's/^TN_DEPOT_BUILD_READ_PASSWORD=//p' /srv/truenorth/config/depot-build.env)"
     quiet: true
+
+# ── Anonymous read on installers/<choco id>/** only (content selector) ──
+- name: Nexus access — the Chocolatey package ids (content/choco/*.yaml)
+  ansible.builtin.assert:
+    that:
+      - tn_depot_choco_ids | length > 0
+      - tn_depot_choco_ids | select('match', '^[a-z0-9][a-z0-9.-]*$') | list | length == tn_depot_choco_ids | length
+      - (tn_depot_choco_ids | intersect(['roles', 'office'])) | length == 0
+    fail_msg: >-
+      No usable package ids in {{ tn_depot_choco_defs }} ({{ tn_depot_choco_ids }}). Anonymous would
+      lose the vendor installers every in-house Chocolatey package downloads; and 'roles' and
+      'office' are reserved for tn-build-read.
+    quiet: true
+
+- name: Nexus access — content selector for the Chocolatey installers
+  ansible.builtin.uri:
+    url: "{{ tn_depot_nexus_api }}/v1/security/content-selectors/{{ tn_depot_choco_selector }}"
+    user: admin
+    password: "{{ vault_nexus_admin_password }}"
+    force_basic_auth: true
+    status_code: [200, 404]
+  register: tn_nexus_selector
+  no_log: true
+
+- name: Nexus access — create or correct the selector from the package ids
+  ansible.builtin.uri:
+    url: "{{ tn_depot_nexus_api }}/v1/security/content-selectors{{ '' if tn_nexus_selector.status == 404 else '/' ~ tn_depot_choco_selector }}"
+    method: "{{ 'POST' if tn_nexus_selector.status == 404 else 'PUT' }}"
+    user: admin
+    password: "{{ vault_nexus_admin_password }}"
+    force_basic_auth: true
+    body_format: json
+    body:
+      name: "{{ tn_depot_choco_selector }}"
+      description: "installers/<choco id>/** for in-house Chocolatey packages (content/choco)"
+      expression: "{{ tn_depot_choco_selector_expression | trim }}"
+    status_code: [200, 204]
+  when: >-
+    tn_nexus_selector.status == 404 or
+    (tn_nexus_selector.json.expression | default('')) != (tn_depot_choco_selector_expression | trim)
+  no_log: true
+  changed_when: true
+
+- name: Nexus access — read privilege through the selector, on installers only
+  ansible.builtin.uri:
+    url: "{{ tn_depot_nexus_api }}/v1/security/privileges/{{ tn_depot_choco_installers_privilege }}"
+    user: admin
+    password: "{{ vault_nexus_admin_password }}"
+    force_basic_auth: true
+    status_code: [200, 404]
+  register: tn_nexus_csel_priv
+  no_log: true
+
+- name: Nexus access — create the selector privilege
+  ansible.builtin.uri:
+    url: >-
+      {{ tn_depot_nexus_api }}/v1/security/privileges/repository-content-selector{{ ''
+      if tn_nexus_csel_priv.status == 404 else '/' ~ tn_depot_choco_installers_privilege }}
+    method: "{{ 'POST' if tn_nexus_csel_priv.status == 404 else 'PUT' }}"
+    user: admin
+    password: "{{ vault_nexus_admin_password }}"
+    force_basic_auth: true
+    body_format: json
+    body:
+      name: "{{ tn_depot_choco_installers_privilege }}"
+      description: "Anonymous: read the vendor installers of in-house Chocolatey packages"
+      actions: [READ, BROWSE]
+      format: raw
+      repository: installers
+      contentSelector: "{{ tn_depot_choco_selector }}"
+    status_code: [201, 204]
+  when: >-
+    tn_nexus_csel_priv.status == 404 or
+    (tn_nexus_csel_priv.json.contentSelector | default('')) != tn_depot_choco_selector or
+    (tn_nexus_csel_priv.json.repository | default('')) != 'installers' or
+    (tn_nexus_csel_priv.json.actions | default([]) | sort) != ['BROWSE', 'READ']
+  no_log: true
+  changed_when: true
 
 - name: Nexus access — roles (anonymous feed reader, Packer installers reader)
   ansible.builtin.uri:
