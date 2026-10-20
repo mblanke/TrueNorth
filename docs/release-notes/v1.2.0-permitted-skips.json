@@ -121,7 +121,7 @@
                 "check": "Security Onion per-range setup (so-setup)",
                 "reason_contains": "it needs a provisioned range on a writable vCenter",
                 "reason": "so-setup runs per range on a built securityonion VM over VMware guest operations (ADR 0012 decision 8). Staging provisions nothing; its vCenter is the read-only simulator.",
-                "alternative_evidence": "tests/worker/test_vsphere_securityonion.py (U: every answer so-setup reads is checked, the runner patch, status polling). End to end: ADR 0012 decision 10, SOC Analyst built on the work vCenter with Security Onion seeing the mirrored traffic.",
+                "alternative_evidence": "tests/worker/test_vsphere_securityonion.py and tests/worker/test_setup_reconcile.py (the reconcile task that records the setup's outcome, #216) (U: every answer so-setup reads is checked, the runner patch, status polling). End to end: ADR 0012 decision 10, SOC Analyst built on the work vCenter with Security Onion seeing the mirrored traffic.",
                 "milestone": "H"
             }
         ],
@@ -269,7 +269,7 @@
                 "check": "Security Onion per-range setup (so-setup)",
                 "reason_contains": "it needs a provisioned range on a writable vCenter",
                 "reason": "No provisioned range in CI.",
-                "alternative_evidence": "tests/worker/test_vsphere_securityonion.py.",
+                "alternative_evidence": "tests/worker/test_vsphere_securityonion.py and tests/worker/test_setup_reconcile.py (the reconcile task that records the setup's outcome, #216).",
                 "milestone": "H"
             }
         ]

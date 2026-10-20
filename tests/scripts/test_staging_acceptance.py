@@ -757,12 +757,12 @@ STAFF_READ = (200, {"range_id": RID, "scope": "all", "accounts": [
 
 
 def credentials_world(student=(404, {"detail": "Range not found"}), stored_yaml="name: x\n  password: tnsec:rc1:gAAA",
-                      stored_passwords=("tnsec:v1:aaa", "tnsec:v1:bbb")):
+                      stored_passwords=("tnsec:v1:aaa", "tnsec:v1:bbb"), staff=STAFF_READ):
     admin = Api("admin", {
         ("GET", "/templates"): (200, []),
         ("POST", "/templates"): lambda j, p: (201, {"id": TPL, **j}),
         ("POST", "/ranges"): lambda j, p: (201, {"id": RID, "name": j["name"], "state": "created"}),
-        ("GET", f"/ranges/{RID}/credentials"): STAFF_READ,
+        ("GET", f"/ranges/{RID}/credentials"): staff,
         ("GET", "/audit-log"): (200, [{"action": "range_credentials_read", "resource_id": RID,
                                        "detail": "scope=all; accounts=2"}] * 2),
         ("DELETE", f"/ranges/{RID}"): (204, None),
@@ -813,6 +813,9 @@ def test_the_credentials_template_declares_what_the_check_expects():
         ({"student": STAFF_READ}, "expected 404"),
         ({"stored_yaml": f"password: {acc.CREDENTIALS_LITERAL}"}, "not sealed"),
         ({"stored_passwords": ("tnsec:v1:aaa", GENERATED)}, "stored unsealed"),
+        # A range never built may not claim an account is set (setup_status, #216).
+        ({"staff": (200, {**STAFF_READ[1], "accounts": [
+            {**a, "setup_status": "being_set_up"} for a in STAFF_READ[1]["accounts"]]})}, "claim to be set"),
     ],
 )
 def test_range_credentials_fail_on_a_leak(world, message):

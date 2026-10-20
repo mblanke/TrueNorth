@@ -1956,6 +1956,9 @@ def ranges_credentials(ctx: Ctx) -> str:
     generated = str(got["acceptance-admin"].get("password") or "")
     expect(got["acceptance-admin"].get("generated") is True and len(generated) >= 12, "no generated password")
     expect(staff["instructor"].keys() == got.keys(), f"the instructor reads {sorted(staff['instructor'])}")
+    # Never built: no account may claim to be set on a machine (applied / setup_status, #216).
+    claimed = [u for u, a in got.items() if a.get("applied") or a.get("setup_status", "not_set") != "not_set"]
+    expect(not claimed, f"accounts of a range never built claim to be set: {claimed}")
     for key in ("student", "outsider"):
         st, body = ctx.persona(key).get(f"/ranges/{rid}/credentials")
         expect(st == 404, f"a Student ({key}) not taking part in the range => {st} {short(body)}, expected 404")
@@ -2129,7 +2132,8 @@ def provisioners_template_copies(ctx: Ctx) -> str:
 def provisioners_securityonion(ctx: Ctx) -> str:
     skip(
         "so-setup runs per range on a built securityonion VM over guest operations (ADR 0012 decision 8, "
-        "worker/provisioners/vsphere_securityonion.py): it needs a provisioned range on a writable vCenter",
+        "worker/provisioners/vsphere_securityonion.py) and the reconcile task records its outcome "
+        "(worker/setup_reconcile.py): it needs a provisioned range on a writable vCenter",
         True,
     )
 
