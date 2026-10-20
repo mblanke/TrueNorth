@@ -253,7 +253,7 @@ export class OnboardingComponent implements OnInit {
       error: () => this.loading.set(false),
     });
 
-    this.directory.nations().subscribe({
+    this.registration.nations().subscribe({
       next: (rows) => this.nations.set(rows ?? []),
       error: () => this.nations.set([]),
     });

@@ -741,6 +741,41 @@
         "title": "AnnotationOut",
         "type": "object"
       },
+      "ApplicantNationOut": {
+        "description": "One nation as an applicant sees it on the registration and onboarding forms.\n\nDeliberately narrower than ``NationOut`` (``/directory/nations``): the public\nidentifying fields only, no alliance flags and no ``is_active`` (inactive rows are\nnever returned).",
+        "properties": {
+          "flag_emoji": {
+            "title": "Flag Emoji",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "iso_alpha2": {
+            "title": "Iso Alpha2",
+            "type": "string"
+          },
+          "iso_alpha3": {
+            "title": "Iso Alpha3",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "iso_alpha2",
+          "iso_alpha3",
+          "flag_emoji"
+        ],
+        "title": "ApplicantNationOut",
+        "type": "object"
+      },
       "Arc2Status": {
         "description": "GET /arc2/status: is the Studio on, and if not, why (for the empty state).",
         "properties": {
@@ -36928,6 +36963,37 @@
           }
         ],
         "summary": "My Registration",
+        "tags": [
+          "registration"
+        ]
+      }
+    },
+    "/registration/nations": {
+      "get": {
+        "description": "Active nations for the request-access and onboarding forms.\n\n``/directory/nations`` needs ``user:read``, which an applicant (no ``users`` row\nyet) and a Student do not hold, so their Nation dropdown came back empty. This is\nthe same global reference data, read-only, active rows only, public fields only.\nAny valid token may read it; the directory router keeps its permission.",
+        "operationId": "list_registration_nations_registration_nations_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ApplicantNationOut"
+                  },
+                  "title": "Response List Registration Nations Registration Nations Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Registration Nations",
         "tags": [
           "registration"
         ]

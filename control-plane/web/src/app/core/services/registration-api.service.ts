@@ -8,6 +8,7 @@ type S = components['schemas'];
 
 export type RegistrationRequest = S['RegistrationRequestOut'];
 export type OnboardingState = S['OnboardingStateOut'];
+export type ApplicantNation = S['ApplicantNationOut'];
 
 /**
  * Account intake: self-registration, the instructor approval queue, and first-run
@@ -24,6 +25,13 @@ export class RegistrationApiService {
   }
   withdrawMine(): Observable<void> {
     return this.http.delete<void>(`${this.base}/registration/mine`);
+  }
+  /**
+   * Active nations for the register and onboarding forms. Any valid token may read it;
+   * `/directory/nations` needs user:read, which applicants and Students do not hold.
+   */
+  nations(): Observable<ApplicantNation[]> {
+    return this.http.get<ApplicantNation[]>(`${this.base}/registration/nations`);
   }
 
   // ── Approval queue ───────────────────────────────────────

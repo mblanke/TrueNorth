@@ -300,7 +300,7 @@ export class RegisterComponent implements OnInit {
 
     // Reference data is best-effort: an empty nation list should not stop
     // someone registering.
-    this.directory.nations().subscribe({
+    this.registration.nations().subscribe({
       next: (rows) => this.nations.set(rows ?? []),
       error: () => this.nations.set([]),
     });

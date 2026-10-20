@@ -40,6 +40,7 @@ from ..enrollment import ensure_enrollment, ensure_path_enrollment
 from ..models import (
     AuditLog,
     Course,
+    Nation,
     Qualification,
     RegistrationRequest,
     RegistrationStatus,
@@ -48,6 +49,7 @@ from ..models import (
     UserRole,
 )
 from ..rbac import STAFF_GRANTED_BY_ADMIN_ONLY, Permission, grant_refusal, is_platform_admin, require_permission
+from ..registration_schemas import ApplicantNationOut
 from ..schemas import (
     RegistrationApproveIn,
     RegistrationBulkApproveIn,
@@ -237,6 +239,21 @@ def my_registration(
     if row is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No registration request found")
     return row
+
+
+@router.get("/registration/nations", response_model=list[ApplicantNationOut])
+def list_registration_nations(
+    _identity: TokenPayload = Depends(get_token_identity),
+    db: Session = Depends(get_db),
+) -> list[Nation]:
+    """Active nations for the request-access and onboarding forms.
+
+    ``/directory/nations`` needs ``user:read``, which an applicant (no ``users`` row
+    yet) and a Student do not hold, so their Nation dropdown came back empty. This is
+    the same global reference data, read-only, active rows only, public fields only.
+    Any valid token may read it; the directory router keeps its permission.
+    """
+    return db.query(Nation).filter(Nation.is_active).order_by(Nation.name).all()
 
 
 @router.delete(
