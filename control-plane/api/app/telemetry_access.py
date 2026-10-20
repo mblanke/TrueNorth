@@ -49,24 +49,6 @@ def _own_lab(db: Session, user_id: uuid.UUID, range_id: uuid.UUID) -> bool:
     return False
 
 
-def lab_sessions_on(db: Session, tenant_id, range_id: uuid.UUID) -> list:
-    """Every lab session ``_own_lab`` would match on ``range_id`` (current, or a range a
-    rebuild replaced), newest first: the same relation, for the whole class at once."""
-    from .lab_sessions.models import LabSession
-
-    rid = str(range_id)
-    rows = (
-        db.query(LabSession)
-        .filter(
-            LabSession.tenant_id == tenant_id,
-            or_(LabSession.range_id == range_id, LabSession.retired_ranges.contains(rid)),
-        )
-        .order_by(LabSession.created_at.desc())
-        .all()
-    )
-    return [s for s in rows if s.range_id == range_id or rid in json.loads(s.retired_ranges or "[]")]
-
-
 def _takes_part(db: Session, user: CurrentUser, rng: Range) -> bool:
     """Until 2026-10-11 any non-cancelled booking counted, however long ago: a range is
     reused class after class, so every past class on it kept reading the telemetry of every

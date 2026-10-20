@@ -1,10 +1,16 @@
 """Build the live class read model for one exercise (issue #199). Read only: writes nothing.
 
 Who is in the class is not decided here. It is ``aar_access.participants`` (an assigned
-enrolment in a course booked over the run, a member of one of the exercise's teams, a
-detection submitted in this run) plus whoever has their own lab session on the exercise's
-range (``telemetry_access.lab_sessions_on``, the relation ``exercise_participants.may_submit``
+enrolment, still being studied, in a course booked over the run; a member of one of the
+exercise's teams; a detection submitted in this run) plus whoever has a lab session on the
+exercise's own range during the run (the relation ``exercise_participants.may_submit``
 already accepts), kept to the tenant's Students.
+
+A Student's lab: every lab session builds its own range, so a lab is tied to the class
+through its course release: a release of one of the courses booked over the run
+(``exercise_participants.roster_courses``), launched by a Student on the roster, existing
+during the run (``lab_sessions.service.sessions_in_window``). A lab on the exercise's own
+range counts too.
 
 Per-Student credit comes from that Student's own judged attempts in this run (ADR 0005):
 ``Objective.achieved`` is exercise-wide and says nothing about who earned it.
@@ -20,9 +26,10 @@ from sqlalchemy.orm import Session
 
 from ..aar_access import participants
 from ..detections.models import ACHIEVED, ATTEMPTS, MISSED, PENDING, DetectionSubmission
+from ..exercise_participants import exercise_window, roster_courses
 from ..lab_sessions import models as lab
+from ..lab_sessions.service import sessions_in_window
 from ..models import Exercise, ExerciseState, Objective, Range, Team, TeamMembership, User, UserRole
-from ..telemetry_access import lab_sessions_on
 from .schemas import (
     AttentionOut,
     ClassAttemptOut,
@@ -57,8 +64,8 @@ def _aware(t: datetime | None) -> datetime | None:
     return t if t.tzinfo else t.replace(tzinfo=UTC)
 
 
-def _roster(db: Session, ex: Exercise, labs: list) -> list[User]:
-    ids = participants(db, ex) | {s.user_id for s in labs}
+def _roster(db: Session, ex: Exercise, on_range: list) -> list[User]:
+    ids = participants(db, ex) | {s.user_id for s in on_range}
     if not ids:
         return []
     return (
@@ -231,9 +238,17 @@ def build(db: Session, ex: Exercise, *, sees_key: bool, now: datetime | None = N
     """The class for ``ex`` (already resolved in the caller's tenant)."""
     now = now or datetime.now(UTC)
     quiet_after = not_seen_minutes()
-    labs = lab_sessions_on(db, ex.tenant_id, ex.range_id) if ex.range_id is not None else []
-    students = _roster(db, ex, labs)
+    start, end = exercise_window(ex, now)
+    on_range = (
+        sessions_in_window(db, ex.tenant_id, start, end, user_ids=None, range_id=ex.range_id)
+        if ex.range_id is not None
+        else []
+    )
+    students = _roster(db, ex, on_range)
     user_ids = [u.id for u in students]
+    courses = sorted(roster_courses(db, ex))
+    labs = sessions_in_window(db, ex.tenant_id, start, end, user_ids=user_ids, course_ids=courses) if courses else []
+    labs = sorted({s.id: s for s in [*labs, *on_range]}.values(), key=lambda s: _aware(s.created_at) or start, reverse=True)
     newest_lab: dict[uuid.UUID, object] = {}
     for s in labs:  # newest first
         newest_lab.setdefault(s.user_id, s)

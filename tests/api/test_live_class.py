@@ -1,8 +1,9 @@
 """The live class roster in the Ops Center (issue #199): ``GET /ops/exercises/{id}/class``.
 
-Who is on it is the AAR's participant rule (an assigned enrolment in a course booked over the
-run, a member of one of the exercise's teams, a detection in this run) plus a Student's own
-lab on the exercise's range. Per-Student credit comes from their own attempts (ADR 0005).
+Who is on it is the AAR's participant rule, kept to enrolments still being studied (an
+assigned enrolment in a course booked over the run, a member of one of the exercise's teams, a
+detection in this run) plus anyone with a lab on the exercise's own range. A Student's lab is
+the one launched from a release of a booked course during the run (each lab has its own range). Per-Student credit comes from their own attempts (ADR 0005).
 Staff and observers read it (Ops Center: exercise:read + telemetry:read); Students get 403;
 another tenant's exercise is 404.
 """
@@ -71,6 +72,7 @@ def world(db_session, monkeypatch):
     ])
     db_session.flush()
     w["team"] = team
+    w["course"] = course
     return w
 
 
@@ -202,32 +204,83 @@ def test_queries_only_for_staff_who_see_the_answer_key(client, db_session, world
 # ── lab faults and not seen recently ──────────────────────────────────────────────────────
 
 
-def _lab(db, w, who, state, error="", last_seen=None):
+def _lab(db, w, who, state, error="", last_seen=None, *, course=None, on_exercise_range=False, age=None):
+    """A lab session as production makes one: its own range, launched from a release of
+    ``course`` (default: the class's booked course). ``age``: created that long ago."""
+    from app.models import Range
+
     tid = w["a"].id
-    course = Course(id=uuid.uuid4(), name="C", tenant_id=tid)
+    if course is None:
+        course = w["course"]
     sha = uuid.uuid4().hex * 2
-    db.add_all([course, CourseReleaseBlob(sha256=sha, size=1, data=b"x")])
+    db.add(CourseReleaseBlob(sha256=sha, size=1, data=b"x"))
     db.flush()
+    version = 1 + db.query(CourseRelease).filter(CourseRelease.course_id == course.id).count()
     rel = CourseRelease(id=uuid.uuid4(), tenant_id=tid, course_id=course.id, catalogue_code="c", arc2_code="a",
-                        run_id="r", slug="s", title="T", version=1, release_digest=sha, learner_digest=sha,
+                        run_id="r", slug="s", title="T", version=version, release_digest=sha, learner_digest=sha,
                         platform_digest=sha, instructor_digest=sha, blob_sha256=sha, meta="{}")
     db.add(rel)
     db.flush()
+    if on_exercise_range:
+        range_id = w["ex"].range_id
+    else:
+        own = Range(id=uuid.uuid4(), name="lab", template_id=db.get(Range, w["ex"].range_id).template_id, tenant_id=tid)
+        db.add(own)
+        db.flush()
+        range_id = own.id
+    when = datetime.now(UTC) - (age or timedelta(minutes=30))
     db.add(LabSession(tenant_id=tid, user_id=uuid.UUID(w[who].id), release_id=rel.id, activity_id="mod_001",
                       state=state, error=error, profile_id="p", profile_digest="0" * 64, backend="mock",
-                      range_id=w["ex"].range_id, last_seen_at=last_seen))
+                      range_id=range_id, last_seen_at=last_seen, created_at=when, updated_at=when))
     db.flush()
 
 
-def test_a_failed_lab_is_a_lab_fault_and_its_owner_is_on_the_roster(client, db_session, world):
-    _lab(db_session, world, "outsider", "failed", error="clone timed out on esx-03")
+def test_a_failed_lab_of_the_booked_course_is_a_lab_fault(client, db_session, world):
+    _lab(db_session, world, "sam", "failed", error="clone timed out on esx-03")
     act_as(world["instructor"])
-    body = _get(client, world["ex"]).json()
-    s = _by_id(body, world["outsider"])  # their own lab on the exercise's range: a participant
+    s = _by_id(_get(client, world["ex"]).json(), world["sam"])
     assert s["lab"]["state"] == "failed"
     kinds = [a["kind"] for a in s["attention"]]
     assert kinds == ["lab_fault"], kinds  # a lab that is down is not also "not seen"
     assert "clone timed out on esx-03" in s["attention"][0]["detail"]
+
+
+def test_a_lab_of_another_course_or_before_the_run_is_not_this_class(client, db_session, world):
+    other = Course(id=uuid.uuid4(), name="Other", tenant_id=world["a"].id)
+    db_session.add(other)
+    db_session.flush()
+    _lab(db_session, world, "sam", "active", course=other)  # a lab for another course
+    _lab(db_session, world, "bo", "destroyed", age=timedelta(days=3))  # ended long before the run
+    _lab(db_session, world, "outsider", "active")  # booked course's release, but not on the roster
+    act_as(world["instructor"])
+    body = _get(client, world["ex"]).json()
+    assert _by_id(body, world["sam"])["lab"] is None
+    assert _by_id(body, world["bo"])["lab"] is None
+    assert world["outsider"].id not in {s["user_id"] for s in body["students"]}
+
+
+def test_a_lab_on_the_exercises_own_range_puts_its_owner_on_the_roster(client, db_session, world):
+    other = Course(id=uuid.uuid4(), name="Other", tenant_id=world["a"].id)
+    db_session.add(other)
+    db_session.flush()
+    _lab(db_session, world, "outsider", "failed", error="no host", course=other, on_exercise_range=True)
+    act_as(world["instructor"])
+    s = _by_id(_get(client, world["ex"]).json(), world["outsider"])  # may_submit's own-lab relation
+    assert s["lab"]["state"] == "failed" and [a["kind"] for a in s["attention"]] == ["lab_fault"]
+
+
+def test_an_earlier_cohort_is_not_on_todays_class_but_still_reads_its_aar(client, db_session, world):
+    from app.aar_access import took_part
+
+    old = real_user(db_session, UserRole.student, world["a"].id)
+    db_session.add(Enrollment(user_id=uuid.UUID(old.id), course_id=world["course"].id, tenant_id=world["a"].id,
+                              status=EnrollmentStatus.completed, created_at=datetime.now(UTC) - timedelta(days=400)))
+    db_session.flush()
+    act_as(world["instructor"])
+    ids = {s["user_id"] for s in _get(client, world["ex"]).json()["students"]}
+    assert old.id not in ids and world["sam"].id in ids
+    # The AAR rule is unchanged: a completed enrolment from before the run still took part.
+    assert took_part(db_session, world["ex"], uuid.UUID(old.id)) is True
 
 
 def test_not_seen_recently_is_neutral_and_only_while_running(client, db_session, world):

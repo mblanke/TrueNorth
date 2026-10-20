@@ -34,7 +34,7 @@ from sqlalchemy.orm import Session
 
 from .auth import CurrentUser
 from .detections.models import DetectionSubmission
-from .enrollment import ASSIGNED
+from .enrollment import ACTIVE_STATUSES, ASSIGNED
 from .exercise_participants import roster_courses
 from .models import Enrollment, EnrollmentStatus, Exercise, ExerciseState, Team, TeamMembership, UserRole
 
@@ -48,7 +48,9 @@ def _aware(t: datetime) -> datetime:
     return t if t.tzinfo else t.replace(tzinfo=UTC)
 
 
-def _rostered_during_run(db: Session, ex: Exercise, user_id: uuid.UUID | None = None) -> set[uuid.UUID]:
+def _rostered_during_run(
+    db: Session, ex: Exercise, user_id: uuid.UUID | None = None, *, active_only: bool = False
+) -> set[uuid.UUID]:
     """Who holds an assigned enrolment in a course booked over the run, made before the run
     ended (``user_id`` narrows it to one person).
 
@@ -57,6 +59,11 @@ def _rostered_during_run(db: Session, ex: Exercise, user_id: uuid.UUID | None = 
     answer key, ADR 0005 §5) before sitting the same scenario, and shut out a real
     participant once their enrolment was completed. Here: created no later than the run's
     end, any status but withdrawn (completed counts).
+
+    ``active_only`` (the live class, ``participants``): only enrolments still being studied
+    (``enrollment.ACTIVE_STATUSES``), the rule ``exercise_participants.may_submit`` applies
+    to who sits this run now. Without it a booked course's earlier cohorts (completed, a
+    year ago) would be on today's class. This stays the one roster query for both uses.
     """
     courses = roster_courses(db, ex)
     if not courses:
@@ -67,6 +74,8 @@ def _rostered_during_run(db: Session, ex: Exercise, user_id: uuid.UUID | None = 
         Enrollment.source == ASSIGNED,
         Enrollment.status != EnrollmentStatus.withdrawn,
     )
+    if active_only:
+        q = q.filter(Enrollment.status.in_(ACTIVE_STATUSES))
     if user_id is not None:
         q = q.filter(Enrollment.user_id == user_id)
     return {uid for uid, created in q.all() if created is not None and _aware(created) <= run_end}
@@ -102,10 +111,13 @@ def took_part(db: Session, ex: Exercise, user_id: uuid.UUID) -> bool:
 
 
 def participants(db: Session, ex: Exercise) -> set[uuid.UUID]:
-    """Every user id ``took_part`` admits for this run, at once (the live class roster,
-    app/live_class). The same three relations, so the roster and the AAR never disagree
-    about who was in the class. Callers filter to Students."""
-    return _rostered_during_run(db, ex) | _on_a_team(db, ex) | _submitted_in_run(db, ex)
+    """Who is in this run's class now, at once (the live class roster, app/live_class): the
+    same three relations as ``took_part``, except that the roster counts only enrolments
+    still being studied (``active_only``, as ``may_submit`` does), so a booked course's
+    earlier cohorts are not on today's class. ``took_part`` (the AAR) is unchanged: a
+    participant whose enrolment has since completed still reads their report. Callers
+    filter to Students."""
+    return _rostered_during_run(db, ex, active_only=True) | _on_a_team(db, ex) | _submitted_in_run(db, ex)
 
 
 def may_read_aar(db: Session, ex: Exercise, user: CurrentUser) -> bool:
