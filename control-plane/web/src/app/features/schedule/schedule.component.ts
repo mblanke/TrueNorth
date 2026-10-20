@@ -12,7 +12,7 @@ import {
 } from '@core/services/scheduler-api.service';
 import type { RangeSummary, ScenarioSummary, TemplateSummary, User } from '@core/models';
 import {
-  DAY_MS, HOLDING_STATES, Level, addDays, at, diskLabel, gb, hhmm, hourOf, isoDate, layoutLanes, level,
+  DAY_MS, HOLDING_STATES, Level, addDays, at, diskLabel, gb, hhmm, hourOf, isLive, isoDate, layoutLanes, level,
   localizeUtcWindows, peakLoad, previewConflicts, sameDay, slotLoads, weekStart,
 } from './schedule.util';
 
@@ -63,8 +63,15 @@ const ROW = 46; // px per hour
       <p class="muted">{{ liveCount() }} session{{ liveCount() === 1 ? '' : 's' }} booked{{ busiest() ? ' · busiest ' + busiest() : '' }}. Times are in your time zone ({{ tz }}).</p></div>
       @if (canBook() && !nextSession()) { <button class="action primary" (click)="startBooking()">Book a session</button> }</div>
     @if (nextSession(); as n) {
-      <section class="panel hero"><span class="eyebrow">Your next session</span><h2>{{ n.name }}</h2>
-        <p>{{ longWhen(n) }}{{ n.range_id ? ' · ' + rangeName(n.range_id) + '. The range builds at ' + buildAt(n) + '; you’ll get a reminder the day before.' : '.' }}</p>
+      <section class="panel hero" [class.live]="live(n)">
+        @if (live(n)) {
+          <!-- Already under way: say so, not "next" with a reminder for a day that has passed (#201). -->
+          <span class="eyebrow live-tag" role="status"><i class="dot" aria-hidden="true"></i>Live now</span><h2>{{ n.name }}</h2>
+          <p>{{ longWhen(n) }}{{ n.range_id ? ' · ' + rangeName(n.range_id) : '' }}. Running until {{ hhmm(n.end_time) }}.</p>
+        } @else {
+          <span class="eyebrow">Your next session</span><h2>{{ n.name }}</h2>
+          <p>{{ longWhen(n) }}{{ n.range_id ? ' · ' + rangeName(n.range_id) + '. The range builds at ' + buildAt(n) + '; you’ll get a reminder the day before.' : '.' }}</p>
+        }
         <div class="actions"><button class="action primary" (click)="startBooking()">Book a session</button></div></section>
     }
     <div class="split"><div>
@@ -181,7 +188,9 @@ const ROW = 46; // px per hour
           @for (e of col.items; track e.key) {
             @if (e.booking; as b) {
               <button type="button" class="ev" [class.mine]="isMine(b)" [class.draft]="b.state === 'draft'" [class.sel]="selected()?.id === b.id"
+                      [class.live]="live(b)"
                       [style.top.px]="e.top" [style.height.px]="e.height" [style.left]="e.left" [style.width]="e.width" (click)="select(b)">
+                @if (live(b)) { <span class="live-tag"><i class="dot" aria-hidden="true"></i>Live</span> }
                 <strong>{{ b.name }}</strong><span>{{ hhmm(b.start_time) }}–{{ hhmm(b.end_time) }}{{ b.template_id ? ' · ' + templateName(b.template_id) : '' }}{{ b.state === 'draft' ? ' · draft' : '' }}</span>
                 @if (b.instructor_id) { <span class="ghost"><br>{{ personName(b.instructor_id) }}</span> }
               </button>
@@ -303,6 +312,13 @@ const ROW = 46; // px per hour
     .ev strong { display:block; font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .ev.mine { background:var(--tn-soft); border-color:var(--tn-accent); } .ev.draft { border-style:dashed; background:var(--tn-bg); color:var(--tn-muted); }
     .ev.sel { box-shadow:0 0 0 3px var(--tn-accent); } .ev .ghost { color:var(--tn-muted); }
+    .ev.live { border-color:var(--tn-ok); border-left-width:4px; }
+    .live-tag { display:inline-flex; align-items:center; gap:5px; color:var(--tn-ok); font-weight:600; }
+    .ev .live-tag { font-size:10px; text-transform:uppercase; letter-spacing:.6px; }
+    .live-tag .dot { width:7px; height:7px; border-radius:50%; background:var(--tn-ok); animation:live-pulse 1.6s ease-in-out infinite; }
+    .hero.live { background:var(--tn-ok-soft); }
+    @keyframes live-pulse { 50% { opacity:.35; } }
+    @media (prefers-reduced-motion: reduce) { .live-tag .dot { animation:none; } }
     .ev.proposed { border:2px dashed var(--tn-accent); background:rgba(252,236,239,.85); cursor:default; }
     .lv-ok { background:#2f8f5b; } .lv-mid { background:#d99a1e; } .lv-high { background:var(--tn-accent); } .lv-none { background:transparent; }
     .meter { display:grid; grid-template-columns:52px minmax(0,1fr) 110px; gap:8px; align-items:center; font-size:12px; margin:6px 0; }
@@ -705,6 +721,8 @@ export class ScheduleComponent implements OnInit, OnDestroy {
   longWhen(b: Booking): string { return `${this.dayLabel(new Date(b.start_time))}, ${this.hhmm(b.start_time)}–${this.hhmm(b.end_time)}`; }
   shortWhen(ms: number): string { const d = new Date(ms); return `${this.dayLabel(d)} ${hhmm(d)}`; }
   hhmm(iso: string): string { return hhmm(new Date(iso)); }
+  /** Under way now (#201); read at render, so it turns live as the page is re-rendered. */
+  live(b: Booking): boolean { return isLive(b); }
   toDate(iso: string): Date { return new Date(iso); }
   pad(h: number): string { return String(h).padStart(2, '0'); }
   pct(f: number): number { return Math.round(f * 100); }

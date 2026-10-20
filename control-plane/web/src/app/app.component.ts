@@ -24,6 +24,7 @@ import { PageKey } from './core/auth/permissions';
 import { ThemeService, ThemeOption } from './core/services/theme.service';
 import { MotionService } from './shared/motion';
 import { TourOverlayComponent } from './shared/tour/tour-overlay.component';
+import { workspaceTitleFor } from './workspace-title';
 
 interface NavItem {
   label: string;
@@ -426,14 +427,7 @@ export class AppComponent implements OnDestroy {
         this.navLoading.set(true);
       } else if (event instanceof NavigationEnd) {
         this.navLoading.set(false);
-        const path = event.urlAfterRedirects.split('/')[1]?.split('?')[0];
-        this.workspaceTitle.set(({
-          learning: 'Learning', authoring: 'Authoring', exercises: 'Exercises',
-          'ops-center': 'Ops Center', scoring: 'Review', infrastructure: 'Infrastructure',
-          'ai-orchestrator': 'AI Orchestrator', integrations: 'Integrations', users: 'People',
-          approvals: 'People', telemetry: 'Telemetry',
-          admin: 'Administration',
-        } as Record<string, string>)[path] ?? 'Overview');
+        this.workspaceTitle.set(workspaceTitleFor(event.urlAfterRedirects));
         this.isBareRoute.set(this.isBare(event.urlAfterRedirects));
         if (!this.isBareRoute()) {
           // Wait a frame so the routed component and routerLinkActive exist.

@@ -104,6 +104,22 @@ describe('ScheduleComponent', () => {
     expect(text()).toContain(`The range builds at ${String(build.getHours()).padStart(2, '0')}:30`);
   });
 
+  // Issue #201: a session already under way read "Your next session … reminder the day before".
+  it('shows a session already under way as live, not as the next one', () => {
+    const start = new Date(Date.now() - 60_000);
+    const end = new Date(Date.now() + 2 * 3_600_000);
+    as('instructor', 'me', [booking({ id: 'a', name: 'SOC lab', state: 'active', instructor_id: 'me', range_id: 'r1',
+      start_time: start.toISOString(), end_time: end.toISOString() })]);
+    const hero: HTMLElement = fixture.nativeElement.querySelector('.hero');
+    expect(hero.textContent).toContain('Live now');
+    expect(hero.textContent).not.toContain('Your next session');
+    expect(hero.textContent).not.toContain('reminder the day before');
+    expect(hero.textContent).toContain(`until ${String(end.getHours()).padStart(2, '0')}:${String(end.getMinutes()).padStart(2, '0')}`);
+    const ev: HTMLElement = fixture.nativeElement.querySelector('.ev');
+    expect(ev.classList).toContain('live');
+    expect(ev.textContent).toContain('Live');
+  });
+
   it('opens the booking form on today, never on a day already past', () => {
     as('instructor');
     component.focusDay.set(0);
