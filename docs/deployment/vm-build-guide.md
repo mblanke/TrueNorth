@@ -67,8 +67,12 @@ Then set its file name in `infra/vsphere/packer/lab.auto.pkrvars.hcl`. Until you
 
 ## 2. The Packer path (default)
 
-Run this on **TN-BUILD01** (runbook §4.1a), the only host with internet. It sits on `dPG-TN-BUILD`, where the
-build VMs can reach it:
+At the work site (ADR 0012) run this on **TN-MGMT01**, from the template-kit checkout,
+through `scripts/lab/build-phase.sh` (`install/lab/README.md`, "Work site"). Its second NIC
+(10.30.31.20) sits on `dPG-TN-BUILD`, where the build VMs can reach it. That network has no
+gateway and no internet; packages come from TN-DEPOT01 on 10.30.31.30 (runbook §4.1a).
+_Superseded (noted 2026-10-19, #212):_ this used to say to run it on TN-BUILD01, "the only
+host with internet". The bare commands are:
 
 ```bash
 cd infra/vsphere/packer

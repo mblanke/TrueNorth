@@ -130,57 +130,63 @@ ansible-playbook site.yml --ask-vault-pass
 ansible-playbook site.yml --ask-vault-pass   # a clean second run proves idempotency
 ```
 
-### 4.1a Build and depot plane (vm-build-sheet.md §1, §8)
+### 4.1a Build and depot plane (ADR 0012; vm-build-sheet.md §1, §8)
 
-The build sheet decided that **TN-BUILD01** and **TN-DEPOT01** are separate VMs. TN-BUILD01
-is the only host with internet; TN-DEPOT01 is the only thing a range can reach. They live
-on their own port groups, so that neither a range nor a build VM ever gets a path to
-TN-MGMT01 (Keycloak, and OpenSearch with CAF material) or to the internet.
+**Current design: ADR 0012 and the work-site kit (#186, #187).** There is no TN-BUILD01.
+TN-MGMT01 builds the golden templates on esx04, on the isolated build network, and
+TN-DEPOT01 is the only machine that reaches the internet. The operator sequence, with exact
+commands, is in [`install/lab/README.md`](../../install/lab/README.md), "Work site
+(TN-MGMT01 build host)"; the addresses are in
+[`install/lab/work-site/inventory/`](../../install/lab/work-site/inventory/).
 
-**Proposed VLANs.** Confirm they are free (discovery lists the VLANs in use), then create
-them on UniFi and as port groups on `vDS-10G`. `scripts/lab/create-portgroups.sh` creates
-the port groups (it refuses if either VLAN is already in use, and sets promiscuous / MAC
-changes / forged transmits to reject) and prints the UniFi checklist; UniFi stays manual.
-
-| Port group | VLAN | Subnet | Gateway / DHCP | Allowed | Denied |
+| Port group | VLAN | Subnet | Gateway / DHCP | Who is on it | Egress |
 |---|---:|---|---|---|---|
-| `dPG-TN-BUILD` | 31 | 10.30.31.0/24 | UniFi .1, DHCP .100–.200 (build VMs) | → internet; → vCenter 192.168.1.10:443 and ESXi hosts :443/:902 (Packer uploads, ISO mounts); TN-BUILD01 → 10.30.32.10 tcp/22, 8081, 3142 (Ansible, Nexus API, prefetch); control box → 10.30.31.10 tcp/22 | → 10.30.30.0/24 (mgmt) |
-| `dPG-TN-SVC` | 32 | 10.30.32.0/24 | UniFi .1, no DHCP | range pfSense WANs → TN-DEPOT01 tcp/8081, 3142 (same L2) | new connections → internet, mgmt, 192.168.1.0/24, 10.30.31.0/24 |
+| `dPG-TN-MGMT` | 30 | 10.30.30.0/24 | UniFi .1 (routed), DNS 10.30.30.10 | TN-MGMT01 10.30.30.20; TN-DEPOT01 10.30.30.30 (SSH, TrueNorth, the depot's upstream path) | through .1, subject to the MGMT firewall |
+| `dPG-TN-BUILD` | 31 | 10.30.31.0/24 | **No gateway.** DHCP .100–.199 from TN-MGMT01 (`tn-build-dhcp.service`, dnsmasq) | TN-MGMT01 `ens224` 10.30.31.20 (Packer HTTP 8800–8899, WinRM 5985 and SSH 22 callbacks); TN-DEPOT01 10.30.31.30 (8081 Nexus, 3142 apt-cacher-ng); build VMs | **none**: no route to the internet or to MGMT |
 
-| VM | Port group | IP | Spec | Built from |
+VLAN 31 is trunked only to esx04 for now (ADR 0012 §7), so a DRS "should run on esx04"
+rule keeps TN-MGMT01 there.
+
+| VM | NIC / port group | IP | Spec | Built from |
 |---|---|---|---|---|
-| TN-BUILD01 | `dPG-TN-BUILD` | 10.30.31.10 | 8 vCPU / 16 GB / 200 GB | clone of `tmpl-ubuntu-2404`, then Packer, govc, Ansible, ISO tools (`install/lab/build.yml`) |
-| TN-DEPOT01 | `dPG-TN-SVC` (NIC 0) | 10.30.32.10 | 4 vCPU / 16 GB / 100 GB + 1–2 TB at `/srv/depot` | clone of `tmpl-ubuntu-2404`, then Nexus OSS (Chocolatey feed, PyPI, Docker, raw `installers`) and apt-cacher-ng (`install/lab/depot.yml`) |
-| | `dPG-TN-BUILD` (NIC 1, **disconnected**) | 10.30.31.11 | | the depot's only path upstream; connected for an install/prefetch window only |
+| TN-MGMT01 (build host) | NIC 0 `dPG-TN-MGMT` | 10.30.30.20 | §1 | already installed; `install/lab/build.yml` with the work-site inventory adds only what is missing (govc, xorriso, ...) |
+| | NIC 1 `ens224`, `dPG-TN-BUILD` | 10.30.31.20 | | Packer callbacks and build-network DHCP |
+| TN-DEPOT01 | NIC 0 `dPG-TN-MGMT` | 10.30.30.30/24, gw .1 | 4 vCPU / 16 GB / 100 GB + data disk | `scripts/lab/build-phase.sh depot` (`deploy-mgmt-vm.sh TN-DEPOT01 --site work`, a clone of `ubuntu-lts` on esx04), then `install/lab/depot.yml` |
+| | NIC 1 `dPG-TN-BUILD`, always connected | 10.30.31.30/24, no gateway | | what builds use: `depot_url = http://10.30.31.30:8081/repository`, `apt_proxy = http://10.30.31.30:3142` (`scripts/lab/pkrvars-work.py --depot`) |
 
-Place them on esx02–04 (the most free RAM), each on that host's own datastore.
-`scripts/lab/deploy-mgmt-vm.sh` does that (never esx01) and sets the static IPs, hostname
-and the `tnadmin` SSH key through cloud-init `guestinfo`. The full order of operations,
-with exact commands, is in [`install/lab/README.md`](../../install/lab/README.md):
-port groups → VMs → `build.yml` → uplink on → `depot.yml` → `prefetch.yml` → uplink off →
-set the `tn_depot_*` values below.
+**Who fetches upstream: the depot, through `dPG-TN-MGMT`'s gateway.** A Nexus proxy
+repository and apt-cacher-ng make the outbound request themselves, so a build VM asking
+through them never touches the internet. The caches are offline by default
+(`tn_depot_upstream_online: false`: apt-cacher-ng `Offlinemode`, Nexus proxies `blocked`);
+egress control is that plus the MGMT firewall. There is no uplink NIC to disconnect, so
+`scripts/lab/depot-uplink.sh` does not apply, and the kit does not run `prefetch.yml`
+(it would need internet on TN-MGMT01). Known gaps are in the work-site README.
 
-**Who fetches upstream: the depot.** A Nexus proxy repository and apt-cacher-ng make the
-outbound request themselves; TN-BUILD01 having internet does not help them. Since
-`dPG-TN-SVC` has no internet, TN-DEPOT01 gets a second NIC on `dPG-TN-BUILD` that is
-connected only for a window (`scripts/lab/depot-uplink.sh on|off --apply`; `on` refuses
-while range VMs exist unless `--force`). Outside the window two independent controls hold:
-the NIC is disconnected in vCenter, and the caches are offline (apt-cacher-ng
-`Offlinemode`, Nexus proxies `blocked`; `prefetch.yml` flips both and always flips them
-back). Replies from 10.30.32.10 are policy-routed out NIC 0, so the uplink never carries
-range traffic. Chocolatey packages are also **uploaded into `chocolatey-hosted`** by
-TN-BUILD01 during prefetch, so the offline feed answers from local metadata. A
-hosted-only depot (filled by pushes, never online) was rejected because the worker uses
-the depot as an apt/dnf **forward proxy**, which only a caching proxy can serve.
-
-**Run Packer from TN-BUILD01, not TN-MGMT01**, even though the deployment repo installed
-Packer on TN-MGMT01. TN-BUILD01 drives the depot's prefetch. Range post-deploy installs point
-at `10.30.32.10` (8081 Nexus, 3142 apt-cacher-ng) and nowhere else.
+> **Superseded design (noted 2026-10-19, #212).** Until ADR 0012 this section described a
+> separate **TN-BUILD01** (10.30.31.10, "the only host with internet") and a depot on its
+> own service network: TN-DEPOT01 at **10.30.32.10** on `dPG-TN-SVC` (VLAN 32), with an
+> uplink NIC 10.30.31.11 on `dPG-TN-BUILD` connected only for a prefetch window
+> (`depot-uplink.sh`). In that design `dPG-TN-BUILD` had a UniFi gateway (.1), DHCP
+> .100–.200 and **internet egress**. ADR 0012 replaced it for the work vCenter: the build
+> network has no gateway and no internet, and the depot is dual-homed on MGMT and BUILD.
+> The TN-BUILD01 tooling (`install/lab/inventory/`, `create-portgroups.sh`,
+> `depot-uplink.sh`, `prefetch.yml`) is still in the repo and still documented in the top
+> half of `install/lab/README.md`; it is not what the work site runs.
 
 > **KMS (TN-KMS01) is paused** and will come with future integration and testing.
 > Templates and clones run unactivated until then. See §8 of the build sheet.
 
 #### Range WAN uplink to the depot
+
+> **Open item (2026-10-19, #212).** The "Lab value" column below, and the
+> 10.30.32.x addresses in the rest of this subsection and in §7, come from the superseded
+> design above: range pfSense WANs on `dPG-TN-SVC` (VLAN 32) reaching TN-DEPOT01 at
+> 10.30.32.10. At the work site the depot is at 10.30.30.30 (MGMT) and 10.30.31.30 (BUILD)
+> and has no NIC on `dPG-TN-SVC`. Ranges must not get a path to MGMT, and no decision
+> puts range WANs on the build network. How ranges reach the depot there is not decided;
+> until it is, the uplink stays at its default, empty (ranges fully isolated, no
+> deploy-time installs). The values in `install/inventory/group_vars/all/main.yml` are
+> unchanged.
 
 By default a range is fully isolated: its firewall gets one NIC per range zone and
 nothing else, and no range VM can reach the depot. To give ranges the depot, set the
@@ -231,7 +237,7 @@ guide, pfSense) applies it on first boot and reboots once into it. The config ho
   was applied (`/conf/tn-pfsense-config.log`).
 - **Passwords:** none in guestinfo. Range firewalls keep the template's users, groups,
   web GUI/SSH settings and certificates, so the admin password is the template's.
-- The UniFi side of VLAN 32 (§ table above) still denies `dPG-TN-SVC` → internet, mgmt
+- The UniFi side of VLAN 32 (superseded design, §4.1a) still denies `dPG-TN-SVC` → internet, mgmt
   and 192.168.1.0/24. Both layers are needed: the UniFi rule protects the platform if a
   student reconfigures pfSense.
 

@@ -305,6 +305,9 @@ tn_vsphere_range_uplink_prefix: 24
 # No new provisioning work after this many seconds (Celery visibility timeout is 3600).
 tn_vsphere_provision_budget: 3300
 # TN-DEPOT01 as range guests see it, e.g. http://10.30.32.10. Empty: no depot installs.
+# (10.30.32.10 is the pre-ADR 0012 dPG-TN-SVC design. At the work site the depot is
+# 10.30.30.30 MGMT / 10.30.31.30 BUILD, and how ranges reach it is not decided yet:
+# docs/deployment/vmware-site-runbook.md §4.1a, #212.)
 tn_depot_url: ""
 # Empty feed: <tn_depot_url>:8081/repository/chocolatey/. The apt/dnf forward proxy
 # must be set when the depot is (http://10.30.32.10:3142): empty falls back to
