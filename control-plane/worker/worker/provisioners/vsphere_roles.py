@@ -12,9 +12,11 @@ Administrator with the random per-VM password Sysprep set:
    never stored), then reboot. A second DC of the same domain is reported ``skipped``:
    promoting an extra DC is not automated.
 
-Image roles (Exchange, SQL Server, ...) were built into the role image the VM was cloned
-from; they need no guest work, unless that image is not registered yet (render.py then
-built the bare OS and set ``role_image_missing``), which is reported ``skipped``.
+Image roles (SQL Server, ...) were built into the role image the VM was cloned from; they
+need no guest work here, unless that image is not registered yet (render.py then built the
+bare OS and set ``role_image_missing``), which is reported ``skipped``. Exchange, SharePoint
+SE and MECM images only stage their product: vsphere_products.py finishes them after this
+step, and the provisioner reports them from there.
 
 Every role ends ``ok``, ``failed`` or ``skipped`` with a detail; anything but ``ok`` is an
 error on the range (``partial``), never a quiet ``ready``. Blocking pyVmomi: call through a

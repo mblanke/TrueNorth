@@ -318,9 +318,12 @@ def render(rng: Range, rows: list[RangeCredential], doc: dict[str, Any], *, wind
     if rows or defaults:
         lines += ["| Machine | Username | Password | Role | Set at deploy | Handed to Students | Notes |",
                   "|---|---|---|---|---|---|---|"]
+        from . import service as _service
+        pending = _service.setup_pending_machines(rng)
         for r in rows:
             how = " (generated)" if r.generated else ""
-            applied = "yes" if r.applied else "**not set by TrueNorth**"
+            applied = ("yes" if r.applied else "_being set up_" if r.machine in pending
+                       else "**not set by TrueNorth**")
             lines.append(
                 f"| `{_cell(r.machine)}` | {_code(r.username)} | `{{{{tn-credential:{r.id}}}}}`{how} | "
                 f"{_cell(r.role)} | {applied} | {'yes' if r.student_visible else 'no'} | {_cell(r.notes)} |"

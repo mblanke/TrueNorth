@@ -226,7 +226,9 @@ def render_topology(
 
     Windows Server nodes whose ``services`` name roles (windows_roles.py) are sized to at
     least their roles' minimum, clone the role's image when it has one, and carry
-    ``roles`` / ``role_features`` (and, for DCs, ``ad_domain`` / ``ad_forest_root``).
+    ``roles`` / ``role_features`` (and, for DCs, ``ad_domain`` / ``ad_forest_root``; for a
+    member whose role needs AD, ``ad_join``: its ``ad_domain``, else the template's, else the
+    first forest a DC names).
     ``role_errors`` lists placements that cannot be built (two product images on one VM).
     """
     range_name = template.get("name") or template.get("id") or range_id
@@ -259,7 +261,13 @@ def render_topology(
     role_errors, _ = windows_roles.check_nodes(
         [{**n, "os": canonical_os(_node_os(n))} for n in nodes if isinstance(n, dict)]
     )
+    # The first forest a DC of the template names: the domain a member server joins when
+    # neither it nor the template names one (large-enterprise: corp.truenorth.local).
+    first_forest = next((str(n.get("ad_domain") or n.get("ad_forest")) for n in nodes if isinstance(n, dict)
+                         and (n.get("ad_domain") or n.get("ad_forest"))
+                         and "ad-ds" in windows_roles.roles_of(n.get("services"))), "")
     default_domain = str(template.get("ad_domain") or template.get("domain") or "range.local")
+    join_domain = str(template.get("ad_domain") or template.get("domain") or first_forest or "range.local")
     forests: set[str] = set()  # AD domains whose first (forest-root) DC is already assigned
     for node in nodes:
         if (not node.get("os") and not node.get("os_template")
@@ -281,10 +289,9 @@ def render_topology(
             role_image = windows_roles.role_image(roles, os_alias)
             template_name = resolve_template(role_image) if role_image else None
             missing_image = role_image if role_image and template_name is None else ""
+            os_template = next((t for t in map(resolve_template, os_alias_candidates(given_os)) if t), None)
             if template_name is None:
-                template_name = next(
-                    (t for t in map(resolve_template, os_alias_candidates(given_os)) if t), None
-                )
+                template_name = os_template
             if template_name is None:
                 unresolved.append(os_alias)
                 template_name = os_alias  # best-effort; provisioning will surface the miss
@@ -301,11 +308,19 @@ def render_topology(
                 role_plan = {"roles": roles, "role_features": windows_roles.role_features(roles)}
                 if missing_image:
                     role_plan["role_image_missing"] = missing_image
+                elif role_image and os_template and os_template != template_name:
+                    # The plain OS to build instead when the role image is not on the
+                    # hypervisor after all (vsphere_api: _role_image_fallback).
+                    role_plan["role_fallback_template"] = os_template
                 if "ad-ds" in roles:
                     domain = str(node.get("ad_domain") or node.get("ad_forest") or default_domain)
                     role_plan["ad_domain"] = domain
                     role_plan["ad_forest_root"] = domain not in forests
                     forests.add(domain)
+                elif any(("in_range", "ad-ds") in windows_roles.BY_ID[r].get("requires", ()) for r in roles):
+                    # A member server's domain: the deploy-time product setup joins it
+                    # (provisioners/vsphere_products.py; Exchange, SharePoint SE, MECM).
+                    role_plan["ad_join"] = str(node.get("ad_domain") or join_domain)
             gateway = netinfo["gateway"] if netinfo else ""
             netmask = str(netinfo["net"].netmask) if netinfo else "255.255.255.0"
             prefix = netinfo["net"].prefixlen if netinfo else 24
@@ -358,16 +373,30 @@ def render_topology(
     }
 
 
+# The role images whose product is finished at deploy (provisioners/vsphere_products.py
+# SETUP_IMAGES; a test keeps the two equal). Only these wait for ``build_status = built``.
+DEPLOY_SETUP_IMAGES = frozenset({"srv2022-exchange2019", "srv2022-sharepointse", "srv2022-mecm"})
+
+
 def golden_image_resolver(db, hypervisor: str = "vsphere") -> Callable[[str], str | None]:
-    """Build an os-alias -> template_name resolver from the golden_images table."""
+    """Build an os-alias -> template_name resolver from the golden_images table.
+
+    The three product role images with a deploy-time setup (``DEPLOY_SETUP_IMAGES``:
+    Exchange 2019, SharePoint SE, MECM) resolve only once they are ``built``: their rows are
+    enabled before the images exist, so render_topology builds the plain OS instead and the
+    role reports itself not installed. Every other image (srv2022-sql2022,
+    srv2019-sharepoint2019, ERP, historian, ...) resolves as before, whatever its build_status."""
     import json as _json
 
-    from .db_ops import enabled_golden_images
+    from .db_ops import enabled_golden_images, unbuilt_golden_images
 
     rows = enabled_golden_images(db, hypervisor)
+    unbuilt = unbuilt_golden_images(db, hypervisor) & DEPLOY_SETUP_IMAGES
     by_id: dict[str, str] = {}
     by_alias: dict[str, str] = {}
     for cid, tname, aliases_json in rows:
+        if cid in unbuilt:
+            continue
         tn = tname or cid
         by_id[cid] = tn
         try:

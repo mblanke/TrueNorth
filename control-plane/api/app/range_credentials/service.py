@@ -34,6 +34,7 @@ ADR 0005), not the telemetry one: an exercise with no booked course seats no Stu
 
 from __future__ import annotations
 
+import json
 import logging
 import uuid
 from contextlib import closing
@@ -80,12 +81,17 @@ def declared(db: Session, rng: Range) -> list[account_rules.AccountSpec]:
     or a random password, as the range designer's save already decides (routers/ranges.py)."""
     tmpl = template_of(db, rng)
     if not foreign_template_allowed(tmpl, rng):
-        return []
+        # Not that tenant's passwords, but still this range's own generated domain
+        # Administrator for its product VMs and DCs: never the site-wide default.
+        return account_rules.implicit_admins(account_rules._load(tmpl.yaml if tmpl else ""), [])
     specs, errors = account_rules.parse_yaml(tmpl.yaml if tmpl else "")
     if errors:
         detail = "; ".join(f"{e['path']}: {e['message']}" for e in errors[:5])
         raise InvalidAccountsError(f"the range's template declares invalid accounts: {detail}")
-    return specs
+    # A per-range Administrator for a product role image's VM and the domain controllers, when
+    # the template declares none: generated and sealed here, never the site-wide default (ADR 0012).
+    doc = account_rules._load(tmpl.yaml if tmpl else "")
+    return specs + account_rules.implicit_admins(doc, specs)
 
 
 def sync(db: Session, rng: Range) -> int:
@@ -325,6 +331,32 @@ def readable_range(db: Session, range_id: uuid.UUID, user: CurrentUser, scope: s
 def visible_accounts(db: Session, rng: Range, scope: str) -> list[RangeCredential]:
     rows = _rows(db, rng)
     return rows if scope == ALL else [r for r in rows if r.student_visible and r.applied]
+
+
+def setup_pending_machines(rng: Range) -> set[str]:
+    """Node ids whose deploy-time setup (a product role image or Security Onion) is still
+    ``running`` in the range's output. Staff see such a machine's accounts as "being set up"
+    until the reconcile task verifies them (worker/setup_reconcile.py); a Student sees nothing
+    for it yet. Never raises on odd output."""
+    out: set[str] = set()
+    try:
+        output = json.loads(rng.provisioner_output) if rng.provisioner_output else {}
+        for vm in output.get("vms") or []:
+            running = ((vm.get("role_setup") or {}).get("status") == "running"
+                       or (vm.get("securityonion") or {}).get("status") == "running")
+            if running and vm.get("node_id"):
+                out.add(str(vm["node_id"]))
+    except (ValueError, TypeError, AttributeError):
+        return out
+    return out
+
+
+def setup_status(row: RangeCredential, pending: set[str]) -> str:
+    """How a staff reader sees a row: ``applied`` (verified), ``being_set_up`` (its machine's
+    setup is still running) or ``not_set`` (TrueNorth did not set it, or not built yet)."""
+    if row.applied:
+        return "applied"
+    return "being_set_up" if row.machine in pending else "not_set"
 
 
 def template_logins(db: Session, rng: Range, rows: list[RangeCredential], scope: str) -> list:

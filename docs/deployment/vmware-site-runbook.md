@@ -406,6 +406,9 @@ Use soc-training, or a small PO range. Check:
 - [ ] Security Onion is set up (`securityonion.status` `ok`, see **7.2**) and sees traffic
       on the monitoring port group (promiscuous mode is enabled only there)
 - [ ] port mirroring (see **7.1**) copies each zone named in a `mirror` rule to the sensors
+- [ ] in a range with Exchange, SharePoint SE or MECM (red-vs-blue, large-enterprise): the
+      VM joined the range domain and `vms[].role_setup.status` reaches `ok` (see **7.3**;
+      `running` at the end of the build is normal for Exchange: read `C:\TrueNorth\deploy\status`)
 - [ ] the full lifecycle works: scenario → telemetry in OpenSearch → AAR → destroy, with
       nothing left in vCenter
 
@@ -497,20 +500,23 @@ node in **airgap** mode (`worker/provisioners/vsphere_securityonion.py`):
 SO 2.4 has no answer file. The worker runs so-setup with its built-in test profile, and
 replaces the profile's hard-coded answers with the range's
 (`/root/tn-so-answers.env`, deleted after setup). Setup runs detached in the guest, takes
-20–60 minutes, and carries on even if the worker stops waiting.
+20–60 minutes, and carries on even if the worker stops waiting. The build starts it and
+records it `running`; the reconcile task (§7.3) reads its status later, verifies the accounts
+and records the outcome.
 
 Before the first SOC range, set on the worker:
 
 | Setting | Value |
 |---|---|
 | `VSPHERE_SO_INSTALL_USER` / `VSPHERE_SO_INSTALL_PASSWORD` | the template's build login (the user created in the SO installer; wiki). It runs guest operations and `sudo`. (`TN_RANGE_DEFAULT_PASSWORD` is not used: it is the Windows Administrator fallback.) Without these, the machine's `role: admin` account logs in, which works only for a template built with it. |
-| `VSPHERE_SO_SETUP_TIMEOUT` | seconds to wait for a healthy node, default `3600`. The wait also stops at `VSPHERE_PROVISION_BUDGET`. |
+| `VSPHERE_SO_SETUP_TIMEOUT` | seconds from the start of setup until a node that is not healthy is a `timeout`, default `7200`. Read by the reconcile task; the build itself waits only `VSPHERE_SETUP_BUILD_WAIT` (default 0). |
 | `TN_SECRETS_KEY` | already set for hypervisor passwords. A generated web password is stored sealed with it. |
 
 Check after the build:
 1. `provisioner_output.vms[].securityonion.status` is `ok` (`so-status` healthy). Other
    statuses are warnings, not a failed range:
-   - `running`: the provision budget ran out first;
+   - `running`: still being set up; the reconcile task records the result within minutes of
+     it finishing (the accounts appear, as "being set up" to staff until then);
    - `timeout`: `VSPHERE_SO_SETUP_TIMEOUT` ran out;
    - `failed`, with a reason: see `/root/tn-so-setup.log`, `/root/sosetup.log` and
      `/root/errors.log` in the guest;
@@ -538,6 +544,122 @@ Check after the build:
 Only a real vCenter can show that the template has open-vm-tools running and that the
 install login has sudo. The status is then `failed: could not start …`, or
 `guest operations not ready`.
+
+### 7.3 Exchange, SharePoint SE and MECM (product setup at deploy)
+
+The role images `srv2022-exchange2019`, `srv2022-sharepointse` and `srv2022-mecm`
+(`infra/vsphere/packer/roles.pkr.hcl`) carry the prerequisites and the staged media only.
+Each product needs the range's domain, so the worker finishes it per range
+(`worker/provisioners/vsphere_products.py`). It runs on a VM whose node names the role
+(`exchange`, `sharepoint_se`, `sccm` …, `windows-server-2022`) and which was cloned from the
+role image. Until one of these three images is `built` (golden-image registry; other role images resolve as before) and present on the vCenter, a range builds the plain OS (`srv2022`) instead, with the warning "role image <id> not built — using srv2022; <role> not installed" and `role_setup` `skipped`. Nothing is set up on it, and the range is not partial for it.
+
+Order, per VM:
+1. After every VM's Windows roles, so the forest-root DC of the VM's domain has been
+   promoted. The domain is the node's `ad_domain`, else the template's `ad_domain`, else
+   the first `ad_forest` a DC names. If that DC did not end `ad-ds: ok`, the setup is
+   `skipped`.
+2. As the VM's local Administrator: check `C:\TrueNorth\role-image.json` (the staged-image
+   marker the image build writes; missing = `skipped`, nothing runs). Make
+   `C:\TrueNorth\deploy` readable only by Administrators and SYSTEM, deliver the DC's
+   password to it by VMware **guest file transfer** (never a command line), set DNS to the
+   DC, wait for it (up to 15 min), `Add-Computer` (the join reads then deletes the password
+   file), reboot.
+3. The VM's own deploy-time software (§4.1a), through the same VSPHERE_CONCURRENCY
+   semaphore as the rest, so no package install races the product's installer.
+4. If no status file exists yet: reboot first when the software installs left one pending
+   (waiting for VMware Tools), then deliver the runner, the (non-secret) parameters and, for
+   SharePoint, a secrets file (the
+   product key and farm passphrase) by guest file transfer into that folder, then start the
+   setup **detached through VMware guest operations authenticated as `<DOMAIN>\Administrator`**.
+   There is no scheduled task and no stored Windows credential: the password reaches only the
+   vSphere API auth of the guest-operations call. The started process keeps running after the
+   call returns (1–2 h). The runner reads its inputs from the delivered file and deletes it in
+   a `finally`; a fresh attempt also deletes any leftover, so nothing secret lingers.
+   - **Exchange 2019**: `Setup.exe /PrepareSchema`, `/PrepareAD /OrganizationName:"<range name>"`,
+     `/Mode:Install /Role:Mailbox`, each with `/IAcceptExchangeServerLicenseTerms_DiagnosticDataOFF`.
+   - **SharePoint SE**: only with a product key. It completes the image's own SQL Server 2022
+     (`/ACTION=CompleteImage`), runs `setup.exe /config` with the key, then builds a
+     single-server farm (`New-SPConfigurationDatabase -LocalServerRole SingleServerFarm`,
+     Central Administration on port 9999, farm account `<DOMAIN>\Administrator`). The key is
+     masked from the SharePoint setup logs after install. A range SQL VM is not used:
+     TrueNorth does not build `srv2022-sql2022` or join SQL VMs to the domain (a warning says so).
+   - **MECM**: SQL `/ACTION=CompleteImage` (`SQL_Latin1_General_CP1_CI_AS`), `extadsch.exe`,
+     the `System Management` container (Full Control for the site server's computer
+     account), then `setup.exe /SCRIPT <ini> /NOUSERINPUT`. The ini makes a primary site:
+     `ProductID=EVAL` (180 days from install, longer than a range lives), site code `T` plus
+     the first two hex digits of the range id, SDK/MP/DP on the server, no service
+     connection point.
+5. The build waits at most `VSPHERE_SETUP_BUILD_WAIT` (default 0), records the setup
+   `running` with its status file, and finishes within its budget. The **reconcile task**
+   (`worker.setup_reconcile.reconcile_setups`, beat, every 5 min, worker-provision queue)
+   reads the status file in the guest later — re-authenticating as the domain Administrator,
+   whose password it re-reads from the range's credentials each run, never stored in the
+   output — and records `ok` / `failed` / `timeout`, verifying and marking the accounts
+   `applied`. Until then staff see those accounts as **"being set up"** (not the real
+   password rows — those are the declared/generated ones they already see; the *applied*
+   state is what changes); Students see them only once verified.
+   The reconcile follows the range through every live state (ready, running, stopping,
+   stopped, starting), so a stop/start mid-setup does not strand it. The timeout is checked
+   before any guest operation: a VM that is powered off, unreachable or no longer accepts the
+   login still ends `timeout`. One run at a time (Redis lock), at most 90 s of guest waiting per
+   VM and 240 s per range (`SETUP_RECONCILE_RANGE_SECONDS`), 1200 s per run
+   (`SETUP_RECONCILE_RUN_SECONDS`). Lab-session ranges are skipped. Security Onion: the SOC web
+   login is recorded under its declared username; an admin account that is the install login
+   gets its declared password first; an admin is applied only once a login with its declared
+   password works.
+
+The domain Administrator is the DC's built-in Administrator after forest promotion. A range
+with a product role image gets a **per-range generated Administrator** for the product VM
+and the domain controllers when the template declares none (the credential service, #183;
+staff-visible, sealed), so one range's compromise does not expose another range's domain
+admin. A declared `Administrator` for the DC (`accounts:`, §7.0a) is used instead when
+present. The site-wide template default is no longer the fallback for these machines.
+
+> **To verify on the first real build:** the built-in domain Administrator (RID 500) is
+> assumed to get a full (unfiltered) token under the default UAC policy, so a guest-operations
+> process started as it can run Exchange / ConfigMgr / SharePoint setup. If a real build shows
+> a filtered token, that is a follow-up (a stored-credential scheduled task would be the
+> fallback), not this change. A filtered token shows up as `failed` with "the status file ...
+> exists but the domain Administrator cannot read it (access denied)" (status read exit 201).
+> The worker must also reach each ESXi host on **443** for the
+> guest file transfer (mblanke/TrueNorth#194); if it cannot, the setup is `failed` with that
+> reason and nothing is left half-done.
+
+Settings (worker):
+
+| Setting | Value |
+|---|---|
+| `TN_SHAREPOINT_PRODUCT_KEY` (installer `vault_sharepoint_product_key`) | the site's SharePoint SE key from the Visual Studio subscription. SharePoint SE has no free key. Empty: the role is `skipped`, "staged (no product key)", and nothing runs on the VM. Never logged; preflight checks its form. |
+| `VSPHERE_ROLE_SETUP_TIMEOUT` (installer `tn_vsphere_role_setup_timeout`) | seconds before a setup still running is a `timeout`, default `7200`. Measured from the domain join and read by the reconcile task, not waited on in the build. |
+| `VSPHERE_SETUP_BUILD_WAIT` | seconds the build itself waits for a setup after starting it, default `0` (record `running`, leave it to the reconcile task). |
+| `TN_DEPOT_URL` | MECM only. When the image has no `C:\TrueNorth\media\mecm-prereqs`, the runner downloads `<TN_DEPOT_URL>:8081/repository/installers/roles/mecm/configmgr-prereqs.zip` through the range uplink. |
+
+**ConfigMgr prerequisite files.** ConfigMgr setup needs the files `setupdl.exe` downloads
+(`SMSSETUP\BIN\X64\setupdl.exe <folder>` on a machine with internet, same ConfigMgr
+version as the ISO). Zip that folder's contents and upload it once as the `tn-prefetch`
+user:
+`curl -u tn-prefetch --upload-file configmgr-prereqs.zip http://10.30.30.30:8081/repository/installers/roles/mecm/configmgr-prereqs.zip`.
+With it on the depot at image build time, `role-image.ps1` stages it in the image and no
+range downloads it. Also put `msodbcsql18.msi` there: current ConfigMgr setup refuses a
+site server without ODBC Driver 18.
+
+Check after the build:
+1. `provisioner_output.vms[].role_setup.status` (also on `roles.<role>`). Anything other
+   than `ok` is a warning, never a partial range:
+   - `running`: still being set up — the reconcile task finishes it (normal at the end of a
+     build; Exchange takes 1–2 h); `timeout`: not healthy within `VSPHERE_ROLE_SETUP_TIMEOUT`;
+   - `failed`, with a reason: see `C:\TrueNorth\deploy\runner.log` and the product log the
+     reason names (`C:\ExchangeSetupLogs`, `C:\ConfigMgrSetup.log`, `C:\ExtADSch.log`, the
+     SharePoint Setup log in `C:\TrueNorth\deploy`);
+   - `skipped`: no product key (SharePoint), not a staged image, no DC of the domain, the DC
+     not promoted, or no budget left.
+   The current state is a number in `C:\TrueNorth\deploy\status`: 0 done, 2–9 running, 10+
+   failed (`vsphere_products.STATUS`). The runner never starts twice on one VM: a
+   redelivered build (or the reconcile task) finds that status file and only reads it.
+2. `accounts_applied`: the VM's own Administrator, plus (once the reconcile task verifies the
+   setup) any account the product sets. Staff see an unverified account on a still-running
+   machine as "being set up" on the Credentials panel and the wiki page.
 
 ---
 

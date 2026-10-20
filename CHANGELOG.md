@@ -431,6 +431,75 @@ course production with a local-model fallback, and the cleanup of unsupported su
   10.30.31.30 BUILD) is the only machine with internet egress. The earlier TN-BUILD01 /
   10.30.32.10 design is kept as dated "superseded" notes. How ranges reach the depot at the
   work site is recorded as an open item; no code, IP or default changed.
+- New: Exchange 2019, SharePoint SE and MECM are finished at deploy (ADR 0012; the exception
+  to decision 1 is closed). A VM cloned from `srv2022-exchange2019`, `srv2022-sharepointse`
+  or `srv2022-mecm` is set up per range by `worker/provisioners/vsphere_products.py`. Tested
+  with fake guest sessions and a fake vCenter only; nothing has run on a real role image.
+  - Order: after every VM's Windows roles, so the forest-root DC of its domain (the node's
+    `ad_domain`, the template's, else the first `ad_forest` a DC names; render's new
+    `ad_join`) is promoted. A DC that did not end `ad-ds: ok` skips the setup. As the local
+    Administrator: the image's `C:\TrueNorth\role-image.json` must name it (the staged-image
+    marker; no prerequisite is installed again), then DNS to the DC, `Add-Computer`, reboot,
+    then the VM's own software, then the product.
+  - The product runs **detached through VMware guest operations authenticated as
+    `<DOMAIN>\Administrator`** — no scheduled task and no stored Windows credential (the
+    password reaches only the vSphere API auth). The setup's non-password inputs and, for
+    SharePoint, the product key and farm passphrase are delivered by guest **file transfer**
+    into an Administrators/SYSTEM-only folder; the runner reads and deletes them in a
+    `finally`, and a fresh attempt deletes any leftover. The worker must reach each ESXi host
+    on 443 for the transfer; if it cannot the setup is `failed` (mblanke/TrueNorth#193, #194).
+    Exchange: `/PrepareSchema`, `/PrepareAD /OrganizationName:<range>`, `/Mode:Install
+    /Role:Mailbox`. SharePoint SE: SQL CompleteImage on its own prepared SQL Server 2022
+    (newly added to the image), `setup.exe /config`, a single-server farm, then the product
+    key masked from the setup logs. MECM: SQL CompleteImage, `extadsch`, the System
+    Management container, `setup.exe /SCRIPT` (primary site, EVAL) with setupdl prerequisites
+    from the image or the depot. A reboot the software installs left pending is done right
+    before the product setup starts (after the VM's software), waiting for VMware Tools.
+  - **Long setups no longer risk the Celery soft limit.** `provision_range` passes the
+    provisioner a `finish_by` (the soft limit minus `PROVISION_RESERVE`, default 300 s); the
+    provisioner stops new work by then, measured from the task start. The build starts the
+    product setup, waits at most `VSPHERE_SETUP_BUILD_WAIT` (default 0) and records it
+    `running`; a new beat task, `worker.setup_reconcile.reconcile_setups` (every 5 min,
+    worker-provision queue), reads the status file in the guest later — re-authenticating as
+    the domain Administrator, whose password it re-reads from the range's credentials each run,
+    never stored in the output — and records `ok` / `failed` / `timeout`, verifying and
+    marking the accounts `applied`. Security Onion moved to the same budget and reconcile path
+    (`VSPHERE_SO_SETUP_TIMEOUT` default raised to 7200 s; it now ends `running` at build and
+    its accounts appear once the reconcile verifies them). The reconcile follows every live
+    range state (ready, running, stopping, stopped, starting: a stop/start never returns a
+    range to `ready`), checks the timeout before any guest operation (so a powered-off or
+    unreachable VM still ends), caps guest waiting per VM and per run, runs one at a time
+    (Redis lock), re-raises its soft time limit, skips lab-session ranges, never uses the
+    site-wide default password, and marks accounts applied in the same transaction as the
+    guarded output write. Security Onion: the web login is recorded under its declared
+    username, and an admin that is the install login gets its declared password (chpasswd)
+    first; an admin is applied only once a login with its declared password works. Secrets
+    are cleaned up on every non-ok path (a timed-out, killed join included) and on a terminal
+    reconcile when the guest answers; the state folder must lock down (icacls) before any
+    secret is written; a status read that is denied (exit 201, likely a UAC-filtered token) is
+    reported as such, and any exit code the script never gives is retried, never a result.
+  - **Cross-range isolation of the domain admin.** A range with a product role image gets a
+    per-range *generated* Administrator for the product VM and the domain controllers when the
+    template declares none (the credential service, #183; staff-visible, sealed), instead of
+    the site-wide template default. A declared `Administrator` is still honoured.
+  - The product VMs' software installs share the one `VSPHERE_CONCURRENCY` semaphore with the
+    rest of the range's installs; the per-VM setup deadline starts after the join.
+  - SharePoint SE needs the site's key: new optional `TN_SHAREPOINT_PRODUCT_KEY` (installer
+    `vault_sharepoint_product_key`, preflight checks its form, never logged). Without it the
+    role is `skipped`, "staged (no product key)", and nothing runs.
+  - Outcome in `vms[].role_setup` and `roles.<role>`: ok / failed / timeout / running /
+    skipped. Anything but `ok` is a warning, never a partial range. Staff see an account on a
+    still-running machine as **"being set up"** on the Credentials panel, the wiki page and
+    `GET /ranges/{id}/credentials` (`setup_status`); Students see it only once verified.
+  - Not built yet: a product role image (`srv2022-exchange2019`, `srv2022-sharepointse`,
+    `srv2022-mecm` only; other role images resolve as before) whose golden-image row is not
+    `build_status=built` (so a hand-made one must be registered `built` to resolve), or whose
+    template is not on the vCenter, is replaced by the plain OS (`srv2022`, render's resolver
+    and the clone step), with the warning "role image <id> not built — using srv2022; <role>
+    not installed" and `role_setup` `skipped`; the range is not partial for it. So enabling
+    the rows does not break red-vs-blue or large-enterprise before the images exist.
+  - The three catalogue rows are `enabled=yes`; a contract test keeps every enabled role
+    image tied to a deploy path. Runbook: `vmware-site-runbook.md` §7.3.
 
 ### R0-B: web correctness and role access
 - Fix: Resume on a paused exercise called `/start` (409 unless pending), so nothing resumed;

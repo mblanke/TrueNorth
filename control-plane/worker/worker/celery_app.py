@@ -69,7 +69,8 @@ app.conf.update(
     # keep its own copy, and the two disagreed on delete_snapshot.
     task_routes={**route_table(), "worker.tasks.*": {"queue": "default"}, "worker.audit_tasks.*": {"queue": "default"},
                  # vCenter work: worker-provision (-Q provision,destroy) has VSPHERE_* and egress.
-                 "worker.template_tasks.*": {"queue": "destroy"}},
+                 "worker.template_tasks.*": {"queue": "destroy"},
+                 "worker.setup_reconcile.*": {"queue": "destroy"}},
     # Concurrency control
     task_track_started=True,
     task_acks_late=True,  # Don't ack until task completes
@@ -150,6 +151,14 @@ app.conf.beat_schedule = {
         "kwargs": {"dry_run": os.getenv("TEMPLATE_COPY_PRUNE", "").strip().lower() != "delete"},
         "options": {"expires": 6 * 3600},
     },
+    # Finish long in-guest setups left ``running`` by a build (product role images, Security
+    # Onion): read their status in the guest and record ok/failed/timeout (worker/setup_reconcile.py).
+    # A no-op when no range has one running.
+    "reconcile-range-setups": {
+        "task": "worker.setup_reconcile.reconcile_setups",
+        "schedule": float(os.getenv("SETUP_RECONCILE_SECONDS", "300")),
+        "options": {"expires": 300},
+    },
 }
 
 
@@ -192,6 +201,7 @@ from . import (
     lab_tasks,  # noqa: F401, E402
     noise_tasks,  # noqa: F401, E402
     power_tasks,  # noqa: F401, E402
+    setup_reconcile,  # noqa: F401, E402
     tasks,  # noqa: F401, E402
     telemetry_tasks,  # noqa: F401, E402
     template_tasks,  # noqa: F401, E402

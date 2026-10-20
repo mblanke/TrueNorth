@@ -100,14 +100,16 @@ class FakeSession:
         return ("ok" if code in cmd.ok_codes else "failed"), code
 
 
-def _setup(vm_def=None, codes=(0,), *, deadline=3600.0, budget=3300.0, env=INSTALL, macs=MACS, **kw):
+def _setup(vm_def=None, codes=(0,), *, deadline=3600.0, budget=3300.0, env=INSTALL, macs=MACS,
+           build_wait=100000.0, **kw):
     sessions: list[FakeSession] = []
 
     def session_for(creds):
         sessions.append(FakeSession(creds, codes, **kw))
         return sessions[-1]
 
-    out, warnings = so.setup(session_for, vm_def or _vm(), macs, NETWORKS, {203}, deadline, budget, poll=30, env=env)
+    out, warnings = so.setup(session_for, vm_def or _vm(), macs, NETWORKS, {203}, deadline, budget, poll=30,
+                             env=env, build_wait=build_wait)
     return out, warnings, (sessions[0] if sessions else None)
 
 
@@ -404,3 +406,81 @@ class TestSetup:
     def test_fewer_nics_on_the_vm_than_planned_is_skipped(self):
         out, warnings, _ = _setup(macs=MACS[:1])
         assert out["status"] == "skipped" and "1 NICs" in out["detail"]
+
+
+# --------------------------------------------------------------------------- #
+# Build wait and the reconcile path (worker/setup_reconcile.py)
+# --------------------------------------------------------------------------- #
+
+
+class TestReconcilePath:
+    def test_build_wait_zero_leaves_it_running_with_a_reconcile_block(self):
+        vm = _vm(_accounts=[_acct("Analyst", "Web-Pass-12345"), _acct("tnadmin", "Range-Admin-1", admin=True)])
+        out, warnings, _ = _setup(vm, codes=[2] * 100, build_wait=0)
+        assert out["status"] == "running" and out["accounts_applied"] == []  # nothing applied before reconcile
+        rec = out["reconcile"]
+        assert rec["kind"] == "securityonion" and rec["status_file"] == so.STATUS_FILE
+        assert rec["web_user"] == "analyst@range.local" and rec["web_account"] == "Analyst"  # the declared name
+        assert rec["admin_user"] == "tnadmin" and rec["admin_last"] is False
+        assert rec["timeout"] == so.VSPHERE_SO_SETUP_TIMEOUT
+        assert any("reconcile task records the result" in w for w in warnings)
+
+    @staticmethod
+    def _info(**extra):
+        import time
+        return {"kind": "securityonion", "status_file": so.STATUS_FILE, "since": time.time(), "timeout": 7200,
+                "web_user": "analyst@range.local", "web_account": "Analyst", "web_generated": False,
+                "admin_user": "tnadmin", "admin_last": False, "node": "seconion01", **extra}
+
+    @staticmethod
+    def _sessions(codes, *, refuse: str = "", checks=None):
+        made = []
+
+        def session_for(creds):
+            s = FakeSession(creds, codes, checks=checks)
+            if refuse and creds.username == refuse:
+                def nope(deadline):
+                    raise RuntimeError("InvalidGuestLogin")
+                s.wait_ready = nope
+            made.append(s)
+            return s
+        return session_for, made
+
+    INSTALL = guest.GuestCredentials("linux", "soadmin", guest.Secret("Build-Pass-77"))
+
+    def test_healthy_records_the_declared_web_username_and_verifies_the_admin_login(self):
+        session_for, made = self._sessions([0])
+        out, verified = so.reconcile(session_for, self.INSTALL, self._info(),
+                                     admin_password=guest.Secret("Range-Admin-1"))
+        assert out["status"] == "ok"
+        assert verified == {"Analyst", "tnadmin"}  # declared names, as _verified_web records them
+        assert made[-1].creds.username == "tnadmin"  # the admin was verified by a login with its password
+
+    def test_admin_last_gets_its_declared_password_before_it_is_applied(self):
+        session_for, made = self._sessions([0])
+        info = self._info(admin_user="soadmin", admin_last=True)
+        out, verified = so.reconcile(session_for, self.INSTALL, info, admin_password=guest.Secret("Range-Admin-1"))
+        labels = [c.label for c in made[0].commands]
+        assert labels.index("so-web-check") < labels.index("so-admin-password")  # web checked before the login ends
+        assert "soadmin" in verified and "Range-Admin-1" not in out["detail"]
+
+    def test_an_admin_whose_declared_password_does_not_work_is_not_applied(self):
+        session_for, _ = self._sessions([0], refuse="tnadmin")
+        out, verified = so.reconcile(session_for, self.INSTALL, self._info(),
+                                     admin_password=guest.Secret("Range-Admin-1"))
+        assert out["status"] == "ok" and "tnadmin" not in verified and "did not work" in out["detail"]
+        session_for, _ = self._sessions([0], checks={"so-admin-password": 1})
+        out, verified = so.reconcile(session_for, self.INSTALL, self._info(admin_user="soadmin", admin_last=True),
+                                     admin_password=guest.Secret("Range-Admin-1"))
+        assert "soadmin" not in verified and "was not set" in out["detail"]
+
+    def test_failed_still_running_and_timeout_first(self):
+        session_for, _ = self._sessions([13])
+        out, _ = so.reconcile(session_for, self.INSTALL, self._info())
+        assert out["status"] == "failed"
+        session_for, _ = self._sessions([2])
+        assert so.reconcile(session_for, self.INSTALL, self._info()) == (None, set())
+        # Past the timeout: ends without any guest operation (a powered-off or unreachable sensor).
+        session_for, made = self._sessions([2])
+        out, _ = so.reconcile(session_for, self.INSTALL, self._info(since=0.0, timeout=50))
+        assert out["status"] == "timeout" and made == []

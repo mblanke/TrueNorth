@@ -104,6 +104,18 @@
       vault_template_linux_password must not contain a single quote or a newline.
     success_msg: "template build login: no quotes or newlines"
 
+# SharePoint SE's product key goes into .env.production single-quoted; the worker refuses a
+# malformed one at deploy anyway. Never prints the key.
+- name: Preflight — the SharePoint product key is empty or well-formed
+  vars:
+    _key: "{{ tn_sharepoint_product_key | default('') | string | trim | upper }}"
+  ansible.builtin.assert:
+    that: _key | length == 0 or _key is match('^[A-Z0-9]{5}(-[A-Z0-9]{5}){4}$')
+    fail_msg: >-
+      vault_sharepoint_product_key must be empty or a 25-character product key
+      (XXXXX-XXXXX-XXXXX-XXXXX-XXXXX).
+    success_msg: "SharePoint product key: {{ 'set' if _key | length else 'not set (SharePoint SE stays staged)' }}"
+
 # Alert email (tn_alert_email_enabled): everything Alertmanager needs to send, or the
 # install stops here rather than render a receiver that cannot deliver. Names what is
 # missing; never prints a credential.

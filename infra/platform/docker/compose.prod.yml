@@ -742,7 +742,14 @@ services:
       # login (guest operations + sudo) and how long to wait for a healthy node.
       VSPHERE_SO_INSTALL_USER: ${VSPHERE_SO_INSTALL_USER:-}
       VSPHERE_SO_INSTALL_PASSWORD: ${VSPHERE_SO_INSTALL_PASSWORD:-}
-      VSPHERE_SO_SETUP_TIMEOUT: ${VSPHERE_SO_SETUP_TIMEOUT:-3600}
+      VSPHERE_SO_SETUP_TIMEOUT: ${VSPHERE_SO_SETUP_TIMEOUT:-7200}
+      # Exchange / SharePoint SE / MECM role images finished at deploy (runbook 7.3). The build
+      # starts the setup, waits at most VSPHERE_SETUP_BUILD_WAIT and leaves it running; the
+      # reconcile beat task finishes it within VSPHERE_ROLE_SETUP_TIMEOUT. SharePoint's product
+      # key (empty: left staged). Never logged.
+      VSPHERE_ROLE_SETUP_TIMEOUT: ${VSPHERE_ROLE_SETUP_TIMEOUT:-7200}
+      VSPHERE_SETUP_BUILD_WAIT: ${VSPHERE_SETUP_BUILD_WAIT:-0}
+      TN_SHAREPOINT_PRODUCT_KEY: ${TN_SHAREPOINT_PRODUCT_KEY:-}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       LOG_FORMAT: ${LOG_FORMAT:-json} # worker/celery_app.py: JSON lines
     volumes:

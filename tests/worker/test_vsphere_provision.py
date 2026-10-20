@@ -28,6 +28,7 @@ from worker import pfsense_config, render, vlan_pool
 from worker.provisioners import vsphere_api as mod
 from worker.provisioners import vsphere_guest as guest_mod
 from worker.provisioners import vsphere_infra as infra
+from worker.provisioners import vsphere_products as products_mod
 from worker.provisioners import vsphere_roles as roles_mod
 from worker.provisioners import vsphere_securityonion as so_mod
 
@@ -1336,6 +1337,280 @@ class TestWindowsRoles:
         _run(_prov(vc).provision(RANGE_ID, _rendered(ROLE_TEMPLATE), {}))
         spec = next(s for _, name, s in vc.templates["tmpl-win2022"].clone_specs if name == f"{R8}-exch")
         assert (spec.config.numCPUs, spec.config.memoryMB) == (4, 16384)
+
+
+# --------------------------------------------------------------------------- #
+# Exchange / SharePoint SE / MECM role images: setup at deploy (vsphere_products.py)
+# --------------------------------------------------------------------------- #
+
+PRODUCT_IMAGES = {**IMAGES, **{i: i for i in products_mod.SETUP_IMAGES}}
+PRODUCT_TEMPLATE = {**TEMPLATE, "name": "Product Range", "nodes": [
+    TEMPLATE["nodes"][0],
+    {"id": "exch", "os": WS22, "vlan": "victim_network", "services": ["exchange", "owa"]},
+    {"id": "sp", "os": WS22, "vlan": "victim_network", "services": ["sharepoint_se"]},
+    {"id": "dc01", "os": WS22, "vlan": "victim_network", "ip": "10.60.201.10",
+     "services": ["active_directory", "dns"], "ad_forest": "corp.range.local"},
+]}
+
+
+class TestProductSetup:
+    """The provision flow around vsphere_products: when it runs, against which DC, as which
+    login, and how its outcome lands on the range. The guest steps are faked here (their
+    commands are tested in test_vsphere_products.py)."""
+
+    @pytest.fixture
+    def flow(self, vc, monkeypatch):
+        for image in products_mod.SETUP_IMAGES:  # the role images exist on the vCenter
+            tmpl = FakeVM(image, [], template=True)
+            tmpl.config.hardware = FreshHardware(MGMT)
+            vc.templates[image] = tmpl
+            vc.dc.vmFolder.childEntity.append(tmpl)
+        prov = _prov(vc)
+        events: list[tuple] = []
+        state = {"dc": "ok", "run": "running"}
+
+        def roles_sync(si, vm_def, vm_id, deadline):
+            events.append(("roles", vm_def["name"]))
+            ok = {"status": "ok", "detail": "installed"}
+            return {"ad-ds": {"status": state["dc"], "detail": "x"}, "dns": ok}
+
+        def prepare(session_for, plan, deadline, reboot_fn=None):
+            events.append(("prepare", plan.name, plan.dc_name, plan.domain_user, plan.domain_password.reveal()))
+            return None
+
+        def run(session_for, plan, deadline, budget_end, **kw):
+            events.append(("run", plan.name))
+            return products_mod.outcome(plan, state["run"], "last status: Exchange: installing the Mailbox role")
+
+        monkeypatch.setattr(prov, "_roles_sync", roles_sync)
+        monkeypatch.setattr(products_mod, "prepare", prepare)
+        monkeypatch.setattr(products_mod, "run", run)
+        monkeypatch.delenv(products_mod.PRODUCT_KEY_ENV, raising=False)
+        built = render.render_topology(PRODUCT_TEMPLATE, RANGE_ID, PRODUCT_IMAGES.get)
+        template = {"name": "Product Range", "vms": built["vm_definitions"], "networks": built["network_definitions"]}
+        return prov, template, events, state
+
+    def test_setup_runs_after_the_dc_is_promoted_as_its_administrator(self, flow, vc):
+        prov, template, events, _ = flow
+        result = _run(prov.provision(RANGE_ID, template, {}))
+        assert result.status == "ok", result.errors  # a setup still running is a warning, not partial
+        names = [e[:2] for e in events]
+        assert names.index(("roles", f"{R8}-dc01")) < names.index(("prepare", f"{R8}-exch")) \
+            < names.index(("run", f"{R8}-exch"))
+        prep = next(e for e in events if e[0] == "prepare")
+        dc_password = vc.vms[_vm_out(result, "dc01")["vm_id"]].guest_password("Administrator")
+        assert prep[2:] == (f"{R8}-dc01", "CORP\\Administrator", dc_password)  # the DC's Sysprep Administrator
+        exch = _vm_out(result, "exch")
+        assert exch["roles"]["exchange"]["status"] == "running"
+        assert exch["role_setup"]["image"] == "srv2022-exchange2019"
+        assert exch["role_setup"]["organization"] == "Product Range"
+        assert any(w.startswith(f"VM {R8}-exch: Exchange 2019 setup running") for w in result.warnings)
+        dumped = json.dumps(result.__dict__, default=str)
+        assert dc_password not in dumped
+
+    def test_sharepoint_without_a_key_is_staged_and_never_touched(self, flow):
+        prov, template, events, _ = flow
+        result = _run(prov.provision(RANGE_ID, template, {}))
+        sp = _vm_out(result, "sp")
+        assert sp["roles"]["sharepoint"]["status"] == "skipped"
+        assert sp["roles"]["sharepoint"]["detail"].startswith("staged (no product key)")
+        assert sp["role_setup"]["image"] == "srv2022-sharepointse"
+        assert not [e for e in events if e[0] != "roles" and e[1] == f"{R8}-sp"]
+        assert any("SharePoint SE setup skipped: staged (no product key)" in w for w in result.warnings)
+        assert not [e for e in result.errors if "sharepoint" in e]
+
+    def test_a_dc_that_was_not_promoted_skips_the_setup(self, flow):
+        prov, template, events, state = flow
+        state["dc"] = "failed"
+        result = _run(prov.provision(RANGE_ID, template, {}))
+        exch = _vm_out(result, "exch")["roles"]["exchange"]
+        assert exch["status"] == "skipped" and f"domain controller {R8}-dc01 is not ready (ad-ds failed)" in exch["detail"]
+        assert not [e for e in events if e[0] in ("prepare", "run")]
+        assert result.status == "partial"  # for the DC's own error only
+        assert [e for e in result.errors if "exchange" in e] == []
+
+    def test_a_built_role_image_is_cloned_and_set_up(self, flow, vc):
+        prov, template, events, _ = flow
+        _run(prov.provision(RANGE_ID, template, {}))
+        assert [n for _, n, _ in vc.templates["srv2022-exchange2019"].clone_specs] == [f"{R8}-exch"]
+        assert not [n for _, n, _ in vc.templates["tmpl-win2022"].clone_specs if n == f"{R8}-exch"]
+        assert ("run", f"{R8}-exch") in [e[:2] for e in events]
+
+    def test_an_unbuilt_role_image_builds_srv2022_and_warns(self, flow, vc):
+        prov, _, events, _ = flow
+        # The registry lists the role images but not as built: the resolver leaves them out.
+        built = render.render_topology(PRODUCT_TEMPLATE, RANGE_ID, IMAGES.get)
+        template = {"name": "Product Range", "vms": built["vm_definitions"], "networks": built["network_definitions"]}
+        result = _run(prov.provision(RANGE_ID, template, {}))
+        assert result.status == "ok", result.errors  # not partial: the range still builds
+        exch = _vm_out(result, "exch")
+        detail = "role image srv2022-exchange2019 not built — using tmpl-win2022; exchange not installed"
+        assert exch["roles"]["exchange"] == {"status": "skipped", "detail": detail}
+        assert exch["role_setup"] == {"status": "skipped", "detail": detail, "image": "srv2022-exchange2019"}
+        assert f"VM {R8}-exch: {detail}" in result.warnings
+        assert any(n == f"{R8}-exch" for _, n, _ in vc.templates["tmpl-win2022"].clone_specs)
+        assert not vc.templates["srv2022-exchange2019"].clone_specs
+        assert not [e for e in events if e[0] in ("prepare", "run") and e[1] == f"{R8}-exch"]
+
+    def test_a_role_image_missing_on_the_vcenter_falls_back_too(self, flow, vc):
+        prov, template, events, _ = flow
+        gone = vc.templates.pop("srv2022-exchange2019")  # registered as built, but not in vCenter
+        vc.dc.vmFolder.childEntity.remove(gone)
+        result = _run(prov.provision(RANGE_ID, template, {}))
+        assert result.status == "ok", result.errors
+        exch = _vm_out(result, "exch")
+        assert exch["role_setup"]["status"] == "skipped"
+        assert exch["role_setup"]["detail"].startswith("role image srv2022-exchange2019 not built — using tmpl-win2022")
+        assert exch["template"] == "tmpl-win2022"
+        assert any(n == f"{R8}-exch" for _, n, _ in vc.templates["tmpl-win2022"].clone_specs)
+        assert not [e for e in events if e[0] in ("prepare", "run") and e[1] == f"{R8}-exch"]
+        assert ("run", f"{R8}-exch") not in [e[:2] for e in events]
+
+    def test_a_finished_setup_is_ok_on_the_role(self, flow):
+        prov, template, _, state = flow
+        state["run"] = "ok"
+        result = _run(prov.provision(RANGE_ID, template, {}))
+        assert _vm_out(result, "exch")["roles"]["exchange"]["status"] == "ok"
+        assert not [w for w in result.warnings if "Exchange 2019 setup" in w]
+
+    def test_a_running_setup_leaves_the_range_ready(self, flow):
+        prov, template, _, _ = flow
+        result = _run(prov.provision(RANGE_ID, template, {}))
+        assert result.status == "ok"  # a setup still running is never a failed/partial range
+        assert _vm_out(result, "exch")["role_setup"]["status"] == "running"
+
+    def test_finish_by_caps_the_budget_below_the_soft_limit(self, flow):
+        prov, template, _, _ = flow
+        finish = mod.time.monotonic() + 5  # the soft limit minus the reserve, from the task
+        result = _run(prov.provision(RANGE_ID, template, {"finish_by": finish}))
+        assert abs(prov._budget_end - finish) < 1  # the provisioner stops new work by finish_by
+        # No budget left to start the product: skipped, never run past the soft limit.
+        assert _vm_out(result, "exch")["role_setup"]["status"] == "skipped"
+
+    def test_all_software_installs_share_one_concurrency_semaphore(self, flow, monkeypatch):
+        prov, template, _, _ = flow
+        gates: list[int] = []
+
+        async def record(si, vm_defs, vms_out, start, errors, warnings, gate=None):
+            gates.append(id(gate))
+
+        monkeypatch.setattr(prov, "_install_software", record)
+        _run(prov.provision(RANGE_ID, template, {}))
+        # The non-product batch and every product VM install through the same semaphore object.
+        assert len(gates) >= 2 and len(set(gates)) == 1
+        assert isinstance(prov._budget_end, float)
+
+    @staticmethod
+    def _running_output(since: float) -> dict:
+        return {"vms": [
+            {"name": f"{R8}-exch", "vm_id": "vm-exch", "role_setup": {"status": "running", "reconcile": {
+                "role": "exchange", "domain": "corp.range.local", "netbios": "CORP", "dc_node": "dc01",
+                "status_file": "C:\\TrueNorth\\deploy\\status", "since": since, "timeout": 7200}}},
+            {"name": f"{R8}-so", "vm_id": "vm-so", "securityonion": {"status": "running", "reconcile": {
+                "kind": "securityonion", "node": "seconion01", "web_user": "analyst@range.local",
+                "web_account": "analyst", "admin_user": "soadmin", "admin_last": False, "install_from_env": True,
+                "since": since, "timeout": 7200}}},
+        ]}
+
+    def test_reconcile_setups_reads_each_running_setup_and_maps_the_outcome(self, vc, monkeypatch):
+        prov = _prov(vc)
+        for vid in ("vm-exch", "vm-so"):
+            vc.vms[vid] = FakeVM(vid, [])
+        output = self._running_output(mod.time.time())
+        seen = {}
+
+        async def screen(range_id, vms):
+            return [], [], set()
+
+        def prod_reconcile(session, info, **kw):
+            seen["prod_user"] = session.creds.username
+            seen["prod_pw"] = session.creds.password.reveal()
+            seen["prod_deadline"] = kw.get("deadline")
+            return {"status": "ok", "detail": "set up", "image": "srv2022-exchange2019", "domain": info["domain"]}
+
+        def so_reconcile(session_for, install, info, **kw):
+            seen["so_user"] = install.username
+            seen["so_admin_pw"] = kw["admin_password"].reveal()
+            return {"status": "ok", "detail": "healthy"}, {"soadmin", "analyst"}
+
+        monkeypatch.setattr(prov, "_screen", screen)
+        monkeypatch.setattr(products_mod, "reconcile", prod_reconcile)
+        monkeypatch.setattr(so_mod, "reconcile", so_reconcile)
+        changes, warnings = _run(prov.reconcile_setups(
+            RANGE_ID, output, domain_passwords={"dc01": "Dc-Pass-1!"},
+            so_logins={"seconion01": ("soadmin", "So-Pass-1!", "Admin-Pass-2!")}, per_vm_seconds=30))
+        assert seen["prod_user"] == "CORP\\Administrator" and seen["prod_pw"] == "Dc-Pass-1!"  # the domain admin
+        assert seen["prod_deadline"] - mod.time.monotonic() <= 30  # the per-VM guest wait is capped
+        assert seen["so_user"] == "soadmin" and seen["so_admin_pw"] == "Admin-Pass-2!"
+        assert changes[f"{R8}-exch"]["role_setup"]["status"] == "ok"
+        assert changes[f"{R8}-exch"]["role"] == "exchange"
+        assert changes[f"{R8}-so"]["securityonion"]["status"] == "ok"
+        assert set(changes[f"{R8}-so"]["accounts_applied"]) == {"soadmin", "analyst"}
+
+    def test_reconcile_setups_times_out_without_any_guest_operation(self, vc, monkeypatch):
+        prov = _prov(vc)
+        output = self._running_output(0.0)  # started in 1970: long past the timeout
+
+        async def screen(range_id, vms):
+            return [], [], set()
+
+        monkeypatch.setattr(prov, "_screen", screen)
+        monkeypatch.setattr(products_mod, "reconcile", lambda *a, **k: pytest.fail("no guest op past the timeout"))
+        monkeypatch.setattr(so_mod, "reconcile", lambda *a, **k: pytest.fail("no guest op past the timeout"))
+        # No credentials at all and the VMs are gone from vCenter: still ends.
+        changes, _ = _run(prov.reconcile_setups(RANGE_ID, output, domain_passwords={}, so_logins={}))
+        assert changes[f"{R8}-exch"]["role_setup"]["status"] == "timeout"
+        assert changes[f"{R8}-so"]["securityonion"]["status"] == "timeout"
+
+    def test_a_terminal_timeout_still_cleans_up_secrets_when_the_guest_answers(self, vc, monkeypatch):
+        prov = _prov(vc)
+        for vid in ("vm-exch", "vm-so"):
+            vc.vms[vid] = FakeVM(vid, [])
+        cleaned = []
+
+        async def screen(range_id, vms):
+            return [], [], set()
+
+        monkeypatch.setattr(prov, "_screen", screen)
+        monkeypatch.setattr(products_mod, "cleanup",
+                            lambda session, deadline: cleaned.append(("product", session.creds.username, deadline)))
+        monkeypatch.setattr(so_mod, "cleanup",
+                            lambda session, install, deadline: cleaned.append(("so", install.username, deadline)))
+        changes, _ = _run(prov.reconcile_setups(
+            RANGE_ID, self._running_output(0.0), domain_passwords={"dc01": "Dc-Pass-1!"},
+            so_logins={"seconion01": ("soadmin", "So-Pass-1!", "")}))
+        assert changes[f"{R8}-exch"]["role_setup"]["status"] == "timeout"
+        assert changes[f"{R8}-so"]["securityonion"]["status"] == "timeout"
+        assert [(k, u) for k, u, _ in cleaned] == [("product", "CORP\\Administrator"), ("so", "soadmin")]
+        assert all(d - mod.time.monotonic() <= 30 for _, _, d in cleaned)  # bounded
+
+    def test_reconcile_setups_warns_when_a_dc_admin_is_undeclared(self, vc, monkeypatch):
+        prov = _prov(vc)
+        vc.vms["vm-exch"] = FakeVM("vm-exch", [])
+        output = {"vms": self._running_output(mod.time.time())["vms"][:1]}
+
+        async def screen(range_id, vms):
+            return [], [], set()
+
+        monkeypatch.setattr(prov, "_screen", screen)
+        changes, warnings = _run(prov.reconcile_setups(RANGE_ID, output, domain_passwords={}, so_logins={}))
+        assert not changes and any("no Administrator password" in w for w in warnings)
+
+    def test_reconcile_setups_stops_guest_work_when_the_run_budget_is_spent(self, vc, monkeypatch):
+        prov = _prov(vc)
+        for vid in ("vm-exch", "vm-so"):
+            vc.vms[vid] = FakeVM(vid, [])
+
+        async def screen(range_id, vms):
+            return [], [], set()
+
+        monkeypatch.setattr(prov, "_screen", screen)
+        monkeypatch.setattr(products_mod, "reconcile", lambda *a, **k: pytest.fail("no budget left"))
+        monkeypatch.setattr(so_mod, "reconcile", lambda *a, **k: pytest.fail("no budget left"))
+        changes, _ = _run(prov.reconcile_setups(
+            RANGE_ID, self._running_output(mod.time.time()), domain_passwords={"dc01": "x"},
+            so_logins={"seconion01": ("u", "p", "")}, run_seconds=0))
+        assert changes == {}  # left running for the next run
 
 
 # --------------------------------------------------------------------------- #

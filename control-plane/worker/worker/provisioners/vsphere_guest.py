@@ -36,10 +36,44 @@ try:
 except ImportError:  # the provisioner reports the missing SDK when it is used
     vim = None  # type: ignore[assignment]
 
+try:
+    import httpx
+except ImportError:  # only the file transfer needs it
+    httpx = None  # type: ignore[assignment]
+
 from ..software_catalogue import InstallSpec
 from .sha512_crypt import sha512_crypt
 
 logger = logging.getLogger(__name__)
+
+
+class _NoTransferUrls(logging.Filter):
+    """httpx logs every request URL at INFO ("HTTP Request: PUT https://..."). A guest
+    file-transfer URL carries a one-time ticket for writing into the guest: keep it out of the
+    worker's logs. Other httpx log lines are left alone."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        try:
+            text = record.getMessage()
+        except Exception:  # noqa: BLE001
+            return True
+        return "/guestFile" not in text
+
+
+for _name in ("httpx", "httpcore"):
+    if not any(isinstance(f, _NoTransferUrls) for f in logging.getLogger(_name).filters):
+        logging.getLogger(_name).addFilter(_NoTransferUrls())
+
+
+def _https_put(url: str, data: bytes) -> None:
+    """PUT ``data`` to a guest file-transfer URL. TLS is not verified: the URL is an ESXi
+    host's, on the management network, named in a token vCenter just issued (as the rest of
+    the vSphere adapter: VSPHERE_VERIFY_SSL defaults off). The URL is never logged (above)."""
+    if httpx is None:
+        raise RuntimeError("httpx is required for guest file transfer")
+    verify = __import__("os").environ.get("VSPHERE_VERIFY_SSL", "false").lower() == "true"
+    with httpx.Client(verify=verify, timeout=300.0) as client:
+        client.put(url, content=data).raise_for_status()
 
 CHOCO_EXE = r"C:\ProgramData\chocolatey\bin\choco.exe"
 # 1641 / 3010: installed, reboot initiated / required. The range keeps running either way.
@@ -259,15 +293,19 @@ class GuestSession:
     """Run programs inside one VM as ``creds`` (blocking pyVmomi; call through a thread)."""
 
     def __init__(self, content, vm, creds: GuestCredentials, *, poll: float = 5.0,
-                 clock: Callable[[], float] | None = None, sleep: Callable[[float], None] | None = None):
+                 clock: Callable[[], float] | None = None, sleep: Callable[[float], None] | None = None,
+                 transfer_host: str | None = None, put: Callable[[str, bytes], None] | None = None):
         gom = content.guestOperationsManager
         self._pm = gom.processManager
         self._am = gom.authManager
+        self._fm = getattr(gom, "fileManager", None)
         self.vm = vm
         self.creds = creds
         self._poll = poll
         self._clock = clock or (lambda: time.monotonic())
         self._sleep = sleep or (lambda s: time.sleep(s))
+        self._transfer_host = transfer_host  # the ESXi host that answers a `*` transfer URL
+        self._put = put or _https_put
 
     def _auth(self):
         return vim.vm.guest.NamePasswordAuthentication(
@@ -297,6 +335,35 @@ class GuestSession:
             if self._clock() >= deadline:
                 raise GuestNotReadyError(f"guest operations not ready before the deadline: {last}")
             self._sleep(self._poll)
+
+    def upload(self, path: str, data: bytes, deadline: float, *, overwrite: bool = True) -> None:
+        """Write ``data`` to ``path`` in the guest over the file-transfer API (HTTPS PUT to the
+        ESXi host). The payload never touches a guest command line: this is how a secret the
+        setup needs reaches the guest. ``GuestNotReadyError`` wraps a transfer that cannot run
+        (the worker must reach the ESXi host on 443; mblanke/TrueNorth#194)."""
+        if self._fm is None:
+            raise GuestNotReadyError("the guest file manager is unavailable (VMware Tools / vCenter)")
+        attrs = vim.vm.guest.FileManager.FileAttributes()
+        try:
+            url = self._fm.InitiateFileTransferToGuest(
+                vm=self.vm, auth=self._auth(), guestFilePath=path, fileAttributes=attrs,
+                fileSize=len(data), overwrite=overwrite)
+            if self._transfer_host:  # vCenter returns `*` for the host the VM runs on
+                url = url.replace("https://*/", f"https://{self._transfer_host}/").replace(
+                    "https://*:", f"https://{self._transfer_host}:")
+            self._put(url, data)
+        except GuestNotReadyError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise GuestNotReadyError(
+                f"could not transfer a file to the guest (reach the ESXi host on 443; #194): "
+                f"{redact(getattr(exc, 'msg', None) or type(exc).__name__, self.creds)}") from None
+
+    def start_detached(self, program: str, arguments: str) -> int:
+        """Start a program and return its PID without waiting: a setup that outlives the
+        guest-operations call (1-2 h), polled later through the status file it writes."""
+        spec = vim.vm.guest.ProcessManager.ProgramSpec(programPath=program, arguments=arguments)
+        return self._pm.StartProgramInGuest(vm=self.vm, auth=self._auth(), spec=spec)
 
     def run(self, cmd: GuestCommand, deadline: float) -> tuple[str, int | None]:
         """Start ``cmd`` and wait for it: (``ok`` | ``failed`` | ``timeout``, exit code)."""

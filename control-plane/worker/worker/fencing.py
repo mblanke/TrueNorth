@@ -65,6 +65,7 @@ import functools
 import logging
 import os
 import threading
+import time
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -83,6 +84,19 @@ logger = logging.getLogger("worker.fencing")
 
 SOFT_TIME_LIMIT = 3300
 TASK_TIME_LIMIT = 3500  # below the broker's visibility_timeout (3600)
+# A provision must finish and store its result before the soft limit (which is final: the
+# task records ``failed`` and stores nothing). It reserves this much for storing the result
+# and winding down; a long in-guest setup (Exchange, Security Onion) is started and left
+# ``running`` for the reconcile task rather than waited on. ``provision`` is given
+# ``finish_by = provision start + SOFT_TIME_LIMIT - PROVISION_RESERVE``.
+PROVISION_RESERVE = int(os.getenv("RANGE_PROVISION_RESERVE_SECONDS", "300"))
+
+
+def provision_finish_by() -> float:
+    """The monotonic deadline a provision must finish and store its result by: the soft time
+    limit from now, less the reserve. Passed into ``provision`` (allocations ``finish_by``) so
+    a long in-guest setup is left ``running`` for the reconcile task, not waited on."""
+    return time.monotonic() + SOFT_TIME_LIMIT - PROVISION_RESERVE
 # How long a lease lasts without renewal: how long a dead worker can block its range.
 LEASE_SECONDS = int(os.getenv("RANGE_LEASE_SECONDS", "180"))
 # How often a running task renews it: several renewals per lease, so a database blip
