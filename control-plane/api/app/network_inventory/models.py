@@ -25,7 +25,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from ..db import Base
 from ..models import GUID, TimestampMixin
 
-KINDS = ("noise_mgmt_ip", "uplink_ip", "vlan")
+KINDS = ("mac", "noise_mgmt_ip", "uplink_ip", "vlan")  # mac: a vSphere range NIC's explicit MAC (worker)
 
 
 class NetworkReservation(TimestampMixin, Base):

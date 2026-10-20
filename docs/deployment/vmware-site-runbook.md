@@ -378,6 +378,34 @@ govc library.create -ds esx01-local TrueNorth-Templates
    - [ ] destroy removes the VM, the port group and the range folder
 3. Record the result in `RESUME.md`. If the result is 403, the role from §4.2 is missing
    a privilege; the error names it.
+4. Then a three-VM Ubuntu range (the 2026-10-20 failures: two clones on esx02 given one
+   MAC, spread putting all three on esx02, the range shown ready with an IP a VM never had):
+   - [ ] the three VMs are on three hosts (esx02, 03, 04), each cloned from its host's
+     `tmpl-ubuntu-2404@<host>-<date>` copy, and none on esx01
+   - [ ] each NIC's MAC (VM → Edit Settings → Network adapter → MAC Address) is **Manual**,
+     in this install's slice (`tn_vsphere_mac_pool` → `VSPHERE_MAC_POOL`; the work install:
+     `00:50:56:3c:00:00`–`00:50:56:3d:ff:ff`), different on every VM, and equal to
+     `provisioner_output.vms[].nics[].mac`
+   - [ ] the range is `ready` only with every VM's `ip_verified: true`, and `ip` equal to
+     the IP VMware Tools shows on the VM's Summary page. A VM whose planned IP Tools never
+     reports within `VSPHERE_GUEST_IP_TIMEOUT` (600 s) makes the range `failed` with
+     "built but not ready: VM …: planned address … not reported by VMware Tools"; the VMs
+     stay recorded, so Destroy removes them.
+   - [ ] if the build's own time ran out first (a big range, the last VMs powered on near
+     the end), those VMs show `ip_check.status: running` and a "guest network not verified
+     yet" warning on a `ready` range; the setup-reconcile beat (every 5 min) settles them
+     before the 600 s window ends: `ip_verified: true`, or the range goes `failed` as above
+     (from `ready` only: a range Students have already started keeps running and says why).
+   A build refused with "MAC … is already used by VM '…' (vm-…), which is not this range's"
+   means a VM anywhere in this vCenter already has a MAC from this install's slice: change
+   its MAC or remove it. **Every TrueNorth install on a shared vCenter needs its own,
+   non-overlapping `tn_vsphere_mac_pool`** (staging: `00:50:56:3e:00:00`–`00:50:56:3e:ff:ff`):
+   each install reserves MACs in its own database, so two on one slice hand out the same
+   MACs. A node built from a deliberately Tools-less image sets `verify_ip: false` (or the
+   template does, for every node); its addresses are then recorded unverified.
+   Abandoning a range that still records VMs is refused unless
+   `force_release_resources: true` (the console asks for it, naming the VMs): it releases
+   their VLANs and MACs to other ranges, so first check the VMs are really gone.
 
 **Unverified until this test.** The provisioner has only run against fakes, built from
 real pyVmomi spec objects. If the smoke test fails, the first places to look are:
@@ -390,8 +418,8 @@ real pyVmomi spec objects. If the smoke test fails, the first places to look are
    forged transmits and MAC changes off; promiscuous on for monitor/span networks).
 5. Ubuntu 24.04 cloud-init applying `guestinfo.metadata` network v2, and re-running on the
    new `instance-id`.
-6. Windows Sysprep customization: needs VMware Tools in the template, and maps NICs in
-   device-key order.
+6. Windows Sysprep customization: needs VMware Tools in the template, and maps each NIC
+   by its reserved MAC (`AdapterMapping.macAddress`).
 7. The power endpoints, which report states as `POWERED_ON` / `POWERED_OFF`.
 8. With the uplink on: the WAN NIC is NIC 0 in the pfSense guest (`vmx0`), on
    `dPG-TN-SVC`, and the zones follow in order.

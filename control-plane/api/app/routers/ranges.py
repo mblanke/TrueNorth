@@ -757,9 +757,11 @@ def abandon_range(
     For a range whose destroy cannot succeed, typically one that does not record which
     vCenter built it and none of whose VMs exist where it now resolves. Whatever is still
     on a hypervisor stays there: ``provisioner_output.abandoned`` and the audit log name
-    its VMs and port groups for removal by hand. ``reason`` is required.
+    its VMs and port groups for removal by hand. ``reason`` is required. A range that
+    records VMs is refused (409) unless ``force_release_resources`` is true: abandoning frees
+    its VLANs and NIC MACs for other ranges while those VMs may still exist.
     **Permission: platform administrator**"""
-    rng = range_abandon.abandon(db, range_id, user, body.reason)
+    rng = range_abandon.abandon(db, range_id, user, body.reason, body.force_release_resources)
     db.commit()
     db.refresh(rng)
     logger.warning("range %s: abandoned (marked destroyed, hypervisor untouched) by %s: %s", rng.id, user.id,

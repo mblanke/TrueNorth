@@ -74,8 +74,18 @@
     "nodes": {
       "type": "array",
       "items": {
-        "type": "object"
+        "type": "object",
+        "properties": {
+          "verify_ip": {
+            "type": "boolean",
+            "description": "false: do not hold this VM's guest addresses to VMware Tools at build time (an image deliberately built without Tools); its planned addresses are recorded unverified. Default: the template's verify_ip, else true."
+          }
+        }
       }
+    },
+    "verify_ip": {
+      "type": "boolean",
+      "description": "Default for every node's verify_ip. false: no node's guest addresses are held to VMware Tools at build time. Default true."
     },
     "network": {
       "type": "object"

@@ -32,6 +32,10 @@ class ProvisionResult:
     uplink: dict | None = None
     # vSphere: the vDS port-mirroring sessions made for the template's mirror rules.
     mirrors: list[dict] = field(default_factory=list)
+    # VMs that were built (they are in ``vms``) but are not ready: vSphere, a planned guest
+    # address VMware Tools never reported (vsphere_readiness.py). Each has its reason in
+    # ``errors``; the range is recorded ``failed``, not ``ready`` (range_alloc.build_outcome).
+    not_ready: list[str] = field(default_factory=list)
 
 
 @dataclass

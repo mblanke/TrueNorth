@@ -54,8 +54,11 @@ export class RangeRecoveryApiService {
   }
 
   /** Platform administrators only: records the range destroyed without touching the hypervisor. */
-  abandonRange(id: string, reason: string): Observable<RangeDetail> {
-    return this.http.post<RangeDetail>(`${this.base}/${id}/abandon`, { reason });
+  /** ``forceReleaseResources``: the operator confirmed the VMs the range records are gone, so
+   * its VLANs and NIC MACs may be released (the API refuses otherwise while it records VMs). */
+  abandonRange(id: string, reason: string, forceReleaseResources = false): Observable<RangeDetail> {
+    const body: S['RangeAbandonIn'] = { reason, force_release_resources: forceReleaseResources };
+    return this.http.post<RangeDetail>(`${this.base}/${id}/abandon`, body);
   }
 
   listNetworkReservations(id: string): Observable<NetworkReservation[]> {

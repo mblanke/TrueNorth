@@ -13,6 +13,7 @@ from __future__ import annotations
 import base64
 import contextlib
 import secrets
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 import yaml
@@ -106,23 +107,40 @@ def _why_not(host: HostCapacity, cores: int, mem: int, disk: int, ratio: float) 
     return None
 
 
-def _take(host: HostCapacity, cores: int, mem: int, disk: int) -> tuple[HostCapacity, object]:
-    name = _best_datastore(host, disk)
+def _take(host: HostCapacity, cores: int, mem: int, disk: int,
+          prefer: frozenset[str] = frozenset()) -> tuple[HostCapacity, object]:
+    """Book the VM on ``host``: on a datastore in ``prefer`` (one holding the host-local
+    template copy, ADR 0012) when one has room, else the one with the most free space."""
+    local = [(free, name) for name, (free, _) in host.datastores.items() if name in prefer and free >= disk]
+    name = max(local)[1] if local else _best_datastore(host, disk)
     host.free_mem_mb -= mem
     host.vcpus_allocated += cores
     host.datastores[name][0] -= disk
     return host, host.datastores[name][1]
 
 
-def place(hosts: list[HostCapacity], vm_defs: list[dict], mode: str, ratio: float) -> list[tuple[HostCapacity, object]]:
+# (vm_def, host) -> names of the host's datastores holding a host-local copy of the VM's template.
+LocalCopies = Callable[[dict, HostCapacity], frozenset]
+
+
+def place(hosts: list[HostCapacity], vm_defs: list[dict], mode: str, ratio: float,
+          local: LocalCopies | None = None) -> list[tuple[HostCapacity, object]]:
     """Choose a (host, datastore) for every VM, in ``vm_defs`` order.
 
-    ``spread``: each VM goes to the host with the most vCPU headroom (then free RAM)
-    that fits it, and the tally moves on, so a range larger than one host spans hosts
-    (the vDS port groups exist on every host). ``per-range-host``: the whole range on
-    the one host with the most free RAM that fits all of it. A host fits when RAM, the
-    vCPU overcommit cap (threads x ``ratio``, counting powered-on VMs) and one of its
-    datastores (THIN_DISK_FRACTION of the disk) all have room.
+    ``spread``: the range's VMs are dealt round the hosts that fit them, those holding a
+    host-local copy of the VM's template (``local``) first: a host without one means a
+    full cross-host copy of the template's disks (local storage only, ADR 0012), dearer
+    than an uneven spread. Among them, the host holding the fewest of this range's VMs so
+    far, then the most vCPU headroom, then free RAM; on that host, the datastore holding
+    the copy when it has room. Capacity is tallied as it goes, so a full host drops out
+    (and only then does a VM go to a host without a copy) and a range larger than one host
+    spans hosts (the vDS port groups exist on every host). Until 2026-10-20 spread was
+    "most vCPU headroom first" alone, which packs rather than spreads: a host with more
+    headroom than the whole range needs (esx02 beside busier esx03/esx04) took every VM.
+    ``per-range-host``: the whole range on the one host with the most free RAM that fits
+    all of it. A host fits when RAM, the vCPU overcommit cap (threads x ``ratio``,
+    counting powered-on VMs) and one of its datastores (THIN_DISK_FRACTION of the disk)
+    all have room.
     """
     if not hosts:
         raise PlacementError("no eligible host: all are excluded, disconnected or in maintenance mode")
@@ -138,15 +156,21 @@ def place(hosts: list[HostCapacity], vm_defs: list[dict], mode: str, ratio: floa
         ds = host.datastores[_best_datastore(host, disk)][1]
         _take(host, cores, mem, disk)
         return [(host, ds)] * len(vm_defs)
+    if mode != "spread":
+        raise PlacementError(f"unknown VSPHERE_PLACEMENT {mode!r}: spread, per-range-host or cluster")
     out = []
+    count = dict.fromkeys((h.name for h in hosts), 0)
     for vm_def in vm_defs:
         cores, mem, disk = vm_needs(vm_def)
         fitting = [h for h in hosts if not _why_not(h, cores, mem, disk, ratio)]
         if not fitting:
             reasons = "; ".join(r for h in hosts if (r := _why_not(h, cores, mem, disk, ratio)))
             raise PlacementError(f"no host fits VM {vm_def.get('name')!r}: {reasons}")
-        best = max(fitting, key=lambda h: (h.vcpu_headroom(ratio), h.free_mem_mb))
-        out.append(_take(best, cores, mem, disk))
+        copies = {h.name: frozenset(local(vm_def, h)) if local else frozenset() for h in fitting}
+        best = min(fitting, key=lambda h: (not copies[h.name], count[h.name], -h.vcpu_headroom(ratio),
+                                           -h.free_mem_mb))
+        count[best.name] += 1
+        out.append(_take(best, cores, mem, disk, copies[best.name]))
     return out
 
 
@@ -304,17 +328,21 @@ def nic_cards(devices) -> list:
     return sorted((d for d in devices if isinstance(d, vim.vm.device.VirtualEthernetCard)), key=order)
 
 
-def nic_device_changes(devices, refs: list[dict]) -> list:
+def nic_device_changes(devices, refs: list[dict], macs: list[str] | None = None) -> list:
     """Device specs that leave the VM with exactly one NIC per ref, in order.
 
     Existing cards (from the template) are re-pointed, missing ones are added as
     vmxnet3, and surplus template cards are removed, so no NIC stays on whatever
-    network the template was built on.
+    network the template was built on. A NIC with a planned MAC (``macs[i]``,
+    vsphere_macs: reserved per NIC) gets it as a manual address, which vCenter never
+    regenerates; without one it keeps (or gets) a vCenter-generated one.
     """
     cards = nic_cards(devices)
+    macs = list(macs or [])
     changes = []
     for i, ref in enumerate(refs):
         connect = vim.vm.device.VirtualDevice.ConnectInfo(startConnected=True, allowGuestControl=True, connected=True)
+        mac = macs[i] if i < len(macs) else ""
         if i < len(cards):
             card = cards[i]
             card.backing = _backing(ref)
@@ -325,6 +353,9 @@ def nic_device_changes(devices, refs: list[dict]) -> list:
                 key=-(i + 1), backing=_backing(ref), connectable=connect, addressType="generated"
             )
             op = vim.vm.device.VirtualDeviceSpec.Operation.add
+        if mac:
+            card.addressType = "manual"
+            card.macAddress = mac
         changes.append(vim.vm.device.VirtualDeviceSpec(operation=op, device=card))
     for card in cards[len(refs):]:
         changes.append(vim.vm.device.VirtualDeviceSpec(operation=vim.vm.device.VirtualDeviceSpec.Operation.remove,
@@ -349,7 +380,7 @@ def hardware_spec(vm_def: dict, devices, refs: list[dict]) -> object:
     Windows Server roles also gets its system disk grown to the roles' floor (render.py);
     the role install then extends C: into it (vsphere_roles.py)."""
     cores, mem, _ = vm_needs(vm_def)
-    changes = nic_device_changes(devices, refs)
+    changes = nic_device_changes(devices, refs, [n.get("mac", "") for n in vm_def.get("nics") or []])
     if vm_def.get("roles"):
         changes += disk_grow_changes(devices, vm_def.get("disk_gb") or 0)
     return vim.vm.ConfigSpec(numCPUs=cores, memoryMB=mem, deviceChange=changes)
@@ -486,7 +517,11 @@ def windows_customization(vm_def: dict, password: str | None = None):
                 ip.dnsServerList = [nic["gateway"]]
         else:
             ip = c.IPSettings(ip=c.DhcpIpGenerator())
-        adapters.append(c.AdapterMapping(adapter=ip))
+        # Keyed to the NIC's planned (manual) MAC, the one it boots with, not to NIC order alone.
+        mapping = c.AdapterMapping(adapter=ip)
+        if nic.get("mac"):
+            mapping.macAddress = nic["mac"]
+        adapters.append(mapping)
     dns = [n["gateway"] for n in vm_def["nics"] if n.get("gateway")][:1]
     return c.Specification(
         identity=identity, globalIPSettings=c.GlobalIPSettings(dnsServerList=dns), nicSettingMap=adapters

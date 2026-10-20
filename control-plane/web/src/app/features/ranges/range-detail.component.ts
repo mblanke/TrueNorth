@@ -347,12 +347,20 @@ export class RangeDetailComponent implements OnInit, OnDestroy {
   }
 
   abandonRange(r: RangeDetail): void {
+    // The API refuses to abandon a range that records VMs unless told to release its
+    // VLANs and NIC MACs anyway (force_release_resources): this dialog says so, by name.
+    const vms = recordedVms(r);
     this.confirm({
       title: `Abandon range ${r.name}?`,
       impact: [
         'Records the range destroyed WITHOUT calling the hypervisor.',
         'Whatever is still on a hypervisor stays there: its VMs and port groups must be removed by hand. They are listed on the range and in the audit log.',
         'Its network reservations become reclaimable by other ranges, so any port group still on vCenter must be removed.',
+        ...(vms.length ? [
+          `This range records ${vms.length} VM(s) (${vms.slice(0, 5).join(', ')}${vms.length > 5 ? ', ...' : ''}). ` +
+          'Abandoning releases their VLANs and NIC MAC addresses to other ranges even if the VMs still exist: ' +
+          'only continue once you have checked on vCenter that they are gone. Otherwise destroy the range instead.',
+        ] : []),
         'Platform administrators only; the API refuses anyone else.',
       ],
       confirmText: 'Abandon range',
@@ -360,7 +368,7 @@ export class RangeDetailComponent implements OnInit, OnDestroy {
       reasonLabel: 'Reason',
       reasonMin: 10,
       typeToConfirm: r.name,
-    }, reason => this.api.abandonRange(this.id(), reason), (out: RangeDetail) => ({
+    }, reason => this.api.abandonRange(this.id(), reason, vms.length > 0), (out: RangeDetail) => ({
       title: `Range is now ${out.state}.`,
       lines: leftOnHypervisor(out),
     }));
@@ -399,6 +407,16 @@ export class RangeDetailComponent implements OnInit, OnDestroy {
 }
 
 /** What an abandoned range left behind (provisioner_output.abandoned). */
+/** Names (or ids) of the VMs the range's provisioner output records. */
+export function recordedVms(r: RangeDetail): string[] {
+  try {
+    const out = JSON.parse(r.provisioner_output || '{}');
+    return (out?.vms || []).map((v: { name?: string; vm_id?: string }) => v?.name || v?.vm_id).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
 export function leftOnHypervisor(r: RangeDetail): string[] {
   try {
     const out = JSON.parse(r.provisioner_output || '{}');

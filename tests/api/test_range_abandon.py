@@ -50,18 +50,44 @@ def _range(db, state=m.RangeState.failed, output=None):
 def test_a_platform_admin_abandons_a_failed_range_with_a_record_and_an_audit(client, db_session):
     rng = _range(db_session)
     with acting_as(UserRole.admin) as admin:
-        r = client.post(f"/ranges/{rng.id}/abandon", json={"reason": REASON})
+        r = client.post(f"/ranges/{rng.id}/abandon", json={"reason": REASON, "force_release_resources": True})
     assert r.status_code == 200, r.text
     assert r.json()["state"] == "destroyed"
     db_session.refresh(rng)
     out = json.loads(rng.provisioner_output)
     assert out["abandoned"]["by"] == admin.id and out["abandoned"]["reason"] == REASON
+    assert out["abandoned"]["force_release_resources"] is True
     assert out["abandoned"]["vms"] == [{"name": "abcd-web", "vm_id": "vm-9"}]
     assert out["abandoned"]["networks"] == ["tn-abcd-v100"] and out["abandoned"]["at"]
     assert out["vms"]  # the rest of the record is kept
     log = db_session.query(AuditLog).filter(AuditLog.action == "abandon_range",
                                             AuditLog.resource_id == str(rng.id)).one()
     assert REASON in log.detail and "vm-9" in log.detail
+
+
+def test_a_range_that_records_vms_is_not_abandoned_without_force_release_resources(client, db_session):
+    """Abandoning frees the range's VLANs and NIC MACs (network_reservations): with VMs
+    possibly still on the wire, another range could be given them. Refused, by name."""
+    rng = _range(db_session)
+    with acting_as(UserRole.admin):
+        r = client.post(f"/ranges/{rng.id}/abandon", json={"reason": REASON})
+    assert r.status_code == 409, r.text
+    detail = r.json()["detail"]
+    assert "records 1 VM(s) (abcd-web)" in detail and "force_release_resources" in detail
+    assert "Destroy the range instead" in detail
+    db_session.refresh(rng)
+    assert rng.state == m.RangeState.failed and "abandoned" not in json.loads(rng.provisioner_output)
+    assert not db_session.query(AuditLog).filter(AuditLog.action == "abandon_range",
+                                                 AuditLog.resource_id == str(rng.id)).count()
+
+
+def test_a_range_that_records_no_vms_is_abandoned_without_the_flag(client, db_session):
+    rng = _range(db_session, output={"vms": [], "networks": [{"name": "lan", "portgroup": "tn-abcd-v100"}]})
+    with acting_as(UserRole.admin):
+        r = client.post(f"/ranges/{rng.id}/abandon", json={"reason": REASON})
+    assert r.status_code == 200, r.text
+    db_session.refresh(rng)
+    assert json.loads(rng.provisioner_output)["abandoned"]["force_release_resources"] is False
 
 
 @pytest.mark.parametrize("role", [UserRole.range_ops, UserRole.instructor])
@@ -102,7 +128,9 @@ def test_abandoning_unblocks_the_tenants_connection_changes(client, db_session):
     rng = _range(db_session)  # unrecorded, VMs listed, failed
     with acting_as(UserRole.admin):
         assert client.post(f"/hypervisors/connections/{b.id}/set-primary").status_code == 409
-        assert client.post(f"/ranges/{rng.id}/abandon", json={"reason": REASON}).status_code == 200
+        assert client.post(f"/ranges/{rng.id}/abandon", json={"reason": REASON}).status_code == 409  # VMs recorded
+        assert client.post(f"/ranges/{rng.id}/abandon",
+                           json={"reason": REASON, "force_release_resources": True}).status_code == 200
         assert client.post(f"/hypervisors/connections/{b.id}/set-primary").status_code == 200
 
 

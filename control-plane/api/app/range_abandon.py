@@ -34,10 +34,23 @@ class RangeAbandonIn(BaseModel):
     """Why the range is written off; recorded on the range and in the audit log."""
 
     reason: str = Field(min_length=10, max_length=500)
+    # A range that records VMs may still have them, holding its VLANs and NIC MACs on the
+    # wire: abandoning frees those reservations for the next range. Only with this set.
+    force_release_resources: bool = False
 
 
-def abandon(db: Session, range_id: uuid.UUID, user: CurrentUser, reason: str) -> Range:
-    """Mark ``range_id`` destroyed without a hypervisor call. Does not commit."""
+RECORDED_VMS_REFUSAL = (
+    "This range records {n} VM(s) ({names}). Abandoning it frees its VLANs and NIC MAC addresses for other "
+    "ranges while those VMs may still exist and use them (two ranges on one VLAN, or two NICs with one MAC). "
+    "Destroy the range instead; or, once you have checked on the hypervisor that the VMs are gone (or removed "
+    "them by hand), abandon it again with force_release_resources: true."
+)
+
+
+def abandon(db: Session, range_id: uuid.UUID, user: CurrentUser, reason: str,
+            force_release_resources: bool = False) -> Range:
+    """Mark ``range_id`` destroyed without a hypervisor call. Does not commit. Refused (409)
+    while it records VMs, unless ``force_release_resources``."""
     # tenant-safe: platform administrators only (require_platform_admin on the route), who
     # act across tenants; the row is locked so a concurrent destroy or build cannot interleave.
     rng = db.query(Range).filter(Range.id == range_id).with_for_update().first()
@@ -53,8 +66,11 @@ def abandon(db: Session, range_id: uuid.UUID, user: CurrentUser, reason: str) ->
     out = out if isinstance(out, dict) else {}
     vms = [{"name": v.get("name"), "vm_id": v.get("vm_id")} for v in out.get("vms") or [] if isinstance(v, dict)]
     networks = [n.get("portgroup") for n in out.get("networks") or [] if isinstance(n, dict) and n.get("portgroup")]
+    if vms and not force_release_resources:
+        names = ", ".join(str(v["name"] or v["vm_id"]) for v in vms[:5]) + (", ..." if len(vms) > 5 else "")
+        raise HTTPException(409, RECORDED_VMS_REFUSAL.format(n=len(vms), names=names))
     out["abandoned"] = {"by": str(user.id), "at": datetime.now(UTC).isoformat(), "reason": reason, "vms": vms,
-                        "networks": networks}
+                        "networks": networks, "force_release_resources": force_release_resources}
     rng.provisioner_output = json.dumps(out)
     rng.state = RangeState.destroyed
     db.add(AuditLog(

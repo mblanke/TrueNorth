@@ -39,7 +39,7 @@ describe('R0-B operator API clients (URLs and bodies match docs/interfaces/opena
     fr.flush({});
     ranges.abandonRange('r1', 'VMs gone by hand').subscribe();
     const ab = http.expectOne(`${base}/ranges/r1/abandon`);
-    expect(ab.request.body).toEqual({ reason: 'VMs gone by hand' });
+    expect(ab.request.body).toEqual({ reason: 'VMs gone by hand', force_release_resources: false });
     ab.flush({});
   });
 
