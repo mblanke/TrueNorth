@@ -424,6 +424,13 @@ course production with a local-model fallback, and the cleanup of unsupported su
     SysPrep prepared image, ADK + WinPE) and stage the media. Exchange, SharePoint and
     ConfigMgr setup need the range domain (and SharePoint a product key), so that step is
     left to deploy time. Their catalogue rows are `enabled=no` until TrueNorth runs it.
+- **Docs agree on the build network and the depot (#212, docs only).** The runbook §4.1a,
+  the Packer README, `install/lab/README.md`, the build guide and build sheet, and inventory
+  comments now state ADR 0012: `dPG-TN-BUILD` (VLAN 31, 10.30.31.0/24) has no gateway and
+  no internet, TN-MGMT01 serves its DHCP on 10.30.31.20, and TN-DEPOT01 (10.30.30.30 MGMT,
+  10.30.31.30 BUILD) is the only machine with internet egress. The earlier TN-BUILD01 /
+  10.30.32.10 design is kept as dated "superseded" notes. How ranges reach the depot at the
+  work site is recorded as an open item; no code, IP or default changed.
 
 ### R0-B: web correctness and role access
 - Fix: Resume on a paused exercise called `/start` (409 unless pending), so nothing resumed;

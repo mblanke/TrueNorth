@@ -1,5 +1,7 @@
 ---
 # TrueNorth lab - build/depot plane variables (non-secret). Secrets: vault.yml.
+# 2026-10-19 (#212): the earlier TN-BUILD01 design. For the work vCenter (ADR 0012) use
+# ../../work-site/inventory/group_vars/all/main.yml (depot 10.30.30.30 / 10.30.31.30).
 
 tn_lab_ssh_key: "~/.ssh/id_ed25519_lab"
 

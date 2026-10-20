@@ -109,13 +109,15 @@ _Avoid_: default password, build password (in user-facing text).
 _Not to be confused with_: declared account.
 
 **Build network**:
-The isolated network golden templates are built on: port group `dPG-TN-BUILD`, VLAN 31
-(ADR 0012 §7; `docs/deployment/vmware-site-runbook.md`).
+The isolated network golden templates are built on: port group `dPG-TN-BUILD`, VLAN 31,
+10.30.31.0/24, no gateway and no internet; TN-MGMT01 serves its DHCP from 10.30.31.20
+(ADR 0012 §7; `docs/deployment/vmware-site-runbook.md` §4.1a).
 _Not to be confused with_: the management network, or a range's own networks.
 
 **Depot** (TN-DEPOT01):
 The package mirror VM (Nexus with a Chocolatey feed and raw `installers`, plus
-apt-cacher-ng) that template builds pull from, so builds need no internet
+apt-cacher-ng) that template builds pull from, so builds need no internet. Dual-homed at
+10.30.30.30 (management) and 10.30.31.30 (build); the only machine with internet egress
 (ADR 0012 §4; `install/lab/depot.yml`; Packer `depot_url`).
 _Avoid_: repo server, proxy (alone).
 

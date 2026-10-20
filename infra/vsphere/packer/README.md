@@ -44,17 +44,21 @@ lab.auto.pkrvars.hcl.example copy to lab.auto.pkrvars.hcl (git-ignored) and fill
 ## Prerequisites
 
 - **Packer >= 1.11** (tested with 1.16). `packer init .` once to fetch the vSphere plugin
-  (needs internet; the lab build host TN-BUILD01 has egress).
+  (needs internet on the host running Packer, never on the build network; at the work site
+  `build-phase.sh prereq` runs it on TN-MGMT01, over its management NIC).
 - **govc** (optional but recommended) for the one-time Content Library creation and for
   checking datastore ISO names.
 - A build host that can reach vCenter/ESXi **and** can be reached back by the build VM
   (WinRM 5985 for Windows, SSH 22 for Linux, and Packer's HTTP server for the preseed
-  builds). In the lab that host is **TN-BUILD01** on `dPG-TN-BUILD`. **Do not build on
-  TN-MGMT01**, even though the deployment repo installed Packer there. The build sheet
-  (§1, §8) keeps internet egress off the platform VM, and TN-BUILD01 is the only host
-  allowed to have it. **Exception: the work site** (ADR 0012) has no TN-BUILD01. There,
-  TN-MGMT01 builds on the isolated `dPG-TN-BUILD`, which has no egress, from a separate
-  checkout. See `install/lab/README.md`, "Work site (TN-MGMT01 build host)".
+  builds). At the work site (ADR 0012) that host is **TN-MGMT01**: it builds on esx04
+  from a separate checkout, with its callbacks on `ens224`, 10.30.31.20 on the isolated
+  `dPG-TN-BUILD` (VLAN 31, 10.30.31.0/24, **no gateway, no internet**; TN-MGMT01 serves
+  DHCP .100–.199). Builds reach TN-DEPOT01 on its BUILD address, 10.30.31.30 (Nexus 8081,
+  apt-cacher-ng 3142); its MGMT address is 10.30.30.30, and the depot is the only machine
+  with internet egress. See `install/lab/README.md`, "Work site (TN-MGMT01 build host)".
+  _Superseded (noted 2026-10-19, #212):_ before ADR 0012 this said to build on a separate
+  **TN-BUILD01** (10.30.31.10), "the only host with internet egress", and never on
+  TN-MGMT01; that design also put the depot at 10.30.32.10 on `dPG-TN-SVC`.
 
 ## One-time setup
 
@@ -96,7 +100,7 @@ The variables you must set per site:
 | `iso_folder` | `ISO` |
 | `iso_*` | exact ISO filenames on the datastore |
 | `vmtools_iso_path` | VMware Tools `windows.iso` (ESXi default path works) |
-| `build_network` | `dPG-TN-BUILD` (DHCP + reachability to the Packer host + WAN egress) |
+| `build_network` | `dPG-TN-BUILD` (DHCP + reachability to the Packer host; no WAN egress, packages come from the depot) |
 | `content_library`, `publish_to_library` | `TrueNorth-Templates`, `true` |
 | `windows_admin_password` | build-time Administrator password (reset by sysprep) |
 | `ssh_username` / `ssh_password` / `ssh_password_hash` | the one generic Linux build login (ADR 0012 decision 5), created by every Linux seed. The hash is `openssl passwd -6` of the password (`scripts/lab/pkrvars-work.py` writes it); defaults `ubuntu`/`ubuntu` |
@@ -326,11 +330,16 @@ repo for Windows. The full step-by-step lives in `docs/deployment/vm-build-guide
 - **WinRM** (5985) callbacks from Windows builds;
 - **SSH** (22) callbacks from Linux builds and the derived clones.
 
-In the lab, `dPG-TN-BUILD` (proposed VLAN 31) meets these requirements. It also has the WAN
-egress that `packer init` and the online package steps need. Its firewall rules are in
-`docs/deployment/vmware-site-runbook.md` §4. Do not build on:
+At the work site, `dPG-TN-BUILD` (VLAN 31, 10.30.31.0/24) meets these requirements:
+TN-MGMT01 serves its DHCP (.100–.199) and the callbacks on 10.30.31.20. It has **no gateway
+and no internet** (ADR 0012). Package steps go through TN-DEPOT01 on 10.30.31.30
+(`depot_url`, `apt_proxy`); `packer init` runs on TN-MGMT01 over its management NIC, not
+on the build network. Addresses and egress: `docs/deployment/vmware-site-runbook.md` §4.1a.
+_Superseded (noted 2026-10-19, #212):_ this paragraph used to say `dPG-TN-BUILD` had the
+WAN egress that the online package steps need, and that the depot sat on `dPG-TN-SVC`;
+both belong to the pre-ADR 0012 TN-BUILD01 design. Do not build on:
 - `dPG-TN-MGMT`, which holds the platform
-- `dPG-TN-SVC`, where the depot is and which has no egress
+- `dPG-TN-SVC`, if it exists (range WANs in the earlier design; no egress)
 - the range port groups, which have no egress
 
 ## Windows product keys (deferred)

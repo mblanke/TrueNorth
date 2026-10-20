@@ -17,6 +17,17 @@ a `cd` says otherwise.
 **The work site has no TN-BUILD01**: TN-MGMT01 builds the templates there (ADR 0012).
 See [Work site (TN-MGMT01 build host)](#work-site-tn-mgmt01-build-host) at the end.
 
+> **Which design is current (noted 2026-10-19, #212).** Everything above "Work site" is
+> the earlier TN-BUILD01 design: the depot at 10.30.32.10 on `dPG-TN-SVC` (VLAN 32), an
+> uplink NIC on `dPG-TN-BUILD` opened only for prefetch windows, and `dPG-TN-BUILD` with a
+> UniFi gateway and internet egress for TN-BUILD01. ADR 0012 and the work-site kit
+> (#186, #187) replaced it on the work vCenter: `dPG-TN-BUILD` (VLAN 31, 10.30.31.0/24)
+> has **no gateway and no internet**, TN-MGMT01 serves its DHCP (.100–.199) on
+> 10.30.31.20, and TN-DEPOT01 is dual-homed at **10.30.30.30** (MGMT) and **10.30.31.30**
+> (BUILD) and is the only machine with internet egress (apt-cacher-ng 3142, Nexus 8081).
+> The tooling and values above are kept as they are, because the scripts still exist;
+> do not use them for the work site.
+
 ## How the depot gets packages (read this first)
 
 **The depot fetches upstream itself.** A Nexus proxy repository and apt-cacher-ng both
@@ -271,9 +282,9 @@ TN-BUILD01. ADR 0012 decides how its golden templates are built:
   on each host must take a customized name and IP. Only then is the template marked
   `built` in TrueNorth (decision 9).
 
-**ADR 0012 is still `proposed`.** It says no template is built before the owner signs it
-off. `status`, `prereq` and `--dry-run` change nothing that a build depends on. Run the
-build phases only after sign-off.
+**ADR 0012 was accepted on 2026-10-19** (owner sign-off). Until then it was `proposed`,
+and this section said to run no build phase before sign-off. `status`, `prereq` and
+`--dry-run` still change nothing that a build depends on.
 
 | Piece | What |
 |---|---|
