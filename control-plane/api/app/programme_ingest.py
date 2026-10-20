@@ -241,6 +241,12 @@ def import_programme(db: Session, csv_text: str, tenant_id: str | None = None) -
             "provenance": row["provenance"],
             "status": row["status"],
         }
+        # Declared prerequisites come from the course file, not this catalogue, so a
+        # catalogue re-import must not wipe them.
+        if not created:
+            prior = json.loads(course.course_meta or "{}").get("prerequisites")
+            if prior:
+                meta["prerequisites"] = prior
         course.course_meta = json.dumps(meta)
         # Read the delivery facet back out of the spine rather than assuming this
         # import runs before any content import. Re-running the catalogue on its own

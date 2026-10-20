@@ -22,7 +22,6 @@ import {
   CurriculumMap,
   DPStage,
   DPTrack,
-  NodeCourse,
   NodeState,
   PathEdge,
   QualNode,
@@ -60,6 +59,35 @@ interface DrawnEdge {
   to: string;
 }
 
+/** What the course card says about the hovered course, and where it sits. */
+interface CourseCard {
+  name: string;
+  /** Declared prerequisite codes, as written, including any not on the map. */
+  requires: string[];
+  /** Codes of courses on the map that declare this one as a prerequisite. */
+  requiredBy: string[];
+  delivers: string[];
+  x: number;
+  y: number;
+  /** Width cap, narrowed to the room beside the bubble. */
+  maxWidth: number;
+  place: 'left' | 'right' | 'below' | 'above';
+}
+
+/** Course card width cap, the narrowest side slot worth using, and its clearance. */
+const CARD_W = 240;
+const CARD_MIN_W = 150;
+const CARD_GAP = 10;
+/** Arrow curves bow up to ~20px outside their endpoints; keep the card clear of that. */
+const CURVE_PAD = 24;
+
+/**
+ * Offset from a chip's left edge that vertical course arrows run down: the 3px gap
+ * between chip columns (and, for the first column, the gutter before the term
+ * labels), so the line crosses neither a course code nor a term name.
+ */
+const CHIP_LANE = -1.5;
+
 const RING_R = 15;
 const RING_CIRCUMFERENCE = 2 * Math.PI * RING_R;
 
@@ -84,6 +112,37 @@ const STATE_LABEL: Record<NodeState, string> = {
   imports: [RouterLink, MatIconModule, MatTooltipModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
+    <!-- The key comes before the map, so the arrows and colours are decoded before
+         they are read. Outside the map, so it never sits over anything drawn in it.
+         Arrows are prerequisites only; objective delivery is the chip colour, never
+         an arrow. -->
+    <div class="legend" role="note" aria-label="Map key">
+      <span class="legend-item">
+        <svg class="legend-arrow" viewBox="0 0 36 10" aria-hidden="true">
+          <path d="M 1 5 H 28" class="legend-arrow-line" />
+          <path d="M 27 1 L 35 5 L 27 9 z" class="legend-arrow-head" />
+        </svg>
+        prerequisite → course that requires it (hover or focus a course)
+      </span>
+      @if (!hasCourseEdges()) {
+        <span class="legend-item legend-note">
+          No course declares a prerequisite yet, so no course arrows are drawn.
+        </span>
+      }
+      <span class="legend-item">
+        <span class="c-chip legend-chip">C101</span>
+        teaches only
+      </span>
+      <span class="legend-item">
+        <span class="c-chip legend-chip delivers">C204</span>
+        satisfies an objective of this qualification
+      </span>
+      <span class="legend-item">
+        <span class="c-chip legend-chip delivers cross-dp">C302</span>
+        taught here, satisfies a later period's objective
+      </span>
+    </div>
+
     <div class="map-scroll">
       <div
         class="map"
@@ -264,14 +323,20 @@ const STATE_LABEL: Record<NodeState, string> = {
                           <span class="term-count">{{ term.courses.length }}</span>
                         </span>
                         <span class="term-courses">
+                          <!-- No matTooltip here: a floating tooltip sits in the overlay
+                               above everything and hid the arrows it was describing. The
+                               course card below takes its place, under the arrows. -->
                           @for (c of term.courses; track c.course_id) {
                             <a
                               class="c-chip"
                               [class.delivers]="c.delivers.length"
                               [class.cross-dp]="c.delivers_cross_dp"
-                              [class.follow-target]="followTargets().has(c.course_id)"
+                              [class.is-focus]="hoveredCourse() === c.course_id"
+                              [class.is-prereq]="prereqChips().has(c.course_id)"
+                              [class.is-dependent]="dependentChips().has(c.course_id)"
                               [attr.data-course]="c.course_id"
-                              [matTooltip]="courseTooltip(c)"
+                              [attr.aria-label]="c.name"
+                              [attr.aria-describedby]="hoveredCourse() === c.course_id ? 'tn-course-card' : null"
                               [routerLink]="['/learning/courses', c.course_id]"
                             >{{ c.course_code }}</a>
                           }
@@ -295,10 +360,42 @@ const STATE_LABEL: Record<NodeState, string> = {
           }
         }
 
-        <!-- Transient course → follow-up arrows, drawn while a chip is hovered or
-             focused. A second overlay, not part of .edges: qualification edges
-             deliberately paint UNDER the cards, but these end at chips inside the
-             cards, so they must paint over them. -->
+        <!-- What the hovered or focused course is. Inside the map, beside the chips it
+             concerns, and painted UNDER the arrows: text may never hide an arrow. -->
+        @if (courseCard(); as card) {
+          <div
+            id="tn-course-card"
+            class="course-card"
+            role="tooltip"
+            [attr.data-place]="card.place"
+            [style.left.px]="card.x"
+            [style.top.px]="card.y"
+            [style.max-width.px]="card.maxWidth"
+          >
+            <span class="cc-title">{{ card.name }}</span>
+            <span class="cc-line">
+              <span class="cc-key">Prerequisites</span>
+              {{ card.requires.length ? card.requires.join(', ') : 'none declared' }}
+            </span>
+            @if (card.requiredBy.length) {
+              <span class="cc-line">
+                <span class="cc-key">Required by</span> {{ card.requiredBy.join(', ') }}
+              </span>
+            }
+            @for (d of card.delivers; track $index) {
+              <span class="cc-line cc-delivers">{{ d }}</span>
+            } @empty {
+              <span class="cc-line cc-muted">Delivers no performance objective</span>
+            }
+          </div>
+        }
+
+        <!-- Declared prerequisite arrows for the hovered or focused course: in from each
+             of its prerequisites, out to each course that requires it. Every arrow runs
+             prerequisite -> dependent, so it always points forward in time. A second
+             overlay, not part of .edges: qualification edges paint UNDER the cards, but
+             these end at chips inside the cards, so they paint over them, and over the
+             course card. -->
         <svg
           class="course-edges"
           [attr.viewBox]="viewBox()"
@@ -320,27 +417,13 @@ const STATE_LABEL: Record<NodeState, string> = {
             </marker>
           </defs>
           @for (d of courseArrows(); track $index) {
+            <!-- A halo in the card colour first, so the line reads over chips and text. -->
+            <path [attr.d]="d" class="course-edge-halo" />
             <path [attr.d]="d" class="course-edge" marker-end="url(#course-arrow)" />
           }
         </svg>
       </div>
     </div>
-
-    <!-- Colour was carrying meaning with nothing to decode it. Three states, named. -->
-    <p class="legend">
-      <span class="legend-item">
-        <span class="c-chip legend-chip">C101</span>
-        teaches only
-      </span>
-      <span class="legend-item">
-        <span class="c-chip legend-chip delivers">C204</span>
-        satisfies an objective of this qualification
-      </span>
-      <span class="legend-item">
-        <span class="c-chip legend-chip delivers cross-dp">C302</span>
-        taught here, satisfies a later period's objective
-      </span>
-    </p>
 
     <p class="hint">
       <mat-icon>keyboard</mat-icon>
@@ -421,12 +504,16 @@ const STATE_LABEL: Record<NodeState, string> = {
         display: flex;
         flex-wrap: wrap;
         gap: 6px 18px;
-        margin: 10px 0 0;
+        margin: 0 0 10px;
         font-size: 0.72rem;
         color: var(--text-muted);
       }
       .legend-item { display: inline-flex; align-items: center; gap: 6px; }
+      .legend-note { font-style: italic; }
       .legend-chip { cursor: default; }
+      .legend-arrow { width: 36px; height: 10px; flex: 0 0 36px; }
+      .legend-arrow-line { stroke: var(--accent); stroke-width: 1.5; fill: none; }
+      .legend-arrow-head { fill: var(--accent); }
 
       .map {
         position: relative;
@@ -522,8 +609,8 @@ const STATE_LABEL: Record<NodeState, string> = {
         .map.chain-active .edge.on-chain { stroke-width: 2.5; }
       }
 
-      /* Above the cards (themselves z-index 1): these arrows end at chips inside
-         the cards, unlike the qualification edges painting underneath. */
+      /* Above the cards (z-index 1) and the course card (z-index 2): these arrows end
+         at chips inside the cards, and no text may ever sit on top of one. */
       .course-edges {
         position: absolute;
         inset: 0;
@@ -531,17 +618,60 @@ const STATE_LABEL: Record<NodeState, string> = {
         height: 100%;
         pointer-events: none;
         overflow: visible;
-        z-index: 2;
+        z-index: 3;
       }
       .course-edge {
         fill: none;
         stroke: var(--accent);
-        stroke-width: 1.5;
-        opacity: 0.9;
+        stroke-width: 1.75;
         animation: edge-in 0.12s ease-out;
       }
+      .course-edge-halo {
+        fill: none;
+        stroke: var(--bg-card);
+        stroke-width: 3.5;
+        stroke-linecap: round;
+        opacity: 0.9;
+      }
       .course-arrow-head { fill: var(--accent); }
-      .c-chip.follow-target { border-color: var(--accent); color: var(--accent); }
+      .c-chip.is-focus,
+      .c-chip.is-prereq,
+      .c-chip.is-dependent { border-color: var(--accent); color: var(--accent); }
+      .c-chip.is-focus { outline: 1px solid var(--accent); }
+
+      /* What the hovered course is, beside it and under the arrows (see .course-edges).
+         data-place says which side of the related chips it was put on; left and above
+         anchor by their far edge, so neither needs the card's size up front. */
+      .course-card {
+        position: absolute;
+        z-index: 2;
+        width: max-content;
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+        padding: 8px 10px;
+        font-size: 0.72rem;
+        line-height: 1.35;
+        color: var(--text-primary);
+        background: var(--bg-card);
+        border: 1px solid var(--accent);
+        border-radius: var(--radius-sm, 4px);
+        box-shadow: var(--shadow-2);
+        pointer-events: none;
+      }
+      .course-card[data-place='left'] { transform: translateX(-100%); }
+      .course-card[data-place='above'] { transform: translateY(-100%); }
+      .cc-title { font-weight: 700; }
+      .cc-key {
+        font-size: 0.64rem;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: var(--text-muted);
+        margin-right: 4px;
+      }
+      .cc-delivers { color: var(--text-secondary); }
+      .cc-muted { color: var(--text-muted); }
 
       /* ── Nodes ─────────────────────────────────────────────── */
       /* The bubble: the card face plus the programme taught in the period. */
@@ -726,7 +856,7 @@ const STATE_LABEL: Record<NodeState, string> = {
         }
         .lane-head.specialty { padding-left: 0; border-left: none; }
         .edges { display: none; }
-        .course-edges { display: none; }
+        /* Course arrows stay: they are measured off the chips, which stack fine. */
         .cell { min-height: 0; }
         /* Stacked, an empty cell is just a gap — the grid no longer needs it to
            hold a column open. */
@@ -799,10 +929,21 @@ export class CareerMapComponent implements AfterViewInit, OnDestroy {
 
   /** Course chip under the pointer (or keyboard focus), if any. */
   protected readonly hoveredCourse = signal<string | null>(null);
-  /** Transient arrow paths from the hovered chip to its follow-up chips. */
+  /** Transient arrow paths into and out of the hovered chip, prerequisite -> dependent. */
   protected readonly courseArrows = signal<string[]>([]);
-  /** The chips the hovered course leads into, for highlighting the target end. */
-  protected readonly followTargets = computed<Set<string>>(() => {
+  /** The hovered course's card, placed clear of the chips and arrows it describes. */
+  protected readonly courseCard = signal<CourseCard | null>(null);
+  /** Whether any declared prerequisite is drawable at all, for the legend. */
+  protected readonly hasCourseEdges = computed(() => !!this.data()?.course_edges?.length);
+  /** The hovered course's prerequisites on the map. */
+  protected readonly prereqChips = computed<Set<string>>(() => {
+    const src = this.hoveredCourse();
+    if (!src) return new Set<string>();
+    const edges = this.data()?.course_edges ?? [];
+    return new Set(edges.filter(e => e.to === src).map(e => e.from));
+  });
+  /** The courses on the map that require the hovered one. */
+  protected readonly dependentChips = computed<Set<string>>(() => {
     const src = this.hoveredCourse();
     if (!src) return new Set<string>();
     const edges = this.data()?.course_edges ?? [];
@@ -954,27 +1095,29 @@ export class CareerMapComponent implements AfterViewInit, OnDestroy {
     }
     this.zone.run(() => {
       this.drawnEdges.set(drawn);
-      // Chip rects move with the layout, so any transient arrow is now stale.
-      if (this.courseArrows().length) {
+      // Chip rects move with the layout, so any transient arrow or card is now stale.
+      if (this.hoveredCourse()) {
         this.courseArrows.set([]);
+        this.courseCard.set(null);
         this.hoveredCourse.set(null);
       }
     });
   }
 
-  // ── Course follow-up arrows ─────────────────────────────────
+  // ── Course prerequisite arrows ──────────────────────────────
 
-  /** Delegated hover/focus onto a course chip: draw its follow-up arrows. */
+  /** Delegated hover/focus onto a course chip: draw its prerequisite arrows and card. */
   private readonly onChipEnter = (event: Event): void => {
     const chip = (event.target as HTMLElement | null)?.closest?.(
       '.c-chip[data-course]',
     ) as HTMLElement | null;
     const id = chip?.dataset['course'] ?? null;
     if (!id || id === this.hoveredCourse()) return;
-    const arrows = this.measureCourseArrows(id);
+    const { arrows, card } = this.measureCourseArrows(id);
     this.zone.run(() => {
       this.hoveredCourse.set(id);
       this.courseArrows.set(arrows);
+      this.courseCard.set(card);
     });
   };
 
@@ -987,31 +1130,94 @@ export class CareerMapComponent implements AfterViewInit, OnDestroy {
     this.zone.run(() => {
       this.hoveredCourse.set(null);
       this.courseArrows.set([]);
+      this.courseCard.set(null);
     });
   };
 
   /**
-   * Arrows from a chip to each of its follow-up chips, measured at hover time.
-   * Chips flex-wrap, so their rects are only valid for the current layout — nothing
-   * is cached, and `measure()` clears the arrows whenever the grid moves.
+   * Arrows into a chip from each of its prerequisites and out of it to each course that
+   * requires it, plus the course card, measured at hover time. Every arrow is drawn
+   * prerequisite -> dependent. Chips flex-wrap, so their rects are only valid for the
+   * current layout — nothing is cached, and `measure()` clears both whenever the grid
+   * moves.
    */
-  private measureCourseArrows(courseId: string): string[] {
+  private measureCourseArrows(courseId: string): { arrows: string[]; card: CourseCard | null } {
     const grid = this.gridRef?.nativeElement;
     const map = this.data();
-    if (!grid || !map) return [];
-    const source = grid.querySelector<HTMLElement>(`.c-chip[data-course="${courseId}"]`);
-    if (!source) return [];
+    if (!grid || !map) return { arrows: [], card: null };
+    const chipOf = (id: string) => grid.querySelector<HTMLElement>(`.c-chip[data-course="${id}"]`);
+    const source = chipOf(courseId);
+    if (!source) return { arrows: [], card: null };
 
     const origin = grid.getBoundingClientRect();
     const s = source.getBoundingClientRect();
     const arrows: string[] = [];
+    const related: DOMRect[] = [s];
+    const requiredBy: string[] = [];
+    const codeOf = new Map<string, string>();
+    for (const n of map.nodes) for (const c of n.courses) codeOf.set(c.course_id, c.course_code);
+
     for (const edge of map.course_edges ?? []) {
-      if (edge.from !== courseId) continue;
-      const target = grid.querySelector<HTMLElement>(`.c-chip[data-course="${edge.to}"]`);
-      if (!target) continue; // the backend only ships on-map ids, but stay defensive
-      arrows.push(this.chipPath(s, target.getBoundingClientRect(), origin));
+      if (edge.to === courseId) {
+        const pre = chipOf(edge.from);
+        if (!pre) continue; // the backend only ships on-map ids, but stay defensive
+        const r = pre.getBoundingClientRect();
+        related.push(r);
+        arrows.push(this.chipPath(r, s, origin));
+      } else if (edge.from === courseId) {
+        const dep = chipOf(edge.to);
+        if (!dep) continue;
+        const r = dep.getBoundingClientRect();
+        related.push(r);
+        arrows.push(this.chipPath(s, r, origin));
+        requiredBy.push(codeOf.get(edge.to) ?? '');
+      }
     }
-    return arrows;
+
+    const course = map.nodes.flatMap(n => n.courses).find(c => c.course_id === courseId);
+    if (!course) return { arrows, card: null };
+    return {
+      arrows,
+      card: {
+        name: course.name,
+        requires: course.prerequisites ?? [],
+        requiredBy: requiredBy.filter(Boolean).sort(),
+        delivers: course.delivers.map(d => `Delivers ${d.qsp_code} ${d.po_code} — ${d.po_title}`),
+        ...this.placeCard(related, source.closest('.node')?.getBoundingClientRect() ?? null, origin),
+      },
+    };
+  }
+
+  /**
+   * Put the course card beside everything the arrows touch, never across it. First
+   * choice is outside the hovered chip's bubble altogether — left of it, else right,
+   * whichever side has room — so no chip in the programme is covered. When the map is
+   * stacked and the bubble is full width, below the related chips, else above. The
+   * arrows paint over the card regardless; this keeps the chips readable.
+   */
+  private placeCard(
+    related: DOMRect[],
+    bubble: DOMRect | null,
+    origin: DOMRect,
+  ): Pick<CourseCard, 'x' | 'y' | 'maxWidth' | 'place'> {
+    const spans = bubble ? [...related, bubble] : related;
+    const left = Math.min(...spans.map(r => r.left)) - origin.left - CURVE_PAD;
+    const right = Math.max(...spans.map(r => r.right)) - origin.left + CURVE_PAD;
+    const anchorTop = related[0].top - origin.top; // the hovered chip
+    const roomLeft = left - CARD_GAP;
+    const roomRight = origin.width - right - CARD_GAP;
+    if (Math.max(roomLeft, roomRight) >= CARD_MIN_W) {
+      return roomLeft >= roomRight
+        ? { x: roomLeft, y: anchorTop, maxWidth: Math.min(CARD_W, roomLeft), place: 'left' }
+        : { x: right + CARD_GAP, y: anchorTop, maxWidth: Math.min(CARD_W, roomRight), place: 'right' };
+    }
+    const top = Math.min(...related.map(r => r.top)) - origin.top - CURVE_PAD;
+    const bottom = Math.max(...related.map(r => r.bottom)) - origin.top + CURVE_PAD;
+    const x = Math.max(0, Math.min(related[0].left - origin.left, origin.width - CARD_W));
+    if (origin.height - bottom >= 120) {
+      return { x, y: bottom, maxWidth: CARD_W, place: 'below' };
+    }
+    return { x, y: Math.max(0, top), maxWidth: CARD_W, place: 'above' };
   }
 
   /** The same curve families as the qualification edges, chip-sized. */
@@ -1027,11 +1233,13 @@ export class CareerMapComponent implements AfterViewInit, OnDestroy {
       const bend = Math.max(20, Math.abs(x2 - x1) / 2) * (dx >= 0 ? 1 : -1);
       return `M ${x1} ${y1} C ${x1 + bend} ${y1}, ${x2 - bend} ${y2}, ${x2} ${y2}`;
     }
-    // Vertical-dominant: bottom-centre to top-centre (mirrored going up), so the
-    // terminal tangent stays vertical and the arrowhead points into the chip.
-    const x1 = s.left + s.width / 2 - origin.left;
+    // Vertical-dominant: bottom to top (mirrored going up), so the terminal tangent
+    // stays vertical and the arrowhead points into the chip. Down the gap left of the
+    // chip column rather than its centre: a term's chips share columns, so a line down
+    // the middle runs straight through the code of every chip it passes.
+    const x1 = s.left + CHIP_LANE - origin.left;
     const y1 = (dy >= 0 ? s.bottom : s.top) - origin.top;
-    const x2 = t.left + t.width / 2 - origin.left;
+    const x2 = t.left + CHIP_LANE - origin.left;
     const y2 = (dy >= 0 ? t.top : t.bottom) - origin.top;
     const drop = Math.max(16, Math.abs(y2 - y1) * 0.45) * (dy >= 0 ? 1 : -1);
     return `M ${x1} ${y1} C ${x1} ${y1 + drop}, ${x2} ${y2 - drop}, ${x2} ${y2}`;
@@ -1102,16 +1310,6 @@ export class CareerMapComponent implements AfterViewInit, OnDestroy {
   /** The programme for a node, grouped into the terms that teach it. */
   termsOf(node: QualNode): TermGroup[] {
     return groupByTerm(node.courses);
-  }
-
-  /** What a course chip says on hover: its name, then any objective it delivers. */
-  courseTooltip(c: NodeCourse): string {
-    const lines = [c.name];
-    for (const d of c.delivers) {
-      lines.push(`delivers ${d.qsp_code} ${d.po_code} — ${d.po_title}`);
-    }
-    if (!c.delivers.length) lines.push('delivers no performance objective');
-    return lines.join('\n');
   }
 
   /** Taught hours for the period, thousands-separated. */
