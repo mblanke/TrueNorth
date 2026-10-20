@@ -26,7 +26,7 @@ source "vsphere-iso" "srv2022" {
 
   vm_name       = "srv2022"
   notes         = "TrueNorth golden: Windows Server 2022 (built by Packer)"
-  guest_os_type = "windows2019srvNext64Guest"
+  guest_os_type = "windows2019srvNext_64Guest" # vSphere id for Server 2022 (the underscore matters)
   firmware      = "efi"
 
   CPUs                 = 4
@@ -91,7 +91,7 @@ source "vsphere-iso" "srv2025" {
 
   vm_name       = "srv2025"
   notes         = "TrueNorth golden: Windows Server 2025 (built by Packer)"
-  guest_os_type = "windows2019srvNext64Guest"
+  guest_os_type = "windows2022srvNext_64Guest" # Server 2025 (vSphere API 8.0.2+)
   firmware      = "efi"
 
   CPUs                 = 4

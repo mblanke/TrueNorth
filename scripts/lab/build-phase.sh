@@ -291,7 +291,10 @@ phase_prereq() {
   if [[ "$DRY" == "1" ]]; then "$LAB_DIR/iso-sync-esx04.sh" --env-file "$ENV_FILE"
   else
     local yes=(); [[ "$ASSUME_YES" == "1" ]] && yes=(--yes)
-    "$LAB_DIR/iso-sync-esx04.sh" --apply --env-file "$ENV_FILE" ${yes[@]+"${yes[@]}"}
+    # One ISO that cannot be copied (e.g. locked by a VM that mounts it) must not stop the
+    # rest of prereq: the builds that need it fail their own iso check later.
+    "$LAB_DIR/iso-sync-esx04.sh" --apply --env-file "$ENV_FILE" ${yes[@]+"${yes[@]}"} \
+      || warn "ISO sync incomplete (see FAILED above); continuing. A file locked by a running VM: try iso-sync-esx04.sh --stream"
   fi
 
   step "DRS: $MGMT_VM should run on $BUILD_HOST (VLAN 31 reaches only $BUILD_HOST)"
