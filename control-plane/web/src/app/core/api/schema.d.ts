@@ -6188,7 +6188,9 @@ export interface paths {
          *     ``/directory/nations`` needs ``user:read``, which an applicant (no ``users`` row
          *     yet) and a Student do not hold, so their Nation dropdown came back empty. This is
          *     the same global reference data, read-only, active rows only, public fields only.
-         *     Any valid token may read it; the directory router keeps its permission.
+         *     Any valid token that could use the forms may read it (``[]`` for an applicant
+         *     outside REGISTRATION_ALLOWED_GROUPS or a deactivated account); the directory router
+         *     keeps its permission.
          */
         get: operations["list_registration_nations_registration_nations_get"];
         put?: never;
@@ -6213,7 +6215,8 @@ export interface paths {
          *     ``/qsp/qualifications`` needs a ``users`` row, so an applicant got 403 and an empty
          *     Qualification dropdown. Qualifications have no draft state; the scope is the one
          *     approval (``_enroll_for``) and onboarding (``get_owned_or_global``) enforce, so a
-         *     listed qualification is one that request would actually honour.
+         *     listed qualification is one that request would actually honour. ``[]`` for a caller
+         *     who may not use the forms (see ``_requestable_tenant``).
          */
         get: operations["list_registration_qualifications_registration_qualifications_get"];
         put?: never;

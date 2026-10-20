@@ -20,7 +20,7 @@ from _shared import act_as, real_tenant, real_user
 from app import auth
 from app.auth import TokenPayload, get_token_identity
 from app.main import app as fastapi_app
-from app.models import Nation, Qualification, UserRole
+from app.models import Nation, Qualification, User, UserRole
 
 DEV_TENANT = uuid.UUID("00000000-0000-0000-0000-000000000001")
 PUBLIC_FIELDS = {"id", "name", "iso_alpha2", "iso_alpha3", "flag_emoji"}
@@ -176,3 +176,53 @@ def test_applicant_is_still_refused_qsp(real_auth, quals):
 
     assert real_auth.get("/qsp/qualifications").status_code == 403
     assert real_auth.get("/qsp/qualifications/QTSHARED/objectives").status_code == 403
+
+
+# ── Who may read the lists at all ──────────────────────────────────────
+ROUTES = ("/registration/nations", "/registration/qualifications")
+
+
+@pytest.mark.parametrize("route", ROUTES)
+def test_applicant_outside_allowed_groups_gets_empty(real_auth, nations, quals, monkeypatch, route):
+    """Same rule as POST /registration: groups outside REGISTRATION_ALLOWED_GROUPS may not apply."""
+    monkeypatch.setenv("REGISTRATION_ALLOWED_GROUPS", "TN-Trainees")
+    _as_applicant(["Finance"])
+
+    r = real_auth.get(route)
+
+    assert r.status_code == 200 and r.json() == []
+    assert real_auth.post("/registration", json={}).status_code == 403  # the rule it mirrors
+
+
+@pytest.mark.parametrize("route", ROUTES)
+def test_applicant_inside_allowed_groups_gets_the_list(real_auth, nations, quals, monkeypatch, route):
+    monkeypatch.setenv("REGISTRATION_ALLOWED_GROUPS", "TN-Trainees")
+    _as_applicant(["TN-Trainees"])
+
+    r = real_auth.get(route)
+
+    assert r.status_code == 200 and len(r.json()) >= 2
+
+
+@pytest.mark.parametrize("route", ROUTES)
+def test_deactivated_account_gets_empty(real_auth, db_session, nations, quals, route):
+    student = real_user(db_session, UserRole.student, DEV_TENANT)
+    row = db_session.get(User, uuid.UUID(student.id))
+    row.is_active = False
+    db_session.flush()
+    fastapi_app.dependency_overrides[get_token_identity] = lambda: TokenPayload(sub=student.keycloak_id)
+
+    r = real_auth.get(route)
+
+    assert r.status_code == 200 and r.json() == []
+
+
+@pytest.mark.parametrize("route", ROUTES)
+def test_registered_student_is_not_held_to_the_applicant_group_rule(real_auth, db_session, nations, quals,
+                                                                   monkeypatch, route):
+    """Onboarding: a Student already admitted (CSV, LTI, approval) keeps the lists."""
+    monkeypatch.setenv("REGISTRATION_ALLOWED_GROUPS", "TN-Trainees")
+    student = real_user(db_session, UserRole.student, DEV_TENANT)
+    fastapi_app.dependency_overrides[get_token_identity] = lambda: TokenPayload(sub=student.keycloak_id)
+
+    assert len(real_auth.get(route).json()) >= 2
