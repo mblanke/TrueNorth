@@ -500,6 +500,17 @@ course production with a local-model fallback, and the cleanup of unsupported su
     the rows does not break red-vs-blue or large-enterprise before the images exist.
   - The three catalogue rows are `enabled=yes`; a contract test keeps every enabled role
     image tied to a deploy path. Runbook: `vmware-site-runbook.md` §7.3.
+- New: SharePoint Server 2019 for Large Enterprise (owner decision). A role of its own,
+  `sharepoint-2019` (service `sharepoint_2019`; `sharepoint_se` still picks SE, which stays
+  available), with the role image `srv2022-sharepoint2019` (Packer, catalogue `enabled=yes`,
+  ISO `en_sharepoint_server_2019_x64_dvd_68e34c9e.iso` already on esx01). Its prerequisites
+  are installed in the image one by one from the depot, because SharePoint 2019's
+  prerequisite installer does not support Windows Server 2022 (Microsoft Learn; to verify on
+  the first build). At deploy it is set up exactly like SE: domain join, SQL CompleteImage,
+  `setup.exe /config`, a single-server farm, the key masked in the setup logs, the `built`
+  resolver filter and the srv2022 fallback. The key is the same `vault_sharepoint_product_key`
+  (`TN_SHAREPOINT_PRODUCT_KEY`): the site's SharePoint 2019 key. Large Enterprise's `sp01`
+  now builds from it. Not built or run on a real vCenter yet.
 
 ### R0-B: web correctness and role access
 - Fix: Resume on a paused exercise called `/start` (409 unless pending), so nothing resumed;

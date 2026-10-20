@@ -919,6 +919,11 @@ class TestImplicitDomainAdmins:
         machines = {s.machine for s in account_rules.implicit_admins(self.DOC, declared)}
         assert machines == {"exch01"}  # dc01 already declared, exch01 still generated
 
+    def test_sharepoint_2019_gets_generated_admins_too(self):
+        doc = {"nodes": [{"id": "dc01", "os": "windows-server-2022", "services": ["active_directory"]},
+                         {"id": "sp01", "os": "windows-server-2022", "services": ["sharepoint_2019", "iis"]}]}
+        assert {s.machine for s in account_rules.implicit_admins(doc, [])} == {"sp01", "dc01"}
+
     def test_nothing_generated_without_a_product_role(self):
         doc = {"nodes": [{"id": "dc01", "os": "windows-server-2022", "services": ["active_directory"]}]}
         assert account_rules.implicit_admins(doc, []) == []

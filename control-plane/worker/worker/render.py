@@ -375,7 +375,7 @@ def render_topology(
 
 # The role images whose product is finished at deploy (provisioners/vsphere_products.py
 # SETUP_IMAGES; a test keeps the two equal). Only these wait for ``build_status = built``.
-DEPLOY_SETUP_IMAGES = frozenset({"srv2022-exchange2019", "srv2022-sharepointse", "srv2022-mecm"})
+DEPLOY_SETUP_IMAGES = frozenset({"srv2022-exchange2019", "srv2022-sharepointse", "srv2022-sharepoint2019", "srv2022-mecm"})
 
 
 def golden_image_resolver(db, hypervisor: str = "vsphere") -> Callable[[str], str | None]:

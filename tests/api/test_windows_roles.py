@@ -62,7 +62,8 @@ def test_the_roles_people_ask_for_are_offered():
 
 
 @pytest.mark.parametrize("name,role", [
-    ("active_directory", "ad-ds"), ("exchange_2019", "exchange"), ("sharepoint_2019", "sharepoint"),
+    ("active_directory", "ad-ds"), ("exchange_2019", "exchange"), ("sharepoint_2019", "sharepoint-2019"),
+    ("sharepoint_se", "sharepoint"), ("sharepoint2019", "sharepoint-2019"),
     ("mssql_2022", "sql-server"), ("sccm", "mecm"), ("smb", "file"), ("print_spooler", "print"),
     ("adcs", "ad-cs"), ("ad_cs", "ad-cs"), ("osisoft_pi_sim", "historian"),
     # the ids the designer grid wrote before the catalogue
@@ -90,7 +91,9 @@ def test_largest_minimum_wins_per_resource():
 
 def test_image_role_replaces_the_os_template_and_features_are_merged():
     assert api_roles.role_image(["exchange"], WS22) == "srv2022-exchange2019"
-    assert api_roles.role_image(["sharepoint"], "windows-server-2019") == "srv2019-sharepoint2019"
+    assert api_roles.role_image(["sharepoint-2019"], "windows-server-2019") == "srv2019-sharepoint2019"
+    assert api_roles.role_image(["sharepoint-2019"], WS22) == "srv2022-sharepoint2019"
+    assert api_roles.role_image(["sharepoint"], WS22) == "srv2022-sharepointse"
     assert api_roles.role_image(["dns"], WS22) is None
     feats = api_roles.role_features(["ad-ds", "dns"])
     assert feats.count("DNS") == 1 and "AD-Domain-Services" in feats

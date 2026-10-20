@@ -62,6 +62,10 @@ What each product runs
   2022, completed here. A range SQL VM is not used: TrueNorth neither builds
   srv2022-sql2022 nor joins SQL VMs to the domain. Farm account: the domain Administrator
   (a lab range).
+* SharePoint Server 2019 (``srv2022-sharepoint2019``, role ``sharepoint-2019``; Large
+  Enterprise): exactly as SharePoint SE, with the same site key variable. Its prerequisites
+  are in the image (installed one by one: its prerequisite installer does not support
+  Windows Server 2022, Microsoft Learn sharepoint/install/hardware-and-software-requirements-2019).
 * MECM current branch: SQL Server ``/ACTION=CompleteImage`` (collation
   SQL_Latin1_General_CP1_CI_AS), ``extadsch.exe`` (success read from C:\\ExtADSch.log), the
   System Management container with Full Control for the site server's computer account on
@@ -128,9 +132,15 @@ logger = logging.getLogger(__name__)
 SETUP_IMAGES: dict[str, str] = {
     "srv2022-exchange2019": "exchange",
     "srv2022-sharepointse": "sharepoint",
+    "srv2022-sharepoint2019": "sharepoint-2019",
     "srv2022-mecm": "mecm",
 }
-LABELS = {"exchange": "Exchange 2019", "sharepoint": "SharePoint SE", "mecm": "MECM"}
+LABELS = {"exchange": "Exchange 2019", "sharepoint": "SharePoint SE", "sharepoint-2019": "SharePoint Server 2019",
+          "mecm": "MECM"}
+# Both SharePoint products take the site's product key (the one TN_SHAREPOINT_PRODUCT_KEY /
+# vault_sharepoint_product_key: a site uses one SharePoint product per key; see the runbook)
+# and set up the same way: SQL CompleteImage, setup.exe /config, a single-server farm.
+SHAREPOINT_ROLES = frozenset({"sharepoint", "sharepoint-2019"})
 
 # Seconds from the start of a VM's setup (its domain join) until the setup is called a
 # ``timeout``. The build never waits this long: the reconcile task (worker/setup_reconcile.py)
@@ -325,11 +335,11 @@ def plan(vm_def: dict, vm_defs: list[dict], range_name: str, depot_url: str = ""
     role = SETUP_IMAGES[image]
     key = None
     notes: list[str] = []
-    if role == "sharepoint":
+    if role in SHAREPOINT_ROLES:
         key = product_key(env)
         if key is None:
             raise PlanError(f"staged (no product key): set {PRODUCT_KEY_ENV} (installer vault_sharepoint_product_key) "
-                            "to install SharePoint SE; the binaries stay staged in the image")
+                            f"to install {LABELS[role]}; the binaries stay staged in the image")
         if not _KEY.match(key.reveal()):
             raise PlanError(f"staged (no product key): {PRODUCT_KEY_ENV} is not a 25-character product key "
                             "(XXXXX-XXXXX-XXXXX-XXXXX-XXXXX); the binaries stay staged in the image")
@@ -354,7 +364,7 @@ def plan(vm_def: dict, vm_defs: list[dict], range_name: str, depot_url: str = ""
         netbios=vsphere_roles.netbios(domain), dc_name=str(dc["name"]),
         dc_node=str(dc.get("node_id") or dc.get("name") or ""), dc_ip=dc_ip, local=local,
         domain_password=dc_login.password, org=org_name(range_name), site_code=site_code(vm_def.get("_range_id", "")),
-        product_key=key, passphrase=guest.Secret(secrets.token_urlsafe(18) + "aA1!") if role == "sharepoint" else None,
+        product_key=key, passphrase=guest.Secret(secrets.token_urlsafe(18) + "aA1!") if role in SHAREPOINT_ROLES else None,
         prereq_url=prereq if role == "mecm" else "", notes=notes)
 
 
@@ -518,7 +528,7 @@ switch ($p.role) {
         'Exchange Mailbox install'
     }
   }
-  'sharepoint' {
+  { $_ -in @('sharepoint', 'sharepoint-2019') } {
     if (-not $s -or -not $s.product_key) { Fail 13 'no product key reached the runner' }
     if (-not (Test-Path (Join-Path $staged 'setup.exe'))) { Fail 10 "SharePoint setup.exe is not in $staged" }
     Complete-Sql 'Latin1_General_CI_AS_KS_WS'
@@ -713,7 +723,7 @@ def params(p: SetupPlan) -> dict:
 
 def secret_doc(p: SetupPlan) -> dict:
     """What the runner reads from secrets.json and deletes: SharePoint only."""
-    if p.role != "sharepoint" or p.product_key is None or p.passphrase is None:
+    if p.role not in SHAREPOINT_ROLES or p.product_key is None or p.passphrase is None:
         return {}
     return {"product_key": p.product_key.reveal(), "passphrase": p.passphrase.reveal(),
             "farm_password": p.domain_password.reveal()}

@@ -50,6 +50,7 @@ LINUX_CLONE_SOURCES = ("remnux", "sift", "svc-emulators", "greyspace-host", "ca-
 ROLE_IMAGES = {
     "srv2022-exchange2019": ["iso_exchange2019"],
     "srv2022-sharepointse": ["iso_sharepointse", "iso_sql2022"],
+    "srv2022-sharepoint2019": ["iso_sharepoint2019", "iso_sql2022", "iso_srv2022"],
     "srv2022-mecm": ["iso_mecm", "iso_sql2022", "iso_srv2022"],
 }
 
@@ -360,7 +361,7 @@ def test_every_enabled_role_image_has_a_deploy_path():
     images = {img for r in windows_roles.ROLES if r["install"]["method"] == "image"
               for img in r["install"]["images"].values()}
     enabled = {i for i in images if rows.get(i, {}).get("enabled") == "yes"}
-    assert {"srv2022-exchange2019", "srv2022-sharepointse", "srv2022-mecm"} <= enabled
+    assert {"srv2022-exchange2019", "srv2022-sharepointse", "srv2022-sharepoint2019", "srv2022-mecm"} <= enabled
     for image in enabled:
         assert image in vsphere_products.SETUP_IMAGES or image in FINISHED_ROLE_IMAGES, image
     for image, role in vsphere_products.SETUP_IMAGES.items():
@@ -369,7 +370,21 @@ def test_every_enabled_role_image_has_a_deploy_path():
     script = (PK / "files/windows/role-image.ps1").read_text()
     assert "role-image.json" in script and "staged = $staged" in script
     assert vsphere_products.MARKER == "C:\\TrueNorth\\role-image.json"
-    assert script.count("sql = 'prepared'") == 2  # SharePoint's farm database and MECM's site database
+    assert script.count("sql = 'prepared'") == 3  # both SharePoint farms' databases and MECM's site database
+
+
+def test_sharepoint_2019_installs_its_prerequisites_one_by_one_on_server_2022():
+    """SharePoint Server 2019's prerequisite installer does not support Windows Server 2022, so
+    the image installs each prerequisite from the depot; the SE image still uses the installer."""
+    script = (PK / "files/windows/role-image.ps1").read_text()
+    body = script[script.index("'srv2022-sharepoint2019' {"):script.index("'srv2022-mecm' {")]
+    assert "prerequisiteinstaller.exe') '/unattended'" not in body
+    for f in ("sqlncli.msi", "Synchronization.msi", "MicrosoftIdentityExtensions-64.msi", "setup_msipc_x64.exe",
+              "WcfDataServices.exe", "vcredist_x64.exe", "VC_redist.x64.exe", "WindowsServerAppFabricSetup_x64.exe",
+              "AppFabric-KB3092423-x64-ENU.exe"):
+        assert f"Get-DepotFile '{f}'" in body, f
+    assert "Windows-Identity-Foundation" in body and "NET-HTTP-Activation" in body
+    assert _variable_default("iso_sharepoint2019") == "en_sharepoint_server_2019_x64_dvd_68e34c9e.iso"
 
 
 def test_sharepoint_product_key_reaches_the_worker_only_and_no_template():

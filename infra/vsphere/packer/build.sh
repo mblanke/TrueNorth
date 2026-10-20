@@ -44,7 +44,7 @@ ORDER=(
   srv2019 srv2016 rocky vyos srv2025 debian13 parrot win10-ltsc
   remnux sift svc-emulators greyspace-host ca-host usersim cloudlog-emu c2-server
   precomp-host detonation-host
-  srv2022-exchange2019 srv2022-sharepointse srv2022-mecm
+  srv2022-exchange2019 srv2022-sharepointse srv2022-sharepoint2019 srv2022-mecm
 )
 
 VARIANT_DIR="variants"
@@ -52,7 +52,7 @@ VARIANT_DIR="variants"
 # Names built by the vsphere-clone builder (everything else is vsphere-iso).
 is_clone() {
   case "$1" in
-    remnux|sift|svc-emulators|greyspace-host|ca-host|usersim|cloudlog-emu|c2-server|precomp-host|detonation-host|srv2022-exchange2019|srv2022-sharepointse|srv2022-mecm) return 0 ;;
+    remnux|sift|svc-emulators|greyspace-host|ca-host|usersim|cloudlog-emu|c2-server|precomp-host|detonation-host|srv2022-exchange2019|srv2022-sharepointse|srv2022-sharepoint2019|srv2022-mecm) return 0 ;;
     *) return 1 ;;
   esac
 }

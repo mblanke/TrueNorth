@@ -2,7 +2,8 @@
   TrueNorth Range — Windows Server role images (roles.pkr.hcl). Runs over WinRM as
   Administrator on a customized clone of srv2022, twice, with a reboot in between.
 
-  $env:TN_ROLE_IMAGE  srv2022-exchange2019 | srv2022-sharepointse | srv2022-mecm
+  $env:TN_ROLE_IMAGE  srv2022-exchange2019 | srv2022-sharepointse | srv2022-sharepoint2019 |
+                      srv2022-mecm
   $env:TN_ROLE_PASS   1: grow C:, Windows features, depot prerequisites
                       2: post-reboot installs, stage the media, write role-image.json
   $env:DEPOT_URL      TN-DEPOT01 Nexus base (http://10.30.31.30:8081/repository). Vendor
@@ -15,6 +16,13 @@
                   optional: ndp48-x86-x64-allos-enu.exe (Server 2022 ships .NET 4.8),
                   UcmaRuntimeSetup.exe (else \UCMARedist\Setup.exe from the Exchange ISO)
     sharepointse  VC_redist.x64.exe (Visual C++ 2015-2022)
+    sharepoint2019  sqlncli.msi (SQL Server 2012 Native Client), Synchronization.msi (Sync
+                  Framework 1.0 SP1 x64), MicrosoftIdentityExtensions-64.msi, setup_msipc_x64.exe
+                  (Information Protection and Control Client 2.1), WcfDataServices.exe (WCF Data
+                  Services 5.6), vcredist_x64.exe (VC++ 2012), VC_redist.x64.exe (VC++ 2015-2022),
+                  WindowsServerAppFabricSetup_x64.exe and AppFabric-KB3092423-x64-ENU.exe (CU7):
+                  installed one by one, because SharePoint Server 2019's prerequisite installer
+                  does not support Windows Server 2022 (Microsoft Learn, below)
     mecm          adk.zip (adksetup.exe /layout), adkwinpe.zip (adkwinpesetup.exe /layout)
                   optional: msodbcsql18.msi, configmgr-prereqs.zip (setupdl.exe output)
 
@@ -26,6 +34,11 @@
   setup only on a clone whose role-image.json names this image and whose "staged" folder
   exists. Keep its keys: image, staged, sql ("prepared" when SQL Server 2022 was run with
   /ACTION=PrepareImage: MECM's site database, SharePoint's farm database).
+
+  SharePoint Server 2019 on Windows Server 2022: Microsoft Learn, sharepoint/install/
+  hardware-and-software-requirements-2019 (supported operating systems, and the list of
+  prerequisites to install manually where the prerequisite installer is not supported).
+  Verify that page on the first build: it was cited from knowledge, not fetched.
 
   Sources: Exchange Server prerequisites (Microsoft Learn, exchange/plan-and-deploy/
   prerequisites, Exchange 2019 on Windows Server 2022 Desktop Experience); SQL Server
@@ -44,7 +57,7 @@ $mediaRoot = Join-Path $root 'media'
 New-Item -ItemType Directory -Force -Path $dl, $mediaRoot | Out-Null
 function Step($m) { Write-Host "=== $image pass $pass`: $m" }
 
-if ($image -notin 'srv2022-exchange2019', 'srv2022-sharepointse', 'srv2022-mecm') { throw "role-image: unknown TN_ROLE_IMAGE '$image'" }
+if ($image -notin 'srv2022-exchange2019', 'srv2022-sharepointse', 'srv2022-sharepoint2019', 'srv2022-mecm') { throw "role-image: unknown TN_ROLE_IMAGE '$image'" }
 if ($pass -notin 1, 2) { throw "role-image: TN_ROLE_PASS must be 1 or 2, got '$($env:TN_ROLE_PASS)'" }
 if (-not $env:DEPOT_URL) { throw "role-image: DEPOT_URL is empty. Role images install their prerequisites from TN-DEPOT01 (pkrvars-work.py --depot)." }
 $installers = "$($env:DEPOT_URL.TrimEnd('/'))/installers/roles/$($image -replace '^srv2022-', '')"
@@ -150,6 +163,29 @@ if ($pass -eq 1) {
       # 0 done, 3010 reboot needed, 1001 reboot then run again: pass 2 runs it again.
       Invoke-Installer (Join-Path $sp 'prerequisiteinstaller.exe') '/unattended' @(0, 1001, 3010) | Out-Null
     }
+    'srv2022-sharepoint2019' {
+      Step '.NET 3.5 and the SharePoint Server 2019 Windows features (Server 2022 ISO sources\sxs)'
+      $win = Find-Media @('sources\sxs', 'sources\install.wim')
+      if (-not $win) { throw 'role-image: Server 2022 media (sources\sxs) not found on any CD-ROM' }
+      Install-WindowsFeature -Source (Join-Path $win 'sources\sxs') NET-Framework-Features, NET-HTTP-Activation,
+        NET-Non-HTTP-Activ, NET-WCF-HTTP-Activation45, NET-WCF-Pipe-Activation45, Web-Server, Web-WebServer,
+        Web-Common-Http, Web-Static-Content, Web-Default-Doc, Web-Dir-Browsing, Web-Http-Errors, Web-App-Dev,
+        Web-Asp-Net, Web-Asp-Net45, Web-Net-Ext, Web-Net-Ext45, Web-ISAPI-Ext, Web-ISAPI-Filter, Web-Health,
+        Web-Http-Logging, Web-Log-Libraries, Web-Request-Monitor, Web-Http-Tracing, Web-Security,
+        Web-Basic-Auth, Web-Windows-Auth, Web-Filtering, Web-Digest-Auth, Web-Performance,
+        Web-Stat-Compression, Web-Dyn-Compression, Web-Mgmt-Tools, Web-Mgmt-Console, WAS, WAS-Process-Model,
+        WAS-NET-Environment, WAS-Config-APIs, Windows-Identity-Foundation | Out-Host
+      Step 'SharePoint Server 2019 prerequisites, one by one from the depot (no prerequisite installer on Server 2022)'
+      Invoke-Installer (Get-DepotFile 'sqlncli.msi') 'IACCEPTSQLNCLILICENSETERMS=YES' | Out-Null
+      Invoke-Installer (Get-DepotFile 'Synchronization.msi') '' | Out-Null
+      Invoke-Installer (Get-DepotFile 'MicrosoftIdentityExtensions-64.msi') '' | Out-Null
+      Invoke-Installer (Get-DepotFile 'setup_msipc_x64.exe') '/quiet /norestart' | Out-Null
+      Invoke-Installer (Get-DepotFile 'WcfDataServices.exe') '/quiet /norestart' | Out-Null
+      Invoke-Installer (Get-DepotFile 'vcredist_x64.exe') '/install /quiet /norestart' @(0, 1638, 1641, 3010) | Out-Null
+      Invoke-Installer (Get-DepotFile 'VC_redist.x64.exe') '/install /quiet /norestart' @(0, 1638, 1641, 3010) | Out-Null
+      Invoke-Installer (Get-DepotFile 'WindowsServerAppFabricSetup_x64.exe') '/i CacheClient,CachingService,CacheAdmin /gac' | Out-Null
+      Invoke-Installer (Get-DepotFile 'AppFabric-KB3092423-x64-ENU.exe') '/quiet /norestart' | Out-Null
+    }
     'srv2022-mecm' {
       Step '.NET 3.5 from the Server 2022 ISO (sources\sxs), then the site-server features'
       $win = Find-Media @('sources\sxs', 'sources\install.wim')
@@ -201,6 +237,26 @@ switch ($image) {
     $staged = Copy-Media $sp 'sharepointse'
     Write-RoleManifest @{
       installed = @('VC++ 2015-2022', 'SharePoint prerequisites (prerequisiteinstaller /unattended)',
+                    'SQL Server 2022 Database Engine (prepared image, not configured)')
+      staged = $staged
+      sql = 'prepared'
+      deploy_time = @(
+        'Join the range domain (TrueNorth, vsphere_products.py).',
+        'Complete SQL Server (/ACTION=CompleteImage, collation Latin1_General_CI_AS_KS_WS); the farm uses this instance.',
+        "$staged\setup.exe /config <config.xml with the site's PIDKEY: TN_SHAREPOINT_PRODUCT_KEY> (no product key in templates, ADR 0012 decision 3; without it the binaries stay staged)",
+        'New-SPConfigurationDatabase -LocalServerRole SingleServerFarm and the psconfig steps (help, security, services, features, Central Administration on 9999)'
+      )
+    }
+  }
+  'srv2022-sharepoint2019' {
+    $sp = Find-Media @('prerequisiteinstaller.exe', 'setup.exe', 'files\setupfarmsilent')
+    if (-not $sp) { throw 'role-image: SharePoint Server 2019 media not found on any CD-ROM' }
+    Step "SQL Server 2022: SysPrep Prepare Image for the farm's own database (Complete Image runs at deploy)"
+    Initialize-PreparedSql
+    Step 'stage the SharePoint Server 2019 media'
+    $staged = Copy-Media $sp 'sharepoint2019'
+    Write-RoleManifest @{
+      installed = @('SharePoint Server 2019 Windows features', 'SharePoint Server 2019 prerequisites (depot, one by one)',
                     'SQL Server 2022 Database Engine (prepared image, not configured)')
       staged = $staged
       sql = 'prepared'
