@@ -49,7 +49,12 @@ def _aware(t: datetime) -> datetime:
 
 
 def _rostered_during_run(
-    db: Session, ex: Exercise, user_id: uuid.UUID | None = None, *, active_only: bool = False
+    db: Session,
+    ex: Exercise,
+    user_id: uuid.UUID | None = None,
+    *,
+    active_only: bool = False,
+    now: datetime | None = None,
 ) -> set[uuid.UUID]:
     """Who holds an assigned enrolment in a course booked over the run, made before the run
     ended (``user_id`` narrows it to one person).
@@ -65,10 +70,10 @@ def _rostered_during_run(
     to who sits this run now. Without it a booked course's earlier cohorts (completed, a
     year ago) would be on today's class. This stays the one roster query for both uses.
     """
-    courses = roster_courses(db, ex)
+    courses = roster_courses(db, ex, now)
     if not courses:
         return set()
-    run_end = _aware(ex.completed_at or datetime.now(UTC))
+    run_end = _aware(ex.completed_at or now or datetime.now(UTC))
     q = db.query(Enrollment.user_id, Enrollment.created_at).filter(
         Enrollment.course_id.in_(courses),
         Enrollment.source == ASSIGNED,
@@ -110,14 +115,14 @@ def took_part(db: Session, ex: Exercise, user_id: uuid.UUID) -> bool:
     )
 
 
-def participants(db: Session, ex: Exercise) -> set[uuid.UUID]:
+def participants(db: Session, ex: Exercise, now: datetime | None = None) -> set[uuid.UUID]:
     """Who is in this run's class now, at once (the live class roster, app/live_class): the
     same three relations as ``took_part``, except that the roster counts only enrolments
     still being studied (``active_only``, as ``may_submit`` does), so a booked course's
     earlier cohorts are not on today's class. ``took_part`` (the AAR) is unchanged: a
     participant whose enrolment has since completed still reads their report. Callers
-    filter to Students."""
-    return _rostered_during_run(db, ex, active_only=True) | _on_a_team(db, ex) | _submitted_in_run(db, ex)
+    filter to Students. ``now``: the caller's clock."""
+    return _rostered_during_run(db, ex, active_only=True, now=now) | _on_a_team(db, ex) | _submitted_in_run(db, ex)
 
 
 def may_read_aar(db: Session, ex: Exercise, user: CurrentUser) -> bool:

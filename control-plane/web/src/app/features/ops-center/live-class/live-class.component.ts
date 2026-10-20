@@ -10,7 +10,7 @@ import { MatDialog } from '@angular/material/dialog';
 import { MatIconModule } from '@angular/material/icon';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { HttpErrorResponse } from '@angular/common/http';
-import { ApiService, ClassStudent, ExerciseClass } from '@core/services/api.service';
+import { ApiService, ClassLab, ClassStudent, ExerciseClass } from '@core/services/api.service';
 import { AuthService } from '@core/services/auth.service';
 import { NotificationService } from '@core/services/notification.service';
 import type { InjectRecord } from '@core/models';
@@ -167,18 +167,38 @@ export const F2_SOON = 'Coming in R1 F2 (intervention console)';
             <div class="att-box" [class]="'att-box ' + a.kind">{{ detailText(a) }}</div>
           }
           <section class="dr-sec" aria-labelledby="dr-lab">
-            <h3 id="dr-lab">Lab</h3>
-            @if (s.lab; as lab) {
-              <dl class="kv">
-                <dt>State</dt><dd>{{ lab.state }}@if (resetting() === lab.session_id) { (reset requested)}</dd>
-                <dt>Attempt</dt><dd>{{ lab.attempt }}</dd>
-                <dt>Last heartbeat</dt><dd>{{ agoText(lab.last_seen_at) }}</dd>
-                <dt>Idle timeout</dt><dd>{{ lab.idle_expires_at ? (lab.idle_expires_at | date:'shortTime') : '—' }}</dd>
-                <dt>Ends at</dt><dd>{{ lab.max_expires_at ? (lab.max_expires_at | date:'shortTime') : '—' }}</dd>
-              </dl>
-              @if (lab.error) { <p class="fault-box"><strong>Infrastructure fault.</strong> {{ lab.error }} Not counted against the Student.</p> }
-            } @else {
-              <p class="muted small">No lab of their own on this exercise's range; they work on the exercise's range.</p>
+            <h3 id="dr-lab">{{ (s.labs ?? []).length > 1 ? (s.labs ?? []).length + ' labs' : 'Lab' }}</h3>
+            @if ((s.labs ?? []).length > 1) {
+              <p class="muted small" data-testid="labs-note">More than one lab is tied to this run. Each is listed with its own state and Reset.</p>
+            }
+            @for (lab of s.labs ?? []; track lab.session_id) {
+              <div class="lab" data-testid="lab">
+                <h4>{{ labName(lab) }}</h4>
+                <dl class="kv">
+                  <dt>State</dt><dd>{{ lab.state }}@if (resetting() === lab.session_id) { (reset requested)}</dd>
+                  <dt>Attempt</dt><dd>{{ lab.attempt }}</dd>
+                  <dt>Last heartbeat</dt><dd>{{ agoText(lab.last_seen_at) }}</dd>
+                  <dt>Idle timeout</dt><dd>{{ lab.idle_expires_at ? (lab.idle_expires_at | date:'shortTime') : '—' }}</dd>
+                  <dt>Ends at</dt><dd>{{ lab.max_expires_at ? (lab.max_expires_at | date:'shortTime') : '—' }}</dd>
+                </dl>
+                @if (lab.error) { <p class="fault-box"><strong>Infrastructure fault.</strong> {{ lab.error }} Not counted against the Student.</p> }
+                @if (canResetLab()) {
+                  <div class="lab-acts">
+                    @if (resetting() === lab.session_id) {
+                      <button mat-flat-button color="warn" type="button" disabled>Resetting…</button>
+                    } @else if (resettable(lab.state)) {
+                      <button mat-flat-button color="warn" type="button" (click)="confirmReset(s, lab)"
+                              [attr.aria-label]="'Reset ' + labName(lab) + '…'">Reset lab…</button>
+                    } @else {
+                      <button mat-stroked-button type="button" class="soon" aria-disabled="true"
+                              [attr.aria-label]="'Reset ' + labName(lab) + ' (not available: ' + lab.state + ')'"
+                              [matTooltip]="'A lab can be reset once it is ready; this one is ' + lab.state">Reset lab…</button>
+                    }
+                  </div>
+                }
+              </div>
+            } @empty {
+              <p class="muted small">No lab of theirs is tied to this run; they work on the exercise's range.</p>
             }
           </section>
           <section class="dr-sec" aria-labelledby="dr-obj">
@@ -221,16 +241,6 @@ export const F2_SOON = 'Coming in R1 F2 (intervention console)';
         <div class="dr-actions">
           <button mat-stroked-button type="button" class="soon" aria-disabled="true" [matTooltip]="soon" [attr.aria-label]="'Message (' + soon + ')'">Message</button>
           <button mat-stroked-button type="button" class="soon" aria-disabled="true" [matTooltip]="soon" [attr.aria-label]="'Extend lab time (' + soon + ')'">Extend lab time</button>
-          @if (canResetLab() && s.lab; as lab) {
-            @if (resetting() === lab.session_id) {
-              <button mat-flat-button color="warn" type="button" disabled>Resetting…</button>
-            } @else if (resettable(lab.state)) {
-              <button mat-flat-button color="warn" type="button" (click)="confirmReset(s)">Reset lab…</button>
-            } @else {
-              <button mat-stroked-button type="button" class="soon" aria-disabled="true"
-                      [matTooltip]="'A lab can be reset once it is ready; this one is ' + lab.state">Reset lab…</button>
-            }
-          }
         </div>
       </aside>
     }
@@ -312,6 +322,10 @@ export const F2_SOON = 'Coming in R1 F2 (intervention console)';
     .kv { display: grid; grid-template-columns: 130px 1fr; gap: 4px 12px; font-size: 13px; margin: 0; }
     .kv dt { color: var(--text-muted); }
     .kv dd { margin: 0; }
+    .lab { padding: 6px 0 10px; }
+    .lab + .lab { border-top: 1px dashed var(--border); padding-top: 10px; }
+    .lab h4 { font-size: 13px; margin: 0 0 6px; }
+    .lab-acts { margin-top: 8px; }
     .fault-box { border-left: 3px solid var(--warning); background: var(--warn-soft, var(--bg-secondary)); padding: 8px 12px; font-size: 13px; margin: 8px 0 0; }
     .obj-list { list-style: none; margin: 0; padding: 0; }
     .obj-list li { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; font-size: 13px; border-bottom: 1px dashed var(--border); }
@@ -374,8 +388,9 @@ export class LiveClassComponent implements OnInit, AfterViewInit {
   readonly sorted = computed(() => sortStudents(this.students(), this.sortKey(), this.sortDir()));
   readonly selected = computed(() => this.students().find(s => s.user_id === this.selectedId()) ?? null);
   readonly teamCount = computed(() => new Set(this.students().filter(s => s.team).map(s => s.team!.id)).size);
-  readonly labCount = computed(() => this.students().filter(s => s.lab).length);
-  readonly labsUp = computed(() => this.students().filter(s => s.lab && RESETTABLE_LAB.includes(s.lab.state)).length);
+  readonly labCount = computed(() => this.students().filter(s => (s.labs ?? []).length).length);
+  readonly labsUp = computed(() => this.students()
+    .filter(s => (s.labs ?? []).length && (s.labs ?? []).every(l => RESETTABLE_LAB.includes(l.state))).length);
   readonly creditedTotal = computed(() => this.students().reduce((n, s) => n + (s.credited_refs?.length ?? 0), 0));
   readonly rangeFault = computed(() => {
     const r = this.cls()?.range;
@@ -451,12 +466,13 @@ export class LiveClassComponent implements OnInit, AfterViewInit {
     if (back && document.body.contains(back)) setTimeout(() => back.focus());
   }
 
-  confirmReset(s: ClassStudent): void {
-    const lab = s.lab;
-    if (!lab || !this.resettable(lab.state)) return;
+  /** One lab, by session: Reset never acts on "the" lab of a Student who has several. */
+  confirmReset(s: ClassStudent, lab: ClassLab): void {
+    if (!(s.labs ?? []).some(l => l.session_id === lab.session_id) || !this.resettable(lab.state)) return;
+    const which = this.labName(lab);
     this.dialog.open(ConfirmDialogComponent, {
       data: {
-        title: `Reset ${s.display_name}'s lab?`,
+        title: `Reset ${s.display_name}'s ${which}?`,
         message: `The lab goes back to its starting point. Anything ${s.display_name} has not submitted is lost. `
           + 'Detections already judged are kept.',
         confirmText: 'Reset lab',
@@ -466,7 +482,7 @@ export class LiveClassComponent implements OnInit, AfterViewInit {
       this.resetting.set(lab.session_id);
       this.api.resetLabSession(lab.session_id).subscribe({
         next: r => {
-          this.notify.success(`Reset requested; ${s.display_name}'s lab is ${r.state}.`);
+          this.notify.success(`Reset requested; ${s.display_name}'s ${which} is ${r.state}.`);
           this.resetting.set(null);
           this.refresh();
         },
@@ -477,6 +493,12 @@ export class LiveClassComponent implements OnInit, AfterViewInit {
         },
       });
     });
+  }
+
+  /** "lab for mod_003 (attempt 2)": names which lab, for the heading and the confirm. */
+  labName(lab: ClassLab): string {
+    const mod = lab.activity_id ? ` for ${lab.activity_id}` : '';
+    return `lab${mod}${lab.attempt && lab.attempt > 1 ? ` (attempt ${lab.attempt})` : ''}`;
   }
 
   resettable(state: string): boolean {

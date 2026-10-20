@@ -204,7 +204,8 @@ def test_queries_only_for_staff_who_see_the_answer_key(client, db_session, world
 # ── lab faults and not seen recently ──────────────────────────────────────────────────────
 
 
-def _lab(db, w, who, state, error="", last_seen=None, *, course=None, on_exercise_range=False, age=None):
+def _lab(db, w, who, state, error="", last_seen=None, *, course=None, on_exercise_range=False, age=None,
+         activity="mod_001"):
     """A lab session as production makes one: its own range, launched from a release of
     ``course`` (default: the class's booked course). ``age``: created that long ago."""
     from app.models import Range
@@ -229,7 +230,7 @@ def _lab(db, w, who, state, error="", last_seen=None, *, course=None, on_exercis
         db.flush()
         range_id = own.id
     when = datetime.now(UTC) - (age or timedelta(minutes=30))
-    db.add(LabSession(tenant_id=tid, user_id=uuid.UUID(w[who].id), release_id=rel.id, activity_id="mod_001",
+    db.add(LabSession(tenant_id=tid, user_id=uuid.UUID(w[who].id), release_id=rel.id, activity_id=activity,
                       state=state, error=error, profile_id="p", profile_digest="0" * 64, backend="mock",
                       range_id=range_id, last_seen_at=last_seen, created_at=when, updated_at=when))
     db.flush()
@@ -239,7 +240,7 @@ def test_a_failed_lab_of_the_booked_course_is_a_lab_fault(client, db_session, wo
     _lab(db_session, world, "sam", "failed", error="clone timed out on esx-03")
     act_as(world["instructor"])
     s = _by_id(_get(client, world["ex"]).json(), world["sam"])
-    assert s["lab"]["state"] == "failed"
+    assert [lab["state"] for lab in s["labs"]] == ["failed"]
     kinds = [a["kind"] for a in s["attention"]]
     assert kinds == ["lab_fault"], kinds  # a lab that is down is not also "not seen"
     assert "clone timed out on esx-03" in s["attention"][0]["detail"]
@@ -254,9 +255,32 @@ def test_a_lab_of_another_course_or_before_the_run_is_not_this_class(client, db_
     _lab(db_session, world, "outsider", "active")  # booked course's release, but not on the roster
     act_as(world["instructor"])
     body = _get(client, world["ex"]).json()
-    assert _by_id(body, world["sam"])["lab"] is None
-    assert _by_id(body, world["bo"])["lab"] is None
+    assert _by_id(body, world["sam"])["labs"] == []
+    assert _by_id(body, world["bo"])["labs"] == []
     assert world["outsider"].id not in {s["user_id"] for s in body["students"]}
+
+
+def test_two_overlapping_exercises_on_one_course_list_every_lab_never_one_guessed(client, db_session, world):
+    """Two exercises booked to the same course at the same time, and Sam has a live lab for
+    one module and a failed lab for another: the class cannot tell which lab is whose
+    exercise, so it lists both by session (Reset acts on one session id), and a fault on
+    either is a fault."""
+    second = real_exercise(db_session, world["a"].id, state=ExerciseState.running, started_at=world["started"])
+    now = datetime.now(UTC)
+    db_session.add(ScheduledEvent(name="lesson 2", tenant_id=world["a"].id, course_id=world["course"].id,
+                                  state=EventState.active, start_time=now - timedelta(hours=1),
+                                  end_time=now + timedelta(hours=2), exercise_id=second.id))
+    db_session.flush()
+    _lab(db_session, world, "sam", "active", activity="mod_003", age=timedelta(minutes=20))
+    _lab(db_session, world, "sam", "failed", error="no capacity", activity="mod_004", age=timedelta(minutes=10))
+    act_as(world["instructor"])
+    for ex in (world["ex"], second):
+        sam = _by_id(_get(client, ex).json(), world["sam"])
+        assert [(lab["activity_id"], lab["state"]) for lab in sam["labs"]] == [("mod_004", "failed"),
+                                                                                ("mod_003", "active")]
+        assert len({lab["session_id"] for lab in sam["labs"]}) == 2
+        faults = [a for a in sam["attention"] if a["kind"] == "lab_fault"]
+        assert len(faults) == 1 and "mod_004" in faults[0]["detail"] and "no capacity" in faults[0]["detail"]
 
 
 def test_a_lab_on_the_exercises_own_range_puts_its_owner_on_the_roster(client, db_session, world):
@@ -266,7 +290,7 @@ def test_a_lab_on_the_exercises_own_range_puts_its_owner_on_the_roster(client, d
     _lab(db_session, world, "outsider", "failed", error="no host", course=other, on_exercise_range=True)
     act_as(world["instructor"])
     s = _by_id(_get(client, world["ex"]).json(), world["outsider"])  # may_submit's own-lab relation
-    assert s["lab"]["state"] == "failed" and [a["kind"] for a in s["attention"]] == ["lab_fault"]
+    assert [lab["state"] for lab in s["labs"]] == ["failed"] and [a["kind"] for a in s["attention"]] == ["lab_fault"]
 
 
 def test_an_earlier_cohort_is_not_on_todays_class_but_still_reads_its_aar(client, db_session, world):

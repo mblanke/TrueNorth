@@ -8744,9 +8744,15 @@ export interface components {
         };
         /**
          * ClassLabOut
-         * @description The Student's own lab session on the exercise's range (the newest one).
+         * @description One of the Student's lab sessions tied to this run (see ``ClassStudentOut.labs``).
          */
         ClassLabOut: {
+            /**
+             * Activity Id
+             * @description the course module the lab was launched for, e.g. mod_003
+             * @default
+             */
+            activity_id?: string;
             /**
              * Attempt
              * @default 1
@@ -8867,7 +8873,12 @@ export interface components {
             current_objective?: string | null;
             /** Display Name */
             display_name: string;
-            lab?: components["schemas"]["ClassLabOut"] | null;
+            /**
+             * Labs
+             * @description every lab of this Student tied to the run, newest first. More than one is possible (two modules, or two exercises booked to one course): act on a lab by its session_id, never by position
+             * @default []
+             */
+            labs?: components["schemas"]["ClassLabOut"][];
             /**
              * Last Activity At
              * @description latest of a detection or a lab heartbeat

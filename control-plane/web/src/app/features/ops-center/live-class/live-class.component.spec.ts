@@ -15,7 +15,7 @@ const NOW = '2026-10-20T10:12:00Z';
 
 function student(over: Record<string, unknown>) {
   return {
-    user_id: 'u-x', display_name: 'X', team: null, lab: null, attempts_total: 0, attempts_credited: 0,
+    user_id: 'u-x', display_name: 'X', team: null, labs: [], attempts_total: 0, attempts_credited: 0,
     credited_refs: [], score: 0, current_objective: 'detect_c2', last_detection_at: null, last_activity_at: null,
     objectives: [{ ref_id: 'detect_c2', state: 'not_attempted', misses: 0 }], attempts: [], attention: [],
     ...over,
@@ -38,12 +38,12 @@ const CLASS = {
     student({
       user_id: 'u-lee', display_name: 'Lee', attempts_total: 1, attempts_credited: 1, credited_refs: ['detect_c2'], score: 40,
       current_objective: null, last_activity_at: '2026-10-20T10:10:00Z',
-      lab: { session_id: 'lab-lee', state: 'active', error: '', attempt: 1, last_seen_at: '2026-10-20T10:10:00Z' },
+      labs: [{ session_id: 'lab-lee', activity_id: 'mod_003', state: 'active', error: '', attempt: 1, last_seen_at: '2026-10-20T10:10:00Z' }],
       objectives: [{ ref_id: 'detect_c2', state: 'credited', misses: 0, credited_at: '2026-10-20T09:50:00Z' }],
     }),
     student({
       user_id: 'u-ng', display_name: 'Ng',
-      lab: { session_id: 'lab-ng', state: 'failed', error: 'clone timed out', attempt: 1 },
+      labs: [{ session_id: 'lab-ng', activity_id: 'mod_003', state: 'failed', error: 'clone timed out', attempt: 1 }],
       attention: [{ kind: 'lab_fault', detail: 'Lab failed: clone timed out', since: '2026-10-20T09:30:00Z' }],
     }),
     student({
@@ -189,7 +189,7 @@ describe('LiveClassComponent', () => {
     (reset as HTMLButtonElement).click();
     expect(dialog.open).toHaveBeenCalled();
     expect(api.resetLabSession).toHaveBeenCalledWith('lab-lee');
-    expect(notify.success).toHaveBeenCalledWith("Reset requested; Lee's lab is resetting.");
+    expect(notify.success).toHaveBeenCalledWith("Reset requested; Lee's lab for mod_003 is resetting.");
     expect(api.getExerciseClass).toHaveBeenCalledTimes(2);  // re-read, not assumed
   });
 
@@ -197,13 +197,39 @@ describe('LiveClassComponent', () => {
     await make();
     const lee = fixture.componentInstance.students().find(s => s.display_name === 'Lee')!;
     dialog.open.and.returnValue({ afterClosed: () => of(false) });
-    fixture.componentInstance.confirmReset(lee);
+    fixture.componentInstance.confirmReset(lee, lee.labs![0]);
     expect(api.resetLabSession).not.toHaveBeenCalled();
     dialog.open.and.returnValue({ afterClosed: () => of(true) });
     api.resetLabSession.and.returnValue(throwError(() => new HttpErrorResponse({ status: 409, error: { detail: 'the lab is failed' } })));
-    fixture.componentInstance.confirmReset(lee);
+    fixture.componentInstance.confirmReset(lee, lee.labs![0]);
     expect(notify.error).toHaveBeenCalledWith('The lab was not reset: the lab is failed');
     expect(notify.success).not.toHaveBeenCalled();
+  });
+
+  it('lists every lab of a Student with several, each with its own confirmed Reset (never a guessed one)', async () => {
+    await make();
+    const two = structuredClone(CLASS);
+    const lee = two.students!.find(s => s.display_name === 'Lee')!;
+    lee.labs = [
+      { session_id: 'lab-b', activity_id: 'mod_004', state: 'failed', error: 'no capacity', attempt: 1 },
+      { session_id: 'lab-a', activity_id: 'mod_003', state: 'active', error: '', attempt: 2 },
+    ] as any;
+    api.getExerciseClass.and.returnValue(of(two));
+    api.resetLabSession.and.returnValue(of({ state: 'resetting' } as any));
+    fixture.componentInstance.refresh();
+    fixture.detectChanges();
+    fixture.componentInstance.open(fixture.componentInstance.students().find(s => s.display_name === 'Lee')!);
+    fixture.detectChanges();
+    const drawer = document.querySelector('[data-testid="student-drawer"]')!;
+    expect(drawer.querySelector('#dr-lab')!.textContent).toContain('2 labs');
+    const labs = Array.from(drawer.querySelectorAll('[data-testid="lab"]'));
+    expect(labs.length).toBe(2);
+    expect(labs[0].textContent).toContain('lab for mod_004');
+    expect(labs[0].textContent).toContain('no capacity');
+    expect(labs[0].querySelector('button')!.getAttribute('aria-disabled')).toBe('true');  // the API refuses a failed lab
+    (labs[1].querySelector('button') as HTMLButtonElement).click();
+    expect(dialog.open.calls.mostRecent().args[1].data.title).toBe("Reset Lee's lab for mod_003 (attempt 2)?");
+    expect(api.resetLabSession).toHaveBeenCalledOnceWith('lab-a');
   });
 
   it('offers no reset of a failed lab (the API refuses it) and none to an observer', async () => {

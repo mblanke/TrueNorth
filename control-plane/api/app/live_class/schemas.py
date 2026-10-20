@@ -16,9 +16,10 @@ class ClassTeamOut(BaseModel):
 
 
 class ClassLabOut(BaseModel):
-    """The Student's own lab session on the exercise's range (the newest one)."""
+    """One of the Student's lab sessions tied to this run (see ``ClassStudentOut.labs``)."""
 
     session_id: uuid.UUID
+    activity_id: str = Field("", description="the course module the lab was launched for, e.g. mod_003")
     state: str
     error: str = ""
     attempt: int = 1
@@ -86,7 +87,10 @@ class ClassStudentOut(BaseModel):
     user_id: uuid.UUID
     display_name: str
     team: ClassTeamOut | None = None
-    lab: ClassLabOut | None = None
+    labs: list[ClassLabOut] = Field(
+        [], description="every lab of this Student tied to the run, newest first. More than one is possible "
+        "(two modules, or two exercises booked to one course): act on a lab by its session_id, never by position"
+    )
     attempts_total: int = Field(0, description="judged or pending attempts in this run")
     attempts_credited: int = 0
     credited_refs: list[str] = []

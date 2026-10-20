@@ -2151,8 +2151,14 @@
         "type": "object"
       },
       "ClassLabOut": {
-        "description": "The Student's own lab session on the exercise's range (the newest one).",
+        "description": "One of the Student's lab sessions tied to this run (see ``ClassStudentOut.labs``).",
         "properties": {
+          "activity_id": {
+            "default": "",
+            "description": "the course module the lab was launched for, e.g. mod_003",
+            "title": "Activity Id",
+            "type": "string"
+          },
           "attempt": {
             "default": 1,
             "title": "Attempt",
@@ -2392,15 +2398,14 @@
             "title": "Display Name",
             "type": "string"
           },
-          "lab": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ClassLabOut"
-              },
-              {
-                "type": "null"
-              }
-            ]
+          "labs": {
+            "default": [],
+            "description": "every lab of this Student tied to the run, newest first. More than one is possible (two modules, or two exercises booked to one course): act on a lab by its session_id, never by position",
+            "items": {
+              "$ref": "#/components/schemas/ClassLabOut"
+            },
+            "title": "Labs",
+            "type": "array"
           },
           "last_activity_at": {
             "anyOf": [

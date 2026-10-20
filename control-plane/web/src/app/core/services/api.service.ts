@@ -40,6 +40,7 @@ export type Detection = components['schemas']['DetectionOut'];
 /** GET /ops/exercises/{id}/class: the live class in the Ops Center (issue #199). */
 export type ExerciseClass = components['schemas']['ExerciseClassOut'];
 export type ClassStudent = components['schemas']['ClassStudentOut'];
+export type ClassLab = components['schemas']['ClassLabOut'];
 export type ClassAttention = components['schemas']['AttentionOut'];
 /** POST /lab-sessions/{id}/reset. */
 export type LabSessionState = components['schemas']['LabSessionOut'];

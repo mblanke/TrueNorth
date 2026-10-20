@@ -64,8 +64,8 @@ def _aware(t: datetime | None) -> datetime | None:
     return t if t.tzinfo else t.replace(tzinfo=UTC)
 
 
-def _roster(db: Session, ex: Exercise, on_range: list) -> list[User]:
-    ids = participants(db, ex) | {s.user_id for s in on_range}
+def _roster(db: Session, ex: Exercise, on_range: list, now: datetime) -> list[User]:
+    ids = participants(db, ex, now) | {s.user_id for s in on_range}
     if not ids:
         return []
     return (
@@ -130,6 +130,7 @@ def _attempt_out(row: DetectionSubmission, sees_key: bool) -> ClassAttemptOut:
 def _lab_out(s) -> ClassLabOut:
     return ClassLabOut(
         session_id=s.id,
+        activity_id=s.activity_id or "",
         state=s.state,
         error=s.error or "",
         attempt=s.attempt or 1,
@@ -150,7 +151,7 @@ def _student(
     objectives: list[Objective],
     rows: list[DetectionSubmission],
     team: ClassTeamOut | None,
-    lab_session,
+    lab_sessions: list,
     sees_key: bool,
     now: datetime,
     quiet_after: int,
@@ -185,20 +186,22 @@ def _student(
                 detail=f"{len(misses)} judged misses on {o.ref_id} and no credit on it yet",
             ))
 
-    lab_out = _lab_out(lab_session) if lab_session is not None else None
-    lab_down = False
-    if lab_out is not None:
-        if lab_out.state in LAB_FAULT:
-            lab_down = True
-            detail = f"Lab {lab_out.state}" + (f": {lab_out.error}" if lab_out.error else "")
-            attention.insert(0, AttentionOut(kind="lab_fault", detail=detail, since=_aware(lab_session.state_since)))
-        elif lab_out.state in LAB_WAIT:
-            lab_down = True
-            attention.insert(0, AttentionOut(kind="lab_wait", detail=f"Lab {lab_out.state}",
-                                             since=_aware(lab_session.state_since)))
+    # Every lab tied to the run, each judged on its own: a fault on any one is a fault.
+    labs = [_lab_out(s) for s in lab_sessions]
+    lab_items: list[AttentionOut] = []
+    for s, out in zip(lab_sessions, labs, strict=True):
+        name = f"Lab {out.activity_id}" if out.activity_id else "Lab"
+        if out.state in LAB_FAULT:
+            detail = f"{name} {out.state}" + (f": {out.error}" if out.error else "")
+            lab_items.append(AttentionOut(kind="lab_fault", detail=detail, since=_aware(s.state_since)))
+        elif out.state in LAB_WAIT:
+            lab_items.append(AttentionOut(kind="lab_wait", detail=f"{name} {out.state}", since=_aware(s.state_since)))
+    lab_items.sort(key=lambda a: a.kind != "lab_fault")
+    attention[:0] = lab_items
+    lab_down = bool(lab_items)
 
     last_detection = _aware(rows[-1].submitted_at) if rows else None
-    seen = [t for t in (last_detection, lab_out.last_seen_at if lab_out else None) if t is not None]
+    seen = [t for t in (last_detection, *(o.last_seen_at for o in labs)) if t is not None]
     last_activity = max(seen) if seen else None
 
     # Neutral, and only while the exercise runs: a paused or closed class is not "quiet",
@@ -220,7 +223,7 @@ def _student(
         user_id=user.id,
         display_name=user.display_name,
         team=team,
-        lab=lab_out,
+        labs=labs,
         attempts_total=len(rows),
         attempts_credited=sum(1 for r in rows if r.verdict == ACHIEVED),
         credited_refs=credited,
@@ -238,20 +241,20 @@ def build(db: Session, ex: Exercise, *, sees_key: bool, now: datetime | None = N
     """The class for ``ex`` (already resolved in the caller's tenant)."""
     now = now or datetime.now(UTC)
     quiet_after = not_seen_minutes()
-    start, end = exercise_window(ex, now)
+    start, end = exercise_window(ex, now)  # one clock for the whole read
     on_range = (
         sessions_in_window(db, ex.tenant_id, start, end, user_ids=None, range_id=ex.range_id)
         if ex.range_id is not None
         else []
     )
-    students = _roster(db, ex, on_range)
+    students = _roster(db, ex, on_range, now)
     user_ids = [u.id for u in students]
-    courses = sorted(roster_courses(db, ex))
+    courses = sorted(roster_courses(db, ex, now))
     labs = sessions_in_window(db, ex.tenant_id, start, end, user_ids=user_ids, course_ids=courses) if courses else []
     labs = sorted({s.id: s for s in [*labs, *on_range]}.values(), key=lambda s: _aware(s.created_at) or start, reverse=True)
-    newest_lab: dict[uuid.UUID, object] = {}
+    labs_of: dict[uuid.UUID, list] = {}
     for s in labs:  # newest first
-        newest_lab.setdefault(s.user_id, s)
+        labs_of.setdefault(s.user_id, []).append(s)
     teams = _teams(db, ex, user_ids) if user_ids else {}
     objectives = (
         db.query(Objective).filter(Objective.exercise_id == ex.id).order_by(Objective.created_at, Objective.ref_id).all()
@@ -286,7 +289,7 @@ def build(db: Session, ex: Exercise, *, sees_key: bool, now: datetime | None = N
             for o in objectives
         ],
         students=[
-            _student(u, ex, objectives, per_user.get(u.id, []), teams.get(u.id), newest_lab.get(u.id), sees_key, now,
+            _student(u, ex, objectives, per_user.get(u.id, []), teams.get(u.id), labs_of.get(u.id, []), sees_key, now,
                      quiet_after)
             for u in students
         ],
