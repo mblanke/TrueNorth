@@ -3366,6 +3366,65 @@
         "title": "CompetencyProfileOut",
         "type": "object"
       },
+      "ConnectionDiscoveryOut": {
+        "properties": {
+          "connection_id": {
+            "format": "uuid",
+            "title": "Connection Id",
+            "type": "string"
+          },
+          "failing": {
+            "default": false,
+            "title": "Failing",
+            "type": "boolean"
+          },
+          "last_attempt_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Attempt At"
+          },
+          "last_discovered_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Discovered At"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error"
+          },
+          "running": {
+            "default": false,
+            "title": "Running",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "connection_id"
+        ],
+        "title": "ConnectionDiscoveryOut",
+        "type": "object"
+      },
       "ConsoleOut": {
         "properties": {
           "expires_in": {
@@ -7909,6 +7968,27 @@
           "message"
         ],
         "title": "HypervisorTestResult",
+        "type": "object"
+      },
+      "InfraDiscoveryOut": {
+        "properties": {
+          "connections": {
+            "items": {
+              "$ref": "#/components/schemas/ConnectionDiscoveryOut"
+            },
+            "title": "Connections",
+            "type": "array"
+          },
+          "interval_seconds": {
+            "title": "Interval Seconds",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "interval_seconds",
+          "connections"
+        ],
+        "title": "InfraDiscoveryOut",
         "type": "object"
       },
       "InjectCounts": {
@@ -27662,6 +27742,7 @@
     },
     "/hypervisors/connections/{conn_id}/discover": {
       "post": {
+        "description": "Rediscover the connection's hosts now. The scheduled rediscovery\n(INFRA_DISCOVERY_SECONDS, app/infra_discovery) runs this same call; one at a time.",
         "operationId": "discover_nodes_hypervisors_connections__conn_id__discover_post",
         "parameters": [
           {
@@ -27683,6 +27764,9 @@
               }
             },
             "description": "Successful Response"
+          },
+          "409": {
+            "description": "A discovery of this connection is already running"
           },
           "422": {
             "content": {
@@ -27899,6 +27983,33 @@
           }
         ],
         "summary": "Test Connection",
+        "tags": [
+          "Infrastructure"
+        ]
+      }
+    },
+    "/hypervisors/discovery": {
+      "get": {
+        "description": "When each of the caller's tenant's connections was last discovered, and whether one is\nrunning. Read-level, like the inventory it dates; the error text (which can name the\nvCenter) only for callers who may manage connections.",
+        "operationId": "discovery_status_hypervisors_discovery_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InfraDiscoveryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Discovery Status",
         "tags": [
           "Infrastructure"
         ]

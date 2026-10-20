@@ -278,6 +278,11 @@ tn_vcenter_connection_name: Range vCenter
 # then left alone: an operator may rotate it on the Infrastructure page. After rotating
 # vault_vsphere_password, re-run 80-seed with -e tn_vcenter_connection_update_password=true.
 tn_vcenter_connection_update_password: false
+# Rendered as INFRA_DISCOVERY_SECONDS. The api rediscovers every active hypervisor
+# connection this often, so the Infrastructure page's hosts, VM counts and load gauges
+# stay current without anyone pressing Discover. 0 turns the schedule off (figures then
+# change only on Refresh now / Discover). install/README.md "Infrastructure page".
+tn_infra_discovery_seconds: 300
 # Empty: clone the inventory VM templates (tmpl-*). Set once a Content Library exists.
 tn_vsphere_content_library: ""
 tn_vsphere_concurrency: 4

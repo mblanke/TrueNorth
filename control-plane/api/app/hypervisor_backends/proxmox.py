@@ -162,4 +162,4 @@ def discover(conn_id, conn: HypervisorConnection, db) -> dict:
             "nodes_discovered": discovered,
         }
     except Exception as exc:
-        return {"message": f"Discovery failed: {exc}", "nodes_discovered": 0}
+        return {"message": f"Discovery failed: {exc}", "nodes_discovered": 0, "error": str(exc)}

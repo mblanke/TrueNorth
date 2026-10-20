@@ -26,6 +26,7 @@ os.environ.setdefault("COURSE_PUBLISH_RESUME", "false")
 os.environ.setdefault("LAB_SESSIONS_SWEEP", "false")
 os.environ.setdefault("MOODLE_RESULTS_PULL_SECONDS", "0")  # tests pull with app.moodle_results.service
 os.environ.setdefault("RANGE_OP_REDISPATCH_SECONDS", "0")  # tests call redispatch_pending themselves
+os.environ.setdefault("INFRA_DISCOVERY_SECONDS", "0")  # tests call app.infra_discovery.service.run_round
 # proxmox_api and hyperv are experimental (off by default); their tests keep running. The
 # refusal itself is tested with the variable removed (tests/worker/test_provisioners.py,
 # tests/api/test_provisioner_choice.py).

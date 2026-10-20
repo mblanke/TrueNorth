@@ -2885,7 +2885,11 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Discover Nodes */
+        /**
+         * Discover Nodes
+         * @description Rediscover the connection's hosts now. The scheduled rediscovery
+         *     (INFRA_DISCOVERY_SECONDS, app/infra_discovery) runs this same call; one at a time.
+         */
         post: operations["discover_nodes_hypervisors_connections__conn_id__discover_post"];
         delete?: never;
         options?: never;
@@ -2955,6 +2959,28 @@ export interface paths {
         put?: never;
         /** Test Connection */
         post: operations["test_connection_hypervisors_connections__conn_id__test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/hypervisors/discovery": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Discovery Status
+         * @description When each of the caller's tenant's connections was last discovered, and whether one is
+         *     running. Read-level, like the inventory it dates; the error text (which can name the
+         *     vCenter) only for callers who may manage connections.
+         */
+        get: operations["discovery_status_hypervisors_discovery_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -9444,6 +9470,30 @@ export interface components {
              */
             user_id: string;
         };
+        /** ConnectionDiscoveryOut */
+        ConnectionDiscoveryOut: {
+            /**
+             * Connection Id
+             * Format: uuid
+             */
+            connection_id: string;
+            /**
+             * Failing
+             * @default false
+             */
+            failing?: boolean;
+            /** Last Attempt At */
+            last_attempt_at?: string | null;
+            /** Last Discovered At */
+            last_discovered_at?: string | null;
+            /** Last Error */
+            last_error?: string | null;
+            /**
+             * Running
+             * @default false
+             */
+            running?: boolean;
+        };
         /** ConsoleOut */
         ConsoleOut: {
             /** Expires In */
@@ -11309,6 +11359,13 @@ export interface components {
             success: boolean;
             /** Version */
             version?: string | null;
+        };
+        /** InfraDiscoveryOut */
+        InfraDiscoveryOut: {
+            /** Connections */
+            connections: components["schemas"]["ConnectionDiscoveryOut"][];
+            /** Interval Seconds */
+            interval_seconds: number;
         };
         /** InjectCounts */
         InjectCounts: {
@@ -21162,6 +21219,13 @@ export interface operations {
                     "application/json": unknown;
                 };
             };
+            /** @description A discovery of this connection is already running */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -21293,6 +21357,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    discovery_status_hypervisors_discovery_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InfraDiscoveryOut"];
                 };
             };
         };

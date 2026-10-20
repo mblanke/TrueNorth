@@ -43,6 +43,8 @@ class BaseHypervisorBackend(ABC):
     def discover(self, conn_id: uuid.UUID | str, conn: HypervisorConnection, db: Session) -> dict:
         """Upsert the connection's hosts into ``hypervisor_nodes``.
 
-        Returns ``{"message": str, "nodes_discovered": int}``. Never raises for a
-        hypervisor-side failure; report it in ``message``.
+        Returns ``{"message": str, "nodes_discovered": int}``, plus ``"error": str`` when
+        discovery failed. Never raises for a hypervisor-side failure; report it in
+        ``message`` and ``error``. The scheduled rediscovery (app/infra_discovery) records
+        ``error`` as the connection's last error and keeps its last success time.
         """

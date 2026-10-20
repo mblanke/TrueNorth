@@ -4,7 +4,7 @@ import { Observable } from 'rxjs';
 import { environment } from '@env/environment';
 import type { components } from '../api/schema';
 import {
-  HypervisorConnection, HypervisorNode, HypervisorSummary, NetworkDevice, NetworkSummary,
+  HypervisorConnection, HypervisorNode, HypervisorSummary, InfraDiscovery, NetworkDevice, NetworkSummary,
   StorageAppliance, StorageSummary,
 } from '../models';
 
@@ -45,6 +45,11 @@ export class InfrastructureApiService {
   testConnection(id: string): Observable<S['HypervisorTestResult']> {
     return this.http.post<S['HypervisorTestResult']>(`${this.base}/hypervisors/connections/${id}/test`, {});
   }
+  /** When each connection was last discovered, and which are being discovered now. */
+  discoveryStatus(): Observable<InfraDiscovery> {
+    return this.http.get<InfraDiscovery>(`${this.base}/hypervisors/discovery`);
+  }
+  /** Rediscover now. 409 when a discovery of it (scheduled or not) is already running. */
   discoverConnection(id: string): Observable<InfraActionResult> {
     return this.http.post<InfraActionResult>(`${this.base}/hypervisors/connections/${id}/discover`, {});
   }
