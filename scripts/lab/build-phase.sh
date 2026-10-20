@@ -123,7 +123,11 @@ appliance_note() {
 
 # ── helpers ───────────────────────────────────────────────────────────
 run_or_show() { if [[ "$DRY" == "1" ]]; then echo "  [dry-run] $*"; else echo "  + $*"; "$@"; fi; }
-exists() { [[ -n "$(govc find / -type m -name "$1" 2>/dev/null | head -n1)" ]]; }
+# A template, not just a VM of that name: a build still in progress is a VM called <id>, and
+# treating it as built replicated a half-installed pfsense (2026-10-20). TN-MGMT01/TN-DEPOT01
+# are VMs, so exists_vm keeps the plain name check for them.
+exists() { [[ -n "$(govc find / -type m -name "$1" -config.template true 2>/dev/null | head -n1)" ]]; }
+exists_vm() { [[ -n "$(govc find / -type m -name "$1" 2>/dev/null | head -n1)" ]]; }
 
 filter_only() { # the ids of "$@" that --only allows, on one line (bash 3.2: no mapfile)
   local id o out=()
@@ -245,7 +249,7 @@ phase_status() {
     printf '  %-22s %-8s %s\n' "$id" "$(exists "$id" && echo built || echo -)" "${copies:-}"
   done
   step "Depot"
-  if exists "$DEPOT_VM"; then info "$DEPOT_VM exists"; else info "$DEPOT_VM not deployed"; fi
+  if exists_vm "$DEPOT_VM"; then info "$DEPOT_VM exists"; else info "$DEPOT_VM not deployed"; fi
   pkrvars_check || true
 }
 
@@ -302,7 +306,7 @@ phase_prereq() {
   host_path="$(govc find / -type h -name "${BUILD_HOST}" | head -n1)"
   [[ -n "$host_path" ]] || host_path="$(govc find / -type h -name "${BUILD_HOST}.*" | head -n1)"
   [[ -n "$host_path" ]] || die "host $BUILD_HOST not found"
-  exists "$MGMT_VM" || die "$MGMT_VM not found in inventory"
+  exists_vm "$MGMT_VM" || die "$MGMT_VM not found in inventory"
   drs="$(govc object.collect -s "$CLUSTER_PATH" configurationEx.drsConfig.enabled 2>/dev/null || true)"
   [[ "$drs" == "true" ]] || warn "DRS is not enabled on $TN_CLUSTER (${drs:-unknown}): the rule is kept but not acted on"
   groups="$(govc cluster.group.ls -cluster "$CLUSTER_PATH" 2>/dev/null || true)"
@@ -414,7 +418,7 @@ phase_depot() {
   fi
 
   step "2/5 $DEPOT_VM (10.30.30.30 MGMT + ${DEPOT_BUILD_IP} BUILD + ${DEPOT_RANGE_IP} on $RANGE_UPLINK_PG, on $BUILD_HOST)"
-  if exists "$DEPOT_VM"; then info "ok    $DEPOT_VM exists (left alone; step 3/5 checks its range NIC)"
+  if exists_vm "$DEPOT_VM"; then info "ok    $DEPOT_VM exists (left alone; step 3/5 checks its range NIC)"
   else
     [[ -n "$SSH_PUB" ]] || die "--ssh-key <public key for tnadmin> is needed to deploy $DEPOT_VM"
     local deploy=("$LAB_DIR/deploy-mgmt-vm.sh" "$DEPOT_VM" --site work --ssh-key "$SSH_PUB" --data-disk "${TN_DEPOT_DATA_DISK:-500G}"
@@ -427,7 +431,7 @@ phase_depot() {
 
   step "3/5 range uplink NIC (${DEPOT_RANGE_IP} on $RANGE_UPLINK_PG, #214)"
   local range_ok=1
-  if exists "$DEPOT_VM"; then depot_range_nic || range_ok=0
+  if exists_vm "$DEPOT_VM"; then depot_range_nic || range_ok=0
   else info "skip  $DEPOT_VM is not deployed yet"; range_ok=0; fi
 
   step "4/5 depot software (install/lab/depot.yml: apt-cacher-ng :3142, Nexus Chocolatey feed :8081, range NIC firewall, no forwarding)"
