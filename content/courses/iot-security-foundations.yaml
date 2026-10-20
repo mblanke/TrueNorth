@@ -11,6 +11,10 @@ provenance: unsourced
 status: draft
 is_published: false
 qsp_code: ALJQ
+# Prerequisites by subject: approved by the programme owner 2026-10-20 (PR #229).
+prerequisites:
+- C101
+- C210
 source:
   origin: fleet-authored draft recovered from session 746200b4 on 2026-08-19
   citations_verified: '2026-08-19'

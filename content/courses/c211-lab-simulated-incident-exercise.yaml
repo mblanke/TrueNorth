@@ -11,6 +11,10 @@ provenance: unsourced
 status: draft
 is_published: false
 qsp_code: ALJQ
+# Prerequisites by subject: approved by the programme owner 2026-10-20 (PR #229).
+prerequisites:
+- C206
+- C204
 source:
   origin: authored 2026-08-19 to the pattern of the recovered IoT Security Foundations draft
   citations_verified: '2026-08-19'

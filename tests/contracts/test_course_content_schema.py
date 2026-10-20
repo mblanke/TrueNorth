@@ -146,6 +146,29 @@ def test_declared_prerequisites_are_catalogue_courses_from_an_earlier_term(path)
         )
 
 
+def test_declared_prerequisites_are_direct_not_transitive():
+    """A course lists only what it needs directly. Naming a course that another listed
+    prerequisite already leads to draws a redundant arrow and hides the real sequence:
+    C301 needing C204 that needs C108 does not also list C108."""
+    needs = {d["course_code"]: list(d.get("prerequisites") or []) for d in map(_load, COURSE_FILES)}
+
+    def reach(code: str, seen: set[str]) -> set[str]:
+        for pre in needs.get(code, []):
+            if pre not in seen:
+                seen.add(pre)
+                reach(pre, seen)
+        return seen
+
+    redundant = [
+        f"{code} lists {pre}, already reached through {other}"
+        for code, pres in needs.items()
+        for pre in pres
+        for other in pres
+        if other != pre and pre in reach(other, set())
+    ]
+    assert not redundant, redundant
+
+
 # -- duplicates --------------------------------------------------------------------
 
 

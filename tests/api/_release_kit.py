@@ -45,6 +45,9 @@ def course_yaml(
 ) -> str:
     doc = yaml.safe_load(COURSE_FILE.read_text(encoding="utf-8"))
     doc["course_code"] = "ARC2-IOT"
+    # C304's declared prerequisites belong to C304. Tests bind this body to other catalogue
+    # codes (C101, ...), where they would be wrong, or name the course itself.
+    doc.pop("prerequisites", None)
     doc["modules"] = [m for m in doc["modules"] if m["ordinal"] not in drop_ordinals]
     for m in doc["modules"]:
         if m["ordinal"] in range_ordinals:
