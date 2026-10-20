@@ -20,9 +20,61 @@ tn_depot_require_data_mount: true
 # repository is "blocked": both serve only what is cached and never fetch upstream.
 # prefetch.yml flips this to true for the prefetch window, then back.
 tn_depot_upstream_online: false
+# Going online is refused while range VMs exist (tasks/range_guard.yml, run on the control
+# node with govc and GOVC_* from the environment, like scripts/lab/depot-uplink.sh): during
+# a window the caches fetch whatever they are asked for. true = go online anyway (the
+# range NIC still drops everything while online, range_fw.yml).
+tn_depot_force_online: false
+tn_depot_range_vm_folder: "{{ lookup('env', 'TN_RANGE_FOLDER') or 'truenorth/ranges' }}"
+# The vCenter datacenter the range folder lives in; set per inventory. range_guard.yml
+# confirms it exists and exports it as GOVC_DATACENTER (never taken from the environment).
+tn_depot_vcenter_datacenter: DC-Lab
+
+# ── No routing, ever ──────────────────────────────────────────────────
+# The depot is multi-homed (work site: MGMT, BUILD and the range uplink network) and must
+# never route between its NICs. Nexus runs with host networking, so Docker needs no
+# forwarding, and dockerd is told not to turn it on (by default it does, at every start).
+# forwarding.yml applies this and verify.yml checks it after Nexus is up.
+tn_depot_sysctl_file: /etc/sysctl.d/60-tn-depot.conf
+tn_depot_docker_daemon:
+  ip-forward: false
+
+# ── Range uplink NIC (work site, #214) ────────────────────────────────
+# Range firewall WANs reach the depot on its own NIC on the range uplink network. Empty
+# tn_depot_range_ip: no range NIC (the earlier TN-BUILD01 design, where the depot's SVC
+# NIC was NIC 0). With it set, range_nic.yml takes the NIC by tn_depot_range_mac (the MAC
+# of the NIC vCenter has on the range port group; build-phase.sh depot passes it) and
+# renames it tn_depot_range_if, loads the firewall (table inet tn_depot_range: only TCP
+# tn_depot_range_ports from tn_depot_range_subnet to tn_depot_range_ip; nothing new out;
+# nothing forwarded; from the range subnet on ANY NIC the same), and only then configures
+# the address: no gateway, no DNS, no DHCP, activation-mode manual. The link is brought
+# up only by tn-depot-range-link.service, which requires the firewall unit and checks the
+# live table first; tn-depot-range-guard.timer re-checks every minute and sets the link
+# DOWN if the table is gone (e.g. nftables.service flushed the ruleset) or forwarding is on.
+tn_depot_range_ip: ""
+tn_depot_range_prefix: 24
+tn_depot_range_subnet: ""
+tn_depot_range_mac: ""
+tn_depot_range_if: tnrange0
+tn_depot_range_ports: "{{ [tn_depot_nexus_port | int, tn_depot_acng_port | int] }}"
+tn_depot_range_nft: /etc/truenorth/depot-range-fw.nft
+tn_depot_range_netplan: /etc/netplan/60-tn-depot-range.yaml
+tn_depot_range_guard: /usr/local/sbin/tn-depot-range-guard
 
 # ── apt-cacher-ng ─────────────────────────────────────────────────────
 tn_depot_acng_dir: "{{ tn_depot_data_dir }}/apt-cacher-ng"
+# ForceManaged: only repositories named by a Remap line are served (the package's own
+# acng.conf brings Remap-debrep/-uburep/-fedora/-epel/...); any other URL is refused, so
+# the depot is not an open forward proxy (no SSRF towards 10.30.30.0/24 or anywhere else).
+# AllowUserPorts: 80 only. Add a Remap here for any other distribution a range installs from.
+tn_depot_acng_remaps:
+  - name: tnrocky
+    merge: "dl.rockylinux.org/pub/rocky"
+    backends: "dl.rockylinux.org/pub/rocky"
+# Maintenance pages need AdminAuth: a random password generated ON the depot the first
+# time (/etc/apt-cacher-ng/security.conf, root:apt-cacher-ng 0640), never printed.
+# Read it there: sudo grep AdminAuth /etc/apt-cacher-ng/security.conf
+tn_depot_acng_admin_user: tnadmin
 
 # ── Nexus ─────────────────────────────────────────────────────────────
 # 3.70.x is the last Nexus Repository OSS line. 3.77+ is "Community Edition": free, but it
@@ -42,6 +94,38 @@ tn_depot_choco_upstream: "https://community.chocolatey.org/api/v2/"
 tn_depot_pypi_upstream: "https://pypi.org/"
 tn_depot_docker_upstream: "https://registry-1.docker.io"
 
+# Anonymous (range guests, Chocolatey) may only read and browse the Chocolatey group feed.
+# The built-in nx-anonymous role (read on every repository) is replaced on the anonymous user.
+tn_depot_anonymous_role: tn-anonymous
+tn_depot_anonymous_privileges:
+  - nx-repository-view-nuget-chocolatey-read
+  - nx-repository-view-nuget-chocolatey-browse
+  - "{{ tn_depot_choco_installers_privilege }}"
+# The in-house Chocolatey packages (scripts/lab/choco-internalize.py) download their vendor
+# installer at install time, without credentials, from
+#   <depot>/repository/installers/<package id>/<version>/<file>
+# for range guests and Packer alike. Anonymous may read exactly those directories, through
+# a content selector generated from the package ids in content/choco/*.yaml (the file name
+# is the id; choco-internalize.py enforces it). installers/roles/** and
+# installers/office/** stay behind tn-build-read.
+tn_depot_choco_defs: "{{ playbook_dir }}/../../content/choco"
+tn_depot_choco_ids: >-
+  {{ query('fileglob', tn_depot_choco_defs ~ '/*.yaml') | map('basename')
+     | map('regex_replace', '\.yaml$', '') | sort | list }}
+tn_depot_choco_selector: tn-installers-choco
+tn_depot_choco_selector_expression: >-
+  format == "raw" and path =~ "^/({{ tn_depot_choco_ids | join('|') }})/.+"
+tn_depot_choco_installers_privilege: tn-installers-choco-read
+# Packer builds read vendor media from the raw "installers" repository as this user. Its
+# password is generated on TN-MGMT01 by build-phase.sh depot into a root-only env file
+# (TN_DEPOT_BUILD_READ_PASSWORD in /srv/truenorth/config/depot-build.env) and handed to
+# this play in the environment; it is never printed. pkrvars-work.py --depot puts it in
+# lab.auto.pkrvars.hcl (depot_user / depot_password, mode 0600).
+tn_depot_build_read_user: tn-build-read
+tn_depot_build_read_password: "{{ lookup('env', 'TN_DEPOT_BUILD_READ_PASSWORD') or (vault_nexus_build_read_password | default('')) }}"
+tn_depot_build_read_privileges:
+  - nx-repository-view-raw-installers-read
+  - nx-repository-view-raw-installers-browse
 tn_depot_prefetch_user: tn-prefetch
 tn_depot_prefetch_privileges:
   - nx-component-upload

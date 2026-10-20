@@ -15,6 +15,24 @@ tn_build_ip: 10.30.31.20 # TN-MGMT01 ens224 (dPG-TN-BUILD): Packer HTTP/WinRM/SS
 tn_depot_ip: 10.30.30.30
 # What Packer builds use: the depot's BUILD address (pkrvars-work.py --depot).
 tn_depot_build_ip: 10.30.31.30
+# What ranges use (#214): the depot's third NIC, on the range uplink network that range
+# firewall WANs sit on (the installer's tn_vsphere_range_uplink_pool 10.30.32.100-199,
+# gateway 10.30.32.1). On-link only: no gateway, no DNS. Its host firewall admits only
+# TCP 8081/3142 from tn_depot_range_subnet; the depot never forwards (tasks/range_nic.yml,
+# tasks/forwarding.yml). Installer side: tn_depot_url http://10.30.32.10, ports 8081,3142.
+tn_depot_range_ip: 10.30.32.10
+tn_depot_range_prefix: 24
+tn_depot_range_subnet: 10.30.32.0/24
+# TODO(site): the work site has no range uplink port group configured yet (the installer's
+# tn_vsphere_range_uplink_network is empty). dPG-TN-SVC (VLAN 32) is the planned name:
+# scripts/lab/create-portgroups.sh --site work creates it. Ansible does not read this; it
+# records the name scripts/lab/build-phase.sh and deploy-mgmt-vm.sh default to
+# (TN_RANGE_UPLINK_PG or --range-pg override both), and the installer's
+# tn_vsphere_range_uplink_network must name the same port group.
+tn_depot_range_portgroup: dPG-TN-SVC
+# vCenter datacenter whose vm/truenorth/ranges folder prefetch/online windows check for
+# range VMs (tn_depot range_guard.yml). Work vCenter 192.168.1.10: DC-Lab.
+tn_depot_vcenter_datacenter: DC-Lab
 
 tn_depot_nexus_port: 8081
 tn_depot_acng_port: 3142
@@ -60,6 +78,7 @@ tn_build_report_next: >-
 
 # ── TN-DEPOT01 ────────────────────────────────────────────────────────
 # The work-site depot reaches upstream through dPG-TN-MGMT's gateway: there is no uplink
-# NIC to disconnect, so scripts/lab/depot-uplink.sh does not apply. Egress control is the
-# caches' offline mode (tn_depot_upstream_online: false, the role default) plus the MGMT
-# firewall.
+# NIC to disconnect, so scripts/lab/depot-uplink.sh does not apply (it refuses here).
+# Egress control is the caches' offline mode (tn_depot_upstream_online: false, the role
+# default) plus the MGMT firewall. Its range NIC (above) is not an egress path: no route
+# goes out through it and nothing is forwarded.

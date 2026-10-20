@@ -23,7 +23,10 @@ Where each value comes from:
     from the chocolatey .nupkg in it) and ``<depot_url>/installers/...`` (raw repository).
   - apt_proxy = http://10.30.31.30:3142 (apt-cacher-ng), the apt/dnf forward proxy for
     every Linux seed, derived image and variant (``--apt-proxy`` overrides it).
-  Without ``--depot`` both are empty: offline bases.
+  - depot_user = tn-build-read, depot_password = ``TN_DEPOT_BUILD_READ_PASSWORD`` from
+    ``/srv/truenorth/config/depot-build.env`` (root only; ``build-phase.sh depot`` generates
+    it): the installers repository is not anonymous (#214).
+  Without ``--depot`` all four are empty: offline bases.
 * ``ssh_password_hash``: SHA-512 crypt of the Linux build password (``openssl passwd -6``,
   the password on stdin). Every Linux seed is a Packer templatefile that takes the user
   and this hash, so the one generic login works on every Linux template. The salt of the
@@ -58,8 +61,11 @@ DEFAULT_OUT = PACKER_DIR / "lab.auto.pkrvars.hcl"
 DEFAULT_ISOS = REPO / "install/lab/work-site/isos.conf"
 DEFAULT_DEPOT_URL = "http://10.30.31.30:8081/repository"
 DEFAULT_APT_PROXY = "http://10.30.31.30:3142"
+DEFAULT_DEPOT_ENV = Path("/srv/truenorth/config/depot-build.env")
+DEPOT_READ_USER = "tn-build-read"
+DEPOT_READ_KEY = "TN_DEPOT_BUILD_READ_PASSWORD"
 
-SECRET_VARS = ("vcenter_password", "windows_admin_password", "ssh_password", "ssh_password_hash")
+SECRET_VARS = ("vcenter_password", "windows_admin_password", "ssh_password", "ssh_password_hash", "depot_password")
 TEMPLATE_ENV = {
     "windows_admin_password": ("TN_TEMPLATE_WINDOWS_ADMIN_PASSWORD", True),
     "ssh_username": ("TN_TEMPLATE_LINUX_USER", False),
@@ -282,6 +288,7 @@ def build_values(
     depot_url: str,
     apt_proxy: str = "",
     ssh_hash: str = "",
+    depot_password: str = "",
 ) -> tuple[dict[str, object], dict[str, str]]:
     missing = [k for k in ("VSPHERE_URL", "VSPHERE_USERNAME", "VSPHERE_PASSWORD") if not env.get(k)]
     if missing:
@@ -298,6 +305,8 @@ def build_values(
         **SITE,
         "depot_url": depot_url,
         "apt_proxy": apt_proxy,
+        "depot_user": DEPOT_READ_USER if depot_password else "",
+        "depot_password": depot_password,
         **isos,
     }
     sources = {
@@ -311,7 +320,22 @@ def build_values(
         values["ssh_password_hash"] = ssh_hash
         sources["ssh_password_hash"] = "openssl passwd -6 of ssh_password"
     sources.update({k: "isos.conf" for k in isos})
+    if depot_password:
+        sources["depot_password"] = "depot-build.env"
     return values, sources
+
+
+def depot_read_password(path: Path) -> str:
+    """TN_DEPOT_BUILD_READ_PASSWORD: the environment, else the root-only depot-build.env."""
+    value = os.environ.get(DEPOT_READ_KEY, "")
+    if not value and path.is_file():
+        value = parse_env_file(path).get(DEPOT_READ_KEY, "")
+    if len(value) < 24:
+        raise InputError(
+            f"{DEPOT_READ_KEY} is not in {path} (or the environment): run `sudo scripts/lab/build-phase.sh depot`"
+            " first; it generates it and gives it to the depot's tn-build-read user"
+        )
+    return value
 
 
 def check_file(path: Path, *, require_root: bool = True) -> int:
@@ -330,6 +354,8 @@ def check_file(path: Path, *, require_root: bool = True) -> int:
         for m in re.finditer(r"^([a-z0-9_]+)\s*=\s*(.*?)(?:\s+#.*)?$", path.read_text(encoding="utf-8"), re.M)
     }
     absent = [k for k in REQUIRED if k not in present]
+    if present.get("depot_url", '""') != '""' and present.get("depot_password", '""') == '""':
+        problems.append("depot_url is set but depot_password is not (re-run with --depot)")
     if absent:
         problems.append(f"missing {', '.join(absent)}")
     for key in ("depot_url", "apt_proxy"):
@@ -350,6 +376,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--depot", action="store_true", help="set depot_url and apt_proxy (TN-DEPOT01 must answer first)")
     ap.add_argument("--depot-url", default=DEFAULT_DEPOT_URL)
     ap.add_argument("--apt-proxy", default=DEFAULT_APT_PROXY, help="apt-cacher-ng URL written with --depot")
+    ap.add_argument("--depot-env", type=Path, default=DEFAULT_DEPOT_ENV,
+                    help=f"root-only file with {DEPOT_READ_KEY} (written by build-phase.sh depot)")
     ap.add_argument("--check", action="store_true", help="validate the existing file and exit")
     ap.add_argument("--non-interactive", action="store_true", help="never prompt; missing input is an error")
     ap.add_argument("--allow-non-root", action="store_true", help="tests only: do not require root")
@@ -382,6 +410,7 @@ def main(argv: list[str] | None = None) -> int:
             args.depot_url if args.depot else "",
             args.apt_proxy if args.depot else "",
             ssh_hash,
+            depot_read_password(args.depot_env) if args.depot else "",
         )
         write_private(args.out, render(values, sources), chown_root=is_root)
     except InputError as exc:

@@ -13,9 +13,18 @@
 #   --no-uplink        TN-DEPOT01 only: no second NIC on dPG-TN-BUILD (see below)
 #   --template NAME    default tmpl-ubuntu-2404 (ubuntu-lts with --site work)
 #   --site work        the work site (TN-MGMT01 is the build host, ADR 0012): TN-DEPOT01 only,
-#                      dual-homed and always connected, on esx04 (VLAN 31 reaches only esx04):
+#                      three NICs, all connected, on esx04 (VLAN 31 reaches only esx04):
 #                        NIC 0 dPG-TN-MGMT  10.30.30.30/24 gw .1, DNS 10.30.30.10 (TN-DC01)
 #                        NIC 1 dPG-TN-BUILD 10.30.31.30/24, no gateway (isolated build net)
+#                        NIC 2 <range PG>   10.30.32.10/24, no gateway: the range uplink
+#                              network, where range firewall WANs reach the depot (#214).
+#                              The depot never routes between its NICs, and its host
+#                              firewall admits only tcp/8081,3142 from 10.30.32.0/24 there.
+#                              cloud-init leaves it unaddressed; depot.yml puts the firewall
+#                              in place, then the address (tn_depot tasks/range_nic.yml).
+#   --range-pg NAME    work site: the range uplink port group for NIC 2 (default
+#                      $TN_RANGE_UPLINK_PG, else dPG-TN-SVC). It must be the port group the
+#                      installer's tn_vsphere_range_uplink_network names.
 #   --apply            actually change vCenter (default: plan only, read-only)
 #
 #   VM          NIC 0 (port group / IP)               vCPU  RAM    disk
@@ -37,9 +46,10 @@ set -euo pipefail
 # shellcheck source-path=SCRIPTDIR source=lib.sh
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
-usage() { sed -n '2,38p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+usage() { sed -n '2,44p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 
 NAME=""; SSH_KEY=""; HOST_ARG=""; DATA_DISK="1T"; UPLINK=1; TEMPLATE=""; SITE="lab"
+RANGE_PG="${TN_RANGE_UPLINK_PG:-dPG-TN-SVC}"; RANGE_IP=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --apply) APPLY=1 ;;
@@ -49,6 +59,7 @@ while [[ $# -gt 0 ]]; do
     --data-disk) DATA_DISK="$2"; shift ;;
     --no-uplink) UPLINK=0 ;;
     --template) TEMPLATE="$2"; shift ;;
+    --range-pg) RANGE_PG="$2"; shift ;;
     -h|--help) usage 0 ;;
     -*) echo "unknown option: $1" >&2; usage 2 ;;
     *) [[ -z "$NAME" ]] || usage 2; NAME="$1" ;;
@@ -67,6 +78,7 @@ case "$SITE:$NAME" in
   work:TN-DEPOT01) CPU=4; MEM_MB=16384; OS_DISK=100G; PG=dPG-TN-MGMT; IP=10.30.30.30; GW=10.30.30.1
               DNS=10.30.30.10; HN=tn-depot01
               UPLINK_PG=dPG-TN-BUILD; UPLINK_IP=10.30.31.30; UPLINK_GW=""; BUILD_NIC_ALWAYS=1
+              RANGE_IP=10.30.32.10   # NIC 2 on $RANGE_PG (#214)
               [[ "$UPLINK" == "1" ]] || die "--no-uplink: the work-site depot needs its dPG-TN-BUILD NIC (builds reach it there)"
               : "${HOST_ARG:=esx04}"; : "${TEMPLATE:=ubuntu-lts}" ;;
   work:TN-BUILD01) die "the work site has no TN-BUILD01: TN-MGMT01 is the build host (install/lab/work-site)" ;;
@@ -99,8 +111,14 @@ fi
 tpl="$(govc find / -type m -name "$TEMPLATE")"
 [[ -n "$tpl" && "$(wc -l <<<"$tpl" | tr -d ' ')" == "1" ]] || die "expected one VM/template named $TEMPLATE, found: ${tpl:-none}"
 info "template: $tpl"
-for pg in "$PG" ${UPLINK_PG:+"$UPLINK_PG"}; do
-  [[ -n "$(govc find / -type g -name "$pg")" ]] || die "port group $pg does not exist. Run scripts/lab/create-portgroups.sh --apply first"
+if [[ -n "$RANGE_IP" ]]; then
+  # The range NIC must never share a network with the depot's other NICs: that would put
+  # range WANs on the management or build network.
+  [[ -n "$RANGE_PG" && "$RANGE_PG" != "$PG" && "$RANGE_PG" != "${UPLINK_PG:-}" ]] \
+    || die "--range-pg '$RANGE_PG' must be the range uplink port group, not $PG or ${UPLINK_PG:-}"
+fi
+for pg in "$PG" ${UPLINK_PG:+"$UPLINK_PG"} ${RANGE_IP:+"$RANGE_PG"}; do
+  [[ -n "$(govc find / -type g -name "$pg")" ]] || die "port group $pg does not exist. Run scripts/lab/create-portgroups.sh${RANGE_IP:+ --site work} --apply first"
 done
 CLUSTER_PATH="$(govc find / -type c -name "$TN_CLUSTER")"
 [[ -n "$CLUSTER_PATH" ]] || die "cluster $TN_CLUSTER not found"
@@ -131,6 +149,9 @@ DS="${HOST_SHORT}-local"
 info "chosen: $HOST_SHORT, datastore $DS"
 
 # --- cloud-init -----------------------------------------------------------------
+# NIC 2 (the work-site depot's range uplink NIC) is deliberately absent here: cloud-init
+# would address it at first boot, with sshd listening and no firewall yet. depot.yml
+# (tn_depot range_nic.yml) installs the range firewall first, then adds 10.30.32.10/24.
 render_metadata() { # $1 = MAC of NIC 0, $2 = MAC of NIC 1 (or empty)
   cat <<EOF
 instance-id: ${HN}-$(date -u +%Y%m%d%H%M%S)
@@ -213,6 +234,9 @@ info "NIC 0: $PG, ${IP}/${PREFIX} gw ${GW}"
 if [[ -n "${UPLINK_PG:-}" && "$UPLINK" == "1" ]]; then
   if [[ "$BUILD_NIC_ALWAYS" == "1" ]]; then
     info "NIC 1: $UPLINK_PG, ${UPLINK_IP}/${PREFIX}, no gateway, CONNECTED (Packer builds reach the depot here)"
+    if [[ -n "$RANGE_IP" ]]; then
+      info "NIC 2: $RANGE_PG, ${RANGE_IP}/${PREFIX}, no gateway, CONNECTED; depot.yml firewalls it (tcp/8081,3142 only), then addresses it"
+    fi
   else
     info "NIC 1: $UPLINK_PG, ${UPLINK_IP}/${PREFIX} gw ${UPLINK_GW}, DISCONNECTED (depot-uplink.sh)"
   fi
@@ -233,6 +257,9 @@ EOF
   if [[ -n "${UPLINK_PG:-}" && "$UPLINK" == "1" ]]; then
     if [[ "$BUILD_NIC_ALWAYS" == "1" ]]; then
       echo "  [plan] govc vm.network.add -vm $NAME -net $UPLINK_PG -net.adapter vmxnet3 (stays connected)"
+      if [[ -n "$RANGE_IP" ]]; then
+        echo "  [plan] govc vm.network.add -vm $NAME -net $RANGE_PG -net.adapter vmxnet3 (stays connected)"
+      fi
     else
       echo "  [plan] govc vm.network.add -vm $NAME -net $UPLINK_PG -net.adapter vmxnet3; govc device.disconnect -vm $NAME ethernet-1"
     fi
@@ -257,12 +284,18 @@ act govc vm.disk.change -vm "$VM" -disk.name "$disk0" -size "$OS_DISK"
 nic0="$(govc device.ls -vm "$VM" | awk '/^ethernet-/{print $1; exit}')"
 [[ -n "$nic0" ]] || die "$TEMPLATE has no network adapter"
 act govc vm.network.change -vm "$VM" -net "$PG" "$nic0"
-nic1=""
+nic1=""; nic2=""
 if [[ -n "${UPLINK_PG:-}" && "$UPLINK" == "1" ]]; then
   act govc vm.network.add -vm "$VM" -net "$UPLINK_PG" -net.adapter vmxnet3
   nic1="$(govc device.ls -vm "$VM" | awk '/^ethernet-/{print $1}' | grep -vx "$nic0" | head -n1)"
   if [[ "$BUILD_NIC_ALWAYS" == "1" ]]; then
     act govc device.connect -vm "$VM" "$nic1"
+    if [[ -n "$RANGE_IP" ]]; then
+      act govc vm.network.add -vm "$VM" -net "$RANGE_PG" -net.adapter vmxnet3
+      nic2="$(govc device.ls -vm "$VM" | awk '/^ethernet-/{print $1}' | grep -vx -e "$nic0" -e "$nic1" | head -n1)"
+      [[ -n "$nic2" ]] || die "the NIC on $RANGE_PG was not added"
+      act govc device.connect -vm "$VM" "$nic2"
+    fi
   else
     act govc device.disconnect -vm "$VM" "$nic1"
     start="$(govc device.info -json -vm "$VM" "$nic1" | jq -r "$JQ_CI"' ci("startConnected")[0]')"
@@ -271,8 +304,10 @@ if [[ -n "${UPLINK_PG:-}" && "$UPLINK" == "1" ]]; then
 fi
 
 mac() { govc device.info -json -vm "$VM" "$1" | jq -r "$JQ_CI"' ci("macAddress")[0]'; }
-MAC0="$(mac "$nic0")"; MAC1=""; [[ -n "$nic1" ]] && MAC1="$(mac "$nic1")"
-info "MACs: $nic0=$MAC0${nic1:+ $nic1=$MAC1}"
+MAC0="$(mac "$nic0")"; MAC1=""; MAC2=""
+[[ -n "$nic1" ]] && MAC1="$(mac "$nic1")"
+[[ -n "$nic2" ]] && MAC2="$(mac "$nic2")"
+info "MACs: $nic0=$MAC0${nic1:+ $nic1=$MAC1}${nic2:+ $nic2=$MAC2}"
 
 b64() { base64 | tr -d '\n'; }
 act govc vm.change -vm "$VM" \
@@ -295,6 +330,9 @@ RESULT: $NAME on $HOST_SHORT / $DS, ${IP}. Log in: ssh -i <private key> tnadmin@
 EOF
 if [[ -n "$nic1" && "$BUILD_NIC_ALWAYS" == "1" ]]; then
   echo "Build NIC $nic1 on $UPLINK_PG: ${UPLINK_IP} (connected; builds use http://${UPLINK_IP}:8081)"
+  if [[ -n "$nic2" ]]; then
+    echo "Range NIC $nic2 on $RANGE_PG: ${RANGE_IP} (connected, MAC $MAC2). It has no address yet: depot.yml -e tn_depot_range_mac=$MAC2 firewalls it, then sets ${RANGE_IP}/${PREFIX}"
+  fi
 elif [[ -n "$nic1" ]]; then
   echo "Uplink NIC $nic1 is DISCONNECTED. Connect it for the depot install and prefetch:"
   echo "  scripts/lab/depot-uplink.sh on --apply   ...   scripts/lab/depot-uplink.sh off --apply"

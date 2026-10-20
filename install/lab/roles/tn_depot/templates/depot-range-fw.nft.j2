@@ -1,0 +1,52 @@
+#!/usr/sbin/nft -f
+# {{ ansible_managed }}
+#
+# TN-DEPOT01 range uplink NIC {{ tn_depot_range_if }} ({{ tn_depot_range_ip }}/{{ tn_depot_range_prefix }}), #214.
+# Range firewall WANs on {{ tn_depot_range_subnet }} may open TCP {{ tn_depot_range_ports | join(',') }} to {{ tn_depot_range_ip }}
+# (Nexus, apt-cacher-ng). Nothing else comes in (no SSH, no ICMP, no Docker registry
+# ports, no other depot address), the depot opens nothing towards the range network, and
+# nothing is forwarded. Two independent matches, so a renamed or extra NIC fails closed:
+# by interface ({{ tn_depot_range_if }}, renamed by MAC in netplan) and by source subnet on ANY interface.
+{% if tn_depot_upstream_online | bool %}
+# UPSTREAM ONLINE (prefetch window): the range network gets nothing at all until the
+# caches are offline again (upstream.yml reloads this file both ways).
+{% endif %}
+# Only this table is replaced on reload: Docker's rules and anything else stay as they are.
+table inet tn_depot_range
+delete table inet tn_depot_range
+
+table inet tn_depot_range {
+	chain from_range {
+{% if not (tn_depot_upstream_online | bool) %}
+		ip daddr {{ tn_depot_range_ip }} tcp dport { {{ tn_depot_range_ports | join(', ') }} } return
+{% endif %}
+		counter drop
+	}
+
+	chain input {
+		type filter hook input priority filter - 10; policy accept;
+		ip saddr {{ tn_depot_range_subnet }} jump from_range
+		iifname != "{{ tn_depot_range_if }}" accept
+		ct state established,related accept
+{% if not (tn_depot_upstream_online | bool) %}
+		ip saddr {{ tn_depot_range_subnet }} ip daddr {{ tn_depot_range_ip }} tcp dport { {{ tn_depot_range_ports | join(', ') }} } ct state new accept
+{% endif %}
+		counter drop
+	}
+
+	chain forward {
+		type filter hook forward priority filter - 10; policy accept;
+		iifname "{{ tn_depot_range_if }}" counter drop
+		oifname "{{ tn_depot_range_if }}" counter drop
+		ip saddr {{ tn_depot_range_subnet }} counter drop
+		ip daddr {{ tn_depot_range_subnet }} counter drop
+	}
+
+	chain output {
+		type filter hook output priority filter - 10; policy accept;
+		ip daddr {{ tn_depot_range_subnet }} ip daddr != {{ tn_depot_range_ip }} ct state new counter drop
+		oifname != "{{ tn_depot_range_if }}" accept
+		ct state established,related accept
+		counter drop
+	}
+}

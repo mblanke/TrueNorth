@@ -143,6 +143,7 @@ commands, is in [`install/lab/README.md`](../../install/lab/README.md), "Work si
 |---|---:|---|---|---|---|
 | `dPG-TN-MGMT` | 30 | 10.30.30.0/24 | UniFi .1 (routed), DNS 10.30.30.10 | TN-MGMT01 10.30.30.20; TN-DEPOT01 10.30.30.30 (SSH, TrueNorth, the depot's upstream path) | through .1, subject to the MGMT firewall |
 | `dPG-TN-BUILD` | 31 | 10.30.31.0/24 | **No gateway.** DHCP .100–.199 from TN-MGMT01 (`tn-build-dhcp.service`, dnsmasq) | TN-MGMT01 `ens224` 10.30.31.20 (Packer HTTP 8800–8899, WinRM 5985 and SSH 22 callbacks); TN-DEPOT01 10.30.31.30 (8081 Nexus, 3142 apt-cacher-ng); build VMs | **none**: no route to the internet or to MGMT |
+| `dPG-TN-SVC` (range uplink; **to create**, #214) | 32 | 10.30.32.0/24 | UniFi .1 (the range WANs' gateway), no DHCP | range firewall WANs .100–.199 (`tn_vsphere_range_uplink_pool`); TN-DEPOT01 10.30.32.10 (8081 Nexus, 3142 apt-cacher-ng, nothing else) | **none**: UniFi drops 10.30.32.0/24 → internet, MGMT, BUILD, 192.168.1.0/24 |
 
 VLAN 31 is trunked only to esx04 for now (ADR 0012 §7), so a DRS "should run on esx04"
 rule keeps TN-MGMT01 there.
@@ -153,14 +154,45 @@ rule keeps TN-MGMT01 there.
 | | NIC 1 `ens224`, `dPG-TN-BUILD` | 10.30.31.20 | | Packer callbacks and build-network DHCP |
 | TN-DEPOT01 | NIC 0 `dPG-TN-MGMT` | 10.30.30.30/24, gw .1 | 4 vCPU / 16 GB / 100 GB + data disk | `scripts/lab/build-phase.sh depot` (`deploy-mgmt-vm.sh TN-DEPOT01 --site work`, a clone of `ubuntu-lts` on esx04), then `install/lab/depot.yml` |
 | | NIC 1 `dPG-TN-BUILD`, always connected | 10.30.31.30/24, no gateway | | what builds use: `depot_url = http://10.30.31.30:8081/repository`, `apt_proxy = http://10.30.31.30:3142` (`scripts/lab/pkrvars-work.py --depot`) |
+| | NIC 2 range uplink (`dPG-TN-SVC`), always connected (#214) | 10.30.32.10/24, no gateway | | what ranges use: `TN_DEPOT_URL=http://10.30.32.10`, ports 8081 and 3142 only. Added by `build-phase.sh depot` (step 3/5, y/N); `depot.yml` loads its firewall, then puts the address on it |
 
 **Who fetches upstream: the depot, through `dPG-TN-MGMT`'s gateway.** A Nexus proxy
 repository and apt-cacher-ng make the outbound request themselves, so a build VM asking
 through them never touches the internet. The caches are offline by default
 (`tn_depot_upstream_online: false`: apt-cacher-ng `Offlinemode`, Nexus proxies `blocked`);
 egress control is that plus the MGMT firewall. There is no uplink NIC to disconnect, so
-`scripts/lab/depot-uplink.sh` does not apply, and the kit does not run `prefetch.yml`
-(it would need internet on TN-MGMT01). Known gaps are in the work-site README.
+`scripts/lab/depot-uplink.sh` does not apply (it refuses the work-site depot), and the kit
+does not run `prefetch.yml` (it would need internet on TN-MGMT01). Known gaps are in the
+work-site README.
+
+**Ranges reach the depot on its third NIC (owner decision 2026-10-20, #214).** Range
+firewall WANs sit on the range uplink network (`dPG-TN-SVC`, VLAN 32), and TN-DEPOT01 has
+a NIC there at 10.30.32.10. The range firewalls' `TN_DEPOT` rule is unchanged, and no range
+gets a path to MGMT: the alternative (routing ranges to 10.30.30.30) was rejected for that
+reason. These controls hold on the depot itself (`install/lab/roles/tn_depot`):
+- **Host firewall** on that NIC (`nft` table `inet tn_depot_range`, loaded before the
+  network at boot): only new TCP connections from 10.30.32.0/24 to 10.30.32.10 on 8081 and
+  3142 come in. No SSH, no ICMP, no Docker registry ports (8082/8083), no other depot
+  address; the depot opens nothing out of that NIC; nothing is forwarded into or out of it.
+- **No forwarding:** `net.ipv4.ip_forward=0` and IPv6 forwarding off, dockerd with
+  `"ip-forward": false`, Nexus on host networking (no Docker DNAT). `depot.yml` reads the
+  kernel's values back after Nexus is up and fails if any is on.
+- **No route out of it:** the NIC has no gateway and no DNS; the default route stays on
+  MGMT. `depot.yml` fails if the default route is on it.
+- **Fail closed:** the NIC is taken by its MAC only and renamed `tnrange0`; the firewall
+  also matches the range subnet on any NIC. netplan never brings it up
+  (`activation-mode: manual`); `tn-depot-range-link.service` does, after the firewall unit
+  and a check of the live table, and `tn-depot-range-guard.timer` sets it DOWN within a
+  minute if the table disappears (e.g. Ubuntu's `nftables.service` flushing the ruleset)
+  or forwarding comes on.
+- **Online windows:** going online (`prefetch.yml`) is refused while range VMs exist
+  (override `tn_depot_force_online`), and the range network gets nothing while online.
+- **Least privilege on the services:** apt-cacher-ng serves only Remap-ed repositories
+  (`ForceManaged`, port 80; not an open proxy) and its admin pages need a depot-generated
+  `AdminAuth`; Nexus anonymous reads only the Chocolatey feed, and Packer reads
+  `installers` as `tn-build-read` with a secret generated on TN-MGMT01.
+Order matters: cloud-init leaves the NIC unaddressed and DOWN, and `depot.yml` loads the
+firewall before it puts 10.30.32.10 on it and before anything brings the link up.
 
 > **Superseded design (noted 2026-10-19, #212).** Until ADR 0012 this section described a
 > separate **TN-BUILD01** (10.30.31.10, "the only host with internet") and a depot on its
@@ -178,15 +210,14 @@ egress control is that plus the MGMT firewall. There is no uplink NIC to disconn
 
 #### Range WAN uplink to the depot
 
-> **Open item (2026-10-19, #212).** The "Lab value" column below, and the
-> 10.30.32.x addresses in the rest of this subsection and in §7, come from the superseded
-> design above: range pfSense WANs on `dPG-TN-SVC` (VLAN 32) reaching TN-DEPOT01 at
-> 10.30.32.10. At the work site the depot is at 10.30.30.30 (MGMT) and 10.30.31.30 (BUILD)
-> and has no NIC on `dPG-TN-SVC`. Ranges must not get a path to MGMT, and no decision
-> puts range WANs on the build network. How ranges reach the depot there is not decided;
-> until it is, the uplink stays at its default, empty (ranges fully isolated, no
-> deploy-time installs). The values in `install/inventory/group_vars/all/main.yml` are
-> unchanged.
+> **Decided (2026-10-20, #214; was an open item of #212).** Range firewall WANs sit on
+> `dPG-TN-SVC` (VLAN 32) and reach TN-DEPOT01's third NIC at 10.30.32.10, so the values
+> below are the work site's again. `install/inventory/group_vars/all/main.yml` carries
+> them (`tn_depot_url`, `tn_depot_choco_feed`, `tn_depot_apt_proxy`, `tn_depot_ports`).
+> **TODO (site):** `dPG-TN-SVC` does not exist at the work site yet, so
+> `tn_vsphere_range_uplink_network` stays empty (ranges isolated) until the operator steps
+> in `install/lab/README.md`, "Ranges reach the depot", have passed; setting it is the
+> last of them.
 
 By default a range is fully isolated: its firewall gets one NIC per range zone and
 nothing else, and no range VM can reach the depot. To give ranges the depot, set the
@@ -198,10 +229,10 @@ uplink (in `group_vars/all/main.yml`, or the `.env.production` keys in brackets)
 | `tn_vsphere_range_uplink_pool` (`VSPHERE_RANGE_UPLINK_POOL`) | `10.30.32.100-10.30.32.199` | Static WAN addresses, one per range. Must not overlap anything else on VLAN 32 |
 | `tn_vsphere_range_uplink_gateway` (`VSPHERE_RANGE_UPLINK_GATEWAY`) | `10.30.32.1` | WAN gateway |
 | `tn_vsphere_range_uplink_prefix` (`VSPHERE_RANGE_UPLINK_PREFIX`) | `24` | WAN prefix length |
-| `tn_depot_url` (`TN_DEPOT_URL`) | `http://10.30.32.10` | The depot as range guests reach it. Empty = no deploy-time installs |
-| `tn_depot_choco_feed` (`TN_DEPOT_CHOCO_FEED`) | empty → `http://10.30.32.10:8081/repository/chocolatey/` | Nexus Chocolatey (NuGet) feed |
+| `tn_depot_url` (`TN_DEPOT_URL`) | `http://10.30.32.10` | The depot as range guests reach it: scheme and IP address only, **no port, no path** (the worker appends `:8081/repository/chocolatey/` for the default feed; the firewalls' `TN_DEPOT` alias is its host). Empty = no deploy-time installs |
+| `tn_depot_choco_feed` (`TN_DEPOT_CHOCO_FEED`) | `http://10.30.32.10:8081/repository/chocolatey/` (empty derives the same) | Nexus Chocolatey (NuGet) feed |
 | `tn_depot_apt_proxy` (`TN_DEPOT_APT_PROXY`) | **`http://10.30.32.10:3142`** | HTTP **forward** proxy for apt/dnf: apt-cacher-ng on the depot. **Set it**: empty falls back to `TN_DEPOT_URL` (port 80), where nothing listens. Guests keep their stock sources; the Rocky template must use the `http://dl.rockylinux.org` `baseurl` (an HTTPS mirrorlist can only be tunnelled, and the depot refuses tunnels) |
-| `TN_DEPOT_PORTS` | `8081,3142` | TCP ports of the depot each range pfSense lets the zones reach through its WAN; everything else out of the WAN is blocked |
+| `tn_depot_ports` (`TN_DEPOT_PORTS`) | `8081,3142` | TCP ports of the depot each range firewall lets the zones reach through its WAN; everything else out of the WAN is blocked. The depot's own firewall admits exactly these |
 | `tn_software_install_timeout` (`TN_SOFTWARE_INSTALL_TIMEOUT`) | `1800` | Seconds per VM for all of its installs |
 | `tn_vsphere_provision_budget` (`VSPHERE_PROVISION_BUDGET`) | `3300` | No new provisioning work after this many seconds (Celery redelivers after 3600) |
 
@@ -237,9 +268,10 @@ guide, pfSense) applies it on first boot and reboots once into it. The config ho
   was applied (`/conf/tn-pfsense-config.log`).
 - **Passwords:** none in guestinfo. Range firewalls keep the template's users, groups,
   web GUI/SSH settings and certificates, so the admin password is the template's.
-- The UniFi side of VLAN 32 (superseded design, §4.1a) still denies `dPG-TN-SVC` → internet, mgmt
-  and 192.168.1.0/24. Both layers are needed: the UniFi rule protects the platform if a
-  student reconfigures pfSense.
+- The UniFi side of VLAN 32 denies `dPG-TN-SVC` → internet, MGMT, BUILD and
+  192.168.1.0/24 (`scripts/lab/create-portgroups.sh --site work` prints the checklist).
+  Three layers are needed: the UniFi rule and the depot's own firewall protect the
+  platform if a student reconfigures pfSense.
 
 **OPNsense and VyOS are configured per range too** (same policy as pfSense above):
 - **OPNsense:** the same config, in OPNsense's legacy `config.xml` layout (root
@@ -400,7 +432,10 @@ Use soc-training, or a small PO range. Check:
 - [ ] `curl https://1.1.1.1` from a range VM **fails** (no egress)
 - [ ] with the uplink on: a range VM reaches TN-DEPOT01 on tcp/8081 (Nexus) and tcp/3142 (apt-cacher-ng) and
       nothing else on 10.30.32.0/24; the software in its `services` is installed and
-      `provisioner_output.vms[].software` says `ok`
+      `provisioner_output.vms[].software` says `ok` (#214: a Chocolatey package on a
+      Windows VM)
+- [ ] from the range firewall's shell: 10.30.32.10 tcp/22, 8082, 8083 and ping get no
+      answer; 10.30.30.30 and 10.30.31.30 are unreachable (#214)
 - [ ] a range VM cannot reach 10.30.30.0/24, 192.168.1.0/24 or vCenter
 - [ ] the pfSense LAN interface is the `.1` of each range subnet
 - [ ] Security Onion is set up (`securityonion.status` `ok`, see **7.2**) and sees traffic

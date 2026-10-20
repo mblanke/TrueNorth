@@ -267,6 +267,27 @@ variable "depot_url" {
   default     = ""
 }
 
+variable "depot_user" {
+  description = <<-EOT
+    Nexus user that may read the raw "installers" repository (tn-build-read, #214).
+    Anonymous access to the depot is limited to the Chocolatey feed, so role images and
+    the Office variant authenticate for <depot_url>/installers/... Empty: anonymous.
+  EOT
+  type        = string
+  default     = ""
+}
+
+variable "depot_password" {
+  description = <<-EOT
+    Password of depot_user. Generated on TN-MGMT01 by build-phase.sh depot into
+    /srv/truenorth/config/depot-build.env (root only); pkrvars-work.py --depot copies it
+    into lab.auto.pkrvars.hcl (mode 0600). Never printed.
+  EOT
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
 variable "apt_proxy" {
   description = <<-EOT
     HTTP forward proxy for apt and dnf during the build: TN-DEPOT01's apt-cacher-ng,

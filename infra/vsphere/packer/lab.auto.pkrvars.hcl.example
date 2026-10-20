@@ -47,18 +47,26 @@ iso_vyos          = "vyos-2026.10.01-0035-rolling-generic-amd64.iso"   # free ro
 vmtools_iso_path = "[] /vmimages/tools-isoimages/windows.iso"
 
 # --- Networking ------------------------------------------------------------
-# Packer runs on TN-BUILD01, which sits on dPG-TN-BUILD. That port group has DHCP and is the
-# ONLY network with internet egress (vm-build-sheet.md §8: build egress stays off TN-MGMT01).
-# VLAN 31 / 10.30.31.0/24 is the proposed value; confirm it in docs/deployment/vmware-site-runbook.md §4.
+# Work site (ADR 0012): Packer runs on TN-MGMT01, whose second NIC (10.30.31.20) is on
+# dPG-TN-BUILD (VLAN 31, 10.30.31.0/24): DHCP from TN-MGMT01, NO gateway and NO internet.
+# Packages come from TN-DEPOT01 on that network (Depot, below). scripts/lab/pkrvars-work.py
+# writes the work site's lab.auto.pkrvars.hcl (esx04, http_bind_address, ISOs) for you;
+# docs/deployment/vmware-site-runbook.md §4.1a has the addresses.
 build_network = "dPG-TN-BUILD"
+# http_bind_address = "10.30.31.20"          # TN-MGMT01 ens224: Packer HTTP/WinRM/SSH callbacks
 # pfsense_lan_network = "dPG-TN-BUILD"  # defaults to build_network if unset
 
 # --- Output ----------------------------------------------------------------
 content_library    = "TrueNorth-Templates"   # create first: govc library.create -ds esx01-local TrueNorth-Templates
 publish_to_library = true                     # also keep inventory templates (always on)
 
-# --- Depot (optional; no-egress range software source) ---------------------
-# depot_url = "http://10.30.32.10"            # TN-DEPOT01 on dPG-TN-SVC; enables depot Chocolatey/apt feeds
+# --- Depot (builds that install packages; empty = offline bases) -----------
+# TN-DEPOT01 on its BUILD NIC, the address builds can reach. Nexus base URL WITH port and
+# /repository: builds use <depot_url>/chocolatey and <depot_url>/installers/...
+# (pkrvars-work.py --depot writes these two). Not 10.30.32.10: that is the depot's range
+# uplink NIC, for ranges only, and build VMs are not on that network.
+# depot_url = "http://10.30.31.30:8081/repository"
+# apt_proxy = "http://10.30.31.30:3142"      # apt-cacher-ng, the apt/dnf forward proxy
 
 # --- Build credentials (build-time only; sysprep/cloud-init reset on clone) -
 windows_admin_password = "CHANGE-ME-Build1!"

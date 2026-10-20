@@ -345,7 +345,7 @@ _Superseded (noted 2026-10-19, #212):_ this paragraph used to say `dPG-TN-BUILD`
 WAN egress that the online package steps need, and that the depot sat on `dPG-TN-SVC`;
 both belong to the pre-ADR 0012 TN-BUILD01 design. Do not build on:
 - `dPG-TN-MGMT`, which holds the platform
-- `dPG-TN-SVC`, if it exists (range WANs in the earlier design; no egress)
+- `dPG-TN-SVC` (VLAN 32, the range uplink network: range firewall WANs and TN-DEPOT01's range NIC 10.30.32.10, #214; no egress)
 - the range port groups, which have no egress
 
 ## Windows product keys (deferred)

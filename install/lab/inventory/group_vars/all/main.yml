@@ -9,6 +9,8 @@ tn_lab_ssh_key: "~/.ssh/id_ed25519_lab"
 tn_build_ip: 10.30.31.10
 # What ranges and TN-BUILD01 use. Everything below is built from this.
 tn_depot_ip: 10.30.32.10
+# vCenter datacenter prefetch.yml checks for range VMs before going online (#214).
+tn_depot_vcenter_datacenter: DC-Lab
 # The depot's uplink NIC on dPG-TN-BUILD, connected only during a prefetch window.
 tn_depot_uplink_ip: 10.30.31.11
 

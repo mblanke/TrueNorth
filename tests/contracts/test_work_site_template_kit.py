@@ -215,12 +215,20 @@ def test_pkrvars_writes_every_required_variable_privately(pk, site, capsys):
     assert "ssh_password_hash        <set>" in printed.out
 
 
-def test_pkrvars_depot_and_check(pk, site, capsys):
-    assert pk.main([*site["args"], "--depot"]) == 0
+def test_pkrvars_depot_and_check(pk, site, capsys, monkeypatch, tmp_path):
+    secret = "d3p0t-read-" + "x" * 30
+    monkeypatch.delenv("TN_DEPOT_BUILD_READ_PASSWORD", raising=False)
+    # Without the tn-build-read password (build-phase.sh depot makes it) --depot refuses (#214).
+    assert pk.main([*site["args"], "--depot", "--depot-env", str(tmp_path / "none.env")]) == 2
+    assert "build-phase.sh depot" in capsys.readouterr().err
+    (tmp_path / "depot-build.env").write_text(f"# root only\nTN_DEPOT_BUILD_READ_PASSWORD={secret}\n")
+    assert pk.main([*site["args"], "--depot", "--depot-env", str(tmp_path / "depot-build.env")]) == 0
     vals = _hcl(site["out"])
     assert vals["depot_url"] == '"http://10.30.31.30:8081/repository"'
     assert vals["apt_proxy"] == '"http://10.30.31.30:3142"'  # apt-cacher-ng on the depot's BUILD NIC
-    capsys.readouterr()
+    assert vals["depot_user"] == '"tn-build-read"' and vals["depot_password"] == f'"{secret}"'
+    printed = capsys.readouterr()
+    assert secret not in printed.out + printed.err and "depot_password           <set>" in printed.out
     assert pk.main(["--check", "--allow-non-root", "--out", str(site["out"])]) == 0
     checked = capsys.readouterr().out
     assert "depot_url=http://10.30.31.30:8081/repository" in checked and "apt_proxy=http://10.30.31.30:3142" in checked

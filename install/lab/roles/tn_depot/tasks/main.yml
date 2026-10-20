@@ -56,6 +56,14 @@
     cache_valid_time: 3600
   become: true
 
+- name: Depot — no routing between its NICs (dockerd, sysctl)
+  ansible.builtin.include_tasks: forwarding.yml
+
+# Before Nexus starts: the range NIC gets its firewall, then its address (work site, #214).
+- name: Depot — range uplink NIC (firewall, then address)
+  ansible.builtin.include_tasks: range_nic.yml
+  when: tn_depot_range_ip | length > 0
+
 - name: Depot — data directories
   ansible.builtin.file:
     path: "{{ item.path }}"
@@ -69,6 +77,27 @@
     - { path: "{{ tn_depot_nexus_data }}", owner: "200" }
   become: true
 
+# Maintenance pages behind AdminAuth. The password is made here, on the depot, the first
+# time and kept only in security.conf (root:apt-cacher-ng 0640); never printed.
+- name: Depot — apt-cacher-ng AdminAuth (generated on the depot once, never printed)
+  ansible.builtin.shell: |
+    set -eu
+    f=/etc/apt-cacher-ng/security.conf
+    touch "$f"
+    chown root:apt-cacher-ng "$f"
+    chmod 0640 "$f"
+    if grep -q '^AdminAuth:' "$f"; then echo unchanged; exit 0; fi
+    printf 'AdminAuth: %s:%s\n' "$TN_ACNG_USER" "$(openssl rand -hex 24)" >> "$f"
+    echo created
+  args:
+    executable: /bin/bash
+  environment:
+    TN_ACNG_USER: "{{ tn_depot_acng_admin_user }}"
+  register: tn_depot_acng_auth
+  changed_when: "'created' in tn_depot_acng_auth.stdout"
+  no_log: true
+  become: true
+
 - name: Depot — apt-cacher-ng config and upstream state
   ansible.builtin.include_tasks: upstream.yml
 
@@ -76,7 +105,7 @@
   ansible.builtin.systemd_service:
     name: apt-cacher-ng
     enabled: true
-    state: started
+    state: "{{ 'restarted' if tn_depot_acng_auth is changed else 'started' }}"
   become: true
 
 # ── Nexus ─────────────────────────────────────────────────────────────
@@ -86,15 +115,22 @@
     source: pull
   become: true
 
+# Host networking: Nexus listens on the depot's own addresses (8081, and the Docker
+# connectors 8082/8083), so published ports, Docker's DNAT and IP forwarding are not
+# needed. Forwarding stays off (forwarding.yml). Nexus listens on 8081 inside the
+# container, so tn_depot_nexus_port must be 8081.
+- name: Depot — Nexus listens on 8081 (host networking)
+  ansible.builtin.assert:
+    that: tn_depot_nexus_port | int == 8081
+    fail_msg: "tn_depot_nexus_port is {{ tn_depot_nexus_port }}: with host networking Nexus is on 8081"
+    quiet: true
+
 - name: Depot — Nexus container
   community.docker.docker_container:
     name: nexus
     image: "{{ tn_depot_nexus_image }}"
     restart_policy: unless-stopped
-    published_ports:
-      - "{{ tn_depot_nexus_port }}:8081"
-      - "{{ tn_depot_nexus_docker_proxy_port }}:{{ tn_depot_nexus_docker_proxy_port }}"
-      - "{{ tn_depot_nexus_docker_hosted_port }}:{{ tn_depot_nexus_docker_hosted_port }}"
+    network_mode: host
     volumes:
       - "{{ tn_depot_nexus_data }}:/nexus-data"
     env:
@@ -120,17 +156,69 @@
     url: "http://127.0.0.1:{{ tn_depot_nexus_port }}/repository/chocolatey/"
     status_code: 200
 
+# 401: the report page answers and is behind AdminAuth (both mean apt-cacher-ng is up).
 - name: Depot — apt-cacher-ng answers
   ansible.builtin.uri:
     url: "http://127.0.0.1:{{ tn_depot_acng_port }}/acng-report.html"
-    status_code: 200
+    status_code: [200, 401]
+
+# Forwarding again, now that dockerd and Nexus are running.
+- name: Depot — still no routing between its NICs
+  ansible.builtin.include_tasks: verify_forwarding.yml
+
+# From the depot itself: proves both services listen on the range address. Whether a
+# range firewall gets through is checked on site (install/lab/README.md).
+- name: Depot — Nexus and apt-cacher-ng answer on the range address {{ tn_depot_range_ip }}
+  ansible.builtin.uri:
+    url: "{{ item }}"
+    status_code: [200, 401]
+  loop:
+    - "http://{{ tn_depot_range_ip }}:{{ tn_depot_nexus_port }}/repository/chocolatey/"
+    - "http://{{ tn_depot_range_ip }}:{{ tn_depot_acng_port }}/acng-report.html"
+  when:
+    - tn_depot_range_ip | length > 0
+    - not (tn_depot_upstream_online | bool)   # online: the range firewall drops even this
+
+# Anonymous (nexus_access.yml): the vendor media behind tn-build-read stay closed ...
+- name: Depot — anonymous cannot read installers/roles or installers/office
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ tn_depot_nexus_port }}/repository/installers/{{ item }}"
+    status_code: [401, 403]
+  loop:
+    - roles/exchange2019/ExchangeServer2019-x64-cu15.iso
+    - office/office-ltsc.zip
+
+# ... and every in-house Chocolatey package's installer is readable without credentials,
+# at the exact URL its chocolateyInstall.ps1 builds (choco-internalize.py raw_path):
+# installers/<id>/<version>/<file>. 200 once uploaded; 404 = allowed but not uploaded yet.
+# With tn_depot_require_choco_installers (after prefetch) only 200 passes. 401/403 means
+# the content selector does not cover the package: range installs would fail.
+- name: Depot — anonymous reads every in-house Chocolatey package's installer
+  vars:
+    tn_def: "{{ lookup('file', item) | from_yaml }}"
+    tn_inst: "{{ tn_def.installers[0] }}"
+    tn_file: "{{ tn_inst.file | default(tn_inst.url | urlsplit('path') | basename, true) }}"
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ tn_depot_nexus_port }}/repository/installers/{{ tn_def.name }}/{{ tn_def.version }}/{{ tn_file | urlencode }}"
+    method: HEAD
+    status_code: "{{ [200] if (tn_depot_require_choco_installers | default(false) | bool) else [200, 404] }}"
+  loop: "{{ query('fileglob', tn_depot_choco_defs ~ '/*.yaml') | sort }}"
+  loop_control: { label: "{{ item | basename }}" }
 
 - name: Depot — report
+  vars:
+    tn_depot_ranges_see: "{{ tn_depot_range_ip if tn_depot_range_ip | length > 0 else tn_depot_ip }}"
   ansible.builtin.debug:
     msg:
       - "Upstream: {{ 'ONLINE (prefetch window)' if tn_depot_upstream_online | bool else 'offline (cached only)' }}"
+      - >-
+        Range NIC: {{ ((tn_depot_range_if | default('?')) ~ ' ' ~ tn_depot_range_ip ~ ', firewall: tcp/'
+        ~ (tn_depot_range_ports | join(',')) ~ ' from ' ~ tn_depot_range_subnet)
+        if tn_depot_range_ip | length > 0 else 'none' }}
+      - "Forwarding: off (IPv4 and IPv6)"
       - "TrueNorth .env.production / install/inventory/group_vars/all/main.yml:"
-      - "  tn_depot_url:        http://{{ tn_depot_ip }}"
-      - "  tn_depot_choco_feed: {{ tn_depot_nexus_url }}/repository/chocolatey/   (also the empty-value default)"
-      - "  tn_depot_apt_proxy:  {{ tn_depot_apt_proxy_url }}   (must be set: the empty default is port 80)"
-      - "pfSense WAN rule: allow zone nets -> {{ tn_depot_ip }} tcp/{{ tn_depot_nexus_port }},{{ tn_depot_acng_port }}"
+      - "  tn_depot_url:        http://{{ tn_depot_ranges_see }}   (no port, no path: the worker appends :8081/repository/chocolatey/)"
+      - "  tn_depot_choco_feed: http://{{ tn_depot_ranges_see }}:{{ tn_depot_nexus_port }}/repository/chocolatey/"
+      - "  tn_depot_apt_proxy:  http://{{ tn_depot_ranges_see }}:{{ tn_depot_acng_port }}   (must be set: the empty default is port 80)"
+      - "  tn_depot_ports:      {{ tn_depot_nexus_port }},{{ tn_depot_acng_port }}"
+      - "Range firewall WAN rule: allow zone nets -> {{ tn_depot_ranges_see }} tcp/{{ tn_depot_nexus_port }},{{ tn_depot_acng_port }}"

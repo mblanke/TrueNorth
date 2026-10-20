@@ -19,6 +19,13 @@
   hosts: depot
   gather_facts: false
   tasks:
+    # #214: refused while range VMs exist (-e tn_depot_force_online=true overrides);
+    # upstream.yml checks again and shuts the range NIC before the caches go online.
+    - name: No range VMs exist (govc on the control node)
+      ansible.builtin.include_role:
+        name: tn_depot
+        tasks_from: range_guard.yml
+
     - name: The depot can reach upstream (uplink NIC connected?)
       ansible.builtin.uri:
         url: "{{ item }}"

@@ -63,13 +63,19 @@ if ($image -notin 'srv2022-exchange2019', 'srv2022-sharepointse', 'srv2022-share
 if ($pass -notin 1, 2) { throw "role-image: TN_ROLE_PASS must be 1 or 2, got '$($env:TN_ROLE_PASS)'" }
 if (-not $env:DEPOT_URL) { throw "role-image: DEPOT_URL is empty. Role images install their prerequisites from TN-DEPOT01 (pkrvars-work.py --depot)." }
 $installers = "$($env:DEPOT_URL.TrimEnd('/'))/installers/roles/$($image -replace '^srv2022-', '')"
+# The installers repository is not anonymous (#214): Basic auth as DEPOT_USER (tn-build-read).
+$depotHeaders = @{}
+if ($env:DEPOT_USER) {
+  $pair = [Text.Encoding]::UTF8.GetBytes("$($env:DEPOT_USER):$($env:DEPOT_PASSWORD)")
+  $depotHeaders['Authorization'] = 'Basic ' + [Convert]::ToBase64String($pair)
+}
 
 # ── helpers ────────────────────────────────────────────────────────────
 function Get-DepotFile([string]$name, [switch]$Optional) {
   $out = Join-Path $dl $name
   if (Test-Path $out) { return $out }
   try {
-    Invoke-WebRequest -Uri "$installers/$name" -OutFile $out -UseBasicParsing -TimeoutSec 1800
+    Invoke-WebRequest -Uri "$installers/$name" -Headers $depotHeaders -OutFile $out -UseBasicParsing -TimeoutSec 1800
     return $out
   } catch {
     Remove-Item $out -Force -ErrorAction SilentlyContinue

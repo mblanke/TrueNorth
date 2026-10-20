@@ -3,9 +3,15 @@
 #
 #   scripts/lab/create-portgroups.sh            # plan only (default): read-only
 #   scripts/lab/create-portgroups.sh --apply    # create what is missing
+#   scripts/lab/create-portgroups.sh --site work [--apply]
 #
+# Earlier (TN-BUILD01) design, the default:
 #   dPG-TN-BUILD  VLAN 31  10.30.31.0/24  TN-BUILD01 (internet egress) + TN-DEPOT01's uplink NIC
 #   dPG-TN-SVC    VLAN 32  10.30.32.0/24  TN-DEPOT01 + range pfSense WANs (no egress)
+# --site work (ADR 0012, #214): only the range uplink network. dPG-TN-BUILD already exists
+# there (no gateway, no internet, DHCP from TN-MGMT01) and is left alone:
+#   dPG-TN-SVC    VLAN 32  10.30.32.0/24  range firewall WANs (10.30.32.100-199) + TN-DEPOT01's
+#                                         third NIC 10.30.32.10 (tcp/8081,3142 only; no egress)
 #
 # Idempotent. Before changing anything it reads every distributed and standard port
 # group in the datacenter and refuses if VLAN 31 or 32 is already used by a port group
@@ -20,18 +26,24 @@ set -euo pipefail
 # shellcheck source-path=SCRIPTDIR source=lib.sh
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
-usage() { sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+usage() { sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+SITE="lab"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --apply) APPLY=1 ;;
     --dvs) TN_DVS="$2"; shift ;;
+    --site) SITE="$2"; shift ;;
     -h|--help) usage 0 ;;
     *) echo "unknown argument: $1" >&2; usage 2 ;;
   esac
   shift
 done
 
-WANT=("dPG-TN-BUILD:31" "dPG-TN-SVC:32")
+case "$SITE" in
+  lab) WANT=("dPG-TN-BUILD:31" "dPG-TN-SVC:32") ;;
+  work) WANT=("dPG-TN-SVC:32") ;;
+  *) die "unknown --site '$SITE' (lab or work)" ;;
+esac
 
 step "Preflight"
 lab_preflight
@@ -135,6 +147,27 @@ for w in ${todo[@]+"${todo[@]}"}; do
   fi
 done
 [[ "$APPLY" == "1" ]] || { echo; echo "Plan only. Re-run with --apply to change vCenter."; }
+
+if [[ "$SITE" == "work" ]]; then
+  cat <<'EOF'
+
+== UniFi checklist, work site (a human does this; this script never touches UniFi)
+  Network (VLAN-only on the 10G trunk ports; tag it on the host ports of esx04, where
+  TN-DEPOT01 runs, and of every range host, esx02-04, where range firewalls run):
+    [ ] TN-SVC    VLAN 32  10.30.32.0/24  gateway 10.30.32.1  DHCP OFF
+        (.1 is the range firewalls' WAN gateway, VSPHERE_RANGE_UPLINK_GATEWAY; .10 is
+        TN-DEPOT01; .100-.199 are range WANs, VSPHERE_RANGE_UPLINK_POOL)
+  Firewall rules (LAN IN):
+    [ ] drop   10.30.32.0/24 -> internet, 10.30.30.0/24, 10.30.31.0/24, 192.168.1.0/24
+               (every new connection from the range uplink network; range WANs reach the
+               depot on the same L2, not through the gateway)
+    [ ] drop   10.30.30.0/24, 10.30.31.0/24 -> 10.30.32.0/24 (nothing routes into it)
+  Check:
+    [ ] VLAN 31 (dPG-TN-BUILD) still has no gateway/SVI and no internet (ADR 0012)
+    [ ] no network/SVI exists for VLANs 100-199 (runbook §3)
+EOF
+  exit 0
+fi
 
 cat <<'EOF'
 

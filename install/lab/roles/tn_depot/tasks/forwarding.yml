@@ -1,0 +1,42 @@
+---
+# TN-DEPOT01 never routes between its NICs (#214). Two things would turn forwarding on:
+# dockerd (at every start, unless "ip-forward": false) and a stray sysctl. Nexus runs with
+# host networking (main.yml), so nothing on the depot needs forwarding.
+
+- name: Forwarding — dockerd never turns IP forwarding on
+  ansible.builtin.template:
+    src: docker-daemon.json.j2
+    dest: /etc/docker/daemon.json
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  register: tn_depot_dockerd
+
+- name: Forwarding — restart dockerd for the new daemon.json
+  ansible.builtin.systemd_service:
+    name: docker
+    state: restarted
+  become: true
+  when: tn_depot_dockerd is changed
+
+- name: Forwarding — sysctl (no forwarding, ARP answered per NIC)
+  ansible.builtin.template:
+    src: sysctl-depot.conf.j2
+    dest: "{{ tn_depot_sysctl_file }}"
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  register: tn_depot_sysctl
+
+# Always, not only on change: a dockerd that started before daemon.json existed (the
+# first run) has already switched forwarding on.
+- name: Forwarding — apply the sysctl file now
+  ansible.builtin.command: sysctl -p {{ tn_depot_sysctl_file }}
+  become: true
+  register: tn_depot_sysctl_apply
+  changed_when: tn_depot_sysctl is changed or tn_depot_dockerd is changed
+
+- name: Forwarding — check
+  ansible.builtin.include_tasks: verify_forwarding.yml

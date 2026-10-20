@@ -123,8 +123,9 @@
   register: tn_nexus_anon
   no_log: true
 
-# Range guests read the feed without credentials. The built-in anonymous role is
-# read/browse only; uploads need tn-prefetch or admin.
+# Range guests read the feed without credentials. nexus_access.yml (after the
+# repositories exist) narrows the anonymous user to the Chocolatey group feed only;
+# uploads need tn-prefetch or admin, vendor media tn-build-read.
 - name: Nexus — enable anonymous read
   ansible.builtin.uri:
     url: "{{ tn_depot_nexus_api }}/v1/security/anonymous"
@@ -257,3 +258,7 @@
   when: tn_nexus_prefetch_auth.status == 401
   no_log: true
   changed_when: true
+
+# ── Least privilege (#214): anonymous = Chocolatey feed only; builds = installers read ──
+- name: Nexus — anonymous role and the Packer read user
+  ansible.builtin.include_tasks: nexus_access.yml

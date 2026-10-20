@@ -1,0 +1,18 @@
+# {{ ansible_managed }}
+# Loads the depot's range uplink NIC firewall before any network comes up (#214).
+# No ExecStop: stopping the unit leaves the rules in place.
+[Unit]
+Description=TrueNorth depot - range uplink NIC firewall (nft table inet tn_depot_range)
+DefaultDependencies=no
+Before=network-pre.target shutdown.target
+Wants=network-pre.target
+After=local-fs.target
+Conflicts=shutdown.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/nft -f {{ tn_depot_range_nft }}
+
+[Install]
+WantedBy=sysinit.target

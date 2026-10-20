@@ -1,0 +1,13 @@
+# {{ ansible_managed }}
+# TN-DEPOT01 never routes between its NICs (#214): the range uplink, build and management
+# networks meet on this VM and nowhere else. /etc/docker/daemon.json keeps dockerd from
+# turning forwarding back on.
+net.ipv4.ip_forward = 0
+net.ipv4.conf.all.forwarding = 0
+net.ipv4.conf.default.forwarding = 0
+net.ipv6.conf.all.forwarding = 0
+net.ipv6.conf.default.forwarding = 0
+# Answer ARP only for an address on the NIC it was asked on, and source ARP from that NIC:
+# the range uplink network never learns which MAC holds the MGMT or BUILD address.
+net.ipv4.conf.all.arp_ignore = 1
+net.ipv4.conf.all.arp_announce = 2

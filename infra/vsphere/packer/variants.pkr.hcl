@@ -183,6 +183,8 @@ build {
     only = ["vsphere-clone.variant-windows"]
     environment_vars = [
       "DEPOT_URL=${var.depot_url}",
+      "DEPOT_USER=${var.depot_user}",
+      "DEPOT_PASSWORD=${var.depot_password}",
       "CHOCOLATEY_VERSION=${var.chocolatey_version}",
       "VARIANT_NAME=${var.variant_name}",
       "VARIANT_CHOCO_PACKAGES=${join(";", var.variant_choco_packages)}",
