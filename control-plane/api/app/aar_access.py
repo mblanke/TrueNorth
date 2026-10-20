@@ -48,8 +48,9 @@ def _aware(t: datetime) -> datetime:
     return t if t.tzinfo else t.replace(tzinfo=UTC)
 
 
-def _rostered_during_run(db: Session, ex: Exercise, user_id: uuid.UUID) -> bool:
-    """An assigned enrolment in a course booked over the run, made before the run ended.
+def _rostered_during_run(db: Session, ex: Exercise, user_id: uuid.UUID | None = None) -> set[uuid.UUID]:
+    """Who holds an assigned enrolment in a course booked over the run, made before the run
+    ended (``user_id`` narrows it to one person).
 
     Not ``enrollment.rostered_course_ids``, which is "assigned and still studying, now":
     that let a later cohort assigned to the same course read an earlier run's report (its
@@ -59,44 +60,52 @@ def _rostered_during_run(db: Session, ex: Exercise, user_id: uuid.UUID) -> bool:
     """
     courses = roster_courses(db, ex)
     if not courses:
-        return False
+        return set()
     run_end = _aware(ex.completed_at or datetime.now(UTC))
-    rows = (
-        db.query(Enrollment.created_at)
-        .filter(
-            Enrollment.user_id == user_id,
-            Enrollment.course_id.in_(courses),
-            Enrollment.source == ASSIGNED,
-            Enrollment.status != EnrollmentStatus.withdrawn,
-        )
-        .all()
+    q = db.query(Enrollment.user_id, Enrollment.created_at).filter(
+        Enrollment.course_id.in_(courses),
+        Enrollment.source == ASSIGNED,
+        Enrollment.status != EnrollmentStatus.withdrawn,
     )
-    return any(created is not None and _aware(created) <= run_end for (created,) in rows)
+    if user_id is not None:
+        q = q.filter(Enrollment.user_id == user_id)
+    return {uid for uid, created in q.all() if created is not None and _aware(created) <= run_end}
+
+
+def _on_a_team(db: Session, ex: Exercise, user_id: uuid.UUID | None = None) -> set[uuid.UUID]:
+    q = (
+        db.query(TeamMembership.user_id)
+        .join(Team, TeamMembership.team_id == Team.id)
+        .filter(Team.exercise_id == ex.id)
+    )
+    if user_id is not None:
+        q = q.filter(TeamMembership.user_id == user_id)
+    return {uid for (uid,) in q.all()}
+
+
+def _submitted_in_run(db: Session, ex: Exercise, user_id: uuid.UUID | None = None) -> set[uuid.UUID]:
+    if ex.started_at is None:
+        return set()  # never ran: no submission belongs to a run of it
+    q = db.query(DetectionSubmission.user_id).filter(
+        DetectionSubmission.exercise_id == ex.id,
+        DetectionSubmission.window_start >= ex.started_at,
+    )
+    if user_id is not None:
+        q = q.filter(DetectionSubmission.user_id == user_id)
+    return {uid for (uid,) in q.distinct().all()}
 
 
 def took_part(db: Session, ex: Exercise, user_id: uuid.UUID) -> bool:
-    if _rostered_during_run(db, ex, user_id):
-        return True
-    on_a_team = (
-        db.query(TeamMembership.id)
-        .join(Team, TeamMembership.team_id == Team.id)
-        .filter(Team.exercise_id == ex.id, TeamMembership.user_id == user_id)
-        .first()
+    return bool(
+        _rostered_during_run(db, ex, user_id) or _on_a_team(db, ex, user_id) or _submitted_in_run(db, ex, user_id)
     )
-    if on_a_team:
-        return True
-    if ex.started_at is None:
-        return False  # never ran: no submission belongs to a run of it
-    submitted = (
-        db.query(DetectionSubmission.id)
-        .filter(
-            DetectionSubmission.exercise_id == ex.id,
-            DetectionSubmission.user_id == user_id,
-            DetectionSubmission.window_start >= ex.started_at,
-        )
-        .first()
-    )
-    return submitted is not None
+
+
+def participants(db: Session, ex: Exercise) -> set[uuid.UUID]:
+    """Every user id ``took_part`` admits for this run, at once (the live class roster,
+    app/live_class). The same three relations, so the roster and the AAR never disagree
+    about who was in the class. Callers filter to Students."""
+    return _rostered_during_run(db, ex) | _on_a_team(db, ex) | _submitted_in_run(db, ex)
 
 
 def may_read_aar(db: Session, ex: Exercise, user: CurrentUser) -> bool:

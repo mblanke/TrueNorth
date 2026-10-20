@@ -4361,6 +4361,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/ops/exercises/{exercise_id}/class": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Exercise Class
+         * @description The roster of a live exercise: each Student's team, lab, detection attempts, credit
+         *     earned from them, last activity and what may need attention.
+         *     **Permission: exercise:read + telemetry:read** (staff and observers; never Students).
+         */
+        get: operations["get_exercise_class_ops_exercises__exercise_id__class_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/ops/exercises/{exercise_id}/commands": {
         parameters: {
             query?: never;
@@ -8183,6 +8205,28 @@ export interface components {
                 [key: string]: number[];
             };
         };
+        /**
+         * AttentionOut
+         * @description Something an instructor may want to look at. Only what the data says today:
+         *
+         *     - ``lab_fault``: the Student's lab is failed, expired or being cleaned up (not their doing)
+         *     - ``lab_wait``: their lab is queued, building or resetting
+         *     - ``learning``: ``learning_signal_misses`` or more judged misses on one objective, no credit
+         *     - ``not_seen``: no detection and no lab heartbeat for ``not_seen_minutes`` (neutral)
+         */
+        AttentionOut: {
+            /** Detail */
+            detail: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "lab_fault" | "lab_wait" | "learning" | "not_seen";
+            /** Objective Ref */
+            objective_ref?: string | null;
+            /** Since */
+            since?: string | null;
+        };
         /** AuditLogOut */
         AuditLogOut: {
             /** Action */
@@ -8673,6 +8717,193 @@ export interface components {
             user_id: string;
             /** Verification Url */
             verification_url?: string | null;
+        };
+        /**
+         * ClassAttemptOut
+         * @description One detection attempt in this run. ``query`` and ``precision`` only for staff who may
+         *     see the answer key (``scenario:update``), as ``GET /exercises/{id}/detections``.
+         */
+        ClassAttemptOut: {
+            /** Events Matched */
+            events_matched?: number | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Objective Ref */
+            objective_ref: string;
+            /** Precision */
+            precision?: number | null;
+            /** Query */
+            query?: string | null;
+            /** Submitted At */
+            submitted_at?: string | null;
+            /** Verdict */
+            verdict: string;
+        };
+        /**
+         * ClassLabOut
+         * @description The Student's own lab session on the exercise's range (the newest one).
+         */
+        ClassLabOut: {
+            /**
+             * Attempt
+             * @default 1
+             */
+            attempt?: number;
+            /**
+             * Error
+             * @default
+             */
+            error?: string;
+            /** Idle Expires At */
+            idle_expires_at?: string | null;
+            /** Last Seen At */
+            last_seen_at?: string | null;
+            /** Max Expires At */
+            max_expires_at?: string | null;
+            /** Ready At */
+            ready_at?: string | null;
+            /**
+             * Session Id
+             * Format: uuid
+             */
+            session_id: string;
+            /** State */
+            state: string;
+        };
+        /** ClassObjectiveOut */
+        ClassObjectiveOut: {
+            /**
+             * Description
+             * @default
+             */
+            description?: string;
+            /** Objective Type */
+            objective_type: string;
+            /**
+             * Points
+             * @default 0
+             */
+            points?: number;
+            /** Ref Id */
+            ref_id: string;
+            /**
+             * Validator
+             * @default
+             */
+            validator?: string;
+        };
+        /**
+         * ClassObjectiveStateOut
+         * @description One objective as this Student stands on it, from their own attempts only.
+         */
+        ClassObjectiveStateOut: {
+            /** Credited At */
+            credited_at?: string | null;
+            /**
+             * Misses
+             * @default 0
+             */
+            misses?: number;
+            /** Ref Id */
+            ref_id: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "credited" | "pending" | "missed" | "not_attempted";
+        };
+        /**
+         * ClassRangeOut
+         * @description The exercise's own range: a fault here is the exercise's, not any Student's.
+         */
+        ClassRangeOut: {
+            /** Error */
+            error?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** State */
+            state: string;
+        };
+        /** ClassStudentOut */
+        ClassStudentOut: {
+            /**
+             * Attempts
+             * @default []
+             */
+            attempts?: components["schemas"]["ClassAttemptOut"][];
+            /**
+             * Attempts Credited
+             * @default 0
+             */
+            attempts_credited?: number;
+            /**
+             * Attempts Total
+             * @description judged or pending attempts in this run
+             * @default 0
+             */
+            attempts_total?: number;
+            /**
+             * Attention
+             * @default []
+             */
+            attention?: components["schemas"]["AttentionOut"][];
+            /**
+             * Credited Refs
+             * @default []
+             */
+            credited_refs?: string[];
+            /**
+             * Current Objective
+             * @description inferred: the objective of the latest unresolved attempt, else the first not credited
+             */
+            current_objective?: string | null;
+            /** Display Name */
+            display_name: string;
+            lab?: components["schemas"]["ClassLabOut"] | null;
+            /**
+             * Last Activity At
+             * @description latest of a detection or a lab heartbeat
+             */
+            last_activity_at?: string | null;
+            /** Last Detection At */
+            last_detection_at?: string | null;
+            /**
+             * Objectives
+             * @default []
+             */
+            objectives?: components["schemas"]["ClassObjectiveStateOut"][];
+            /**
+             * Score
+             * @description points of the objectives this Student's own detections were credited for
+             * @default 0
+             */
+            score?: number;
+            team?: components["schemas"]["ClassTeamOut"] | null;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
+        /** ClassTeamOut */
+        ClassTeamOut: {
+            /** Color Hex */
+            color_hex?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
         };
         /**
          * CloneRequest
@@ -9894,6 +10125,47 @@ export interface components {
             };
             /** Kind */
             kind: string;
+        };
+        /** ExerciseClassOut */
+        ExerciseClassOut: {
+            /** Completed At */
+            completed_at?: string | null;
+            /**
+             * Exercise Id
+             * Format: uuid
+             */
+            exercise_id: string;
+            /** Exercise Name */
+            exercise_name: string;
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at: string;
+            /** Learning Signal Misses */
+            learning_signal_misses: number;
+            /**
+             * Max Score
+             * @default 0
+             */
+            max_score?: number;
+            /** Not Seen Minutes */
+            not_seen_minutes: number;
+            /**
+             * Objectives
+             * @default []
+             */
+            objectives?: components["schemas"]["ClassObjectiveOut"][];
+            range?: components["schemas"]["ClassRangeOut"] | null;
+            /** Started At */
+            started_at?: string | null;
+            /** State */
+            state: string;
+            /**
+             * Students
+             * @default []
+             */
+            students?: components["schemas"]["ClassStudentOut"][];
         };
         /** ExerciseIn */
         ExerciseIn: {
@@ -23154,6 +23426,37 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_exercise_class_ops_exercises__exercise_id__class_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                exercise_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExerciseClassOut"];
+                };
             };
             /** @description Validation Error */
             422: {

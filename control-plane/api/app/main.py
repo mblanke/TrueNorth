@@ -311,6 +311,7 @@ app.state.ws_manager = ws_manager
 
 # -- Routers (fine-grained RBAC via require_permission) --------------------
 from .cmi5.router import router as cmi5_router  # noqa: E402 (also registers the cmi5 tables)
+from .live_class.router import router as live_class_router  # noqa: E402 (issue #199)
 from .range_credentials.router import router as range_credentials_router  # noqa: E402 (ADR 0012; + its table)
 from .routers import (
     ad_sync_router,
@@ -430,6 +431,7 @@ app.include_router(quizzes_router)
 # Adaptive Learning (EPIC 3)
 app.include_router(adaptive_learning_router)
 app.include_router(ops_center_router)
+app.include_router(live_class_router)  # GET /ops/exercises/{id}/class (app/live_class)
 # Greyspace: a simulated internet attached to a range (ADR 0007)
 app.include_router(greyspace_router)
 # Knowledge base, trouble tickets ("Support") and the in-app notification bell

@@ -39,7 +39,13 @@ describe('OpsCenterComponent', () => {
 
   beforeEach(async () => {
     auth = fakeAuth('instructor');
-    mockApi = jasmine.createSpyObj('ApiService', ['get', 'post']);
+    mockApi = jasmine.createSpyObj('ApiService', ['get', 'post', 'getExercise', 'getExerciseClass', 'listInjects', 'resetLabSession']);
+    mockApi.getExercise.and.returnValue(of({ id: exerciseId, name: 'VIGILANT MAPLE', state: 'running' } as any));
+    mockApi.getExerciseClass.and.returnValue(of({
+      exercise_id: exerciseId, exercise_name: 'VIGILANT MAPLE', state: 'running', started_at: '2026-04-17T09:00:00Z',
+      objectives: [], students: [], learning_signal_misses: 3, not_seen_minutes: 15, generated_at: '2026-04-17T10:12:00Z',
+    } as any));
+    mockApi.listInjects.and.returnValue(of([]));
     mockNotify = jasmine.createSpyObj('NotificationService', ['success', 'error']);
 
     mockApi.get.and.callFake((path: string): any => {
@@ -252,6 +258,29 @@ describe('OpsCenterComponent', () => {
     expect((fixture.nativeElement as HTMLElement).textContent).toContain('Suspicious DNS traffic');
     expect(tabLabels()).not.toContain('Instructor');
     expect(buttons().some(b => /Add annotation|Share command|Send Inject/.test(b))).toBeFalse();
+  });
+
+  // ── Issue #199: the exercise's name, not its id; viewers are not attendance ─────────
+  it('names the exercise in the header instead of its id', () => {
+    fixture.detectChanges();
+    const h1 = (fixture.nativeElement as HTMLElement).querySelector('h1')!;
+    expect(h1.textContent).toContain('VIGILANT MAPLE');
+    expect(h1.textContent).not.toContain(exerciseId);
+    expect((fixture.nativeElement as HTMLElement).querySelector('.subtitle')!.textContent).not.toContain(exerciseId);
+  });
+
+  it('labels the WebSocket count as live viewers, never as analysts or attendance', () => {
+    fixture.detectChanges();
+    const text = (fixture.nativeElement as HTMLElement).textContent!;
+    expect(text).not.toContain('Active Analysts');
+    const viewers = (fixture.nativeElement as HTMLElement).querySelector('[data-testid="ops-viewers"]')!;
+    expect(viewers.textContent).toContain('Live viewers');
+    expect(viewers.textContent).toContain('4');
+  });
+
+  it('loads the class roster for the exercise', () => {
+    fixture.detectChanges();
+    expect(mockApi.getExerciseClass).toHaveBeenCalledWith(exerciseId);
   });
 
   it('gives an instructor the input cards and the Instructor tab', () => {

@@ -732,3 +732,100 @@ def test_student_detection_is_recorded_and_credited(world, visit, event_store, r
     assert refused.status_code == 403, refused.text
     assert ok(other.get(f"/exercises/{ex['id']}/detections")) == []
     assert len(ok(staff.get(f"/exercises/{ex['id']}/detections"))) == 1
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# (6) Issue #199: the instructor's live class in the Ops Center. The exercise by name, the
+#     roster with a learning signal seeded from judged misses, the Student drawer, the
+#     WebSocket count not passed off as attendance; a Student is refused, in the SPA and API.
+# ══════════════════════════════════════════════════════════════════════════════════════════
+def test_instructor_sees_the_live_class_and_a_student_is_refused(world, visit):
+    from app.detections.models import DetectionSubmission
+    from app.models import Team, TeamMembership
+    from playwright.sync_api import expect
+
+    name = f"journey-class-{uuid.uuid4().hex[:4]}"
+    ex = make_exercise(world, name)
+    book(world, ex["id"], world.sam)
+    staff = Api(world, world.instructor)
+    started = ok(staff.post(f"/exercises/{ex['id']}/start"))["started_at"]
+    started_at = datetime.fromisoformat(started.replace("Z", "+00:00"))
+    if started_at.tzinfo is None:
+        started_at = started_at.replace(tzinfo=UTC)
+
+    # Bo is on a team of the exercise; Sam has three judged misses on one objective (the
+    # judging is ADR 0005's, exercised by the detection journey; here the rows are the input).
+    db = world.db
+    team = Team(id=uuid.uuid4(), name="Blue Cell 1", tenant_id=world.tenant, exercise_id=uuid.UUID(ex["id"]),
+                color_hex="#1E5AA8")
+    db.add(team)
+    db.flush()
+    db.add(TeamMembership(user_id=world.bo.id, team_id=team.id))
+    for n in range(3):
+        db.add(DetectionSubmission(
+            tenant_id=world.tenant, exercise_id=uuid.UUID(ex["id"]), objective_ref="detect_c2", user_id=world.sam.id,
+            query=f"url.domain:*guess{n}*", verdict="missed", events_matched=2, on_target=0,
+            submitted_at=started_at + timedelta(seconds=5 + n), window_start=started_at,
+        ))
+    db.commit()
+
+    # The API: staff read the roster; the learning signal is there for Sam, not for Bo.
+    roster = ok(staff.get(f"/ops/exercises/{ex['id']}/class"))
+    assert roster["exercise_name"] == name
+    by_name = {s["display_name"]: s for s in roster["students"]}
+    assert set(by_name) == {"Sam Student", "Bo Student"}, by_name.keys()
+    assert [a["kind"] for a in by_name["Sam Student"]["attention"]] == ["learning"]
+    assert by_name["Bo Student"]["team"]["name"] == "Blue Cell 1"
+
+    ins = visit(world.instructor, f"/ops-center/{ex['id']}")
+    expect(title(ins, name)).to_be_visible()
+    expect(ins.get_by_role("main").get_by_text(ex["id"])).to_have_count(0)
+    expect(ins.get_by_text("Active Analysts")).to_have_count(0)
+    expect(ins.get_by_test_id("ops-viewers")).to_contain_text("Live viewers")
+    expect(ins.get_by_test_id("lane-help")).to_contain_text("Help requests arrive with the intervention console (R1 F2)")
+    learning = ins.get_by_test_id("lane-learning")
+    expect(learning).to_contain_text("Sam Student")
+    expect(learning).to_contain_text("3 judged misses on Detect C2")
+    rows = ins.locator("table.dense tbody tr")
+    expect(rows).to_have_count(2)
+    expect(rows.filter(has_text="Bo Student")).to_contain_text("Blue Cell 1")
+    expect(rows.filter(has_text="Sam Student")).to_contain_text("Learning signal")
+    expect(rows.filter(has_text="Sam Student")).to_contain_text("0 / 3")
+    expect(ins.get_by_text("struggling")).to_have_count(0)
+
+    # The drawer, from the keyboard: Sam's attempts and the not-yet-live F2 actions.
+    rows.filter(has_text="Sam Student").press("Enter")
+    drawer = ins.get_by_role("dialog", name="Sam Student")
+    expect(drawer).to_be_visible()
+    expect(drawer).to_contain_text("url.domain:*guess2*")
+    expect(drawer.get_by_role("button", name=re.compile("^Message"))).to_have_attribute("aria-disabled", "true")
+    if ARTIFACTS:
+        pathlib.Path(ARTIFACTS).mkdir(parents=True, exist_ok=True)
+        ins.set_viewport_size({"width": 1440, "height": 1000})
+        ins.screenshot(path=str(pathlib.Path(ARTIFACTS) / "live-class-drawer.png"), full_page=True)
+    ins.keyboard.press("Escape")
+    expect(drawer).to_have_count(0)
+    expect(rows.filter(has_text="Sam Student")).to_be_focused()  # focus goes back
+    learning.get_by_role("button", name="Open Sam Student").press("Enter")  # from the queue, too
+    expect(drawer).to_be_visible()
+    ins.keyboard.press("Escape")
+    expect(drawer).to_have_count(0)
+    if ARTIFACTS:
+        ins.screenshot(path=str(pathlib.Path(ARTIFACTS) / "live-class.png"), full_page=True)
+        ins.evaluate("localStorage.setItem('tn-theme-v2', 'maple-steel')")
+        ins.reload()
+        expect(ins.get_by_test_id("lane-learning")).to_contain_text("Sam Student")
+        ins.screenshot(path=str(pathlib.Path(ARTIFACTS) / "live-class-dark.png"), full_page=True)
+        ins.set_viewport_size({"width": 820, "height": 1100})
+        ins.screenshot(path=str(pathlib.Path(ARTIFACTS) / "live-class-tablet.png"), full_page=True)
+        assert ins.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1"), "overflow at 820 px"
+
+    # A Student, even one on the roster: the SPA does not open the page and the API refuses.
+    asked: list[int] = []
+    sam = visit(world.sam, "/learning")
+    sam.on("response", lambda r: asked.append(r.status) if "/class" in r.url else None)
+    sam.goto(f"/ops-center/{ex['id']}")
+    expect(sam).not_to_have_url(re.compile(r"/ops-center/"))
+    expect(sam.get_by_text("Learning signal")).to_have_count(0)
+    assert asked == [], asked
+    assert Api(world, world.sam).get(f"/ops/exercises/{ex['id']}/class").status_code == 403

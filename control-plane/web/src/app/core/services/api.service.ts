@@ -37,6 +37,12 @@ export type LtiLinkPreview = components['schemas']['LtiLinkPreviewOut'];
 export type LtiLink = components['schemas']['LtiLinkOut'];
 /** One detection attempt (POST/GET .../detections). */
 export type Detection = components['schemas']['DetectionOut'];
+/** GET /ops/exercises/{id}/class: the live class in the Ops Center (issue #199). */
+export type ExerciseClass = components['schemas']['ExerciseClassOut'];
+export type ClassStudent = components['schemas']['ClassStudentOut'];
+export type ClassAttention = components['schemas']['AttentionOut'];
+/** POST /lab-sessions/{id}/reset. */
+export type LabSessionState = components['schemas']['LabSessionOut'];
 
 /** One row of GET /exercise-forge/history. */
 export interface ForgeHistoryItem {
@@ -404,6 +410,16 @@ export class ApiService {
   /** A Student's own attempts; every attempt (with on_target/precision) for staff. */
   listDetections(exerciseId: string): Observable<Detection[]> {
     return this.http.get<Detection[]>(`${this.base}/exercises/${exerciseId}/detections`);
+  }
+
+  // ── Live class (Ops Center, issue #199) ─────────────────
+  /** The roster of an exercise with each Student's team, lab, attempts and credit. Staff and observers. */
+  getExerciseClass(exerciseId: string): Observable<ExerciseClass> {
+    return this.http.get<ExerciseClass>(`${this.base}/ops/exercises/${exerciseId}/class`);
+  }
+  /** Reset a Student's lab to its baseline (staff need learning_record:write; ready or active labs only). */
+  resetLabSession(sessionId: string): Observable<LabSessionState> {
+    return this.http.post<LabSessionState>(`${this.base}/lab-sessions/${sessionId}/reset`, {});
   }
 
   // ── AAR ──────────────────────────────────────────────────
