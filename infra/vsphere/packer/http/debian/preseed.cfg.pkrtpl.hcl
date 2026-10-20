@@ -10,19 +10,20 @@ d-i netcfg/get_domain string range.local
 # dPG-TN-BUILD has no gateway (ADR 0012): without this the installer stops and asks.
 d-i netcfg/no_default_route boolean true
 
-%{ if apt_proxy != "" }
+%{ if apt_proxy != "" ~}
 d-i mirror/country string manual
 d-i mirror/http/hostname string deb.debian.org
 d-i mirror/http/directory string /debian
 # Build-time apt proxy (apt_proxy: TN-DEPOT01 apt-cacher-ng); empty = none. cleanup.sh
 # removes it from the installed system.
 d-i mirror/http/proxy string ${apt_proxy}
-%{ else }
+%{ else ~}
 # Offline base (no depot yet): install from the ISO only, no network mirror.
 d-i apt-setup/use_mirror boolean false
+d-i mirror/http/proxy string
 d-i apt-setup/services-select multiselect
 d-i apt-setup/non-free-firmware boolean true
-%{ endif }
+%{ endif ~}
 
 d-i clock-setup/utc boolean true
 d-i time/zone string UTC
@@ -44,11 +45,11 @@ d-i user-setup/allow-password-weak boolean true
 
 tasksel tasksel/first multiselect standard, ssh-server
 d-i pkgsel/include string openssh-server open-vm-tools cloud-init sudo curl wget git net-tools
-%{ if apt_proxy != "" }
+%{ if apt_proxy != "" ~}
 d-i pkgsel/upgrade select full-upgrade
-%{ else }
+%{ else ~}
 d-i pkgsel/upgrade select none
-%{ endif }
+%{ endif ~}
 
 d-i preseed/late_command string \
   in-target systemctl enable ssh ; \

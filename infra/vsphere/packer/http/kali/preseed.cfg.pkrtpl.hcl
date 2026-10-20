@@ -18,19 +18,20 @@ d-i netcfg/no_default_route boolean true
 d-i netcfg/hostname string kali
 
 # Mirror
-%{ if apt_proxy != "" }
+%{ if apt_proxy != "" ~}
 d-i mirror/country string enter information manually
 d-i mirror/http/hostname string http.kali.org
 d-i mirror/http/directory string /kali
 # Build-time apt proxy (apt_proxy: TN-DEPOT01 apt-cacher-ng); empty = none. cleanup.sh
 # removes it from the installed system.
 d-i mirror/http/proxy string ${apt_proxy}
-%{ else }
+%{ else ~}
 # Offline base (no depot yet): install from the ISO only, no network mirror.
 d-i apt-setup/use_mirror boolean false
+d-i mirror/http/proxy string
 d-i apt-setup/services-select multiselect
 d-i apt-setup/non-free-firmware boolean true
-%{ endif }
+%{ endif ~}
 
 # Clock and timezone
 d-i clock-setup/utc boolean true
@@ -62,11 +63,11 @@ tasksel tasksel/first multiselect standard
 # No cloud-init: it is not on the Kali installer ISO (offline build); VMware guest
 # customization works through open-vm-tools without it.
 d-i pkgsel/include string openssh-server open-vm-tools sudo curl wget git net-tools
-%{ if apt_proxy != "" }
+%{ if apt_proxy != "" ~}
 d-i pkgsel/upgrade select full-upgrade
-%{ else }
+%{ else ~}
 d-i pkgsel/upgrade select none
-%{ endif }
+%{ endif ~}
 
 # Enable SSH and VMware tools
 # The installed system must bring its NIC up by DHCP (Packer waits for the IP). Kali's core

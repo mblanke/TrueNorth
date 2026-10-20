@@ -62,8 +62,12 @@ source "vsphere-iso" "srv2022" {
   winrm_username = "Administrator"
   winrm_password = var.windows_admin_password
   winrm_timeout  = "3h"
-  winrm_use_ssl  = false
-  winrm_insecure = true
+  # sysprep generalizes and powers the VM off: it is the shutdown step, not a provisioner (as in
+  # roles/variants). Run as a provisioner it cut WinRM mid-step and failed the build.
+  shutdown_command = "powershell -NoProfile -ExecutionPolicy Bypass -File C:\\Windows\\Temp\\sysprep.ps1"
+  shutdown_timeout = "1h"
+  winrm_use_ssl    = false
+  winrm_insecure   = true
 
   boot_wait    = "3s"
   boot_command = ["<spacebar>"]
@@ -130,8 +134,12 @@ source "vsphere-iso" "srv2025" {
   winrm_username = "Administrator"
   winrm_password = var.windows_admin_password
   winrm_timeout  = "3h"
-  winrm_use_ssl  = false
-  winrm_insecure = true
+  # sysprep generalizes and powers the VM off: it is the shutdown step, not a provisioner (as in
+  # roles/variants). Run as a provisioner it cut WinRM mid-step and failed the build.
+  shutdown_command = "powershell -NoProfile -ExecutionPolicy Bypass -File C:\\Windows\\Temp\\sysprep.ps1"
+  shutdown_timeout = "1h"
+  winrm_use_ssl    = false
+  winrm_insecure   = true
 
   boot_wait    = "3s"
   boot_command = ["<spacebar>"]
@@ -195,8 +203,12 @@ source "vsphere-iso" "srv2019" {
   winrm_username = "Administrator"
   winrm_password = var.windows_admin_password
   winrm_timeout  = "3h"
-  winrm_use_ssl  = false
-  winrm_insecure = true
+  # sysprep generalizes and powers the VM off: it is the shutdown step, not a provisioner (as in
+  # roles/variants). Run as a provisioner it cut WinRM mid-step and failed the build.
+  shutdown_command = "powershell -NoProfile -ExecutionPolicy Bypass -File C:\\Windows\\Temp\\sysprep.ps1"
+  shutdown_timeout = "1h"
+  winrm_use_ssl    = false
+  winrm_insecure   = true
 
   boot_wait    = "3s"
   boot_command = ["<spacebar>"]
@@ -260,8 +272,12 @@ source "vsphere-iso" "srv2016" {
   winrm_username = "Administrator"
   winrm_password = var.windows_admin_password
   winrm_timeout  = "3h"
-  winrm_use_ssl  = false
-  winrm_insecure = true
+  # sysprep generalizes and powers the VM off: it is the shutdown step, not a provisioner (as in
+  # roles/variants). Run as a provisioner it cut WinRM mid-step and failed the build.
+  shutdown_command = "powershell -NoProfile -ExecutionPolicy Bypass -File C:\\Windows\\Temp\\sysprep.ps1"
+  shutdown_timeout = "1h"
+  winrm_use_ssl    = false
+  winrm_insecure   = true
 
   boot_wait    = "3s"
   boot_command = ["<spacebar>"]
@@ -325,8 +341,12 @@ source "vsphere-iso" "win10-22h2" {
   winrm_username = "Administrator"
   winrm_password = var.windows_admin_password
   winrm_timeout  = "3h"
-  winrm_use_ssl  = false
-  winrm_insecure = true
+  # sysprep generalizes and powers the VM off: it is the shutdown step, not a provisioner (as in
+  # roles/variants). Run as a provisioner it cut WinRM mid-step and failed the build.
+  shutdown_command = "powershell -NoProfile -ExecutionPolicy Bypass -File C:\\Windows\\Temp\\sysprep.ps1"
+  shutdown_timeout = "1h"
+  winrm_use_ssl    = false
+  winrm_insecure   = true
 
   boot_wait    = "3s"
   boot_command = ["<spacebar>"]
@@ -393,8 +413,12 @@ source "vsphere-iso" "win10-ltsc" {
   winrm_username = "Administrator"
   winrm_password = var.windows_admin_password
   winrm_timeout  = "3h"
-  winrm_use_ssl  = false
-  winrm_insecure = true
+  # sysprep generalizes and powers the VM off: it is the shutdown step, not a provisioner (as in
+  # roles/variants). Run as a provisioner it cut WinRM mid-step and failed the build.
+  shutdown_command = "powershell -NoProfile -ExecutionPolicy Bypass -File C:\\Windows\\Temp\\sysprep.ps1"
+  shutdown_timeout = "1h"
+  winrm_use_ssl    = false
+  winrm_insecure   = true
 
   boot_wait    = "3s"
   boot_command = ["<spacebar>"]
@@ -459,8 +483,12 @@ source "vsphere-iso" "win11-24h2" {
   winrm_username = "Administrator"
   winrm_password = var.windows_admin_password
   winrm_timeout  = "3h"
-  winrm_use_ssl  = false
-  winrm_insecure = true
+  # sysprep generalizes and powers the VM off: it is the shutdown step, not a provisioner (as in
+  # roles/variants). Run as a provisioner it cut WinRM mid-step and failed the build.
+  shutdown_command = "powershell -NoProfile -ExecutionPolicy Bypass -File C:\\Windows\\Temp\\sysprep.ps1"
+  shutdown_timeout = "1h"
+  winrm_use_ssl    = false
+  winrm_insecure   = true
 
   boot_wait    = "3s"
   boot_command = ["<spacebar>"]
@@ -505,7 +533,9 @@ build {
   }
 
   # Final: generalize and shut down. Keep this last.
-  provisioner "powershell" {
-    script = "${path.root}/files/windows/sysprep.ps1"
+  # Staged here; shutdown_command runs it (scrubs build secrets, then sysprep /shutdown).
+  provisioner "file" {
+    source      = "${path.root}/files/windows/sysprep.ps1"
+    destination = "C:/Windows/Temp/sysprep.ps1"
   }
 }

@@ -96,7 +96,7 @@ confirm "Copy ${#plan[@]} ISO(s) to [$DST_DS] $FOLDER/?" || die "not confirmed; 
 step "Copy"
 failed=0
 for item in "${plan[@]}"; do
-  IFS='|' read -r path want how <<<"$item"
+  IFS='|' read -r path want _how <<<"$item"
   act govc datastore.mkdir -p -ds "$DST_DS" "$(dirname "$path")"
   # Always overwrite: a copy only happens when the sizes differ, and a destination that exists
   # with no reported size (a 0-byte leftover of an interrupted copy) reads as "missing" above.
