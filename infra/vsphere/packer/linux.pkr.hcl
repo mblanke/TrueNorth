@@ -179,9 +179,11 @@ source "vsphere-iso" "kali" {
   # left the installer at an interactive prompt (2026-10-20, ESXi 8.0.3). no_default_route
   # and get_nameservers (the build DHCP gives no DNS) are on the kernel line because netcfg
   # runs before the preseed file is fetched.
+  # net.ifnames=0: installed Kali names the NIC eth0; without it netcfg wrote its DHCP config
+  # for ens33 and the installed system came up with no network (2026-10-20).
   boot_command = [
     "c<wait>",
-    "linux /install.amd/vmlinuz auto=true priority=critical netcfg/no_default_route=true netcfg/get_nameservers=127.0.0.1 url=http://{{ .HTTPIP }}:{{ .HTTPPort }}/kali/preseed.cfg locale=en_US.UTF-8 keymap=us hostname=kali domain=range.local --- quiet<enter><wait>",
+    "linux /install.amd/vmlinuz auto=true priority=critical netcfg/no_default_route=true netcfg/get_nameservers=127.0.0.1 url=http://{{ .HTTPIP }}:{{ .HTTPPort }}/kali/preseed.cfg locale=en_US.UTF-8 keymap=us hostname=kali domain=range.local net.ifnames=0 biosdevname=0 --- quiet<enter><wait>",
     "initrd /install.amd/initrd.gz<enter><wait>",
     "boot<enter>"
   ]
