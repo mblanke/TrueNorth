@@ -258,8 +258,19 @@ def _with_prereqs(prereqs) -> str:
     return yaml.safe_dump(doc, sort_keys=False)
 
 
+def _without_prereqs() -> str:
+    """The fixture course with its `prerequisites:` key removed, not merely emptied."""
+    doc = _doc()
+    doc.pop("prerequisites", None)
+    return yaml.safe_dump(doc, sort_keys=False)
+
+
 def test_no_declared_prerequisites_parse_as_none():
-    assert parse_course_content(_text())["prerequisites"] == []
+    assert parse_course_content(_without_prereqs())["prerequisites"] == []
+
+
+def test_the_fixture_course_declares_its_prerequisites():
+    assert parse_course_content(_text())["prerequisites"] == _doc()["prerequisites"]
 
 
 def test_declared_prerequisites_parse_in_order_without_repeats():
@@ -286,7 +297,7 @@ def test_declared_prerequisites_land_on_the_course_and_survive_a_catalogue_reimp
     assert json.loads(course.course_meta)["prerequisites"] == ["C103"]
 
     # Removing the key from the file clears the declaration.
-    import_course_content(seeded, _text())
+    import_course_content(seeded, _without_prereqs())
     assert json.loads(course.course_meta)["prerequisites"] == []
 
 

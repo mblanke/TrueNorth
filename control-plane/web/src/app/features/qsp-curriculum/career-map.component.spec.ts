@@ -1,6 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
-import { provideRouter } from '@angular/router';
+import { Router, provideRouter } from '@angular/router';
 
 import { CareerMapComponent } from './career-map.component';
 import { CourseEdge, CurriculumMap, NodeCourse, QualNode } from '@core/services/curriculum-map.service';
@@ -163,5 +163,107 @@ describe('CareerMapComponent course prerequisites', () => {
 
     expect(el.querySelectorAll('.course-edge').length).toBe(0);
     expect(el.querySelector('#tn-course-card')).toBeNull();
+  });
+
+  describe('click to pin', () => {
+    function click(code: string): void {
+      chip(code).click();
+      fixture.detectChanges();
+    }
+
+    function key(name: string): void {
+      el.dispatchEvent(new KeyboardEvent('keydown', { key: name, bubbles: true }));
+      fixture.detectChanges();
+    }
+
+    const card = () => el.querySelector<HTMLElement>('#tn-course-card');
+
+    it('pins arrows in from what a course needs and out to what it leads to', async () => {
+      await render(DECLARED);
+      click('C201');
+
+      expect(chip('C201').getAttribute('aria-pressed')).toBe('true');
+      expect(chip('C201').classList).toContain('is-pinned');
+      expect(el.querySelectorAll('.course-edge').length).toBe(2);
+      expect(chip('C101').classList).toContain('is-prereq');
+      expect(chip('C301').classList).toContain('is-dependent');
+      expect(card()!.getAttribute('role')).toBe('group');
+      expect(card()!.textContent).toMatch(/Prerequisites\s*C101/);
+      expect(card()!.textContent).toMatch(/Required by\s*C301/);
+    });
+
+    it('holds the pin when the pointer leaves or crosses another course', async () => {
+      await render(DECLARED);
+      click('C201');
+      chip('C201').dispatchEvent(new MouseEvent('mouseout', { bubbles: true, relatedTarget: el }));
+      hover('C202');
+
+      expect(card()!.textContent).toContain('C201 — Course C201');
+      expect(el.querySelectorAll('.course-edge').length).toBe(2);
+    });
+
+    it('unpins when the same course is clicked again', async () => {
+      await render(DECLARED);
+      click('C201');
+      click('C201');
+
+      expect(chip('C201').getAttribute('aria-pressed')).toBe('false');
+      expect(el.querySelectorAll('.course-edge').length).toBe(0);
+      expect(card()).toBeNull();
+    });
+
+    it('unpins on Esc and gives focus back to the course', async () => {
+      await render(DECLARED);
+      click('C201');
+      card()!.querySelector<HTMLButtonElement>('.cc-open')!.focus();
+      key('Escape');
+
+      expect(el.querySelectorAll('.course-edge').length).toBe(0);
+      expect(card()).toBeNull();
+      expect(document.activeElement).toBe(chip('C201'));
+    });
+
+    it('moves the pin when another course is clicked', async () => {
+      await render(DECLARED);
+      click('C201');
+      click('C301');
+
+      expect(chip('C201').getAttribute('aria-pressed')).toBe('false');
+      expect(chip('C301').getAttribute('aria-pressed')).toBe('true');
+      expect(chip('C201').classList).toContain('is-prereq');
+      expect(el.querySelectorAll('.course-edge').length).toBe(1);
+      expect(card()!.textContent).toContain('C301 — Course C301');
+      expect(card()!.textContent).toMatch(/Required by\s*none on the map/);
+    });
+
+    it('makes each course a button, so Enter pins it like a click', async () => {
+      await render(DECLARED);
+      // Enter on a focused <button> is a native click; a link would navigate instead.
+      expect(chip('C201').tagName).toBe('BUTTON');
+      expect(chip('C201').getAttribute('type')).toBe('button');
+      expect(chip('C201').hasAttribute('href')).toBeFalse();
+    });
+
+    it('opens the course from a button in the pinned card, not from the chip', async () => {
+      await render(DECLARED);
+      const router = TestBed.inject(Router);
+      const go = spyOn(router, 'navigateByUrl').and.resolveTo(true);
+
+      click('C201');
+      expect(go).not.toHaveBeenCalled();
+
+      const open = card()!.querySelector<HTMLButtonElement>('button.cc-open')!;
+      expect(open.textContent).toContain('Open course');
+      open.click();
+      expect(go).toHaveBeenCalled();
+      expect(String(go.calls.mostRecent().args[0])).toBe('/learning/courses/id-C201');
+    });
+
+    it('offers no open button on a card that is only hovered', async () => {
+      await render(DECLARED);
+      hover('C201');
+      expect(card()!.getAttribute('role')).toBe('tooltip');
+      expect(card()!.querySelector('.cc-open')).toBeNull();
+    });
   });
 });

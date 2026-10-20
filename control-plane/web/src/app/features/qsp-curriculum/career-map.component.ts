@@ -61,7 +61,11 @@ interface DrawnEdge {
 
 /** What the course card says about the hovered course, and where it sits. */
 interface CourseCard {
+  /** course_id, for the card's "Open course" button. */
+  id: string;
   name: string;
+  /** Pinned by a click or Enter: stays until unpinned, and offers "Open course". */
+  pinned: boolean;
   /** Declared prerequisite codes, as written, including any not on the map. */
   requires: string[];
   /** Codes of courses on the map that declare this one as a prerequisite. */
@@ -122,7 +126,7 @@ const STATE_LABEL: Record<NodeState, string> = {
           <path d="M 1 5 H 28" class="legend-arrow-line" />
           <path d="M 27 1 L 35 5 L 27 9 z" class="legend-arrow-head" />
         </svg>
-        prerequisite → course that requires it (hover or focus a course)
+        prerequisite → course that requires it (hover a course; click to pin)
       </span>
       @if (!hasCourseEdges()) {
         <span class="legend-item legend-note">
@@ -325,20 +329,25 @@ const STATE_LABEL: Record<NodeState, string> = {
                         <span class="term-courses">
                           <!-- No matTooltip here: a floating tooltip sits in the overlay
                                above everything and hid the arrows it was describing. The
-                               course card below takes its place, under the arrows. -->
+                               course card below takes its place, under the arrows.
+                               A chip is a toggle, not a link: click (or Enter) pins its
+                               arrows and card; opening the course is a button in the card. -->
                           @for (c of term.courses; track c.course_id) {
-                            <a
+                            <button
+                              type="button"
                               class="c-chip"
                               [class.delivers]="c.delivers.length"
                               [class.cross-dp]="c.delivers_cross_dp"
                               [class.is-focus]="hoveredCourse() === c.course_id"
+                              [class.is-pinned]="pinnedCourse() === c.course_id"
                               [class.is-prereq]="prereqChips().has(c.course_id)"
                               [class.is-dependent]="dependentChips().has(c.course_id)"
                               [attr.data-course]="c.course_id"
                               [attr.aria-label]="c.name"
+                              [attr.aria-pressed]="pinnedCourse() === c.course_id"
                               [attr.aria-describedby]="hoveredCourse() === c.course_id ? 'tn-course-card' : null"
-                              [routerLink]="['/learning/courses', c.course_id]"
-                            >{{ c.course_code }}</a>
+                              (click)="togglePin(c.course_id)"
+                            >{{ c.course_code }}</button>
                           }
                         </span>
                       </li>
@@ -360,13 +369,16 @@ const STATE_LABEL: Record<NodeState, string> = {
           }
         }
 
-        <!-- What the hovered or focused course is. Inside the map, beside the chips it
-             concerns, and painted UNDER the arrows: text may never hide an arrow. -->
+        <!-- What the hovered, focused or pinned course is. Inside the map, beside the
+             chips it concerns, and painted UNDER the arrows: text may never hide an
+             arrow. Pinned, it is interactive and carries the way into the course. -->
         @if (courseCard(); as card) {
           <div
             id="tn-course-card"
             class="course-card"
-            role="tooltip"
+            [class.pinned]="card.pinned"
+            [attr.role]="card.pinned ? 'group' : 'tooltip'"
+            [attr.aria-label]="card.pinned ? 'Pinned course: ' + card.name : null"
             [attr.data-place]="card.place"
             [style.left.px]="card.x"
             [style.top.px]="card.y"
@@ -377,15 +389,24 @@ const STATE_LABEL: Record<NodeState, string> = {
               <span class="cc-key">Prerequisites</span>
               {{ card.requires.length ? card.requires.join(', ') : 'none declared' }}
             </span>
-            @if (card.requiredBy.length) {
-              <span class="cc-line">
-                <span class="cc-key">Required by</span> {{ card.requiredBy.join(', ') }}
-              </span>
-            }
+            <span class="cc-line">
+              <span class="cc-key">Required by</span>
+              {{ card.requiredBy.length ? card.requiredBy.join(', ') : 'none on the map' }}
+            </span>
             @for (d of card.delivers; track $index) {
               <span class="cc-line cc-delivers">{{ d }}</span>
             } @empty {
               <span class="cc-line cc-muted">Delivers no performance objective</span>
+            }
+            @if (card.pinned) {
+              <span class="cc-actions">
+                <button
+                  type="button"
+                  class="cc-open"
+                  [routerLink]="['/learning/courses', card.id]"
+                >Open course</button>
+                <span class="cc-muted">Click the course again or press Esc to unpin</span>
+              </span>
             }
           </div>
         }
@@ -427,7 +448,8 @@ const STATE_LABEL: Record<NodeState, string> = {
 
     <p class="hint">
       <mat-icon>keyboard</mat-icon>
-      Arrow keys move between qualifications, Enter opens one.
+      Arrow keys move between qualifications, Enter opens one. Click or press Enter on a
+      course to pin its prerequisites and what it leads to; Esc unpins.
     </p>
   `,
   styles: [
@@ -484,8 +506,10 @@ const STATE_LABEL: Record<NodeState, string> = {
         font-size: 0.62rem;
         line-height: 1.5;
         padding: 1px 5px;
+        margin: 0;
         border-radius: 4px;
         border: 1px solid var(--border-light);
+        background: none;
         color: var(--text-secondary, inherit);
         white-space: nowrap;
       }
@@ -638,6 +662,11 @@ const STATE_LABEL: Record<NodeState, string> = {
       .c-chip.is-prereq,
       .c-chip.is-dependent { border-color: var(--accent); color: var(--accent); }
       .c-chip.is-focus { outline: 1px solid var(--accent); }
+      .c-chip.is-pinned {
+        outline: 2px solid var(--accent);
+        background: var(--accent);
+        color: var(--bg-card);
+      }
 
       /* What the hovered course is, beside it and under the arrows (see .course-edges).
          data-place says which side of the related chips it was put on; left and above
@@ -672,6 +701,26 @@ const STATE_LABEL: Record<NodeState, string> = {
       }
       .cc-delivers { color: var(--text-secondary); }
       .cc-muted { color: var(--text-muted); }
+      /* Pinned, the card holds a control, so it takes the pointer. */
+      .course-card.pinned { pointer-events: auto; border-width: 2px; }
+      .cc-actions {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 4px 8px;
+        margin-top: 4px;
+      }
+      .cc-open {
+        font: inherit;
+        font-weight: 700;
+        cursor: pointer;
+        padding: 2px 10px;
+        border-radius: var(--radius-sm, 4px);
+        border: 1px solid var(--accent);
+        background: var(--accent);
+        color: var(--bg-card);
+      }
+      .cc-open:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
       /* ── Nodes ─────────────────────────────────────────────── */
       /* The bubble: the card face plus the programme taught in the period. */
@@ -927,8 +976,14 @@ export class CareerMapComponent implements AfterViewInit, OnDestroy {
     return seen;
   });
 
-  /** Course chip under the pointer (or keyboard focus), if any. */
+  /** Course whose arrows and card are shown: hovered, focused or pinned. */
   protected readonly hoveredCourse = signal<string | null>(null);
+  /**
+   * Course pinned by a click (or Enter, which clicks a button). While set, hover and
+   * focus elsewhere do not move the highlight; clicking it again or Esc clears it,
+   * clicking another course moves it.
+   */
+  protected readonly pinnedCourse = signal<string | null>(null);
   /** Transient arrow paths into and out of the hovered chip, prerequisite -> dependent. */
   protected readonly courseArrows = signal<string[]>([]);
   /** The hovered course's card, placed clear of the chips and arrows it describes. */
@@ -1093,45 +1148,83 @@ export class CareerMapComponent implements AfterViewInit, OnDestroy {
         path: `M ${x1} ${y1} C ${x1 + bend} ${y1}, ${x2 - bend} ${y2}, ${x2} ${y2}`,
       });
     }
+    // Chip rects move with the layout, so any arrow or card is now stale: a pinned
+    // course is re-measured where it now sits, a merely hovered one is dropped.
+    const pinned = this.pinnedCourse();
+    const repinned = pinned ? this.measureCourseArrows(pinned) : null;
     this.zone.run(() => {
       this.drawnEdges.set(drawn);
-      // Chip rects move with the layout, so any transient arrow or card is now stale.
-      if (this.hoveredCourse()) {
-        this.courseArrows.set([]);
-        this.courseCard.set(null);
-        this.hoveredCourse.set(null);
+      if (repinned?.card) {
+        this.show(pinned!, repinned);
+      } else if (this.hoveredCourse() || pinned) {
+        this.pinnedCourse.set(null);
+        this.clearCourse();
       }
     });
   }
 
   // ── Course prerequisite arrows ──────────────────────────────
 
+  private show(id: string, drawn: { arrows: string[]; card: CourseCard | null }): void {
+    this.hoveredCourse.set(id);
+    this.courseArrows.set(drawn.arrows);
+    this.courseCard.set(drawn.card);
+  }
+
+  private clearCourse(): void {
+    this.hoveredCourse.set(null);
+    this.courseArrows.set([]);
+    this.courseCard.set(null);
+  }
+
+  /**
+   * Click (or Enter/Space, which click a button) on a course chip: pin it, move the pin
+   * to it from another course, or unpin it if it is already pinned.
+   */
+  protected togglePin(id: string): void {
+    if (this.pinnedCourse() === id) {
+      this.pinnedCourse.set(null);
+      this.clearCourse();
+      return;
+    }
+    this.pinnedCourse.set(id);
+    this.show(id, this.measureCourseArrows(id));
+  }
+
+  /** Esc: drop the pin and return focus to the chip, which the card may have held. */
+  private unpin(): void {
+    const id = this.pinnedCourse();
+    if (!id) return;
+    // Focus first, while the pin still holds, so the focus does not reopen the card as
+    // a preview the moment it was dismissed.
+    this.gridRef?.nativeElement
+      .querySelector<HTMLElement>(`.c-chip[data-course="${id}"]`)
+      ?.focus();
+    this.zone.run(() => {
+      this.pinnedCourse.set(null);
+      this.clearCourse();
+    });
+  }
+
   /** Delegated hover/focus onto a course chip: draw its prerequisite arrows and card. */
   private readonly onChipEnter = (event: Event): void => {
+    if (this.pinnedCourse()) return; // a pin holds until it is unpinned or moved
     const chip = (event.target as HTMLElement | null)?.closest?.(
       '.c-chip[data-course]',
     ) as HTMLElement | null;
     const id = chip?.dataset['course'] ?? null;
     if (!id || id === this.hoveredCourse()) return;
-    const { arrows, card } = this.measureCourseArrows(id);
-    this.zone.run(() => {
-      this.hoveredCourse.set(id);
-      this.courseArrows.set(arrows);
-      this.courseCard.set(card);
-    });
+    const drawn = this.measureCourseArrows(id);
+    this.zone.run(() => this.show(id, drawn));
   };
 
   /** Clear the arrows, unless the pointer/focus only moved within the same chip. */
   private readonly onChipLeave = (event: Event): void => {
     const current = this.hoveredCourse();
-    if (!current) return;
+    if (!current || this.pinnedCourse()) return;
     const rel = (event as MouseEvent | FocusEvent).relatedTarget as HTMLElement | null;
     if (rel?.closest?.(`.c-chip[data-course="${current}"]`)) return;
-    this.zone.run(() => {
-      this.hoveredCourse.set(null);
-      this.courseArrows.set([]);
-      this.courseCard.set(null);
-    });
+    this.zone.run(() => this.clearCourse());
   };
 
   /**
@@ -1179,7 +1272,9 @@ export class CareerMapComponent implements AfterViewInit, OnDestroy {
     return {
       arrows,
       card: {
+        id: courseId,
         name: course.name,
+        pinned: this.pinnedCourse() === courseId,
         requires: course.prerequisites ?? [],
         requiredBy: requiredBy.filter(Boolean).sort(),
         delivers: course.delivers.map(d => `Delivers ${d.qsp_code} ${d.po_code} — ${d.po_title}`),
@@ -1192,7 +1287,7 @@ export class CareerMapComponent implements AfterViewInit, OnDestroy {
    * Put the course card beside everything the arrows touch, never across it. First
    * choice is outside the hovered chip's bubble altogether — left of it, else right,
    * whichever side has room — so no chip in the programme is covered. When the map is
-   * stacked and the bubble is full width, below the related chips, else above. The
+   * stacked and the bubble is full width, below the bubble, else above the chips. The
    * arrows paint over the card regardless; this keeps the chips readable.
    */
   private placeCard(
@@ -1212,7 +1307,13 @@ export class CareerMapComponent implements AfterViewInit, OnDestroy {
         : { x: right + CARD_GAP, y: anchorTop, maxWidth: Math.min(CARD_W, roomRight), place: 'right' };
     }
     const top = Math.min(...related.map(r => r.top)) - origin.top - CURVE_PAD;
-    const bottom = Math.max(...related.map(r => r.bottom)) - origin.top + CURVE_PAD;
+    // Below the whole bubble, not just the related chips: a pinned card stays up, and
+    // one dropped among the bubble's later terms hid courses the Student would click
+    // next to move the pin.
+    const bottom = Math.max(
+      Math.max(...related.map(r => r.bottom)) - origin.top + CURVE_PAD,
+      bubble ? bubble.bottom - origin.top + CARD_GAP : 0,
+    );
     const x = Math.max(0, Math.min(related[0].left - origin.left, origin.width - CARD_W));
     if (origin.height - bottom >= 120) {
       return { x, y: bottom, maxWidth: CARD_W, place: 'below' };
@@ -1258,6 +1359,11 @@ export class CareerMapComponent implements AfterViewInit, OnDestroy {
    * empty cells never trap focus.
    */
   private readonly onKeydown = (event: KeyboardEvent): void => {
+    if (event.key === 'Escape' && this.pinnedCourse()) {
+      event.preventDefault();
+      this.unpin();
+      return;
+    }
     const cells = this.focusable();
     if (!cells.length) return;
 

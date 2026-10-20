@@ -11,6 +11,10 @@ provenance: unsourced
 status: draft
 is_published: false
 qsp_code: TEMP64
+# Prerequisites by subject: PROPOSED 2026-10-20, pending programme owner approval.
+prerequisites:
+- C210
+- C211
 source:
   origin: authored 2026-08-19 to the pattern of the recovered IoT Security Foundations draft
   citations_verified: '2026-08-19'
