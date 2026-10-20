@@ -8796,16 +8796,6 @@ export interface components {
             /** Verification Url */
             verification_url?: string | null;
         };
-        /** ClassItemOut */
-        ClassItemOut: {
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Name */
-            name: string;
-        };
         /**
          * ClassAttemptOut
          * @description One detection attempt in this run. ``query`` and ``precision`` only for staff who may
@@ -8829,6 +8819,16 @@ export interface components {
             submitted_at?: string | null;
             /** Verdict */
             verdict: string;
+        };
+        /** ClassItemOut */
+        ClassItemOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
         };
         /**
          * ClassLabOut
