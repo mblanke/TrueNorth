@@ -159,7 +159,47 @@ objectives:
   - {id: write_report, type: deliverable, validator: deliverable_check, points: 10}
 """
 
-TEMPLATE_YAML = "name: corp-finance-small\nenvironment: enterprise\n"
+# A small finance enterprise, shaped like content/ranges/*/template.yaml: the booking's size
+# is derived from these nodes by range_topology.template_demand, as the scheduler API does.
+TEMPLATE_YAML = """id: corp-finance-small
+name: Corporate Finance (Small Enterprise)
+version: "1.0"
+description: |
+  A small finance office: domain controller, file and finance servers, four analyst
+  workstations behind a perimeter firewall and web proxy, with a Security Onion sensor
+  on a SPAN of the user VLAN and an OpenSearch SIEM for the hunting team.
+difficulty: intermediate
+vm_count: 11
+network:
+  vlans:
+    - {id: 310, name: perimeter, cidr: "10.70.10.0/24"}
+    - {id: 311, name: servers, cidr: "10.70.11.0/24"}
+    - {id: 312, name: users, cidr: "10.70.12.0/24"}
+    - {id: 313, name: monitoring, cidr: "10.70.13.0/24"}
+nodes:
+  - {id: fw01, name: Perimeter Firewall, role: firewall, os: pfsense-2.7, vlan: perimeter, ip: "10.70.10.1",
+     specs: {cores: 2, memory_mb: 2048, disk_gb: 20}}
+  - {id: proxy01, name: Web Proxy, role: proxy, os: ubuntu-2404, vlan: perimeter, ip: "10.70.10.20",
+     specs: {cores: 2, memory_mb: 4096, disk_gb: 40}, services: [squid]}
+  - {id: dc01, name: Domain Controller, role: domain_controller, os: windows-server-2022, vlan: servers,
+     ip: "10.70.11.10", specs: {cores: 4, memory_mb: 8192, disk_gb: 80}, services: [ad_ds, dns]}
+  - {id: fs02, name: File Server, role: file_server, os: windows-server-2022, vlan: servers, ip: "10.70.11.20",
+     specs: {cores: 4, memory_mb: 8192, disk_gb: 250}, services: [smb]}
+  - {id: fin01, name: Finance App Server, role: app_server, os: windows-server-2022, vlan: servers,
+     ip: "10.70.11.30", specs: {cores: 4, memory_mb: 16384, disk_gb: 120}, services: [mssql, iis]}
+  - {id: fin-ws-05, name: Finance Workstation 05, role: workstation, os: windows-11, vlan: users,
+     ip: "10.70.12.105", specs: {cores: 2, memory_mb: 8192, disk_gb: 80}}
+  - {id: fin-ws-06, name: Finance Workstation 06, role: workstation, os: windows-11, vlan: users,
+     ip: "10.70.12.106", specs: {cores: 2, memory_mb: 8192, disk_gb: 80}}
+  - {id: fin-ws-07, name: Finance Workstation 07, role: workstation, os: windows-11, vlan: users,
+     ip: "10.70.12.107", specs: {cores: 2, memory_mb: 8192, disk_gb: 80}}
+  - {id: fin-ws-08, name: Finance Workstation 08, role: workstation, os: windows-11, vlan: users,
+     ip: "10.70.12.108", specs: {cores: 2, memory_mb: 8192, disk_gb: 80}}
+  - {id: so-sensor01, name: Security Onion Sensor, role: nsm_sensor, os: securityonion-2.4, vlan: monitoring,
+     ip: "10.70.13.10", specs: {cores: 8, memory_mb: 24576, disk_gb: 500}, services: [zeek, suricata]}
+  - {id: siem01, name: SIEM (OpenSearch), role: siem, os: ubuntu-2404, vlan: monitoring, ip: "10.70.13.20",
+     specs: {cores: 8, memory_mb: 16384, disk_gb: 300}, services: [opensearch, dashboards]}
+"""
 
 
 def password_hash(password: str, salt: str) -> str:
@@ -236,6 +276,7 @@ def main() -> None:
         User,
         UserRole,
     )
+    from app.range_topology import template_demand
     from app.scenario_runs.models import InjectRecord
     from app.scheduler.models import EventState, ScheduledEvent
     from sqlalchemy import create_engine
@@ -315,7 +356,10 @@ def main() -> None:
     ))
 
     # The booking over now: the course, the exercise, the range, the demo instructor.
+    # Sized from the template exactly as POST /scheduler/events does (scheduler.service.demand_for).
+    demand = template_demand(template.yaml)
     db.merge(ScheduledEvent(
+        vm_count=demand.vm_count, vcpu_total=demand.vcpu, ram_mb_total=demand.ram_mb, disk_gb_total=demand.disk_gb,
         id=fid("booking"), name="CTH-201 serial 3: VIGILANT MAPLE", tenant_id=TENANT, course_id=course.id,
         exercise_id=ex.id, range_id=rng.id, scenario_id=scenario.id, template_id=template.id,
         instructor_id=instructor.id, created_by=admin.id, state=EventState.active,
