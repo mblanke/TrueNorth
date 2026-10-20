@@ -528,6 +528,9 @@ nodes:
     ip: "10.50.105.1"
     specs: { cores: 4, memory_mb: 4096, disk_gb: 40 }
     services: [firewall, nat, vpn]
+    # The range's edge (WAN uplink). Without the flag the worker would pick the first
+    # pfSense in node order, vpn01, which is not every zone's gateway (vsphere_infra.pick_edge).
+    edge: true
     interfaces:
       - vlan: dmz
         ip: "10.50.100.1"

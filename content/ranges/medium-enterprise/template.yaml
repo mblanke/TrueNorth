@@ -22,6 +22,39 @@ network:
       name: management
       cidr: "10.10.40.0/24"
 
+  # fw01 is every zone's gateway (.1) and enforces these; anything not listed is pfSense's
+  # default deny, and nothing leaves the range but depot traffic (worker/pfsense_config.py).
+  # Replies to allowed traffic are stateful, so each rule names the side that opens.
+  firewall_rules:
+    - name: corp-to-servers
+      src: corporate
+      dst: servers
+      action: allow
+      note: "Domain members reach AD, DNS, DHCP and file shares (AD needs dynamic RPC, so no port list)"
+    - name: corp-to-dmz
+      src: corporate
+      dst: dmz
+      ports: [80, 443, 25, 587, 143, 993]
+      action: allow
+      note: "Users reach the DMZ web and mail services"
+    - name: dmz-to-servers
+      src: dmz
+      dst: servers
+      ports: [53, 88, 389, 636]
+      action: allow
+      note: "DMZ hosts resolve names and authenticate against AD only"
+    - name: logs-to-siem
+      src: "*"
+      dst: management
+      ports: [514, 5044, 9200]
+      action: allow
+      note: "Every zone ships logs to the SIEM (syslog, Beats, OpenSearch)"
+    - name: mgmt-to-all
+      src: management
+      dst: "*"
+      action: allow
+      note: "Management and the SIEM reach every zone for administration and investigation"
+
 nodes:
   - id: dc01
     name: Domain Controller
@@ -91,6 +124,16 @@ nodes:
     vlan: management
     ip: "10.10.40.1"
     specs: { cores: 2, memory_mb: 2048, disk_gb: 20 }
+    # One NIC per zone at the zone's gateway: every VM's default route (render.py: .1).
+    interfaces:
+      - vlan: corporate
+        ip: "10.10.100.1"
+      - vlan: servers
+        ip: "10.10.200.1"
+      - vlan: dmz
+        ip: "10.10.30.1"
+      - vlan: management
+        ip: "10.10.40.1"
 
 # Accounts TrueNorth sets at deploy (ADR 0012 §12). Passwords are generated once per range
 # and shown, sealed at rest, on the range's Credentials panel and staff-only wiki page.

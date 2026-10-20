@@ -582,6 +582,24 @@ nodes:
     specs: { cores: 1, memory_mb: 2048, disk_gb: 4 }
     services: [ospf, bgp, inter_vlan_routing]
     description: "Core router — inter-VLAN routing between all zones"
+    # Every zone's gateway (.1, every VM's default route) and the range's edge (the WAN
+    # uplink). It enforces network.firewall_rules, default drop (worker/vyos_config.py).
+    # fw01/fw02 are not in the forwarding path: the worker renders no transit network
+    # or static routes between appliances.
+    edge: true
+    interfaces:
+      - vlan: management
+        ip: "10.0.0.1"
+      - vlan: corporate_lan
+        ip: "10.10.0.1"
+      - vlan: dmz
+        ip: "10.20.0.1"
+      - vlan: server_vlan
+        ip: "10.30.0.1"
+      - vlan: blue_team
+        ip: "10.40.0.1"
+      - vlan: red_team
+        ip: "10.66.0.1"
 
   - id: tgen01
     name: Traffic Generator
