@@ -79,8 +79,17 @@ def _create(client, body: dict, role: UserRole = UserRole.instructor, **who) -> 
     return r.json()
 
 
+def _teacher_of(client, event_id: str) -> uuid.UUID | None:
+    """The booking's own instructor: since #200 only they (or an administrator) change it."""
+    with acting_as(UserRole.admin):
+        iid = client.get(f"/schedule/events/{event_id}").json().get("instructor_id")
+    return uuid.UUID(iid) if iid else None
+
+
 def _post(client, path: str, role: UserRole = UserRole.instructor):
-    with acting_as(role):
+    """POST to /schedule/events/{id}/..., as that booking's own instructor."""
+    event_id = path.split("/events/")[1].split("/")[0]
+    with acting_as(role, user_id=_teacher_of(client, event_id) if role == UserRole.instructor else None):
         return client.post(path)
 
 
@@ -152,7 +161,7 @@ def test_a_stale_read_cannot_move_a_booking(db_session):
 
 def test_delete_cancels_and_keeps_the_row(client, db_session):
     ev = _create(client, _book(DAY + timedelta(hours=9)))
-    with acting_as(UserRole.instructor):
+    with acting_as(UserRole.instructor, user_id=uuid.UUID(ev["instructor_id"])):
         assert client.delete(f"/schedule/events/{ev['id']}").status_code == 204
     row = db_session.get(ScheduledEvent, uuid.UUID(ev["id"]))
     db_session.refresh(row)
@@ -162,7 +171,7 @@ def test_delete_cancels_and_keeps_the_row(client, db_session):
 def test_only_draft_or_scheduled_can_be_edited(client):
     ev = _create(client, _book(DAY + timedelta(hours=9)))
     _post(client, f"/schedule/events/{ev['id']}/activate")
-    with acting_as(UserRole.instructor):
+    with acting_as(UserRole.instructor, user_id=uuid.UUID(ev["instructor_id"])):
         r = client.put(f"/schedule/events/{ev['id']}", json=_book(DAY + timedelta(hours=11)))
     assert r.status_code == 409
     assert "active" in r.json()["detail"]

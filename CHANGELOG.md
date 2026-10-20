@@ -35,7 +35,11 @@ course production with a local-model fallback, and the cleanup of unsupported su
   range), a running or paused exercise not under your own running session, and a running
   exercise rostered through the course are 409; past and completed sessions grant nothing.
   Only an administrator moves a booking from one instructor to another (you hand on your
-  own, or take an unassigned one); the audit row records before and after. New
+  own, or take an unassigned one before it starts); the audit row records before and after.
+  Another instructor's booking (edit, schedule, activate, complete, cancel) is theirs or an
+  administrator's to change. Booking an exercise that is running, paused, completed or
+  cancelled needs `schedule:admin`, and a run counts as yours only under a booking made
+  before it started. New
   `GET /class-setup/mine`. Student progress and Team membership gain the controls. Every
   change is audited in the same transaction.
 - **Records hold their outcomes** (#200): `completed` and `failed` enrolments are not
@@ -44,7 +48,13 @@ course production with a local-model fallback, and the cleanup of unsupported su
   so the AAR roster never counts a run held while the Student was withdrawn (nor one before
   a self-enrolment became assigned). A completed or cancelled exercise's teams are frozen
   for everyone (team membership opens its AAR). A team's `ou_id` and `nation_id` are
-  checked (422). Team edits and deletes are audited.
+  checked (422). Team edits and deletes are audited. The "Enrolled" date (`enrolled_at`)
+  now shows when the current seat began: the re-enrolment, or the self-to-assigned
+  conversion, date.
+- **Known limitation** (#200): `enrolled_at` holds one seat period, so a Student who sat a
+  run on the roster, was withdrawn and is re-enrolled afterwards loses that run's AAR,
+  unless a team or a detection they submitted also ties them to it. The fix is a history of
+  seat periods (follow-up).
 
 ### ARC² Course Studio
 - Test-host gate auto-accept, recorded as `accepted_by: auto (test host)` and badged

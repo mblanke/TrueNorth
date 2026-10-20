@@ -341,8 +341,13 @@ overrunning its booking), its teams are 409; while any exercise rostered through
 that course's enrolments are 409. Courses and exercises have no owner column; the calendar
 is the only record of who teaches what. Bookings stay self-service (`schedule:write`), but
 only an administrator (`schedule:admin`) moves a booking from one instructor to another: an
-instructor hands on their own booking, or takes one with no instructor for themselves, and
-the audit row records the instructor before and after.
+instructor hands on their own booking, or takes one with no instructor for themselves before
+it starts, and the audit row records the instructor before and after. Editing, scheduling,
+activating, completing or cancelling another instructor's booking is theirs or an
+administrator's to do (403 otherwise), so a colleague's live class cannot be ended to free it.
+Booking an exercise that is `running`, `paused`, `completed` or `cancelled` needs
+`schedule:admin`, and a running exercise counts as the caller's only under their running
+booking made before `started_at`: a booking made after a run began joins it, it does not run it.
 
 Within scope an instructor enrols and withdraws Students, and creates, edits and deletes the
 exercise's teams. Team members must be Students with an active enrolment of `source =
@@ -357,7 +362,10 @@ grade reopens, to `in_progress` if it had started. Reopening, like turning a sel
 into an assigned one, moves `enrollments.enrolled_at` to now: it is the start of the
 current seat ("rostered since"), and the AAR roster counts an enrolment for a run only if
 the later of `created_at` and `enrolled_at` is no later than the run's end, so re-enrolling
-never seats a Student in a run held while they were withdrawn. A team's `ou_id` must
+never seats a Student in a run held while they were withdrawn. **Known limitation:** only
+the current seat is recorded, so a Student who sat a run on the roster, was withdrawn and is
+re-enrolled afterwards also loses that run's AAR, unless a team or a detection they
+submitted ties them to it; the fix is a history of seat periods (follow-up). A team's `ou_id` must
 be an OU of the caller's tenant and `nation_id` a known nation (422). Another course or
 exercise, a standing team (no exercise) and any staff target are 403; another tenant's
 course, exercise, team or person is 404. Every change is audited (`enrollment_create`,

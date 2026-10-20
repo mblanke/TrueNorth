@@ -119,9 +119,16 @@ def _exercise_link(ex: Exercise):
 
 
 def _mine_running(db: Session, user: CurrentUser, ex: Exercise) -> bool:
-    """The caller's own booking of ``ex`` is running now: the live run is theirs."""
-    return (
-        db.query(ScheduledEvent.id)
+    """The live run is the caller's: their own booking of ``ex`` is running now AND was made
+    before the run started (the booking the run was started under). A booking made after
+    ``started_at`` is someone joining a run already in progress, not running it; without
+    this, booking a hand-started or overrunning run "for now" unlocked it (third review).
+    Booking a running or paused exercise also needs schedule:admin (scheduler router)."""
+    started = ex.started_at
+    if started is None:
+        return False
+    rows = (
+        db.query(ScheduledEvent.created_at)
         .filter(
             ScheduledEvent.tenant_id == tenant_uuid(user),
             ScheduledEvent.instructor_id == _caller_uuid(user),
@@ -130,8 +137,12 @@ def _mine_running(db: Session, user: CurrentUser, ex: Exercise) -> bool:
             ScheduledEvent.end_time > _now(),
             _exercise_link(ex),
         )
-        .first()
-        is not None
+        .all()
+    )
+    began = started if started.tzinfo else started.replace(tzinfo=UTC)
+    return any(
+        created is not None and (created if created.tzinfo else created.replace(tzinfo=UTC)) <= began
+        for (created,) in rows
     )
 
 

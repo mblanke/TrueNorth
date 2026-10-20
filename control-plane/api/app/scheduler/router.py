@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 
 from ..auth import CurrentUser, get_current_user
 from ..db import get_db
+from ..models import Exercise, ExerciseState
 from ..rbac import (
     Permission,
     is_platform_admin,
@@ -206,6 +207,7 @@ def create_event(
     course_id = service.resolve_course(db, user, body.course_id)
     scenario_id = service.resolve_scenario(db, user, body.scenario_id)
     exercise_id, range_id = service.resolve_exercise(db, user, body.exercise_id, range_id)
+    _check_bookable_exercise(db, user, exercise_id)
     if range_id:
         service.resolve_range(db, user, str(range_id))  # an exercise's range must still be buildable
     typed = Resources(body.vcpu_total, body.ram_mb_total, body.disk_gb_total)
@@ -263,19 +265,39 @@ def _same_instant(a: datetime, b: datetime) -> bool:
     return a.replace(tzinfo=a.tzinfo or UTC) == b.replace(tzinfo=b.tzinfo or UTC)
 
 
-def _check_handover(user: CurrentUser, current: uuid.UUID | None, new: uuid.UUID | None) -> None:
+def _check_handover(user: CurrentUser, evt: ScheduledEvent, new: uuid.UUID | None) -> None:
     """Who may change a booking's instructor (#200: the booking is what gives an instructor
     authority over a class, app/class_setup/scope.py). An administrator (schedule:admin):
     anyone. Otherwise only the booking's own instructor hands it on, or a booking with no
-    instructor is taken by the caller themselves. Taking a colleague's booking is 403."""
+    instructor is taken by the caller themselves before it starts (a running session's
+    class is not picked up mid-way). Taking a colleague's booking is 403."""
+    current = evt.instructor_id
     if current == new or user_has_permission(user, Permission.SCHEDULE_ADMIN):
         return
     me = service.user_uuid(user)
     if current is not None and current == me:
         return  # handing your own session to someone else
     if current is None and new == me:
-        return  # taking an unassigned session yourself
+        start = evt.start_time if evt.start_time.tzinfo else evt.start_time.replace(tzinfo=UTC)
+        if start > datetime.now(UTC):
+            return  # taking an unassigned session yourself, before it starts
+        raise HTTPException(403, "This session has started; only an administrator can assign its instructor now")
     raise HTTPException(403, "Only an administrator can move a session from one instructor to another")
+
+
+def _check_bookable_exercise(db: Session, user: CurrentUser, exercise_id: uuid.UUID | None) -> None:
+    """Booking an exercise that is running, paused, completed or cancelled needs
+    schedule:admin (#200): a booking made after a run started must not make its taker the
+    one running it (class_setup.scope._mine_running), nor reach a finished run's teams."""
+    if exercise_id is None or user_has_permission(user, Permission.SCHEDULE_ADMIN):
+        return
+    # tenant-safe: exercise_id came from service.resolve_exercise (get_owned).
+    ex = db.get(Exercise, exercise_id)
+    blocked = (ExerciseState.running, ExerciseState.paused, ExerciseState.completed, ExerciseState.cancelled)
+    if ex is not None and ex.state in blocked:
+        raise HTTPException(
+            403, f"The exercise is {ex.state.value}; only an administrator can book it now. Book a new run instead"
+        )
 
 
 def _check_times(body) -> None:
@@ -315,6 +337,23 @@ def _owned(db: Session, event_id: str, user: CurrentUser) -> ScheduledEvent:
     return get_owned(db, ScheduledEvent, lifecycle.event_id(event_id), user, not_found="Event not found")
 
 
+def _changeable(db: Session, event_id: str, user: CurrentUser) -> ScheduledEvent:
+    """A booking the caller may edit or move through its lifecycle (#200). Another
+    instructor's booking is theirs: an administrator (schedule:admin) changes it, nobody
+    else, because a booking is what gives an instructor authority over their class
+    (app/class_setup/scope.py) and cancelling, completing or rescheduling it would hand that
+    class to whoever books next. A booking with no instructor, or your own, stays yours to
+    change."""
+    evt = _owned(db, event_id, user)
+    if (
+        evt.instructor_id is not None
+        and evt.instructor_id != service.user_uuid(user)
+        and not user_has_permission(user, Permission.SCHEDULE_ADMIN)
+    ):
+        raise HTTPException(403, "This is another instructor's session; only they or an administrator can change it")
+    return evt
+
+
 @router.get("/events/{event_id}", response_model=EventOut, summary="Get a scheduled event")
 def get_event(event_id: str, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)):
     return _to_out(_owned(db, event_id, user))
@@ -331,7 +370,7 @@ def update_event(
     """Reschedule or resize a draft or scheduled booking (409 once it is being built)."""
     _check_times(body)
     service.serialize_bookings(db)
-    evt = _owned(db, event_id, user)
+    evt = _changeable(db, event_id, user)
     lifecycle.lock_editable(db, evt)
     range_id = service.resolve_range(db, user, body.range_id)
     scenario_id = service.resolve_scenario(db, user, body.scenario_id)
@@ -339,7 +378,9 @@ def update_event(
     instructor_id = (
         service.resolve_instructor(db, user, body.instructor_id) if body.instructor_id else evt.instructor_id
     )
-    _check_handover(user, evt.instructor_id, instructor_id)
+    _check_handover(user, evt, instructor_id)
+    if exercise_id != evt.exercise_id:
+        _check_bookable_exercise(db, user, exercise_id)
     typed = Resources(body.vcpu_total, body.ram_mb_total, body.disk_gb_total)
     demand = service.demand_for(db, user, body.template_id, typed, body.vm_count)
     warnings = (
@@ -391,7 +432,7 @@ def schedule_event(
 ):
     """draft -> scheduled, checked for conflicts and capacity exactly as a new booking."""
     service.serialize_bookings(db)
-    evt = _owned(db, event_id, user)
+    evt = _changeable(db, event_id, user)
     warnings: list[str] = []
     if evt.state == EventState.draft:
         service.resolve_range(db, user, str(evt.range_id) if evt.range_id else None)  # still buildable?
@@ -405,7 +446,7 @@ def schedule_event(
 )
 def activate_event(event_id: str, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)):
     """scheduled or provisioning -> active."""
-    return _move(db, user, _owned(db, event_id, user), EventState.active)
+    return _move(db, user, _changeable(db, event_id, user), EventState.active)
 
 
 @router.post(
@@ -413,7 +454,7 @@ def activate_event(event_id: str, db: Session = Depends(get_db), user: CurrentUs
 )
 def complete_event(event_id: str, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)):
     """active -> completed."""
-    return _move(db, user, _owned(db, event_id, user), EventState.completed)
+    return _move(db, user, _changeable(db, event_id, user), EventState.completed)
 
 
 @router.post("/events/{event_id}/cancel", response_model=EventOut, summary="Cancel an event", dependencies=_WRITE)
@@ -424,7 +465,7 @@ def cancel_event(
     user: CurrentUser = Depends(get_current_user),
 ):
     """Any state before completed -> cancelled. The row stays as history."""
-    return _move(db, user, _owned(db, event_id, user), EventState.cancelled, background=background)
+    return _move(db, user, _changeable(db, event_id, user), EventState.cancelled, background=background)
 
 
 @router.delete(
@@ -438,7 +479,7 @@ def delete_event(
 ):
     """Same as POST .../cancel. Events are no longer hard-deleted: a cancelled booking
     is history, like a completed one."""
-    _move(db, user, _owned(db, event_id, user), EventState.cancelled, background=background)
+    _move(db, user, _changeable(db, event_id, user), EventState.cancelled, background=background)
 
 
 def _move(
