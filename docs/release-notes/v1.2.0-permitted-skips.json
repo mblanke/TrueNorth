@@ -10,7 +10,8 @@
         "Every check in `checks` must be registered and every registered check must be here; a difference is a FAIL.",
         "A skip never counts as a pass. A skipped core workflow cannot earn readiness (plan of record, section 1).",
         "Adding an entry is a release decision: change the matrix in the same commit and say why.",
-        "Profiles combine: --skip-profile staging,ai-disabled permits the entries of both. ai-disabled is for a host installed with tn_ai_enabled: false and is added by install/playbooks/acceptance.yml only then."
+        "Profiles combine: --skip-profile staging,ai-disabled permits the entries of both. ai-disabled is for a host installed with tn_ai_enabled: false and is added by install/playbooks/acceptance.yml only then.",
+        "Amended 2026-10-20 (#192, owner-approved): seven checks added to existing modules; see `amendments` and the matrix's dated amendment. The frozen rc4 entries are unchanged."
     ],
     "checks": {
         "infra": [
@@ -25,7 +26,10 @@
             "RBAC: Student and Observer refused staff routes",
             "tenant scoping",
             "audit log records writes",
-            "demo accounts linked to Keycloak"
+            "demo accounts linked to Keycloak",
+            "login banner (AC-8) on the realm's sign-in page",
+            "audit log append-only: UPDATE and DELETE refused",
+            "audit export: latest signed, chained, verifiable"
         ],
         "web-shell": [
             "SPA served through nginx",
@@ -69,11 +73,14 @@
             "template validation",
             "range create, read, documents, delete",
             "lab session refusals",
-            "lab build on the hypervisor"
+            "lab build on the hypervisor",
+            "range credentials: staff read, Student 404, sealed at rest"
         ],
         "provisioners": [
             "vSphere connection test and discovery",
-            "inventory summary"
+            "inventory summary",
+            "host-local template copies resolve per discovered host",
+            "Security Onion per-range setup (so-setup)"
         ],
         "scheduling": [
             "capacity and fit check",
@@ -87,7 +94,8 @@
             "corpora and the template's block"
         ],
         "wiki-helpdesk": [
-            "wiki page, assigned ticket, assignee's inbox"
+            "wiki page, assigned ticket, assignee's inbox",
+            "Ranges space: system-owned, staff-only, no password stored"
         ]
     },
     "profiles": {
@@ -106,6 +114,14 @@
                 "reason_contains": "it needs a provisioned range on a writable hypervisor",
                 "reason": "A real deploy installs the noise agent on built range VMs (deploy_noise_agents on worker-provision). Staging provisions nothing.",
                 "alternative_evidence": "tests/integration/test_noise_flow.py and tests/worker/test_noise_inventory_safety.py (CI). On staging, 'profile, dry-run deploy, plan, stop' covers planning and control.",
+                "milestone": "H"
+            },
+            {
+                "module": "provisioners",
+                "check": "Security Onion per-range setup (so-setup)",
+                "reason_contains": "it needs a provisioned range on a writable vCenter",
+                "reason": "so-setup runs per range on a built securityonion VM over VMware guest operations (ADR 0012 decision 8). Staging provisions nothing; its vCenter is the read-only simulator.",
+                "alternative_evidence": "tests/worker/test_vsphere_securityonion.py and tests/worker/test_setup_reconcile.py (the reconcile task that records the setup's outcome, #216) (U: every answer so-setup reads is checked, the runner patch, status polling). End to end: ADR 0012 decision 10, SOC Analyst built on the work vCenter with Security Onion seeing the mirrored traffic.",
                 "milestone": "H"
             }
         ],
@@ -223,7 +239,77 @@
                 "reason": "No provisioned range in CI.",
                 "alternative_evidence": "tests/integration/test_noise_flow.py, tests/worker/test_noise_inventory_safety.py.",
                 "milestone": "H"
+            },
+            {
+                "module": "platform-core",
+                "check": "login banner (AC-8) on the realm's sign-in page",
+                "reason_contains": "keycloak declared absent",
+                "reason": "The CI integration stack runs no Keycloak.",
+                "alternative_evidence": "Mandatory in the staging profile (KEYCLOAK_ADMIN_PASSWORD passed to the one-off container); CI keycloak-realm job (scripts/check_keycloak_realm.sh: banner, required acknowledgement, a realm override replacing the text); tests/contracts/test_keycloak_banner.py.",
+                "milestone": "R0"
+            },
+            {
+                "module": "platform-core",
+                "check": "audit export: latest signed, chained, verifiable",
+                "reason_contains": "nothing finished to export",
+                "reason": "The CI integration stack is minutes old: no audit row is older than yesterday, so there is no finished day to export (and its worker has no AUDIT_SIGNING_SEED). The check SKIPs only when audit_exports is empty and the oldest audit row is from yesterday or today; an empty table with older rows is a FAIL.",
+                "alternative_evidence": "Mandatory in the staging profile (the installer exports at 99-validate; the archive is mounted read-only, --audit-archive); tests/worker/test_audit_tasks.py; tests/scripts/test_staging_acceptance.py verifies the check against a signed archive.",
+                "milestone": "R0"
+            },
+            {
+                "module": "provisioners",
+                "check": "host-local template copies resolve per discovered host",
+                "reason_contains": "needs vCenter",
+                "reason": "The CI integration stack registers no vCenter connection, so there are no discovered host names to resolve copies for.",
+                "alternative_evidence": "Mandatory in the staging profile (the simulated vCenter's discovered hosts); CI vsphere-sim job (test_host_local_template_copies_are_cloned_and_pruned, vcsim); tests/worker/test_template_copies.py.",
+                "milestone": "R0"
+            },
+            {
+                "module": "provisioners",
+                "check": "Security Onion per-range setup (so-setup)",
+                "reason_contains": "it needs a provisioned range on a writable vCenter",
+                "reason": "No provisioned range in CI.",
+                "alternative_evidence": "tests/worker/test_vsphere_securityonion.py and tests/worker/test_setup_reconcile.py (the reconcile task that records the setup's outcome, #216).",
+                "milestone": "H"
             }
         ]
-    }
+    },
+    "amendments": [
+        {
+            "date": "2026-10-20",
+            "issue": "#192",
+            "approved_by": "owner (mblanke), on #192",
+            "why": "Checks added for features shipped since rc4 (ADR 0012 range credentials, host-local template copies, Security Onion per-range setup; S2 login banner; S3 append-only audit log and signed export). The 17 modules are unchanged.",
+            "added_checks": [
+                [
+                    "platform-core",
+                    "login banner (AC-8) on the realm's sign-in page"
+                ],
+                [
+                    "platform-core",
+                    "audit log append-only: UPDATE and DELETE refused"
+                ],
+                [
+                    "platform-core",
+                    "audit export: latest signed, chained, verifiable"
+                ],
+                [
+                    "ranges-labs",
+                    "range credentials: staff read, Student 404, sealed at rest"
+                ],
+                [
+                    "provisioners",
+                    "host-local template copies resolve per discovered host"
+                ],
+                [
+                    "provisioners",
+                    "Security Onion per-range setup (so-setup)"
+                ],
+                [
+                    "wiki-helpdesk",
+                    "Ranges space: system-owned, staff-only, no password stored"
+                ]
+            ]
+        }
+    ]
 }
