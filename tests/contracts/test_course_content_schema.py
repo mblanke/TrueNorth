@@ -120,6 +120,32 @@ def test_file_name_and_title_follow_the_catalogue(path):
     assert doc["title"] == catalogue[code], f"{path.name}: title {doc['title']!r} != catalogue {catalogue[code]!r}"
 
 
+# -- declared prerequisites --------------------------------------------------------
+
+
+def _terms() -> dict[str, tuple[str, str]]:
+    """Catalogue course code -> (term_start, term_code): when it is taught."""
+    with CATALOGUE.open(newline="", encoding="utf-8") as fh:
+        return {r["course_code"]: (r["term_start"], r["term_code"]) for r in csv.DictReader(fh)}
+
+
+@pytest.mark.parametrize("path", COURSE_FILES, ids=lambda p: p.name)
+def test_declared_prerequisites_are_catalogue_courses_from_an_earlier_term(path):
+    """The career map draws a declared prerequisite as an arrow forward in time. One that
+    names an unknown course, or a course taught in the same or a later term, cannot be
+    drawn that way, and the map leaves it out silently; so shipped content may not
+    declare one."""
+    doc = _load(path)
+    terms = _terms()
+    when = terms.get(doc["course_code"])
+    for code in doc.get("prerequisites") or []:
+        assert code in terms, f"{path.name}: prerequisite {code} is not in the catalogue"
+        assert when is not None and terms[code] < when, (
+            f"{path.name}: prerequisite {code} ({terms[code][1]}) is not taught before "
+            f"{doc['course_code']} ({when and when[1]})"
+        )
+
+
 # -- duplicates --------------------------------------------------------------------
 
 
@@ -222,6 +248,9 @@ MUTATIONS = {
     "multi-letter answer": lambda d: _m0(d)["quiz"]["questions"][0].update(answer="A,C"),
     "quiz without questions": lambda d: _m0(d)["quiz"].update(questions=[]),
     "minutes as text": lambda d: _m0(d).update(minutes_breakdown={"contact": "45"}),
+    "prerequisites not a list": lambda d: d.update(prerequisites="C101"),
+    "prerequisite not a catalogue code": lambda d: d.update(prerequisites=["Intro to Networking"]),
+    "repeated prerequisite": lambda d: d.update(prerequisites=["C101", "C101"]),
 }
 
 
@@ -232,6 +261,10 @@ def test_the_base_document_is_valid():
 @pytest.mark.parametrize("name", sorted(MUTATIONS))
 def test_the_schema_refuses(name):
     assert _errors(_mutate(MUTATIONS[name])), f"the schema accepted: {name}"
+
+
+def test_declared_prerequisites_are_valid():
+    assert _errors(_mutate(lambda d: d.update(prerequisites=["C101", "RMC C201"]))) == []
 
 
 def test_a_theory_module_without_a_lab_is_valid():

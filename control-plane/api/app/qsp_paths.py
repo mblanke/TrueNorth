@@ -425,31 +425,33 @@ def drop_course_from_paths(db: Session, course_id: str) -> None:
     db.flush()
 
 
-def course_prereq_edges(db: Session, course_ids: set[str],
-                        tenant_id: str | None = None) -> list[dict]:
-    """Course-to-course prerequisite edges, restricted to courses on the career map.
+def course_prereq_edges(on_map: list[dict]) -> list[dict]:
+    """Declared course-to-course prerequisites between courses placed on the career map.
 
-    Every learning path carries a `prerequisite_graph`, but most entries reference
-    spine-generated per-PO stubs, which `programme_courses` keeps off the map. An edge
-    is only drawable when both ends are placed, so everything else is dropped here
-    rather than shipped for the client to discard. Deduped across paths, sorted for a
-    deterministic payload. One query.
+    `on_map` is the course dicts `programme_courses` places on nodes. The only source is
+    each course's own declared `prerequisites` (course codes, `content/courses/*.yaml`).
+    Until 2026-10-20 this read every LearningPath's `prerequisite_graph`, which is
+    `_linear_prereq` over whatever order a generator listed courses in: catalogue code
+    order within a term (C201 -> C202, two courses taught side by side) and objective
+    order within a qualification (C209 -> C204, pointing back a term). The map drew those
+    as prerequisites; no course had declared one.
+
+    An edge must run forward in time: the prerequisite's term starts before the
+    dependent's. A declaration that does not (same term, or later) cannot be drawn
+    left-to-right, so it is left out here; tests/contracts/test_course_content_schema.py
+    refuses one in shipped content. Pure: no query.
     """
-    q = db.query(LearningPath)
-    if tenant_id is not None:
-        q = q.filter(LearningPath.tenant_id == tenant_id)
+    by_code = {c["course_code"]: c for c in on_map if c.get("course_code")}
     seen: set[tuple[str, str]] = set()
-    for lp in q.all():
-        try:
-            graph = json.loads(lp.prerequisite_graph or "{}")
-        except (TypeError, ValueError):
-            continue
-        for course, prereqs in graph.items():
-            if course not in course_ids or not isinstance(prereqs, list):
+    for course in on_map:
+        when = (course.get("term_start") or "", course.get("term_code") or "")
+        for code in course.get("prerequisites") or []:
+            pre = by_code.get(code)
+            if pre is None or pre["course_id"] == course["course_id"]:
                 continue
-            for pre in prereqs:
-                if pre in course_ids and pre != course:
-                    seen.add((pre, course))
+            if (pre.get("term_start") or "", pre.get("term_code") or "") >= when:
+                continue
+            seen.add((pre["course_id"], course["course_id"]))
     return [{"from": a, "to": b} for a, b in sorted(seen)]
 
 
@@ -985,6 +987,8 @@ def programme_courses(db: Session, tenant_id: str | None = None) -> dict[tuple, 
             "duration_hours": course.duration_hours or 0,
             "difficulty": course.difficulty or "",
             "is_published": bool(course.is_published),
+            # Declared prerequisite course codes (content/courses/*.yaml), as written.
+            "prerequisites": list(meta.get("prerequisites") or []),
             "delivers": entries,
             # True when the course is taught in one DP but delivers into another.
             "delivers_cross_dp": any(d["dp_order"] != dp_order for d in entries),

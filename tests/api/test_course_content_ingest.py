@@ -252,6 +252,44 @@ def test_import_preserves_provenance_on_the_course(seeded):
     assert meta["provenance"] == "unsourced"
 
 
+def _with_prereqs(prereqs) -> str:
+    doc = _doc()
+    doc["prerequisites"] = prereqs
+    return yaml.safe_dump(doc, sort_keys=False)
+
+
+def test_no_declared_prerequisites_parse_as_none():
+    assert parse_course_content(_text())["prerequisites"] == []
+
+
+def test_declared_prerequisites_parse_in_order_without_repeats():
+    parsed = parse_course_content(_with_prereqs(["C103", " C105 ", "C103"]))
+    assert parsed["prerequisites"] == ["C103", "C105"]
+
+
+@pytest.mark.parametrize(
+    "bad,match",
+    [("C103", "must be a list"), (["C304"], "lists itself"), ([""], "empty prerequisite")],
+)
+def test_malformed_prerequisites_are_refused(bad, match):
+    with pytest.raises(ValueError, match=match):
+        parse_course_content(_with_prereqs(bad))
+
+
+def test_declared_prerequisites_land_on_the_course_and_survive_a_catalogue_reimport(seeded):
+    import_course_content(seeded, _with_prereqs(["C103"]))
+    course = seeded.query(Course).filter(Course.name.like("C304%")).one()
+    assert json.loads(course.course_meta)["prerequisites"] == ["C103"]
+
+    # The catalogue rewrites course_meta; the course file's declaration must outlive it.
+    import_programme(seeded, CATALOGUE.read_text(encoding="utf-8"))
+    assert json.loads(course.course_meta)["prerequisites"] == ["C103"]
+
+    # Removing the key from the file clears the declaration.
+    import_course_content(seeded, _text())
+    assert json.loads(course.course_meta)["prerequisites"] == []
+
+
 def test_import_refuses_when_the_catalogue_course_is_absent(db_session):
     """Content must not invent a course; the catalogue is the source of courses."""
     with pytest.raises(ValueError, match="import the programme catalogue"):

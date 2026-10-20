@@ -98,6 +98,29 @@ def _po_ref(raw) -> dict | None:
     return {"qsp_code": qsp, "po_code": po}
 
 
+def _prerequisite_codes(raw, course_code: str) -> list[str]:
+    """Normalise an optional top-level ``prerequisites:`` list of catalogue course codes.
+
+    Declared, never inferred: a prerequisite is the programme owner's statement, and the
+    career map draws exactly these. Order is kept, repeats dropped. A course naming
+    itself, or anything other than a list of codes, is an error rather than a skip.
+    """
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        raise ValueError(f"course {course_code}: prerequisites must be a list of course codes")
+    codes: list[str] = []
+    for item in raw:
+        code = str(item or "").strip()
+        if not code:
+            raise ValueError(f"course {course_code}: empty prerequisite code")
+        if code == course_code:
+            raise ValueError(f"course {course_code} lists itself as a prerequisite")
+        if code not in codes:
+            codes.append(code)
+    return codes
+
+
 def parse_course_content(yaml_text: str) -> dict:
     """Parse an authored course file into a normalized dict. Pure (no DB)."""
     doc = safe_yaml.load(yaml_text) or {}
@@ -160,6 +183,7 @@ def parse_course_content(yaml_text: str) -> dict:
         "status": str(doc.get("status") or "draft").lower(),
         "source": doc.get("source") or {},
         "qsp_code": (str(doc.get("qsp_code")).strip() if doc.get("qsp_code") else None),
+        "prerequisites": _prerequisite_codes(doc.get("prerequisites"), course_code),
         "modules": modules,
     }
 
@@ -469,6 +493,8 @@ def import_course_content(
     meta["content_provenance"] = doc["provenance"]
     meta["content_status"] = doc["status"]
     meta["content_source"] = doc["source"]
+    # Always written, so deleting the key from the file clears the declaration.
+    meta["prerequisites"] = doc["prerequisites"]
     # `provenance` is the sentinel both `_claim_po` and `qsp_paths._po_course` test to
     # tell authored content from a spine-generated stub. It normally arrives from
     # `programme_ingest`, but relying on that leaves authored content on a course

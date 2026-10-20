@@ -39,6 +39,12 @@
       "type": "string",
       "pattern": "^[A-Z][A-Z0-9]{2,15}$"
     },
+    "prerequisites": {
+      "description": "Optional. Catalogue codes of courses a Student must take first, as the programme owner declared them. Each must be taught in an earlier term. The career map draws exactly these; nothing is inferred.",
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "pattern": "^(RMC )?C[0-9]{3}$"}
+    },
     "source": {
       "type": "object",
       "additionalProperties": false,

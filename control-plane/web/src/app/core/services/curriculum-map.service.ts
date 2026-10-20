@@ -83,6 +83,11 @@ export interface NodeCourse {
   delivers: CourseDelivers[];
   /** Taught in this period but delivering into another one. */
   delivers_cross_dp: boolean;
+  /**
+   * Course codes this course declares as prerequisites, as written in its content file.
+   * May name a course that is not on the map; `course_edges` holds the drawable ones.
+   */
+  prerequisites?: string[];
 }
 
 export interface PO {
@@ -157,7 +162,10 @@ export interface PathEdge {
   kind: 'progression' | 'branch' | 'planned';
 }
 
-/** A course-to-course prerequisite: `to` is taken after `from`. */
+/**
+ * A declared course-to-course prerequisite: `from` is taken first, in an earlier term,
+ * and `to` requires it. Never derived from learning-path order.
+ */
 export interface CourseEdge {
   from: string;
   to: string;
