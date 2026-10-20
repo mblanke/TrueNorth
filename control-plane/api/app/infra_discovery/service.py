@@ -140,6 +140,8 @@ def run_round(session_factory) -> dict[str, int]:
         ids = [cid for (cid,) in db.query(HypervisorConnection.id).filter(HypervisorConnection.is_active.is_(True))]
         for cid in ids:
             try:
+                # tenant-safe: the platform's own schedule, no caller; every tenant's connections
+                # are rediscovered by design, and ``cid`` comes from the query above.
                 conn = db.get(HypervisorConnection, cid)
                 if conn is None or not conn.is_active:
                     counts["skipped"] += 1
