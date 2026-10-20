@@ -44,13 +44,15 @@
   ansible.builtin.set_fact:
     tn_app_prev_state: "{{ tn_app_prev.content | default('e30=') | b64decode | from_json }}"
 
+# Not `is version(..., version_type='semver')`: SemVer compares "rc12" with "rc9" as
+# strings, so every rc9 -> rc10+ upgrade was refused as older (work install, 2026-10-20).
+# tn_release_cmp (../filter_plugins/tn_release.py) compares rcN numerically.
 - name: App source — refuse an older release
   ansible.builtin.assert:
     that: >-
       tn_allow_downgrade | bool
       or (tn_app_prev_state.release | default('') | length == 0)
-      or not ((tn_release_version | regex_replace('^v', '')) is version(
-                (tn_app_prev_state.release | regex_replace('^v', '')), '<', version_type='semver'))
+      or (tn_release_version | tn_release_cmp(tn_app_prev_state.release)) >= 0
     fail_msg: >-
       This host runs {{ tn_app_prev_state.release | default('an unknown release') }}; {{ tn_release_version }} is older.
       Rolling back is restore-then-install, never install alone (docs/runbooks/upgrade.md
