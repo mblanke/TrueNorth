@@ -40,6 +40,7 @@ from ..enrollment import ensure_enrollment, ensure_path_enrollment
 from ..models import (
     AuditLog,
     Course,
+    Nation,
     Qualification,
     RegistrationRequest,
     RegistrationStatus,
@@ -48,6 +49,7 @@ from ..models import (
     UserRole,
 )
 from ..rbac import STAFF_GRANTED_BY_ADMIN_ONLY, Permission, grant_refusal, is_platform_admin, require_permission
+from ..registration_schemas import ApplicantNationOut, ApplicantQualificationOut
 from ..schemas import (
     RegistrationApproveIn,
     RegistrationBulkApproveIn,
@@ -237,6 +239,75 @@ def my_registration(
     if row is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No registration request found")
     return row
+
+
+class _NotEligibleError(Exception):
+    """The caller may not use the registration forms: reference lists answer []."""
+
+
+def _requestable_tenant(db: Session, identity: TokenPayload) -> uuid.UUID | None:
+    """The tenant whose qualifications this caller may ask for; raises _NotEligibleError.
+
+    A registered account: its own tenant (what onboarding's select-path accepts), unless
+    the account is deactivated. An applicant: the tenant their AD groups suggest (what
+    approval defaults to), provided those groups may register at all, the same rule
+    ``POST /registration`` applies. The group rule is for applicants only, as it is in
+    ``POST /registration``: a registered Student was admitted already, by whatever route.
+    """
+    user = db.query(User).filter(User.keycloak_id == identity.sub).first()
+    if user is not None:
+        if not user.is_active:
+            raise _NotEligibleError
+        return user.tenant_id
+    groups = ident.normalise_groups(identity.groups)
+    if not ident.may_register(groups):
+        raise _NotEligibleError
+    tenant = ident.suggest_tenant(db, groups)
+    return tenant.id if tenant else None
+
+
+@router.get("/registration/nations", response_model=list[ApplicantNationOut])
+def list_registration_nations(
+    identity: TokenPayload = Depends(get_token_identity),
+    db: Session = Depends(get_db),
+) -> list[Nation]:
+    """Active nations for the request-access and onboarding forms.
+
+    ``/directory/nations`` needs ``user:read``, which an applicant (no ``users`` row
+    yet) and a Student do not hold, so their Nation dropdown came back empty. This is
+    the same global reference data, read-only, active rows only, public fields only.
+    Any valid token that could use the forms may read it (``[]`` for an applicant
+    outside REGISTRATION_ALLOWED_GROUPS or a deactivated account); the directory router
+    keeps its permission.
+    """
+    try:
+        _requestable_tenant(db, identity)
+    except _NotEligibleError:
+        return []
+    return db.query(Nation).filter(Nation.is_active).order_by(Nation.name).all()
+
+
+@router.get("/registration/qualifications", response_model=list[ApplicantQualificationOut])
+def list_registration_qualifications(
+    identity: TokenPayload = Depends(get_token_identity),
+    db: Session = Depends(get_db),
+) -> list[Qualification]:
+    """Qualifications the caller may request: shared ones plus their own (or suggested) tenant's.
+
+    ``/qsp/qualifications`` needs a ``users`` row, so an applicant got 403 and an empty
+    Qualification dropdown. Qualifications have no draft state; the scope is the one
+    approval (``_enroll_for``) and onboarding (``get_owned_or_global``) enforce, so a
+    listed qualification is one that request would actually honour. ``[]`` for a caller
+    who may not use the forms (see ``_requestable_tenant``).
+    """
+    try:
+        tenant_id = _requestable_tenant(db, identity)
+    except _NotEligibleError:
+        return []
+    scope = Qualification.tenant_id.is_(None)
+    if tenant_id is not None:
+        scope = scope | (Qualification.tenant_id == tenant_id)
+    return db.query(Qualification).filter(scope).order_by(Qualification.qsp_code).all()
 
 
 @router.delete(

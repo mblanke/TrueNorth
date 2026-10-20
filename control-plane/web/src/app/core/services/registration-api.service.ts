@@ -8,6 +8,8 @@ type S = components['schemas'];
 
 export type RegistrationRequest = S['RegistrationRequestOut'];
 export type OnboardingState = S['OnboardingStateOut'];
+export type ApplicantNation = S['ApplicantNationOut'];
+export type ApplicantQualification = S['ApplicantQualificationOut'];
 
 /**
  * Account intake: self-registration, the instructor approval queue, and first-run
@@ -24,6 +26,20 @@ export class RegistrationApiService {
   }
   withdrawMine(): Observable<void> {
     return this.http.delete<void>(`${this.base}/registration/mine`);
+  }
+  /**
+   * Active nations for the register and onboarding forms. Any valid token may read it;
+   * `/directory/nations` needs user:read, which applicants and Students do not hold.
+   */
+  nations(): Observable<ApplicantNation[]> {
+    return this.http.get<ApplicantNation[]>(`${this.base}/registration/nations`);
+  }
+  /**
+   * Qualifications the caller may request: shared ones plus their own tenant's (a Student)
+   * or their AD-suggested tenant's (an applicant). `/qsp/qualifications` needs a users row.
+   */
+  qualifications(): Observable<ApplicantQualification[]> {
+    return this.http.get<ApplicantQualification[]>(`${this.base}/registration/qualifications`);
   }
 
   // ── Approval queue ───────────────────────────────────────

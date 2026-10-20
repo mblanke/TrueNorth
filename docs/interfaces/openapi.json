@@ -741,6 +741,66 @@
         "title": "AnnotationOut",
         "type": "object"
       },
+      "ApplicantNationOut": {
+        "description": "One nation as an applicant sees it on the registration and onboarding forms.\n\nDeliberately narrower than ``NationOut`` (``/directory/nations``): the public\nidentifying fields only, no alliance flags and no ``is_active`` (inactive rows are\nnever returned).",
+        "properties": {
+          "flag_emoji": {
+            "title": "Flag Emoji",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "iso_alpha2": {
+            "title": "Iso Alpha2",
+            "type": "string"
+          },
+          "iso_alpha3": {
+            "title": "Iso Alpha3",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "iso_alpha2",
+          "iso_alpha3",
+          "flag_emoji"
+        ],
+        "title": "ApplicantNationOut",
+        "type": "object"
+      },
+      "ApplicantQualificationOut": {
+        "description": "A qualification an applicant may request (register) or a Student may pick (onboarding).\n\nOnly what the dropdown shows. ``/qsp/qualifications`` carries more (NQUAL, PO count)\nand is for signed-in accounts.",
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "qsp_code": {
+            "title": "Qsp Code",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "qsp_code",
+          "title"
+        ],
+        "title": "ApplicantQualificationOut",
+        "type": "object"
+      },
       "Arc2Status": {
         "description": "GET /arc2/status: is the Studio on, and if not, why (for the empty state).",
         "properties": {
@@ -36928,6 +36988,68 @@
           }
         ],
         "summary": "My Registration",
+        "tags": [
+          "registration"
+        ]
+      }
+    },
+    "/registration/nations": {
+      "get": {
+        "description": "Active nations for the request-access and onboarding forms.\n\n``/directory/nations`` needs ``user:read``, which an applicant (no ``users`` row\nyet) and a Student do not hold, so their Nation dropdown came back empty. This is\nthe same global reference data, read-only, active rows only, public fields only.\nAny valid token that could use the forms may read it (``[]`` for an applicant\noutside REGISTRATION_ALLOWED_GROUPS or a deactivated account); the directory router\nkeeps its permission.",
+        "operationId": "list_registration_nations_registration_nations_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ApplicantNationOut"
+                  },
+                  "title": "Response List Registration Nations Registration Nations Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Registration Nations",
+        "tags": [
+          "registration"
+        ]
+      }
+    },
+    "/registration/qualifications": {
+      "get": {
+        "description": "Qualifications the caller may request: shared ones plus their own (or suggested) tenant's.\n\n``/qsp/qualifications`` needs a ``users`` row, so an applicant got 403 and an empty\nQualification dropdown. Qualifications have no draft state; the scope is the one\napproval (``_enroll_for``) and onboarding (``get_owned_or_global``) enforce, so a\nlisted qualification is one that request would actually honour. ``[]`` for a caller\nwho may not use the forms (see ``_requestable_tenant``).",
+        "operationId": "list_registration_qualifications_registration_qualifications_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ApplicantQualificationOut"
+                  },
+                  "title": "Response List Registration Qualifications Registration Qualifications Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Registration Qualifications",
         "tags": [
           "registration"
         ]

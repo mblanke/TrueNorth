@@ -9,7 +9,6 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { DirectoryApiService } from '@core/services/directory-api.service';
 import { RegistrationApiService } from '@core/services/registration-api.service';
 import { AuthService, RegistrationPrefill, RegistrationSuggestions } from '@core/services/auth.service';
 import { NotificationService } from '@core/services/notification.service';
@@ -268,7 +267,6 @@ interface RegistrationForm {
   ],
 })
 export class RegisterComponent implements OnInit {
-  private readonly directory = inject(DirectoryApiService);
   private readonly registration = inject(RegistrationApiService);
   private readonly router = inject(Router);
   private readonly auth = inject(AuthService);
@@ -300,11 +298,11 @@ export class RegisterComponent implements OnInit {
 
     // Reference data is best-effort: an empty nation list should not stop
     // someone registering.
-    this.directory.nations().subscribe({
+    this.registration.nations().subscribe({
       next: (rows) => this.nations.set(rows ?? []),
       error: () => this.nations.set([]),
     });
-    this.directory.qualifications().subscribe({
+    this.registration.qualifications().subscribe({
       next: (rows) => this.qualifications.set(rows ?? []),
       error: () => this.qualifications.set([]),
     });
