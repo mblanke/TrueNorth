@@ -197,6 +197,7 @@ def test_pkrvars_writes_every_required_variable_privately(pk, site, capsys):
     assert vals["build_network"] == '"dPG-TN-BUILD"'
     assert vals["http_bind_address"] == '"10.30.31.20"'
     assert vals["content_library"] == '"TrueNorth-Templates"'
+    assert vals["publish_to_library"] == "false"  # opt-in (--library): svc-truenorth gets 403 there
     assert vals["insecure_connection"] == "true"
     assert vals["depot_url"] == vals["apt_proxy"] == '""'  # offline bases
     assert vals["ssh_username"] == '"ubuntu"' and vals["ssh_password"] == f'"{LINUX_SECRET}"'

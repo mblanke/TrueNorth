@@ -269,8 +269,10 @@ phase_prereq() {
   step "vCenter objects"
   local lib dc folder
   lib="$(awk -F'"' '/^content_library = /{print $2}' "$PKRVARS")"
-  if govc library.info "/${lib:-TrueNorth-Templates}" >/dev/null 2>&1; then info "ok    content library ${lib:-TrueNorth-Templates}"
-  else die "content library ${lib:-TrueNorth-Templates} not found"; fi
+  if ! grep -q '^publish_to_library = true' "$PKRVARS"; then
+    info "skip  content library (publish_to_library = false: ranges clone the host-local copies)"
+  elif govc library.info "/${lib:-TrueNorth-Templates}" >/dev/null 2>&1; then info "ok    content library ${lib:-TrueNorth-Templates}"
+  else die "content library ${lib:-TrueNorth-Templates} not found (or not readable by this account); re-run pkrvars-work.py without --library to skip publishing"; fi
   dc="$GOVC_DATACENTER"
   for folder in "/$dc/vm/TrueNorth" "/$dc/vm/TrueNorth/Templates"; do
     if govc folder.info "$folder" >/dev/null 2>&1; then info "ok    folder $folder"
