@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
@@ -27,12 +27,14 @@ from ..delete_guard import commit_delete
 from ..hypervisor_backends import get_hypervisor_backend
 from ..hypervisor_connection_guard import refuse_if_it_moves_unrecorded, refuse_if_live, require_password
 from ..hypervisor_ports import default_port
+from ..infra_discovery import service as discovery
+from ..infra_discovery.schemas import ConnectionDiscoveryOut, InfraDiscoveryOut
 from ..models import (
     HypervisorConnection,
     HypervisorNode,
     HypervisorPool,
 )
-from ..rbac import Permission, require_permission
+from ..rbac import Permission, require_permission, user_has_permission
 from ..schemas import (
     HypervisorConnectionIn,
     HypervisorConnectionOut,
@@ -149,6 +151,7 @@ def delete_connection(conn_id: uuid.UUID, db: Session = Depends(get_db), user: C
     # tenant-safe: conn came from _conn(), so what hangs off it is the caller's.
     db.query(HypervisorPool).filter(HypervisorPool.connection_id == conn.id).delete(synchronize_session=False)
     db.query(HypervisorNode).filter(HypervisorNode.connection_id == conn.id).delete(synchronize_session=False)
+    discovery.forget(db, conn.id)
     db.flush()
     db.expire(conn, ["nodes"])
     db.delete(conn)
@@ -170,13 +173,45 @@ def test_connection(conn_id: uuid.UUID, db: Session = Depends(get_db), user: Cur
     )
 
 
-@router.post("/connections/{conn_id}/discover", dependencies=WRITE)
+@router.post(
+    "/connections/{conn_id}/discover",
+    dependencies=WRITE,
+    responses={409: {"description": "A discovery of this connection is already running"}},
+)
 def discover_nodes(conn_id: uuid.UUID, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)):
+    """Rediscover the connection's hosts now. The scheduled rediscovery
+    (INFRA_DISCOVERY_SECONDS, app/infra_discovery) runs this same call; one at a time."""
     conn = _conn(db, conn_id, user)
-    backend = get_hypervisor_backend(conn.hypervisor_type)
-    if backend:
-        return backend.discover(conn_id, conn, db)
-    return {"message": f"{conn.hypervisor_type} discovery not yet supported", "nodes_discovered": 0}
+    result = discovery.discover_connection(db, conn)
+    if result is None:
+        raise HTTPException(409, "A discovery of this connection is already running; its result will show shortly")
+    return result
+
+
+@router.get("/discovery", response_model=InfraDiscoveryOut)
+def discovery_status(db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)):
+    """When each of the caller's tenant's connections was last discovered, and whether one is
+    running. Read-level, like the inventory it dates; the error text (which can name the
+    vCenter) only for callers who may manage connections."""
+    conns = _own_connections(db, user).with_entities(HypervisorConnection.id).all()
+    ids = [cid for (cid,) in conns]
+    rows = discovery.status_rows(db, ids)
+    show_error = user_has_permission(user, Permission.INFRA_WRITE)
+    every = discovery.interval()
+    out = []
+    for cid in ids:
+        row = rows.get(cid)
+        out.append(
+            ConnectionDiscoveryOut(
+                connection_id=cid,
+                last_discovered_at=row.last_discovered_at if row else None,
+                last_attempt_at=row.last_attempt_at if row else None,
+                failing=bool(row and row.last_error),
+                last_error=row.last_error if row and show_error else None,
+                running=discovery.is_running(row),
+            )
+        )
+    return InfraDiscoveryOut(interval_seconds=max(0, int(every)), connections=out)
 
 
 @router.get("/connections/{conn_id}/nodes", response_model=list[HypervisorNodeOut], dependencies=WRITE)

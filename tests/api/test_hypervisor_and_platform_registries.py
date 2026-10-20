@@ -74,6 +74,8 @@ def test_unreachable_hypervisor_reports_failure_instead_of_raising(db_session, k
     assert conn.is_active is (kind == "vsphere")
     assert found["nodes_discovered"] == 0
     assert "fail" in found["message"].lower()
+    # The scheduled rediscovery records this as the connection's last error (app/infra_discovery).
+    assert found.get("error")
 
 
 @pytest.mark.parametrize(

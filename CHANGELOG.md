@@ -132,6 +132,13 @@ course production with a local-model fallback, and the cleanup of unsupported su
   It requires a reason and is audit-logged.
 
 ### Platform
+- **Infrastructure page refreshes itself.** The api rediscovers every active hypervisor
+  connection every `INFRA_DISCOVERY_SECONDS` (default 300; installer
+  `tn_infra_discovery_seconds`; 0 off) through the same backend call as Discover, one at a
+  time per connection (lease), each failure isolated and recorded
+  (`hypervisor_discovery_state`, migration `d9e0f1a2b3c4`). The page re-reads every minute
+  while visible, shows "Updated ..." overall and per connection, and has Refresh now. New
+  `GET /hypervisors/discovery`; Discover answers 409 while a discovery of that connection runs.
 - Terraform provisioners removed; Proxmox and Hyper-V behind `EXPERIMENTAL_PROVISIONERS`
   (#131).
 - Demo people can sign in on staging/demo hosts (local Keycloak accounts, passwords in

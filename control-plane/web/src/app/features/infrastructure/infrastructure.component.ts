@@ -1,5 +1,5 @@
-import { Component, OnInit, inject } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { Component, NgZone, OnDestroy, OnInit, inject } from '@angular/core';
+import { CommonModule, DOCUMENT } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatTabsModule } from '@angular/material/tabs';
 import { MatCardModule } from '@angular/material/card';
@@ -17,11 +17,12 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatBadgeModule } from '@angular/material/badge';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import {
-  HypervisorConnection, HypervisorNode, HypervisorSummary, HypervisorType,
+  ConnectionDiscovery, HypervisorConnection, HypervisorNode, HypervisorSummary, HypervisorType, InfraDiscovery,
   NetworkDevice, NetworkDeviceRole, NetworkSummary, StorageAppliance, StorageProtocol, StorageSummary,
 } from '@core/models';
 import { InfrastructureApiService } from '@core/services/infrastructure-api.service';
-import { firstValueFrom } from 'rxjs';
+import { Subscription, filter, firstValueFrom, fromEvent, interval, merge } from 'rxjs';
+import { REREAD_MS, cadence, overallUpdated, updatedAgo } from './freshness';
 import { CountUpDirective } from '../../shared/motion';
 import { EmptyStateComponent } from '../../shared/components/empty-state/empty-state.component';
 import { LoadGaugeComponent, loadPct } from '../../shared/components/load-gauge/load-gauge.component';
@@ -55,6 +56,22 @@ const DEFAULT_PORT: Record<HypervisorType, number> = {
             <p class="subtitle">Hypervisors, compute, storage &amp; network management</p>
           </div>
         </div>
+        @if (connections.length) {
+          <div class="freshness" data-testid="infra-freshness">
+            <span class="freshness-text" [matTooltip]="freshnessTooltip()">
+              <mat-icon class="freshness-icon">schedule</mat-icon>
+              Updated {{ ago(overallUpdatedAt()) }}
+              @if (failingCount()) {
+                <span class="freshness-warn" data-testid="infra-freshness-failing">
+                  · {{ failingCount() }} connection{{ failingCount() === 1 ? '' : 's' }} failing
+                </span>
+              }
+            </span>
+            <button mat-stroked-button data-testid="infra-refresh-now" (click)="refreshNow()" [disabled]="discoveringAll">
+              <mat-icon>refresh</mat-icon> {{ discoveringAll ? 'Refreshing...' : 'Refresh now' }}
+            </button>
+          </div>
+        }
       </div>
     
       <mat-tab-group animationDuration="200ms" color="primary">
@@ -278,6 +295,20 @@ const DEFAULT_PORT: Record<HypervisorType, number> = {
                   <ng-container matColumnDef="host">
                     <th mat-header-cell *matHeaderCellDef>Host</th>
                     <td mat-cell *matCellDef="let c">{{ c.host }}:{{ c.port }}</td>
+                  </ng-container>
+                  <ng-container matColumnDef="updated">
+                    <th mat-header-cell *matHeaderCellDef>Updated</th>
+                    <td mat-cell *matCellDef="let c" [attr.data-testid]="'conn-updated-' + c.id">
+                      @let d = discoveryOf(c);
+                      @if (d?.running) {
+                        <span class="updated-running">Discovering...</span>
+                      } @else {
+                        {{ ago(d?.last_discovered_at) }}
+                      }
+                      @if (d?.failing) {
+                        <mat-icon class="updated-failing" [matTooltip]="d?.last_error || 'The last discovery failed'">error_outline</mat-icon>
+                      }
+                    </td>
                   </ng-container>
                   <ng-container matColumnDef="actions">
                     <th mat-header-cell *matHeaderCellDef>Actions</th>
@@ -724,6 +755,12 @@ const DEFAULT_PORT: Record<HypervisorType, number> = {
   styles: [`
     .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
     .header-left { display: flex; align-items: center; gap: 16px; }
+    .freshness { display: flex; align-items: center; gap: 12px; color: var(--text-secondary); font-size: 13px; }
+    .freshness-text { display: inline-flex; align-items: center; gap: 4px; }
+    .freshness-icon { font-size: 16px; width: 16px; height: 16px; }
+    .freshness-warn, .updated-failing { color: var(--warn, #f59e0b); }
+    .updated-failing { font-size: 16px; width: 16px; height: 16px; vertical-align: middle; margin-left: 4px; }
+    .updated-running { color: var(--text-secondary); font-style: italic; }
     h1 { margin: 0; font-size: 24px; color: var(--text-primary); }
     .tab-icon { margin-right: 6px; font-size: 20px; width: 20px; height: 20px; }
     .tab-actions { display: flex; justify-content: flex-end; gap: 12px; margin: 16px 0; flex-wrap: wrap; }
@@ -752,9 +789,16 @@ const DEFAULT_PORT: Record<HypervisorType, number> = {
     mat-card { background: var(--bg-card); border: 1px solid var(--border); }
   `],
 })
-export class InfrastructureComponent implements OnInit {
+export class InfrastructureComponent implements OnInit, OnDestroy {
   private infra = inject(InfrastructureApiService);
   private snack = inject(MatSnackBar);
+  private doc = inject(DOCUMENT);
+  private zone = inject(NgZone);
+
+  /* ── Freshness: the API rediscovers on its own schedule; this page re-reads ──── */
+  discovery: InfraDiscovery | null = null;
+  now = new Date();
+  private reread?: Subscription;
 
   /* ── Compute state ─────────────────────────────────────────── */
   connections: HypervisorConnection[] = [];
@@ -764,7 +808,7 @@ export class InfrastructureComponent implements OnInit {
   discoveringAll = false;
   editingConnectionId: string | null = null;
   connectionSaving = false;
-  connCols = ['status', 'name', 'type', 'host', 'actions'];
+  connCols = ['status', 'name', 'type', 'host', 'updated', 'actions'];
   nodeCols = ['status', 'node_name', 'ip', 'cpu', 'memory', 'storage', 'vms'];
   newConn: {
     name: string; hypervisor_type: HypervisorType; host: string;
@@ -856,10 +900,81 @@ export class InfrastructureComponent implements OnInit {
   ngOnInit(): void {
     this.loadConnections();
     this.loadHvSummary();
+    this.loadDiscovery();
     this.loadAppliances();
     this.loadStorageSummary();
     this.loadNetDevices();
     this.loadNetSummary();
+    this.startRereading();
+  }
+
+  ngOnDestroy(): void {
+    this.reread?.unsubscribe();
+  }
+
+  /* ── Freshness ─────────────────────────────────────────────── */
+  /**
+   * Re-read the stored inventory every REREAD_MS while the tab is visible, and at once when
+   * it becomes visible again. A hidden tab makes no requests. This only reads what the
+   * API's scheduled discovery stored; it never contacts a hypervisor.
+   */
+  private startRereading(): void {
+    // The timer runs outside Angular's zone: inside, a never-ending interval keeps the app
+    // from ever being stable (whenStable, and whatever waits on it). Each re-read re-enters
+    // the zone so its responses render.
+    this.zone.runOutsideAngular(() => {
+      this.reread = merge(
+        interval(REREAD_MS),
+        fromEvent(this.doc, 'visibilitychange'),
+      ).pipe(filter(() => !this.pageHidden())).subscribe(() => this.zone.run(() => this.rereadStored()));
+    });
+  }
+
+  pageHidden(): boolean {
+    return this.doc.visibilityState === 'hidden';
+  }
+
+  /** The stored figures again: connections and their hosts (the gauges), totals, ages. */
+  rereadStored(): void {
+    this.loadConnections();
+    this.loadHvSummary();
+    this.loadDiscovery();
+  }
+
+  loadDiscovery(): void {
+    this.infra.discoveryStatus().subscribe({
+      next: d => { this.discovery = d; this.now = new Date(); },
+      error: () => {},  // the ages stay as they were; the inventory itself still loads
+    });
+  }
+
+  discoveryOf(c: HypervisorConnection): ConnectionDiscovery | undefined {
+    return this.discovery?.connections.find(d => d.connection_id === c.id);
+  }
+
+  overallUpdatedAt(): string | null {
+    return overallUpdated(this.connections, this.discovery?.connections ?? []);
+  }
+
+  failingCount(): number {
+    const active = new Set(this.connections.filter(c => c.is_active).map(c => c.id));
+    return (this.discovery?.connections ?? []).filter(d => d.failing && active.has(d.connection_id)).length;
+  }
+
+  ago(iso: string | null | undefined): string {
+    return updatedAgo(iso, this.now);
+  }
+
+  freshnessTooltip(): string {
+    const every = cadence(this.discovery?.interval_seconds);
+    return every
+      ? `TrueNorth rediscovers the hypervisors ${every}; this page re-reads every minute while open.`
+      : 'Scheduled discovery is off (INFRA_DISCOVERY_SECONDS=0): figures change on Refresh now only.';
+  }
+
+  /** Rediscover every connection now, then re-read. Same as Discover All Nodes. */
+  refreshNow(): Promise<void> {
+    return this.discoverAllNodes();
   }
 
   /* ── Compute helpers ───────────────────────────────────────── */
@@ -932,10 +1047,15 @@ export class InfrastructureComponent implements OnInit {
     this.infra.discoverConnection(c.id).subscribe({
       next: r => {
         this.snack.open(r.message, 'OK', { duration: 5000 });
-        this.loadConnections();
-        this.loadHvSummary();
+        this.rereadStored();
       },
-      error: e => this.snack.open('Discovery failed: ' + (e.error?.detail || e.message), 'OK', { duration: 4000 }),
+      error: e => {
+        this.snack.open(
+          e?.status === 409 ? `${c.name} is already being discovered.` : 'Discovery failed: ' + (e.error?.detail || e.message),
+          'OK', { duration: 4000 },
+        );
+        this.loadDiscovery();
+      },
     });
   }
 
@@ -950,18 +1070,21 @@ export class InfrastructureComponent implements OnInit {
         this.connections.map(c => firstValueFrom(this.infra.discoverConnection(c.id)))
       );
 
-      const success = results.filter(r => r.status === 'fulfilled').length;
-      const failed = results.length - success;
+      // A 200 can still be a failed discovery (it carries `error`); a 409 is one already
+      // running (the schedule, or someone else): its result shows on the next re-read.
+      const success = results.filter(r => r.status === 'fulfilled' && !r.value['error']).length;
+      const running = results.filter(r => r.status === 'rejected' && r.reason?.status === 409).length;
+      const failed = results.length - success - running;
+      const busy = running ? `, ${running} already running` : '';
 
       if (failed === 0) {
-        this.snack.open(`Discovery complete on ${success} connection(s).`, 'OK', { duration: 5000 });
+        this.snack.open(`Discovery complete on ${success} connection(s)${busy}.`, 'OK', { duration: 5000 });
       } else {
-        this.snack.open(`Discovery finished: ${success} succeeded, ${failed} failed.`, 'OK', { duration: 6000 });
+        this.snack.open(`Discovery finished: ${success} succeeded, ${failed} failed${busy}.`, 'OK', { duration: 6000 });
       }
     } finally {
       this.discoveringAll = false;
-      this.loadConnections();
-      this.loadHvSummary();
+      this.rereadStored();
     }
   }
   setPrimary(c: HypervisorConnection): void {

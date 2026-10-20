@@ -19,8 +19,9 @@ describe('InfrastructureComponent (hypervisor connection form)', () => {
   beforeEach(() => {
     infra = jasmine.createSpyObj('InfrastructureApiService', [
       'connections', 'connectionNodes', 'hypervisorSummary', 'createConnection', 'updateConnection',
-      'appliances', 'storageSummary', 'networkDevices', 'networkSummary',
+      'appliances', 'storageSummary', 'networkDevices', 'networkSummary', 'discoveryStatus',
     ]);
+    infra.discoveryStatus.and.returnValue(NEVER);
     infra.connections.and.returnValue(of([]));
     infra.connectionNodes.and.returnValue(of([]));
     infra.hypervisorSummary.and.returnValue(NEVER);
@@ -130,7 +131,9 @@ describe('InfrastructureComponent (load gauges)', () => {
   function render(): ComponentFixture<InfrastructureComponent> {
     const infra = jasmine.createSpyObj('InfrastructureApiService', [
       'connections', 'connectionNodes', 'hypervisorSummary', 'appliances', 'storageSummary', 'networkDevices', 'networkSummary',
+      'discoveryStatus',
     ]);
+    infra.discoveryStatus.and.returnValue(NEVER);
     infra.connections.and.returnValue(of([VCENTER]));
     infra.connectionNodes.and.returnValue(of(NODES));
     infra.hypervisorSummary.and.returnValue(of({ total_connections: 1, total_nodes: 2, total_cpu: 16 }));

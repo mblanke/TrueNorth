@@ -24,6 +24,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from . import (  # noqa: F401 — every module here but ws_auth only registers its tables
+    infra_discovery,
     network_inventory,
     noise,
     range_leases,
@@ -110,6 +111,10 @@ async def lifespan(app: FastAPI):
     from .cmi5.ags import loop as cmi5_ags_loop
 
     cmi5_ags = asyncio.create_task(cmi5_ags_loop())
+    # Hypervisor inventory is rediscovered on a schedule (INFRA_DISCOVERY_SECONDS; app/infra_discovery).
+    from .infra_discovery.runner import loop as infra_discovery_loop
+
+    infra_discovery_task = asyncio.create_task(infra_discovery_loop())
     # Real-backend exercises end when their scenario's duration runs out (ADR 0005 §6).
     exercise_clock = None
     if os.getenv("EXERCISE_CLOCK", "true").lower() == "true":
@@ -134,7 +139,7 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    for sweep in (range_resend, lab_sweep, exercise_clock, clock_task, results_pull, cmi5_ags):
+    for sweep in (range_resend, lab_sweep, exercise_clock, clock_task, results_pull, cmi5_ags, infra_discovery_task):
         if sweep is not None:
             sweep.cancel()
 

@@ -539,6 +539,24 @@ printed. Re-running is safe:
 
 To manage the connection only by hand, set `tn_register_vcenter_connection: false`.
 
+### Keeping the figures current
+
+The api rediscovers every active hypervisor connection on a schedule, so hosts, VM counts
+and the Overview load gauges change without anyone pressing Discover. The page re-reads
+the stored figures every minute while it is open (not while its browser tab is hidden),
+shows "Updated ..." overall (the stalest active connection) and per connection, flags a
+connection whose last discovery failed, and has **Refresh now** to rediscover at once.
+
+| Variable | Default | Effect |
+|---|---|---|
+| `tn_infra_discovery_seconds` | `300` | `INFRA_DISCOVERY_SECONDS`: how often the api rediscovers; `0` turns the schedule off |
+
+One discovery per connection runs at a time (a lease in `hypervisor_discovery_state`), so
+a slow vCenter never collects overlapping runs; a press of Refresh now while one is running
+is answered "already running". A failing connection is retried once per interval and does
+not hold up the others. What counts as a VM is unchanged: powered-on range VMs only, not
+templates, vCLS agents or the vCenter appliance.
+
 ## Images: deploy by digest
 
 `compose.prod.yml` builds nothing. The four TrueNorth images run as `${TN_IMAGE_API}`,

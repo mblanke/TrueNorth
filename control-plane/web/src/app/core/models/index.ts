@@ -126,6 +126,12 @@ export type HypervisorPool = S['HypervisorPoolOut'];
 
 export type HypervisorSummary = S['HypervisorSummaryOut'];
 
+/** GET /hypervisors/discovery: when each connection's hosts were last discovered (the
+ *  API rediscovers them every `interval_seconds`; 0 = schedule off). Timestamps are UTC
+ *  with an offset; null means never. */
+export type InfraDiscovery = S['InfraDiscoveryOut'];
+export type ConnectionDiscovery = S['ConnectionDiscoveryOut'];
+
 // ── AI Models ─────────────────────────────────────────────────────
 export type AIBackendType = 'ollama' | 'openai' | 'azure_openai' | 'vllm' | 'custom';
 

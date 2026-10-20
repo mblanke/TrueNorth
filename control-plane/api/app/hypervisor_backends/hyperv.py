@@ -115,6 +115,7 @@ def discover(conn_id, conn: HypervisorConnection, db) -> dict:
         db.commit()
         return {"message": f"Discovered Hyper-V host {node_name!r}", "nodes_discovered": discovered}
     except ImportError:
-        return {"message": "pywinrm is not installed on the API server", "nodes_discovered": 0}
+        missing = "pywinrm is not installed on the API server"
+        return {"message": missing, "nodes_discovered": 0, "error": missing}
     except Exception as exc:
-        return {"message": f"Hyper-V discovery failed: {exc}", "nodes_discovered": 0}
+        return {"message": f"Hyper-V discovery failed: {exc}", "nodes_discovered": 0, "error": str(exc)}
