@@ -62,7 +62,8 @@ d-i user-setup/encrypt-home boolean false
 tasksel tasksel/first multiselect standard
 # No cloud-init: it is not on the Kali installer ISO (offline build); VMware guest
 # customization works through open-vm-tools without it.
-d-i pkgsel/include string openssh-server open-vm-tools sudo curl wget git net-tools
+# ifupdown: VMware guest customization writes /etc/network/interfaces (static range IPs).
+d-i pkgsel/include string openssh-server open-vm-tools ifupdown sudo curl wget git net-tools
 %{ if apt_proxy != "" ~}
 d-i pkgsel/upgrade select full-upgrade
 %{ else ~}
@@ -71,9 +72,9 @@ d-i pkgsel/upgrade select none
 
 # Enable SSH and VMware tools
 # The installed system must bring its NIC up by DHCP (Packer waits for the IP). Kali's core
-# set here has no NetworkManager and no ifupdown config: fall back to systemd-networkd.
+# set has no NetworkManager; netcfg's ifupdown DHCP config is used, else systemd-networkd.
 d-i preseed/late_command string \
-  in-target sh -c 'dpkg -s network-manager >/dev/null 2>&1 || { mkdir -p /etc/systemd/network; printf "[Match]\\nName=en* eth*\\n\\n[Network]\\nDHCP=yes\\n" > /etc/systemd/network/20-tn-dhcp.network; systemctl enable systemd-networkd; }' ; \
+  in-target sh -c 'dpkg -s network-manager >/dev/null 2>&1 || grep -q dhcp /etc/network/interfaces 2>/dev/null || { mkdir -p /etc/systemd/network; printf "[Match]\\nName=en* eth*\\n\\n[Network]\\nDHCP=yes\\n" > /etc/systemd/network/20-tn-dhcp.network; systemctl enable systemd-networkd; }' ; \
   in-target systemctl enable ssh ; \
   in-target systemctl enable open-vm-tools ; \
   echo "${user} ALL=(ALL) NOPASSWD:ALL" > /target/etc/sudoers.d/${user} ; \

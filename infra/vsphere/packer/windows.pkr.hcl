@@ -453,9 +453,11 @@ source "vsphere-iso" "win11-24h2" {
   firmware      = "efi-secure"
   vTPM          = var.win11_vtpm
 
-  CPUs                 = 2
-  RAM                  = 4096
-  disk_controller_type = ["pvscsi"]
+  CPUs = 2
+  RAM  = 4096
+  # NVMe: Windows has an inbox driver, so WinPE needs no DriverPaths. With pvscsi DriverPaths
+  # the 24H2 setup stopped with 0x80070103 - 0x40031 (2026-10-20, ESXi 8.0.3).
+  disk_controller_type = ["nvme"]
   storage {
     disk_size             = 65536
     disk_thin_provisioned = true
@@ -475,7 +477,7 @@ source "vsphere-iso" "win11-24h2" {
       admin_password      = var.windows_admin_password
       labconfig           = !var.win11_vtpm
       bypass_nro          = true
-      pvscsi_driver_paths = local.pvscsi_driver_paths
+      pvscsi_driver_paths = []
     })
   }
 
