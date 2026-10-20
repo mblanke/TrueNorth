@@ -612,14 +612,19 @@ def _run(session_for, vm_def: dict, macs: list[str], networks: list[dict], mirro
     if now() >= stop and deadline <= budget_end:
         return fail("timeout", f"not healthy within VSPHERE_SO_SETUP_TIMEOUT; last status: {STATUS[last]} "
                                f"(it carries on in the guest; check {STATUS_FILE})")
-    out, warnings2, verified = fail("running", f"last status: {STATUS[last]}; continues in the guest, the reconcile "
-                                               f"task records the result (check {STATUS_FILE})")
+    out, warnings2, _ = fail("running", f"last status: {STATUS[last]}; continues in the guest, the reconcile "
+                                        f"task records the result (check {STATUS_FILE})")
+    acc = web_account(vm_def)
     out["reconcile"] = {"kind": "securityonion", "status_file": STATUS_FILE, "since": since,
                         "timeout": VSPHERE_SO_SETUP_TIMEOUT, "web_user": p.web_user,
+                        # The declared username, as the build records it (_verified_web), not the e-mail.
+                        "web_account": acc.username if acc is not None and not p.web_generated else None,
                         "web_generated": p.web_generated, "admin_user": p.admin.username if p.admin else None,
-                        "node": str(vm_def.get("node_id") or ""), "install_user": p.install.username,
+                        "admin_last": p.admin_last, "node": str(vm_def.get("node_id") or ""),
+                        "install_user": p.install.username,
                         "install_from_env": p.install_source == "VSPHERE_SO_INSTALL_USER"}
-    return out, warnings2, verified
+    # Nothing is applied yet: the reconcile task verifies the accounts once the node is healthy.
+    return out, warnings2, set()
 
 
 def admin_check_command(username: str) -> guest.GuestCommand:
@@ -670,35 +675,71 @@ def _set_admin_last(session, p: SetupPlan, stop: float, hidden) -> list[str]:
             f"({result}, {code})"]
 
 
-def reconcile(session, info: dict, *, clock: Callable[[], float] | None = None,
+def reconcile(session_for: Callable[[guest.GuestCredentials], object], install: guest.GuestCredentials,
+              info: dict, *, admin_password: guest.Secret | None = None, clock: Callable[[], float] | None = None,
               epoch: Callable[[], float] | None = None, deadline: float | None = None) -> tuple[dict | None, set]:
-    """Read a ``running`` Security Onion setup's status (worker/setup_reconcile.py), as the
-    install login. Returns (final outcome or None, the accounts verified in the guest). On a
-    healthy node it verifies the SOC web login (``so-user list``) and the admin account
-    (``getent passwd``); until then it returns (None, set()) and leaves it ``running``."""
+    """Read a ``running`` Security Onion setup's status (worker/setup_reconcile.py) as the
+    install login. Returns (final outcome or None, the DECLARED usernames verified in the guest).
+
+    The timeout is checked first, before any guest operation, so a powered-off or unreachable
+    sensor still ends. On a healthy node, as the build does: the SOC web login by ``so-user
+    list`` (recorded under its declared username, ``web_account``); then the admin account,
+    whose declared password is set by chpasswd when it is the install login itself
+    (``admin_last``, last, as it ends that login), and which is recorded applied only once a
+    guest-operations login with that declared password works."""
+    base = {"status": "", "detail": "", "mode": "standalone, airgap", "reconcile": info}
+    if (expired := timed_out(info, epoch=epoch)) is not None:
+        return expired, set()
+    session = session_for(install)
     now = clock or session._clock
-    at = epoch or _time.time
     stop = deadline if deadline is not None else now() + 120
+    hidden = (install.password, admin_password)
     try:
         session.wait_ready(stop)
-        _result, code = session.run(poll_command(), min(stop, now() + 120))  # code is the status number
+        _result, code = session.run(poll_command(), stop)  # code is the status number
     except Exception as exc:  # noqa: BLE001
         logger.info("security onion reconcile %s: not reachable this round: %s", info.get("node"),
-                    getattr(exc, "msg", None) or type(exc).__name__)
+                    _scrub(getattr(exc, "msg", None) or type(exc).__name__, *hidden))
         return None, set()
-    base = {"status": "", "detail": "", "mode": "standalone, airgap", "reconcile": info}
-    if code == 0:
-        verified: set[str] = set()
-        if info.get("admin_user") and _check(session, admin_check_command(info["admin_user"]), stop, ()):
-            verified.add(str(info["admin_user"]))
-        web = info.get("web_user")
-        if web and not info.get("web_generated") and _check(
-                session, as_root("so-web-check", web_check_script(str(web)), session.creds), stop, ()):
-            verified.add(str(web))
-        return {**base, "status": "ok", "detail": STATUS[0]}, verified
-    if code is not None and code not in RUNNING:
+    if code is not None and code != 0 and code not in RUNNING:
         return {**base, "status": "failed", "detail": STATUS.get(code, f"setup runner status {code}")}, set()
-    if at() - float(info.get("since") or 0) > float(info.get("timeout") or VSPHERE_SO_SETUP_TIMEOUT):
-        return {**base, "status": "timeout",
-                "detail": f"not healthy within VSPHERE_SO_SETUP_TIMEOUT; last status: {STATUS.get(code, code)}"}, set()
-    return None, set()
+    if code != 0:
+        return None, set()
+    verified: set[str] = set()
+    web, account = info.get("web_user"), info.get("web_account")
+    if web and account and not info.get("web_generated") and _check(
+            session, as_root("so-web-check", web_check_script(str(web)), install), stop, hidden):
+        verified.add(str(account))
+    notes = ""
+    admin = info.get("admin_user")
+    if admin and admin_password is not None:
+        if info.get("admin_last"):  # the admin is the install login: give it its declared password now
+            q = shlex.quote
+            script = f"printf '%s:%s\\n' {q(str(admin))} {q(admin_password.reveal())} | chpasswd"
+            if not _check(session, as_root("so-admin-password", script, install), stop, hidden):
+                notes = f"admin account {admin}: its declared password was not set"
+        if not notes and _login_works(session_for, str(admin), admin_password, stop):
+            verified.add(str(admin))
+        elif not notes:
+            notes = f"admin account {admin}: a login with its declared password did not work"
+    detail = STATUS[0] + (f"; {notes}" if notes else "")
+    return {**base, "status": "ok", "detail": _scrub(detail, *hidden)}, verified
+
+
+def timed_out(info: dict, *, epoch: Callable[[], float] | None = None) -> dict | None:
+    """The ``timeout`` outcome of a ``running`` setup past VSPHERE_SO_SETUP_TIMEOUT from its
+    start, else None. No guest operation: works for a powered-off or unreachable sensor."""
+    at = epoch or _time.time
+    if at() - float(info.get("since") or 0) <= float(info.get("timeout") or VSPHERE_SO_SETUP_TIMEOUT):
+        return None
+    return {"status": "timeout", "mode": "standalone, airgap", "reconcile": info,
+            "detail": f"not healthy within VSPHERE_SO_SETUP_TIMEOUT; see {STATUS_FILE} and {RUNNER_LOG} in the guest"}
+
+
+def _login_works(session_for, username: str, password: guest.Secret, stop: float) -> bool:
+    """Whether a guest-operations login as ``username`` with ``password`` is accepted."""
+    try:
+        session_for(guest.GuestCredentials("linux", username, password)).wait_ready(stop)
+    except Exception:  # noqa: BLE001 -- not verified: recorded as not set
+        return False
+    return True

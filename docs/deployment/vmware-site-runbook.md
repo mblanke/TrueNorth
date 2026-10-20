@@ -500,20 +500,23 @@ node in **airgap** mode (`worker/provisioners/vsphere_securityonion.py`):
 SO 2.4 has no answer file. The worker runs so-setup with its built-in test profile, and
 replaces the profile's hard-coded answers with the range's
 (`/root/tn-so-answers.env`, deleted after setup). Setup runs detached in the guest, takes
-20–60 minutes, and carries on even if the worker stops waiting.
+20–60 minutes, and carries on even if the worker stops waiting. The build starts it and
+records it `running`; the reconcile task (§7.3) reads its status later, verifies the accounts
+and records the outcome.
 
 Before the first SOC range, set on the worker:
 
 | Setting | Value |
 |---|---|
 | `VSPHERE_SO_INSTALL_USER` / `VSPHERE_SO_INSTALL_PASSWORD` | the template's build login (the user created in the SO installer; wiki). It runs guest operations and `sudo`. (`TN_RANGE_DEFAULT_PASSWORD` is not used: it is the Windows Administrator fallback.) Without these, the machine's `role: admin` account logs in, which works only for a template built with it. |
-| `VSPHERE_SO_SETUP_TIMEOUT` | seconds to wait for a healthy node, default `3600`. The wait also stops at `VSPHERE_PROVISION_BUDGET`. |
+| `VSPHERE_SO_SETUP_TIMEOUT` | seconds from the start of setup until a node that is not healthy is a `timeout`, default `7200`. Read by the reconcile task; the build itself waits only `VSPHERE_SETUP_BUILD_WAIT` (default 0). |
 | `TN_SECRETS_KEY` | already set for hypervisor passwords. A generated web password is stored sealed with it. |
 
 Check after the build:
 1. `provisioner_output.vms[].securityonion.status` is `ok` (`so-status` healthy). Other
    statuses are warnings, not a failed range:
-   - `running`: the provision budget ran out first;
+   - `running`: still being set up; the reconcile task records the result within minutes of
+     it finishing (the accounts appear, as "being set up" to staff until then);
    - `timeout`: `VSPHERE_SO_SETUP_TIMEOUT` ran out;
    - `failed`, with a reason: see `/root/tn-so-setup.log`, `/root/sosetup.log` and
      `/root/errors.log` in the guest;
@@ -549,7 +552,7 @@ The role images `srv2022-exchange2019`, `srv2022-sharepointse` and `srv2022-mecm
 Each product needs the range's domain, so the worker finishes it per range
 (`worker/provisioners/vsphere_products.py`). It runs on a VM whose node names the role
 (`exchange`, `sharepoint_se`, `sccm` …, `windows-server-2022`) and which was cloned from the
-role image. Until an image is `built` (golden-image registry) and present on the vCenter, a range builds the plain OS (`srv2022`) instead, with the warning "role image <id> not built — using srv2022; <role> not installed" and `role_setup` `skipped`. Nothing is set up on it, and the range is not partial for it.
+role image. Until one of these three images is `built` (golden-image registry; other role images resolve as before) and present on the vCenter, a range builds the plain OS (`srv2022`) instead, with the warning "role image <id> not built — using srv2022; <role> not installed" and `role_setup` `skipped`. Nothing is set up on it, and the range is not partial for it.
 
 Order, per VM:
 1. After every VM's Windows roles, so the forest-root DC of the VM's domain has been
@@ -561,11 +564,12 @@ Order, per VM:
    `C:\TrueNorth\deploy` readable only by Administrators and SYSTEM, deliver the DC's
    password to it by VMware **guest file transfer** (never a command line), set DNS to the
    DC, wait for it (up to 15 min), `Add-Computer` (the join reads then deletes the password
-   file), reboot. Then check for a reboot still pending after the software installs and
-   reboot again if so.
+   file), reboot.
 3. The VM's own deploy-time software (§4.1a), through the same VSPHERE_CONCURRENCY
    semaphore as the rest, so no package install races the product's installer.
-4. Deliver the runner, the (non-secret) parameters and, for SharePoint, a secrets file (the
+4. If no status file exists yet: reboot first when the software installs left one pending
+   (waiting for VMware Tools), then deliver the runner, the (non-secret) parameters and, for
+   SharePoint, a secrets file (the
    product key and farm passphrase) by guest file transfer into that folder, then start the
    setup **detached through VMware guest operations authenticated as `<DOMAIN>\Administrator`**.
    There is no scheduled task and no stored Windows credential: the password reaches only the
@@ -595,6 +599,15 @@ Order, per VM:
    `applied`. Until then staff see those accounts as **"being set up"** (not the real
    password rows — those are the declared/generated ones they already see; the *applied*
    state is what changes); Students see them only once verified.
+   The reconcile follows the range through every live state (ready, running, stopping,
+   stopped, starting), so a stop/start mid-setup does not strand it. The timeout is checked
+   before any guest operation: a VM that is powered off, unreachable or no longer accepts the
+   login still ends `timeout`. One run at a time (Redis lock), at most 90 s of guest waiting per
+   VM and 240 s per range (`SETUP_RECONCILE_RANGE_SECONDS`), 1200 s per run
+   (`SETUP_RECONCILE_RUN_SECONDS`). Lab-session ranges are skipped. Security Onion: the SOC web
+   login is recorded under its declared username; an admin account that is the install login
+   gets its declared password first; an admin is applied only once a login with its declared
+   password works.
 
 The domain Administrator is the DC's built-in Administrator after forest promotion. A range
 with a product role image gets a **per-range generated Administrator** for the product VM

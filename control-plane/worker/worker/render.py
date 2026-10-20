@@ -373,19 +373,25 @@ def render_topology(
     }
 
 
+# The role images whose product is finished at deploy (provisioners/vsphere_products.py
+# SETUP_IMAGES; a test keeps the two equal). Only these wait for ``build_status = built``.
+DEPLOY_SETUP_IMAGES = frozenset({"srv2022-exchange2019", "srv2022-sharepointse", "srv2022-mecm"})
+
+
 def golden_image_resolver(db, hypervisor: str = "vsphere") -> Callable[[str], str | None]:
     """Build an os-alias -> template_name resolver from the golden_images table.
 
-    A Windows Server role image (windows_roles.py) resolves only once it is ``built``: an
-    enabled row for an image not built yet would clone a template that does not exist, so
-    render_topology builds the plain OS instead and the role reports itself not installed."""
+    The three product role images with a deploy-time setup (``DEPLOY_SETUP_IMAGES``:
+    Exchange 2019, SharePoint SE, MECM) resolve only once they are ``built``: their rows are
+    enabled before the images exist, so render_topology builds the plain OS instead and the
+    role reports itself not installed. Every other image (srv2022-sql2022,
+    srv2019-sharepoint2019, ERP, historian, ...) resolves as before, whatever its build_status."""
     import json as _json
 
     from .db_ops import enabled_golden_images, unbuilt_golden_images
 
     rows = enabled_golden_images(db, hypervisor)
-    role_images = {img for r in windows_roles.ROLES for img in r["install"].get("images", {}).values()}
-    unbuilt = unbuilt_golden_images(db, hypervisor) & role_images
+    unbuilt = unbuilt_golden_images(db, hypervisor) & DEPLOY_SETUP_IMAGES
     by_id: dict[str, str] = {}
     by_alias: dict[str, str] = {}
     for cid, tname, aliases_json in rows:

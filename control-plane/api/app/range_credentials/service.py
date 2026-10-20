@@ -81,7 +81,9 @@ def declared(db: Session, rng: Range) -> list[account_rules.AccountSpec]:
     or a random password, as the range designer's save already decides (routers/ranges.py)."""
     tmpl = template_of(db, rng)
     if not foreign_template_allowed(tmpl, rng):
-        return []
+        # Not that tenant's passwords, but still this range's own generated domain
+        # Administrator for its product VMs and DCs: never the site-wide default.
+        return account_rules.implicit_admins(account_rules._load(tmpl.yaml if tmpl else ""), [])
     specs, errors = account_rules.parse_yaml(tmpl.yaml if tmpl else "")
     if errors:
         detail = "; ".join(f"{e['path']}: {e['message']}" for e in errors[:5])

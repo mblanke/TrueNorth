@@ -47,10 +47,28 @@ from .sha512_crypt import sha512_crypt
 logger = logging.getLogger(__name__)
 
 
+class _NoTransferUrls(logging.Filter):
+    """httpx logs every request URL at INFO ("HTTP Request: PUT https://..."). A guest
+    file-transfer URL carries a one-time ticket for writing into the guest: keep it out of the
+    worker's logs. Other httpx log lines are left alone."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        try:
+            text = record.getMessage()
+        except Exception:  # noqa: BLE001
+            return True
+        return "/guestFile" not in text
+
+
+for _name in ("httpx", "httpcore"):
+    if not any(isinstance(f, _NoTransferUrls) for f in logging.getLogger(_name).filters):
+        logging.getLogger(_name).addFilter(_NoTransferUrls())
+
+
 def _https_put(url: str, data: bytes) -> None:
     """PUT ``data`` to a guest file-transfer URL. TLS is not verified: the URL is an ESXi
     host's, on the management network, named in a token vCenter just issued (as the rest of
-    the vSphere adapter: VSPHERE_VERIFY_SSL defaults off)."""
+    the vSphere adapter: VSPHERE_VERIFY_SSL defaults off). The URL is never logged (above)."""
     if httpx is None:
         raise RuntimeError("httpx is required for guest file transfer")
     verify = __import__("os").environ.get("VSPHERE_VERIFY_SSL", "false").lower() == "true"

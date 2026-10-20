@@ -15,24 +15,34 @@ After every VM's Windows Server roles (vsphere_roles.py), so the range's forest-
 of the VM's domain (``ad_join``, render.py) has been promoted and rebooted. A VM whose DC
 did not end ``ad-ds: ok`` is ``skipped``. Per VM:
 
-1. as the local Administrator (the Sysprep password, ``_guest``): check the marker; set
-   the DNS servers to the DC, wait for its ``_ldap._tcp.dc._msdcs`` record, and
-   ``Add-Computer`` with the domain Administrator; reboot;
-2. the VM's own deploy-time software (vsphere_api ``_install_software``), so no Chocolatey
-   install races the product's Windows Installer;
-3. stage ``C:\\TrueNorth\\deploy`` (runner, parameters, and for SharePoint the secrets),
-   register the one-shot scheduled task "TrueNorth role setup" as the domain
-   Administrator, highest privileges, and start it. Setup takes 30 to 120 minutes, outlives
-   any guest-operations session and needs an elevated, network-capable logon: the task
-   gives both. The runner deletes the task (and its stored password) when it ends;
-4. poll the runner's status number until it ends, VSPHERE_ROLE_SETUP_TIMEOUT
-   (``timeout``) or the provision budget (``running``). Setup carries on in the guest
-   after either.
+1. ``prepare``, as the local Administrator (the Sysprep password, ``_guest``): check the
+   marker; make ``C:\\TrueNorth\\deploy`` readable by Administrators and SYSTEM only (and
+   delete any secret a previous attempt left); deliver the domain password into it by
+   VMware guest **file transfer**; set the DNS servers to the DC, wait for its
+   ``_ldap._tcp.dc._msdcs`` record, ``Add-Computer`` (the join reads, then deletes, the
+   password file); reboot;
+2. the VM's own deploy-time software (vsphere_api ``_install_software``, through the
+   range's one VSPHERE_CONCURRENCY semaphore), so no Chocolatey install races the product;
+3. ``run``, through guest operations authenticated as ``<DOMAIN>\\Administrator``: if no
+   status file exists yet, reboot when one is pending, deliver the runner, its parameters
+   and (SharePoint) a secrets file by file transfer, and start the runner **detached**
+   (``StartProgramInGuest`` returns its PID; the process outlives the call). No scheduled
+   task, no stored Windows credential: the password reaches only the vSphere API auth. The
+   build waits at most VSPHERE_SETUP_BUILD_WAIT, then records ``running``;
+4. ``reconcile`` (worker/setup_reconcile.py, beat) reads the status number later, the same
+   way, and records ok / failed / timeout (the timeout is checked first, so an unreachable
+   VM still ends).
 
 The domain Administrator is the DC's built-in Administrator after ``Install-ADDSForest``:
-the range's declared ``Administrator`` account for the DC (ADR 0012 decision 12, #183),
-else the template default (#185), else the random password Sysprep set (known to this
-build only). Its password is the DC's ``_guest`` password; it is never stored or logged.
+the range's declared ``Administrator`` account for the DC (ADR 0012 decision 12, #183), or
+the per-range one the credential service generates when a range with these roles declares
+none. Its password is the DC's ``_guest`` password; it is never stored in the output or
+logged.
+
+To verify on the first real build: the built-in domain Administrator (RID 500) is assumed to
+get an unfiltered token under the default UAC policy, so the guest-operations process can run
+the product setups; and the worker must reach each ESXi host on 443 for the file transfer
+(mblanke/TrueNorth#194).
 
 What each product runs
 ----------------------
@@ -75,21 +85,24 @@ Sources (Microsoft Learn):
 - learn.microsoft.com/mem/configmgr/core/servers/deploy/install/setup-downloader
 - learn.microsoft.com/mem/configmgr/core/plan-design/network/extend-the-active-directory-schema
 - learn.microsoft.com/powershell/module/microsoft.powershell.management/add-computer
-- learn.microsoft.com/powershell/module/scheduledtasks/register-scheduledtask
+- developer.broadcom.com (vSphere Web Services API): GuestFileManager.InitiateFileTransferToGuest,
+  GuestProcessManager.StartProgramInGuest
 
 Outcomes
 --------
 ``vms[].role_setup`` = {status, detail, image, domain, ...}; the role's entry in
 ``vms[].roles`` carries the same status. ok | failed | timeout | running | skipped. Like the
 Security Onion setup (#184) every outcome but ``ok`` is a provisioner warning, never a
-partial range. ``accounts_applied`` is unchanged: the VM's Administrator is verified as for
-any Windows VM.
+partial range. ``accounts_applied``: the VM's Administrator is verified as for any Windows VM.
 
-Secrets pass through guest-operations program arguments (PowerShell ``-EncodedCommand``),
-visible to a local process listing for the seconds a staging command runs, like the DSRM
-password of the forest promotion and Security Onion's answer file. The SharePoint secrets
-file is readable by Administrators only and deleted by the runner as it starts. Nothing
-secret is logged, and every recorded error is scrubbed.
+Secrets
+-------
+No secret is ever on a guest command line: the commands' ``-EncodedCommand`` scripts carry
+file paths only. The domain password (for the join) and the SharePoint key, passphrase and
+farm password reach the guest only by file transfer into the Administrators/SYSTEM-only
+folder; the join and the runner read them and delete them in a ``finally``, a failed start
+runs the clean-up command, a fresh attempt (INIT) and every terminal reconcile delete any
+leftover. Nothing secret is logged, and every recorded error is scrubbed.
 """
 
 from __future__ import annotations
@@ -427,7 +440,10 @@ if ($pending) { exit 3010 }
 exit 0
 """
 
-POLL_SCRIPT = """$c = Get-Content -Raw '__STATUS__' -ErrorAction SilentlyContinue
+# Exit codes: the status number; 200 (STATUS_MISSING) when there is no status file yet, so
+# nothing was started; 2 when the file exists but is not a number yet (the runner is writing it).
+POLL_SCRIPT = """if (-not (Test-Path -LiteralPath '__STATUS__')) { exit 200 }
+$c = Get-Content -Raw -LiteralPath '__STATUS__' -ErrorAction SilentlyContinue
 if ($c -match '^\\s*(\\d+)') { exit [int]$Matches[1] }
 exit 2
 """
@@ -738,8 +754,8 @@ def prepare(session_for: Callable[[guest.GuestCredentials], object], p: SetupPla
             reboot_fn=vsphere_roles.reboot) -> dict | None:
     """As the local Administrator: check the staged-image marker, make the state folder,
     deliver the domain password by file transfer, join the domain (the join reads and deletes
-    that file), reboot, and reboot again if the software installs left one pending. None:
-    ready for ``run``; else the VM's final outcome. No secret touches a command line."""
+    that file) and reboot. None: ready for the VM's software and then ``run``; else the VM's
+    final outcome. No secret touches a command line."""
     session = session_for(p.local)
     try:
         session.wait_ready(deadline)
@@ -761,11 +777,9 @@ def prepare(session_for: Callable[[guest.GuestCredentials], object], p: SetupPla
             return outcome(p, "failed", f"domain join: {JOIN_CODES.get(code, f'{result} (exit {code})')}")
         if code == vsphere_roles.EXIT_REBOOT:
             reboot_fn(session, deadline)
-        result, code = session.run(reboot_pending_command(), deadline)
-        if result == "ok" and code == vsphere_roles.EXIT_REBOOT:
-            logger.info("role setup on %s: reboot pending after the software installs; rebooting", p.name)
-            reboot_fn(session, deadline)
     except Exception as exc:  # noqa: BLE001 — reported (scrubbed) per VM, never raised past it
+        with contextlib.suppress(Exception):  # the join may not have run: the file must not stay
+            session.run(cleanup_command(), deadline)
         return outcome(p, "failed", f"guest operations: {_err(exc)}")
     return None
 
@@ -782,7 +796,8 @@ def _read_status(session, deadline: float) -> int | None:
 
 def run(session_for: Callable[[guest.GuestCredentials], object], p: SetupPlan, deadline: float,
         budget_end: float, *, build_wait: float | None = None, poll: float | None = None,
-        clock: Callable[[], float] | None = None, epoch: Callable[[], float] | None = None) -> dict:
+        clock: Callable[[], float] | None = None, epoch: Callable[[], float] | None = None,
+        reboot_fn=vsphere_roles.reboot) -> dict:
     """As the domain Administrator (guest-ops auth; the password never reaches a command line
     or disk): deliver the runner, parameters and any SharePoint secrets by file transfer, start
     the setup detached, and wait at most VSPHERE_SETUP_BUILD_WAIT for it. Usually returns
@@ -798,10 +813,25 @@ def run(session_for: Callable[[guest.GuestCredentials], object], p: SetupPlan, d
         return outcome(p, "skipped", "the provision time budget (VSPHERE_PROVISION_BUDGET) is spent; joined to "
                                      f"{p.domain}, setup not started")
     since = at()
+    staged = False
     try:
         session.wait_ready(stop)
+        # A guest-ops hiccup (None) is retried, never taken for "already in progress".
         code = _read_status(session, min(stop, now() + 120))
+        while code is None and now() < stop:
+            with contextlib.suppress(Exception):
+                session._sleep(max(0.0, min(wait, stop - now())))
+            code = _read_status(session, min(stop, now() + 120))
+        if code is None:
+            return outcome(p, "failed", "could not read the setup status file (guest operations); not started")
         if code == STATUS_MISSING:
+            # Right before the product setup: a reboot the software installs left pending
+            # would fail it. Reboot first and wait for VMware Tools (reboot_fn does).
+            result, rc = session.run(reboot_pending_command(), stop)
+            if result == "ok" and rc == vsphere_roles.EXIT_REBOOT:
+                logger.info("role setup on %s: reboot pending after the software installs; rebooting", p.name)
+                reboot_fn(session, stop)
+            staged = True
             for name, content in ((RUNNER_FILE, RUNNER_SCRIPT), (PARAMS_FILE, json.dumps(params(p))),
                                   *([(SECRETS_FILE, json.dumps(secret_doc(p)))] if secret_doc(p) else [])):
                 session.upload(name, content.encode("utf-8"), stop)
@@ -809,9 +839,10 @@ def run(session_for: Callable[[guest.GuestCredentials], object], p: SetupPlan, d
             logger.info("role setup on %s: %s started", p.name, p.role)
         else:
             logger.info("role setup on %s: already in progress (status %s)", p.name, code)
-    except guest.GuestNotReadyError as exc:
-        return outcome(p, "failed", f"could not start: {_err(exc)}")
     except Exception as exc:  # noqa: BLE001
+        if staged:  # a secrets file may be on the disk with no runner to delete it
+            with contextlib.suppress(Exception):
+                session.run(cleanup_command(), max(stop, now() + 120))
         return outcome(p, "failed", f"could not start: {_err(exc)}")
     last = 2
     build_stop = min(stop, now() + bw)
@@ -835,18 +866,42 @@ def run(session_for: Callable[[guest.GuestCredentials], object], p: SetupPlan, d
     return running_outcome(p, since, last)
 
 
+def _reconcile_base(info: dict) -> dict:
+    role = str(info.get("role") or "")
+    image = next((i for i, r in SETUP_IMAGES.items() if r == role), "")
+    return {"status": "", "detail": "", "image": image, "domain": info.get("domain", ""), "reconcile": info}
+
+
+def timed_out(info: dict, *, epoch: Callable[[], float] | None = None) -> dict | None:
+    """The ``timeout`` outcome of a ``running`` setup past VSPHERE_ROLE_SETUP_TIMEOUT from its
+    start, else None. No guest operation: a powered-off, unreachable or no longer
+    authenticatable VM still ends."""
+    at = epoch or _time.time
+    timeout = float(info.get("timeout") or VSPHERE_ROLE_SETUP_TIMEOUT)
+    if at() - float(info.get("since") or 0) <= timeout:
+        return None
+    label = LABELS.get(str(info.get("role") or ""), str(info.get("role") or ""))
+    return {**_reconcile_base(info), "status": "timeout",
+            "detail": f"{label} not finished within VSPHERE_ROLE_SETUP_TIMEOUT ({int(timeout)}s); see "
+                      f"{STATUS_FILE} and {RUNNER_LOG} in the guest"}
+
+
 def reconcile(session, info: dict, *, clock: Callable[[], float] | None = None,
               epoch: Callable[[], float] | None = None, deadline: float | None = None) -> dict | None:
     """Read a ``running`` product setup's status file (worker/setup_reconcile.py). Returns the
     final outcome (ok / failed / timeout) and runs the secrets clean-up on a terminal state, or
-    None while it is still running or could not be read this round (leave it ``running``)."""
+    None while it is still running or could not be read this round (leave it ``running``).
+
+    The timeout is checked first, before any guest operation: a VM that is powered off,
+    unreachable or no longer accepts the login still ends ``timeout`` instead of staying
+    ``running`` for ever."""
     now = clock or session._clock
-    at = epoch or _time.time
     stop = deadline if deadline is not None else now() + 120
     role = str(info.get("role") or "")
     label = LABELS.get(role, role)
-    base = {"status": "", "detail": "", "image": f"srv2022-{role}" if role else "", "domain": info.get("domain", ""),
-            "reconcile": info}
+    base = _reconcile_base(info)
+    if (expired := timed_out(info, epoch=epoch)) is not None:
+        return expired
     try:
         session.wait_ready(stop)
     except Exception as exc:  # noqa: BLE001
@@ -863,11 +918,4 @@ def reconcile(session, info: dict, *, clock: Callable[[], float] | None = None,
         with contextlib.suppress(Exception):
             session.run(cleanup_command(), min(stop, now() + 120))
         return {**base, "status": "failed", "detail": STATUS.get(code, f"setup runner status {code}")}
-    timeout = float(info.get("timeout") or VSPHERE_ROLE_SETUP_TIMEOUT)
-    if at() - float(info.get("since") or 0) > timeout:
-        with contextlib.suppress(Exception):
-            session.run(cleanup_command(), min(stop, now() + 120))
-        return {**base, "status": "timeout",
-                "detail": f"{label} not finished within VSPHERE_ROLE_SETUP_TIMEOUT ({int(timeout)}s); "
-                          f"last status: {STATUS.get(code if code != STATUS_MISSING else 2, code)}"}
     return None

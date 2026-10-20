@@ -289,3 +289,54 @@ class TestPickEdge:
         assert infra.pick_edge([web, vyos, fw, flagged]) is flagged
         assert infra.pick_edge([web, vyos]) is vyos
         assert infra.pick_edge([web]) is None
+
+
+# --------------------------------------------------------------------------- #
+# Guest file transfer (secrets reach the guest this way, never a command line)
+# --------------------------------------------------------------------------- #
+
+
+class _FM:
+    def __init__(self):
+        self.calls = []
+
+    def InitiateFileTransferToGuest(self, vm, auth, guestFilePath, fileAttributes, fileSize, overwrite):  # noqa: N802, N803
+        self.calls.append((guestFilePath, fileSize, overwrite))
+        return "https://*/guestFile?id=7&token=ticket-secret-123"
+
+
+def _upload_session(put):
+    gom = SimpleNamespace(processManager=object(), authManager=object(), fileManager=_FM())
+    creds = guest.GuestCredentials("windows", "CORP\\Administrator", guest.Secret("Dc-Pass-1!"))
+    return guest.GuestSession(SimpleNamespace(guestOperationsManager=gom), SimpleNamespace(name="vm"), creds,
+                              transfer_host="esx02.lab", put=put), gom.fileManager
+
+
+def test_upload_puts_the_bytes_to_the_esxi_host_not_a_command_line():
+    sent = []
+    s, fm = _upload_session(lambda url, data: sent.append((url, data)))
+    s.upload("C:\\TrueNorth\\deploy\\secrets.json", b"{\"k\": 1}", 100)
+    assert fm.calls == [("C:\\TrueNorth\\deploy\\secrets.json", 8, True)]
+    assert sent == [("https://esx02.lab/guestFile?id=7&token=ticket-secret-123", b"{\"k\": 1}")]
+
+
+def test_an_unreachable_esxi_host_is_a_clear_error_without_the_password():
+    def fail(url, data):
+        raise ConnectionError("connect timeout")
+
+    s, _ = _upload_session(fail)
+    with pytest.raises(guest.GuestNotReadyError, match="#194") as exc:
+        s.upload("C:\\x", b"x", 100)
+    assert "Dc-Pass-1!" not in str(exc.value)
+
+
+def test_the_transfer_url_never_reaches_a_log_line(monkeypatch, caplog):
+    import httpx
+
+    caplog.set_level("DEBUG")
+    transport = httpx.MockTransport(lambda request: httpx.Response(200))
+    real_client = httpx.Client
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=transport, **kw))
+    url = "https://esx02.lab/guestFile?id=7&token=ticket-secret-123"
+    guest._https_put(url, b"data")
+    assert "ticket-secret-123" not in caplog.text and "/guestFile" not in caplog.text

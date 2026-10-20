@@ -2161,41 +2161,55 @@ class VsphereAPIProvisioner(BaseProvisioner):
 
     supports_setup_reconcile = True
 
-    def _reconcile_sync(self, range_id: str, products: list[dict], sos: list[dict],
-                        domain_passwords: dict, so_logins: dict, missing: set[str]) -> tuple[dict, list[str]]:
+    def _reconcile_sync(self, range_id: str, products: list[dict], sos: list[dict], domain_passwords: dict,
+                        so_logins: dict, missing: set[str], run_end: float,
+                        per_vm: float) -> tuple[dict, list[str]]:
         changes: dict[str, dict] = {}
         warnings: list[str] = []
         host = self._transfer_host()
+
+        def vm_deadline() -> float | None:  # None: this run's guest-wait budget is spent
+            now = time.monotonic()
+            return None if now >= run_end else min(now + per_vm, run_end)
+
         with self._vim() as si:
             self._soap_si = si
             try:
                 for v in products:
                     info = (v.get("role_setup") or {}).get("reconcile") or {}
-                    if v["vm_id"] in missing:
-                        continue
+                    if (expired := vsphere_products.timed_out(info)) is not None:
+                        changes[v["name"]] = {"role_setup": expired, "role": info.get("role", "")}
+                        continue  # past the timeout: no guest operation (VM may be off or unreachable)
                     secret = domain_passwords.get(info.get("dc_node"))
-                    if not secret:
-                        warnings.append(f"VM {v['name']}: cannot reconcile {info.get('role')}: the range declares no "
-                                        f"Administrator for domain controller {info.get('dc_node')}")
+                    if v["vm_id"] in missing or not secret or (deadline := vm_deadline()) is None:
+                        if not secret:
+                            warnings.append(f"VM {v['name']}: cannot reconcile {info.get('role')}: no Administrator "
+                                            f"password for domain controller {info.get('dc_node')}")
                         continue
                     creds = guest.GuestCredentials("windows", f"{info['netbios']}\\Administrator",
                                                    guest.Secret(secret))
                     session = guest.GuestSession(si.content, self._vm(si, v["vm_id"]), creds, poll=self._guest_poll,
                                                  transfer_host=host, put=self._guest_put)
-                    res = vsphere_products.reconcile(session, info)
+                    res = vsphere_products.reconcile(session, info, deadline=deadline)
                     if res is not None:
                         changes[v["name"]] = {"role_setup": res, "role": info.get("role", "")}
                 for v in sos:
                     info = (v.get("securityonion") or {}).get("reconcile") or {}
-                    if v["vm_id"] in missing:
-                        continue
+                    if (expired := seconion.timed_out(info)) is not None:
+                        changes[v["name"]] = {"securityonion": expired, "accounts_applied": [],
+                                              "node": info.get("node")}
+                        continue  # past the timeout: no guest operation
                     login = so_logins.get(info.get("node"))
-                    if login is None:
+                    if login is None or v["vm_id"] in missing or (deadline := vm_deadline()) is None:
                         continue
-                    session = guest.GuestSession(si.content, self._vm(si, v["vm_id"]),
-                                                 guest.GuestCredentials("linux", login[0], guest.Secret(login[1])),
-                                                 poll=self._guest_poll)
-                    out, verified = seconion.reconcile(session, info)
+                    vm_ref = self._vm(si, v["vm_id"])
+
+                    def session_for(creds, _vm=vm_ref):
+                        return guest.GuestSession(si.content, _vm, creds, poll=self._guest_poll)
+
+                    out, verified = seconion.reconcile(
+                        session_for, guest.GuestCredentials("linux", login[0], guest.Secret(login[1])), info,
+                        admin_password=guest.Secret(login[2]) if login[2] else None, deadline=deadline)
                     if out is not None:
                         changes[v["name"]] = {"securityonion": out, "accounts_applied": sorted(verified),
                                               "node": info.get("node")}
@@ -2204,11 +2218,14 @@ class VsphereAPIProvisioner(BaseProvisioner):
         return changes, warnings
 
     async def reconcile_setups(self, range_id: str, output: dict, *, domain_passwords: dict,
-                               so_logins: dict) -> tuple[dict, list[str]]:
+                               so_logins: dict, run_seconds: float = 240.0,
+                               per_vm_seconds: float = 90.0) -> tuple[dict, list[str]]:
         """Read every ``running`` product / Security Onion setup's status in its guest and
         return the terminal outcomes to store (worker/setup_reconcile.py). ``domain_passwords``
         maps a DC node id to its Administrator password; ``so_logins`` a Security Onion node id
-        to its (install user, password). Only the range's own VMs are touched (``_screen``)."""
+        to (install user, install password, declared admin password or ""). Only the range's own
+        VMs are touched (``_screen``). A setup past its timeout ends without a guest operation;
+        each VM gets at most ``per_vm_seconds`` and the run ``run_seconds`` of guest waiting."""
         if SmartConnect is None:
             raise RuntimeError("pyvmomi is required for guest operations (pip install pyvmomi)")
         vms = output.get("vms") or []
@@ -2223,8 +2240,9 @@ class VsphereAPIProvisioner(BaseProvisioner):
                                                               for v in products + sos])
         if notes:
             return {}, [notes[0]]
+        run_end = time.monotonic() + run_seconds
         return await asyncio.to_thread(self._reconcile_sync, range_id, products, sos, domain_passwords,
-                                       so_logins, missing)
+                                       so_logins, missing, run_end, per_vm_seconds)
 
     async def _rollback(self, si, range_id: str, networks: list[dict], errors: list[str]) -> None:
         """Best effort: remove what a failed build created (its VMs already removed themselves)."""

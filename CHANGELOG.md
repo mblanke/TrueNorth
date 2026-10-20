@@ -453,8 +453,8 @@ course production with a local-model fallback, and the cleanup of unsupported su
     (newly added to the image), `setup.exe /config`, a single-server farm, then the product
     key masked from the setup logs. MECM: SQL CompleteImage, `extadsch`, the System
     Management container, `setup.exe /SCRIPT` (primary site, EVAL) with setupdl prerequisites
-    from the image or the depot. A pending reboot after the software installs is cleared
-    before the product setup.
+    from the image or the depot. A reboot the software installs left pending is done right
+    before the product setup starts (after the VM's software), waiting for VMware Tools.
   - **Long setups no longer risk the Celery soft limit.** `provision_range` passes the
     provisioner a `finish_by` (the soft limit minus `PROVISION_RESERVE`, default 300 s); the
     provisioner stops new work by then, measured from the task start. The build starts the
@@ -464,7 +464,16 @@ course production with a local-model fallback, and the cleanup of unsupported su
     the domain Administrator, whose password it re-reads from the range's credentials each run,
     never stored in the output — and records `ok` / `failed` / `timeout`, verifying and
     marking the accounts `applied`. Security Onion moved to the same budget and reconcile path
-    (`VSPHERE_SO_SETUP_TIMEOUT` default raised to 7200 s).
+    (`VSPHERE_SO_SETUP_TIMEOUT` default raised to 7200 s; it now ends `running` at build and
+    its accounts appear once the reconcile verifies them). The reconcile follows every live
+    range state (ready, running, stopping, stopped, starting: a stop/start never returns a
+    range to `ready`), checks the timeout before any guest operation (so a powered-off or
+    unreachable VM still ends), caps guest waiting per VM and per run, runs one at a time
+    (Redis lock), re-raises its soft time limit, skips lab-session ranges, never uses the
+    site-wide default password, and marks accounts applied in the same transaction as the
+    guarded output write. Security Onion: the web login is recorded under its declared
+    username, and an admin that is the install login gets its declared password (chpasswd)
+    first; an admin is applied only once a login with its declared password works.
   - **Cross-range isolation of the domain admin.** A range with a product role image gets a
     per-range *generated* Administrator for the product VM and the domain controllers when the
     template declares none (the credential service, #183; staff-visible, sealed), instead of
@@ -478,8 +487,9 @@ course production with a local-model fallback, and the cleanup of unsupported su
     skipped. Anything but `ok` is a warning, never a partial range. Staff see an account on a
     still-running machine as **"being set up"** on the Credentials panel, the wiki page and
     `GET /ranges/{id}/credentials` (`setup_status`); Students see it only once verified.
-  - Not built yet: a role image whose golden-image row is not `build_status=built` (so a
-    hand-made template must be registered `built` to resolve), or whose
+  - Not built yet: a product role image (`srv2022-exchange2019`, `srv2022-sharepointse`,
+    `srv2022-mecm` only; other role images resolve as before) whose golden-image row is not
+    `build_status=built` (so a hand-made one must be registered `built` to resolve), or whose
     template is not on the vCenter, is replaced by the plain OS (`srv2022`, render's resolver
     and the clone step), with the warning "role image <id> not built — using srv2022; <role>
     not installed" and `role_setup` `skipped`; the range is not partial for it. So enabling

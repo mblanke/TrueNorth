@@ -14,6 +14,9 @@ from __future__ import annotations
 import base64
 import json
 import logging
+import re
+import shutil
+import subprocess
 from types import SimpleNamespace
 
 import pytest
@@ -30,22 +33,41 @@ def _decode(arguments: str) -> str:
     return base64.b64decode(arguments.rsplit(" ", 1)[1]).decode("utf-16-le")
 
 
+def eval_poll_script(script: str, files: dict[str, bytes]) -> int:
+    """The exit code the REAL status-read script gives against a guest filesystem, read from
+    the script's own text (no PowerShell here or in CI): its missing-file branch, the status
+    number in the file, else its final ``exit``. A script that stops telling "no file" apart
+    from "running" fails the tests through this, not through a constant in the fake."""
+    m = re.search(r"if \(-not \(Test-Path -LiteralPath '([^']+)'\)\) \{ exit (\d+) \}", script)
+    assert m, "the status-read script has no missing-file branch"
+    path, missing = m.group(1), int(m.group(2))
+    if path not in files:
+        return missing
+    if num := re.match(r"^\s*(\d+)", files[path].decode("utf-8", "replace")):
+        return int(num.group(1))
+    return int(re.findall(r"exit (\d+)", script)[-1])
+
+
 class FakeSession:
     """GuestSession's surface for the new design. ``codes`` maps a command label to the exit
-    codes it returns in turn (the last repeats); unlisted labels exit 0. The status file reads
-    as STATUS_MISSING until the detached runner is started, then from ``status`` in turn.
-    Uploaded files (never command lines) are kept in ``files``."""
+    codes it returns in turn (the last repeats); unlisted labels exit 0. The status read runs
+    the REAL poll script (``eval_poll_script``) against ``files``: no status file until the
+    detached runner starts; then each read writes the next number from ``status`` into it.
+    ``raise_status`` makes that many status reads fail (a guest-ops hiccup). Uploaded files
+    (never command lines) are kept in ``files``."""
 
     def __init__(self, codes: dict | None = None, status=None, raise_on: str = "", started: bool = False,
-                 clock=None):
+                 clock=None, raise_status: int = 0):
         self.vm = SimpleNamespace(name="r-exch", guest=SimpleNamespace(toolsRunningStatus="guestToolsRunning"))
         self.creds = None
         self.codes = {k: list(v) for k, v in (codes or {}).items()}
         self.status = list(status) if status is not None else []
         self.raise_on = raise_on
+        self.raise_status = raise_status
         self.started = started
         self.ran: list[tuple[str, str]] = []  # (label, script)
         self.files: dict[str, bytes] = {}
+        self.sent: dict[str, bytes] = {}
         self.uploads: list[str] = []
         self.detached: list[tuple[str, str]] = []
         self.waits = 0
@@ -64,22 +86,33 @@ class FakeSession:
         if self.raise_on == "upload":
             raise guest.GuestNotReadyError("could not transfer a file to the guest (#194)")
         self.files[path] = data
+        self.sent[path] = data  # what was transferred, even after a clean-up deletes it
         self.uploads.append(path)
 
     def start_detached(self, program, arguments) -> int:
+        if self.raise_on == "start_detached":
+            raise RuntimeError("StartProgramInGuest refused")
         self.detached.append((program, arguments))
         self.started = True
         return 4242
 
     def run(self, cmd, deadline):
-        self.ran.append((cmd.label, _decode(cmd.arguments)))
+        script = _decode(cmd.arguments)
+        self.ran.append((cmd.label, script))
         if self.raise_on and self.raise_on == cmd.label:
             raise RuntimeError(f"guest ops refused for {DC_PASSWORD} and {KEY}")
         if cmd.label == "role-setup-status":
-            if not self.started:
-                return "ok", vp.STATUS_MISSING
-            code = (self.status.pop(0) if len(self.status) > 1 else self.status[0]) if self.status else 2
-            return "ok", code
+            if self.raise_status > 0:
+                self.raise_status -= 1
+                raise RuntimeError("guest operations hiccup")
+            if self.started:  # the runner is up: it writes the next status number
+                code = (self.status.pop(0) if len(self.status) > 1 else self.status[0]) if self.status else 2
+                self.files[vp.STATUS_FILE] = str(code).encode()
+            code = eval_poll_script(script, self.files)
+            return ("ok" if code in cmd.ok_codes else "failed"), code
+        if cmd.label == "role-setup-cleanup":
+            self.files.pop(vp.SECRETS_FILE, None)
+            self.files.pop(vp.JOIN_SECRET, None)
         seq = self.codes.get(cmd.label)
         code = (seq.pop(0) if len(seq) > 1 else seq[0]) if seq else 0
         return ("ok" if code in cmd.ok_codes else "failed"), code
@@ -89,7 +122,7 @@ class FakeSession:
 
     def file(self, name: str) -> str:
         """The content uploaded to STATE_DIR\\name."""
-        return self.files[f"{vp.STATE_DIR}\\{name}"].decode("utf-8")
+        return self.sent[f"{vp.STATE_DIR}\\{name}"].decode("utf-8")
 
 
 def _session_for(session: FakeSession):
@@ -208,8 +241,8 @@ def test_staged_image_joins_the_domain_as_local_admin_reading_the_password_from_
     s = FakeSession({"domain-join": [3010]})
     reboots = []
     assert vp.prepare(_session_for(s), _plan(), 100, lambda session, d: reboots.append(d)) is None
-    assert s.labels() == ["role-staged", "role-setup-init", "domain-join", "reboot-pending"]
-    assert reboots == [100]  # the join's 3010; reboot-pending returned 0 here
+    assert s.labels() == ["role-staged", "role-setup-init", "domain-join"]  # pending-reboot is run()'s
+    assert reboots == [100]  # the join's 3010
     assert s.creds.username == "Administrator" and s.creds.password.reveal() == LOCAL_PASSWORD
     # The domain password is delivered by file transfer, never on a command line.
     assert s.files[vp.JOIN_SECRET] == DC_PASSWORD.encode()
@@ -219,12 +252,68 @@ def test_staged_image_joins_the_domain_as_local_admin_reading_the_password_from_
     assert "PSCredential('CORP\\Administrator'" in join and "Add-Computer -DomainName $domain" in join
 
 
-def test_a_pending_reboot_after_the_software_installs_is_cleared_before_setup():
-    s = FakeSession({"domain-join": [0], "reboot-pending": [3010]})
+def test_a_pending_reboot_after_the_software_installs_is_cleared_right_before_setup():
+    # run() comes after the VM's software (vsphere_api), so the check sees what Chocolatey left.
+    s = FakeSession({"reboot-pending": [3010]})
     reboots = []
-    assert vp.prepare(_session_for(s), _plan(), 100, lambda session, d: reboots.append(d)) is None
-    assert reboots == [100]  # only the pending-reboot one (join said already a member)
+    vp.run(_session_for(s), _plan(), 10_000, 10_000, build_wait=0, poll=1,
+           reboot_fn=lambda session, d: reboots.append(d))
+    assert len(reboots) == 1 and s.detached  # rebooted, then started
     assert "Component Based Servicing\\RebootPending" in dict(s.ran)["reboot-pending"]
+    running = FakeSession(status=[4], started=True)  # an earlier build's setup: never rebooted under it
+    vp.run(_session_for(running), _plan(), 10_000, 10_000, build_wait=0, poll=1,
+           reboot_fn=lambda *a: pytest.fail("no reboot under a running setup"))
+    assert "reboot-pending" not in running.labels()
+
+
+def test_the_real_poll_script_tells_a_missing_status_file_apart_from_running():
+    script = _decode(vp.poll_command().arguments)
+    assert eval_poll_script(script, {}) == vp.STATUS_MISSING
+    assert eval_poll_script(script, {vp.STATUS_FILE: b"4\r\n"}) == 4
+    assert eval_poll_script(script, {vp.STATUS_FILE: b""}) == 2  # file there, number not yet written
+    assert vp.STATUS_MISSING not in vp.STATUS and vp.STATUS_MISSING not in vp.RUNNING
+
+
+@pytest.mark.skipif(shutil.which("pwsh") is None, reason="PowerShell (pwsh) is not installed here")
+def test_the_real_poll_script_under_powershell(tmp_path):
+    status = tmp_path / "status"
+    script = _decode(vp.poll_command().arguments).replace(vp.STATUS_FILE, str(status))
+
+    def code() -> int:
+        return subprocess.run(["pwsh", "-NoProfile", "-Command", script], capture_output=True).returncode
+
+    assert code() == vp.STATUS_MISSING
+    status.write_text("3\r\n")
+    assert code() == 3
+
+
+def test_a_missing_status_file_starts_the_runner():
+    # The reviewer's probe: the runner must start when no status file exists (real script).
+    s = FakeSession()
+    out = vp.run(_session_for(s), _plan(), 1e9, 1e9, build_wait=0, poll=1)
+    assert out["status"] == "running" and s.detached and vp.RUNNER_FILE in s.uploads
+
+
+def test_a_status_read_hiccup_is_retried_not_taken_as_already_running():
+    s = FakeSession(raise_status=2)
+    out = vp.run(_session_for(s), _plan(), 10_000, 10_000, build_wait=0, poll=1)
+    assert out["status"] == "running" and s.detached  # started once the read worked
+    s = FakeSession(raise_status=10_000)
+    out = vp.run(_session_for(s), _plan(), 200, 200, build_wait=0, poll=30)
+    assert out["status"] == "failed" and "status file" in out["detail"] and not s.detached
+
+
+def test_a_failed_start_removes_the_uploaded_secrets():
+    s = FakeSession(raise_on="start_detached")
+    out = vp.run(_session_for(s), _plan("sharepoint"), 10_000, 10_000, build_wait=0, poll=1)
+    assert out["status"] == "failed" and "could not start" in out["detail"]
+    assert "role-setup-cleanup" in s.labels() and vp.SECRETS_FILE not in s.files
+
+
+def test_a_failed_join_removes_the_password_file():
+    s = FakeSession(raise_on="domain-join")
+    out = vp.prepare(_session_for(s), _plan(), 100)
+    assert out["status"] == "failed" and "role-setup-cleanup" in s.labels() and vp.JOIN_SECRET not in s.files
 
 
 @pytest.mark.parametrize("code, text", [(30, "did not answer"), (31, "Add-Computer failed"),

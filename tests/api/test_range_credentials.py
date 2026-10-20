@@ -940,6 +940,25 @@ class TestImplicitDomainAdmins:
         assert db_session.query(RangeCredential).filter_by(machine="exch01", username="Administrator").one().password \
             == first
 
+    def test_another_tenants_template_still_gets_this_ranges_generated_admins(self, db_session):
+        owner, user = real_tenant(db_session).id, real_tenant(db_session).id
+        doc = {**self.DOC, "accounts": [{"machine": "dc01", "username": "Administrator", "password": "Owner-Pw-1!x",
+                                         "student_visible": False, "role": "admin"}]}
+        tmpl = Template(id=uuid.uuid4(), tenant_id=owner, name="public", version="1", yaml=json.dumps(doc))
+        db_session.add(tmpl)
+        rng = Range(id=uuid.uuid4(), tenant_id=user, name="r", template_id=tmpl.id, state=RangeState.created)
+        db_session.add(rng)
+        db_session.flush()
+        cred_service.sync(db_session, rng)
+        rows = {(r.machine, r.username): r for r in db_session.query(RangeCredential).filter_by(range_id=rng.id)}
+        # Not the owner tenant's declared password, but generated per range for both machines.
+        assert set(rows) == {("dc01", "Administrator"), ("exch01", "Administrator")}
+        assert all(r.generated and r.password != "Owner-Pw-1!x" for r in rows.values())
+        exch_first = rows[("exch01", "Administrator")].password
+        cred_service.sync(db_session, rng)  # unchanged on the next sync
+        assert db_session.query(RangeCredential).filter_by(
+            range_id=rng.id, machine="exch01", username="Administrator").one().password == exch_first
+
 
 class TestBeingSetUp:
     """Staff see an unapplied account on a machine whose product/Security Onion setup is still

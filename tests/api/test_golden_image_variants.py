@@ -193,3 +193,21 @@ def test_a_role_image_resolves_only_once_built(db_session):
     resolve, vm = exch()
     assert vm["template_name"] == "srv2022-exchange2019" and "role_image_missing" not in vm
     assert vm["role_fallback_template"] == "srv2022"  # if the vCenter turns out not to have it
+
+
+def test_the_built_filter_applies_only_to_the_deploy_setup_images(db_session):
+    """Other role images (SQL, SharePoint 2019, ERP, historian) resolve as they always did,
+    whatever their build_status: only Exchange 2019 / SharePoint SE / MECM wait for ``built``."""
+    from worker.provisioners import vsphere_products
+    from worker.render import DEPLOY_SETUP_IMAGES
+
+    assert set(vsphere_products.SETUP_IMAGES) == DEPLOY_SETUP_IMAGES
+    for cid in ("srv2022-sql2022", "srv2019-sharepoint2019", "srv2022-erp-app", "srv2019-historian-sim",
+                "srv2022-mecm"):
+        db_session.add(GoldenImage(catalogue_id=cid, os_family="windows", hypervisor="vsphere", template_name=cid,
+                                   os_aliases="[]", build_status="planned", enabled=True))
+    db_session.flush()
+    resolve = golden_image_resolver(db_session, "vsphere")
+    for cid in ("srv2022-sql2022", "srv2019-sharepoint2019", "srv2022-erp-app", "srv2019-historian-sim"):
+        assert resolve(cid) == cid, cid
+    assert resolve("srv2022-mecm") is None  # a deploy-setup image: waits for built
