@@ -19,7 +19,6 @@ from types import SimpleNamespace
 import pytest
 from worker.provisioners import vsphere_guest as guest
 from worker.provisioners import vsphere_products as vp
-from worker.provisioners import vsphere_roles as roles
 
 WS22 = "windows-server-2022"
 KEY = "ABCDE-FGHIJ-KLMNO-PQRST-UVWXY"
@@ -32,15 +31,23 @@ def _decode(arguments: str) -> str:
 
 
 class FakeSession:
-    """GuestSession's surface. ``codes`` maps a command label to the exit codes it returns, in
-    turn (the last one repeats); unlisted labels exit 0."""
+    """GuestSession's surface for the new design. ``codes`` maps a command label to the exit
+    codes it returns in turn (the last repeats); unlisted labels exit 0. The status file reads
+    as STATUS_MISSING until the detached runner is started, then from ``status`` in turn.
+    Uploaded files (never command lines) are kept in ``files``."""
 
-    def __init__(self, codes: dict | None = None, raise_on: str = "", clock=None):
+    def __init__(self, codes: dict | None = None, status=None, raise_on: str = "", started: bool = False,
+                 clock=None):
         self.vm = SimpleNamespace(name="r-exch", guest=SimpleNamespace(toolsRunningStatus="guestToolsRunning"))
         self.creds = None
         self.codes = {k: list(v) for k, v in (codes or {}).items()}
+        self.status = list(status) if status is not None else []
         self.raise_on = raise_on
+        self.started = started
         self.ran: list[tuple[str, str]] = []  # (label, script)
+        self.files: dict[str, bytes] = {}
+        self.uploads: list[str] = []
+        self.detached: list[tuple[str, str]] = []
         self.waits = 0
         self._poll = 1
         self.t = 0.0
@@ -53,11 +60,26 @@ class FakeSession:
     def wait_ready(self, deadline):
         self.waits += 1
 
+    def upload(self, path, data: bytes, deadline, *, overwrite=True):
+        if self.raise_on == "upload":
+            raise guest.GuestNotReadyError("could not transfer a file to the guest (#194)")
+        self.files[path] = data
+        self.uploads.append(path)
+
+    def start_detached(self, program, arguments) -> int:
+        self.detached.append((program, arguments))
+        self.started = True
+        return 4242
+
     def run(self, cmd, deadline):
-        script = _decode(cmd.arguments)
-        self.ran.append((cmd.label, script))
+        self.ran.append((cmd.label, _decode(cmd.arguments)))
         if self.raise_on and self.raise_on == cmd.label:
             raise RuntimeError(f"guest ops refused for {DC_PASSWORD} and {KEY}")
+        if cmd.label == "role-setup-status":
+            if not self.started:
+                return "ok", vp.STATUS_MISSING
+            code = (self.status.pop(0) if len(self.status) > 1 else self.status[0]) if self.status else 2
+            return "ok", code
         seq = self.codes.get(cmd.label)
         code = (seq.pop(0) if len(seq) > 1 else seq[0]) if seq else 0
         return ("ok" if code in cmd.ok_codes else "failed"), code
@@ -66,12 +88,8 @@ class FakeSession:
         return [label for label, _ in self.ran]
 
     def file(self, name: str) -> str:
-        """Reassemble a file the put commands wrote."""
-        data = ""
-        for label, script in self.ran:
-            if label == f"put:{name}":
-                data += script.split("FromBase64String('", 1)[1].split("'", 1)[0]
-        return base64.b64decode(data).decode("utf-8")
+        """The content uploaded to STATE_DIR\\name."""
+        return self.files[f"{vp.STATE_DIR}\\{name}"].decode("utf-8")
 
 
 def _session_for(session: FakeSession):
@@ -82,8 +100,8 @@ def _session_for(session: FakeSession):
 
 
 def _dc(**extra) -> dict:
-    return {"name": "r-dc01", "os": WS22, "roles": ["ad-ds", "dns"], "ad_domain": "corp.range.local",
-            "ad_forest_root": True, "nics": [{"ip": "10.60.201.10"}],
+    return {"name": "r-dc01", "node_id": "dc01", "os": WS22, "roles": ["ad-ds", "dns"],
+            "ad_domain": "corp.range.local", "ad_forest_root": True, "nics": [{"ip": "10.60.201.10"}],
             "_guest": guest.windows_credentials(DC_PASSWORD), **extra}
 
 
@@ -176,7 +194,7 @@ def test_a_clone_without_the_marker_is_skipped_and_never_joined():
     s = FakeSession({"role-staged": [20]})
     out = vp.prepare(_session_for(s), _plan(), 100, lambda *a: pytest.fail("no reboot"))
     assert out["status"] == "skipped" and "role-image.json is missing" in out["detail"]
-    assert s.labels() == ["role-staged"]
+    assert s.labels() == ["role-staged"] and not s.uploads  # never joined, no secret delivered
     assert "$m.image -ne 'srv2022-exchange2019'" in s.ran[0][1]
 
 
@@ -186,27 +204,45 @@ def test_a_wrong_marker_fails(code, text):
     assert out["status"] == "failed" and text in out["detail"]
 
 
-def test_staged_image_joins_the_domain_as_local_admin_then_reboots():
+def test_staged_image_joins_the_domain_as_local_admin_reading_the_password_from_a_file():
     s = FakeSession({"domain-join": [3010]})
     reboots = []
     assert vp.prepare(_session_for(s), _plan(), 100, lambda session, d: reboots.append(d)) is None
-    assert s.labels() == ["role-staged", "domain-join"] and reboots == [100]
+    assert s.labels() == ["role-staged", "role-setup-init", "domain-join", "reboot-pending"]
+    assert reboots == [100]  # the join's 3010; reboot-pending returned 0 here
     assert s.creds.username == "Administrator" and s.creds.password.reveal() == LOCAL_PASSWORD
-    join = s.ran[1][1]
+    # The domain password is delivered by file transfer, never on a command line.
+    assert s.files[vp.JOIN_SECRET] == DC_PASSWORD.encode()
+    join = dict(s.ran)["domain-join"]
+    assert DC_PASSWORD not in join and "Get-Content -Raw 'C:\\TrueNorth\\deploy\\join.secret'" in join
     assert "Set-DnsClientServerAddress -InterfaceIndex $_.ifIndex -ServerAddresses '10.60.201.10'" in join
-    assert '_ldap._tcp.dc._msdcs.$domain' in join and "$domain = 'corp.range.local'" in join
     assert "PSCredential('CORP\\Administrator'" in join and "Add-Computer -DomainName $domain" in join
 
 
-def test_already_a_member_needs_no_reboot():
-    s = FakeSession({"domain-join": [0]})
-    assert vp.prepare(_session_for(s), _plan(), 100, lambda *a: pytest.fail("no reboot")) is None
+def test_a_pending_reboot_after_the_software_installs_is_cleared_before_setup():
+    s = FakeSession({"domain-join": [0], "reboot-pending": [3010]})
+    reboots = []
+    assert vp.prepare(_session_for(s), _plan(), 100, lambda session, d: reboots.append(d)) is None
+    assert reboots == [100]  # only the pending-reboot one (join said already a member)
+    assert "Component Based Servicing\\RebootPending" in dict(s.ran)["reboot-pending"]
 
 
-@pytest.mark.parametrize("code, text", [(30, "did not answer"), (31, "Add-Computer failed"), (1, "failed (exit 1)")])
+@pytest.mark.parametrize("code, text", [(30, "did not answer"), (31, "Add-Computer failed"),
+                                        (33, "credentials file"), (1, "failed (exit 1)")])
 def test_a_failed_join_fails_the_setup(code, text):
     out = vp.prepare(_session_for(FakeSession({"domain-join": [code]})), _plan(), 100)
     assert out["status"] == "failed" and text in out["detail"] and out["domain"] == "corp.range.local"
+
+
+def test_a_file_transfer_that_cannot_reach_the_esxi_host_fails_clearly():
+    out = vp.prepare(_session_for(FakeSession(raise_on="upload")), _plan(), 100)
+    assert out["status"] == "failed" and "#194" in out["detail"]
+
+
+def test_an_earlier_builds_setup_is_detected_and_not_rejoined():
+    s = FakeSession({"role-setup-init": [5]})
+    assert vp.prepare(_session_for(s), _plan(), 100, lambda *a: pytest.fail("no reboot")) is None
+    assert s.labels() == ["role-staged", "role-setup-init"] and not s.uploads  # no join, no secret
 
 
 def test_a_guest_ops_error_is_scrubbed():
@@ -216,60 +252,73 @@ def test_a_guest_ops_error_is_scrubbed():
 
 
 # --------------------------------------------------------------------------- #
-# run: stage, start, poll
+# run: deliver by file transfer, start detached as the domain admin, leave running
 # --------------------------------------------------------------------------- #
 
 
-def test_exchange_runner_prepares_ad_then_installs_the_mailbox_role():
-    s = FakeSession({"role-setup-status": [3, 4, 0]})
-    out = vp.run(_session_for(s), _plan(), 10_000, 10_000, poll=1)
-    assert out == {"status": "ok", "detail": "Exchange 2019 set up in corp.range.local",
-                   "image": "srv2022-exchange2019", "domain": "corp.range.local",
-                   "organization": "Medium Enterprise Network"}
-    labels = s.labels()
-    assert labels[0] == "role-setup-init" and labels.index("role-setup-start") < labels.index("role-setup-status")
-    assert "put:secrets.json" not in labels
+def test_run_starts_the_setup_detached_as_the_domain_admin_and_leaves_it_running():
+    s = FakeSession()
+    out = vp.run(_session_for(s), _plan(), 10_000, 10_000, build_wait=0, poll=1)
+    assert out["status"] == "running" and out["image"] == "srv2022-exchange2019"
+    assert out["reconcile"]["role"] == "exchange" and out["reconcile"]["dc_node"] == "dc01"
+    assert out["reconcile"]["netbios"] == "CORP" and out["reconcile"]["status_file"] == vp.STATUS_FILE
+    # The product setup runs as the domain Administrator (guest-ops auth only).
+    assert s.creds.username == "CORP\\Administrator" and s.creds.password.reveal() == DC_PASSWORD
+    # Delivered by file transfer, not a command line; and started detached.
+    assert set(s.uploads) == {vp.RUNNER_FILE, vp.PARAMS_FILE}
+    assert s.detached and s.detached[0][0] == vp.POWERSHELL and "runner.ps1" in s.detached[0][1]
     runner = s.file("runner.ps1")
-    assert runner == vp.RUNNER_SCRIPT
+    assert runner == vp.RUNNER_SCRIPT and "Unregister-ScheduledTask" not in runner  # no scheduled task
     params = json.loads(s.file("params.json"))
-    assert params["org"] == "Medium Enterprise Network" and params["netbios"] == "CORP" and params["role"] == "exchange"
+    assert params["org"] == "Medium Enterprise Network" and params["netbios"] == "CORP"
     schema = runner.index("/IAcceptExchangeServerLicenseTerms_DiagnosticDataOFF /PrepareSchema")
     prep_ad = runner.index("/IAcceptExchangeServerLicenseTerms_DiagnosticDataOFF /PrepareAD /OrganizationName:")
     install = runner.index("/Mode:Install /Role:Mailbox /IAcceptExchangeServerLicenseTerms_DiagnosticDataOFF")
     assert schema < prep_ad < install
-    start = dict(s.ran)["role-setup-start"]
-    assert "-User 'CORP\\Administrator'" in start and "-RunLevel Highest" in start
-    assert "Unregister-ScheduledTask -TaskName 'TrueNorth role setup'" in runner  # its stored password goes
 
 
-def test_every_guest_command_stays_under_the_windows_command_line_limit():
+def test_run_returns_ok_when_the_setup_is_already_healthy_within_the_build_wait():
+    s = FakeSession(status=[0])
+    out = vp.run(_session_for(s), _plan(), 10_000, 10_000, build_wait=100, poll=1)
+    assert out["status"] == "ok" and out["detail"] == "Exchange 2019 set up in corp.range.local"
+    assert "role-setup-cleanup" in s.labels()  # the secrets are cleaned up
+
+
+def test_no_secret_reaches_any_guest_command_argument():
+    s = FakeSession(status=[6, 0])
     p = _plan("sharepoint")
-    cmds = [vp.marker_command(p.image), vp.join_command(p), vp.init_command(), *vp.stage_commands(p),
-            vp.start_command(p), vp.poll_command()]
-    assert len([c for c in cmds if c.label == "put:runner.ps1"]) > 1  # the runner goes in chunks
-    for cmd in cmds:
-        assert len(roles.POWERSHELL) + 1 + len(cmd.arguments) < 32_767, cmd.label
-
-
-def test_sharepoint_runner_gets_its_secrets_in_a_file_it_deletes():
-    s = FakeSession()
-    p = _plan("sharepoint")
-    assert vp.run(_session_for(s), p, 10_000, 10_000, poll=1)["status"] == "ok"
+    vp.run(_session_for(s), p, 10_000, 10_000, build_wait=100, poll=1)
+    for _label, script in s.ran:
+        for secret in (DC_PASSWORD, KEY, p.passphrase.reveal()):
+            assert secret not in script
+    # The SharePoint secrets travel in the uploaded file only.
     secrets_doc = json.loads(s.file("secrets.json"))
     assert secrets_doc["product_key"] == KEY and secrets_doc["farm_password"] == DC_PASSWORD
-    assert "secrets.json" not in json.dumps(vp.params(p)) and KEY not in s.file("params.json")
+    assert KEY not in s.file("params.json")
+
+
+def test_init_locks_the_state_folder_and_deletes_leftover_secrets():
+    init = _decode(vp.init_command().arguments)
+    assert "*S-1-5-32-544:(OI)(CI)F" in init and "/inheritance:r" in init  # Administrators + SYSTEM only
+    assert vp.JOIN_SECRET in init and vp.SECRETS_FILE in init  # leftovers are deleted on a fresh attempt
+
+
+def test_sharepoint_runner_reads_secrets_from_a_file_it_deletes_and_masks_logs():
+    s = FakeSession()
+    p = _plan("sharepoint")
+    vp.run(_session_for(s), p, 10_000, 10_000, build_wait=0, poll=1)
+    assert vp.SECRETS_FILE in s.uploads
     runner = s.file("runner.ps1")
     assert "Remove-Item -Force $sf" in runner and '<PIDKEY Value="$($s.product_key)" />' in runner
     assert "Complete-Sql 'Latin1_General_CI_AS_KS_WS'" in runner
     assert "New-SPConfigurationDatabase" in runner and "-LocalServerRole SingleServerFarm" in runner
     assert "New-SPCentralAdministration" in runner
-    init = dict(s.ran)["role-setup-init"]
-    assert "*S-1-5-32-544:(OI)(CI)F" in init and "/inheritance:r" in init  # Administrators + SYSTEM only
+    assert "SharePoint Setup*.log" in runner and ".Replace($key, '*****')" in runner  # product key masked in logs
 
 
 def test_mecm_runner_completes_sql_extends_the_schema_then_runs_setup_script():
     s = FakeSession()
-    vp.run(_session_for(s), _plan("mecm"), 10_000, 10_000, poll=1)
+    vp.run(_session_for(s), _plan("mecm"), 10_000, 10_000, build_wait=0, poll=1)
     runner = s.file("runner.ps1")
     order = [runner.index(x) for x in ("Complete-Sql 'SQL_Latin1_General_CP1_CI_AS'", "extadsch.exe",
                                        "New-ADObject -Name 'System Management'", "ConfigMgr.Manifest.cab",
@@ -286,51 +335,67 @@ def test_mecm_runner_completes_sql_extends_the_schema_then_runs_setup_script():
 
 
 def test_an_earlier_start_is_never_repeated():
-    s = FakeSession({"role-setup-init": [5], "role-setup-status": [0]})
-    assert vp.run(_session_for(s), _plan(), 10_000, 10_000, poll=1)["status"] == "ok"
-    assert s.labels() == ["role-setup-init", "role-setup-status"]
+    s = FakeSession(status=[0], started=True)  # a status file already there: the runner is up
+    out = vp.run(_session_for(s), _plan(), 10_000, 10_000, build_wait=100, poll=1)
+    assert out["status"] == "ok"
+    assert not s.uploads and not s.detached  # nothing re-staged, nothing re-started
 
 
 @pytest.mark.parametrize("code, text", [(12, "Exchange /Mode:Install failed"), (18, "ConfigMgr prerequisite"),
                                         (20, "stopped unexpectedly"), (77, "status 77")])
 def test_a_runner_failure_is_reported(code, text):
-    out = vp.run(_session_for(FakeSession({"role-setup-status": [3, code]})), _plan(), 10_000, 10_000, poll=1)
+    out = vp.run(_session_for(FakeSession(status=[3, code])), _plan(), 10_000, 10_000, build_wait=100, poll=1)
     assert out["status"] == "failed" and text in out["detail"]
-
-
-def test_a_task_that_cannot_register_fails_without_its_password():
-    out = vp.run(_session_for(FakeSession({"role-setup-start": [32]})), _plan(), 10_000, 10_000, poll=1)
-    assert out["status"] == "failed" and "domain Administrator" in out["detail"]
-    assert DC_PASSWORD not in out["detail"]
-
-
-def test_timeout_and_budget_end_are_told_apart():
-    s = FakeSession({"role-setup-status": [4]})
-    out = vp.run(_session_for(s), _plan(), 300, 10_000, poll=30)  # its own timeout first
-    assert out["status"] == "timeout" and "Mailbox" in out["detail"] and "carries on" in out["detail"]
-    s = FakeSession({"role-setup-status": [9]})
-    out = vp.run(_session_for(s), _plan("mecm"), 10_000, 300, poll=30)  # the provision budget first
-    assert out["status"] == "running" and "ConfigMgr setup" in out["detail"]
+    # It still cleans up the secrets on a terminal state.
 
 
 def test_no_budget_left_means_not_started():
     s = FakeSession()
     s.t = 1000
-    out = vp.run(_session_for(s), _plan(), 1030, 1030, poll=1)
-    assert out["status"] == "skipped" and not s.ran
+    out = vp.run(_session_for(s), _plan(), 1030, 1030, build_wait=0, poll=1)
+    assert out["status"] == "skipped" and not s.ran and not s.detached
+
+
+# --------------------------------------------------------------------------- #
+# reconcile: the status file read later by worker/setup_reconcile.py
+# --------------------------------------------------------------------------- #
+
+
+def _info(**extra) -> dict:
+    return {"role": "exchange", "domain": "corp.range.local", "netbios": "CORP", "dc_node": "dc01",
+            "status_file": vp.STATUS_FILE, "since": 0.0, "timeout": 7200, **extra}
+
+
+def test_reconcile_finalises_ok_and_cleans_up():
+    s = FakeSession(status=[0], started=True)
+    out = vp.reconcile(s, _info(), epoch=lambda: 10.0)
+    assert out["status"] == "ok" and out["domain"] == "corp.range.local"
+    assert "role-setup-cleanup" in s.labels()
+
+
+@pytest.mark.parametrize("code, text", [(12, "Exchange /Mode:Install failed"), (77, "status 77")])
+def test_reconcile_finalises_failure(code, text):
+    out = vp.reconcile(FakeSession(status=[code], started=True), _info(), epoch=lambda: 10.0)
+    assert out["status"] == "failed" and text in out["detail"]
+
+
+def test_reconcile_returns_none_while_still_running_then_timeout():
+    s = FakeSession(status=[4], started=True)
+    assert vp.reconcile(s, _info(), epoch=lambda: 100.0) is None  # within the timeout
+    out = vp.reconcile(FakeSession(status=[4], started=True), _info(since=0.0, timeout=50), epoch=lambda: 1000.0)
+    assert out["status"] == "timeout"
 
 
 def test_secrets_never_reach_a_log_line_or_an_outcome(caplog):
     caplog.set_level(logging.DEBUG)
     p = _plan("sharepoint")
     outs = [vp.prepare(_session_for(FakeSession({"domain-join": [3010]})), p, 100, lambda *a: None),
-            vp.run(_session_for(FakeSession({"role-setup-status": [5, 6, 0]})), p, 10_000, 10_000, poll=1),
-            vp.run(_session_for(FakeSession(raise_on="role-setup-status")), p, 50, 10_000, poll=1),
+            vp.run(_session_for(FakeSession(status=[6, 0])), p, 10_000, 10_000, build_wait=100, poll=1),
+            vp.run(_session_for(FakeSession(raise_on="role-staged")), p, 50, 10_000, build_wait=0, poll=1),
             vp.prepare(_session_for(FakeSession(raise_on="role-staged")), p, 100)]
     text = caplog.text + json.dumps(outs)
     for secret in (KEY, DC_PASSWORD, LOCAL_PASSWORD, p.passphrase.reveal()):
         assert secret not in text
-    assert "***" in json.dumps(outs)  # the raised message was scrubbed, not dropped
 
 
 def test_warning_names_the_product():

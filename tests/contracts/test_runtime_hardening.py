@@ -113,7 +113,9 @@ def test_beat_schedule_names_contracted_tasks_that_expire():
     # template copies on worker-provision (VSPHERE_* and egress, -Q provision,destroy).
     daily = {"worker.audit_tasks.export_audit_days": ("worker.audit_tasks.*", "default"),
              "worker.audit_tasks.enforce_audit_retention": ("worker.audit_tasks.*", "default"),
-             "worker.template_tasks.prune_template_copies": ("worker.template_tasks.*", "destroy")}
+             "worker.template_tasks.prune_template_copies": ("worker.template_tasks.*", "destroy"),
+             # Finish long in-guest setups: vCenter work, so worker-provision (-Q provision,destroy).
+             "worker.setup_reconcile.reconcile_setups": ("worker.setup_reconcile.*", "destroy")}
     assert {e["task"] for e in schedule.values()} == {
         "worker.tasks.health_check_ranges",
         "worker.tasks.collect_range_metrics",

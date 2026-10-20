@@ -441,21 +441,45 @@ course production with a local-model fallback, and the cleanup of unsupported su
     Administrator: the image's `C:\TrueNorth\role-image.json` must name it (the staged-image
     marker; no prerequisite is installed again), then DNS to the DC, `Add-Computer`, reboot,
     then the VM's own software, then the product.
-  - The product runs detached, as a one-shot scheduled task under `<DOMAIN>\Administrator`
-    (the DC's declared Administrator, else the template default) with highest privileges,
-    which deletes itself. Exchange: `/PrepareSchema`, `/PrepareAD /OrganizationName:<range>`,
-    `/Mode:Install /Role:Mailbox`. SharePoint SE: SQL CompleteImage on its own prepared SQL
-    Server 2022 (newly added to the image), `setup.exe /config`, a single-server farm. MECM:
-    SQL CompleteImage, `extadsch`, the System Management container, `setup.exe /SCRIPT`
-    (primary site, EVAL) with setupdl prerequisites from the image or the depot.
+  - The product runs **detached through VMware guest operations authenticated as
+    `<DOMAIN>\Administrator`** — no scheduled task and no stored Windows credential (the
+    password reaches only the vSphere API auth). The setup's non-password inputs and, for
+    SharePoint, the product key and farm passphrase are delivered by guest **file transfer**
+    into an Administrators/SYSTEM-only folder; the runner reads and deletes them in a
+    `finally`, and a fresh attempt deletes any leftover. The worker must reach each ESXi host
+    on 443 for the transfer; if it cannot the setup is `failed` (mblanke/TrueNorth#193, #194).
+    Exchange: `/PrepareSchema`, `/PrepareAD /OrganizationName:<range>`, `/Mode:Install
+    /Role:Mailbox`. SharePoint SE: SQL CompleteImage on its own prepared SQL Server 2022
+    (newly added to the image), `setup.exe /config`, a single-server farm, then the product
+    key masked from the setup logs. MECM: SQL CompleteImage, `extadsch`, the System
+    Management container, `setup.exe /SCRIPT` (primary site, EVAL) with setupdl prerequisites
+    from the image or the depot. A pending reboot after the software installs is cleared
+    before the product setup.
+  - **Long setups no longer risk the Celery soft limit.** `provision_range` passes the
+    provisioner a `finish_by` (the soft limit minus `PROVISION_RESERVE`, default 300 s); the
+    provisioner stops new work by then, measured from the task start. The build starts the
+    product setup, waits at most `VSPHERE_SETUP_BUILD_WAIT` (default 0) and records it
+    `running`; a new beat task, `worker.setup_reconcile.reconcile_setups` (every 5 min,
+    worker-provision queue), reads the status file in the guest later — re-authenticating as
+    the domain Administrator, whose password it re-reads from the range's credentials each run,
+    never stored in the output — and records `ok` / `failed` / `timeout`, verifying and
+    marking the accounts `applied`. Security Onion moved to the same budget and reconcile path
+    (`VSPHERE_SO_SETUP_TIMEOUT` default raised to 7200 s).
+  - **Cross-range isolation of the domain admin.** A range with a product role image gets a
+    per-range *generated* Administrator for the product VM and the domain controllers when the
+    template declares none (the credential service, #183; staff-visible, sealed), instead of
+    the site-wide template default. A declared `Administrator` is still honoured.
+  - The product VMs' software installs share the one `VSPHERE_CONCURRENCY` semaphore with the
+    rest of the range's installs; the per-VM setup deadline starts after the join.
   - SharePoint SE needs the site's key: new optional `TN_SHAREPOINT_PRODUCT_KEY` (installer
     `vault_sharepoint_product_key`, preflight checks its form, never logged). Without it the
     role is `skipped`, "staged (no product key)", and nothing runs.
   - Outcome in `vms[].role_setup` and `roles.<role>`: ok / failed / timeout / running /
-    skipped. Anything but `ok` is a warning, never a partial range. New
-    `VSPHERE_ROLE_SETUP_TIMEOUT` (default 3600 s); the wait also stops at the provision
-    budget, and setup carries on in the guest. `accounts_applied` is unchanged.
-  - Not built yet: a role image whose golden-image row is not `build_status=built`, or whose
+    skipped. Anything but `ok` is a warning, never a partial range. Staff see an account on a
+    still-running machine as **"being set up"** on the Credentials panel, the wiki page and
+    `GET /ranges/{id}/credentials` (`setup_status`); Students see it only once verified.
+  - Not built yet: a role image whose golden-image row is not `build_status=built` (so a
+    hand-made template must be registered `built` to resolve), or whose
     template is not on the vCenter, is replaced by the plain OS (`srv2022`, render's resolver
     and the clone step), with the warning "role image <id> not built — using srv2022; <role>
     not installed" and `role_setup` `skipped`; the range is not partial for it. So enabling

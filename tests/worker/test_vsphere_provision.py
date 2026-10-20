@@ -1473,6 +1473,86 @@ class TestProductSetup:
         assert _vm_out(result, "exch")["roles"]["exchange"]["status"] == "ok"
         assert not [w for w in result.warnings if "Exchange 2019 setup" in w]
 
+    def test_a_running_setup_leaves_the_range_ready(self, flow):
+        prov, template, _, _ = flow
+        result = _run(prov.provision(RANGE_ID, template, {}))
+        assert result.status == "ok"  # a setup still running is never a failed/partial range
+        assert _vm_out(result, "exch")["role_setup"]["status"] == "running"
+
+    def test_finish_by_caps_the_budget_below_the_soft_limit(self, flow):
+        prov, template, _, _ = flow
+        finish = mod.time.monotonic() + 5  # the soft limit minus the reserve, from the task
+        result = _run(prov.provision(RANGE_ID, template, {"finish_by": finish}))
+        assert abs(prov._budget_end - finish) < 1  # the provisioner stops new work by finish_by
+        # No budget left to start the product: skipped, never run past the soft limit.
+        assert _vm_out(result, "exch")["role_setup"]["status"] == "skipped"
+
+    def test_all_software_installs_share_one_concurrency_semaphore(self, flow, monkeypatch):
+        prov, template, _, _ = flow
+        gates: list[int] = []
+
+        async def record(si, vm_defs, vms_out, start, errors, warnings, gate=None):
+            gates.append(id(gate))
+
+        monkeypatch.setattr(prov, "_install_software", record)
+        _run(prov.provision(RANGE_ID, template, {}))
+        # The non-product batch and every product VM install through the same semaphore object.
+        assert len(gates) >= 2 and len(set(gates)) == 1
+        assert isinstance(prov._budget_end, float)
+
+    def test_reconcile_setups_reads_each_running_setup_and_maps_the_outcome(self, vc, monkeypatch):
+        prov = _prov(vc)
+        for vid in ("vm-exch", "vm-so"):
+            vc.vms[vid] = FakeVM(vid, [])
+        output = {"vms": [
+            {"name": f"{R8}-exch", "vm_id": "vm-exch", "role_setup": {"status": "running", "reconcile": {
+                "role": "exchange", "domain": "corp.range.local", "netbios": "CORP", "dc_node": "dc01",
+                "status_file": "C:\\TrueNorth\\deploy\\status", "since": 0.0, "timeout": 7200}}},
+            {"name": f"{R8}-so", "vm_id": "vm-so", "securityonion": {"status": "running", "reconcile": {
+                "kind": "securityonion", "node": "seconion01", "web_user": "analyst@range.local",
+                "admin_user": "soadmin", "install_from_env": True, "since": 0.0, "timeout": 7200}}},
+        ]}
+        seen = {}
+
+        async def screen(range_id, vms):
+            return [], [], set()
+
+        def prod_reconcile(session, info):
+            seen["prod_user"] = session.creds.username
+            seen["prod_pw"] = session.creds.password.reveal()
+            return {"status": "ok", "detail": "set up", "image": "srv2022-exchange2019", "domain": info["domain"]}
+
+        def so_reconcile(session, info, **kw):
+            seen["so_user"] = session.creds.username
+            return {"status": "ok", "detail": "healthy"}, {"soadmin", "analyst@range.local"}
+
+        monkeypatch.setattr(prov, "_screen", screen)
+        monkeypatch.setattr(products_mod, "reconcile", prod_reconcile)
+        monkeypatch.setattr(so_mod, "reconcile", so_reconcile)
+        changes, warnings = _run(prov.reconcile_setups(
+            RANGE_ID, output, domain_passwords={"dc01": "Dc-Pass-1!"},
+            so_logins={"seconion01": ("soadmin", "So-Pass-1!")}))
+        assert seen["prod_user"] == "CORP\\Administrator" and seen["prod_pw"] == "Dc-Pass-1!"  # the domain admin
+        assert seen["so_user"] == "soadmin"
+        assert changes[f"{R8}-exch"]["role_setup"]["status"] == "ok"
+        assert changes[f"{R8}-exch"]["role"] == "exchange"
+        assert changes[f"{R8}-so"]["securityonion"]["status"] == "ok"
+        assert set(changes[f"{R8}-so"]["accounts_applied"]) == {"soadmin", "analyst@range.local"}
+
+    def test_reconcile_setups_warns_when_a_dc_admin_is_undeclared(self, vc, monkeypatch):
+        prov = _prov(vc)
+        vc.vms["vm-exch"] = FakeVM("vm-exch", [])
+        output = {"vms": [{"name": f"{R8}-exch", "vm_id": "vm-exch", "role_setup": {"status": "running", "reconcile": {
+            "role": "exchange", "domain": "corp.range.local", "netbios": "CORP", "dc_node": "dc01",
+            "status_file": "C:\\TrueNorth\\deploy\\status", "since": 0.0, "timeout": 7200}}}]}
+
+        async def screen(range_id, vms):
+            return [], [], set()
+
+        monkeypatch.setattr(prov, "_screen", screen)
+        changes, warnings = _run(prov.reconcile_setups(RANGE_ID, output, domain_passwords={}, so_logins={}))
+        assert not changes and any("declares no Administrator" in w for w in warnings)
+
 
 # --------------------------------------------------------------------------- #
 # pfSense: the per-range config.xml in guestinfo

@@ -215,6 +215,9 @@ class BaseProvisioner(ABC):
         )
 
     supports_guest_commands: bool = False
+    # A backend that runs long in-guest setups (product role images, Security Onion) exposes
+    # ``reconcile_setups`` so the reconcile task (worker/setup_reconcile.py) can finish them.
+    supports_setup_reconcile: bool = False
 
     async def run_in_guest(
         self,

@@ -25,7 +25,7 @@ from celery import group
 from . import ai_client, db_ops, greyspace, range_accounts, range_alloc, range_metrics, range_sweep, windows_roles
 from .base_tasks import ReliableTask, _get_backend, db_connect_args
 from .celery_app import app
-from .fencing import FINAL_ERRORS, fenced, guarded_range_update, run_async, snapshot_back_to_ready
+from .fencing import FINAL_ERRORS, fenced, guarded_range_update, provision_finish_by, run_async, snapshot_back_to_ready
 from .fencing import last_attempt as _last_attempt
 from .provisioners import discard_built
 
@@ -119,11 +119,10 @@ def provision_range(self, range_id: str, noise_mgmt: dict | None = None):
     A range torn down while it was being built gets what was built destroyed, not recorded."""
     logger.info(f"[provision] Starting range {range_id}")
     _notify_api("range", {"id": range_id, "state": "provisioning"})
-
+    finish_by = provision_finish_by()  # new build work stops by here, before the Celery soft limit
     try:
         with _db_session() as db:  # template and provisioner_backend
             row = db_ops.range_template_and_backend(db, range_id)
-
         # The template column holds YAML (see content/ranges/*.yaml); tolerate JSON too.
         raw = row[0] if row and row[0] else ""
         template = {}
@@ -167,6 +166,7 @@ def provision_range(self, range_id: str, noise_mgmt: dict | None = None):
         template = greyspace.plan_host(range_id, backend, template)  # + gs-core on HOSTED backends (ADR 0007)
         provisioner = _get_backend(backend, range_id, build=True)  # its tenant's connection (H6), recorded
         allocations.update(range_alloc.reserve_for_build(_db_session, range_id, provisioner, template))
+        allocations["finish_by"] = finish_by  # the provisioner stops new work by here
         result = run_async(range_accounts.provision(provisioner, range_id, template, allocations, _db_session))
 
         if result.status == "failed":

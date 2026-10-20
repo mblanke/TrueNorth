@@ -82,6 +82,28 @@ def lock_range(db, range_id: str) -> None:
     db.execute(sa.select(ranges.c.id).where(ranges.c.id == range_id).with_for_update())
 
 
+def ranges_with_running_setups(db) -> list:
+    """(id, name, provisioner_output, provisioner_backend) of every ``ready`` range whose
+    stored output mentions a ``running`` setup: the reconcile task looks at these. A broad
+    text match; the task parses the output and decides (worker/setup_reconcile.py)."""
+    stmt = sa.select(ranges.c.id, ranges.c.name, ranges.c.provisioner_output, ranges.c.provisioner_backend).where(
+        sa.cast(ranges.c.state, sa.Text) == "ready",
+        sa.cast(ranges.c.provisioner_output, sa.Text).like('%"running"%'),
+    )
+    return db.execute(stmt).fetchall()
+
+
+def set_range_output(db, range_id: str, output: str, *, only_states: Sequence[str] = ("ready",)) -> int:
+    """Replace a range's provisioner_output, conditional on its state (the reconcile task
+    finishing a setup must not overwrite a range an operator has since moved on)."""
+    stmt = (
+        sa.update(ranges)
+        .where(ranges.c.id == range_id, sa.cast(ranges.c.state, sa.Text).in_(list(only_states)))
+        .values(provisioner_output=output, updated_at=_now())
+    )
+    return db.execute(stmt).rowcount
+
+
 def range_template_and_backend(db, range_id: str):
     """(template yaml, provisioner_backend) for a range, or None."""
     stmt = (

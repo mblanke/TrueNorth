@@ -132,6 +132,45 @@ def machines(doc: dict[str, Any]) -> dict[str, str]:
     return out
 
 
+# Role-image roles whose deploy-time product setup joins the range domain and runs as the
+# domain Administrator (worker/provisioners/vsphere_products.py). A range with one of these
+# gets a per-range generated Administrator on the product VM and on each domain controller,
+# so one range's compromise does not expose another range's domain admin (ADR 0012).
+PRODUCT_ROLES = frozenset({"exchange", "sharepoint", "mecm"})
+ADMIN = "administrator"
+
+
+def _node_roles(node: dict[str, Any]) -> list[str]:
+    from .. import windows_roles
+    os_name = str(node.get("os") or node.get("os_template") or node.get("type") or "")
+    if not windows_roles.is_windows_server(os_name):
+        return []
+    return windows_roles.roles_of(node.get("services"))
+
+
+def implicit_admins(doc: dict[str, Any] | None, declared: list[AccountSpec]) -> list[AccountSpec]:
+    """Generated Administrator specs for the product VMs and domain controllers of a template
+    that has a product role image, where the template declares no Administrator for them. Each
+    range gets its own (``generate``), issued and sealed by the credential service; staff-only."""
+    if not isinstance(doc, dict):
+        return []
+    nodes = built_from(doc)
+    product = [str(n["id"]) for n in nodes if n.get("id") and (set(_node_roles(n)) & PRODUCT_ROLES)]
+    if not product:
+        return []
+    dcs = [str(n["id"]) for n in nodes if n.get("id")
+           and ("ad-ds" in _node_roles(n) or str(n.get("role", "")).lower() == "domain_controller")]
+    have = {spec.machine for spec in declared if spec.username.casefold() == ADMIN}
+    out: list[AccountSpec] = []
+    for machine in dict.fromkeys(product + dcs):  # product first, de-duplicated, order kept
+        if machine in have:
+            continue
+        out.append(AccountSpec(machine=machine, username="Administrator", password=None, generate=True,
+                               student_visible=False, role="admin",
+                               notes="generated: per-range domain Administrator for the product setup (ADR 0012)"))
+    return out
+
+
 def parse(doc: dict[str, Any] | None) -> tuple[list[AccountSpec], list[dict[str, str]]]:
     """The accounts a template declares, and what is wrong with them (``{path, message}``).
 

@@ -103,6 +103,7 @@ import os
 import re
 import secrets
 import shlex
+import time as _time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
@@ -113,8 +114,11 @@ from . import vsphere_infra as infra
 logger = logging.getLogger(__name__)
 
 CATALOGUE_ID = "securityonion"
-# Seconds from the start of a VM's setup until the worker stops waiting for a healthy node.
-VSPHERE_SO_SETUP_TIMEOUT: int = int(os.environ.get("VSPHERE_SO_SETUP_TIMEOUT", "3600"))
+# Seconds from the start of a VM's setup until the setup is a ``timeout``. The build does
+# not wait this long: it waits at most VSPHERE_SETUP_BUILD_WAIT, records ``running`` and lets
+# the reconcile task (worker/setup_reconcile.py) read the status file and verify the accounts.
+VSPHERE_SO_SETUP_TIMEOUT: int = int(os.environ.get("VSPHERE_SO_SETUP_TIMEOUT", "7200"))
+VSPHERE_SETUP_BUILD_WAIT: float = float(os.environ.get("VSPHERE_SETUP_BUILD_WAIT", "0"))
 # Seconds between status reads (each one a short guest-operations process).
 VSPHERE_SO_POLL: float = float(os.environ.get("VSPHERE_SO_POLL", "30"))
 # Seconds the runner waits, after so-setup succeeds, for so-status to report every container up.
@@ -492,10 +496,12 @@ def _sealed(password: guest.Secret) -> str | None:
 def setup(session_for: Callable[[guest.GuestCredentials], object], vm_def: dict, macs: list[str],
           networks: list[dict], mirror_dst_vlans: set[int], deadline: float, budget_end: float, *,
           poll: float | None = None, env: dict | None = None,
-          clock: Callable[[], float] | None = None) -> tuple[dict, list[str]]:
+          clock: Callable[[], float] | None = None, build_wait: float | None = None) -> tuple[dict, list[str]]:
     """Set the VM up as a standalone node; returns (its ``securityonion`` output, warnings).
 
     ``deadline``: VSPHERE_SO_SETUP_TIMEOUT from now; ``budget_end``: the provision budget.
+    The build waits at most ``build_wait`` (VSPHERE_SETUP_BUILD_WAIT) for a healthy node, then
+    records ``running`` with a reconcile block for the reconcile task to finish.
     ``session_for(creds)`` opens a GuestSession as the install login.
 
     ``out["accounts_applied"]``: the machine's declared accounts verified in the guest
@@ -503,7 +509,7 @@ def setup(session_for: Callable[[guest.GuestCredentials], object], vm_def: dict,
     the SOC web login by ``so-user list``. Any other declared account gets a warning and
     stays not applied."""
     out, warnings, applied = _run(session_for, vm_def, macs, networks, mirror_dst_vlans, deadline, budget_end,
-                                  poll=poll, env=env, clock=clock)
+                                  poll=poll, env=env, clock=clock, build_wait=build_wait)
     declared = [a.username for a in _accounts(vm_def)]
     out["accounts_applied"] = [n for n in declared if n in applied]
     if missing := [n for n in declared if n not in applied]:
@@ -514,7 +520,7 @@ def setup(session_for: Callable[[guest.GuestCredentials], object], vm_def: dict,
 
 def _run(session_for, vm_def: dict, macs: list[str], networks: list[dict], mirror_dst_vlans: set[int],
          deadline: float, budget_end: float, *, poll: float | None, env: dict | None,
-         clock: Callable[[], float] | None) -> tuple[dict, list[str], set[str]]:
+         clock: Callable[[], float] | None, build_wait: float | None = None) -> tuple[dict, list[str], set[str]]:
     """``setup`` without the account report: (output, warnings, declared usernames verified)."""
     name = str(vm_def.get("name") or "")
     tag = f"VM {name}: Security Onion setup"
@@ -544,8 +550,12 @@ def _run(session_for, vm_def: dict, macs: list[str], networks: list[dict], mirro
                         "declare a role: user account for this machine in the range to choose it")
     session = session_for(p.install)
     now = (clock or session._clock)
+    at = _time.time
     wait = poll if poll is not None else VSPHERE_SO_POLL
+    bw = VSPHERE_SETUP_BUILD_WAIT if build_wait is None else build_wait
     stop = min(deadline, budget_end)
+    since = at()
+    build_stop = min(stop, now() + bw)
     if budget_end - now() < MIN_START:
         out["detail"] = "the provision time budget (VSPHERE_PROVISION_BUDGET) is spent; setup not started"
         return out, [*warnings, f"{tag} skipped: {out['detail']}"], set()
@@ -593,15 +603,23 @@ def _run(session_for, vm_def: dict, macs: list[str], networks: list[dict], mirro
             return fail("failed", STATUS.get(code, f"setup runner status {code}"))
         if code in RUNNING:
             last = code
-        if now() >= stop:
+        if now() >= build_stop:
             break
         with contextlib.suppress(Exception):
-            session._sleep(max(0.0, min(wait, stop - now())))
-    if deadline <= budget_end:
+            session._sleep(max(0.0, min(wait, build_stop - now())))
+    # Not healthy within the build's wait: leave it running for the reconcile task, unless the
+    # whole timeout is already spent (then it is a timeout even in the build).
+    if now() >= stop and deadline <= budget_end:
         return fail("timeout", f"not healthy within VSPHERE_SO_SETUP_TIMEOUT; last status: {STATUS[last]} "
                                f"(it carries on in the guest; check {STATUS_FILE})")
-    return fail("running", f"the provision time budget ended first; last status: {STATUS[last]} "
-                           f"(it carries on in the guest; check {STATUS_FILE})")
+    out, warnings2, verified = fail("running", f"last status: {STATUS[last]}; continues in the guest, the reconcile "
+                                               f"task records the result (check {STATUS_FILE})")
+    out["reconcile"] = {"kind": "securityonion", "status_file": STATUS_FILE, "since": since,
+                        "timeout": VSPHERE_SO_SETUP_TIMEOUT, "web_user": p.web_user,
+                        "web_generated": p.web_generated, "admin_user": p.admin.username if p.admin else None,
+                        "node": str(vm_def.get("node_id") or ""), "install_user": p.install.username,
+                        "install_from_env": p.install_source == "VSPHERE_SO_INSTALL_USER"}
+    return out, warnings2, verified
 
 
 def admin_check_command(username: str) -> guest.GuestCommand:
@@ -650,3 +668,37 @@ def _set_admin_last(session, p: SetupPlan, stop: float, hidden) -> list[str]:
         return []
     return [f"VM {p.hostname}: Security Onion admin account {p.admin.username}: its declared password was not set "
             f"({result}, {code})"]
+
+
+def reconcile(session, info: dict, *, clock: Callable[[], float] | None = None,
+              epoch: Callable[[], float] | None = None, deadline: float | None = None) -> tuple[dict | None, set]:
+    """Read a ``running`` Security Onion setup's status (worker/setup_reconcile.py), as the
+    install login. Returns (final outcome or None, the accounts verified in the guest). On a
+    healthy node it verifies the SOC web login (``so-user list``) and the admin account
+    (``getent passwd``); until then it returns (None, set()) and leaves it ``running``."""
+    now = clock or session._clock
+    at = epoch or _time.time
+    stop = deadline if deadline is not None else now() + 120
+    try:
+        session.wait_ready(stop)
+        _result, code = session.run(poll_command(), min(stop, now() + 120))  # code is the status number
+    except Exception as exc:  # noqa: BLE001
+        logger.info("security onion reconcile %s: not reachable this round: %s", info.get("node"),
+                    getattr(exc, "msg", None) or type(exc).__name__)
+        return None, set()
+    base = {"status": "", "detail": "", "mode": "standalone, airgap", "reconcile": info}
+    if code == 0:
+        verified: set[str] = set()
+        if info.get("admin_user") and _check(session, admin_check_command(info["admin_user"]), stop, ()):
+            verified.add(str(info["admin_user"]))
+        web = info.get("web_user")
+        if web and not info.get("web_generated") and _check(
+                session, as_root("so-web-check", web_check_script(str(web)), session.creds), stop, ()):
+            verified.add(str(web))
+        return {**base, "status": "ok", "detail": STATUS[0]}, verified
+    if code is not None and code not in RUNNING:
+        return {**base, "status": "failed", "detail": STATUS.get(code, f"setup runner status {code}")}, set()
+    if at() - float(info.get("since") or 0) > float(info.get("timeout") or VSPHERE_SO_SETUP_TIMEOUT):
+        return {**base, "status": "timeout",
+                "detail": f"not healthy within VSPHERE_SO_SETUP_TIMEOUT; last status: {STATUS.get(code, code)}"}, set()
+    return None, set()

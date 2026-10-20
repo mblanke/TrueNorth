@@ -473,7 +473,9 @@ class VsphereAPIProvisioner(BaseProvisioner):
         self._role_timeout = VSPHERE_ROLE_TIMEOUT
         self._scrub_timeout = VSPHERE_ACCOUNT_SCRUB_TIMEOUT
         self._budget = VSPHERE_PROVISION_BUDGET
+        self._budget_end = 0.0  # absolute monotonic deadline for new build work (set in provision)
         self._guest_poll = 5.0
+        self._guest_put = None  # a guest file-transfer PUT for tests; None = real HTTPS to the ESXi host
         self._library_id: str | None = None
         self._library_looked_up = False
         self._transport = None  # an httpx transport for tests; None = the network
@@ -1412,6 +1414,14 @@ class VsphereAPIProvisioner(BaseProvisioner):
         template author could send a build, and its recorded connection, to any host.
         """
         start = time.monotonic()
+        # No new build work starts after this point. VSPHERE_PROVISION_BUDGET from the
+        # provision start, and never past the task's ``finish_by`` (worker/tasks.py: the
+        # Celery soft limit minus a reserve, same monotonic clock), so a long setup is
+        # started and left ``running`` for the reconcile task, not waited on to the soft
+        # limit (which would fail the task and store nothing).
+        self._budget_end = start + self._budget
+        if (finish_by := allocations.get("finish_by")) is not None:
+            self._budget_end = min(self._budget_end, float(finish_by))
         errors: list[str] = []
         warnings: list[str] = []
         vms_out: list[dict] = []
@@ -1474,6 +1484,10 @@ class VsphereAPIProvisioner(BaseProvisioner):
                         mirrors = await asyncio.to_thread(self._mirror_sync, si, site, range_id, mirror_plans,
                                                           vm_defs, vms_out, errors, warnings)
 
+                    # One semaphore for every guest software install, product VMs included,
+                    # so VSPHERE_CONCURRENCY is respected across both paths (not one each).
+                    software_gate = asyncio.Semaphore(self._concurrency)
+
                     async def roles_then_software() -> None:
                         await self._install_roles(si, vm_defs, vms_out, start, errors, warnings)
                         # Exchange / SharePoint SE / MECM images: after every role, so the
@@ -1482,9 +1496,9 @@ class VsphereAPIProvisioner(BaseProvisioner):
                         products = [o for o in vms_out if o["name"] in names]
                         await asyncio.gather(
                             self._install_software(si, vm_defs, [o for o in vms_out if o["name"] not in names],
-                                                   start, errors, warnings),
+                                                   start, errors, warnings, gate=software_gate),
                             self._setup_products(si, str(template.get("name") or range_id), vm_defs, products,
-                                                 vms_out, start, errors, warnings))
+                                                 vms_out, start, errors, warnings, software_gate))
 
                     # Security Onion setup runs in its guest on its own; start it with the rest.
                     await asyncio.gather(roles_then_software(), self._setup_securityonion(
@@ -1770,12 +1784,16 @@ class VsphereAPIProvisioner(BaseProvisioner):
         return result
 
     async def _install_software(self, si, vm_defs: list[dict], vms_out: list[dict], start: float,
-                                errors: list[str], warnings: list[str]) -> None:
+                                errors: list[str], warnings: list[str],
+                                gate: asyncio.Semaphore | None = None) -> None:
         """Install each built VM's software inside the guest, VSPHERE_CONCURRENCY VMs at a time.
 
         Every VM gets TN_SOFTWARE_INSTALL_TIMEOUT from when its install starts, but nothing
         runs past VSPHERE_PROVISION_BUDGET from the start of the provision. A failed or
         timed-out package is an error (the range is ``partial``), never a failed build.
+
+        ``gate`` is the provision's shared concurrency semaphore; product VMs install their
+        software through the same one, so VSPHERE_CONCURRENCY bounds every guest install.
         """
         by_name = {v["name"]: v for v in vm_defs}
         for out in vms_out:
@@ -1786,8 +1804,8 @@ class VsphereAPIProvisioner(BaseProvisioner):
         todo = [(by_name[o["name"]], o) for o in vms_out if by_name[o["name"]].get("_software")]
         if not todo:
             return
-        hard_stop = start + self._budget
-        gate = asyncio.Semaphore(self._concurrency)
+        hard_stop = self._budget_end
+        gate = gate or asyncio.Semaphore(self._concurrency)
 
         async def one(vm_def: dict, out: dict) -> None:
             async with gate:
@@ -1902,7 +1920,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
         Anything unverified is not reported (Students never see it) and gets a warning."""
         by_name = {v["name"]: v for v in vm_defs}
         gate = asyncio.Semaphore(self._concurrency)
-        hard_stop = start + self._budget
+        hard_stop = self._budget_end
 
         def deadline(timeout: float) -> float:
             now = time.monotonic()
@@ -1947,7 +1965,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
         Exchange / SharePoint SE / MECM role: set up later (``_setup_products``), or, when its
         image was not built and the plain OS was, a warning and ``role_setup`` ``skipped``."""
         by_name = {v["name"]: v for v in vm_defs}
-        hard_stop = start + self._budget
+        hard_stop = self._budget_end
         gate = asyncio.Semaphore(self._concurrency)
 
         async def one(vm_def: dict, out: dict) -> None:
@@ -1985,28 +2003,35 @@ class VsphereAPIProvisioner(BaseProvisioner):
 
         await asyncio.gather(*(one(by_name[o["name"]], o) for o in vms_out if by_name[o["name"]].get("roles")))
 
+    def _transfer_host(self) -> str | None:
+        """The host a guest file-transfer URL's ``*`` resolves to: the vCenter/ESXi the
+        adapter is bound to. The worker must reach it on 443 (mblanke/TrueNorth#194)."""
+        return urlparse(self._base_url).hostname if getattr(self, "_base_url", "") else None
+
     def _product_session(self, si, vm_id: str):
         vm = self._vm(si, vm_id)
-        return lambda creds: guest.GuestSession(si.content, vm, creds, poll=self._guest_poll)
+        return lambda creds: guest.GuestSession(si.content, vm, creds, poll=self._guest_poll,
+                                                transfer_host=self._transfer_host(), put=self._guest_put)
 
     def _product_prepare_sync(self, si, plan, vm_id: str, deadline: float) -> dict | None:
         return vsphere_products.prepare(self._product_session(si, vm_id), plan, deadline)
 
-    def _product_run_sync(self, si, plan, vm_id: str, deadline: float, budget_end: float) -> dict:
-        return vsphere_products.run(self._product_session(si, vm_id), plan, deadline, budget_end)
+    def _product_run_sync(self, si, plan, vm_id: str) -> dict:
+        return vsphere_products.run(self._product_session(si, vm_id), plan, self._budget_end, self._budget_end)
 
     async def _setup_products(self, si, range_name: str, vm_defs: list[dict], todo: list[dict],
-                              vms_out: list[dict], start: float, errors: list[str], warnings: list[str]) -> None:
+                              vms_out: list[dict], start: float, errors: list[str], warnings: list[str],
+                              gate: asyncio.Semaphore) -> None:
         """Exchange 2019 / SharePoint SE / MECM role images (vsphere_products.py). Runs after
         every VM's roles, so the forest-root DC of the VM's domain is promoted, or not: then
-        the setup is ``skipped``. Per VM: staged-image check and domain join (VSPHERE_CONCURRENCY
-        at a time), the VM's own software, then the product setup, detached in the guest and
-        polled until VSPHERE_ROLE_SETUP_TIMEOUT or VSPHERE_PROVISION_BUDGET. Every outcome but
-        ``ok`` is a warning, never a partial range; ``accounts_applied`` is unchanged."""
+        the setup is ``skipped``. Per VM, under the shared concurrency ``gate``: staged-image
+        check and domain join as the local Administrator, the VM's own software, then the
+        product setup started detached as the domain Administrator (guest-ops auth; no secret
+        on a command line) and left ``running`` for the reconcile task (worker/setup_reconcile.py).
+        Every outcome but ``ok`` is a warning, never a partial range; ``accounts_applied`` is
+        unchanged."""
         by_name = {v["name"]: v for v in vm_defs}
         built = {o["name"]: o for o in vms_out}
-        budget_end = start + self._budget
-        gate = asyncio.Semaphore(self._concurrency)
 
         async def one(out: dict) -> None:
             vm_def = by_name[out["name"]]
@@ -2022,24 +2047,27 @@ class VsphereAPIProvisioner(BaseProvisioner):
                 if dc_state != "ok":
                     res = vsphere_products.outcome(plan, "skipped", f"domain controller {plan.dc_name} is not ready "
                                                                     f"(ad-ds {dc_state or 'not built'})")
-            deadline = time.monotonic() + vsphere_products.VSPHERE_ROLE_SETUP_TIMEOUT
+            # Join under the shared gate: its per-VM deadline starts after the slot is held.
             if plan is not None and res is None:
                 async with gate:
-                    if budget_end - time.monotonic() < vsphere_products.MIN_START:
+                    if self._budget_end - time.monotonic() < vsphere_products.MIN_START:
                         res = vsphere_products.outcome(plan, "skipped", "the provision time budget "
                                                                         "(VSPHERE_PROVISION_BUDGET) is spent")
                     else:
                         try:
                             res = await asyncio.to_thread(self._product_prepare_sync, si, plan, out["vm_id"],
-                                                          min(deadline, budget_end))
+                                                          self._budget_end)
                         except Exception as exc:  # noqa: BLE001
                             res = vsphere_products.outcome(plan, "failed", self._redact(exc, vm_def))
-            await self._install_software(si, vm_defs, [out], start, errors, warnings)
+            # The VM's own software, through the same shared gate (acquired inside the call).
+            await self._install_software(si, vm_defs, [out], start, errors, warnings, gate=gate)
+            # Start the product setup (brief wait); the reconcile task finishes it.
             if plan is not None and res is None:
-                try:
-                    res = await asyncio.to_thread(self._product_run_sync, si, plan, out["vm_id"], deadline, budget_end)
-                except Exception as exc:  # noqa: BLE001
-                    res = vsphere_products.outcome(plan, "failed", self._redact(exc, vm_def))
+                async with gate:
+                    try:
+                        res = await asyncio.to_thread(self._product_run_sync, si, plan, out["vm_id"])
+                    except Exception as exc:  # noqa: BLE001
+                        res = vsphere_products.outcome(plan, "failed", self._redact(exc, vm_def))
             res = res or vsphere_products.outcome(plan, "failed", "no outcome")
             out["role_setup"] = res
             out.setdefault("roles", {})[role] = {"status": res["status"], "detail": res["detail"]}
@@ -2066,7 +2094,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
         if not todo:
             return
         dst_vlans = {int(p["dst_vlan"]) for p in mirror_plans}
-        budget_end = start + self._budget
+        budget_end = self._budget_end
 
         async def one(vm_def: dict, out: dict) -> None:
             deadline = time.monotonic() + seconion.VSPHERE_SO_SETUP_TIMEOUT
@@ -2130,6 +2158,73 @@ class VsphereAPIProvisioner(BaseProvisioner):
             raise RuntimeError(f"VM {vm_name or vm_id}: {vm_id} is not on {self._base_url}")
         deadline = time.monotonic() + timeout
         return await asyncio.to_thread(self._guest_sync, vm_id, login, steps, deadline)
+
+    supports_setup_reconcile = True
+
+    def _reconcile_sync(self, range_id: str, products: list[dict], sos: list[dict],
+                        domain_passwords: dict, so_logins: dict, missing: set[str]) -> tuple[dict, list[str]]:
+        changes: dict[str, dict] = {}
+        warnings: list[str] = []
+        host = self._transfer_host()
+        with self._vim() as si:
+            self._soap_si = si
+            try:
+                for v in products:
+                    info = (v.get("role_setup") or {}).get("reconcile") or {}
+                    if v["vm_id"] in missing:
+                        continue
+                    secret = domain_passwords.get(info.get("dc_node"))
+                    if not secret:
+                        warnings.append(f"VM {v['name']}: cannot reconcile {info.get('role')}: the range declares no "
+                                        f"Administrator for domain controller {info.get('dc_node')}")
+                        continue
+                    creds = guest.GuestCredentials("windows", f"{info['netbios']}\\Administrator",
+                                                   guest.Secret(secret))
+                    session = guest.GuestSession(si.content, self._vm(si, v["vm_id"]), creds, poll=self._guest_poll,
+                                                 transfer_host=host, put=self._guest_put)
+                    res = vsphere_products.reconcile(session, info)
+                    if res is not None:
+                        changes[v["name"]] = {"role_setup": res, "role": info.get("role", "")}
+                for v in sos:
+                    info = (v.get("securityonion") or {}).get("reconcile") or {}
+                    if v["vm_id"] in missing:
+                        continue
+                    login = so_logins.get(info.get("node"))
+                    if login is None:
+                        continue
+                    session = guest.GuestSession(si.content, self._vm(si, v["vm_id"]),
+                                                 guest.GuestCredentials("linux", login[0], guest.Secret(login[1])),
+                                                 poll=self._guest_poll)
+                    out, verified = seconion.reconcile(session, info)
+                    if out is not None:
+                        changes[v["name"]] = {"securityonion": out, "accounts_applied": sorted(verified),
+                                              "node": info.get("node")}
+            finally:
+                self._soap_si = None
+        return changes, warnings
+
+    async def reconcile_setups(self, range_id: str, output: dict, *, domain_passwords: dict,
+                               so_logins: dict) -> tuple[dict, list[str]]:
+        """Read every ``running`` product / Security Onion setup's status in its guest and
+        return the terminal outcomes to store (worker/setup_reconcile.py). ``domain_passwords``
+        maps a DC node id to its Administrator password; ``so_logins`` a Security Onion node id
+        to its (install user, password). Only the range's own VMs are touched (``_screen``)."""
+        if SmartConnect is None:
+            raise RuntimeError("pyvmomi is required for guest operations (pip install pyvmomi)")
+        vms = output.get("vms") or []
+        products = [v for v in vms if (v.get("role_setup") or {}).get("status") == "running"
+                    and (v["role_setup"].get("reconcile")) and v.get("vm_id")]
+        sos = [v for v in vms if (v.get("securityonion") or {}).get("status") == "running"
+               and (v["securityonion"].get("reconcile")) and v.get("vm_id")]
+        if not products and not sos:
+            return {}, []
+        async with self._soap_scope(always=True):
+            _, notes, missing = await self._screen(range_id, [{"vm_id": v["vm_id"], "name": v["name"]}
+                                                              for v in products + sos])
+        if notes:
+            return {}, [notes[0]]
+        return await asyncio.to_thread(self._reconcile_sync, range_id, products, sos, domain_passwords,
+                                       so_logins, missing)
 
     async def _rollback(self, si, range_id: str, networks: list[dict], errors: list[str]) -> None:
         """Best effort: remove what a failed build created (its VMs already removed themselves)."""

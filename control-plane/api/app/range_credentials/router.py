@@ -43,6 +43,10 @@ class RangeCredentialOut(BaseModel):
     applied: bool = Field(description="The last build reported setting it. False: not set by TrueNorth "
                                       "(Windows accounts other than Administrator, appliances, other backends, "
                                       "or not built yet). Students only ever get applied accounts")
+    setup_status: Literal["applied", "being_set_up", "not_set"] = Field(
+        "not_set", description="applied: verified set. being_set_up (staff only): its machine's deploy-time "
+                              "setup (product role image / Security Onion) is still running, verified later by the "
+                              "reconcile task. not_set: not set by TrueNorth or not built yet")
     notes: str = ""
 
 
@@ -81,18 +85,19 @@ def get_range_credentials(
     rng = service.readable_range(db, range_id, user, scope)
     rows = service.visible_accounts(db, rng, scope)
     defaults = service.template_logins(db, rng, rows, scope)  # [] unless staff
+    pending = service.setup_pending_machines(rng) if scope == service.ALL else set()
     out = RangeCredentialsOut(
         range_id=rng.id,
         scope=scope,
         accounts=[
             RangeCredentialOut(machine=r.machine, username=r.username, password=r.password or "", role=r.role,
                                student_visible=r.student_visible, generated=r.generated, applied=r.applied,
-                               notes=r.notes or "")
+                               setup_status=service.setup_status(r, pending), notes=r.notes or "")
             for r in rows
         ] + [
             RangeCredentialOut(machine=d.machine, username=d.username, password=d.password,
                                source="template_default", role="admin", student_visible=False, generated=False,
-                               applied=False, notes=d.notes)
+                               applied=False, setup_status="not_set", notes=d.notes)
             for d in defaults
         ],
     )

@@ -100,14 +100,16 @@ class FakeSession:
         return ("ok" if code in cmd.ok_codes else "failed"), code
 
 
-def _setup(vm_def=None, codes=(0,), *, deadline=3600.0, budget=3300.0, env=INSTALL, macs=MACS, **kw):
+def _setup(vm_def=None, codes=(0,), *, deadline=3600.0, budget=3300.0, env=INSTALL, macs=MACS,
+           build_wait=100000.0, **kw):
     sessions: list[FakeSession] = []
 
     def session_for(creds):
         sessions.append(FakeSession(creds, codes, **kw))
         return sessions[-1]
 
-    out, warnings = so.setup(session_for, vm_def or _vm(), macs, NETWORKS, {203}, deadline, budget, poll=30, env=env)
+    out, warnings = so.setup(session_for, vm_def or _vm(), macs, NETWORKS, {203}, deadline, budget, poll=30,
+                             env=env, build_wait=build_wait)
     return out, warnings, (sessions[0] if sessions else None)
 
 
@@ -404,3 +406,37 @@ class TestSetup:
     def test_fewer_nics_on_the_vm_than_planned_is_skipped(self):
         out, warnings, _ = _setup(macs=MACS[:1])
         assert out["status"] == "skipped" and "1 NICs" in out["detail"]
+
+
+# --------------------------------------------------------------------------- #
+# Build wait and the reconcile path (worker/setup_reconcile.py)
+# --------------------------------------------------------------------------- #
+
+
+class TestReconcilePath:
+    def test_build_wait_zero_leaves_it_running_with_a_reconcile_block(self):
+        out, warnings, _ = _setup(codes=[2] * 100, build_wait=0)
+        assert out["status"] == "running"
+        rec = out["reconcile"]
+        assert rec["kind"] == "securityonion" and rec["status_file"] == so.STATUS_FILE
+        assert rec["web_user"] == "analyst@range.local" and rec["timeout"] == so.VSPHERE_SO_SETUP_TIMEOUT
+        assert any("reconcile task records the result" in w for w in warnings)
+
+    def test_reconcile_healthy_verifies_accounts(self):
+        info = {"kind": "securityonion", "status_file": so.STATUS_FILE, "since": 0.0, "timeout": 7200,
+                "web_user": "analyst@range.local", "web_generated": False, "admin_user": "soadmin",
+                "node": "seconion01", "install_user": "soadmin", "install_from_env": True}
+        s = FakeSession(guest.GuestCredentials("linux", "soadmin", guest.Secret("x")), codes=[0])
+        out, verified = so.reconcile(s, info, epoch=lambda: 10.0)
+        assert out["status"] == "ok"
+        assert verified == {"soadmin", "analyst@range.local"}
+
+    def test_reconcile_failed_and_timeout_and_still_running(self):
+        base = {"status_file": so.STATUS_FILE, "since": 0.0, "timeout": 50, "web_user": "a@b.c",
+                "web_generated": True, "admin_user": None, "node": "n"}
+        c = guest.GuestCredentials("linux", "u", guest.Secret("x"))
+        out, _ = so.reconcile(FakeSession(c, codes=[13]), base, epoch=lambda: 10.0)
+        assert out["status"] == "failed"
+        out, _ = so.reconcile(FakeSession(c, codes=[2]), base, epoch=lambda: 1000.0)
+        assert out["status"] == "timeout"
+        assert so.reconcile(FakeSession(c, codes=[2]), base, epoch=lambda: 10.0) == (None, set())

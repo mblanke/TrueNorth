@@ -332,7 +332,7 @@ tn_template_linux_password: "{{ vault_template_linux_password | default('') }}"
 # (vmware-site-runbook.md §7.3): SharePoint's product key (empty: left staged) and how
 # long the worker waits for a product setup (it carries on in the guest after).
 tn_sharepoint_product_key: "{{ vault_sharepoint_product_key | default('') }}"
-tn_vsphere_role_setup_timeout: 3600
+tn_vsphere_role_setup_timeout: 7200
 # Report rather than fail when the provisioning role is unassigned — see
 # roles/tn_vsphere. Flip to true once the role has been granted.
 tn_fail_on_missing_vsphere_privs: false

@@ -12678,6 +12678,13 @@ export interface components {
              */
             role: string;
             /**
+             * Setup Status
+             * @description applied: verified set. being_set_up (staff only): its machine's deploy-time setup (product role image / Security Onion) is still running, verified later by the reconcile task. not_set: not set by TrueNorth or not built yet
+             * @default not_set
+             * @enum {string}
+             */
+            setup_status?: "applied" | "being_set_up" | "not_set";
+            /**
              * Source
              * @description declared: the range template's accounts:. template_default (staff only): the golden template's build login on a machine with no declared account
              * @default declared

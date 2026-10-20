@@ -140,6 +140,18 @@ describe('RangeCredentialsComponent', () => {
     expect(el.textContent).not.toContain('Not set by TrueNorth');
   });
 
+  it('shows staff a "being set up" badge for a machine whose deploy-time setup is still running', async () => {
+    await render('range_ops', { range_id: 'r1', scope: 'all', accounts: [
+      { machine: 'exch01', username: 'Administrator', password: 'Exch-Secret-1!', role: 'admin',
+        student_visible: false, generated: true, applied: false, setup_status: 'being_set_up',
+        notes: 'generated' },
+    ] });
+    show();
+    const row = el.querySelector('tbody tr') as HTMLElement;
+    expect(row.textContent).toContain('Being set up');
+    expect(row.textContent).not.toContain('Not set by TrueNorth');
+  });
+
   it('shows staff the template default login, and says when it is not configured', async () => {
     await render('range_ops', { range_id: 'r1', scope: 'all', accounts: [
       { machine: 'web01', username: 'ubuntu', password: 'Build-Pass-1!', source: 'template_default', role: 'admin',

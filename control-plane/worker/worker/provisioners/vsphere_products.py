@@ -94,13 +94,13 @@ secret is logged, and every recorded error is scrubbed.
 
 from __future__ import annotations
 
-import base64
 import contextlib
 import json
 import logging
 import os
 import re
 import secrets
+import time as _time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
@@ -119,14 +119,17 @@ SETUP_IMAGES: dict[str, str] = {
 }
 LABELS = {"exchange": "Exchange 2019", "sharepoint": "SharePoint SE", "mecm": "MECM"}
 
-# Seconds from the start of a VM's setup (its domain join) until the worker stops waiting.
-VSPHERE_ROLE_SETUP_TIMEOUT: int = int(os.environ.get("VSPHERE_ROLE_SETUP_TIMEOUT", "3600"))
+# Seconds from the start of a VM's setup (its domain join) until the setup is called a
+# ``timeout``. The build never waits this long: the reconcile task (worker/setup_reconcile.py)
+# reads the status file later. VSPHERE_SETUP_BUILD_WAIT is how long the build itself waits
+# after starting the setup (0: record ``running`` at once and leave it to reconcile).
+VSPHERE_ROLE_SETUP_TIMEOUT: int = int(os.environ.get("VSPHERE_ROLE_SETUP_TIMEOUT", "7200"))
+VSPHERE_SETUP_BUILD_WAIT: float = float(os.environ.get("VSPHERE_SETUP_BUILD_WAIT", "0"))
 # Seconds between status reads (each one a short guest-operations process).
 VSPHERE_ROLE_SETUP_POLL: float = float(os.environ.get("VSPHERE_ROLE_SETUP_POLL", "30"))
 PRODUCT_KEY_ENV = "TN_SHAREPOINT_PRODUCT_KEY"
-MIN_START = 60  # seconds of budget a step needs; less, and it is not started
+MIN_START = 60  # seconds of budget starting the setup needs; less, and it is not started
 DC_WAIT = 900  # seconds the join waits for the DC's SRV record (it may still be booting)
-CHUNK = 4000  # base64 characters per file-write command (Windows command lines stop at 32767)
 
 ROOT = "C:\\TrueNorth"
 MARKER = ROOT + "\\role-image.json"
@@ -134,8 +137,11 @@ STATE_DIR = ROOT + "\\deploy"
 STATUS_FILE = STATE_DIR + "\\status"
 RUNNER_FILE = STATE_DIR + "\\runner.ps1"
 RUNNER_LOG = STATE_DIR + "\\runner.log"
-TASK_NAME = "TrueNorth role setup"
+PARAMS_FILE = STATE_DIR + "\\params.json"
+SECRETS_FILE = STATE_DIR + "\\secrets.json"  # SharePoint key/passphrase; deleted by the runner
+JOIN_SECRET = STATE_DIR + "\\join.secret"  # the domain password for Add-Computer; deleted by the join
 MECM_PREREQS = ROOT + "\\media\\mecm-prereqs"
+POWERSHELL = vsphere_roles.POWERSHELL
 _KEY = re.compile(r"^[A-Z0-9]{5}(-[A-Z0-9]{5}){4}$")
 _DOMAIN = re.compile(r"^(?=.{3,253}$)[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$")
 
@@ -172,10 +178,7 @@ MARKER_CODES = {
 JOIN_CODES = {
     30: f"the domain controller's DNS did not answer for the domain within {DC_WAIT}s",
     31: "Add-Computer failed (credentials, or the domain controller unreachable)",
-}
-START_CODES = {
-    32: "could not register the setup task as the domain Administrator (its password, or the domain "
-        "controller unreachable)",
+    33: f"the domain credentials file {JOIN_SECRET} was not delivered to the guest",
 }
 
 
@@ -240,6 +243,7 @@ class SetupPlan:
     domain: str
     netbios: str
     dc_name: str
+    dc_node: str
     dc_ip: str
     local: guest.GuestCredentials = field(repr=False)
     domain_password: guest.Secret = field(repr=False)
@@ -253,6 +257,12 @@ class SetupPlan:
     @property
     def domain_user(self) -> str:
         return f"{self.netbios}\\Administrator"
+
+    @property
+    def domain_login(self) -> guest.GuestCredentials:
+        """Guest-operations login as the domain Administrator: the product setup runs as this
+        user. The password reaches only the vSphere API auth, never a guest command line."""
+        return guest.GuestCredentials("windows", self.domain_user, self.domain_password)
 
     @property
     def hidden(self) -> tuple:
@@ -328,7 +338,8 @@ def plan(vm_def: dict, vm_defs: list[dict], range_name: str, depot_url: str = ""
     prereq = f"{depot_url}:8081/repository/installers/roles/mecm/configmgr-prereqs.zip" if depot_url else ""
     return SetupPlan(
         name=str(vm_def.get("name") or ""), role=role, image=image, domain=domain,
-        netbios=vsphere_roles.netbios(domain), dc_name=str(dc["name"]), dc_ip=dc_ip, local=local,
+        netbios=vsphere_roles.netbios(domain), dc_name=str(dc["name"]),
+        dc_node=str(dc.get("node_id") or dc.get("name") or ""), dc_ip=dc_ip, local=local,
         domain_password=dc_login.password, org=org_name(range_name), site_code=site_code(vm_def.get("_range_id", "")),
         product_key=key, passphrase=guest.Secret(secrets.token_urlsafe(18) + "aA1!") if role == "sharepoint" else None,
         prereq_url=prereq if role == "mecm" else "", notes=notes)
@@ -357,60 +368,62 @@ if (-not $m.staged -or -not (Test-Path ([string]$m.staged))) { exit 22 }
 exit 0
 """
 
+# The domain password is read from the delivered file (JOIN_SECRET), never a command line.
 JOIN_SCRIPT = """$ErrorActionPreference = 'Stop'
 $domain = '__DOMAIN__'
 $cs = Get-CimInstance Win32_ComputerSystem
-if ($cs.PartOfDomain -and $cs.Domain -ieq $domain) { exit 0 }
-Get-NetAdapter | Where-Object Status -eq 'Up' | ForEach-Object {
-  Set-DnsClientServerAddress -InterfaceIndex $_.ifIndex -ServerAddresses '__DC_IP__' }
-$until = (Get-Date).AddSeconds(__WAIT__)
-while ($true) {
-  try { Resolve-DnsName -Type SRV "_ldap._tcp.dc._msdcs.$domain" -Server '__DC_IP__' -DnsOnly -ErrorAction Stop | Out-Null; break }
-  catch { if ((Get-Date) -gt $until) { exit 30 }; Start-Sleep -Seconds 15 }
-}
-$cred = New-Object System.Management.Automation.PSCredential('__USER__', (ConvertTo-SecureString '__PASSWORD__' -AsPlainText -Force))
-$tries = 0
-while ($true) {
-  try { Add-Computer -DomainName $domain -Credential $cred -Force -ErrorAction Stop; break }
-  catch { $tries++; if ($tries -ge 10) { exit 31 }; Start-Sleep -Seconds 30 }
-}
+if ($cs.PartOfDomain -and $cs.Domain -ieq $domain) { Remove-Item -Force '__SECRET__' -ErrorAction SilentlyContinue; exit 0 }
+if (-not (Test-Path '__SECRET__')) { exit 33 }
+try {
+  Get-NetAdapter | Where-Object Status -eq 'Up' | ForEach-Object {
+    Set-DnsClientServerAddress -InterfaceIndex $_.ifIndex -ServerAddresses '__DC_IP__' }
+  $until = (Get-Date).AddSeconds(__WAIT__)
+  while ($true) {
+    try { Resolve-DnsName -Type SRV "_ldap._tcp.dc._msdcs.$domain" -Server '__DC_IP__' -DnsOnly -ErrorAction Stop | Out-Null; break }
+    catch { if ((Get-Date) -gt $until) { exit 30 }; Start-Sleep -Seconds 15 }
+  }
+  $pw = (Get-Content -Raw '__SECRET__').Trim()
+  $cred = New-Object System.Management.Automation.PSCredential('__USER__', (ConvertTo-SecureString $pw -AsPlainText -Force))
+  $pw = $null
+  $tries = 0
+  while ($true) {
+    try { Add-Computer -DomainName $domain -Credential $cred -Force -ErrorAction Stop; break }
+    catch { $tries++; if ($tries -ge 10) { exit 31 }; Start-Sleep -Seconds 30 }
+  }
+} finally { Remove-Item -Force '__SECRET__' -ErrorAction SilentlyContinue }
 exit 3010
 """
 
+# Create the state folder, readable only by Administrators and SYSTEM, and delete any
+# secret a previous attempt may have left (a crash, a reboot, a terminated guest-ops call).
 INIT_SCRIPT = """$ErrorActionPreference = 'Stop'
 $dir = '__DIR__'
-if (Test-Path '__STATUS__') { exit 5 }
 New-Item -ItemType Directory -Force -Path $dir | Out-Null
 & icacls.exe $dir /inheritance:r /grant:r '*S-1-5-32-544:(OI)(CI)F' '*S-1-5-18:(OI)(CI)F' | Out-Null
-Get-ChildItem -Path $dir -File | Remove-Item -Force
+Remove-Item -Force -ErrorAction SilentlyContinue '__SECRET__', '__JOINSECRET__', (Join-Path $dir 'config.xml')
+if (Test-Path '__STATUS__') { exit 5 }
 exit 0
 """
 
-PUT_SCRIPT = """$ErrorActionPreference = 'Stop'
-$b = [Convert]::FromBase64String('__DATA__')
-$f = [IO.File]::Open('__PATH__', [IO.FileMode]::__MODE__)
-try { $f.Write($b, 0, $b.Length) } finally { $f.Close() }
+# Delete every secret the setup may have left: the reconcile task runs it on a terminal
+# state, and a fresh attempt runs INIT_SCRIPT, so nothing lingers past the setup.
+CLEANUP_SCRIPT = """Remove-Item -Force -ErrorAction SilentlyContinue '__SECRET__', '__JOINSECRET__'
 exit 0
 """
 
-START_SCRIPT = """$ErrorActionPreference = 'Stop'
-$dir = '__DIR__'
-$action = New-ScheduledTaskAction -Execute 'powershell.exe' `
-  -Argument "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$dir\\runner.ps1`""
-$settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Hours 12) -AllowStartIfOnBatteries
-$until = (Get-Date).AddSeconds(600)
-while ($true) {
-  try {
-    Register-ScheduledTask -TaskName '__TASK__' -Action $action -Settings $settings -User '__USER__' `
-      -Password '__PASSWORD__' -RunLevel Highest -Force -ErrorAction Stop | Out-Null
-    break
-  } catch {
-    if ((Get-Date) -gt $until) { Remove-Item -Force "$dir\\secrets.json" -ErrorAction SilentlyContinue; exit 32 }
-    Start-Sleep -Seconds 20
-  }
-}
-Set-Content -Path '__STATUS__' -Value 2 -Encoding ascii
-Start-ScheduledTask -TaskName '__TASK__'
+# A reboot pending after the Chocolatey software installs would make the product setup fail;
+# reboot first. Checks the keys Microsoft documents for Component-Based Servicing, Windows
+# Update and a pending file-rename or computer-rename.
+REBOOT_PENDING_SCRIPT = r"""$ErrorActionPreference = 'SilentlyContinue'
+$pending = $false
+if (Get-Item 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending') { $pending = $true }
+if (Get-Item 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired') { $pending = $true }
+$pfro = (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager' -Name PendingFileRenameOperations -ErrorAction SilentlyContinue).PendingFileRenameOperations
+if ($pfro) { $pending = $true }
+$active = (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\ComputerName\ActiveComputerName').ComputerName
+$want = (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\ComputerName\ComputerName').ComputerName
+if ($active -ne $want) { $pending = $true }
+if ($pending) { exit 3010 }
 exit 0
 """
 
@@ -420,8 +433,9 @@ exit 2
 """
 
 RUNNER_SCRIPT = r"""# TrueNorth Range: deploy-time setup of a staged role image.
-# Written by the TrueNorth worker (worker/provisioners/vsphere_products.py); runs once, as the
-# range's domain Administrator, from the scheduled task "TrueNorth role setup", which it deletes.
+# Written by the TrueNorth worker (worker/provisioners/vsphere_products.py); started detached
+# through VMware guest operations as the range's domain Administrator (no scheduled task, no
+# stored credential: the password reaches only the vSphere API auth of the guest-ops call).
 # Progress for the worker: a number in C:\TrueNorth\deploy\status (vsphere_products.STATUS).
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
@@ -430,12 +444,12 @@ $log = Join-Path $dir 'runner.log'
 function Log([string]$m) { Add-Content -Path $log -Value ('{0:s} {1}' -f (Get-Date), $m) }
 function Status([int]$n) { Set-Content -Path (Join-Path $dir 'status') -Value $n -Encoding ascii }
 function Finish([int]$n) {
-  Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $dir 'secrets.json'), (Join-Path $dir 'config.xml')
+  Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $dir 'secrets.json'), (Join-Path $dir 'config.xml'), (Join-Path $dir 'join.secret')
   Status $n
-  Unregister-ScheduledTask -TaskName 'TrueNorth role setup' -Confirm:$false -ErrorAction SilentlyContinue
   exit $n
 }
 function Fail([int]$n, [string]$m) { Log "FAILED ($n): $m"; Finish $n }
+Status 2
 # Arguments are logged: never pass a secret on a command line here.
 function Run([string]$file, [string]$arguments, [int[]]$ok, [int]$code, [string]$what) {
   Log "${what}: $file $arguments"
@@ -506,6 +520,14 @@ switch ($p.role) {
       Run (Join-Path $staged 'setup.exe') "/config `"$cfg`"" @(0, 3010) 13 'SharePoint setup'
       Remove-Item -Force $cfg
     }
+    # Mask the product key from any setup log that may have recorded it (config.xml is gone;
+    # SharePoint's own logs are not documented to hold PIDKEY, so scrub to be sure).
+    $key = $s.product_key
+    foreach ($d in @($dir, $env:TEMP)) {
+      Get-ChildItem -Path $d -Filter 'SharePoint Setup*.log' -ErrorAction SilentlyContinue | ForEach-Object {
+        (Get-Content -Raw $_.FullName).Replace($key, '*****') | Set-Content -Encoding UTF8 $_.FullName }
+    }
+    $key = $null
     Status 6
     try {
       Add-PSSnapin Microsoft.SharePoint.PowerShell -ErrorAction SilentlyContinue
@@ -612,6 +634,9 @@ Finish 0
 """
 
 
+STATUS_MISSING = 200  # the status file is not there yet (the runner has not written it)
+
+
 def command(label: str, script: str, ok_codes) -> guest.GuestCommand:
     return vsphere_roles.powershell(label, script, frozenset(ok_codes))
 
@@ -620,10 +645,35 @@ def marker_command(image: str) -> guest.GuestCommand:
     return command("role-staged", _fill(MARKER_SCRIPT, marker=MARKER, image=image), {0, *MARKER_CODES})
 
 
+def init_command() -> guest.GuestCommand:
+    return command("role-setup-init", _fill(INIT_SCRIPT, dir=STATE_DIR, status=STATUS_FILE,
+                                            secret=SECRETS_FILE, joinsecret=JOIN_SECRET), {0, 5})
+
+
 def join_command(p: SetupPlan) -> guest.GuestCommand:
+    """Join the domain as the VM's local Administrator, reading the domain password from the
+    delivered file (JOIN_SECRET). No secret is on the command line."""
     script = _fill(JOIN_SCRIPT, domain=_q(p.domain), dc_ip=_q(p.dc_ip), wait=str(DC_WAIT),
-                   user=_q(p.domain_user), password=_q(p.domain_password.reveal()))
+                   user=_q(p.domain_user), secret=JOIN_SECRET)
     return command("domain-join", script, {0, vsphere_roles.EXIT_REBOOT})
+
+
+def reboot_pending_command() -> guest.GuestCommand:
+    return command("reboot-pending", REBOOT_PENDING_SCRIPT, {0, vsphere_roles.EXIT_REBOOT})
+
+
+def poll_command() -> guest.GuestCommand:
+    # The status number is the process exit code; _read_status uses it whatever it is.
+    return command("role-setup-status", _fill(POLL_SCRIPT, status=STATUS_FILE), frozenset(range(256)))
+
+
+def cleanup_command() -> guest.GuestCommand:
+    return command("role-setup-cleanup", _fill(CLEANUP_SCRIPT, secret=SECRETS_FILE, joinsecret=JOIN_SECRET), {0})
+
+
+def _runner_args() -> str:
+    """The powershell arguments that start the runner file. No secret: only the file path."""
+    return f'-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{RUNNER_FILE}"'
 
 
 def params(p: SetupPlan) -> dict:
@@ -638,37 +688,6 @@ def secret_doc(p: SetupPlan) -> dict:
         return {}
     return {"product_key": p.product_key.reveal(), "passphrase": p.passphrase.reveal(),
             "farm_password": p.domain_password.reveal()}
-
-
-def put_commands(name: str, content: str) -> list[guest.GuestCommand]:
-    """Write ``content`` to ``STATE_DIR\\name`` in chunks (each under the command-line limit)."""
-    data = base64.b64encode(content.encode("utf-8")).decode("ascii")
-    path = f"{STATE_DIR}\\{name}"
-    chunks = [data[i:i + CHUNK] for i in range(0, len(data), CHUNK)] or [""]
-    return [command(f"put:{name}", _fill(PUT_SCRIPT, data=c, path=path, mode="Create" if i == 0 else "Append"), {0})
-            for i, c in enumerate(chunks)]
-
-
-def stage_commands(p: SetupPlan) -> list[guest.GuestCommand]:
-    """Runner, parameters and (SharePoint) secrets into ``STATE_DIR``. Run after INIT returned 0."""
-    out = put_commands("runner.ps1", RUNNER_SCRIPT) + put_commands("params.json", json.dumps(params(p)))
-    if doc := secret_doc(p):
-        out += put_commands("secrets.json", json.dumps(doc))
-    return out
-
-
-def init_command() -> guest.GuestCommand:
-    return command("role-setup-init", _fill(INIT_SCRIPT, dir=STATE_DIR, status=STATUS_FILE), {0, 5})
-
-
-def start_command(p: SetupPlan) -> guest.GuestCommand:
-    script = _fill(START_SCRIPT, dir=STATE_DIR, status=STATUS_FILE, task=TASK_NAME, user=_q(p.domain_user),
-                   password=_q(p.domain_password.reveal()))
-    return command("role-setup-start", script, {0})
-
-
-def poll_command() -> guest.GuestCommand:
-    return command("role-setup-status", _fill(POLL_SCRIPT, status=STATUS_FILE), {0})
 
 
 # --------------------------------------------------------------------------- #
@@ -696,6 +715,17 @@ def outcome(p: SetupPlan | None, status: str, detail: str, image: str = "") -> d
     return out
 
 
+def running_outcome(p: SetupPlan, since: float, last: int) -> dict:
+    """The ``running`` record the build stores; the reconcile task (worker/setup_reconcile.py)
+    reads ``reconcile`` back to finish it. No secret: the domain password is re-derived there
+    from the range's DC Administrator account."""
+    out = outcome(p, "running", f"{LABELS[p.role]} {STATUS.get(last, last)}; continues in the guest, the reconcile "
+                                f"task records the result (check {STATUS_FILE})")
+    out["reconcile"] = {"role": p.role, "domain": p.domain, "netbios": p.netbios, "dc_node": p.dc_node,
+                        "status_file": STATUS_FILE, "since": since, "timeout": VSPHERE_ROLE_SETUP_TIMEOUT}
+    return out
+
+
 def warning(name: str, role: str, out: dict) -> str:
     return f"VM {name}: {LABELS.get(role, role)} setup {out['status']}: {out['detail']}"
 
@@ -706,8 +736,10 @@ def _err(exc: Exception) -> str:
 
 def prepare(session_for: Callable[[guest.GuestCredentials], object], p: SetupPlan, deadline: float,
             reboot_fn=vsphere_roles.reboot) -> dict | None:
-    """Check the staged-image marker and join the domain. None: ready for ``run``; else the
-    VM's final outcome."""
+    """As the local Administrator: check the staged-image marker, make the state folder,
+    deliver the domain password by file transfer, join the domain (the join reads and deletes
+    that file), reboot, and reboot again if the software installs left one pending. None:
+    ready for ``run``; else the VM's final outcome. No secret touches a command line."""
     session = session_for(p.local)
     try:
         session.wait_ready(deadline)
@@ -716,62 +748,126 @@ def prepare(session_for: Callable[[guest.GuestCredentials], object], p: SetupPla
             return outcome(p, "failed", f"staged-image check {result} (exit {code})")
         if code in MARKER_CODES:
             return outcome(p, "skipped" if code == 20 else "failed", MARKER_CODES[code])
+        result, code = session.run(init_command(), deadline)
+        if result != "ok":
+            return outcome(p, "failed", f"could not create {STATE_DIR} ({result}, exit {code})")
+        if code == 5:  # a status file already there: an earlier build started the setup
+            logger.info("role setup on %s: already started by an earlier build", p.name)
+            return None
         logger.info("role setup on %s: staged %s; joining %s", p.name, p.image, p.domain)
+        session.upload(JOIN_SECRET, p.domain_password.reveal().encode("utf-8"), deadline)
         result, code = session.run(join_command(p), deadline)
         if result != "ok":
             return outcome(p, "failed", f"domain join: {JOIN_CODES.get(code, f'{result} (exit {code})')}")
         if code == vsphere_roles.EXIT_REBOOT:
+            reboot_fn(session, deadline)
+        result, code = session.run(reboot_pending_command(), deadline)
+        if result == "ok" and code == vsphere_roles.EXIT_REBOOT:
+            logger.info("role setup on %s: reboot pending after the software installs; rebooting", p.name)
             reboot_fn(session, deadline)
     except Exception as exc:  # noqa: BLE001 — reported (scrubbed) per VM, never raised past it
         return outcome(p, "failed", f"guest operations: {_err(exc)}")
     return None
 
 
+def _read_status(session, deadline: float) -> int | None:
+    """The runner's status number (the status-read process's exit code), STATUS_MISSING if the
+    file is not there, or None on a guest-ops hiccup."""
+    try:
+        _result, code = session.run(poll_command(), deadline)
+    except Exception:  # noqa: BLE001 — the deadline bounds the caller's loop
+        return None
+    return code
+
+
 def run(session_for: Callable[[guest.GuestCredentials], object], p: SetupPlan, deadline: float,
-        budget_end: float, *, poll: float | None = None, clock: Callable[[], float] | None = None) -> dict:
-    """Stage and start the runner (unless an earlier build already did), then poll it."""
-    session = session_for(p.local)
+        budget_end: float, *, build_wait: float | None = None, poll: float | None = None,
+        clock: Callable[[], float] | None = None, epoch: Callable[[], float] | None = None) -> dict:
+    """As the domain Administrator (guest-ops auth; the password never reaches a command line
+    or disk): deliver the runner, parameters and any SharePoint secrets by file transfer, start
+    the setup detached, and wait at most VSPHERE_SETUP_BUILD_WAIT for it. Usually returns
+    ``running`` with the reconcile record; the reconcile task finishes it. An earlier build's
+    setup is never restarted."""
+    session = session_for(p.domain_login)
     now = clock or session._clock
+    at = epoch or _time.time
     wait = VSPHERE_ROLE_SETUP_POLL if poll is None else poll
+    bw = VSPHERE_SETUP_BUILD_WAIT if build_wait is None else build_wait
     stop = min(deadline, budget_end)
     if stop - now() < MIN_START:
         return outcome(p, "skipped", "the provision time budget (VSPHERE_PROVISION_BUDGET) is spent; joined to "
                                      f"{p.domain}, setup not started")
+    since = at()
     try:
         session.wait_ready(stop)
-        result, code = session.run(init_command(), stop)
-        if result != "ok":
-            return outcome(p, "failed", f"could not create {STATE_DIR} ({result}, exit {code})")
-        if code == 0:
-            for cmd in [*stage_commands(p), start_command(p)]:
-                result, code = session.run(cmd, stop)
-                if result != "ok":
-                    why = START_CODES.get(code, f"{cmd.label} {result} (exit {code})")
-                    return outcome(p, "failed", f"could not start: {why}")
+        code = _read_status(session, min(stop, now() + 120))
+        if code == STATUS_MISSING:
+            for name, content in ((RUNNER_FILE, RUNNER_SCRIPT), (PARAMS_FILE, json.dumps(params(p))),
+                                  *([(SECRETS_FILE, json.dumps(secret_doc(p)))] if secret_doc(p) else [])):
+                session.upload(name, content.encode("utf-8"), stop)
+            session.start_detached(POWERSHELL, _runner_args())
             logger.info("role setup on %s: %s started", p.name, p.role)
         else:
-            logger.info("role setup on %s: already started by an earlier build; polling", p.name)
+            logger.info("role setup on %s: already in progress (status %s)", p.name, code)
+    except guest.GuestNotReadyError as exc:
+        return outcome(p, "failed", f"could not start: {_err(exc)}")
     except Exception as exc:  # noqa: BLE001
         return outcome(p, "failed", f"could not start: {_err(exc)}")
     last = 2
+    build_stop = min(stop, now() + bw)
     while True:
-        try:
-            result, code = session.run(poll_command(), min(stop, now() + 120))
-        except Exception as exc:  # noqa: BLE001 — a guest-ops hiccup; the deadline bounds the loop
-            logger.warning("role setup status on %s: %s", p.name, scrub(_err(exc), *p.hidden))
-            result, code = "failed", None
+        code = _read_status(session, min(stop, now() + 120))
         if code == 0:
+            with contextlib.suppress(Exception):
+                session.run(cleanup_command(), min(stop, now() + 120))
             logger.info("role setup on %s: %s set up", p.name, p.role)
             return outcome(p, "ok", f"{LABELS[p.role]} {STATUS[0]} in {p.domain}")
-        if code is not None and code not in RUNNING:
+        if code is not None and code not in RUNNING and code != STATUS_MISSING:
+            with contextlib.suppress(Exception):
+                session.run(cleanup_command(), min(stop, now() + 120))
             return outcome(p, "failed", STATUS.get(code, f"setup runner status {code}"))
         if code in RUNNING:
             last = code
-        if now() >= stop:
+        if now() >= build_stop:
             break
         with contextlib.suppress(Exception):
-            session._sleep(max(0.0, min(wait, stop - now())))
-    state = "timeout" if deadline <= budget_end else "running"
-    limit = "VSPHERE_ROLE_SETUP_TIMEOUT" if state == "timeout" else "the provision time budget"
-    return outcome(p, state, f"not finished within {limit}; last status: {STATUS.get(last, last)} (it carries on "
-                             f"in the guest; check {STATUS_FILE})")
+            session._sleep(max(0.0, min(wait, build_stop - now())))
+    return running_outcome(p, since, last)
+
+
+def reconcile(session, info: dict, *, clock: Callable[[], float] | None = None,
+              epoch: Callable[[], float] | None = None, deadline: float | None = None) -> dict | None:
+    """Read a ``running`` product setup's status file (worker/setup_reconcile.py). Returns the
+    final outcome (ok / failed / timeout) and runs the secrets clean-up on a terminal state, or
+    None while it is still running or could not be read this round (leave it ``running``)."""
+    now = clock or session._clock
+    at = epoch or _time.time
+    stop = deadline if deadline is not None else now() + 120
+    role = str(info.get("role") or "")
+    label = LABELS.get(role, role)
+    base = {"status": "", "detail": "", "image": f"srv2022-{role}" if role else "", "domain": info.get("domain", ""),
+            "reconcile": info}
+    try:
+        session.wait_ready(stop)
+    except Exception as exc:  # noqa: BLE001
+        logger.info("reconcile %s: not reachable this round: %s", info.get("dc_node"), _err(exc))
+        return None
+    code = _read_status(session, min(stop, now() + 120))
+    if code is None:
+        return None
+    if code == 0:
+        with contextlib.suppress(Exception):
+            session.run(cleanup_command(), min(stop, now() + 120))
+        return {**base, "status": "ok", "detail": f"{label} {STATUS[0]} in {info.get('domain', '')}"}
+    if code != STATUS_MISSING and code not in RUNNING:
+        with contextlib.suppress(Exception):
+            session.run(cleanup_command(), min(stop, now() + 120))
+        return {**base, "status": "failed", "detail": STATUS.get(code, f"setup runner status {code}")}
+    timeout = float(info.get("timeout") or VSPHERE_ROLE_SETUP_TIMEOUT)
+    if at() - float(info.get("since") or 0) > timeout:
+        with contextlib.suppress(Exception):
+            session.run(cleanup_command(), min(stop, now() + 120))
+        return {**base, "status": "timeout",
+                "detail": f"{label} not finished within VSPHERE_ROLE_SETUP_TIMEOUT ({int(timeout)}s); "
+                          f"last status: {STATUS.get(code if code != STATUS_MISSING else 2, code)}"}
+    return None

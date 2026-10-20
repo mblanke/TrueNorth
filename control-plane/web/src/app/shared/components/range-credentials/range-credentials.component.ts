@@ -72,6 +72,10 @@ const MASK = '••••••••••';
                         <span class="badge" matTooltip="No account is declared for this machine: this is the golden template's build login (installer settings).">
                           Template default
                         </span>
+                      } @else if (staff() && a.setup_status === 'being_set_up') {
+                        <span class="badge setup" matTooltip="This machine's deploy-time setup (a product role image or Security Onion) is still running. TrueNorth verifies and records the account once it finishes; Students see it only then.">
+                          Being set up
+                        </span>
                       } @else if (staff() && !a.applied) {
                         <span class="badge" matTooltip="The last build did not set this account (or the range is not built): Windows accounts other than Administrator, appliances and other backends are scenario content. Students are not shown it.">
                           Not set by TrueNorth
@@ -127,6 +131,7 @@ const MASK = '••••••••••';
     .notes { font-size: 13px; }
     .badge { display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 8px; font-size: 11px;
       border: 1px solid var(--warning, #f59e0b); color: var(--text-secondary); white-space: nowrap; }
+    .badge.setup { border-color: var(--info, #3b82f6); }
     code { font-family: var(--font-mono); font-size: 12px; }
     .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   `],

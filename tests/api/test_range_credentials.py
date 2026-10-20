@@ -891,3 +891,76 @@ class TestAccountRules:
     def test_notes_preserved_without_the_end_marker(self):
         assert wiki_doc.notes_of("junk\n## Notes\nkeep me\n") == "## Notes\nkeep me"
         assert wiki_doc.notes_of("no heading at all") == wiki_doc.DEFAULT_NOTES
+
+
+class TestImplicitDomainAdmins:
+    """A per-range Administrator is generated for a product role image's VM and the range's
+    domain controllers when the template declares none, so one range's compromise does not
+    give another range's domain admin (ADR 0012; adversarial review R0-C)."""
+
+    DOC = {
+        "nodes": [
+            {"id": "dc01", "os": "windows-server-2022", "services": ["active_directory", "dns"]},
+            {"id": "exch01", "os": "windows-server-2022", "services": ["exchange_2019", "owa"]},
+            {"id": "ws01", "os": "windows-11", "services": ["rdp"]},
+        ]
+    }
+
+    def test_generated_for_the_product_vm_and_the_dc_when_undeclared(self):
+        specs = account_rules.implicit_admins(self.DOC, [])
+        by = {s.machine: s for s in specs}
+        assert set(by) == {"exch01", "dc01"}  # not the plain workstation
+        for s in specs:
+            assert s.username == "Administrator" and s.generate and s.role == "admin"
+            assert s.password is None and s.student_visible is False
+
+    def test_not_added_when_the_template_declares_the_admin(self):
+        declared = [account_rules.AccountSpec("dc01", "Administrator", None, True, False, "admin", "")]
+        machines = {s.machine for s in account_rules.implicit_admins(self.DOC, declared)}
+        assert machines == {"exch01"}  # dc01 already declared, exch01 still generated
+
+    def test_nothing_generated_without_a_product_role(self):
+        doc = {"nodes": [{"id": "dc01", "os": "windows-server-2022", "services": ["active_directory"]}]}
+        assert account_rules.implicit_admins(doc, []) == []
+
+    def test_sync_issues_a_sealed_admin_the_range_keeps(self, db_session):
+        tenant = real_tenant(db_session).id
+        tmpl = Template(id=uuid.uuid4(), tenant_id=tenant, name="prod", version="1",
+                        yaml=json.dumps(self.DOC))
+        db_session.add(tmpl)
+        rng = Range(id=uuid.uuid4(), tenant_id=tenant, name="r", template_id=tmpl.id, state=RangeState.created)
+        db_session.add(rng)
+        db_session.flush()
+        cred_service.sync(db_session, rng)
+        rows = {(r.machine, r.username): r for r in db_session.query(RangeCredential).all()}
+        exch = rows[("exch01", "Administrator")]
+        assert exch.generated and exch.role == "admin" and exch.student_visible is False and exch.password
+        first = exch.password
+        cred_service.sync(db_session, rng)  # a second sync keeps the same generated password
+        assert db_session.query(RangeCredential).filter_by(machine="exch01", username="Administrator").one().password \
+            == first
+
+
+class TestBeingSetUp:
+    """Staff see an unapplied account on a machine whose product/Security Onion setup is still
+    running as "being set up"; Students see nothing for it until the reconcile task verifies
+    it (ADR 0012; adversarial review R0-C decision 3)."""
+
+    def test_pending_machines_from_a_running_setup(self):
+        rng = Range(id=uuid.uuid4(), name="r", state=RangeState.ready, provisioner_output=json.dumps({"vms": [
+            {"node_id": "exch01", "role_setup": {"status": "running"}},
+            {"node_id": "so01", "securityonion": {"status": "running"}},
+            {"node_id": "dc01", "role_setup": {"status": "ok"}},
+            {"node_id": "web01"},
+        ]}))
+        assert cred_service.setup_pending_machines(rng) == {"exch01", "so01"}
+        assert cred_service.setup_pending_machines(Range(id=uuid.uuid4(), name="r", provisioner_output=None)) == set()
+
+    def test_setup_status_of_a_row(self):
+        pending = {"exch01"}
+        applied = RangeCredential(machine="dc01", username="Administrator", applied=True)
+        being = RangeCredential(machine="exch01", username="Administrator", applied=False)
+        notset = RangeCredential(machine="web01", username="svc", applied=False)
+        assert cred_service.setup_status(applied, pending) == "applied"
+        assert cred_service.setup_status(being, pending) == "being_set_up"
+        assert cred_service.setup_status(notset, pending) == "not_set"
