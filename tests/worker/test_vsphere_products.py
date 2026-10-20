@@ -169,14 +169,17 @@ def _plan(role: str = "exchange", env=None, **extra) -> vp.SetupPlan:
 # --------------------------------------------------------------------------- #
 
 
-def test_only_the_three_staged_ws2022_images_have_a_setup():
+def test_only_the_staged_ws2022_product_images_have_a_setup():
     assert vp.setup_image(_member("exchange")) == "srv2022-exchange2019"
     assert vp.setup_role(_member("sharepoint")) == "sharepoint"
     assert vp.setup_image(_member("mecm")) == "srv2022-mecm"
     assert not vp.needs_setup(_member("exchange", role_image_missing="srv2022-exchange2019"))  # bare OS
     assert not vp.needs_setup({**_member("sharepoint"), "os": "windows-server-2019"})  # 2019 image: none
     assert not vp.needs_setup(_member("sql-server"))
-    assert set(vp.SETUP_IMAGES) == {"srv2022-exchange2019", "srv2022-sharepointse", "srv2022-mecm"}
+    assert set(vp.SETUP_IMAGES) == {"srv2022-exchange2019", "srv2022-sharepointse", "srv2022-sharepoint2019",
+                                    "srv2022-mecm"}
+    assert vp.setup_image(_member("sharepoint-2019")) == "srv2022-sharepoint2019"
+    assert not vp.needs_setup({**_member("sharepoint-2019"), "os": "windows-server-2019"})  # no 2019-OS image yet
 
 
 def test_the_domain_admin_is_the_forest_root_dcs_administrator():
@@ -573,3 +576,52 @@ def test_render_gives_member_servers_the_domain_to_join():
     assert "ad_join" not in vms["files"] and "ad_join" not in vms["dc01"]
     assert vms["dc01"]["ad_domain"] == "corp.local" and vms["dc01"]["ad_forest_root"] is True
     assert topo(ad_domain="range.test")["exch"]["ad_join"] == "range.test"  # the template's wins
+
+
+# --------------------------------------------------------------------------- #
+# SharePoint Server 2019 (Large Enterprise): the same deploy path as SE
+# --------------------------------------------------------------------------- #
+
+
+def test_sharepoint_2019_without_a_product_key_stays_staged():
+    with pytest.raises(vp.PlanError, match=r"staged \(no product key\).*SharePoint Server 2019") as exc:
+        _plan("sharepoint-2019", env={})
+    assert exc.value.status == "skipped"
+
+
+def test_sharepoint_2019_takes_the_same_site_key_and_secrets_file():
+    p = _plan("sharepoint-2019")  # TN_SHAREPOINT_PRODUCT_KEY, as SE (the one vault variable)
+    assert p.role == "sharepoint-2019" and p.image == "srv2022-sharepoint2019"
+    assert vp.secret_doc(p) == {"product_key": KEY, "passphrase": p.passphrase.reveal(), "farm_password": DC_PASSWORD}
+    s = FakeSession()
+    out = vp.run(_session_for(s), p, 10_000, 10_000, build_wait=0, poll=1)
+    assert out["status"] == "running" and vp.SECRETS_FILE in s.uploads
+    for _label, script in s.ran:  # nothing secret on a command line
+        assert KEY not in script and DC_PASSWORD not in script
+    assert json.loads(s.file("params.json"))["role"] == "sharepoint-2019"
+
+
+def test_the_runner_sets_sharepoint_2019_up_like_se_and_masks_its_key():
+    runner = vp.RUNNER_SCRIPT
+    branch = runner.index("{ $_ -in @('sharepoint', 'sharepoint-2019') } {")
+    body = runner[branch:runner.index("  'mecm' {")]
+    for step in ("Complete-Sql 'Latin1_General_CI_AS_KS_WS'", '<PIDKEY Value="$($s.product_key)" />',
+                 ".Replace($key, '*****')", "New-SPConfigurationDatabase", "-LocalServerRole SingleServerFarm",
+                 "New-SPCentralAdministration"):
+        assert step in body, step
+    assert "'sharepoint' {" not in runner  # one branch for both products
+    assert vp.LABELS["sharepoint-2019"] == "SharePoint Server 2019"
+
+
+def test_large_enterprise_builds_its_sharepoint_vm_from_the_2019_image():
+    import pathlib
+
+    import yaml
+    from worker import render
+
+    root = pathlib.Path(__file__).resolve().parents[2]
+    tpl = yaml.safe_load((root / "content/ranges/large-enterprise/template.yaml").read_text())
+    out = render.render_topology(tpl, "ab12cd34-0000", lambda alias: alias)
+    sp = next(v for v in out["vm_definitions"] if v["node_id"] == "sp01")
+    assert set(sp["roles"]) == {"sharepoint-2019", "iis"} and sp["template_name"] == "srv2022-sharepoint2019"
+    assert vp.setup_role(sp) == "sharepoint-2019" and sp["ad_join"]  # joins the range domain at deploy

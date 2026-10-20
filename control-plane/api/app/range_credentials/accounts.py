@@ -136,7 +136,7 @@ def machines(doc: dict[str, Any]) -> dict[str, str]:
 # domain Administrator (worker/provisioners/vsphere_products.py). A range with one of these
 # gets a per-range generated Administrator on the product VM and on each domain controller,
 # so one range's compromise does not expose another range's domain admin (ADR 0012).
-PRODUCT_ROLES = frozenset({"exchange", "sharepoint", "mecm"})
+PRODUCT_ROLES = frozenset({"exchange", "sharepoint", "sharepoint-2019", "mecm"})
 ADMIN = "administrator"
 
 

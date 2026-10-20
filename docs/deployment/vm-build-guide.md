@@ -422,7 +422,8 @@ These products can't be sysprepped after install and need a domain. The model:
    - DC from `srv2022`, then promote it.
    - Members from `srv2022` / `srv2019`, then join them.
 2. Install the products from the role media on `esx01-local/ISO`:
-   - SQL 2022 → SharePoint 2019 on **srv2019** (2019 is not supported on Server 2022).
+   - SQL 2022 → SharePoint 2019 (Microsoft Learn lists Server 2022 and SQL Server 2022 as
+     supported; the deployed range uses `srv2022-sharepoint2019`, runbook §7.3).
    - Exchange (prepare the schema from the DC first).
 3. Shut the whole set down and snapshot every VM. The set is cloned as a unit into each
    range that needs it. Domain SIDs stay identical inside a range, which is fine because

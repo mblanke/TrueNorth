@@ -547,7 +547,7 @@ install login has sudo. The status is then `failed: could not start …`, or
 
 ### 7.3 Exchange, SharePoint SE and MECM (product setup at deploy)
 
-The role images `srv2022-exchange2019`, `srv2022-sharepointse` and `srv2022-mecm`
+The role images `srv2022-exchange2019`, `srv2022-sharepointse`, `srv2022-sharepoint2019` and `srv2022-mecm`
 (`infra/vsphere/packer/roles.pkr.hcl`) carry the prerequisites and the staged media only.
 Each product needs the range's domain, so the worker finishes it per range
 (`worker/provisioners/vsphere_products.py`). It runs on a VM whose node names the role
@@ -584,6 +584,17 @@ Order, per VM:
      Central Administration on port 9999, farm account `<DOMAIN>\Administrator`). The key is
      masked from the SharePoint setup logs after install. A range SQL VM is not used:
      TrueNorth does not build `srv2022-sql2022` or join SQL VMs to the domain (a warning says so).
+   - **SharePoint Server 2019** (Large Enterprise, service `sharepoint_2019`; `sharepoint_se` picks SE):
+     the same steps as SE, from `srv2022-sharepoint2019` (Microsoft Learn, *Hardware and software
+     requirements for SharePoint Server 2019*, lists Windows Server 2022 and SQL Server 2022 as
+     supported). Its prerequisites are installed in the image one by one from the depot: offline
+     and deterministic. The documented alternative is `prerequisiteinstaller.exe` with local files
+     (`/SQLNCli:`, `/Sync:`, `/AppFabric:`, `/IDFX11:`, `/MSIPCClient:`, `/KB3092423:`,
+     `/WCFDataServices56:`, `/DotNet472:`, `/MSVCRT11:`, `/MSVCRT141:`). Upload
+     to `installers/roles/sharepoint2019/`: `sqlncli.msi`, `Synchronization.msi`,
+     `MicrosoftIdentityExtensions-64.msi`, `setup_msipc_x64.exe`, `WcfDataServices.exe`,
+     `vcredist_x64.exe` (VC++ 2012), `VC_redist.x64.exe` (VC++ 2015-2022),
+     `WindowsServerAppFabricSetup_x64.exe`, `AppFabric-KB3092423-x64-ENU.exe`.
    - **MECM**: SQL `/ACTION=CompleteImage` (`SQL_Latin1_General_CP1_CI_AS`), `extadsch.exe`,
      the `System Management` container (Full Control for the site server's computer
      account), then `setup.exe /SCRIPT <ini> /NOUSERINPUT`. The ini makes a primary site:
@@ -630,7 +641,7 @@ Settings (worker):
 
 | Setting | Value |
 |---|---|
-| `TN_SHAREPOINT_PRODUCT_KEY` (installer `vault_sharepoint_product_key`) | the site's SharePoint SE key from the Visual Studio subscription. SharePoint SE has no free key. Empty: the role is `skipped`, "staged (no product key)", and nothing runs on the VM. Never logged; preflight checks its form. |
+| `TN_SHAREPOINT_PRODUCT_KEY` (installer `vault_sharepoint_product_key`) | the site's SharePoint key from the Visual Studio subscription, for the SharePoint product its ranges use: SharePoint Server 2019 for Large Enterprise, SE for an SE range. One variable for both; a site running SE and 2019 ranges at once would need two keys, which is not supported yet. A key for the wrong version fails setup (status 13). SharePoint 2019 also has a public 180-day trial key on Microsoft's download page; TrueNorth does not embed it. Empty: the role is `skipped`, "staged (no product key)", and nothing runs on the VM. Never logged; preflight checks its form. |
 | `VSPHERE_ROLE_SETUP_TIMEOUT` (installer `tn_vsphere_role_setup_timeout`) | seconds before a setup still running is a `timeout`, default `7200`. Measured from the domain join and read by the reconcile task, not waited on in the build. |
 | `VSPHERE_SETUP_BUILD_WAIT` | seconds the build itself waits for a setup after starting it, default `0` (record `running`, leave it to the reconcile task). |
 | `TN_DEPOT_URL` | MECM only. When the image has no `C:\TrueNorth\media\mecm-prereqs`, the runner downloads `<TN_DEPOT_URL>:8081/repository/installers/roles/mecm/configmgr-prereqs.zip` through the range uplink. |

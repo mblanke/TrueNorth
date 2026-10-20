@@ -172,6 +172,11 @@ variable "iso_sharepointse" {
   type        = string
   default     = "MUST-UPLOAD-FIRST_SharePoint_Server_Subscription_Edition_x64.iso"
 }
+variable "iso_sharepoint2019" {
+  description = "SharePoint Server 2019 ISO (Visual Studio subscription)"
+  type        = string
+  default     = "en_sharepoint_server_2019_x64_dvd_68e34c9e.iso"
+}
 variable "iso_mecm" {
   description = "Microsoft Configuration Manager current branch baseline media (ISO with SMSSETUP\\)"
   type        = string

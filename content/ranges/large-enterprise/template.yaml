@@ -277,6 +277,8 @@ nodes:
     vlan: server_vlan
     ip: "10.50.102.20"
     specs: { cores: 4, memory_mb: 16384, disk_gb: 200 }
+    # SharePoint Server 2019 (owner decision): role sharepoint-2019, image srv2022-sharepoint2019,
+    # set up at deploy with the site's key (TN_SHAREPOINT_PRODUCT_KEY). `sharepoint_se` picks SE.
     services: [sharepoint_2019, iis]
 
   - id: sql01

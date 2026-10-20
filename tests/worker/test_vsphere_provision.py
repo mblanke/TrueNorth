@@ -1466,6 +1466,42 @@ class TestProductSetup:
         assert not [e for e in events if e[0] in ("prepare", "run") and e[1] == f"{R8}-exch"]
         assert ("run", f"{R8}-exch") not in [e[:2] for e in events]
 
+    SP2019_TEMPLATE = {**TEMPLATE, "name": "Product Range", "nodes": [
+        TEMPLATE["nodes"][0],
+        {"id": "sp19", "os": WS22, "vlan": "victim_network", "services": ["sharepoint_2019"]},
+        {"id": "dc01", "os": WS22, "vlan": "victim_network", "ip": "10.60.201.10",
+         "services": ["active_directory", "dns"], "ad_forest": "corp.range.local"},
+    ]}
+
+    def test_sharepoint_2019_full_flow_clones_its_image_and_sets_up_with_the_site_key(self, flow, vc, monkeypatch):
+        prov, _, events, _ = flow
+        monkeypatch.setenv(products_mod.PRODUCT_KEY_ENV, "ABCDE-FGHIJ-KLMNO-PQRST-UVWXY")
+        built = render.render_topology(self.SP2019_TEMPLATE, RANGE_ID, PRODUCT_IMAGES.get)
+        template = {"name": "Product Range", "vms": built["vm_definitions"], "networks": built["network_definitions"]}
+        result = _run(prov.provision(RANGE_ID, template, {}))
+        assert result.status == "ok", result.errors
+        assert [n for _, n, _ in vc.templates["srv2022-sharepoint2019"].clone_specs] == [f"{R8}-sp19"]
+        names = [e[:2] for e in events]
+        assert names.index(("roles", f"{R8}-dc01")) < names.index(("prepare", f"{R8}-sp19")) \
+            < names.index(("run", f"{R8}-sp19"))
+        sp = _vm_out(result, "sp19")
+        assert sp["roles"]["sharepoint-2019"]["status"] == "running"
+        assert sp["role_setup"]["image"] == "srv2022-sharepoint2019"
+        assert "ABCDE-FGHIJ-KLMNO-PQRST-UVWXY" not in json.dumps(result.__dict__, default=str)
+
+    def test_sharepoint_2019_falls_back_to_plain_srv2022_until_built(self, flow, vc):
+        prov, _, events, _ = flow
+        built = render.render_topology(self.SP2019_TEMPLATE, RANGE_ID, IMAGES.get)  # not registered as built
+        template = {"name": "Product Range", "vms": built["vm_definitions"], "networks": built["network_definitions"]}
+        result = _run(prov.provision(RANGE_ID, template, {}))
+        assert result.status == "ok", result.errors
+        sp = _vm_out(result, "sp19")
+        detail = "role image srv2022-sharepoint2019 not built — using tmpl-win2022; sharepoint-2019 not installed"
+        assert sp["role_setup"] == {"status": "skipped", "detail": detail, "image": "srv2022-sharepoint2019"}
+        assert f"VM {R8}-sp19: {detail}" in result.warnings
+        assert any(n == f"{R8}-sp19" for _, n, _ in vc.templates["tmpl-win2022"].clone_specs)
+        assert not [e for e in events if e[0] in ("prepare", "run") and e[1] == f"{R8}-sp19"]
+
     def test_a_finished_setup_is_ok_on_the_role(self, flow):
         prov, template, _, state = flow
         state["run"] = "ok"

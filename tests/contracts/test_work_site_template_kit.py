@@ -308,7 +308,7 @@ def test_isos_conf_names_declared_packer_variables(pk):
         re.findall(r'^variable "(iso_[a-z0-9_]+)"', (ROOT / "infra/vsphere/packer/variables.pkr.hcl").read_text(), re.M)
     )
     assert set(isos) <= declared
-    assert len(isos) == 11
+    assert len(isos) == 12  # + iso_sharepoint2019 (on esx01, 2026-10-20)
     pending_vars = {p.split()[0] for p in pending} - {"-"}
     assert pending_vars <= declared  # a PENDING line names a variable Packer already has
     assert {"iso_win10", "iso_srv2019", "iso_exchange2019", "iso_sharepointse", "iso_mecm", "iso_sql2022"} <= pending_vars
