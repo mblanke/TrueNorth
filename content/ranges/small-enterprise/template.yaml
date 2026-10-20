@@ -1,28 +1,142 @@
+id: small-enterprise
+# `name` stays the slug: content loaders key templates by it (scripts/load_content.py).
 name: small-enterprise
-version: "0.1"
+version: "1.0"
+description: |
+  A small enterprise: a jump host on management, one domain controller on the server
+  network and three Windows workstations on the user network, routed by one pfSense
+  firewall that is also the range's edge. The default range for ransomware-lite,
+  apt-breach, insider-threat and supply-chain, which find its hosts by tag (user, srv,
+  mgmt), by hostname (dc-01, ws-01, ws-02) and by address (dc-01 at 10.0.2.10).
+author: TrueNorth Range
+difficulty: beginner
+vm_count: 6  # = the VMs the nodes build (tests/contracts/test_template_vm_count.py)
+
+# Addresses match the standalone runner's mock range (scenario-engine/runner/run.py) and
+# the scenarios written against it; tests/contracts/test_small_enterprise_scenarios.py
+# keeps all three in step.
 inputs:
   range_id: string
-  cidr_mgmt: 10.10.0.0/24
-  cidr_user: 10.20.0.0/24
-  cidr_srv: 10.30.0.0/24
+  cidr_mgmt: 10.0.1.0/24
+  cidr_srv: 10.0.2.0/24
+  cidr_user: 10.0.3.0/24
 outputs:
   jump_host_ip: string
-assets:
-  - role: jump
-    type: vm
+
+network:
+  vlans:
+    - id: 10
+      name: mgmt
+      cidr: "10.0.1.0/24"
+      description: "Management: the jump host and the firewall's management leg"
+    - id: 20
+      name: srv
+      cidr: "10.0.2.0/24"
+      description: "Servers: the domain controller"
+    - id: 30
+      name: user
+      cidr: "10.0.3.0/24"
+      description: "User workstations"
+
+  # fw-01 is every network's gateway (.1) and enforces these; anything not listed is
+  # pfSense's default deny, and nothing leaves the range but depot traffic
+  # (worker/pfsense_config.py). Replies are stateful, so each rule names the side that opens.
+  firewall_rules:
+    # Domain join and logon (TCP and UDP): DNS 53, Kerberos 88, NTP 123, RPC endpoint
+    # mapper 135, LDAP 389, SMB 445 (SYSVOL, Netlogon), kpasswd 464, LDAPS 636, and the
+    # Windows Server dynamic RPC range 49152-65535.
+    - name: user-to-srv-ad
+      src: user
+      dst: srv
+      ports: [53, 88, 123, 135, 389, 445, 464, 636, "49152-65535"]
+      action: allow
+      note: "Workstations join the domain, log on and sync time against dc-01"
+    - name: mgmt-to-all
+      src: mgmt
+      dst: "*"
+      action: allow
+      note: "The jump host administers every network"
+
+nodes:
+  - id: jump-box
+    name: Jump Host
+    role: jump_host
     os: ubuntu-2404
-    count: 1
+    vlan: mgmt
+    ip: "10.0.1.10"
     tags: [mgmt]
-  - role: dc
-    type: vm
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 60 }
+    services: [ssh]
+
+  - id: dc-01
+    name: Domain Controller
+    role: domain_controller
     os: windows-server-2022
-    count: 1
+    vlan: srv
+    ip: "10.0.2.10"
     tags: [srv]
-  - role: user
-    type: vm
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 60 }
+    services: [active_directory, dns]
+
+  # Tags: `user` is the host_tag / src_tag the scenarios aim at; `users` is ransomware-lite's
+  # phishing target_group.
+  - id: ws-01
+    name: Workstation 1
+    role: workstation
     os: windows-11
-    count: 3
-    tags: [user]
+    vlan: user
+    ip: "10.0.3.10"
+    tags: [user, users]
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 60 }
+
+  - id: ws-02
+    name: Workstation 2
+    role: workstation
+    os: windows-11
+    vlan: user
+    ip: "10.0.3.11"
+    tags: [user, users]
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 60 }
+
+  - id: ws-03
+    name: Workstation 3
+    role: workstation
+    os: windows-11
+    vlan: user
+    ip: "10.0.3.12"
+    tags: [user, users]
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 60 }
+
+  - id: fw-01
+    name: Firewall
+    role: firewall
+    os: pfsense
+    vlan: mgmt
+    ip: "10.0.1.1"
+    specs: { cores: 2, memory_mb: 2048, disk_gb: 20 }
+    # One NIC per network at its gateway (render.py: .1); the first firewall is the edge.
+    interfaces:
+      - vlan: mgmt
+        ip: "10.0.1.1"
+      - vlan: srv
+        ip: "10.0.2.1"
+      - vlan: user
+        ip: "10.0.3.1"
+
 policies:
   egress: restricted
   east_west: allowed_by_vlan
+
+# Accounts TrueNorth sets at deploy (ADR 0012 §12). Passwords are generated once per range
+# and shown, sealed at rest, on the range's Credentials panel and staff-only wiki page.
+# Windows: the built-in Administrator (Sysprep). Linux: cloud-init users; `ubuntu` is the
+# template's install user. The pfSense firewall keeps its appliance config login.
+accounts:
+  - { machine: dc-01, username: Administrator, generate: true, role: admin, student_visible: false,
+      notes: "Local Administrator; also the first domain admin once AD DS is promoted" }
+  - { machine: ws-01, username: Administrator, generate: true, role: admin, student_visible: false }
+  - { machine: ws-02, username: Administrator, generate: true, role: admin, student_visible: false }
+  - { machine: ws-03, username: Administrator, generate: true, role: admin, student_visible: false }
+  - { machine: jump-box, username: ubuntu, generate: true, role: admin, student_visible: false }
+  - { machine: jump-box, username: analyst, generate: true, role: user, student_visible: true,
+      notes: "The way in: SSH on the jump host" }

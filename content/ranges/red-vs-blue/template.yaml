@@ -11,7 +11,8 @@ description: |
   enterprise network (AD, email, web, DB, SIEM) while Red Team operates
   from an isolated attack enclave. A neutral management zone provides
   scoring, C2 logging, and jump-box access for exercise control.
-  40 VMs split across two Proxmox nodes with six isolated VLANs.
+  40 VMs split across two Proxmox nodes with six isolated VLANs, plus a
+  port-mirror network that feeds the IDS sensors.
 author: TrueNorth Range
 difficulty: advanced
 vm_count: 40
@@ -57,7 +58,16 @@ network:
       name: red_team
       cidr: "10.66.0.0/24"
       description: "Isolated Red Team attack enclave"
+    # SPAN only: the sensors' monitor NICs receive copies here (monitoring-mirror) and hold
+    # no address, so nothing is routed to it and it needs no gateway.
+    - id: 700
+      name: network_monitoring
+      cidr: "10.70.0.0/24"
+      isolated: true
+      description: "Port-mirror copies of every zone for the IDS sensors (no addresses)"
 
+  # rtr01 enforces these in order, first match wins, default drop (worker/vyos_config.py).
+  # Replies to allowed traffic are stateful, so each rule names the side that opens.
   firewall_rules:
     # ── Red Team access control ───────────────────────────
     - name: red-to-dmz
@@ -80,13 +90,30 @@ network:
       dst: management
       action: deny
       description: "Red cannot reach scoring/SIEM"
+    # ── Logging (after the Red denies: the enclave ships nothing to the SIEM) ──
+    - name: logs-to-siem
+      src: "*"
+      dst: management
+      ports: [514, 5044, 9200]
+      action: allow
+      description: "Every zone ships logs to the SIEM and relay (syslog, Beats, OpenSearch)"
     # ── Internal connectivity ─────────────────────────────
+    # Domain join and logon for the corporate endpoints. Ports are TCP and UDP
+    # (worker: tcp_udp): DNS 53, Kerberos 88, NTP 123 (the PDC emulator), RPC endpoint
+    # mapper 135, LDAP 389, SMB 445 (SYSVOL, Netlogon), kpasswd 464, LDAPS 636, and the
+    # Windows Server dynamic RPC range 49152-65535 (Netlogon, DRSUAPI, LSA).
+    - name: corp-to-server-ad
+      src: corporate_lan
+      dst: server_vlan
+      ports: [53, 88, 123, 135, 389, 445, 464, 636, "49152-65535"]
+      action: allow
+      description: "Domain members join, log on, sync time and read SYSVOL against the DCs"
     - name: corp-to-server
       src: corporate_lan
       dst: server_vlan
-      ports: [88, 135, 389, 445, 636, 1433, 3306]
+      ports: [1433, 3306]
       action: allow
-      description: "Workstations reach AD, file, DB servers"
+      description: "Workstations reach the DB servers (AD and file shares: corp-to-server-ad)"
     - name: corp-to-dmz
       src: corporate_lan
       dst: dmz
@@ -116,6 +143,12 @@ network:
       dst: "*"
       action: allow
       description: "Management zone has full access for exercise control"
+    # ── Network monitoring ────────────────────────────────
+    - name: monitoring-mirror
+      src: "*"
+      dst: network_monitoring
+      action: mirror
+      description: "Every zone's traffic copied to nids01 and ids01 (vDS port mirroring)"
 
 # ─── NODES (40 VMs) ──────────────────────────────────────────────────
 nodes:
@@ -175,6 +208,12 @@ nodes:
     vlan: management
     ip: "10.0.0.50"
     node: coyote
+    # Management on its own zone; sniffs network_monitoring, where monitoring-mirror
+    # delivers every zone's traffic (no address on the monitor NIC).
+    interfaces:
+      - vlan: management
+      - vlan: network_monitoring
+        monitor: true
     specs: { cores: 2, memory_mb: 4096, disk_gb: 32 }
     services: [suricata, zeek, evebox]
     description: "Network intrusion detection — Suricata + Zeek sensor"
@@ -560,6 +599,9 @@ nodes:
     specs: { cores: 2, memory_mb: 2048, disk_gb: 8 }
     services: [firewall, nat, vpn, snort]
     description: "Perimeter firewall — mgmt / server / blue zones"
+    # Off the traffic path for now: one NIC on management, forwarding nothing. Putting
+    # fw01/fw02 in front of rtr01 needs transit networks and static routes between
+    # appliances, which the worker does not build yet (issue #235).
 
   - id: fw02
     name: Firewall 2
@@ -571,6 +613,7 @@ nodes:
     specs: { cores: 2, memory_mb: 2048, disk_gb: 8 }
     services: [firewall, nat, vpn, snort]
     description: "Perimeter firewall — dmz / corp zones"
+    # Off the traffic path for now, like fw01 (issue #235).
 
   - id: rtr01
     name: Core Router
@@ -582,6 +625,24 @@ nodes:
     specs: { cores: 1, memory_mb: 2048, disk_gb: 4 }
     services: [ospf, bgp, inter_vlan_routing]
     description: "Core router — inter-VLAN routing between all zones"
+    # Every zone's gateway (.1, every VM's default route) and the range's edge (the WAN
+    # uplink). It enforces network.firewall_rules, default drop (worker/vyos_config.py).
+    # fw01/fw02 are not in the forwarding path: the worker renders no transit network
+    # or static routes between appliances (issue #235).
+    edge: true
+    interfaces:
+      - vlan: management
+        ip: "10.0.0.1"
+      - vlan: corporate_lan
+        ip: "10.10.0.1"
+      - vlan: dmz
+        ip: "10.20.0.1"
+      - vlan: server_vlan
+        ip: "10.30.0.1"
+      - vlan: blue_team
+        ip: "10.40.0.1"
+      - vlan: red_team
+        ip: "10.66.0.1"
 
   - id: tgen01
     name: Traffic Generator
@@ -613,6 +674,10 @@ nodes:
     vlan: management
     ip: "10.0.0.60"
     node: coyote
+    interfaces:
+      - vlan: management
+      - vlan: network_monitoring
+        monitor: true
     specs: { cores: 2, memory_mb: 8192, disk_gb: 32 }
     services: [suricata, arkime, pcap_capture]
     description: "Inline IDS sensor — full packet capture with Arkime"

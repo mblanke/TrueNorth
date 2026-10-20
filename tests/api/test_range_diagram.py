@@ -187,25 +187,46 @@ def test_multi_homed_firewall_sits_between_networks_with_a_link_per_nic():
 
 
 def test_a_single_nic_firewall_is_drawn_where_it_is_built():
-    # medium-enterprise's fw01 declares no `interfaces`: the worker gives it one NIC, on management.
-    diagram, _ = rd.template_picture(_text("medium-enterprise"))
+    # red-vs-blue's perimeter firewalls declare no `interfaces` (off the path until issue
+    # #235): the worker gives each one NIC, on management, so that is where they are drawn.
+    diagram, _ = rd.template_picture(_text("red-vs-blue"))
     zones, nodes, links = _split(diagram["cells"])
-    assert links == []
-    fw = next(n for n in nodes if n["id"] == "fw01")
     mgmt = next(z for z in zones if z["nodeData"]["label"] == "management")
-    assert _inside(fw, mgmt)
+    for fw_id in ("fw01", "fw02"):
+        assert not [link for link in links if link["source"]["id"] == fw_id]
+        assert _inside(next(n for n in nodes if n["id"] == fw_id), mgmt)
 
 
 def test_large_enterprise_is_drawn_whole():
     diagram, notes = rd.template_picture(_text("large-enterprise"))
     zones, nodes, links = _split(diagram["cells"])
-    assert (len(zones), len(nodes), notes) == (8, 50, [])
-    assert {link["source"]["id"] for link in links} == {"fw01"}
+    assert (len(zones), len(nodes), notes) == (9, 50, [])
+    assert {link["source"]["id"] for link in links} == {"fw01", "ids01"}
+    zone_names = {z["id"]: z["nodeData"]["label"] for z in zones}
+    (tap,) = [link for link in links if link["source"]["id"] == "ids01"]
+    assert tap["linkData"] == {"network": "network_monitoring", "ip": "", "monitor": True}
+    assert zone_names[tap["target"]["id"]] == "network_monitoring"
+    # ot_scada is an enclave until issue #235: no firewall link reaches it.
+    assert "ot_scada" not in {zone_names[link["target"]["id"]] for link in links}
 
 
 def test_an_assets_template_is_a_labelled_sketch():
-    diagram, notes = rd.template_picture(_text("small-enterprise"))
+    # No shipped template uses `assets` since small-enterprise moved to `nodes`; its old form.
+    sketch = ("name: sketch\ninputs: {cidr_mgmt: 10.10.0.0/24, cidr_user: 10.20.0.0/24}\nassets:\n"
+              "  - {role: jump, type: vm, os: ubuntu-2404, count: 1, tags: [mgmt]}\n"
+              "  - {role: user, type: vm, os: windows-11, count: 3, tags: [user]}\n")
+    diagram, notes = rd.template_picture(sketch)
     assert diagram["cells"] and "sketch" in notes[0]
+
+
+def test_small_enterprise_is_three_networks_behind_one_firewall():
+    diagram, notes = rd.template_picture(_text("small-enterprise"))
+    zones, nodes, links = _split(diagram["cells"])
+    assert notes == [] and sorted(z["nodeData"]["label"] for z in zones) == ["mgmt", "srv", "user"]
+    zone_names = {z["id"]: z["nodeData"]["label"] for z in zones}
+    assert {zone_names[link["target"]["id"]]: link["linkData"]["ip"] for link in links
+            if link["source"]["id"] == "fw-01"} == {"mgmt": "10.0.1.1", "srv": "10.0.2.1", "user": "10.0.3.1"}
+    assert sorted(n["id"] for n in nodes) == ["dc-01", "fw-01", "jump-box", "ws-01", "ws-02", "ws-03"]
 
 
 @pytest.mark.parametrize("path", FULL_RANGES, ids=lambda p: p.parent.name)

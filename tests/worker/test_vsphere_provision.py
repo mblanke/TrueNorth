@@ -1975,6 +1975,10 @@ class TestMirrorPlan:
     # colosseum (span_domain, span_dmz) joins this list when its template lands in content/ranges.
     @pytest.mark.parametrize(("name", "expected"), [
         ("soc-training", {"network_monitoring": ["attacker_infra", "victim_network", "soc_tools", "management"]}),
+        ("red-vs-blue", {"network_monitoring": ["management", "corporate_lan", "dmz", "server_vlan", "blue_team",
+                                                "red_team"]}),
+        ("large-enterprise", {"network_monitoring": ["dmz", "corporate_lan", "server_vlan", "security_vlan",
+                                                     "ot_scada", "management", "ad_forest_b", "cloud_hybrid"]}),
     ])
     def test_shipped_templates(self, name, expected):
         tpl = yaml.safe_load((CONTENT / name / "template.yaml").read_text())
@@ -2057,6 +2061,43 @@ class TestMirrorSessions:
         local = _sessions(vc)[f"tn-{R8}-network_monitoring"]
         assert local.destinationPort.uplinkPortName == [] and local.encapsulationVlanId is None
         assert any("no uplinks" in w for w in result.warnings)
+
+    @pytest.mark.parametrize(("name", "sensors"), [("red-vs-blue", ["nids01", "ids01"]),
+                                                   ("large-enterprise", ["ids01"])])
+    def test_shipped_sensors_receive_every_zone(self, vc, name, sensors):
+        """The template's own networks, mirror rule and sensor nodes, built by the real
+        provisioner on the fake vCenter. Trimmed to the sensors plus one plain host per
+        zone (bare ubuntu, small) so it fits the fake lab; appliances are left out, which
+        the session code excludes from destinations anyway."""
+        tpl = yaml.safe_load((CONTENT / name / "template.yaml").read_text())
+        hosts = [n for n in tpl["nodes"] if n["id"] in sensors]
+        zones = {n["vlan"] for n in hosts}
+        for n in tpl["nodes"]:
+            if n["vlan"] not in zones and not render._is_router(n, n["os"]):
+                hosts.append(n)
+                zones.add(n["vlan"])
+        tpl["nodes"] = [{**n, "os": "ubuntu-2404", "services": [], "specs": {"cores": 1, "memory_mb": 1024,
+                                                                           "disk_gb": 10}} for n in hosts]
+        result = _run(_prov(vc).provision(RANGE_ID, _mirror_build(tpl), {}))
+        assert result.status == "ok", result.errors
+
+        dst = f"tn-{R8}-network_monitoring"
+        assert sorted(_sessions(vc)) == [dst, f"{dst}-rx"]
+        local = _sessions(vc)[dst]
+        monitor_pg = next(n["portgroup"] for n in result.networks if n.get("name") == "network_monitoring")
+        sensor_ports = sorted(p for s in sensors for p in _nic_ports(vc, s, monitor_pg))
+        assert len(sensor_ports) == len(sensors)  # one monitor NIC each
+        assert sorted(local.destinationPort.portKey) == sensor_ports
+        # Every routed zone a host sits on is a source (ot_scada too: isolated, still mirrored).
+        made = next(m for m in result.mirrors if m["name"] == dst)
+        assert set(made["source_zones"]) == {n["name"] for n in result.networks
+                                             if n.get("name") not in (None, "network_monitoring") and not n.get("rspan")}
+        assert len(local.sourcePortReceived.portKey) == len(hosts)  # every host's NIC on its own zone
+        # The monitor NIC sniffs: no address in what the worker built.
+        vms = {v["node_id"]: v for v in _mirror_build(tpl)["vms"]}
+        for s in sensors:
+            (mon,) = [nic for nic in vms[s]["nics"] if nic.get("monitor")]
+            assert mon["network"] == "network_monitoring" and mon["ip"] == ""
 
     def test_retry_replaces_the_sessions_in_place(self, vc):
         _run(_prov(vc).provision(RANGE_ID, _mirror_build(), {}))

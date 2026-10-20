@@ -376,6 +376,9 @@ nodes:
     vlan: pivot_network
     ip: "10.70.4.1"
     specs: { cores: 2, memory_mb: 2048, disk_gb: 20 }
+    # The range's edge (WAN uplink). Without the flag the worker would pick the first
+    # pfSense in node order, t-vpn01, which is not every zone's gateway (vsphere_infra.pick_edge).
+    edge: true
     interfaces:
       - vlan: target_corp
         ip: "10.70.0.1"

@@ -171,6 +171,21 @@ class TestVariants:
         assert len(cfg.notes) == 2
         assert "unknown source zone 'mars'" in cfg.notes[0] and "'redirect'" in cfg.notes[1]
 
+    def test_port_ranges(self):
+        # Templates write "49152-65535" (red-vs-blue's AD dynamic RPC). pfSense's port alias
+        # wants "49152:65535"; a rule's own port field keeps the dash.
+        rng = _range("soc-training")
+        rules = [{"name": "ad", "src": "victim_network", "dst": "soc_tools", "ports": [135, "49152-65535"],
+                  "action": "allow"},
+                 {"name": "rpc", "src": "victim_network", "dst": "soc_tools", "ports": ["49152-65535"],
+                  "action": "allow"}]
+        root = ET.fromstring(pf.build_config(_firewall(rng), networks=rng["networks"], rules=rules).xml)
+        (ad,) = _rule(root, "ad")
+        alias = next(a for a in root.find("aliases") if a.findtext("name") == ad.findtext("destination/port"))
+        assert alias.findtext("address") == "135 49152:65535"
+        (rpc,) = _rule(root, "rpc")
+        assert rpc.findtext("destination/port") == "49152-65535"
+
     def test_deny_rules_block(self):
         rng = _range("red-vs-blue")
         fw = _firewall(rng, "fw01")

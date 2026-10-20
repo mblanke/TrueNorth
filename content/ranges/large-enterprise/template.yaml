@@ -32,6 +32,10 @@ network:
       name: ot_scada
       cidr: "10.50.104.0/24"
       description: "Operational technology and industrial control systems"
+      # Air-gapped for now: it belongs behind ot-fw01, reached from fw01 over a transit
+      # network, which the worker does not build yet (issue #235). Until then nothing
+      # routes to it; ot-fw01 holds its gateway only.
+      isolated: true
     - id: 105
       name: management
       cidr: "10.50.105.0/24"
@@ -44,6 +48,13 @@ network:
       name: cloud_hybrid
       cidr: "10.50.107.0/24"
       description: "Simulated cloud hybrid connectivity segment"
+    # SPAN only: ids01's monitor NIC receives copies here (monitoring-mirror) and holds no
+    # address, so nothing is routed to it and it needs no gateway.
+    - id: 108
+      name: network_monitoring
+      cidr: "10.50.108.0/24"
+      isolated: true
+      description: "Port-mirror copies of every zone for the IDS sensor (no addresses)"
 
   firewall_rules:
     - name: dmz-to-server
@@ -73,6 +84,11 @@ network:
       dst: "*"
       ports: [22, 3389, 5985, 5986]
       action: allow
+    - name: monitoring-mirror
+      src: "*"
+      dst: network_monitoring
+      action: mirror
+      note: "Every zone's traffic copied to ids01 (vDS port mirroring), OT included"
 
   trust_relationships:
     - source_forest: corp.truenorth.local
@@ -352,6 +368,12 @@ nodes:
     os: ubuntu-2404
     vlan: security_vlan
     ip: "10.50.103.20"
+    # Management on security_vlan; sniffs network_monitoring, where monitoring-mirror
+    # delivers every zone's traffic (no address on the monitor NIC).
+    interfaces:
+      - vlan: security_vlan
+      - vlan: network_monitoring
+        monitor: true
     specs: { cores: 4, memory_mb: 8192, disk_gb: 200 }
     services: [suricata, evebox]
 
@@ -454,6 +476,7 @@ nodes:
     ip: "10.50.104.1"
     specs: { cores: 2, memory_mb: 2048, disk_gb: 20 }
     services: [firewall, ids_passthrough]
+    # The OT gateway only, one NIC: its leg toward fw01 waits on transit networks (issue #235).
 
   # --- AD Forest B (VLAN 106) ---
   - id: dc03
@@ -528,6 +551,9 @@ nodes:
     ip: "10.50.105.1"
     specs: { cores: 4, memory_mb: 4096, disk_gb: 40 }
     services: [firewall, nat, vpn]
+    # The range's edge (WAN uplink). Without the flag the worker would pick the first
+    # pfSense in node order, vpn01, which is not every zone's gateway (vsphere_infra.pick_edge).
+    edge: true
     interfaces:
       - vlan: dmz
         ip: "10.50.100.1"

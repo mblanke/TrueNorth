@@ -73,8 +73,8 @@ TEMPLATES = [
     {
         "name": "Small Enterprise",
         "slug": "small-enterprise",
-        "description": "Basic enterprise network with jump host, DC, and workstations",
-        "vm_count": 5,
+        "description": "Basic enterprise network with jump host, DC, workstations and a firewall",
+        "vm_count": 6,
         "difficulty": "beginner",
         "source_file": "content/ranges/small-enterprise/template.yaml",
     },
