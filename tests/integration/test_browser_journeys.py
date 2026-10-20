@@ -517,6 +517,43 @@ def test_resume_a_paused_exercise_once_and_only_as_staff(world, visit):
 
 
 # ══════════════════════════════════════════════════════════════════════════════════════════
+# (2b) Issue #201: an instructor reads a running exercise. Objectives by name, sign-off
+#      labelled, Live instead of a disabled "Running…", the way back to Exercises, no AAR
+#      request (so no 404) while it runs, and the shell breadcrumb names the page.
+# ══════════════════════════════════════════════════════════════════════════════════════════
+def test_instructor_reads_a_running_exercise_without_raw_ids_or_aar_404(world, visit):
+    from playwright.sync_api import expect
+
+    name = f"journey-live-{uuid.uuid4().hex[:4]}"
+    ex = make_exercise(world, name)
+    ok(Api(world, world.instructor).post(f"/exercises/{ex['id']}/start"))
+
+    ins = visit(world.instructor, f"/exercises/{ex['id']}")
+    expect(ins.get_by_role("heading", name=name)).to_be_visible()
+    expect(ins.get_by_test_id("live")).to_have_text(re.compile("Live"))
+    expect(ins.get_by_role("button", name=re.compile("Running"))).to_have_count(0)
+    back = ins.locator("a.back")
+    expect(back).to_contain_text("Exercises")
+    expect(back).to_have_attribute("href", "/exercises")
+    rows = ins.locator(".obj")
+    expect(rows.filter(has_text="Detect C2")).to_contain_text("Detection")
+    expect(rows.filter(has_text="Write report")).to_contain_text("instructor sign-off")
+    expect(rows.filter(has_text="detect_c2")).to_have_count(0)
+
+    aar_calls: list[tuple[str, int]] = []
+    ins.on("response", lambda r: aar_calls.append((r.url, r.status)) if "/aar" in r.url else None)
+    ins.goto(f"/scoring?exercise={ex['id']}")
+    expect(title(ins, "Scoring & After Action Review")).to_be_visible()
+    expect(ins.get_by_test_id("aar-pending")).to_be_visible()
+    expect(ins.get_by_role("button", name=re.compile("Generate AAR"))).to_have_count(0)
+    ins.wait_for_load_state("networkidle")
+    assert aar_calls == [], f"the Scoring page asked for the AAR of a running exercise: {aar_calls}"
+
+    ins.goto("/wiki")
+    expect(ins.locator(".toolbar-kicker")).to_have_text(re.compile(r"Workspace\s*/\s*Wiki"))
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
 # (3) AAR: a Student opens the report of an exercise they took part in, and not another
 #     Student's.
 # ══════════════════════════════════════════════════════════════════════════════════════════
@@ -681,6 +718,11 @@ def test_student_detection_is_recorded_and_credited(world, visit, event_store, r
     assert objectives["detect_c2"]["achieved"] is True
     assert '"source": "student_detection"' in (objectives["detect_c2"]["evidence"] or "")
     assert ok(staff.get(f"/exercises/{ex['id']}"))["total_score"] == 40
+
+    # The instructor reads that credit on Scoring as who detected what, not the stored JSON (#201).
+    ins = visit(world.instructor, f"/scoring?exercise={ex['id']}")
+    expect(ins.get_by_text("Detected by Sam Student: 3 events matched")).to_be_visible()
+    expect(ins.get_by_text("student_detection")).to_have_count(0)
 
     # A Student of the tenant who does not take part in this run: refused, nothing recorded,
     # and they do not see Sam's attempt.

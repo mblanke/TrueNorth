@@ -79,6 +79,12 @@ export function peakLoad(loads: { time: Date; load: number }[], from: Date, to: 
 
 export const HOLDING_STATES = ['scheduled', 'provisioning', 'active'];
 
+/** Under way at `now`: started, not yet ended, and still held (not a draft or cancelled). */
+export function isLive(b: Booking, now: Date = new Date()): boolean {
+  const t = now.getTime();
+  return HOLDING_STATES.includes(b.state) && new Date(b.start_time).getTime() <= t && t < new Date(b.end_time).getTime();
+}
+
 /**
  * Double bookings the server will refuse (service.conflicts): a range is held for the
  * lead and grace too, an instructor only for the session.

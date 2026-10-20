@@ -1,5 +1,5 @@
 import type { Booking } from '@core/services/scheduler-api.service';
-import { addDays, layoutLanes, level, localizeUtcWindows, peakLoad, previewConflicts, slotLoads, weekStart } from './schedule.util';
+import { addDays, isLive, layoutLanes, level, localizeUtcWindows, peakLoad, previewConflicts, slotLoads, weekStart } from './schedule.util';
 
 function booking(p: Partial<Booking>): Booking {
   return {
@@ -8,6 +8,25 @@ function booking(p: Partial<Booking>): Booking {
     created_at: '', updated_at: '', ...p,
   } as Booking;
 }
+
+describe('isLive (#201)', () => {
+  const now = new Date('2026-10-19T10:00:00Z');
+  const b = (start: string, end: string, state = 'scheduled') =>
+    booking({ start_time: start, end_time: end, state: state as Booking['state'] });
+
+  it('is live from its start until its end, in a holding state', () => {
+    expect(isLive(b('2026-10-19T09:00:00Z', '2026-10-19T12:00:00Z'), now)).toBeTrue();
+    expect(isLive(b('2026-10-19T09:00:00Z', '2026-10-19T12:00:00Z', 'active'), now)).toBeTrue();
+    expect(isLive(b('2026-10-19T10:00:00Z', '2026-10-19T12:00:00Z'), now)).toBeTrue();
+  });
+
+  it('is not live before its start, after its end, or when cancelled or a draft', () => {
+    expect(isLive(b('2026-10-19T11:00:00Z', '2026-10-19T12:00:00Z'), now)).toBeFalse();
+    expect(isLive(b('2026-10-19T08:00:00Z', '2026-10-19T10:00:00Z'), now)).toBeFalse();
+    expect(isLive(b('2026-10-19T09:00:00Z', '2026-10-19T12:00:00Z', 'cancelled'), now)).toBeFalse();
+    expect(isLive(b('2026-10-19T09:00:00Z', '2026-10-19T12:00:00Z', 'draft'), now)).toBeFalse();
+  });
+});
 
 describe('schedule.util', () => {
   it('weekStart is the Monday at midnight, local', () => {

@@ -24,6 +24,19 @@ const STUDENT_TABS: Tab[] = [
   { key: 'done', label: 'Resolved & closed', filters: { scope: 'mine', status: DONE } },
 ];
 
+const PRIORITY_RANK: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
+
+/** Priority first, then unassigned before assigned; otherwise the API's (recency) order. */
+export function triageOrder(tickets: TicketSummary[]): TicketSummary[] {
+  return tickets
+    .map((t, i) => ({ t, i }))
+    .sort((a, b) =>
+      (PRIORITY_RANK[a.t.priority] ?? 9) - (PRIORITY_RANK[b.t.priority] ?? 9)
+      || Number(!!a.t.assignee_id) - Number(!!b.t.assignee_id)
+      || a.i - b.i)
+    .map(x => x.t);
+}
+
 @Component({
   selector: 'tn-ticket-list',
   standalone: true,
@@ -123,8 +136,10 @@ export class TicketListComponent implements OnInit {
   load(): void {
     const tab = this.tabs().find(t => t.key === this.tab()) ?? this.tabs()[0];
     this.loading.set(true);
+    // Staff triage open work: most urgent first, nobody's before someone's (#201).
+    const triage = this.staff() && tab.key !== 'done';
     this.api.list({ ...tab.filters, q: this.q.trim() || undefined }).subscribe({
-      next: t => { this.tickets.set(t); this.loading.set(false); },
+      next: t => { this.tickets.set(triage ? triageOrder(t) : t); this.loading.set(false); },
       error: err => { this.tickets.set([]); this.loading.set(false); this.forbidden.set(err?.status === 403); },
     });
   }

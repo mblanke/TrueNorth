@@ -28,6 +28,12 @@ function apiError(err: unknown): string {
   return 'The request failed.';
 }
 
+/** EnrollmentStatus and ModuleProgressStatus (models.py), in words. */
+const STATUS_LABELS: Record<string, string> = {
+  enrolled: 'Enrolled', in_progress: 'In progress', completed: 'Completed', withdrawn: 'Withdrawn',
+  failed: 'Failed', not_started: 'Not started', skipped: 'Skipped',
+};
+
 interface Opened {
   enrollment: CourseEnrollment;
   progress: ModuleProgress[] | null;
@@ -92,7 +98,7 @@ interface Opened {
                 @for (e of enrollments()!; track e.id) {
                   <tr>
                     <td>{{ nameOf(e.user_id) }}</td>
-                    <td><span class="status-chip" [class]="e.status">{{ e.status }}</span></td>
+                    <td><span class="status-chip" [class]="e.status">{{ statusLabel(e.status) }}</span></td>
                     <td>{{ e.enrolled_at | date:'mediumDate' }}</td>
                     <td>{{ e.completed_at ? (e.completed_at | date:'mediumDate') : '—' }}</td>
                     <td>{{ e.status === 'completed' ? (e.final_score + ' / ' + e.max_score + (e.final_grade ? ' (' + e.final_grade + ')' : '')) : '—' }}</td>
@@ -101,7 +107,8 @@ interface Opened {
                               [attr.aria-controls]="'progress-' + e.id">
                         {{ opened()?.enrollment?.id === e.id ? 'Hide' : 'Progress' }}
                       </button>
-                      @if (canComplete() && e.status !== 'completed') {
+                      <!-- Only for a Student with recorded progress: nothing to complete otherwise (#201). -->
+                      @if (canComplete() && e.status !== 'completed' && hasProgress(e)) {
                         <button mat-stroked-button color="primary" (click)="complete(e)" [disabled]="busy()"
                                 [attr.aria-label]="'Mark ' + nameOf(e.user_id) + ' complete'">Mark complete</button>
                       }
@@ -125,7 +132,7 @@ interface Opened {
                               @for (p of opened()!.progress!; track p.id) {
                                 <tr>
                                   <td>{{ moduleTitle(p.module_id) }}</td>
-                                  <td>{{ p.status }}</td>
+                                  <td>{{ statusLabel(p.status) }}</td>
                                   <td>{{ p.score }} / {{ p.max_score }}</td>
                                   <td>{{ p.attempts }}</td>
                                   <td>{{ (p.completed_at || p.last_accessed_at) ? ((p.completed_at || p.last_accessed_at) | date:'short') : '—' }}</td>
@@ -196,9 +203,26 @@ export class LearnerProgressComponent implements OnInit {
     return u ? `${u.display_name} (${u.email})` : userId;
   }
 
+  /** "1. Logs": the module's position in the course, counted from 1 (ordinals may start at 0). */
   moduleTitle(moduleId: string): string {
-    const m = this.course()?.modules?.find(x => x.id === moduleId);
-    return m ? `${m.ordinal}. ${m.title}` : moduleId;
+    const modules = [...(this.course()?.modules ?? [])].sort((a, b) => a.ordinal - b.ordinal);
+    const i = modules.findIndex(x => x.id === moduleId);
+    return i >= 0 ? `${i + 1}. ${modules[i].title}` : moduleId;
+  }
+
+  statusLabel(status: string): string {
+    return STATUS_LABELS[status] ?? status.replace(/_/g, ' ');
+  }
+
+  /**
+   * Whether the Student has done anything to complete: their enrollment says so, or the
+   * progress opened for them shows a module started. An untouched enrollment offers no
+   * Mark complete until its progress is opened and shows something (#201).
+   */
+  hasProgress(e: CourseEnrollment): boolean {
+    if (e.status === 'in_progress' || e.status === 'failed') return true;
+    const o = this.opened();
+    return !!o && o.enrollment.id === e.id && !!o.progress?.some(p => p.status !== 'not_started');
   }
 
   pick(courseId: string): void {

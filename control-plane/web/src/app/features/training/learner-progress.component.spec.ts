@@ -60,7 +60,48 @@ describe('LearnerProgressComponent', () => {
     await render('instructor');
     expect(api.listEnrollments).toHaveBeenCalledWith('c1');
     expect(el.textContent).toContain('Sam (s@x.test)');
-    expect(el.textContent).toContain('in_progress');
+    expect(el.textContent).toContain('In progress');
+    expect(el.textContent).not.toContain('in_progress');
+  });
+
+  // Issue #201: modules numbered from "0.", raw statuses, and Mark complete for a Student
+  // who had done nothing.
+  it('numbers modules from 1 and words their status', async () => {
+    await render('instructor');
+    component.course.set({ ...COURSE, modules: [
+      { id: 'm1', ordinal: 0, title: 'Logs' }, { id: 'm2', ordinal: 1, title: 'Alerts' }] } as any);
+    api.getProgress.and.returnValue(of([
+      PROGRESS[0], { ...PROGRESS[0], id: 'p2', module_id: 'm2', status: 'in_progress', completed_at: null }] as any));
+    button('Progress')!.click();
+    fixture.detectChanges();
+    const cells = Array.from(el.querySelectorAll('.inner tbody tr')).map(r => r.textContent ?? '');
+    expect(cells[0]).toContain('1. Logs');
+    expect(cells[0]).toContain('Completed');
+    expect(cells[1]).toContain('2. Alerts');
+    expect(cells[1]).toContain('In progress');
+    expect(el.textContent).not.toContain('0. Logs');
+    expect(el.textContent).not.toContain('in_progress');
+  });
+
+  it('offers Mark complete only for a Student with recorded progress', async () => {
+    await render('instructor');
+    api.listEnrollments.and.returnValue(of([{ ...ENROLLMENT, status: 'enrolled' }] as any));
+    component.loadEnrollments();
+    fixture.detectChanges();
+    expect(button('Mark complete')).toBeUndefined();
+
+    api.getProgress.and.returnValue(of([]));
+    button('Progress')!.click();
+    fixture.detectChanges();
+    expect(el.textContent).toContain('No module started yet.');
+    expect(button('Mark complete')).toBeUndefined();
+
+    button('Hide')!.click();
+    fixture.detectChanges();
+    api.getProgress.and.returnValue(of(PROGRESS as any));
+    button('Progress')!.click();
+    fixture.detectChanges();
+    expect(button('Mark complete')).toBeDefined();
   });
 
   it('opens one Student\'s module progress with module titles', async () => {
