@@ -16,15 +16,18 @@ GET    /users/me                           (any authenticated)
 POST   /users                              USER_CREATE
 PATCH  /users/{user_id}                    USER_UPDATE
 DELETE /users/{user_id}                    USER_DELETE
-POST   /teams                              USER_UPDATE
+POST   /teams                              USER_UPDATE or TEAM_MANAGE_OWN *
 GET    /teams                              USER_READ
-PATCH  /teams/{team_id}                    USER_UPDATE
-DELETE /teams/{team_id}                    USER_UPDATE
-POST   /teams/{team_id}/members            USER_UPDATE
+PATCH  /teams/{team_id}                    USER_UPDATE or TEAM_MANAGE_OWN *
+DELETE /teams/{team_id}                    USER_UPDATE or TEAM_MANAGE_OWN *
+POST   /teams/{team_id}/members            USER_UPDATE or TEAM_MANAGE_OWN *
 GET    /teams/{team_id}/members            USER_READ
-DELETE /teams/{team_id}/members/{user_id}  USER_UPDATE
+DELETE /teams/{team_id}/members/{user_id}  USER_UPDATE or TEAM_MANAGE_OWN *
 GET    /audit-log                          AUDIT_READ
 =========================================  ==========================
+
+* TEAM_MANAGE_OWN (an instructor, #200): only a team of an exercise they run, and only
+  Students as members (app/class_setup/scope.py). USER_UPDATE: any team of the tenant.
 """
 
 from __future__ import annotations
@@ -41,14 +44,13 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from ..auth import CurrentUser, get_current_user
+from ..class_setup import scope as class_scope
+from ..class_setup.team_schemas import TeamFullIn, TeamFullOut, TeamUpdate
 from ..db import get_db
 from ..models import AuditLog, Team, TeamMembership, Tenant, User, UserRole
-from ..rbac import Permission, is_platform_admin, require_permission
+from ..rbac import Permission, is_platform_admin, require_any_permission, require_permission, user_has_permission
 from ..schemas import (
     AuditLogOut,
-    TeamFullIn,
-    TeamFullOut,
-    TeamUpdate,
     TenantIn,
     TenantOut,
     UserCreateIn,
@@ -222,14 +224,29 @@ def delete_user(
 
 
 # -- Teams ------------------------------------------------------------------
+# Changing a team: user:update (an admin, any team of the tenant) or team:manage_own (an
+# instructor, a team of an exercise they run); the second is scoped in the handler.
+TEAM_WRITE = require_any_permission(Permission.USER_UPDATE, Permission.TEAM_MANAGE_OWN)
+
+
 @router.post("/teams", response_model=TeamFullOut, status_code=201)
 def create_team(
     body: TeamFullIn,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission(Permission.USER_UPDATE)),
+    user: CurrentUser = Depends(TEAM_WRITE),
 ) -> Team:
-    """Create a team with full schema (type, color, max_members, etc).  **Permission: user:update**"""
+    """Create a team with full schema (type, color, max_members, etc).
+
+    **Permission: user:update, or team:manage_own** with ``exercise_id`` naming the exercise
+    of your own upcoming or running session (app/class_setup/scope.py). Another tenant's
+    exercise is 404; an exercise you do not run, or no exercise, is 403; a completed or
+    cancelled exercise, or another instructor's running session of it, is 409. ``ou_id``
+    must be an OU of your tenant and ``nation_id`` a known nation (422).
+    """
+    exercise_id = class_scope.authorize_new_team(db, user, body.exercise_id)
+    class_scope.check_team_refs(db, user, body.ou_id, body.nation_id)
     team = Team(
+        exercise_id=exercise_id,
         name=body.name,
         tenant_id=uuid.UUID(user.tenant_id),
         description=body.description,
@@ -241,10 +258,10 @@ def create_team(
         is_persistent=body.is_persistent,
     )
     db.add(team)
+    db.flush()  # the id, so the audit row goes in the same transaction as the team
+    _audit(db, user, "create", "team", str(team.id), f"exercise {exercise_id}" if exercise_id else "")
     db.commit()
     db.refresh(team)
-    _audit(db, user, "create", "team", str(team.id))
-    db.commit()
     return team
 
 
@@ -262,16 +279,22 @@ def update_team(
     body: TeamUpdate,
     team_id: uuid.UUID = Path(...),
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission(Permission.USER_UPDATE)),
+    user: CurrentUser = Depends(TEAM_WRITE),
 ) -> Team:
-    """Update a team.  **Permission: user:update**
+    """Update a team.  **Permission: user:update, or team:manage_own** for a team of an
+    exercise you run. A completed or cancelled exercise's team is frozen (409, admins too).
+    Audited (``update``, the fields changed).
 
     Until 2026-10-07 this needed only a login: a student could rename or resize
     any team in their tenant.
     """
     team = get_owned(db, Team, team_id, user, not_found="Team not found")
-    for field, value in body.model_dump(exclude_unset=True).items():
+    class_scope.authorize_team(db, user, team)
+    class_scope.refuse_frozen_team(db, user, team)
+    changes = body.model_dump(exclude_unset=True)
+    for field, value in changes.items():
         setattr(team, field, value)
+    _audit(db, user, "update", "team", str(team_id), ", ".join(sorted(changes)))
     db.commit()
     db.refresh(team)
     return team
@@ -281,14 +304,26 @@ def update_team(
 def delete_team(
     team_id: uuid.UUID = Path(...),
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission(Permission.USER_UPDATE)),
+    user: CurrentUser = Depends(TEAM_WRITE),
 ):
-    """Delete a team and its memberships.  **Permission: user:update**"""
+    """Delete a team and its memberships.  **Permission: user:update, or team:manage_own**
+    for a team of an exercise you run that has only Students on it (staff on a team are an
+    admin's to move: 403). A completed or cancelled exercise's team is frozen (409, admins
+    too). Audited (``delete``, with the members removed)."""
     team = get_owned(db, Team, team_id, user, not_found="Team not found")
+    class_scope.authorize_team(db, user, team)
+    class_scope.refuse_frozen_team(db, user, team)
+    member_ids = [m for (m,) in db.query(TeamMembership.user_id).filter(TeamMembership.team_id == team_id)]
+    if member_ids and not user_has_permission(user, Permission.USER_UPDATE):
+        students = db.query(User.id).filter(
+            User.id.in_(member_ids), User.tenant_id == uuid.UUID(user.tenant_id), User.role == UserRole.student
+        ).count()
+        if students != len(set(member_ids)):
+            raise HTTPException(403, "The team has staff on it; an administrator deletes it")
     db.query(TeamMembership).filter(TeamMembership.team_id == team_id).delete()
     db.delete(team)
-    db.commit()
-    _audit(db, user, "delete", "team", str(team_id))
+    _audit(db, user, "delete", "team", str(team_id),
+           f"{team.name}; members removed: {', '.join(str(m) for m in member_ids) or 'none'}")
     db.commit()
 
 
@@ -314,11 +349,15 @@ def add_team_member(
     user_id: uuid.UUID = Query(...),
     role: str = Query("member"),
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission(Permission.USER_UPDATE)),
+    user: CurrentUser = Depends(TEAM_WRITE),
 ) -> dict:
-    """Add a user to a team.  **Permission: user:update**"""
+    """Add a user to a team.  **Permission: user:update** (anyone in the tenant), **or
+    team:manage_own** (a Student enrolled in your session's course, to a team of an
+    exercise you run). Never to a completed or cancelled exercise's team (409): membership
+    opens that run's after-action report."""
     team = get_owned(db, Team, team_id, user, not_found="Team not found")
-    target = get_owned(db, User, user_id, user, not_found="User not found")
+    class_scope.authorize_team(db, user, team)
+    class_scope.team_member_target(db, user, team, user_id)
     existing = (
         db.query(TeamMembership).filter(TeamMembership.team_id == team_id, TeamMembership.user_id == user_id).first()
     )
@@ -335,7 +374,6 @@ def add_team_member(
         joined_at=datetime.now(UTC),
     )
     db.add(membership)
-    db.commit()
     _audit(db, user, "add_member", "team", str(team_id), f"user {user_id} as {role}")
     db.commit()
     return {"user_id": str(user_id), "team_id": str(team_id), "role": role}
@@ -381,12 +419,19 @@ def remove_team_member(
     team_id: uuid.UUID = Path(...),
     member_user_id: uuid.UUID = Path(...),
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission(Permission.USER_UPDATE)),
+    user: CurrentUser = Depends(TEAM_WRITE),
 ):
-    """Remove a user from a team.  **Permission: user:update**"""
+    """Remove a user from a team.  **Permission: user:update** (anyone), **or
+    team:manage_own** (a Student, from a team of an exercise you run). A completed or
+    cancelled exercise's team is frozen (409, admins too): removing a member would take
+    their own run's AAR from them."""
     # The membership row has no tenant of its own; without this check a caller could
     # strip members from another tenant's team by id.
-    get_owned(db, Team, team_id, user, not_found="Team not found")
+    team = get_owned(db, Team, team_id, user, not_found="Team not found")
+    class_scope.authorize_team(db, user, team)
+    class_scope.refuse_frozen_team(db, user, team)
+    if not user_has_permission(user, Permission.USER_UPDATE):
+        class_scope.own_student(db, user, member_user_id)  # staff on a team are an admin's to move
     m = (
         db.query(TeamMembership)
         .filter(TeamMembership.team_id == team_id, TeamMembership.user_id == member_user_id)
@@ -395,7 +440,6 @@ def remove_team_member(
     if not m:
         raise HTTPException(404, "Membership not found")
     db.delete(m)
-    db.commit()
     _audit(db, user, "remove_member", "team", str(team_id), f"user {member_user_id}")
     db.commit()
 

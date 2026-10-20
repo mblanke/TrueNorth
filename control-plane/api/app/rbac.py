@@ -103,6 +103,13 @@ class Permission(str, Enum):
     LEARNING_RECORD_READ = "learning_record:read"
     LEARNING_RECORD_WRITE = "learning_record:write"
 
+    # Setting up your own class (#200), never anyone else's: enrol and withdraw Students on
+    # a course you teach, and create and edit the teams of an exercise you run. "Teach" and
+    # "run" are a live calendar booking naming you its instructor (app/class_setup/scope.py).
+    # Deliberately not user:update, which reaches every account and team in the tenant.
+    ENROLLMENT_MANAGE_OWN = "enrollment:manage_own"
+    TEAM_MANAGE_OWN = "team:manage_own"
+
     # Course releases. COURSE_AUTHOR uploads ARC² release candidates and reads the instructor
     # pack; COURSE_RELEASE accepts a candidate (it becomes what students get) and publishes it
     # to the learning platform.
@@ -192,6 +199,9 @@ ROLE_PERMISSIONS: dict[UserRole, set[Permission]] = {
         # Their cohort's records: progress, transcripts, grade passback retries.
         Permission.LEARNING_RECORD_READ,
         Permission.LEARNING_RECORD_WRITE,
+        # Their own class: Students on the courses they teach, teams of the exercises they run.
+        Permission.ENROLLMENT_MANAGE_OWN,
+        Permission.TEAM_MANAGE_OWN,
         # Their courses: author release candidates, accept and publish them.
         Permission.COURSE_AUTHOR,
         Permission.COURSE_RELEASE,

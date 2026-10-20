@@ -17,6 +17,8 @@ export type CourseEnrollment = S['EnrollmentOut'];
 export type ModuleProgress = S['ModuleProgressOut'];
 export type MoodleResultsStatus = S['MoodleResultsStatusOut'];
 export type MoodleResultsPull = S['MoodleResultsPullOut'];
+export type MyClasses = S['MyClassesOut'];
+export type NewTeam = S['TeamFullIn'];
 export interface CoursePage {
   items: CourseSummary[];
   total: number;
@@ -33,9 +35,19 @@ export class OperatorRecordsApiService {
   private http = inject(HttpClient);
   private base = environment.apiUrl;
 
+  // ── An instructor's own class (#200) ──
+  /** GET /class-setup/mine: the courses you teach and the exercises you run. */
+  myClasses(): Observable<MyClasses> {
+    return this.http.get<MyClasses>(`${this.base}/class-setup/mine`);
+  }
+
   // ── Teams ──
   listTeams(): Observable<TeamSummary[]> {
     return this.http.get<TeamSummary[]>(`${this.base}/teams`);
+  }
+  /** POST /teams. An instructor names an exercise they run (exercise_id). */
+  createTeam(body: NewTeam): Observable<TeamSummary> {
+    return this.http.post<TeamSummary>(`${this.base}/teams`, body);
   }
   listTeamMembers(teamId: string): Observable<TeamMember[]> {
     return this.http.get<TeamMember[]>(`${this.base}/teams/${teamId}/members`);
@@ -66,6 +78,15 @@ export class OperatorRecordsApiService {
   }
   markComplete(courseId: string, userId: string): Observable<CourseEnrollment> {
     return this.http.post<CourseEnrollment>(`${this.base}/courses/${courseId}/complete/${userId}`, {});
+  }
+  /** POST /courses/{id}/enroll for someone else: 201 new, 200 already enrolled (a withdrawn one reopens). */
+  enrol(courseId: string, userId: string): Observable<CourseEnrollment> {
+    return this.http.post<CourseEnrollment>(`${this.base}/courses/${courseId}/enroll`,
+      { user_id: userId, course_id: courseId });
+  }
+  /** POST /courses/{id}/withdraw/{uid}: the enrolment is kept, status withdrawn. */
+  withdraw(courseId: string, userId: string): Observable<CourseEnrollment> {
+    return this.http.post<CourseEnrollment>(`${this.base}/courses/${courseId}/withdraw/${userId}`, {});
   }
 
   // ── Moodle results ──

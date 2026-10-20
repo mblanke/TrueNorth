@@ -310,6 +310,7 @@ ws_manager = WebSocketManager(redis_url=os.getenv("REDIS_URL"))
 app.state.ws_manager = ws_manager
 
 # -- Routers (fine-grained RBAC via require_permission) --------------------
+from .class_setup.router import router as class_setup_router  # noqa: E402 (#200)
 from .cmi5.router import router as cmi5_router  # noqa: E402 (also registers the cmi5 tables)
 from .live_class.router import router as live_class_router  # noqa: E402 (issue #199)
 from .range_credentials.router import router as range_credentials_router  # noqa: E402 (ADR 0012; + its table)
@@ -394,6 +395,7 @@ app.include_router(scheduling_me_router)  # your own sessions and feed link
 app.include_router(courses_router)
 app.include_router(course_releases_router)
 app.include_router(course_publications_router)
+app.include_router(class_setup_router)  # an instructor's own class (#200)
 app.include_router(cmi5_router)  # app/cmi5 (docs/cmi5.md)
 app.include_router(lab_sessions_router)
 app.include_router(learning_paths_router)

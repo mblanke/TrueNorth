@@ -1115,41 +1115,7 @@ class UserCreateIn(BaseModel):
     callsign: str | None = None
 
 
-# ── Extended Team schemas ──────────────────────────────────────────────
-class TeamFullIn(BaseModel):
-    name: str = Field(..., min_length=1, max_length=255)
-    description: str | None = None
-    team_type: str | None = Field(default=None, pattern=r"^(red|blue|white|purple|green|orange|custom)$")
-    color_hex: str | None = Field(default=None, pattern=r"^#[0-9a-fA-F]{6}$")
-    ou_id: uuid.UUID | None = None
-    nation_id: uuid.UUID | None = None
-    max_members: int | None = None
-    is_persistent: bool = True
-
-
-class TeamUpdate(BaseModel):
-    name: str = Field(default=None)
-    description: str | None = None
-    team_type: str | None = None
-    color_hex: str | None = None
-    max_members: int | None = None
-
-
-class TeamFullOut(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-    id: uuid.UUID
-    name: str
-    tenant_id: uuid.UUID | None = None
-    description: str | None = None
-    team_type: str | None = None
-    color_hex: str | None = None
-    ou_id: uuid.UUID | None = None
-    nation_id: uuid.UUID | None = None
-    max_members: int | None = None
-    is_persistent: bool
-    exercise_id: uuid.UUID | None = None
-    created_at: datetime
-    updated_at: datetime
+# Team schemas (TeamFullIn, TeamUpdate, TeamFullOut) live in app/class_setup/team_schemas.py.
 
 
 # ── Auth Zone Policies ─────────────────────────────────────────────────

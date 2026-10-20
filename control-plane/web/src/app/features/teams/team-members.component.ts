@@ -13,7 +13,7 @@ import { AuthService } from '@core/services/auth.service';
 import { roleCan } from '@core/auth/permissions';
 import { NotificationService } from '@core/services/notification.service';
 import {
-  DirectoryUser, OperatorRecordsApiService, TeamMember, TeamSummary,
+  DirectoryUser, MyClasses, OperatorRecordsApiService, TeamMember, TeamSummary,
 } from '@core/services/operator-records-api.service';
 import {
   ImpactDialogComponent, ImpactDialogData, ImpactDialogResult,
@@ -30,9 +30,11 @@ function apiError(err: unknown): string {
 }
 
 /**
- * Team membership (R0-B). Instructors and admins see who is on each team (user:read);
- * only admins add or remove people (user:update), as the API enforces. Teams themselves
- * are created on Users & Teams.
+ * Team membership (R0-B). Instructors and admins see who is on each team (user:read).
+ * Admins change any team (user:update). An instructor (team:manage_own, #200) creates
+ * teams for the exercises they run (GET /class-setup/mine) and puts Students on them;
+ * other teams stay read-only for them. The API enforces all of it; this only shows it.
+ * Standing teams are created by admins on Users & Teams.
  */
 @Component({
   selector: 'tn-team-members',
@@ -45,17 +47,42 @@ function apiError(err: unknown): string {
           <mat-icon class="page-icon">groups</mat-icon>
           <div>
             <h1>Team membership</h1>
-            <p class="subtitle">Who is on each team. {{ canEdit() ? '' : 'Read-only for your role.' }}</p>
+            <p class="subtitle">Who is on each team. {{ subtitle() }}</p>
           </div>
         </div>
       </div>
+
+      @if (myExercises().length) {
+        <mat-card class="create">
+          <form class="add" (ngSubmit)="create()" aria-label="New team for an exercise you run">
+            <mat-form-field appearance="outline" class="grow">
+              <mat-label>Exercise you run</mat-label>
+              <mat-select name="exercise" [(ngModel)]="newExerciseId" panelClass="tn-select-panel" required>
+                @for (x of myExercises(); track x.id) {
+                  <mat-option [value]="x.id">{{ x.name }}</mat-option>
+                }
+              </mat-select>
+            </mat-form-field>
+            <mat-form-field appearance="outline">
+              <mat-label>Team name</mat-label>
+              <input matInput name="teamName" [(ngModel)]="newTeamName" maxlength="255" required>
+            </mat-form-field>
+            <button mat-raised-button color="primary" type="submit"
+                    [disabled]="!newExerciseId || !newTeamName.trim() || busy()">
+              <mat-icon>group_add</mat-icon> Create team
+            </button>
+          </form>
+        </mat-card>
+      }
 
       @if (teamsError()) {
         <p class="error-text" role="alert">{{ teamsError() }}</p>
       } @else if (teams() === null) {
         <div class="tn-skeleton tn-skeleton-row" aria-busy="true" aria-label="Loading teams"></div>
       } @else if (teams()!.length === 0) {
-        <p class="muted">No teams yet. Create teams on Users &amp; Teams, then manage their members here.</p>
+        <p class="muted">No teams yet.
+          {{ myExercises().length ? 'Create one for an exercise you run above.' : 'Create teams on Users & Teams, then manage their members here.' }}</p>
+        @if (outcome()) { <p class="outcome" role="status" aria-live="polite">{{ outcome() }}</p> }
       } @else {
         <div class="layout">
           <nav class="team-list" aria-label="Teams">
@@ -151,6 +178,7 @@ function apiError(err: unknown): string {
     .team-btn.selected { background: var(--bg-surface); border-color: var(--accent); }
     .swatch { width: 10px; height: 10px; border-radius: 50%; flex: none; }
     .members { padding: 16px; }
+    .create { padding: 8px 16px 0; margin-top: 16px; }
     h2 { margin: 0; font-size: 18px; }
     .add { display: flex; gap: 12px; align-items: flex-start; flex-wrap: wrap; margin-top: 12px; }
     .grow { flex: 1; min-width: 260px; }
@@ -179,12 +207,35 @@ export class TeamMembersComponent implements OnInit {
   outcome = signal('');
   newUserId = '';
   newRole = 'member';
+  newExerciseId = '';
+  newTeamName = '';
+  /** The caller's classes (GET /class-setup/mine); null until loaded or for an admin. */
+  mine = signal<MyClasses | null>(null);
 
-  /** user:update is admin-only (rbac.py); an instructor reads. */
-  readonly canEdit = computed(() => roleCan(this.auth.user()?.role, 'user:update'));
+  /** user:update (admins): every team of the tenant. */
+  readonly isAdmin = computed(() => roleCan(this.auth.user()?.role, 'user:update'));
+  /** team:manage_own (instructors): the teams of an exercise they run. */
+  readonly managesOwn = computed(() => !this.isAdmin() && roleCan(this.auth.user()?.role, 'team:manage_own'));
+  readonly myExercises = computed(() => (this.managesOwn() ? this.mine()?.exercises ?? [] : []));
+  /** Whether the selected team is the caller's to change. */
+  readonly canEdit = computed(() => {
+    if (this.isAdmin()) return true;
+    const ex = this.selected()?.exercise_id;
+    return !!ex && this.myExercises().some(x => x.id === ex);
+  });
+  readonly subtitle = computed(() => {
+    if (this.isAdmin()) return '';
+    if (this.managesOwn()) {
+      return 'You change the teams of the exercises of your upcoming or running sessions, with the Students '
+        + 'enrolled in their course; the others are read-only.';
+    }
+    return 'Read-only for your role.';
+  });
+  /** Active people not on the team; an instructor places Students only, as the API requires. */
   readonly candidates = computed(() => {
     const on = new Set((this.members() ?? []).map(m => m.user_id));
-    return this.users().filter(u => !on.has(u.id) && u.is_active);
+    const studentsOnly = !this.isAdmin();
+    return this.users().filter(u => !on.has(u.id) && u.is_active && (!studentsOnly || u.role === 'student'));
   });
   readonly full = computed(() => {
     const max = this.selected()?.max_members;
@@ -199,12 +250,41 @@ export class TeamMembersComponent implements OnInit {
       },
       error: err => this.teamsError.set(apiError(err)),
     });
-    if (this.canEdit()) {
+    if (this.managesOwn()) {
+      this.api.myClasses().subscribe({
+        next: m => this.mine.set(m),
+        error: err => this.outcome.set(`Your classes could not be loaded: ${apiError(err)}`),
+      });
+    }
+    if (this.isAdmin() || this.managesOwn()) {
       this.api.listUsers().subscribe({
         next: u => this.users.set(u),
         error: err => this.usersError.set(`People could not be listed: ${apiError(err)}`),
       });
     }
+  }
+
+  /** POST /teams for an exercise the instructor runs; the new team is selected. */
+  create(): void {
+    const name = this.newTeamName.trim();
+    const exercise = this.myExercises().find(x => x.id === this.newExerciseId);
+    if (!name || !exercise) return;
+    this.busy.set(true);
+    this.api.createTeam({ name, exercise_id: exercise.id, is_persistent: false }).subscribe({
+      next: team => {
+        this.busy.set(false);
+        this.teams.set([...(this.teams() ?? []), team]);
+        this.newTeamName = '';
+        this.select(team);
+        this.outcome.set(`Team ${team.name} created for ${exercise.name}.`);
+      },
+      error: err => {
+        this.busy.set(false);
+        const msg = apiError(err);
+        this.outcome.set(`Not created: ${msg}`);
+        this.notify.error(msg);
+      },
+    });
   }
 
   select(t: TeamSummary): void {

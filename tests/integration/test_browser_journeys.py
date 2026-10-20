@@ -640,6 +640,81 @@ def test_self_enrolment_once_and_refusals(world, visit):
 
 
 # ══════════════════════════════════════════════════════════════════════════════════════════
+# (4b) An instructor sets up their own class (#200): on the course they teach (a booking
+#      names them its instructor) they enrol a Student, and for the exercise they run they
+#      create a team and put the Student on it. Elsewhere they are refused.
+# ══════════════════════════════════════════════════════════════════════════════════════════
+def test_instructor_enrols_a_student_and_creates_a_team_for_their_class(world, visit):
+    from app.models import AuditLog, Course, User, UserRole
+    from app.scheduler.models import EventState, ScheduledEvent
+    from playwright.sync_api import expect
+
+    db = world.db
+    exercise = make_exercise(world, "Journey Class Exercise")
+    taught = Course(id=uuid.uuid4(), name="Journey Taught Course", tenant_id=world.tenant, is_published=True)
+    uid = uuid.uuid4()
+    cy = User(id=uid, keycloak_id=f"kc-{uid}", email=f"cy-{uid.hex[:6]}@example.test", display_name="Cy Student",
+              first_name="Cy", last_name="Student", role=UserRole.student, tenant_id=world.tenant,
+              onboarding_state="complete", onboarded_at=datetime.now(UTC))
+    db.add_all([taught, cy])
+    db.flush()
+    now = datetime.now(UTC)
+    db.add(ScheduledEvent(name="Ines's class", tenant_id=world.tenant, instructor_id=world.instructor.id,
+                          course_id=taught.id, exercise_id=uuid.UUID(exercise["id"]), state=EventState.scheduled,
+                          start_time=now + timedelta(days=1), end_time=now + timedelta(days=1, hours=4)))
+    db.commit()
+    staff = Api(world, world.instructor)
+
+    # Enrol Cy on the taught course, in the browser.
+    ins = visit(world.instructor, "/learning/admin/progress")
+    expect(title(ins, "Student progress")).to_be_visible()
+    ins.get_by_role("combobox", name="Course").click()
+    ins.get_by_role("option", name="Journey Taught Course").click()
+    ins.get_by_role("combobox", name="Student").click()
+    ins.get_by_role("option", name=re.compile("Cy Student")).click()
+    ins.get_by_role("button", name="Enrol").click()
+    expect(ins.get_by_role("status").filter(has_text="enrolled on Journey Taught Course")).to_be_visible()
+
+    roster = ok(staff.get(f"/courses/{taught.id}/enrollments"))
+    [row] = [e for e in roster if e["user_id"] == str(cy.id)]
+    assert row["status"] == "enrolled"
+    assert str(taught.id) in {e["course_id"] for e in ok(Api(world, cy).get("/courses/enrollments/mine"))}
+
+    # Create a team for the exercise and put Cy on it, in the browser.
+    ins.goto("/teams")
+    expect(title(ins, "Team membership")).to_be_visible()
+    ins.get_by_role("combobox", name="Exercise you run").click()
+    ins.get_by_role("option", name="Journey Class Exercise").click()
+    ins.get_by_role("textbox", name="Team name").fill("Journey Blue Cell")
+    ins.get_by_role("button", name="Create team").click()
+    expect(ins.get_by_role("status").filter(has_text="Team Journey Blue Cell created")).to_be_visible()
+    ins.get_by_role("combobox", name="Person").click()
+    ins.get_by_role("option", name=re.compile("Cy Student")).click()
+    ins.get_by_role("button", name="Add").click()
+    expect(ins.get_by_role("status").filter(has_text="Cy Student added to Journey Blue Cell")).to_be_visible()
+
+    # Persisted: after a reload, and through the API.
+    ins.reload()
+    ins.get_by_role("navigation", name="Teams").get_by_role("button", name="Journey Blue Cell", exact=True).click()
+    expect(ins.get_by_role("heading", level=2, name="Journey Blue Cell")).to_be_visible()
+    expect(ins.get_by_role("cell", name="Cy Student", exact=True)).to_be_visible()
+    [team] = [t for t in ok(staff.get("/teams")) if t["name"] == "Journey Blue Cell"]
+    assert team["exercise_id"] == exercise["id"]
+    assert [m["user_id"] for m in ok(staff.get(f"/teams/{team['id']}/members"))] == [str(cy.id)]
+    db.expire_all()
+    actions = {a.action for a in db.query(AuditLog).filter(AuditLog.user_id == world.instructor.id)}
+    assert {"enrollment_create", "create", "add_member"} <= actions, actions
+
+    # Elsewhere, refused: a course they do not teach, a standing team, and a Student's attempt.
+    other = str(world.courses.open.id)
+    assert staff.post(f"/courses/{other}/enroll", json={"user_id": str(cy.id), "course_id": other}).status_code == 403
+    standing = ok(Api(world, world.admin).post("/teams", json={"name": "Journey Standing"}), 201)
+    assert staff.patch(f"/teams/{standing['id']}", json={"name": "x"}).status_code == 403
+    assert staff.post("/teams", json={"name": "No exercise"}).status_code == 403
+    assert Api(world, cy).post("/teams", json={"name": "x", "exercise_id": exercise["id"]}).status_code == 403
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
 # (5) Detection (ADR 0005): a Student who takes part submits a detection query in the
 #     exercise and it is recorded and credited; a Student who does not take part is refused.
 # ══════════════════════════════════════════════════════════════════════════════════════════

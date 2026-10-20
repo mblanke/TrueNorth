@@ -709,6 +709,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/class-setup/mine": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * My Classes
+         * @description The courses you teach and the exercises you run: your own upcoming or running booking
+         *     (not ended; not draft, cancelled or completed) in your tenant names you its instructor
+         *     (app/class_setup/scope.py). A change is still refused (409) while another instructor's
+         *     session of the same course or exercise is running.
+         *
+         *     **Permission: enrollment:manage_own or team:manage_own**
+         */
+        get: operations["my_classes_class_setup_mine_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/cmi5/fetch/{secret}": {
         parameters: {
             query?: never;
@@ -1542,10 +1567,17 @@ export interface paths {
         put?: never;
         /**
          * Enroll User
-         * @description Enroll a user in a course: a Student's self-enrolment, or an admin enrolling someone.
+         * @description Enroll a user in a course: a Student's self-enrolment, or staff enrolling someone.
          *
-         *     Enrolling someone *other* than yourself is an administrative act (``user:update``, own
-         *     tenant). The server decides eligibility, whatever the client shows:
+         *     Enrolling someone *other* than yourself needs ``user:update`` (an admin: anyone in the
+         *     tenant) or ``enrollment:manage_own`` (an instructor: a Student of the tenant, on the
+         *     course of their own upcoming or running session; app/class_setup/scope.py). Another
+         *     tenant's person is 404; a course you do not teach, or staff, is 403; while another
+         *     instructor's session of the course is running, 409. Enrolling someone else is audited
+         *     (``enrollment_create`` / ``enrollment_update``) and reopens their withdrawn enrolment if
+         *     it has no outcome (to ``in_progress`` if it had started); your own withdrawn enrolment
+         *     stays withdrawn. A ``failed`` or ``in_progress`` outcome is never reset.
+         *     The server decides eligibility, whatever the client shows:
          *
          *     - the course is in the caller's catalogue: their tenant's, or a global (shared) one —
          *       another tenant's is 404, as for any read;
@@ -1639,6 +1671,35 @@ export interface paths {
         get: operations["get_user_progress_courses__course_id__progress__user_id__get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/courses/{course_id}/withdraw/{user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Withdraw Enrollment
+         * @description Withdraw (unenrol) someone from a course.
+         *
+         *     The enrolment is kept, as a record, with status ``withdrawn``: it no longer seats them
+         *     in the class's exercises, labs or launches. Enrolling them again reopens it.
+         *
+         *     **Permission: user:update** (anyone in the tenant) **or enrollment:manage_own** (a
+         *     Student of the tenant, on the course of your own upcoming or running session; 409 while
+         *     another instructor's session of it runs). Another tenant's course or person: 404; no
+         *     enrolment: 404; a completed or failed one: 409 (an outcome is the Student's record).
+         *     Audited (``enrollment_withdraw``). Withdrawing again answers the withdrawn row unchanged.
+         */
+        post: operations["withdraw_enrollment_courses__course_id__withdraw__user_id__post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -6806,7 +6867,13 @@ export interface paths {
         put?: never;
         /**
          * Create Team
-         * @description Create a team with full schema (type, color, max_members, etc).  **Permission: user:update**
+         * @description Create a team with full schema (type, color, max_members, etc).
+         *
+         *     **Permission: user:update, or team:manage_own** with ``exercise_id`` naming the exercise
+         *     of your own upcoming or running session (app/class_setup/scope.py). Another tenant's
+         *     exercise is 404; an exercise you do not run, or no exercise, is 403; a completed or
+         *     cancelled exercise, or another instructor's running session of it, is 409. ``ou_id``
+         *     must be an OU of your tenant and ``nation_id`` a known nation (422).
          */
         post: operations["create_team_teams_post"];
         delete?: never;
@@ -6827,14 +6894,19 @@ export interface paths {
         post?: never;
         /**
          * Delete Team
-         * @description Delete a team and its memberships.  **Permission: user:update**
+         * @description Delete a team and its memberships.  **Permission: user:update, or team:manage_own**
+         *     for a team of an exercise you run that has only Students on it (staff on a team are an
+         *     admin's to move: 403). A completed or cancelled exercise's team is frozen (409, admins
+         *     too). Audited (``delete``, with the members removed).
          */
         delete: operations["delete_team_teams__team_id__delete"];
         options?: never;
         head?: never;
         /**
          * Update Team
-         * @description Update a team.  **Permission: user:update**
+         * @description Update a team.  **Permission: user:update, or team:manage_own** for a team of an
+         *     exercise you run. A completed or cancelled exercise's team is frozen (409, admins too).
+         *     Audited (``update``, the fields changed).
          *
          *     Until 2026-10-07 this needed only a login: a student could rename or resize
          *     any team in their tenant.
@@ -6860,7 +6932,10 @@ export interface paths {
         put?: never;
         /**
          * Add Team Member
-         * @description Add a user to a team.  **Permission: user:update**
+         * @description Add a user to a team.  **Permission: user:update** (anyone in the tenant), **or
+         *     team:manage_own** (a Student enrolled in your session's course, to a team of an
+         *     exercise you run). Never to a completed or cancelled exercise's team (409): membership
+         *     opens that run's after-action report.
          */
         post: operations["add_team_member_teams__team_id__members_post"];
         delete?: never;
@@ -6881,7 +6956,10 @@ export interface paths {
         post?: never;
         /**
          * Remove Team Member
-         * @description Remove a user from a team.  **Permission: user:update**
+         * @description Remove a user from a team.  **Permission: user:update** (anyone), **or
+         *     team:manage_own** (a Student, from a team of an exercise you run). A completed or
+         *     cancelled exercise's team is frozen (409, admins too): removing a member would take
+         *     their own run's AAR from them.
          */
         delete: operations["remove_team_member_teams__team_id__members__member_user_id__delete"];
         options?: never;
@@ -8741,6 +8819,16 @@ export interface components {
             submitted_at?: string | null;
             /** Verdict */
             verdict: string;
+        };
+        /** ClassItemOut */
+        ClassItemOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
         };
         /**
          * ClassLabOut
@@ -11833,6 +11921,16 @@ export interface components {
             sync_interval_seconds?: number;
         };
         /**
+         * MyClassesOut
+         * @description Taught courses and run exercises, by name. Each list is sorted by name.
+         */
+        MyClassesOut: {
+            /** Courses */
+            courses: components["schemas"]["ClassItemOut"][];
+            /** Exercises */
+            exercises: components["schemas"]["ClassItemOut"][];
+        };
+        /**
          * MySessionOut
          * @description A session as a Student sees it: no capacity, no other people.
          */
@@ -14135,6 +14233,11 @@ export interface components {
             color_hex?: string | null;
             /** Description */
             description?: string | null;
+            /**
+             * Exercise Id
+             * @description The exercise the team is for (your tenant's). Required for an instructor: one they run.
+             */
+            exercise_id?: string | null;
             /**
              * Is Persistent
              * @default true
@@ -16979,6 +17082,26 @@ export interface operations {
             };
         };
     };
+    my_classes_class_setup_mine_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyClassesOut"];
+                };
+            };
+        };
+    };
     fetch_cmi5_auth_token_cmi5_fetch__secret__post: {
         parameters: {
             query?: never;
@@ -18511,7 +18634,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Already enrolled: the existing enrolment, unchanged */
+            /** @description Already enrolled: the existing enrolment. Unchanged, except when staff enrol someone else: a self-enrolment becomes assigned, and a withdrawn enrolment with no outcome (no completion, no grade) is reopened, to in_progress if it had started, else enrolled */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -18623,6 +18746,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ModuleProgressOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    withdraw_enrollment_courses__course_id__withdraw__user_id__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                course_id: string;
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnrollmentOut"];
                 };
             };
             /** @description Validation Error */
