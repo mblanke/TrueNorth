@@ -14,7 +14,7 @@ A dry run does all the work in one transaction, reads the class back through
 
 What it uses, and never creates or changes: the tenant (the only one, or
 ``PLATFORM_TENANT_ID``), the staff (the instructor and the admin must already have signed
-in; matched by email or display-name prefix ``tn.instructor`` / ``tn.admin``), a published
+in; matched by email or display-name prefix ``tn.instructor`` and the local admin ``tnadmin@tn-mgmt01.local``), a published
 course (``--course``, default the threat-hunting one) and a range template (``--template``,
 default "Medium Enterprise Network"), which sizes the booking through
 ``range_topology.template_demand`` exactly as ``POST /scheduler/events`` does.
@@ -62,7 +62,7 @@ EMAIL_DOMAIN = "demo.invalid"
 DEFAULT_COURSE = "Advanced Threat Hunting"
 DEFAULT_TEMPLATE = "Medium Enterprise Network"
 DEFAULT_MANIFEST = "/tmp/demo-live-class.json"
-STAFF_PREFIX = {"instructor": "tn.instructor", "admin": "tn.admin"}
+STAFF_PREFIX = {"instructor": "tn.instructor", "admin": "tnadmin@tn-mgmt01.local"}  # the local admin
 RUN_ID = "demo-run-1"
 
 
@@ -183,7 +183,8 @@ def staff(db, tid, prefixes: dict[str, str]) -> dict:
             .filter(
                 User.tenant_id == tid,
                 User.deleted_at.is_(None),
-                or_(func.lower(User.email).like(f"{prefix}@%"), func.lower(User.display_name).like(f"{prefix}%")),
+                or_(func.lower(User.email) == prefix, func.lower(User.email).like(f"{prefix}@%"),
+                    func.lower(User.display_name).like(f"{prefix}%")),
             )
             .all()
         )
