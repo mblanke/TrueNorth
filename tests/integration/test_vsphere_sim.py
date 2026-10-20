@@ -385,7 +385,11 @@ def test_a_windows_server_role_sizes_the_clone_and_grows_its_disk(env, si, range
     built = _run(prov.provision(range_id, template, _reserve(prov, range_id, template)))
     assert built.status == "ok", built.errors
     (vm_out,) = built.vms
-    assert vm_out["roles"] == {"exchange": {"status": "ok", "detail": "in role image"}}
+    # The range has no domain controller, so the deploy-time Exchange setup is skipped (not
+    # failed, the range stays ok); this test is about the clone's sizing and disk growth.
+    assert vm_out["roles"]["exchange"]["status"] == "skipped"
+    assert "no forest-root domain controller" in vm_out["roles"]["exchange"]["detail"]
+    assert vm_out["role_setup"]["status"] == "skipped"
     vm = vim.VirtualMachine(vm_out["vm_id"], si._stub)
     assert (vm.config.hardware.numCPU, vm.config.hardware.memoryMB) == (4, 16384)
     disk = next(d for d in vm.config.hardware.device if isinstance(d, vim.vm.device.VirtualDisk))
