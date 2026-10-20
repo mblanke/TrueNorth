@@ -216,9 +216,10 @@ run_govc() {
 }
 
 # The inventory path of the one VM or template called exactly $1 (empty: none). Searched
-# from the root, so it is found in any folder (TrueNorth/Templates or elsewhere).
+# from the root, so it is found in any folder (TrueNorth/Templates or elsewhere) except
+# */_retired/ (old hand-made templates moved aside by vcenter-organize.sh).
 find_vm() {
-  govc find / -type m -name "$1" 2>/dev/null | head -n1
+  govc find / -type m -name "$1" 2>/dev/null | awk '!/\/_retired\//' | head -n1
 }
 
 # tn-* tags on a template or copy: tag_vm <inventory path> <tn-type> <catalogue id>.

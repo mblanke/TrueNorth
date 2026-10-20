@@ -30,6 +30,7 @@ pytestmark = [pytest.mark.integration, pytest.mark.vcsim]
 ROOT = Path(__file__).resolve().parents[2]
 TOOL = ROOT / "scripts/lab/vcenter_organize.py"
 RID = "2fc8d04d-1111-4222-8333-444455556666"
+KEY = "2fc8d04d1111"  # vsphere_tags.range_key
 
 if not (shutil.which("vcsim") and shutil.which("govc")):
     pytest.skip("vcsim and govc are needed (go install github.com/vmware/govmomi/vcsim@v0.56.0)",
@@ -73,7 +74,8 @@ def sim(tmp_path):
         extra = []
         if ranges is not None:
             f = tmp_path / "ranges.json"
-            f.write_text(json.dumps(ranges))
+            # As tn_ranges_inprocess.py prints it; kali-linux is a template TrueNorth registered.
+            f.write_text(json.dumps({"ranges": ranges, "templates": ["kali-linux", "ubuntu-lts"]}))
             extra = ["--ranges", str(f)]
         return subprocess.run([sys.executable, str(TOOL), *args, *extra], env=env, capture_output=True, text=True,
                               timeout=300)
@@ -122,7 +124,7 @@ def test_apply_consolidates_and_tags_then_has_nothing_left_to_do(sim):
     got = sim.tool("apply", "--dc", "DC0", ranges=RANGES)
     assert got.returncode == 0, got.stdout + got.stderr
     paths = _paths(sim)
-    label = f"ubuntu-lab-{RID[:8]}"
+    label = f"ubuntu-lab-{KEY}"
     for n in ("ubu01", "ubu02", "ubu03"):
         assert f"/DC0/vm/TrueNorth/Ranges/{label}/{RID[:8]}-{n}" in paths
     assert "/DC0/vm/TrueNorth/Templates/_retired/kali-linux" in paths  # moved, not deleted
@@ -144,7 +146,8 @@ def test_apply_consolidates_and_tags_then_has_nothing_left_to_do(sim):
     assert _tags(sim, f"{r}/{RID[:8]}-ubu02") == {"tn-type": "range-vm", "tn-range": label}
     assert _tags(sim, "/DC0/vm/TN-DEPOT01") == {"tn-type": "depot"}
     assert _tags(sim, "/DC0/vm/TN-MGMT01") == {"tn-type": "mgmt"}
-    for untouched in ("/DC0/vm/WIN11-TMPL", f"{t}/_retired/kali-linux", "/DC0/vm/DC0_H0_VM0"):
+    assert _tags(sim, f"{t}/_retired/kali-linux") == {"tn-type": "retired"}
+    for untouched in ("/DC0/vm/WIN11-TMPL", "/DC0/vm/DC0_H0_VM0"):
         assert _tags(sim, untouched) == {}
 
     again = sim.tool("plan", "--dc", "DC0", ranges=RANGES)
@@ -168,7 +171,7 @@ def test_without_the_database_range_folders_keep_their_id(sim):
     # With the database later, the id-only folder is renamed in place.
     got = sim.tool("apply", "--dc", "DC0", ranges=RANGES)
     assert got.returncode == 0, got.stdout + got.stderr
-    assert f"/DC0/vm/TrueNorth/Ranges/ubuntu-lab-{RID[:8]}/{RID[:8]}-ubu01" in _paths(sim)
+    assert f"/DC0/vm/TrueNorth/Ranges/ubuntu-lab-{KEY}/{RID[:8]}-ubu01" in _paths(sim)
 
 
 def test_a_name_taken_in_the_target_stays_where_it_is(sim):

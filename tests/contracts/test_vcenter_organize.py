@@ -42,23 +42,31 @@ org = _load("vcenter_organize", LAB / "vcenter_organize.py")
 ranges_inprocess = _load("tn_ranges_inprocess", LAB / "tn_ranges_inprocess.py")
 
 RID = "2fc8d04d-1111-4222-8333-444455556666"
+KEY = "2fc8d04d1111"
 OS_MAP = org.load_os_map()
 
 
 # -- one definition, kit and worker -----------------------------------------------------
 
 def test_kit_and_worker_define_the_same_tags():
+    from worker.provisioners import vsphere_api
     from worker.provisioners import vsphere_tags as worker_tags
 
     assert org.CATEGORIES == worker_tags.CATEGORIES
     assert org.TYPES == worker_tags.TYPES
+    assert org.KEY_LEN == worker_tags.KEY_LEN == 12
     assert org.RANGES == "TrueNorth/Ranges" and f"{org.LEGACY}/ranges" in worker_tags.LEGACY_RANGE_ROOTS
-    for name in ("Blue Team 3", "", None, "lab-2fc8d04d", "x" * 90, "ARC² Week/1"):
+    assert org.RETIRED.rsplit("/", 1)[1] == worker_tags.RETIRED_FOLDER
+    assert org.RANGE_TAG.pattern.startswith(vsphere_api.RANGE_TAG)
+    for name in ("Blue Team 3", "", None, f"lab-{KEY}", "x" * 90, "ARC² Week/1"):
         assert org.range_label(name, RID) == worker_tags.range_label(name, RID)
-    for folder in ("2fc8d04d", "blue-2fc8d04d", "x2fc8d04d", "2fc8d04d-x", "nothex99"):
-        assert (org.folder_id8(folder) == "2fc8d04d") == worker_tags.range_folder_id8(folder, "2fc8d04d")
+    for folder in (RID[:8], f"blue-{RID[:8]}", f"x{RID[:8]}", f"{RID[:8]}-x", "nothex99", KEY, f"b-{KEY}",
+                   "x-2fc8d04d9999"):
+        assert org.belongs_to(folder, RID) == worker_tags.belongs_to(folder, RID), folder
+        assert org.is_legacy_folder(folder) == worker_tags.is_legacy_folder(folder), folder
     for source in ("ubuntu-lts@esx02-20261020", "library:srv2022", "kali"):
         assert org.template_id(source) == worker_tags.template_id(source)
+    assert org.annotated_range(vsphere_api.range_annotation(RID)) == RID
 
 
 def test_the_worker_default_is_the_kit_target():
@@ -81,36 +89,43 @@ def test_os_aliases_come_from_the_catalogue_and_variants():
 
 # -- the plan -----------------------------------------------------------------------------
 
-def _inv(vms: list[tuple[str, str, bool]], folders: set[str], tags: dict | None = None) -> org.Inventory:
-    out = [org.Vm(moid, f"/DC-Lab/vm/{rel}", template, dict((tags or {}).get(moid, {}))) for moid, rel, template in vms]
+def _inv(vms: list[tuple], folders: set[str], tags: dict | None = None) -> org.Inventory:
+    """VMs as (moid, relative path, template[, annotation[, powered on]])."""
+    out = []
+    for moid, rel, template, *more in vms:
+        annotation, on = (list(more) + ["", False])[:2]
+        out.append(org.Vm(moid, f"/DC-Lab/vm/{rel}", template, dict((tags or {}).get(moid, {})), annotation, on))
     return org.Inventory("DC-Lab", out, folders)
 
 
+ANN = f"TrueNorth range VM. Deleted with its range. truenorth-range:{RID}"  # vsphere_api.range_annotation
 # The work vCenter's VM folders on 2026-10-20 (read by the coordinator), plus what must stay put.
-TREE = _inv(
-    [("vm-1", f"truenorth/ranges/{RID[:8]}/{RID[:8]}-ubu01", False),
-     ("vm-2", f"truenorth/ranges/{RID[:8]}/{RID[:8]}-ubu02", False),
-     ("vm-3", f"truenorth/ranges/{RID[:8]}/{RID[:8]}-ubu03", False),
-     ("vm-4", "truenorth/templates/kali-linux", True),
-     ("vm-5", "TrueNorth/Templates/ubuntu-lts", True),
-     ("vm-6", "TrueNorth/Templates/ubuntu-lts@esx02-20261020", True),
-     ("vm-7", "TrueNorth/Templates/ubuntu-lts@esx03-20261020", True),
-     ("vm-8", "TrueNorth/Templates/ubuntu-lts@esx04-20261020", True),
-     ("vm-9", "TrueNorth/Templates/kali", True),
-     ("vm-10", "TrueNorth/Templates/srv2022", True),
-     ("vm-20", "WIN11-TMPL", True),
-     ("vm-21", "Discovered virtual machine/vcsa01", False),
-     ("vm-22", "vCLS/vCLS-4c4c4544", False),
-     ("vm-23", "kali-linux", False),  # someone's own VM of that name, outside TrueNorth's folders
-     ("vm-24", "TN-DEPOT01", False),
-     ("vm-25", "TN-MGMT01", False)],
-    {"truenorth", "truenorth/ranges", f"truenorth/ranges/{RID[:8]}", "truenorth/templates",
-     "TrueNorth", "TrueNorth/Templates", "Discovered virtual machine", "vCLS"},
-)
+TREE_VMS = [
+    ("vm-1", f"truenorth/ranges/{RID[:8]}/{RID[:8]}-ubu01", False, ANN, True),
+    ("vm-2", f"truenorth/ranges/{RID[:8]}/{RID[:8]}-ubu02", False, ANN, True),
+    ("vm-3", f"truenorth/ranges/{RID[:8]}/{RID[:8]}-ubu03", False, ANN, True),
+    ("vm-4", "truenorth/templates/kali-linux", True),
+    ("vm-5", "TrueNorth/Templates/ubuntu-lts", True),
+    ("vm-6", "TrueNorth/Templates/ubuntu-lts@esx02-20261020", True),
+    ("vm-7", "TrueNorth/Templates/ubuntu-lts@esx03-20261020", True),
+    ("vm-8", "TrueNorth/Templates/ubuntu-lts@esx04-20261020", True),
+    ("vm-9", "TrueNorth/Templates/kali", True),
+    ("vm-10", "TrueNorth/Templates/srv2022", True),
+    ("vm-20", "WIN11-TMPL", True),
+    ("vm-21", "Discovered virtual machine/vcsa01", False),
+    ("vm-22", "vCLS/vCLS-4c4c4544", False),
+    ("vm-23", "kali-linux", False),  # someone's own VM of that name, outside TrueNorth's folders
+    ("vm-24", "TN-DEPOT01", False),
+    ("vm-25", "TN-MGMT01", False),
+]
+TREE_FOLDERS = {"truenorth", "truenorth/ranges", f"truenorth/ranges/{RID[:8]}", "truenorth/templates",
+                "TrueNorth", "TrueNorth/Templates", "Discovered virtual machine", "vCLS"}
+TREE = _inv(TREE_VMS, TREE_FOLDERS)
 RANGES = [{"id": RID, "name": "Ubuntu Lab", "state": "ready",
            "vms": [{"name": f"{RID[:8]}-ubu01", "template": "ubuntu-lts@esx02-20261020"}]},
           {"id": "0badc0de-0000-4000-8000-000000000000", "name": "gone", "state": "destroyed"}]
-LABEL = f"ubuntu-lab-{RID[:8]}"
+LABEL = f"ubuntu-lab-{KEY}"
+REGISTERED = ["kali-linux", "ubuntu-lts"]  # golden-image template names (tn_ranges_inprocess.py)
 
 
 def _steps(plan, kind: str) -> list[tuple]:
@@ -118,7 +133,7 @@ def _steps(plan, kind: str) -> list[tuple]:
 
 
 def test_plan_for_the_work_vcenter_tree():
-    plan = org.make_plan(TREE, RANGES, OS_MAP)
+    plan = org.make_plan(TREE, RANGES, OS_MAP, known_templates=REGISTERED)
     assert not plan.refuse
     assert _steps(plan, "mkdir") == [("/DC-Lab/vm/TrueNorth/Ranges",), ("/DC-Lab/vm/TrueNorth/Templates/_retired",)]
     assert _steps(plan, "move") == [
@@ -129,6 +144,7 @@ def test_plan_for_the_work_vcenter_tree():
     assert _steps(plan, "rmdir") == [("/DC-Lab/vm/truenorth/ranges",), ("/DC-Lab/vm/truenorth/templates",),
                                      ("/DC-Lab/vm/truenorth",)]  # deepest first, the root last
     tags = {ref: want for ref, _, want in _steps(plan, "tag")}
+    assert tags["VirtualMachine:vm-4"] == {"tn-type": "retired"}
     assert tags["VirtualMachine:vm-5"] == {"tn-type": "golden-template", "tn-template": "ubuntu-lts", "tn-os": "ubuntu-2404"}
     assert tags["VirtualMachine:vm-7"] == {"tn-type": "template-copy", "tn-template": "ubuntu-lts", "tn-os": "ubuntu-2404"}
     assert tags["VirtualMachine:vm-10"]["tn-os"] == "windows-server-2022"
@@ -143,56 +159,108 @@ def test_plan_for_the_work_vcenter_tree():
 
 
 def test_nothing_outside_truenorth_is_in_the_plan():
-    plan = org.make_plan(TREE, RANGES, OS_MAP)
+    plan = org.make_plan(TREE, RANGES, OS_MAP, known_templates=REGISTERED)
     text = "\n".join(str(a) for a in plan.actions)
-    for other in ("WIN11-TMPL", "vcsa01", "vCLS", "Discovered virtual machine", "vm-23", "vm-4", "/DC-Lab/vm/kali-linux"):
+    for other in ("WIN11-TMPL", "vcsa01", "vCLS", "Discovered virtual machine", "vm-23", "/DC-Lab/vm/kali-linux"):
         assert other not in text, other
     assert all(a.args[0].startswith(("/DC-Lab/vm/truenorth", "/DC-Lab/vm/TrueNorth")) for a in plan.actions
                if a.kind in ("move", "rename", "rmdir"))
 
 
+def test_an_unknown_template_under_truenorth_is_left_and_reported():
+    plan = org.make_plan(TREE, RANGES, OS_MAP)  # kali-linux neither registered nor --retire
+    assert not [m for m in _steps(plan, "move") if "kali-linux" in m[0]]
+    assert any("kali-linux" in n and "--retire" in n for n in plan.notes)
+    assert ("/DC-Lab/vm/truenorth/templates",) not in _steps(plan, "rmdir")  # not emptied: kept
+    assert ("/DC-Lab/vm/truenorth",) not in _steps(plan, "rmdir")
+    retired = org.make_plan(TREE, RANGES, OS_MAP, retire=["kali-linux"])
+    assert ("/DC-Lab/vm/truenorth/templates/kali-linux", "/DC-Lab/vm/TrueNorth/Templates/_retired") \
+        in _steps(retired, "move")
+
+
+def test_a_powered_on_vm_is_never_retired():
+    vms = [v if v[0] != "vm-4" else ("vm-4", "truenorth/templates/kali-linux", True, "", True) for v in TREE_VMS]
+    plan = org.make_plan(_inv(vms, TREE_FOLDERS), RANGES, OS_MAP, retire=["kali-linux"])
+    assert not [m for m in _steps(plan, "move") if "kali-linux" in m[0]]
+    assert any("kali-linux" in n and "powered on" in n for n in plan.notes)
+
+
+def test_a_vm_under_truenorth_that_is_not_truenorths_is_left():
+    vms = [*TREE_VMS, ("vm-30", "truenorth/someones-vm", False),
+           ("vm-31", f"truenorth/ranges/{RID[:8]}/stray-vm", False)]
+    plan = org.make_plan(_inv(vms, TREE_FOLDERS), RANGES, OS_MAP, known_templates=REGISTERED)
+    text = "\n".join(str(a) for a in plan.actions)
+    assert "someones-vm" not in text and "stray-vm" not in text
+    assert any("someones-vm" in n and "not recognised" in n for n in plan.notes)
+    assert any("stray-vm" in n and "not a TrueNorth range VM" in n for n in plan.notes)
+    # The range folder no longer moves whole (it holds a stranger): its VMs move one by one.
+    assert (f"/DC-Lab/vm/truenorth/ranges/{RID[:8]}", "/DC-Lab/vm/TrueNorth/Ranges") not in _steps(plan, "move")
+    assert (f"/DC-Lab/vm/truenorth/ranges/{RID[:8]}/{RID[:8]}-ubu01", f"/DC-Lab/vm/TrueNorth/Ranges/{LABEL}") \
+        in _steps(plan, "move")
+    assert not [r for r in _steps(plan, "rmdir") if r[0].startswith("/DC-Lab/vm/truenorth/ranges")]
+    assert ("/DC-Lab/vm/truenorth",) not in _steps(plan, "rmdir")
+
+
+def test_a_folder_that_was_already_empty_is_not_this_runs_to_remove():
+    folders = TREE_FOLDERS | {"truenorth/old-empty"}
+    plan = org.make_plan(_inv(TREE_VMS, folders), RANGES, OS_MAP, known_templates=REGISTERED)
+    assert ("/DC-Lab/vm/truenorth/old-empty",) not in _steps(plan, "rmdir")
+    assert any("old-empty" in n and "empty before this run" in n for n in plan.notes)
+    assert ("/DC-Lab/vm/truenorth",) not in _steps(plan, "rmdir")  # it still holds old-empty
+
+
+def test_two_ranges_sharing_an_id8_keep_the_old_folder_name():
+    twin = {"id": f"{RID[:8]}-9999-4999-8999-999999999999", "name": "Twin", "state": "ready"}
+    plan = org.make_plan(TREE, [*RANGES, twin], OS_MAP, known_templates=REGISTERED)
+    assert not [r for r in _steps(plan, "rename") if r[0].endswith(f"/{RID[:8]}")]
+    assert any("share id" in n for n in plan.notes)
+    tags = {ref: want for ref, _, want in _steps(plan, "tag")}
+    assert tags["VirtualMachine:vm-1"]["tn-range"] == LABEL  # its annotation names the range
+
+
 def test_after_apply_the_plan_is_empty():
-    plan = org.make_plan(TREE, RANGES, OS_MAP)
+    plan = org.make_plan(TREE, RANGES, OS_MAP, known_templates=REGISTERED)
     tags = {ref.split(":")[1]: want for ref, _, want in _steps(plan, "tag")}
     done = _inv(
-        [("vm-1", f"TrueNorth/Ranges/{LABEL}/{RID[:8]}-ubu01", False),
-         ("vm-2", f"TrueNorth/Ranges/{LABEL}/{RID[:8]}-ubu02", False),
-         ("vm-3", f"TrueNorth/Ranges/{LABEL}/{RID[:8]}-ubu03", False),
+        [("vm-1", f"TrueNorth/Ranges/{LABEL}/{RID[:8]}-ubu01", False, ANN, True),
+         ("vm-2", f"TrueNorth/Ranges/{LABEL}/{RID[:8]}-ubu02", False, ANN, True),
+         ("vm-3", f"TrueNorth/Ranges/{LABEL}/{RID[:8]}-ubu03", False, ANN, True),
          ("vm-4", "TrueNorth/Templates/_retired/kali-linux", True),
-         *[(v.moid, TREE.rel(v.path), v.template) for v in TREE.vms if v.moid not in ("vm-1", "vm-2", "vm-3", "vm-4")]],
+         *[v for v in TREE_VMS if v[0] not in ("vm-1", "vm-2", "vm-3", "vm-4")]],
         {"TrueNorth", "TrueNorth/Templates", "TrueNorth/Templates/_retired", "TrueNorth/Ranges",
          f"TrueNorth/Ranges/{LABEL}", "Discovered virtual machine", "vCLS"},
         tags,
     )
-    again = org.make_plan(done, RANGES, OS_MAP)
+    again = org.make_plan(done, RANGES, OS_MAP, known_templates=REGISTERED)
     assert again.actions == [] and not again.refuse
 
 
 def test_a_range_vm_keeps_the_os_and_template_its_build_set():
-    inv = _inv([("vm-1", f"TrueNorth/Ranges/{LABEL}/{RID[:8]}-ubu01", False)], {"TrueNorth", "TrueNorth/Templates",
+    inv = _inv([("vm-1", f"TrueNorth/Ranges/{LABEL}/{RID[:8]}-ubu01", False, ANN)], {"TrueNorth", "TrueNorth/Templates",
                "TrueNorth/Ranges", f"TrueNorth/Ranges/{LABEL}"},
                {"vm-1": {"tn-type": "range-vm", "tn-range": LABEL, "tn-os": "ubuntu-2204", "tn-template": "ubuntu-lts"}})
     assert org.make_plan(inv, RANGES, OS_MAP).actions == []
 
 
-def test_refuses_while_a_range_is_provisioning_or_destroying():
-    for state in ("provisioning", "destroying"):
-        plan = org.make_plan(TREE, [*RANGES, {"id": "0123abcd-0", "name": "b", "state": state}], OS_MAP)
-        assert plan.refuse and state in plan.refuse[0]
+@pytest.mark.parametrize("state", ["created", "provisioning", "destroying", "starting", "stopping", "queued", None])
+def test_refuses_unless_every_range_is_settled(state):
+    plan = org.make_plan(TREE, [*RANGES, {"id": "0123abcd-0", "name": "b", "state": state}], OS_MAP)
+    assert plan.refuse and str(state) in plan.refuse[0]
+    for settled in org.SETTLED_STATES:
+        assert not org.make_plan(TREE, [*RANGES, {"id": "0123abcd-0", "name": "b", "state": settled}], OS_MAP).refuse
 
 
-def test_without_the_database_folders_keep_their_id():
+def test_without_the_database_folders_keep_their_names():
     plan = org.make_plan(TREE, None, OS_MAP)
     assert _steps(plan, "rename") == []
     assert any("not read" in n for n in plan.notes)
     tags = {ref: want for ref, _, want in _steps(plan, "tag")}
-    assert tags["VirtualMachine:vm-1"] == {"tn-type": "range-vm", "tn-range": RID[:8]}
+    assert tags["VirtualMachine:vm-1"] == {"tn-type": "range-vm", "tn-range": KEY}  # from its annotation
 
 
 def test_a_name_already_in_the_target_is_left_and_its_folder_kept():
-    inv = _inv([*[(v.moid, TREE.rel(v.path), v.template) for v in TREE.vms],
-                ("vm-30", "truenorth/templates/srv2022", True)], TREE.folders)
-    plan = org.make_plan(inv, RANGES, OS_MAP)
+    inv = _inv([*TREE_VMS, ("vm-30", "truenorth/templates/srv2022", True)], TREE_FOLDERS)
+    plan = org.make_plan(inv, RANGES, OS_MAP, known_templates=REGISTERED)
     assert ("/DC-Lab/vm/truenorth/templates/srv2022", "/DC-Lab/vm/TrueNorth/Templates") not in _steps(plan, "move")
     assert any("srv2022" in n and "left where it is" in n for n in plan.notes)
     assert ("/DC-Lab/vm/truenorth/templates",) not in _steps(plan, "rmdir")
@@ -200,12 +268,16 @@ def test_a_name_already_in_the_target_is_left_and_its_folder_kept():
 
 
 def test_a_range_that_already_has_a_new_folder_gets_its_vms_moved_in():
-    inv = _inv([(v.moid, TREE.rel(v.path), v.template) for v in TREE.vms],
-               TREE.folders | {"TrueNorth/Ranges", f"TrueNorth/Ranges/old-{RID[:8]}"})
-    plan = org.make_plan(inv, RANGES, OS_MAP)
+    inv = _inv(TREE_VMS, TREE_FOLDERS | {"TrueNorth/Ranges", f"TrueNorth/Ranges/old-{KEY}"})
+    plan = org.make_plan(inv, RANGES, OS_MAP, known_templates=REGISTERED)
     moves = _steps(plan, "move")
-    assert (f"/DC-Lab/vm/truenorth/ranges/{RID[:8]}/{RID[:8]}-ubu01", f"/DC-Lab/vm/TrueNorth/Ranges/old-{RID[:8]}") in moves
+    assert (f"/DC-Lab/vm/truenorth/ranges/{RID[:8]}/{RID[:8]}-ubu01", f"/DC-Lab/vm/TrueNorth/Ranges/old-{KEY}") in moves
     assert (f"/DC-Lab/vm/truenorth/ranges/{RID[:8]}",) in _steps(plan, "rmdir")
+
+
+def test_ranges_input_old_and_new_shape():
+    assert org.load_ranges(RANGES) == (RANGES, [])
+    assert org.load_ranges({"ranges": RANGES, "templates": ["kali-linux", ""]}) == (RANGES, ["kali-linux"])
 
 
 # -- doing it -----------------------------------------------------------------------------
@@ -220,14 +292,56 @@ class FakeGovc:
         return next((out for key, out in self.outputs.items() if " ".join(argv).startswith(key)), "")
 
 
-def test_an_old_folder_is_deleted_only_when_vcenter_says_it_is_empty():
+def _children(*morefs: str) -> str:
+    """``govc object.collect -json <folder> childEntity`` as govc prints it."""
+    return json.dumps([{"name": "childEntity", "op": "assign",
+                        "val": {"_value": [{"type": "VirtualMachine", "value": m} for m in morefs] or None}}])
+
+
+def test_an_old_folder_is_deleted_only_when_the_property_collector_says_it_is_empty():
     plan = org.Plan()
     plan.add("rmdir", "/DC-Lab/vm/truenorth/templates")
+    plan.add("rmdir", "/DC-Lab/vm/truenorth/ranges")
     plan.add("rmdir", "/DC-Lab/vm/truenorth")
-    run = FakeGovc({"ls /DC-Lab/vm/truenorth/templates": "/DC-Lab/vm/truenorth/templates/late-arrival\n"})
+    run = FakeGovc({"object.collect -json /DC-Lab/vm/truenorth/templates childEntity": _children("vm-99"),
+                    "object.collect -json /DC-Lab/vm/truenorth/ranges childEntity": "not json",
+                    "object.collect -json /DC-Lab/vm/truenorth childEntity": _children()})
     assert org.execute(plan, run, log=lambda *_: None) == 0
     destroyed = [c for c in run.calls if c[0] == "object.destroy"]
-    assert destroyed == [["object.destroy", "/DC-Lab/vm/truenorth"]]
+    assert destroyed == [["object.destroy", "/DC-Lab/vm/truenorth"]]  # late arrival kept; unreadable kept
+
+
+def test_no_folder_is_deleted_after_a_failed_step():
+    plan = org.Plan()
+    plan.add("move", "/DC-Lab/vm/truenorth/templates/x", "/DC-Lab/vm/TrueNorth/Templates")
+    plan.add("rmdir", "/DC-Lab/vm/truenorth/templates")
+
+    def run(argv):
+        if argv[0] == "object.mv":
+            raise subprocess.CalledProcessError(1, argv, stderr="govc: busy")
+        return _children()
+
+    calls: list[list[str]] = []
+    assert org.execute(plan, lambda a: calls.append(a) or run(a), log=lambda *_: None) == 1
+    assert not [c for c in calls if c[0] == "object.destroy"]
+
+
+def test_apply_reads_the_ranges_again_before_changing_anything(tmp_path, monkeypatch):
+    """The plan is made from one read; a range that starts building before the first change
+    is caught by a second read and nothing is changed."""
+    reads = iter([{"ranges": RANGES}, {"ranges": [*RANGES, {"id": "0123abcd-0", "name": "b", "state": "provisioning"}]}])
+    script = tmp_path / "ranges.sh"
+    state = tmp_path / "n"
+    state.write_text("0")
+    payloads = [json.dumps(next(reads)), json.dumps(next(reads))]
+    for i, p in enumerate(payloads):
+        (tmp_path / f"r{i}.json").write_text(p)
+    script.write_text(f'n=$(cat {state}); echo $((n+1)) > {state}; cat {tmp_path}/r$n.json\n')
+    monkeypatch.setattr(org, "read_inventory", lambda dc: TREE)
+    executed = []
+    monkeypatch.setattr(org, "execute", lambda plan, *a, **k: executed.append(plan) or 0)
+    assert org.main(["apply", "--dc", "DC-Lab", "--ranges-cmd", f"bash {script}"]) == 3
+    assert executed == [] and state.read_text().strip() == "2"
 
 
 def test_a_single_category_value_is_detached_before_the_new_one():
@@ -286,6 +400,17 @@ case "$1" in
 esac
 """
 
+# docker compose: `run ... api ...tn_ranges_inprocess.py` prints $STUB_RANGES (fails when unset);
+# `exec -T worker-provision printenv VSPHERE_RANGE_FOLDER` prints $STUB_WORKER_FOLDER (fails when unset).
+DOCKER_STUB = r"""#!/usr/bin/env bash
+echo "docker $*" >> "$STUB_STATE/calls"
+case " $* " in
+  *" exec "*) [ -n "${STUB_WORKER_FOLDER:-}" ] || exit 1; echo "$STUB_WORKER_FOLDER" ;;
+  *" run "*) [ -n "${STUB_RANGES:-}" ] || exit 1; cat "$STUB_RANGES" ;;
+  *) exit 1 ;;
+esac
+"""
+
 
 @pytest.fixture
 def wrapper(tmp_path):
@@ -293,53 +418,81 @@ def wrapper(tmp_path):
         pytest.skip("bash and jq are required")
     bindir = tmp_path / "bin"
     bindir.mkdir()
-    for name, body in {"govc": GOVC_STUB, "docker": "#!/usr/bin/env bash\nexit 1\n"}.items():
+    for name, body in {"govc": GOVC_STUB, "docker": DOCKER_STUB}.items():
         (bindir / name).write_text(body)
         (bindir / name).chmod(0o755)
     env_file = tmp_path / ".env.production"
-    env = {k: v for k, v in os.environ.items() if not k.startswith(("GOVC_", "TN_"))}
-    env.update(PATH=f"{bindir}:{os.environ['PATH']}", STUB_STATE=str(tmp_path), TN_LAB_PYTHON=sys.executable)
+    app = tmp_path / "app"
+    (app / "infra/platform/docker").mkdir(parents=True)
+    ranges = tmp_path / "ranges.json"
+    ranges.write_text(json.dumps({"ranges": RANGES, "templates": []}))
+    base = {k: v for k, v in os.environ.items() if not k.startswith(("GOVC_", "TN_", "STUB_"))}
+    base.update(PATH=f"{bindir}:{os.environ['PATH']}", STUB_STATE=str(tmp_path), TN_LAB_PYTHON=sys.executable)
 
-    def run(*args, folder="TrueNorth/Ranges"):
+    def run(*args, folder="TrueNorth/Ranges", worker="TrueNorth/Ranges", db=True):
         env_file.write_text("VSPHERE_URL=https://10.0.0.5\nVSPHERE_USERNAME=svc-truenorth@vsphere.local\n"
                             "VSPHERE_PASSWORD='S3cret!pw'\n" + (f"VSPHERE_RANGE_FOLDER={folder}\n" if folder else ""))
-        return subprocess.run(["bash", str(LAB / "vcenter-organize.sh"), "--env-file", str(env_file), *args],
+        env = {**base, **({"STUB_WORKER_FOLDER": worker} if worker else {}),
+               **({"STUB_RANGES": str(ranges)} if db else {})}
+        return subprocess.run(["bash", str(LAB / "vcenter-organize.sh"), "--env-file", str(env_file),
+                               "--app-dir", str(app), *args],
                               env=env, capture_output=True, text=True, timeout=60)
 
     run.state = tmp_path
     return run
 
 
-def test_dry_run_plans_without_the_database_and_never_prints_the_password(wrapper):
-    got = wrapper("--dry-run")
+def _calls(wrapper) -> list[str]:
+    path = wrapper.state / "calls"
+    return path.read_text().splitlines() if path.exists() else []
+
+
+def test_dry_run_never_prints_the_password_and_changes_nothing(wrapper):
+    got = wrapper("--dry-run", db=False, worker=None)
     assert got.returncode == 0, got.stderr
     assert "plan  create folder /DC-Lab/vm/TrueNorth/Ranges" in got.stdout  # the stub's inventory is empty
     assert "Dry run: nothing changed" in got.stdout
-    assert not [c for c in (wrapper.state / "calls").read_text().splitlines() if c.startswith("folder.create")]
     assert "could not read the TrueNorth ranges" in got.stderr
     assert "S3cret!pw" not in got.stdout + got.stderr
+    assert not [c for c in _calls(wrapper) if c.startswith("folder.create")]
 
 
 def test_apply_without_the_range_list_is_refused(wrapper):
-    got = wrapper("--yes")
+    got = wrapper("--yes", db=False)
     assert got.returncode != 0 and "--no-db only if you are sure" in got.stderr
 
 
-def test_apply_refused_while_the_worker_still_uses_the_old_folder(wrapper):
-    got = wrapper("--yes", "--no-db", folder="truenorth/ranges")
+def test_apply_refused_while_the_env_file_has_the_old_folder(wrapper):
+    got = wrapper("--yes", folder="truenorth/ranges")
     assert got.returncode != 0 and "VSPHERE_RANGE_FOLDER=truenorth/ranges" in got.stderr
     assert "--force-folder" in got.stderr
     warned = wrapper("--dry-run", folder="truenorth/ranges")
     assert warned.returncode == 0 and "new ranges would still go there" in warned.stderr
 
 
-def test_apply_with_a_range_list(wrapper, tmp_path):
-    f = tmp_path / "ranges.json"
-    f.write_text(json.dumps(RANGES))
-    got = wrapper("--yes", "--ranges", str(f))
+def test_apply_refused_while_the_running_worker_has_the_old_folder(wrapper):
+    """The file says TrueNorth/Ranges but the worker was not restarted: what it builds with wins."""
+    got = wrapper("--yes", worker="truenorth/ranges")
+    assert got.returncode != 0 and "running worker-provision has VSPHERE_RANGE_FOLDER=truenorth/ranges" in got.stderr
+    assert any(c.startswith("docker ") and "exec -T worker-provision printenv VSPHERE_RANGE_FOLDER" in c
+               for c in _calls(wrapper))
+
+
+def test_apply_refused_when_the_running_worker_cannot_be_asked(wrapper):
+    got = wrapper("--yes", worker=None)
+    assert got.returncode != 0 and "could not read VSPHERE_RANGE_FOLDER from the running worker-provision" in got.stderr
+    forced = wrapper("--yes", "--force-folder", worker=None)
+    assert forced.returncode == 0, forced.stderr
+
+
+def test_apply_reads_the_ranges_itself(wrapper):
+    got = wrapper("--yes", "--retire", "kali-linux")
     assert got.returncode == 0, got.stderr
     assert "done: 3 step(s) ok, 0 failed" in got.stdout
-    assert "folder.create /DC-Lab/vm/TrueNorth/Ranges" in (wrapper.state / "calls").read_text()
+    calls = _calls(wrapper)
+    assert "folder.create /DC-Lab/vm/TrueNorth/Ranges" in calls
+    # Once for the plan shown, then twice inside apply (before planning, before the first change).
+    assert sum(1 for c in calls if c.startswith("docker ") and " run " in c) == 3
 
 
 # -- build.sh replicate tags its templates ------------------------------------------------

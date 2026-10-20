@@ -511,31 +511,38 @@ One VM-folder tree, `TrueNorth`, for everything TrueNorth puts in vCenter:
 | Folder | What |
 |---|---|
 | `TrueNorth/Templates/` | Golden templates `<id>` and their host copies `<id>@<host>-<yyyymmdd>`, flat (the kit's `vsphere_folder`) |
-| `TrueNorth/Templates/_retired/` | Old hand-made templates such as `kali-linux`: moved here by `vcenter-organize.sh`, never deleted by it (deleting is the owner's call, ADR 0012 decision 2) |
-| `TrueNorth/Ranges/<range-name>-<id8>/` | One folder per range (`VSPHERE_RANGE_FOLDER`, installer `tn_vsphere_range_folder`, default `TrueNorth/Ranges` since 2026-10-20) |
+| `TrueNorth/Templates/_retired/` | Old TrueNorth templates such as `kali-linux`, tagged `tn-type=retired`: moved here by `vcenter-organize.sh`, never deleted by it (deleting is the owner's call, ADR 0012 decision 2). Never a clone source: the provisioner, `build.sh` and `test-clone.sh` skip it |
+| `TrueNorth/Ranges/<range-name>-<key>/` | One folder per range; `<key>` is the first 12 hex digits of the range id (`VSPHERE_RANGE_FOLDER`, installer `tn_vsphere_range_folder`, default `TrueNorth/Ranges` since 2026-10-20) |
 
-The worker finds a range's folder by the `-<id8>` suffix, never by its name, so a renamed
-range, and the id-only folders of earlier builds under `truenorth/ranges`, are still
-found and removed on destroy. Templates and copies are found by name anywhere in the
-inventory (provisioner, `build.sh replicate`, `test-clone.sh`, `prune_template_copies`),
-so moving them between folders changes nothing.
+The worker finds a range's folder by its `-<key>` suffix, never by its name, so a renamed
+range keeps its folder. An earlier build's folder, named exactly `<id8>` (under
+`truenorth/ranges`, or moved), is still found on destroy and by the MAC pre-check, but never
+reused for a new build: every range sharing that id8 would match it, and in such a folder a
+VM annotated for another range stays that range's. `VSPHERE_RANGE_FOLDER` empty or `/` is
+refused when the provisioner starts and in teardown (it would make the datacenter's VM root
+the range root). Templates and copies are found by name anywhere except `_retired`
+(provisioner, `build.sh replicate`, `test-clone.sh`, `prune_template_copies`), so moving
+them between folders changes nothing.
 
 Four vCenter tag categories, single-cardinality, on VMs:
 
 | Category | Values | Set by |
 |---|---|---|
-| `tn-type` | `golden-template`, `template-copy`, `range-vm`, `test-clone`, `depot`, `mgmt` | kit (`build.sh`, `test-clone.sh`), worker (range VMs), `vcenter-organize.sh` |
+| `tn-type` | `golden-template`, `template-copy`, `range-vm`, `test-clone`, `depot`, `mgmt`, `retired` | kit (`build.sh`, `test-clone.sh`), worker (range VMs), `vcenter-organize.sh` |
 | `tn-os` | OS alias: `windows-server-2022`, `ubuntu-2404`, `pfsense`, ... (catalogue `os_aliases_in_ranges`, first entry) | same |
 | `tn-template` | catalogue id the VM came from: `ubuntu-lts`, `srv2022`, ... | same |
-| `tn-range` | `<range-name>-<id8>`; one tag per range, deleted when the range is destroyed | worker, `vcenter-organize.sh` |
+| `tn-range` | `<range-name>-<key>`; one tag per range, deleted when the range is destroyed | worker, `vcenter-organize.sh` |
 
-Tagging is best effort everywhere: a tag that cannot be applied is a warning, never a
-failed build, replicate, test clone or range. The vCenter tagging privileges
+Tagging is best effort everywhere and bounded in the worker: each call times out after
+`VSPHERE_TAG_TIMEOUT` (5 s), the first failure or timeout stops tagging for the rest of
+that build with one warning, and nothing is tagged in the build budget's last two minutes.
+A tag never fails a build, replicate, test clone or range. The vCenter tagging privileges
 (`InventoryService.Tagging.*`) are in svc-truenorth's role. `VSPHERE_TAGS=false` (worker)
 or `TN_TAGS=0` (kit) turns it off. In vCenter: Inventory > Tags & Custom Attributes, or
 filter a VM list by tag. In TrueNorth: **Infrastructure > Virtual machines**, Load VMs,
 then Golden templates / Host copies / Range VMs / Other (by `tn-type`; untagged VMs are
-Other).
+Other). A range VM is listed only for its own tenant (by its `tn-range` key) or the
+platform administrator; the list is one page of up to 2000.
 
 **Tidying an existing vCenter** (once, after the templates are built; safe to re-run):
 
@@ -547,21 +554,30 @@ sudo scripts/lab/vcenter-organize.sh
 ```
 
 It reads vCenter credentials from `/srv/truenorth/config/.env.production` (never printed)
-and the range list read-only from the installed app's database (`docker compose run ... api`,
-`scripts/lab/tn_ranges_inprocess.py`: ids, names, states, VM names and templates only). It
-creates the folders above, moves `truenorth/templates/*` to `TrueNorth/Templates` (catalogue
-ids and their copies) or `_retired` (anything else), moves `truenorth/ranges/<id8>` to
-`TrueNorth/Ranges/<range-name>-<id8>`, deletes each old `truenorth` folder only when vCenter
-reports it empty at that moment, and tags golden templates, copies, test clones
-(`tn-testclone-*`), range VMs, TN-DEPOT01 and TN-MGMT01. Nothing else is touched (WIN11-TMPL,
-the VCSA, vCLS agents). Moving a VM between folders does not touch the VM itself.
+and, read-only from the installed app's database (`docker compose run ... api`,
+`scripts/lab/tn_ranges_inprocess.py`), the ranges (ids, names, states, VM names and
+templates only) and the template names TrueNorth registered. Only TrueNorth's VMs under the
+old `truenorth/` tree move: catalogue templates and their copies to `TrueNorth/Templates`;
+templates TrueNorth registered, or named with `--retire NAME`, to `_retired` (never a
+powered-on VM); range VMs (a TrueNorth range annotation, or `<id8>-*` in that range's
+folder) with their folder, renamed `<range-name>-<key>` when exactly one range has that
+id8 (a folder holding anything else is not moved whole: its range VMs move one by one).
+Everything else there is reported and left. An old `truenorth` folder is removed only if
+this run emptied it, no step of the run failed, and the property collector reports no
+children the moment before. It then tags golden templates, copies, retired templates, test
+clones (`tn-testclone-*`), range VMs, TN-DEPOT01 and TN-MGMT01. Nothing else is touched
+(WIN11-TMPL, the VCSA, vCLS agents). Moving a VM between folders does not touch the VM.
 
-It refuses to apply while a TrueNorth range is provisioning or destroying, without the range
-list (`--no-db` to proceed anyway: folders then keep id-only names), and while
-`VSPHERE_RANGE_FOLDER` in the env file is not `TrueNorth/Ranges` (new ranges would land in
-the old folder again; upgrade TrueNorth first, or `--force-folder`). The depot's online-window
-guard (`range_guard.yml`, `depot-uplink.sh`) counts range VMs under both `TrueNorth/Ranges`
-and `truenorth/ranges`.
+It refuses to apply unless every TrueNorth range is settled (ready, running, stopped,
+failed, destroyed), re-reading the ranges itself in apply and once more just before the
+first change; without the range list (`--no-db` to proceed anyway: folders keep their
+names); and unless both the env file and the running `worker-provision` container
+(`docker compose exec ... printenv VSPHERE_RANGE_FOLDER`) say `TrueNorth/Ranges` (otherwise
+new ranges would land in the old folder again; upgrade TrueNorth and restart the worker
+first, or `--force-folder`). The depot's online-window guard (`range_guard.yml`,
+`depot-uplink.sh`) counts range VMs under the worker's `VSPHERE_RANGE_FOLDER` and the earlier
+`truenorth/ranges`, and refuses (unless forced) when neither can be looked up or one cannot
+be listed.
 
 ### Known gaps (read before the derived, roles and variants phases)
 

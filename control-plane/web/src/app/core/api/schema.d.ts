@@ -2975,7 +2975,9 @@ export interface paths {
         /**
          * List Vms
          * @description The connection's VMs, read live from the hypervisor and grouped by their tn-type tag
-         *     (golden templates, host copies, range VMs, other). Read only; host VM counts unchanged.
+         *     (golden templates, host copies, range VMs, other); one page of them. Range VMs of other
+         *     tenants' ranges are left out unless the caller is the platform administrator. Read only;
+         *     host VM counts unchanged.
          */
         get: operations["list_vms_hypervisors_connections__conn_id__vms_get"];
         put?: never;
@@ -15484,21 +15486,37 @@ export interface components {
         VmInventoryOut: {
             /**
              * Groups
-             * @description VMs per group
+             * @description VMs per group (all the caller may see)
              */
             groups?: {
                 [key: string]: number;
             };
+            /**
+             * Limit
+             * @default 0
+             */
+            limit?: number;
             /**
              * Message
              * @default
              */
             message?: string;
             /**
+             * Offset
+             * @default 0
+             */
+            offset?: number;
+            /**
              * Supported
              * @description False: this hypervisor type cannot list its VMs here
              */
             supported: boolean;
+            /**
+             * Total
+             * @description VMs matching the group filter; vms is the page offset..offset+limit
+             * @default 0
+             */
+            total?: number;
             /** Vms */
             vms?: components["schemas"]["InventoryVmOut"][];
         };
@@ -21474,7 +21492,11 @@ export interface operations {
     };
     list_vms_hypervisors_connections__conn_id__vms_get: {
         parameters: {
-            query?: never;
+            query?: {
+                group?: ("golden" | "copies" | "ranges" | "other") | null;
+                limit?: number;
+                offset?: number;
+            };
             header?: never;
             path: {
                 conn_id: string;

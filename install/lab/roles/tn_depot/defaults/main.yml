@@ -25,11 +25,14 @@ tn_depot_upstream_online: false
 # a window the caches fetch whatever they are asked for. true = go online anyway (the
 # range NIC still drops everything while online, range_fw.yml).
 tn_depot_force_online: false
-# Where range VMs live: TrueNorth/Ranges (VSPHERE_RANGE_FOLDER since 2026-10-20) and the
-# earlier truenorth/ranges (scripts/lab/vcenter-organize.sh moves ranges out of it). The
-# guard checks every one that exists and refuses when none does. TN_RANGE_FOLDER names a
-# single folder instead, which must then exist.
-tn_depot_range_vm_folders: "{{ [lookup('env', 'TN_RANGE_FOLDER')] if lookup('env', 'TN_RANGE_FOLDER') else ['TrueNorth/Ranges', 'truenorth/ranges'] }}"
+# Where range VMs live: the worker's VSPHERE_RANGE_FOLDER (from the environment, else
+# tn_vsphere_range_folder, the installer's value; default TrueNorth/Ranges) and the earlier
+# truenorth/ranges (scripts/lab/vcenter-organize.sh moves ranges out of it). The guard checks
+# every one that exists and refuses when none does. TN_RANGE_FOLDER names a single folder
+# instead, which must then exist. (Not `unique`: it ignores case, and TrueNorth/Ranges and
+# truenorth/ranges are two folders.)
+tn_depot_range_vm_folders: "{{ [lookup('env', 'TN_RANGE_FOLDER')] if lookup('env', 'TN_RANGE_FOLDER') else ([tn_depot_worker_range_folder] + (['truenorth/ranges'] | reject('equalto', tn_depot_worker_range_folder) | list)) }}"
+tn_depot_worker_range_folder: "{{ lookup('env', 'VSPHERE_RANGE_FOLDER') or (tn_vsphere_range_folder | default('TrueNorth/Ranges')) }}"
 # The vCenter datacenter the range folder lives in; set per inventory. range_guard.yml
 # confirms it exists and exports it as GOVC_DATACENTER (never taken from the environment).
 tn_depot_vcenter_datacenter: DC-Lab

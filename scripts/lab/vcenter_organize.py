@@ -13,31 +13,34 @@ Talks to vCenter only through ``govc`` (its GOVC_* environment); stdlib only.
 Target layout (the provisioner's VSPHERE_RANGE_FOLDER is ``TrueNorth/Ranges``):
 
     /<dc>/vm/TrueNorth/Templates/<id>, <id>@<host>-<yyyymmdd>   golden templates, host copies
-    /<dc>/vm/TrueNorth/Templates/_retired/                       old hand-made templates
-    /<dc>/vm/TrueNorth/Ranges/<range-name>-<id8>/                one folder per range
+    /<dc>/vm/TrueNorth/Templates/_retired/                       old TrueNorth templates (tn-type=retired)
+    /<dc>/vm/TrueNorth/Ranges/<range-name>-<key>/                one folder per range
+
+``<key>`` is the first 12 hex digits of the range id; earlier builds named folders ``<id8>``.
 
 What ``apply`` does, each step idempotent:
 
-1. Folders: creates the three above where missing.
-2. Templates under the earlier ``truenorth/templates``: a catalogue id or a host copy of one
-   goes to ``TrueNorth/Templates``; anything else (``kali-linux``) to ``_retired``. Nothing is
-   deleted. A name that already exists in the target is left where it is and reported (two
-   templates of one name would make the provisioner's choice arbitrary).
-3. Range folders under ``truenorth/ranges``: moved to ``TrueNorth/Ranges`` and named
-   ``<range-name>-<id8>`` from the TrueNorth database (id8 alone without it); an id-only
-   folder already in ``TrueNorth/Ranges`` is renamed the same way. Found by the id8 suffix,
-   like the provisioner does, so a renamed range keeps its folder.
-4. Anything else left under ``truenorth/`` moves to the same place under ``TrueNorth/``.
-5. ``truenorth`` folders are removed bottom-up, each only if vCenter reports it empty at
-   that moment (a vCenter folder delete would delete what is in it).
-6. Tags (categories created single-cardinality where missing): golden templates, host copies,
-   test clones (``tn-testclone-<id>-<host>``), range VMs (in a range folder, or named
-   ``<id8>-*`` for a TrueNorth range), TN-DEPOT01 (``depot``) and TN-MGMT01 (``mgmt``).
-   Only tn-* categories are touched; a range VM's tn-os / tn-template set at build is kept.
+1. Reads the TrueNorth ranges itself (``--ranges-cmd``, run fresh, then once more just before
+   the first change) and refuses unless every range is in a settled state (ready, running,
+   stopped, failed, destroyed): anything else may be creating or removing VMs.
+2. Folders: creates the three above where missing.
+3. Only TrueNorth's VMs under the earlier ``truenorth/`` move: catalogue templates and their
+   host copies (to ``TrueNorth/Templates``), templates TrueNorth registered or the operator
+   names (``--retire``; to ``_retired``, never while powered on, never deleted), range VMs
+   (a TrueNorth range annotation, or ``<id8>-*`` in that range's folder) and test clones.
+   Anything else is reported and left. A name already in the target stays put, reported.
+4. A range folder of only TrueNorth VMs moves whole to ``TrueNorth/Ranges`` and is renamed
+   ``<range-name>-<key>`` (when exactly one range has that id8); otherwise its VMs move one
+   by one. An ``<id8>`` folder already in ``TrueNorth/Ranges`` is renamed the same way.
+5. An old ``truenorth`` folder is removed only if this run emptied it, nothing in this run
+   failed, and the property collector reports no children the moment before (a vCenter
+   folder delete deletes what is in it).
+6. Tags (single-cardinality categories created where missing) on golden templates, copies,
+   retired templates, test clones, range VMs, TN-DEPOT01 and TN-MGMT01. Only tn-*
+   categories are touched; a range VM's tn-os / tn-template set at build is kept.
 
-Never touched: any VM outside those folders and names (WIN11-TMPL, vCenter, vCLS agents,
-other people's templates). ``apply`` refuses while a TrueNorth range is provisioning or
-destroying.
+Never touched: any VM not recognised as TrueNorth's (WIN11-TMPL, vCenter, vCLS agents,
+other people's templates).
 """
 
 from __future__ import annotations
@@ -59,17 +62,21 @@ VARIANTS = REPO / "infra/vsphere/packer/variants"
 
 # Same definitions as control-plane/worker/worker/provisioners/vsphere_tags.py (tests/contracts).
 CATEGORIES: dict[str, str] = {
-    "tn-type": "TrueNorth object type: golden-template, template-copy, range-vm, test-clone, depot, mgmt",
+    "tn-type": "TrueNorth object type: golden-template, template-copy, range-vm, test-clone, depot, mgmt, retired",
     "tn-os": "TrueNorth OS alias of the VM (windows-server-2022, ubuntu-2404, pfsense, ...)",
     "tn-template": "TrueNorth catalogue id of the golden template the VM came from",
-    "tn-range": "TrueNorth range the VM belongs to: <range-name>-<id8>",
+    "tn-range": "TrueNorth range the VM belongs to: <range-name>-<first 12 hex digits of its id>",
 }
-TYPES = ("golden-template", "template-copy", "range-vm", "test-clone", "depot", "mgmt")
+TYPES = ("golden-template", "template-copy", "range-vm", "test-clone", "depot", "mgmt", "retired")
 ROOT, TEMPLATES, RANGES = "TrueNorth", "TrueNorth/Templates", "TrueNorth/Ranges"
 RETIRED = "TrueNorth/Templates/_retired"
 LEGACY = "truenorth"
 LEGACY_MAP = {"templates": "Templates", "ranges": "Ranges"}
-BUSY_STATES = ("provisioning", "destroying")
+# Settled range states: no VM of the range is being created or removed. Anything else
+# (created, provisioning, destroying, starting, stopping, a state added later) is busy.
+SETTLED_STATES = ("ready", "running", "stopped", "failed", "destroyed")
+RANGE_TAG = re.compile(r"truenorth-range:\s*([0-9A-Za-z][0-9A-Za-z-]*)")  # worker vsphere_api.RANGE_TAG
+KEY_LEN = 12
 TEST_CLONE = re.compile(r"^tn-testclone-(?P<id>.+)-(?P<host>[A-Za-z0-9_]+)$")
 _COPY = re.compile(r"^(?P<base>[^@]+)@(?P<host>[A-Za-z0-9_-]+)-(?P<date>\d{8})$")
 _NAME_LIMIT = 40
@@ -82,18 +89,38 @@ def slug(text: str | None, limit: int = _NAME_LIMIT) -> str:
     return out[:limit].rstrip("-")
 
 
+def range_key(range_id: str) -> str:
+    return re.sub(r"[^0-9a-f]", "", str(range_id).lower())[:KEY_LEN]
+
+
 def range_label(name: str | None, range_id: str) -> str:
-    id8 = str(range_id)[:8].lower()
+    key = range_key(range_id)
     base = slug(name or "")
-    if base == id8 or base.endswith(f"-{id8}"):
-        base = base[: -len(id8)].rstrip("-")
-    return f"{base}-{id8}" if base else id8
+    if base == key or base.endswith(f"-{key}"):
+        base = base[: -len(key)].rstrip("-")
+    return f"{base}-{key}" if base else key
 
 
-def folder_id8(name: str) -> str | None:
-    """The id8 a range folder is named for (``<id8>`` or ``*-<id8>``), else None."""
-    m = re.search(r"(?:^|-)([0-9a-f]{8})$", str(name or "").lower())
-    return m.group(1) if m else None
+def folder_key(name: str) -> str | None:
+    """The range key a folder is named for: a 12-hex ``-<key>`` suffix, or exactly ``<id8>``."""
+    low = str(name or "").lower()
+    if m := re.search(rf"(?:^|-)([0-9a-f]{{{KEY_LEN}}})$", low):
+        return m.group(1)
+    return low if re.fullmatch(r"[0-9a-f]{8}", low) else None
+
+
+def belongs_to(name: str, range_id: str) -> bool:
+    key = folder_key(name)
+    return bool(key) and range_key(range_id).startswith(key)
+
+
+def is_legacy_folder(name: str) -> bool:
+    return len(folder_key(name) or "") == 8
+
+
+def annotated_range(annotation: str | None) -> str:
+    m = RANGE_TAG.search(annotation or "")
+    return m.group(1) if m else ""
 
 
 def copy_base(name: str) -> str | None:
@@ -139,6 +166,8 @@ class Vm:
     path: str  # /<dc>/vm/a/b/name
     template: bool = False
     tags: dict[str, str] = field(default_factory=dict)  # tn-* category -> tag name
+    annotation: str = ""
+    powered_on: bool = False
 
     @property
     def name(self) -> str:
@@ -184,9 +213,12 @@ def _rows(text: str) -> list[tuple[str, str]]:
 def read_inventory(dc: str, run: Run = govc) -> Inventory:
     root = f"/{dc}/vm"
     vms = {moid: Vm(moid, path) for moid, path in _rows(run(["find", "-l", "-I", root, "-type", "m"]))}
-    for moid, _ in _rows(run(["find", "-l", "-I", root, "-type", "m", "-config.template", "true"])):
+    for moid, props in _collect(run(["object.collect", "-json", "-type", "m", root, "config.template",
+                                     "config.annotation", "runtime.powerState"])).items():
         if moid in vms:
-            vms[moid].template = True
+            vms[moid].template = bool(props.get("config.template"))
+            vms[moid].annotation = str(props.get("config.annotation") or "")
+            vms[moid].powered_on = props.get("runtime.powerState") == "poweredOn"
     inv = Inventory(dc, sorted(vms.values(), key=lambda v: v.path), set())
     inv.folders = {inv.rel(p.strip()) for p in run(["find", root, "-type", "f"]).splitlines()
                    if p.strip() and p.strip() != root}
@@ -196,6 +228,38 @@ def read_inventory(dc: str, run: Run = govc) -> Inventory:
             if vm is not None:
                 vm.tags[cat] = tag
     return inv
+
+
+def _collect(text: str) -> dict[str, dict]:
+    """``govc object.collect -json -type m``: a stream of JSON objects, one per VM, each
+    ``{"obj": {"value": moid}, "changeSet": [{"name", "val"}]}`` -> moid -> {property: value}."""
+    out: dict[str, dict] = {}
+    dec, i, text = json.JSONDecoder(), 0, text or ""
+    while i < len(text):
+        while i < len(text) and text[i].isspace():
+            i += 1
+        if i >= len(text):
+            break
+        doc, i = dec.raw_decode(text, i)
+        for item in doc if isinstance(doc, list) else [doc]:
+            moid = (item.get("obj") or {}).get("value")
+            if moid:
+                out.setdefault(moid, {}).update({c.get("name"): c.get("val") for c in item.get("changeSet") or []})
+    return out
+
+
+def has_children(run: Run, path: str) -> bool:
+    """The folder's ``childEntity`` from the property collector, now. Anything unreadable
+    counts as children: a folder is only ever deleted when it is known to be empty."""
+    try:
+        reply = json.loads(run(["object.collect", "-json", path, "childEntity"]) or "null")
+        (prop,) = [p for p in reply if p.get("name") == "childEntity"]
+        val = prop.get("val")
+        if isinstance(val, dict):
+            val = val.get("_value", val.get("ManagedObjectReference"))
+        return bool(val)
+    except (ValueError, TypeError, AttributeError, subprocess.CalledProcessError):
+        return True
 
 
 def read_tags(run: Run = govc) -> list[tuple[str, str, list[str]]]:
@@ -240,8 +304,19 @@ class Plan:
         self.actions.append(Action(kind, args, why))
 
 
-def _ranges_by_id8(ranges: Iterable[dict]) -> dict[str, dict]:
-    return {str(r["id"])[:8].lower(): r for r in ranges if r.get("state") != "destroyed"}
+def load_ranges(data) -> tuple[list[dict], list[str]]:
+    """tn_ranges_inprocess.py output ``{"ranges": [...], "templates": [...]}`` (or a bare list
+    of ranges) -> (ranges, template names TrueNorth registered)."""
+    if isinstance(data, list):
+        return data, []
+    data = data or {}
+    return list(data.get("ranges") or []), [str(t) for t in data.get("templates") or [] if t]
+
+
+def busy(ranges: Iterable[dict]) -> list[str]:
+    """Every range not in a settled state, as a refusal line."""
+    return [f"range {r.get('name')!r} ({str(r.get('id'))[:8]}) is {r.get('state')}"
+            for r in ranges if str(r.get("state")) not in SETTLED_STATES]
 
 
 def _range_templates(ranges: Iterable[dict]) -> dict[str, str]:
@@ -254,21 +329,52 @@ def _range_templates(ranges: Iterable[dict]) -> dict[str, str]:
     return out
 
 
+def _parent(rel: str) -> str:
+    return rel.rsplit("/", 1)[0] if "/" in rel else ""
+
+
 def make_plan(inv: Inventory, ranges: list[dict] | None, os_map: dict[str, str], *,
+              known_templates: Iterable[str] = (), retire: Iterable[str] = (),
               depot: str = "TN-DEPOT01", mgmt: str = "TN-MGMT01") -> Plan:
     """Everything ``apply`` would do, in order. ``ranges`` None: the TrueNorth database was not
-    read (folders keep their id8 names; range VMs are found by their folder only)."""
+    read (range folders keep their names; range VMs are recognised by annotation or folder)."""
     plan = Plan()
-    known = _ranges_by_id8(ranges or [])
+    live = [r for r in ranges or [] if r.get("state") != "destroyed"]
+    by_id = {str(r["id"]).lower(): r for r in live}
+    known_templates, retire = set(known_templates), set(retire)
     if ranges is None:
-        plan.notes.append("TrueNorth ranges not read: range folders keep their current names; "
-                          "range VMs are recognised by their folder only")
-    for r in ranges or []:
-        if r.get("state") in BUSY_STATES:
-            plan.refuse.append(f"range {r.get('name')!r} ({str(r['id'])[:8]}) is {r['state']}")
+        plan.notes.append("TrueNorth ranges not read: range folders keep their current names")
+    plan.refuse.extend(busy(ranges or []))
+
+    def ranges_for(key: str) -> list[dict]:
+        return [r for r in live if range_key(r["id"]).startswith(key)]
+
+    def label_of(r: dict) -> str:
+        return range_label(r.get("name"), str(r["id"]))
+
+    def is_range_folder(rel: str) -> bool:
+        return _parent(rel) in (RANGES, f"{LEGACY}/ranges") and rel.count("/") == 2
+
+    def vm_range(vm: Vm, folder: str) -> str | None:
+        """The tn-range label of a TrueNorth range VM, or None for any other VM: its range
+        annotation, else ``<id8>-*`` in that range's folder or for exactly one known range."""
+        if rid := annotated_range(vm.annotation):
+            row = by_id.get(rid.lower())
+            return label_of(row) if row else range_label(None, rid)
+        id8 = vm.name.split("-", 1)[0].lower()
+        if "-" not in vm.name or not re.fullmatch(r"[0-9a-f]{8}", id8):
+            return None
+        name = folder.rsplit("/", 1)[-1]
+        if is_range_folder(folder) and (folder_key(name) or "")[:8] == id8:
+            cands = ranges_for(folder_key(name))
+            return label_of(cands[0]) if len(cands) == 1 else name
+        cands = ranges_for(id8)
+        return label_of(cands[0]) if len(cands) == 1 else None
 
     folders = set(inv.folders)
     final: dict[str, str] = {vm.moid: inv.rel(vm.path) for vm in inv.vms}  # moid -> relative path after moves
+    moved_out: set[str] = set()  # legacy folders this plan moves a VM out of
+    gone: set[str] = set()  # legacy folders this plan moves away whole
 
     def mkdir(rel: str) -> None:
         parts = rel.split("/")
@@ -279,107 +385,139 @@ def make_plan(inv: Inventory, ranges: list[dict] | None, os_map: dict[str, str],
                 folders.add(p)
 
     def names_in(rel_folder: str) -> set[str]:
-        return {p.rsplit("/", 1)[1] for p in final.values() if p.rsplit("/", 1)[0] == rel_folder}
+        return {p.rsplit("/", 1)[1] for p in final.values() if _parent(p) == rel_folder}
 
     def move_vm(vm: Vm, to: str, why: str) -> bool:
         if vm.name in names_in(to):
             plan.notes.append(f"{vm.path}: a VM named {vm.name!r} is already in {inv.abs(to)}; left where it is")
             return False
         mkdir(to)
+        moved_out.add(_parent(final[vm.moid]))
         plan.add("move", inv.abs(final[vm.moid]), inv.abs(to), why=why)
         final[vm.moid] = f"{to}/{vm.name}"
         return True
+
+    def leave(vm: Vm, why: str) -> None:
+        plan.notes.append(f"{vm.path}: {why}; left where it is")
 
     for rel in (TEMPLATES, RANGES):
         mkdir(rel)
 
     legacy_vms = [vm for vm in inv.vms if inv.rel(vm.path).startswith(f"{LEGACY}/")]
 
-    # 2. templates under truenorth/templates
+    # Templates anywhere under truenorth/ (range folders hold range VMs: below).
     for vm in legacy_vms:
-        rel = inv.rel(vm.path)
-        if not rel.startswith(f"{LEGACY}/templates/"):
+        if not vm.template or is_range_folder(_parent(final[vm.moid])):
             continue
-        ours = vm.name in os_map or (copy_base(vm.name) or "") in os_map
-        move_vm(vm, TEMPLATES if ours else RETIRED,
-                "catalogue template" if ours else "not a catalogue template: retired, not deleted")
+        if vm.name in os_map or (copy_base(vm.name) or "") in os_map:
+            move_vm(vm, TEMPLATES, "catalogue template")
+        elif vm.name in retire or vm.name in known_templates:
+            if vm.powered_on:
+                leave(vm, "powered on: never retired")
+            else:
+                move_vm(vm, RETIRED, "TrueNorth's old template: retired, not deleted")
+        else:
+            leave(vm, "a template TrueNorth does not know (not in the catalogue or the registry; "
+                      "--retire NAME retires it)")
 
-    # 3. range folders: truenorth/ranges/<f> -> TrueNorth/Ranges/<label>; id-only ones renamed
-    def label_for(folder: str) -> str:
-        id8 = folder_id8(folder)
-        r = known.get(id8 or "")
-        return range_label(r.get("name"), str(r["id"])) if r else folder
-
-    moved_folders: dict[str, str] = {}  # old rel -> new rel
+    # Range folders under truenorth/ranges: whole when only TrueNorth range VMs are in it.
     for rel in sorted(f for f in inv.folders if f.startswith(f"{LEGACY}/ranges/") and f.count("/") == 2):
         name = rel.rsplit("/", 1)[1]
-        label = label_for(name)
-        target = f"{RANGES}/{label}"
-        existing = next((f for f in sorted(folders) if f.startswith(f"{RANGES}/") and f.count("/") == 2
-                         and folder_id8(f.rsplit("/", 1)[1]) == folder_id8(name) and folder_id8(name)), None)
-        if existing:  # the range already has a folder in the new tree: move its VMs in
-            for vm in legacy_vms:
-                if inv.rel(vm.path).startswith(f"{rel}/"):
-                    move_vm(vm, existing, f"range {folder_id8(name)}")
+        key = folder_key(name)
+        inside = [vm for vm in legacy_vms if final[vm.moid].startswith(f"{rel}/")]
+        if not inside:
+            plan.notes.append(f"{inv.abs(rel)} has no VMs; left (not emptied by this run)")
             continue
-        plan.add("move", inv.abs(rel), inv.abs(RANGES), why=f"range {folder_id8(name) or name}")
-        folders.add(f"{RANGES}/{name}")
-        if label != name:
-            plan.add("rename", inv.abs(f"{RANGES}/{name}"), label, why="named for the range")
-            folders.discard(f"{RANGES}/{name}")
+        cands = ranges_for(key) if key else []
+        if len(cands) > 1:
+            plan.notes.append(f"{inv.abs(rel)}: {len(cands)} TrueNorth ranges share id {key}; folder name kept")
+        label = label_of(cands[0]) if len(cands) == 1 else name
+        own = {vm.moid: vm_range(vm, rel) for vm in inside}
+        whole = all(own.values()) and not any(f.startswith(f"{rel}/") for f in inv.folders)
+        existing = next((f for f in sorted(folders) if _parent(f) == RANGES and f.count("/") == 2
+                         and (f == f"{RANGES}/{label}" or (len(cands) == 1 and not is_legacy_folder(f.rsplit("/", 1)[1])
+                                                           and belongs_to(f.rsplit("/", 1)[1], cands[0]["id"])))), None)
+        if whole and not existing and f"{RANGES}/{name}" not in folders:
+            plan.add("move", inv.abs(rel), inv.abs(RANGES), why=f"range {key or name}")
+            gone.add(rel)
+            target = f"{RANGES}/{name}"
+            if label != name:
+                plan.add("rename", inv.abs(target), label, why="named for the range")
+                target = f"{RANGES}/{label}"
             folders.add(target)
-        moved_folders[rel] = target if label != name else f"{RANGES}/{name}"
-        for vm in legacy_vms:
-            if inv.rel(vm.path).startswith(f"{rel}/"):
-                final[vm.moid] = moved_folders[rel] + inv.rel(vm.path)[len(rel):]
-    for rel in sorted(f for f in inv.folders if f.startswith(f"{RANGES}/") and f.count("/") == 2):
-        name = rel.rsplit("/", 1)[1]
-        if folder_id8(name) == name and (label := label_for(name)) != name and f"{RANGES}/{label}" not in folders:
-            plan.add("rename", inv.abs(rel), label, why="named for the range")
-            folders.discard(rel)
-            folders.add(f"{RANGES}/{label}")
-            for vm in inv.vms:
-                if final[vm.moid].startswith(f"{rel}/"):
-                    final[vm.moid] = f"{RANGES}/{label}" + final[vm.moid][len(rel):]
+            for vm in inside:
+                final[vm.moid] = target + final[vm.moid][len(rel):]
+            continue
+        for vm in inside:
+            if own[vm.moid]:
+                move_vm(vm, existing or f"{RANGES}/{own[vm.moid]}", f"range {key or name}")
+            else:
+                leave(vm, "not a TrueNorth range VM")
 
-    # 4. anything else still under truenorth/
+    # An earlier build's <id8> folder already in TrueNorth/Ranges: renamed when unambiguous.
+    for rel in sorted(f for f in folders if _parent(f) == RANGES and f.count("/") == 2
+                      and is_legacy_folder(f.rsplit("/", 1)[1])):
+        cands = ranges_for(rel.rsplit("/", 1)[1])
+        if len(cands) != 1 or (new := f"{RANGES}/{label_of(cands[0])}") in folders:
+            continue
+        plan.add("rename", inv.abs(rel), new.rsplit("/", 1)[1], why="named for the range")
+        folders.discard(rel)
+        folders.add(new)
+        for moid, path in final.items():
+            if path.startswith(f"{rel}/"):
+                final[moid] = new + path[len(rel):]
+
+    # Anything else still under truenorth/: TrueNorth's VMs move, the rest is reported.
     for vm in legacy_vms:
         rel = final[vm.moid]
-        if not rel.startswith(f"{LEGACY}/"):
-            continue
-        parts = rel.split("/")[1:-1]
-        if parts:
-            parts[0] = LEGACY_MAP.get(parts[0], parts[0])
-        move_vm(vm, "/".join([ROOT, *parts]), "out of the earlier truenorth folder")
+        if not rel.startswith(f"{LEGACY}/") or vm.template or is_range_folder(_parent(rel)):
+            continue  # moved, a template (above) or in a range folder (above)
+        if label := vm_range(vm, _parent(rel)):
+            move_vm(vm, f"{RANGES}/{label}", "range VM")
+        elif TEST_CLONE.match(vm.name) or vm.name in (depot, mgmt):
+            parts = rel.split("/")[1:-1]
+            if parts:
+                parts[0] = LEGACY_MAP.get(parts[0], parts[0])
+            move_vm(vm, "/".join([ROOT, *parts]), "out of the earlier truenorth folder")
+        else:
+            leave(vm, "not recognised as TrueNorth's")
 
-    # 5. empty truenorth folders, deepest first (checked empty again before each delete)
+    # Old truenorth folders this run empties, deepest first (checked again before each delete).
     left = {p for p in final.values() if p.startswith(f"{LEGACY}/")}
-    gone_folders = set(moved_folders)
+    removed: set[str] = set()
+
+    def away(f: str) -> bool:
+        return f in removed or f in gone or any(f.startswith(f"{g}/") for g in gone)
+
     for rel in sorted((f for f in inv.folders if f == LEGACY or f.startswith(f"{LEGACY}/")),
                       key=lambda f: (-f.count("/"), f)):  # deepest first; stable across runs
-        if rel in gone_folders or any(rel.startswith(f"{m}/") for m in moved_folders):
-            gone_folders.add(rel)  # moved along with its parent
+        if away(rel):
             continue
         if any(p.startswith(f"{rel}/") for p in left) or any(
-                f.startswith(f"{rel}/") and f not in gone_folders for f in inv.folders):
+                f.startswith(f"{rel}/") and not away(f) for f in inv.folders):
             plan.notes.append(f"{inv.abs(rel)} is not empty after the moves; kept")
             continue
+        if rel not in moved_out and not any(_parent(f) == rel and away(f) for f in inv.folders):
+            plan.notes.append(f"{inv.abs(rel)} was empty before this run; left (not this run's to remove)")
+            continue
         plan.add("rmdir", inv.abs(rel))
-        gone_folders.add(rel)
+        removed.add(rel)
 
-    # 6. tags
+    # Tags.
     templates = _range_templates(ranges or [])
     for vm in inv.vms:
         rel = final[vm.moid]
-        folder = rel.rsplit("/", 1)[0] if "/" in rel else ""
+        folder = _parent(rel)
         want: dict[str, str] = {}
         keep_existing: set[str] = set()
-        if vm.template and folder == TEMPLATES:
+        if vm.template and folder == RETIRED:
+            want = {"tn-type": "retired"}
+        elif vm.template and folder == TEMPLATES:
             if base := copy_base(vm.name):
                 want = {"tn-type": "template-copy", "tn-template": base}
             else:
                 want = {"tn-type": "golden-template", "tn-template": vm.name}
-        elif vm.template and (base := copy_base(vm.name)) and base in os_map:
+        elif vm.template and (base := copy_base(vm.name)) and base in os_map and not rel.startswith(f"{LEGACY}/"):
             want = {"tn-type": "template-copy", "tn-template": base}
         elif m := TEST_CLONE.match(vm.name):
             want = {"tn-type": "test-clone", "tn-template": m["id"]}
@@ -387,19 +525,11 @@ def make_plan(inv: Inventory, ranges: list[dict] | None, os_map: dict[str, str],
             want = {"tn-type": "depot"}
         elif vm.name == mgmt:
             want = {"tn-type": "mgmt"}
-        elif not vm.template:
-            in_folder = folder.startswith(f"{RANGES}/") and folder.count("/") == 2
-            id8 = folder_id8(folder.rsplit("/", 1)[1]) if in_folder else None
-            prefix = vm.name.split("-", 1)[0].lower()
-            if id8 is None and prefix in known and len(prefix) == 8:
-                id8 = prefix
-            if id8 and (in_folder or id8 in known):
-                r = known.get(id8)
-                label = range_label(r.get("name"), str(r["id"])) if r else folder.rsplit("/", 1)[1]
-                want = {"tn-type": "range-vm", "tn-range": label}
-                if tmpl := template_id(templates.get(vm.name)):
-                    want["tn-template"] = tmpl
-                keep_existing = {"tn-os", "tn-template"}  # set by the build: more precise
+        elif not vm.template and (label := vm_range(vm, folder)):
+            want = {"tn-type": "range-vm", "tn-range": label}
+            if tmpl := template_id(templates.get(vm.name)):
+                want["tn-template"] = tmpl
+            keep_existing = {"tn-os", "tn-template"}  # set by the build: more precise
         if not want:
             continue
         if want.get("tn-template") and (os_alias := os_map.get(want["tn-template"])):
@@ -476,9 +606,13 @@ def execute(plan: Plan, run: Run = govc, *, log=print) -> int:
             elif a.kind == "rename":
                 act(["object.rename", a.args[0], a.args[1]])
             elif a.kind == "rmdir":
-                # vCenter deletes a folder WITH what is in it: only ever an empty one.
-                if run(["ls", a.args[0]]).strip():
-                    log(f"  ! {a.args[0]} is not empty now; kept")
+                # vCenter deletes a folder WITH what is in it: only ever one this run emptied
+                # without a hitch, and only if the property collector says it has no children now.
+                if failed:
+                    log(f"  ! {a.args[0]} kept: an earlier step of this run failed")
+                    continue
+                if has_children(run, a.args[0]):
+                    log(f"  ! {a.args[0]} is not empty now (or could not be read); kept")
                     continue
                 act(["object.destroy", a.args[0]])
             elif a.kind == "tag":
@@ -518,7 +652,9 @@ def main(argv: list[str] | None = None) -> int:
     for name in ("plan", "apply"):
         p = sub.add_parser(name)
         p.add_argument("--dc", default=os.environ.get("GOVC_DATACENTER") or "DC-Lab")
-        p.add_argument("--ranges", help="JSON list of TrueNorth ranges {id, name, state, vms}; omit if unavailable")
+        p.add_argument("--ranges", help="tn_ranges_inprocess.py output (a file); omit if unavailable")
+        p.add_argument("--ranges-cmd", help="a shell command printing it; apply runs it fresh, twice")
+        p.add_argument("--retire", action="append", default=[], help="also retire this template (repeatable)")
         p.add_argument("--depot", default="TN-DEPOT01")
         p.add_argument("--mgmt", default="TN-MGMT01")
     t = sub.add_parser("tag")
@@ -534,8 +670,21 @@ def main(argv: list[str] | None = None) -> int:
         tag_one(args.vm, args.tn_type, args.template, args.range_label, os_map=os_map, dry_run=args.dry_run)
         return 0
 
-    ranges = json.loads(Path(args.ranges).read_text()) if args.ranges else None
-    plan = make_plan(read_inventory(args.dc), ranges, os_map, depot=args.depot, mgmt=args.mgmt)
+    def read_ranges() -> tuple[list[dict] | None, list[str]]:
+        if args.ranges_cmd:
+            out = subprocess.run(["bash", "-c", args.ranges_cmd], check=True, capture_output=True, text=True).stdout
+            return load_ranges(json.loads(out))
+        if args.ranges:
+            return load_ranges(json.loads(Path(args.ranges).read_text()))
+        return None, []
+
+    try:
+        ranges, registered = read_ranges()
+    except (subprocess.CalledProcessError, ValueError, OSError) as exc:
+        print(f"  REFUSED: the TrueNorth ranges could not be read ({exc.__class__.__name__})", file=sys.stderr)
+        return 3
+    plan = make_plan(read_inventory(args.dc), ranges, os_map, known_templates=registered, retire=args.retire,
+                     depot=args.depot, mgmt=args.mgmt)
     for note in plan.notes:
         print(f"  note: {note}")
     if not plan.actions:
@@ -546,10 +695,21 @@ def main(argv: list[str] | None = None) -> int:
         for why in plan.refuse:
             print(f"  REFUSED: {why}", file=sys.stderr)
         if args.cmd == "apply":
-            print("  nothing changed: run again once no TrueNorth range is provisioning or destroying", file=sys.stderr)
+            print("  nothing changed: run again once every TrueNorth range is settled", file=sys.stderr)
             return 3
     if args.cmd == "plan":
         return 0
+    if ranges is not None:  # once more, the moment before the first change
+        try:
+            again, _ = read_ranges()
+        except (subprocess.CalledProcessError, ValueError, OSError) as exc:
+            print(f"  REFUSED: the TrueNorth ranges could not be read again ({exc.__class__.__name__})", file=sys.stderr)
+            return 3
+        if late := busy(again or []):
+            for why in late:
+                print(f"  REFUSED: {why}", file=sys.stderr)
+            print("  nothing changed: a range started changing while the plan was made", file=sys.stderr)
+            return 3
     failed = execute(plan)
     print(f"  done: {len(plan.actions) - failed} step(s) ok, {failed} failed")
     return 1 if failed else 0

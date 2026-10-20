@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
@@ -47,7 +47,7 @@ from ..schemas import (
 )
 from ..secretbox import seal
 from ..tenancy import get_owned, tenant_uuid
-from ..vm_inventory.schemas import VmInventoryOut
+from ..vm_inventory.schemas import VmGroup, VmInventoryOut
 
 # Router-level authentication is read-level, so the host inventory and summary can feed the
 # dashboard for anyone who may see platform health (instructors included). Every connection
@@ -223,11 +223,22 @@ def list_nodes(conn_id: uuid.UUID, db: Session = Depends(get_db), user: CurrentU
 
 
 @router.get("/connections/{conn_id}/vms", response_model=VmInventoryOut, dependencies=WRITE)
-def list_vms(conn_id: uuid.UUID, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)):
+def list_vms(
+    conn_id: uuid.UUID,
+    group: VmGroup | None = None,
+    limit: int = Query(500, ge=1, le=vm_inventory.MAX_LIMIT),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+):
     """The connection's VMs, read live from the hypervisor and grouped by their tn-type tag
-    (golden templates, host copies, range VMs, other). Read only; host VM counts unchanged."""
+    (golden templates, host copies, range VMs, other); one page of them. Range VMs of other
+    tenants' ranges are left out unless the caller is the platform administrator. Read only;
+    host VM counts unchanged."""
     conn = _conn(db, conn_id, user)
-    return vm_inventory.inventory(get_hypervisor_backend(conn.hypervisor_type), conn)
+    return vm_inventory.inventory(get_hypervisor_backend(conn.hypervisor_type), conn,
+                                  own_keys=vm_inventory.own_range_keys(db, user), group=group, limit=limit,
+                                  offset=offset)
 
 
 @router.get("/connections/{conn_id}/pools", response_model=list[HypervisorPoolOut], dependencies=WRITE)

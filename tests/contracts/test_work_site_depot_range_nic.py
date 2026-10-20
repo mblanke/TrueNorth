@@ -542,6 +542,73 @@ def test_depot_uplink_refuses_the_work_site_depot():
     assert guard < text.index('case "$CMD" in')  # before any connect/disconnect
 
 
+UPLINK_GOVC = r"""#!/usr/bin/env bash
+echo "$*" >> "$STUB_STATE/calls"
+last="${@: -1}"
+case "$1" in
+  about) echo '{"About": {"ApiType": "VirtualCenter"}}' ;;
+  find)
+    case "$*" in
+      *"-name TN-DEPOT01"*) echo "/DC/vm/TN-DEPOT01" ;;
+      *"-name dPG-TN-BUILD"*) echo "/DC/network/dPG-TN-BUILD" ;;
+      *"-name dPG-TN-MGMT"*) ;;
+      *"/DC/vm/"*" -type m"*)
+        f="${2#/DC/vm/}"
+        case " ${STUB_UNLISTABLE:-} " in *" $f "*) exit 1 ;; esac
+        v="STUB_VMS_$(echo "$f" | tr '/' '_')"; if [ -n "${!v:-}" ]; then printf '%s\n' ${!v}; fi ;;
+    esac ;;
+  folder.info) f="${last#/DC/vm/}"; case " ${STUB_FOLDERS:-} " in *" $f "*) echo "Path: $last" ;; *) exit 1 ;; esac ;;
+  object.collect) echo "dvportgroup-31" ;;
+  device.ls) echo "ethernet-0  VirtualVmxnet3" ;;
+  device.info) echo '{"Devices": [{"Backing": {"Port": {"PortgroupKey": "dvportgroup-31"}}, "Connectable": {"Connected": false, "StartConnected": false}}]}' ;;
+esac
+"""
+
+
+@pytest.fixture
+def uplink(tmp_path):
+    if shutil.which("bash") is None or shutil.which("jq") is None:
+        pytest.skip("bash and jq are required")
+    bindir = tmp_path / "bin"
+    bindir.mkdir()
+    (bindir / "govc").write_text(UPLINK_GOVC)
+    (bindir / "govc").chmod(0o755)
+    base = {k: v for k, v in os.environ.items() if not k.startswith(("GOVC_", "TN_", "STUB_", "VSPHERE_"))}
+    base.update(PATH=f"{bindir}:{os.environ['PATH']}", STUB_STATE=str(tmp_path), GOVC_URL="https://vc/sdk",
+                GOVC_USERNAME="u", GOVC_PASSWORD="p", TN_DC="DC")
+
+    def run(*args, **env):
+        r = subprocess.run(["bash", str(LAB / "depot-uplink.sh"), "on", *args], env={**base, **env},
+                           capture_output=True, text=True, timeout=60)
+        calls = (tmp_path / "calls").read_text().splitlines() if (tmp_path / "calls").exists() else []
+        return r, [c for c in calls if c.startswith("device.connect")]
+
+    return run
+
+
+def test_depot_uplink_counts_range_vms_in_the_new_and_the_old_folder(uplink):
+    r, connects = uplink(STUB_FOLDERS="TrueNorth/Ranges truenorth/ranges",
+                         STUB_VMS_truenorth_ranges="/DC/vm/truenorth/ranges/a/a-x")
+    assert r.returncode != 0 and "1 range VM(s) exist" in r.stderr and not connects
+    r, _ = uplink(STUB_FOLDERS="TrueNorth/Ranges", STUB_VMS_truenorth_ranges="/x")  # old one gone: not looked at
+    assert r.returncode == 0, r.stderr
+
+
+def test_depot_uplink_follows_vsphere_range_folder(uplink):
+    r, _ = uplink(VSPHERE_RANGE_FOLDER="Site/Ranges", STUB_FOLDERS="Site/Ranges",
+                  STUB_VMS_Site_Ranges="/DC/vm/Site/Ranges/r/r-1")
+    assert r.returncode != 0 and "1 range VM(s) exist" in r.stderr
+
+
+@pytest.mark.parametrize("env", [{"STUB_FOLDERS": ""},  # no range folder can be looked up
+                                 {"STUB_FOLDERS": "TrueNorth/Ranges", "STUB_UNLISTABLE": "TrueNorth/Ranges"}])
+def test_depot_uplink_fails_closed_like_the_range_guard(uplink, env):
+    r, connects = uplink(**env)
+    assert r.returncode != 0 and "cannot tell whether range VMs exist" in r.stderr and not connects
+    r, _ = uplink("--force", **env)
+    assert r.returncode == 0 and "connecting anyway (--force)" in r.stderr
+
+
 def test_depot_phase_generates_the_packer_read_secret_privately_and_never_prints_it(depot_phase, tmp_path):
     r, _, _ = depot_phase("--yes")
     assert r.returncode == 0, r.stdout + r.stderr
@@ -601,6 +668,11 @@ def test_going_online_is_refused_while_range_vms_exist_and_shuts_the_range_nic_f
     assert DEFAULTS["tn_depot_force_online"] is False
 
 
+def test_the_work_site_range_folder_is_the_installers():
+    installer = yaml.safe_load((ROOT / "install/inventory/group_vars/all/main.yml").read_text())
+    assert KIT["tn_vsphere_range_folder"] == installer["tn_vsphere_range_folder"] == "TrueNorth/Ranges"
+
+
 def _guard_expr(expr: str, **ctx):
     """An Ansible ``when`` / template of the range guard, evaluated with Jinja (Ansible's
     ``flatten`` and ``lookup('env', ...)`` imitated here)."""
@@ -620,9 +692,21 @@ def _guard_expr(expr: str, **ctx):
     ({"TrueNorth/Ranges": 1, "truenorth/ranges": 1}, {}, True, False),  # neither: fail closed
 ])
 def test_the_range_guard_checks_the_new_and_the_old_range_folder(folders, vms, refuse_lookup, refuse_vms):
-    assert _guard_expr(DEFAULTS["tn_depot_range_vm_folders"].strip("{} ")) == ["TrueNorth/Ranges", "truenorth/ranges"]
-    assert _guard_expr(DEFAULTS["tn_depot_range_vm_folders"].strip("{} "),
-                       _env={"TN_RANGE_FOLDER": "custom/r"}) == ["custom/r"]
+    def range_folders(env=None, **inv):
+        worker = _guard_expr(DEFAULTS["tn_depot_worker_range_folder"].strip("{} "), _env=dict(env or {}), **inv)
+        return _guard_expr(DEFAULTS["tn_depot_range_vm_folders"].strip("{} "), _env=dict(env or {}),
+                           tn_depot_worker_range_folder=worker, **inv)
+
+    # The worker's folder (the work-site value, the installer's) plus the earlier root: two
+    # folders that differ only in case are both checked.
+    assert range_folders(tn_vsphere_range_folder=KIT["tn_vsphere_range_folder"]) == [
+        "TrueNorth/Ranges", "truenorth/ranges"]
+    assert range_folders() == ["TrueNorth/Ranges", "truenorth/ranges"]  # not set at all: the default
+    assert range_folders(tn_vsphere_range_folder="Site/Ranges") == ["Site/Ranges", "truenorth/ranges"]
+    assert range_folders({"VSPHERE_RANGE_FOLDER": "Env/Ranges"}, tn_vsphere_range_folder="Site/Ranges") == [
+        "Env/Ranges", "truenorth/ranges"]
+    assert range_folders({"VSPHERE_RANGE_FOLDER": "truenorth/ranges"}) == ["truenorth/ranges"]  # once
+    assert range_folders({"TN_RANGE_FOLDER": "custom/r"}) == ["custom/r"]
     block = next(t for t in yaml.safe_load((ROLE / "tasks/range_guard.yml").read_text()) if "block" in t)
     by_name = {t["name"]: t for t in block["block"]}
     looked = {"results": [{"item": f, "rc": rc} for f, rc in folders.items()]}

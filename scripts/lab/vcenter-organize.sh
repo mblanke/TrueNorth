@@ -7,40 +7,45 @@
 #
 # What it does (details: scripts/lab/vcenter_organize.py):
 #   - folders TrueNorth/Templates, TrueNorth/Templates/_retired, TrueNorth/Ranges
-#   - templates from truenorth/templates -> TrueNorth/Templates (catalogue ids and their
-#     host copies) or TrueNorth/Templates/_retired (anything else, e.g. kali-linux; NOT deleted)
-#   - range folders truenorth/ranges/<id8> -> TrueNorth/Ranges/<range-name>-<id8> (names from
-#     the TrueNorth database; id8 only with --no-db)
-#   - the old truenorth folders, each only once vCenter reports it empty
-#   - tags tn-type / tn-os / tn-template / tn-range on golden templates, host copies, test
-#     clones, range VMs, TN-DEPOT01 and TN-MGMT01. Nothing else in vCenter is touched.
-# Moving a VM between folders does not touch it (running VMs keep running). It refuses while
-# a TrueNorth range is provisioning or destroying.
+#   - TrueNorth's VMs only, out of the old truenorth/ tree: catalogue templates and copies to
+#     TrueNorth/Templates; templates TrueNorth registered (or --retire NAME) to _retired (never
+#     powered-on ones, never deleted); range folders to TrueNorth/Ranges/<range-name>-<key>.
+#     Anything else there is reported and left.
+#   - an old truenorth folder only when this run emptied it, nothing failed, and vCenter
+#     reports no children at that moment
+#   - tags tn-type / tn-os / tn-template / tn-range on TrueNorth's VMs only
+# Moving a VM between folders does not touch it (running VMs keep running). Apply re-reads
+# the ranges itself and refuses unless every range is settled (ready, running, stopped,
+# failed, destroyed), and unless the running worker builds into TrueNorth/Ranges.
 #
 # Options:
 #   --dry-run        print the plan; change nothing
 #   --yes            do not ask
-#   --no-db          do not read the TrueNorth ranges (folders keep id8 names, and nothing
+#   --retire NAME    also retire this template from truenorth/ (repeatable), e.g. kali-linux
+#   --no-db          do not read the TrueNorth ranges (folders keep their names, and nothing
 #                    checks for a range being built: be sure none is)
 #   --ranges FILE    the ranges as JSON instead (scripts/lab/tn_ranges_inprocess.py output)
-#   --force-folder   apply although VSPHERE_RANGE_FOLDER in the env file is not TrueNorth/Ranges
+#   --force-folder   apply although the worker's VSPHERE_RANGE_FOLDER is not (or cannot be
+#                    confirmed to be) TrueNorth/Ranges
 #   --env-file FILE  vCenter credentials (default /srv/truenorth/config/.env.production)
 #   --app-dir DIR    installed app (compose file), default /srv/truenorth/app
 set -euo pipefail
 # shellcheck source-path=SCRIPTDIR source=lib.sh
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
-usage() { sed -n '2,29p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+usage() { sed -n '2,31p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 REPO="$(cd "$LAB_DIR/../.." && pwd)"
 ENV_FILE="${TN_ENV_FILE:-/srv/truenorth/config/.env.production}"
 APP_DIR="${TN_APP_DIR:-/srv/truenorth/app}"
 PY="${TN_LAB_PYTHON:-python3}"
 TARGET_FOLDER="TrueNorth/Ranges"
-DRY=0; NO_DB=0; RANGES=""; FORCE_FOLDER=0
+WORKER_SERVICE="${TN_WORKER_SERVICE:-worker-provision}"   # the compose service that builds ranges
+DRY=0; NO_DB=0; RANGES=""; FORCE_FOLDER=0; RETIRE=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --dry-run) DRY=1 ;;
     --yes) ASSUME_YES=1 ;;
+    --retire) RETIRE+=(--retire "$2"); shift ;;
     --no-db) NO_DB=1 ;;
     --ranges) RANGES="$2"; shift ;;
     --force-folder) FORCE_FOLDER=1 ;;
@@ -52,6 +57,7 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 export ASSUME_YES="${ASSUME_YES:-0}"
+COMPOSE="$APP_DIR/infra/platform/docker/compose.prod.yml"
 
 # One key's value from the env file (never a secret: only this key is read and printed).
 env_value() {
@@ -67,34 +73,45 @@ env_value() {
   echo "$val"
 }
 
+# Refuse to apply (warn in a dry run, or with --force-folder).
+gate() {
+  if [[ "$DRY" == "1" || "$FORCE_FOLDER" == "1" ]]; then warn "$1"; else die "$1 (or pass --force-folder)"; fi
+}
+
 if [[ -z "${GOVC_USERNAME:-}" || -z "${GOVC_PASSWORD:-}" ]]; then govc_from_env_file "$ENV_FILE"; fi
 step "Preflight"
 lab_preflight
 command -v "$PY" >/dev/null 2>&1 || die "$PY not found (set TN_LAB_PYTHON)"
 
-# The worker must put new ranges where this script puts the old ones.
+# The worker must put new ranges where this script puts the old ones: the file, and what the
+# running worker actually has (a file changed without a restart is not what it builds with).
 folder="$(env_value VSPHERE_RANGE_FOLDER)"
 if [[ -n "$folder" && "$folder" != "$TARGET_FOLDER" ]]; then
-  msg="VSPHERE_RANGE_FOLDER=$folder in $ENV_FILE: new ranges would still go there. Upgrade TrueNorth (the installer now writes $TARGET_FOLDER) or set it and restart the worker"
-  if [[ "$DRY" == "1" || "$FORCE_FOLDER" == "1" ]]; then warn "$msg"; else die "$msg (or pass --force-folder)"; fi
+  gate "VSPHERE_RANGE_FOLDER=$folder in $ENV_FILE: new ranges would still go there. Upgrade TrueNorth (the installer now writes $TARGET_FOLDER), then restart the worker"
+fi
+effective="$(cd "$(dirname "$COMPOSE")" 2>/dev/null && docker compose -f "$COMPOSE" --env-file "$ENV_FILE" \
+  exec -T "$WORKER_SERVICE" printenv VSPHERE_RANGE_FOLDER 2>/dev/null | tr -d '\r' || true)"
+if [[ -z "$effective" ]]; then
+  gate "could not read VSPHERE_RANGE_FOLDER from the running $WORKER_SERVICE container (docker compose in $APP_DIR): cannot confirm new ranges go to $TARGET_FOLDER"
+elif [[ "$effective" != "$TARGET_FOLDER" ]]; then
+  gate "the running $WORKER_SERVICE has VSPHERE_RANGE_FOLDER=$effective: new ranges would still go there. Restart it with $TARGET_FOLDER"
 else
-  info "range folder: ${folder:-<installer default>} -> $TARGET_FOLDER"
+  info "range folder: $TARGET_FOLDER (env file and running $WORKER_SERVICE)"
 fi
 
+# The ranges, read only, in the api image. Apply runs the same command itself, fresh.
+ranges_cmd="cd $(printf %q "$(dirname "$COMPOSE")") && docker compose -f $(printf %q "$COMPOSE") --env-file $(printf %q "$ENV_FILE") run --rm --no-deps -T -w /app -e PYTHONPATH=/app -v $(printf %q "$REPO:/srcapp:ro") --entrypoint python api /srcapp/scripts/lab/tn_ranges_inprocess.py 2>/dev/null"
 tmp="$(mktemp)"; trap 'rm -f "$tmp"' EXIT
-ranges_arg=()
+plan_arg=(); apply_arg=()
 if [[ -n "$RANGES" ]]; then
-  cp "$RANGES" "$tmp"; ranges_arg=(--ranges "$tmp")
+  plan_arg=(--ranges "$RANGES"); apply_arg=(--ranges "$RANGES")
 elif [[ "$NO_DB" == "1" ]]; then
   warn "--no-db: range names unknown and nothing checks whether a range is being built or destroyed"
 else
   step "TrueNorth ranges (read only, in the api image)"
-  compose="$APP_DIR/infra/platform/docker/compose.prod.yml"
-  if (cd "$(dirname "$compose")" && docker compose -f "$compose" --env-file "$ENV_FILE" run --rm --no-deps -T -w /app \
-        -e PYTHONPATH=/app -v "$REPO:/srcapp:ro" --entrypoint python api /srcapp/scripts/lab/tn_ranges_inprocess.py) \
-        > "$tmp" 2>/dev/null && [[ -s "$tmp" ]]; then
-    info "$("$PY" -c 'import json,sys; r=json.load(open(sys.argv[1])); print(len(r), "range(s) not destroyed")' "$tmp")"
-    ranges_arg=(--ranges "$tmp")
+  if bash -c "$ranges_cmd" > "$tmp" && [[ -s "$tmp" ]]; then
+    info "$("$PY" -c 'import json,sys; d=json.load(open(sys.argv[1])); r=d["ranges"] if isinstance(d, dict) else d; print(len(r), "range(s) not destroyed")' "$tmp")"
+    plan_arg=(--ranges "$tmp"); apply_arg=(--ranges-cmd "$ranges_cmd")
   elif [[ "$DRY" == "1" ]]; then
     warn "could not read the TrueNorth ranges (docker compose in $APP_DIR); planning without them"
   else
@@ -103,9 +120,11 @@ else
 fi
 
 step "Plan"
-"$PY" "$LAB_DIR/vcenter_organize.py" plan --dc "$GOVC_DATACENTER" ${ranges_arg[@]+"${ranges_arg[@]}"} || exit $?
+"$PY" "$LAB_DIR/vcenter_organize.py" plan --dc "$GOVC_DATACENTER" ${plan_arg[@]+"${plan_arg[@]}"} \
+  ${RETIRE[@]+"${RETIRE[@]}"} || exit $?
 if [[ "$DRY" == "1" ]]; then echo; echo "Dry run: nothing changed. Re-run without --dry-run to apply."; exit 0; fi
 confirm "Apply the plan above in vCenter $(govc_url_safe)?" || die "not confirmed; nothing changed"
 
-step "Apply"
-"$PY" "$LAB_DIR/vcenter_organize.py" apply --dc "$GOVC_DATACENTER" ${ranges_arg[@]+"${ranges_arg[@]}"}
+step "Apply (re-reads the ranges and vCenter first)"
+"$PY" "$LAB_DIR/vcenter_organize.py" apply --dc "$GOVC_DATACENTER" ${apply_arg[@]+"${apply_arg[@]}"} \
+  ${RETIRE[@]+"${RETIRE[@]}"}

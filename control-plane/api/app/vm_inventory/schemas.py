@@ -22,5 +22,8 @@ class InventoryVmOut(BaseModel):
 class VmInventoryOut(BaseModel):
     supported: bool = Field(description="False: this hypervisor type cannot list its VMs here")
     message: str = ""
-    groups: dict[VmGroup, int] = Field(default_factory=dict, description="VMs per group")
+    groups: dict[VmGroup, int] = Field(default_factory=dict, description="VMs per group (all the caller may see)")
+    total: int = Field(0, description="VMs matching the group filter; vms is the page offset..offset+limit")
+    limit: int = 0
+    offset: int = 0
     vms: list[InventoryVmOut] = Field(default_factory=list)

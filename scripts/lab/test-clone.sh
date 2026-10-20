@@ -69,8 +69,8 @@ find_host() {
 # Newest <id>@<host>-<yyyymmdd> on that host, else the plain template.
 source_for() {
   local short="$1" copy
-  copy="$(govc find / -type m -name "${ID}@${short}-*" | sort | tail -n1)"
-  if [[ -n "$copy" ]]; then echo "$copy"; else govc find / -type m -name "$ID" | head -n1; fi
+  copy="$(govc find / -type m -name "${ID}@${short}-*" | awk '!/\/_retired\//' | sort | tail -n1)"
+  if [[ -n "$copy" ]]; then echo "$copy"; else govc find / -type m -name "$ID" | awk '!/\/_retired\//' | head -n1; fi
 }
 
 # Network, customization (customize mode) and power-on. Non-zero: the clone is not testable.

@@ -141,11 +141,14 @@ VSPHERE_PLACEMENT: str = os.environ.get("VSPHERE_PLACEMENT", "spread").lower()
 # A resource pool (by name, anywhere under the cluster) range VMs go into. Empty: the
 # cluster's root pool.
 VSPHERE_RESOURCE_POOL: str = os.environ.get("VSPHERE_RESOURCE_POOL", "")
-# Range VM folders: <this>/<range-name>-<id8> (vsphere_tags.range_label), found again by the
-# id8 suffix here and under the earlier truenorth/ranges root.
+# Range VM folders: <this>/<range-name>-<key> (vsphere_tags.range_label, key = 12 hex digits
+# of the range id), found again by that suffix here and, as <id8>, under the earlier
+# truenorth/ranges root. Never empty or "/": the provisioner refuses to start (range_root).
 VSPHERE_RANGE_FOLDER: str = os.environ.get("VSPHERE_RANGE_FOLDER", "TrueNorth/Ranges")
 # vCenter tags (tn-type, tn-os, tn-template, tn-range) on range VMs; best effort.
 VSPHERE_TAGS: bool = os.environ.get("VSPHERE_TAGS", "true").lower() != "false"
+# Per tagging call (seconds); the first slow or failed call stops tagging for the build.
+VSPHERE_TAG_TIMEOUT: float = float(os.environ.get("VSPHERE_TAG_TIMEOUT", "5"))
 # vCPU overcommit cap: a host takes VMs while powered-on vCPUs <= threads x this.
 VSPHERE_MAX_VCPU_PER_THREAD: float = float(os.environ.get("VSPHERE_MAX_VCPU_PER_THREAD", "4"))
 # Hosts never used for range VMs (comma-separated), e.g. the one running the VCSA.
@@ -500,8 +503,9 @@ class VsphereAPIProvisioner(BaseProvisioner):
         self._vlan_pool = VSPHERE_VLAN_POOL
         self._placement = VSPHERE_PLACEMENT
         self._resource_pool = VSPHERE_RESOURCE_POOL.strip()
-        self._range_folder = VSPHERE_RANGE_FOLDER.strip("/")
+        self._range_folder = infra.range_root(VSPHERE_RANGE_FOLDER)  # empty or "/": refused, loudly
         self._tags_enabled = VSPHERE_TAGS
+        self._tag_timeout = VSPHERE_TAG_TIMEOUT
         self._tagger: tags.TagClient | None = None  # one per build (provision)
         self._vcpu_ratio = VSPHERE_MAX_VCPU_PER_THREAD
         self._exclude_hosts = _names(VSPHERE_EXCLUDE_HOSTS)
@@ -657,24 +661,22 @@ class VsphereAPIProvisioner(BaseProvisioner):
     async def _api_delete(self, client: httpx.AsyncClient, path: str) -> None:
         await self._request(client, "DELETE", path)
 
-    def _tag_client(self, client: httpx.AsyncClient) -> tags.TagClient:
-        """CIS tagging over this REST session, in its dialect (call after a login)."""
+    def _tag_client(self, client: httpx.AsyncClient, deadline: float | None = None) -> tags.TagClient:
+        """CIS tagging over this REST session, in its dialect (call after a login); each call
+        bounded by VSPHERE_TAG_TIMEOUT, none after ``deadline`` (monotonic)."""
         async def call(method: str, path: str, body: dict | None):
             return await self._request(client, method, path, prefix="",
                                        **({"json": body} if body is not None else {}))
 
-        return tags.TagClient(call, self._dialect)
+        return tags.TagClient(call, self._dialect, timeout=self._tag_timeout, deadline=deadline)
 
     async def _tag_vm(self, vm_def: dict, vm_id: str) -> None:
         """tn-type/tn-os/tn-template/tn-range on a range VM. Best effort: a VM is never
         failed (or deleted) because vCenter would not tag it."""
         if self._tagger is None or not vm_id:
             return
-        try:
-            await self._tagger.apply(vm_id, tags.range_vm_tags(vm_def, vm_def.get("_label") or vm_def["_range_id"][:8]))
-        except Exception as exc:  # noqa: BLE001 -- tags are for people browsing vCenter, not the build
-            logger.warning("VM %s: vCenter tags not applied (the build goes on): %s", vm_def["name"],
-                           str(exc) or type(exc).__name__)
+        label = vm_def.get("_label") or tags.range_key(vm_def["_range_id"])
+        await self._tagger.apply(vm_id, tags.range_vm_tags(vm_def, label))  # bounded; never raises
 
     # ------------------------------------------------------------------ #
     # Content Library
@@ -1177,8 +1179,10 @@ class VsphereAPIProvisioner(BaseProvisioner):
         in_use: dict[str, str] = {}
         for vm_id, got in self._inventory_sync(si, ("name", "parent", "config.annotation",
                                                     "config.hardware.device")).items():
-            if annotated_range(got.get("config.annotation")) == range_id or (
-                    getattr(got.get("parent"), "_moId", None) in own_folders):
+            owner = annotated_range(got.get("config.annotation"))
+            # In its folder and not another range's: an earlier build's <id8> folder is shared
+            # by every range of that id8, so a VM annotated for another range is never exempt.
+            if owner == range_id or (not owner and getattr(got.get("parent"), "_moId", None) in own_folders):
                 continue
             for card in infra.nic_cards(got.get("config.hardware.device") or []):
                 if (mac := macs.normalize(getattr(card, "macAddress", None))) and mac in pool:
@@ -1225,10 +1229,12 @@ class VsphereAPIProvisioner(BaseProvisioner):
             v["role_fallback_template"] for v in vm_defs if v.get("role_fallback_template")}
         view = si.content.viewManager.CreateContainerView(dc.vmFolder, [vim.VirtualMachine], True)
         try:
-            # The plain templates and their host-local copies <id>@<host>-<yyyymmdd> (ADR 0012).
+            # The plain templates and their host-local copies <id>@<host>-<yyyymmdd> (ADR 0012),
+            # in any folder but _retired (old hand-made templates moved aside: never a source).
             templates = {vm.name: vm for vm in view.view
                          if (vm.name in wanted or getattr(template_copies.parse(vm.name), "base", None) in wanted)
-                         and vm.config.template}
+                         and vm.config.template
+                         and getattr(getattr(vm, "parent", None), "name", None) != tags.RETIRED_FOLDER}
         finally:
             view.Destroy()
         if self._placement == "cluster":
@@ -1314,7 +1320,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
         for vm_def in vm_defs:
             vm_def["_local_copy"] = self._local_copy(templates, vm_def)
         label = vm_defs[0].get("_label") if vm_defs else None
-        folder = infra.ensure_range_folder(dc, self._range_folder, range_id, label or range_id[:8])
+        folder = infra.ensure_range_folder(dc, self._range_folder, range_id, label or tags.range_key(range_id))
         return {"dc": dc, "cluster": cluster, "pool": self._pool(cluster), "folder": folder, "templates": templates,
                 "dvs": dvs, "notes": site_notes}
 
@@ -1642,7 +1648,9 @@ class VsphereAPIProvisioner(BaseProvisioner):
                     site = await asyncio.to_thread(self._prepare_sync, si, range_id, vm_defs, networks, physical)
                     errors += site.get("notes", [])
                     async with self._client() as client:
-                        self._tagger = self._tag_client(client) if self._tags_enabled else None
+                        # No tagging in the budget's last two minutes: they are the build's.
+                        self._tagger = (self._tag_client(client, deadline=self._budget_end - 120)
+                                        if self._tags_enabled else None)
                         results = await asyncio.gather(
                             *(self._provision_one_vm(client, si, site, v) for v in vm_defs), return_exceptions=True
                         )
@@ -2620,8 +2628,9 @@ class VsphereAPIProvisioner(BaseProvisioner):
         if not self._tags_enabled:
             return
         try:
-            async with self._client() as client:
-                gone = await self._tag_client(client).delete_range_tags(range_id[:8])
+            async with self._client() as client:  # a slow tagging service never holds up a destroy
+                gone = await asyncio.wait_for(self._tag_client(client).delete_range_tags(range_id),
+                                              4 * self._tag_timeout)
             if gone:
                 logger.info("range %s: vCenter tag(s) %s deleted", range_id, ", ".join(gone))
         except Exception as exc:  # noqa: BLE001 -- a stale tag is untidy, not a failed destroy

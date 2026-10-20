@@ -1,9 +1,11 @@
 """TrueNorth's ranges for scripts/lab/vcenter-organize.sh, read from inside the api image.
 
-Prints one JSON list on stdout, nothing else: every range that is not destroyed, as
-``{"id", "name", "state", "vms": [{"name", "template"}]}``. Only those fields are taken from
-``provisioner_output``; addresses, accounts and anything else in it are not printed. Read
-only: no row is changed.
+Prints one JSON object on stdout, nothing else: ``{"ranges": [...], "templates": [...]}``.
+``ranges``: every range that is not destroyed, as ``{"id", "name", "state", "vms": [{"name",
+"template"}]}``; only those fields are taken from ``provisioner_output`` (addresses, accounts
+and anything else in it are not printed). ``templates``: the vSphere template names the
+golden-image registry records (what TrueNorth itself registered, so an old one of them may
+be retired). Read only: no row is changed.
 
     docker compose -f <app>/infra/platform/docker/compose.prod.yml --env-file <.env.production> \\
       run --rm --no-deps -T -w /app -e PYTHONPATH=/app -v <kit checkout>:/srcapp:ro \\
@@ -35,14 +37,15 @@ def summarise(rows) -> list[dict]:
 
 def main() -> int:
     from app.db import SessionLocal
-    from app.models import Range
+    from app.models import GoldenImage, Range
 
     db = SessionLocal()
     try:
         rows = db.query(Range.id, Range.name, Range.state, Range.provisioner_output).all()
+        names = [n for (n,) in db.query(GoldenImage.template_name).filter(GoldenImage.hypervisor == "vsphere").all()]
     finally:
         db.close()
-    json.dump(summarise(rows), sys.stdout)
+    json.dump({"ranges": summarise(rows), "templates": sorted({str(n) for n in names if n})}, sys.stdout)
     print()
     return 0
 

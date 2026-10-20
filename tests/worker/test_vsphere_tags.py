@@ -17,26 +17,37 @@ def _run(coro):
     return asyncio.run(coro)
 
 
+KEY = "2fc8d04d1111"
+
+
+def test_range_key_is_12_hex_digits():
+    assert tags.range_key(ID) == KEY and tags.range_key(ID.upper()) == KEY
+
+
 @pytest.mark.parametrize(("name", "want"), [
-    ("Blue Team 3", "blue-team-3-2fc8d04d"),
-    ("  ARC²  Week/1 ", "arc-week-1-2fc8d04d"),
-    ("", "2fc8d04d"),
-    (None, "2fc8d04d"),
-    ("!!!", "2fc8d04d"),
-    ("lab-2fc8d04d", "lab-2fc8d04d"),  # already carries the id: not twice
-    ("2fc8d04d", "2fc8d04d"),
-    ("x" * 90, "x" * 40 + "-2fc8d04d"),
+    ("Blue Team 3", f"blue-team-3-{KEY}"),
+    ("  ARC²  Week/1 ", f"arc-week-1-{KEY}"),
+    ("", KEY),
+    (None, KEY),
+    ("!!!", KEY),
+    (f"lab-{KEY}", f"lab-{KEY}"),  # already carries the key: not twice
+    (KEY, KEY),
+    ("x" * 90, "x" * 40 + f"-{KEY}"),
 ])
 def test_range_label(name, want):
     assert tags.range_label(name, ID) == want
 
 
-@pytest.mark.parametrize(("folder", "hit"), [
-    ("2fc8d04d", True), ("blue-team-2fc8d04d", True), ("BLUE-2FC8D04D", True),
-    ("2fc8d04d-x", False), ("x2fc8d04d", False), ("0badc0de", False), ("", False),
+@pytest.mark.parametrize(("folder", "hit", "legacy"), [
+    (f"blue-team-{KEY}", True, False), (KEY, True, False), (f"BLUE-{KEY.upper()}", True, False),
+    ("2fc8d04d", True, True),  # an earlier build's <id8> folder: found, flagged legacy
+    ("blue-2fc8d04d", False, False),  # 8 digits after a name is not a key
+    ("x-2fc8d04d9999", False, False),  # same id8, another range's key
+    (f"{KEY}-x", False, False), (f"x{KEY}", False, False), ("0badc0de", False, True), ("", False, False),
 ])
-def test_range_folder_matches_by_id8_only(folder, hit):
-    assert tags.range_folder_id8(folder, ID[:8]) is hit
+def test_folders_match_by_the_12_hex_key_or_an_exact_id8(folder, hit, legacy):
+    assert tags.belongs_to(folder, ID) is hit
+    assert tags.is_legacy_folder(folder) is legacy
 
 
 @pytest.mark.parametrize(("source", "want"), [
@@ -56,7 +67,7 @@ def test_range_vm_tags():
 
 def test_categories_and_types_are_the_published_set():
     assert set(tags.CATEGORIES) == {"tn-type", "tn-os", "tn-template", "tn-range"}
-    assert tags.TYPES == ("golden-template", "template-copy", "range-vm", "test-clone", "depot", "mgmt")
+    assert tags.TYPES == ("golden-template", "template-copy", "range-vm", "test-clone", "depot", "mgmt", "retired")
 
 
 # -- TagClient ----------------------------------------------------------------------------
@@ -124,25 +135,54 @@ def test_a_tag_made_meanwhile_by_another_worker_is_used(dialect):
     assert cis.attached["vm-1"] == {theirs}
 
 
-def test_failures_raise_to_the_caller(dialect):
+def test_a_failure_stops_tagging_for_the_build_with_one_warning(dialect, caplog):
     cis = FakeCis()
     cis.fail = "attach"
-    with pytest.raises(httpx.HTTPStatusError):
-        _run(_client(cis, dialect).apply("vm-1", {"tn-type": "range-vm"}))
+    client = _client(cis, dialect)
+    caplog.set_level("WARNING", logger=tags.__name__)
+    assert _run(client.apply("vm-1", {"tn-type": "range-vm"})) is False  # never raises
+    cis.fail = None
+    before = len(cis.calls)
+    assert _run(client.apply("vm-2", {"tn-type": "range-vm"})) is False
+    assert len(cis.calls) == before  # nothing more is tried this build
+    assert caplog.text.count("vCenter tagging stopped") == 1 and client.stopped
+
+
+def test_a_slow_call_times_out_and_stops_tagging(dialect):
+    async def slow(method, path, body):
+        await asyncio.sleep(1)
+
+    client = tags.TagClient(slow, dialect, timeout=0.01)
+    assert _run(client.apply("vm-1", {"tn-type": "range-vm"})) is False
+    assert "longer than 0.01s" in client.stopped
+
+
+def test_nothing_is_tagged_past_the_deadline(dialect):
+    cis = FakeCis()
+    now = [100.0]
+    client = _client(cis, dialect)
+    client._deadline, client._clock = 150.0, lambda: now[0]
+    assert _run(client.apply("vm-1", {"tn-type": "range-vm"})) is True
+    now[0] = 151.0
+    calls = len(cis.calls)
+    assert _run(client.apply("vm-2", {"tn-type": "range-vm"})) is False
+    assert len(cis.calls) == calls and "budget" in client.stopped
 
 
 def test_delete_range_tags_only_that_ranges(dialect):
     cis = FakeCis()
-    mine_new, mine_old = cis.add_tag("tn-range", "blue-2fc8d04d"), cis.add_tag("tn-range", "2fc8d04d")
-    other = cis.add_tag("tn-range", "red-0badc0de")
-    same_name_other_cat = cis.add_tag("tn-template", "x-2fc8d04d")
-    gone = _run(_client(cis, dialect).delete_range_tags("2fc8d04d"))
-    assert sorted(gone) == ["2fc8d04d", "blue-2fc8d04d"]
-    assert mine_new not in cis.tags and mine_old not in cis.tags
-    assert other in cis.tags and same_name_other_cat in cis.tags
+    mine = cis.add_tag("tn-range", f"blue-{KEY}")
+    bare = cis.add_tag("tn-range", KEY)
+    twin = cis.add_tag("tn-range", "red-2fc8d04d9999")  # same id8, another range: kept
+    old8 = cis.add_tag("tn-range", "2fc8d04d")  # an 8-digit name: could be any range of that id8
+    same_name_other_cat = cis.add_tag("tn-template", f"x-{KEY}")
+    gone = _run(_client(cis, dialect).delete_range_tags(ID))
+    assert sorted(gone) == sorted([f"blue-{KEY}", KEY])
+    assert mine not in cis.tags and bare not in cis.tags
+    assert twin in cis.tags and old8 in cis.tags and same_name_other_cat in cis.tags
 
 
 def test_delete_range_tags_without_the_category_does_nothing(dialect):
     cis = FakeCis()
-    assert _run(_client(cis, dialect).delete_range_tags("2fc8d04d")) == []
+    assert _run(_client(cis, dialect).delete_range_tags(ID)) == []
     assert cis.categories == {}

@@ -18154,7 +18154,7 @@
             "additionalProperties": {
               "type": "integer"
             },
-            "description": "VMs per group",
+            "description": "VMs per group (all the caller may see)",
             "propertyNames": {
               "enum": [
                 "golden",
@@ -18166,15 +18166,31 @@
             "title": "Groups",
             "type": "object"
           },
+          "limit": {
+            "default": 0,
+            "title": "Limit",
+            "type": "integer"
+          },
           "message": {
             "default": "",
             "title": "Message",
             "type": "string"
           },
+          "offset": {
+            "default": 0,
+            "title": "Offset",
+            "type": "integer"
+          },
           "supported": {
             "description": "False: this hypervisor type cannot list its VMs here",
             "title": "Supported",
             "type": "boolean"
+          },
+          "total": {
+            "default": 0,
+            "description": "VMs matching the group filter; vms is the page offset..offset+limit",
+            "title": "Total",
+            "type": "integer"
           },
           "vms": {
             "items": {
@@ -28143,7 +28159,7 @@
     },
     "/hypervisors/connections/{conn_id}/vms": {
       "get": {
-        "description": "The connection's VMs, read live from the hypervisor and grouped by their tn-type tag\n(golden templates, host copies, range VMs, other). Read only; host VM counts unchanged.",
+        "description": "The connection's VMs, read live from the hypervisor and grouped by their tn-type tag\n(golden templates, host copies, range VMs, other); one page of them. Range VMs of other\ntenants' ranges are left out unless the caller is the platform administrator. Read only;\nhost VM counts unchanged.",
         "operationId": "list_vms_hypervisors_connections__conn_id__vms_get",
         "parameters": [
           {
@@ -28154,6 +28170,51 @@
               "format": "uuid",
               "title": "Conn Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "group",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "golden",
+                    "copies",
+                    "ranges",
+                    "other"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Group"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 500,
+              "maximum": 2000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
             }
           }
         ],

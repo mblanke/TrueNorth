@@ -314,6 +314,7 @@ def test_a_two_network_range_lifecycle(env, si, range_id):
     template = _template(range_id)
     allocations = _reserve(prov, range_id, template)
     r8 = range_id[:8]
+    key = range_id.replace("-", "")[:12]  # vsphere_tags.range_key: the folder and tn-range tag
     assert allocations == {"physical_vlans": {"10": "100", "20": "101"},
                            "nic_macs": {f"{r8}-attacker#nic0": "00:50:56:3c:00:00",
                                         f"{r8}-victim#nic0": "00:50:56:3c:00:01"}}
@@ -335,9 +336,9 @@ def test_a_two_network_range_lifecycle(env, si, range_id):
         assert [n.backing.port.portgroupKey for n in nics] == [want[vm.name]]
         assert mod.annotated_range(vm.config.annotation) == range_id
         assert vm.runtime.powerState == "poweredOn"
-        assert vm.parent.name == f"sim-range-{r8}" and vm.parent.parent.name == "Ranges"
+        assert vm.parent.name == f"sim-range-{key}" and vm.parent.parent.name == "Ranges"
         assert _tags_on(out["vm_id"]) == {"tn-type": "range-vm", "tn-os": "ubuntu-2404", "tn-template": TEMPLATE_VM,
-                                          "tn-range": f"sim-range-{r8}"}
+                                          "tn-range": f"sim-range-{key}"}
     assert {v["vm_id"] for v in _run(prov.find_vms(f"{range_id}-"))} == {v["vm_id"] for v in built.vms}
 
     # What provision_range stores (range_alloc.stored_output): with the vCenter it was built
@@ -358,8 +359,8 @@ def test_a_two_network_range_lifecycle(env, si, range_id):
     names = {_name(vm) for vm in _all(si, vim.VirtualMachine)}
     assert not names & set(want)
     assert _portgroups(si, f"tn-{r8}-") == {}
-    assert f"sim-range-{r8}" not in _tag_names("tn-range")  # the range's tag went with its VMs
-    assert not [f for f in _named(si, vim.Folder, "Ranges").childEntity if f.name.endswith(r8)]
+    assert f"sim-range-{key}" not in _tag_names("tn-range")  # the range's tag went with its VMs
+    assert not [f for f in _named(si, vim.Folder, "Ranges").childEntity if f.name.endswith(key)]
     assert _run(mod.VsphereAPIProvisioner().find_vms(f"{range_id}-")) == []
     again = _run(mod.VsphereAPIProvisioner().destroy(range_id, output))
     assert again.status == "ok", again.errors  # a retried destroy finds everything gone

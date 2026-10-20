@@ -94,17 +94,26 @@ Not a change to the decisions above; it records where their objects live in vCen
 
 - **Folders.** Everything TrueNorth creates is under one `TrueNorth` VM folder:
   `TrueNorth/Templates/` (golden templates and their host copies, flat, as decision 6 names
-  them), `TrueNorth/Templates/_retired/` (old hand-made templates waiting for decision 2's
-  retirement; moved, never deleted by tooling) and `TrueNorth/Ranges/<range-name>-<id8>/`
-  (the provisioner's `VSPHERE_RANGE_FOLDER`, previously `truenorth/ranges/<id8>`). Range
-  folders are found by the `-<id8>` suffix, never by name, under both roots. Templates and
-  copies are found by name anywhere, so folder moves are safe.
+  them), `TrueNorth/Templates/_retired/` (old TrueNorth templates waiting for decision 2's
+  retirement, tagged `retired`; moved, never deleted by tooling, never a clone source) and
+  `TrueNorth/Ranges/<range-name>-<key>/`, `<key>` the first 12 hex digits of the range id
+  (the provisioner's `VSPHERE_RANGE_FOLDER`, previously `truenorth/ranges/<id8>`; 8 digits
+  collide across ranges too soon). Range folders are found by the key suffix, never by
+  name; an earlier `<id8>` folder is still found but never reused for a new build. An empty
+  or `/` `VSPHERE_RANGE_FOLDER` is refused. Templates and copies are found by name anywhere
+  but `_retired`, so folder moves are safe.
 - **Tags.** Single-cardinality categories on VMs: `tn-type` (golden-template, template-copy,
-  range-vm, test-clone, depot, mgmt), `tn-os`, `tn-template`, `tn-range`. The template kit
-  tags at build, replicate and test clone; the provisioner tags range VMs at clone and deletes
-  the range's `tn-range` tag on destroy. Best effort everywhere: tagging never fails a build
-  or a range. One definition in `worker/provisioners/vsphere_tags.py`, mirrored in
-  `scripts/lab/vcenter_organize.py` (contract-tested).
-- **Existing objects.** `scripts/lab/vcenter-organize.sh` moves the earlier `truenorth/...`
-  objects into this layout and tags them, idempotently, refusing while a range is being built
-  or destroyed. The Infrastructure page lists a connection's VMs grouped by `tn-type`.
+  range-vm, test-clone, depot, mgmt, retired), `tn-os`, `tn-template`, `tn-range`. The
+  template kit tags at build, replicate and test clone; the provisioner tags range VMs at
+  clone and deletes the range's `tn-range` tag on destroy. Best effort and bounded: a 5 s
+  timeout per call, the first failure stops tagging for that build, none in the budget's
+  last two minutes; tagging never fails a build or a range. One definition in
+  `worker/provisioners/vsphere_tags.py`, mirrored in `scripts/lab/vcenter_organize.py`
+  (contract-tested).
+- **Existing objects.** `scripts/lab/vcenter-organize.sh` moves TrueNorth's own objects out
+  of the earlier `truenorth/...` tree into this layout and tags them, idempotently. It
+  reports and leaves anything it does not recognise as TrueNorth's, never retires a
+  powered-on VM, deletes an old folder only when this run emptied it and vCenter reports it
+  empty, and refuses unless every range is settled and the running worker builds into
+  `TrueNorth/Ranges`. The Infrastructure page lists a connection's VMs grouped by `tn-type`,
+  a range VM only to its own tenant or the platform administrator.
