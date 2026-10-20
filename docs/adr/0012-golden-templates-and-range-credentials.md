@@ -10,7 +10,8 @@
   - Security Onion per-range setup: #184;
   - the work-site build kit: #186;
   - Packer depot paths, VS media, generic Linux login and role sources: #187;
-  - Exchange 2019, SharePoint SE and MECM setup at deploy: branch `claude/role-images-deploy-setup`.
+  - Exchange 2019, SharePoint SE and MECM setup at deploy: branch `claude/role-images-deploy-setup`;
+  - ranges reach TN-DEPOT01 on a third NIC on the range uplink network, 10.30.32.10, tcp/8081 and 3142 only (owner decision 2026-10-20): #214.
 - **Exception to decision 1 (closed):** the Exchange 2019, SharePoint SE and MECM role images were built with their catalogue rows disabled until TrueNorth could run their domain-dependent setup at deploy time (#187). That setup now exists (`worker/provisioners/vsphere_products.py`, `vmware-site-runbook.md` §7.3): after the range's DC, the VM joins the domain and the product is set up **detached through guest operations as the range's domain Administrator** — no stored Windows credential; secrets (the domain password, the SharePoint key) travel only by guest file transfer and are deleted after use. The build leaves the setup `running` and a beat task (`worker.setup_reconcile.reconcile_setups`) finishes it, so a 1–2 h install never hits the Celery soft limit. A range with these roles gets a per-range generated domain Administrator when it declares none, not the site-wide default (cross-range isolation). SharePoint SE runs only with the site's product key (`TN_SHAREPOINT_PRODUCT_KEY`), else it stays staged. The rows are enabled, so decision 1 applies to them like any other template (an unbuilt image falls back to the plain OS). Hardened per adversarial review (mblanke/TrueNorth#193).
 
 ## Context

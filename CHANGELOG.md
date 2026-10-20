@@ -515,6 +515,23 @@ course production with a local-model fallback, and the cleanup of unsupported su
   on Windows Server 2019, `sharepoint` / `sharepoint_se` / `sharepoint_2019` still give
   `srv2019-sharepoint2019` (unbuilt: plain srv2019 and a warning, never an error); on Windows
   Server 2022 a bare `sharepoint` means SharePoint SE, and `sharepoint_2019` means 2019.
+- **Range firewalls reach TN-DEPOT01 on a third NIC (#214).** Owner decision 2026-10-20:
+  the work-site depot gets a NIC at 10.30.32.10 on the range uplink network (`dPG-TN-SVC`,
+  VLAN 32), so range firewalls keep their `TN_DEPOT` rule and never reach MGMT.
+  `deploy-mgmt-vm.sh --site work` adds it (unaddressed); `build-phase.sh depot` step 3/5
+  adds or connects it on an existing depot (y/N each) and hands its MAC to `depot.yml`.
+  `tn_depot` loads an `nft` table on that NIC first (in: only TCP 8081/3142 from
+  10.30.32.0/24; nothing new out; nothing forwarded), then the address; it turns forwarding
+  off (sysctl, dockerd `ip-forward: false`, Nexus on host networking) and reads it back.
+  Installer: `tn_depot_url http://10.30.32.10` (no port: the worker appends it), explicit
+  feed and apt proxy, new `tn_depot_ports` → `TN_DEPOT_PORTS`; the range uplink network
+  stays empty until the on-site steps pass (the port group does not exist yet).
+  `create-portgroups.sh --site work` creates only VLAN 32 with a work-site UniFi checklist;
+  `depot-uplink.sh` refuses the work-site depot. Fix: `build-phase.sh` never set `APPLY=1`,
+  so its confirmed `act` steps (VM folders, the DRS rule) only printed `[plan]`.
+  `lab.auto.pkrvars.hcl.example` uses `depot_url http://10.30.31.30:8081/repository`.
+  Evidence: contract tests, provisioner tests against the vSphere fakes, the nft rules
+  loaded and probed in a real kernel (container); nothing yet on the work vCenter.
 
 ### R0-B: web correctness and role access
 - Fix: Resume on a paused exercise called `/start` (409 unless pending), so nothing resumed;

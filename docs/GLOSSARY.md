@@ -116,9 +116,11 @@ _Not to be confused with_: the management network, or a range's own networks.
 
 **Depot** (TN-DEPOT01):
 The package mirror VM (Nexus with a Chocolatey feed and raw `installers`, plus
-apt-cacher-ng) that template builds pull from, so builds need no internet. Dual-homed at
-10.30.30.30 (management) and 10.30.31.30 (build); the only machine with internet egress
-(ADR 0012 §4; `install/lab/depot.yml`; Packer `depot_url`).
+apt-cacher-ng) that template builds pull from, so builds need no internet. At 10.30.30.30
+(management) and 10.30.31.30 (build); the only machine with internet egress. Range
+firewalls reach it on a third NIC, 10.30.32.10 on the range uplink network, TCP 8081/3142
+only; it never routes between its NICs (ADR 0012 §4; #214; `install/lab/depot.yml`;
+Packer `depot_url`, `TN_DEPOT_URL` for ranges).
 _Avoid_: repo server, proxy (alone).
 
 ## Training delivery

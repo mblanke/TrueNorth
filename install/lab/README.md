@@ -23,10 +23,12 @@ See [Work site (TN-MGMT01 build host)](#work-site-tn-mgmt01-build-host) at the e
 > UniFi gateway and internet egress for TN-BUILD01. ADR 0012 and the work-site kit
 > (#186, #187) replaced it on the work vCenter: `dPG-TN-BUILD` (VLAN 31, 10.30.31.0/24)
 > has **no gateway and no internet**, TN-MGMT01 serves its DHCP (.100–.199) on
-> 10.30.31.20, and TN-DEPOT01 is dual-homed at **10.30.30.30** (MGMT) and **10.30.31.30**
+> 10.30.31.20, and TN-DEPOT01 sits at **10.30.30.30** (MGMT) and **10.30.31.30**
 > (BUILD) and is the only machine with internet egress (apt-cacher-ng 3142, Nexus 8081).
-> The tooling and values above are kept as they are, because the scripts still exist;
-> do not use them for the work site.
+> Since #214 (2026-10-20) it also has a third NIC at **10.30.32.10** on the range uplink
+> network, for range firewalls only; the "Values for `install/inventory`" below are the
+> work site's again. The rest of the tooling above is kept because the scripts still
+> exist; do not use it for the work site.
 
 ## How the depot gets packages (read this first)
 
@@ -273,9 +275,12 @@ TN-BUILD01. ADR 0012 decides how its golden templates are built:
 - **TN-MGMT01** (10.30.30.20) builds them on **esx04**, next to itself. Packer's HTTP, WinRM
   and SSH callbacks reach its second NIC `ens224`, 10.30.31.20 on `dPG-TN-BUILD` (VLAN 31,
   isolated, no gateway). `tn-build-dhcp.service` (dnsmasq) hands out 10.30.31.100-199.
-- **TN-DEPOT01** is dual-homed: 10.30.30.30 on `dPG-TN-MGMT` (gateway .1, DNS 10.30.30.10)
-  and 10.30.31.30 on `dPG-TN-BUILD`. It runs apt-cacher-ng on 3142 and the Nexus Chocolatey
-  feed on 8081 (`tn_depot`, unchanged).
+- **TN-DEPOT01** has three NICs: 10.30.30.30 on `dPG-TN-MGMT` (gateway .1, DNS
+  10.30.30.10), 10.30.31.30 on `dPG-TN-BUILD`, and 10.30.32.10 on the range uplink network
+  (`dPG-TN-SVC`, VLAN 32; #214), where range firewall WANs reach it. It runs apt-cacher-ng
+  on 3142 and the Nexus Chocolatey feed on 8081 (`tn_depot`). It never routes between its
+  NICs, and on the range NIC its host firewall admits only TCP 8081/3142 from 10.30.32.0/24
+  ([Ranges reach the depot](#ranges-reach-the-depot-214)).
 - The ISOs are copied from `[esx01-local] ISO/` to `[esx04-local] ISO/`, keeping the same
   sub-folders.
 - After each build, the template is copied to esx02-04 (`build.sh replicate`). A test clone
@@ -295,7 +300,9 @@ and this section said to run no build phase before sign-off. `status`, `prereq` 
 | `scripts/lab/build-phase.sh` | The phases below. y/N before every vCenter change unless `--yes`; one approval per build phase |
 | `scripts/lab/test-clone.sh` | Clone `<id>` (the host's newest `<id>@<host>-<date>` copy) on each range host, customize name + IP, wait for Tools to report them, destroy |
 | `scripts/register_golden_image_inprocess.py` | Marks the image `built` with its template name (`PATCH /golden-images/{id}`), or creates a variant, in-process as an administrator (no token) |
-| `scripts/lab/deploy-mgmt-vm.sh TN-DEPOT01 --site work` | The dual-homed depot on esx04, cloned from `ubuntu-lts` |
+| `scripts/lab/deploy-mgmt-vm.sh TN-DEPOT01 --site work` | The depot on esx04, cloned from `ubuntu-lts`: MGMT and BUILD NICs addressed by cloud-init, the range uplink NIC (`--range-pg`, default `dPG-TN-SVC`) added connected but unaddressed |
+| `scripts/lab/create-portgroups.sh --site work` | Creates only `dPG-TN-SVC` (VLAN 32, the range uplink network) on `vDS-10G`, with the reject/reject/reject security policy, and prints the work-site UniFi checklist |
+| `install/lab/depot.yml` (`tn_depot`) | Also: forwarding off (sysctl, dockerd `ip-forward: false`, Nexus on host networking), then on the range NIC the `nft` table `inet tn_depot_range` and only then 10.30.32.10/24 |
 
 `tn_build` is reused on TN-MGMT01 for only what is missing: govc, xorriso/genisoimage,
 openssl, and Packer if `packer version` fails. It leaves Docker alone
@@ -331,11 +338,14 @@ sudo scripts/lab/build-phase.sh prereq          # packer init/validate, ISO copy
                                                 # DRS should-rule TN-MGMT01 -> esx04 (y/N)
 
 # ── 4. Depot ──────────────────────────────────────────────────────────
+#   First the range uplink port group, if the work site has none yet (TODO(site), #214):
+scripts/lab/create-portgroups.sh --site work           # plan; then --apply, then its UniFi checklist
 sudo scripts/lab/build-phase.sh depot --ssh-key /home/<you>/.ssh/id_ed25519_lab.pub --admin <admin upn>
-#   builds + replicates + tests + registers ubuntu-lts if it is missing, then deploys
-#   TN-DEPOT01 (y/N). Then, from the Mac:
-cd install/lab/work-site && ansible-playbook ../depot.yml --ask-vault-pass
-#   back on TN-MGMT01: re-run the depot phase; step 4/4 checks the depot on 10.30.31.30.
+#   builds + replicates + tests + registers ubuntu-lts if it is missing, deploys TN-DEPOT01
+#   with three NICs (y/N), and step 3/5 checks the range NIC (adds or connects it after a
+#   y/N each, prints its MAC). Another port group name: --range-pg <name>. Then, from the Mac:
+cd install/lab/work-site && ansible-playbook ../depot.yml --ask-vault-pass -e tn_depot_range_mac=<MAC from step 3/5>
+#   back on TN-MGMT01: re-run the depot phase; step 5/5 checks the depot on 10.30.31.30.
 sudo scripts/lab/build-phase.sh depot --admin <admin upn>
 
 # ── 5. Offline bases (still no depot_url) ─────────────────────────────
@@ -380,6 +390,72 @@ replicate skips today's copies. Registration skips images that are already built
 clone that fails is kept for diagnosis, and the script prints its `govc vm.destroy`
 command. Use `--dry-run` to see what a phase would do. `--no-test` builds and replicates
 but does not register.
+
+### Ranges reach the depot (#214)
+
+Owner decision 2026-10-20: TN-DEPOT01 gets a third NIC on the range uplink network at
+**10.30.32.10**. Range firewalls keep their `TN_DEPOT` rule (pfSense/OPNsense alias and
+floating WAN pass, VyOS address-group), and ranges never get a path to the management
+network. The provisioner derives that rule from the installer's `TN_DEPOT_URL` and
+`TN_DEPOT_PORTS`; nothing in the worker changed.
+
+| Where | Setting | Value |
+|---|---|---|
+| vCenter | range uplink port group | `dPG-TN-SVC`, VLAN 32 (**TODO(site)**: not created yet; `--range-pg` / `TN_RANGE_UPLINK_PG` if another name is chosen) |
+| UniFi | VLAN 32 | 10.30.32.0/24, gateway .1, no DHCP; drop 10.30.32.0/24 → internet, MGMT, BUILD, 192.168.1.0/24 |
+| TN-DEPOT01 | NIC 2 | 10.30.32.10/24, no gateway, no DNS (`tn_depot_range_*` in `work-site/inventory/group_vars/all/main.yml`) |
+| TN-DEPOT01 | host firewall on NIC 2 | in: only TCP 8081, 3142 from 10.30.32.0/24 to 10.30.32.10; out: nothing new; forward: nothing |
+| TN-DEPOT01 | forwarding | off: `net.ipv4.ip_forward=0`, IPv6 forwarding 0, dockerd `"ip-forward": false` |
+| installer | `tn_depot_url` (`TN_DEPOT_URL`) | `http://10.30.32.10` — scheme and IP only: the worker appends `:8081/repository/chocolatey/`, and the firewalls' `TN_DEPOT` alias is this host |
+| installer | `tn_depot_choco_feed` | `http://10.30.32.10:8081/repository/chocolatey/` |
+| installer | `tn_depot_apt_proxy` | `http://10.30.32.10:3142` |
+| installer | `tn_depot_ports` (`TN_DEPOT_PORTS`) | `8081,3142` |
+| installer | `tn_vsphere_range_uplink_pool` / `_gateway` / `_prefix` | `10.30.32.100-10.30.32.199` / `10.30.32.1` / `24` (unchanged) |
+| installer | `tn_vsphere_range_uplink_network` | empty until step 4 below, then `dPG-TN-SVC` |
+| Packer (builds) | `depot_url` / `apt_proxy` | `http://10.30.31.30:8081/repository` / `http://10.30.31.30:3142` — builds use the BUILD NIC, never 10.30.32.10 |
+
+Operator steps, in order:
+
+```bash
+# 1. vCenter + UniFi: the range uplink network (skip if it exists)
+scripts/lab/create-portgroups.sh --site work            # plan: refuses if VLAN 32 is taken
+scripts/lab/create-portgroups.sh --site work --apply    # then do the printed UniFi checklist;
+                                                        # tag VLAN 32 on esx02-04's host ports
+
+# 2. TN-MGMT01: the depot's range NIC (y/N before each vCenter change), then depot.yml
+sudo scripts/lab/build-phase.sh depot --admin <admin upn>
+#   step 3/5 prints "MAC xx:xx:..."; from the Mac:
+cd install/lab/work-site && ansible-playbook ../depot.yml --ask-vault-pass -e tn_depot_range_mac=<MAC>
+#   depot.yml fails unless: forwarding reads 0 from the kernel, the nft table is loaded,
+#   10.30.32.10 is on the NIC and the default route is not, and Nexus and apt-cacher-ng
+#   answer on 10.30.32.10.
+
+# 3. TN-DEPOT01 (ssh tnadmin@10.30.30.30): read it back
+sysctl net.ipv4.ip_forward net.ipv6.conf.all.forwarding    # both 0
+sudo nft list table inet tn_depot_range                     # the three chains
+ip -br addr; ip route                                       # no default route via the range NIC
+
+# 4. install/inventory/group_vars/all/main.yml: tn_vsphere_range_uplink_network: dPG-TN-SVC
+#    (the other tn_depot_* values are already set), then from install/:
+ansible-playbook playbooks/30-config.yml --ask-vault-pass   # and restart the workers
+```
+
+**Only verifiable on site** (with a test range whose edge firewall has its WAN on
+`dPG-TN-SVC`; runbook §7):
+- from the range firewall: `10.30.32.10` tcp/8081 and tcp/3142 answer; tcp/22, 8082, 8083
+  and ping do not; 10.30.30.30, 10.30.31.30 and anything on 10.30.30.0/24 do not;
+- a Windows range VM installs a Chocolatey package through the depot
+  (`provisioner_output.vms[].software` says `ok`), and a Linux one an apt package;
+- the nft counters on the depot (`sudo nft list table inet tn_depot_range`) count the
+  probes that were dropped;
+- after a reboot of TN-DEPOT01 the table is loaded before the NIC comes up
+  (`systemctl status tn-depot-range-fw`) and forwarding is still 0.
+
+What CI and the Mac proved instead: the values agree everywhere (contract tests), the
+provisioner renders a `TN_DEPOT` alias of exactly 10.30.32.10 with ports 8081 and 3142 for
+pfSense and VyOS from the installer's values (fakes), and the rendered nft rules load in a
+real kernel and admit only those two ports from the uplink subnet (a privileged Ubuntu
+24.04 container with veth pairs). None of it ran against the work vCenter or TN-DEPOT01.
 
 ### Known gaps (read before the derived, roles and variants phases)
 
