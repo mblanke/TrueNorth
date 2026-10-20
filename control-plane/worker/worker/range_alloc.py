@@ -27,6 +27,7 @@ tasks.destroy_range calls ``release_after_destroy``. ``AllocationError`` is fina
 
 from __future__ import annotations
 
+import itertools
 import logging
 import zlib
 
@@ -79,7 +80,8 @@ def reserve_values(
     if not needed:
         return {h: mine[h] for h in holders}
     taken = db_ops.taken_reservation_values(db, domain, kind)
-    free = [v for v in pool if v not in taken]
+    # Lazily: a pool may be a large generated sequence (vSphere NIC MACs: 262,144 values).
+    free = list(itertools.islice((v for v in pool if v not in taken), len(needed)))
     if len(free) < len(needed):
         raise PoolExhaustedError(
             f"{kind} pool for {domain} has {len(free)} free of {len(pool)}; this range needs {len(needed)} more"
@@ -140,7 +142,7 @@ def stored_output(backend: str, range_id: str, result, provisioner=None) -> dict
     and the range pages read back, and the endpoint it was built on (``connection``:
     worker/connection_binding.py), which every later operation must reach again."""
     out = {"provider": backend, "range_id": range_id, "vms": result.vms, "networks": result.networks}
-    for key in ("uplink", "mirrors", "warnings"):
+    for key in ("uplink", "mirrors", "warnings", "not_ready"):
         if getattr(result, key, None):
             out[key] = getattr(result, key)
     record = getattr(provisioner, "connection_record", None)  # BaseProvisioner's; None: not one
@@ -148,3 +150,18 @@ def stored_output(backend: str, range_id: str, result, provisioner=None) -> dict
     if isinstance(rec, dict) and rec:
         out["connection"] = rec
     return out
+
+
+def build_outcome(result) -> tuple[str, str | None]:
+    """The state a finished (not ``failed``) build records, and its error: ``ready``, or
+    ``failed`` when a VM was built but is not ready (``result.not_ready``; vSphere: its
+    planned guest address never showed in VMware Tools, vsphere_readiness.py).
+
+    Not ``ready`` with the plan's addresses on show (2026-10-20). Recorded as ``failed``
+    with the built output, not raised: a retry would clone the same VMs again, and the
+    recorded VMs are what destroy, and the API's "destroy it first" check, work from."""
+    names = list(getattr(result, "not_ready", None) or [])
+    if not names:
+        return "ready", None
+    reasons = [e for e in result.errors if any(e.startswith(f"VM {n}:") for n in names)] or names
+    return "failed", f"{len(names)} VM(s) built but not ready: " + "; ".join(reasons)

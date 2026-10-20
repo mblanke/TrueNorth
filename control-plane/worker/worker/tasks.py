@@ -148,13 +148,8 @@ def provision_range(self, range_id: str, noise_mgmt: dict | None = None):
             with _db_session() as db2:
                 resolver = golden_image_resolver(db2, hv)
             rendered = windows_roles.require_buildable(render_topology(template, range_id, resolver, noise_mgmt=noise_mgmt))
-            template = {
-                **template,
-                "name": rendered["range_name"],
-                "vms": rendered["vm_definitions"],
-                "networks": rendered["network_definitions"],
-                "hypervisor": hv,
-            }
+            template = {**template, "name": rendered["range_name"], "vms": rendered["vm_definitions"],
+                        "networks": rendered["network_definitions"], "hypervisor": hv}
             allocations = {"vlan_map": rendered["vlan_map"]}
             logger.info(
                 "[provision] rendered %d VMs across %d networks (backend=%s)",
@@ -173,10 +168,13 @@ def provision_range(self, range_id: str, noise_mgmt: dict | None = None):
             raise RuntimeError("; ".join(result.errors) or "Provisioning failed")
 
         output = json.dumps(range_alloc.stored_output(backend, range_id, result, provisioner))
-
-        if not _update_range_state(range_id, "ready", output=output, only_from=("provisioning",)):
+        state, error = range_alloc.build_outcome(result)  # failed: a VM built, but its guest network is not up
+        if not _update_range_state(range_id, state, error=error, output=output, only_from=("provisioning",)):
             return discard_built(provisioner, range_id, result)
-        _notify_api("range", {"id": range_id, "state": "ready"})
+        _notify_api("range", {"id": range_id, "state": state, **({"error": error} if error else {})})
+        if error:  # recorded with its VMs, not raised: a retry would clone them again
+            logger.error(f"[provision] Range {range_id} FAILED: {error}")
+            return {"status": "failed", "range_id": range_id, "error": error}
         greyspace.after_provision(range_id, backend, template)  # Greyspace block, if any (ADR 0007); never raises
         logger.info(f"[provision] Range {range_id} ready ({len(result.vms)} VMs)")
         return {"status": "ready", "range_id": range_id, "vm_count": len(result.vms)}

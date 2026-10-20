@@ -24,11 +24,13 @@ import httpx
 import pytest
 import yaml
 from pyVmomi import vim, vmodl
-from worker import pfsense_config, render, vlan_pool
+from worker import pfsense_config, range_alloc, render, vlan_pool
 from worker.provisioners import vsphere_api as mod
 from worker.provisioners import vsphere_guest as guest_mod
 from worker.provisioners import vsphere_infra as infra
+from worker.provisioners import vsphere_macs as macs_mod
 from worker.provisioners import vsphere_products as products_mod
+from worker.provisioners import vsphere_readiness as readiness
 from worker.provisioners import vsphere_roles as roles_mod
 from worker.provisioners import vsphere_securityonion as so_mod
 
@@ -57,11 +59,12 @@ def worker_reserves(monkeypatch):
     async def provision(self, range_id, template, allocations):
         allocations = dict(allocations)
         taken = {"vlan": {str(v) for v in allocations.pop("used_vlans", ())},
-                 "uplink_ip": {str(v) for v in allocations.pop("used_uplink_ips", ())}}
+                 "uplink_ip": {str(v) for v in allocations.pop("used_uplink_ips", ())},
+                 "mac": {str(v) for v in allocations.pop("used_macs", ())}}
         for need in self.allocation_needs(range_id, template):
             if need.key in allocations:
                 continue
-            free = [v for v in need.pool if v not in taken[need.kind]]
+            free = list(itertools.islice((v for v in need.pool if v not in taken[need.kind]), len(need.holders)))
             if len(free) < len(need.holders):
                 raise AssertionError(f"test pool too small for {need}")
             got = dict(zip(need.holders, free, strict=False))
@@ -207,20 +210,33 @@ def _connect(card):
     return card
 
 
+def _generated_mac(default: str) -> str:
+    """A MAC vCenter generates for a NIC. With ``FAKE.generated_mac`` set, every clone gets
+    that one: what esx02 did on 2026-10-20 to two VMs cloned side by side."""
+    return (FAKE.generated_mac if FAKE is not None and FAKE.generated_mac else None) or default
+
+
 def _apply(devices: list, changes) -> list:
-    """What vCenter does with a deviceChange list: edit (new backing, same MAC), add (with a
-    MAC), remove; NICs on a vDS port group get a dvPort."""
+    """What vCenter does with a deviceChange list: edit (new backing; the MAC kept, or the
+    manual one the spec sets), add (a manual MAC as given, else a generated one), remove;
+    NICs on a vDS port group get a dvPort."""
     out = list(devices)
     for change in changes or []:
         dev = change.device
+        # ``FAKE.ignore_manual``: a server that does not honour a manual MAC (never seen; the
+        # provisioner's read-back check is for it).
+        manual = dev.addressType == "manual" and dev.macAddress and not (FAKE is not None and FAKE.ignore_manual)
         if change.operation == "add":
             dev.key = 4000 + len(out) + 100
-            dev.macAddress = f"00:50:56:aa:00:{len(out):02x}"
+            if not manual:
+                dev.addressType = "generated"
+                dev.macAddress = _generated_mac(f"00:50:56:aa:00:{len(out):02x}")
             out.append(_connect(dev))
         elif change.operation == "edit":
             old = next(d for d in out if d.key == dev.key)
-            card = vim.vm.device.VirtualVmxnet3(key=dev.key, backing=dev.backing, connectable=dev.connectable)
-            card.macAddress = old.macAddress
+            card = vim.vm.device.VirtualVmxnet3(key=dev.key, backing=dev.backing, connectable=dev.connectable,
+                                                addressType=dev.addressType if manual else "assigned")
+            card.macAddress = dev.macAddress if manual else _generated_mac(old.macAddress)
             out = [_connect(card) if d.key == dev.key else d for d in out]
         elif change.operation == "remove":
             out = [d for d in out if d.key != dev.key]
@@ -284,22 +300,74 @@ class FakeGuestOps:
         self.terminated.append(pid)
 
 
+class FakeGuest:
+    """``vm.guest`` as VMware Tools reports it: Tools runs in a powered-on Linux or Windows
+    guest (one the build configured) unless ``tools`` is False; its addresses are the ones
+    its configuration gives the NICs it really has (FakeVM.guest_ips)."""
+
+    def __init__(self, vm):
+        self._vm = vm
+        self.guestOperationsReady = True
+        self.customizationInfo = SimpleNamespace(customizationStatus="TOOLSDEPLOYPKG_SUCCEEDED")
+        self.ipAddress = None
+
+    @property
+    def toolsRunningStatus(self):  # noqa: N802 -- pyVmomi's property name
+        return "guestToolsRunning" if self._vm.tools_running() else "guestToolsNotRunning"
+
+    @property
+    def net(self):
+        return [SimpleNamespace(ipConfig=SimpleNamespace(ipAddress=[SimpleNamespace(ipAddress=ip, state="preferred")]))
+                for ip in self._vm.guest_ips()]
+
+
 class FakeVM:
     def __init__(self, name: str, devices: list, template: bool = False):
         self.name = name
         self._moId = f"vm-{next(_ids)}"
         self.config = SimpleNamespace(template=template, hardware=SimpleNamespace(device=devices))
-        self.guest = SimpleNamespace(guestOperationsReady=True, customizationInfo=SimpleNamespace(
-            customizationStatus="TOOLSDEPLOYPKG_SUCCEEDED"), toolsRunningStatus="guestToolsNotRunning", net=[],
-            ipAddress=None)
+        self.guest = FakeGuest(self)
         self.runtime = SimpleNamespace(powerState="poweredOff")  # the Web Services view (legacy dialect)
         self.clone_specs: list = []
         self.reconfig_specs: list = []
         self.customize_specs: list = []
         self.clone_fail: str | None = None
+        self.tools: bool | None = None  # None: runs when the build configured the guest
+
+    # The guest, as VMware Tools would report it -------------------------
+    def powered_on(self) -> bool:
+        return self.runtime.powerState == "poweredOn" or (FAKE is not None and FAKE.power.get(self._moId) == "POWERED_ON")
+
+    def _metadata(self) -> dict | None:
+        for spec in reversed(self.reconfig_specs):
+            extra = {o.key: o.value for o in spec.extraConfig or []}
+            if "guestinfo.metadata" in extra:
+                return yaml.safe_load(base64.b64decode(extra["guestinfo.metadata"]))
+        return None
+
+    def tools_running(self) -> bool:
+        configured = self._metadata() is not None or bool(self.customize_specs)
+        return self.powered_on() and (configured if self.tools is None else self.tools)
+
+    def guest_ips(self) -> list[str]:
+        """cloud-init applies a netplan entry only to the NIC with its ``match: macaddress``;
+        Sysprep maps an adapter by its MAC (or, without one, by order). A NIC whose MAC is
+        not the one the config names gets no address: the 2026-10-20 failure."""
+        if not self.tools_running():
+            return []
+        have = [str(c.macAddress).lower() for c in infra.nic_cards(self.config.hardware.device)]
+        if (meta := self._metadata()) is not None:
+            return [a.split("/")[0] for eth in meta["network"]["ethernets"].values()
+                    if eth["match"]["macaddress"] in have for a in eth.get("addresses", [])]
+        maps = self.customize_specs[-1].nicSettingMap if self.customize_specs else []
+        return [m.adapter.ip.ipAddress for i, m in enumerate(maps)
+                if ((m.macAddress.lower() in have) if m.macAddress else i < len(have))
+                and isinstance(m.adapter.ip, vim.vm.customization.FixedIp)]
 
     def PowerOnVM_Task(self):  # noqa: N802
         self.runtime.powerState = "poweredOn"
+        if FAKE is not None:
+            FAKE.on_power_on(self)
         return FakeTask(label=f"power-on:{self.name}")
 
     def PowerOffVM_Task(self):  # noqa: N802
@@ -393,6 +461,20 @@ class FakeVCenter:
         self.networks = [smoke, mgmt, svc]
         self.guest_ops = FakeGuestOps()
         self.clone_drops_annotation = False
+        self.generated_mac: str | None = None  # every generated MAC is this one (the esx02 race)
+        self.ignore_manual = False  # treat manual MACs as generated ones
+        self.reassigned: list[tuple[str, str, str]] = []  # (vm, old MAC, new MAC) vCenter changed at power-on
+
+    def on_power_on(self, vm) -> None:
+        """vCenter's late duplicate check: a *generated* MAC another VM already has is
+        replaced when the VM powers on. A manual MAC is never touched."""
+        others = {str(c.macAddress).lower() for v in self.vms.values() if v is not vm
+                  for c in infra.nic_cards(v.config.hardware.device)}
+        for card in infra.nic_cards(vm.config.hardware.device):
+            if card.addressType != "manual" and str(card.macAddress).lower() in others:
+                new = f"00:50:56:ba:{len(self.reassigned) + 0x80:02x}:5b"
+                self.reassigned.append((vm.name, card.macAddress, new))
+                card.macAddress = new
 
     # pyVmomi ------------------------------------------------------------
     def si(self):
@@ -422,7 +504,8 @@ class FakeVCenter:
             vm = self.vms.get(o.obj._moId)
             if vm is None:
                 raise vmodl.fault.ManagedObjectNotFound(obj=o.obj)
-            vals = {"name": vm.name, "config.annotation": getattr(vm.config, "annotation", None)}
+            vals = {"name": vm.name, "config.annotation": getattr(vm.config, "annotation", None),
+                    "config.hardware.device": vm.config.hardware.device}
             objects.append(SimpleNamespace(obj=o.obj, propSet=[SimpleNamespace(name=p, val=vals.get(p))
                                                                for p in paths]))
         return SimpleNamespace(objects=objects, token=None)
@@ -466,7 +549,22 @@ class FakeVCenter:
             if request.method == "GET":
                 return httpx.Response(200, json={"state": self.power.get(vm_id, "POWERED_OFF")})
             self.power[vm_id] = "POWERED_ON" if query == "action=start" else "POWERED_OFF"
+            if query == "action=start":
+                self.on_power_on(self.vms[vm_id])
             return httpx.Response(204)
+        if m := re.fullmatch(r"/api/vcenter/vm/([^/]+)/tools", path):
+            vm = self.vms.get(m.group(1))
+            if vm is None:
+                return httpx.Response(404, json={"error_type": "NOT_FOUND"})
+            return httpx.Response(200, json={"run_state": "RUNNING" if vm.tools_running() else "NOT_RUNNING"})
+        if m := re.fullmatch(r"/api/vcenter/vm/([^/]+)/guest/networking/interfaces", path):
+            vm = self.vms.get(m.group(1))
+            if vm is None:
+                return httpx.Response(404, json={"error_type": "NOT_FOUND"})
+            if not vm.tools_running():
+                return httpx.Response(503, json={"error_type": "SERVICE_UNAVAILABLE"})
+            return httpx.Response(200, json=[{"ip": {"ip_addresses": [
+                {"ip_address": ip, "prefix_length": 24, "state": "PREFERRED"}]}} for ip in vm.guest_ips()])
         if m := re.fullmatch(r"/api/vcenter/vm/([^/]+)", path):
             vm_id = m.group(1)
             if vm_id in self.fail_delete:
@@ -505,7 +603,8 @@ def vc(monkeypatch):
         "VSPHERE_CONTENT_LIBRARY": "", "VSPHERE_NETWORK": "", "VSPHERE_MGMT_NETWORK": MGMT,
         "VSPHERE_RANGE_SWITCH_MODE": "vds", "VSPHERE_RANGE_DVS": "vDS-10G", "VSPHERE_VLAN_POOL": "100-199",
         "VSPHERE_PLACEMENT": "spread", "VSPHERE_EXCLUDE_HOSTS": "esx01.truenorth.lab",
-        "VSPHERE_MAX_VCPU_PER_THREAD": 4.0, "VSPHERE_TOOLS_TIMEOUT": 0,
+        "VSPHERE_MAX_VCPU_PER_THREAD": 4.0, "VSPHERE_TOOLS_TIMEOUT": 0, "VSPHERE_GUEST_IP_TIMEOUT": 0,
+        "VSPHERE_GUEST_IP_CHECK": True, "VSPHERE_MAC_POOL": "",
         "VSPHERE_RANGE_UPLINK_NETWORK": "", "VSPHERE_RANGE_UPLINK_POOL": "", "VSPHERE_RANGE_UPLINK_GATEWAY": "",
         "VSPHERE_RANGE_UPLINK_PREFIX": 24, "TN_DEPOT_URL": "", "TN_DEPOT_CHOCO_FEED": "", "TN_DEPOT_APT_PROXY": "",
         "TN_SOFTWARE_INSTALL_TIMEOUT": 1800, "VSPHERE_PROVISION_BUDGET": 3300, "TN_DEPOT_PORTS": "8081,3142",
@@ -1075,7 +1174,8 @@ class TestUplink:
         assert result.uplink == {"network": SVC, "ip": "10.30.32.101", "prefix": 24, "gateway": "10.30.32.1",
                                  "vm": f"{R8}-fw", "node_id": "fw"}
         fw = next(v for v in result.vms if v["node_id"] == "fw")
-        assert fw["nics"][0] == {"network": SVC, "ip": "10.30.32.101"}
+        assert fw["nics"][0] == {"network": SVC, "ip": "10.30.32.101", "mac": fw["nics"][0]["mac"]}
+        assert fw["nics"][0]["mac"] in macs_mod.parse_pool("")  # the WAN NIC's MAC is reserved too
         assert fw["ip"] == "10.60.200.1"  # still its first zone address, not the WAN
         # The uplink is not a range port group: destroy must never remove it.
         assert all(n.get("portgroup") != SVC for n in result.networks)
@@ -2015,14 +2115,14 @@ class TestLabLeasedPortGroups:
 
     def test_needs_no_vlan_and_creates_no_port_group(self, lab_vc):
         prov = _prov(lab_vc)
-        assert prov.allocation_needs(RANGE_ID, _rendered(LAB)) == []
+        assert [n.kind for n in prov.allocation_needs(RANGE_ID, _rendered(LAB))] == ["mac"]  # NIC MACs only
         result = _run(prov.provision(RANGE_ID, _rendered(LAB), {}))
         assert result.status == "ok", result.errors
         assert lab_vc.dvs.portgroup == []
         ((_folder, _name, spec),) = lab_vc.templates["tmpl-ubuntu-2404"].clone_specs
         nics = [c.device for c in spec.config.deviceChange if c.operation != "remove"]
         assert [n.backing.deviceName for n in nics] == ["pg-lab-07"]
-        assert result.vms[0]["nics"] == [{"network": "pg-lab-07", "ip": "10.20.0.10"}]
+        assert result.vms[0]["nics"] == [{"network": "pg-lab-07", "ip": "10.20.0.10", "mac": "00:50:56:3c:00:00"}]
         assert not [n for n in result.networks if n.get("portgroup")]  # nothing for destroy to remove
 
     def test_no_distributed_switch_is_needed(self, lab_vc, monkeypatch):
@@ -2313,11 +2413,12 @@ class TestNoiseMgmtNic:
         assert eth["nic0"]["nameservers"] == {"addresses": ["10.60.200.10"], "search": ["corp.local"]}
         (out,) = result.vms
         assert out["ip"] == "10.60.200.50" and out["mgmt_ip"] == "10.255.0.14"
-        assert out["nics"][1] == {"network": NOISE_PG, "ip": "10.255.0.14"}
+        assert out["nics"][1] == {"network": NOISE_PG, "ip": "10.255.0.14", "mac": eth["nic1"]["match"]["macaddress"]}
+        assert out["ip_verified"] is True and set(out["guest_ips"]) == {"10.60.200.50", "10.255.0.14"}
 
     def test_the_mgmt_network_needs_no_vlan_reservation(self, noise_vc):
         prov = _prov(noise_vc)
-        (need,) = prov.allocation_needs(RANGE_ID, {"vms": [_noise_vm()]})
+        (need,) = [n for n in prov.allocation_needs(RANGE_ID, {"vms": [_noise_vm()]}) if n.kind == "vlan"]
         assert need.holders == ["200"]
 
     def test_windows_appliances_and_non_agents_are_left_alone(self, noise_vc):
@@ -2351,11 +2452,16 @@ class TestNoiseMgmtNic:
 
         async def interfaces(client, path):
             return [{"ip": {"ip_addresses": [{"ip_address": "10.255.0.14", "state": "PREFERRED"}]}},
-                    {"ip": {"ip_addresses": [{"ip_address": "10.60.200.50", "state": "PREFERRED"}]}}]
+                    {"ip": {"ip_addresses": [{"ip_address": "10.60.200.51", "state": "PREFERRED"},
+                                             {"ip_address": "fe80::1", "state": "PREFERRED"}]}}]
 
         monkeypatch.setattr(prov, "_api_get", interfaces)
-        assert _run(prov._get_vm_ip(None, "vm-1", exclude="10.255.0.14")) == "10.60.200.50"
-        assert _run(prov._get_vm_ip(None, "vm-1")) == "10.255.0.14"
+        seen = _run(prov._guest_ipv4s(None, "vm-1"))
+        assert seen == ["10.255.0.14", "10.60.200.51"]
+        plan = mod.VsphereAPIProvisioner._vm_plan(RANGE_ID, _noise_vm())
+        # The planned address is missing: the observed one is reported, never the mgmt one.
+        got = readiness.assess(plan, {"tools_ready": True, "seen": seen, "checked": True, "timeout": 0})
+        assert got["ip"] == "10.60.200.51" and got["ip_verified"] is False and "10.60.200.50" in got["not_ready"]
 
     def test_render_output_feeds_the_provisioner(self, noise_vc):
         """End to end on the worker side: shipped template -> render (reserved addresses) -> NICs."""
@@ -2669,3 +2775,259 @@ class TestSecurityOnion:
         assert result.status == "ok", result.errors
         assert _vm_out(result, "seconion01")["securityonion"]["status"] == "failed"
         assert any("Security Onion setup failed: so-setup failed" in w for w in result.warnings)
+
+
+# --------------------------------------------------------------------------- #
+# 2026-10-20 on the work vCenter, range "Ubuntu Starter 01" (3 x ubuntu-lts):
+#   1. ubu02 and ubu03, cloned side by side on esx02, were both given MAC
+#      00:50:56:ba:2b:47; vCenter then changed ubu02's, after its netplan was keyed to
+#      the first, and ubu02 never got its static IP;
+#   2. "spread" put all three VMs on esx02;
+#   3. the range was recorded ready, showing all three planned IPs.
+# --------------------------------------------------------------------------- #
+
+STARTER = {
+    "name": "Ubuntu Starter 01",
+    "network": {"vlans": [{"id": 10, "name": "lan", "cidr": "10.70.10.0/24"}]},
+    "nodes": [{"id": f"ubu0{i}", "role": "workstation", "os": "ubuntu-2404", "vlan": "lan",
+               "ip": f"10.70.10.{10 + i}", "specs": {"cores": 2, "memory_mb": 4096, "disk_gb": 40}}
+              for i in (1, 2, 3)],
+}
+STARTER_IPS = {f"{R8}-ubu0{i}": f"10.70.10.{10 + i}" for i in (1, 2, 3)}
+ONE_STARTER = {**STARTER, "nodes": STARTER["nodes"][:1]}
+
+
+def _starter_vc(vc):
+    """The work site: esx02 nearly idle with many threads, esx03/esx04 busy but with room,
+    each with a host-local copy of the Ubuntu template on its own datastore."""
+    by_short = {h.name.split(".")[0]: h for h in vc.hosts}
+    by_short["esx02"].hardware.cpuInfo.numCpuThreads = 64
+    for short in ("esx03", "esx04"):
+        by_short[short].vm[0].summary.config.numCpu = 40  # 16 x 4 - 40 = 24 vCPU headroom left
+    for short in ("esx02", "esx03", "esx04"):
+        _add_copy(vc, f"tmpl-ubuntu-2404@{short}-20261019", short)
+    return vc
+
+
+def _with_handler(prov, vc, override):
+    """Answer some REST calls differently (``override`` returns a response or None)."""
+    prov._transport = httpx.MockTransport(lambda request: override(request) or vc.handler(request))
+    return prov
+
+
+class TestMacRace:
+    def test_concurrent_clones_given_one_generated_mac_still_get_their_own(self, vc, monkeypatch):
+        monkeypatch.setattr(mod, "VSPHERE_EXCLUDE_HOSTS", ONLY_ESX02)  # all three on esx02, as on site
+        vc.generated_mac = "00:50:56:ba:2b:47"  # what vCenter generated for both clones
+        result = _run(_prov(vc).provision(RANGE_ID, _rendered(STARTER), {}))
+        assert result.status == "ok", result.errors
+        assert vc.reassigned == []  # a manual MAC is never regenerated at power-on
+        seen = set()
+        for out in result.vms:
+            vm = vc.vms[out["vm_id"]]
+            (card,) = infra.nic_cards(vm.config.hardware.device)
+            assert card.addressType == "manual" and card.macAddress in macs_mod.parse_pool("")
+            assert card.macAddress != "00:50:56:ba:2b:47" and card.macAddress not in seen
+            seen.add(card.macAddress)
+            eth = _guestinfo_meta(vm)["network"]["ethernets"]["nic0"]
+            assert eth["match"]["macaddress"] == card.macAddress == out["nics"][0]["mac"]
+            assert (out["ip"], out["ip_verified"], out["guest_ips"]) == (
+                STARTER_IPS[out["name"]], True, [STARTER_IPS[out["name"]]])
+        assert result.not_ready == []
+
+    def test_the_old_generated_mac_race_is_caught_by_readiness_not_reported_ready(self, vc, monkeypatch):
+        """Without explicit MACs (the provisioner before this fix) the race reproduces in the
+        fake, and readiness now refuses to call the range ready."""
+        monkeypatch.setattr(mod, "VSPHERE_EXCLUDE_HOSTS", ONLY_ESX02)
+        monkeypatch.setattr(mod.macs, "assign", lambda vm_defs, reserved: None)
+        vc.generated_mac = "00:50:56:ba:2b:47"
+        result = _run(_prov(vc).provision(RANGE_ID, _rendered(STARTER), {}))
+        lost = {name for name, old, _ in vc.reassigned if old == "00:50:56:ba:2b:47"}
+        assert lost and set(result.not_ready) == lost  # every VM vCenter changed, and only those
+        assert len(result.vms) == 3 and result.status == "partial"
+        for out in result.vms:
+            if out["name"] in lost:
+                assert out["ip"] == "" and out["ip_verified"] is False  # not the planned address
+                assert out["planned_ip"] == STARTER_IPS[out["name"]]
+            else:
+                assert out["ip"] == STARTER_IPS[out["name"]] and out["ip_verified"] is True
+        for name in lost:
+            (err,) = [e for e in result.errors if e.startswith(f"VM {name}:")]
+            assert f"planned address {STARTER_IPS[name]} not reported by VMware Tools" in err
+        state, error = range_alloc.build_outcome(result)
+        assert state == "failed" and all(n in error for n in lost)
+
+    def test_windows_sysprep_maps_each_adapter_by_its_reserved_mac(self, vc):
+        result = _run(_prov(vc).provision(RANGE_ID, _rendered(), {}))
+        assert result.status == "ok", result.errors
+        out = _vm_out(result, "dc01")
+        vm = vc.vms[out["vm_id"]]
+        (spec,) = vm.customize_specs
+        cards = infra.nic_cards(vm.config.hardware.device)
+        assert [m.macAddress for m in spec.nicSettingMap] == [c.macAddress for c in cards]
+        assert [c.macAddress for c in cards] == [n["mac"] for n in out["nics"]]
+        assert out["ip"] == "10.60.201.10" and out["ip_verified"] is True
+
+    def test_a_reserved_mac_already_on_the_range_networks_is_refused_before_any_clone(self, vc):
+        noise = SimpleNamespace(name=NOISE_PG, _moId="network-4001", config=None)
+        squatter = FakeVM("someone-elses-vm", [_card(4000, NOISE_PG)])
+        squatter.config.hardware.device[0].macAddress = "00:50:56:3C:00:01"  # by hand, from our slice
+        vc.vms[squatter._moId] = squatter
+        noise.vm = [squatter]
+        vc.networks.append(noise)
+        result = _run(_prov(vc).provision(RANGE_ID, {"vms": [_noise_vm()], "networks": []}, {}))
+        assert result.status == "failed" and result.vms == []
+        assert any("MAC 00:50:56:3c:00:01" in e and "someone-elses-vm" in e and NOISE_PG in e
+                   for e in result.errors), result.errors
+        assert not vc.templates["tmpl-ubuntu-2404"].clone_specs  # nothing cloned
+        assert vc.dvs.portgroup == []  # and the port group it made is rolled back
+
+    def test_a_clone_without_its_reserved_mac_is_never_configured_or_powered_on(self, vc, monkeypatch):
+        monkeypatch.setattr(mod, "VSPHERE_EXCLUDE_HOSTS", ONLY_ESX02)
+        vc.ignore_manual = True  # a server that hands out its own MAC whatever the spec says
+        result = _run(_prov(vc).provision(RANGE_ID, _rendered(STARTER), {}))
+        assert result.status == "failed" and result.vms == []
+        vm_errors = [e for e in result.errors if e.startswith("VM ")]
+        assert len(vm_errors) == 3 and all("do not have their reserved MACs" in e for e in vm_errors), result.errors
+        assert not vc.vms  # each half-built VM deleted again
+        assert "POWERED_ON" not in vc.power.values()
+
+    def test_a_nic_without_a_reservation_is_refused_not_picked(self, vc):
+        allocations = {"physical_vlans": {"10": "100"}, "nic_macs": {f"{R8}-ubu01#nic0": "00:50:56:3c:00:00"}}
+        result = _run(_prov(vc).provision(RANGE_ID, _rendered(STARTER), allocations))
+        assert result.status == "failed" and not vc.vms
+        assert any("have no MAC reservation" in e and f"{R8}-ubu02#nic0" in e for e in result.errors), result.errors
+
+
+class TestMacPool:
+    def test_the_default_slice_is_inside_vmwares_manual_range(self):
+        pool = macs_mod.parse_pool("")
+        assert (pool[0], pool[-1], len(pool)) == ("00:50:56:3c:00:00", "00:50:56:3f:ff:ff", 262144)
+        assert list(itertools.islice(pool, 2)) == ["00:50:56:3c:00:00", "00:50:56:3c:00:01"]
+        assert "00:50:56:3C:00:05" in pool and "00:50:56:ba:2b:47" not in pool
+
+    @pytest.mark.parametrize("bad", ["00:50:56:40:00:00-00:50:56:40:00:ff",  # above the manual range
+                                     "00:0c:29:00:00:00-00:0c:29:00:00:ff",  # ESXi's own generated prefix
+                                     "00:50:56:3f:00:00-00:50:56:3c:00:00", "nonsense"])
+    def test_a_pool_outside_the_manual_range_is_refused(self, bad):
+        with pytest.raises(ValueError):
+            macs_mod.parse_pool(bad)
+
+    def test_two_nics_given_one_mac_are_refused(self):
+        vms = [{"name": "a", "nics": [{}]}, {"name": "b", "nics": [{}]}]
+        with pytest.raises(RuntimeError, match="reserved for both"):
+            macs_mod.assign(vms, {"a#nic0": "00:50:56:3c:00:00", "b#nic0": "00:50:56:3C:00:00"})
+
+
+class TestSpreadPlacement:
+    def test_spread_deals_the_range_round_the_hosts_not_onto_the_emptiest(self):
+        """Most-headroom-first packed: esx02 (64 threads, idle) beat busy esx03/esx04 for
+        every VM of a small range."""
+        hosts = [_cap("esx02", threads=64), _cap("esx03", vcpus=40), _cap("esx04", vcpus=40)]
+        placed = infra.place(hosts, _vms(3, cores=2), "spread", 4)
+        assert sorted(h.name for h, _ in placed) == ["esx02", "esx03", "esx04"]
+        hosts = [_cap("esx02", threads=64), _cap("esx03"), _cap("esx04")]
+        names = [h.name for h, _ in infra.place(hosts, _vms(7, cores=2), "spread", 4)]
+        assert sorted(names.count(n) for n in ("esx02", "esx03", "esx04")) == [2, 2, 3]
+
+    def test_spread_still_honours_capacity(self):
+        hosts = [_cap("esx02"), _cap("esx03", free_mb=4_000), _cap("esx04", vcpus=62)]  # esx03: no RAM
+        names = [h.name for h, _ in infra.place(hosts, _vms(3, cores=2, mem=8192), "spread", 4)]
+        assert (names.count("esx02"), names.count("esx03"), names.count("esx04")) == (2, 0, 1)  # esx04: 2 vCPU
+        with pytest.raises(infra.PlacementError, match="no host fits"):
+            infra.place([_cap("esx03", free_mb=4_000)], _vms(1, mem=8192), "spread", 4)
+
+    def test_spread_prefers_a_host_and_datastore_holding_the_template_copy(self):
+        a, b = _cap("esx02"), _cap("esx03")
+        b.datastores["esx03-small"] = [200 * GIB, "esx03-small"]  # holds the copy; less free space
+        local = {"esx03": frozenset({"esx03-small"})}
+        placed = infra.place([a, b], _vms(1), "spread", 4, local=lambda v, h: local.get(h.name, frozenset()))
+        assert (placed[0][0].name, placed[0][1]) == ("esx03", "esx03-small")
+
+    def test_an_unknown_mode_is_an_error_not_silently_spread(self):
+        with pytest.raises(infra.PlacementError, match="unknown VSPHERE_PLACEMENT"):
+            infra.place([_cap("esx02")], _vms(1), "packed", 4)
+
+    def test_the_starter_range_spans_esx02_to_esx04_from_their_local_copies(self, vc):
+        result = _run(_prov(_starter_vc(vc)).provision(RANGE_ID, _rendered(STARTER), {}))
+        assert result.status == "ok", result.errors
+        hosts = sorted(out["host"] for out in result.vms)
+        assert hosts == ["esx02.truenorth.lab", "esx03.truenorth.lab", "esx04.truenorth.lab"]  # never esx01
+        for out in result.vms:
+            short = out["host"].split(".")[0]
+            assert out["template"] == f"tmpl-ubuntu-2404@{short}-20261019"
+            assert out["datastore"] == f"{short}-local"
+        assert not vc.templates["tmpl-ubuntu-2404"].clone_specs  # no cross-host disk copy
+
+
+class TestReadiness:
+    def test_a_vm_that_never_gets_its_ip_fails_the_range_with_the_reason(self, vc):
+        """ubu02's guest network config does not apply: Tools runs and reports no address
+        for it. Not ready, never shown with its planned address."""
+
+        def no_address_on_ubu02(request):
+            path = request.url.path
+            if path.endswith("/guest/networking/interfaces") and vc.vms[path.split("/")[4]].name.endswith("ubu02"):
+                return httpx.Response(200, json=[])
+            return None
+
+        prov = _with_handler(_prov(vc), vc, no_address_on_ubu02)
+        result = _run(prov.provision(RANGE_ID, _rendered(STARTER), {}))
+        assert result.not_ready == [f"{R8}-ubu02"] and len(result.vms) == 3
+        ubu02 = next(v for v in result.vms if v["name"] == f"{R8}-ubu02")
+        assert (ubu02["ip"], ubu02["planned_ip"], ubu02["ip_verified"], ubu02["guest_ips"], ubu02["tools_ready"]) == (
+            "", "10.70.10.12", False, [], True)
+        (err,) = [e for e in result.errors if e.startswith(f"VM {R8}-ubu02:")]
+        assert "planned address 10.70.10.12 not reported by VMware Tools within 0s of power-on" in err
+        assert "Tools reports no IPv4 address" in err
+        others = [v for v in result.vms if v["name"] != f"{R8}-ubu02"]
+        assert all(v["ip"] == v["planned_ip"] and v["ip_verified"] for v in others)
+        state, error = range_alloc.build_outcome(result)
+        assert state == "failed" and error.startswith(f"1 VM(s) built but not ready: VM {R8}-ubu02: planned")
+        stored = range_alloc.stored_output("vsphere_api", RANGE_ID, result)
+        assert stored["not_ready"] == [f"{R8}-ubu02"] and len(stored["vms"]) == 3  # destroy finds them all
+
+    def test_tools_that_never_start_fail_a_linux_vm(self, vc):
+        prov = _with_handler(_prov(vc), vc, lambda r: httpx.Response(200, json={"run_state": "NOT_RUNNING"})
+                             if r.url.path.endswith("/tools") else None)
+        result = _run(prov.provision(RANGE_ID, _rendered(ONE_STARTER), {}))
+        assert result.not_ready == [f"{R8}-ubu01"] and result.vms[0]["ip"] == ""
+        assert any("VMware Tools did not report running" in e and "10.70.10.11" in e for e in result.errors)
+
+    def test_the_wait_is_bounded_and_polls_until_the_address_shows(self, vc):
+        """cloud-init / Sysprep take a while: the address may show after a few polls."""
+        polls = []
+
+        def late(request):
+            if request.url.path.endswith("/guest/networking/interfaces"):
+                polls.append(1)
+                return httpx.Response(200, json=[]) if len(polls) < 3 else None
+            return None
+
+        prov = _with_handler(_prov(vc), vc, late)
+        prov._guest_ip_timeout = 30
+        result = _run(prov.provision(RANGE_ID, _rendered(ONE_STARTER), {}))
+        assert result.status == "ok", result.errors
+        assert len(polls) == 3 and result.vms[0]["ip_verified"] is True
+
+    def test_the_wait_never_outlasts_the_build_budget(self, vc):
+        prov = _with_handler(_prov(vc), vc, lambda r: httpx.Response(200, json=[])
+                             if r.url.path.endswith("/guest/networking/interfaces") else None)
+        prov._guest_ip_timeout = 3600
+        prov._budget = 0  # spent: one look, then the verdict
+        result = _run(asyncio.wait_for(prov.provision(RANGE_ID, _rendered(ONE_STARTER), {}), 10))
+        assert result.not_ready == [f"{R8}-ubu01"]
+
+    def test_an_appliance_without_tools_is_recorded_unverified_not_failed(self, vc):
+        result = _run(_prov(vc).provision(RANGE_ID, _rendered(), {}))
+        assert result.status == "ok", result.errors
+        fw = _vm_out(result, "fw")
+        assert (fw["tools_ready"], fw["ip_verified"], fw["ip"]) == (False, None, "10.60.200.1")
+
+    def test_the_check_can_be_switched_off_for_a_simulator(self, vc):
+        prov = _with_handler(_prov(vc), vc, lambda r: httpx.Response(200, json={"run_state": "NOT_RUNNING"})
+                             if r.url.path.endswith("/tools") else None)
+        prov._guest_ip_check = False
+        result = _run(prov.provision(RANGE_ID, _rendered(ONE_STARTER), {}))
+        assert result.status == "ok" and result.not_ready == []
+        assert result.vms[0]["ip_verified"] is False and result.vms[0]["ip"] == ""  # recorded, not invented

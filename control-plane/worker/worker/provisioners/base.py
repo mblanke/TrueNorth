@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import contextlib
 from abc import ABC, abstractmethod
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass, field
 
 from .results import (
@@ -48,7 +48,7 @@ class AllocationNeed:
     key: str  # where provision() finds the result in ``allocations``
     kind: str  # a network_reservations kind: "vlan", "uplink_ip", ...
     domain: str  # the shared network the values must be unique in
-    pool: list[str]  # candidate values, in the order they are handed out
+    pool: Sequence[str]  # candidate values, in the order they are handed out (may be lazy)
     holders: list[str]  # what in the range holds a value (a logical VLAN, "edge")
     single: bool = False
 

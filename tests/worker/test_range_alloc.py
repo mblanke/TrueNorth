@@ -206,12 +206,46 @@ def test_the_vsphere_provisioner_gets_what_it_declared(db, monkeypatch):
     rid = db.add_range()
     rendered = render.render_topology(tpl, rid, lambda alias: "tmpl")
     template = {"vms": rendered["vm_definitions"], "networks": rendered["network_definitions"]}
-    assert ra.reserve_for_build(db.session, rid, prov, template) == {"physical_vlans": {"10": "100", "20": "101"}}
+    assert ra.reserve_for_build(db.session, rid, prov, template) == {
+        "physical_vlans": {"10": "100", "20": "101"},
+        "nic_macs": {f"{rid[:8]}-x#nic0": "00:50:56:3c:00:00", f"{rid[:8]}-y#nic0": "00:50:56:3c:00:01"}}
     assert [(n["vlan_id"], n["physical_vlan"], n["portgroup"]) for n in db.output(rid)["networks"]] == [
         (10, 100, f"tn-{rid[:8]}-v100"), (20, 101, f"tn-{rid[:8]}-v101")]
     other = db.add_range()
     with pytest.raises(ra.PoolExhaustedError):  # 100-102 has one left; the next range needs two
         ra.reserve_for_build(db.session, other, prov, template)
+
+
+def test_nic_macs_are_unique_across_ranges_and_stable_across_retries(db, monkeypatch):
+    """Two ranges built at once on any hosts get disjoint MACs from the TrueNorth slice of
+    VMware's manual range (the table decides, under its lock); a retried build gets the
+    same ones; a destroyed range's are handed out again. 2026-10-20: two clones on esx02
+    were both given 00:50:56:ba:2b:47 by vCenter."""
+    from worker import render
+    from worker.provisioners import vsphere_api, vsphere_macs
+
+    monkeypatch.setattr(vsphere_api, "VSPHERE_VLAN_POOL", "100-199")
+    prov = vsphere_api.VsphereAPIProvisioner()
+    tpl = {"network": {"vlans": [{"id": 10, "name": "a", "cidr": "10.1.0.0/24"}]},
+           "nodes": [{"id": f"ubu0{i}", "os": "ubuntu-2404", "vlan": "a"} for i in (1, 2, 3)]}
+
+    def build(rid):
+        rendered = render.render_topology(tpl, rid, lambda alias: "tmpl")
+        template = {"vms": rendered["vm_definitions"], "networks": rendered["network_definitions"]}
+        return ra.reserve_for_build(db.session, rid, prov, template)["nic_macs"]
+
+    a, b = db.add_range(), db.add_range()
+    macs_a, macs_b = build(a), build(b)
+    assert len(macs_a) == len(macs_b) == 3
+    every = list(macs_a.values()) + list(macs_b.values())
+    assert len(set(every)) == 6  # never one MAC twice, in a range or across ranges
+    pool = vsphere_macs.parse_pool("")
+    assert all(m in pool and vsphere_macs.VMWARE_MANUAL_FIRST <= vsphere_macs.to_int(m)
+               <= vsphere_macs.VMWARE_MANUAL_LAST for m in every)
+    assert build(a) == macs_a  # a retry: the same MACs, whatever was reserved since
+    db.state(a, "destroyed")
+    c = db.add_range()
+    assert set(build(c).values()) == set(macs_a.values())  # the lowest free again: a's, reclaimed
 
 
 def test_lock_key_is_the_apis():
@@ -285,6 +319,33 @@ def test_provision_reserves_first_and_stores_uplink_mirrors_warnings(task_env, m
         "provider": "vsphere_api", "range_id": "r-1", "vms": [{"vm_id": "vm-1", "name": "x"}],
         "networks": [{"vlan_id": 200}], "uplink": {"ip": "10.30.32.100"}, "mirrors": [{"name": "tn-x-mon"}],
         "warnings": ["w"]}
+
+
+def test_a_vm_whose_guest_network_never_came_up_fails_the_range_with_its_vms_recorded(task_env, monkeypatch):
+    """2026-10-20: recorded ``ready`` showing a planned IP the VM never had. Now ``failed``
+    with the reason and the built output (destroy and the API's "destroy it first" need
+    the VMs), returned not raised: no retry, which would clone the same VMs again."""
+    notified = []
+    vms = [{"vm_id": "vm-1", "name": "r-ubu01", "ip": "10.70.10.11", "ip_verified": True},
+           {"vm_id": "vm-2", "name": "r-ubu02", "ip": "", "planned_ip": "10.70.10.12", "ip_verified": False}]
+    reason = "VM r-ubu02: planned address 10.70.10.12 not reported by VMware Tools within 600s of power-on"
+
+    class Prov:
+        async def provision(self, range_id, template, allocations):
+            return ProvisionResult(status="partial", vms=vms, errors=[reason], not_ready=["r-ubu02"])
+
+    monkeypatch.setattr(tasks.range_alloc, "reserve_for_build", lambda *a: {})
+    monkeypatch.setattr(tasks, "_notify_api", lambda channel, msg: notified.append(msg))
+    monkeypatch.setattr(tasks, "_get_backend", lambda b, range_id=None, **kw: Prov())
+    monkeypatch.setattr(tasks.greyspace, "after_provision", lambda *a: pytest.fail("not for a failed range"))
+    out = tasks.provision_range.run("r-1")
+    assert out == {"status": "failed", "range_id": "r-1", "error": f"1 VM(s) built but not ready: {reason}"}
+    assert "ready" not in [s for s, _ in task_env["states"]]
+    (failed,) = [kw for s, kw in task_env["states"] if s == "failed"]
+    assert failed["only_from"] == ("provisioning",) and failed["error"] == out["error"]
+    stored = json.loads(failed["output"])
+    assert stored["vms"] == vms and stored["not_ready"] == ["r-ubu02"]
+    assert notified[-1] == {"id": "r-1", "state": "failed", "error": out["error"]}
 
 
 def test_a_full_pool_fails_the_range_at_once_without_building(task_env, monkeypatch):

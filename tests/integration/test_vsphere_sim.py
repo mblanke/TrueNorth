@@ -25,9 +25,11 @@ What vcsim v0.56.0 does not do, and how this file handles it:
 * Content Library / OVF deploy (``/api/content/library``, ``/api/vcenter/ovf``): vcsim has
   only the legacy ``/rest/com/vmware/content`` forms, so the OVF path is NOT covered here
   (the fakes cover it). Builds clone an inventory template, as the lab does.
-* VMware Tools never runs in a vcsim VM: ``tools_ready`` is False and the guest IP is the
-  rendered one. Guest operations (deploy-time installs) and guest customization results
-  are not exercised.
+* VMware Tools never runs in a vcsim VM: ``tools_ready`` is False, no guest IP is seen,
+  and so readiness (vsphere_readiness.py) is switched off in ``env``
+  (VSPHERE_GUEST_IP_CHECK=off: the VM's ``ip`` is then '' and ``ip_verified`` False, never
+  the rendered one); one test turns it on to see a build refused. Guest operations
+  (deploy-time installs) and guest customization results are not exercised.
 * Four SOAP differences from vCenter that break any pyVmomi client are patched for this
   module only (``_vcsim_wire_gaps``); none is the provisioner's doing.
 """
@@ -36,6 +38,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import itertools
 import os
 import uuid
 from urllib.parse import urlparse
@@ -186,6 +189,9 @@ def env(monkeypatch, template):
         "VSPHERE_RANGE_DVS": DVS, "VSPHERE_VLAN_POOL": "100-199", "VSPHERE_PLACEMENT": "spread",
         "VSPHERE_EXCLUDE_HOSTS": "", "VSPHERE_RANGE_UPLINK_NETWORK": "", "TN_DEPOT_URL": "",
         "VSPHERE_TOOLS_TIMEOUT": 0, "VSPHERE_RESOURCE_POOL": "", "VSPHERE_RANGE_FOLDER": "truenorth/ranges",
+        # Tools never runs in a vcsim VM: record what it reports, do not fail on it
+        # (test_readiness_refuses_a_range_whose_guests_report_nothing turns it on).
+        "VSPHERE_GUEST_IP_TIMEOUT": 0, "VSPHERE_GUEST_IP_CHECK": False, "VSPHERE_MAC_POOL": "",
     }.items():
         monkeypatch.setattr(mod, name, value)
 
@@ -211,7 +217,7 @@ def _reserve(prov, range_id: str, template: dict, taken=()) -> dict:
     """The worker's part (worker/range_alloc.py), without a database: the lowest free values."""
     allocations = {}
     for need in prov.allocation_needs(range_id, template):
-        free = [v for v in need.pool if v not in {str(t) for t in taken}]
+        free = list(itertools.islice((v for v in need.pool if v not in {str(t) for t in taken}), len(need.holders)))
         got = dict(zip(need.holders, free, strict=False))
         allocations[need.key] = got[need.holders[0]] if need.single else got
     return allocations
@@ -268,12 +274,14 @@ def test_a_two_network_range_lifecycle(env, si, range_id):
     prov = mod.VsphereAPIProvisioner()
     template = _template(range_id)
     allocations = _reserve(prov, range_id, template)
-    assert allocations == {"physical_vlans": {"10": "100", "20": "101"}}
+    r8 = range_id[:8]
+    assert allocations == {"physical_vlans": {"10": "100", "20": "101"},
+                           "nic_macs": {f"{r8}-attacker#nic0": "00:50:56:3c:00:00",
+                                        f"{r8}-victim#nic0": "00:50:56:3c:00:01"}}
 
     built = _run(prov.provision(range_id, template, allocations))
     assert built.status == "ok", built.errors
     assert prov._dialect == "rest"
-    r8 = range_id[:8]
 
     # One port group per network, on its own physical VLAN, read back from the simulator.
     pgs = _portgroups(si, f"tn-{r8}-")
@@ -317,6 +325,50 @@ def test_a_two_network_range_lifecycle(env, si, range_id):
     unrecorded = {k: v for k, v in output.items() if k != "connection"}
     refused = _run(mod.VsphereAPIProvisioner().destroy(range_id, unrecorded))
     assert refused.status == "failed" and "does not record which vCenter" in refused.errors[0]
+
+
+def test_reserved_manual_macs_land_and_spread_uses_every_host(env, si, range_id):
+    """2026-10-20: two clones on one host were given one generated MAC, and spread put a
+    3-VM range on one host. Here vcsim, a real implementation of the APIs, keeps the
+    manual MACs the clone spec sets, and the range is dealt across its three hosts."""
+    tpl = {**RANGE, "nodes": [{**RANGE["nodes"][0], "id": f"ubu0{i}"} for i in (1, 2, 3)]}
+    prov = mod.VsphereAPIProvisioner()
+    rendered = render.render_topology(tpl, range_id, lambda alias: TEMPLATE_VM)
+    template = {"name": "sim", "vms": rendered["vm_definitions"], "networks": rendered["network_definitions"]}
+    allocations = _reserve(prov, range_id, template)
+    built = _run(prov.provision(range_id, template, allocations))
+    try:
+        assert built.status == "ok", built.errors
+        assert len({vm["host"] for vm in built.vms}) == 3  # vcsim's DC0_C0 has three hosts
+        reserved = allocations["nic_macs"]
+        for out in built.vms:
+            (card,) = infra.nic_cards(vim.VirtualMachine(out["vm_id"], si._stub).config.hardware.device)
+            assert card.addressType == "manual"
+            assert card.macAddress == reserved[f"{out['name']}#nic0"] == out["nics"][0]["mac"]
+        assert len({o["nics"][0]["mac"] for o in built.vms}) == 3
+    finally:
+        output = {"vms": built.vms, "networks": built.networks, "connection": prov.connection_record()}
+        assert _run(mod.VsphereAPIProvisioner().destroy(range_id, output)).status == "ok"
+
+
+def test_readiness_refuses_a_range_whose_guests_report_nothing(env, si, range_id, monkeypatch):
+    """Tools never runs in vcsim, so with the check on no VM can show its planned address:
+    the build says so per VM instead of the range being reported ready."""
+    from worker import range_alloc
+
+    monkeypatch.setattr(mod, "VSPHERE_GUEST_IP_CHECK", True)
+    prov = mod.VsphereAPIProvisioner()
+    template = _template(range_id)
+    built = _run(prov.provision(range_id, template, _reserve(prov, range_id, template)))
+    try:
+        assert sorted(built.not_ready) == sorted(v["name"] for v in built.vms) and len(built.vms) == 2
+        assert all(v["ip"] == "" and v["ip_verified"] is False and v["tools_ready"] is False for v in built.vms)
+        assert all("VMware Tools did not report running" in e for e in built.errors), built.errors
+        state, error = range_alloc.build_outcome(built)
+        assert state == "failed" and "2 VM(s) built but not ready" in error
+    finally:
+        output = {"vms": built.vms, "networks": built.networks, "connection": prov.connection_record()}
+        assert _run(mod.VsphereAPIProvisioner().destroy(range_id, output)).status == "ok"
 
 
 def test_a_vlan_another_port_group_carries_builds_nothing(env, si, range_id):

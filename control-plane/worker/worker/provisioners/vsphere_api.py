@@ -70,9 +70,10 @@ except ImportError:  # only the snapshot operations need it
     Disconnect = SmartConnect = vim = vmodl = None  # type: ignore[assignment]
 
 from .. import pfsense_config, software_catalogue, uplink_pool, vlan_pool, vyos_config
-from . import template_copies, vsphere_products, vsphere_roles
+from . import template_copies, vsphere_products, vsphere_readiness, vsphere_roles
 from . import vsphere_guest as guest
 from . import vsphere_infra as infra
+from . import vsphere_macs as macs
 from . import vsphere_securityonion as seconion
 from .base import AllocationNeed, BaseProvisioner, ConnectionBindingError
 from .results import (
@@ -114,6 +115,15 @@ VSPHERE_CONTENT_LIBRARY: str = os.environ.get("VSPHERE_CONTENT_LIBRARY", "")
 VSPHERE_VERIFY_SSL: bool = os.environ.get("VSPHERE_VERIFY_SSL", "false").lower() == "true"
 VSPHERE_CONCURRENCY: int = int(os.environ.get("VSPHERE_CONCURRENCY", "4"))
 VSPHERE_TOOLS_TIMEOUT: int = int(os.environ.get("VSPHERE_TOOLS_TIMEOUT", "120"))
+# Readiness (vsphere_readiness.py): how long after power-on a Linux or Windows VM has for
+# VMware Tools to report every planned static address (Sysprep reboots count against it).
+# A VM that does not get there fails the range instead of it being reported ready.
+# VSPHERE_GUEST_IP_CHECK=off only records what Tools saw (vcsim, where Tools never runs).
+VSPHERE_GUEST_IP_TIMEOUT: int = int(os.environ.get("VSPHERE_GUEST_IP_TIMEOUT", "600"))
+VSPHERE_GUEST_IP_CHECK: bool = os.environ.get("VSPHERE_GUEST_IP_CHECK", "require").lower() != "off"
+# The slice of VMware's manual MAC range (00:50:56:00:00:00-00:50:56:3F:FF:FF) range NICs
+# get their reserved, explicit MACs from (vsphere_macs.py). TrueNorth's alone.
+VSPHERE_MAC_POOL: str = os.environ.get("VSPHERE_MAC_POOL", "")
 # Per vCenter task (snapshot, clone, reconfigure). Keep it under Celery's visibility
 # timeout (celery_app.py, 3600s).
 VSPHERE_SNAPSHOT_TIMEOUT: int = int(os.environ.get("VSPHERE_SNAPSHOT_TIMEOUT", "1800"))
@@ -446,6 +456,9 @@ class VsphereAPIProvisioner(BaseProvisioner):
         self._verify_ssl = VSPHERE_VERIFY_SSL
         self._semaphore = asyncio.Semaphore(VSPHERE_CONCURRENCY)
         self._tools_timeout = VSPHERE_TOOLS_TIMEOUT
+        self._guest_ip_timeout = VSPHERE_GUEST_IP_TIMEOUT
+        self._guest_ip_check = VSPHERE_GUEST_IP_CHECK
+        self._mac_pool = VSPHERE_MAC_POOL
         self._session_token: str | None = None
         self._login_loop = None
         self._login_gate: asyncio.Lock | None = None
@@ -798,15 +811,18 @@ class VsphereAPIProvisioner(BaseProvisioner):
     def _soap_tools_sync(self, vm_id: str) -> bool:
         return str(self._vm(self._soap(), vm_id).guest.toolsRunningStatus) == "guestToolsRunning"
 
-    def _soap_ip_sync(self, vm_id: str, exclude: str = "") -> str | None:
+    def _soap_ips_sync(self, vm_id: str) -> list[str]:
         guest_info = self._vm(self._soap(), vm_id).guest
+        found: list[str] = []
         for nic in getattr(guest_info, "net", None) or []:
             for addr in getattr(getattr(nic, "ipConfig", None), "ipAddress", None) or []:
                 ip = str(addr.ipAddress)
-                if ":" not in ip and ip != exclude and str(getattr(addr, "state", "preferred")) == "preferred":
-                    return ip
+                if ":" not in ip and str(getattr(addr, "state", "preferred")) == "preferred":
+                    found.append(ip)
         ip = getattr(guest_info, "ipAddress", None)
-        return str(ip) if ip and ":" not in str(ip) and str(ip) != exclude else None
+        if ip and ":" not in str(ip) and str(ip) not in found:
+            found.append(str(ip))
+        return found
 
     async def _power_state(self, client: httpx.AsyncClient, vm_id: str) -> str:
         """POWERED_ON, POWERED_OFF or SUSPENDED (REST names, whichever API answered)."""
@@ -836,10 +852,11 @@ class VsphereAPIProvisioner(BaseProvisioner):
             if exc.response.status_code != 404:  # gone between the calls, or before them
                 raise
 
-    async def _wait_tools(self, client: httpx.AsyncClient, vm_id: str) -> bool:
-        """Wait for VMware Tools to report running inside the VM."""
-        deadline = time.monotonic() + self._tools_timeout
-        while time.monotonic() < deadline:
+    async def _wait_tools(self, client: httpx.AsyncClient, vm_id: str, timeout: float | None = None) -> bool:
+        """Wait (``timeout``, default VSPHERE_TOOLS_TIMEOUT) for VMware Tools to report
+        running inside the VM. Asks at least once, however short the timeout."""
+        deadline = time.monotonic() + (self._tools_timeout if timeout is None else timeout)
+        while True:
             try:
                 if self._dialect == "rest":
                     if await asyncio.to_thread(self._soap_tools_sync, vm_id):
@@ -850,24 +867,43 @@ class VsphereAPIProvisioner(BaseProvisioner):
                         return True
             except Exception:
                 pass
-            await asyncio.sleep(5)
-        return False
+            if time.monotonic() >= deadline:
+                return False
+            await asyncio.sleep(min(5.0, max(0.0, deadline - time.monotonic())))
 
-    async def _get_vm_ip(self, client: httpx.AsyncClient, vm_id: str, exclude: str = "") -> str | None:
-        """Return the primary IPv4 address reported by VMware Tools (never ``exclude``, the
-        noise management address)."""
+    async def _guest_ipv4s(self, client: httpx.AsyncClient, vm_id: str) -> list[str] | None:
+        """Every IPv4 address VMware Tools reports in the guest; None when it cannot be read."""
         try:
             if self._dialect == "rest":
-                return await asyncio.to_thread(self._soap_ip_sync, vm_id, exclude)
-            guest = await self._api_get(client, f"/vcenter/vm/{vm_id}/guest/networking/interfaces")
-            for iface in guest:
-                for addr in iface.get("ip", {}).get("ip_addresses", []):
-                    ip = addr.get("ip_address", "")
-                    if addr.get("state") == "PREFERRED" and ":" not in ip and ip != exclude:
-                        return ip
+                return await asyncio.to_thread(self._soap_ips_sync, vm_id)
+            guest_nics = await self._api_get(client, f"/vcenter/vm/{vm_id}/guest/networking/interfaces")
+            return [ip for iface in guest_nics for addr in (iface.get("ip") or {}).get("ip_addresses", [])
+                    if (ip := addr.get("ip_address", "")) and ":" not in ip
+                    and addr.get("state", "PREFERRED") == "PREFERRED"]
         except Exception:
-            pass
-        return None
+            return None
+
+    async def _await_guest_network(self, client: httpx.AsyncClient, vm_def: dict, vm_id: str) -> dict:
+        """What a powered-on VM's guest reports: Tools running, and its IPv4 addresses once
+        every planned static one is there (vsphere_readiness.planned_ips), polled until
+        VSPHERE_GUEST_IP_TIMEOUT. A VM with nothing to verify (an appliance, no static
+        address, VSPHERE_GUEST_IP_CHECK=off) waits VSPHERE_TOOLS_TIMEOUT for Tools, as
+        before. Never past the build budget, but always one look."""
+        planned = vsphere_readiness.planned_ips(vm_def)
+        checked = self._guest_ip_check and bool(planned) and vsphere_readiness.verifiable(vm_def)
+        now = time.monotonic()
+        timeout = self._guest_ip_timeout if checked else self._tools_timeout
+        if self._budget_end:
+            timeout = min(timeout, max(0.0, self._budget_end - now))
+        deadline = now + timeout
+        seen: list[str] = []
+        tools_ready = await self._wait_tools(client, vm_id, timeout)
+        while tools_ready:
+            seen = await self._guest_ipv4s(client, vm_id) or seen
+            if not checked or set(planned) <= set(seen) or time.monotonic() >= deadline:
+                break
+            await asyncio.sleep(min(self._guest_poll, max(0.0, deadline - time.monotonic())))
+        return {"tools_ready": tools_ready, "seen": seen, "timeout": round(timeout), "checked": checked}
 
     # ------------------------------------------------------------------ #
     # Snapshots: vSphere Web Services API through pyVmomi
@@ -1059,6 +1095,48 @@ class VsphereAPIProvisioner(BaseProvisioner):
             raise RuntimeError(f"refusing to attach a range VM to management network {ref['name']!r}")
         return ref
 
+    @staticmethod
+    def _check_macs(si, vm_defs: list[dict], nets: list) -> None:
+        """Refuse the build, before any clone, when a VM already on one of the range's
+        networks has a NIC with a MAC reserved for this range (vsphere_macs.py): someone
+        gave a VM a manual MAC from TrueNorth's slice by hand, or a VM outlived its range.
+        The VMs' devices are read in one property-collector call, not a round trip each."""
+        wanted = {nic["mac"]: macs.holder(v["name"], i)
+                  for v in vm_defs for i, nic in enumerate(v["nics"]) if nic.get("mac")}
+        on_net: dict[str, str] = {}
+        for net in nets:
+            for vm in getattr(net, "vm", None) or []:
+                on_net.setdefault(vm._moId, net.name)
+        if not wanted or not on_net:
+            return
+        props, _ = _read_vm_metrics(si, sorted(on_net), ("name", "config.hardware.device"))
+        in_use: dict[str, str] = {}
+        for vm_id, got in props.items():
+            for card in infra.nic_cards(got.get("config.hardware.device") or []):
+                if mac := macs.normalize(getattr(card, "macAddress", None)):
+                    in_use.setdefault(mac, f"VM {got.get('name') or vm_id!r} on {on_net[vm_id]}")
+        if clashes := macs.collisions(wanted, in_use):
+            raise RuntimeError("; ".join(clashes) + ". VSPHERE_MAC_POOL must be TrueNorth's alone: change that VM's "
+                               "MAC or remove the stale VM, then build again")
+
+    @staticmethod
+    def _copy_index(templates: dict) -> dict[tuple[str, str], set[str]]:
+        """(base template, host short name) -> ids of the datastores its host-local copies
+        (``<template>@<host>-<date>``, ADR 0012) are on. Each copy's datastores read once."""
+        index: dict[tuple[str, str], set[str]] = {}
+        for name, vm in templates.items():
+            if (copy := template_copies.parse(name)) is not None:
+                index.setdefault((copy.base, copy.host), set()).update(
+                    str(getattr(d, "_moId", "")) for d in getattr(vm, "datastore", None) or [])
+        return index
+
+    @staticmethod
+    def _copy_stores(index: dict, vm_def: dict, host: infra.HostCapacity) -> frozenset:
+        """Names of ``host``'s datastores holding a host-local copy of the VM's template
+        (``_copy_index``): placement prefers such a host, and that datastore on it."""
+        ids = index.get((vm_def["template_name"], template_copies.host_short_name(host.name))) or set()
+        return frozenset(name for name, (_, ref) in host.datastores.items() if str(getattr(ref, "_moId", "")) in ids)
+
     def _prepare_sync(self, si, range_id: str, vm_defs: list[dict], networks: list[dict], physical: dict) -> dict:
         """Placement, the range's VM folder and port groups, and the inventory templates.
 
@@ -1069,17 +1147,31 @@ class VsphereAPIProvisioner(BaseProvisioner):
         site_notes: list[str] = []
         dc, cluster = self._datacenter_and_cluster(si)
         hosts = self._eligible_hosts(cluster)
+        # A role image's plain-OS fallback too (``_use_role_fallback``).
+        wanted = {v["template_name"] for v in vm_defs} | {
+            v["role_fallback_template"] for v in vm_defs if v.get("role_fallback_template")}
+        view = si.content.viewManager.CreateContainerView(dc.vmFolder, [vim.VirtualMachine], True)
+        try:
+            # The plain templates and their host-local copies <id>@<host>-<yyyymmdd> (ADR 0012).
+            templates = {vm.name: vm for vm in view.view
+                         if (vm.name in wanted or getattr(template_copies.parse(vm.name), "base", None) in wanted)
+                         and vm.config.template}
+        finally:
+            view.Destroy()
         if self._placement == "cluster":
             datastore = self._find(si, vim.Datastore, self._datastore)
             if datastore is None:
                 raise RuntimeError(f"Datastore not found: {self._datastore!r}")
             placements = [(None, datastore)] * len(vm_defs)
         else:
-            placements = infra.place(hosts, vm_defs, self._placement, self._vcpu_ratio)
+            index = self._copy_index(templates)
+            placements = infra.place(hosts, vm_defs, self._placement, self._vcpu_ratio,
+                                     local=lambda v, h: self._copy_stores(index, v, h))
         for vm_def, placed in zip(vm_defs, placements, strict=True):
             vm_def["_placement"] = placed
 
         refs: dict = {}
+        nets: list = []  # every network the range attaches to: its NICs' MACs are checked against their VMs
         names = {n.get("vlan_id"): n.get("name", "") for n in networks}
         dvs = None
         if not physical:
@@ -1103,6 +1195,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
             else:
                 net = infra.ensure_dvs_portgroup(dvs, pg, vlan, promiscuous, lambda t: self._wait(t, si))
             refs[logical] = self._guard(infra.network_ref(net))
+            nets.append(net)
 
         uplink = None
         if any(nic.get("uplink") for v in vm_defs for nic in v["nics"]):
@@ -1110,6 +1203,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
             if net is None:
                 raise RuntimeError(f"uplink network VSPHERE_RANGE_UPLINK_NETWORK={self._uplink_network!r} was not found")
             uplink = self._guard(infra.network_ref(net))
+            nets.append(net)
         fallback = None
         if any(nic.get("vlan") is None and not (nic.get("uplink") or nic.get("noise") or nic.get("port_group"))
                for v in vm_defs for nic in v["nics"]):
@@ -1118,6 +1212,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
                 raise RuntimeError(f"a VM has no VLAN and the fallback network VSPHERE_NETWORK={self._network!r} "
                                    "was not found")
             fallback = self._guard(infra.network_ref(net))
+            nets.append(net)
         noise = None
         if any(nic.get("noise") for v in vm_defs for nic in v["nics"]):
             net = self._find(si, vim.Network, self._noise_network) if self._noise_network else None
@@ -1129,6 +1224,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
                                   "was not found; background-noise agents will be unreachable")
             else:
                 noise = self._guard(infra.network_ref(net))
+                nets.append(net)
         leased: dict = {}
         for name in sorted({n["port_group"] for v in vm_defs for n in v["nics"] if n.get("port_group")}):
             self._check_leased(name)
@@ -1136,6 +1232,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
             if net is None:
                 raise RuntimeError(f"lab port group {name!r} (LAB_PORT_GROUPS) was not found")
             leased[name] = self._guard(infra.network_ref(net))
+            nets.append(net)
         for vm_def in vm_defs:
             vm_def["_refs"] = [
                 uplink if n.get("uplink")
@@ -1146,17 +1243,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
                 for n in vm_def["nics"]
             ]
 
-        # A role image's plain-OS fallback too (``_use_role_fallback``).
-        wanted = {v["template_name"] for v in vm_defs} | {
-            v["role_fallback_template"] for v in vm_defs if v.get("role_fallback_template")}
-        view = si.content.viewManager.CreateContainerView(dc.vmFolder, [vim.VirtualMachine], True)
-        try:
-            # The plain templates and their host-local copies <id>@<host>-<yyyymmdd> (ADR 0012).
-            templates = {vm.name: vm for vm in view.view
-                         if (vm.name in wanted or getattr(template_copies.parse(vm.name), "base", None) in wanted)
-                         and vm.config.template}
-        finally:
-            view.Destroy()
+        self._check_macs(si, vm_defs, nets)
         for vm_def in vm_defs:
             vm_def["_local_copy"] = self._local_copy(templates, vm_def)
         folder = infra.ensure_folder(dc, f"{self._range_folder}/{range_id[:8]}")
@@ -1289,11 +1376,18 @@ class VsphereAPIProvisioner(BaseProvisioner):
         the platform default, else a random one. Linux gets its declared accounts as
         cloud-init users; with none declared, nothing: the template keeps its generic build
         password (ADR 0012 §5), so the platform default is not repeated in cloud-config.
+
+        Every NIC's MAC is read back first and must be the reserved one the clone spec set
+        (vsphere_macs.py): the guest config is keyed to it, so a NIC that came out with
+        any other MAC fails the VM here, before it is configured or powered on.
         """
         family = infra.os_family(vm_def)
         creds: guest.GuestCredentials | None = vm_def.get("_guest")
+        nic_macs = [str(card.macAddress) for card in infra.nic_cards(vm.config.hardware.device)]
+        if wrong := macs.mismatches(vm_def, nic_macs):
+            raise RuntimeError(f"its NICs do not have their reserved MACs ({'; '.join(wrong)}); "
+                               "not writing a guest network config keyed to the wrong MACs")
         if family == "linux":
-            macs = [card.macAddress for card in infra.nic_cards(vm.config.hardware.device)]
             user = guest.cloud_init_user(creds) if creds else None
             # Security Onion: its accounts are set by its setup (vsphere_securityonion.py).
             accounts = ([] if seconion.is_securityonion(vm_def)
@@ -1302,17 +1396,16 @@ class VsphereAPIProvisioner(BaseProvisioner):
             # ``guestinfo``: more keys the guest reads itself (gs-core's bundle chunks).
             more = [vim.option.OptionValue(key=k, value=v) for k, v in (vm_def.get("guestinfo") or {}).items()
                     if str(k).startswith("guestinfo.tn.")]
-            spec = vim.vm.ConfigSpec(extraConfig=infra.linux_guestinfo(vm_def, macs, user, accounts, login) + more)
+            spec = vim.vm.ConfigSpec(extraConfig=infra.linux_guestinfo(vm_def, nic_macs, user, accounts, login) + more)
             self._wait(vm.ReconfigVM_Task(spec=spec), si)
         elif family == "windows":
             password = creds.password.reveal() if creds else guest.admin_password(vm_def)
             self._wait(vm.CustomizeVM_Task(spec=infra.windows_customization(vm_def, password)), si)
         elif vm_def.get("_pfsense") is not None or vm_def.get("_vyos") is not None:
-            macs = [card.macAddress for card in infra.nic_cards(vm.config.hardware.device)]
             if vm_def.get("_pfsense") is not None:
-                values = pfsense_config.guestinfo(vm_def["_pfsense"], macs)
+                values = pfsense_config.guestinfo(vm_def["_pfsense"], nic_macs)
             else:
-                values = vyos_config.guestinfo(vm_def["_vyos"], macs, vm_def["name"])
+                values = vyos_config.guestinfo(vm_def["_vyos"], nic_macs, vm_def["name"])
             spec = vim.vm.ConfigSpec(extraConfig=[vim.option.OptionValue(key=k, value=v) for k, v in values.items()])
             self._wait(vm.ReconfigVM_Task(spec=spec), si)
         # Any other appliance boots with its template config (the runbook, §4.1a, says what
@@ -1425,6 +1518,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
         errors: list[str] = []
         warnings: list[str] = []
         vms_out: list[dict] = []
+        not_ready: list[str] = []
         vm_defs = [self._vm_plan(range_id, v) for v in template.get("vms", [])]
         networks = [dict(n) for n in template.get("networks", [])]
         physical: dict[int, int] = {}
@@ -1447,6 +1541,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
             physical = {int(k): int(v) for k, v in (allocations.get("physical_vlans") or {}).items()}
             if missing := [v for v in logical + rspan_keys if v not in physical]:
                 raise RuntimeError(f"VLANs {missing} have no reservation (worker: allocation_needs, network_reservations)")
+            macs.assign(vm_defs, allocations.get("nic_macs") or {})  # one reserved MAC per NIC, the WAN NIC's too
             for plan in mirror_plans:  # an RSPAN VLAN: reserved like the zones', but no port group
                 plan["rspan_vlan"] = physical[plan["rspan_key"]]
                 networks.append({"name": f"rspan-{plan['dst']}", "vlan_id": plan["rspan_key"],
@@ -1478,8 +1573,13 @@ class VsphereAPIProvisioner(BaseProvisioner):
                     for vm_def, res in zip(vm_defs, results, strict=True):
                         if isinstance(res, Exception):
                             errors.append(f"VM {vm_def['name']}: {self._redact(res, vm_def)}")
-                        else:
-                            vms_out.append(res)
+                            continue
+                        vms_out.append(res)
+                        if note := res.pop("warning", ""):
+                            warnings.append(f"VM {vm_def['name']}: {note}")
+                        if reason := res.pop("not_ready", ""):  # built, but its guest network is not up
+                            errors.append(f"VM {vm_def['name']}: {reason}")
+                            not_ready.append(vm_def["name"])
                     if mirror_plans and vms_out:
                         mirrors = await asyncio.to_thread(self._mirror_sync, si, site, range_id, mirror_plans,
                                                           vm_defs, vms_out, errors, warnings)
@@ -1528,6 +1628,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
             warnings=warnings,
             uplink=uplink,
             mirrors=mirrors,
+            not_ready=[n for n in not_ready if n in built],
         )
 
     # ------------------------------------------------------------------ #
@@ -1565,9 +1666,13 @@ class VsphereAPIProvisioner(BaseProvisioner):
         if keys:
             pool = [str(v) for v in vlan_pool.parse_pool(self._vlan_pool)]
             needs.append(AllocationNeed("physical_vlans", "vlan", self._domain("vlans"), pool, [str(k) for k in keys]))
-        if self._uplink_network and infra.pick_edge(vm_defs) is not None:
+        if self._uplink_network and (edge := infra.pick_edge(vm_defs)) is not None:
             pool = uplink_pool.parse_ip_pool(self._uplink_pool)
             needs.append(AllocationNeed("uplink_ip", "uplink_ip", self._domain("uplink"), pool, ["edge"], single=True))
+            edge["nics"].insert(0, {"uplink": True})  # as _plan_uplink: the WAN NIC is NIC 0
+        if holders := macs.holders(vm_defs):  # one explicit MAC per NIC (vsphere_macs.py)
+            needs.append(AllocationNeed("nic_macs", "mac", self._domain("macs"), macs.parse_pool(self._mac_pool),
+                                        holders))
         return needs
 
     def planned_output(self, range_id: str, allocations: dict) -> dict:
@@ -2310,12 +2415,11 @@ class VsphereAPIProvisioner(BaseProvisioner):
                     with contextlib.suppress(Exception):
                         await self._delete_vm(client, vm_id)
                 raise
-        tools_ready = await self._wait_tools(client, vm_id)
+        guest_net = await self._await_guest_network(client, vm_def, vm_id)
+        ready = vsphere_readiness.assess(vm_def, guest_net)
         mgmt_ip = vm_def.get("_mgmt_ip") if any(n.get("noise") for n in vm_def["nics"]) else None
-        ip = await self._get_vm_ip(client, vm_id, exclude=mgmt_ip or "") if tools_ready else None
         host, datastore = vm_def["_placement"]
-        primary = next((n for n in vm_def["nics"] if not n.get("uplink")), vm_def["nics"][0])
-        extra = {}
+        extra = {key: ready[key] for key in ("not_ready", "warning") if ready[key]}
         if (cfg := vm_def.get("_pfsense") or vm_def.get("_vyos")) is not None:
             extra[getattr(cfg, "product", "vyos")] = cfg.summary()  # pfsense | opnsense | vyos
         if mgmt_ip:
@@ -2326,15 +2430,19 @@ class VsphereAPIProvisioner(BaseProvisioner):
             "name": vm_def["name"],
             "node_id": vm_def.get("node_id", ""),
             "status": "running",
-            "ip": ip or primary.get("ip", ""),
+            # What VMware Tools reports, never the plan when Tools says otherwise (vsphere_readiness).
+            "ip": ready["ip"],
+            "planned_ip": ready["planned_ip"],
+            "guest_ips": ready["guest_ips"],
+            "ip_verified": ready["ip_verified"],
             "nics": [
-                {"network": ref["name"], "ip": nic.get("ip", "")}
+                {"network": ref["name"], "ip": nic.get("ip", ""), "mac": nic.get("mac", "")}
                 for nic, ref in zip(vm_def["nics"], vm_def["_refs"], strict=True)
             ],
             "host": host.name if host else "",
             "datastore": getattr(datastore, "name", ""),
             "template": vm_def.get("_source", vm_def["template_name"]),  # template_copies.names_in_use
-            "tools_ready": tools_ready,
+            "tools_ready": guest_net["tools_ready"],
         }
 
     @staticmethod
