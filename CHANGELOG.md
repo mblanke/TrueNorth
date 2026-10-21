@@ -327,6 +327,24 @@ course production with a local-model fallback, and the cleanup of unsupported su
   assets name their OS, and a test checks every `os:` in content/ranges resolves to an
   enabled image. CI job `packer-vsphere` runs `packer init`, `fmt -check` and
   `validate -syntax-only` on `infra/vsphere/packer` (the README named a job that did not exist).
+- vCenter organisation (ADR 0012 follow-up): one `TrueNorth` VM-folder tree. Range folders
+  are `TrueNorth/Ranges/<range-name>-<key>`, `<key>` the first 12 hex digits of the range id
+  (`VSPHERE_RANGE_FOLDER` / `tn_vsphere_range_folder` default, was `truenorth/ranges/<id8>`),
+  found by that suffix on destroy and in #232's MAC pre-check; an earlier `<id8>` folder is
+  found but never reused, and an empty or `/` folder setting is refused. Single-cardinality
+  vCenter tags `tn-type` / `tn-os` / `tn-template` / `tn-range`: the provisioner tags range VMs
+  at clone (CIS tagging API, both REST dialects; 5 s per call, the first failure stops it for
+  the build with one warning, `VSPHERE_TAGS=false` turns it off) and deletes the range's tag on
+  destroy; `build.sh` and `test-clone.sh` tag templates, host copies and test clones
+  (`TN_TAGS=0`: off). `scripts/lab/vcenter-organize.sh [--dry-run] [--retire NAME]` moves only
+  TrueNorth's objects out of `truenorth/` (old templates to `TrueNorth/Templates/_retired`,
+  tagged `retired`, never deleted, never a clone source), names range folders from the
+  database, removes only folders it emptied, and tags TrueNorth's VMs; it refuses unless every
+  range is settled and the running worker uses `TrueNorth/Ranges`. Infrastructure gets a
+  **Virtual machines** tab (`GET /hypervisors/connections/{id}/vms`, read live, paged): Golden
+  templates / Host copies / Range VMs / Other by `tn-type`, another tenant's range VMs hidden;
+  host VM counts unchanged. The depot's online-window guard checks the worker's range folder
+  and the old one, and `depot-uplink.sh` now fails closed like it.
 - New: range credentials (ADR 0012 §12-14). A range template may declare `accounts:`
   (`machine`, `username`, `password` or `generate: true`, `student_visible`, `role`,
   `notes`); the machine must be one the worker builds, a username appears once per machine,

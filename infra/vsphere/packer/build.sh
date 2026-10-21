@@ -28,6 +28,11 @@
 #   REPLICATE_AFTER_BUILD=1  replicate every template right after it builds
 #   DRY_RUN=1            print the govc changes instead of making them
 #
+# Tags (vCenter, best effort; scripts/lab/vcenter_organize.py tag): a built or replicated
+# template gets tn-type=golden-template, each copy tn-type=template-copy, both with
+# tn-template=<id> and tn-os from the catalogue. A failure is a warning, never a failed
+# build (scripts/lab/vcenter-organize.sh tags anything missed). TN_TAGS=0 turns it off.
+#
 # packer init + packer validate run once up front.
 set -euo pipefail
 
@@ -210,9 +215,28 @@ run_govc() {
   fi
 }
 
-# The inventory path of the one VM or template called exactly $1 (empty: none).
+# The inventory path of the one VM or template called exactly $1 (empty: none). Searched
+# from the root, so it is found in any folder (TrueNorth/Templates or elsewhere) except
+# */_retired/ (old hand-made templates moved aside by vcenter-organize.sh).
 find_vm() {
-  govc find / -type m -name "$1" 2>/dev/null | head -n1
+  govc find / -type m -name "$1" 2>/dev/null | awk '!/\/_retired\//' | head -n1
+}
+
+# tn-* tags on a template or copy: tag_vm <inventory path> <tn-type> <catalogue id>.
+TAG_TOOL="../../../scripts/lab/vcenter_organize.py"
+tag_vm() {
+  local path="$1" type="$2" id="$3"
+  [ "${TN_TAGS:-1}" != "0" ] && [ -n "$path" ] || return 0
+  if [ -n "${DRY_RUN:-}" ]; then
+    echo "DRY_RUN: tag ${path} tn-type=${type} tn-template=${id}"
+    return 0
+  fi
+  if [ ! -f "$TAG_TOOL" ] || ! command -v python3 >/dev/null 2>&1; then
+    echo "WARN: ${path##*/} not tagged (python3 or ${TAG_TOOL} missing); scripts/lab/vcenter-organize.sh tags it later" >&2
+    return 0
+  fi
+  python3 "$TAG_TOOL" tag "$path" --type "$type" --template "$id" \
+    || echo "WARN: ${path##*/} not tagged (vCenter tagging failed); scripts/lab/vcenter-organize.sh tags it later" >&2
 }
 
 # The inventory path of host $1: its exact name, else <name>.<domain> (esx03 -> esx03.truenorth.lab).
@@ -233,10 +257,12 @@ replicate_one() {
   if [ -n "$existing" ]; then
     if [ "$(govc object.collect -s "$existing" config.template 2>/dev/null)" = "true" ]; then
       echo "replicate: ${copy} already exists; skipped"
+      tag_vm "$existing" template-copy "$id"
       return 0
     fi
     echo "replicate: ${copy} exists but is not a template yet; marking it"
     run_govc vm.markastemplate "$existing"
+    tag_vm "$existing" template-copy "$id"
     return 0
   fi
   host_path="$(find_host "$short")"
@@ -254,6 +280,7 @@ replicate_one() {
     echo "FAIL: replicate ${id}: ${copy} cloned but not marked a template (re-run replicate to finish)" >&2
     return 1
   }
+  tag_vm "${folder%/}/${copy}" template-copy "$id"
   echo "replicate: OK ${copy}"
 }
 
@@ -277,6 +304,7 @@ replicate() {
   fi
   folder="${TEMPLATE_FOLDER:-$(dirname "$source")}"  # default: next to the template it copies
   date="${REPLICA_DATE:-$(date +%Y%m%d)}"
+  tag_vm "$source" golden-template "$id"
   for h in "${hosts[@]}"; do
     replicate_one "$id" "$h" "$date" "$source" "$folder" || failed=1
   done
@@ -294,6 +322,9 @@ build_one() {
   if packer build -force -only="*.${builder}.${name}" . 2>&1 | tee "$log"; then
     echo "OK: ${name}"
     register_back "$name"
+    if command -v govc >/dev/null 2>&1 && [ -n "${GOVC_URL:-}" ]; then
+      tag_vm "$(find_vm "$name")" golden-template "$name"
+    fi
     if [ "${REPLICATE_AFTER_BUILD:-}" = "1" ]; then
       replicate "$name" || return 1
     fi

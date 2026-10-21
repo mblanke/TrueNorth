@@ -311,9 +311,11 @@ def test_provision_reserves_first_and_stores_uplink_mirrors_warnings(task_env, m
     monkeypatch.setattr(tasks, "_get_backend", lambda b, range_id=None, **kw: Prov())
     assert tasks.provision_range.run("r-1")["status"] == "ready"
     assert task_env["order"] == ["reserve", "provision"]
-    # finish_by is the task's budget deadline (worker/tasks.py); the reservations are the point here.
-    assert {k: v for k, v in seen["allocations"].items() if k != "finish_by"} == {"physical_vlans": {"200": "101"}}
-    assert "finish_by" in seen["allocations"]
+    # finish_by is the task's budget deadline and range_name the folder/tag label's name
+    # (worker/tasks.py); the reservations are the point here.
+    context = ("finish_by", "range_name")
+    assert {k: v for k, v in seen["allocations"].items() if k not in context} == {"physical_vlans": {"200": "101"}}
+    assert all(k in seen["allocations"] for k in context)
     (ready,) = [kw for s, kw in task_env["states"] if s == "ready"]
     assert json.loads(ready["output"]) == {
         "provider": "vsphere_api", "range_id": "r-1", "vms": [{"vm_id": "vm-1", "name": "x"}],

@@ -1,6 +1,6 @@
 ---
 # Refuse to put the depot's caches online while range VMs exist (#214), the same check as
-# scripts/lab/depot-uplink.sh `on`: VMs under <datacenter>/vm/<TN_RANGE_FOLDER>. Runs once,
+# scripts/lab/depot-uplink.sh `on`: VMs under <datacenter>/vm/<each of tn_depot_range_vm_folders>. Runs once,
 # on the control node, with govc and GOVC_URL / GOVC_USERNAME / GOVC_PASSWORD from the
 # environment (never printed); GOVC_DATACENTER is set from tn_depot_vcenter_datacenter.
 # Fails closed: no govc, no credentials, no answer from vCenter, a datacenter that cannot
@@ -48,31 +48,35 @@
           the range folder cannot be checked. Fix the value, or pass -e tn_depot_force_online=true.
       when: tn_depot_guard_dc.rc != 0
 
-    - name: Range guard — the range folder
-      ansible.builtin.command: govc folder.info "/{{ tn_depot_vcenter_datacenter }}/vm/{{ tn_depot_range_vm_folder }}"
+    # Today's root and the earlier one (tn_depot_range_vm_folders): either may be absent (no
+    # range built yet; old folders already tidied by vcenter-organize.sh), but not both.
+    - name: Range guard — the range folders
+      ansible.builtin.command: govc folder.info "/{{ tn_depot_vcenter_datacenter }}/vm/{{ item }}"
+      loop: "{{ tn_depot_range_vm_folders }}"
       register: tn_depot_guard_folder
       changed_when: false
       failed_when: false
 
-    # A missing folder is not "no ranges": it may be a wrong name. Refuse; force if sure.
-    - name: Range guard — refuse when the range folder cannot be looked up
+    # No folder at all is not "no ranges": it may be a wrong name. Refuse; force if sure.
+    - name: Range guard — refuse when no range folder can be looked up
       ansible.builtin.fail:
         msg: >-
-          Range folder /{{ tn_depot_vcenter_datacenter }}/vm/{{ tn_depot_range_vm_folder }} cannot be
-          looked up (govc folder.info rc {{ tn_depot_guard_folder.rc }}). If no range was ever
-          deployed, or TN_RANGE_FOLDER is set wrong, check it, then pass -e tn_depot_force_online=true.
-      when: tn_depot_guard_folder.rc != 0
+          None of the range folders {{ tn_depot_range_vm_folders | join(', ') }} under
+          /{{ tn_depot_vcenter_datacenter }}/vm can be looked up (govc folder.info). If no range was
+          ever deployed, or TN_RANGE_FOLDER is set wrong, check it, then pass -e tn_depot_force_online=true.
+      when: tn_depot_guard_folder.results | selectattr('rc', 'equalto', 0) | list | length == 0
 
-    - name: Range guard — VMs in the range folder
-      ansible.builtin.command: govc find "/{{ tn_depot_vcenter_datacenter }}/vm/{{ tn_depot_range_vm_folder }}" -type m
+    - name: Range guard — VMs in the range folders
+      ansible.builtin.command: govc find "/{{ tn_depot_vcenter_datacenter }}/vm/{{ item }}" -type m
+      loop: "{{ tn_depot_guard_folder.results | selectattr('rc', 'equalto', 0) | map(attribute='item') | list }}"
       register: tn_depot_guard_vms
       changed_when: false
 
     - name: Range guard — refuse while range VMs exist
       ansible.builtin.fail:
         msg: >-
-          {{ tn_depot_guard_vms.stdout_lines | length }} range VM(s) exist under
-          /{{ tn_depot_vcenter_datacenter }}/vm/{{ tn_depot_range_vm_folder }}. While the depot is
+          {{ tn_depot_guard_vms.results | map(attribute='stdout_lines') | flatten | length }} range VM(s)
+          exist under {{ tn_depot_range_vm_folders | join(' / ') }}. While the depot is
           online its caches fetch whatever they are asked for. Destroy them, or pass
           -e tn_depot_force_online=true to accept it (the range NIC still drops everything).
-      when: tn_depot_guard_vms.stdout_lines | length > 0
+      when: tn_depot_guard_vms.results | map(attribute='stdout_lines') | flatten | length > 0

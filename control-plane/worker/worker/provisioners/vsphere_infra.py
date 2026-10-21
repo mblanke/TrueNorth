@@ -18,6 +18,8 @@ from dataclasses import dataclass, field
 
 import yaml
 
+from .vsphere_tags import belongs_to, is_legacy_folder
+
 try:
     from pyVmomi import vim
 except ImportError:  # the provisioner reports the missing SDK when it is used
@@ -205,6 +207,40 @@ def ensure_folder(dc, path: str):
                 found = _child(folder, part)
         folder = found
     return folder
+
+
+def range_root(path: str) -> str:
+    """A range folder root, checked: never empty or ``/`` (the datacenter's VM root, where a
+    sweep by id suffix would reach every folder there) and never ``..``."""
+    root = str(path or "").strip().strip("/")
+    if not root or any(part in ("", ".", "..") for part in root.split("/")):
+        raise ValueError(f"range folder root {path!r} is not a folder path: set VSPHERE_RANGE_FOLDER "
+                         "(default TrueNorth/Ranges); refusing to use the datacenter's VM root")
+    return root
+
+
+def find_range_folders(dc, roots, range_id: str) -> list:
+    """The range's VM folders under any of ``roots``, by key (``vsphere_tags.belongs_to``):
+    ``<name>-<key>`` today, exactly ``<id8>`` from earlier builds. Matched by id, never by
+    name, so a renamed range, or one whose folder an operator moved between the roots, is
+    found. Only direct children of each root; a root may not be the VM root (``range_root``)."""
+    out, seen = [], set()
+    for root in [range_root(r) for r in roots]:
+        parent = find_folder(dc, root)
+        for child in getattr(parent, "childEntity", None) or []:
+            if hasattr(child, "childEntity") and belongs_to(child.name, range_id) and id(child) not in seen:
+                seen.add(id(child))
+                out.append(child)
+    return out
+
+
+def ensure_range_folder(dc, root: str, range_id: str, label: str):
+    """The range's folder: one of today's form under ``root`` named for this range's full key
+    (a retried build), else ``<root>/<label>``, created. An earlier build's ``<id8>`` folder
+    is never reused: every range of that id8 would match it."""
+    root = range_root(root)
+    own = [f for f in find_range_folders(dc, [root], range_id) if not is_legacy_folder(f.name)]
+    return own[0] if own else ensure_folder(dc, f"{root}/{label}")
 
 
 def portgroup_name(range_id: str, physical_vlan: int) -> str:

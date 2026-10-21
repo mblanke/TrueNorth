@@ -14,8 +14,11 @@
 # to offline mode (apt-cacher-ng Offlinemode, Nexus proxies blocked) at the end of a
 # window; the two controls are independent on purpose.
 #
-# `on` refuses while range VMs exist (folder truenorth/ranges) unless --force: during a
-# window a range could pull packages from upstream through the depot.
+# `on` refuses while range VMs exist (under VSPHERE_RANGE_FOLDER, default TrueNorth/Ranges,
+# and the earlier truenorth/ranges) unless --force: during a window a range could pull
+# packages from upstream through the depot. Like install/lab/roles/tn_depot range_guard.yml it
+# fails closed: no range folder that can be looked up, or a folder that cannot be listed, is a
+# refusal too (--force overrides).
 #
 # Earlier (TN-BUILD01) design only. The work-site depot (ADR 0012, #214: NICs on MGMT,
 # BUILD and the range uplink network) has no uplink NIC; the script refuses it.
@@ -23,9 +26,11 @@ set -euo pipefail
 # shellcheck source-path=SCRIPTDIR source=lib.sh
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
-usage() { sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+usage() { sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 CMD=""; FORCE=0; VM_NAME="TN-DEPOT01"; UPLINK_PG="dPG-TN-BUILD"
-: "${TN_RANGE_FOLDER:=truenorth/ranges}"
+# Range VM folders: the worker's (VSPHERE_RANGE_FOLDER) and the earlier root; TN_RANGE_FOLDER
+# names one folder instead (which must then exist).
+TN_RANGE_FOLDERS="${TN_RANGE_FOLDER:-${VSPHERE_RANGE_FOLDER:-TrueNorth/Ranges} truenorth/ranges}"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     on|off|status) CMD="$1" ;;
@@ -75,12 +80,26 @@ info "$VM_NAME $nic on $UPLINK_PG: $(state)"
 case "$CMD" in
   status) exit 0 ;;
   on)
-    ranges="$(govc find "/$GOVC_DATACENTER/vm/$TN_RANGE_FOLDER" -type m 2>/dev/null | wc -l | tr -d ' ')"
+    ranges=0; looked=0; problem=""
+    for f in $TN_RANGE_FOLDERS; do
+      govc folder.info "/$GOVC_DATACENTER/vm/$f" >/dev/null 2>&1 || continue  # absent: nothing there
+      looked=$((looked + 1))
+      if found="$(govc find "/$GOVC_DATACENTER/vm/$f" -type m 2>/dev/null)"; then
+        ranges=$(( ranges + $(printf '%s' "$found" | grep -c . || true) ))
+      else
+        problem="cannot list /$GOVC_DATACENTER/vm/$f"
+      fi
+    done
+    [[ "$looked" != "0" ]] || problem="none of the range folders ($TN_RANGE_FOLDERS) can be looked up"
+    if [[ -n "$problem" ]]; then
+      if [[ "$FORCE" == "1" ]]; then warn "$problem; connecting anyway (--force)"
+      else die "$problem: cannot tell whether range VMs exist. Check vCenter and VSPHERE_RANGE_FOLDER, or pass --force"; fi
+    fi
     if [[ "$ranges" != "0" ]]; then
       if [[ "$FORCE" == "1" ]]; then
         warn "$ranges range VM(s) exist; connecting anyway (--force). Their pfSense WANs can reach the depot's caches while it is online"
       else
-        die "$ranges range VM(s) exist under $TN_RANGE_FOLDER. Destroy them, or pass --force to accept that they can pull from upstream through the depot during the window"
+        die "$ranges range VM(s) exist under $TN_RANGE_FOLDERS. Destroy them, or pass --force to accept that they can pull from upstream through the depot during the window"
       fi
     fi
     act govc device.connect -vm "$VM" "$nic"

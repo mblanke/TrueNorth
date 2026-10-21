@@ -75,6 +75,7 @@ from . import vsphere_guest as guest
 from . import vsphere_infra as infra
 from . import vsphere_macs as macs
 from . import vsphere_securityonion as seconion
+from . import vsphere_tags as tags
 from .base import AllocationNeed, BaseProvisioner, ConnectionBindingError
 from .results import (
     DestroyResult,
@@ -140,7 +141,14 @@ VSPHERE_PLACEMENT: str = os.environ.get("VSPHERE_PLACEMENT", "spread").lower()
 # A resource pool (by name, anywhere under the cluster) range VMs go into. Empty: the
 # cluster's root pool.
 VSPHERE_RESOURCE_POOL: str = os.environ.get("VSPHERE_RESOURCE_POOL", "")
-VSPHERE_RANGE_FOLDER: str = os.environ.get("VSPHERE_RANGE_FOLDER", "truenorth/ranges")
+# Range VM folders: <this>/<range-name>-<key> (vsphere_tags.range_label, key = 12 hex digits
+# of the range id), found again by that suffix here and, as <id8>, under the earlier
+# truenorth/ranges root. Never empty or "/": the provisioner refuses to start (range_root).
+VSPHERE_RANGE_FOLDER: str = os.environ.get("VSPHERE_RANGE_FOLDER", "TrueNorth/Ranges")
+# vCenter tags (tn-type, tn-os, tn-template, tn-range) on range VMs; best effort.
+VSPHERE_TAGS: bool = os.environ.get("VSPHERE_TAGS", "true").lower() != "false"
+# Per tagging call (seconds); the first slow or failed call stops tagging for the build.
+VSPHERE_TAG_TIMEOUT: float = float(os.environ.get("VSPHERE_TAG_TIMEOUT", "5"))
 # vCPU overcommit cap: a host takes VMs while powered-on vCPUs <= threads x this.
 VSPHERE_MAX_VCPU_PER_THREAD: float = float(os.environ.get("VSPHERE_MAX_VCPU_PER_THREAD", "4"))
 # Hosts never used for range VMs (comma-separated), e.g. the one running the VCSA.
@@ -495,7 +503,10 @@ class VsphereAPIProvisioner(BaseProvisioner):
         self._vlan_pool = VSPHERE_VLAN_POOL
         self._placement = VSPHERE_PLACEMENT
         self._resource_pool = VSPHERE_RESOURCE_POOL.strip()
-        self._range_folder = VSPHERE_RANGE_FOLDER.strip("/")
+        self._range_folder = infra.range_root(VSPHERE_RANGE_FOLDER)  # empty or "/": refused, loudly
+        self._tags_enabled = VSPHERE_TAGS
+        self._tag_timeout = VSPHERE_TAG_TIMEOUT
+        self._tagger: tags.TagClient | None = None  # one per build (provision)
         self._vcpu_ratio = VSPHERE_MAX_VCPU_PER_THREAD
         self._exclude_hosts = _names(VSPHERE_EXCLUDE_HOSTS)
         self._uplink_network = VSPHERE_RANGE_UPLINK_NETWORK.strip()
@@ -629,11 +640,11 @@ class VsphereAPIProvisioner(BaseProvisioner):
                     self._session_token = await self._authenticate()
         return self._session_token
 
-    async def _request(self, client: httpx.AsyncClient, method: str, path: str, **kwargs):
+    async def _request(self, client: httpx.AsyncClient, method: str, path: str, *, prefix: str = "/api", **kwargs):
         """One REST call; on a 401 (session expired) log in again and retry once."""
         for attempt in (1, 2):
             token = await self._get_session()
-            resp = await client.request(method, f"/api{path}", headers={"vmware-api-session-id": token}, **kwargs)
+            resp = await client.request(method, f"{prefix}{path}", headers={"vmware-api-session-id": token}, **kwargs)
             if resp.status_code != 401 or attempt == 2:
                 break
             logger.info("vCenter session expired; logging in again")
@@ -649,6 +660,23 @@ class VsphereAPIProvisioner(BaseProvisioner):
 
     async def _api_delete(self, client: httpx.AsyncClient, path: str) -> None:
         await self._request(client, "DELETE", path)
+
+    def _tag_client(self, client: httpx.AsyncClient, deadline: float | None = None) -> tags.TagClient:
+        """CIS tagging over this REST session, in its dialect (call after a login); each call
+        bounded by VSPHERE_TAG_TIMEOUT, none after ``deadline`` (monotonic)."""
+        async def call(method: str, path: str, body: dict | None):
+            return await self._request(client, method, path, prefix="",
+                                       **({"json": body} if body is not None else {}))
+
+        return tags.TagClient(call, self._dialect, timeout=self._tag_timeout, deadline=deadline)
+
+    async def _tag_vm(self, vm_def: dict, vm_id: str) -> None:
+        """tn-type/tn-os/tn-template/tn-range on a range VM. Best effort: a VM is never
+        failed (or deleted) because vCenter would not tag it."""
+        if self._tagger is None or not vm_id:
+            return
+        label = vm_def.get("_label") or tags.range_key(vm_def["_range_id"])
+        await self._tagger.apply(vm_id, tags.range_vm_tags(vm_def, label))  # bounded; never raises
 
     # ------------------------------------------------------------------ #
     # Content Library
@@ -1145,12 +1173,16 @@ class VsphereAPIProvisioner(BaseProvisioner):
         if not wanted:
             return
         pool = macs.parse_pool(self._mac_pool)
-        own_folder = getattr(infra.find_folder(dc, f"{self._range_folder}/{range_id[:8]}"), "_moId", None)
+        # Its folder by id suffix (vsphere_tags): <root>/<name>-<id8> today, <id8> under the
+        # earlier truenorth/ranges root, or one an operator or vcenter-organize.sh moved.
+        own_folders = {f._moId for f in infra.find_range_folders(dc, self._range_roots(), range_id)}
         in_use: dict[str, str] = {}
         for vm_id, got in self._inventory_sync(si, ("name", "parent", "config.annotation",
                                                     "config.hardware.device")).items():
-            if annotated_range(got.get("config.annotation")) == range_id or (
-                    own_folder and getattr(got.get("parent"), "_moId", None) == own_folder):
+            owner = annotated_range(got.get("config.annotation"))
+            # In its folder and not another range's: an earlier build's <id8> folder is shared
+            # by every range of that id8, so a VM annotated for another range is never exempt.
+            if owner == range_id or (not owner and getattr(got.get("parent"), "_moId", None) in own_folders):
                 continue
             for card in infra.nic_cards(got.get("config.hardware.device") or []):
                 if (mac := macs.normalize(getattr(card, "macAddress", None))) and mac in pool:
@@ -1197,10 +1229,12 @@ class VsphereAPIProvisioner(BaseProvisioner):
             v["role_fallback_template"] for v in vm_defs if v.get("role_fallback_template")}
         view = si.content.viewManager.CreateContainerView(dc.vmFolder, [vim.VirtualMachine], True)
         try:
-            # The plain templates and their host-local copies <id>@<host>-<yyyymmdd> (ADR 0012).
+            # The plain templates and their host-local copies <id>@<host>-<yyyymmdd> (ADR 0012),
+            # in any folder but _retired (old hand-made templates moved aside: never a source).
             templates = {vm.name: vm for vm in view.view
                          if (vm.name in wanted or getattr(template_copies.parse(vm.name), "base", None) in wanted)
-                         and vm.config.template}
+                         and vm.config.template
+                         and getattr(getattr(vm, "parent", None), "name", None) != tags.RETIRED_FOLDER}
         finally:
             view.Destroy()
         if self._placement == "cluster":
@@ -1285,7 +1319,8 @@ class VsphereAPIProvisioner(BaseProvisioner):
         self._check_macs(si, dc, range_id, vm_defs)
         for vm_def in vm_defs:
             vm_def["_local_copy"] = self._local_copy(templates, vm_def)
-        folder = infra.ensure_folder(dc, f"{self._range_folder}/{range_id[:8]}")
+        label = vm_defs[0].get("_label") if vm_defs else None
+        folder = infra.ensure_range_folder(dc, self._range_folder, range_id, label or tags.range_key(range_id))
         return {"dc": dc, "cluster": cluster, "pool": self._pool(cluster), "folder": folder, "templates": templates,
                 "dvs": dvs, "notes": site_notes}
 
@@ -1450,6 +1485,10 @@ class VsphereAPIProvisioner(BaseProvisioner):
         # Any other appliance boots with its template config (the runbook, §4.1a, says what
         # that config must hold).
 
+    def _range_roots(self) -> list[str]:
+        """Where range folders are looked for: VSPHERE_RANGE_FOLDER, then the earlier root."""
+        return list(dict.fromkeys([self._range_folder, *tags.LEGACY_RANGE_ROOTS]))
+
     def _teardown_sync(self, si, range_id: str, networks: list[dict], mirrors: bool = False) -> int:
         """Remove the range's mirror sessions, port groups and (empty) VM folder. Missing
         ones are fine. Sessions go by name prefix (``tn-<range8>-``), so ones a build made
@@ -1473,9 +1512,9 @@ class VsphereAPIProvisioner(BaseProvisioner):
             if dvs is None:
                 raise RuntimeError(f"Distributed switch not found: {self._dvs_name!r}")
             removed += infra.remove_dvs_portgroup(dvs, name, lambda t: self._wait(t, si))
-        folder = infra.find_folder(dc, f"{self._range_folder}/{range_id[:8]}")
-        if folder is not None and not folder.childEntity:
-            self._wait(folder.Destroy_Task(), si)
+        for folder in infra.find_range_folders(dc, self._range_roots(), range_id):
+            if not folder.childEntity:  # by id8: today's <name>-<id8> and earlier <id8> folders
+                self._wait(folder.Destroy_Task(), si)
         return removed
 
     @staticmethod
@@ -1559,6 +1598,9 @@ class VsphereAPIProvisioner(BaseProvisioner):
         vms_out: list[dict] = []
         not_ready: list[str] = []
         vm_defs = [self._vm_plan(range_id, v) for v in template.get("vms", [])]
+        label = tags.range_label(allocations.get("range_name"), range_id)  # folder + tn-range tag
+        for vm_def in vm_defs:
+            vm_def["_label"] = label
         networks = [dict(n) for n in template.get("networks", [])]
         physical: dict[int, int] = {}
         uplink: dict | None = None
@@ -1606,6 +1648,9 @@ class VsphereAPIProvisioner(BaseProvisioner):
                     site = await asyncio.to_thread(self._prepare_sync, si, range_id, vm_defs, networks, physical)
                     errors += site.get("notes", [])
                     async with self._client() as client:
+                        # No tagging in the budget's last two minutes: they are the build's.
+                        self._tagger = (self._tag_client(client, deadline=self._budget_end - 120)
+                                        if self._tags_enabled else None)
                         results = await asyncio.gather(
                             *(self._provision_one_vm(client, si, site, v) for v in vm_defs), return_exceptions=True
                         )
@@ -1656,6 +1701,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
             errors.append(self._redact(exc, *vm_defs))
         finally:
             self._soap_si = None
+            self._tagger = None
             for vm_def in vm_defs:  # the guest passwords end with this call
                 for key in ("_guest", "_accounts", "_default_login", "_scrub", "_will_set"):
                     vm_def.pop(key, None)
@@ -2475,6 +2521,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
                 else:
                     vm = await asyncio.to_thread(self._clone_sync, si, site, vm_def)
                     vm_id = vm._moId
+                await self._tag_vm(vm_def, vm_id)
                 await asyncio.to_thread(self._customize_sync, si, vm, vm_def)
                 await self._power_action(client, vm_id, "start")
             except Exception:
@@ -2576,6 +2623,20 @@ class VsphereAPIProvisioner(BaseProvisioner):
 
         return await asyncio.to_thread(run)
 
+    async def _delete_range_tags(self, range_id: str) -> None:
+        """The range's tn-range tag, once its VMs are gone. Best effort, like the tagging."""
+        if not self._tags_enabled:
+            return
+        try:
+            async with self._client() as client:  # a slow tagging service never holds up a destroy
+                gone = await asyncio.wait_for(self._tag_client(client).delete_range_tags(range_id),
+                                              4 * self._tag_timeout)
+            if gone:
+                logger.info("range %s: vCenter tag(s) %s deleted", range_id, ", ".join(gone))
+        except Exception as exc:  # noqa: BLE001 -- a stale tag is untidy, not a failed destroy
+            logger.warning("range %s: its tn-range vCenter tag was not deleted: %s", range_id,
+                           str(exc) or type(exc).__name__)
+
     async def destroy(
         self,
         range_id: str,
@@ -2629,6 +2690,8 @@ class VsphereAPIProvisioner(BaseProvisioner):
                     raise RuntimeError("pyvmomi is required to remove range port groups (pip install pyvmomi)")
                 with self._vim() as si:
                     removed += await asyncio.to_thread(self._teardown_sync, si, range_id, portgroups, mirrors)
+            if has_ids and not errors:
+                await self._delete_range_tags(range_id)
         except Exception as exc:
             errors.append(str(exc))
 

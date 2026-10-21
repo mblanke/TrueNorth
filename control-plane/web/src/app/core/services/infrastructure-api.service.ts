@@ -5,7 +5,7 @@ import { environment } from '@env/environment';
 import type { components } from '../api/schema';
 import {
   HypervisorConnection, HypervisorNode, HypervisorSummary, InfraDiscovery, NetworkDevice, NetworkSummary,
-  StorageAppliance, StorageSummary,
+  StorageAppliance, StorageSummary, VmInventory,
 } from '../models';
 
 type S = components['schemas'];
@@ -29,6 +29,11 @@ export class InfrastructureApiService {
   }
   connectionNodes(id: string): Observable<HypervisorNode[]> {
     return this.http.get<HypervisorNode[]>(`${this.base}/hypervisors/connections/${id}/nodes`);
+  }
+  /** Read live from the hypervisor (seconds on a large vCenter): load on request, not on page load.
+   *  One page of up to `limit` (the API's cap, 2000); `message` says when there are more. */
+  connectionVms(id: string, limit = 2000): Observable<VmInventory> {
+    return this.http.get<VmInventory>(`${this.base}/hypervisors/connections/${id}/vms`, { params: { limit } });
   }
   hypervisorSummary(): Observable<HypervisorSummary> {
     return this.http.get<HypervisorSummary>(`${this.base}/hypervisors/summary`);

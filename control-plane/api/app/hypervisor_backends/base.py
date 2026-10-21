@@ -48,3 +48,9 @@ class BaseHypervisorBackend(ABC):
         ``message`` and ``error``. The scheduled rediscovery (app/infra_discovery) records
         ``error`` as the connection's last error and keeps its last success time.
         """
+
+    def list_vms(self, conn: HypervisorConnection) -> tuple[list[dict], str] | None:
+        """The connection's VMs, read live: ``([{vm_id, name, power_state, host, tags}], note)``
+        with ``tags`` TrueNorth's tn-* tags (category -> value). Raises on a hypervisor-side
+        failure. None: this family cannot list them (the page says so; never an empty list)."""
+        return None

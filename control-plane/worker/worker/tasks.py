@@ -161,7 +161,7 @@ def provision_range(self, range_id: str, noise_mgmt: dict | None = None):
         template = greyspace.plan_host(range_id, backend, template)  # + gs-core on HOSTED backends (ADR 0007)
         provisioner = _get_backend(backend, range_id, build=True)  # its tenant's connection (H6), recorded
         allocations.update(range_alloc.reserve_for_build(_db_session, range_id, provisioner, template))
-        allocations["finish_by"] = finish_by  # the provisioner stops new work by here
+        allocations.update(finish_by=finish_by, range_name=row[2] if row and len(row) > 2 else None)  # stop-by; folder
         result = run_async(range_accounts.provision(provisioner, range_id, template, allocations, _db_session))
 
         if result.status == "failed":

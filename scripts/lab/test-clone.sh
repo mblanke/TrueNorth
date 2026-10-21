@@ -21,6 +21,8 @@
 #   --yes            do not ask
 #   --env-file FILE  vCenter credentials (default /srv/truenorth/config/.env.production)
 #
+# Each clone is tagged tn-type=test-clone, tn-template=<id> (best effort; TN_TAGS=0: off).
+#
 # Source per host: the newest host-local copy <id>@<host>-<yyyymmdd> (build.sh replicate),
 # else <id>; the clone goes on that host's own datastore (<host>-local), as the
 # provisioner does. A failed clone is kept for diagnosis; its destroy command is printed.
@@ -29,7 +31,7 @@ set -euo pipefail
 # shellcheck source-path=SCRIPTDIR source=lib.sh
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
-usage() { sed -n '2,30p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+usage() { sed -n '2,29p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 ID=""; HOSTS="${RANGE_HOSTS:-esx02 esx03 esx04}"; MODE="customize"; NET="dPG-TN-BUILD"
 IP_BASE="10.30.31"; TIMEOUT_MIN=25; KEEP=0
 ENV_FILE="${TN_ENV_FILE:-/srv/truenorth/config/.env.production}"
@@ -67,8 +69,8 @@ find_host() {
 # Newest <id>@<host>-<yyyymmdd> on that host, else the plain template.
 source_for() {
   local short="$1" copy
-  copy="$(govc find / -type m -name "${ID}@${short}-*" | sort | tail -n1)"
-  if [[ -n "$copy" ]]; then echo "$copy"; else govc find / -type m -name "$ID" | head -n1; fi
+  copy="$(govc find / -type m -name "${ID}@${short}-*" | awk '!/\/_retired\//' | sort | tail -n1)"
+  if [[ -n "$copy" ]]; then echo "$copy"; else govc find / -type m -name "$ID" | awk '!/\/_retired\//' | head -n1; fi
 }
 
 # Network, customization (customize mode) and power-on. Non-zero: the clone is not testable.
@@ -124,6 +126,10 @@ for item in "${plan[@]}"; do
     warn "$short: clone failed"; failed=1; continue
   fi
   vm="$(govc find / -type m -name "$name" | head -n1)"
+  if [[ "${TN_TAGS:-1}" != "0" ]]; then  # tn-type=test-clone: one left for diagnosis is easy to find
+    "${TN_LAB_PYTHON:-python3}" "$LAB_DIR/vcenter_organize.py" tag "$vm" --type test-clone --template "$ID" \
+      || warn "$short: test clone not tagged (vCenter tagging failed); the test goes on"
+  fi
   nic="$(govc device.ls -vm "$vm" | awk '/^ethernet-/{print $1; exit}')"
   want_name="tntc-${short}"
   if ! prepare "$vm" "$nic" "$want_name" "$ip"; then

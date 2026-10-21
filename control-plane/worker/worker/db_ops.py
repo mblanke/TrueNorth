@@ -110,9 +110,9 @@ def set_range_output(db, range_id: str, output: str, *, only_states: Sequence[st
 
 
 def range_template_and_backend(db, range_id: str):
-    """(template yaml, provisioner_backend) for a range, or None."""
+    """(template yaml, provisioner_backend, range name) for a range, or None."""
     stmt = (
-        sa.select(templates.c.yaml, ranges.c.provisioner_backend)
+        sa.select(templates.c.yaml, ranges.c.provisioner_backend, ranges.c.name)
         .select_from(ranges.join(templates, ranges.c.template_id == templates.c.id))
         .where(ranges.c.id == range_id)
     )

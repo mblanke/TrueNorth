@@ -304,7 +304,7 @@ tn_vsphere_range_vswitch: vSwitch1
 tn_vsphere_vlan_pool: "100-199"
 # spread | per-range-host | cluster. Hosts have 16 threads, so a big range must spread.
 tn_vsphere_placement: spread
-tn_vsphere_range_folder: truenorth/ranges
+tn_vsphere_range_folder: TrueNorth/Ranges  # <range-name>-<id8> per range; the old truenorth/ranges is still found (vcenter-organize.sh moves it)
 tn_vsphere_max_vcpu_per_thread: 4
 # esx01 runs the VCSA: keep range VMs off it.
 tn_vsphere_exclude_hosts:

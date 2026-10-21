@@ -28,7 +28,7 @@ import httpx
 from ..models import HypervisorConnection, HypervisorNode
 from ..schemas import HypervisorTestResult
 from ..secretbox import unseal
-from . import vsphere_vijson
+from . import vsphere_inventory, vsphere_vijson
 from .base import BaseHypervisorBackend
 
 API = "api"  # /api, vSphere 7.0U2+
@@ -90,6 +90,13 @@ class _Session:
         body = r.json()
         return body.get("value") if self.dialect == REST and isinstance(body, dict) else body
 
+    def post(self, path: str, json: dict | None = None):
+        """POST ``/api{path}`` or ``/rest{path}`` (reads that the API spells as actions)."""
+        r = self.client.post(f"/{self.dialect}{path}", json=json, headers=self.headers)
+        r.raise_for_status()
+        body = r.json() if r.content else None
+        return body.get("value") if self.dialect == REST and isinstance(body, dict) else body
+
     def version(self):
         """The appliance version info; on /api a 404 retries the older sim-only path."""
         try:
@@ -144,6 +151,16 @@ class VSphereBackend(BaseHypervisorBackend):
 
     def discover(self, conn_id, conn, db):
         return discover(conn_id, conn, db)
+
+    def list_vms(self, conn):
+        return list_vms(conn)
+
+
+def list_vms(conn: HypervisorConnection) -> tuple[list[dict], str]:
+    """Every VM of the vCenter with its tn-* tags (``vsphere_inventory``); raises on failure."""
+    password = unseal(conn.password_encrypted) or ""
+    with _session(conn, password, timeout=30) as s:
+        return vsphere_inventory.list_vms(s, _VM_HOST_FILTER[s.dialect])
 
 
 def check_connection(conn: HypervisorConnection, db) -> HypervisorTestResult:
