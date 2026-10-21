@@ -3434,3 +3434,101 @@ class TestRangeFolderAndTags:
         result = _run(_prov(vc).provision(RANGE_ID, _rendered(ONE_LINUX), {"range_name": "r"}))
         assert result.status == "ok", result.errors
         assert vc.cis.calls == []
+
+
+# --------------------------------------------------------------------------- #
+# Range certification S1: the live switch, read before allocation and again right
+# before each port group is created (vsphere_vlans.py)
+# --------------------------------------------------------------------------- #
+
+
+PLANNED = {200: 150, 201: 151, 203: 152}  # what the worker reserved for TEMPLATE's three VLANs
+
+
+def _squat(vc, name, vlan, description="", trunk=None):
+    pg = FakePortgroup(vc.dvs, infra.dvs_portgroup_spec(name, vlan, False))
+    pg.config.description = description
+    if trunk:
+        pg.config.defaultPortConfig = vim.dvs.VmwareDistributedVirtualSwitch.VmwarePortConfigPolicy(
+            vlan=vim.dvs.VmwareDistributedVirtualSwitch.TrunkVlanSpec(
+                vlanId=[vim.NumericRange(start=a, end=b) for a, b in trunk]))
+    vc.dvs.portgroup.append(pg)
+    return pg
+
+
+class TestLiveVlanRecheck:
+    def test_a_vlan_that_appears_mid_build_stops_it_and_undoes_this_steps_port_groups(self, vc):
+        """v150 is created; then someone puts a port group on 151: nothing further is made,
+        v150 goes again, no VM is cloned, and every planned VLAN is released."""
+        real = vc.dvs.CreateDVPortgroup_Task
+
+        def create_then_squat(spec):
+            task = real(spec)
+            if spec.name == f"tn-{R8}-v150":
+                _squat(vc, "corp-new", 151)
+            return task
+
+        vc.dvs.CreateDVPortgroup_Task = create_then_squat
+        result = _run(_prov(vc).provision(RANGE_ID, _rendered(), {"physical_vlans": dict(PLANNED)}))
+        assert result.status == "failed" and result.vms == [] and not vc.vms
+        assert "VLAN 151 is already used by port group 'corp-new' on vDS-10G" in result.errors[0]
+        assert "the build stopped before creating anything further" in result.errors[0]
+        assert [pg.name for pg in vc.dvs.portgroup] == ["corp-new"]  # v150 undone; the newcomer untouched
+        assert result.conflict == {"domain": "vsphere:vlans", "source": "vcsa.test/vDS-10G",
+                                   "vlans": {"151": "corp-new"}, "release": ["150", "151", "152"]}
+
+    def test_created_port_groups_carry_the_owner_mark(self, vc):
+        result = _run(_prov(vc).provision(RANGE_ID, _rendered(), {"physical_vlans": dict(PLANNED)}))
+        assert result.status == "ok", result.errors
+        assert {pg.spec.description for pg in vc.dvs.portgroup} == {f"TrueNorth range {RANGE_ID}"}
+
+    def test_a_port_group_with_this_ranges_name_but_not_its_own_is_never_reused_or_removed(self, vc):
+        squat = _squat(vc, f"tn-{R8}-v150", 999, description="made by hand")
+        result = _run(_prov(vc).provision(RANGE_ID, _rendered(), {"physical_vlans": dict(PLANNED)}))
+        assert result.status == "failed" and not vc.vms
+        assert f"port group 'tn-{R8}-v150' already exists on vDS-10G with VLAN 999" in result.errors[0]
+        assert vc.dvs.portgroup == [squat]
+        assert result.conflict["release"] == ["150", "151", "152"]
+        # Its destroy goes by the recorded names: the hand-made one (VLAN 999) stays.
+        nets = [{"portgroup": f"tn-{R8}-v{v}", "physical_vlan": v, "switch_mode": "vds"} for v in PLANNED.values()]
+        assert _run(_prov(vc).destroy(RANGE_ID, {"vms": [], "networks": nets})).status == "ok"
+        assert vc.dvs.portgroup == [squat]
+
+    def test_a_trunk_covering_a_planned_vlan_stops_the_build(self, vc):
+        _squat(vc, "nested-esx", 0, trunk=[(140, 160)])
+        result = _run(_prov(vc).provision(RANGE_ID, _rendered(), {"physical_vlans": dict(PLANNED)}))
+        assert result.status == "failed" and not vc.vms
+        assert "VLAN 150 is already used by trunk port group 'nested-esx'" in result.errors[0]
+        assert [pg.name for pg in vc.dvs.portgroup] == ["nested-esx"]
+
+    def test_a_retry_keeps_the_port_group_an_earlier_attempt_made(self, vc):
+        mine = _squat(vc, f"tn-{R8}-v150", 150)  # pre-S1: no owner mark
+        _squat(vc, "corp-new", 152)
+        result = _run(_prov(vc).provision(RANGE_ID, _rendered(), {"physical_vlans": dict(PLANNED)}))
+        assert result.status == "failed"
+        assert sorted(pg.name for pg in vc.dvs.portgroup) == ["corp-new", f"tn-{R8}-v150"]  # v151 undone
+        assert mine in vc.dvs.portgroup
+        assert result.conflict["release"] == ["151", "152"]  # v150 is still held: its destroy removes it
+
+    def test_the_uplink_port_group_trunks_everything_and_is_ignored(self, vc):
+        _squat(vc, "vDS-10G-DVUplinks-35", 0, trunk=[(0, 4094)])
+        result = _run(_prov(vc).provision(RANGE_ID, _rendered(), {"physical_vlans": dict(PLANNED)}))
+        assert result.status == "ok", result.errors
+
+    def test_live_usage_reads_the_switch_before_allocation(self, vc):
+        _squat(vc, "vDS-10G-DVUplinks-35", 0, trunk=[(0, 4094)])
+        _squat(vc, "corp-voice", 101)
+        _squat(vc, "nested-esx", 0, trunk=[(104, 105)])
+        _squat(vc, "tn-0badc0de-v106", 106)
+        prov = _prov(vc)
+        needs = prov.allocation_needs(RANGE_ID, _rendered())
+        (usage,) = prov.live_usage(needs)
+        assert (usage.domain, usage.kind, usage.source) == ("vsphere:vlans", "vlan", "vcsa.test/vDS-10G")
+        assert usage.foreign == {"101": "corp-voice", "104": "nested-esx", "105": "nested-esx"}
+        assert usage.managed == {"106": "tn-0badc0de-v106"}
+
+    def test_a_missing_switch_fails_the_live_read(self, vc, monkeypatch):
+        monkeypatch.setattr(mod, "VSPHERE_RANGE_DVS", "vDS-gone")
+        prov = _prov(vc)
+        with pytest.raises(RuntimeError, match="Distributed switch not found"):
+            prov.live_usage(prov.allocation_needs(RANGE_ID, _rendered()))

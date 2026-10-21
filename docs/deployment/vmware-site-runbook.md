@@ -107,6 +107,8 @@ In `install/inventory/group_vars/all/main.yml` (most values are already set for 
 | `tn_vsphere_datastore` | any; with `spread` placement each VM goes on its host's own local datastore |
 | `tn_vsphere_range_switch_mode` / `tn_vsphere_range_dvs` | `vds` / `vDS-10G` |
 | `tn_vsphere_vlan_pool` | `"100-199"` |
+| `tn_vsphere_reserved_vlans` | `"30-32"`: never handed to a range, even if inside the pool (`VSPHERE_RESERVED_VLANS`) |
+| `tn_range_reserved_cidrs` | `[10.30.30.0/24, 10.30.31.0/24, 10.30.32.0/24]`: a range template whose subnets overlap these is refused (`TN_RANGE_RESERVED_CIDRS`) |
 | `tn_vsphere_placement` | `spread` (each VM goes on the host with the most vCPU headroom, on that host's local datastore) |
 | `tn_vsphere_exclude_hosts` | `[esx01.truenorth.lab]` (the VCSA host) |
 | `tn_vsphere_max_vcpu_per_thread` | `4` (see §8) |
@@ -118,6 +120,18 @@ Each `tn_vsphere_*` variable maps to a `VSPHERE_*` environment variable in
 `.env.production`. The provisioner creates range port groups as `tn-<range8>-v<vlan>`,
 puts VMs in folder `TrueNorth/Ranges/<range-name>-<first 12 hex digits of the range id>` (tagged `tn-type=range-vm`, `tn-range`), and records the VLANs it uses in the
 range's `provisioner_output`.
+
+**VLAN allocation is checked against the live switch** (range certification S1). Before
+it reserves a range's VLANs, the worker reads every port group on the range vDS (trunk
+ranges expanded, `*-DVUplinks-*` skipped) and records each pool VLAN used by something
+other than a TrueNorth range as an `external` reservation (no range, holder
+`external:<vCenter>/<switch>:<port group>`), so no range is given it. Each read replaces
+that switch's earlier entries, so a VLAN freed outside TrueNorth becomes usable again.
+Right before it creates each port group the provisioner reads the switch again: if the
+VLAN or the port group's name appeared in between, the build stops without creating
+anything further, removes the port groups it made in that step, releases the VLANs and
+fails the range with the reason (it is not retried). A full pool error says how many
+pool VLANs are in use outside TrueNorth.
 
 > Windows range VMs are sysprepped at deploy with a **random local Administrator password
 > that is not stored anywhere**. Range accounts must come from the template, a role

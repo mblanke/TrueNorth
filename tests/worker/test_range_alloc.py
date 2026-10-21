@@ -199,6 +199,7 @@ def test_the_vsphere_provisioner_gets_what_it_declared(db, monkeypatch):
     from worker.provisioners import vsphere_api
 
     monkeypatch.setattr(vsphere_api, "VSPHERE_VLAN_POOL", "100-102")
+    monkeypatch.setattr(vsphere_api.VsphereAPIProvisioner, "live_usage", lambda self, needs: [])  # no vCenter here
     prov = vsphere_api.VsphereAPIProvisioner()
     tpl = {"network": {"vlans": [{"id": 10, "name": "a", "cidr": "10.1.0.0/24"},
                                  {"id": 20, "name": "b", "cidr": "10.2.0.0/24"}]},
@@ -225,6 +226,7 @@ def test_nic_macs_are_unique_across_ranges_and_stable_across_retries(db, monkeyp
     from worker.provisioners import vsphere_api, vsphere_macs
 
     monkeypatch.setattr(vsphere_api, "VSPHERE_VLAN_POOL", "100-199")
+    monkeypatch.setattr(vsphere_api.VsphereAPIProvisioner, "live_usage", lambda self, needs: [])  # no vCenter here
     prov = vsphere_api.VsphereAPIProvisioner()
     tpl = {"network": {"vlans": [{"id": 10, "name": "a", "cidr": "10.1.0.0/24"}]},
            "nodes": [{"id": f"ubu0{i}", "os": "ubuntu-2404", "vlan": "a"} for i in (1, 2, 3)]}

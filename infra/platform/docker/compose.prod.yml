@@ -468,6 +468,8 @@ services:
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
       # Seals stored credentials (app/secretbox.py); the workers need the same value.
       TN_SECRETS_KEY: ${TN_SECRETS_KEY:?set TN_SECRETS_KEY (see .env.production.example)}
+      # Site networks a range template's subnets may not overlap (range certification S1).
+      TN_RANGE_RESERVED_CIDRS: ${TN_RANGE_RESERVED_CIDRS:-}
       # The golden templates' build login, shown to staff as "template default" (ADR 0012 §5).
       TN_TEMPLATE_WINDOWS_ADMIN_PASSWORD: ${TN_TEMPLATE_WINDOWS_ADMIN_PASSWORD:-}
       TN_TEMPLATE_LINUX_USER: ${TN_TEMPLATE_LINUX_USER:-ubuntu}
@@ -709,6 +711,10 @@ services:
       VSPHERE_RANGE_SWITCH_MODE: ${VSPHERE_RANGE_SWITCH_MODE:-vds}
       VSPHERE_RANGE_DVS: ${VSPHERE_RANGE_DVS:-vDS-10G}
       VSPHERE_VLAN_POOL: ${VSPHERE_VLAN_POOL:-100-199}
+      # Never handed to a range (the site's own VLANs); template subnets may not overlap
+      # these site networks (range certification S1). Empty: none.
+      VSPHERE_RESERVED_VLANS: ${VSPHERE_RESERVED_VLANS:-}
+      TN_RANGE_RESERVED_CIDRS: ${TN_RANGE_RESERVED_CIDRS:-}
       VSPHERE_ALLOCATION_DOMAIN: ${VSPHERE_ALLOCATION_DOMAIN:-vsphere}
       VSPHERE_PLACEMENT: ${VSPHERE_PLACEMENT:-spread}
       VSPHERE_RESOURCE_POOL: ${VSPHERE_RESOURCE_POOL:-}

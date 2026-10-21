@@ -24,3 +24,8 @@ def parse_pool(spec: str) -> list[int]:
     if not vlans:
         raise ValueError(f"VLAN pool {spec!r} is empty")
     return sorted(vlans)
+
+
+def parse_reserved(spec: str) -> list[int]:
+    """VSPHERE_RESERVED_VLANS: the same forms as the pool, but empty means none."""
+    return parse_pool(spec) if (spec or "").strip(" ,") else []

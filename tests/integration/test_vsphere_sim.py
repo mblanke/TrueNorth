@@ -728,3 +728,133 @@ def test_host_local_template_copies_are_cloned_and_pruned(env, si, range_id, tem
         for vm in made:
             with contextlib.suppress(Exception):
                 _wait(si, vm.Destroy_Task())
+
+
+# --------------------------------------------------------------------------- #
+# Range certification S1: allocation against the live switch, through the real
+# allocator (worker/range_alloc.py) on a throwaway SQLite database
+# --------------------------------------------------------------------------- #
+
+
+class _AllocDB:
+    """The API's tables on in-memory SQLite, with one range in ``provisioning``."""
+
+    def __init__(self, range_id: str):
+        import app.network_inventory  # noqa: F401 — registers network_reservations
+        import app.range_leases  # noqa: F401
+        import sqlalchemy as sa
+        from app.db import Base
+        from app.models import Range, Template, Tenant
+        from sqlalchemy.orm import Session, sessionmaker
+
+        self.sa = sa
+        self.engine = sa.create_engine("sqlite://", poolclass=sa.StaticPool, connect_args={"check_same_thread": False})
+        Base.metadata.create_all(self.engine)
+        self.factory = sessionmaker(bind=self.engine, class_=Session)
+        tid = uuid.uuid4()
+        with self.session() as s:
+            s.add(Tenant(id=tid, name="sim", slug=f"sim-{tid.hex[:6]}"))
+            s.flush()
+            tmpl = Template(id=uuid.uuid4(), name="sim", yaml="id: sim\n", tenant_id=tid)
+            s.add(tmpl)
+            s.flush()
+            s.add(Range(id=uuid.UUID(range_id), name="sim", template_id=tmpl.id, tenant_id=tid, state="provisioning",
+                        provisioner_backend="vsphere_api"))
+
+    @contextlib.contextmanager
+    def session(self):
+        s = self.factory()
+        try:
+            yield s
+            s.commit()
+        except Exception:
+            s.rollback()
+            raise
+        finally:
+            s.close()
+
+    def rows(self, kind: str = "vlan") -> list[tuple]:
+        """(value, holder, external?) of every reservation of ``kind``."""
+        from worker.tables import network_reservations as nr
+
+        with self.session() as s:
+            return sorted((r.value, r.holder, r.range_id is None) for r in s.execute(
+                self.sa.select(nr.c.value, nr.c.holder, nr.c.range_id).where(nr.c.kind == kind)).all())
+
+
+def _plant(si, name: str, vlan_spec):
+    """A port group that is not TrueNorth's, as a network admin would make it."""
+    dvs = _named(si, vim.DistributedVirtualSwitch, DVS)
+    port = vim.dvs.VmwareDistributedVirtualSwitch.VmwarePortConfigPolicy(vlan=vlan_spec)
+    spec = vim.dvs.DistributedVirtualPortgroup.ConfigSpec(name=name, type="earlyBinding", numPorts=8,
+                                                          defaultPortConfig=port)
+    _wait(si, dvs.CreateDVPortgroup_Task(spec))
+    return name
+
+
+def _drop(si, *names):
+    for name in names:
+        pg = _named(si, vim.dvs.DistributedVirtualPortgroup, name)
+        if pg is not None:
+            with contextlib.suppress(Exception):
+                _wait(si, pg.Destroy_Task())
+
+
+def test_a_non_truenorth_port_group_on_a_pool_vlan_is_never_allocated(env, si, range_id):
+    """S1: VLAN 100 is carried by a plain port group and 101-102 by a trunk, neither
+    TrueNorth's; DVS0's own uplink port group (trunk 0-4094) is not counted. The
+    allocator records them as external and hands the range 103 and 104, which it builds."""
+    from worker import range_alloc
+
+    vlan_spec = vim.dvs.VmwareDistributedVirtualSwitch
+    corp = _plant(si, f"corp-{range_id[:8]}", vlan_spec.VlanIdSpec(vlanId=100))
+    trunk = _plant(si, f"trunk-{range_id[:8]}", vlan_spec.TrunkVlanSpec(vlanId=[vim.NumericRange(start=101, end=102)]))
+    db = _AllocDB(range_id)
+    try:
+        prov = mod.VsphereAPIProvisioner()
+        template = _template(range_id)
+        allocations = range_alloc.reserve_for_build(db.session, range_id, prov, template)
+        assert allocations["physical_vlans"] == {"10": "103", "20": "104"}
+        source = f"{urlparse(URL).hostname}/{DVS}"
+        external = {v: h for v, h, no_range in db.rows() if no_range}
+        assert external == {"100": f"external:{source}:{corp}", "101": f"external:{source}:{trunk}",
+                            "102": f"external:{source}:{trunk}"}
+        built = _run(prov.provision(range_id, template, allocations))
+        assert built.status == "ok", built.errors
+        pgs = _portgroups(si, f"tn-{range_id[:8]}-")
+        assert sorted(pgs) == [f"tn-{range_id[:8]}-v103", f"tn-{range_id[:8]}-v104"]
+        assert {pg.config.defaultPortConfig.vlan.vlanId for pg in pgs.values()} == {103, 104}
+        assert {pg.config.description for pg in pgs.values()} == {f"TrueNorth range {range_id}"}
+        output = {"vms": built.vms, "networks": built.networks, "connection": prov.connection_record()}
+        assert _run(mod.VsphereAPIProvisioner().destroy(range_id, output)).status == "ok"
+        assert _named(si, vim.dvs.DistributedVirtualPortgroup, corp) is not None  # never touched
+    finally:
+        _drop(si, corp, trunk)
+
+
+def test_a_vlan_appearing_between_allocation_and_creation_stops_the_build(env, si, range_id):
+    """S1: the range is allocated 100 and 101; then a port group appears on 101. The build
+    creates nothing (v100 is made, then undone), clones no VM, and the worker frees both
+    VLANs, records 101 as external and fails the range finally."""
+    from worker import range_alloc
+
+    db = _AllocDB(range_id)
+    prov = mod.VsphereAPIProvisioner()
+    template = _template(range_id)
+    allocations = range_alloc.reserve_for_build(db.session, range_id, prov, template)
+    assert allocations["physical_vlans"] == {"10": "100", "20": "101"}
+    late = _plant(si, f"late-{range_id[:8]}", vim.dvs.VmwareDistributedVirtualSwitch.VlanIdSpec(vlanId=101))
+    try:
+        result = _run(prov.provision(range_id, template, allocations))
+        assert result.status == "failed" and result.vms == []
+        assert f"VLAN 101 is already used by port group '{late}' on {DVS}" in result.errors[0], result.errors
+        assert _portgroups(si, f"tn-{range_id[:8]}-") == {}
+        assert _run(prov.find_vms(f"{range_id}-")) == []
+        assert result.conflict["release"] == ["100", "101"]
+        err = range_alloc.build_failure(db.session, range_id, result)
+        assert isinstance(err, range_alloc.NetworkConflictError)
+        source = f"{urlparse(URL).hostname}/{DVS}"
+        assert db.rows() == [("101", f"external:{source}:{late}", True)]  # the range holds no VLAN now
+        assert len(db.rows("mac")) == 2  # its NIC MACs stay until its destroy, as for any failed build
+    finally:
+        _drop(si, late)

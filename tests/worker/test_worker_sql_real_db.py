@@ -985,6 +985,16 @@ PG_CALLS = {
     "insert_reservations": lambda db: db_ops.insert_reservations(db, ID, "vsphere:vlans", "vlan", {"200": "100"}),
     "release_destroyed_range": lambda db: db_ops.release_destroyed_range(db, ID),
     "merge_range_output": lambda db: db_ops.merge_range_output(db, ID, {"k": 1}),
+    # Range certification S1: external reservations and the collision release.
+    "range_held_values": lambda db: db_ops.range_held_values(db, "vsphere:vlans", "vlan"),
+    "external_reservations": lambda db: db_ops.external_reservations(db, "vsphere:vlans", "vlan"),
+    "drop_reservation_ids": lambda db: db_ops.drop_reservation_ids(db, [ID]),
+    "touch_reservation_ids": lambda db: db_ops.touch_reservation_ids(db, [ID]),
+    "expire_external": lambda db: db_ops.expire_external(db, "vsphere:vlans", "vlan", "external:vc/dvs:", datetime.now(UTC)),
+    "insert_external_reservations": lambda db: db_ops.insert_external_reservations(
+        db, "vsphere:vlans", "vlan", {"150": "external:vc/dvs:pg"}),
+    "drop_range_values": lambda db: db_ops.drop_range_values(db, ID, "vsphere:vlans", "vlan", ["150"]),
+    "drop_range_networks": lambda db: db_ops.drop_range_networks(db, ID, {150}),
 }
 
 

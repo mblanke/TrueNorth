@@ -797,6 +797,69 @@ def release_destroyed_range(db, range_id: str) -> int:
     return db.execute(sa.delete(nr).where(nr.c.range_id.in_(destroyed))).rowcount
 
 
+def range_held_values(db, domain: str, kind: str) -> set[str]:
+    """Values a range (not an external user) holds in (domain, kind)."""
+    nr = network_reservations
+    return set(db.execute(sa.select(nr.c.value).where(nr.c.domain == domain, nr.c.kind == kind,
+                                                      nr.c.range_id.is_not(None))).scalars())
+
+
+def external_reservations(db, domain: str, kind: str) -> list:
+    """(id, value, holder) of the external reservations (no range) in (domain, kind)."""
+    nr = network_reservations
+    return db.execute(sa.select(nr.c.id, nr.c.value, nr.c.holder).where(
+        nr.c.domain == domain, nr.c.kind == kind, nr.c.range_id.is_(None))).all()
+
+
+def drop_reservation_ids(db, ids: Iterable) -> None:
+    if ids := list(ids):
+        db.execute(sa.delete(network_reservations).where(network_reservations.c.id.in_(ids)))
+
+
+def touch_reservation_ids(db, ids: Iterable) -> None:
+    """Mark external reservations seen again now (``expire_external`` keeps them)."""
+    if ids := list(ids):
+        db.execute(sa.update(network_reservations).where(network_reservations.c.id.in_(ids)).values(updated_at=_now()))
+
+
+def expire_external(db, domain: str, kind: str, keep_prefix: str, before) -> int:
+    """Delete external reservations in (domain, kind) not seen since ``before``, except the
+    ones whose holder starts with ``keep_prefix`` (the source just read). Returns how many."""
+    nr = network_reservations
+    return db.execute(sa.delete(nr).where(
+        nr.c.domain == domain, nr.c.kind == kind, nr.c.range_id.is_(None), nr.c.updated_at < before,
+        sa.not_(nr.c.holder.startswith(keep_prefix, autoescape=True)))).rowcount
+
+
+def insert_external_reservations(db, domain: str, kind: str, values: dict[str, str]) -> None:
+    """One external reservation (no range, no tenant) per {value: holder}."""
+    rows = [{"id": uuid.uuid4(), "tenant_id": None, "range_id": None, "domain": domain, "kind": kind,
+             "value": value, "holder": holder[:255]} for value, holder in values.items()]
+    if rows:
+        db.execute(sa.insert(network_reservations).values(created_at=_now(), updated_at=_now()), rows)
+
+
+def drop_range_values(db, range_id: str, domain: str, kind: str, values: Iterable[str]) -> int:
+    """Free the range's reservations of these values. Returns how many."""
+    nr = network_reservations
+    return db.execute(sa.delete(nr).where(nr.c.range_id == range_id, nr.c.domain == domain, nr.c.kind == kind,
+                                          nr.c.value.in_(list(values)))).rowcount
+
+
+def drop_range_networks(db, range_id: str, physical_vlans: set[int]) -> None:
+    """Remove the networks on these physical VLANs from the range's provisioner_output,
+    so its destroy does not look for (and remove) a port group of that name it never made."""
+    raw = db.execute(sa.select(ranges.c.provisioner_output).where(ranges.c.id == range_id)).scalar()
+    try:
+        current = json.loads(raw) if raw else {}
+    except (TypeError, ValueError):
+        return
+    nets = current.get("networks") if isinstance(current, dict) else None
+    if isinstance(nets, list):
+        merge_range_output(db, range_id, {"networks": [n for n in nets if not (
+            isinstance(n, dict) and n.get("physical_vlan") is not None and int(n["physical_vlan"]) in physical_vlans)]})
+
+
 def merge_range_output(db, range_id: str, updates: dict) -> None:
     """Merge ``updates`` into the range's provisioner_output JSON; other keys are kept."""
     raw = db.execute(sa.select(ranges.c.provisioner_output).where(ranges.c.id == range_id)).scalar()
