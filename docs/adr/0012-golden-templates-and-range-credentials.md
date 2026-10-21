@@ -2,6 +2,7 @@
 
 - **Status:** accepted 2026-10-19 (owner sign-off). Proposed the same day from a design review of the work-vCenter template build.
 - **Date:** 2026-10-19
+- **Amended by [ADR 0013](0013-range-certification-credentials-template-pinning.md) (2026-10-21):** §5 (the generic password exists only during template construction), §12–§14 (no generic fallback; unique sealed per-range credentials; audited reveal; no credentials or tokens in wiki pages; Student rotation on reset/rebuild, which ends the 2026-10-19 deferral) and §6 (clone a pinned promoted build id and checksum on every host; no newest-copy selection, no plain-name fallback). Read 0013 for those decisions; the text below is kept as it was decided.
 - **Numbering:** 0008 is left free for an open branch (see ADR 0010). 0007 is Greyspace.
 - **Code:**
   - host-local copies, prune task, catalogue, Packer CI: #182;
