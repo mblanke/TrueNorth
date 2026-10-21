@@ -760,7 +760,9 @@ range, except a scenario account's typed-in one (`scenario: true`, never rotated
 applied; anything else 404). Returns `{"id", "machine", "username", "password"}` with
 `Cache-Control: no-store`. Every call writes an audit row `range_credential_reveal` whose
 detail is `{range_id, machine, username, scope, via, exercise_id | lab_session_id}`; never a
-password. The wiki never shows passwords (ADR 0013 §3).
+password. While a change of the account is pending (`pending_change` in the list) it returns
+the password the guests still have, flagged `pending_change` in the audit row: a reveal never
+shows a password that does not log in. The wiki never shows passwords (ADR 0013 §3).
 
 ### `POST /ranges/{range_id}/credentials/{credential_id}/rotate`
 
@@ -769,14 +771,24 @@ characters). Gives the account a new generated password. `202` with
 `{"account": {...}, "applies": "in_guest" | "next_build", "operation_id", "dispatched"}`:
 a range that is `ready` or `running` gets it in its guests now (worker task
 `rotate_range_credentials`; the account shows `applied` once a login with it worked), an
-unbuilt one (`created`, `destroyed`) at its next build. `409` for a scenario account, a
-range in any other state, an operation in flight or a restore in progress. Audited as
-`range_credential_rotate` `{range_id, machine, username, reason, operation_id, in_guest}`.
+unbuilt one (`created`, `destroyed`) at its next build. `409` for a scenario account, an
+account whose previous change is still pending (one change at a time), a Security Onion or
+appliance machine or a backend other than `vsphere_api` (the worker cannot change those
+guests; rebuild instead), a range in any other state, an operation in flight or a restore in
+progress. Audited as `range_credential_rotate`
+`{range_id, machine, username, reason, operation_id, in_guest}`. The worker settles the change
+on the version it set: `applied` once a login with the new password worked, otherwise the
+previous password (which the guests still have) becomes the password again; either way an
+audit row `range_credential_change` `{operation_id, outcome, accounts, why}`.
 
 Rotation without an admin: every Student-visible generated account gets a new password on a
 **rebuild** of a range built before, and on every **snapshot restore** (a lab reset is one;
 the restore task then sets them in the guests, logging in with the passwords the snapshot
-recorded). Staff accounts keep theirs.
+recorded). Staff accounts keep theirs, but one an admin rotated after the snapshot was taken
+is set again after the revert (the guests went back to the snapshot's password). One audit
+row `range_credential_rotate` lists `rotated` and `reapplied` accounts. A snapshot records
+what the guests have (a pending change's previous password); deleting the snapshot deletes
+what it recorded.
 
 Lab sessions: `GET /lab-sessions/{id}/credentials` and `POST
 /lab-sessions/{id}/credentials/{credential_id}/reveal` (the session's owner only), and the
@@ -787,17 +799,29 @@ Rows are written when the range is created, when a build is accepted (which rese
 `applied`; the worker sets it for what the build verified: Linux `getent passwd`, Windows a
 guest login with the Administrator password) and when a lab session builds its range. A
 range built from another tenant's (public) template takes none of its declared accounts,
-only its own implicit logins. Stored sealed `tnsec:rc1:` (a key derived for range
-credentials only).
+only its own implicit logins. Stored sealed `tnsec:rk1:` (AES-256-GCM, a key derived for
+stored range credentials only, bound to tenant, range and row: a stored value opens nowhere
+else, not as a template password either).
 
 Templates: a typed-in `accounts[].password` is allowed only with `scenario: true`, and never
 on `role: admin`, `Administrator`, the Linux build user or `soadmin` (422). It is stored
-sealed with a range-credential seal (`tnsec:rc1:…`) on create and update; `GET
+sealed with a template seal (`tnsec:rt1:…`, bound to the template's tenant) on create and
+update; `GET
 /templates/{id}` shows the token to `range:credentials_read` holders of the template's
 tenant and `********` to anyone else (every one of the template's passwords is masked
 wherever it appears). A typed-in password for a Windows machine must meet Windows
-complexity (Windows decided as the worker does), and any `tnsec:` value that is not a
-range-credential seal this platform made (for example a hypervisor secret) is refused (422).
+complexity (Windows decided as the worker does), and any `tnsec:` value that is not this
+tenant's template seal (a hypervisor secret, a stored range credential, another tenant's
+template seal, a pre-ADR 0013 `rc1` token) is refused (422).
+
+### `GET /range-credentials/template-issues`
+
+**Permission: `template:update`** (an admin also sees global templates). Templates stored
+before ADR 0013 with a typed-in password not on a `scenario: true` account (or on a staff
+login): their ranges cannot be provisioned, scheduled bookings included, until fixed. Each
+`{template_id, name, version, tenant_id, problems, upcoming_bookings}`; never a password. The
+migration logs the same list as `ACTION NEEDED`, the API logs it at start, and the Ranges page
+shows it to those who can fix it.
 A template change regenerates the pages of its own tenant's ranges after the response.
 
 Wiki: a generated range page lists machines, usernames, roles and how each password was made,
@@ -1377,6 +1401,7 @@ The auto-generated OpenAPI specification is available at:
 | 31b | `GET` | `/ranges/{id}/credentials` | `range:read` + role rule | Machine accounts, no passwords: staff all (`range:credentials_read`), Students theirs, observers 403 |
 | 31c | `POST` | `/ranges/{id}/credentials/{cred_id}/reveal` | `range:read` + role rule | One password; audited (`range_credential_reveal`) |
 | 31d | `POST` | `/ranges/{id}/credentials/{cred_id}/rotate` | `range:credentials_rotate` | A new generated password; audited (`range_credential_rotate`) |
+| 31e | `GET` | `/range-credentials/template-issues` | `template:update` | Templates whose typed-in passwords ADR 0013 refuses |
 | 32 | `POST` | `/exercises` | `exercise:create` | Create exercise |
 | 33 | `GET` | `/exercises` | `exercise:read` | List exercises |
 | 34 | `GET` | `/exercises/{id}` | `exercise:read` | Get exercise |

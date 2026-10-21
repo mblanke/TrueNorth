@@ -208,7 +208,7 @@ class TestRanges:
         from sqlalchemy import text
 
         raw = db.execute(text("SELECT password FROM range_credentials")).scalars().all()
-        assert raw and all(v.startswith("tnsec:rc1:") for v in raw)  # sealed at rest (ADR 0013 §3)
+        assert raw and all(v.startswith("tnsec:rk1:") for v in raw)  # sealed at rest, bound per row (ADR 0013)
         monkeypatch.setenv("TN_RANGE_DEFAULT_PASSWORD", "Default-Pass-3!")  # gone: never used
         backend = _fake_backend(provision=ProvisionResult(status="ok", vms=[{"name": "dc01"}], networks=[]))
         monkeypatch.setattr(tasks, "_get_backend", lambda name=None, range_id=None, **kw: backend)
@@ -280,7 +280,7 @@ class TestRanges:
         assert vms and all("_default_login" not in vm for vm in vms)
         assert [(a.username, a.password.reveal()) for a in vms[0]["_accounts"]] == [("ubuntu", "Lab-Pass-1!")]
 
-    def test_rotation_reads_pending_rows_and_snapshot_passwords_and_applying_clears_previous(self, world):
+    def test_rotation_reads_pending_rows_and_settles_them_only_on_the_version_it_saw(self, world):
         """ADR 0013 §3: what worker/credential_rotation.py reads and writes, on the API's schema."""
         from app.range_credentials import RangeCredential, RangeCredentialSnapshot
 
@@ -299,10 +299,20 @@ class TestRanges:
             assert db_ops.account_rows(s, str(world.range.id), [str(uuid.uuid4())]) == []
             assert db_ops.snapshot_passwords(s, str(world.range.id), str(snap.id)) == {str(row.id): "Snap-1!"}
             assert db_ops.snapshot_passwords(s, str(uuid.uuid4()), str(snap.id)) == {}  # another range's: none
+            # A build's record never settles a pending change (review of #250, item 4).
             db_ops.mark_accounts_applied(s, str(world.range.id), {("web", "analyst")})
+            # Another version (an admin rotated again meanwhile): nothing happens.
+            assert not db_ops.settle_credential_change(s, str(world.range.id), got["id"], "tnsec:rk1:other",
+                                                       applied=False)
+            # The change failed: the password the guests still have becomes the password again.
+            assert db_ops.settle_credential_change(s, str(world.range.id), got["id"], got["sealed"], applied=False)
+            db_ops.audit_credential_change(s, str(world.range.id), got["tenant_id"],
+                                           {"outcome": "reverted", "accounts": ["web/analyst"]})
             s.commit()
         fresh = _fresh(db, row)
-        assert fresh.applied is True and fresh.previous_password is None
+        assert (fresh.password, fresh.previous_password, fresh.applied) == ("Old-1!", None, True)
+        audit = db.query(m.AuditLog).filter(m.AuditLog.action == "range_credential_change").one()
+        assert "Old-1!" not in audit.detail and "New-1!" not in audit.detail
 
     def test_another_tenants_rows_never_reach_a_build(self, world):
         from app.range_credentials import RangeCredential
@@ -1025,6 +1035,8 @@ PG_CALLS = {
     "drop_range_networks": lambda db: db_ops.drop_range_networks(db, ID, {150}),
     "account_rows": lambda db: db_ops.account_rows(db, ID, [ID]),
     "snapshot_passwords": lambda db: db_ops.snapshot_passwords(db, ID, ID),
+    "settle_credential_change": lambda db: db_ops.settle_credential_change(db, ID, ID, "x", applied=False),
+    "audit_credential_change": lambda db: db_ops.audit_credential_change(db, ID, ID, {}),
 }
 
 

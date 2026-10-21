@@ -525,11 +525,22 @@ After a VM's own login worked, the worker tries the template password once
 (`TN_TEMPLATE_WINDOWS_ADMIN_PASSWORD`, `TN_TEMPLATE_LINUX_USER` / `TN_TEMPLATE_LINUX_PASSWORD`,
 `VSPHERE_SO_INSTALL_*`) and records `template_login` on the VM: `rejected` (pass),
 `accepted` (Not safe: under `RANGE_TEMPLATE_LOGIN_CHECK=enforce`, the default, the VM is not
-ready; `warn` makes it a warning) or `inconclusive`. Staff reveal passwords one at a time on
+ready; `warn` makes it a warning) or `inconclusive`. The same applies to a Security Onion
+node when the reconcile task finishes its setup. Under `enforce`, `worker-provision` (with
+`PROVISIONER_BACKEND=vsphere_api`) **refuses to start** unless `TN_TEMPLATE_WINDOWS_ADMIN_PASSWORD`
+and `TN_TEMPLATE_LINUX_PASSWORD` are set; installer preflight checks the same
+(`tn_range_template_login_check`, default `enforce`). Staff reveal passwords one at a time on
 the range's Credentials panel (each reveal is an audit row, `range_credential_reveal`); an
-admin rotates an account there (`range_credential_rotate`). Student-visible passwords are
-new after every rebuild and every snapshot restore or lab reset; the worker sets them in the
-running guests through an uploaded owner-only file, never a command line.
+admin rotates an account there (`range_credential_rotate`; not for Security Onion or
+appliance machines, which change only on a rebuild). Student-visible passwords are new after
+every rebuild and every snapshot restore or lab reset; the worker sets them in the running
+guests through an uploaded owner-only file, never a command line, and puts the previous
+password back (audited, `range_credential_change`) whenever it cannot verify the new one.
+
+**After the upgrade (migration `0a2276639b3c`):** check the migration output, the API log at
+start, or the Ranges page for `ACTION NEEDED (ADR 0013)`: those templates carry a typed-in
+password not on a `scenario: true` account and cannot be provisioned (scheduled bookings
+included) until fixed.
 
 **On site, with owner approval (issue #241):** deploy a range and confirm `template_login`
 is `rejected` on every Windows and Linux VM; open the range's wiki page and confirm it shows

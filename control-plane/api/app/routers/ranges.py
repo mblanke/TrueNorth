@@ -471,11 +471,11 @@ def save_range_topology(
 
     if network_placement_keys(template):
         raise HTTPException(422, "a topology may not set port_group; lab networks are assigned by the platform")
-    _, account_errors = template_accounts.parse(template)
+    _, account_errors = template_accounts.parse(template, tenant_id=rng.tenant_id)
     if account_errors:  # e.g. an account on a machine the new topology no longer has
         raise HTTPException(422, {"message": "The template's accounts do not fit this topology; fix them in the "
                                              "template", "errors": account_errors[:20]})
-    text = template_accounts.seal_yaml(pyyaml.safe_dump(template, sort_keys=False))
+    text = template_accounts.seal_yaml(pyyaml.safe_dump(template, sort_keys=False), tenant_id=rng.tenant_id)
 
     # Claim the range first: a conditional UPDATE that only matches while the range is
     # still editable. On Postgres it holds the row lock until commit, so a concurrent
@@ -905,7 +905,7 @@ def restore_snapshot(
 
     snap.snapshot_state = "restoring"
     # Student-visible passwords are new after a restore (ADR 0013 §3); the restore task sets them.
-    undo = range_credentials.on_restore(db, rng)
+    undo = range_credentials.on_restore(db, rng, snap, user)
     _audit(db, user, "snapshot_restore", "range_snapshot", str(snapshot_id), f"Restoring range {range_id}")
     db.commit()
     try:
@@ -947,6 +947,9 @@ def delete_snapshot(
         raise HTTPException(409, f"Snapshot is {snap.snapshot_state}; delete it once that finishes")
     previous = snap.snapshot_state
     snap.snapshot_state = "deleted"
+    # The passwords it recorded go now (the row itself is kept, marked deleted): sealed
+    # secrets of a snapshot nobody can restore are kept by no one (ADR 0013 §3).
+    range_credentials.forget_snapshot(db, snap)
     _audit(db, user, "snapshot_delete", "range_snapshot", str(snapshot_id))
     db.commit()
     _send_snapshot_task(db, snap, "delete_snapshot", "deleted", previous)

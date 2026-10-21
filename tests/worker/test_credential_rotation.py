@@ -31,9 +31,9 @@ OLD, NEW, SNAP = "Old-Pass-1!", "New-Pass-2!", "Snap-Pass-3!"
 
 def _row(rid, machine, username, *, role="user", student=True, pending=True, password=NEW, previous=OLD,
          generated=True):
-    return {"id": rid, "machine": machine, "username": username, "role": role, "student_visible": student,
-            "generated": generated, "applied": not pending, "pending": pending, "password": password,
-            "previous": previous if pending else None}
+    return {"id": rid, "tenant_id": "t1", "machine": machine, "username": username, "role": role,
+            "student_visible": student, "generated": generated, "applied": not pending, "pending": pending,
+            "password": password, "sealed": f"sealed-{rid}-{password}", "previous": previous if pending else None}
 
 
 ROWS = [
@@ -54,7 +54,7 @@ VMS = [
 
 class TestPlan:
     def test_pending_rows_per_vm_with_admin_logins_in_order(self):
-        work, notes = cr.plan(RANGE_ID, ROWS, VMS, snapshot={"a1": SNAP})
+        work, notes, undone = cr.plan(RANGE_ID, ROWS, VMS, snapshot={"a1": SNAP})
         by = {w["name"]: w for w in work}
         assert set(by) == {f"{R8}-ws01", f"{R8}-web01"}
         ws = by[f"{R8}-ws01"]
@@ -65,11 +65,12 @@ class TestPlan:
         web = by[f"{R8}-web01"]
         assert [lg.username for lg in web["logins"]] == ["ubuntu"] and web["changes"][0].password == NEW
         assert any("so01" in n for n in notes) and any("fw01" in n for n in notes)
+        assert {r["id"] for r in undone} == {"c1", "d1"}  # put back: the worker cannot change them
 
     def test_an_admin_rotation_of_the_login_itself_logs_in_with_its_previous_password(self):
         rows = [_row("a1", "ws01", "Administrator", role="admin", student=False, pending=True,
                      password=NEW, previous=OLD)]
-        work, _ = cr.plan(RANGE_ID, rows, VMS, ids={"a1"})
+        work, _, _ = cr.plan(RANGE_ID, rows, VMS, ids={"a1"})
         (ws,) = work
         assert [lg.password for lg in ws["logins"]] == [OLD, NEW]  # the guest still has OLD
         assert [(c.username, c.password) for c in ws["changes"]] == [("Administrator", NEW)]
@@ -78,18 +79,24 @@ class TestPlan:
         monkeypatch.setenv("TN_TEMPLATE_LINUX_USER", "tnbuild")
         rows = [_row("x", "web01", "aadmin", role="admin", student=False, pending=False, password="A-1!aaaa"),
                 _row("y", "web01", "tnbuild", role="admin", student=False, pending=False, password="B-1!bbbb"),
-                _row("z", "web01", "analyst")]
+                _row("z", "web01", "analyst", pending=True)]
         (web,) = [w for w in cr.plan(RANGE_ID, rows, VMS)[0]]
         assert [lg.username for lg in web["logins"]] == ["tnbuild", "aadmin"]
 
     def test_scenario_and_typed_in_rows_are_never_rotated(self):
         rows = [*ROWS[:3], _row("t", "web01", "jsmith", generated=False)]
-        work, _ = cr.plan(RANGE_ID, rows, VMS)
+        work, _, _ = cr.plan(RANGE_ID, rows, VMS)
         assert all(c.username != "jsmith" for w in work for c in w["changes"])
 
+    def test_only_pending_rows_are_changed(self):
+        """An admin rotation names one account; a row with no change pending (already settled,
+        or changed again meanwhile) is not touched."""
+        work, _, _ = cr.plan(RANGE_ID, ROWS, VMS, ids={"a1", "b2"})
+        assert [c.username for w in work for c in w["changes"]] == ["analyst"]
+
     def test_a_machine_with_no_built_vm_waits_for_its_build(self):
-        work, notes = cr.plan(RANGE_ID, [_row("q", "gone01", "x")], VMS)
-        assert work == [] and "gone01" in notes[0]
+        work, notes, undone = cr.plan(RANGE_ID, [_row("q", "gone01", "x")], VMS)
+        assert work == [] and "gone01" in notes[0] and [r["id"] for r in undone] == ["q"]
 
 
 class FakeSession:
@@ -185,7 +192,7 @@ class TestRun:
         import worker.base_tasks as base_tasks
         import worker.tasks as tasks
 
-        state = {"marked": None, "asked": None}
+        state = {"settled": [], "audits": [], "asked": None, "fail": set(), "raise": None, "stale": set()}
 
         class DB:
             def __enter__(self):
@@ -194,12 +201,24 @@ class TestRun:
             def __exit__(self, *a):
                 return False
 
+            def commit(self):
+                pass
+
         class Prov:
             supports_credential_rotation = True
 
             async def rotate_guest_passwords(self, range_id, vms, timeout):
                 state["asked"] = vms
-                return {v["name"]: {"applied": [c.username for c in v["changes"]], "error": ""} for v in vms}
+                if state["raise"]:
+                    raise state["raise"]
+                return {v["name"]: {"applied": [c.username for c in v["changes"] if c.username not in state["fail"]],
+                                    "error": "x" if state["fail"] else ""} for v in vms}
+
+        def settle(db, rid, cid, sealed, *, applied):
+            if cid in state["stale"]:
+                return False  # changed again meanwhile: the compare-and-set finds another version
+            state["settled"].append((cid, sealed, applied))
+            return True
 
         monkeypatch.setattr(tasks, "_db_session", lambda: DB())
         monkeypatch.setattr(base_tasks, "_get_backend", lambda *a, **k: Prov())
@@ -207,21 +226,50 @@ class TestRun:
         monkeypatch.setattr(db_ops, "account_rows", lambda db, rid, ids=None: ROWS)
         monkeypatch.setattr(db_ops, "snapshot_passwords", lambda db, rid, sid: {"a1": SNAP})
         monkeypatch.setattr(db_ops, "range_output_and_backend", lambda db, rid: (json.dumps({"vms": VMS}), "vsphere"))
-        monkeypatch.setattr(db_ops, "mark_accounts_applied", lambda db, rid, pairs: state.__setitem__("marked", pairs))
+        monkeypatch.setattr(db_ops, "settle_credential_change", settle)
+        monkeypatch.setattr(db_ops, "audit_credential_change", lambda db, rid, tid, d: state["audits"].append(d))
         return state
 
-    def test_after_a_restore_the_verified_accounts_are_applied(self, env, caplog):
+    def test_after_a_restore_verified_changes_are_applied_and_the_rest_put_back(self, env, caplog):
         caplog.set_level("DEBUG")
         out = cr.run(RANGE_ID, snapshot_id="snap-1", operation_id="restore:snap-1")
         assert out["status"] == "ok" and out["applied"] == 2
-        assert env["marked"] == {("ws01", "student"), ("web01", "analyst")}
-        assert NEW not in json.dumps(out) and NEW not in caplog.text and SNAP not in caplog.text
+        outcome = {cid: applied for cid, _, applied in env["settled"]}
+        # a2/b2 verified in the guest; c1 (Security Onion) and d1 (appliance) cannot be changed here
+        assert outcome == {"a2": True, "b2": True, "c1": False, "d1": False}
+        assert ("b2", "sealed-b2-" + NEW, True) in env["settled"]  # settled on the version it set
+        assert {a["outcome"] for a in env["audits"]} == {"applied", "reverted"}
+        dumped = json.dumps([out, env["audits"]])
+        for secret in (NEW, SNAP, OLD):
+            assert secret not in dumped and secret not in caplog.text
 
-    def test_a_backend_without_rotation_leaves_them_not_applied(self, env, monkeypatch):
+    def test_a_change_the_guest_did_not_take_is_put_back(self, env):
+        env["fail"] = {"analyst"}
+        out = cr.run(RANGE_ID, snapshot_id="snap-1")
+        assert out["status"] == "partial" and out["reverted"] == 1
+        assert ("b2", "sealed-b2-" + NEW, False) in env["settled"] and ("a2", "sealed-a2-" + NEW, True) in env["settled"]
+
+    @pytest.mark.parametrize("failure", ["unsupported", "error", "timeout"])
+    def test_a_backend_that_cannot_or_does_not_finish_puts_everything_back(self, env, monkeypatch, failure):
         import worker.base_tasks as base_tasks
+        from celery.exceptions import SoftTimeLimitExceeded
 
-        monkeypatch.setattr(base_tasks, "_get_backend", lambda *a, **k: SimpleNamespace())
-        assert cr.run(RANGE_ID)["status"] == "unsupported" and env["marked"] is None
+        if failure == "unsupported":
+            monkeypatch.setattr(base_tasks, "_get_backend", lambda *a, **k: SimpleNamespace())
+        else:
+            env["raise"] = ConnectionError("vCenter down") if failure == "error" else SoftTimeLimitExceeded()
+        if failure == "timeout":
+            with pytest.raises(SoftTimeLimitExceeded):
+                cr.run(RANGE_ID)
+        else:
+            assert cr.run(RANGE_ID)["status"] == "reverted"
+        assert {cid for cid, _, applied in env["settled"] if not applied} == {"a2", "b2", "c1", "d1"}
+        assert not [s for s in env["settled"] if s[2]]
+
+    def test_a_row_changed_again_meanwhile_is_left_to_that_change(self, env):
+        env["stale"] = {"b2"}
+        cr.run(RANGE_ID)
+        assert "b2" not in {cid for cid, _, _ in env["settled"]}
 
     def test_the_restore_hook_sends_the_rotation_only_after_a_restore_succeeded(self, no_real_broker):
         # The shared broker fixture: patching send_task on the app instance would outlive the test.
@@ -233,3 +281,43 @@ class TestRun:
         cr._after_restore(sender=restore, result={"status": "restored", "range_id": RANGE_ID})
         assert [s for s in no_real_broker.sent if s[0] == cr.TASK] == [
             (cr.TASK, [RANGE_ID, [], "restore:snap-1", "snap-1"])]
+
+
+class TestEnforceNeedsTemplatePasswords:
+    """Adversarial review of #250, item 5: under RANGE_TEMPLATE_LOGIN_CHECK=enforce a vSphere
+    worker that does not know the template passwords stops at start, loudly."""
+
+    BASE = {"PROVISIONER_BACKEND": "vsphere_api", "TN_TEMPLATE_WINDOWS_ADMIN_PASSWORD": "W-1!aaaa",
+            "TN_TEMPLATE_LINUX_PASSWORD": "L-1!aaaa"}
+
+    @pytest.mark.parametrize(("env", "problem"), [
+        ({}, False),
+        ({"TN_TEMPLATE_LINUX_PASSWORD": ""}, True),
+        ({"TN_TEMPLATE_WINDOWS_ADMIN_PASSWORD": " "}, True),
+        ({"TN_TEMPLATE_LINUX_PASSWORD": "", "RANGE_TEMPLATE_LOGIN_CHECK": "warn"}, False),
+        ({"TN_TEMPLATE_LINUX_PASSWORD": "", "PROVISIONER_BACKEND": "mock"}, False),
+    ])
+    def test_startup_problem(self, env, problem):
+        result = cc.startup_problem({**self.BASE, **env})
+        assert (result is not None) == problem
+        if result:
+            assert "TN_TEMPLATE" in result and "W-1!aaaa" not in result
+
+    def test_the_worker_refuses_to_start(self, monkeypatch, caplog):
+        for k, v in {**self.BASE, "TN_TEMPLATE_LINUX_PASSWORD": ""}.items():
+            monkeypatch.setenv(k, v)
+        monkeypatch.delenv("RANGE_TEMPLATE_LOGIN_CHECK", raising=False)
+        with pytest.raises(SystemExit):
+            cr._refuse_to_start_without_template_passwords()
+        assert "RANGE_TEMPLATE_LOGIN_CHECK=enforce" in caplog.text
+        monkeypatch.setenv("TN_TEMPLATE_LINUX_PASSWORD", "L-1!aaaa")
+        cr._refuse_to_start_without_template_passwords()  # configured: starts
+
+    def test_an_unknown_template_password_is_said_under_enforce_and_quiet_under_warn(self):
+        result = {"status": cc.INCONCLUSIVE, "username": "ubuntu", "detail": cc.NOT_CONFIGURED}
+        warnings: list[str] = []
+        assert cc.report("vm", result, warnings, env={"RANGE_TEMPLATE_LOGIN_CHECK": "enforce"}) == ""
+        assert warnings and "inconclusive" in warnings[0]
+        quiet: list[str] = []
+        cc.report("vm", result, quiet, env={"RANGE_TEMPLATE_LOGIN_CHECK": "warn"})
+        assert quiet == []

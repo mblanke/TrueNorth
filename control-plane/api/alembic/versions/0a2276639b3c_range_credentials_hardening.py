@@ -1,6 +1,6 @@
-"""range credentials hardening: rc1 sealing, implicit staff logins, rotation, no wiki secrets (ADR 0013 §3)
+"""range credentials hardening: bound seals, implicit staff logins, rotation, no wiki secrets (ADR 0013 §3)
 
-Revision ID: e0f1a2b3c4d5
+Revision ID: 0a2276639b3c
 Revises: d9e0f1a2b3c4
 Create Date: 2026-10-21 12:00:00.000000
 
@@ -11,12 +11,15 @@ Schema (additive): ``range_credentials`` gains ``source`` (declared | implicit),
 had when it was taken (sealed).
 
 Data (app/range_credentials/migrate_0013.py, Core SQL only): every stored range password is
-resealed ``tnsec:v1`` -> ``tnsec:rc1``; every existing range gets its implicit staff logins
-(generated, not applied, noted "template password still valid until rebuilt"); every
-generated wiki range page is rendered again without credentials and the
+resealed as ``tnsec:rk1`` bound to its tenant, range and row, and every typed-in template
+password as ``tnsec:rt1`` bound to its template's tenant; every existing range gets its
+implicit staff logins (generated, not applied, noted "template password still valid until
+rebuilt"); templates whose typed-in passwords are not on scenario accounts are logged as
+ACTION NEEDED; every generated wiki range page is rendered again without credentials and the
 ``{{tn-credential:...}}`` tokens are stripped from earlier revisions.
 
-Downgrade reseals rc1 -> v1 (the old code reads only v1) and drops the new table and
+Downgrade reseals rows as ``tnsec:v1`` and template passwords as ``tnsec:rc1`` (what the old
+code reads) and drops the new table and
 columns. Implicit rows stay (the old code shows them as declared accounts until the next
 build of the range drops them); stripped wiki tokens are not put back.
 """
@@ -27,7 +30,7 @@ import sqlalchemy as sa
 from alembic import op
 from app.models import GUID
 
-revision: str = "e0f1a2b3c4d5"
+revision: str = "0a2276639b3c"
 down_revision: str | None = "d9e0f1a2b3c4"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None

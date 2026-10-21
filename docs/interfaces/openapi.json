@@ -12592,6 +12592,12 @@
             "title": "Notes",
             "type": "string"
           },
+          "pending_change": {
+            "default": false,
+            "description": "A change of its password is being applied in the guests: a reveal shows the password they still have, and it cannot be rotated again until the change settles",
+            "title": "Pending Change",
+            "type": "boolean"
+          },
           "role": {
             "description": "admin | user",
             "title": "Role",
@@ -16064,6 +16070,58 @@
           "yaml"
         ],
         "title": "TemplateIn",
+        "type": "object"
+      },
+      "TemplateIssueOut": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "problems": {
+            "description": "Which accounts break the rule, and why (no passwords)",
+            "items": {
+              "type": "string"
+            },
+            "title": "Problems",
+            "type": "array"
+          },
+          "template_id": {
+            "format": "uuid",
+            "title": "Template Id",
+            "type": "string"
+          },
+          "tenant_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "None: a global template",
+            "title": "Tenant Id"
+          },
+          "upcoming_bookings": {
+            "description": "Scheduled bookings of ranges built from it that would fail",
+            "title": "Upcoming Bookings",
+            "type": "integer"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "template_id",
+          "name",
+          "version",
+          "problems",
+          "upcoming_bookings"
+        ],
+        "title": "TemplateIssueOut",
         "type": "object"
       },
       "TemplateListOut": {
@@ -35648,6 +35706,37 @@
         ]
       }
     },
+    "/range-credentials/template-issues": {
+      "get": {
+        "description": "Templates whose typed-in passwords are not on scenario accounts (ADR 0013 \u00a73): fix each\nby marking the account ``scenario: true`` (its weak password is the lesson) or using\n``generate: true``. **Permission: template:update**; an admin also sees global templates.",
+        "operationId": "list_template_issues_range_credentials_template_issues_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TemplateIssueOut"
+                  },
+                  "title": "Response List Template Issues Range Credentials Template Issues Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Template Issues",
+        "tags": [
+          "ranges"
+        ]
+      }
+    },
     "/ranges": {
       "get": {
         "description": "List ranges for the user's tenant.  **Permission: range:read**",
@@ -40731,7 +40820,7 @@
         ]
       },
       "get": {
-        "description": "Retrieve a single template.  **Permission: template:read**\n\nTyped-in ``accounts[].password`` values are stored sealed (``tnsec:v1:...``). Holders of\nrange:credentials_read in the template's own tenant read them so (an edit sends them back\nunchanged); anyone else reads ``********`` (ADR 0012 \u00a713), and an unparseable document\nnot at all.",
+        "description": "Retrieve a single template.  **Permission: template:read**\n\nTyped-in ``accounts[].password`` values are stored sealed (``tnsec:rt1:...``, bound to\nthe template's tenant). Holders of\nrange:credentials_read in the template's own tenant read them so (an edit sends them back\nunchanged); anyone else reads ``********`` (ADR 0012 \u00a713), and an unparseable document\nnot at all.",
         "operationId": "get_template_templates__template_id__get",
         "parameters": [
           {

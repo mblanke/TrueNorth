@@ -48,7 +48,7 @@ class YamlValidateIn(BaseModel):
     yaml: str
 
 
-def _refuse_network_placement(text: str | None) -> None:
+def _refuse_network_placement(text: str | None, tenant_id) -> None:
     """A template a person writes may not pin VMs to a hypervisor network (port_group):
     that is how a lab session isolates a student's lab, and how a crafted template could
     reach another student's or the management network.
@@ -80,7 +80,7 @@ def _refuse_network_placement(text: str | None) -> None:
         raise HTTPException(503, str(exc)) from exc
     if site:
         raise HTTPException(422, "; ".join(f"{e['path']}: {e['message']}" for e in site[:10]))
-    _, account_errors = template_accounts.parse(doc if isinstance(doc, dict) else None)
+    _, account_errors = template_accounts.parse(doc if isinstance(doc, dict) else None, tenant_id=tenant_id)
     if account_errors:  # ADR 0012: a range built from it could never be given its accounts
         raise HTTPException(
             422, "invalid accounts: " + "; ".join(f"{e['path']}: {e['message']}" for e in account_errors[:10])
@@ -114,7 +114,7 @@ def validate_template(
         result["valid"] = not result["errors"]
         result["warnings"] = warnings
     if isinstance(doc, dict):  # accounts: the machine exists, one username per machine (ADR 0012)
-        result["errors"] = result["errors"] + template_accounts.parse(doc)[1]
+        result["errors"] = result["errors"] + template_accounts.parse(doc, tenant_id=uuid.UUID(user.tenant_id))[1]
         # Subnets on the site's own networks (tn_range_reserved_cidrs, range certification S1).
         try:
             result["errors"] = result["errors"] + reserved_networks.template_conflicts(doc)
@@ -217,11 +217,12 @@ def create_template(
     user: CurrentUser = Depends(require_permission(Permission.TEMPLATE_CREATE)),
 ) -> Template:
     """Create a new template.  **Permission: template:create**"""
-    _refuse_network_placement(body.yaml)
+    _refuse_network_placement(body.yaml, uuid.UUID(user.tenant_id))
     tmpl = Template(
         name=body.name,
         version=body.version,
-        yaml=template_accounts.seal_yaml(body.yaml),  # typed-in account passwords stored sealed (ADR 0012)
+        # typed-in account passwords stored sealed, bound to this tenant (ADR 0013 §3)
+        yaml=template_accounts.seal_yaml(body.yaml, tenant_id=uuid.UUID(user.tenant_id)),
         is_public=body.is_public,
         tenant_id=uuid.UUID(user.tenant_id),
     )
@@ -264,7 +265,8 @@ def get_template(
 ) -> Template:
     """Retrieve a single template.  **Permission: template:read**
 
-    Typed-in ``accounts[].password`` values are stored sealed (``tnsec:v1:...``). Holders of
+    Typed-in ``accounts[].password`` values are stored sealed (``tnsec:rt1:...``, bound to
+    the template's tenant). Holders of
     range:credentials_read in the template's own tenant read them so (an edit sends them back
     unchanged); anyone else reads ``********`` (ADR 0012 §13), and an unparseable document
     not at all.
@@ -273,7 +275,8 @@ def get_template(
     own = tmpl.tenant_id is None or tmpl.tenant_id == uuid.UUID(user.tenant_id)
     if own and user_has_permission(user, Permission.RANGE_CREDENTIALS_READ):
         return tmpl
-    return TemplateOut.model_validate(tmpl).model_copy(update={"yaml": template_accounts.redact_yaml(tmpl.yaml)})
+    return TemplateOut.model_validate(tmpl).model_copy(
+        update={"yaml": template_accounts.redact_yaml(tmpl.yaml, tenant_id=tmpl.tenant_id)})
 
 
 @router.put("/{template_id}", response_model=TemplateOut)
@@ -291,8 +294,9 @@ def update_template(
         raise HTTPException(403, "Not authorized to update this template")
     update_data = body.model_dump(exclude_unset=True)
     if "yaml" in update_data:
-        _refuse_network_placement(update_data["yaml"])
-        update_data["yaml"] = template_accounts.seal_yaml(update_data["yaml"])  # stored sealed (ADR 0012)
+        _refuse_network_placement(update_data["yaml"], tmpl.tenant_id)
+        # stored sealed, bound to the template's own tenant (ADR 0013 §3)
+        update_data["yaml"] = template_accounts.seal_yaml(update_data["yaml"], tenant_id=tmpl.tenant_id)
     for key, value in update_data.items():
         setattr(tmpl, key, value)
     db.commit()

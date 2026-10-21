@@ -285,7 +285,7 @@ class TestStorageAndAudit:
         _create_range(client, db_session, world)
         stored = db_session.execute(text("SELECT password FROM range_credentials")).scalars().all()
         assert len(stored) == 4
-        assert all(v.startswith(rc_seal.PREFIX) for v in stored)  # tnsec:rc1, not the general secretbox
+        assert all(v.startswith(rc_seal.ROW_PREFIX) for v in stored)  # stored-credential seals, bound per row
         assert DC_PW not in " ".join(stored)
 
     def test_every_reveal_is_audited_per_account_without_the_password(self, client, db_session, world):
@@ -466,33 +466,55 @@ class TestTemplates:
         revealed = client.post(f"/ranges/{rng['id']}/credentials/{accts['jsmith']['id']}/reveal").json()
         assert revealed["password"] == DC_PW
 
-    @pytest.mark.parametrize("purpose", ["hypervisor", "other_key"])
-    def test_a_seal_made_for_another_purpose_is_refused(self, client, world, purpose, monkeypatch):
-        """Review 2, item 3: a hypervisor/AI/LTI secret (app/secretbox) pasted into accounts,
-        or a range seal another key made, is not unsealed into a readable password."""
+    @pytest.mark.parametrize("purpose", ["hypervisor", "other_key", "other_tenant", "stored_row", "legacy_rc1"])
+    def test_a_seal_made_for_another_purpose_or_owner_is_refused(self, client, db_session, world, purpose,
+                                                                 monkeypatch):
+        """No sealed value from anywhere else opens as a template password: a hypervisor/AI/LTI
+        secret, a template seal of another key or another tenant, a stored range credential
+        (the decryption-oracle PoC of the #250 review), a pre-ADR 0013 rc1 token."""
+        secret = "Vcenter-Admin-1!"
         if purpose == "hypervisor":
-            token = secretbox.seal("Vcenter-Admin-1!")
-        else:
+            token = secretbox.seal(secret)
+        elif purpose == "other_key":
             monkeypatch.setenv(secretbox.KEY_ENV, "another-platforms-key-0123456789abcdef")
-            token = rc_seal.seal("Vcenter-Admin-1!")
+            token = rc_seal.seal(secret, world["a"].id)
             monkeypatch.undo()
+        elif purpose == "other_tenant":
+            token = rc_seal.seal(secret, world["b"].id)
+        elif purpose == "stored_row":  # tenant B's stored credential, as it sits in range_credentials
+            rng = _create_range(client, db_session, world)
+            token = _row(db_session, rng, "web01", "analyst").sealed_password
+            secret = _row(db_session, rng, "web01", "analyst").password
+        else:
+            token = rc_seal.seal_legacy(secret)
         act_as(world["range_ops"])
         forged = TEMPLATE_YAML.replace(DC_PW, token)
         resp = client.post("/templates", json={"name": "t", "version": "1", "yaml": forged})
-        assert resp.status_code == 422 and "not a range-account seal" in resp.text
-        assert "Vcenter-Admin-1!" not in account_rules.redact_yaml(forged)
+        assert resp.status_code == 422 and "not this tenant's template seal" in resp.text
+        assert secret not in resp.text
+        _, errors = account_rules.parse_yaml(forged, tenant_id=world["a"].id)
+        assert errors  # the PoC: no plaintext comes back
+        assert secret not in account_rules.redact_yaml(forged, tenant_id=world["a"].id)
 
-    def test_range_seals_are_their_own(self):
-        token = rc_seal.seal("Pw-Range-1!")
-        assert token.startswith("tnsec:rc1:") and rc_seal.unseal(token) == "Pw-Range-1!"
-        with pytest.raises(secretbox.SecretUnreadableError):  # secretbox does not open it either
+    def test_range_seals_are_their_own(self, world):
+        tenant = world["a"].id
+        token = rc_seal.seal("Pw-Range-1!", tenant)
+        assert token.startswith("tnsec:rt1:") and rc_seal.unseal(token, tenant) == "Pw-Range-1!"
+        with pytest.raises(rc_seal.NotARangeSealError):  # another tenant's template cannot open it
+            rc_seal.unseal(token, world["b"].id)
+        row = rc_seal.seal_row("Pw-Row-1!", rc_seal.row_aad(tenant, "r1", "c1"))
+        with pytest.raises(rc_seal.NotARangeSealError):  # a stored credential is no template seal
+            rc_seal.unseal(row, tenant)
+        with pytest.raises(rc_seal.NotARangeSealError):  # nor another row's
+            rc_seal.unseal_row(row, rc_seal.row_aad(tenant, "r1", "c2"))
+        with pytest.raises(secretbox.SecretUnreadableError):  # secretbox does not open either
             secretbox.unseal("tnsec:v1:" + token[len(rc_seal.PREFIX):])
 
     def test_a_sealed_value_that_does_not_unseal_is_refused(self, client, world):
         act_as(world["range_ops"])
         forged = TEMPLATE_YAML.replace(DC_PW, "tnsec:v1:not-a-real-token")
         resp = client.post("/templates", json={"name": "t", "version": "1", "yaml": forged})
-        assert resp.status_code == 422 and "cannot unseal" in resp.text
+        assert resp.status_code == 422 and "not this tenant's template seal" in resp.text
 
     @pytest.mark.parametrize(("yaml_text", "why"), [
         ("nodes: [{id: dc01, os: windows-server-2022}]\naccounts:\n"
@@ -525,10 +547,10 @@ class TestTemplates:
                           '  - {machine: dc01, username: root, password: "Hunter2Hunter2!", student_visible: false, '
                           'notes: "same as Hunter2Hunter2! on prod"}\n',
         }[probe]
-        assert "Hunter2Hunter2!" not in account_rules.redact_yaml(doc)
+        assert "Hunter2Hunter2!" not in account_rules.redact_yaml(doc, tenant_id=None)
         anchors = ('name: t\nx: &a {username: Administrator, password: "Hunter2Hunter2!"}\n'
                    'accounts:\n  - {<<: *a, machine: dc01}\n')
-        assert account_rules.redact_yaml(anchors) == ""
+        assert account_rules.redact_yaml(anchors, tenant_id=None) == ""
 
     def test_every_password_is_masked_everywhere_in_the_document(self):
         """Review 2, item 4 (probe2 test_notes_cross_account): another account's notes, the
@@ -540,8 +562,8 @@ class TestTemplates:
                '  - {machine: a, username: alice, password: "Alpha-Pass-1!", student_visible: false}\n'
                '  - {machine: b, username: bob, password: "Bravo-Pass-2!", student_visible: true, '
                'notes: "root on a is Alpha-Pass-1!"}\n')
-        for stored in (doc, account_rules.seal_yaml(doc)):
-            out = account_rules.redact_yaml(stored)
+        for stored in (doc, account_rules.seal_yaml(doc, tenant_id=None)):
+            out = account_rules.redact_yaml(stored, tenant_id=None)
             assert "Alpha-Pass-1!" not in out and "Bravo-Pass-2!" not in out, out
 
     def test_passwords_in_a_template_are_hidden_from_who_may_not_read_them(self, client, db_session, world):
@@ -853,7 +875,7 @@ class TestDesignerSave:
         return rng
 
     def test_another_tenants_accounts_are_not_copied(self, client, db_session, world):
-        theirs = _template(db_session, world["b"].id, account_rules.seal_yaml(_DC01_ACCOUNT), public=True)
+        theirs = _template(db_session, world["b"].id, account_rules.seal_yaml(_DC01_ACCOUNT, tenant_id=world["b"].id), public=True)
         rng = self._range_on(db_session, theirs, world["a"])
         act_as(world["instructor"])
         resp = client.post(f"/ranges/{rng.id}/topology", json={"diagram_json": _DESIGN})
@@ -863,7 +885,7 @@ class TestDesignerSave:
         assert "accounts" not in saved and "tnsec" not in saved
 
     def test_own_accounts_are_kept_and_must_still_fit(self, client, db_session, world):
-        own = _template(db_session, world["a"].id, account_rules.seal_yaml(_DC01_ACCOUNT))
+        own = _template(db_session, world["a"].id, account_rules.seal_yaml(_DC01_ACCOUNT, tenant_id=world["a"].id))
         rng = self._range_on(db_session, own, world["a"])
         act_as(world["instructor"])
         resp = client.post(f"/ranges/{rng.id}/topology", json={"diagram_json": _DESIGN})
@@ -881,18 +903,18 @@ class TestAccountRules:
     def test_machines_resolve_by_id_name_or_asset_role(self):
         doc = {"nodes": [{"id": "dc01", "name": "DC"}],
                "accounts": [{"machine": "DC", "username": "a", "generate": True, "student_visible": False}]}
-        specs, errors = account_rules.parse(doc)
+        specs, errors = account_rules.parse(doc, tenant_id=None)
         assert errors == [] and [(s.machine, s.generate) for s in specs] == [("dc01", True)]
         assets = {"assets": [{"role": "kali", "type": "vm", "count": 2}],
                   "accounts": [{"machine": "kali", "username": "kali", "generate": True, "student_visible": True}]}
-        specs, errors = account_rules.parse(assets)
+        specs, errors = account_rules.parse(assets, tenant_id=None)
         assert errors == [] and [s.machine for s in specs] == ["kali"]
 
     def test_assets_beside_nodes_are_not_machines(self):
         """As worker/render.py: with nodes, assets build nothing, so they take no accounts."""
         doc = {"nodes": [{"id": "dc01"}], "assets": [{"role": "kali", "type": "vm", "count": 1}],
                "accounts": [{"machine": "kali", "username": "kali", "generate": True, "student_visible": False}]}
-        assert "not a node or asset" in account_rules.parse(doc)[1][0]["message"]
+        assert "not a node or asset" in account_rules.parse(doc, tenant_id=None)[1][0]["message"]
 
     def test_windows_complexity_follows_the_workers_os(self):
         """Review 2, item 7: an asset's os, a node's os_template or type decide it too."""
@@ -900,7 +922,7 @@ class TestAccountRules:
         for doc in ({"assets": [{"role": "dc", "os": "windows-server-2022"}], "accounts": [{**weak, "machine": "dc"}]},
                     {"nodes": [{"id": "dc", "type": "windows-11"}], "accounts": [{**weak, "machine": "dc"}]},
                     {"nodes": [{"id": "dc", "os_template": "win-2019"}], "accounts": [{**weak, "machine": "dc"}]}):
-            assert any("Windows" in e["message"] for e in account_rules.parse(doc)[1]), doc
+            assert any("Windows" in e["message"] for e in account_rules.parse(doc, tenant_id=None)[1]), doc
 
     def test_generated_passwords_meet_windows_complexity(self):
         """M3: what Windows checks, for the account it is made for."""

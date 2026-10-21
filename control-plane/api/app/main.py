@@ -95,6 +95,11 @@ async def lifespan(app: FastAPI):
     from .scheduler.feed import warn_if_unconfigured
 
     warn_if_unconfigured()  # calendar-feed URLs need a fixed public origin in production
+    # Templates whose typed-in passwords ADR 0013 no longer accepts: their ranges (and the
+    # bookings that build them) cannot be provisioned until fixed. Said at every start.
+    from .range_credentials.service import warn_template_issues_on_start
+
+    asyncio.get_running_loop().run_in_executor(None, warn_template_issues_on_start)
     # Course publications a previous process left mid-way resume in the background
     # (app/course_publishing); a Moodle that is down only delays them.
     if os.getenv("COURSE_PUBLISH_RESUME", "true").lower() == "true":
@@ -322,6 +327,7 @@ app.state.ws_manager = ws_manager
 from .class_setup.router import router as class_setup_router  # noqa: E402 (#200)
 from .cmi5.router import router as cmi5_router  # noqa: E402 (also registers the cmi5 tables)
 from .live_class.router import router as live_class_router  # noqa: E402 (issue #199)
+from .range_credentials.issues_router import router as range_credential_issues_router  # noqa: E402 (ADR 0013)
 from .range_credentials.router import router as range_credentials_router  # noqa: E402 (ADR 0012; + its table)
 from .routers import (
     ad_sync_router,
@@ -386,6 +392,7 @@ app.include_router(onboarding_router)
 # Core routers
 app.include_router(ranges_router)
 app.include_router(range_credentials_router)  # GET /ranges/{id}/credentials (app/range_credentials)
+app.include_router(range_credential_issues_router)  # GET /range-credentials/template-issues (ADR 0013)
 app.include_router(exercises_router)
 app.include_router(detections_router)
 app.include_router(collective_exercises_router)

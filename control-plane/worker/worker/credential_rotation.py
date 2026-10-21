@@ -1,21 +1,25 @@
 """Set new range passwords inside running guests (ADR 0013 §3; supersedes #198).
 
-The API issues the new passwords (app/range_credentials/service.py) and marks the rows not
-``applied``; this module sets them in the guests and marks applied what a login verified:
+The API records each change as pending (app/range_credentials/service.py): the row's
+``password`` is the one to set, ``previous_password`` the one the guests have now. This
+module sets them in the guests and settles every row (compare-and-set on the version it
+read, so a change made meanwhile is left alone): applied once a login with the new password
+worked; otherwise put back to the previous password, which the guests still have, with an
+audit row either way (``range_credential_change``). So a reveal never shows a password that
+does not log in (adversarial review of #250):
 
-* **after a snapshot restore** (a lab reset is one): every Student-visible account the API
-  rotated when it accepted the restore (``pending``: rotated and not yet applied). The
-  revert brought back the passwords the guests had when the snapshot was taken, so the
-  admin login is tried with those first (``db_ops.snapshot_passwords``), then with the
-  password the guest had before the rotation (``previous``), then the current one;
+* **after a snapshot restore** (a lab reset is one): every pending account, new
+  Student-visible passwords and current passwords an admin set after the snapshot alike.
+  The revert brought back the passwords the snapshot recorded, so the admin login is tried
+  with those first (``db_ops.snapshot_passwords``), then the previous, then the current one;
 * **an admin's rotation** of one account (``rotate_range_credentials`` with its id).
 
 Per machine it logs in as an admin account of that machine: the built-in Administrator
 (Windows) or the Linux build user, else another ``role: admin`` account (Linux), each
 password tried once. Security Onion nodes and appliances are not changed here (their
-logins are set by their own setup or configuration): their rows keep waiting for a rebuild.
-A backend that cannot change passwords in a guest (``supports_credential_rotation``) leaves
-the rows not applied: Students then see none of them until the next build, never a stale one.
+logins are set by their own setup or configuration), and a backend that cannot change
+passwords in a guest (``supports_credential_rotation``) changes nothing: the API refuses such
+changes up front, and any that still reach here are put back.
 
 ``rotate_range_credentials`` is the Celery task (the API sends it for an admin rotation;
 ``_after_restore`` sends it when ``restore_snapshot`` succeeds, through Celery's
@@ -28,7 +32,8 @@ import json
 import logging
 import os
 
-from celery.signals import task_success
+from celery.exceptions import SoftTimeLimitExceeded
+from celery.signals import task_success, worker_init
 
 from . import db_ops, range_accounts
 from .base_tasks import ReliableTask
@@ -72,41 +77,67 @@ def _admin_logins(rows: list[dict], machine: str, family: str, snapshot: dict[st
 
 
 def plan(range_id: str, rows: list[dict], vms: list[dict], *, ids: set[str] | None = None,
-         snapshot: dict[str, str] | None = None) -> tuple[list[dict], list[str]]:
-    """What ``rotate_guest_passwords`` is asked to do, and notes (no secrets): ``ids`` the
-    accounts an admin rotates, else every pending one (after a restore)."""
-    targets = [r for r in rows if r["generated"] and ((r["id"] in ids) if ids is not None else r["pending"])]
+         snapshot: dict[str, str] | None = None) -> tuple[list[dict], list[str], list[dict]]:
+    """What ``rotate_guest_passwords`` is asked to do, notes (no secrets), and the targeted
+    rows that cannot be done here (their change is reverted). ``ids``: the accounts an admin
+    rotates; else every pending one (after a restore). Only rows with a change pending."""
+    targets = [r for r in rows if r["generated"] and r["pending"] and (ids is None or r["id"] in ids)]
     by_machine: dict[str, list[dict]] = {}
     for r in targets:
         by_machine.setdefault(r["machine"], []).append(r)
     work: list[dict] = []
     notes: list[str] = []
+    undone: list[dict] = []
     for machine, changes in sorted(by_machine.items()):
         built = [v for v in vms if isinstance(v, dict) and v.get("vm_id")
                  and range_accounts.node_of(v, range_id) == machine]
         if not built:
-            notes.append(f"machine {machine}: no built VM; its new passwords apply at the next build")
+            notes.append(f"machine {machine}: no built VM")
+            undone += changes
+            continue
+        if any(family_of(vm) == "appliance" or vm.get("securityonion") for vm in built):
+            notes.append(f"machine {machine}: its logins are set by its own setup, not changed in the guest")
+            undone += changes
+            continue
+        family = family_of(built[0])
+        logins = _admin_logins(rows, machine, family, snapshot or {})
+        if not logins:
+            notes.append(f"machine {machine}: no admin account to log in with")
+            undone += changes
             continue
         for vm in built:
-            family = family_of(vm)
-            if family == "appliance" or vm.get("securityonion"):
-                notes.append(f"VM {vm.get('name')}: passwords are not changed in this guest (its logins are set by "
-                             "its own setup); they apply at the next build")
-                continue
-            logins = _admin_logins(rows, machine, family, snapshot or {})
-            if not logins:
-                notes.append(f"VM {vm.get('name')}: no admin account to log in with; passwords apply at the next build")
-                continue
             work.append({"vm_id": str(vm["vm_id"]), "name": str(vm.get("name") or ""), "family": family,
-                         "node_id": machine, "logins": logins,
+                         "node_id": machine, "logins": logins, "rows": changes,
                          "changes": [GuestLogin(r["username"], r["password"], family) for r in changes]})
-    return work, notes
+    return work, notes, undone
+
+
+def _settle(range_id: str, rows: list[dict], *, applied: bool, operation_id: str, why: str = "") -> None:
+    """Settle each row's change (compare-and-set on its sealed version), and audit it."""
+    from .tasks import _db_session
+
+    if not rows:
+        return
+    with _db_session() as db:
+        settled = [r for r in rows
+                   if db_ops.settle_credential_change(db, range_id, r["id"], r["sealed"], applied=applied)]
+        if settled:
+            db_ops.audit_credential_change(db, range_id, settled[0]["tenant_id"], {
+                "operation_id": operation_id, "outcome": "applied" if applied else "reverted",
+                "accounts": [f"{r['machine']}/{r['username']}" for r in settled], **({"why": why} if why else {})})
+        db.commit()
+    stale = len(rows) - len(settled)
+    if stale:
+        logger.info("[rotate %s] range %s: %d account(s) changed again meanwhile; left to that change",
+                    operation_id, range_id, stale)
 
 
 def run(range_id: str, *, ids: list[str] | None = None, snapshot_id: str | None = None,
         operation_id: str = "") -> dict:
-    """Plan and apply one rotation; mark applied what was verified. Returns a summary
-    (usernames and counts only)."""
+    """Plan and apply one change in the guests. Each account is settled: applied when a login
+    with its new password worked, otherwise put back to the password the guests still have
+    (a timeout, an error, an unsupported backend or machine included), so a reveal never
+    shows a password that does not log in. Returns a summary (usernames and counts only)."""
     from .base_tasks import _get_backend
     from .tasks import _db_session
 
@@ -114,31 +145,43 @@ def run(range_id: str, *, ids: list[str] | None = None, snapshot_id: str | None 
         rows = db_ops.account_rows(db, range_id)
         snapshot = db_ops.snapshot_passwords(db, range_id, snapshot_id) if snapshot_id else {}
         found = db_ops.range_output_and_backend(db, range_id)
-    if not found or not found[0]:
-        return {"status": "skipped", "detail": "the range has no build recorded"}
-    output = json.loads(found[0])
-    work, notes = plan(range_id, rows, output.get("vms") or [], ids=set(ids) if ids else None, snapshot=snapshot)
+    output = json.loads(found[0]) if found and found[0] else {}
+    work, notes, undone = plan(range_id, rows, output.get("vms") or [], ids=set(ids) if ids else None,
+                               snapshot=snapshot)
     for note in notes:
         logger.warning("[rotate %s] range %s: %s", operation_id, range_id, note)
+    _settle(range_id, undone, applied=False, operation_id=operation_id, why="; ".join(notes)[:500])
     if not work:
-        return {"status": "nothing_to_do", "notes": notes}
-    provisioner = _get_backend(found[1], range_id, output=output)
-    if not getattr(provisioner, "supports_credential_rotation", False):
-        logger.warning("[rotate %s] range %s: the %s backend cannot change passwords in a guest; the accounts stay "
-                       "not applied until the next build", operation_id, range_id, found[1])
-        return {"status": "unsupported", "notes": notes}
-    results = run_async(provisioner.rotate_guest_passwords(range_id, work, ROTATION_TIMEOUT))
-    built = []
-    for item in work:
-        res = results.get(item["name"]) or {}
+        return {"status": "nothing_to_do" if not undone else "reverted", "notes": notes}
+    targets = {r["id"]: r for w in work for r in w["rows"]}
+    try:
+        provisioner = _get_backend(found[1], range_id, output=output)
+        if not getattr(provisioner, "supports_credential_rotation", False):
+            raise RuntimeError(f"the {found[1]} backend cannot change passwords in a guest")
+        results = run_async(provisioner.rotate_guest_passwords(
+            range_id, [{k: v for k, v in w.items() if k != "rows"} for w in work], ROTATION_TIMEOUT))
+    except Exception as exc:  # noqa: BLE001 — every target goes back to what the guests have
+        why = type(exc).__name__ if not isinstance(exc, RuntimeError) else str(exc)[:200]
+        logger.warning("[rotate %s] range %s: not changed in the guests (%s)", operation_id, range_id, why)
+        _settle(range_id, list(targets.values()), applied=False, operation_id=operation_id, why=why)
+        if isinstance(exc, SoftTimeLimitExceeded):
+            raise
+        return {"status": "reverted", "notes": [*notes, why]}
+    verified: dict[str, set[str]] = {}  # machine -> usernames verified on EVERY VM of it
+    for w in work:
+        res = results.get(w["name"]) or {}
         if res.get("error"):
-            logger.warning("[rotate %s] range %s VM %s: %s", operation_id, range_id, item["name"], res["error"])
-        built.append({"name": item["name"], "node_id": item["node_id"],
-                      "accounts_applied": list(res.get("applied") or [])})
-    range_accounts.record_applied(_db_session, range_id, built)
-    applied = sum(len(b["accounts_applied"]) for b in built)
-    logger.info("[rotate %s] range %s: %d password(s) set and verified", operation_id, range_id, applied)
-    return {"status": "ok", "applied": applied, "notes": notes}
+            logger.warning("[rotate %s] range %s VM %s: %s", operation_id, range_id, w["name"], res["error"])
+        names = set(res.get("applied") or [])
+        verified[w["node_id"]] = verified[w["node_id"]] & names if w["node_id"] in verified else names
+    ok = [r for r in targets.values() if r["username"] in verified.get(r["machine"], set())]
+    failed = [r for r in targets.values() if r not in ok]
+    _settle(range_id, ok, applied=True, operation_id=operation_id)
+    _settle(range_id, failed, applied=False, operation_id=operation_id, why="not verified by a login in the guest")
+    logger.info("[rotate %s] range %s: %d set and verified, %d put back", operation_id, range_id, len(ok),
+                len(failed))
+    return {"status": "ok" if not failed else "partial", "applied": len(ok), "reverted": len(failed),
+            "notes": notes}
 
 
 @app.task(base=ReliableTask, bind=True, name=TASK)
@@ -148,6 +191,18 @@ def rotate_range_credentials(self, range_id: str, credential_ids: list, operatio
     ``credential_ids``: every pending account (after ``snapshot_id`` was restored)."""
     return run(range_id, ids=[str(i) for i in credential_ids or []] or None, snapshot_id=snapshot_id,
                operation_id=operation_id)
+
+
+@worker_init.connect
+def _refuse_to_start_without_template_passwords(**_kwargs) -> None:
+    """ADR 0013 §3, adversarial review of #250: a vSphere worker in ``enforce`` mode that does
+    not know the template passwords stops at start, loudly, rather than marking every VM's
+    template-login check inconclusive (provisioners/vsphere_credcheck.startup_problem)."""
+    from .provisioners.vsphere_credcheck import startup_problem
+
+    if problem := startup_problem():
+        logger.critical(problem)
+        raise SystemExit(problem)  # not an Exception: Celery's signal dispatch would swallow that
 
 
 @task_success.connect

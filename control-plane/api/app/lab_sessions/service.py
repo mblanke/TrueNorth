@@ -775,7 +775,7 @@ def reset(db: Session, session: LabSession) -> LabSession:
         from ..range_credentials import service as range_credentials
 
         # New passwords for the Student (ADR 0013 §3); the restore task sets them after the revert.
-        range_credentials.on_restore(db, rng)
+        range_credentials.on_restore(db, rng, snap, session.user_id)
         db.flush()
         _send(db, session, "restore_snapshot", str(rng.id), str(snap.id))
         return session

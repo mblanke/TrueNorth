@@ -91,7 +91,13 @@ course production with a local-model fallback, and the cleanup of unsupported su
   `POST .../reveal` shows one, audited per account; `POST .../rotate` (admin) rotates one.
   Student-visible passwords rotate on rebuild, snapshot restore and lab reset, set in the
   running guests through an uploaded file. Lab Students see their own lab's accounts. Wiki
-  range pages hold account names only; migration `e0f1a2b3c4d5` reseals stored passwords,
+  range pages hold account names only. Seals are bound to their owner (stored credentials
+  `tnsec:rk1` per tenant/range/row, template passwords `tnsec:rt1` per tenant), so no stored
+  value opens anywhere else. A restore re-applies admin rotations made after the snapshot;
+  a change the worker cannot verify puts the working password back; one change per account
+  at a time. Templates the new rule refuses are reported (migration log, API start log,
+  `GET /range-credentials/template-issues`, a banner on the Ranges page). Migration
+  `0a2276639b3c` reseals stored passwords,
   adds the implicit rows to existing ranges (noted "template password still valid until
   rebuilt") and strips credential tokens from wiki pages and their revisions.
 - **Greyspace on vSphere** (#133): gs-core VM in the range build, `configure_range` stage,

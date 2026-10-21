@@ -29,10 +29,11 @@ generated row for each of those a template leaves undeclared, so no machine keep
 golden template's build password.
 
 A typed-in password is never stored as typed: ``seal_yaml`` replaces it in the stored
-template with a range-credential seal (``seal.py``, ``tnsec:rc1:...``, a key derived for
-this purpose only) on create and update; ``parse`` unseals it where it is used (the
-credentials sync) and refuses any other sealed value (a hypervisor, AI or LTI secret pasted
-in). ``redact_yaml`` masks passwords for readers who may not see them, from the parsed
+template with a template seal (``seal.py``, ``tnsec:rt1:...``, a key derived for this purpose
+only, bound to the template's tenant) on create and update; ``parse`` unseals it where it is
+used (the credentials sync) and refuses any other sealed value: a hypervisor, AI or LTI
+secret, a stored range credential, another tenant's template seal, a pre-ADR 0013 ``rc1``
+token. Every call names the template's tenant (``tenant_id``; None for a global template). ``redact_yaml`` masks passwords for readers who may not see them, from the parsed
 document (decoded keys), never by searching the text.
 
 Which machines are Windows is decided as the worker decides it (``machine_os`` mirrors
@@ -237,8 +238,9 @@ def implicit_staff_logins(doc: dict[str, Any] | None, declared: list[AccountSpec
     return out
 
 
-def parse(doc: dict[str, Any] | None) -> tuple[list[AccountSpec], list[dict[str, str]]]:
-    """The accounts a template declares, and what is wrong with them (``{path, message}``).
+def parse(doc: dict[str, Any] | None, *, tenant_id) -> tuple[list[AccountSpec], list[dict[str, str]]]:
+    """The accounts a template of ``tenant_id`` declares, and what is wrong with them
+    (``{path, message}``).
 
     Only a document with no errors should be acted on; callers refuse it (422) otherwise."""
     if not isinstance(doc, dict) or doc.get("accounts") is None:
@@ -276,10 +278,10 @@ def parse(doc: dict[str, Any] | None) -> tuple[list[AccountSpec], list[dict[str,
         password = item.get("password")
         if rc_seal.looks_sealed(password):
             try:
-                password = rc_seal.unseal(password)
+                password = rc_seal.unseal(password, tenant_id)
             except rc_seal.NotARangeSealError:
-                bad("password is a sealed value (tnsec:) that is not a range-account seal this platform made, "
-                    "so it cannot unseal it; type the password or use generate: true", "password")
+                bad("password is a sealed value (tnsec:) that is not this tenant's template seal, so it cannot "
+                    "be used; type the password or use generate: true", "password")
                 password = ""
         generate = item.get("generate", False)
         if not isinstance(generate, bool):
@@ -339,13 +341,13 @@ def parse(doc: dict[str, Any] | None) -> tuple[list[AccountSpec], list[dict[str,
     return (specs if not errors else []), errors
 
 
-def parse_yaml(text: str | None) -> tuple[list[AccountSpec], list[dict[str, str]]]:
+def parse_yaml(text: str | None, *, tenant_id) -> tuple[list[AccountSpec], list[dict[str, str]]]:
     """``parse`` on template YAML. Unparseable YAML declares nothing (it is refused elsewhere)."""
     try:
         doc = safe_yaml.load(text or "")
     except yaml.YAMLError:  # safe_yaml refusals included
         return [], []
-    return parse(doc if isinstance(doc, dict) else None)
+    return parse(doc if isinstance(doc, dict) else None, tenant_id=tenant_id)
 
 
 def generate_password(username: str = "", length: int = GENERATED_LENGTH) -> str:
@@ -363,8 +365,9 @@ def _load(text: str | None) -> Any:
     return safe_yaml.load(text or "")
 
 
-def seal_yaml(text: str | None) -> str | None:
-    """The template to store: every typed-in ``accounts[].password`` sealed (``tnsec:rc1:``).
+def seal_yaml(text: str | None, *, tenant_id) -> str | None:
+    """The template of ``tenant_id`` to store: every typed-in ``accounts[].password`` sealed
+    (``tnsec:rt1:``, bound to the tenant).
 
     Unchanged (formatting and comments kept) when there is nothing to seal. Call after
     ``parse`` accepted the document: a sealed value that does not unseal is refused there."""
@@ -378,12 +381,12 @@ def seal_yaml(text: str | None) -> str | None:
     for item in doc["accounts"]:
         pw = item.get("password") if isinstance(item, dict) else None
         if isinstance(pw, str) and pw and not rc_seal.looks_sealed(pw):
-            item["password"] = rc_seal.seal(pw)
+            item["password"] = rc_seal.seal(pw, tenant_id)
             changed = True
     return yaml.safe_dump(doc, sort_keys=False, allow_unicode=True) if changed else text
 
 
-def redact_yaml(text: str | None) -> str:
+def redact_yaml(text: str | None, *, tenant_id) -> str:
     """Template YAML for a reader who may not see passwords: every ``accounts[].password``
     (sealed or not) is ``REDACTED``, and so is any of the template's passwords wherever else
     it appears in the document (another account's notes, a description, a key).
@@ -405,7 +408,7 @@ def redact_yaml(text: str | None) -> str:
         if isinstance(pw, str) and pw:
             plains.add(pw)  # the stored token, or a password typed in before sealing
             with contextlib.suppress(Exception):  # not ours, or no key: masked as stored
-                plains.add(rc_seal.unseal(pw))
+                plains.add(rc_seal.unseal(pw, tenant_id))
         item["password"] = REDACTED
     # Longest first, so a password containing another is masked whole.
     return yaml.safe_dump(_mask(doc, sorted(plains, key=len, reverse=True)), sort_keys=False, allow_unicode=True)

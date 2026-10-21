@@ -73,9 +73,9 @@ def test_upgrade_adds_an_empty_sealed_table_and_downgrade_removes_it(tmp_path):
         assert db.execute(sa.text("SELECT count(*) FROM ranges")).scalar() == 1
 
     # A row as that revision's code wrote it (sealed tnsec:v1); the current ORM model has the
-    # ADR 0013 columns (e0f1a2b3c4d5, tests/api/test_migration_credentials_hardening.py).
+    # ADR 0013 columns (0a2276639b3c, tests/api/test_migration_credentials_hardening.py).
     from app import secretbox
-    from app.range_credentials.sealed_column import unseal_stored
+    unseal_stored = secretbox.unseal
 
     with Session(engine) as db:
         assert db.get(Range, rng).state == RangeState.ready  # untouched

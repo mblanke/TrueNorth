@@ -1,4 +1,4 @@
-"""e0f1a2b3c4d5 (ADR 0013 §3): existing ranges keep working and nothing holds a secret it should not.
+"""0a2276639b3c (ADR 0013 §3): existing ranges keep working and nothing holds a secret it should not.
 
 Upgrade from its parent onto a database holding two ranges, one with an ADR 0012 credential
 row (sealed ``tnsec:v1``), and a generated wiki page whose body and earlier revision carry
@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 import uuid
@@ -28,17 +29,22 @@ import pytest
 import sqlalchemy as sa
 
 API = Path(__file__).resolve().parents[2] / "control-plane" / "api"
-PARENT, REVISION = "d9e0f1a2b3c4", "e0f1a2b3c4d5"
+REVISION = "0a2276639b3c"
+# Its parent is whatever the revision says (it moves when an earlier slice merges first).
+PARENT = re.search(r'^down_revision: str \| None = "(\w+)"', next(
+    (API / "alembic/versions").glob(f"{REVISION}_*.py")).read_text(), re.M).group(1)
+LEGACY_TYPED = "Legacy-Typed-7!"
 OLD_PW = "Old-Declared-1!"
 TEMPLATE = ("name: t\nnodes:\n  - {id: dc01, os: windows-server-2022}\n  - {id: web01, os: ubuntu-2404}\n"
             "  - {id: fw01, os: pfsense}\n")
 
 
-def _alembic(url: str, *args: str) -> None:
+def _alembic(url: str, *args: str) -> str:
     env = {**os.environ, "DATABASE_URL": url, "PYTHONPATH": str(API), "AUTH_DISABLED": "true"}
     done = subprocess.run([sys.executable, "-m", "alembic", *args], cwd=API, env=env, capture_output=True, text=True,
                           timeout=300)
     assert done.returncode == 0, f"alembic {' '.join(args)} failed:\n{done.stdout[-3000:]}\n{done.stderr[-3000:]}"
+    return done.stdout + done.stderr
 
 
 def _insert(db, table: str, **values) -> None:
@@ -56,7 +62,7 @@ def test_upgrade_reseals_adds_staff_logins_and_scrubs_the_wiki(tmp_path):
     url = f"sqlite:///{tmp_path / 'hardening.db'}"
     _alembic(url, "upgrade", PARENT)
     engine = sa.create_engine(url)
-    tenant, tmpl, rng, lab_rng, row_id, space, page, user = (uuid.uuid4() for _ in range(8))
+    tenant, tmpl, rng, lab_rng, row_id, space, page, user, legacy_tmpl = (uuid.uuid4() for _ in range(9))
     token_body = (f"{wiki_doc.BEGIN}\n| `dc01` | `Administrator` | `{{{{tn-credential:{row_id}}}}}` |\n"
                   f"| `web01` | `ubuntu` | `{{{{tn-credential:template-linux}}}}` |\n{wiki_doc.END}\n\n"
                   "## Notes\n\nKeep this note.\n")
@@ -68,6 +74,10 @@ def test_upgrade_reseals_adds_staff_logins_and_scrubs_the_wiki(tmp_path):
         db.add(Tenant(id=tenant, name="t", slug="t"))
         db.flush()
         db.add(Template(id=tmpl, name="tp", version="1", yaml=TEMPLATE, tenant_id=tenant))
+        # A template stored before ADR 0013: a typed-in password, sealed rc1, on no scenario account.
+        db.add(Template(id=legacy_tmpl, name="legacy-lab", version="1", tenant_id=tenant, yaml=(
+            "nodes: [{id: ws01, os: ubuntu-2404}]\naccounts:\n  - {machine: ws01, username: jdoe, password: "
+            f"'{rc_seal.seal_legacy(LEGACY_TYPED)}', student_visible: false}}\n")))
         db.flush()
         for rid, name in ((rng, "r"), (lab_rng, "lab")):
             db.add(Range(id=rid, name=name, template_id=tmpl, tenant_id=tenant, state=RangeState.ready))
@@ -85,16 +95,24 @@ def test_upgrade_reseals_adds_staff_logins_and_scrubs_the_wiki(tmp_path):
                 username="Administrator", password=secretbox.seal(OLD_PW), generated=0, student_visible=0,
                 applied=1, role="admin", notes="")
 
-    _alembic(url, "upgrade", REVISION)
+    log = _alembic(url, "upgrade", REVISION)
+    # The installer prints the migration's log: the template that will not provision is named.
+    assert "ACTION NEEDED" in log and "legacy-lab" in log and LEGACY_TYPED not in log
     with engine.connect() as db:
         rows = db.execute(sa.text("SELECT range_id, machine, username, password, source, applied, notes, "
-                                  "student_visible FROM range_credentials ORDER BY range_id, machine")).all()
+                                  "student_visible, id, tenant_id FROM range_credentials "
+                                  "ORDER BY range_id, machine")).all()
         by = {(str(r[0]), r[1], r[2]): r for r in rows}
+
+        def opened(r):
+            return rc_seal.unseal_row(r[3], rc_seal.row_aad(r[9], r[0], r[8]))
+
         old = by[(str(rng), "dc01", "Administrator")]
-        assert old[3].startswith(rc_seal.PREFIX) and rc_seal.unseal(old[3]) == OLD_PW and old[4] == "declared"
+        assert old[3].startswith(rc_seal.ROW_PREFIX) and opened(old) == OLD_PW and old[4] == "declared"
         implicit = by[(str(rng), "web01", "ubuntu")]
         assert implicit[4] == "implicit" and not implicit[5] and "template password still valid" in implicit[6]
-        assert implicit[3].startswith(rc_seal.PREFIX)
+        assert implicit[3].startswith(rc_seal.ROW_PREFIX)
+        legacy_yaml = db.execute(sa.text("SELECT yaml FROM templates WHERE name = 'legacy-lab'")).scalar()
         assert {k for k in by if k[0] == str(lab_rng)} == {(str(lab_rng), "dc01", "Administrator"),
                                                           (str(lab_rng), "web01", "ubuntu")}
         assert not any(k[1] == "fw01" for k in by)  # appliances: none
@@ -102,7 +120,16 @@ def test_upgrade_reseals_adds_staff_logins_and_scrubs_the_wiki(tmp_path):
         revisions = [b for (b,) in db.execute(sa.text("SELECT body FROM wiki_revisions"))]
     assert "tn-credential" not in body and wiki_doc.is_current(body) and body.rstrip().endswith("Keep this note.")
     assert len(revisions) == 2 and all("tn-credential" not in b for b in revisions)
-    plain = [rc_seal.unseal(r[3]) for r in rows]
+    # The legacy template seal is now this tenant's template seal (and only theirs).
+    import yaml
+    from app.range_credentials import accounts as account_rules
+
+    fixed = yaml.safe_load(legacy_yaml)
+    fixed["accounts"][0]["scenario"] = True  # what the template's author does to fix it
+    specs, errors = account_rules.parse(fixed, tenant_id=tenant)
+    assert rc_seal.LEGACY_PREFIX not in legacy_yaml and not errors and specs[0].password == LEGACY_TYPED
+    assert account_rules.parse_yaml(legacy_yaml, tenant_id=uuid.uuid4())[1]  # another tenant: refused
+    plain = [opened(r) for r in rows]
     for b in [body, *revisions]:
         assert all(p not in b for p in plain)
 

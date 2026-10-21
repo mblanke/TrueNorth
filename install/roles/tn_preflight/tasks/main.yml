@@ -86,6 +86,22 @@
       vault_template_linux_password must not contain a single quote or a newline.
     success_msg: "template build login: no quotes or newlines"
 
+# ADR 0013 §3: every built range VM is proven not to accept its golden template's password.
+# Under enforce (the default) the worker refuses to start without those passwords, so say it
+# here, before deploying. Never prints a value.
+- name: Preflight — the template-login check can run (RANGE_TEMPLATE_LOGIN_CHECK=enforce)
+  ansible.builtin.assert:
+    that: >-
+      (tn_range_template_login_check | default('enforce')) == 'warn' or not (tn_uses_vcenter | bool) or (
+        (tn_template_windows_admin_password | default('') | string | length) > 0
+        and (tn_template_linux_password | default('') | string | length) > 0)
+    fail_msg: >-
+      tn_range_template_login_check is enforce (the default) but vault_template_windows_admin_password
+      or vault_template_linux_password is empty: the worker could never prove a range VM no longer
+      accepts the golden template's password, and refuses to start. Set both (the Packer build
+      values), or set tn_range_template_login_check: warn to build without that proof.
+    success_msg: "template-login check: {{ tn_range_template_login_check | default('enforce') }}"
+
 # SharePoint SE's product key goes into .env.production single-quoted; the worker refuses a
 # malformed one at deploy anyway. Never prints the key.
 - name: Preflight — the SharePoint product key is empty or well-formed

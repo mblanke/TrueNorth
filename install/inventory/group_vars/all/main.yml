@@ -359,6 +359,8 @@ tn_range_default_password: "{{ vault_range_default_password | default('') }}"
 tn_template_windows_admin_password: "{{ vault_template_windows_admin_password | default('') }}"
 tn_template_linux_user: ubuntu
 tn_template_linux_password: "{{ vault_template_linux_password | default('') }}"
+# ADR 0013 §3 template-login check: enforce (default) or warn.
+tn_range_template_login_check: enforce
 # Deploy-time setup of the Exchange 2019 / SharePoint (2019, SE) / MECM role images
 # (vmware-site-runbook.md §7.3): the product key for the SharePoint version the site's
 # ranges use, currently SharePoint Server 2019 (a mismatched key fails setup, status 13;

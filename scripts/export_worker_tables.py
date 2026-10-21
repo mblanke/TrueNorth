@@ -66,9 +66,7 @@ def _type_src(t) -> str:
     name = type(t).__name__
     if name == "GUID":
         return "GUID()"
-    # Sealed by the API (app/sealed_column.py, app/range_credentials/sealed_column.py); the
-    # worker unseals it itself (worker/secretbox.py, worker/range_seal.py).
-    if name in ("SealedText", "RangeSealedText"):
+    if name == "SealedText":  # sealed by the API (app/sealed_column.py); the worker unseals it itself
         return "sa.Text()"
     if isinstance(t, sa.Enum):
         members = ", ".join(repr(e) for e in t.enums)

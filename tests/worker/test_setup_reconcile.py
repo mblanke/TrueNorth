@@ -369,3 +369,19 @@ def test_the_lock_outlives_the_tasks_soft_time_limit():
     with sr._single_run(Rec()):
         pass
     assert seen["ex"] == sr.lock_ttl()
+
+
+@pytest.mark.parametrize(("mode", "not_ready"), [("enforce", True), ("warn", False)])
+def test_a_security_onion_template_login_still_accepted_fails_the_vm_under_enforce(world, monkeypatch, mode,
+                                                                                    not_ready):
+    """ADR 0013 §3 (review of #250, item 5): the reconcile applies the check as the build does."""
+    monkeypatch.setenv("RANGE_TEMPLATE_LOGIN_CHECK", mode)
+    world["changes"]["r1-so"]["template_login"] = {"status": "accepted", "username": "soadmin", "detail": "x"}
+    failed = []
+    monkeypatch.setattr(db_ops, "update_range_state", lambda db, rid, state, **kw: failed.append(state) or 1)
+    sr._reconcile_range("r1", "Range 1", {"vms": [_so_vm()]}, "vsphere")
+    written = world["written"]
+    assert written["vms"][0]["template_login"]["status"] == "accepted"
+    assert ("r1-so" in (written.get("not_ready") or [])) == not_ready
+    assert (failed == ["failed"]) == not_ready
+    assert any("Not safe" in w for w in written["warnings"])

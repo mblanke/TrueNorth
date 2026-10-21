@@ -97,16 +97,37 @@ def check(session_for: Callable[[guest.GuestCredentials], guest.GuestSession], f
 
 def report(vm_name: str, result: dict, warnings: list[str], env: dict | None = None) -> str:
     """Record one VM's check in ``warnings``; returns the not-ready reason ("" when none):
-    an ``accepted`` template login in ``enforce`` mode."""
+    an ``accepted`` template login in ``enforce`` mode. An unknown template password is
+    silent only under ``warn``: under ``enforce`` the worker refuses to start without them
+    (``startup_problem``), and a build that still meets one says so on every VM."""
     if result.get("status") == ACCEPTED:
         text = (f"Not safe: the golden template's password still logs in as {result.get('username')} "
                 f"(RANGE_TEMPLATE_LOGIN_CHECK={mode(env)})")
         if mode(env) == "enforce":
             return text
         warnings.append(f"VM {vm_name}: {text}")
-    elif result.get("status") == INCONCLUSIVE and result.get("detail") != NOT_CONFIGURED:
+    elif result.get("status") == INCONCLUSIVE and (result.get("detail") != NOT_CONFIGURED or mode(env) == "enforce"):
         warnings.append(f"VM {vm_name}: template-password check inconclusive: {result.get('detail', '')}")
     return ""
+
+
+VSPHERE_BACKEND = "vsphere_api"
+
+
+def startup_problem(env: dict | None = None) -> str | None:
+    """Why a vSphere worker in ``enforce`` mode must not start: it would build ranges whose
+    template-login check can never pass (it does not know the template passwords). None when
+    fine: another backend, ``warn`` mode, or both passwords configured."""
+    env = os.environ if env is None else env
+    if str(env.get("PROVISIONER_BACKEND") or "").strip() != VSPHERE_BACKEND or mode(env) != "enforce":
+        return None
+    missing = [name for name in (WINDOWS_PASSWORD_ENV, LINUX_PASSWORD_ENV) if not str(env.get(name) or "").strip()]
+    if not missing:
+        return None
+    return (f"RANGE_TEMPLATE_LOGIN_CHECK=enforce but {', '.join(missing)} is not set on this worker: every range VM's "
+            "template-login check would be inconclusive. Set the golden templates' build passwords (installer "
+            "vault_template_windows_admin_password / vault_template_linux_password), or set "
+            "RANGE_TEMPLATE_LOGIN_CHECK=warn to build without proof (ADR 0013 §3).")
 
 
 # --------------------------------------------------------------------------- #

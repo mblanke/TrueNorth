@@ -209,6 +209,16 @@ describe('RangeCredentialsComponent', () => {
     expect(button('Rotate password of jsmith on ws01')).toBeUndefined();
   });
 
+  it('says a change is pending and offers no second rotation until it settles', async () => {
+    await render('admin', { range_id: 'r1', scope: 'all', accounts: [
+      { ...BASE, id: 'c-ub', machine: 'web01', username: 'ubuntu', source: 'implicit', role: 'admin',
+        student_visible: false, generated: true, applied: false, pending_change: true, notes: '' },
+    ] });
+    show();
+    expect(el.querySelector('tbody tr')?.textContent).toContain('Change pending');
+    expect(button('Rotate password of ubuntu on web01')).toBeUndefined();
+  });
+
   it('says when the range has no accounts', async () => {
     await render('instructor', { range_id: 'r1', scope: 'all', accounts: [] });
     show();

@@ -2009,7 +2009,9 @@ class TestMirrorPlan:
 
 
 class TestMirrorSessions:
-    def test_build_creates_local_and_remote_sessions(self, vc):
+    def test_build_creates_local_and_remote_sessions(self, vc, monkeypatch):
+        # No template passwords here: the check is about mirroring, so it only warns (ADR 0013 §3).
+        monkeypatch.setenv("RANGE_TEMPLATE_LOGIN_CHECK", "warn")
         result = _run(_prov(vc).provision(RANGE_ID, _mirror_build(), {"used_vlans": [100, 101]}))
         assert result.status == "ok", result.errors
         assert result.warnings == []

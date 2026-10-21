@@ -51,7 +51,7 @@ def _range(client, db, world, state: RangeState | None = None) -> Range:
     assert resp.status_code == 201, resp.text
     rng = db.get(Range, uuid.UUID(resp.json()["id"]))
     if state is not None:
-        rng.state = state
+        rng.state, rng.provisioner_backend = state, "vsphere_api"  # a backend that changes guest passwords
         rng.provisioner_output = json.dumps({"vms": [{"vm_id": "vm-1", "name": f"{str(rng.id)[:8]}-web01",
                                                       "node_id": "web01", "family": "linux"}]})
     for row in db.query(RangeCredential).filter(RangeCredential.range_id == rng.id):
@@ -196,6 +196,174 @@ class TestAdminRotate:
         assert self._rotate(client, rng, _row(db_session, rng, "dc01", "Administrator"), "x").status_code == 422
 
 
+# ── Adversarial review of #250 ───────────────────────────────────────────
+MIXED_YAML = """
+name: mixed
+nodes:
+  - {id: web01, os: ubuntu-2404}
+  - {id: so01, os: securityonion}
+  - {id: fw01, os: pfsense, role: firewall}
+accounts:
+  - {machine: fw01, username: admin, generate: true, role: admin, student_visible: false}
+"""
+
+
+def _rotate(client, rng, row, reason="suspected exposure"):
+    return client.post(f"/ranges/{rng.id}/credentials/{row.id}/rotate", json={"reason": reason})
+
+
+def _settle(db, row_id, *, applied=True):
+    """What the worker does once a change is verified (applied) or failed (put back)."""
+    db.expire_all()
+    row = db.get(RangeCredential, row_id)
+    if not applied:
+        row.sealed_password = row.sealed_previous
+    row.sealed_previous, row.applied = None, True
+    db.commit()
+
+
+def _snapshot(client, db, rng) -> RangeSnapshot:
+    resp = client.post(f"/ranges/{rng.id}/snapshots", json={"name": "base"})
+    assert resp.status_code == 202, resp.text
+    snap = db.get(RangeSnapshot, uuid.UUID(resp.json()["id"]))
+    snap.snapshot_state = "ready"
+    db.commit()
+    return snap
+
+
+@pytest.fixture
+def no_tasks(monkeypatch):
+    from app import celery_client
+    from app.routers import ranges as ranges_router
+
+    sent = []
+    monkeypatch.setattr(ranges_router, "_dispatch_task", lambda name, *a: sent.append((name, *a)) or "t")
+    monkeypatch.setattr(celery_client, "dispatch", lambda name, *a: sent.append((name, *a)) or "t")
+    return sent
+
+
+class TestReviewFindings:
+    def test_1_a_restore_reapplies_an_admin_rotation_made_after_the_snapshot(self, client, db_session, world,
+                                                                             no_tasks):
+        """Snapshot P0, admin rotates to P1 (applied), restore: the guests are back at P0, so the
+        row is pending again (previous P0), the restore task sets P1 again, and a reveal never
+        shows P1 before the guest has it. One audit row says what is re-applied."""
+        rng = _range(client, db_session, world, RangeState.ready)
+        p0 = _row(db_session, rng, "web01", "ubuntu").password
+        act_as(world["admin"])
+        snap = _snapshot(client, db_session, rng)
+        assert _rotate(client, rng, _row(db_session, rng, "web01", "ubuntu")).status_code == 202
+        row = _row(db_session, rng, "web01", "ubuntu")
+        p1 = row.password
+        _settle(db_session, row.id)  # the worker verified P1
+        assert client.post(f"/ranges/{rng.id}/snapshots/{snap.id}/restore").status_code == 202
+        row = _row(db_session, rng, "web01", "ubuntu")
+        assert (row.password, row.previous_password, row.applied) == (p1, p0, False)
+        assert _reveal_pw(client, rng, row) == p0  # what the reverted guest has, until re-applied
+        audit = [json.loads(a.detail) for a in db_session.query(AuditLog)
+                 .filter(AuditLog.action == "range_credential_rotate") if "reapplied" in (a.detail or "")]
+        assert audit and "web01/ubuntu" in audit[-1]["reapplied"] and audit[-1]["reason"] == "snapshot restore"
+        assert p0 not in json.dumps(audit) and p1 not in json.dumps(audit)
+        _settle(db_session, row.id)  # the restore task set P1 again
+        assert _reveal_pw(client, rng, _row(db_session, rng, "web01", "ubuntu")) == p1
+
+    def test_1_a_snapshot_records_what_the_guest_has_while_a_change_is_pending(self, client, db_session, world,
+                                                                              no_tasks):
+        rng = _range(client, db_session, world, RangeState.ready)
+        p0 = _row(db_session, rng, "web01", "ubuntu").password
+        act_as(world["admin"])
+        assert _rotate(client, rng, _row(db_session, rng, "web01", "ubuntu")).status_code == 202
+        snap = _snapshot(client, db_session, rng)
+        row = _row(db_session, rng, "web01", "ubuntu")
+        captured = db_session.query(RangeCredentialSnapshot).filter_by(snapshot_id=snap.id, credential_id=row.id).one()
+        assert captured.password == p0 != row.password
+
+    def test_2_rotations_the_worker_cannot_carry_out_are_refused_up_front(self, client, db_session, world, no_tasks):
+        tmpl = Template(id=uuid.uuid4(), name="mixed", version="1", yaml=MIXED_YAML, tenant_id=world["a"].id)
+        db_session.add(tmpl)
+        db_session.flush()
+        act_as(world["instructor"])
+        rng = db_session.get(Range, uuid.UUID(client.post("/ranges", json={"name": "M", "template_id": str(
+            tmpl.id)}).json()["id"]))
+        rng.state, rng.provisioner_backend = RangeState.ready, "vsphere_api"
+        db_session.commit()
+        act_as(world["admin"])
+        for machine, username, why in (("so01", "soadmin", "Security Onion"), ("fw01", "admin", "appliance")):
+            resp = _rotate(client, rng, _row(db_session, rng, machine, username))
+            assert resp.status_code == 409 and why in resp.text, resp.text
+        rng.provisioner_backend = "proxmox_api"
+        db_session.commit()
+        resp = _rotate(client, rng, _row(db_session, rng, "web01", "ubuntu"))
+        assert resp.status_code == 409 and "cannot change passwords inside a guest" in resp.text
+        assert no_tasks == [] and _row(db_session, rng, "web01", "ubuntu").previous_password is None
+
+    def test_2_a_failed_change_puts_the_working_password_back(self, client, db_session, world, no_tasks):
+        rng = _range(client, db_session, world, RangeState.ready)
+        p0 = _row(db_session, rng, "web01", "ubuntu").password
+        act_as(world["admin"])
+        assert _rotate(client, rng, _row(db_session, rng, "web01", "ubuntu")).status_code == 202
+        _settle(db_session, _row(db_session, rng, "web01", "ubuntu").id, applied=False)  # the worker failed
+        row = _row(db_session, rng, "web01", "ubuntu")
+        assert (row.password, row.previous_password, row.applied) == (p0, None, True)
+        assert _reveal_pw(client, rng, row) == p0
+
+    def test_4_rotations_of_one_account_are_serialised(self, client, db_session, world, no_tasks):
+        """A double click: the second rotation waits for the first to settle (409)."""
+        rng = _range(client, db_session, world, RangeState.ready)
+        act_as(world["admin"])
+        row = _row(db_session, rng, "web01", "ubuntu")
+        assert _rotate(client, rng, row).status_code == 202
+        second = _rotate(client, rng, row)
+        assert second.status_code == 409 and "still being applied" in second.text
+        assert len([s for s in no_tasks if s[0] == "rotate_range_credentials"]) == 1
+        _settle(db_session, row.id)
+        assert _rotate(client, rng, row).status_code == 202  # settled: rotatable again
+
+    def test_6_deleting_a_snapshot_deletes_the_passwords_it_recorded(self, client, db_session, world, no_tasks):
+        rng = _range(client, db_session, world, RangeState.ready)
+        act_as(world["admin"])
+        snap = _snapshot(client, db_session, rng)
+        assert db_session.query(RangeCredentialSnapshot).filter_by(snapshot_id=snap.id).count() == len(ALL_ACCOUNTS)
+        assert client.delete(f"/ranges/{rng.id}/snapshots/{snap.id}").status_code == 204
+        assert db_session.query(RangeCredentialSnapshot).filter_by(snapshot_id=snap.id).count() == 0
+
+    def test_7_templates_adr_0013_no_longer_accepts_are_reported_before_a_booking_fails(self, client, db_session,
+                                                                                        world, no_tasks):
+        from datetime import UTC, datetime, timedelta
+
+        from app.scheduler.models import EventState, ScheduledEvent
+
+        legacy = ("nodes: [{id: ws01, os: ubuntu-2404}]\naccounts:\n"
+                  "  - {machine: ws01, username: jdoe, password: Typed-In-1!, student_visible: false}\n")
+        tmpl = Template(id=uuid.uuid4(), name="legacy-lab", version="3", yaml=legacy, tenant_id=world["a"].id)
+        db_session.add(tmpl)  # stored before the rule existed: never validated against it
+        rng = Range(name="Booked", template_id=tmpl.id, tenant_id=world["a"].id, state=RangeState.created)
+        db_session.add(rng)
+        db_session.flush()
+        now = datetime.now(UTC)
+        db_session.add(ScheduledEvent(name="class", tenant_id=world["a"].id, range_id=rng.id,
+                                      state=EventState.scheduled, start_time=now + timedelta(days=1),
+                                      end_time=now + timedelta(days=1, hours=2)))
+        db_session.commit()
+        act_as(world["admin"])
+        issues = client.get("/range-credentials/template-issues")
+        assert issues.status_code == 200, issues.text
+        (issue,) = [i for i in issues.json() if i["template_id"] == str(tmpl.id)]
+        assert issue["upcoming_bookings"] == 1 and "scenario" in issue["problems"][0]
+        assert "Typed-In-1!" not in issues.text
+        act_as(world["instructor"])  # template:create, not template:update
+        assert client.get("/range-credentials/template-issues").status_code == 403
+        resp = client.post(f"/ranges/{rng.id}/provision")
+        assert resp.status_code == 422
+        assert "legacy-lab" in resp.text and "scenario: true" in resp.text and "template-issues" in resp.text
+
+
+def _reveal_pw(client, rng, row) -> str:
+    resp = client.post(f"/ranges/{rng.id}/credentials/{row.id}/reveal")
+    assert resp.status_code == 200, resp.text
+    return resp.json()["password"]
+
+
 # ── Lab sessions ────────────────────────────────────────────────────────
 class TestLabCredentials:
     def _ready_lab(self, lab, db_session):
@@ -256,6 +424,10 @@ class TestLabCredentials:
 
     def test_a_lab_reset_rotates_the_students_passwords(self, lab, db_session, worker):
         client, owner, session = self._ready_lab(lab, db_session)
+        for r in db_session.query(RangeCredential).filter_by(range_id=session.range_id):
+            r.applied = True  # as the vSphere build reports them set
+        db_session.get(Range, session.range_id).provisioner_backend = "vsphere_api"
+        db_session.commit()
         before = {r.id: r.password for r in db_session.query(RangeCredential).filter_by(range_id=session.range_id)}
         captured = db_session.query(RangeCredentialSnapshot).filter_by(snapshot_id=session.baseline_snapshot_id)
         assert {c.credential_id: c.password for c in captured} == before  # the baseline recorded them

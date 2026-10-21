@@ -1,8 +1,14 @@
-"""The ADR 0013 §3 data migration (Alembic e0f1a2b3c4d5): existing ranges keep working,
+"""The ADR 0013 §3 data migration (Alembic 0a2276639b3c): existing ranges keep working,
 nothing holds a credential it should not.
 
-* **Reseal** every stored range password from ``tnsec:v1:`` (the general secretbox) to
-  ``tnsec:rc1:`` (the range-credential key, ``seal.py``). ``downgrade`` reverses it.
+* **Reseal** every stored range password (``tnsec:v1:``, or ``rc1`` from S3's first cut)
+  as ``tnsec:rk1:``, bound to its tenant, range and row (``seal.seal_row``), and every
+  typed-in template password (``rc1``) as ``tnsec:rt1:``, bound to its template's tenant, so
+  no stored value opens anywhere else (adversarial review of #250). ``downgrade`` reverses it.
+* **Report** templates with a typed-in password not marked ``scenario: true``: they no
+  longer validate, so their ranges cannot be provisioned until fixed. Logged at WARNING by
+  the migration (the installer's output) and served to admins
+  (``GET /range-credentials/template-issues``).
 * **Implicit staff logins** for every existing range (``accounts.implicit_staff_logins``):
   generated, sealed, ``applied = false`` and noted "template password still valid until
   rebuilt": the range's VMs were built before, so they still have the template password
@@ -14,8 +20,9 @@ nothing holds a credential it should not.
 
 Everything here is Core SQL on frozen column lists, never the ORM: a later model change
 must not break this migration on an older database. Needs ``TN_SECRETS_KEY`` for the
-sealing steps; without it they are skipped with a warning (``RangeSealedText`` still
-reads ``v1`` rows, and the implicit rows are made by the next build of each range).
+sealing steps; without it they are skipped with a warning (rows are still read as
+``v1``/``rc1`` until next written, and the implicit rows are made by the next build of each
+range).
 """
 
 from __future__ import annotations
@@ -72,29 +79,99 @@ _revisions = sa.table(
 
 def key_available() -> bool:
     try:
-        rc_seal.seal("probe")
+        rc_seal.seal("probe", None)
     except secretbox.SecretKeyMissingError:
         return False
     return True
 
 
 # ── Passwords ───────────────────────────────────────────────────────────
-def reseal(conn, *, to: str = "rc1") -> int:
-    """Seal every stored password with the range-credential key (``to="rc1"``) or back with
-    the general secretbox (``to="v1"``, for the downgrade). Returns rows changed."""
+def _open_any(stored: str) -> str:
+    """A stored row value of any era: ``rc1``, ``tnsec:v1``, plain (``rk1`` is opened by the caller)."""
+    if stored.startswith(rc_seal.LEGACY_PREFIX):
+        return rc_seal.unseal_legacy(stored)
+    return secretbox.unseal(stored) or ""
+
+
+def reseal(conn, *, to: str = "rk1") -> int:
+    """Seal every stored password bound to its row (``to="rk1"``), or back to the general
+    secretbox for the code before ADR 0013 (``to="v1"``). Returns rows changed."""
+    rows = conn.execute(sa.select(_rc.c.id, _rc.c.tenant_id, _rc.c.range_id, _rc.c.password)).all()
     changed = 0
-    for row_id, stored in conn.execute(sa.select(_rc.c.id, _rc.c.password)).all():
+    for row_id, tenant_id, range_id, stored in rows:
         if not stored:
             continue
-        if to == "rc1" and not stored.startswith(rc_seal.PREFIX):
-            new = rc_seal.seal(secretbox.unseal(stored) or "")
-        elif to == "v1" and stored.startswith(rc_seal.PREFIX):
-            new = secretbox.seal(rc_seal.unseal(stored))
+        aad = rc_seal.row_aad(tenant_id, range_id, row_id)
+        if to == "rk1" and not stored.startswith(rc_seal.ROW_PREFIX):
+            new = rc_seal.seal_row(_open_any(stored), aad)
+        elif to == "v1" and stored.startswith(rc_seal.ROW_PREFIX):
+            new = secretbox.seal(rc_seal.unseal_row(stored, aad))
         else:
             continue
         conn.execute(sa.update(_rc).where(_rc.c.id == row_id).values(password=new))
         changed += 1
     return changed
+
+
+def _reseal_template_text(text: str | None, convert) -> str | None:
+    try:
+        doc = safe_yaml.load(text or "")
+    except Exception:  # noqa: BLE001 — unreadable: left as it is (it never validates)
+        return None
+    if not isinstance(doc, dict) or not isinstance(doc.get("accounts"), list):
+        return None
+    changed = False
+    for item in doc["accounts"]:
+        pw = item.get("password") if isinstance(item, dict) else None
+        new = convert(pw) if isinstance(pw, str) else None
+        if new is not None and new != pw:
+            item["password"] = new
+            changed = True
+    import yaml as pyyaml
+
+    return pyyaml.safe_dump(doc, sort_keys=False, allow_unicode=True) if changed else None
+
+
+def reseal_templates(conn, *, to: str = "rt1") -> int:
+    """Typed-in template passwords: ``rc1`` -> ``rt1`` bound to the template's tenant
+    (``to="rt1"``), or back (``to="rc1"``, the downgrade). Returns templates changed."""
+    changed = 0
+    for tmpl_id, tenant_id, text in conn.execute(sa.select(_templates.c.id, _templates.c.tenant_id,
+                                                           _templates.c.yaml)).all():
+        def convert(pw: str, _tenant=tenant_id) -> str | None:
+            try:
+                if to == "rt1" and pw.startswith(rc_seal.LEGACY_PREFIX):
+                    return rc_seal.seal(rc_seal.unseal_legacy(pw), _tenant)
+                if to == "rc1" and pw.startswith(rc_seal.TEMPLATE_PREFIX):
+                    return rc_seal.seal_legacy(rc_seal.unseal(pw, _tenant))
+            except rc_seal.NotARangeSealError:
+                return None  # not this platform's: it is refused when the template is next used
+            return None
+
+        new = _reseal_template_text(text, convert)
+        if new is not None:
+            conn.execute(sa.update(_templates).where(_templates.c.id == tmpl_id).values(yaml=new))
+            changed += 1
+    return changed
+
+
+def templates_needing_scenario(conn) -> list[dict]:
+    """Templates with a typed-in password on an account not marked ``scenario: true`` (or on a
+    staff login): since ADR 0013 their accounts do not validate, so ranges of them cannot be
+    provisioned (a scheduled booking included) until the template is fixed. Never a password."""
+    out: list[dict] = []
+    for tmpl_id, tenant_id, name, text in conn.execute(
+            sa.select(_templates.c.id, _templates.c.tenant_id, _templates.c.name, _templates.c.yaml)).all():
+        doc = _doc(text)
+        accounts = doc.get("accounts") if isinstance(doc.get("accounts"), list) else []
+        if not any(isinstance(a, dict) and a.get("password") is not None for a in accounts):
+            continue
+        _, errors = account_rules.parse(doc, tenant_id=tenant_id)
+        problems = [e for e in errors if "scenario" in e["message"]]
+        if problems:
+            out.append({"template_id": str(tmpl_id), "tenant_id": str(tenant_id) if tenant_id else None,
+                        "name": name, "problems": [f"{e['path']}: {e['message']}" for e in problems]})
+    return out
 
 
 def _lab_ranges(conn) -> set[str]:
@@ -131,9 +208,12 @@ def add_implicit_logins(conn) -> int:
                                               student_visible=False, role="admin", notes="") for m, u in have]
         for spec in account_rules.implicit_staff_logins(_doc(text), existing,
                                                         student_visible=str(range_id) in labs):
+            row_id = uuid.uuid4()
+            sealed = rc_seal.seal_row(account_rules.generate_password(spec.username),
+                                      rc_seal.row_aad(tenant_id, range_id, row_id))
             conn.execute(sa.insert(_rc).values(
-                id=uuid.uuid4(), tenant_id=tenant_id, range_id=range_id, machine=spec.machine,
-                username=spec.username, password=rc_seal.seal(account_rules.generate_password(spec.username)),
+                id=row_id, tenant_id=tenant_id, range_id=range_id, machine=spec.machine,
+                username=spec.username, password=sealed,
                 generated=True, student_visible=spec.student_visible, applied=False, role="admin",
                 notes=f"{spec.notes}; {NOT_HARDENED}"[:500], source="implicit", scenario=False))
             added += 1
@@ -212,13 +292,21 @@ def strip_revision_tokens(conn) -> int:
 
 
 # ── Entry points (the Alembic revision) ─────────────────────────────────
-def upgrade(conn) -> dict[str, int]:
-    done = {"resealed": 0, "implicit_logins": 0}
+def upgrade(conn) -> dict:
+    done: dict = {"resealed": 0, "templates_resealed": 0, "implicit_logins": 0}
     if key_available():
-        done["resealed"] = reseal(conn, to="rc1")
+        done["resealed"] = reseal(conn, to="rk1")
+        done["templates_resealed"] = reseal_templates(conn, to="rt1")
         done["implicit_logins"] = add_implicit_logins(conn)
+        issues = templates_needing_scenario(conn)
+        done["templates_needing_scenario"] = len(issues)
+        for issue in issues:  # the installer prints the migration's log
+            logger.warning("ACTION NEEDED (ADR 0013): template %r (%s) has a typed-in password that is not on a "
+                           "scenario account; its ranges cannot be provisioned until it is fixed (mark the account "
+                           "scenario: true, or use generate: true): %s",
+                           issue["name"], issue["template_id"], "; ".join(issue["problems"]))
     else:
-        logger.warning("TN_SECRETS_KEY is not set: range passwords stay tnsec:v1 until next written, and existing "
+        logger.warning("TN_SECRETS_KEY is not set: range passwords stay as they are until next written, and existing "
                        "ranges get their implicit staff logins at their next build")
     done["pages"] = regenerate_pages(conn)
     done["revisions"] = strip_revision_tokens(conn)
@@ -227,8 +315,9 @@ def upgrade(conn) -> dict[str, int]:
 
 
 def downgrade(conn) -> int:
-    """Back to ``tnsec:v1`` for the code before ADR 0013 (it reads nothing else)."""
+    """Back to ``tnsec:v1`` rows and ``tnsec:rc1`` template seals for the code before ADR
+    0013 (it reads nothing else)."""
     if not key_available():
-        logger.warning("TN_SECRETS_KEY is not set: tnsec:rc1 range passwords cannot be resealed for the old code")
+        logger.warning("TN_SECRETS_KEY is not set: range passwords cannot be resealed for the old code")
         return 0
-    return reseal(conn, to="v1")
+    return reseal(conn, to="v1") + reseal_templates(conn, to="rc1")

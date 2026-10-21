@@ -119,6 +119,26 @@ def _merge_ips(output: dict, settled: dict) -> list[str]:
     return failed
 
 
+def _merge_template_logins(output: dict, changes: dict) -> list[str]:
+    """The template-login checks a reconcile made (a Security Onion node, once its setup
+    changed ``soadmin``; ADR 0013 §3), as the build would record them: an ``accepted`` one is
+    Not safe, and under RANGE_TEMPLATE_LOGIN_CHECK=enforce its VM is not ready (it fails the
+    range, as a build would have). Returns those not-ready reasons."""
+    from .provisioners import vsphere_credcheck as credcheck
+
+    warnings = list(output.get("warnings") or [])
+    failed: list[str] = []
+    for vm in output.get("vms") or []:
+        result = (changes.get(vm.get("name")) or {}).get("template_login")
+        if not result:
+            continue
+        if reason := credcheck.report(str(vm.get("name")), result, warnings):
+            failed.append(f"VM {vm.get('name')}: {reason}")
+            output["not_ready"] = sorted(set(output.get("not_ready") or []) | {vm.get("name")})
+    output["warnings"] = warnings + failed
+    return failed
+
+
 def _domain_passwords(declared: dict, products: list[dict]) -> dict:
     """DC node id -> its Administrator password: the range's own account (declared, or the
     per-range one the credential service generates for a range with product role images).
@@ -222,9 +242,6 @@ def _merge(output: dict, changes: dict) -> tuple[dict, list[dict]]:
                                                         and f"admin account {login} (also the build login)" in w)]
             if change.get("template_login"):  # ADR 0013 §3: checked once the login changed
                 vm["template_login"] = change["template_login"]
-                if change["template_login"].get("status") == "accepted":
-                    warnings.append(f"VM {vm.get('name')}: Not safe: the golden template's password still logs in "
-                                    f"as {change['template_login'].get('username')}")
             vm["securityonion"] = {**(vm.get("securityonion") or {}), **change["securityonion"]}
             vm["securityonion"].pop("reconcile", None)
             if change.get("accounts_applied"):
@@ -305,7 +322,7 @@ def _record(range_id: str, output: dict, changes: dict, ip_settled: dict) -> Non
         row = db_ops.range_output_and_backend(db, range_id)
         current = json.loads(row[0]) if row and row[0] else output
         merged, applied = _merge(current, changes)
-        not_ready = _merge_ips(merged, ip_settled)
+        not_ready = _merge_ips(merged, ip_settled) + _merge_template_logins(merged, changes)
         if not db_ops.set_range_output(db, range_id, json.dumps(merged), only_states=LIVE_STATES):
             logger.info("[reconcile] range %s left the live states; nothing recorded", range_id)
             return

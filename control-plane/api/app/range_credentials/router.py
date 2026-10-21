@@ -61,6 +61,9 @@ class RangeCredentialOut(BaseModel):
                               "reconcile task. not_set: not set by TrueNorth or not built yet")
     rotated_at: datetime | None = Field(None, description="When its password was last replaced (rebuild, reset, "
                                                           "admin rotation)")
+    pending_change: bool = Field(False, description="A change of its password is being applied in the guests: "
+                                                    "a reveal shows the password they still have, and it cannot "
+                                                    "be rotated again until the change settles")
     notes: str = ""
 
 
@@ -94,7 +97,8 @@ def account_out(r: RangeCredential, pending: set[str]) -> RangeCredentialOut:
     return RangeCredentialOut(
         id=r.id, machine=r.machine, username=r.username, role=r.role, source=r.source or "declared",
         student_visible=r.student_visible, generated=r.generated, scenario=bool(r.scenario), applied=r.applied,
-        setup_status=service.setup_status(r, pending), rotated_at=r.rotated_at, notes=r.notes or "")
+        setup_status=service.setup_status(r, pending), rotated_at=r.rotated_at, pending_change=r.pending,
+        notes=r.notes or "")
 
 
 @router.get(

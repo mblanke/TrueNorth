@@ -5644,6 +5644,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/range-credentials/template-issues": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Template Issues
+         * @description Templates whose typed-in passwords are not on scenario accounts (ADR 0013 §3): fix each
+         *     by marking the account ``scenario: true`` (its weak password is the lesson) or using
+         *     ``generate: true``. **Permission: template:update**; an admin also sees global templates.
+         */
+        get: operations["list_template_issues_range_credentials_template_issues_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/ranges": {
         parameters: {
             query?: never;
@@ -7356,7 +7378,8 @@ export interface paths {
          * Get Template
          * @description Retrieve a single template.  **Permission: template:read**
          *
-         *     Typed-in ``accounts[].password`` values are stored sealed (``tnsec:v1:...``). Holders of
+         *     Typed-in ``accounts[].password`` values are stored sealed (``tnsec:rt1:...``, bound to
+         *     the template's tenant). Holders of
          *     range:credentials_read in the template's own tenant read them so (an edit sends them back
          *     unchanged); anyone else reads ``********`` (ADR 0012 §13), and an unparseable document
          *     not at all.
@@ -13398,6 +13421,12 @@ export interface components {
              */
             notes?: string;
             /**
+             * Pending Change
+             * @description A change of its password is being applied in the guests: a reveal shows the password they still have, and it cannot be rotated again until the change settles
+             * @default false
+             */
+            pending_change?: boolean;
+            /**
              * Role
              * @description admin | user
              */
@@ -14783,6 +14812,33 @@ export interface components {
             version?: string;
             /** Yaml */
             yaml: string;
+        };
+        /** TemplateIssueOut */
+        TemplateIssueOut: {
+            /** Name */
+            name: string;
+            /**
+             * Problems
+             * @description Which accounts break the rule, and why (no passwords)
+             */
+            problems: string[];
+            /**
+             * Template Id
+             * Format: uuid
+             */
+            template_id: string;
+            /**
+             * Tenant Id
+             * @description None: a global template
+             */
+            tenant_id?: string | null;
+            /**
+             * Upcoming Bookings
+             * @description Scheduled bookings of ranges built from it that would fail
+             */
+            upcoming_bookings: number;
+            /** Version */
+            version: string;
         };
         /** TemplateListOut */
         TemplateListOut: {
@@ -26193,6 +26249,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_template_issues_range_credentials_template_issues_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TemplateIssueOut"][];
                 };
             };
         };

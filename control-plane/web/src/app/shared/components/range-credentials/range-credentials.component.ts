@@ -81,6 +81,11 @@ const MASK = '••••••••••';
                           Scenario
                         </span>
                       }
+                      @if (staff() && a.pending_change) {
+                        <span class="badge info" matTooltip="A new password is being set on the machine. Until it is, a reveal shows the password the machine still has.">
+                          Change pending
+                        </span>
+                      }
                       @if (staff() && a.setup_status === 'being_set_up') {
                         <span class="badge setup" matTooltip="This machine's deploy-time setup (a product role image or Security Onion) is still running. TrueNorth verifies and records the account once it finishes; Students see it only then.">
                           Being set up
@@ -110,7 +115,7 @@ const MASK = '••••••••••';
                               [attr.aria-label]="'Copy password of ' + a.username + ' on ' + a.machine">
                         <mat-icon>content_copy</mat-icon>
                       </button>
-                      @if (canRotate() && a.generated && !a.scenario) {
+                      @if (canRotate() && a.generated && !a.scenario && !a.pending_change) {
                         <button mat-icon-button (click)="rotate(a)" [disabled]="busy() === a.id" matTooltip="Give it a new password"
                                 [attr.aria-label]="'Rotate password of ' + a.username + ' on ' + a.machine">
                           <mat-icon>autorenew</mat-icon>

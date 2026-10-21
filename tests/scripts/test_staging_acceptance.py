@@ -807,7 +807,7 @@ def test_the_credentials_template_declares_what_the_check_expects():
     import yaml
     from app.range_credentials import accounts
 
-    specs, errors = accounts.parse_yaml(acc.CREDENTIALS_TEMPLATE_YAML)
+    specs, errors = accounts.parse_yaml(acc.CREDENTIALS_TEMPLATE_YAML, tenant_id=None)
     assert errors == []
     assert {s.username: ("generated" if s.generate else "declared literal") for s in specs} == acc.CREDENTIALS_ACCOUNTS
     assert yaml.safe_load(acc.CREDENTIALS_TEMPLATE_YAML)["accounts"][0]["password"] == acc.CREDENTIALS_LITERAL

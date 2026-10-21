@@ -18,6 +18,7 @@ import { RangeSummary, TemplateSummary } from '@core/models';
 import { EmptyStateComponent } from '../../shared/components/empty-state/empty-state.component';
 import { RangeNotesComponent } from '../../shared/components/range-notes/range-notes.component';
 import { CountUpDirective } from '../../shared/motion';
+import { TemplateIssuesBannerComponent } from '../../shared/components/template-issues-banner/template-issues-banner.component';
 
 @Component({
   selector: 'tn-ranges',
@@ -25,10 +26,12 @@ import { CountUpDirective } from '../../shared/motion';
     CommonModule, MatCardModule, MatTableModule, MatButtonModule,
     MatIconModule, MatChipsModule, MatDialogModule, MatFormFieldModule,
     MatInputModule, MatSelectModule, MatTooltipModule, FormsModule, RouterLink,
-    EmptyStateComponent, CountUpDirective, RangeNotesComponent,
+    EmptyStateComponent, CountUpDirective, RangeNotesComponent, TemplateIssuesBannerComponent,
   ],
   template: `
     <div class="page-container">
+      <!-- ADR 0013 §3: templates whose ranges cannot be provisioned until fixed (template:update only). -->
+      <tn-template-issues-banner />
       <div class="page-header">
         <div class="header-left">
           <mat-icon class="page-icon">cloud</mat-icon>
