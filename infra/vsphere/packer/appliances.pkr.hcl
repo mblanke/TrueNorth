@@ -1,8 +1,11 @@
 # TrueNorth Range — appliance golden templates (vsphere-iso).
 # These are KEYSTROKE builds: no unattended answer-file path exists for the installers,
 # so boot_command drives the UI blind. They are the least reliable builds in the set and
-# WILL need on-site timing tuning. All three use communicator="none"; after boot_command
-# Packer powers the VM off through vCenter and converts it to a template. Read the README
+# WILL need on-site timing tuning. All three use communicator="none", and with no
+# communicator Packer does NOT power the VM off: shutdown_command is unused and Packer only
+# waits shutdown_timeout for the GUEST to power itself off, then converts it to a template.
+# So each boot_command must end by powering the guest off (pfSense: Shell -> poweroff), or
+# the build fails "timeout while waiting for machine to shutdown". Read the README
 # "Appliance builds" section before running, and expect to finish pfSense/SO by hand the
 # first time, then capture the VM as the template.
 #
@@ -58,10 +61,17 @@ source "vsphere-iso" "pfsense" {
     "<enter><wait5>",           # Proceed
     "<enter><wait5>",           # stripe - no redundancy
     "<spacebar><enter><wait5>", # select disk
-    "<left><enter><wait180>",   # confirm -> install
-    "<enter><wait30>"           # reboot
+    "<left><enter><wait240>",   # confirm -> install (ZFS extract; the next dialog just waits)
+    # Final "Complete" dialog [Reboot] [Shell], focus on Reboot. Do NOT reboot: nothing
+    # would ever power the VM off (2026-10-21: 15m shutdown timeout after "Reboot"). <tab>
+    # moves to Shell (and, if a "Manual Configuration" Yes/No-default-No dialog comes first,
+    # wraps to Yes = a chroot shell in the new system); either way a root shell, in which
+    # poweroff halts the guest and Packer templates it.
+    "<tab><enter><wait10>",
+    "poweroff<enter>"
   ]
-  shutdown_timeout = "15m"
+  # The guest powers off within seconds of the last keystroke; 5m is margin, not install time.
+  shutdown_timeout = "5m"
 
   convert_to_template = true
   dynamic "content_library_destination" {
