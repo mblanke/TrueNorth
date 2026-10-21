@@ -5,8 +5,8 @@
 # variants/<name>.pkrvars.hcl, that sets the variant_* variables (variables.pkr.hcl).
 # Two generic sources consume them:
 #
-#   variant-windows  clone a sysprepped Windows base, get WinRM back via vSphere guest
-#                    customization, choco install, run scripts, sysprep again
+#   variant-windows  clone a Windows base, get WinRM back via vSphere guest
+#                    customization, choco install, run scripts, scrub and shut down
 #   variant-linux    clone a Linux base, SSH in as the build user, set the build apt/dnf
 #                    proxy (apt_proxy), apt/dnf install, run scripts, cleanup.sh
 #
@@ -17,8 +17,8 @@
 #     -only=variants.vsphere-clone.variant-windows .
 #
 # ---- How a Windows clone gets WinRM back -------------------------------------------
-# The Windows bases end with sysprep /generalize /oobe /shutdown, which disables the
-# built-in Administrator (client SKUs) and leaves no password Packer knows. A plain clone
+# The Windows bases are not generalized by Packer (sysprep.ps1 scrubs and shuts down;
+# vSphere customization runs Sysprep on clone), and customization resets the password. A plain clone
 # therefore boots to a logon screen with nothing listening that Packer can use. That is
 # why precomp-host / detonation-host (derived.pkr.hcl) are clone-and-template only.
 #
@@ -107,7 +107,8 @@ source "vsphere-clone" "variant-windows" {
   winrm_use_ssl  = false
   winrm_insecure = true
 
-  # Generalize again so the variant is a clean template. sysprep.ps1 shuts the VM down.
+  # sysprep.ps1 scrubs build secrets and shuts the VM down (no generalize; vSphere
+  # customization runs Sysprep on each clone).
   shutdown_command = "powershell -NoProfile -ExecutionPolicy Bypass -File C:\\Windows\\Temp\\sysprep.ps1"
   shutdown_timeout = "1h"
 
@@ -169,11 +170,6 @@ build {
   sources = ["source.vsphere-clone.variant-windows", "source.vsphere-clone.variant-linux"]
 
   # ---- Windows ----
-  provisioner "file" {
-    only        = ["vsphere-clone.variant-windows"]
-    source      = "${path.root}/files/windows/sysprep-unattend.xml"
-    destination = "C:/Windows/Temp/sysprep-unattend.xml"
-  }
   provisioner "file" {
     only        = ["vsphere-clone.variant-windows"]
     source      = "${path.root}/files/windows/sysprep.ps1"

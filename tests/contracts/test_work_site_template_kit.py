@@ -477,3 +477,18 @@ def test_work_site_vault_is_git_ignored():
     if r.returncode == 128:
         pytest.skip("not a git checkout")
     assert r.returncode == 0
+
+
+def test_windows_test_clone_uses_the_workers_sysprep_spec():
+    """govc vm.customize defaults to -type Linux, which a Windows guest cannot apply. The
+    test clone mirrors the worker's windows_customization() (vsphere_infra.py)."""
+    text = (LAB / "test-clone.sh").read_text()
+    win = text[text.index("      win*)"):text.index("      *)    act govc vm.customize")]
+    call = win[win.index('govc vm.customize -vm "$vm"'):]
+    for flag in ("-type Windows", "-username TrueNorth", "-org TrueNorth", "-tz 85", '-name "$want_name"',
+                 '-ip "$ip"', "-netmask 255.255.255.0", "-pwd "):
+        assert flag in call, flag
+    assert "-type Windows" in win[: win.index('govc vm.customize -vm "$vm"')]  # the echo line too
+    worker = (ROOT / "control-plane/worker/worker/provisioners/vsphere_infra.py").read_text()
+    spec = worker[worker.index("def windows_customization"):]
+    assert "timeZone=85" in spec and 'fullName="TrueNorth"' in spec and 'orgName="TrueNorth"' in spec

@@ -34,7 +34,7 @@ http/                        Linux seeds, all templatefiles (*.pkrtpl.hcl) rende
   {kali,debian,parrot}/preseed.cfg.pkrtpl.hcl   preseed (http_content)
   pfsense/config.xml             pfSense bootstrap (vmx0/vmx1); applied at deploy
 files/windows/               autounattend.pkrtpl.hcl, choco-bootstrap.ps1, setup.ps1, sysprep.ps1,
-                             sysprep-unattend.xml, variant-packages.ps1, role-image.ps1
+                             variant-packages.ps1, role-image.ps1
 files/linux/                 99-vmware.cfg, apt-proxy.sh, cleanup.sh, roles/<name>.sh,
                              variant-packages.sh
 build.sh                     build driver (order, logging, register-back)
@@ -102,7 +102,7 @@ The variables you must set per site:
 | `vmtools_iso_path` | VMware Tools `windows.iso` (ESXi default path works) |
 | `build_network` | `dPG-TN-BUILD` (DHCP + reachability to the Packer host; no WAN egress, packages come from the depot) |
 | `content_library`, `publish_to_library` | `TrueNorth-Templates`, `true` |
-| `windows_admin_password` | build-time Administrator password (reset by sysprep) |
+| `windows_admin_password` | build-time Administrator password (reset by vSphere customization on clone) |
 | `ssh_username` / `ssh_password` / `ssh_password_hash` | the one generic Linux build login (ADR 0012 decision 5), created by every Linux seed. The hash is `openssl passwd -6` of the password (`scripts/lab/pkrvars-work.py` writes it); defaults `ubuntu`/`ubuntu` |
 | `win10_image_name` + `gvlk_win10`, `srv2019_image_name` + `gvlk_srv2019` | edition select for Visual Studio media (defaults: Windows 10 Enterprise / Server 2019 Standard Desktop Experience and their public GVLKs). Evaluation ISOs: `win10_eval = true` / `srv2019_eval = true` |
 | `win11_vtpm` | `false` unless you have a vCenter key provider |
@@ -239,7 +239,7 @@ All Linux images (bases, derived, variants) log in with the one generic build lo
 `roles.pkr.hcl` builds the images `control-plane/api/app/windows_roles.py` names for its
 "image" roles. Each clones `srv2022` (`base_srv2022_template`), gets WinRM back with the
 same guest customization the Windows variants use, attaches its media as extra CD-ROMs,
-and runs `files/windows/role-image.ps1` twice with a reboot in between, then sysprep.
+and runs `files/windows/role-image.ps1` twice with a reboot in between, then `sysprep.ps1` (scrub and shut down).
 `depot_url` is required. Files that are not on the product media come from the depot's raw
 `installers` repository, `<depot_url>/installers/roles/<image>/`. Upload them once as the
 `tn-prefetch` user, for example
@@ -280,10 +280,15 @@ packer build -force -var-file=variants/win11-analyst.pkrvars.hcl \
   -only=variants.vsphere-clone.variant-windows .
 ```
 
-**How a Windows variant gets WinRM back.** Every Windows base ends in
-`sysprep /generalize /oobe /shutdown`. That disables the built-in Administrator on client
-SKUs and leaves no password Packer knows, so a plain clone has nothing Packer can log in
-to (this is why precomp-host/detonation-host are clone-only). `variant-windows` attaches a
+**No generalize in Packer (2026-10-21).** Windows bases, roles and variants are NOT
+generalized by Packer: `sysprep.ps1` scrubs build secrets and logs, then shuts down
+(`shutdown /s /t 5 /f` from a SYSTEM scheduled task). vSphere guest customization runs
+Sysprep itself on every clone (the worker's `windows_customization()`, and
+`scripts/lab/test-clone.sh` with `-type Windows`); a template Packer had already
+generalized could not take that spec (win11-24h2).
+
+**How a Windows variant gets WinRM back.** A plain clone of a base has no WinRM listener
+Packer can rely on after customization, so precomp-host/detonation-host stay clone-only. `variant-windows` attaches a
 vSphere **guest-customization spec** to the clone (`customize { windows_options { … } }`):
 - `admin_password` = `windows_admin_password`, with `auto_logon` once. Naming
   Administrator for auto-logon re-enables the account.
@@ -296,8 +301,8 @@ the same Sysprep customization the deploy provisioner
 (`control-plane/worker/worker/provisioners/vsphere_api.py`) applies to every Windows
 clone of these templates, so any base that deploys can also be a variant base. It needs
 VMware Tools in the base (setup.ps1 installs it). After the packages and scripts, a
-`windows-restart` clears pending reboots. `shutdown_command` then runs `sysprep.ps1`, so
-the variant is generalized again and deploys exactly like a base. Two alternatives were
+`windows-restart` clears pending reboots. `shutdown_command` then runs `sysprep.ps1` (scrub and
+shut down, no generalize), so the variant deploys exactly like a base. Two alternatives were
 rejected:
 - A guestinfo-gated first-boot hook needs every Windows base rebuilt and leaves the
   password in the VMX extraConfig.

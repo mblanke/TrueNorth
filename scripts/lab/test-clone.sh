@@ -79,9 +79,12 @@ prepare() {
   if [[ -n "$nic" ]]; then act govc vm.network.change -vm "$vm" -net "$NET" "$nic" || return 1; fi
   if [[ "$MODE" == "customize" ]]; then
     case "$(collect "$vm" config.guestId)" in
-      win*) # A throwaway password, set by Sysprep like a range password; never printed.
-            echo "  + govc vm.customize -vm $vm -name $want_name -ip $ip -netmask 255.255.255.0 -pwd <random>"
-            govc vm.customize -vm "$vm" -name "$want_name" -ip "$ip" -netmask 255.255.255.0 \
+      win*) # Windows Sysprep spec, as the worker's windows_customization() (vsphere_infra.py):
+            # govc defaults to -type Linux, which a Windows guest cannot apply. A throwaway
+            # password, set by Sysprep like a range password; never printed.
+            echo "  + govc vm.customize -vm $vm -type Windows -name $want_name -username TrueNorth -org TrueNorth -tz 85 -ip $ip -netmask 255.255.255.0 -pwd <random>"
+            govc vm.customize -vm "$vm" -type Windows -name "$want_name" -username TrueNorth -org TrueNorth -tz 85 \
+              -ip "$ip" -netmask 255.255.255.0 \
               -pwd "Tc!$(od -An -N9 -tx1 /dev/urandom | tr -d ' \n')" || return 1 ;;
       *)    act govc vm.customize -vm "$vm" -name "$want_name" -ip "$ip" -netmask 255.255.255.0 || return 1 ;;
     esac

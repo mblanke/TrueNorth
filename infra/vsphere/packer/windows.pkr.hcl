@@ -1,7 +1,7 @@
 # TrueNorth Range — Windows golden templates (vsphere-iso).
 # Sources: srv2022, srv2025, srv2019, srv2016, win10-22h2, win10-ltsc, win11-24h2.
 # All sources share the Autounattend templatefile and the setup.ps1 / sysprep.ps1
-# provisioners. Build one with:  packer build -only='windows.vsphere-iso.<id>' .
+# provisioners. No source generalizes: vSphere guest customization runs Sysprep on clone. Build one with:  packer build -only='windows.vsphere-iso.<id>' .
 # (or ./build.sh <id>). A bare 'vsphere-iso.<id>' matches nothing: the build is named.
 #
 # ISOs are pre-staged on a host-local datastore, so every source pins host/datastore to
@@ -10,7 +10,7 @@
 # Highest build risk: win11-24h2 and srv2025 use the new Windows Setup engine whose
 # unattended UEFI partitioning is fragile (see README "Windows 11 / Server 2025"). The
 # proven 4-partition layout in autounattend.pkrtpl.hcl is the best-effort automated path;
-# the manual-install + sysprep fallback is documented in the README.
+# the manual-install fallback is documented in the README.
 
 # ---- Server 2022 (classic engine; most reliable Windows build) ----------------------
 source "vsphere-iso" "srv2022" {
@@ -62,7 +62,8 @@ source "vsphere-iso" "srv2022" {
   winrm_username = "Administrator"
   winrm_password = var.windows_admin_password
   winrm_timeout  = "3h"
-  # sysprep generalizes and powers the VM off: it is the shutdown step, not a provisioner (as in
+  # sysprep.ps1 scrubs build secrets and powers the VM off; it does NOT generalize (vSphere
+  # customization runs Sysprep on each clone). It is the shutdown step, not a provisioner (as in
   # roles/variants). Run as a provisioner it cut WinRM mid-step and failed the build.
   shutdown_command = "powershell -NoProfile -ExecutionPolicy Bypass -File C:\\Windows\\Temp\\sysprep.ps1"
   shutdown_timeout = "1h"
@@ -134,7 +135,8 @@ source "vsphere-iso" "srv2025" {
   winrm_username = "Administrator"
   winrm_password = var.windows_admin_password
   winrm_timeout  = "3h"
-  # sysprep generalizes and powers the VM off: it is the shutdown step, not a provisioner (as in
+  # sysprep.ps1 scrubs build secrets and powers the VM off; it does NOT generalize (vSphere
+  # customization runs Sysprep on each clone). It is the shutdown step, not a provisioner (as in
   # roles/variants). Run as a provisioner it cut WinRM mid-step and failed the build.
   shutdown_command = "powershell -NoProfile -ExecutionPolicy Bypass -File C:\\Windows\\Temp\\sysprep.ps1"
   shutdown_timeout = "1h"
@@ -203,7 +205,8 @@ source "vsphere-iso" "srv2019" {
   winrm_username = "Administrator"
   winrm_password = var.windows_admin_password
   winrm_timeout  = "3h"
-  # sysprep generalizes and powers the VM off: it is the shutdown step, not a provisioner (as in
+  # sysprep.ps1 scrubs build secrets and powers the VM off; it does NOT generalize (vSphere
+  # customization runs Sysprep on each clone). It is the shutdown step, not a provisioner (as in
   # roles/variants). Run as a provisioner it cut WinRM mid-step and failed the build.
   shutdown_command = "powershell -NoProfile -ExecutionPolicy Bypass -File C:\\Windows\\Temp\\sysprep.ps1"
   shutdown_timeout = "1h"
@@ -272,7 +275,8 @@ source "vsphere-iso" "srv2016" {
   winrm_username = "Administrator"
   winrm_password = var.windows_admin_password
   winrm_timeout  = "3h"
-  # sysprep generalizes and powers the VM off: it is the shutdown step, not a provisioner (as in
+  # sysprep.ps1 scrubs build secrets and powers the VM off; it does NOT generalize (vSphere
+  # customization runs Sysprep on each clone). It is the shutdown step, not a provisioner (as in
   # roles/variants). Run as a provisioner it cut WinRM mid-step and failed the build.
   shutdown_command = "powershell -NoProfile -ExecutionPolicy Bypass -File C:\\Windows\\Temp\\sysprep.ps1"
   shutdown_timeout = "1h"
@@ -341,7 +345,8 @@ source "vsphere-iso" "win10-22h2" {
   winrm_username = "Administrator"
   winrm_password = var.windows_admin_password
   winrm_timeout  = "3h"
-  # sysprep generalizes and powers the VM off: it is the shutdown step, not a provisioner (as in
+  # sysprep.ps1 scrubs build secrets and powers the VM off; it does NOT generalize (vSphere
+  # customization runs Sysprep on each clone). It is the shutdown step, not a provisioner (as in
   # roles/variants). Run as a provisioner it cut WinRM mid-step and failed the build.
   shutdown_command = "powershell -NoProfile -ExecutionPolicy Bypass -File C:\\Windows\\Temp\\sysprep.ps1"
   shutdown_timeout = "1h"
@@ -413,7 +418,8 @@ source "vsphere-iso" "win10-ltsc" {
   winrm_username = "Administrator"
   winrm_password = var.windows_admin_password
   winrm_timeout  = "3h"
-  # sysprep generalizes and powers the VM off: it is the shutdown step, not a provisioner (as in
+  # sysprep.ps1 scrubs build secrets and powers the VM off; it does NOT generalize (vSphere
+  # customization runs Sysprep on each clone). It is the shutdown step, not a provisioner (as in
   # roles/variants). Run as a provisioner it cut WinRM mid-step and failed the build.
   shutdown_command = "powershell -NoProfile -ExecutionPolicy Bypass -File C:\\Windows\\Temp\\sysprep.ps1"
   shutdown_timeout = "1h"
@@ -485,7 +491,8 @@ source "vsphere-iso" "win11-24h2" {
   winrm_username = "Administrator"
   winrm_password = var.windows_admin_password
   winrm_timeout  = "3h"
-  # sysprep generalizes and powers the VM off: it is the shutdown step, not a provisioner (as in
+  # sysprep.ps1 scrubs build secrets and powers the VM off; it does NOT generalize (vSphere
+  # customization runs Sysprep on each clone). It is the shutdown step, not a provisioner (as in
   # roles/variants). Run as a provisioner it cut WinRM mid-step and failed the build.
   shutdown_command = "powershell -NoProfile -ExecutionPolicy Bypass -File C:\\Windows\\Temp\\sysprep.ps1"
   shutdown_timeout = "1h"
@@ -520,11 +527,6 @@ build {
     "source.vsphere-iso.win11-24h2",
   ]
 
-  provisioner "file" {
-    source      = "${path.root}/files/windows/sysprep-unattend.xml"
-    destination = "C:/Windows/Temp/sysprep-unattend.xml"
-  }
-
   # Chocolatey from the depot feed's own .nupkg (no install.ps1 on Nexus), then the baseline.
   provisioner "powershell" {
     environment_vars = ["DEPOT_URL=${var.depot_url}", "CHOCOLATEY_VERSION=${var.chocolatey_version}"]
@@ -534,8 +536,8 @@ build {
     ]
   }
 
-  # Final: generalize and shut down. Keep this last.
-  # Staged here; shutdown_command runs it (scrubs build secrets, then sysprep /shutdown).
+  # Final: scrub and shut down (no generalize). Keep this last.
+  # Staged here; shutdown_command runs it (scrubs build secrets, then shutdown /s).
   provisioner "file" {
     source      = "${path.root}/files/windows/sysprep.ps1"
     destination = "C:/Windows/Temp/sysprep.ps1"

@@ -1,7 +1,8 @@
 <#
-  TrueNorth Range — final Windows provisioner: generalize and shut down.
-  Uses an unattend (sysprep-unattend.xml, no product key) so OOBE is skipped on first
-  boot of a clone and vSphere guest customization / range deploy can take over.
+  TrueNorth Range — final Windows step: scrub build secrets and shut down. No generalize.
+  The template stays specialized on purpose: vSphere guest customization (the worker's
+  windows_customization(), scripts/lab/test-clone.sh) runs Sysprep itself on every clone.
+  A template generalized here as well cannot be customized (2026-10-21, win11-24h2).
 #>
 $ErrorActionPreference = 'Continue'
 
@@ -10,7 +11,7 @@ $ErrorActionPreference = 'Continue'
 # DEPOT_USER, DEPOT_PASSWORD, ...) to C:\Windows\Temp\packer-ps-env-vars-*.ps1 and
 # dot-sources it; PowerShell logs script blocks (event 4104, even unprompted for blocks it
 # finds "suspicious") and may keep transcripts and PSReadLine history. All of it goes
-# before generalizing; if an env-vars file survives, the build fails here.
+# before shutdown; if an env-vars file survives, the build fails here.
 Get-ChildItem -Path 'C:\Windows\Temp' -Filter 'packer-ps-env-vars-*' -Force -ErrorAction SilentlyContinue |
   Remove-Item -Force -ErrorAction SilentlyContinue
 foreach ($log in 'Microsoft-Windows-PowerShell/Operational', 'Windows PowerShell',
@@ -28,26 +29,18 @@ Get-ChildItem -Path 'C:\Users\*\AppData\Roaming\Microsoft\Windows\PowerShell\PSR
   Remove-Item -Force -ErrorAction SilentlyContinue
 $left = @(Get-ChildItem -Path 'C:\Windows\Temp' -Filter 'packer-ps-env-vars-*' -Force -ErrorAction SilentlyContinue)
 if ($left.Count -gt 0) {
-  Write-Error "sysprep: $($left.Count) Packer env-vars file(s) still in C:\Windows\Temp (they can hold DEPOT_PASSWORD); not generalizing."
+  Write-Error "sysprep: $($left.Count) Packer env-vars file(s) still in C:\Windows\Temp (they can hold DEPOT_PASSWORD); not shutting down."
   exit 1
 }
 
 # This script is Packer's shutdown_command: it must return at once and let Packer wait for the
-# power-off. Run synchronously, sysprep powered the VM off under the open WinRM call and Packer
-# failed the build ("error sending shutdown command", 2026-10-20).
-$unattend = 'C:\Windows\Temp\sysprep-unattend.xml'
-$sysprepArgs = @('/oobe', '/generalize', '/shutdown', '/quiet')
-if (-not (Test-Path $unattend)) {
-  Write-Warning "sysprep-unattend.xml not staged at $unattend; running sysprep without it."
-} else {
-  $sysprepArgs += "/unattend:$unattend"
-}
+# power-off. A shutdown run synchronously powers the VM off under the open WinRM call and
+# Packer fails the build ("error sending shutdown command", 2026-10-20).
 # Not Start-Process: WinRM runs each command in a job object and kills every process it started
-# when the command returns, so a detached sysprep died during validation (win11, 2026-10-20).
-# A one-off SYSTEM scheduled task runs outside that job.
-$task = 'TN-Sysprep-Once'
-$action = New-ScheduledTaskAction -Execute "$env:SystemRoot\System32\Sysprep\sysprep.exe" -Argument ($sysprepArgs -join ' ')
+# when the command returns (win11, 2026-10-20). A one-off SYSTEM scheduled task runs outside it.
+$task = 'TN-Shutdown-Once'
+$action = New-ScheduledTaskAction -Execute "$env:SystemRoot\System32\shutdown.exe" -Argument '/s /t 5 /f'
 Register-ScheduledTask -TaskName $task -Action $action -User 'SYSTEM' -RunLevel Highest -Force | Out-Null
 Start-ScheduledTask -TaskName $task
-Write-Host "sysprep started (scheduled task $task); it shuts the VM down when generalized."
+Write-Host "shutdown started (scheduled task $task); not generalized, vSphere customization runs Sysprep on clone."
 exit 0
