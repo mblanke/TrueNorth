@@ -693,9 +693,14 @@ def _guard_expr(expr: str, **ctx):
 ])
 def test_the_range_guard_checks_the_new_and_the_old_range_folder(folders, vms, refuse_lookup, refuse_vms):
     def range_folders(env=None, **inv):
-        worker = _guard_expr(DEFAULTS["tn_depot_worker_range_folder"].strip("{} "), _env=dict(env or {}), **inv)
-        return _guard_expr(DEFAULTS["tn_depot_range_vm_folders"].strip("{} "), _env=dict(env or {}),
-                           tn_depot_worker_range_folder=worker, **inv)
+        """Resolve the role defaults in dependency order, as Ansible does lazily."""
+        def ev(name, **more):
+            return _guard_expr(DEFAULTS[name].strip().strip("{}").strip(), _env=dict(env or {}), **inv, **more)
+
+        worker = ev("tn_depot_worker_range_folder")
+        return ev("tn_depot_range_vm_folders", tn_depot_worker_range_folder=worker,
+                  tn_depot_range_folder_override=ev("tn_depot_range_folder_override"),
+                  tn_depot_legacy_range_folders=ev("tn_depot_legacy_range_folders", tn_depot_worker_range_folder=worker))
 
     # The worker's folder (the work-site value, the installer's) plus the earlier root: two
     # folders that differ only in case are both checked.

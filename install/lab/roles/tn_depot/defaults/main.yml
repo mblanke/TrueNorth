@@ -31,8 +31,12 @@ tn_depot_force_online: false
 # every one that exists and refuses when none does. TN_RANGE_FOLDER names a single folder
 # instead, which must then exist. (Not `unique`: it ignores case, and TrueNorth/Ranges and
 # truenorth/ranges are two folders.)
-tn_depot_range_vm_folders: "{{ [lookup('env', 'TN_RANGE_FOLDER')] if lookup('env', 'TN_RANGE_FOLDER') else ([tn_depot_worker_range_folder] + (['truenorth/ranges'] | reject('equalto', tn_depot_worker_range_folder) | list)) }}"
+tn_depot_range_vm_folders: >-
+  {{ [tn_depot_range_folder_override] if tn_depot_range_folder_override
+     else [tn_depot_worker_range_folder] + tn_depot_legacy_range_folders }}
+tn_depot_range_folder_override: "{{ lookup('env', 'TN_RANGE_FOLDER') }}"
 tn_depot_worker_range_folder: "{{ lookup('env', 'VSPHERE_RANGE_FOLDER') or (tn_vsphere_range_folder | default('TrueNorth/Ranges')) }}"
+tn_depot_legacy_range_folders: "{{ ['truenorth/ranges'] | reject('equalto', tn_depot_worker_range_folder) | list }}"
 # The vCenter datacenter the range folder lives in; set per inventory. range_guard.yml
 # confirms it exists and exports it as GOVC_DATACENTER (never taken from the environment).
 tn_depot_vcenter_datacenter: DC-Lab
