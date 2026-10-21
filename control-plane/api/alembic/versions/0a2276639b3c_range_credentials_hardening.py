@@ -1,7 +1,7 @@
 """range credentials hardening: bound seals, implicit staff logins, rotation, no wiki secrets (ADR 0013 §3)
 
 Revision ID: 0a2276639b3c
-Revises: d9e0f1a2b3c4
+Revises: e0f1a2b3c4d5
 Create Date: 2026-10-21 12:00:00.000000
 
 Schema (additive): ``range_credentials`` gains ``source`` (declared | implicit),
@@ -33,7 +33,7 @@ from alembic import op
 from app.models import GUID
 
 revision: str = "0a2276639b3c"
-down_revision: str | None = "d9e0f1a2b3c4"
+down_revision: str | None = "e0f1a2b3c4d5"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
