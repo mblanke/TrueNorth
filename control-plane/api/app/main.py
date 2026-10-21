@@ -97,9 +97,11 @@ async def lifespan(app: FastAPI):
     warn_if_unconfigured()  # calendar-feed URLs need a fixed public origin in production
     # Templates whose typed-in passwords ADR 0013 no longer accepts: their ranges (and the
     # bookings that build them) cannot be provisioned until fixed. Said at every start.
+    # In line, before requests are served: from a thread it shared the database (SQLite in
+    # tests and the journeys lane) with the first requests, which crashed the driver.
     from .range_credentials.service import warn_template_issues_on_start
 
-    asyncio.get_running_loop().run_in_executor(None, warn_template_issues_on_start)
+    warn_template_issues_on_start()
     # Course publications a previous process left mid-way resume in the background
     # (app/course_publishing); a Moodle that is down only delays them.
     if os.getenv("COURSE_PUBLISH_RESUME", "true").lower() == "true":

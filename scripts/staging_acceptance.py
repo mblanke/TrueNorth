@@ -1980,7 +1980,7 @@ def ranges_credentials(ctx: Ctx) -> str:
 
     stored = ctx.sql("SELECT yaml FROM templates WHERE id = :id", id=uuid.UUID(rng["template_id"]))
     expect(stored, "the template row is not in the database")
-    expect(CREDENTIALS_LITERAL not in stored[0][0] and "tnsec:rc1:" in stored[0][0],
+    expect(CREDENTIALS_LITERAL not in stored[0][0] and "tnsec:rt1:" in stored[0][0],
            "templates.yaml holds the typed-in password as typed (not sealed)")
     rows = ctx.sql("SELECT password FROM range_credentials WHERE range_id = :id", id=uuid.UUID(rid))
     # The declared accounts, and the implicit staff login(s) of the machine (ADR 0013 §3).

@@ -759,7 +759,7 @@ STAFF_READ = (200, {"range_id": RID, "scope": "all", "accounts": [
 REVEALED = {"c-an": acc.CREDENTIALS_LITERAL, "c-ad": GENERATED}
 
 
-def credentials_world(student=(404, {"detail": "Range not found"}), stored_yaml="name: x\n  password: tnsec:rc1:gAAA",
+def credentials_world(student=(404, {"detail": "Range not found"}), stored_yaml="name: x\n  password: tnsec:rt1:gAAA",
                       stored_passwords=("tnsec:rc1:aaa", "tnsec:rc1:bbb", "tnsec:rc1:ccc"), staff=STAFF_READ):
     admin = Api("admin", {
         ("GET", "/templates"): (200, []),
