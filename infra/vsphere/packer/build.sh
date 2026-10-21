@@ -311,15 +311,35 @@ replicate() {
   return "$failed"
 }
 
+# cd_files/cd_content become an ISO that Packer uploads to [vsphere_datastore] packer_cache/
+# (Linux seeds with the build password hash, the Windows autounattend with the build
+# Administrator password, pfSense/VyOS finish files). The plugin deletes it when the build
+# ends (remote_cache_cleanup = true removes the cache as well); this sweep catches what a
+# killed or crashed Packer left behind. After every build, success or failure; needs govc.
+sweep_cd_cache() {
+  local ds f
+  if ! command -v govc >/dev/null 2>&1 || [ -z "${GOVC_URL:-}" ]; then
+    echo "NOTE: govc/GOVC_URL not set; not sweeping packer_cache for leftover CD images"
+    return 0
+  fi
+  ds="${BUILD_DATASTORE:-$(sed -n -E 's/^vsphere_datastore[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' lab.auto.pkrvars.hcl 2>/dev/null | head -n1)}"
+  [ -n "$ds" ] || { echo "NOTE: no vsphere_datastore in lab.auto.pkrvars.hcl; not sweeping packer_cache"; return 0; }
+  for f in $(govc datastore.ls -ds "$ds" packer_cache 2>/dev/null | grep -E '\.iso$' || true); do
+    run_govc datastore.rm -f -ds "$ds" "packer_cache/$f" || echo "WARN: could not delete [$ds] packer_cache/$f" >&2
+  done
+}
+
 build_one() {
-  local name="$1" builder log ts
+  local name="$1" builder log ts rc=0
   builder="$(builder_of "$name")"
   ts="$(date +%Y%m%d-%H%M%S)"
   log="logs/${name}-${ts}.log"
   echo "============================================================"
   echo "Building ${name} (${builder})  ->  ${log}"
   echo "============================================================"
-  if packer build -force -only="*.${builder}.${name}" . 2>&1 | tee "$log"; then
+  packer build -force -only="*.${builder}.${name}" . 2>&1 | tee "$log" || rc=1
+  sweep_cd_cache
+  if [ "$rc" = 0 ]; then
     echo "OK: ${name}"
     register_back "$name"
     if command -v govc >/dev/null 2>&1 && [ -n "${GOVC_URL:-}" ]; then

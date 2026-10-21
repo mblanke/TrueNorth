@@ -380,6 +380,8 @@ case "${args[0]}" in
     printf '[{"file":[{"path":"x","fileSize":%s}]}]\n' "$(wc -c < "$f" | tr -d ' ')" ;;
   datastore.mkdir) mkdir -p "$state/$ds/${args[1]}" ;;
   datastore.cp) mkdir -p "$(dirname "$state/$dst/${args[2]}")"; cp "$state/$ds/${args[1]}" "$state/$dst/${args[2]}" ;;
+  datastore.mv) mv "$state/$ds/${args[1]}" "$state/$ds/${args[2]}" ;;
+  datastore.rm) rm -f "$state/$ds/${args[1]}" ;;
 esac
 """
 
@@ -444,6 +446,11 @@ def test_iso_sync_copies_only_what_is_missing_or_differs(tmp_path):
     assert (state / "esx04-local/ISO/linux/c.iso").stat().st_size == 16
     cps = [c for c in (state / "calls").read_text().splitlines() if c.startswith("datastore.cp")]
     assert len(cps) == 2 and any(" -f " in c for c in cps)  # c.iso replaced, b.iso untouched
+    # Copied under a temporary name and renamed only once complete: never a partial ISO.
+    assert all(c.endswith(".tn-partial") for c in cps)
+    mvs = [c for c in (state / "calls").read_text().splitlines() if c.startswith("datastore.mv")]
+    assert len(mvs) == 2
+    assert not list((state / "esx04-local").rglob("*.tn-partial"))
 
     again = run("--apply", "--yes")
     assert again.returncode == 0 and "Nothing to copy." in again.stdout
@@ -483,7 +490,7 @@ def test_windows_test_clone_uses_the_workers_sysprep_spec():
     """govc vm.customize defaults to -type Linux, which a Windows guest cannot apply. The
     test clone mirrors the worker's windows_customization() (vsphere_infra.py)."""
     text = (LAB / "test-clone.sh").read_text()
-    win = text[text.index("      win*)"):text.index("      *)    act govc vm.customize")]
+    win = text[text.index("      win*)"):text.index("      *)    # Linux: the worker's path")]
     call = win[win.index('govc vm.customize -vm "$vm"'):]
     for flag in ("-type Windows", "-username TrueNorth", "-org TrueNorth", "-tz 85", '-name "$want_name"',
                  '-ip "$ip"', "-netmask 255.255.255.0", "-pwd "):

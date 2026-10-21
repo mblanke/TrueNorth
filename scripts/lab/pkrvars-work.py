@@ -154,8 +154,12 @@ def parse_isos(path: Path) -> tuple[dict[str, str], list[str]]:
         parts = line.split()
         if not parts:
             continue
+        # Optional third token: sha256=<hex>, the ISO's pinned checksum (iso-sync-esx04.sh
+        # --verify records a match; build-phase.sh builds that ISO only once it is recorded).
+        if len(parts) == 3 and re.fullmatch(r"sha256=[0-9a-fA-F]{64}", parts[2]):
+            parts = parts[:2]
         if len(parts) != 2:
-            raise InputError(f"{path}: expected '<var|-> <path|PENDING>', got: {raw.strip()}")
+            raise InputError(f"{path}: expected '<var|-> <path|PENDING> [sha256=<hex>]', got: {raw.strip()}")
         var, rel = parts
         if rel == "PENDING":
             pending.append(f"{var} ({note.strip() or 'no note'})")

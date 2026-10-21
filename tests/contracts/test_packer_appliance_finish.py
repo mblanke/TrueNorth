@@ -14,8 +14,9 @@ worked, so a green build is a usable template and a failed finish makes no templ
   config.xml via ``tn-pfsense-config template``), then poweroff;
 * VyOS: files/vyos/tn-vyos-prep.sh (no hw-id pins) and tn-vyos-install.py (drives
   ``install image`` by prompt text, cloud-init datasource VMware first), then poweroff;
-* build-phase.sh stages the pfSense packages first and test-clones both in "tools" mode, so
-  a template without Tools is never registered.
+* build-phase.sh stages the pfSense packages first and test-clones both in "finish" mode:
+  Tools running AND the guest publishing guestinfo.tn.template.finish, which only a
+  finished template does, so an unfinished template is never registered.
 
 The finish scripts run here against stubs and fakes. Nothing here proves a build: that
 needs the work vCenter (and, for pkgs.lock, one ``stage_pfsense_pkgs.py resolve``).
@@ -450,6 +451,10 @@ def test_vyos_install_answers_by_prompt_text(tmp_path):
     cfg = (image / "etc/cloud/cloud.cfg.d/99-tn-vmware.cfg").read_text()
     assert re.search(r"datasource_list: \[ VMware\b", cfg)
     assert (image / "etc/tn-template-finish.txt").is_file()
+    unit = (image / "etc/systemd/system/tn-template-marker.service").read_text()
+    assert "info-set guestinfo.tn.template.finish $$(" in unit and "ConditionPathExists=/etc/tn-template-finish.txt" in unit
+    link = image / "etc/systemd/system/multi-user.target.wants/tn-template-marker.service"
+    assert os.readlink(link) == "/etc/systemd/system/tn-template-marker.service"
     assert "Generic-Build-Pw1" not in r.stdout  # the password is never echoed to the console
     assert "OK: installed" in r.stdout
 
@@ -471,10 +476,31 @@ def test_vyos_install_powers_off_only_after_success():
 
 
 # ── build-phase.sh: stage first, prove Tools before registering ───────
-def test_build_phase_tests_appliance_clones_for_tools():
+def test_build_phase_tests_appliance_clones_for_the_finish_marker():
     text = BUILD_PHASE.read_text()
-    assert re.search(r"^\s*pfsense\|vyos\) echo tools ;;", text, re.M)
+    assert re.search(r"^\s*pfsense\|vyos\) echo finish ;;", text, re.M)
     assert "echo power" not in text.split("test_mode() {", 1)[1].split("}", 1)[0]
+    clone = (ROOT / "scripts/lab/test-clone.sh").read_text()
+    assert 'finish) [[ "$tools" == "guestToolsRunning" && -n "${marker:-}" ]] && ok=1 ;;' in clone
+    assert '"guestinfo.tn.template.finish"' in clone.split("finish_marker() {", 1)[1].split("\n}\n", 1)[0]
+
+
+@pytest.mark.skipif(PHP is None, reason="no php CLI (install php, or TN_PHP_DOCKER=1 with docker)")
+def test_pfsense_boot_publishes_the_finish_marker(tmp_path):
+    root = tmp_path / "fw"
+    (root / "conf").mkdir(parents=True)
+    (root / "guestinfo").mkdir()
+    (root / "conf/config.xml").write_text(FACTORY)
+    (root / "conf/tn-template-finish.txt").write_text("finished=2026-10-21T00:00:00Z\npfsense=2.7.2-RELEASE\n")
+    r = PHP(root, "boot")
+    assert r.returncode == 0, r.stdout + r.stderr
+    got = (root / "guestinfo/guestinfo.tn.template.finish").read_text().strip()
+    assert got == "finished=2026-10-21T00:00:00Z pfsense=2.7.2-RELEASE"
+    # No marker (a template whose finish never ran): nothing published.
+    (root / "conf/tn-template-finish.txt").unlink()
+    (root / "guestinfo/guestinfo.tn.template.finish").unlink()
+    assert PHP(root, "boot").returncode == 0
+    assert not (root / "guestinfo/guestinfo.tn.template.finish").exists()
 
 
 def test_build_phase_stages_pfsense_packages_before_building_it():

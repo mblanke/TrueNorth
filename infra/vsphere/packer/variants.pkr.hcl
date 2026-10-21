@@ -210,6 +210,11 @@ build {
   provisioner "shell" {
     only            = ["vsphere-clone.variant-linux"]
     execute_command = local.variant_sudo
+    script          = "${path.root}/files/linux/require-cloud-init.sh"
+  }
+  provisioner "shell" {
+    only            = ["vsphere-clone.variant-linux"]
+    execute_command = local.variant_sudo
     script          = "${path.root}/files/linux/cleanup.sh"
   }
 }

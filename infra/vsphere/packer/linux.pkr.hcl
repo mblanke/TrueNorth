@@ -2,9 +2,9 @@
 # Build one with:  packer build -only='linux.vsphere-iso.<id>' .  (or ./build.sh <id>)
 # The build block is named, so -only needs the build name or a '*.' glob prefix; a bare
 # 'vsphere-iso.<id>' matches nothing and Packer exits 0 having built nothing.
-# Shared Linux provisioning: pin cloud-init datasources (99-vmware.cfg), ensure
-# open-vm-tools + cloud-init, then cleanup.sh. ISOs are pre-staged on the host-local
-# datastore, so host/datastore are pinned to the ISO host.
+# Shared Linux provisioning: pin cloud-init datasources (99-vmware.cfg), SSH host-key unit,
+# open-vm-tools + cloud-init (required: require-cloud-init.sh), then cleanup.sh. ISOs are
+# on the host-local datastore, so host/datastore are pinned to the ISO host.
 #
 # Every seed under http/ is a templatefile rendered with local.linux_seed (below): one
 # generic build login (ssh_username / ssh_password, hash ssh_password_hash) on every Linux
@@ -48,6 +48,11 @@ source "vsphere-iso" "ubuntu-lts" {
   }
 
   iso_paths = ["${local.iso_dir}/${var.iso_ubuntu}"]
+  # Seed and secret CDs (seeds, passwords, hashes) are uploaded to [datastore]
+  # packer_cache/; the plugin deletes that ISO on cleanup, this removes the cache too, and
+  # remove_cdrom detaches every CD before the VM becomes a template.
+  remote_cache_cleanup = true
+  remove_cdrom         = true # no clone inherits the install ISO or a seed/secret CD
   cd_content = {
     "user-data" = templatefile("${path.root}/http/ubuntu/user-data.pkrtpl.hcl", local.linux_seed)
     "meta-data" = file("${path.root}/http/ubuntu/meta-data")
@@ -108,6 +113,11 @@ source "vsphere-iso" "rocky" {
   }
 
   iso_paths = ["${local.iso_dir}/${var.iso_rocky}"]
+  # Seed and secret CDs (seeds, passwords, hashes) are uploaded to [datastore]
+  # packer_cache/; the plugin deletes that ISO on cleanup, this removes the cache too, and
+  # remove_cdrom detaches every CD before the VM becomes a template.
+  remote_cache_cleanup = true
+  remove_cdrom         = true # no clone inherits the install ISO or a seed/secret CD
   cd_content = {
     "ks.cfg" = templatefile("${path.root}/http/rocky/ks.cfg.pkrtpl.hcl", local.linux_seed)
   }
@@ -166,6 +176,11 @@ source "vsphere-iso" "kali" {
   }
 
   iso_paths = ["${local.iso_dir}/${var.iso_kali}"]
+  # Seed and secret CDs (seeds, passwords, hashes) are uploaded to [datastore]
+  # packer_cache/; the plugin deletes that ISO on cleanup, this removes the cache too, and
+  # remove_cdrom detaches every CD before the VM becomes a template.
+  remote_cache_cleanup = true
+  remove_cdrom         = true # no clone inherits the install ISO or a seed/secret CD
   http_content = {
     "/kali/preseed.cfg" = templatefile("${path.root}/http/kali/preseed.cfg.pkrtpl.hcl", local.linux_seed)
   }
@@ -234,6 +249,11 @@ source "vsphere-iso" "debian13" {
   }
 
   iso_paths = ["${local.iso_dir}/${var.iso_debian}"]
+  # Seed and secret CDs (seeds, passwords, hashes) are uploaded to [datastore]
+  # packer_cache/; the plugin deletes that ISO on cleanup, this removes the cache too, and
+  # remove_cdrom detaches every CD before the VM becomes a template.
+  remote_cache_cleanup = true
+  remove_cdrom         = true # no clone inherits the install ISO or a seed/secret CD
   http_content = {
     "/debian/preseed.cfg" = templatefile("${path.root}/http/debian/preseed.cfg.pkrtpl.hcl", local.linux_seed)
   }
@@ -300,6 +320,11 @@ source "vsphere-iso" "parrot" {
   }
 
   iso_paths = ["${local.iso_dir}/${var.iso_parrot}"]
+  # Seed and secret CDs (seeds, passwords, hashes) are uploaded to [datastore]
+  # packer_cache/; the plugin deletes that ISO on cleanup, this removes the cache too, and
+  # remove_cdrom detaches every CD before the VM becomes a template.
+  remote_cache_cleanup = true
+  remove_cdrom         = true # no clone inherits the install ISO or a seed/secret CD
   http_content = {
     "/parrot/preseed.cfg" = templatefile("${path.root}/http/parrot/preseed.cfg.pkrtpl.hcl", local.linux_seed)
   }
@@ -354,6 +379,20 @@ build {
     script           = "${path.root}/files/linux/apt-proxy.sh"
   }
 
+  # cleanup.sh deletes the SSH host keys; this unit regenerates any that are missing before
+  # sshd starts on a clone (cloud-init's ssh module normally does it first).
+  provisioner "file" {
+    source      = "${path.root}/files/linux/tn-ssh-hostkeys.service"
+    destination = "/tmp/tn-ssh-hostkeys.service"
+  }
+  provisioner "shell" {
+    inline = [
+      "sudo install -m 0644 /tmp/tn-ssh-hostkeys.service /etc/systemd/system/tn-ssh-hostkeys.service",
+      "sudo systemctl daemon-reload",
+      "sudo systemctl enable tn-ssh-hostkeys.service",
+    ]
+  }
+
   # Debian/Ubuntu family: ensure tools + cloud-init, pin datasource.
   provisioner "shell" {
     except = ["vsphere-iso.rocky"]
@@ -364,6 +403,14 @@ build {
       "sudo apt-get install -y open-vm-tools cloud-init curl wget git net-tools || echo 'apt baseline skipped (no reachable mirror)'",
       "sudo systemctl enable open-vm-tools || true",
     ]
+  }
+
+  # cloud-init is NOT optional: the worker configures Linux range VMs only through its
+  # VMware datasource (no vSphere Linux customization). From the mirror/apt proxy, else the
+  # install ISO's pool; neither: the build fails (no template).
+  provisioner "shell" {
+    except = ["vsphere-iso.rocky"]
+    script = "${path.root}/files/linux/install-cloud-init.sh"
   }
 
   # Rocky: dnf equivalents.
@@ -383,6 +430,12 @@ build {
       "export DEBIAN_FRONTEND=noninteractive",
       "sudo -E apt-get install -y kali-linux-default || echo 'kali-linux-default skipped (no reachable mirror); install at deploy from depot'",
     ]
+  }
+
+  # Refuse a template the worker cannot configure: cloud-init + VMware datasource, Tools,
+  # host-key regeneration. Fails the build otherwise.
+  provisioner "shell" {
+    script = "${path.root}/files/linux/require-cloud-init.sh"
   }
 
   provisioner "shell" {

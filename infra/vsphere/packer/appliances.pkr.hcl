@@ -50,6 +50,11 @@ source "vsphere-iso" "pfsense" {
   }
 
   iso_paths = ["${local.iso_dir}/${var.iso_pfsense}"]
+  # Seed and secret CDs (seeds, passwords, hashes) are uploaded to [datastore]
+  # packer_cache/; the plugin deletes that ISO on cleanup, this removes the cache too, and
+  # remove_cdrom detaches every CD before the VM becomes a template.
+  remote_cache_cleanup = true
+  remove_cdrom         = true # no clone inherits the install ISO or a seed/secret CD
   # Second CD (label TNPFSENSE): everything the template finish needs, with no network.
   # tn-pfsense-finish.sh (run from the installer's Shell) pkg-adds the Open-VM-Tools set in
   # pkgs.lock (sha256-checked; the .pkg files are staged into stage/pfsense/ by
@@ -136,6 +141,11 @@ source "vsphere-iso" "securityonion" {
   }
 
   iso_paths = ["${local.iso_dir}/${var.iso_securityonion}"]
+  # Seed and secret CDs (seeds, passwords, hashes) are uploaded to [datastore]
+  # packer_cache/; the plugin deletes that ISO on cleanup, this removes the cache too, and
+  # remove_cdrom detaches every CD before the VM becomes a template.
+  remote_cache_cleanup = true
+  remove_cdrom         = true # no clone inherits the install ISO or a seed/secret CD
 
   communicator = "none"
   boot_wait    = "60s"
@@ -191,6 +201,11 @@ source "vsphere-iso" "vyos" {
   }
 
   iso_paths = ["${local.iso_dir}/${var.iso_vyos}"]
+  # Seed and secret CDs (seeds, passwords, hashes) are uploaded to [datastore]
+  # packer_cache/; the plugin deletes that ISO on cleanup, this removes the cache too, and
+  # remove_cdrom detaches every CD before the VM becomes a template.
+  remote_cache_cleanup = true
+  remove_cdrom         = true # no clone inherits the install ISO or a seed/secret CD
   # Second CD (label TNVYOS). tn-vyos-prep.sh drops the live config's NIC MAC pins (hw-id)
   # and saves it; tn-vyos-install.py drives `install image` by matching each prompt's text
   # (not keystroke timing: the rolling installer's questions change between builds), copies

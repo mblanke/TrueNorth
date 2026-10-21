@@ -38,8 +38,12 @@ if ($left.Count -gt 0) {
 # Packer fails the build ("error sending shutdown command", 2026-10-20).
 # Not Start-Process: WinRM runs each command in a job object and kills every process it started
 # when the command returns (win11, 2026-10-20). A one-off SYSTEM scheduled task runs outside it.
+# The task removes itself before the VM goes down, so no template (and no clone) carries a
+# SYSTEM task that shuts the machine down: shutdown.exe only schedules the shutdown (/t 5)
+# and returns, then schtasks deletes the task's registration while it still can.
 $task = 'TN-Shutdown-Once'
-$action = New-ScheduledTaskAction -Execute "$env:SystemRoot\System32\shutdown.exe" -Argument '/s /t 5 /f'
+$action = New-ScheduledTaskAction -Execute "$env:SystemRoot\System32\cmd.exe" `
+  -Argument "/c `"$env:SystemRoot\System32\shutdown.exe /s /t 5 /f & $env:SystemRoot\System32\schtasks.exe /Delete /TN $task /F`""
 Register-ScheduledTask -TaskName $task -Action $action -User 'SYSTEM' -RunLevel Highest -Force | Out-Null
 Start-ScheduledTask -TaskName $task
 Write-Host "shutdown started (scheduled task $task); not generalized, vSphere customization runs Sysprep on clone."

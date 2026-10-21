@@ -870,7 +870,11 @@ def test_packer_does_not_generalize_windows_templates():
     pk = ROOT / "infra/vsphere/packer"
     ps = (pk / "files/windows/sysprep.ps1").read_text()
     assert "sysprep.exe" not in ps.lower() and "/generalize" not in ps
-    assert "New-ScheduledTaskAction -Execute \"$env:SystemRoot\\System32\\shutdown.exe\" -Argument '/s /t 5 /f'" in ps
+    assert "New-ScheduledTaskAction -Execute \"$env:SystemRoot\\System32\\cmd.exe\"" in ps
+    action = ps.split("New-ScheduledTaskAction", 1)[1].split("Register-ScheduledTask", 1)[0]
+    # Shut down first (/t 5 only schedules it), then the task deletes its own registration,
+    # so no template or clone keeps a SYSTEM task that shuts the machine down.
+    assert action.index("shutdown.exe /s /t 5 /f") < action.index("schtasks.exe /Delete /TN $task /F")
     assert "Start-ScheduledTask" in ps
     assert not (pk / "files/windows/sysprep-unattend.xml").exists()
     for f in ("windows.pkr.hcl", "roles.pkr.hcl", "variants.pkr.hcl"):

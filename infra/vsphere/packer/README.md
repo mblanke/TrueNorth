@@ -147,6 +147,19 @@ the Linux/Windows bases before their derived clones. The derived builds clone
 `base_ubuntu_template` / `base_win10_template` from inventory, and each variant clones
 its own `variant_base`.
 
+### Where the seed and secret CDs go
+
+`cd_files` / `cd_content` (Ubuntu `cidata`, Rocky `OEMDRV`, the Windows `autounattend.xml`
+with the build Administrator password, the Linux seeds with the build password hash, the
+pfSense `tn-admin.hash`, the VyOS `tn-vyos.pw`) are made into an ISO on the build host,
+uploaded to **`[vsphere_datastore] packer_cache/`** (esx04-local on the work site) and
+attached as a second CD. They are removed three ways: every `vsphere-iso` source sets
+`remove_cdrom = true` (no CD stays attached to the template, so no clone inherits a seed),
+the vSphere plugin deletes the uploaded ISO when the build ends, success or failure
+("Deleting CD disk"), with `remote_cache_cleanup = true` removing the cache too, and
+`build.sh` sweeps any `packer_cache/*.iso` a killed Packer left behind after every build
+(needs `govc`/`GOVC_URL`). Nothing of it reaches a range host's datastore.
+
 ### Host-local copies (`replicate`)
 
 The range hosts have local VMFS datastores only, so a clone from a template on another
@@ -222,13 +235,13 @@ The deploy provisioner can use either, so keeping both costs only datastore spac
 | srv2016 | iso | **Solid** (once ISO uploaded) | Eval media; classic engine |
 | rocky | iso | **Solid** | Rocky 10 kickstart via `OEMDRV` CD |
 | debian13 | iso | **Likely** | Debian installer preseed over Packer HTTP |
-| kali | iso | **Likely** | Preseed over Packer HTTP; the `kali-linux-default` metapackage is online-only (best-effort, skipped offline) |
+| kali | iso | **Likely** | Preseed over Packer HTTP; the `kali-linux-default` metapackage is online-only (best-effort, skipped offline). cloud-init is required (the worker configures Linux only through it): from the ISO pool or the depot apt proxy, else the build fails (`require-cloud-init.sh`). Not yet confirmed that the 2026.1 "everything" ISO's pool has it: build with the depot if not |
 | srv2025 | iso | **Needs tuning** | New Setup engine; unattended UEFI partitioning is fragile (see below) |
 | win11-24h2 | iso | **Needs tuning — highest risk** | New Setup engine + 64 GB + LabConfig bypass. See below |
 | parrot | iso | **Fragile** | Live ISO usually installs via Calamares (GUI), which ignores preseed. Works only off the ISO's text/debian-installer entry; else treat as manual |
-| pfsense | iso | **Not run since the finish was automated (2026-10-21)** | Keystrokes reach the installer's Shell, then `files/pfsense/tn-pfsense-finish.sh` (2nd CD) adds Open-VM-Tools offline from `pkgs.lock`, installs `tn-pfsense-config` + `tn-vmtools.sh`, writes the template config (WAN vmx0, LAN vmx1, SSH, boot hook, admin = the build password hash) and powers off. Any failure: no power-off, no template. Needs the packages staged first (`build-phase.sh appliances` does it; pin once with `stage_pfsense_pkgs.py resolve`). Test clone: `tools` |
+| pfsense | iso | **Not run since the finish was automated (2026-10-21)** | Keystrokes reach the installer's Shell, then `files/pfsense/tn-pfsense-finish.sh` (2nd CD) adds Open-VM-Tools offline from `pkgs.lock`, installs `tn-pfsense-config` + `tn-vmtools.sh`, writes the template config (WAN vmx0, LAN vmx1, SSH, boot hook, admin = the build password hash) and powers off. Any failure: no power-off, no template. Needs the packages staged first (`build-phase.sh appliances` does it; pin once with `stage_pfsense_pkgs.py resolve`; NOT pinned yet). Test clone: `finish` (Tools + the `guestinfo.tn.template.finish` marker) |
 | securityonion | iso | **Fragile (keystroke)** | Base OS install only; `so-setup` runs per range at deploy (standalone, airgap: `vmware-site-runbook.md` §7.2). Finish the OS install by hand the first time, then template **without** running setup. Check before templating: open-vm-tools is running (`systemctl is-active vmtoolsd`). The installer's user is the build login the worker uses (`VSPHERE_SO_INSTALL_USER`/`_PASSWORD`, documented in the wiki) and can `sudo`. Two NICs, management first |
-| vyos | iso | **Not run yet** | Logs in on the live console, `tn-vyos-prep.sh` drops the hw-id pins, `tn-vyos-install.py` answers `install image` by prompt text (vyos password = the build password), sets cloud-init's datasource to VMware first and powers off; an unknown prompt fails with no template. Test clone: `tools` |
+| vyos | iso | **Not run yet** | Logs in on the live console, `tn-vyos-prep.sh` drops the hw-id pins, `tn-vyos-install.py` answers `install image` by prompt text (vyos password = the build password), sets cloud-init's datasource to VMware first and powers off; an unknown prompt fails with no template. Test clone: `finish` (Tools + the marker from `tn-template-marker.service`) |
 | remnux, sift, svc-emulators, ca-host, usersim, cloudlog-emu | clone | **Likely** | Clone `ubuntu-lts`, run `files/linux/roles/<name>.sh` over SSH. Role installers have honest `TODO(offline)` / `TODO(deploy)` where media is online-only or range-specific |
 | greyspace-host | clone | **Not run on vSphere yet** | Clone `ubuntu-lts`, Docker >= 27 + every Greyspace stack image pulled by digest (`files/linux/roles/greyspace-host.sh`, needs internet or the depot as apt proxy and registry mirror). Proven: the stack on Docker (CI `greyspace`), gs-core on vcsim; not a real vCenter |
 | c2-server | clone | **Gated** | Catalogue `enabled=no`; needs instructor/Standards sign-off |

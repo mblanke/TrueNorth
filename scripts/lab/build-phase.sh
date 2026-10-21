@@ -107,13 +107,15 @@ role_server_ids() { local p; for p in $ROLE_SERVER; do printf '%s ' "${p%%:*}"; 
 
 test_mode() {
   case "$1" in
-    # No guest customization on the appliances, but VMware Tools must run in a clone: the
-    # per-range config arrives through guestinfo (pfSense: tn-vmtools.sh + the boot hook
-    # that the template finish installs; VyOS: its built-in open-vm-tools for cloud-init).
-    # A template whose finish did not run (no Tools) is never registered.
-    pfsense|vyos) echo tools ;;
+    # No guest customization on the appliances. A clone must run VMware Tools AND publish
+    # guestinfo.tn.template.finish, which only a finished template does (pfSense: the boot
+    # hook reads /cf/conf/tn-template-finish.txt from tn-pfsense-finish.sh; VyOS:
+    # tn-template-marker.service, from tn-vyos-install.py). Tools alone is not proof: a
+    # hand-built VyOS has Tools without the cloud-init datasource fix. No marker: not
+    # registered.
+    pfsense|vyos) echo finish ;;
     securityonion) echo tools ;;  # OS-only template; so-setup runs per range (decision 8)
-    *) echo customize ;;
+    *) echo customize ;;  # the worker's path: Windows Sysprep spec, Linux cloud-init guestinfo
   esac
 }
 
@@ -142,15 +144,47 @@ filter_only() { # the ids of "$@" that --only allows, on one line (bash 3.2: no 
   echo "${out[*]-}"
 }
 
-# The ISO for packer variable $1 is listed in isos.conf, on esx04-local and in the pkrvars.
+iso_size() { # iso_size <datastore> <path>: bytes, or empty when it is not there
+  govc datastore.ls -json -l -ds "$1" "$2" 2>/dev/null \
+    | jq -r "$JQ_CI"' [ci("fileSize")[] | select(type == "number")][0] // empty' 2>/dev/null || true
+}
+
+# The ISO for packer variable $1 is buildable: listed in isos.conf (not PENDING), in the
+# vars file, and on esx04-local with EXACTLY the size it has on the source (esx01-local, the
+# copy iso-sync-esx04.sh makes it from), so a partial or stale copy is not ready. When
+# isos.conf pins sha256=<hex>, iso-sync-esx04.sh --verify must also have recorded a match
+# for this size. ISO_WHY says why not.
+ISO_SRC_DS="esx01-local"; ISO_BUILD_DS="esx04-local"
+ISO_STATE="${TN_ISO_STATE:-/var/lib/truenorth/iso-verified}"
+ISO_WHY=""
 iso_ready() {
-  local var="$1" rel size
-  rel="$(awk -v v="$var" '$1 == v && $2 != "PENDING" {print $2}' "$ISOS" | head -n1)"
-  [[ -n "$rel" ]] || return 1
-  grep -q "^${var} = " "$PKRVARS" 2>/dev/null || return 1
-  size="$(govc datastore.ls -json -l -ds esx04-local "ISO/$rel" 2>/dev/null \
-    | jq -r "$JQ_CI"' [ci("fileSize")[] | select(type == "number")][0] // empty' 2>/dev/null || true)"
-  [[ -n "$size" ]]
+  local var="$1" rel src dst sum
+  rel="$(awk -v v="$var" '{sub(/#.*/, "")} $1 == v && $2 != "PENDING" {print $2}' "$ISOS" | head -n1)"
+  [[ -n "$rel" ]] || { ISO_WHY="$var is PENDING or not in isos.conf"; return 1; }
+  grep -q "^${var} = " "$PKRVARS" 2>/dev/null || { ISO_WHY="$var is not in the vars file (pkrvars-work.py)"; return 1; }
+  dst="$(iso_size "$ISO_BUILD_DS" "ISO/$rel")"
+  [[ -n "$dst" ]] || { ISO_WHY="ISO/$rel is not on $ISO_BUILD_DS (iso-sync-esx04.sh --apply)"; return 1; }
+  src="$(iso_size "$ISO_SRC_DS" "ISO/$rel")"
+  [[ -n "$src" ]] || { ISO_WHY="ISO/$rel is not on $ISO_SRC_DS: the $ISO_BUILD_DS copy cannot be checked"; return 1; }
+  [[ "$dst" == "$src" ]] || { ISO_WHY="ISO/$rel is $dst bytes on $ISO_BUILD_DS, $src on $ISO_SRC_DS (partial or stale; iso-sync-esx04.sh --apply)"; return 1; }
+  sum="$(awk -v r="$rel" '{sub(/#.*/, "")} $2 == r {for (i = 3; i <= NF; i++) if ($i ~ /^sha256=/) {sub(/^sha256=/, "", $i); print tolower($i)}}' "$ISOS" | head -n1)"
+  if [[ -n "$sum" && "$(cat "$ISO_STATE/$rel.sha256" 2>/dev/null)" != "$sum $dst" ]]; then
+    ISO_WHY="ISO/$rel pins sha256 in isos.conf but no matching check is recorded (iso-sync-esx04.sh --verify)"
+    return 1
+  fi
+  ISO_WHY=""
+}
+
+# The isos.conf variable an ISO-built template boots from (empty: a clone, no ISO of its own).
+iso_var_of() {
+  case "$1" in
+    srv2022) echo iso_srv2022 ;; srv2025) echo iso_srv2025 ;; srv2019) echo iso_srv2019 ;;
+    win11-24h2) echo iso_win11_24h2 ;; win10-22h2) echo iso_win10 ;;
+    ubuntu-lts) echo iso_ubuntu ;; debian13) echo iso_debian ;; rocky) echo iso_rocky ;;
+    kali) echo iso_kali ;; parrot) echo iso_parrot ;;
+    pfsense) echo iso_pfsense ;; vyos) echo iso_vyos ;; securityonion) echo iso_securityonion ;;
+    *) echo "" ;;
+  esac
 }
 
 pkrvars_check() {
@@ -202,6 +236,10 @@ build_and_post() {
   local id="$1" mode="$2"; shift 2
   if exists "$id" && [[ "$REBUILD" != "1" ]]; then
     info "$id: template exists; not rebuilt (--rebuild to rebuild)"
+  elif [[ -n "$(iso_var_of "$id")" ]] && ! iso_ready "$(iso_var_of "$id")"; then
+    # Never build from a missing, partial or unverified ISO (a 2026-10 copy was truncated).
+    warn "$id: NOT BUILDABLE: $ISO_WHY"
+    return 1
   elif [[ "$DRY" == "1" ]]; then
     echo "  [dry-run] (cd $PACKER_DIR && ./build.sh $id)"
   else
@@ -304,6 +342,16 @@ phase_prereq() {
     "$LAB_DIR/iso-sync-esx04.sh" --apply --env-file "$ENV_FILE" ${yes[@]+"${yes[@]}"} \
       || warn "ISO sync incomplete (see FAILED above); continuing. A file locked by a running VM: try iso-sync-esx04.sh --stream"
   fi
+  # What the sync left buildable: each template's ISO against the source (iso_ready). The
+  # builds refuse the rest (build_and_post), so this list is what the phases will skip.
+  local id var not_buildable=0
+  for id in $BASE_IDS win10-22h2 srv2019 $APPLIANCE_IDS; do
+    var="$(iso_var_of "$id")"
+    [[ -n "$var" ]] || continue
+    if iso_ready "$var"; then info "ok    $id ($var)"
+    else warn "NOT BUILDABLE $id: $ISO_WHY"; not_buildable=$((not_buildable + 1)); fi
+  done
+  [[ "$not_buildable" == "0" ]] || warn "$not_buildable template(s) not buildable until their ISO is fixed (the builds will refuse them)"
 
   step "DRS: $MGMT_VM should run on $BUILD_HOST (VLAN 31 reaches only $BUILD_HOST)"
   local host_path groups rules drs
@@ -484,7 +532,7 @@ phase_base() {
   read -r -a ids <<<"$BASE_IDS"
   for pair in $BASE_PENDING; do
     id="${pair%%:*}"; var="${pair#*:}"
-    if iso_ready "$var"; then ids+=("$id"); else info "skip  $id: $var is PENDING in isos.conf, not on esx04-local, or not in the vars file yet"; fi
+    if iso_ready "$var"; then ids+=("$id"); else info "skip  $id: $ISO_WHY"; fi
   done
   if depot_url_set; then warn "depot_url is set: ADR 0012 builds the bases offline. Re-run pkrvars-work.py without --depot first"; fi
   read -r -a ids <<<"$(filter_only "${ids[@]}")"

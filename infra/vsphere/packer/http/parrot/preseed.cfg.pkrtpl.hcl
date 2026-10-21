@@ -40,9 +40,12 @@ tasksel tasksel/first multiselect standard, ssh-server
 d-i pkgsel/include string openssh-server open-vm-tools sudo curl wget git net-tools
 d-i pkgsel/upgrade select full-upgrade
 
+# cloud-init is REQUIRED (the worker configures Linux VMs only through its VMware
+# datasource); tried here, then by Packer (install-cloud-init.sh), else the build fails.
 d-i preseed/late_command string \
   in-target systemctl enable ssh ; \
   in-target systemctl enable open-vm-tools ; \
+  in-target sh -c 'DEBIAN_FRONTEND=noninteractive apt-get install -y cloud-init || true' ; \
   echo "${user} ALL=(ALL) NOPASSWD:ALL" > /target/etc/sudoers.d/${user} ; \
   chmod 0440 /target/etc/sudoers.d/${user}
 

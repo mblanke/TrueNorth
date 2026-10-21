@@ -38,6 +38,23 @@ SETTLE = 0.7                 # quiet time before a prompt is answered
 MAX_SAME_ANSWER = 3          # the same prompt again and again (a rejected password): give up
 CLOUD_CFG = "# TrueNorth: the per-range config arrives as VMware guestinfo (worker/vyos_config.py)\n" \
             "datasource_list: [ VMware, NoCloud, None ]\n"
+# Publishes the finish marker as guestinfo.tn.template.finish on every boot: the test
+# clone's proof (scripts/lab/test-clone.sh --mode finish) that this finish ran.
+MARKER_UNIT = """\
+[Unit]
+Description=TrueNorth: publish the template-finish marker to vSphere (guestinfo)
+ConditionPathExists=/etc/tn-template-finish.txt
+ConditionVirtualization=vmware
+After=open-vm-tools.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c 'vmware-rpctool "info-set guestinfo.tn.template.finish $$(tr "\\n" " " < /etc/tn-template-finish.txt)"'
+# ($$ is a literal $ for systemd.)
+
+[Install]
+WantedBy=multi-user.target
+"""
 
 
 def answer_for(pending: str, password: str) -> tuple[str, str] | None:
@@ -154,7 +171,8 @@ def _stop(pid: int) -> None:
 
 
 def finish_image(root: Path) -> Path:
-    """Write the cloud-init datasource list into the installed image's persistent layer."""
+    """Write the cloud-init datasource list, the finish marker and the unit that publishes it
+    into the installed image's persistent layer (its overlay's rw/ directory)."""
     images = [p for p in (root / "boot").iterdir() if p.is_dir() and (p / "rw").is_dir()]
     if len(images) != 1:
         raise RuntimeError(f"expected one installed image under {root}/boot, found {[p.name for p in images]}")
@@ -164,8 +182,17 @@ def finish_image(root: Path) -> Path:
     boot = images[0] / "rw/opt/vyatta/etc/config/config.boot"
     if boot.is_file() and "hw-id" in boot.read_text(encoding="utf-8", errors="replace"):
         print(f"[tn-vyos-install] warning: {boot} still pins hw-id (tn-vyos-prep.sh did not take)")
-    (images[0] / "rw/etc/tn-template-finish.txt").write_text(
+    rw = images[0] / "rw"
+    (rw / "etc/tn-template-finish.txt").write_text(
         f"finished={time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}\nimage={images[0].name}\n", encoding="utf-8")
+    unit = rw / "etc/systemd/system/tn-template-marker.service"
+    unit.parent.mkdir(parents=True, exist_ok=True)
+    unit.write_text(MARKER_UNIT, encoding="utf-8")
+    wants = rw / "etc/systemd/system/multi-user.target.wants"
+    wants.mkdir(parents=True, exist_ok=True)
+    link = wants / unit.name
+    if not link.is_symlink():
+        link.symlink_to("/etc/systemd/system/tn-template-marker.service")
     return cfg
 
 

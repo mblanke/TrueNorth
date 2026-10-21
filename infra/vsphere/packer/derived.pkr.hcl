@@ -319,6 +319,10 @@ build {
     only   = ["vsphere-clone.c2-server"]
     script = "${path.root}/files/linux/roles/c2-server.sh"
   }
+  # A role script must not have broken what the worker needs (cloud-init, Tools, host keys).
+  provisioner "shell" {
+    script = "${path.root}/files/linux/require-cloud-init.sh"
+  }
   provisioner "shell" {
     script = "${path.root}/files/linux/cleanup.sh"
   }

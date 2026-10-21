@@ -21,7 +21,9 @@
  *                               the admin password hash read from HASHFILE (a crypt string)
  *
  * On boot it first starts VMware Tools (/usr/local/etc/rc.d/tn-vmtools.sh, also installed
- * by tn-pfsense-finish.sh), so guestinfo is readable and vCenter sees Tools running.
+ * by tn-pfsense-finish.sh), so guestinfo is readable and vCenter sees Tools running, then
+ * publishes the template-finish marker (/cf/conf/tn-template-finish.txt) as
+ * guestinfo.tn.template.finish: the test clone's proof that the finish ran.
  *
  * The worker (control-plane/worker/worker/pfsense_config.py) sets, before first power-on:
  *   guestinfo.tn.pfsense.config  config.xml, gzip + base64
@@ -61,6 +63,10 @@ define('BOOT_COMMAND', '/usr/local/bin/php -q ' . TN_SCRIPT . ' boot');
 // The release's factory config (template mode starts from it when nothing is installed yet).
 define('DEFAULT_CONF', TEST_ROOT !== '' ? TEST_ROOT . '/conf.default/config.xml' : '/conf.default/config.xml');
 define('VMTOOLS_RC', '/usr/local/etc/rc.d/tn-vmtools.sh');
+// Written by tn-pfsense-finish.sh when the template finish completed; published on every
+// boot as guestinfo.tn.template.finish, which scripts/lab/test-clone.sh --mode finish reads.
+define('FINISH_MARKER', CONF_DIR . '/tn-template-finish.txt');
+define('KEY_FINISH', 'guestinfo.tn.template.finish');
 // OPNsense runs every executable in rc.syshook.d/early before the network comes up.
 define('OPNSENSE_HOOK', '/usr/local/etc/rc.syshook.d/early/50-tn-opnsense-config');
 // Taken from the config being replaced, never from guestinfo.
@@ -255,6 +261,18 @@ function start_tools() {
 	}
 }
 
+function publish_marker() {
+	if (!is_file(FINISH_MARKER)) {
+		return;
+	}
+	$line = trim(preg_replace('/\s+/', ' ', (string)file_get_contents(FINISH_MARKER)));
+	if (TEST_ROOT !== '') {
+		@file_put_contents(TEST_ROOT . '/guestinfo/' . KEY_FINISH, "$line\n");
+		return;
+	}
+	exec('/usr/local/bin/vmware-rpctool ' . escapeshellarg('info-set ' . KEY_FINISH . ' ' . $line) . ' >/dev/null 2>&1');
+}
+
 function status() {
 	$blob = guestinfo(KEY_CONFIG);
 	$ifmap = guestinfo(KEY_IFMAP);
@@ -367,6 +385,7 @@ switch ($mode) {
 		exit(template_config($argv[2]));
 	case 'boot':
 		start_tools();
+		publish_marker();
 		exit(apply($mode));
 	case 'apply':
 		exit(apply($mode));

@@ -42,7 +42,12 @@ source "vsphere-iso" "srv2022" {
   }
 
   iso_paths = ["${local.iso_dir}/${var.iso_srv2022}", var.vmtools_iso_path]
-  cd_label  = "PROVISION"
+  # Seed and secret CDs (seeds, passwords, hashes) are uploaded to [datastore]
+  # packer_cache/; the plugin deletes that ISO on cleanup, this removes the cache too, and
+  # remove_cdrom detaches every CD before the VM becomes a template.
+  remote_cache_cleanup = true
+  remove_cdrom         = true # no clone inherits the install ISO or a seed/secret CD
+  cd_label             = "PROVISION"
   cd_content = {
     "autounattend.xml" = templatefile("${path.root}/files/windows/autounattend.pkrtpl.hcl", {
       # install.wim index 2 = Standard (Desktop Experience). /IMAGE/NAME takes the WIM NAME,
@@ -115,7 +120,12 @@ source "vsphere-iso" "srv2025" {
   }
 
   iso_paths = ["${local.iso_dir}/${var.iso_srv2025}", var.vmtools_iso_path]
-  cd_label  = "PROVISION"
+  # Seed and secret CDs (seeds, passwords, hashes) are uploaded to [datastore]
+  # packer_cache/; the plugin deletes that ISO on cleanup, this removes the cache too, and
+  # remove_cdrom detaches every CD before the VM becomes a template.
+  remote_cache_cleanup = true
+  remove_cdrom         = true # no clone inherits the install ISO or a seed/secret CD
+  cd_label             = "PROVISION"
   cd_content = {
     "autounattend.xml" = templatefile("${path.root}/files/windows/autounattend.pkrtpl.hcl", {
       # install.wim index 2 = Standard (Desktop Experience). /IMAGE/NAME takes the WIM NAME,
@@ -188,7 +198,12 @@ source "vsphere-iso" "srv2019" {
   }
 
   iso_paths = ["${local.iso_dir}/${var.iso_srv2019}", var.vmtools_iso_path]
-  cd_label  = "PROVISION"
+  # Seed and secret CDs (seeds, passwords, hashes) are uploaded to [datastore]
+  # packer_cache/; the plugin deletes that ISO on cleanup, this removes the cache too, and
+  # remove_cdrom detaches every CD before the VM becomes a template.
+  remote_cache_cleanup = true
+  remove_cdrom         = true # no clone inherits the install ISO or a seed/secret CD
+  cd_label             = "PROVISION"
   cd_content = {
     "autounattend.xml" = templatefile("${path.root}/files/windows/autounattend.pkrtpl.hcl", {
       image_name          = local.srv2019_image_name
@@ -258,7 +273,12 @@ source "vsphere-iso" "srv2016" {
   }
 
   iso_paths = ["${local.iso_dir}/${var.iso_srv2016}", var.vmtools_iso_path]
-  cd_label  = "PROVISION"
+  # Seed and secret CDs (seeds, passwords, hashes) are uploaded to [datastore]
+  # packer_cache/; the plugin deletes that ISO on cleanup, this removes the cache too, and
+  # remove_cdrom detaches every CD before the VM becomes a template.
+  remote_cache_cleanup = true
+  remove_cdrom         = true # no clone inherits the install ISO or a seed/secret CD
+  cd_label             = "PROVISION"
   cd_content = {
     "autounattend.xml" = templatefile("${path.root}/files/windows/autounattend.pkrtpl.hcl", {
       image_name          = "Windows Server 2016 Standard (Desktop Experience)"
@@ -328,7 +348,12 @@ source "vsphere-iso" "win10-22h2" {
   }
 
   iso_paths = ["${local.iso_dir}/${var.iso_win10}", var.vmtools_iso_path]
-  cd_label  = "PROVISION"
+  # Seed and secret CDs (seeds, passwords, hashes) are uploaded to [datastore]
+  # packer_cache/; the plugin deletes that ISO on cleanup, this removes the cache too, and
+  # remove_cdrom detaches every CD before the VM becomes a template.
+  remote_cache_cleanup = true
+  remove_cdrom         = true # no clone inherits the install ISO or a seed/secret CD
+  cd_label             = "PROVISION"
   cd_content = {
     "autounattend.xml" = templatefile("${path.root}/files/windows/autounattend.pkrtpl.hcl", {
       image_name          = local.win10_image_name
@@ -401,7 +426,12 @@ source "vsphere-iso" "win10-ltsc" {
   }
 
   iso_paths = ["${local.iso_dir}/${var.iso_win10_ltsc}", var.vmtools_iso_path]
-  cd_label  = "PROVISION"
+  # Seed and secret CDs (seeds, passwords, hashes) are uploaded to [datastore]
+  # packer_cache/; the plugin deletes that ISO on cleanup, this removes the cache too, and
+  # remove_cdrom detaches every CD before the VM becomes a template.
+  remote_cache_cleanup = true
+  remove_cdrom         = true # no clone inherits the install ISO or a seed/secret CD
+  cd_label             = "PROVISION"
   cd_content = {
     "autounattend.xml" = templatefile("${path.root}/files/windows/autounattend.pkrtpl.hcl", {
       image_name          = var.win10_ltsc_image_name
@@ -474,7 +504,12 @@ source "vsphere-iso" "win11-24h2" {
   }
 
   iso_paths = ["${local.iso_dir}/${var.iso_win11_24h2}", var.vmtools_iso_path]
-  cd_label  = "PROVISION"
+  # Seed and secret CDs (seeds, passwords, hashes) are uploaded to [datastore]
+  # packer_cache/; the plugin deletes that ISO on cleanup, this removes the cache too, and
+  # remove_cdrom detaches every CD before the VM becomes a template.
+  remote_cache_cleanup = true
+  remove_cdrom         = true # no clone inherits the install ISO or a seed/secret CD
+  cd_label             = "PROVISION"
   cd_content = {
     "autounattend.xml" = templatefile("${path.root}/files/windows/autounattend.pkrtpl.hcl", {
       image_name          = "Windows 11 Pro"

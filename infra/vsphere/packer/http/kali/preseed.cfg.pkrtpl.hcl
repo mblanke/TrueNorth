@@ -60,9 +60,13 @@ d-i user-setup/encrypt-home boolean false
 
 # Package selection — open-vm-tools instead of qemu-guest-agent
 tasksel tasksel/first multiselect standard
-# No cloud-init: it is not on the Kali installer ISO (offline build); VMware guest
-# customization works through open-vm-tools without it.
-# ifupdown: VMware guest customization writes /etc/network/interfaces (static range IPs).
+# cloud-init is REQUIRED: the worker gives a Linux range VM its name, static IPs and
+# accounts only through cloud-init's VMware datasource (guestinfo), never vSphere Linux
+# customization. It is not in pkgsel/include, because a package missing from the ISO pool
+# stops the whole install there; late_command below tries it from the ISO, and Packer's
+# files/linux/install-cloud-init.sh tries the mirror/apt proxy and the ISO again, then
+# require-cloud-init.sh fails the build if it is still missing.
+# ifupdown: cloud-init's network renderer writes /etc/network/interfaces on Kali (no netplan).
 d-i pkgsel/include string openssh-server open-vm-tools ifupdown sudo curl wget git net-tools
 %{ if apt_proxy != "" ~}
 d-i pkgsel/upgrade select full-upgrade
@@ -77,6 +81,7 @@ d-i preseed/late_command string \
   in-target sh -c 'dpkg -s network-manager >/dev/null 2>&1 || grep -q dhcp /etc/network/interfaces 2>/dev/null || { mkdir -p /etc/systemd/network; printf "[Match]\\nName=en* eth*\\n\\n[Network]\\nDHCP=yes\\n" > /etc/systemd/network/20-tn-dhcp.network; systemctl enable systemd-networkd; }' ; \
   in-target systemctl enable ssh ; \
   in-target systemctl enable open-vm-tools ; \
+  in-target sh -c 'DEBIAN_FRONTEND=noninteractive apt-get install -y cloud-init || true' ; \
   echo "${user} ALL=(ALL) NOPASSWD:ALL" > /target/etc/sudoers.d/${user} ; \
   chmod 0440 /target/etc/sudoers.d/${user} ; \
   in-target sed -i 's/^#PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config ; \
