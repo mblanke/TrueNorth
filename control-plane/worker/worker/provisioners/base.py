@@ -9,6 +9,7 @@ import contextlib
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass, field
+from datetime import datetime
 
 from .results import (
     DestroyResult,
@@ -51,6 +52,30 @@ class AllocationNeed:
     pool: Sequence[str]  # candidate values, in the order they are handed out (may be lazy)
     holders: list[str]  # what in the range holds a value (a logical VLAN, "edge")
     single: bool = False
+    # Values never handed out (vSphere: VSPHERE_RESERVED_VLANS), even if ``pool`` lists them.
+    excluded: frozenset[str] = frozenset()
+
+
+@dataclass(frozen=True)
+class LiveUsage:
+    """Values of one (domain, kind) the live infrastructure already uses (``live_usage``).
+
+    Read before every allocation (range certification S1). ``foreign``: used by something
+    that is not TrueNorth's (another port group on the range switch); ``managed``: used by
+    one of TrueNorth's own range objects, by name. Both map value -> what uses it. The
+    worker records ``foreign`` values, and ``managed`` ones no live range holds (an orphan
+    port group a failed teardown left), as external reservations for ``source`` (the switch
+    read), so the allocator never hands them out (worker/range_alloc.record_external).
+    """
+
+    domain: str
+    kind: str
+    source: str
+    foreign: dict[str, str]
+    managed: dict[str, str] = field(default_factory=dict)
+    # When the read started (aware UTC). Entries of ``source`` seen by a later read are never
+    # deleted on the strength of this one; None (unknown age): this read deletes nothing.
+    read_at: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -79,6 +104,12 @@ class BaseProvisioner(ABC):
 
     def allocation_needs(self, range_id: str, template: dict) -> list[AllocationNeed]:
         """Shared values (VLANs, addresses) to reserve before ``provision``. Default: none."""
+        return []
+
+    def live_usage(self, needs: list[AllocationNeed]) -> list[LiveUsage]:
+        """What the live infrastructure already uses of ``needs``' pools, read just before
+        they are reserved (blocking; may raise when the hypervisor cannot be read, and the
+        build then fails retryably). Default: nothing is shared with anyone else."""
         return []
 
     #: Set by the worker for a range with no recorded endpoint (worker/connection_binding.hook):

@@ -25,6 +25,8 @@ try:
 except ImportError:  # the provisioner reports the missing SDK when it is used
     vim = None  # type: ignore[assignment]
 
+from . import vsphere_vlans  # noqa: E402 — the live-switch checks (range certification S1)
+
 MIB = 1024 * 1024
 GIB = 1024 * MIB
 # Disks are thin-provisioned, so a fresh clone uses a fraction of its size. A
@@ -257,7 +259,7 @@ def _bool_policy(value: bool):
     return vim.BoolPolicy(inherited=False, value=value)
 
 
-def dvs_portgroup_spec(name: str, vlan: int, promiscuous: bool):
+def dvs_portgroup_spec(name: str, vlan: int, promiscuous: bool, description: str = ""):
     port = vim.dvs.VmwareDistributedVirtualSwitch.VmwarePortConfigPolicy(
         vlan=vim.dvs.VmwareDistributedVirtualSwitch.VlanIdSpec(inherited=False, vlanId=vlan),
         securityPolicy=vim.dvs.VmwareDistributedVirtualSwitch.SecurityPolicy(
@@ -268,7 +270,8 @@ def dvs_portgroup_spec(name: str, vlan: int, promiscuous: bool):
         ),
     )
     return vim.dvs.DistributedVirtualPortgroup.ConfigSpec(
-        name=name, type="earlyBinding", numPorts=16, autoExpand=True, defaultPortConfig=port
+        name=name, type="earlyBinding", numPorts=16, autoExpand=True, defaultPortConfig=port,
+        description=description or None,
     )
 
 
@@ -277,28 +280,36 @@ def _pg_vlan(pg) -> int | None:
     return vlan if isinstance(vlan, int) else None
 
 
-def ensure_dvs_portgroup(dvs, name: str, vlan: int, promiscuous: bool, wait):
+def ensure_dvs_portgroup(dvs, name: str, vlan: int, promiscuous: bool, wait, description: str = ""):
     """The range port group on the vDS, created if missing (a retried build reuses it).
 
     Refuses a VLAN some other port group already carries: the pool is meant to be
-    TrueNorth's alone, and two port groups on one VLAN are one broadcast domain.
+    TrueNorth's alone, and two port groups on one VLAN are one broadcast domain. (The
+    provisioner checks the live switch first, trunks included: vsphere_vlans.check.)
+    ``description``: the owner mark (vsphere_vlans.owner_mark).
     """
     for pg in dvs.portgroup:
         if pg.name == name:
             return pg
         if _pg_vlan(pg) == vlan:
-            raise RuntimeError(f"VLAN {vlan} is already used by port group {pg.name!r} on {dvs.name}")
-    wait(dvs.CreateDVPortgroup_Task(dvs_portgroup_spec(name, vlan, promiscuous)))
+            # Appeared since the step's one read of the switch: the same clean stop.
+            raise vsphere_vlans.PortgroupConflictError(
+                f"VLAN {vlan} is already used by port group {pg.name!r} on {dvs.name}; it appeared after VLAN "
+                f"{vlan} was allocated, so the build stopped before creating anything further", vlan, pg.name)
+    wait(dvs.CreateDVPortgroup_Task(dvs_portgroup_spec(name, vlan, promiscuous, description)))
     created = next((pg for pg in dvs.portgroup if pg.name == name), None)
     if created is None:
         raise RuntimeError(f"port group {name!r} was not found on {dvs.name} after creating it")
     return created
 
 
-def remove_dvs_portgroup(dvs, name: str, wait) -> bool:
-    """Destroy the port group; False if it was already gone."""
+def remove_dvs_portgroup(dvs, name: str, wait, vlan: int | None = None) -> bool:
+    """Destroy the port group; False if it was already gone, or (``vlan`` given) if the
+    port group of that name carries another VLAN: then it is not the one the range made."""
     pg = next((p for p in dvs.portgroup if p.name == name), None)
     if pg is None:
+        return False
+    if vlan is not None and _pg_vlan(pg) != vlan:
         return False
     wait(pg.Destroy_Task())
     return True
@@ -322,7 +333,12 @@ def ensure_vss_portgroup(host, name: str, vlan: int, vswitch: str, promiscuous: 
         host.configManager.networkSystem.AddPortGroup(portgrp=vss_portgroup_spec(name, vlan, vswitch, promiscuous))
 
 
-def remove_vss_portgroup(host, name: str) -> bool:
+def remove_vss_portgroup(host, name: str, vlan: int | None = None) -> bool:
+    """Remove the standard port group from ``host``; False if it was not there, or (``vlan``
+    given) if the port group of that name on this host carries another VLAN: then it is not
+    the one the range made."""
+    if vlan is not None and (have := vsphere_vlans.vss_vlan(host, name)) is not None and have != vlan:
+        return False
     try:
         host.configManager.networkSystem.RemovePortGroup(pgName=name)
     except vim.fault.NotFound:

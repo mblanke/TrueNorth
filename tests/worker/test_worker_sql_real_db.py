@@ -985,6 +985,16 @@ PG_CALLS = {
     "insert_reservations": lambda db: db_ops.insert_reservations(db, ID, "vsphere:vlans", "vlan", {"200": "100"}),
     "release_destroyed_range": lambda db: db_ops.release_destroyed_range(db, ID),
     "merge_range_output": lambda db: db_ops.merge_range_output(db, ID, {"k": 1}),
+    # Range certification S1: external reservations and the collision release.
+    "range_held_values": lambda db: db_ops.range_held_values(db, "vsphere:vlans", "vlan"),
+    "external_reservations": lambda db: db_ops.external_reservations(db, "vsphere:vlans", "vlan"),
+    "drop_reservation_ids": lambda db: db_ops.drop_reservation_ids(db, [ID], seen_before=datetime.now(UTC)),
+    "touch_reservation_ids": lambda db: db_ops.touch_reservation_ids(db, [ID], datetime.now(UTC)),
+    "expire_external": lambda db: db_ops.expire_external(db, "vsphere:vlans", "vlan", "external:vc/dvs:", datetime.now(UTC)),
+    "insert_external_reservations": lambda db: db_ops.insert_external_reservations(
+        db, "vsphere:vlans", "vlan", {"150": "external:vc/dvs:pg"}, datetime.now(UTC)),
+    "drop_range_values": lambda db: db_ops.drop_range_values(db, ID, "vsphere:vlans", "vlan", ["150"]),
+    "drop_range_networks": lambda db: db_ops.drop_range_networks(db, ID, {150}),
 }
 
 
@@ -995,8 +1005,10 @@ class TestPostgresRendering:
         PG_CALLS[name](db)
         assert db.sql, f"{name} executed nothing"
         for sql in db.sql:
-            # A write stamps updated_at; a DELETE leaves no row to stamp (network reservations).
-            assert "now()" in sql.lower() or sql.lstrip().upper().startswith(("SELECT", "DELETE")), sql
+            # A write stamps updated_at: now(), or (external reservations) the start of the
+            # live read that saw the value. A DELETE leaves no row to stamp.
+            assert ("now()" in sql.lower() or "updated_at=%(updated_at" in sql
+                    or sql.lstrip().upper().startswith(("SELECT", "DELETE"))), sql
 
     def test_every_public_helper_is_covered(self):
         public = {n for n, f in vars(db_ops).items() if callable(f) and getattr(f, "__module__", "") == db_ops.__name__

@@ -165,7 +165,7 @@ def provision_range(self, range_id: str, noise_mgmt: dict | None = None):
         result = run_async(range_accounts.provision(provisioner, range_id, template, allocations, _db_session))
 
         if result.status == "failed":
-            raise RuntimeError("; ".join(result.errors) or "Provisioning failed")
+            raise range_alloc.build_failure(_db_session, range_id, result)  # final on a live VLAN collision (S1)
 
         output = json.dumps(range_alloc.stored_output(backend, range_id, result, provisioner))
         state, error = range_alloc.build_outcome(result)  # failed: a VM built, but its guest network is not up

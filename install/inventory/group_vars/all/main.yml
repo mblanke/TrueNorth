@@ -302,6 +302,17 @@ tn_vsphere_range_switch_mode: vds
 tn_vsphere_range_dvs: vDS-10G
 tn_vsphere_range_vswitch: vSwitch1
 tn_vsphere_vlan_pool: "100-199"
+# VLANs never handed to a range, even inside the pool: the site's own (management 30,
+# build 31, depot uplink 32 at the work site). Comma list of ids/ranges; "" = none. Before
+# each allocation the worker also reads every port group on tn_vsphere_range_dvs live and
+# keeps off any VLAN something else carries (range certification S1).
+tn_vsphere_reserved_vlans: "30-32"
+# Site networks no range template subnet may overlap: refused when a template is validated
+# or saved, and again at provision. The work site's management, build and depot-uplink /24s.
+tn_range_reserved_cidrs:
+  - 10.30.30.0/24
+  - 10.30.31.0/24
+  - 10.30.32.0/24
 # spread | per-range-host | cluster. Hosts have 16 threads, so a big range must spread.
 tn_vsphere_placement: spread
 tn_vsphere_range_folder: TrueNorth/Ranges  # <range-name>-<id8> per range; the old truenorth/ranges is still found (vcenter-organize.sh moves it)

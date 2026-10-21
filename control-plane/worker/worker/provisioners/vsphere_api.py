@@ -56,6 +56,7 @@ import threading
 import time
 from collections.abc import Callable
 from contextlib import contextmanager
+from datetime import UTC, datetime
 from urllib.parse import urlparse
 
 try:
@@ -76,7 +77,8 @@ from . import vsphere_infra as infra
 from . import vsphere_macs as macs
 from . import vsphere_securityonion as seconion
 from . import vsphere_tags as tags
-from .base import AllocationNeed, BaseProvisioner, ConnectionBindingError
+from . import vsphere_vlans as live_vlans
+from .base import AllocationNeed, BaseProvisioner, ConnectionBindingError, LiveUsage
 from .results import (
     DestroyResult,
     HealthResult,
@@ -91,6 +93,15 @@ from .results import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+class RangeNetworkConflictError(RuntimeError):
+    """A range port group collided with the live switch just before it was created
+    (``_prepare_sync``). ``conflict``: ProvisionResult.conflict."""
+
+    def __init__(self, message: str, conflict: dict):
+        super().__init__(message)
+        self.conflict = conflict
 
 # ---------------------------------------------------------------------------
 # Configuration from environment
@@ -135,6 +146,9 @@ VSPHERE_RANGE_DVS: str = os.environ.get("VSPHERE_RANGE_DVS", "vDS-10G")
 VSPHERE_RANGE_VSWITCH: str = os.environ.get("VSPHERE_RANGE_VSWITCH", "vSwitch1")
 # Physical VLANs reserved for ranges, trunked to every host ("100-199" or "100-149,160").
 VSPHERE_VLAN_POOL: str = os.environ.get("VSPHERE_VLAN_POOL", "100-199")
+# VLANs never handed to a range even inside the pool (the site's own: management, build,
+# depot uplink), installer tn_vsphere_reserved_vlans. Empty: none. Range certification S1.
+VSPHERE_RESERVED_VLANS: str = os.environ.get("VSPHERE_RESERVED_VLANS", "")
 # "spread" (each VM on the host with most vCPU headroom), "per-range-host" (whole range
 # on one host) or "cluster" (cluster resource pool + VSPHERE_DATASTORE, DRS places).
 VSPHERE_PLACEMENT: str = os.environ.get("VSPHERE_PLACEMENT", "spread").lower()
@@ -501,6 +515,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
         self._dvs_name = VSPHERE_RANGE_DVS
         self._vswitch = VSPHERE_RANGE_VSWITCH
         self._vlan_pool = VSPHERE_VLAN_POOL
+        self._reserved_vlans = VSPHERE_RESERVED_VLANS
         self._placement = VSPHERE_PLACEMENT
         self._resource_pool = VSPHERE_RESOURCE_POOL.strip()
         self._range_folder = infra.range_root(VSPHERE_RANGE_FOLDER)  # empty or "/": refused, loudly
@@ -1252,6 +1267,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
         refs: dict = {}
         names = {n.get("vlan_id"): n.get("name", "") for n in networks}
         dvs = None
+        pg_hosts: list = []
         if not physical:
             pass  # nothing to create (a lab session on leased port groups only)
         elif self._switch_mode == "vss":
@@ -1261,17 +1277,30 @@ class VsphereAPIProvisioner(BaseProvisioner):
             dvs = self._find(si, vim.DistributedVirtualSwitch, self._dvs_name)
             if dvs is None:
                 raise RuntimeError(f"Distributed switch not found: {self._dvs_name!r}")
+        created: list[dict] = []  # the port groups this call made (a conflict removes them again)
+        # The live switch, again, right before creating (range certification S1): ONE read for
+        # the step (vss: of exactly the hosts the port groups go on, and are undone on). A VLAN
+        # or name that appeared since allocation stops the build here; one that appears while
+        # this step runs is caught by ensure_dvs_portgroup's own check, the same way.
+        uses, switch = self._switch_usage(si, pg_hosts) if physical else ([], "")
         for logical, vlan in sorted(physical.items()):
             pg = infra.portgroup_name(range_id, vlan)
             promiscuous = infra.wants_promiscuous(names.get(logical, ""))
-            if self._switch_mode == "vss":
-                for host in pg_hosts:
-                    infra.ensure_vss_portgroup(host, pg, vlan, self._vswitch, promiscuous)
-                net = next((n for n in pg_hosts[0].network if n.name == pg), None)
-                if net is None:
-                    raise RuntimeError(f"port group {pg!r} not visible on {pg_hosts[0].name} after creating it")
-            else:
-                net = infra.ensure_dvs_portgroup(dvs, pg, vlan, promiscuous, lambda t: self._wait(t, si))
+            try:
+                existed = live_vlans.check(uses, pg, vlan, range_id, switch)
+                if self._switch_mode == "vss":
+                    for host in pg_hosts:
+                        infra.ensure_vss_portgroup(host, pg, vlan, self._vswitch, promiscuous)
+                    net = next((n for n in pg_hosts[0].network if n.name == pg), None)
+                    if net is None:
+                        raise RuntimeError(f"port group {pg!r} not visible on {pg_hosts[0].name} after creating it")
+                else:
+                    net = infra.ensure_dvs_portgroup(dvs, pg, vlan, promiscuous, lambda t: self._wait(t, si),
+                                                     live_vlans.owner_mark(range_id))
+            except live_vlans.PortgroupConflictError as exc:
+                raise self._conflict(si, range_id, physical, created, exc, pg_hosts) from exc
+            if not existed:
+                created.append({"portgroup": pg, "physical_vlan": vlan, "switch_mode": self._switch_mode})
             refs[logical] = self._guard(infra.network_ref(net))
 
         uplink = None
@@ -1323,6 +1352,36 @@ class VsphereAPIProvisioner(BaseProvisioner):
         folder = infra.ensure_range_folder(dc, self._range_folder, range_id, label or tags.range_key(range_id))
         return {"dc": dc, "cluster": cluster, "pool": self._pool(cluster), "folder": folder, "templates": templates,
                 "dvs": dvs, "notes": site_notes}
+
+    def _conflict(self, si, range_id: str, physical: dict, created: list[dict],
+                  exc: live_vlans.PortgroupConflictError, pg_hosts: list) -> RangeNetworkConflictError:
+        """Undo the port groups this step created, then say which VLANs the range no longer
+        needs: every planned one but those whose port group of this range still exists
+        (an earlier attempt's, which the range's destroy removes). The colliding VLAN is
+        recorded as external only when the port group in the way really carries it."""
+        note = ""
+        try:
+            dvs = None
+            for net in created:  # only these: never a port group this step did not make
+                if net["switch_mode"] == "vss":
+                    for host in pg_hosts:  # the hosts it was created on, VLAN checked
+                        infra.remove_vss_portgroup(host, net["portgroup"], net["physical_vlan"])
+                    continue
+                dvs = dvs or self._find(si, vim.DistributedVirtualSwitch, self._dvs_name)
+                infra.remove_dvs_portgroup(dvs, net["portgroup"], lambda t: self._wait(t, si), net["physical_vlan"])
+        except Exception as undo:  # noqa: BLE001 — reported; the planned output still lists them
+            note = f"; removing the port groups this step created failed: {undo}"
+        try:
+            uses, _ = self._switch_usage(si, pg_hosts)
+            kept = {v for v in physical.values()
+                    if any(u.name == infra.portgroup_name(range_id, v) for u in uses)
+                    and live_vlans.conflict(uses, infra.portgroup_name(range_id, v), v, range_id, "") is None}
+        except Exception:  # noqa: BLE001 — keep every reservation rather than guess
+            kept = set(physical.values())
+        conflict = {"domain": self._domain("vlans"), "source": self._vlan_source(),
+                    "vlans": {str(exc.vlan): exc.used_by} if exc.carried else {},
+                    "release": sorted((str(v) for v in set(physical.values()) - kept), key=int)}
+        return RangeNetworkConflictError(f"{exc}{note}", conflict)
 
     def _pool(self, cluster):
         """VSPHERE_RESOURCE_POOL (by name, anywhere under the cluster), else the cluster's root pool."""
@@ -1506,12 +1565,12 @@ class VsphereAPIProvisioner(BaseProvisioner):
         for net in networks:
             name = net["portgroup"]
             if net.get("switch_mode", self._switch_mode) == "vss":
-                removed += any([infra.remove_vss_portgroup(h, name) for h in cluster.host])
+                removed += any([infra.remove_vss_portgroup(h, name, net.get("physical_vlan")) for h in cluster.host])
                 continue
             dvs = dvs or self._find(si, vim.DistributedVirtualSwitch, self._dvs_name)
             if dvs is None:
                 raise RuntimeError(f"Distributed switch not found: {self._dvs_name!r}")
-            removed += infra.remove_dvs_portgroup(dvs, name, lambda t: self._wait(t, si))
+            removed += infra.remove_dvs_portgroup(dvs, name, lambda t: self._wait(t, si), net.get("physical_vlan"))
         for folder in infra.find_range_folders(dc, self._range_roots(), range_id):
             if not folder.childEntity:  # by id8: today's <name>-<id8> and earlier <id8> folders
                 self._wait(folder.Destroy_Task(), si)
@@ -1605,6 +1664,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
         physical: dict[int, int] = {}
         uplink: dict | None = None
         mirrors: list[dict] = []
+        conflict: dict | None = None
 
         try:
             if SmartConnect is None:
@@ -1693,9 +1753,12 @@ class VsphereAPIProvisioner(BaseProvisioner):
                     await asyncio.gather(roles_then_software(), self._setup_securityonion(
                         si, vm_defs, usable, networks, mirror_plans, start, warnings))
                     await self._verify_accounts(si, vm_defs, usable, start, warnings)
+                except RangeNetworkConflictError as exc:  # nothing built; this step's port groups already removed
+                    errors.append(str(exc))
+                    conflict = exc.conflict
                 except Exception as exc:
                     errors.append(self._redact(exc, *vm_defs))
-                if not vms_out:
+                if not vms_out and conflict is None:
                     await self._rollback(si, range_id, networks, errors)
         except Exception as exc:
             errors.append(self._redact(exc, *vm_defs))
@@ -1719,6 +1782,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
             uplink=uplink,
             mirrors=mirrors,
             not_ready=[n for n in not_ready if n in built],
+            conflict=conflict,
         )
 
     # ------------------------------------------------------------------ #
@@ -1754,8 +1818,10 @@ class VsphereAPIProvisioner(BaseProvisioner):
         keys = logical + [p["rspan_key"] for p in plans if p["rspan_key"] not in logical]
         needs = []
         if keys:
-            pool = [str(v) for v in vlan_pool.parse_pool(self._vlan_pool)]
-            needs.append(AllocationNeed("physical_vlans", "vlan", self._domain("vlans"), pool, [str(k) for k in keys]))
+            reserved = frozenset(str(v) for v in vlan_pool.parse_reserved(self._reserved_vlans))
+            pool = [str(v) for v in vlan_pool.parse_pool(self._vlan_pool) if str(v) not in reserved]
+            needs.append(AllocationNeed("physical_vlans", "vlan", self._domain("vlans"), pool, [str(k) for k in keys],
+                                        excluded=reserved))
         if self._uplink_network and (edge := infra.pick_edge(vm_defs)) is not None:
             pool = uplink_pool.parse_ip_pool(self._uplink_pool)
             needs.append(AllocationNeed("uplink_ip", "uplink_ip", self._domain("uplink"), pool, ["edge"], single=True))
@@ -1764,6 +1830,42 @@ class VsphereAPIProvisioner(BaseProvisioner):
             needs.append(AllocationNeed("nic_macs", "mac", self._domain("macs"), macs.parse_pool(self._mac_pool),
                                         holders))
         return needs
+
+    def live_usage(self, needs: list[AllocationNeed]) -> list[LiveUsage]:
+        """The pool VLANs every port group on the range switch carries now (trunks
+        expanded, uplink port groups skipped): read live before the VLANs are reserved
+        (range certification S1, vsphere_vlans.py)."""
+        vlan_needs = [n for n in needs if n.kind == "vlan"]
+        if not vlan_needs:
+            return []
+        if SmartConnect is None:
+            raise RuntimeError("pyvmomi is required to read the range switch (pip install pyvmomi)")
+        read_at = datetime.now(UTC)  # before the read: what it saw is at least this fresh
+        with self._vim() as si:
+            uses, _ = self._switch_usage(si)
+        out = []
+        for need in vlan_needs:
+            foreign, managed = live_vlans.by_value(uses, need.pool)
+            out.append(LiveUsage(need.domain, need.kind, self._vlan_source(), foreign, managed, read_at=read_at))
+        return out
+
+    def _vlan_source(self) -> str:
+        """Which switch a live VLAN read is of: ``<vCenter host>/<vDS or vSwitch>``."""
+        switch = self._vswitch if self._switch_mode == "vss" else self._dvs_name
+        return f"{urlparse(self._base_url).hostname or self._base_url}/{switch}"
+
+    def _switch_usage(self, si, hosts=None) -> tuple[list, str]:
+        """(every port group on the range switch, the switch's name), read live. ``hosts``
+        (vss): the host objects to read; default every eligible host of the cluster."""
+        if self._switch_mode == "vss":
+            if hosts is None:
+                _, cluster = self._datacenter_and_cluster(si)
+                hosts = [h.ref for h in self._eligible_hosts(cluster)]
+            return live_vlans.vss_usage(hosts), self._vswitch
+        dvs = self._find(si, vim.DistributedVirtualSwitch, self._dvs_name)
+        if dvs is None:
+            raise RuntimeError(f"Distributed switch not found: {self._dvs_name!r}")
+        return live_vlans.dvs_usage(si, dvs), dvs.name
 
     def planned_output(self, range_id: str, allocations: dict) -> dict:
         """The port groups and uplink address the build will use, recorded before it starts."""

@@ -36,6 +36,12 @@ class ProvisionResult:
     # address VMware Tools never reported (vsphere_readiness.py). Each has its reason in
     # ``errors``; the range is recorded ``failed``, not ``ready`` (range_alloc.build_outcome).
     not_ready: list[str] = field(default_factory=list)
+    # A network the build was about to create collided with one that appeared on the live
+    # switch after allocation (range certification S1): nothing further was built, and what
+    # this step created was removed. {"domain", "source", "vlans": {vlan: what uses it},
+    # "release": [physical VLANs the range no longer needs]}; the worker releases those and
+    # records the collisions (range_alloc.build_failure), and does not retry.
+    conflict: dict | None = None
 
 
 @dataclass
