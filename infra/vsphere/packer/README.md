@@ -32,9 +32,15 @@ http/                        Linux seeds, all templatefiles (*.pkrtpl.hcl) rende
   ubuntu/user-data.pkrtpl.hcl    autoinstall (cd_content on a 'cidata' CD, with meta-data)
   rocky/ks.cfg.pkrtpl.hcl        kickstart (cd_content on an 'OEMDRV' CD)
   {kali,debian,parrot}/preseed.cfg.pkrtpl.hcl   preseed (http_content)
-  pfsense/config.xml             pfSense bootstrap (vmx0/vmx1); applied at deploy
+  pfsense/config.xml             reference pfSense config (vmx0/vmx1), the boot-script tests' fixture
 files/windows/               autounattend.pkrtpl.hcl, choco-bootstrap.ps1, setup.ps1, sysprep.ps1,
                              variant-packages.ps1, role-image.ps1
+files/pfsense/               template finish on the build's 2nd CD: tn-pfsense-finish.sh,
+                             tn-pfsense-config, tn-vmtools.sh, pkgs.lock (sha256-pinned
+                             Open-VM-Tools set; .pkg files staged into stage/pfsense/ by
+                             scripts/lab/stage_pfsense_pkgs.py, never committed)
+files/vyos/                  template finish on the build's 2nd CD: tn-vyos-prep.sh,
+                             tn-vyos-install.py (answers `install image` by prompt text)
 files/linux/                 99-vmware.cfg, apt-proxy.sh, cleanup.sh, roles/<name>.sh,
                              variant-packages.sh
 build.sh                     build driver (order, logging, register-back)
@@ -220,9 +226,9 @@ The deploy provisioner can use either, so keeping both costs only datastore spac
 | srv2025 | iso | **Needs tuning** | New Setup engine; unattended UEFI partitioning is fragile (see below) |
 | win11-24h2 | iso | **Needs tuning — highest risk** | New Setup engine + 64 GB + LabConfig bypass. See below |
 | parrot | iso | **Fragile** | Live ISO usually installs via Calamares (GUI), which ignores preseed. Works only off the ISO's text/debian-installer entry; else treat as manual |
-| pfsense | iso | **Fragile (keystroke)** | Blind `boot_command`; timing needs on-site tuning. config.xml applied at deploy |
+| pfsense | iso | **Not run since the finish was automated (2026-10-21)** | Keystrokes reach the installer's Shell, then `files/pfsense/tn-pfsense-finish.sh` (2nd CD) adds Open-VM-Tools offline from `pkgs.lock`, installs `tn-pfsense-config` + `tn-vmtools.sh`, writes the template config (WAN vmx0, LAN vmx1, SSH, boot hook, admin = the build password hash) and powers off. Any failure: no power-off, no template. Needs the packages staged first (`build-phase.sh appliances` does it; pin once with `stage_pfsense_pkgs.py resolve`). Test clone: `tools` |
 | securityonion | iso | **Fragile (keystroke)** | Base OS install only; `so-setup` runs per range at deploy (standalone, airgap: `vmware-site-runbook.md` §7.2). Finish the OS install by hand the first time, then template **without** running setup. Check before templating: open-vm-tools is running (`systemctl is-active vmtoolsd`). The installer's user is the build login the worker uses (`VSPHERE_SO_INSTALL_USER`/`_PASSWORD`, documented in the wiki) and can `sudo`. Two NICs, management first |
-| vyos | iso | **Fragile (keystroke)** | `install image` driven blind over the console |
+| vyos | iso | **Not run yet** | Logs in on the live console, `tn-vyos-prep.sh` drops the hw-id pins, `tn-vyos-install.py` answers `install image` by prompt text (vyos password = the build password), sets cloud-init's datasource to VMware first and powers off; an unknown prompt fails with no template. Test clone: `tools` |
 | remnux, sift, svc-emulators, ca-host, usersim, cloudlog-emu | clone | **Likely** | Clone `ubuntu-lts`, run `files/linux/roles/<name>.sh` over SSH. Role installers have honest `TODO(offline)` / `TODO(deploy)` where media is online-only or range-specific |
 | greyspace-host | clone | **Not run on vSphere yet** | Clone `ubuntu-lts`, Docker >= 27 + every Greyspace stack image pulled by digest (`files/linux/roles/greyspace-host.sh`, needs internet or the depot as apt proxy and registry mirror). Proven: the stack on Docker (CI `greyspace`), gs-core on vcsim; not a real vCenter |
 | c2-server | clone | **Gated** | Catalogue `enabled=no`; needs instructor/Standards sign-off |

@@ -1,0 +1,11 @@
+# TrueNorth Range - the offline Open-VM-Tools package set for the pfSense CE 2.7.2 template.
+# One "<sha256>  <file>" line per package, in install order (dependencies first).
+# tn-pfsense-finish.sh pkg-adds exactly these, after checking each sha256; the build fails
+# (no template) if a file is missing or does not match.
+#
+# NOT PINNED YET: no package lines below. Pin once, on a host with internet access:
+#   python3 scripts/lab/stage_pfsense_pkgs.py resolve --out <dir>
+# It reads the pfSense 2.7.2 repository catalogue, resolves open-vm-tools-nox11 and its
+# dependencies, downloads them, checks each against the catalogue's sha256 and rewrites
+# this file. Review the diff and commit it, then put <dir>/*.pkg on the depot
+# (<depot_url>/installers/pfsense/2.7.2/) or carry them to TN-MGMT01.

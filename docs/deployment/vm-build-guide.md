@@ -168,6 +168,21 @@ ISO path:
 
 ### pfSense
 
+**The Packer build (`appliances.pkr.hcl`, `pfsense`) does steps 2–5 itself** from its
+second CD (`files/pfsense/tn-pfsense-finish.sh`, run from the installer's Shell): it adds
+the Open-VM-Tools package set from `files/pfsense/pkgs.lock` offline (sha256-checked),
+installs `tn-pfsense-config` and `/usr/local/etc/rc.d/tn-vmtools.sh`, writes the template
+config (`tn-pfsense-config template`: the release's factory config with WAN `vmx0`, LAN
+`vmx1`, SSH on, the boot hook, and the admin password = the build's `ssh_password_hash`,
+ADR 0012 decision 5) and powers off; on any failure it does not power off, so the build
+fails and no template is made. Before building, stage the packages:
+`python3 scripts/lab/stage_pfsense_pkgs.py stage --depot <depot_url>` (or `--from-dir`;
+`build-phase.sh appliances` does it). The lock is pinned once, on a host with internet:
+`stage_pfsense_pkgs.py resolve --out <dir>`, review and commit `pkgs.lock`, upload
+`<dir>/*.pkg` to the depot's `installers/pfsense/2.7.2/`. `build-phase.sh` registers the
+template only after a test clone shows VMware Tools running. The hand steps below remain
+the fallback, and the reference for what the finish does.
+
 1. New VM: FreeBSD 14 64-bit, BIOS, 2 vCPU / 2 GB / 20 GB.
    **Two vmxnet3 NICs**: NIC 1 (WAN) on `dPG-TN-BUILD` for the build, NIC 2 (LAN) on the
    same network.
@@ -240,6 +255,16 @@ stay the template's. Log: `/conf/tn-opnsense-config.log`.
    eval) per range, or bake an eval install and snapshot it as a role snapshot.
 
 ### VyOS 1.4
+
+**The Packer build (`appliances.pkr.hcl`, `vyos`) does steps 2–4 itself** from its second
+CD: it logs in on the live console, runs `files/vyos/tn-vyos-prep.sh` (step 3, before the
+install, so the copied config pins no MACs), then `files/vyos/tn-vyos-install.py`, which
+answers `install image` by each prompt's text (vyos password = the build's `ssh_password`,
+ADR 0012 decision 5; SSH host keys not copied; the saved config as boot config), writes
+`/etc/cloud/cloud.cfg.d/99-tn-vmware.cfg` (`datasource_list: [ VMware, NoCloud, None ]`)
+into the installed image and powers off. A prompt it does not know, or any failure, prints
+the transcript and does not power off: the build fails, no template. The installed image
+has never booted, so there is no cloud-init state to clean. Test clone: `tools`.
 
 1. New VM: Debian 12 64-bit, 1 vCPU / 2 GB / 8 GB, two vmxnet3 NICs.
 2. Boot the ISO and log in as `vyos`/`vyos`. Run `install image` and accept the defaults.

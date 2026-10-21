@@ -107,7 +107,11 @@ role_server_ids() { local p; for p in $ROLE_SERVER; do printf '%s ' "${p%%:*}"; 
 
 test_mode() {
   case "$1" in
-    pfsense|vyos) echo power ;;   # no guest customization on the appliances
+    # No guest customization on the appliances, but VMware Tools must run in a clone: the
+    # per-range config arrives through guestinfo (pfSense: tn-vmtools.sh + the boot hook
+    # that the template finish installs; VyOS: its built-in open-vm-tools for cloud-init).
+    # A template whose finish did not run (no Tools) is never registered.
+    pfsense|vyos) echo tools ;;
     securityonion) echo tools ;;  # OS-only template; so-setup runs per range (decision 8)
     *) echo customize ;;
   esac
@@ -115,8 +119,8 @@ test_mode() {
 
 appliance_note() {
   case "$1" in
-    pfsense) echo "Keystroke build: boot_command types blind into the installer. Watch the console in vCenter; timing may need tuning (appliances.pkr.hcl)." ;;
-    vyos) echo "Keystroke build: 'install image' is driven blind over the console. Watch the console in vCenter." ;;
+    pfsense) echo "Keystroke build to the installer's Shell, then tn-pfsense-finish.sh (second CD) adds Open-VM-Tools offline, the boot hook and the template config, and powers off. Watch the console in vCenter: a 'tn-finish: FAILED' line means no template (appliances.pkr.hcl)." ;;
+    vyos) echo "Logs in on the live console, then tn-vyos-install.py (second CD) answers 'install image' by prompt text and powers off. Watch the console in vCenter: '[tn-vyos-install] FAILED' means no template." ;;
     securityonion) echo "OS-only install (so-setup runs per range). The first time, finish the OS install by hand if the keystrokes miss, then let Packer template it." ;;
   esac
 }
@@ -500,9 +504,30 @@ phase_appliances() {
       { read -r -p "  Open the console of '$id' in vCenter once it appears. Build $id now? [y/N] " ans </dev/tty; } 2>/dev/null || ans=""
       [[ "$ans" =~ ^[Yy]([Ee][Ss])?$ ]] || { warn "$id skipped"; continue; }
     fi
+    if [[ "$id" == "pfsense" ]] && ! { exists pfsense && [[ "$REBUILD" != "1" ]]; }; then
+      pfsense_stage || { warn "pfsense: Open-VM-Tools packages not staged; not built"; failed=1; continue; }
+    fi
     build_and_post "$id" "$(test_mode "$id")" || failed=1
   done
   return "$failed"
+}
+
+# pfSense: the template finish pkg-adds Open-VM-Tools from the build's second CD, offline
+# (files/pfsense/pkgs.lock, sha256-pinned). Stage the .pkg files before building: from
+# TN_PFSENSE_PKG_DIR when set, else the depot's installers repository (tn-build-read).
+# Never from the internet. Without them the build would only fail later, at the console.
+pfsense_stage() {
+  local stage=(python3 "$LAB_DIR/stage_pfsense_pkgs.py")
+  if [[ "$DRY" == "1" ]]; then
+    echo "  [dry-run] ${stage[*]} check || ${stage[*]} stage --depot $DEPOT_URL_DEFAULT"
+    return 0
+  fi
+  "${stage[@]}" check >/dev/null 2>&1 && { info "ok    pfSense packages staged (pkgs.lock)"; return 0; }
+  if [[ -n "${TN_PFSENSE_PKG_DIR:-}" ]]; then
+    "${stage[@]}" stage --from-dir "$TN_PFSENSE_PKG_DIR"
+  else
+    "${stage[@]}" stage --depot "$DEPOT_URL_DEFAULT" --depot-env "$DEPOT_BUILD_ENV"
+  fi
 }
 
 phase_derived() {
