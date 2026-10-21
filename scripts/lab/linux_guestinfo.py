@@ -3,9 +3,11 @@
 
 scripts/lab/test-clone.sh uses it so a Linux test clone is configured by the SAME code path
 as a range VM: the worker's ``vsphere_infra.linux_guestinfo`` (vsphere_api.py
-``_customize_sync`` calls it; there is no vSphere Linux guest customization). It loads that
-module from this checkout by file path, so it needs PyYAML and nothing else (pyVmomi is
-replaced by a two-attribute stand-in for ``vim.option.OptionValue``).
+``_customize_sync`` calls it; there is no vSphere Linux guest customization). It imports that
+module from this checkout as part of a stand-in package for its directory, so its sibling
+imports (vsphere_tags, vsphere_vlans, ...) resolve but the provisioners package's
+``__init__`` (every provisioner and its SDK) does not run. It needs PyYAML and nothing else
+(pyVmomi is replaced by a two-attribute stand-in for ``vim.option.OptionValue``).
 
     python3 scripts/lab/linux_guestinfo.py --name tntc-esx02 --ip 10.30.31.241 \
         --mac 00:50:56:aa:bb:cc
@@ -18,20 +20,22 @@ replaced by a two-attribute stand-in for ``vim.option.OptionValue``).
 from __future__ import annotations
 
 import argparse
-import importlib.util
+import importlib
 import sys
 import types
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
-INFRA = REPO / "control-plane/worker/worker/provisioners/vsphere_infra.py"
+PROVISIONERS = REPO / "control-plane/worker/worker/provisioners"
+PACKAGE = "tn_lab_provisioners"
 
 
 def _load_infra():
-    spec = importlib.util.spec_from_file_location("tn_vsphere_infra", INFRA)
-    mod = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = mod  # dataclasses look their module up there
-    spec.loader.exec_module(mod)
+    if PACKAGE not in sys.modules:
+        pkg = types.ModuleType(PACKAGE)
+        pkg.__path__ = [str(PROVISIONERS)]  # a namespace for the siblings; no __init__ runs
+        sys.modules[PACKAGE] = pkg
+    mod = importlib.import_module(f"{PACKAGE}.vsphere_infra")
     if mod.vim is None:  # no pyVmomi here: the worker's code only builds OptionValue(key, value)
         mod.vim = types.SimpleNamespace(option=types.SimpleNamespace(OptionValue=types.SimpleNamespace))
     return mod
