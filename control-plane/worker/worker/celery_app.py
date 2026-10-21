@@ -201,6 +201,7 @@ from . import (
     audit_tasks,  # noqa: F401, E402
     chaos,  # noqa: F401, E402
     configure_tasks,  # noqa: F401, E402
+    credential_rotation,  # noqa: F401, E402
     exercise_run,  # noqa: F401, E402
     lab_tasks,  # noqa: F401, E402
     noise_tasks,  # noqa: F401, E402

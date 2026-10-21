@@ -2765,20 +2765,39 @@ SO_TEMPLATE = {
 
 
 class TestSecurityOnion:
+    SOADMIN_PW = "So-Gen.Pass#3"  # the range's implicit soadmin row (ADR 0013 §3)
+
     @pytest.fixture
     def so_vc(self, vc, monkeypatch):
+        """The SO template's build login ``soadmin`` / Build-Pass-77, until the setup's last
+        step (chpasswd) gives it the range's password."""
         monkeypatch.setenv("VSPHERE_SO_INSTALL_USER", "soadmin")
         monkeypatch.setenv("VSPHERE_SO_INSTALL_PASSWORD", "Build-Pass-77")
         monkeypatch.setattr(so_mod, "VSPHERE_SO_POLL", 0)
+        login = {"pw": "Build-Pass-77"}
         real = FakeVM.guest_password
-        monkeypatch.setattr(FakeVM, "guest_password", lambda self, user: "Build-Pass-77" if (
+        monkeypatch.setattr(FakeVM, "guest_password", lambda self, user: login["pw"] if (
             user == "soadmin" and self.name.endswith("seconion01")) else real(self, user))
+        real_start = vc.guest_ops.StartProgramInGuest
+
+        def start(vm, auth, spec):
+            pid = real_start(vm, auth, spec)
+            if vm.name.endswith("seconion01") and "chpasswd" in spec.arguments and "soadmin" in spec.arguments:
+                login["pw"] = self.SOADMIN_PW
+            return pid
+
+        vc.guest_ops.StartProgramInGuest = start
         return vc
 
-    @staticmethod
-    def _build(vc):
+    def _soadmin(self):
+        return guest_mod.RangeAccount("soadmin", guest_mod.Secret(self.SOADMIN_PW), True)
+
+    def _build(self, vc):
         images = {**IMAGES, "securityonion": "tmpl-ubuntu-2404"}
         out = render.render_topology(SO_TEMPLATE, RANGE_ID, images.get)
+        for vm in out["vm_definitions"]:
+            if vm["node_id"] == "seconion01":
+                vm["_accounts"] = [self._soadmin()]
         tpl = {"name": "soc", "vms": out["vm_definitions"], "networks": out["network_definitions"],
                "network": SO_TEMPLATE["network"]}
         return _run(_prov(vc).provision(RANGE_ID, tpl, {}))
@@ -2803,7 +2822,9 @@ class TestSecurityOnion:
         assert sec["status"] == "ok" and (sec["management_mac"], sec["monitor_mac"]) == (mgmt_mac, mon_mac)
         # The answer file the staging command writes maps the NICs by MAC.
         started = [s for s in vc.guest_ops.started if s[0].endswith("seconion01")]
-        assert [s[1] for s in started] == ["soadmin", "soadmin"]  # stage, then one status read
+        # stage, one status read, then (detached) its own range password (ADR 0013 §3)
+        assert [s[1] for s in started] == ["soadmin", "soadmin", "soadmin"]
+        assert "chpasswd" in started[2][3] and _vm_out(result, "seconion01")["template_login"]["status"] == "rejected"
         b64 = re.search(r"printf %s ([A-Za-z0-9+/=]+) \| base64 -d > /root/tn-so-answers\.env",
                         started[0][3]).group(1)
         answers = base64.b64decode(b64).decode()
@@ -2833,7 +2854,8 @@ class TestSecurityOnion:
             if vm["node_id"] == "seconion01":
                 vm["_accounts"] = [
                     guest_mod.RangeAccount("analyst@range.local", guest_mod.Secret("Web-Gen.Pass#1"), False),
-                    guest_mod.RangeAccount("tnadmin", guest_mod.Secret("Adm-Gen.Pass#2"), True)]
+                    guest_mod.RangeAccount("tnadmin", guest_mod.Secret("Adm-Gen.Pass#2"), True),
+                    self._soadmin()]  # the implicit staff login for the build login (ADR 0013 §3)
         tpl = {"name": "soc", "vms": out["vm_definitions"], "networks": out["network_definitions"],
                "network": SO_TEMPLATE["network"]}
         result = _run(_prov(vc).provision(RANGE_ID, tpl, {}))
@@ -2848,7 +2870,9 @@ class TestSecurityOnion:
         # Its accounts are its setup's to set and report: no "not set at deploy" warning, no notice.
         assert not [w for w in result.warnings if "seconion01" in w]
         so_out = _vm_out(result, "seconion01")
-        assert so_out["accounts_applied"] == ["analyst@range.local", "tnadmin"]  # verified (getent, so-user)
+        # verified (getent, so-user); soadmin got its range password last, and the template's is refused
+        assert so_out["accounts_applied"] == ["analyst@range.local", "tnadmin", "soadmin"]
+        assert so_out["template_login"]["status"] == "rejected"
         labels = [s[3] for s in vc.guest_ops.started if s[0].endswith("seconion01")]
         assert any("so-user list" in a for a in labels) and any("getent passwd tnadmin" in a for a in labels)
         # Not through cloud-init: no account hashes in its guestinfo, nothing left to scrub.

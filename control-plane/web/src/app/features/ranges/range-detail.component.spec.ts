@@ -64,10 +64,11 @@ describe('RangeDetailComponent', () => {
     ]));
     api.listSnapshots.and.returnValue(of([]));
     notify = jasmine.createSpyObj('NotificationService', ['success', 'error', 'info']);
-    credentialsApi = jasmine.createSpyObj('RangeCredentialsApiService', ['getCredentials']);
-    credentialsApi.getCredentials.and.returnValue(of({ range_id: 'r1', scope: 'all', accounts: [
-      { machine: 'dc01', username: 'Administrator', password: 'Dc-Secret-1!', role: 'admin', student_visible: false,
-        generated: true, applied: true, notes: '' }] }));
+    credentialsApi = jasmine.createSpyObj('RangeCredentialsApiService', ['list', 'reveal', 'rotate']);
+    credentialsApi.list.and.returnValue(of({ range_id: 'r1', scope: 'all', accounts: [
+      { id: 'c-dc', machine: 'dc01', username: 'Administrator', role: 'admin', student_visible: false,
+        generated: true, applied: true, source: 'implicit', scenario: false, setup_status: 'applied',
+        rotated_at: null, notes: '' }] }));
     diagramApi = jasmine.createSpyObj('ApiService', ['getRangeDiagram']);
     diagramApi.getRangeDiagram.and.returnValue(of({
       range_id: 'r1', generated: true, source: 'template', notes: ['Drawn from Medium Enterprise Network v1.0.'],
@@ -128,15 +129,15 @@ describe('RangeDetailComponent', () => {
     expect(hrefs).toContain('/authoring/ranges/designer?range=r1');
   });
 
-  it('has a credentials panel that reads nothing until asked, then masks the passwords', async () => {
+  it('has a credentials panel that reads nothing until asked, and reveals no password by itself', async () => {
     await render('range_ops');
     expect(el.textContent).toContain('Credentials');
-    expect(credentialsApi.getCredentials).not.toHaveBeenCalled();
+    expect(credentialsApi.list).not.toHaveBeenCalled();
     buttons('Show accounts')[0].click();
     fixture.detectChanges();
-    expect(credentialsApi.getCredentials).toHaveBeenCalledOnceWith('r1');
+    expect(credentialsApi.list).toHaveBeenCalledOnceWith({ kind: 'range', rangeId: 'r1' });
     expect(el.textContent).toContain('Administrator');
-    expect(el.textContent).not.toContain('Dc-Secret-1!');
+    expect(credentialsApi.reveal).not.toHaveBeenCalled();
   });
 
   it('shows the API error for a section instead of an empty list', async () => {

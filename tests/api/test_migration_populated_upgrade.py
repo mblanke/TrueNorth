@@ -75,7 +75,9 @@ EXPECTED_NEW_TABLES = {
     "xapi_legacy_identities",
 }
 # New tables a migration fills on purpose (a documented data migration), and with what.
-BACKFILLED_TABLES = {"xapi_legacy_identities"}
+# e0f1a2b3c4d5 (ADR 0013 §3): each existing range's implicit staff logins, generated and
+# sealed, not applied ("template password still valid until rebuilt").
+BACKFILLED_TABLES = {"xapi_legacy_identities", "range_credentials"}
 
 # b0c1d2e3f4a5 builds its frozen list of tables from the *live* ORM, so until 2026-10-08 a
 # database taken to DEPLOYED_HEAD already had the columns the scheduler migrations after it
@@ -312,6 +314,10 @@ def test_a_populated_deployed_database_upgrades_to_head_without_loss():
             # 5a1e9c3d7b20: each existing user's pre-switch xAPI identity, and nothing else.
             legacy = conn.execute(sa.text("SELECT user_id, legacy_mbox FROM xapi_legacy_identities")).all()
             assert [(str(u), m) for u, m in legacy] == [(str(user_id), "mailto:i@example.test")]
+            # e0f1a2b3c4d5: only implicit staff logins, sealed for range credentials, not applied.
+            for source, applied, stored in conn.execute(sa.text(
+                    "SELECT source, applied, password FROM range_credentials")).all():
+                assert (source, applied) == ("implicit", False) and stored.startswith("tnsec:rc1:")
             # The one data migration: objective validators are now canonical.
             validators = dict(conn.execute(sa.text("SELECT ref_id, validator FROM objectives")).all())
             assert sorted(validators.values()) == sorted(VALIDATOR_SPELLINGS.values())

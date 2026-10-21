@@ -865,6 +865,7 @@ def create_snapshot(
     )
     db.add(snap)
     db.flush()
+    range_credentials.on_snapshot(db, rng, snap)  # the passwords a restore of it brings back
     _audit(db, user, "snapshot_create", "range_snapshot", str(snap.id), f"Snapshot of range {range_id}")
     db.commit()
     _send_snapshot_task(db, snap, "snapshot_range", "creating", "failed")
@@ -903,9 +904,16 @@ def restore_snapshot(
         raise HTTPException(404, "Snapshot not found or not ready")
 
     snap.snapshot_state = "restoring"
+    # Student-visible passwords are new after a restore (ADR 0013 §3); the restore task sets them.
+    undo = range_credentials.on_restore(db, rng)
     _audit(db, user, "snapshot_restore", "range_snapshot", str(snapshot_id), f"Restoring range {range_id}")
     db.commit()
-    _send_snapshot_task(db, snap, "restore_snapshot", "restoring", "ready")
+    try:
+        _send_snapshot_task(db, snap, "restore_snapshot", "restoring", "ready")
+    except HTTPException:
+        range_credentials.undo_rotation(db, undo)  # nothing was started: the guests keep their passwords
+        db.commit()
+        raise
     db.refresh(rng)
     return rng
 

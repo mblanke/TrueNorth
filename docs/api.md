@@ -732,32 +732,67 @@ in fact still running, its work continues beside whatever runs next.
 
 ### `GET /ranges/{range_id}/credentials`
 
-**Permission: `range:read`, then by role (ADR 0012 §13).** The accounts the range's
-template declares (`accounts:`), with their passwords, stored sealed:
+**Permission: `range:read`, then by role (ADR 0012 §13, ADR 0013 §3).** The range's
+accounts, **without passwords**: the ones its template declares (`accounts:`) and the
+implicit staff logins TrueNorth adds (`source: "implicit"`: the built-in Administrator, the
+Linux build user, Security Onion's `soadmin`), every one with a password generated for this
+range, except a scenario account's typed-in one (`scenario: true`, never rotated).
 
 - `range:credentials_read` (admin, instructor, range_ops): every account, `scope: "all"`;
-  `applied: false` marks one the last build did not set (Windows accounts other than
-  `Administrator`, appliances, non-vSphere backends, or not built yet);
+  `applied: false` marks one the last build or rotation did not set (Windows accounts
+  other than `Administrator`, appliances, non-vSphere backends, a pending rotation, or not
+  built yet);
 - a Student: only `student_visible` accounts with `applied: true`, `scope: "student"`, of a
   range they take part in (an exercise running or paused on it that is booked to a course
-  they are rostered on). Any other range is 404. Lab sessions are not covered yet;
+  they are rostered on, or their own live lab session). Any other range is 404;
 - an observer (any other role): 403. Another tenant's range: 404.
 
 ```json
 {"range_id": "7b1f…", "scope": "student",
- "accounts": [{"machine": "jump01", "username": "analyst", "password": "Xk7…", "role": "user",
-               "student_visible": true, "generated": true, "applied": true, "notes": "The way in"}]}
+ "accounts": [{"id": "c0a8…", "machine": "jump01", "username": "analyst", "role": "user",
+               "source": "declared", "student_visible": true, "generated": true, "scenario": false,
+               "applied": true, "setup_status": "applied", "rotated_at": null, "notes": "The way in"}]}
 ```
 
-Every read writes an audit row (`range_credentials_read`: scope, account count, machines;
-never a password). Responses carry `Cache-Control: no-store`. Rows are written when the
-range is created and when a build is accepted (which resets `applied`; the worker sets it
-for what the build verified exists: Linux `getent passwd`, Windows a guest login with the
-declared Administrator password); a generated password is made once per range. A range
-built from another tenant's (public) template takes none of its accounts.
+### `POST /ranges/{range_id}/credentials/{credential_id}/reveal`
 
-Templates: a typed-in `accounts[].password` is stored sealed with a range-credential seal
-(`tnsec:rc1:…`, a key derived for this purpose only) on create and update; `GET
+**Permission: as the list, for that one account** (a Student: only one handed to them and
+applied; anything else 404). Returns `{"id", "machine", "username", "password"}` with
+`Cache-Control: no-store`. Every call writes an audit row `range_credential_reveal` whose
+detail is `{range_id, machine, username, scope, via, exercise_id | lab_session_id}`; never a
+password. The wiki never shows passwords (ADR 0013 §3).
+
+### `POST /ranges/{range_id}/credentials/{credential_id}/rotate`
+
+**Permission: `range:credentials_rotate` (admin).** Body `{"reason": "..."}` (3-500
+characters). Gives the account a new generated password. `202` with
+`{"account": {...}, "applies": "in_guest" | "next_build", "operation_id", "dispatched"}`:
+a range that is `ready` or `running` gets it in its guests now (worker task
+`rotate_range_credentials`; the account shows `applied` once a login with it worked), an
+unbuilt one (`created`, `destroyed`) at its next build. `409` for a scenario account, a
+range in any other state, an operation in flight or a restore in progress. Audited as
+`range_credential_rotate` `{range_id, machine, username, reason, operation_id, in_guest}`.
+
+Rotation without an admin: every Student-visible generated account gets a new password on a
+**rebuild** of a range built before, and on every **snapshot restore** (a lab reset is one;
+the restore task then sets them in the guests, logging in with the passwords the snapshot
+recorded). Staff accounts keep theirs.
+
+Lab sessions: `GET /lab-sessions/{id}/credentials` and `POST
+/lab-sessions/{id}/credentials/{credential_id}/reveal` (the session's owner only), and the
+same under `/lab-access/{id}/...` with `X-Lab-Token`. A lab's implicit logins are handed to
+its Student; reveals are audited with `lab_session_id` and `via: lab_session | lab_token`.
+
+Rows are written when the range is created, when a build is accepted (which resets
+`applied`; the worker sets it for what the build verified: Linux `getent passwd`, Windows a
+guest login with the Administrator password) and when a lab session builds its range. A
+range built from another tenant's (public) template takes none of its declared accounts,
+only its own implicit logins. Stored sealed `tnsec:rc1:` (a key derived for range
+credentials only).
+
+Templates: a typed-in `accounts[].password` is allowed only with `scenario: true`, and never
+on `role: admin`, `Administrator`, the Linux build user or `soadmin` (422). It is stored
+sealed with a range-credential seal (`tnsec:rc1:…`) on create and update; `GET
 /templates/{id}` shows the token to `range:credentials_read` holders of the template's
 tenant and `********` to anyone else (every one of the template's passwords is masked
 wherever it appears). A typed-in password for a Windows machine must meet Windows
@@ -765,16 +800,8 @@ complexity (Windows decided as the worker does), and any `tnsec:` value that is 
 range-credential seal this platform made (for example a hypervisor secret) is refused (422).
 A template change regenerates the pages of its own tenant's ranges after the response.
 
-Template defaults: for staff, `accounts` also lists, for each Windows or Linux machine with
-no declared account, the golden template's build login with `source: "template_default"`
-(on Windows the password Sysprep set, so the live one; `password` null with notes
-"random per VM — not recoverable" on Windows, or "template default not configured" on
-Linux, when the installer did not set it). Declared accounts have `source: "declared"`.
-Students never get these rows.
-
-Wiki: a generated range page stores tokens; `GET /wiki/pages/{id}` fills in the passwords
-for `range:credentials_read` holders only (audited, `Cache-Control: no-store`); every other
-wiki response returns the tokens.
+Wiki: a generated range page lists machines, usernames, roles and how each password was made,
+and links to the range's credentials panel. It holds no password and no token.
 
 ---
 
@@ -1347,7 +1374,9 @@ The auto-generated OpenAPI specification is available at:
 | 30a | `POST` | `/ranges/{id}/start` | `range:provision` | Start range (power on) |
 | 31 | `POST` | `/ranges/batch-provision` | `range:batch_provision` | Batch provision |
 | 31a | `POST` | `/ranges/{id}/lease/force-release` | `range:lease_force_release` | Force-release an abandoned operation's lease tombstone (admin) |
-| 31b | `GET` | `/ranges/{id}/credentials` | `range:read` + role rule | Machine accounts: staff all (`range:credentials_read`), Students theirs, observers 403 |
+| 31b | `GET` | `/ranges/{id}/credentials` | `range:read` + role rule | Machine accounts, no passwords: staff all (`range:credentials_read`), Students theirs, observers 403 |
+| 31c | `POST` | `/ranges/{id}/credentials/{cred_id}/reveal` | `range:read` + role rule | One password; audited (`range_credential_reveal`) |
+| 31d | `POST` | `/ranges/{id}/credentials/{cred_id}/rotate` | `range:credentials_rotate` | A new generated password; audited (`range_credential_rotate`) |
 | 32 | `POST` | `/exercises` | `exercise:create` | Create exercise |
 | 33 | `GET` | `/exercises` | `exercise:read` | List exercises |
 | 34 | `GET` | `/exercises/{id}` | `exercise:read` | Get exercise |

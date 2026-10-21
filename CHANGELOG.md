@@ -80,6 +80,20 @@ course production with a local-model fallback, and the cleanup of unsupported su
   the egress proxy refuses `CONNECT host:port:port`.
 
 ### Ranges
+- **Range certification S3: credential hardening** (#241, ADR 0013 §3; supersedes #198): no
+  deployed VM keeps the golden template's password. Every range (lab sessions included) gets
+  a generated, sealed (`tnsec:rc1:`) row for the built-in Administrator, the Linux build user
+  and Security Onion's `soadmin`; the #185 "Windows default = template password" fallback and
+  `TN_RANGE_DEFAULT_PASSWORD` are gone, and the API no longer receives template passwords.
+  The worker proves it per VM with one template-password login that must fail
+  (`template_login`, `RANGE_TEMPLATE_LOGIN_CHECK=enforce|warn`). Typed-in passwords only on
+  `scenario: true` accounts. `GET /ranges/{id}/credentials` lists accounts without passwords;
+  `POST .../reveal` shows one, audited per account; `POST .../rotate` (admin) rotates one.
+  Student-visible passwords rotate on rebuild, snapshot restore and lab reset, set in the
+  running guests through an uploaded file. Lab Students see their own lab's accounts. Wiki
+  range pages hold account names only; migration `e0f1a2b3c4d5` reseals stored passwords,
+  adds the implicit rows to existing ranges (noted "template password still valid until
+  rebuilt") and strips credential tokens from wiki pages and their revisions.
 - **Greyspace on vSphere** (#133): gs-core VM in the range build, `configure_range` stage,
   mail/NTP/HTTPS, NPC traffic, `greyspace_breadcrumb` inject, designer stencil, corpus ingest.
   Proven on vcsim and the T0 Docker stack only.

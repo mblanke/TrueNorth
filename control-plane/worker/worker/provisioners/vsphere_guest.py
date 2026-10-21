@@ -8,9 +8,10 @@ reach only through the range pfSense's WAN uplink.
 
 Guest credentials never leave the worker process:
 - Windows: the Administrator password that Sysprep customization sets
-  (vsphere_infra.windows_customization): the range's declared Administrator account
-  (ADR 0012), else TN_TEMPLATE_WINDOWS_ADMIN_PASSWORD, else random per VM. Handed from the
-  customization step to the install step inside the same provision call.
+  (vsphere_infra.windows_customization): the range's own Administrator account (declared,
+  or the implicit staff login the API adds; ADR 0013 §3), else random per VM. Never the
+  template password or a site-wide default. Handed from the customization step to the
+  install step inside the same provision call.
 - Linux: an ephemeral ``tn-install`` user with a random password, created by cloud-init
   from the guestinfo userdata, locked and deleted by the last install command, expiring
   on its own after two days if that command never runs. The provisioner rewrites the
@@ -24,6 +25,7 @@ from __future__ import annotations
 import contextlib
 import datetime as _dt
 import logging
+import os
 import re
 import secrets
 import shlex
@@ -130,14 +132,14 @@ def windows_credentials(password: str | None = None) -> GuestCredentials:
 
 
 def admin_password(vm_def: dict) -> str | None:
-    """The Administrator password a Windows VM is given: its declared ``Administrator``
-    account (``_accounts``), else the platform default (``_default_login``), else None
-    (random, as before). Read where it is used; never stored in the VM's plan."""
+    """The Administrator password a Windows VM is given: its ``Administrator`` account
+    (``_accounts``: declared, or the implicit staff login the API adds), else None (random).
+    Never the template password or a site-wide default (ADR 0013 §3). Read where it is
+    used; never stored in the VM's plan."""
     for acct in vm_def.get("_accounts") or []:
         if acct.username.casefold() == WINDOWS_ADMIN:
             return acct.password.reveal()
-    default = vm_def.get("_default_login")
-    return default.reveal() if default is not None else None
+    return None
 
 
 # Images' default (cloud-init "default") users. Their image already gives them passwordless
@@ -146,23 +148,36 @@ def admin_password(vm_def: dict) -> str | None:
 # sudo rule, since a password-required rule could override the image's (sudo: last match).
 IMAGE_DEFAULT_USERS = frozenset({"ubuntu", "debian", "kali", "cloud-user", "ec2-user", "centos", "fedora",
                                  "rocky", "almalinux", "admin"})
+BUILD_USER_ENV = "TN_TEMPLATE_LINUX_USER"  # the golden Linux templates' build user (infra/vsphere/packer)
+
+
+def build_user() -> str:
+    """The Linux build user every golden Linux template carries (a name, never a password)."""
+    return os.environ.get(BUILD_USER_ENV, "").strip() or "ubuntu"
+
+
+def image_users() -> frozenset[str]:
+    """``IMAGE_DEFAULT_USERS`` and the configured build user: logins whose sudo the image gives."""
+    return IMAGE_DEFAULT_USERS | {build_user()}
 
 
 def account_users(accounts: list[RangeAccount]) -> tuple[list[dict], list[str]]:
-    """cloud-config ``users`` entries for a Linux VM's declared accounts, and the names
-    skipped because Linux does not accept them. Persistent (unlike the install user); an
-    admin gets sudo with its password, except an image default user (``IMAGE_DEFAULT_USERS``),
-    which keeps the sudo its image gives it. Always a SHA-512-crypt hash, never plain text.
-    For a user the image already has (``ubuntu``) cloud-init sets the password and does not
-    create it again."""
+    """cloud-config ``users`` entries for a Linux VM's accounts, and the names skipped
+    because Linux does not accept them. Persistent (unlike the install user); an admin gets
+    sudo with its password, except an image's own user (``image_users``: the image default
+    users and the build user), which keeps the sudo its image gives it. Always a
+    SHA-512-crypt hash, never plain text. For a user the image already has (the build user)
+    cloud-init sets the password and does not create it again: that is how the build user's
+    template password is replaced at deploy (ADR 0013 §3)."""
     users, skipped = [], []
+    own = image_users()
     for acct in accounts:
         if not POSIX_USERNAME.match(acct.username):
             skipped.append(acct.username)
             continue
         user: dict = {"name": acct.username, "gecos": "TrueNorth range account", "shell": "/bin/bash",
                       "lock_passwd": False, "hashed_passwd": _sha512_crypt(acct.password.reveal())}
-        if acct.admin and acct.username not in IMAGE_DEFAULT_USERS:
+        if acct.admin and acct.username not in own:
             user["sudo"] = "ALL=(ALL:ALL) ALL"
         users.append(user)
     return users, skipped
@@ -336,14 +351,38 @@ class GuestSession:
                 raise GuestNotReadyError(f"guest operations not ready before the deadline: {last}")
             self._sleep(self._poll)
 
-    def upload(self, path: str, data: bytes, deadline: float, *, overwrite: bool = True) -> None:
+    def wait_tools(self, deadline: float) -> None:
+        """Until VMware Tools reports guest operations ready, with no login (the password the
+        guest has may be one of several). ``GuestNotReadyError`` at the deadline."""
+        while not bool(getattr(getattr(self.vm, "guest", None), "guestOperationsReady", False)):
+            if self._clock() >= deadline:
+                raise GuestNotReadyError("guest operations not ready before the deadline: VMware Tools not running")
+            self._sleep(self._poll)
+
+    def try_login(self) -> bool | None:
+        """One guest-operations login attempt as ``creds``, no retry: True accepted, False
+        refused (``InvalidGuestLogin``), None when it says nothing about the password (guest
+        operations unavailable, Tools not running, a vCenter error). Never raises."""
+        try:
+            self._am.ValidateCredentialsInGuest(vm=self.vm, auth=self._auth())
+        except Exception as exc:  # noqa: BLE001 — classified, never re-raised (it may name the login)
+            fault = getattr(getattr(vim, "fault", None), "InvalidGuestLogin", None) if vim is not None else None
+            if (fault is not None and isinstance(exc, fault)) or type(exc).__name__ == "InvalidGuestLogin":
+                return False
+            return None
+        return True
+
+    def upload(self, path: str, data: bytes, deadline: float, *, overwrite: bool = True,
+               posix_mode: int | None = None) -> None:
         """Write ``data`` to ``path`` in the guest over the file-transfer API (HTTPS PUT to the
         ESXi host). The payload never touches a guest command line: this is how a secret the
-        setup needs reaches the guest. ``GuestNotReadyError`` wraps a transfer that cannot run
+        setup needs reaches the guest. ``posix_mode`` (Linux): the file's permissions as
+        created (0o600 for a secret). ``GuestNotReadyError`` wraps a transfer that cannot run
         (the worker must reach the ESXi host on 443; mblanke/TrueNorth#194)."""
         if self._fm is None:
             raise GuestNotReadyError("the guest file manager is unavailable (VMware Tools / vCenter)")
-        attrs = vim.vm.guest.FileManager.FileAttributes()
+        attrs = (vim.vm.guest.FileManager.PosixFileAttributes(permissions=posix_mode) if posix_mode is not None
+                 else vim.vm.guest.FileManager.FileAttributes())
         try:
             url = self._fm.InitiateFileTransferToGuest(
                 vm=self.vm, auth=self._auth(), guestFilePath=path, fileAttributes=attrs,

@@ -86,6 +86,17 @@ TASKS: dict[str, TaskContract] = {
         TaskContract("start_range", "provision", (_RANGE,), "Power on a range's VMs (POST /ranges/{id}/start)."),
         TaskContract("snapshot_range", "provision", (_RANGE, _SNAPSHOT)),
         TaskContract("restore_snapshot", "provision", (_RANGE, _SNAPSHOT)),
+        TaskContract(
+            "rotate_range_credentials",
+            "provision",
+            (
+                _RANGE,
+                Arg("credential_ids", "array", description="range_credentials.id to set; empty: every pending one"),
+                Arg("operation_id", required=False, description="logged with the outcome and in the audit row"),
+                Arg("snapshot_id", required=False, description="range_snapshots.id just restored (its passwords)"),
+            ),
+            "Set rotated range passwords inside running guests (ADR 0013 §3; worker/credential_rotation.py).",
+        ),
         TaskContract("delete_snapshot", "provision", (_RANGE, _SNAPSHOT)),
         # -- Background noise ------------------------------------------------
         TaskContract(

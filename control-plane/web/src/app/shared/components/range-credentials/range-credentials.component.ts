@@ -7,19 +7,22 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { roleCan } from '@core/auth/permissions';
 import { AuthService } from '@core/services/auth.service';
 import { NotificationService } from '@core/services/notification.service';
-import { RangeCredential, RangeCredentialsApiService } from '@core/services/range-credentials-api.service';
+import {
+  CredentialSource, RangeCredential, RangeCredentialsApiService,
+} from '@core/services/range-credentials-api.service';
 
 const MASK = '••••••••••';
 
 /**
- * A range's machine accounts (ADR 0012 §13), for the range detail page (staff) and a
- * Student's exercise view. What it lists is the API's decision, never filtered here:
- * staff (`range:credentials_read`) get every account, a Student only the accounts handed
- * to them on a range they take part in. Observers are not shown the panel (the API
- * would answer 403).
+ * A range's machine accounts (ADR 0012 §13, ADR 0013 §3), for the range detail page
+ * (staff), a Student's exercise view and a Student's own lab page (`labSessionId`, with the
+ * lab token after a Moodle launch). What it lists is the API's decision, never filtered
+ * here: staff (`range:credentials_read`) get every account, a Student only the accounts
+ * handed to them. Observers are not shown the panel (the API would answer 403).
  *
- * Nothing is fetched until the person asks (each read is audited), passwords stay masked
- * until revealed one at a time, and copy works without revealing.
+ * The list carries no password. Each password is fetched only when the person reveals or
+ * copies it (`POST .../reveal`, one audit row per reveal) and is forgotten when hidden.
+ * Admins (`range:credentials_rotate`) can give an account a new password, with a reason.
  */
 @Component({
   selector: 'tn-range-credentials',
@@ -36,9 +39,9 @@ const MASK = '••••••••••';
         </header>
         <p class="muted">
           @if (staff()) {
-            Every account on this range's machines, from its template. Each time they are shown is recorded in the audit log.
+            Every account on this range's machines. Passwords are generated for this range; each one you reveal is recorded in the audit log.
           } @else {
-            The accounts handed to you for this range's machines.
+            The accounts handed to you for these machines. They change when the range is reset or rebuilt.
           }
         </p>
 
@@ -51,7 +54,7 @@ const MASK = '••••••••••';
         @if (accounts(); as list) {
           @if (list.length === 0) {
             <p class="muted" role="status">
-              {{ staff() ? "This range's template declares no accounts." : 'No accounts are handed to you on this range.' }}
+              {{ staff() ? 'This range has no accounts (its machines are appliances).' : 'No accounts are handed to you here yet.' }}
             </p>
           } @else {
             <table class="tn-table">
@@ -68,11 +71,17 @@ const MASK = '••••••••••';
                   <tr>
                     <td>
                       <code>{{ a.machine }}</code>
-                      @if (a.source === 'template_default') {
-                        <span class="badge" matTooltip="No account is declared for this machine: this is the golden template's build login (installer settings).">
-                          Template default
+                      @if (staff() && a.source === 'implicit') {
+                        <span class="badge info" matTooltip="A built-in login of the machine's golden template. TrueNorth gives it a password generated for this range, so the template password no longer works.">
+                          Staff login
                         </span>
-                      } @else if (staff() && a.setup_status === 'being_set_up') {
+                      }
+                      @if (staff() && a.scenario) {
+                        <span class="badge info" matTooltip="Typed into the range template on purpose: the weak password is part of the exercise. It is never rotated.">
+                          Scenario
+                        </span>
+                      }
+                      @if (staff() && a.setup_status === 'being_set_up') {
                         <span class="badge setup" matTooltip="This machine's deploy-time setup (a product role image or Security Onion) is still running. TrueNorth verifies and records the account once it finishes; Students see it only then.">
                           Being set up
                         </span>
@@ -90,19 +99,22 @@ const MASK = '••••••••••';
                       </button>
                     </td>
                     <td class="pw">
-                      @if (a.password; as pw) {
-                        <code class="secret" [attr.data-revealed]="isRevealed(a)">{{ isRevealed(a) ? pw : mask }}</code>
-                        <button mat-icon-button (click)="toggle(a)" [matTooltip]="isRevealed(a) ? 'Hide password' : 'Show password'"
-                                [attr.aria-pressed]="isRevealed(a)"
-                                [attr.aria-label]="(isRevealed(a) ? 'Hide' : 'Show') + ' password of ' + a.username + ' on ' + a.machine">
-                          <mat-icon>{{ isRevealed(a) ? 'visibility_off' : 'visibility' }}</mat-icon>
+                      <code class="secret" [attr.data-revealed]="isRevealed(a)">{{ passwordOf(a) ?? mask }}</code>
+                      <button mat-icon-button (click)="toggle(a)" [disabled]="busy() === a.id"
+                              [matTooltip]="isRevealed(a) ? 'Hide password' : 'Show password (recorded in the audit log)'"
+                              [attr.aria-pressed]="isRevealed(a)"
+                              [attr.aria-label]="(isRevealed(a) ? 'Hide' : 'Show') + ' password of ' + a.username + ' on ' + a.machine">
+                        <mat-icon>{{ isRevealed(a) ? 'visibility_off' : 'visibility' }}</mat-icon>
+                      </button>
+                      <button mat-icon-button (click)="copyPassword(a)" [disabled]="busy() === a.id" matTooltip="Copy password"
+                              [attr.aria-label]="'Copy password of ' + a.username + ' on ' + a.machine">
+                        <mat-icon>content_copy</mat-icon>
+                      </button>
+                      @if (canRotate() && a.generated && !a.scenario) {
+                        <button mat-icon-button (click)="rotate(a)" [disabled]="busy() === a.id" matTooltip="Give it a new password"
+                                [attr.aria-label]="'Rotate password of ' + a.username + ' on ' + a.machine">
+                          <mat-icon>autorenew</mat-icon>
                         </button>
-                        <button mat-icon-button (click)="copy(pw, 'Password')" matTooltip="Copy password"
-                                [attr.aria-label]="'Copy password of ' + a.username + ' on ' + a.machine">
-                          <mat-icon>content_copy</mat-icon>
-                        </button>
-                      } @else {
-                        <span class="muted">none shown (see notes)</span>
                       }
                     </td>
                     @if (staff()) {
@@ -131,7 +143,7 @@ const MASK = '••••••••••';
     .notes { font-size: 13px; }
     .badge { display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 8px; font-size: 11px;
       border: 1px solid var(--warning, #f59e0b); color: var(--text-secondary); white-space: nowrap; }
-    .badge.setup { border-color: var(--info, #3b82f6); }
+    .badge.setup, .badge.info { border-color: var(--info, #3b82f6); }
     code { font-family: var(--font-mono); font-size: 12px; }
     .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   `],
@@ -142,43 +154,60 @@ export class RangeCredentialsComponent {
   private clipboard = inject(Clipboard);
   private notify = inject(NotificationService);
 
-  readonly rangeId = input.required<string>();
+  /** A range's accounts (range detail, exercise view)... */
+  readonly rangeId = input<string>();
+  /** ...or a Student's own lab session's (the lab page), with its token after an LTI launch. */
+  readonly labSessionId = input<string>();
+  readonly labToken = input<string>();
 
   readonly mask = MASK;
-  readonly staff = computed(() => roleCan(this.auth.user()?.role, 'range:credentials_read'));
-  /** Staff and Students; an observer would only be refused. */
-  readonly shown = computed(() => this.staff() || this.auth.user()?.role === 'student');
+  readonly source = computed<CredentialSource | null>(() => {
+    const lab = this.labSessionId();
+    if (lab) return { kind: 'lab', sessionId: lab, token: this.labToken() || undefined };
+    const range = this.rangeId();
+    return range ? { kind: 'range', rangeId: range } : null;
+  });
+  private readonly isLab = computed(() => this.source()?.kind === 'lab');
+  readonly staff = computed(() => !this.isLab() && roleCan(this.auth.user()?.role, 'range:credentials_read'));
+  readonly canRotate = computed(() => !this.isLab() && roleCan(this.auth.user()?.role, 'range:credentials_rotate'));
+  /** Staff and Students (a lab page is its Student's); an observer would only be refused. */
+  readonly shown = computed(() => this.source() !== null
+    && (this.isLab() || this.staff() || this.auth.user()?.role === 'student'));
   readonly title = computed(() => (this.staff() ? 'Credentials' : 'Your accounts'));
 
   readonly accounts = signal<RangeCredential[] | null>(null);
   readonly loading = signal(false);
   readonly error = signal('');
-  private readonly revealed = signal<ReadonlySet<string>>(new Set());
+  /** The account a reveal or rotation is in flight for. */
+  readonly busy = signal<string | null>(null);
+  /** Revealed passwords by account id, in memory only, forgotten when hidden. */
+  private readonly revealed = signal<ReadonlyMap<string, string>>(new Map());
 
   constructor() {
-    // Another range: forget the previous one's accounts (they were for it only).
+    // Another range or lab: forget the previous one's accounts (they were for it only).
     effect(() => {
-      this.rangeId();
+      this.source();
       untracked(() => this.reset());
     });
   }
 
   key(a: RangeCredential): string {
-    return `${a.machine}\u0000${a.username}`;
+    return a.id;
   }
 
   load(): void {
-    const id = this.rangeId();
+    const source = this.source();
+    if (!source) return;
     this.loading.set(true);
     this.error.set('');
-    this.api.getCredentials(id).subscribe({
+    this.api.list(source).subscribe({
       next: res => {
-        if (id !== this.rangeId()) return;
+        if (source !== this.source()) return;
         this.accounts.set(res.accounts);
         this.loading.set(false);
       },
       error: (err: unknown) => {
-        if (id !== this.rangeId()) return;
+        if (source !== this.source()) return;
         this.loading.set(false);
         this.error.set(describe(err, this.staff()));
       },
@@ -186,14 +215,30 @@ export class RangeCredentialsComponent {
   }
 
   isRevealed(a: RangeCredential): boolean {
-    return this.revealed().has(this.key(a));
+    return this.revealed().has(a.id);
   }
 
+  passwordOf(a: RangeCredential): string | undefined {
+    return this.revealed().get(a.id);
+  }
+
+  /** Show (one audited reveal) or hide (forget) one account's password. */
   toggle(a: RangeCredential): void {
-    const next = new Set(this.revealed());
-    const k = this.key(a);
-    if (next.has(k)) next.delete(k); else next.add(k);
-    this.revealed.set(next);
+    if (this.isRevealed(a)) {
+      this.forget(a.id);
+      return;
+    }
+    this.fetch(a, pw => this.remember(a.id, pw));
+  }
+
+  /** Copy a password, revealing it first (audited) when it is not shown. */
+  copyPassword(a: RangeCredential): void {
+    const shown = this.passwordOf(a);
+    if (shown !== undefined) {
+      this.copy(shown, 'Password');
+      return;
+    }
+    this.fetch(a, pw => this.copy(pw, 'Password'));
   }
 
   copy(text: string, what: 'Username' | 'Password'): void {
@@ -204,11 +249,65 @@ export class RangeCredentialsComponent {
     }
   }
 
+  /** Admin: a new generated password for the account, with a reason for the audit log. */
+  rotate(a: RangeCredential): void {
+    const source = this.source();
+    if (!source || source.kind !== 'range') return;
+    const reason = (window.prompt(`Why give ${a.username} on ${a.machine} a new password? (recorded in the audit log)`)
+      ?? '').trim();
+    if (reason.length < 3) return;
+    this.busy.set(a.id);
+    this.api.rotate(source.rangeId, a.id, reason).subscribe({
+      next: res => {
+        this.busy.set(null);
+        this.forget(a.id);
+        this.accounts.update(list => (list ?? []).map(x => (x.id === a.id ? res.account : x)));
+        this.notify.success(res.applies === 'in_guest'
+          ? (res.dispatched ? 'New password issued; it is being set on the machine'
+            : 'New password issued, but the task queue was not reachable: rotate again later')
+          : 'New password issued; the next build sets it');
+      },
+      error: (err: unknown) => {
+        this.busy.set(null);
+        this.notify.error(describe(err, this.staff()));
+      },
+    });
+  }
+
+  private fetch(a: RangeCredential, then: (password: string) => void): void {
+    const source = this.source();
+    if (!source) return;
+    this.busy.set(a.id);
+    this.api.reveal(source, a.id).subscribe({
+      next: res => {
+        this.busy.set(null);
+        if (source === this.source()) then(res.password);
+      },
+      error: (err: unknown) => {
+        this.busy.set(null);
+        this.notify.error(describe(err, this.staff()));
+      },
+    });
+  }
+
+  private remember(id: string, password: string): void {
+    const next = new Map(this.revealed());
+    next.set(id, password);
+    this.revealed.set(next);
+  }
+
+  private forget(id: string): void {
+    const next = new Map(this.revealed());
+    next.delete(id);
+    this.revealed.set(next);
+  }
+
   private reset(): void {
     this.accounts.set(null);
     this.error.set('');
     this.loading.set(false);
-    this.revealed.set(new Set());
+    this.busy.set(null);
+    this.revealed.set(new Map());
   }
 }
 

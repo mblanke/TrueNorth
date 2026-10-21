@@ -1890,8 +1890,9 @@ def labs_build(ctx: Ctx) -> str:
 # ── ranges-labs: ADR 0012 range credentials (2026-10-20 amendment, #192) ──
 
 CREDENTIALS_TEMPLATE = PREFIX + "credentials-template"
-# A typed-in account password, as a template author writes one. Not a secret: it is in this
-# file. What the check proves is that the platform never stores it as typed.
+# A typed-in account password, as a template author writes one: a scenario account's (ADR
+# 0013 §3: the only kind allowed). Not a secret: it is in this file. What the check proves is
+# that the platform never stores it as typed and shows it only through an audited reveal.
 CREDENTIALS_LITERAL = "acceptance-typed-in-7Qx!not-a-secret"
 CREDENTIALS_ACCOUNTS = {"acceptance-analyst": "declared literal", "acceptance-admin": "generated"}
 CREDENTIALS_TEMPLATE_YAML = (
@@ -1902,7 +1903,7 @@ CREDENTIALS_TEMPLATE_YAML = (
     "  - id: ws01\n    role: workstation\n    os: ubuntu22\n    vcpu: 1\n    ram_mb: 512\n    disk_gb: 8\n"
     "accounts:\n"
     f"  - {{machine: ws01, username: acceptance-analyst, password: \"{CREDENTIALS_LITERAL}\", role: user,"
-    " student_visible: true, notes: acceptance}\n"
+    " scenario: true, student_visible: true, notes: acceptance}\n"
     "  - {machine: ws01, username: acceptance-admin, generate: true, role: admin, student_visible: false}\n"
 )
 
@@ -1939,21 +1940,30 @@ def _sealed(value: Any) -> bool:
 
 @check("ranges-labs", "range credentials: staff read, Student 404, sealed at rest")
 def ranges_credentials(ctx: Ctx) -> str:
-    """ADR 0012 §12-13: staff read every declared account with its password; Students who do
-    not take part in the range get 404 and observers 403; a Student reading the template sees
-    no password; and PostgreSQL holds neither password as typed or generated (the stored
-    template and the credential rows are sealed)."""
+    """ADR 0012 §12-13, ADR 0013 §3: staff list every account without passwords and reveal
+    each one on its own, each reveal audited; Students who do not take part in the range get
+    404 and observers 403; a Student reading the template sees no password; and PostgreSQL
+    holds neither password as typed or generated (the stored template and the credential
+    rows are sealed with the range-credential key)."""
     rng = fx_credentials_range(ctx)
     rid = rng["id"]
     staff = {}
     for who, api in (("administrator", ctx.admin), ("instructor", ctx.persona("instructor"))):
         body = ok(api.get(f"/ranges/{rid}/credentials"), what=f"GET /ranges/{{id}}/credentials as {who}")
         expect(body.get("scope") == "all", f"{who} read scope {body.get('scope')!r}, expected 'all'")
-        staff[who] = {a["username"]: a for a in body.get("accounts", []) if a.get("source", "declared") == "declared"}
+        listed = body.get("accounts", [])
+        expect(not any("password" in a for a in listed), f"the list shows {who} passwords (ADR 0013: reveal only)")
+        staff[who] = {a["username"]: a for a in listed if a.get("source", "declared") == "declared"}
     got = staff["administrator"]
     expect(set(got) == set(CREDENTIALS_ACCOUNTS), f"accounts {sorted(got)}, the template declares {sorted(CREDENTIALS_ACCOUNTS)}")
-    expect(got["acceptance-analyst"].get("password") == CREDENTIALS_LITERAL, "the typed-in account's password differs")
-    generated = str(got["acceptance-admin"].get("password") or "")
+
+    def reveal(username: str) -> str:
+        body = ok(ctx.admin.post(f"/ranges/{rid}/credentials/{got[username]['id']}/reveal"),
+                  what=f"reveal {username}")
+        return str(body.get("password") or "")
+
+    expect(reveal("acceptance-analyst") == CREDENTIALS_LITERAL, "the typed-in account's password differs")
+    generated = reveal("acceptance-admin")
     expect(got["acceptance-admin"].get("generated") is True and len(generated) >= 12, "no generated password")
     expect(staff["instructor"].keys() == got.keys(), f"the instructor reads {sorted(staff['instructor'])}")
     # Never built: no account may claim to be set on a machine (applied / setup_status, #216).
@@ -1973,19 +1983,21 @@ def ranges_credentials(ctx: Ctx) -> str:
     expect(CREDENTIALS_LITERAL not in stored[0][0] and "tnsec:rc1:" in stored[0][0],
            "templates.yaml holds the typed-in password as typed (not sealed)")
     rows = ctx.sql("SELECT password FROM range_credentials WHERE range_id = :id", id=uuid.UUID(rid))
-    expect(len(rows) == len(CREDENTIALS_ACCOUNTS), f"{len(rows)} range_credentials rows for the range")
-    plain = [r for r in rows if not _sealed(r[0]) or CREDENTIALS_LITERAL in r[0] or generated in r[0]]
-    expect(not plain, f"{len(plain)} range_credentials passwords stored unsealed")
+    # The declared accounts, and the implicit staff login(s) of the machine (ADR 0013 §3).
+    expect(len(rows) >= len(CREDENTIALS_ACCOUNTS), f"{len(rows)} range_credentials rows for the range")
+    plain = [r for r in rows if not str(r[0]).startswith("tnsec:rc1:") or CREDENTIALS_LITERAL in r[0]
+             or generated in r[0]]
+    expect(not plain, f"{len(plain)} range_credentials passwords stored unsealed (or not with the range key)")
     audited = [
         r for r in ok(ctx.admin.get("/audit-log", params={"limit": 500}), what="GET /audit-log")
-        if r.get("action") == "range_credentials_read" and r.get("resource_id") == rid
+        if r.get("action") == "range_credential_reveal" and r.get("resource_id") == rid
     ]
-    expect(len(audited) >= 2, f"{len(audited)} range_credentials_read audit rows for the range, expected one per staff read")
+    expect(len(audited) >= 2, f"{len(audited)} range_credential_reveal audit rows for the range, expected one per reveal")
     expect(all(CREDENTIALS_LITERAL not in str(r) and generated not in str(r) for r in audited), "an audit row holds a password")
     return (
-        f"{rng['name']}: administrator and instructor read 2 accounts (typed-in and generated); Students 404, "
-        f"Observer 403, the template shows a Student no password; stored sealed (templates, range_credentials); "
-        f"{len(audited)} reads audited without passwords"
+        f"{rng['name']}: administrator and instructor list 2 declared accounts without passwords, the 2 reveals "
+        f"give the typed-in and the generated one; Students 404, Observer 403, the template shows a Student no "
+        f"password; stored sealed (templates, range_credentials); {len(audited)} reveals audited without passwords"
     )
 
 
@@ -2369,8 +2381,8 @@ def _tree_pages(nodes: list[dict]) -> list[dict]:
 def wiki_ranges_space(ctx: Ctx) -> str:
     """ADR 0012 §14 (2026-10-20 amendment, #192): creating a range writes its page in the
     tenant's Ranges space, which TrueNorth owns: always staff-only (its visibility cannot be
-    changed, 409), invisible to Students and Observers (404). Staff read the page with the
-    passwords filled in; the stored page holds only tokens."""
+    changed, 409), invisible to Students and Observers (404). The page names the accounts and
+    holds no password or token for one, as stored or as staff read it (ADR 0013 §3)."""
     rng = fx_credentials_range(ctx)
     spaces = [s for s in listing(ctx.admin, "/wiki/spaces") if s.get("system_owned")]
     expect(len(spaces) == 1, f"{len(spaces)} system-owned wiki spaces in this tenant, expected the one Ranges space")
@@ -2384,7 +2396,8 @@ def wiki_ranges_space(ctx: Ctx) -> str:
     expect(page is not None, f"no page for {rng['name']} in the Ranges space")
     staff = ok(ctx.persona("instructor").get(f"/wiki/pages/{page['id']}"), what="the range page as instructor")
     expect(f"range:{rng['id']}" in staff.get("tags", ""), f"the page is not tagged for the range: {staff.get('tags')!r}")
-    expect(CREDENTIALS_LITERAL in staff.get("body", ""), "staff do not see the account's password on the page")
+    expect("acceptance-analyst" in staff.get("body", ""), "the page does not name the range's accounts")
+    expect(CREDENTIALS_LITERAL not in staff.get("body", ""), "the page shows staff an account password")
     for key in ("student", "observer"):
         api = ctx.persona(key)
         listed = {s.get("slug") for s in listing(api, "/wiki/spaces")}
@@ -2393,11 +2406,11 @@ def wiki_ranges_space(ctx: Ctx) -> str:
             st, _ = api.get(path)
             expect(st == 404, f"GET {path} as {key} => {st}, expected 404")
     stored = ctx.sql("SELECT body FROM wiki_pages WHERE id = :id", id=uuid.UUID(str(page["id"])))
-    expect(stored and "{{tn-credential:" in stored[0][0], "the stored page has no credential tokens")
+    expect(stored and "{{tn-credential:" not in stored[0][0], "the stored page holds credential tokens")
     expect(CREDENTIALS_LITERAL not in stored[0][0], "wiki_pages.body holds an account password")
     return (
-        f"space {slug!r} system-owned and staff-only (opening it 409); {rng['name']}'s page shows staff the "
-        "password, stores only tokens; Student and Observer 404"
+        f"space {slug!r} system-owned and staff-only (opening it 409); {rng['name']}'s page names the accounts "
+        "and holds no password or token; Student and Observer 404"
     )
 
 

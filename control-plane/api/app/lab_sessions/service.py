@@ -559,6 +559,10 @@ def _start(
         session.max_expires_at = now + timedelta(minutes=lifetime["max_minutes"])
         session.idle_expires_at = now + timedelta(minutes=lifetime["idle_minutes"])
     db.flush()
+    from ..range_credentials import service as range_credentials
+
+    # Its own generated logins (ADR 0013 §3), handed to the Student; never the template password.
+    range_credentials.on_lab_range(db, rng)
     _send(db, session, "provision_range", str(rng.id))
 
 
@@ -642,6 +646,9 @@ def _advance_provisioning(db: Session, session: LabSession, rng: Range | None, n
         )
         db.add(snap)
         db.flush()
+        from ..range_credentials import service as range_credentials
+
+        range_credentials.on_snapshot(db, rng, snap)  # a reset logs in with these to set new ones
         session.baseline_snapshot_id = snap.id
         _set_state(session, BASELINING)
         _send(db, session, "snapshot_range", str(rng.id), str(snap.id))
@@ -765,6 +772,10 @@ def reset(db: Session, session: LabSession) -> LabSession:
             raise LabRefusedError("this lab has no reset point")
         snap.snapshot_state = "restoring"
         _set_state(session, RESETTING)
+        from ..range_credentials import service as range_credentials
+
+        # New passwords for the Student (ADR 0013 §3); the restore task sets them after the revert.
+        range_credentials.on_restore(db, rng)
         db.flush()
         _send(db, session, "restore_snapshot", str(rng.id), str(snap.id))
         return session

@@ -287,6 +287,37 @@
       "description": "",
       "queue": "provision"
     },
+    "worker.tasks.rotate_range_credentials": {
+      "args": {
+        "maxItems": 4,
+        "minItems": 2,
+        "prefixItems": [
+          {
+            "description": "ranges.id (UUID)",
+            "title": "range_id",
+            "type": "string"
+          },
+          {
+            "description": "range_credentials.id to set; empty: every pending one",
+            "title": "credential_ids",
+            "type": "array"
+          },
+          {
+            "description": "logged with the outcome and in the audit row",
+            "title": "operation_id",
+            "type": "string"
+          },
+          {
+            "description": "range_snapshots.id just restored (its passwords)",
+            "title": "snapshot_id",
+            "type": "string"
+          }
+        ],
+        "type": "array"
+      },
+      "description": "Set rotated range passwords inside running guests (ADR 0013 \u00a73; worker/credential_rotation.py).",
+      "queue": "provision"
+    },
     "worker.tasks.run_inject": {
       "args": {
         "maxItems": 3,

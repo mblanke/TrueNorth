@@ -208,8 +208,8 @@ class TestRanges:
         from sqlalchemy import text
 
         raw = db.execute(text("SELECT password FROM range_credentials")).scalars().all()
-        assert raw and all(v.startswith("tnsec:v1:") for v in raw)  # sealed at rest
-        monkeypatch.setenv("TN_RANGE_DEFAULT_PASSWORD", "Default-Pass-3!")
+        assert raw and all(v.startswith("tnsec:rc1:") for v in raw)  # sealed at rest (ADR 0013 §3)
+        monkeypatch.setenv("TN_RANGE_DEFAULT_PASSWORD", "Default-Pass-3!")  # gone: never used
         backend = _fake_backend(provision=ProvisionResult(status="ok", vms=[{"name": "dc01"}], networks=[]))
         monkeypatch.setattr(tasks, "_get_backend", lambda name=None, range_id=None, **kw: backend)
 
@@ -220,8 +220,8 @@ class TestRanges:
         assert [(a.username, a.password.reveal(), a.admin) for a in dc_accounts] == [
             ("Administrator", "Dc-Pass-1!", True)]
         assert [a.username for a in vms["web"]["_accounts"]] == ["analyst"]
-        assert "_accounts" not in vms["other"]  # nothing declared: the default login only
-        assert {vm["_default_login"].reveal() for vm in vms.values()} == {"Default-Pass-3!"}
+        assert "_accounts" not in vms["other"]  # no row for it: nothing, and no default login
+        assert not any("_default_login" in vm for vm in vms.values())
         stored = _fresh(db, world.range).provisioner_output
         for secret in ("Dc-Pass-1!", "Web-Pass-2!", "Default-Pass-3!"):
             assert secret not in stored
@@ -249,10 +249,11 @@ class TestRanges:
 
         assert (_fresh(db, admin).applied, _fresh(db, other).applied) == (True, False)
 
-    def test_a_lab_sessions_range_gets_no_default_login(self, world, monkeypatch):
-        """H2: the lab's VMs keep a random password each, as before ADR 0012."""
+    def test_a_lab_sessions_range_gets_its_own_accounts(self, world, monkeypatch):
+        """ADR 0013 §3: a lab's range gets its rows like any range, and never a default login."""
         from app.course_releases.models import CourseRelease, CourseReleaseBlob
         from app.lab_sessions.models import LabSession
+        from app.range_credentials import RangeCredential
 
         db = world.db
         world.template.yaml = "nodes:\n  - id: web\n    os: ubuntu-2404\n"
@@ -267,6 +268,8 @@ class TestRanges:
         _add(db, LabSession(tenant_id=world.tenant.id, user_id=world.user.id, release_id=rel.id,
                             activity_id="m", state="provisioning", profile_id="p", profile_digest="0" * 64,
                             backend="vsphere_api", range_id=world.range.id))
+        _add(db, RangeCredential(tenant_id=world.tenant.id, range_id=world.range.id, machine="web",
+                                 username="ubuntu", password="Lab-Pass-1!", role="admin", student_visible=True))
         monkeypatch.setenv("TN_RANGE_DEFAULT_PASSWORD", "Default-Pass-3!")
         backend = _fake_backend(provision=ProvisionResult(status="ok", vms=[{"name": "web"}], networks=[]))
         monkeypatch.setattr(tasks, "_get_backend", lambda name=None, range_id=None, **kw: backend)
@@ -274,7 +277,32 @@ class TestRanges:
         tasks.provision_range(str(world.range.id))
 
         vms = backend.provision.await_args.args[1]["vms"]
-        assert vms and all("_default_login" not in vm and "_accounts" not in vm for vm in vms)
+        assert vms and all("_default_login" not in vm for vm in vms)
+        assert [(a.username, a.password.reveal()) for a in vms[0]["_accounts"]] == [("ubuntu", "Lab-Pass-1!")]
+
+    def test_rotation_reads_pending_rows_and_snapshot_passwords_and_applying_clears_previous(self, world):
+        """ADR 0013 §3: what worker/credential_rotation.py reads and writes, on the API's schema."""
+        from app.range_credentials import RangeCredential, RangeCredentialSnapshot
+
+        db = world.db
+        row = _add(db, RangeCredential(tenant_id=world.tenant.id, range_id=world.range.id, machine="web",
+                                       username="analyst", password="New-1!", previous_password="Old-1!",
+                                       generated=True, student_visible=True, applied=False,
+                                       rotated_at=datetime.now(UTC)))
+        snap = _add(db, m.RangeSnapshot(range_id=world.range.id, name="s", tenant_id=world.tenant.id,
+                                        snapshot_state="ready", range_state_at_snapshot="ready"))
+        _add(db, RangeCredentialSnapshot(tenant_id=world.tenant.id, snapshot_id=snap.id, credential_id=row.id,
+                                         password="Snap-1!"))
+        with tasks._db_session() as s:
+            (got,) = db_ops.account_rows(s, str(world.range.id))
+            assert (got["password"], got["previous"], got["pending"]) == ("New-1!", "Old-1!", True)
+            assert db_ops.account_rows(s, str(world.range.id), [str(uuid.uuid4())]) == []
+            assert db_ops.snapshot_passwords(s, str(world.range.id), str(snap.id)) == {str(row.id): "Snap-1!"}
+            assert db_ops.snapshot_passwords(s, str(uuid.uuid4()), str(snap.id)) == {}  # another range's: none
+            db_ops.mark_accounts_applied(s, str(world.range.id), {("web", "analyst")})
+            s.commit()
+        fresh = _fresh(db, row)
+        assert fresh.applied is True and fresh.previous_password is None
 
     def test_another_tenants_rows_never_reach_a_build(self, world):
         from app.range_credentials import RangeCredential
@@ -995,6 +1023,8 @@ PG_CALLS = {
         db, "vsphere:vlans", "vlan", {"150": "external:vc/dvs:pg"}, datetime.now(UTC)),
     "drop_range_values": lambda db: db_ops.drop_range_values(db, ID, "vsphere:vlans", "vlan", ["150"]),
     "drop_range_networks": lambda db: db_ops.drop_range_networks(db, ID, {150}),
+    "account_rows": lambda db: db_ops.account_rows(db, ID, [ID]),
+    "snapshot_passwords": lambda db: db_ops.snapshot_passwords(db, ID, ID),
 }
 
 

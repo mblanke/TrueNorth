@@ -26,8 +26,8 @@ GET    /wiki/search?q=                              WIKI_READ
 Visibility: a space marked ``staff`` is invisible (404, never 403) to anyone without
 WIKI_EDIT, and so are unpublished pages. A ``system_owned`` space (the generated range
 pages, ADR 0012 §14) is always treated as ``staff`` and its visibility cannot be changed
-(409); its generated pages show their credential tokens expanded, and an edit keeps their
-generated block (app/range_credentials/wiki_doc.py). Saving a page requires the ``base_revision``
+(409); its generated pages hold account names and no credentials (ADR 0013 §3), and an
+edit keeps their generated block (app/range_credentials/wiki_doc.py). Saving a page requires the ``base_revision``
 the editor started from; a stale one is a 409 carrying the current page, so concurrent
 editors cannot silently overwrite each other.
 
@@ -500,25 +500,14 @@ def create_page(
 # ── Pages ───────────────────────────────────────────────────────────────
 @router.get("/pages/{page_id}", response_model=WikiPageOut)
 def get_page(
-    response: Response,
     page_id: uuid.UUID = Path(...),
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_permission(Permission.WIKI_READ)),
 ) -> WikiPageOut:
-    """A generated range page (ADR 0012 §14) is the one place the wiki shows passwords: its
-    credential tokens are filled in here, and only for ``range:credentials_read`` holders,
-    audited like GET /ranges/{id}/credentials and ``Cache-Control: no-store``. Every other
-    response (create, edit, restore, a 409's body) returns the tokens."""
+    """A page as stored. A generated range page holds no credentials (ADR 0013 §3): its
+    passwords are revealed on the range's credentials panel, never through the wiki."""
     page, space = _page(db, page_id, user)
-    out = _page_out(db, page, space, user)
-    if wiki_doc.is_generated(page, space) and user_has_permission(user, Permission.RANGE_CREDENTIALS_READ):
-        out.body = wiki_doc.expand(db, page, page.body)
-        rid = wiki_doc.range_of(page)
-        db.add(AuditLog(user_id=uuid.UUID(user.id), tenant_id=page.tenant_id, action="range_credentials_read",
-                        resource_type="range", resource_id=str(rid), detail=f"scope=all; via=wiki page {page.id}"))
-        db.commit()
-        response.headers["Cache-Control"] = "no-store"
-    return out
+    return _page_out(db, page, space, user)
 
 
 @router.put("/pages/{page_id}", response_model=WikiPageOut)

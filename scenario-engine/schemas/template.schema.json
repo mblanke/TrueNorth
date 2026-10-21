@@ -91,7 +91,7 @@
       "type": "object"
     },
     "accounts": {
-      "description": "Accounts TrueNorth sets on the range's machines at deploy (ADR 0012 §12). The API also checks that each machine is a node id or name, or an asset role, of this template and that a username appears once per machine (control-plane/api/app/range_credentials/accounts.py).",
+      "description": "Accounts TrueNorth sets on the range's machines at deploy (ADR 0012 §12, ADR 0013 §3). The API also checks that each machine is a node id or name, or an asset role, of this template and that a username appears once per machine (control-plane/api/app/range_credentials/accounts.py).",
       "type": [
         "array",
         "null"
@@ -120,11 +120,16 @@
           "password": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 128
+            "maxLength": 128,
+            "description": "A typed-in password: only on a scenario account (scenario: true), never a staff login (ADR 0013)"
           },
           "generate": {
             "type": "boolean",
-            "description": "true: TrueNorth makes the password up, once per range"
+            "description": "true: TrueNorth makes the password up per range (Student-visible ones anew on every rebuild and reset)"
+          },
+          "scenario": {
+            "type": "boolean",
+            "description": "true: the typed-in password is part of the exercise (authored by design, never rotated). Not allowed on role: admin, Administrator, the Linux build user or soadmin"
           },
           "student_visible": {
             "type": "boolean",

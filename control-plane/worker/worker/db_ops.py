@@ -21,7 +21,7 @@ from typing import Any
 
 import sqlalchemy as sa
 
-from . import secretbox
+from . import range_seal, secretbox
 from .tables import (
     after_action_reports,
     competencies,
@@ -38,6 +38,7 @@ from .tables import (
     learning_recommendations,
     network_reservations,
     objectives,
+    range_credential_snapshots,
     range_credentials,
     range_snapshots,
     ranges,
@@ -220,9 +221,10 @@ def hypervisor_creds_by_id(db, hypervisor_type: str, connection_id: str, range_i
 
 
 def range_accounts(db, range_id: str) -> list[tuple[str, str, str, str]]:
-    """(machine, username, password, role) of every account the range declares (ADR 0012).
-    Written and sealed by the API (app/range_credentials) when the build was accepted;
-    unsealed here. Of the range's own tenant only."""
+    """(machine, username, password, role) of every account of the range (ADR 0012, ADR 0013:
+    declared ones and the implicit staff logins). Written and sealed by the API
+    (app/range_credentials) when the build was accepted; unsealed here. Of the range's own
+    tenant only."""
     rc = range_credentials
     stmt = (
         sa.select(rc.c.machine, rc.c.username, rc.c.password, rc.c.role)
@@ -230,7 +232,43 @@ def range_accounts(db, range_id: str) -> list[tuple[str, str, str, str]]:
         .where(rc.c.range_id == range_id, rc.c.tenant_id == ranges.c.tenant_id)
         .order_by(rc.c.machine, rc.c.username)
     )
-    return [(m, u, secretbox.unseal(p) or "", r) for m, u, p, r in db.execute(stmt)]
+    return [(m, u, range_seal.unseal_stored(p) or "", r) for m, u, p, r in db.execute(stmt)]
+
+
+def account_rows(db, range_id: str, ids: Sequence[str] | None = None) -> list[dict[str, Any]]:
+    """Every account of the range (or the ``ids`` among them) for a rotation in the guests
+    (worker/credential_rotation.py): id, machine, username, role, student_visible, generated,
+    applied, whether a rotation is pending (``rotated_at`` set and not applied), the password
+    and the one the guests still have while a rotation is pending (``previous``). Unsealed."""
+    rc = range_credentials
+    stmt = (
+        sa.select(rc.c.id, rc.c.machine, rc.c.username, rc.c.role, rc.c.student_visible, rc.c.generated,
+                  rc.c.applied, rc.c.rotated_at, rc.c.password, rc.c.previous_password)
+        .join(ranges, ranges.c.id == rc.c.range_id)
+        .where(rc.c.range_id == range_id, rc.c.tenant_id == ranges.c.tenant_id)
+        .order_by(rc.c.machine, rc.c.username)
+    )
+    if ids is not None:
+        stmt = stmt.where(rc.c.id.in_([uuid.UUID(str(i)) for i in ids]))
+    return [{"id": str(r.id), "machine": r.machine, "username": r.username, "role": r.role,
+             "student_visible": bool(r.student_visible), "generated": bool(r.generated), "applied": bool(r.applied),
+             "pending": r.rotated_at is not None and not r.applied,
+             "password": range_seal.unseal_stored(r.password) or "",
+             "previous": range_seal.unseal_stored(r.previous_password) if r.previous_password else None}
+            for r in db.execute(stmt)]
+
+
+def snapshot_passwords(db, range_id: str, snapshot_id: str) -> dict[str, str]:
+    """credential id -> the password it had when the snapshot was taken (the API records
+    them, app/range_credentials/service.on_snapshot). Of the range's own snapshot only."""
+    rcs = range_credential_snapshots
+    stmt = (
+        sa.select(rcs.c.credential_id, rcs.c.password)
+        .join(range_snapshots, range_snapshots.c.id == rcs.c.snapshot_id)
+        .where(rcs.c.snapshot_id == snapshot_id, range_snapshots.c.range_id == range_id,
+               rcs.c.tenant_id == range_snapshots.c.tenant_id)
+    )
+    return {str(cid): range_seal.unseal_stored(pw) or "" for cid, pw in db.execute(stmt)}
 
 
 def is_lab_range(db, range_id: str) -> bool:
@@ -240,8 +278,10 @@ def is_lab_range(db, range_id: str) -> bool:
 
 
 def mark_accounts_applied(db, range_id: str, pairs: Iterable[tuple[str, str]]) -> None:
-    """Set ``applied`` on the range's (machine, username) accounts the build set (ADR 0012).
-    The API resets every row to not applied when it accepts a build."""
+    """Set ``applied`` on the range's (machine, username) accounts the build or a rotation
+    set (ADR 0012, ADR 0013), and forget the password the guests had before (a pending
+    rotation's ``previous_password``). The API resets every row to not applied when it
+    accepts a build, and the rows it rotates."""
     by_machine: dict[str, list[str]] = {}
     for machine, username in pairs:
         by_machine.setdefault(machine, []).append(username)
@@ -250,7 +290,7 @@ def mark_accounts_applied(db, range_id: str, pairs: Iterable[tuple[str, str]]) -
         db.execute(
             sa.update(rc)
             .where(rc.c.range_id == range_id, rc.c.machine == machine, rc.c.username.in_(sorted(names)))
-            .values(applied=True, updated_at=_now())
+            .values(applied=True, previous_password=None, updated_at=_now())
         )
 
 

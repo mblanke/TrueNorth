@@ -1049,15 +1049,16 @@ Two vault settings cover machines with no declared account:
 - `vault_template_windows_admin_password`, `tn_template_linux_user` (default `ubuntu`) and
   `vault_template_linux_password`: the golden templates' build login, one generic,
   documented password per OS. **Use the same values as Packer's `lab.auto.pkrvars.hcl`**
-  (`windows_admin_password`, `ssh_username` / `ssh_password`). Linux VMs keep this login;
-  Sysprep sets the Windows one as the Administrator password of every Windows VM whose
-  template declares no Administrator. The API shows them to staff (admin, instructor,
-  range_ops) on the range's Credentials panel and its staff-only wiki page as "template
-  default", which is therefore the live password; Students and observers never see them.
-  Empty Windows setting: random per VM, shown as "random per VM — not recoverable"; empty
-  Linux password: "template default not configured". Lab-session VMs stay random per VM.
-- `vault_range_default_password`: **deprecated** alias of the Windows setting, used only
-  while `vault_template_windows_admin_password` is empty; preflight warns when it is set.
+  (`windows_admin_password`, `ssh_username` / `ssh_password`). Since ADR 0013 §3 they exist
+  only while templates are built: every range (lab sessions included) gets its own
+  generated password for the built-in Administrator, the Linux build user and Security
+  Onion's `soadmin`, set at deploy by Sysprep, cloud-init and the Security Onion setup. The
+  worker uses these values only for the template-login check (one login attempt per built
+  VM, which must fail; `RANGE_TEMPLATE_LOGIN_CHECK=enforce|warn`, default `enforce`). The API
+  gets the Linux user name only. Staff reveal range passwords one at a time on the range's
+  Credentials panel, each reveal audited; the wiki holds no credentials.
+- `vault_range_default_password`: **ignored** since ADR 0013 (no site-wide range password);
+  preflight says so when it is set.
 
 None of them is logged; they reach `.env.production` single-quoted (preflight refuses a
 quote or a newline).

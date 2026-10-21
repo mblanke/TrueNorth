@@ -50,12 +50,16 @@ CASES.update({
 
 @pytest.mark.parametrize("name", sorted(CASES))
 def test_machine_families_match(name):
-    """template_defaults.family (which machines get a template build login) == os_family."""
-    from app.range_credentials import template_defaults
+    """accounts.machine_families (which built-in login a machine's implicit staff row is for,
+    ADR 0013 §3) == the worker's os_family, and Security Onion as the worker recognises it."""
+    from worker.provisioners.vsphere_securityonion import is_securityonion
 
     doc = CASES[name]
     rendered = render_topology(doc, RANGE_ID, lambda alias: None)["vm_definitions"]
-    assert template_defaults.machine_families(doc) == {str(vm["node_id"]): os_family(vm) for vm in rendered}, name
+    assert accounts.machine_families(doc) == {str(vm["node_id"]): os_family(vm) for vm in rendered}, name
+    os_of = accounts.machine_os(doc)
+    assert {m for m in os_of if accounts.is_securityonion(os_of[m])} == {
+        str(vm["node_id"]) for vm in rendered if is_securityonion(vm)}, name
 
 
 @pytest.mark.parametrize("name", sorted(CASES))

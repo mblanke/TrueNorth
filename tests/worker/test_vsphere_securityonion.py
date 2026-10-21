@@ -87,6 +87,15 @@ class FakeSession:
     def wait_ready(self, deadline):
         pass
 
+    def start_detached(self, program, arguments):
+        """The login's own password change (ADR 0013 §3) is started detached; ``checks``
+        ``so-admin-password`` non-zero: it does not take."""
+        label = "so-admin-password" if "chpasswd" in arguments else "detached"
+        self.commands.append(guest.GuestCommand(label, program, arguments))
+        if self.checks.get(label, 0):
+            raise RuntimeError("the change did not start")
+        return 4242
+
     def run(self, cmd, deadline):
         self.commands.append(cmd)
         if cmd.label == "so-setup-start":
@@ -383,13 +392,25 @@ class TestSetup:
     def test_admin_that_is_the_login_gets_its_password_after_the_node_is_healthy(self):
         vm = _vm(_accounts=[_acct("soadmin", "Range-Admin-1", admin=True)])
         out, warnings, s = _setup(vm, codes=[2, 0])
-        assert out["status"] == "ok" and out["admin_user"] == "soadmin"
+        assert out["status"] == "ok" and out["login_user"] == "soadmin" and out["admin_user"] is None
         assert [c.label for c in s.commands] == ["so-setup-start", "so-setup-status", "so-setup-status",
                                                  "so-admin-password"]  # the password change is last
         assert "chpasswd" in s.commands[-1].arguments
         assert out["accounts_applied"] == ["soadmin"]
         out, _, _ = _setup(vm, codes=[0], checks={"so-admin-password": 1})
         assert out["accounts_applied"] == []  # its declared password did not take: not applied
+
+    def test_a_declared_admin_and_the_build_logins_own_row_are_both_set(self):
+        """soc-training's pattern under ADR 0013 §3: ``tnadmin`` declared, ``soadmin`` the
+        implicit staff login. tnadmin is created before so-setup; soadmin's template password
+        is replaced last. Before, soadmin kept the template password."""
+        vm = _vm(_accounts=[_acct("soadmin", "Range-Login-9", admin=True), _acct("tnadmin", "Range-Admin-1", True)])
+        out, _, s = _setup(vm, codes=[0])
+        stage = next(c for c in s.commands if c.label == "so-setup-start")
+        assert _answers_from(stage.arguments)["TN_ADMIN_USER"] == "tnadmin"
+        assert s.commands[-1].label == "so-admin-password" and "soadmin" in s.commands[-1].arguments
+        assert (out["admin_user"], out["login_user"]) == ("tnadmin", "soadmin")
+        assert sorted(out["accounts_applied"]) == ["soadmin", "tnadmin"]
 
     def test_admin_that_is_the_login_is_left_alone_when_setup_does_not_finish(self):
         vm = _vm(_accounts=[_acct("soadmin", "Range-Admin-1", admin=True)])

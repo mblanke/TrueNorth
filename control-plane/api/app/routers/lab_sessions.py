@@ -16,7 +16,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -24,6 +24,8 @@ from ..auth import CurrentUser, get_current_user
 from ..db import get_db
 from ..lab_sessions import service, tokens
 from ..lab_sessions.models import LabSession
+from ..range_credentials import service as cred_service
+from ..range_credentials.router import RangeCredentialOut, RevealedCredentialOut, account_out
 from ..rbac import Permission, require_permission, user_has_permission
 from ..tenancy import tenant_uuid
 
@@ -260,6 +262,71 @@ def add_lab_evidence(
     return _out(_do(db, service.add_evidence, s, item))
 
 
+class LabCredentialsOut(BaseModel):
+    lab_session_id: uuid.UUID
+    accounts: list[RangeCredentialOut] = Field(
+        description="The accounts on the lab's machines, without passwords; empty until the lab is ready")
+
+
+def _lab_range(db: Session, s: LabSession):
+    """The session's range while the Student can use it (ready or active), else None."""
+    from ..models import Range
+
+    if s.state not in (service.READY, service.ACTIVE) or s.range_id is None:
+        return None
+    # tenant-safe: the session's own range, created by app/lab_sessions in its tenant.
+    return db.get(Range, s.range_id)
+
+
+def _lab_credentials(db: Session, s: LabSession) -> LabCredentialsOut:
+    rng = _lab_range(db, s)
+    rows = cred_service.visible_accounts(db, rng, cred_service.STUDENT) if rng is not None else []
+    return LabCredentialsOut(lab_session_id=s.id, accounts=[account_out(r, set()) for r in rows])
+
+
+def _lab_reveal(db: Session, s: LabSession, credential_id: uuid.UUID, via: str) -> RevealedCredentialOut:
+    rng = _lab_range(db, s)
+    if rng is None:
+        raise HTTPException(404, "Account not found")
+    row = cred_service.account(db, rng, credential_id, cred_service.STUDENT)
+    password = cred_service.reveal(db, rng, row, cred_service.STUDENT, s.user_id, via,
+                                   {"lab_session_id": str(s.id)})
+    db.commit()
+    return RevealedCredentialOut(id=row.id, machine=row.machine, username=row.username, password=password)
+
+
+def _own_session(db: Session, user: CurrentUser, session_id: uuid.UUID) -> LabSession:
+    """The caller's own session (404 otherwise, staff included: they read lab accounts on
+    the range, GET /ranges/{id}/credentials, with range:credentials_read)."""
+    s = _session_for(db, user, session_id, staff_permission=Permission.LEARNING_RECORD_WRITE, act=True)
+    if str(s.user_id) != str(user.id):
+        raise HTTPException(404, "lab session not found")
+    return s
+
+
+@router.get("/lab-sessions/{session_id}/credentials", response_model=LabCredentialsOut)
+def get_lab_credentials(
+    session_id: uuid.UUID, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)
+) -> LabCredentialsOut:
+    """The Student's own lab's accounts (ADR 0013 §3: generated per lab, new after every
+    reset), without passwords. Only the session's owner."""
+    return _lab_credentials(db, _own_session(db, user, session_id))
+
+
+@router.post("/lab-sessions/{session_id}/credentials/{credential_id}/reveal", response_model=RevealedCredentialOut)
+def reveal_lab_credential(
+    response: Response,
+    session_id: uuid.UUID,
+    credential_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+) -> RevealedCredentialOut:
+    """One password of the Student's own lab. Audited (``range_credential_reveal``)."""
+    out = _lab_reveal(db, _own_session(db, user, session_id), credential_id, "lab_session")
+    response.headers["Cache-Control"] = "no-store"
+    return out
+
+
 @router.post("/lab-sessions/reconcile")
 def reconcile_lab_sessions(
     db: Session = Depends(get_db), user: CurrentUser = Depends(require_permission(Permission.INFRA_CONTROL))
@@ -309,3 +376,24 @@ def open_console_by_token(
     db: Session = Depends(get_db),
 ) -> ConsoleOut:
     return ConsoleOut(**_do(db, service.console, _token_session(db, session_id, x_lab_token), node))
+
+
+@router.get("/lab-access/{session_id}/credentials", response_model=LabCredentialsOut)
+def get_lab_credentials_by_token(
+    session_id: uuid.UUID, x_lab_token: str | None = Header(None), db: Session = Depends(get_db)
+) -> LabCredentialsOut:
+    return _lab_credentials(db, _token_session(db, session_id, x_lab_token))
+
+
+@router.post("/lab-access/{session_id}/credentials/{credential_id}/reveal", response_model=RevealedCredentialOut)
+def reveal_lab_credential_by_token(
+    response: Response,
+    session_id: uuid.UUID,
+    credential_id: uuid.UUID,
+    x_lab_token: str | None = Header(None),
+    db: Session = Depends(get_db),
+) -> RevealedCredentialOut:
+    """As the signed-in reveal; audited as the session's owner (``via: lab_token``)."""
+    out = _lab_reveal(db, _token_session(db, session_id, x_lab_token), credential_id, "lab_token")
+    response.headers["Cache-Control"] = "no-store"
+    return out

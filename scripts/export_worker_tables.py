@@ -43,6 +43,7 @@ WORKER_TABLES = (
     "learning_recommendations",
     "network_reservations",
     "objectives",
+    "range_credential_snapshots",
     "range_credentials",
     "range_greyspace",
     "range_leases",
@@ -65,7 +66,9 @@ def _type_src(t) -> str:
     name = type(t).__name__
     if name == "GUID":
         return "GUID()"
-    if name == "SealedText":  # sealed by the API (app/sealed_column.py); the worker unseals it itself
+    # Sealed by the API (app/sealed_column.py, app/range_credentials/sealed_column.py); the
+    # worker unseals it itself (worker/secretbox.py, worker/range_seal.py).
+    if name in ("SealedText", "RangeSealedText"):
         return "sa.Text()"
     if isinstance(t, sa.Enum):
         members = ", ".join(repr(e) for e in t.enums)
@@ -82,7 +85,7 @@ def _type_src(t) -> str:
 def render() -> str:
     import app.audit_integrity  # noqa: F401 — audit_exports
     import app.greyspace.models  # noqa: F401
-    import app.lab_sessions  # noqa: F401 — lab_sessions (worker/range_accounts.py: no default login on labs)
+    import app.lab_sessions  # noqa: F401 — lab_sessions
     import app.network_inventory  # noqa: F401 — section models register their tables on import
     import app.range_credentials  # noqa: F401
     import app.range_leases  # noqa: F401

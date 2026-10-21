@@ -61,9 +61,13 @@ The range's declared accounts for the machine (``accounts:`` in the range templa
 ADR 0012 decision 12) reach the worker as ``vm_def["_accounts"]``
 (worker/range_accounts.py: ``RangeAccount``, ordered by username). Two rules apply here:
 
-- **Admin**: the first ``role: admin`` account is the node's OS administrator. Setup
-  creates it if the template lacks it, sets its password and puts it in ``wheel``, before
-  so-setup runs.
+- **Admin**: the first ``role: admin`` account other than the build login is the node's
+  OS administrator. Setup creates it if the template lacks it, sets its password and puts
+  it in ``wheel``, before so-setup runs.
+- **Build login** (``soadmin``, VSPHERE_SO_INSTALL_USER): the range has an account for it
+  (declared, or the implicit staff login the API adds, ADR 0013 §3). Its range password
+  replaces the template's last, once the node is healthy (``admin_last``), by the build or
+  the reconcile task; the template-login check (vsphere_credcheck) then proves it.
 - **SOC web login**: the first ``role: user`` account (by username) is the SOC console's
   administrator. so-setup wants an e-mail address: a username without ``@`` gets
   ``@<search domain>`` (``analyst`` -> ``analyst@range.local``). Declare it with the ``@``,
@@ -72,11 +76,10 @@ ADR 0012 decision 12) reach the worker as ``vm_def["_accounts"]``
 
 Guest operations (and sudo) log in with the template's build login when the worker has
 one: VSPHERE_SO_INSTALL_USER / VSPHERE_SO_INSTALL_PASSWORD, the template's generic build
-password (decision 5; TN_RANGE_DEFAULT_PASSWORD is the Windows Administrator fallback, not
-this). A fresh clone has no range account yet; setup is what creates it. Without a build login the admin account itself is used, which works only
-for a template built with that account and password. With neither, setup is skipped. When
-the admin account *is* the build login under another password, its password is changed
-last, after the node is healthy.
+password (ADR 0012 decision 5, which ADR 0013 limits to the template's construction). A
+fresh clone has no range account yet; setup is what creates it. Without a build login the
+admin account itself is used, which works only for a template built with that account and
+password. With neither, setup is skipped.
 
 An account is reported applied (``accounts_applied``, worker/range_accounts.record_applied)
 only once verified in the guest: the admin by ``getent passwd``, the web login by
@@ -259,14 +262,18 @@ class SetupPlan:
     web_generated: bool
     install: guest.GuestCredentials = field(repr=False)
     install_source: str
-    admin: guest.RangeAccount | None = field(default=None, repr=False)  # the range's role: admin account
+    # The range's first role: admin account other than the build login: set before so-setup.
+    admin: guest.RangeAccount | None = field(default=None, repr=False)
     notes: list[str] = field(default_factory=list)
+    # The range's account for the build login itself (``soadmin``: declared, or the implicit
+    # staff login, ADR 0013 §3): its new password is set last, once the node is healthy.
+    login_account: guest.RangeAccount | None = field(default=None, repr=False)
 
     @property
     def admin_last(self) -> bool:
-        """The admin account is the login itself under another password: change it last."""
-        return (self.admin is not None and self.admin.username == self.install.username
-                and self.admin.password.reveal() != self.install.password.reveal())
+        """The build login gets the range's password for it, last (it ends the login)."""
+        return (self.login_account is not None
+                and self.login_account.password.reveal() != self.install.password.reveal())
 
 
 class PlanError(ValueError):
@@ -278,9 +285,14 @@ def _accounts(vm_def: dict) -> list[guest.RangeAccount]:
     return [a for a in vm_def.get("_accounts") or [] if isinstance(a, guest.RangeAccount) and a.username]
 
 
-def admin_account(vm_def: dict) -> guest.RangeAccount | None:
-    """The first ``role: admin`` account: the node's OS administrator."""
-    return next((a for a in _accounts(vm_def) if a.admin), None)
+def admin_account(vm_def: dict, login_user: str | None = None) -> guest.RangeAccount | None:
+    """The first ``role: admin`` account other than ``login_user``: the node's OS administrator."""
+    return next((a for a in _accounts(vm_def) if a.admin and a.username != login_user), None)
+
+
+def login_account(vm_def: dict, login_user: str) -> guest.RangeAccount | None:
+    """The range's account for the build login itself, if it has one (ADR 0013 §3)."""
+    return next((a for a in _accounts(vm_def) if a.username == login_user), None)
 
 
 def web_account(vm_def: dict) -> guest.RangeAccount | None:
@@ -291,8 +303,7 @@ def web_account(vm_def: dict) -> guest.RangeAccount | None:
 def install_login(vm_def: dict, env: dict | None = None) -> tuple[guest.GuestCredentials, str]:
     """The login guest operations (and sudo) use: the template's build login
     (VSPHERE_SO_INSTALL_USER / VSPHERE_SO_INSTALL_PASSWORD), else the range's admin account.
-    TN_RANGE_DEFAULT_PASSWORD is not used: it is the Windows Administrator fallback, and a
-    Linux template keeps its build password (ADR 0012 §5)."""
+    The build login's own range row (``login_account``) replaces that password last."""
     env = os.environ if env is None else env
     user = str(env.get("VSPHERE_SO_INSTALL_USER") or "").strip()
     password = str(env.get("VSPHERE_SO_INSTALL_PASSWORD") or "")
@@ -383,19 +394,23 @@ def plan(vm_def: dict, networks: list[dict], mirror_dst_vlans: set[int], env: di
     install, source = install_login(vm_def, env)
     user, password, generated = web_login(vm_def, search)
     notes: list[str] = []
-    admin = admin_account(vm_def)
+    admin = admin_account(vm_def, install.username)
     if admin is not None and not guest.POSIX_USERNAME.match(admin.username):
         notes.append(f"admin account {admin.username!r} is not a Linux login name; not set")
         admin = None
     elif admin is not None and set(admin.password.reveal()) & set("\n\r"):
         notes.append(f"admin account {admin.username!r}: a password with a line break cannot be set; not set")
         admin = None
+    login = login_account(vm_def, install.username)
+    if login is not None and set(login.password.reveal()) & set("\n\r:"):
+        notes.append(f"account {login.username!r}: a password with a line break or colon cannot be set; not set")
+        login = None
     allow = [str(iface.network)]
     allow += [c for c in _allow(vm_def.get("so_allow"), networks, notes) if c not in allow]
     return SetupPlan(hostname=host, mgmt_index=mgmt_i, monitor_index=mon_i, mgmt_ip=str(iface.ip),
                      prefix=iface.network.prefixlen, gateway=gateway, dns=dns, search=search, allow=allow,
                      web_user=user, web_password=password, web_generated=generated, install=install,
-                     install_source=source, admin=admin, notes=notes)
+                     install_source=source, admin=admin, notes=notes, login_account=login)
 
 
 # --------------------------------------------------------------------------- #
@@ -416,9 +431,9 @@ def answers(p: SetupPlan, macs: list[str], health_wait: int = SO_HEALTH_WAIT) ->
         f"TN_EXTRA_ALLOW={q(' '.join(p.allow[1:]))}",
         f"TN_HEALTH_WAIT={int(health_wait)}",
         f"TN_WEB_GENERATED={1 if p.web_generated else 0}",
-        # The admin account is set before so-setup, unless it is the login (then last, by the worker).
-        f"TN_ADMIN_USER={q(p.admin.username if p.admin and not p.admin_last else '')}",
-        f"TN_ADMIN_PASSWORD={q(p.admin.password.reveal() if p.admin and not p.admin_last else '')}",
+        # The admin account is set before so-setup; the login's own password last, by the worker.
+        f"TN_ADMIN_USER={q(p.admin.username if p.admin else '')}",
+        f"TN_ADMIN_PASSWORD={q(p.admin.password.reveal() if p.admin else '')}",
         "install_type=STANDALONE",
         f"HOSTNAME={q(p.hostname)}",
         f"NODE_DESCRIPTION={q('TrueNorth range sensor')}",
@@ -534,12 +549,14 @@ def _run(session_for, vm_def: dict, macs: list[str], networks: list[dict], mirro
     if len(macs) < len(vm_def.get("nics") or []):
         out["detail"] = f"the VM has {len(macs)} NICs, its plan {len(vm_def['nics'])}"
         return out, [f"{tag} skipped: {out['detail']}"], set()
-    hidden = (p.install.password, p.web_password, p.admin.password if p.admin else None)
+    hidden = (p.install.password, p.web_password, p.admin.password if p.admin else None,
+              p.login_account.password if p.login_account else None)
     warnings += [f"{tag}: {n}" for n in p.notes]
     out.update({"web_url": f"https://{p.mgmt_ip}", "web_user": p.web_user,
                 "web_password": "generated" if p.web_generated else "range account",
                 "management_mac": macs[p.mgmt_index].lower(), "monitor_mac": macs[p.monitor_index].lower(),
-                "allow": p.allow, "admin_user": p.admin.username if p.admin else None})
+                "allow": p.allow, "admin_user": p.admin.username if p.admin else None,
+                "login_user": p.login_account.username if p.login_account else None})
     if p.web_generated:
         if sealed := _sealed(p.web_password):
             out["web_password_sealed"] = sealed
@@ -564,10 +581,10 @@ def _run(session_for, vm_def: dict, macs: list[str], networks: list[dict], mirro
         out["status"], out["detail"] = state, _scrub(detail, *hidden)[:400]
         warnings.append(f"{tag} {state}: {out['detail']}")
         # The runner sets the admin account before so-setup: it may exist although setup did not finish.
-        verified = _verified_admin(session, p, stop, hidden) if started and not p.admin_last else set()
+        verified = _verified_admin(session, p, stop, hidden) if started else set()
         if p.admin_last:
-            warnings.append(f"{tag}: the password of admin account {p.admin.username} (also the build login) "
-                            "is set only once the node is healthy; it is unchanged")
+            warnings.append(f"{tag}: the password of admin account {p.login_account.username} (also the build "
+                            "login) is set only once the node is healthy; it is unchanged")
         return out, warnings, verified
 
     try:
@@ -590,14 +607,14 @@ def _run(session_for, vm_def: dict, macs: list[str], networks: list[dict], mirro
             out["status"], out["detail"] = "ok", STATUS[0]
             logger.info("security onion setup on %s: healthy", name)
             # Verify before the login's own password may change (the session's last command).
-            verified = _verified_web(session, p, vm_def, stop, hidden)
+            verified = _verified_web(session, p, vm_def, stop, hidden) | _verified_admin(session, p, stop, hidden)
             if p.admin_last:
-                note = _set_admin_last(session, p, stop, hidden)
+                note = _set_admin_last(session, session_for, p, stop, hidden)
                 warnings += note
                 if not note:  # chpasswd for an account that is the login: it exists
-                    verified.add(p.admin.username)
-            else:
-                verified |= _verified_admin(session, p, stop, hidden)
+                    verified.add(p.login_account.username)
+            elif p.login_account is not None:  # the range's password for the login is the one it has
+                verified.add(p.login_account.username)
             return out, warnings, verified
         if code is not None and code not in RUNNING:
             return fail("failed", STATUS.get(code, f"setup runner status {code}"))
@@ -620,6 +637,7 @@ def _run(session_for, vm_def: dict, macs: list[str], networks: list[dict], mirro
                         # The declared username, as the build records it (_verified_web), not the e-mail.
                         "web_account": acc.username if acc is not None and not p.web_generated else None,
                         "web_generated": p.web_generated, "admin_user": p.admin.username if p.admin else None,
+                        "login_user": p.login_account.username if p.admin_last else None,
                         "admin_last": p.admin_last, "node": str(vm_def.get("node_id") or ""),
                         "install_user": p.install.username,
                         "install_from_env": p.install_source == "VSPHERE_SO_INSTALL_USER"}
@@ -661,39 +679,51 @@ def _verified_web(session, p: SetupPlan, vm_def: dict, stop: float, hidden) -> s
     return {acc.username} if _check(session, cmd, stop, hidden) else set()
 
 
-def _set_admin_last(session, p: SetupPlan, stop: float, hidden) -> list[str]:
-    """Give the admin account, which is the login, its declared password. Returns warnings."""
+def change_login_password(session, session_for, install: guest.GuestCredentials, username: str,
+                          password: guest.Secret, stop: float, hidden) -> bool:
+    """Give the login ``session`` runs as its range password, and verify it by a login with it.
+
+    Started detached: once chpasswd ran, polling the command's exit code would still
+    authenticate with the old password and fail until the deadline. Waits at most two
+    minutes (never past ``stop`` once that is later) for the new password to log in."""
     q = shlex.quote
-    script = f"printf '%s:%s\\n' {q(p.admin.username)} {q(p.admin.password.reveal())} | chpasswd"
+    cmd = as_root("so-admin-password", f"printf '%s:%s\\n' {q(username)} {q(password.reveal())} | chpasswd", install)
     try:
-        result, code = session.run(as_root("so-admin-password", script, p.install), max(stop, session._clock() + 120))
+        session.start_detached(cmd.program, cmd.arguments)
     except Exception as exc:  # noqa: BLE001
-        result, code = "failed", _scrub(str(exc), *hidden)[:200]
-    if result == "ok":
+        logger.warning("security onion login password change not started: %s", _scrub(str(exc), *hidden))
+        return False
+    return _login_works(session_for, username, password, max(stop, session._clock() + 120))
+
+
+def _set_admin_last(session, session_for, p: SetupPlan, stop: float, hidden) -> list[str]:
+    """Give the build login its range password (it replaces the template's). Returns warnings."""
+    acct = p.login_account
+    if change_login_password(session, session_for, p.install, acct.username, acct.password, stop, hidden):
         return []
-    return [f"VM {p.hostname}: Security Onion admin account {p.admin.username}: its declared password was not set "
-            f"({result}, {code})"]
+    return [f"VM {p.hostname}: Security Onion admin account {acct.username}: its declared password was not set"]
 
 
 def reconcile(session_for: Callable[[guest.GuestCredentials], object], install: guest.GuestCredentials,
               info: dict, *, admin_password: guest.Secret | None = None, clock: Callable[[], float] | None = None,
-              epoch: Callable[[], float] | None = None, deadline: float | None = None) -> tuple[dict | None, set]:
+              epoch: Callable[[], float] | None = None, deadline: float | None = None,
+              login_password: guest.Secret | None = None) -> tuple[dict | None, set]:
     """Read a ``running`` Security Onion setup's status (worker/setup_reconcile.py) as the
     install login. Returns (final outcome or None, the DECLARED usernames verified in the guest).
 
     The timeout is checked first, before any guest operation, so a powered-off or unreachable
     sensor still ends. On a healthy node, as the build does: the SOC web login by ``so-user
-    list`` (recorded under its declared username, ``web_account``); then the admin account,
-    whose declared password is set by chpasswd when it is the install login itself
-    (``admin_last``, last, as it ends that login), and which is recorded applied only once a
-    guest-operations login with that declared password works."""
+    list`` (recorded under its declared username, ``web_account``); the admin account, recorded
+    applied once a guest-operations login with its password works; then the build login's own
+    range password (``login_password``), set by chpasswd last (``admin_last``: it ends that
+    login) and recorded applied once a login with it works."""
     base = {"status": "", "detail": "", "mode": "standalone, airgap", "reconcile": info}
     if (expired := timed_out(info, epoch=epoch)) is not None:
         return expired, set()
     session = session_for(install)
     now = clock or session._clock
     stop = deadline if deadline is not None else now() + 120
-    hidden = (install.password, admin_password)
+    hidden = (install.password, admin_password, login_password)
     try:
         session.wait_ready(stop)
         _result, code = session.run(poll_command(), stop)  # code is the status number
@@ -710,19 +740,24 @@ def reconcile(session_for: Callable[[guest.GuestCredentials], object], install: 
     if web and account and not info.get("web_generated") and _check(
             session, as_root("so-web-check", web_check_script(str(web)), install), stop, hidden):
         verified.add(str(account))
-    notes = ""
+    notes: list[str] = []
     admin = info.get("admin_user")
-    if admin and admin_password is not None:
-        if info.get("admin_last"):  # the admin is the install login: give it its declared password now
-            q = shlex.quote
-            script = f"printf '%s:%s\\n' {q(str(admin))} {q(admin_password.reveal())} | chpasswd"
-            if not _check(session, as_root("so-admin-password", script, install), stop, hidden):
-                notes = f"admin account {admin}: its declared password was not set"
-        if not notes and _login_works(session_for, str(admin), admin_password, stop):
+    # A record written before ADR 0013 names the login as its admin_user (admin_last).
+    login = info.get("login_user") or (admin if info.get("admin_last") else None)
+    if login_password is None and login is not None and login == admin:
+        login_password = admin_password  # such a record's admin password is the login's
+    if admin and admin != login and admin_password is not None:
+        if _login_works(session_for, str(admin), admin_password, stop):
             verified.add(str(admin))
-        elif not notes:
-            notes = f"admin account {admin}: a login with its declared password did not work"
-    detail = STATUS[0] + (f"; {notes}" if notes else "")
+        else:
+            notes.append(f"admin account {admin}: a login with its declared password did not work")
+    if info.get("admin_last") and login and login_password is not None:
+        # The build login: give it its range password now, last (ADR 0013 §3).
+        if change_login_password(session, session_for, install, str(login), login_password, stop, hidden):
+            verified.add(str(login))
+        else:
+            notes.append(f"admin account {login}: its declared password was not set")
+    detail = STATUS[0] + (f"; {'; '.join(notes)}" if notes else "")
     return {**base, "status": "ok", "detail": _scrub(detail, *hidden)}, verified
 
 

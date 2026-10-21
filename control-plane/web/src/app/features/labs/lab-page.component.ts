@@ -11,6 +11,7 @@ import { interval } from 'rxjs';
 import { AuthService } from '@core/services/auth.service';
 import { CourseStudioApiService, LabConsole, LabSession } from '@core/services/course-studio-api.service';
 import { NotificationService } from '@core/services/notification.service';
+import { RangeCredentialsComponent } from '../../shared/components/range-credentials/range-credentials.component';
 
 /** What each session state means to the student. */
 const STATE_TEXT: Record<string, string> = {
@@ -39,7 +40,7 @@ const TOKEN_KEY = (id: string) => `tn-lab-token:${id}`;
 @Component({
   selector: 'tn-lab-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [DatePipe, MatButtonModule, MatCardModule, MatIconModule, MatProgressBarModule],
+  imports: [DatePipe, MatButtonModule, MatCardModule, MatIconModule, MatProgressBarModule, RangeCredentialsComponent],
   template: `
     <div class="lab">
       <mat-card class="panel">
@@ -75,6 +76,8 @@ const TOKEN_KEY = (id: string) => `tn-lab-token:${id}`;
               Ends {{ s.max_expires_at | date: 'shortTime' }} at the latest; closes after inactivity
               ({{ s.idle_expires_at | date: 'shortTime' }}). Your submitted work is kept when it ends.
             </p>
+            <!-- This lab's own logins (ADR 0013 §3): new after every reset; each reveal is recorded. -->
+            <tn-range-credentials [labSessionId]="sessionId" [labToken]="labToken" />
           }
           <p class="muted small">Attempt {{ s.attempt }} · {{ s.activity_id }}</p>
         } @else if (problem()) {
@@ -112,10 +115,15 @@ export class LabPageComponent implements OnInit {
   readonly usable = computed(() => USABLE.has(this.session()?.state ?? ''));
   private id = '';
   private token: string | undefined;
+  /** For the credentials panel: this session, and its LTI token when it came with one. */
+  sessionId = '';
+  labToken: string | undefined;
 
   ngOnInit(): void {
     this.id = this.route.snapshot.paramMap.get('id') ?? '';
     this.token = this.takeToken();
+    this.sessionId = this.id;
+    this.labToken = this.token;
     if (this.token) {
       this.start();
       return;

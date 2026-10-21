@@ -72,6 +72,7 @@ except ImportError:  # only the snapshot operations need it
 
 from .. import pfsense_config, software_catalogue, uplink_pool, vlan_pool, vyos_config
 from . import template_copies, vsphere_products, vsphere_readiness, vsphere_roles
+from . import vsphere_credcheck as credcheck
 from . import vsphere_guest as guest
 from . import vsphere_infra as infra
 from . import vsphere_macs as macs
@@ -1504,11 +1505,12 @@ class VsphereAPIProvisioner(BaseProvisioner):
         A VM with software to install carries ``_guest`` credentials: the Windows
         Administrator password Sysprep sets, or the Linux install user cloud-init creates.
 
-        The range's accounts (ADR 0012; ``_accounts``, ``_default_login``,
-        worker/range_accounts.py): Windows gets its declared Administrator password, else
-        the platform default, else a random one. Linux gets its declared accounts as
-        cloud-init users; with none declared, nothing: the template keeps its generic build
-        password (ADR 0012 §5), so the platform default is not repeated in cloud-config.
+        The range's accounts (ADR 0012, ADR 0013 §3; ``_accounts``, worker/range_accounts.py):
+        Windows gets its Administrator account's password (declared, or the implicit staff
+        login the API adds), else a random one; never the template password or a site-wide
+        default. Linux gets its accounts as cloud-init users, the build user's included (the
+        implicit staff login), which replaces the template password it was built with.
+        ``vsphere_credcheck`` then proves the template password no longer logs in.
 
         Every NIC's MAC is read back first and must be the reserved one the clone spec set
         (vsphere_macs.py): the guest config is keyed to it, so a NIC that came out with
@@ -1753,6 +1755,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
                     await asyncio.gather(roles_then_software(), self._setup_securityonion(
                         si, vm_defs, usable, networks, mirror_plans, start, warnings))
                     await self._verify_accounts(si, vm_defs, usable, start, warnings)
+                    await self._check_template_logins(si, vm_defs, usable, errors, warnings, not_ready)
                 except RangeNetworkConflictError as exc:  # nothing built; this step's port groups already removed
                     errors.append(str(exc))
                     conflict = exc.conflict
@@ -1766,7 +1769,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
             self._soap_si = None
             self._tagger = None
             for vm_def in vm_defs:  # the guest passwords end with this call
-                for key in ("_guest", "_accounts", "_default_login", "_scrub", "_will_set"):
+                for key in ("_guest", "_accounts", "_scrub", "_will_set", "_proven"):
                     vm_def.pop(key, None)
 
         built = {v["name"] for v in vms_out}
@@ -1794,7 +1797,6 @@ class VsphereAPIProvisioner(BaseProvisioner):
         # A vSphere fault often has an empty str(); its msg or its type still says what failed.
         text = str(exc) or getattr(exc, "msg", None) or type(exc).__name__
         secrets_ = [v.get("_guest") for v in vm_defs] + [a for v in vm_defs for a in v.get("_accounts") or []]
-        secrets_ += [guest.RangeAccount("", d) for v in vm_defs if (d := v.get("_default_login")) is not None]
         return guest.redact(text, *secrets_)
 
     @staticmethod
@@ -2245,10 +2247,100 @@ class VsphereAPIProvisioner(BaseProvisioner):
                 warnings.append(f"VM {out['name']}: account(s) not verified, recorded as not set: "
                                 f"{', '.join(missing)}")
             out["accounts_applied"] = [n for n in planned if n in verified]
+            # A guest-operations login worked in this VM: the template-login check can trust a refusal.
+            vm_def["_proven"] = bool(verified)
 
         # Security Onion VMs report their own (``_setup_securityonion``).
         await asyncio.gather(*(one(by_name[o["name"]], o) for o in vms_out if o["name"] in by_name
                                and not seconion.is_securityonion(by_name[o["name"]])))
+
+    def _template_check_sync(self, si, vm_def: dict, vm_id: str, proven: bool) -> dict:
+        vm = self._vm(si, vm_id)
+        return credcheck.check(lambda creds: guest.GuestSession(si.content, vm, creds, poll=self._guest_poll),
+                               infra.os_family(vm_def), proven=proven,
+                               securityonion=seconion.is_securityonion(vm_def))
+
+    async def _check_template_logins(self, si, vm_defs: list[dict], vms_out: list[dict], errors: list[str],
+                                     warnings: list[str], not_ready: list[str]) -> None:
+        """The template-login check (vsphere_credcheck, ADR 0013 §3) of every built VM, once,
+        after its accounts were verified: ``template_login`` on the VM's output. A VM whose
+        template password still logs in is not ready under RANGE_TEMPLATE_LOGIN_CHECK=enforce.
+        A Security Onion node is checked once its setup changed its login (here when it
+        finished in the build, else by the reconcile task); an appliance is not checked
+        (its login is its own configuration)."""
+        by_name = {v["name"]: v for v in vm_defs}
+        gate = asyncio.Semaphore(self._concurrency)
+
+        async def one(vm_def: dict, out: dict) -> None:
+            if infra.os_family(vm_def) == "appliance":
+                out["template_login"] = {"status": "not_checked", "detail": "appliance: its login is its own "
+                                                                            "configuration"}
+                return
+            proven = bool(vm_def.get("_proven"))
+            if seconion.is_securityonion(vm_def):
+                if (out.get("securityonion") or {}).get("status") != "ok":
+                    out["template_login"] = {"status": credcheck.INCONCLUSIVE, "detail": "checked when its Security "
+                                             "Onion setup has changed the login (reconcile)"}
+                    return
+                proven = bool(out.get("accounts_applied"))
+            async with gate:
+                try:
+                    res = await asyncio.to_thread(self._template_check_sync, si, vm_def, out["vm_id"], proven)
+                except Exception as exc:  # noqa: BLE001 — never a pass
+                    res = {"status": credcheck.INCONCLUSIVE, "detail": f"not checked ({type(exc).__name__})"}
+            out["template_login"] = res
+            if reason := credcheck.report(out["name"], res, warnings):
+                errors.append(f"VM {out['name']}: {reason}")
+                not_ready.append(out["name"])
+
+        await asyncio.gather(*(one(by_name[o["name"]], o) for o in vms_out if o["name"] in by_name))
+
+    supports_credential_rotation = True
+
+    async def rotate_guest_passwords(self, range_id: str, vms: list[dict], timeout: float) -> dict[str, dict]:
+        """Set new passwords in running VMs of the range (worker/credential_rotation.py), each
+        ``{vm_id, name, family, logins: [GuestLogin, ...], changes: [GuestLogin, ...]}``: log in
+        with the first of ``logins`` the guest accepts (one attempt each), then
+        ``vsphere_credcheck.rotate``. Returns name -> ``{applied: [usernames verified], error}``.
+        Only VMs that are ``range_id``'s on this vCenter (``_screen``, as ``run_in_guest``)."""
+        if SmartConnect is None:
+            raise RuntimeError("pyvmomi is required for guest operations (pip install pyvmomi)")
+        async with self._soap_scope(always=True):
+            _, notes, missing = await self._screen(range_id, [{"vm_id": v["vm_id"], "name": v["name"]} for v in vms])
+        if notes:
+            raise RuntimeError(notes[0])
+        out = {v["name"]: {"applied": [], "error": "not on this vCenter"} for v in vms if v["vm_id"] in missing}
+        todo = [v for v in vms if v["vm_id"] not in missing]
+        out.update(await asyncio.to_thread(self._rotate_sync, todo, time.monotonic() + timeout))
+        return out
+
+    def _rotate_sync(self, vms: list[dict], run_end: float) -> dict[str, dict]:
+        out: dict[str, dict] = {}
+        host = self._transfer_host()
+        with self._vim() as si:
+            for v in vms:
+                vm = self._vm(si, v["vm_id"])
+
+                def session_for(creds, _vm=vm):
+                    return guest.GuestSession(si.content, _vm, creds, poll=self._guest_poll, transfer_host=host,
+                                              put=self._guest_put)
+
+                family = v["family"]
+                changes = [guest.RangeAccount(c.username, guest.Secret(c.password)) for c in v["changes"]]
+                logins = [guest.GuestCredentials(family, c.username, guest.Secret(c.password)) for c in v["logins"]]
+                deadline = min(time.monotonic() + self._install_timeout, run_end)
+                try:
+                    session_for(logins[0] if logins else guest.linux_credentials()).wait_tools(deadline)
+                except Exception as exc:  # noqa: BLE001
+                    out[v["name"]] = {"applied": [], "error": f"guest operations not ready ({type(exc).__name__})"}
+                    continue
+                login = next((c for c in logins if session_for(c).try_login() is True), None)
+                if login is None:
+                    out[v["name"]] = {"applied": [], "error": "none of the machine's admin logins was accepted"}
+                    continue
+                applied, error = credcheck.rotate(session_for(login), family, changes, deadline, session_for)
+                out[v["name"]] = {"applied": applied, "error": error}
+        return out
 
     def _roles_sync(self, si, vm_def: dict, vm_id: str, deadline: float) -> dict[str, dict]:
         session = guest.GuestSession(si.content, self._vm(si, vm_id), vm_def["_guest"], poll=self._guest_poll)
@@ -2517,12 +2609,17 @@ class VsphereAPIProvisioner(BaseProvisioner):
                     def session_for(creds, _vm=vm_ref):
                         return guest.GuestSession(si.content, _vm, creds, poll=self._guest_poll)
 
+                    login_pw = login[3] if len(login) > 3 else ""
                     out, verified = seconion.reconcile(
                         session_for, guest.GuestCredentials("linux", login[0], guest.Secret(login[1])), info,
-                        admin_password=guest.Secret(login[2]) if login[2] else None, deadline=deadline)
+                        admin_password=guest.Secret(login[2]) if login[2] else None, deadline=deadline,
+                        login_password=guest.Secret(login_pw) if login_pw else None)
                     if out is not None:
                         changes[v["name"]] = {"securityonion": out, "accounts_applied": sorted(verified),
                                               "node": info.get("node")}
+                        if out.get("status") == "ok":  # its login changed: the template password must be gone
+                            changes[v["name"]]["template_login"] = credcheck.check(
+                                session_for, "linux", proven=bool(verified), securityonion=True)
             finally:
                 self._soap_si = None
         return changes, warnings
@@ -2659,6 +2756,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
             "datastore": getattr(datastore, "name", ""),
             "template": vm_def.get("_source", vm_def["template_name"]),  # template_copies.names_in_use
             "tools_ready": guest_net["tools_ready"],
+            "family": infra.os_family(vm_def),  # windows | linux | appliance (credential rotation)
         }
 
     @staticmethod

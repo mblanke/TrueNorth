@@ -7,6 +7,7 @@ import { LabPageComponent } from './lab-page.component';
 import { CourseStudioApiService, LabSession } from '@core/services/course-studio-api.service';
 import { AuthService } from '@core/services/auth.service';
 import { NotificationService } from '@core/services/notification.service';
+import { RangeCredentialsApiService } from '@core/services/range-credentials-api.service';
 
 function lab(state: string): LabSession {
   return {
@@ -20,6 +21,7 @@ describe('LabPageComponent', () => {
   let fixture: ComponentFixture<LabPageComponent>;
   let api: jasmine.SpyObj<CourseStudioApiService>;
   let router: jasmine.SpyObj<Router>;
+  let creds: jasmine.SpyObj<RangeCredentialsApiService>;
 
   function setUp(fragment: string | null, authenticated: boolean, state = 'provisioning'): void {
     try { sessionStorage.removeItem('tn-lab-token:s1'); } catch { /* storage may be unavailable */ }
@@ -29,10 +31,13 @@ describe('LabPageComponent', () => {
     api.labConsole.and.returnValue(of({ node: 'host', kind: 'mock', url: 'mock://console/vm', expires_in: 60 }));
     router = jasmine.createSpyObj('Router', ['navigate']);
     router.navigate.and.returnValue(Promise.resolve(true));
+    creds = jasmine.createSpyObj('RangeCredentialsApiService', ['list', 'reveal']);
+    creds.list.and.returnValue(of({ lab_session_id: 's1', accounts: [] }));
     TestBed.configureTestingModule({
       imports: [LabPageComponent, NoopAnimationsModule],
       providers: [
         { provide: CourseStudioApiService, useValue: api },
+        { provide: RangeCredentialsApiService, useValue: creds },
         { provide: Router, useValue: router },
         { provide: NotificationService, useValue: jasmine.createSpyObj('NotificationService', ['error']) },
         { provide: AuthService, useValue: { bootstrap: () => Promise.resolve(null), isAuthenticated: () => authenticated } },
@@ -64,6 +69,17 @@ describe('LabPageComponent', () => {
     fixture.detectChanges();
     expect(api.labConsole).toHaveBeenCalledWith('s1', 'abc');
     expect(fixture.nativeElement.textContent).toContain('mock://console/vm');
+  });
+
+  it("offers the Student this lab's own accounts, through the lab token, once it is ready", () => {
+    setUp('token=abc', false, 'ready');
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.textContent).toContain('Your accounts');
+    const show = Array.from(el.querySelectorAll('button')).find(b => b.textContent?.includes('Show accounts'))!;
+    show.click();
+    fixture.detectChanges();
+    expect(creds.list).toHaveBeenCalledOnceWith({ kind: 'lab', sessionId: 's1', token: 'abc' });
+    expect(creds.reveal).not.toHaveBeenCalled();
   });
 
   it('reloads the lab when a heartbeat is refused, so an ended lab does not show as running', fakeAsync(() => {

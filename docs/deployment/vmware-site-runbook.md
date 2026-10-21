@@ -513,11 +513,29 @@ for vCenter's event retention period. Check `Monitor > Events` / the task detail
 VM's first reconfigure, and shorten event retention or restrict read access to range VMs if
 they show.
 
-Machines with no declared account: Windows gets `TN_TEMPLATE_WINDOWS_ADMIN_PASSWORD` (the
-templates' generic Windows password; the deprecated `TN_RANGE_DEFAULT_PASSWORD` only when
-it is unset; random per VM when neither is) as its Administrator password; Linux keeps the
-template's generic build password (ADR 0012 §5), which is not repeated in cloud-config.
-Staff see both as "template default" on the range's Credentials panel.
+**No template password survives a deploy (ADR 0013 §3).** Every range, lab sessions
+included, gets its own generated password for each built-in login a golden template carries
+and the range template does not declare: the built-in Administrator (Sysprep), the Linux
+build user `TN_TEMPLATE_LINUX_USER` (cloud-init; it keeps the passwordless sudo its image
+gives it) and Security Onion's `soadmin` (changed last by its setup). There is no site-wide
+range password (`TN_RANGE_DEFAULT_PASSWORD` is gone). A typed-in password is allowed only on
+a `scenario: true` account, never on a staff login.
+
+After a VM's own login worked, the worker tries the template password once
+(`TN_TEMPLATE_WINDOWS_ADMIN_PASSWORD`, `TN_TEMPLATE_LINUX_USER` / `TN_TEMPLATE_LINUX_PASSWORD`,
+`VSPHERE_SO_INSTALL_*`) and records `template_login` on the VM: `rejected` (pass),
+`accepted` (Not safe: under `RANGE_TEMPLATE_LOGIN_CHECK=enforce`, the default, the VM is not
+ready; `warn` makes it a warning) or `inconclusive`. Staff reveal passwords one at a time on
+the range's Credentials panel (each reveal is an audit row, `range_credential_reveal`); an
+admin rotates an account there (`range_credential_rotate`). Student-visible passwords are
+new after every rebuild and every snapshot restore or lab reset; the worker sets them in the
+running guests through an uploaded owner-only file, never a command line.
+
+**On site, with owner approval (issue #241):** deploy a range and confirm `template_login`
+is `rejected` on every Windows and Linux VM; open the range's wiki page and confirm it shows
+account names and no password; reveal one password and find the `range_credential_reveal`
+row in the audit log; reset a lab (or restore a snapshot) and confirm the Student's password
+changed and still logs in.
 
 ### 7.1 Port mirroring (SPAN / TAP zones)
 
@@ -585,7 +603,7 @@ Before the first SOC range, set on the worker:
 
 | Setting | Value |
 |---|---|
-| `VSPHERE_SO_INSTALL_USER` / `VSPHERE_SO_INSTALL_PASSWORD` | the template's build login (the user created in the SO installer; wiki). It runs guest operations and `sudo`. (`TN_RANGE_DEFAULT_PASSWORD` is not used: it is the Windows Administrator fallback.) Without these, the machine's `role: admin` account logs in, which works only for a template built with it. |
+| `VSPHERE_SO_INSTALL_USER` / `VSPHERE_SO_INSTALL_PASSWORD` | the template's build login (the user created in the SO installer; wiki). It runs guest operations and `sudo` until the setup gives `soadmin` the range's own generated password (last, once the node is healthy); the template-login check then tries it once and it must fail. Without these, the machine's `role: admin` account logs in, which works only for a template built with it. |
 | `VSPHERE_SO_SETUP_TIMEOUT` | seconds from the start of setup until a node that is not healthy is a `timeout`, default `7200`. Read by the reconcile task; the build itself waits only `VSPHERE_SETUP_BUILD_WAIT` (default 0). |
 | `TN_SECRETS_KEY` | already set for hypervisor passwords. A generated web password is stored sealed with it. |
 
