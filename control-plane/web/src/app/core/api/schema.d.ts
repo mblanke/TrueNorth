@@ -5166,7 +5166,8 @@ export interface paths {
          *     Stages (DP columns), tracks (swimlanes), qualification nodes with their objectives
          *     inline, derived prerequisite edges, and the caller's own position on the path.
          *     Deliberately a single aggregated response — the page it backs used to fan out one
-         *     request per qualification and re-query per objective.
+         *     request per qualification and re-query per objective. Only the caller's tenant's
+         *     and shared qualifications are on the map.
          */
         get: operations["curriculum_map_qsp_curriculum_map_get"];
         put?: never;
@@ -5187,6 +5188,8 @@ export interface paths {
         /**
          * Developmental Progression
          * @description Qualifications arranged by the QSP-derived developmental progression + specialty streams.
+         *
+         *     Only the caller's tenant's and shared qualifications.
          */
         get: operations["developmental_progression_qsp_developmental_progression_get"];
         put?: never;
@@ -5320,7 +5323,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Qualifications */
+        /**
+         * List Qualifications
+         * @description Qualifications visible to the caller: their tenant's plus shared ones.
+         */
         get: operations["list_qualifications_qsp_qualifications_get"];
         put?: never;
         post?: never;
@@ -5337,7 +5343,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Qualification Objectives */
+        /**
+         * Qualification Objectives
+         * @description A visible qualification's objectives. Another tenant's qualification is 404.
+         */
         get: operations["qualification_objectives_qsp_qualifications__qsp_code__objectives_get"];
         put?: never;
         post?: never;

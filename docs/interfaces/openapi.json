@@ -34224,7 +34224,7 @@
     },
     "/qsp/curriculum-map": {
       "get": {
-        "description": "The whole developmental career map in one payload.\n\nStages (DP columns), tracks (swimlanes), qualification nodes with their objectives\ninline, derived prerequisite edges, and the caller's own position on the path.\nDeliberately a single aggregated response \u2014 the page it backs used to fan out one\nrequest per qualification and re-query per objective.",
+        "description": "The whole developmental career map in one payload.\n\nStages (DP columns), tracks (swimlanes), qualification nodes with their objectives\ninline, derived prerequisite edges, and the caller's own position on the path.\nDeliberately a single aggregated response \u2014 the page it backs used to fan out one\nrequest per qualification and re-query per objective. Only the caller's tenant's\nand shared qualifications are on the map.",
         "operationId": "curriculum_map_qsp_curriculum_map_get",
         "responses": {
           "200": {
@@ -34253,7 +34253,7 @@
     },
     "/qsp/developmental-progression": {
       "get": {
-        "description": "Qualifications arranged by the QSP-derived developmental progression + specialty streams.",
+        "description": "Qualifications arranged by the QSP-derived developmental progression + specialty streams.\n\nOnly the caller's tenant's and shared qualifications.",
         "operationId": "developmental_progression_qsp_developmental_progression_get",
         "responses": {
           "200": {
@@ -34467,6 +34467,7 @@
     },
     "/qsp/qualifications": {
       "get": {
+        "description": "Qualifications visible to the caller: their tenant's plus shared ones.",
         "operationId": "list_qualifications_qsp_qualifications_get",
         "responses": {
           "200": {
@@ -34497,6 +34498,7 @@
     },
     "/qsp/qualifications/{qsp_code}/objectives": {
       "get": {
+        "description": "A visible qualification's objectives. Another tenant's qualification is 404.",
         "operationId": "qualification_objectives_qsp_qualifications__qsp_code__objectives_get",
         "parameters": [
           {

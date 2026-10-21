@@ -396,12 +396,27 @@ async def import_crosswalk(
     return {"imported": True, **stats}
 
 
+def _visible_qualifications(db: Session, user: CurrentUser):
+    """Qualifications the caller may read: their tenant's plus shared (NULL tenant) ones.
+
+    The rule ``tenancy.get_owned_or_global`` applies when onboarding enrols on a
+    qualification, so every list here shows exactly what the caller could pick. There
+    is no admin bypass: a platform admin reads the spine as a member of their own
+    tenant. Issue #227: every read here was unscoped, so a Student could list every
+    tenant's qualifications and objectives.
+    """
+    return db.query(Qualification).filter(
+        (Qualification.tenant_id == tenant_uuid(user)) | Qualification.tenant_id.is_(None)
+    )
+
+
 @router.get("/qualifications", response_model=list[QualificationOut])
 def list_qualifications(
     db: Session = Depends(get_db),
-    _user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(get_current_user),
 ) -> list[QualificationOut]:
-    quals = db.query(Qualification).order_by(Qualification.qsp_code).all()
+    """Qualifications visible to the caller: their tenant's plus shared ones."""
+    quals = _visible_qualifications(db, user).order_by(Qualification.qsp_code).all()
     out = []
     for q in quals:
         po_count = db.query(PerformanceObjective).filter_by(qualification_id=q.id).count()
@@ -418,9 +433,10 @@ def list_qualifications(
 def qualification_objectives(
     qsp_code: str,
     db: Session = Depends(get_db),
-    _user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(get_current_user),
 ) -> list[POOut]:
-    qual = db.query(Qualification).filter_by(qsp_code=qsp_code).one_or_none()
+    """A visible qualification's objectives. Another tenant's qualification is 404."""
+    qual = _visible_qualifications(db, user).filter(Qualification.qsp_code == qsp_code).one_or_none()
     if qual is None:
         raise HTTPException(status_code=404, detail=f"qualification {qsp_code} not found")
     pos = (
@@ -518,8 +534,22 @@ def attach_template_objectives(
     """
     template = _writable_template(db, template_id, user)
     added = 0
+    visible = _visible_qualifications(db, user).with_entities(Qualification.id)
     for po_id in body.po_ids:
-        po = db.query(PerformanceObjective).filter_by(id=po_id).one_or_none()
+        # Only a PO of a qualification the caller can see: linking another tenant's PO
+        # would let /templates/{id}/curriculum read it back (issue #227). Malformed and
+        # foreign ids get the same 422 as unknown ones, so neither can be probed.
+        try:
+            po_uuid = uuid.UUID(str(po_id))
+        except ValueError:
+            po_uuid = None
+        po = (
+            db.query(PerformanceObjective)
+            .filter(PerformanceObjective.id == po_uuid, PerformanceObjective.qualification_id.in_(visible))
+            .one_or_none()
+            if po_uuid is not None
+            else None
+        )
         if po is None:
             raise HTTPException(status_code=422, detail=f"unknown po_id {po_id}")
         exists = (
@@ -659,10 +689,12 @@ def generate_exercises(
 @router.get("/developmental-progression")
 def developmental_progression(
     db: Session = Depends(get_db),
-    _user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(get_current_user),
 ) -> dict:
-    """Qualifications arranged by the QSP-derived developmental progression + specialty streams."""
-    quals = db.query(Qualification).order_by(Qualification.dp_order, Qualification.qsp_code).all()
+    """Qualifications arranged by the QSP-derived developmental progression + specialty streams.
+
+    Only the caller's tenant's and shared qualifications."""
+    quals = _visible_qualifications(db, user).order_by(Qualification.dp_order, Qualification.qsp_code).all()
     progression, specialties = [], []
     for q in quals:
         entry = {
@@ -783,9 +815,10 @@ def curriculum_map(
     Stages (DP columns), tracks (swimlanes), qualification nodes with their objectives
     inline, derived prerequisite edges, and the caller's own position on the path.
     Deliberately a single aggregated response — the page it backs used to fan out one
-    request per qualification and re-query per objective.
+    request per qualification and re-query per objective. Only the caller's tenant's
+    and shared qualifications are on the map.
     """
-    quals = db.query(Qualification).order_by(Qualification.dp_order, Qualification.qsp_code).all()
+    quals = _visible_qualifications(db, user).order_by(Qualification.dp_order, Qualification.qsp_code).all()
     stages = _stages(quals)
     tracks = _tracks(quals)
     edges = _edges(quals, stages)
