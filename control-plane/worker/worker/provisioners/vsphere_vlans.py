@@ -24,6 +24,11 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+try:
+    from pyVmomi import vim, vmodl
+except ImportError:  # the provisioner reports the missing SDK when it is used
+    vim = vmodl = None  # type: ignore[assignment]
+
 UPLINK = re.compile(r".*-DVUplinks-\d+$")
 RANGE_PORTGROUP = re.compile(r"^tn-[0-9a-f]{8}-v\d+$")
 OWNER = "TrueNorth range "
@@ -31,11 +36,14 @@ VSS_ALL_VLANS = 4095  # a standard port group's "trunk everything"
 
 
 class PortgroupConflictError(RuntimeError):
-    """A port group the build was about to create collides with the live switch."""
+    """A port group the build was about to create collides with the live switch.
 
-    def __init__(self, message: str, vlan: int, used_by: str):
+    ``carried``: ``used_by`` really carries ``vlan`` (False for a same-named port group on
+    another VLAN: then the VLAN itself is still free, and is not recorded as external)."""
+
+    def __init__(self, message: str, vlan: int, used_by: str, carried: bool = True):
         super().__init__(message)
-        self.vlan, self.used_by = vlan, used_by
+        self.vlan, self.used_by, self.carried = vlan, used_by, carried
 
 
 @dataclass(frozen=True)
@@ -76,25 +84,52 @@ def expand(spec) -> tuple[frozenset[int], bool]:
     return frozenset(out), True
 
 
-def _is_uplink(pg) -> bool:
-    config = getattr(pg, "config", None)
+def _is_uplink(name: str, config, tags) -> bool:
     if getattr(config, "uplink", False) is True:
         return True
-    if any(getattr(t, "key", "") == "SYSTEM/DVS.UPLINKPG" for t in getattr(pg, "tag", None) or []):
+    if any(getattr(t, "key", "") == "SYSTEM/DVS.UPLINKPG" for t in tags or []):
         return True
-    return bool(UPLINK.match(getattr(pg, "name", "") or ""))
+    return bool(UPLINK.match(name or ""))
 
 
-def dvs_usage(dvs) -> list[PortgroupUse]:
-    """Every port group on ``dvs`` but its uplink port groups, read live."""
-    out = []
-    for pg in dvs.portgroup:
-        if _is_uplink(pg):
-            continue
-        config = pg.config
-        vlans, trunk = expand(getattr(getattr(config, "defaultPortConfig", None), "vlan", None))
-        out.append(PortgroupUse(pg.name, vlans, trunk, str(getattr(config, "description", None) or "")))
+def _portgroup_props(si, dvs) -> list[dict]:
+    """``name``, ``config`` and ``tag`` of every port group on ``dvs``, in ONE property
+    collector call (paged), not two round trips per port group."""
+    pc = vmodl.query.PropertyCollector
+    ref = dvs if isinstance(dvs, vim.ManagedObject) else vim.VmwareDistributedVirtualSwitch(dvs._moId, None)
+    spec = pc.FilterSpec(
+        objectSet=[pc.ObjectSpec(obj=ref, skip=True, selectSet=[
+            pc.TraversalSpec(name="portgroups", type=vim.DistributedVirtualSwitch, path="portgroup", skip=False)])],
+        propSet=[pc.PropertySpec(type=vim.dvs.DistributedVirtualPortgroup, pathSet=["name", "config", "tag"])])
+    collector = si.content.propertyCollector
+    result = collector.RetrievePropertiesEx(specSet=[spec], options=pc.RetrieveOptions())
+    out: list[dict] = []
+    while result is not None:
+        out += [{p.name: p.val for p in o.propSet} for o in result.objects or []]
+        token = getattr(result, "token", None)
+        result = collector.ContinueRetrievePropertiesEx(token=token) if token else None
     return out
+
+
+def dvs_usage(si, dvs) -> list[PortgroupUse]:
+    """Every port group on ``dvs`` but its uplink port groups, read live in one call."""
+    out = []
+    for props in _portgroup_props(si, dvs):
+        name, config = str(props.get("name") or ""), props.get("config")
+        if _is_uplink(name, config, props.get("tag")):
+            continue
+        vlans, trunk = expand(getattr(getattr(config, "defaultPortConfig", None), "vlan", None))
+        out.append(PortgroupUse(name, vlans, trunk, str(getattr(config, "description", None) or "")))
+    return out
+
+
+def vss_vlan(host, name: str) -> int | None:
+    """The VLAN of standard port group ``name`` on ``host`` (None: not there, or unreadable)."""
+    network = getattr(getattr(host, "config", None), "network", None)
+    for pg in getattr(network, "portgroup", None) or []:
+        if pg.spec.name == name:
+            return int(pg.spec.vlanId or 0)
+    return None
 
 
 def vss_usage(hosts) -> list[PortgroupUse]:
@@ -151,7 +186,9 @@ def conflict(uses: list[PortgroupUse], name: str, vlan: int, range_id: str, swit
 def check(uses: list[PortgroupUse], name: str, vlan: int, range_id: str, switch: str) -> bool:
     """Raise PortgroupConflictError for ``conflict``; else whether the port group already exists."""
     if reason := conflict(uses, name, vlan, range_id, switch):
-        used_by = next((u.name for u in uses if u.name == name or vlan in u.vlans), name)
+        by = next((u for u in sorted(uses, key=lambda u: (u.name != name, u.name))
+                   if u.name == name or vlan in u.vlans), None)
         raise PortgroupConflictError(f"{reason}; it appeared after VLAN {vlan} was allocated, so the build stopped "
-                                "before creating anything further", vlan, used_by)
+                                     "before creating anything further", vlan, by.name if by else name,
+                                     carried=bool(by and vlan in by.vlans))
     return any(u.name == name for u in uses)

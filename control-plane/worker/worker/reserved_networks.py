@@ -23,8 +23,24 @@ def reserved_cidrs(spec: str | None = None) -> list[ipaddress.IPv4Network | ipad
     out = []
     for part in raw.replace(";", ",").split(","):
         if part := part.strip():
-            out.append(ipaddress.ip_network(part, strict=False))
+            try:
+                out.append(ipaddress.ip_network(part, strict=False))
+            except ValueError as exc:
+                raise ValueError(f"TN_RANGE_RESERVED_CIDRS entry {part!r} is not a network ({exc})") from exc
     return out
+
+
+def check_settings() -> None:
+    """Refuse to start on a malformed TN_RANGE_RESERVED_CIDRS or VSPHERE_RESERVED_VLANS
+    (celery_app, at import): every build would otherwise fail on it."""
+    from .vlan_pool import parse_reserved
+
+    reserved_cidrs()
+    raw = os.getenv("VSPHERE_RESERVED_VLANS", "")
+    try:
+        parse_reserved(raw)
+    except ValueError as exc:
+        raise ValueError(f"VSPHERE_RESERVED_VLANS={raw!r} is invalid: {exc}") from exc
 
 
 def template_cidrs(template: dict) -> list[tuple[str, str]]:

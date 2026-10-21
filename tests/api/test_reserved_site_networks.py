@@ -49,6 +49,33 @@ def test_unset_means_no_site_networks(client, monkeypatch):
     assert client.post("/templates/validate", json={"yaml": _yaml("10.30.31.0/24")}).json()["valid"] is True
 
 
+def test_a_malformed_setting_is_reported_never_a_500(client, monkeypatch):
+    """Review of #246, item 3: the platform's bad setting is not the template's fault."""
+    monkeypatch.setenv("TN_RANGE_RESERVED_CIDRS", "10.30.30.0/24,10.30.300.0/24")
+    body = client.post("/templates/validate", json={"yaml": _yaml("10.60.1.0/24")})
+    assert body.status_code == 200 and body.json()["valid"] is False
+    assert "TN_RANGE_RESERVED_CIDRS entry '10.30.300.0/24'" in body.json()["errors"][-1]["message"]
+    made = client.post("/templates", json={"name": "T", "version": "1.0", "yaml": _yaml("10.60.1.0/24")})
+    assert made.status_code == 503 and "tn_range_reserved_cidrs" in made.json()["detail"]
+
+
+def test_the_api_refuses_to_start_on_a_malformed_setting(monkeypatch):
+    monkeypatch.setenv("TN_RANGE_RESERVED_CIDRS", "10.30.30.0/33")
+    with pytest.raises(api_reserved.ReservedSettingsError, match="10.30.30.0/33"):
+        api_reserved.check_at_startup()
+    monkeypatch.setenv("TN_RANGE_RESERVED_CIDRS", SITE)
+    api_reserved.check_at_startup()
+
+
+def test_startup_runs_the_check(monkeypatch):
+    from app.main import app as fastapi_app
+    from fastapi.testclient import TestClient
+
+    monkeypatch.setenv("TN_RANGE_RESERVED_CIDRS", "bogus")
+    with pytest.raises(api_reserved.ReservedSettingsError), TestClient(fastapi_app):
+        pass
+
+
 @pytest.mark.parametrize("cidr", ["10.30.30.0/24", "10.30.31.128/25", "10.0.0.0/8", "10.30.33.0/24", "bogus"])
 def test_the_api_and_the_worker_agree(cidr):
     doc = yaml.safe_load(_yaml(cidr))

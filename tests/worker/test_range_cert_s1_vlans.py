@@ -71,16 +71,39 @@ def test_trunk_ranges_are_expanded():
     assert live.expand(None) == (frozenset(), False)
 
 
+class _Collector:
+    """A property collector answering dvs_usage's one call (and counting calls)."""
+
+    def __init__(self, pgs):
+        self.pgs, self.calls = pgs, 0
+
+    def RetrievePropertiesEx(self, specSet, options):  # noqa: N802, N803 -- pyVmomi's names
+        (spec,) = specSet
+        assert spec.propSet[0].type is vim.dvs.DistributedVirtualPortgroup
+        assert spec.objectSet[0].selectSet[0].path == "portgroup" and spec.objectSet[0].skip
+        self.calls += 1
+        paths = list(spec.propSet[0].pathSet)
+        return SimpleNamespace(token=None, objects=[SimpleNamespace(propSet=[
+            SimpleNamespace(name=n, val=getattr(pg, n)) for n in paths]) for pg in self.pgs])
+
+
+def _read(pgs):
+    collector = _Collector(pgs)
+    si = SimpleNamespace(content=SimpleNamespace(propertyCollector=collector))
+    return live.dvs_usage(si, SimpleNamespace(_moId="dvs-1", name="vDS-10G")), collector
+
+
 def test_uplink_port_groups_are_skipped_and_everything_else_is_read():
-    dvs = SimpleNamespace(name="vDS-10G", portgroup=[
+    pgs = [
         _pg("vDS-10G-DVUplinks-35", _trunk((0, 4094))),  # by the kit's name rule
         _pg("uplinks-renamed", _trunk((0, 4094)), uplink=True),  # by vCenter's own flag
         _pg("tagged-uplinks", _trunk((0, 4094)), tag=[SimpleNamespace(key="SYSTEM/DVS.UPLINKPG")]),
         _pg("corp-voice", DVS_VLAN.VlanIdSpec(vlanId=101)),
         _pg("nested-esx-trunk", _trunk((104, 105))),
         _pg("tn-0a1b2c3d-v106", DVS_VLAN.VlanIdSpec(vlanId=106), live.owner_mark("0a1b2c3d-...")),
-    ])
-    uses = live.dvs_usage(dvs)
+    ]
+    uses, collector = _read(pgs)
+    assert collector.calls == 1  # every port group in one property-collector call
     assert [u.name for u in uses] == ["corp-voice", "nested-esx-trunk", "tn-0a1b2c3d-v106"]
     foreign, managed = live.by_value(uses, POOL)
     assert foreign == {"101": "corp-voice", "104": "nested-esx-trunk", "105": "nested-esx-trunk"}
@@ -193,9 +216,11 @@ def db():
 class Prov:
     """Declares physical VLANs for ``holders`` and reports ``seen`` as the live switch."""
 
-    def __init__(self, holders=("10", "20"), foreign=None, managed=None, excluded=(), source=SOURCE, fail=None):
+    def __init__(self, holders=("10", "20"), foreign=None, managed=None, excluded=(), source=SOURCE, fail=None,
+                 read_at=None):
         self.holders, self.excluded, self.source, self.fail = list(holders), frozenset(excluded), source, fail
         self.foreign, self.managed = dict(foreign or {}), dict(managed or {})
+        self.read_at = read_at  # None: a read of unknown age (it deletes nothing)
         self.reads = 0
 
     def allocation_needs(self, range_id, template):
@@ -205,7 +230,7 @@ class Prov:
         self.reads += 1
         if self.fail:
             raise self.fail
-        return [LiveUsage(DOMAIN, "vlan", self.source, self.foreign, self.managed)]
+        return [LiveUsage(DOMAIN, "vlan", self.source, self.foreign, self.managed, read_at=self.read_at)]
 
     def planned_output(self, range_id, allocations):
         return {"networks": [{"vlan_id": int(k), "physical_vlan": int(v), "portgroup": f"tn-{range_id[:8]}-v{v}"}
@@ -219,13 +244,45 @@ def test_a_vlan_used_outside_truenorth_is_recorded_and_never_allocated(db):
     assert db.externals() == {"100": f"external:{SOURCE}:corp-voice", "102": f"external:{SOURCE}:esx-trunk"}
 
 
+T0 = datetime(2026, 10, 21, 12, 0, tzinfo=UTC)
+
+
 def test_a_vlan_freed_outside_truenorth_is_allocatable_again(db):
     a = db.add_range()
-    ra.reserve_for_build(db.session, a, Prov(holders=["10"], foreign={"100": "corp", "101": "old"}), {})
-    b = db.add_range()  # the next read of the same switch no longer sees 100
-    assert ra.reserve_for_build(db.session, b, Prov(holders=["10"], foreign={"101": "old"}), {}) == {
+    ra.reserve_for_build(db.session, a, Prov(holders=["10"], foreign={"100": "corp", "101": "old"}, read_at=T0), {})
+    b = db.add_range()  # a LATER read of the same switch no longer sees 100
+    later = T0 + timedelta(seconds=5)
+    assert ra.reserve_for_build(db.session, b, Prov(holders=["10"], foreign={"101": "old"}, read_at=later), {}) == {
         "physical_vlans": {"10": "100"}}
     assert db.externals() == {"101": f"external:{SOURCE}:old"}
+
+
+def test_a_stale_read_committing_late_never_deletes_what_a_newer_read_saw(db):
+    """Review of #246, item 1: reads happen outside the lock. B read the switch at t0, before
+    corp-new existed; C read it at t1 > t0, saw corp-new on 100 and committed first. B's
+    commit must not delete C's entry, or B is handed VLAN 100, which corp-new carries."""
+    c = db.add_range()
+    t1 = T0 + timedelta(seconds=2)
+    ra.reserve_for_build(db.session, c, Prov(holders=["10"], foreign={"100": "corp-new"}, read_at=t1), {})
+    b = db.add_range()
+    got = ra.reserve_for_build(db.session, b, Prov(holders=["10"], foreign={}, read_at=T0), {})
+    assert got == {"physical_vlans": {"10": "102"}}  # 100: corp-new's; 101: C's
+    assert db.externals() == {"100": f"external:{SOURCE}:corp-new"}
+    with db.session() as s:  # and its stamp stays t1: the stale read did not move it back
+        ra.record_external(s, LiveUsage(DOMAIN, "vlan", SOURCE, {"100": "corp-new"}, read_at=T0))
+    d = db.add_range()  # a read after t1 that no longer sees it does delete it
+    later = t1 + timedelta(seconds=1)
+    assert ra.reserve_for_build(db.session, d, Prov(holders=["10"], read_at=later), {}) == {
+        "physical_vlans": {"10": "100"}}
+
+
+def test_a_read_of_unknown_age_deletes_nothing(db):
+    a = db.add_range()
+    ra.reserve_for_build(db.session, a, Prov(holders=["10"], foreign={"100": "corp"}, read_at=T0), {})
+    b = db.add_range()
+    assert ra.reserve_for_build(db.session, b, Prov(holders=["10"], foreign={}), {}) == {  # no read_at
+        "physical_vlans": {"10": "102"}}
+    assert db.externals() == {"100": f"external:{SOURCE}:corp"}
 
 
 def test_another_switchs_entries_stay_until_they_expire(db):
@@ -344,6 +401,55 @@ def test_a_template_on_a_site_network_is_refused_before_anything_is_reserved(db,
     assert ra.reserve_for_build(db.session, rid, object(), template) == {}  # unset: no site networks
 
 
+def test_malformed_settings_are_a_final_error_not_a_retry_storm(db, monkeypatch):
+    """Review of #246, item 3: a bad setting reaching a build is final, with its name."""
+    rid = db.add_range()
+    monkeypatch.setenv("TN_RANGE_RESERVED_CIDRS", "10.30.30.0/24,10.30.999.0/24")
+    with pytest.raises(ra.ReservedNetworkError, match=r"TN_RANGE_RESERVED_CIDRS entry '10.30.999.0/24'") as err:
+        ra.reserve_for_build(db.session, rid, Prov(), {"networks": [{"cidr": "10.1.0.0/24"}]})
+    assert isinstance(err.value, tuple(tasks.FINAL_ERRORS))
+    monkeypatch.delenv("TN_RANGE_RESERVED_CIDRS")
+
+    class BadPool(Prov):
+        def allocation_needs(self, range_id, template):
+            from worker import vlan_pool
+
+            vlan_pool.parse_reserved("30-x")  # VSPHERE_RESERVED_VLANS as the provisioner parses it
+            return []
+
+    with pytest.raises(ra.AllocationError, match="network settings are invalid") as err:
+        ra.reserve_for_build(db.session, rid, BadPool(), {})
+    assert isinstance(err.value, tuple(tasks.FINAL_ERRORS)) and db.rows() == []
+
+
+@pytest.mark.parametrize("name, value, ok", [
+    ("TN_RANGE_RESERVED_CIDRS", "10.30.30.0/24, 10.30.31.0/24", True),
+    ("TN_RANGE_RESERVED_CIDRS", "10.30.30.0/24,not-a-net", False),
+    ("VSPHERE_RESERVED_VLANS", "30-32,40", True),
+    ("VSPHERE_RESERVED_VLANS", "", True),
+    ("VSPHERE_RESERVED_VLANS", "30-5000", False),
+])
+def test_settings_are_checked_once_at_worker_start(monkeypatch, name, value, ok):
+    monkeypatch.setenv(name, value)
+    if ok:
+        reserved_networks.check_settings()
+    else:
+        with pytest.raises(ValueError, match=name):
+            reserved_networks.check_settings()
+
+
+def test_the_worker_refuses_to_start_on_a_malformed_setting():
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    worker_dir = Path(__file__).resolve().parents[2] / "control-plane" / "worker"
+    env = {**os.environ, "PYTHONPATH": str(worker_dir), "TN_RANGE_RESERVED_CIDRS": "10.30.30.0/33"}
+    done = subprocess.run([sys.executable, "-c", "import worker.celery_app"], env=env, capture_output=True,
+                          text=True, timeout=120)
+    assert done.returncode != 0 and "TN_RANGE_RESERVED_CIDRS entry '10.30.30.0/33'" in done.stderr
+
+
 # -- a collision at creation (build_failure) ---------------------------------------
 
 
@@ -370,6 +476,17 @@ def test_a_collision_keeps_what_an_earlier_attempt_built(db):
     ra.build_failure(db.session, rid, _conflicted(rid, ["101"], {"101": "squat"}))  # v100 exists: kept
     assert [(v, r) for v, _, r in db.rows()] == [("100", rid), ("101", None)]
     assert [n["physical_vlan"] for n in db.output(rid)["networks"]] == [100]
+
+
+def test_a_same_named_port_group_on_another_vlan_frees_the_vlan_without_recording_it(db):
+    """Review of #246 (minor): the port group in the way carries VLAN 999, not 101, so 101
+    is released and stays allocatable; it is not recorded as external."""
+    rid = db.add_range()
+    ra.reserve_for_build(db.session, rid, Prov(), {})  # 100, 101
+    ra.build_failure(db.session, rid, _conflicted(rid, ["100", "101"], {}))
+    assert db.rows() == []
+    other = db.add_range()
+    assert ra.reserve_for_build(db.session, other, Prov(), {}) == {"physical_vlans": {"10": "100", "20": "101"}}
 
 
 def test_a_collision_on_a_range_no_longer_provisioning_releases_nothing(db):

@@ -21,6 +21,7 @@ from kombu import Exchange, Queue
 
 from .contracts import QUEUES, route_table
 from .fencing import SOFT_TIME_LIMIT, TASK_TIME_LIMIT
+from .reserved_networks import check_settings as check_network_settings
 
 # The broker redelivers an unacked task after this long (acks_late). Every hard time limit
 # must be below it, or a task still running is delivered a second time alongside itself.
@@ -47,6 +48,9 @@ for _soft, _hard in ((DEFAULT_SOFT_TIME_LIMIT, DEFAULT_TIME_LIMIT), (SOFT_TIME_L
             f"Celery time limits must satisfy 0 < soft ({_soft}) < hard ({_hard}) < "
             f"visibility timeout ({VISIBILITY_TIMEOUT}); check CELERY_TASK_SOFT_TIME_LIMIT / CELERY_TASK_TIME_LIMIT"
         )
+
+# Range network settings (range certification S1): a malformed one stops the worker here.
+check_network_settings()
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 

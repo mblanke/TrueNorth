@@ -9,6 +9,7 @@ import contextlib
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass, field
+from datetime import datetime
 
 from .results import (
     DestroyResult,
@@ -72,6 +73,9 @@ class LiveUsage:
     source: str
     foreign: dict[str, str]
     managed: dict[str, str] = field(default_factory=dict)
+    # When the read started (aware UTC). Entries of ``source`` seen by a later read are never
+    # deleted on the strength of this one; None (unknown age): this read deletes nothing.
+    read_at: datetime | None = None
 
 
 @dataclass(frozen=True)

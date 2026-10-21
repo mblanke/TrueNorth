@@ -74,7 +74,11 @@ def _refuse_network_placement(text: str | None) -> None:
         raise HTTPException(
             422, f"templates may not set port_group ({', '.join(keys)}); lab networks are assigned by the platform"
         )
-    if site := reserved_networks.template_conflicts(doc):  # range certification S1
+    try:  # range certification S1
+        site = reserved_networks.template_conflicts(doc)
+    except reserved_networks.ReservedSettingsError as exc:  # the platform's setting, not the template
+        raise HTTPException(503, str(exc)) from exc
+    if site:
         raise HTTPException(422, "; ".join(f"{e['path']}: {e['message']}" for e in site[:10]))
     _, account_errors = template_accounts.parse(doc if isinstance(doc, dict) else None)
     if account_errors:  # ADR 0012: a range built from it could never be given its accounts
@@ -112,7 +116,10 @@ def validate_template(
     if isinstance(doc, dict):  # accounts: the machine exists, one username per machine (ADR 0012)
         result["errors"] = result["errors"] + template_accounts.parse(doc)[1]
         # Subnets on the site's own networks (tn_range_reserved_cidrs, range certification S1).
-        result["errors"] = result["errors"] + reserved_networks.template_conflicts(doc)
+        try:
+            result["errors"] = result["errors"] + reserved_networks.template_conflicts(doc)
+        except reserved_networks.ReservedSettingsError as exc:  # reported, not a 500
+            result["errors"] = result["errors"] + [{"path": "", "message": str(exc)}]
         result["valid"] = not result["errors"]
     return result
 

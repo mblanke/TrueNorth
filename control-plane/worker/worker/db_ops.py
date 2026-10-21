@@ -811,15 +811,23 @@ def external_reservations(db, domain: str, kind: str) -> list:
         nr.c.domain == domain, nr.c.kind == kind, nr.c.range_id.is_(None))).all()
 
 
-def drop_reservation_ids(db, ids: Iterable) -> None:
-    if ids := list(ids):
-        db.execute(sa.delete(network_reservations).where(network_reservations.c.id.in_(ids)))
+def drop_reservation_ids(db, ids: Iterable, seen_before=None) -> int:
+    """Delete these reservations; with ``seen_before``, only those last seen (updated_at)
+    before it, so a read never deletes what a later read saw. Returns how many."""
+    nr = network_reservations
+    if not (ids := list(ids)):
+        return 0
+    stmt = sa.delete(nr).where(nr.c.id.in_(ids))
+    if seen_before is not None:
+        stmt = stmt.where(nr.c.updated_at < seen_before)
+    return db.execute(stmt).rowcount
 
 
-def touch_reservation_ids(db, ids: Iterable) -> None:
-    """Mark external reservations seen again now (``expire_external`` keeps them)."""
+def touch_reservation_ids(db, ids: Iterable, at) -> None:
+    """Mark external reservations seen at ``at`` (a read's start); never moves one back."""
+    nr = network_reservations
     if ids := list(ids):
-        db.execute(sa.update(network_reservations).where(network_reservations.c.id.in_(ids)).values(updated_at=_now()))
+        db.execute(sa.update(nr).where(nr.c.id.in_(ids), nr.c.updated_at < at).values(updated_at=at))
 
 
 def expire_external(db, domain: str, kind: str, keep_prefix: str, before) -> int:
@@ -831,12 +839,13 @@ def expire_external(db, domain: str, kind: str, keep_prefix: str, before) -> int
         sa.not_(nr.c.holder.startswith(keep_prefix, autoescape=True)))).rowcount
 
 
-def insert_external_reservations(db, domain: str, kind: str, values: dict[str, str]) -> None:
-    """One external reservation (no range, no tenant) per {value: holder}."""
+def insert_external_reservations(db, domain: str, kind: str, values: dict[str, str], seen_at) -> None:
+    """One external reservation (no range, no tenant) per {value: holder}, last seen
+    (updated_at) at ``seen_at``: the start of the read that saw it."""
     rows = [{"id": uuid.uuid4(), "tenant_id": None, "range_id": None, "domain": domain, "kind": kind,
-             "value": value, "holder": holder[:255]} for value, holder in values.items()]
+             "value": value, "holder": holder[:255], "updated_at": seen_at} for value, holder in values.items()]
     if rows:
-        db.execute(sa.insert(network_reservations).values(created_at=_now(), updated_at=_now()), rows)
+        db.execute(sa.insert(network_reservations).values(created_at=_now()), rows)
 
 
 def drop_range_values(db, range_id: str, domain: str, kind: str, values: Iterable[str]) -> int:

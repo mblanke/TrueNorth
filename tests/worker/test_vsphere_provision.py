@@ -103,7 +103,7 @@ class FakeDatastore(vim.Datastore):
 
 
 class FakeHost(vim.HostSystem):
-    name = runtime = hardware = summary = vm = datastore = network = configManager = None  # noqa: N815
+    name = runtime = hardware = summary = vm = datastore = network = configManager = config = None  # noqa: N815
 
     def __init__(self, name: str, *, free_gb_ram: int = 500, threads: int = 16, vcpus_on: int = 0,
                  maintenance: bool = False, ds_free_gb: int = 1600):
@@ -118,16 +118,20 @@ class FakeHost(vim.HostSystem):
         self.datastore = [FakeDatastore(f"{name.split('.')[0]}-local", ds_free_gb)]
         self.network: list = []
         self.configManager = SimpleNamespace(networkSystem=MagicMock())
+        # host.config.network.portgroup: what vsphere_vlans.vss_usage / vss_vlan read live.
+        self.config = SimpleNamespace(network=SimpleNamespace(portgroup=[]))
 
         def add(portgrp):
             if any(n.name == portgrp.name for n in self.network):
                 raise vim.fault.AlreadyExists()
             self.network.append(SimpleNamespace(name=portgrp.name, _moId=f"network-{next(_ids)}", config=None))
+            self.config.network.portgroup.append(SimpleNamespace(spec=portgrp))
 
         def remove(pgName):  # noqa: N803 -- pyVmomi's keyword
             if not any(n.name == pgName for n in self.network):
                 raise vim.fault.NotFound()
             self.network = [n for n in self.network if n.name != pgName]
+            self.config.network.portgroup = [p for p in self.config.network.portgroup if p.spec.name != pgName]
 
         self.configManager.networkSystem.AddPortGroup.side_effect = add
         self.configManager.networkSystem.RemovePortGroup.side_effect = remove
@@ -181,6 +185,7 @@ class FakeDVS:
     def __init__(self, name="vDS-10G", existing_vlans=()):
         self.name = name
         self.uuid = "50 1a 2b 3c"
+        self._moId = f"dvs-{next(_ids)}"
         self.portgroup: list = []
         for vlan in existing_vlans:
             self.portgroup.append(FakePortgroup(self, infra.dvs_portgroup_spec(f"dPG-VM-{vlan}", vlan, False)))
@@ -518,6 +523,14 @@ class FakeVCenter:
         (spec,) = specSet
         paths = list(spec.propSet[0].pathSet)
         objects = []
+        if spec.propSet[0].type is vim.dvs.DistributedVirtualPortgroup:  # vsphere_vlans.dvs_usage: one call
+            assert spec.objectSet[0].obj._moId == self.dvs._moId
+            assert spec.objectSet[0].selectSet[0].path == "portgroup"
+            self.portgroup_reads = getattr(self, "portgroup_reads", 0) + 1
+            for pg in self.dvs.portgroup:
+                vals = {"name": pg.name, "config": pg.config, "tag": getattr(pg, "tag", None)}
+                objects.append(SimpleNamespace(obj=pg, propSet=[SimpleNamespace(name=p, val=vals[p]) for p in paths]))
+            return SimpleNamespace(objects=objects, token=None)
         if isinstance(spec.objectSet[0].obj, FakeView):  # a container-view traversal: every VM
             assert spec.objectSet[0].selectSet[0].path == "view"
             self.inventory_reads = getattr(self, "inventory_reads", 0) + 1
@@ -3489,6 +3502,7 @@ class TestLiveVlanRecheck:
         assert f"port group 'tn-{R8}-v150' already exists on vDS-10G with VLAN 999" in result.errors[0]
         assert vc.dvs.portgroup == [squat]
         assert result.conflict["release"] == ["150", "151", "152"]
+        assert result.conflict["vlans"] == {}  # VLAN 150 itself is free: not recorded as external
         # Its destroy goes by the recorded names: the hand-made one (VLAN 999) stays.
         nets = [{"portgroup": f"tn-{R8}-v{v}", "physical_vlan": v, "switch_mode": "vds"} for v in PLANNED.values()]
         assert _run(_prov(vc).destroy(RANGE_ID, {"vms": [], "networks": nets})).status == "ok"
@@ -3527,8 +3541,73 @@ class TestLiveVlanRecheck:
         assert usage.foreign == {"101": "corp-voice", "104": "nested-esx", "105": "nested-esx"}
         assert usage.managed == {"106": "tn-0badc0de-v106"}
 
+    def test_the_switch_is_read_once_per_step_not_once_per_port_group(self, vc):
+        """One property-collector call reads every port group (name, config, tag); the
+        build's recheck reuses it for all three VLANs, and so does the pre-allocation read."""
+        for i in range(40):  # a busy switch: the call count must not grow with it either
+            _squat(vc, f"corp-{i}", 400 + i)
+        prov = _prov(vc)
+        prov.live_usage(prov.allocation_needs(RANGE_ID, _rendered()))
+        assert vc.portgroup_reads == 1
+        result = _run(prov.provision(RANGE_ID, _rendered(), {"physical_vlans": dict(PLANNED)}))
+        assert result.status == "ok", result.errors
+        assert vc.portgroup_reads == 2  # + one for the whole _prepare_sync step
+
+    def test_a_conflict_reads_the_switch_once_more_and_no_more(self, vc):
+        _squat(vc, "corp-new", 152)
+        result = _run(_prov(vc).provision(RANGE_ID, _rendered(), {"physical_vlans": dict(PLANNED)}))
+        assert result.status == "failed" and vc.portgroup_reads == 2  # the step's read + what is kept
+
     def test_a_missing_switch_fails_the_live_read(self, vc, monkeypatch):
         monkeypatch.setattr(mod, "VSPHERE_RANGE_DVS", "vDS-gone")
         prov = _prov(vc)
         with pytest.raises(RuntimeError, match="Distributed switch not found"):
             prov.live_usage(prov.allocation_needs(RANGE_ID, _rendered()))
+
+
+def _vss_plant(host, name, vlan):
+    host.configManager.networkSystem.AddPortGroup(portgrp=infra.vss_portgroup_spec(name, vlan, "vSwitch1", False))
+
+
+def _vss_names(host) -> dict:
+    return {p.spec.name: p.spec.vlanId for p in host.config.network.portgroup}
+
+
+class TestLiveVlanRecheckVss:
+    """The same rules on standard vSwitches: the recheck reads exactly the hosts the port
+    groups go on, a conflict undoes only those hosts' port groups, and nothing removes a
+    same-named port group carrying another VLAN."""
+
+    @pytest.fixture(autouse=True)
+    def _vss(self, vc, monkeypatch):  # after vc, which sets "vds"
+        monkeypatch.setattr(mod, "VSPHERE_RANGE_SWITCH_MODE", "vss")
+
+    def test_a_vlan_on_the_hosts_stops_the_build_and_undoes_this_steps_port_groups(self, vc):
+        for host in vc.hosts:
+            _vss_plant(host, "corp", 151)
+        result = _run(_prov(vc).provision(RANGE_ID, _rendered(), {"physical_vlans": dict(PLANNED)}))
+        assert result.status == "failed" and not vc.vms
+        assert "VLAN 151 is already used by port group 'corp' on vSwitch1" in result.errors[0]
+        assert all(_vss_names(h) == {"corp": 151} for h in vc.hosts)  # v150 undone everywhere it was made
+        assert result.conflict["vlans"] == {"151": "corp"}
+        assert result.conflict["release"] == ["150", "151", "152"]
+
+    def test_a_conflict_never_touches_a_host_the_build_did_not_use(self, vc):
+        """esx01 (excluded: the VCSA host) has its own tn-<range8>-v150 on VLAN 150; the
+        build's v150 on the placed hosts is undone, esx01's is not."""
+        esx01 = vc.hosts[0]
+        _vss_plant(esx01, f"tn-{R8}-v150", 150)
+        for host in vc.hosts[1:]:
+            _vss_plant(host, "corp", 151)
+        result = _run(_prov(vc).provision(RANGE_ID, _rendered(), {"physical_vlans": dict(PLANNED)}))
+        assert result.status == "failed"
+        assert _vss_names(esx01) == {f"tn-{R8}-v150": 150}
+        assert all(_vss_names(h) == {"corp": 151} for h in vc.hosts[1:])
+
+    def test_teardown_leaves_a_same_named_port_group_on_another_vlan(self, vc):
+        _vss_plant(vc.hosts[1], f"tn-{R8}-v150", 999)  # made by hand on esx02
+        _vss_plant(vc.hosts[2], f"tn-{R8}-v150", 150)  # the range's own on esx03
+        nets = [{"portgroup": f"tn-{R8}-v150", "physical_vlan": 150, "switch_mode": "vss"}]
+        assert _run(_prov(vc).destroy(RANGE_ID, {"vms": [], "networks": nets})).status == "ok"
+        assert _vss_names(vc.hosts[1]) == {f"tn-{R8}-v150": 999}
+        assert _vss_names(vc.hosts[2]) == {}

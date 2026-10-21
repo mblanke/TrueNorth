@@ -14,10 +14,30 @@ import ipaddress
 import os
 
 
+class ReservedSettingsError(ValueError):
+    """TN_RANGE_RESERVED_CIDRS is malformed: the platform's fault, not the template's."""
+
+
 def reserved_cidrs(spec: str | None = None) -> list[ipaddress.IPv4Network | ipaddress.IPv6Network]:
-    """``spec``, else TN_RANGE_RESERVED_CIDRS: comma-separated networks. Empty: none."""
+    """``spec``, else TN_RANGE_RESERVED_CIDRS: comma-separated networks. Empty: none.
+    Raises ReservedSettingsError, naming the bad entry."""
     raw = os.getenv("TN_RANGE_RESERVED_CIDRS", "") if spec is None else spec
-    return [ipaddress.ip_network(p.strip(), strict=False) for p in raw.replace(";", ",").split(",") if p.strip()]
+    out = []
+    for part in (p.strip() for p in raw.replace(";", ",").split(",")):
+        if part:
+            try:
+                out.append(ipaddress.ip_network(part, strict=False))
+            except ValueError as exc:
+                raise ReservedSettingsError(
+                    f"TN_RANGE_RESERVED_CIDRS entry {part!r} is not a network ({exc}); fix tn_range_reserved_cidrs"
+                ) from exc
+    return out
+
+
+def check_at_startup() -> None:
+    """The API refuses to start on a malformed TN_RANGE_RESERVED_CIDRS (main.lifespan)
+    rather than fail every template validation and save later."""
+    reserved_cidrs()
 
 
 def _declared(doc: dict) -> list[tuple[str, str]]:
@@ -38,7 +58,8 @@ def _declared(doc: dict) -> list[tuple[str, str]]:
 
 
 def template_conflicts(doc, reserved=None) -> list[dict[str, str]]:
-    """``{path, message}`` for each template subnet overlapping a reserved site network."""
+    """``{path, message}`` for each template subnet overlapping a reserved site network.
+    Raises ReservedSettingsError when the setting itself is malformed."""
     if not isinstance(doc, dict):
         return []
     reserved = reserved_cidrs() if reserved is None else reserved

@@ -26,9 +26,10 @@ Range certification S1 (atomic VLAN allocation) adds three things:
   switch (``live_usage``: every port group's VLANs, trunks expanded). Inside it, under
   the same advisory lock, ``record_external`` stores the pool VLANs used outside
   TrueNorth as reservations with no range (holder ``external:<source>:<port group>``),
-  so the same unique constraint keeps every allocator off them. Each read replaces its
-  own source's entries (a VLAN freed outside TrueNorth becomes allocatable again);
-  another source's entries expire when not seen for ``EXTERNAL_TTL``.
+  so the same unique constraint keeps every allocator off them. Each read drops its own
+  source's entries it no longer sees (a VLAN freed outside TrueNorth becomes allocatable
+  again), but only entries last seen before the read started: a slow read never deletes
+  what a newer one saw. Another source's entries expire when not seen for ``EXTERNAL_TTL``.
 * **Reserved values.** ``AllocationNeed.excluded`` (VSPHERE_RESERVED_VLANS) are never
   handed out, and a range that holds one is refused; template subnets overlapping
   TN_RANGE_RESERVED_CIDRS are refused before anything is reserved (reserved_networks.py).
@@ -139,9 +140,13 @@ def record_external(db, usage, now: datetime | None = None) -> dict[str, str]:
     """Store what one live read (``LiveUsage``) found as external reservations; returns
     {value: holder} recorded for its source. Does not commit.
 
-    Under the (domain, kind) lock: the source's earlier entries are replaced by this read
-    (a VLAN freed outside TrueNorth is allocatable again), other sources' entries not seen
-    for EXTERNAL_TTL expire. ``managed`` values (TrueNorth's own port groups, by name) are
+    Under the (domain, kind) lock: the source's earlier entries this read no longer sees are
+    deleted (a VLAN freed outside TrueNorth is allocatable again), but only those last seen
+    before this read started (``usage.read_at``). The read itself happens outside the lock,
+    so a slower read may commit after a newer one; it must not delete what the newer one
+    saw. A read of unknown age (no ``read_at``) deletes nothing. Entries are stamped with
+    the read's start, never moved back. Other sources' entries not seen for EXTERNAL_TTL
+    expire. ``managed`` values (TrueNorth's own port groups, by name) are
     recorded only when no live range holds them: an orphan a failed teardown left still
     carries its VLAN. A ``foreign`` value a range holds is a collision on the wire that no
     reservation can fix; it is logged, and that range's next build stops on it.
@@ -159,14 +164,16 @@ def record_external(db, usage, now: datetime | None = None) -> dict[str, str]:
                        ", ".join(clash), usage.source, ", ".join(usage.foreign[v] for v in clash))
     want = {v: h for v, h in want.items() if v not in held}
     now = now or datetime.now(UTC)
+    read_at = getattr(usage, "read_at", None)
+    seen_at = read_at or now
     db_ops.expire_external(db, usage.domain, usage.kind, prefix, now - EXTERNAL_TTL)
-    rows = db_ops.external_reservations(db, usage.domain, usage.kind)
-    ours = [r for r in rows if r.holder.startswith(prefix)]
-    db_ops.drop_reservation_ids(db, [r.id for r in ours if r.value not in want])
-    db_ops.touch_reservation_ids(db, [r.id for r in ours if r.value in want])
-    present = {r.value for r in rows if not r.holder.startswith(prefix) or r.value in want}
+    ours = [r for r in db_ops.external_reservations(db, usage.domain, usage.kind) if r.holder.startswith(prefix)]
+    if read_at is not None:  # never on the strength of a read of unknown age
+        db_ops.drop_reservation_ids(db, [r.id for r in ours if r.value not in want], seen_before=read_at)
+    db_ops.touch_reservation_ids(db, [r.id for r in ours if r.value in want], seen_at)
+    present = {r.value for r in db_ops.external_reservations(db, usage.domain, usage.kind)}
     db_ops.insert_external_reservations(db, usage.domain, usage.kind,
-                                        {v: h for v, h in want.items() if v not in present})
+                                        {v: h for v, h in want.items() if v not in present}, seen_at)
     return want
 
 
@@ -181,10 +188,20 @@ def reserve_for_build(session, range_id: str, provisioner, template: dict) -> di
     The provisioner's live read (``live_usage``) happens before the transaction, so no
     hypervisor call holds the lock; the creation-time recheck covers what changes after it.
     """
-    if clashes := reserved_networks.conflicts(template):
+    # A malformed setting (TN_RANGE_RESERVED_CIDRS, VSPHERE_VLAN_POOL, VSPHERE_RESERVED_VLANS)
+    # is final: a retry reads the same value. The worker also refuses to start on one
+    # (celery_app: reserved_networks.check_settings).
+    try:
+        clashes = reserved_networks.conflicts(template)
+    except ValueError as exc:
+        raise ReservedNetworkError(f"network settings are invalid: {exc}") from exc
+    if clashes:
         raise ReservedNetworkError("template subnets overlap reserved site networks: " + "; ".join(clashes))
     declare = getattr(provisioner, "allocation_needs", None)  # BaseProvisioner's default: none
-    needs = declare(range_id, template) if declare else []
+    try:
+        needs = declare(range_id, template) if declare else []
+    except ValueError as exc:
+        raise AllocationError(f"network settings are invalid: {exc}") from exc
     if not needs:
         return {}
     from .fencing import ensure_held  # fencing imports this module
@@ -247,7 +264,7 @@ def release_conflict(db, range_id: str, conflict: dict) -> None:
     taken = db_ops.taken_reservation_values(db, domain, "vlan")
     db_ops.insert_external_reservations(db, domain, "vlan", {
         str(v): f"{EXTERNAL}{source}:{name}" for v, name in (conflict.get("vlans") or {}).items()
-        if str(v) not in taken})
+        if str(v) not in taken}, datetime.now(UTC))
     logger.warning("[alloc] range %s: VLAN collision on %s (%s); released %d reservation(s)", range_id, source,
                    ", ".join(f"{v}: {n}" for v, n in (conflict.get("vlans") or {}).items()), freed)
 
