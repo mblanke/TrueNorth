@@ -36321,6 +36321,81 @@
         ]
       }
     },
+    "/ranges/{range_id}/credentials/{credential_id}/settle": {
+      "post": {
+        "description": "End a password change that is stuck pending (its worker task died, or its restore never\nran): the account's password becomes the one the guests have now, set and rotatable\nagain. **Permission: range:credentials_rotate** (admin). Audited\n(``range_credential_settle``, with the reason).",
+        "operationId": "settle_range_credential_ranges__range_id__credentials__credential_id__settle_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "range_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Range Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "credential_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Credential Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RotateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RangeCredentialOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "No such range or account in the caller's tenant"
+          },
+          "409": {
+            "description": "No change of this account's password is pending"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Settle Range Credential",
+        "tags": [
+          "ranges"
+        ]
+      }
+    },
     "/ranges/{range_id}/description/import": {
       "post": {
         "description": "Replace the range description with the contents of a text file.\n\nText in, text on the range \u2014 the file is not retained, so the description\nstays editable and searchable afterwards. Use the documents endpoints when\nthe original file itself needs to be kept.",

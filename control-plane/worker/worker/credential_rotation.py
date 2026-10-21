@@ -33,7 +33,7 @@ import logging
 import os
 
 from celery.exceptions import SoftTimeLimitExceeded
-from celery.signals import task_success, worker_init
+from celery.signals import task_failure, task_success, worker_init
 
 from . import db_ops, range_accounts
 from .base_tasks import ReliableTask
@@ -76,12 +76,14 @@ def _admin_logins(rows: list[dict], machine: str, family: str, snapshot: dict[st
     return out
 
 
-def plan(range_id: str, rows: list[dict], vms: list[dict], *, ids: set[str] | None = None,
+def plan(range_id: str, rows: list[dict], vms: list[dict], *, operation: str, ids: set[str] | None = None,
          snapshot: dict[str, str] | None = None) -> tuple[list[dict], list[str], list[dict]]:
     """What ``rotate_guest_passwords`` is asked to do, notes (no secrets), and the targeted
-    rows that cannot be done here (their change is reverted). ``ids``: the accounts an admin
-    rotates; else every pending one (after a restore). Only rows with a change pending."""
-    targets = [r for r in rows if r["generated"] and r["pending"] and (ids is None or r["id"] in ids)]
+    rows that cannot be done here (their change is reverted). Only rows whose pending change
+    is ``operation``'s (review of #250: a task never acts on another operation's change);
+    ``ids`` narrows them to the accounts an admin rotates."""
+    targets = [r for r in rows if r["generated"] and r["pending"] and r.get("operation") == operation
+               and (ids is None or r["id"] in ids)]
     by_machine: dict[str, list[dict]] = {}
     for r in targets:
         by_machine.setdefault(r["machine"], []).append(r)
@@ -112,15 +114,20 @@ def plan(range_id: str, rows: list[dict], vms: list[dict], *, ids: set[str] | No
     return work, notes, undone
 
 
-def _settle(range_id: str, rows: list[dict], *, applied: bool, operation_id: str, why: str = "") -> None:
-    """Settle each row's change (compare-and-set on its sealed version), and audit it."""
+def _settle(range_id: str, rows: list[dict], *, applied: bool, operation_id: str, why: str = "",
+            revert_to: dict[str, str] | None = None) -> None:
+    """Settle each row's change of ``operation_id`` (compare-and-set on its sealed version),
+    and audit it. ``revert_to``: account id -> the seal to put back when not applied (a
+    snapshot's, once its revert ran); else the previous password."""
     from .tasks import _db_session
 
     if not rows:
         return
     with _db_session() as db:
         settled = [r for r in rows
-                   if db_ops.settle_credential_change(db, range_id, r["id"], r["sealed"], applied=applied)]
+                   if db_ops.settle_credential_change(db, range_id, r["id"], r["sealed"], applied=applied,
+                                                      operation=operation_id,
+                                                      revert_to=(revert_to or {}).get(r["id"]))]
         if settled:
             db_ops.audit_credential_change(db, range_id, settled[0]["tenant_id"], {
                 "operation_id": operation_id, "outcome": "applied" if applied else "reverted",
@@ -143,14 +150,19 @@ def run(range_id: str, *, ids: list[str] | None = None, snapshot_id: str | None 
 
     with _db_session() as db:
         rows = db_ops.account_rows(db, range_id)
-        snapshot = db_ops.snapshot_passwords(db, range_id, snapshot_id) if snapshot_id else {}
+        recorded = db_ops.snapshot_passwords(db, range_id, snapshot_id) if snapshot_id else {}
         found = db_ops.range_output_and_backend(db, range_id)
     output = json.loads(found[0]) if found and found[0] else {}
-    work, notes, undone = plan(range_id, rows, output.get("vms") or [], ids=set(ids) if ids else None,
-                               snapshot=snapshot)
+    # After a revert the guests have what the snapshot recorded: log in with it, and put it
+    # back (its seal, as is) for a change that does not take.
+    snapshot = {cid: plain for cid, (plain, _) in recorded.items()}
+    revert_to = {cid: sealed for cid, (_, sealed) in recorded.items()}
+    work, notes, undone = plan(range_id, rows, output.get("vms") or [], operation=operation_id,
+                               ids=set(ids) if ids else None, snapshot=snapshot)
     for note in notes:
         logger.warning("[rotate %s] range %s: %s", operation_id, range_id, note)
-    _settle(range_id, undone, applied=False, operation_id=operation_id, why="; ".join(notes)[:500])
+    _settle(range_id, undone, applied=False, operation_id=operation_id, why="; ".join(notes)[:500],
+            revert_to=revert_to)
     if not work:
         return {"status": "nothing_to_do" if not undone else "reverted", "notes": notes}
     targets = {r["id"]: r for w in work for r in w["rows"]}
@@ -163,7 +175,8 @@ def run(range_id: str, *, ids: list[str] | None = None, snapshot_id: str | None 
     except Exception as exc:  # noqa: BLE001 — every target goes back to what the guests have
         why = type(exc).__name__ if not isinstance(exc, RuntimeError) else str(exc)[:200]
         logger.warning("[rotate %s] range %s: not changed in the guests (%s)", operation_id, range_id, why)
-        _settle(range_id, list(targets.values()), applied=False, operation_id=operation_id, why=why)
+        _settle(range_id, list(targets.values()), applied=False, operation_id=operation_id, why=why,
+                revert_to=revert_to)
         if isinstance(exc, SoftTimeLimitExceeded):
             raise
         return {"status": "reverted", "notes": [*notes, why]}
@@ -177,7 +190,8 @@ def run(range_id: str, *, ids: list[str] | None = None, snapshot_id: str | None 
     ok = [r for r in targets.values() if r["username"] in verified.get(r["machine"], set())]
     failed = [r for r in targets.values() if r not in ok]
     _settle(range_id, ok, applied=True, operation_id=operation_id)
-    _settle(range_id, failed, applied=False, operation_id=operation_id, why="not verified by a login in the guest")
+    _settle(range_id, failed, applied=False, operation_id=operation_id, why="not verified by a login in the guest",
+            revert_to=revert_to)
     logger.info("[rotate %s] range %s: %d set and verified, %d put back", operation_id, range_id, len(ok),
                 len(failed))
     return {"status": "ok" if not failed else "partial", "applied": len(ok), "reverted": len(failed),
@@ -205,15 +219,55 @@ def _refuse_to_start_without_template_passwords(**_kwargs) -> None:
         raise SystemExit(problem)  # not an Exception: Celery's signal dispatch would swallow that
 
 
+def roll_back_operation(range_id: str, operation_id: str, why: str) -> int:
+    """Put every pending change of ``operation_id`` back to the password the guests still
+    have (its previous one): a restore that failed before changing anything, or was skipped,
+    never ran its revert. Audited. Returns how many were put back. Never raises."""
+    from .tasks import _db_session
+
+    try:
+        with _db_session() as db:
+            rows = [r for r in db_ops.account_rows(db, range_id) if r["pending"] and r.get("operation") == operation_id]
+        _settle(range_id, rows, applied=False, operation_id=operation_id, why=why)
+        return len(rows)
+    except Exception:  # noqa: BLE001 — an admin can still force-settle them (POST .../settle)
+        logger.warning("[rotate %s] range %s: could not put the pending changes back", operation_id, range_id)
+        return 0
+
+
+def _restore_args(sender) -> tuple[str | None, str | None]:
+    range_id, snapshot_id = (list(getattr(getattr(sender, "request", None), "args", None) or []) + [None, None])[:2]
+    return (str(range_id) if range_id else None), (str(snapshot_id) if snapshot_id else None)
+
+
 @task_success.connect
 def _after_restore(sender=None, result=None, **_kwargs) -> None:
-    """A snapshot restore succeeded: send the rotation of the passwords the API renewed for it."""
-    if getattr(sender, "name", "") != RESTORE_TASK or not isinstance(result, dict) or result.get("status") != "restored":
+    """A snapshot restore ended. Restored: send the rotation of the passwords the API renewed
+    for it. Skipped (the range moved on, nothing reverted): put those changes back."""
+    if getattr(sender, "name", "") != RESTORE_TASK or not isinstance(result, dict):
+        return
+    range_id, snapshot_id = _restore_args(sender)
+    if not (range_id and snapshot_id):
+        return
+    if result.get("status") == "skipped":
+        roll_back_operation(range_id, f"restore:{snapshot_id}", "the restore was skipped: nothing was reverted")
+        return
+    if result.get("status") != "restored":
         return
     try:
-        range_id, snapshot_id = (list(getattr(sender.request, "args", None) or []) + [None, None])[:2]
-        if range_id and snapshot_id:
-            app.send_task(TASK, args=[str(range_id), [], f"restore:{snapshot_id}", str(snapshot_id)],
-                          ignore_result=True)
-    except Exception:  # noqa: BLE001 — the restore stands; the rows stay not applied (Students see none)
-        logger.warning("could not send the password rotation after a restore of range %s", result.get("range_id"))
+        app.send_task(TASK, args=[range_id, [], f"restore:{snapshot_id}", snapshot_id], ignore_result=True)
+    except Exception:  # noqa: BLE001 — the rows stay pending (Students see none); an admin can settle them
+        logger.warning("could not send the password rotation after a restore of range %s", range_id)
+
+
+@task_failure.connect
+def _after_failed_restore(sender=None, **_kwargs) -> None:
+    """A snapshot restore failed for good (after its retries): its pending password changes
+    go back to what the guests had before (review of #250). A restore that reverted some VMs
+    and not others leaves the range ``failed``; its passwords go back to the pre-restore ones
+    too, and the range needs a rebuild either way."""
+    if getattr(sender, "name", "") != RESTORE_TASK:
+        return
+    range_id, snapshot_id = _restore_args(sender)
+    if range_id and snapshot_id:
+        roll_back_operation(range_id, f"restore:{snapshot_id}", "the restore failed")

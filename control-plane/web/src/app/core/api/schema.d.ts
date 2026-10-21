@@ -5868,6 +5868,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/ranges/{range_id}/credentials/{credential_id}/settle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Settle Range Credential
+         * @description End a password change that is stuck pending (its worker task died, or its restore never
+         *     ran): the account's password becomes the one the guests have now, set and rotatable
+         *     again. **Permission: range:credentials_rotate** (admin). Audited
+         *     (``range_credential_settle``, with the reason).
+         */
+        post: operations["settle_range_credential_ranges__range_id__credentials__credential_id__settle_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/ranges/{range_id}/description/import": {
         parameters: {
             query?: never;
@@ -26645,6 +26668,56 @@ export interface operations {
                 content?: never;
             };
             /** @description A scenario account (never rotated), or a range no rotation can reach now */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    settle_range_credential_ranges__range_id__credentials__credential_id__settle_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                range_id: string;
+                credential_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RotateIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RangeCredentialOut"];
+                };
+            };
+            /** @description No such range or account in the caller's tenant */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No change of this account's password is pending */
             409: {
                 headers: {
                     [name: string]: unknown;

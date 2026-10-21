@@ -6,7 +6,8 @@ Create Date: 2026-10-21 12:00:00.000000
 
 Schema (additive): ``range_credentials`` gains ``source`` (declared | implicit),
 ``scenario`` (a typed-in password authored by design), ``rotated_at`` and
-``previous_password`` (sealed; set only while an in-guest rotation is pending); a new
+``previous_password`` (sealed; set only while an in-guest change is pending) and
+``pending_operation`` (the operation that change belongs to); a new
 ``range_credential_snapshots`` table keeps, per range snapshot, the passwords the accounts
 had when it was taken (sealed).
 
@@ -18,7 +19,8 @@ rebuilt"); templates whose typed-in passwords are not on scenario accounts are l
 ACTION NEEDED; every generated wiki range page is rendered again without credentials and the
 ``{{tn-credential:...}}`` tokens are stripped from earlier revisions.
 
-Downgrade reseals rows as ``tnsec:v1`` and template passwords as ``tnsec:rc1`` (what the old
+Downgrade first puts every pending change back to the password the guests have
+(``previous_password``), then reseals rows as ``tnsec:v1`` and template passwords as ``tnsec:rc1`` (what the old
 code reads) and drops the new table and
 columns. Implicit rows stay (the old code shows them as declared accounts until the next
 build of the range drops them); stripped wiki tokens are not put back.
@@ -42,6 +44,7 @@ def upgrade() -> None:
         batch.add_column(sa.Column("scenario", sa.Boolean(), nullable=False, server_default=sa.false()))
         batch.add_column(sa.Column("rotated_at", sa.DateTime(timezone=True), nullable=True))
         batch.add_column(sa.Column("previous_password", sa.Text(), nullable=True))
+        batch.add_column(sa.Column("pending_operation", sa.String(64), nullable=True))
     op.create_table(
         "range_credential_snapshots",
         sa.Column("id", GUID(), primary_key=True),
@@ -66,6 +69,7 @@ def downgrade() -> None:
     op.drop_index("ix_range_credential_snapshots_snapshot", table_name="range_credential_snapshots")
     op.drop_table("range_credential_snapshots")
     with op.batch_alter_table("range_credentials") as batch:
+        batch.drop_column("pending_operation")
         batch.drop_column("previous_password")
         batch.drop_column("rotated_at")
         batch.drop_column("scenario")

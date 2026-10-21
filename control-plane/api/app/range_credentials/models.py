@@ -70,6 +70,9 @@ class RangeCredential(TimestampMixin, Base):
     # password back): the password the guests have now. The worker logs in with it, and puts
     # it back as ``password`` when the change fails. Cleared once the change is verified.
     sealed_previous: Mapped[str | None] = mapped_column("previous_password", Text, nullable=True)
+    # The operation the pending change belongs to (an admin rotation's id, or
+    # ``restore:<snapshot id>``): a worker task settles only its own changes.
+    pending_operation: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     def _aad(self) -> str:
         if self.id is None:
@@ -101,8 +104,9 @@ class RangeCredential(TimestampMixin, Base):
 
 
 class RangeCredentialSnapshot(Base):
-    """The password one account had in the guests when one range snapshot was taken (sealed,
-    bound to the tenant, snapshot and account)."""
+    """The password one account had in the guests when one range snapshot was taken: a copy
+    of the account's own seal (same binding as the row), so the worker can put it back as
+    the row's password after a restore without sealing anything itself."""
 
     __tablename__ = "range_credential_snapshots"
     __table_args__ = (
@@ -116,17 +120,11 @@ class RangeCredentialSnapshot(Base):
         GUID(), ForeignKey("range_snapshots.id", ondelete="CASCADE"), nullable=False)
     credential_id: Mapped[uuid.UUID] = mapped_column(
         GUID(), ForeignKey("range_credentials.id", ondelete="CASCADE"), nullable=False)
+    # The account's seal (``RangeCredential`` binding: tenant, range, account), copied as is.
     sealed_password: Mapped[str] = mapped_column("password", Text, nullable=False)
 
-    def _aad(self) -> str:
-        if None in (self.tenant_id, self.snapshot_id, self.credential_id):
-            raise ValueError("a snapshot credential needs its tenant, snapshot and account before its password")
-        return rc_seal.snapshot_aad(self.tenant_id, self.snapshot_id, self.credential_id)
-
-    @property
-    def password(self) -> str:
-        return rc_seal.unseal_row(self.sealed_password, self._aad()) or ""
-
-    @password.setter
-    def password(self, plain: str) -> None:
-        self.sealed_password = rc_seal.seal_row(plain, self._aad())
+    def password_for(self, row: RangeCredential) -> str:
+        """The password, opened with ``row``'s binding (``row`` is this snapshot's account)."""
+        if row.id != self.credential_id:
+            raise ValueError("a snapshot password opens only with its own account")
+        return rc_seal.unseal_row(self.sealed_password, row._aad()) or ""

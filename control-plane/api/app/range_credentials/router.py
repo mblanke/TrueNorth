@@ -12,6 +12,9 @@ POST /ranges/{range_id}/credentials/{id}/reveal     as the list, for that one ac
                                                     Audited (range_credential_reveal).
 POST /ranges/{range_id}/credentials/{id}/rotate     range:credentials_rotate (admin).
                                                     Audited (range_credential_rotate).
+POST /ranges/{range_id}/credentials/{id}/settle     range:credentials_rotate (admin): a stuck
+                                                    pending change back to the in-guest
+                                                    password. Audited (range_credential_settle).
 ==================================================  =========================================
 
 Who sees what is ``service.py``'s docstring. A Student's own lab session is also reached
@@ -193,3 +196,30 @@ def rotate_range_credential(
     return RotateOut(account=account_out(row, service.setup_pending_machines(rng)),
                      applies="in_guest" if in_guest else "next_build", operation_id=operation_id,
                      dispatched=dispatched)
+
+
+@router.post(
+    "/{range_id}/credentials/{credential_id}/settle",
+    response_model=RangeCredentialOut,
+    responses={
+        404: {"description": "No such range or account in the caller's tenant"},
+        409: {"description": "No change of this account's password is pending"},
+    },
+)
+def settle_range_credential(
+    body: RotateIn,
+    range_id: uuid.UUID = Path(...),
+    credential_id: uuid.UUID = Path(...),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_permission(Permission.RANGE_CREDENTIALS_ROTATE)),
+) -> RangeCredentialOut:
+    """End a password change that is stuck pending (its worker task died, or its restore never
+    ran): the account's password becomes the one the guests have now, set and rotatable
+    again. **Permission: range:credentials_rotate** (admin). Audited
+    (``range_credential_settle``, with the reason)."""
+    rng = service.readable_range(db, range_id, user, service.ALL)
+    row = service.account(db, rng, credential_id, service.ALL)
+    service.force_settle(db, rng, row, user, body.reason)
+    db.commit()
+    db.refresh(row)
+    return account_out(row, service.setup_pending_machines(rng))

@@ -3,7 +3,8 @@
 The API seals every stored range password with a key derived for stored credentials only
 (control-plane/api/app/range_credentials/seal.py: HKDF-SHA256, info
 ``truenorth/range-credentials/row/v1``, AES-256-GCM) and binds it to its owner through the
-associated data (``row|<tenant>|<range>|<credential>``, ``snapshot|<tenant>|<snapshot>|<credential>``).
+associated data (``row|<tenant>|<range>|<credential>``; a snapshot's copy of a credential
+keeps that credential's seal, so it opens, and can be put back, with the same binding).
 The worker cannot import the API, so this module derives the same key;
 tests/contracts/test_range_seal_matches_api.py fails if the two drift. Values from before
 the ADR 0013 migration (``tnsec:rc1:``, ``tnsec:v1:``, plain) are still read.
@@ -41,10 +42,6 @@ def _derive(info: bytes) -> list[bytes]:
 
 def row_aad(tenant_id, range_id, credential_id) -> str:
     return f"row|{tenant_id}|{range_id}|{credential_id}"
-
-
-def snapshot_aad(tenant_id, snapshot_id, credential_id) -> str:
-    return f"snapshot|{tenant_id}|{snapshot_id}|{credential_id}"
 
 
 def unseal(stored: str | None, aad: str) -> str | None:

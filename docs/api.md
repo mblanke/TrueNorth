@@ -781,10 +781,23 @@ on the version it set: `applied` once a login with the new password worked, othe
 previous password (which the guests still have) becomes the password again; either way an
 audit row `range_credential_change` `{operation_id, outcome, accounts, why}`.
 
+### `POST /ranges/{range_id}/credentials/{credential_id}/settle`
+
+**Permission: `range:credentials_rotate` (admin).** Body `{"reason": "..."}`. Ends a change
+that is stuck pending (its worker task died, its restore never ran): the account's password
+becomes the one the guests have now (the previous one; after a restore's revert, the one the
+snapshot recorded), applied and rotatable again. `409` when nothing is pending. Audited as
+`range_credential_settle` `{range_id, machine, username, reason, operation_id}`.
+
+Every pending change carries its operation (`pending_operation`: an admin rotation's
+`operation_id`, or `restore:<snapshot id>`); a worker task settles only its own changes.
+
 Rotation without an admin: every Student-visible generated account gets a new password on a
 **rebuild** of a range built before, and on every **snapshot restore** (a lab reset is one;
 the restore task then sets them in the guests, logging in with the passwords the snapshot
-recorded). Staff accounts keep theirs, but one an admin rotated after the snapshot was taken
+recorded). A restore or lab reset is `409` while any of the range's passwords has a change
+pending. If the restore fails or is skipped, its changes go back to what the guests had.
+Staff accounts keep theirs, but one an admin rotated after the snapshot was taken
 is set again after the revert (the guests went back to the snapshot's password). One audit
 row `range_credential_rotate` lists `rotated` and `reapplied` accounts. A snapshot records
 what the guests have (a pending change's previous password); deleting the snapshot deletes
@@ -819,7 +832,8 @@ template seal, a pre-ADR 0013 `rc1` token) is refused (422).
 **Permission: `template:update`** (an admin also sees global templates). Templates stored
 before ADR 0013 with a typed-in password not on a `scenario: true` account (or on a staff
 login): their ranges cannot be provisioned, scheduled bookings included, until fixed. Each
-`{template_id, name, version, tenant_id, problems, upcoming_bookings}`; never a password. The
+`{template_id, name, version, tenant_id, problems, upcoming_bookings}` (the caller's own
+tenant's bookings only, a global template's included); never a password. The
 migration logs the same list as `ACTION NEEDED`, the API logs it at start, and the Ranges page
 shows it to those who can fix it.
 A template change regenerates the pages of its own tenant's ranges after the response.
@@ -1402,6 +1416,7 @@ The auto-generated OpenAPI specification is available at:
 | 31c | `POST` | `/ranges/{id}/credentials/{cred_id}/reveal` | `range:read` + role rule | One password; audited (`range_credential_reveal`) |
 | 31d | `POST` | `/ranges/{id}/credentials/{cred_id}/rotate` | `range:credentials_rotate` | A new generated password; audited (`range_credential_rotate`) |
 | 31e | `GET` | `/range-credentials/template-issues` | `template:update` | Templates whose typed-in passwords ADR 0013 refuses |
+| 31f | `POST` | `/ranges/{id}/credentials/{cred_id}/settle` | `range:credentials_rotate` | A stuck pending change back to the in-guest password; audited (`range_credential_settle`) |
 | 32 | `POST` | `/exercises` | `exercise:create` | Create exercise |
 | 33 | `GET` | `/exercises` | `exercise:read` | List exercises |
 | 34 | `GET` | `/exercises/{id}` | `exercise:read` | Get exercise |

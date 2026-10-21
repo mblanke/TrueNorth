@@ -27,13 +27,15 @@ from worker.provisioners.base import GuestLogin
 RANGE_ID = "abcdef12-3456-7890-abcd-ef1234567890"
 R8 = RANGE_ID[:8]
 OLD, NEW, SNAP = "Old-Pass-1!", "New-Pass-2!", "Snap-Pass-3!"
+OP = "restore:snap-1"  # the operation the pending changes below belong to
 
 
 def _row(rid, machine, username, *, role="user", student=True, pending=True, password=NEW, previous=OLD,
-         generated=True):
+         generated=True, operation=OP):
     return {"id": rid, "tenant_id": "t1", "machine": machine, "username": username, "role": role,
             "student_visible": student, "generated": generated, "applied": not pending, "pending": pending,
-            "password": password, "sealed": f"sealed-{rid}-{password}", "previous": previous if pending else None}
+            "operation": operation if pending else None, "password": password,
+            "sealed": f"sealed-{rid}-{password}", "previous": previous if pending else None}
 
 
 ROWS = [
@@ -54,7 +56,7 @@ VMS = [
 
 class TestPlan:
     def test_pending_rows_per_vm_with_admin_logins_in_order(self):
-        work, notes, undone = cr.plan(RANGE_ID, ROWS, VMS, snapshot={"a1": SNAP})
+        work, notes, undone = cr.plan(RANGE_ID, ROWS, VMS, operation=OP, snapshot={"a1": SNAP})
         by = {w["name"]: w for w in work}
         assert set(by) == {f"{R8}-ws01", f"{R8}-web01"}
         ws = by[f"{R8}-ws01"]
@@ -69,8 +71,8 @@ class TestPlan:
 
     def test_an_admin_rotation_of_the_login_itself_logs_in_with_its_previous_password(self):
         rows = [_row("a1", "ws01", "Administrator", role="admin", student=False, pending=True,
-                     password=NEW, previous=OLD)]
-        work, _, _ = cr.plan(RANGE_ID, rows, VMS, ids={"a1"})
+                     password=NEW, previous=OLD, operation="op-admin")]
+        work, _, _ = cr.plan(RANGE_ID, rows, VMS, operation="op-admin", ids={"a1"})
         (ws,) = work
         assert [lg.password for lg in ws["logins"]] == [OLD, NEW]  # the guest still has OLD
         assert [(c.username, c.password) for c in ws["changes"]] == [("Administrator", NEW)]
@@ -80,22 +82,31 @@ class TestPlan:
         rows = [_row("x", "web01", "aadmin", role="admin", student=False, pending=False, password="A-1!aaaa"),
                 _row("y", "web01", "tnbuild", role="admin", student=False, pending=False, password="B-1!bbbb"),
                 _row("z", "web01", "analyst", pending=True)]
-        (web,) = [w for w in cr.plan(RANGE_ID, rows, VMS)[0]]
+        (web,) = [w for w in cr.plan(RANGE_ID, rows, VMS, operation=OP)[0]]
         assert [lg.username for lg in web["logins"]] == ["tnbuild", "aadmin"]
 
     def test_scenario_and_typed_in_rows_are_never_rotated(self):
         rows = [*ROWS[:3], _row("t", "web01", "jsmith", generated=False)]
-        work, _, _ = cr.plan(RANGE_ID, rows, VMS)
+        work, _, _ = cr.plan(RANGE_ID, rows, VMS, operation=OP)
         assert all(c.username != "jsmith" for w in work for c in w["changes"])
 
     def test_only_pending_rows_are_changed(self):
         """An admin rotation names one account; a row with no change pending (already settled,
         or changed again meanwhile) is not touched."""
-        work, _, _ = cr.plan(RANGE_ID, ROWS, VMS, ids={"a1", "b2"})
+        work, _, _ = cr.plan(RANGE_ID, ROWS, VMS, operation=OP, ids={"a1", "b2"})
+        assert [c.username for w in work for c in w["changes"]] == ["analyst"]
+
+    def test_a_task_never_acts_on_another_operations_change(self):
+        """Review of #250: an admin rotation queued before a reset must not be taken (or
+        reverted) by the reset's task, nor the other way round."""
+        rows = [_row("x", "web01", "analyst", operation="op-admin"), _row("y", "web01", "other")]
+        work, _, undone = cr.plan(RANGE_ID, [*ROWS[2:3], *rows], VMS, operation=OP)
+        assert [c.username for w in work for c in w["changes"]] == ["other"] and undone == []
+        work, _, _ = cr.plan(RANGE_ID, [*ROWS[2:3], *rows], VMS, operation="op-admin")
         assert [c.username for w in work for c in w["changes"]] == ["analyst"]
 
     def test_a_machine_with_no_built_vm_waits_for_its_build(self):
-        work, notes, undone = cr.plan(RANGE_ID, [_row("q", "gone01", "x")], VMS)
+        work, notes, undone = cr.plan(RANGE_ID, [_row("q", "gone01", "x")], VMS, operation=OP)
         assert work == [] and "gone01" in notes[0] and [r["id"] for r in undone] == ["q"]
 
 
@@ -214,17 +225,19 @@ class TestRun:
                 return {v["name"]: {"applied": [c.username for c in v["changes"] if c.username not in state["fail"]],
                                     "error": "x" if state["fail"] else ""} for v in vms}
 
-        def settle(db, rid, cid, sealed, *, applied):
-            if cid in state["stale"]:
-                return False  # changed again meanwhile: the compare-and-set finds another version
+        def settle(db, rid, cid, sealed, *, applied, operation, revert_to=None):
+            if cid in state["stale"] or operation != OP:
+                return False  # changed again meanwhile, or another operation's: left alone
             state["settled"].append((cid, sealed, applied))
+            state.setdefault("revert_to", {})[cid] = revert_to
             return True
 
         monkeypatch.setattr(tasks, "_db_session", lambda: DB())
         monkeypatch.setattr(base_tasks, "_get_backend", lambda *a, **k: Prov())
         monkeypatch.setattr(cr, "run_async", lambda coro: __import__("asyncio").run(coro))
         monkeypatch.setattr(db_ops, "account_rows", lambda db, rid, ids=None: ROWS)
-        monkeypatch.setattr(db_ops, "snapshot_passwords", lambda db, rid, sid: {"a1": SNAP})
+        monkeypatch.setattr(db_ops, "snapshot_passwords",
+                            lambda db, rid, sid: {"a1": (SNAP, "sealed-snap-a1"), "b2": (SNAP, "sealed-snap-b2")})
         monkeypatch.setattr(db_ops, "range_output_and_backend", lambda db, rid: (json.dumps({"vms": VMS}), "vsphere"))
         monkeypatch.setattr(db_ops, "settle_credential_change", settle)
         monkeypatch.setattr(db_ops, "audit_credential_change", lambda db, rid, tid, d: state["audits"].append(d))
@@ -232,7 +245,7 @@ class TestRun:
 
     def test_after_a_restore_verified_changes_are_applied_and_the_rest_put_back(self, env, caplog):
         caplog.set_level("DEBUG")
-        out = cr.run(RANGE_ID, snapshot_id="snap-1", operation_id="restore:snap-1")
+        out = cr.run(RANGE_ID, snapshot_id="snap-1", operation_id=OP)
         assert out["status"] == "ok" and out["applied"] == 2
         outcome = {cid: applied for cid, _, applied in env["settled"]}
         # a2/b2 verified in the guest; c1 (Security Onion) and d1 (appliance) cannot be changed here
@@ -245,9 +258,11 @@ class TestRun:
 
     def test_a_change_the_guest_did_not_take_is_put_back(self, env):
         env["fail"] = {"analyst"}
-        out = cr.run(RANGE_ID, snapshot_id="snap-1")
+        out = cr.run(RANGE_ID, snapshot_id="snap-1", operation_id=OP)
         assert out["status"] == "partial" and out["reverted"] == 1
         assert ("b2", "sealed-b2-" + NEW, False) in env["settled"] and ("a2", "sealed-a2-" + NEW, True) in env["settled"]
+        # after the revert the guests have the snapshot's password: that seal goes back, as is
+        assert env["revert_to"]["b2"] == "sealed-snap-b2"
 
     @pytest.mark.parametrize("failure", ["unsupported", "error", "timeout"])
     def test_a_backend_that_cannot_or_does_not_finish_puts_everything_back(self, env, monkeypatch, failure):
@@ -260,16 +275,29 @@ class TestRun:
             env["raise"] = ConnectionError("vCenter down") if failure == "error" else SoftTimeLimitExceeded()
         if failure == "timeout":
             with pytest.raises(SoftTimeLimitExceeded):
-                cr.run(RANGE_ID)
+                cr.run(RANGE_ID, operation_id=OP)
         else:
-            assert cr.run(RANGE_ID)["status"] == "reverted"
+            assert cr.run(RANGE_ID, operation_id=OP)["status"] == "reverted"
         assert {cid for cid, _, applied in env["settled"] if not applied} == {"a2", "b2", "c1", "d1"}
         assert not [s for s in env["settled"] if s[2]]
 
     def test_a_row_changed_again_meanwhile_is_left_to_that_change(self, env):
         env["stale"] = {"b2"}
-        cr.run(RANGE_ID)
+        cr.run(RANGE_ID, operation_id=OP)
         assert "b2" not in {cid for cid, _, _ in env["settled"]}
+
+    def test_a_failed_or_skipped_restore_puts_its_changes_back(self, env):
+        restore = SimpleNamespace(name=cr.RESTORE_TASK, request=SimpleNamespace(args=[RANGE_ID, "snap-1"]))
+        cr._after_failed_restore(sender=restore)
+        assert {cid for cid, _, applied in env["settled"] if not applied} == {"a2", "b2", "c1", "d1"}
+        assert all(v is None for v in env["revert_to"].values())  # the previous password: nothing reverted
+        env["settled"].clear()
+        cr._after_restore(sender=restore, result={"status": "skipped"})
+        assert {cid for cid, _, _ in env["settled"]} == {"a2", "b2", "c1", "d1"}
+        env["settled"].clear()
+        cr._after_failed_restore(sender=SimpleNamespace(name="worker.tasks.snapshot_range",
+                                                        request=restore.request))
+        assert env["settled"] == []
 
     def test_the_restore_hook_sends_the_rotation_only_after_a_restore_succeeded(self, no_real_broker):
         # The shared broker fixture: patching send_task on the app instance would outlive the test.

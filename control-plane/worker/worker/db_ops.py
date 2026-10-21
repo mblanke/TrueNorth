@@ -241,12 +241,13 @@ def account_rows(db, range_id: str, ids: Sequence[str] | None = None) -> list[di
     """Every account of the range (or the ``ids`` among them) for a change in the guests
     (worker/credential_rotation.py): id, machine, username, role, student_visible, generated,
     applied, whether a change is pending (``previous_password`` set: the guests still have
-    that one), the password and the previous one, opened, and ``sealed``: the stored seal
-    of the password, the version a later apply or revert must still find (compare-and-set)."""
+    that one) and the operation it belongs to, the password and the previous one, opened, and
+    ``sealed``: the stored seal of the password, the version a later apply or revert must
+    still find (compare-and-set)."""
     rc = range_credentials
     stmt = (
         sa.select(rc.c.id, rc.c.tenant_id, rc.c.machine, rc.c.username, rc.c.role, rc.c.student_visible,
-                  rc.c.generated, rc.c.applied, rc.c.password, rc.c.previous_password)
+                  rc.c.generated, rc.c.applied, rc.c.password, rc.c.previous_password, rc.c.pending_operation)
         .join(ranges, ranges.c.id == rc.c.range_id)
         .where(rc.c.range_id == range_id, rc.c.tenant_id == ranges.c.tenant_id)
         .order_by(rc.c.machine, rc.c.username)
@@ -259,14 +260,17 @@ def account_rows(db, range_id: str, ids: Sequence[str] | None = None) -> list[di
         out.append({"id": str(r.id), "tenant_id": str(r.tenant_id), "machine": r.machine, "username": r.username,
                     "role": r.role, "student_visible": bool(r.student_visible), "generated": bool(r.generated),
                     "applied": bool(r.applied), "pending": r.previous_password is not None,
+                    "operation": r.pending_operation,
                     "password": range_seal.unseal(r.password, aad) or "", "sealed": r.password,
                     "previous": range_seal.unseal(r.previous_password, aad) if r.previous_password else None})
     return out
 
 
-def snapshot_passwords(db, range_id: str, snapshot_id: str) -> dict[str, str]:
-    """credential id -> the password the guests had when the snapshot was taken (the API
-    records them, app/range_credentials/service.on_snapshot). Of the range's own snapshot only."""
+def snapshot_passwords(db, range_id: str, snapshot_id: str) -> dict[str, tuple[str, str]]:
+    """credential id -> (the password the guests had when the snapshot was taken, its seal).
+    The API records each as a copy of the account's own seal (service.on_snapshot), so it
+    opens with the account's binding and can be put back as its password unchanged. Of the
+    range's own snapshot only."""
     rcs = range_credential_snapshots
     stmt = (
         sa.select(rcs.c.credential_id, rcs.c.tenant_id, rcs.c.password)
@@ -274,7 +278,7 @@ def snapshot_passwords(db, range_id: str, snapshot_id: str) -> dict[str, str]:
         .where(rcs.c.snapshot_id == snapshot_id, range_snapshots.c.range_id == range_id,
                rcs.c.tenant_id == range_snapshots.c.tenant_id)
     )
-    return {str(cid): range_seal.unseal(pw, range_seal.snapshot_aad(tid, snapshot_id, cid)) or ""
+    return {str(cid): (range_seal.unseal(pw, range_seal.row_aad(tid, range_id, cid)) or "", pw)
             for cid, tid, pw in db.execute(stmt)}
 
 
@@ -301,24 +305,27 @@ def mark_accounts_applied(db, range_id: str, pairs: Iterable[tuple[str, str]]) -
         )
 
 
-def settle_credential_change(db, range_id: str, credential_id: str, sealed: str, *, applied: bool) -> bool:
-    """End a pending change of one account, only if its password is still the version the
-    worker set or tried (``sealed``; an admin may have rotated it again meanwhile):
+def settle_credential_change(db, range_id: str, credential_id: str, sealed: str, *, applied: bool,
+                             operation: str, revert_to: str | None = None) -> bool:
+    """End one account's pending change of ``operation``, only if its password is still the
+    version the worker set or tried (``sealed``) and the change is still that operation's
+    (review of #250: a task settles only its own changes):
 
     * ``applied``: the new password logs in: ``applied``, the previous one forgotten;
-    * not ``applied``: the change failed: the previous password (the one the guests still
-      have) becomes the password again, ``applied`` (adversarial review of #250). The sealed
-      value moves between the row's two columns, which share the row's binding.
+    * not ``applied``: the change failed: the password the guests have becomes the password
+      again, ``applied``: ``revert_to`` (a snapshot's seal, after its revert) or else the
+      previous password. Seals move as they are: every value of one account shares its binding.
 
     Returns whether the row was settled."""
     rc = range_credentials
-    values: dict[str, Any] = {"applied": True, "previous_password": None, "updated_at": _now()}
+    values: dict[str, Any] = {"applied": True, "previous_password": None, "pending_operation": None,
+                              "updated_at": _now()}
     if not applied:
-        values["password"] = rc.c.previous_password
+        values["password"] = revert_to if revert_to is not None else rc.c.previous_password
     return db.execute(
         sa.update(rc)
         .where(rc.c.id == uuid.UUID(str(credential_id)), rc.c.range_id == range_id, rc.c.password == sealed,
-               rc.c.previous_password.is_not(None))
+               rc.c.previous_password.is_not(None), rc.c.pending_operation == operation)
         .values(**values)
     ).rowcount == 1
 

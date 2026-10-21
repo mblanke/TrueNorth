@@ -106,7 +106,9 @@ class TestRestore:
         act_as(world["instructor"])
         snap = client.post(f"/ranges/{rng.id}/snapshots", json={"name": "base"})
         assert snap.status_code == 202, snap.text
-        captured = {str(c.credential_id): c.password for c in db_session.query(RangeCredentialSnapshot)}
+        by_id = {r.id: r for r in db_session.query(RangeCredential)}
+        captured = {str(c.credential_id): c.password_for(by_id[c.credential_id])
+                    for c in db_session.query(RangeCredentialSnapshot)}
         assert sorted(captured.values()) == sorted(before.values())
         db_session.get(RangeSnapshot, uuid.UUID(snap.json()["id"])).snapshot_state = "ready"
         db_session.commit()
@@ -212,13 +214,14 @@ def _rotate(client, rng, row, reason="suspected exposure"):
     return client.post(f"/ranges/{rng.id}/credentials/{row.id}/rotate", json={"reason": reason})
 
 
-def _settle(db, row_id, *, applied=True):
-    """What the worker does once a change is verified (applied) or failed (put back)."""
+def _settle(db, row_id, *, applied=True, revert_to_sealed=None):
+    """What the worker does once a change is verified (applied) or failed (put back: the
+    previous password, or after a revert the snapshot's seal)."""
     db.expire_all()
     row = db.get(RangeCredential, row_id)
     if not applied:
-        row.sealed_password = row.sealed_previous
-    row.sealed_previous, row.applied = None, True
+        row.sealed_password = revert_to_sealed or row.sealed_previous
+    row.sealed_previous, row.pending_operation, row.applied = None, None, True
     db.commit()
 
 
@@ -245,9 +248,10 @@ def no_tasks(monkeypatch):
 class TestReviewFindings:
     def test_1_a_restore_reapplies_an_admin_rotation_made_after_the_snapshot(self, client, db_session, world,
                                                                              no_tasks):
-        """Snapshot P0, admin rotates to P1 (applied), restore: the guests are back at P0, so the
-        row is pending again (previous P0), the restore task sets P1 again, and a reveal never
-        shows P1 before the guest has it. One audit row says what is re-applied."""
+        """Snapshot P0, admin rotates to P1 (applied), restore: the row is pending under the
+        restore's operation; until the revert runs the guests still have P1 (reveal P1), once it
+        has they have P0 (reveal P0), and the restore task sets P1 again. One audit row says
+        what is re-applied."""
         rng = _range(client, db_session, world, RangeState.ready)
         p0 = _row(db_session, rng, "web01", "ubuntu").password
         act_as(world["admin"])
@@ -258,8 +262,12 @@ class TestReviewFindings:
         _settle(db_session, row.id)  # the worker verified P1
         assert client.post(f"/ranges/{rng.id}/snapshots/{snap.id}/restore").status_code == 202
         row = _row(db_session, rng, "web01", "ubuntu")
-        assert (row.password, row.previous_password, row.applied) == (p1, p0, False)
-        assert _reveal_pw(client, rng, row) == p0  # what the reverted guest has, until re-applied
+        assert (row.password, row.previous_password, row.applied) == (p1, p1, False)
+        assert row.pending_operation == f"restore:{snap.id}"
+        assert _reveal_pw(client, rng, row) == p1  # the revert has not run: the guests still have P1
+        db_session.get(RangeSnapshot, snap.id).snapshot_state = "ready"  # the revert ran
+        db_session.commit()
+        assert _reveal_pw(client, rng, _row(db_session, rng, "web01", "ubuntu")) == p0
         audit = [json.loads(a.detail) for a in db_session.query(AuditLog)
                  .filter(AuditLog.action == "range_credential_rotate") if "reapplied" in (a.detail or "")]
         assert audit and "web01/ubuntu" in audit[-1]["reapplied"] and audit[-1]["reason"] == "snapshot restore"
@@ -276,7 +284,7 @@ class TestReviewFindings:
         snap = _snapshot(client, db_session, rng)
         row = _row(db_session, rng, "web01", "ubuntu")
         captured = db_session.query(RangeCredentialSnapshot).filter_by(snapshot_id=snap.id, credential_id=row.id).one()
-        assert captured.password == p0 != row.password
+        assert captured.password_for(row) == p0 != row.password
 
     def test_2_rotations_the_worker_cannot_carry_out_are_refused_up_front(self, client, db_session, world, no_tasks):
         tmpl = Template(id=uuid.uuid4(), name="mixed", version="1", yaml=MIXED_YAML, tenant_id=world["a"].id)
@@ -319,6 +327,50 @@ class TestReviewFindings:
         _settle(db_session, row.id)
         assert _rotate(client, rng, row).status_code == 202  # settled: rotatable again
 
+    def test_the_reset_race_restore_is_refused_while_an_admin_rotation_is_pending(self, client, db_session,
+                                                                                    world, no_tasks):
+        """Re-review of #250: admin rotation P1 queued; a restore (a reset) would have tagged it
+        and its task would have reverted to the wrong value. Now: the restore is 409, the admin
+        task settles its own change (here: failed, so P0 back), and then the restore runs and
+        tags only its own changes."""
+        rng = _range(client, db_session, world, RangeState.ready)
+        p0 = _row(db_session, rng, "web01", "analyst").password
+        act_as(world["admin"])
+        snap = _snapshot(client, db_session, rng)
+        rotated = _rotate(client, rng, _row(db_session, rng, "web01", "analyst"))
+        admin_op = rotated.json()["operation_id"]
+        assert _row(db_session, rng, "web01", "analyst").pending_operation == admin_op
+        refused = client.post(f"/ranges/{rng.id}/snapshots/{snap.id}/restore")
+        assert refused.status_code == 409 and "still being applied" in refused.text
+        assert db_session.get(RangeSnapshot, snap.id).snapshot_state == "ready"  # nothing changed
+        _settle(db_session, _row(db_session, rng, "web01", "analyst").id, applied=False)  # the admin task: failed
+        row = _row(db_session, rng, "web01", "analyst")
+        assert (row.password, row.pending, row.applied) == (p0, False, True)
+        assert _reveal_pw(client, rng, row) == p0  # consistent: what the guests have
+        assert client.post(f"/ranges/{rng.id}/snapshots/{snap.id}/restore").status_code == 202
+        row = _row(db_session, rng, "web01", "analyst")
+        assert row.pending_operation == f"restore:{snap.id}" and row.password != p0
+
+    def test_2_an_admin_force_settles_a_stuck_change_to_the_in_guest_password(self, client, db_session, world,
+                                                                               no_tasks):
+        rng = _range(client, db_session, world, RangeState.ready)
+        p0 = _row(db_session, rng, "web01", "ubuntu").password
+        row_id = _row(db_session, rng, "web01", "ubuntu").id
+        act_as(world["admin"])
+        nothing = client.post(f"/ranges/{rng.id}/credentials/{row_id}/settle", json={"reason": "check"})
+        assert nothing.status_code == 409
+        assert _rotate(client, rng, _row(db_session, rng, "web01", "ubuntu")).status_code == 202
+        act_as(world["range_ops"])
+        assert client.post(f"/ranges/{rng.id}/credentials/{row_id}/settle",
+                           json={"reason": "task died"}).status_code == 403
+        act_as(world["admin"])
+        settled = client.post(f"/ranges/{rng.id}/credentials/{row_id}/settle", json={"reason": "task died"})
+        assert settled.status_code == 200 and settled.json()["pending_change"] is False
+        row = _row(db_session, rng, "web01", "ubuntu")
+        assert (row.password, row.pending, row.applied, row.pending_operation) == (p0, False, True, None)
+        audit = db_session.query(AuditLog).filter(AuditLog.action == "range_credential_settle").one()
+        assert json.loads(audit.detail)["reason"] == "task died" and p0 not in audit.detail
+
     def test_6_deleting_a_snapshot_deletes_the_passwords_it_recorded(self, client, db_session, world, no_tasks):
         rng = _range(client, db_session, world, RangeState.ready)
         act_as(world["admin"])
@@ -350,6 +402,25 @@ class TestReviewFindings:
         assert issues.status_code == 200, issues.text
         (issue,) = [i for i in issues.json() if i["template_id"] == str(tmpl.id)]
         assert issue["upcoming_bookings"] == 1 and "scenario" in issue["problems"][0]
+        # Another tenant's booking of the same (global) template is never counted for this one.
+        tmpl.tenant_id, tmpl.is_public = None, True
+        other = Range(name="Theirs", template_id=tmpl.id, tenant_id=world["b"].id, state=RangeState.created)
+        db_session.add(other)
+        db_session.flush()
+        db_session.add(ScheduledEvent(name="theirs", tenant_id=world["b"].id, range_id=other.id,
+                                      state=EventState.scheduled, start_time=now + timedelta(days=1),
+                                      end_time=now + timedelta(days=1, hours=2)))
+        db_session.commit()
+        (issue,) = [i for i in client.get("/range-credentials/template-issues").json()
+                    if i["template_id"] == str(tmpl.id)]
+        assert issue["upcoming_bookings"] == 1
+        act_as(world["foreign_admin"])
+        (theirs,) = [i for i in client.get("/range-credentials/template-issues").json()
+                     if i["template_id"] == str(tmpl.id)]
+        assert theirs["upcoming_bookings"] == 1
+        act_as(world["admin"])
+        tmpl.tenant_id = world["a"].id
+        db_session.commit()
         assert "Typed-In-1!" not in issues.text
         act_as(world["instructor"])  # template:create, not template:update
         assert client.get("/range-credentials/template-issues").status_code == 403
@@ -430,10 +501,27 @@ class TestLabCredentials:
         db_session.commit()
         before = {r.id: r.password for r in db_session.query(RangeCredential).filter_by(range_id=session.range_id)}
         captured = db_session.query(RangeCredentialSnapshot).filter_by(snapshot_id=session.baseline_snapshot_id)
-        assert {c.credential_id: c.password for c in captured} == before  # the baseline recorded them
+        rows = {r.id: r for r in db_session.query(RangeCredential).filter_by(range_id=session.range_id)}
+        assert {c.credential_id: c.password_for(rows[c.credential_id]) for c in captured} == before
         act(db_session, lab_service.reset, session)
         assert ("restore_snapshot", str(session.range_id), str(session.baseline_snapshot_id)) in worker.calls
         db_session.expire_all()
         after = {r.id: r for r in db_session.query(RangeCredential).filter_by(range_id=session.range_id)}
         for rid, old in before.items():
             assert after[rid].password != old and after[rid].previous_password == old and not after[rid].applied
+
+    def test_a_lab_reset_is_refused_while_a_password_change_is_pending(self, lab, db_session, worker):
+        """Re-review of #250: never a reset over a pending change (an admin rotation queued, or
+        the previous reset's own still being applied); the lab stays as it is."""
+        client, owner, session = self._ready_lab(lab, db_session)
+        row = db_session.query(RangeCredential).filter_by(range_id=session.range_id).first()
+        row.applied = True
+        db_session.get(Range, session.range_id).provisioner_backend = "vsphere_api"
+        row.previous_password, row.pending_operation = row.password, "op-admin"
+        db_session.commit()
+        with pytest.raises(lab_service.LabRefusedError) as refused:
+            act(db_session, lab_service.reset, session)
+        assert refused.value.status == 409
+        db_session.expire_all()
+        assert db_session.get(RangeSnapshot, session.baseline_snapshot_id).snapshot_state == "ready"
+        assert not [c for c in worker.calls if c[0] == "restore_snapshot"]

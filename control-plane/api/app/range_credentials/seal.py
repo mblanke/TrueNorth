@@ -11,7 +11,8 @@ prefix          what                                   associated data
 ``tnsec:rt1:``  a typed-in password in a stored         ``template|<tenant id or "global">``
                 template's ``accounts:`` (seal_yaml)
 ``tnsec:rk1:``  a stored range credential (its          ``row|<tenant>|<range>|<credential id>``
-                password and the previous one)          ``snapshot|<tenant>|<snapshot>|<credential>``
+                password, the previous one, and the     (a snapshot's copy keeps its account's)
+                copies snapshots keep of it)
 ==============  =====================================  ==========================================
 
 So a stored credential pasted into a template's ``password:`` is not a template seal and is
@@ -107,10 +108,6 @@ def unseal(token: str, tenant_id: uuid.UUID | str | None) -> str:
 # ── Stored credential seals ─────────────────────────────────────────────
 def row_aad(tenant_id, range_id, credential_id) -> str:
     return f"row|{tenant_id}|{range_id}|{credential_id}"
-
-
-def snapshot_aad(tenant_id, snapshot_id, credential_id) -> str:
-    return f"snapshot|{tenant_id}|{snapshot_id}|{credential_id}"
 
 
 def seal_row(plain: str, aad: str) -> str:

@@ -888,6 +888,8 @@ def restore_snapshot(
         raise HTTPException(409, f"Cannot restore range in state '{rng.state.value}'")
     ops.refuse_while_in_flight(db, rng, "restore")
     _refuse_while_restoring(db, range_id)
+    if range_credentials.any_pending(db, rng):  # ADR 0013 §3: never over a pending password change
+        raise HTTPException(409, f"Cannot restore: {range_credentials.PENDING_REFUSAL}")
 
     # tenant-safe: _tenant_range() above already 404s unless `range_id` belongs to the
     # caller, so filtering snapshots by that same range_id is transitively scoped.

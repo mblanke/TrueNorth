@@ -288,29 +288,37 @@ class TestRanges:
         row = _add(db, RangeCredential(tenant_id=world.tenant.id, range_id=world.range.id, machine="web",
                                        username="analyst", password="New-1!", previous_password="Old-1!",
                                        generated=True, student_visible=True, applied=False,
-                                       rotated_at=datetime.now(UTC)))
+                                       rotated_at=datetime.now(UTC), pending_operation="op-1"))
+        snap_seal = row.sealed_previous  # what a snapshot taken now records: the account's own seal
         snap = _add(db, m.RangeSnapshot(range_id=world.range.id, name="s", tenant_id=world.tenant.id,
                                         snapshot_state="ready", range_state_at_snapshot="ready"))
         _add(db, RangeCredentialSnapshot(tenant_id=world.tenant.id, snapshot_id=snap.id, credential_id=row.id,
-                                         password="Snap-1!"))
+                                         sealed_password=snap_seal))
         with tasks._db_session() as s:
             (got,) = db_ops.account_rows(s, str(world.range.id))
-            assert (got["password"], got["previous"], got["pending"]) == ("New-1!", "Old-1!", True)
+            assert (got["password"], got["previous"], got["pending"], got["operation"]) == (
+                "New-1!", "Old-1!", True, "op-1")
             assert db_ops.account_rows(s, str(world.range.id), [str(uuid.uuid4())]) == []
-            assert db_ops.snapshot_passwords(s, str(world.range.id), str(snap.id)) == {str(row.id): "Snap-1!"}
+            assert db_ops.snapshot_passwords(s, str(world.range.id), str(snap.id)) == {
+                str(row.id): ("Old-1!", snap_seal)}
             assert db_ops.snapshot_passwords(s, str(uuid.uuid4()), str(snap.id)) == {}  # another range's: none
             # A build's record never settles a pending change (review of #250, item 4).
             db_ops.mark_accounts_applied(s, str(world.range.id), {("web", "analyst")})
             # Another version (an admin rotated again meanwhile): nothing happens.
             assert not db_ops.settle_credential_change(s, str(world.range.id), got["id"], "tnsec:rk1:other",
-                                                       applied=False)
+                                                       applied=False, operation="op-1")
+            # Another operation's change (a reset's task meeting an admin rotation): nothing happens.
+            assert not db_ops.settle_credential_change(s, str(world.range.id), got["id"], got["sealed"],
+                                                       applied=False, operation="restore:x")
             # The change failed: the password the guests still have becomes the password again.
-            assert db_ops.settle_credential_change(s, str(world.range.id), got["id"], got["sealed"], applied=False)
+            assert db_ops.settle_credential_change(s, str(world.range.id), got["id"], got["sealed"], applied=False,
+                                                   operation="op-1")
             db_ops.audit_credential_change(s, str(world.range.id), got["tenant_id"],
                                            {"outcome": "reverted", "accounts": ["web/analyst"]})
             s.commit()
         fresh = _fresh(db, row)
-        assert (fresh.password, fresh.previous_password, fresh.applied) == ("Old-1!", None, True)
+        assert (fresh.password, fresh.previous_password, fresh.applied, fresh.pending_operation) == (
+            "Old-1!", None, True, None)
         audit = db.query(m.AuditLog).filter(m.AuditLog.action == "range_credential_change").one()
         assert "Old-1!" not in audit.detail and "New-1!" not in audit.detail
 
@@ -1035,7 +1043,8 @@ PG_CALLS = {
     "drop_range_networks": lambda db: db_ops.drop_range_networks(db, ID, {150}),
     "account_rows": lambda db: db_ops.account_rows(db, ID, [ID]),
     "snapshot_passwords": lambda db: db_ops.snapshot_passwords(db, ID, ID),
-    "settle_credential_change": lambda db: db_ops.settle_credential_change(db, ID, ID, "x", applied=False),
+    "settle_credential_change": lambda db: db_ops.settle_credential_change(db, ID, ID, "x", applied=False,
+                                                                           operation="op"),
     "audit_credential_change": lambda db: db_ops.audit_credential_change(db, ID, ID, {}),
 }
 

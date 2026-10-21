@@ -52,7 +52,7 @@ _rc = sa.table(
     sa.column("machine", sa.String), sa.column("username", sa.String), sa.column("password", sa.Text),
     sa.column("generated", sa.Boolean), sa.column("student_visible", sa.Boolean), sa.column("applied", sa.Boolean),
     sa.column("role", sa.String), sa.column("notes", sa.Text), sa.column("source", sa.String),
-    sa.column("scenario", sa.Boolean),
+    sa.column("scenario", sa.Boolean), sa.column("previous_password", sa.Text),
 )
 _ranges = sa.table(
     "ranges",
@@ -314,10 +314,21 @@ def upgrade(conn) -> dict:
     return done
 
 
+def settle_pending_for_downgrade(conn) -> int:
+    """A change still pending when the schema goes back: the guests have the previous password
+    (``previous_password``, which the downgrade drops), so it becomes the password again
+    (review of #250). The seal is copied as is (both columns share the row's binding).
+    Returns rows changed."""
+    return conn.execute(sa.update(_rc).where(_rc.c.previous_password.is_not(None)).values(
+        password=_rc.c.previous_password, previous_password=None, applied=True)).rowcount or 0
+
+
 def downgrade(conn) -> int:
     """Back to ``tnsec:v1`` rows and ``tnsec:rc1`` template seals for the code before ADR
-    0013 (it reads nothing else)."""
+    0013 (it reads nothing else), after every pending change is put back to the password the
+    guests have."""
+    settled = settle_pending_for_downgrade(conn)
     if not key_available():
         logger.warning("TN_SECRETS_KEY is not set: range passwords cannot be resealed for the old code")
-        return 0
-    return reseal(conn, to="v1") + reseal_templates(conn, to="rc1")
+        return settled
+    return settled + reseal(conn, to="v1") + reseal_templates(conn, to="rc1")

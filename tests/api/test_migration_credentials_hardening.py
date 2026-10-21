@@ -133,11 +133,19 @@ def test_upgrade_reseals_adds_staff_logins_and_scrubs_the_wiki(tmp_path):
     for b in [body, *revisions]:
         assert all(p not in b for p in plain)
 
+    # A change pending when the schema goes back: the guests still have OLD_PW (previous), the
+    # row says the new one. The downgrade must keep what the guests have (review of #250).
+    with engine.begin() as db:
+        old_seal = db.execute(sa.text("SELECT password FROM range_credentials WHERE id = :i"),
+                              {"i": str(row_id)}).scalar()
+        new_seal = rc_seal.seal_row("Rotated-New-9!", rc_seal.row_aad(tenant, rng, row_id))
+        db.execute(sa.text("UPDATE range_credentials SET password = :p, previous_password = :o, applied = 0, "
+                           "pending_operation = 'op-1' WHERE id = :i"), {"p": new_seal, "o": old_seal, "i": str(row_id)})
     _alembic(url, "downgrade", PARENT)
     with engine.connect() as db:
-        stored = db.execute(sa.text("SELECT password FROM range_credentials WHERE username = 'Administrator' "
-                                    "AND range_id = :r"), {"r": str(rng)}).scalar()
-        assert stored.startswith("tnsec:v1:") and secretbox.unseal(stored) == OLD_PW
+        stored, applied = db.execute(sa.text("SELECT password, applied FROM range_credentials WHERE id = :i"),
+                                     {"i": str(row_id)}).one()
+        assert stored.startswith("tnsec:v1:") and secretbox.unseal(stored) == OLD_PW and applied
     insp = sa.inspect(engine)
     assert "range_credential_snapshots" not in insp.get_table_names()
     assert not {"source", "scenario", "rotated_at", "previous_password"} & {

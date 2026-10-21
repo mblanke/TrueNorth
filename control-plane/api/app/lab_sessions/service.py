@@ -770,10 +770,12 @@ def reset(db: Session, session: LabSession) -> LabSession:
         snap = db.get(RangeSnapshot, session.baseline_snapshot_id) if session.baseline_snapshot_id else None
         if snap is None or snap.snapshot_state != "ready":
             raise LabRefusedError("this lab has no reset point")
-        snap.snapshot_state = "restoring"
-        _set_state(session, RESETTING)
         from ..range_credentials import service as range_credentials
 
+        if range_credentials.any_pending(db, rng):  # review of #250: never over a pending password change
+            raise LabRefusedError("the lab's new passwords are still being set; reset it again in a minute", 409)
+        snap.snapshot_state = "restoring"
+        _set_state(session, RESETTING)
         # New passwords for the Student (ADR 0013 §3); the restore task sets them after the revert.
         range_credentials.on_restore(db, rng, snap, session.user_id)
         db.flush()

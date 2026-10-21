@@ -400,6 +400,7 @@ range_credentials = sa.Table(
     sa.Column("scenario", sa.Boolean(), nullable=False),
     sa.Column("rotated_at", sa.DateTime(timezone=True)),
     sa.Column("previous_password", sa.Text()),
+    sa.Column("pending_operation", sa.String(64)),
     sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
     sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
 )
