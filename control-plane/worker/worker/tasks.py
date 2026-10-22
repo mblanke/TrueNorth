@@ -28,6 +28,7 @@ from .celery_app import app
 from .fencing import FINAL_ERRORS, fenced, guarded_range_update, provision_finish_by, run_async, snapshot_back_to_ready
 from .fencing import last_attempt as _last_attempt
 from .provisioners import discard_built
+from .range_teardown import record as record_teardown
 from .template_pins import pin as pin_templates
 
 logger = logging.getLogger("truenorth.worker")
@@ -225,7 +226,7 @@ def destroy_range(self, range_id: str):
         provisioner = _get_backend(backend, range_id, output=prov_output, teardown=True)  # the vCenter it was built on
 
         result = run_async(provisioner.destroy(range_id, prov_output))
-
+        record_teardown(_db_session, range_id, result)  # S5: deleted by recorded id, what remains, unidentified
         if result.status == "failed":
             raise RuntimeError("; ".join(result.errors) or "Destroy failed")
 
@@ -440,14 +441,11 @@ def snapshot_range(self, range_id: str, snapshot_id: str):
             _discard_snapshot(provisioner, range_id, prov_output, name)
             raise RuntimeError(f"snapshot {result.status}: {'; '.join(result.errors) or 'no detail'}")
 
-        snapshot_data = json.dumps(
-            {
-                "provider": backend,
-                "range_id": range_id,
-                "snapshot_name": name,
-                "vm_count": len(prov_output.get("vms", [])),
-            }
-        )
+        snapshot_data = json.dumps({
+            "provider": backend, "range_id": range_id, "snapshot_name": name,
+            "vm_count": len(prov_output.get("vms", [])),
+            "snapshot_ids": getattr(result, "snapshot_ids", None) or {},  # as taken: the drift check's (S5)
+        })
         size = getattr(result, "size_bytes", 0)
 
         if not _update_snapshot_state(snapshot_id, "ready", data=snapshot_data, size=size, only_from=_SNAPSHOT_PENDING):

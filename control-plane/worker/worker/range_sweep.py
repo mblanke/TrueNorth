@@ -44,27 +44,51 @@ def metrics(rows) -> dict[str, object]:
     return _sweep(rows, "collect_metrics")
 
 
+def read_group(provisioner, items: list[tuple[str, dict]]) -> dict[str, object]:
+    """The drift reading of one endpoint's ranges (worker/range_drift.py): ``live_inventories``
+    once for all of them, inside the provisioner's session (one login). {range id: reading,
+    or the exception}."""
+    async def run() -> dict[str, object]:
+        scope = getattr(provisioner, "session", None)
+        async with scope() if callable(scope) else contextlib.nullcontext():
+            return await provisioner.live_inventories(items)
+
+    try:
+        got = asyncio.run(run())
+    except Exception as exc:  # noqa: BLE001 — every range of the group says why
+        return dict.fromkeys((rid for rid, _ in items), exc)
+    return {rid: got.get(rid, RuntimeError("not read")) for rid, _ in items}
+
+
 def backend_of(row) -> str:
     """The backend a db_ops.active_ranges row was built on (the worker's default if unset)."""
     return (row[3] if len(row) > 3 and row[3] else None) or os.getenv("PROVISIONER_BACKEND", "mock")
 
 
-def _sweep(rows, method: str) -> dict[str, object]:
-    results: dict[str, object] = {}
-    groups: dict[tuple, tuple[object, list[tuple[str, dict]]]] = {}
+def groups(rows) -> tuple[list[tuple[object, list[tuple[str, dict]]]], dict[str, Exception]]:
+    """Rows grouped by backend and the endpoint they are bound to: [(provisioner, [(range id,
+    output)])], and {range id: why} for those whose provisioner could not be made."""
+    errors: dict[str, Exception] = {}
+    found: dict[tuple, tuple[object, list[tuple[str, dict]]]] = {}
     for row in rows:
         range_id, output = str(row[0]), _output(row[2])
         backend = backend_of(row)
         try:
             provisioner = base_tasks._get_backend(backend, range_id, output=output)
         except Exception as exc:  # noqa: BLE001 — reported for this range only
-            results[range_id] = exc
+            errors[range_id] = exc
             continue
         record = getattr(provisioner, "connection_record", None)
         rec = record() if callable(record) else None
         key = (backend, json.dumps(rec if isinstance(rec, dict) else None, sort_keys=True))  # one connection row
-        groups.setdefault(key, (provisioner, []))[1].append((range_id, output))
-    for provisioner, items in groups.values():
+        found.setdefault(key, (provisioner, []))[1].append((range_id, output))
+    return list(found.values()), errors
+
+
+def _sweep(rows, method: str) -> dict[str, object]:
+    grouped, errors = groups(rows)
+    results: dict[str, object] = dict(errors)
+    for provisioner, items in grouped:
         try:
             asyncio.run(_check_group(provisioner, items, results, method))
         except Exception as exc:  # noqa: BLE001 — the scope itself failed (logout): keep what was read

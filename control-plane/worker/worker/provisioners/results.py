@@ -42,6 +42,10 @@ class ProvisionResult:
     # "release": [physical VLANs the range no longer needs]}; the worker releases those and
     # records the collisions (range_alloc.build_failure), and does not retry.
     conflict: dict | None = None
+    # Range certification S5: the range-wide part of its independently identified inventory
+    # (vSphere: the range folder, VLAN and MAC reservations); per VM it is ``vms[].identity``
+    # and per port group ``networks[].moid``/``key`` (worker/range_inventory.py).
+    inventory: dict | None = None
 
 
 @dataclass
@@ -52,6 +56,10 @@ class DestroyResult:
     duration_seconds: float = 0.0
     resources_removed: int = 0
     errors: list[str] = field(default_factory=list)
+    # Range certification S5: what was deleted by recorded id, which recorded ids remain,
+    # what carries the range's mark but was not deleted (unidentified), and what could not
+    # be checked. None: the backend does not verify teardown (worker/range_inventory.py).
+    teardown: dict | None = None
 
 
 @dataclass
@@ -83,6 +91,8 @@ class SnapshotResult:
     vms_snapped: int = 0
     duration_seconds: float = 0.0
     errors: list[str] = field(default_factory=list)
+    # VM id -> the snapshot's own id, as taken (range certification S5: drift compares them).
+    snapshot_ids: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass

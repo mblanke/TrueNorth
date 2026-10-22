@@ -70,12 +70,13 @@ try:
 except ImportError:  # only the snapshot operations need it
     Disconnect = SmartConnect = vim = vmodl = None  # type: ignore[assignment]
 
-from .. import pfsense_config, software_catalogue, uplink_pool, vlan_pool, vyos_config
+from .. import pfsense_config, range_inventory, software_catalogue, uplink_pool, vlan_pool, vyos_config
 from . import template_copies, vsphere_products, vsphere_readiness, vsphere_roles
 from . import vsphere_credcheck as credcheck
 from . import vsphere_customization as customization
 from . import vsphere_guest as guest
 from . import vsphere_infra as infra
+from . import vsphere_inventory as inventory
 from . import vsphere_macs as macs
 from . import vsphere_securityonion as seconion
 from . import vsphere_tags as tags
@@ -215,7 +216,7 @@ METRIC_PATHS = (
     "summary.config.memorySizeMB",
 )
 # What the range-ownership check (_screen) reads before a delete, power or snapshot.
-OWNER_PATHS = ("name", "config.annotation")
+OWNER_PATHS = ("name", "config.annotation", "config.instanceUuid")
 
 
 def warn_not_offline(vm_name: str, specs) -> list[str]:
@@ -440,16 +441,41 @@ def _inventory_props(si, paths) -> dict[str, dict]:
 def _not_ours(range_id: str, vm: dict, seen: dict, where: str) -> str | None:
     """None when what vCenter holds under ``vm``'s recorded id is this range's VM, else a note.
 
-    The range-ownership rule (see VsphereAPIProvisioner._screen): its annotation names the
-    range (RANGE_TAG), or, built before the tag (2026-10-07), it carries no tag and still
-    has its recorded ``<range8>-<node>`` name. ``seen`` holds OWNER_PATHS."""
+    The range-ownership rule (see VsphereAPIProvisioner._screen). A VM whose instance UUID
+    was recorded at clone (range certification S5) is the range's exactly when that UUID is
+    still the one under its moid, renamed or re-annotated or not: the record decides, never a
+    mark. (Trust: ``config.instanceUuid`` can be set only with vCenter privileges to edit a
+    VM's configuration, i.e. by someone who could delete the VM outright; the pairing with the
+    recorded moid guards against TrueNorth's own mistakes, not a vCenter administrator.) Older records: its annotation names the range (RANGE_TAG), or, built before the
+    tag (2026-10-07), it carries no tag and still has its recorded ``<range8>-<node>`` name.
+    ``seen`` holds OWNER_PATHS."""
     name = str(seen.get("name") or "")
     owner = annotated_range(str(seen.get("config.annotation") or ""))
+    recorded = (vm.get("identity") or {}).get("instance_uuid") if isinstance(vm.get("identity"), dict) else None
+    if recorded:
+        live = seen.get("config.instanceUuid")
+        if range_inventory.vm_owned({"instance_uuid": recorded}, live):
+            return None
+        return (f"VM {vm.get('name') or vm.get('vm_id')}: {vm.get('vm_id')} on {where} is {name!r} with instance "
+                f"UUID {live or 'unknown'}, not the recorded {recorded}")
     legacy = not owner and name == vm.get("name") and name.startswith(f"{range_id[:8]}-")
     if owner == range_id or legacy:
         return None
     whose = f"range {owner}" if owner else "no TrueNorth range"
     return f"VM {vm.get('name') or vm.get('vm_id')}: {vm.get('vm_id')} on {where} is {name!r} of {whose}, not this range's"
+
+
+def _str_or_none(value) -> str | None:
+    return None if value is None else str(value)
+
+
+def _screened(vm: dict) -> dict:
+    """What ``_screen`` needs of a recorded VM: its id, name and (S5) recorded identity, so
+    every operation applies the same ownership rule (``_not_ours``)."""
+    out = {"vm_id": vm.get("vm_id"), "name": vm.get("name", "")}
+    if isinstance(vm.get("identity"), dict):
+        out["identity"] = vm["identity"]
+    return out
 
 
 def _vm_metrics(vm: dict, props: dict | None) -> dict:
@@ -1037,12 +1063,14 @@ class VsphereAPIProvisioner(BaseProvisioner):
         finally:
             Disconnect(si)
 
-    def _fan_out(self, si, vm_ids: list[str], submit: Callable) -> tuple[dict[str, str], set[str]]:
+    def _fan_out(self, si, vm_ids: list[str], submit: Callable,
+                 results: dict[str, str] | None = None) -> tuple[dict[str, str], set[str]]:
         """Start ``submit(vm)``'s tasks, a batch of VSPHERE_CONCURRENCY VMs at a time.
 
         vCenter runs a batch side by side, so a 20-VM range does not take twenty
         snapshots' worth of wall-clock, without handing vCenter all twenty at once.
         Returns the VMs that failed with the reason, and the VMs whose tasks started.
+        ``results``: filled with each VM's task result id (a new snapshot's moid).
         """
         failed: dict[str, str] = {}
         submitted: set[str] = set()
@@ -1065,9 +1093,15 @@ class VsphereAPIProvisioner(BaseProvisioner):
                     _wait_task(task, si, self._snapshot_timeout)
                 except Exception as exc:
                     failed.setdefault(vm_id, getattr(exc, "msg", None) or str(exc))
+                    continue
+                if results is not None:  # task.info is a round trip: only when asked for
+                    made = getattr(getattr(getattr(task, "info", None), "result", None), "_moId", None)
+                    if made:
+                        results[vm_id] = str(made)
         return failed, submitted
 
-    def _snapshot_sync(self, vm_ids: list[str], name: str) -> tuple[dict[str, str], set[str]]:
+    def _snapshot_sync(self, vm_ids: list[str], name: str,
+                       taken: dict[str, str] | None = None) -> tuple[dict[str, str], set[str]]:
         with self._vim() as si:
             return self._fan_out(
                 si,
@@ -1077,6 +1111,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
                         name=name, description="TrueNorth range snapshot", memory=False, quiesce=False
                     )
                 ],
+                taken,
             )
 
     def _restore_sync(self, vm_ids: list[str], name: str, power_on: bool) -> tuple[dict[str, str], set[str]]:
@@ -1404,6 +1439,9 @@ class VsphereAPIProvisioner(BaseProvisioner):
             if not existed:
                 created.append({"portgroup": pg, "physical_vlan": vlan, "switch_mode": self._switch_mode})
             refs[logical] = self._guard(infra.network_ref(net))
+            for recorded in networks:  # its ids, for teardown and drift (range certification S5)
+                if recorded.get("portgroup") == pg:
+                    recorded.update(moid=refs[logical]["id"], key=refs[logical].get("key"))
 
         uplink = None
         if any(nic.get("uplink") for v in vm_defs for nic in v["nics"]):
@@ -1636,10 +1674,14 @@ class VsphereAPIProvisioner(BaseProvisioner):
         """Where range folders are looked for: VSPHERE_RANGE_FOLDER, then the earlier root."""
         return list(dict.fromkeys([self._range_folder, *tags.LEGACY_RANGE_ROOTS]))
 
-    def _teardown_sync(self, si, range_id: str, networks: list[dict], mirrors: bool = False) -> int:
+    def _teardown_sync(self, si, range_id: str, networks: list[dict], mirrors: bool = False,
+                       notes: list[str] | None = None) -> int:
         """Remove the range's mirror sessions, port groups and (empty) VM folder. Missing
         ones are fine. Sessions go by name prefix (``tn-<range8>-``), so ones a build made
-        but never recorded go too; they go first, while their port groups still exist."""
+        but never recorded go too; they go first, while their port groups still exist.
+
+        A vDS port group whose moid was recorded (range certification S5) is removed only
+        while the one of that name is still that moid; otherwise it is left and noted."""
         dc, cluster = self._datacenter_and_cluster(si)
         removed = 0
         dvs = None
@@ -1658,6 +1700,11 @@ class VsphereAPIProvisioner(BaseProvisioner):
             dvs = dvs or self._find(si, vim.DistributedVirtualSwitch, self._dvs_name)
             if dvs is None:
                 raise RuntimeError(f"Distributed switch not found: {self._dvs_name!r}")
+            live = next((p for p in dvs.portgroup if p.name == name), None) if net.get("moid") else None
+            if live is not None and getattr(live, "_moId", None) != net["moid"]:
+                if notes is not None:
+                    notes.append(f"port group {name}: now {live._moId}, not the recorded {net['moid']}; left alone")
+                continue
             removed += infra.remove_dvs_portgroup(dvs, name, lambda t: self._wait(t, si), net.get("physical_vlan"))
         for folder in infra.find_range_folders(dc, self._range_roots(), range_id):
             if not folder.childEntity:  # by id8: today's <name>-<id8> and earlier <id8> folders
@@ -1753,6 +1800,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
         uplink: dict | None = None
         mirrors: list[dict] = []
         conflict: dict | None = None
+        recorded: dict | None = None  # the range-wide inventory (range certification S5)
 
         try:
             if SmartConnect is None:
@@ -1796,6 +1844,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
                 try:
                     site = await asyncio.to_thread(self._prepare_sync, si, range_id, vm_defs, networks, physical)
                     errors += site.get("notes", [])
+                    recorded = await asyncio.to_thread(self._range_inventory_sync, site, physical, allocations)
                     async with self._client() as client:
                         # No tagging in the budget's last two minutes: they are the build's.
                         self._tagger = (self._tag_client(client, deadline=self._budget_end - 120)
@@ -1873,6 +1922,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
             mirrors=mirrors,
             not_ready=[n for n in not_ready if n in built],
             conflict=conflict,
+            inventory=recorded if vms_out else None,
         )
 
     # ------------------------------------------------------------------ #
@@ -2400,7 +2450,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
         if SmartConnect is None:
             raise RuntimeError("pyvmomi is required for guest operations (pip install pyvmomi)")
         async with self._soap_scope(always=True):
-            _, notes, missing = await self._screen(range_id, [{"vm_id": v["vm_id"], "name": v["name"]} for v in vms])
+            _, notes, missing = await self._screen(range_id, [_screened(v) for v in vms])
         if notes:
             raise RuntimeError(notes[0])
         out = {v["name"]: {"applied": [], "error": "not on this vCenter"} for v in vms if v["vm_id"] in missing}
@@ -2623,18 +2673,20 @@ class VsphereAPIProvisioner(BaseProvisioner):
         return out
 
     async def run_in_guest(self, vm_id: str, login, steps: list, timeout: float, *, range_id: str | None = None,
-                           vm_name: str = "") -> list[dict]:
+                           vm_name: str = "", identity: dict | None = None) -> list[dict]:
         """Guest operations as ``login`` (VMware Tools must run in the VM): wait until the
         login works, then each step in turn, all within ``timeout`` seconds.
 
         Only in a VM that is ``range_id``'s on this vCenter (``_screen``): a bare ``vm-NN``
-        on the wrong vCenter would run the steps, as root, in someone else's VM."""
+        on the wrong vCenter would run the steps, as root, in someone else's VM. ``identity``:
+        the VM's recorded identity (S5), so its instance UUID decides, as for every operation."""
         if SmartConnect is None:
             raise RuntimeError("pyvmomi is required for guest operations (pip install pyvmomi)")
         if not range_id:
             raise RuntimeError("guest commands need the range id: they run only in that range's own VM")
         async with self._soap_scope(always=True):
-            _, notes, missing = await self._screen(range_id, [{"vm_id": vm_id, "name": vm_name}])
+            _, notes, missing = await self._screen(range_id, [_screened({"vm_id": vm_id, "name": vm_name,
+                                                                         "identity": identity})])
         if notes:
             raise RuntimeError(notes[0])
         if vm_id in missing:
@@ -2737,8 +2789,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
         if not products and not sos:
             return {}, []
         async with self._soap_scope(always=True):
-            _, notes, missing = await self._screen(range_id, [{"vm_id": v["vm_id"], "name": v["name"]}
-                                                              for v in products + sos])
+            _, notes, missing = await self._screen(range_id, [_screened(v) for v in products + sos])
         if notes:
             return {}, [notes[0]]
         run_end = time.monotonic() + run_seconds
@@ -2767,8 +2818,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
         await self._get_session()
         changes: dict[str, dict] = {}
         async with self._soap_scope(always=True):
-            ours, _, missing = await self._screen(range_id, [{"vm_id": v["vm_id"], "name": v["name"]}
-                                                             for v in pending])
+            ours, _, missing = await self._screen(range_id, [_screened(v) for v in pending])
             mine = {v["vm_id"] for v in ours}  # not ours under that id: left alone (and logged)
             async with self._client() as client:
                 for v in (v for v in pending if v["vm_id"] in mine):
@@ -2861,6 +2911,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
                         await self._delete_vm(client, vm_id)
                 raise
         powered_on, powered_on_at = time.monotonic(), time.time()
+        identity = await self._identity(si, vm_def, vm_id)  # as built, before anything else runs on it (S5)
         guest_net = await self._await_guest_network(client, vm_def, vm_id)
         ready = vsphere_readiness.assess(vm_def, guest_net)
         if customization.applies(vm_def):  # #255: Sysprep's outcome, every Windows VM
@@ -2899,6 +2950,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
             "datastore": getattr(datastore, "name", ""),
             "template": vm_def["_source"],  # template_copies.names_in_use
             "template_build": self._build_record(vm_def),
+            "identity": identity,  # independently identified inventory (range certification S5)
             "tools_ready": guest_net["tools_ready"],
             "family": infra.os_family(vm_def),  # windows | linux | appliance (credential rotation)
         }
@@ -2996,9 +3048,17 @@ class VsphereAPIProvisioner(BaseProvisioner):
     ) -> DestroyResult:
         """Delete the VMs, then (only once they are all gone) the port groups and folder.
 
-        Only VMs that are this range's on this vCenter are deleted (``_screen``); any other
-        recorded id is left alone and reported as an error, so the port groups stay too
-        and the range is not recorded destroyed while its real VMs may be elsewhere."""
+        Only VMs that are this range's on this vCenter are deleted (``_screen``): by their
+        recorded moid *and* instance UUID (range certification S5), so a renamed VM still
+        goes and a reused id never does; any other recorded id is left alone and reported
+        as an error, so the port groups stay too and the range is not recorded destroyed
+        while its real VMs may be elsewhere.
+
+        Then (S5, ``teardown`` in the result): anything else carrying this range's
+        annotation, ``tn-range`` tag or port group owner mark is listed as unidentified and
+        **not** deleted (an administrator may confirm it by moid: ``delete_confirmed``);
+        the range's tag is kept while an unidentified VM carries it. Last, every recorded id
+        is looked for again: VMs, their disk files, port groups, the folder."""
         start = time.monotonic()
         errors: list[str] = []
         vms = provision_output.get("vms", [])
@@ -3009,50 +3069,297 @@ class VsphereAPIProvisioner(BaseProvisioner):
             return DestroyResult(status="ok", resources_removed=0, duration_seconds=0.0)
 
         removed = 0
+        deleted: list[dict] = []
+        unidentified: list[dict] = []
+        notes: list[str] = []
+        report: dict | None = None
         try:
             has_ids = any(vm.get("vm_id") for vm in vms)
             if has_ids:  # only port groups left: no REST login needed
                 await self._get_session()
-            async with self._soap_scope(always=has_ids), self._client() as client:
-                recorded_ids = [vm["vm_id"] for vm in vms if vm.get("vm_id")]
-                vms, errors, missing = await self._screen(range_id, vms)
-                if recorded_ids and set(recorded_ids) <= missing and not provision_output.get("connection"):
-                    # Nothing recorded which vCenter built it, and none of its VMs is here: this
-                    # is likely not that vCenter (the tenant's preferred connection changed).
-                    # Counting them as deleted would record the range destroyed and orphan them.
-                    if self.on_unrecorded_vms_missing is not None:
-                        try:
-                            await asyncio.to_thread(self.on_unrecorded_vms_missing, range_id)
-                        except Exception as exc:  # noqa: BLE001 — the refusal below stands either way
-                            logger.warning("range %s: could not mark its VMs missing: %s", range_id, exc)
-                    raise RuntimeError(
-                        f"none of the range's {len(recorded_ids)} recorded VMs exist on {self._base_url}, and the "
-                        "range does not record which vCenter built it; refusing to call it destroyed. Point the "
-                        "tenant's connection at the vCenter that built it, or delete its VMs there by hand")
-                ids = [vm["vm_id"] for vm in vms if vm.get("vm_id")]
-                results = await asyncio.gather(*(self._delete_vm(client, i) for i in ids), return_exceptions=True)
-                for vm_id, res in zip(ids, results, strict=True):
-                    if isinstance(res, Exception):
-                        errors.append(f"VM {vm_id}: {self._redact(res)}")
-                    else:
-                        removed += 1
-            # A port group still has VMs on it until every VM is gone.
-            if (portgroups or mirrors) and not errors:
-                if SmartConnect is None:
-                    raise RuntimeError("pyvmomi is required to remove range port groups (pip install pyvmomi)")
-                with self._vim() as si:
-                    removed += await asyncio.to_thread(self._teardown_sync, si, range_id, portgroups, mirrors)
-            if has_ids and not errors:
-                await self._delete_range_tags(range_id)
+            # One Web Services session for the whole teardown: the deletes, the scan, the check.
+            async with self._soap_scope(always=True):
+                try:
+                    removed = await self._destroy_in_scope(range_id, provision_output, vms, portgroups, mirrors,
+                                                           has_ids, errors, deleted, unidentified, notes)
+                finally:
+                    report = await self._teardown_report(provision_output, deleted, unidentified, notes)
         except Exception as exc:
             errors.append(str(exc))
+            removed = removed or len(deleted)  # what was deleted before it stopped
 
         return DestroyResult(
             status=outcome(removed, errors),
             resources_removed=removed,
             duration_seconds=time.monotonic() - start,
             errors=errors,
+            # Without a session (could not connect) the report says nothing could be checked.
+            teardown=report or await self._teardown_report(provision_output, deleted, unidentified, notes),
         )
+
+    async def _destroy_in_scope(self, range_id: str, provision_output: dict, vms: list[dict], portgroups: list[dict],
+                                mirrors: bool, has_ids: bool, errors: list[str], deleted: list[dict],
+                                unidentified: list[dict], notes: list[str]) -> int:
+        """``destroy``'s work inside its session; fills ``errors``, ``deleted``,
+        ``unidentified`` and ``notes`` as it goes (the report is written even if it raises)."""
+        removed = 0
+        async with self._client() as client:
+            recorded_ids = [vm["vm_id"] for vm in vms if vm.get("vm_id")]
+            vms, skipped, missing = await self._screen(range_id, vms)
+            errors += skipped
+            if recorded_ids and set(recorded_ids) <= missing and not provision_output.get("connection"):
+                # Nothing recorded which vCenter built it, and none of its VMs is here: this
+                # is likely not that vCenter (the tenant's preferred connection changed).
+                # Counting them as deleted would record the range destroyed and orphan them.
+                if self.on_unrecorded_vms_missing is not None:
+                    try:
+                        await asyncio.to_thread(self.on_unrecorded_vms_missing, range_id)
+                    except Exception as exc:  # noqa: BLE001 — the refusal below stands either way
+                        logger.warning("range %s: could not mark its VMs missing: %s", range_id, exc)
+                # Its ids are not here, so finding none of them proves nothing (S5 report).
+                notes.append(f"none of the recorded VMs is on {self._base_url}; this may not be the vCenter that "
+                             "built the range, so the absence of its recorded ids verifies nothing")
+                raise RuntimeError(
+                    f"none of the range's {len(recorded_ids)} recorded VMs exist on {self._base_url}, and the "
+                    "range does not record which vCenter built it; refusing to call it destroyed. Point the "
+                    "tenant's connection at the vCenter that built it, or delete its VMs there by hand")
+            ids = [vm["vm_id"] for vm in vms if vm.get("vm_id") and vm["vm_id"] not in missing]
+            names = {vm["vm_id"]: vm.get("name", "") for vm in vms if vm.get("vm_id")}
+            results = await asyncio.gather(*(self._delete_vm(client, i) for i in ids), return_exceptions=True)
+            for vm_id, res in zip(ids, results, strict=True):
+                if isinstance(res, Exception):
+                    errors.append(f"VM {vm_id}: {self._redact(res)}")
+                else:
+                    deleted.append({"kind": "vm", "id": vm_id, "name": names.get(vm_id, "")})
+            removed += len(deleted) + sum(1 for vm in vms if vm.get("vm_id") in missing)  # gone counts as deleted
+        found, scan_notes = await self._unidentified(range_id, provision_output, tags=has_ids)
+        unidentified += found
+        notes += scan_notes
+        # A port group still has VMs on it until every VM is gone.
+        if (portgroups or mirrors) and not errors:
+            with self._vim() as si:
+                removed += await asyncio.to_thread(self._teardown_sync, si, range_id, portgroups, mirrors, notes)
+        # The tag stays while an unidentified VM carries it: it is the evidence of the mark.
+        if has_ids and not errors and not any("tag" in u.get("marks", ()) for u in unidentified):
+            await self._delete_range_tags(range_id)
+        return removed
+
+    # ------------------------------------------------------------------ #
+    # Range certification S5: inventory, unidentified items, drift
+    # ------------------------------------------------------------------ #
+
+    supports_inventory = True
+
+    async def _identity(self, si, vm_def: dict, vm_id: str) -> dict | None:
+        """The VM's independently identified inventory, read once it is built. Best effort:
+        a VM whose identity could not be read is still the range's, by the older rule
+        (annotation, name), and its teardown report says so (range_inventory.recorded)."""
+        try:
+            return await asyncio.to_thread(inventory.read_identity, si, vm_id)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("VM %s (%s): identity not recorded: %s", vm_def.get("name"), vm_id, self._redact(exc))
+            return None
+
+    def _range_inventory_sync(self, site: dict, physical: dict, allocations: dict) -> dict:
+        """The range-wide part of the inventory: its folder, VLAN and MAC reservations."""
+        folder = site.get("folder")
+        return {
+            "folder": {"moid": getattr(folder, "_moId", None), "name": str(getattr(folder, "name", "") or "")}
+            if folder is not None else None,
+            "vlans": {str(k): int(v) for k, v in (physical or {}).items()},
+            "macs": dict(allocations.get("nic_macs") or {}),
+            "recorded_at": datetime.now(UTC).isoformat(),
+        }
+
+    async def _tagged_vms(self, range_id: str) -> tuple[set[str], str | None]:
+        """Moids the range's tn-range tag is on, and a note when that could not be read."""
+        found, notes = await self._tagged_many([range_id])
+        return found[range_id], notes.get(range_id)
+
+    async def _tagged_many(self, range_ids: list[str]) -> tuple[dict[str, set[str]], dict[str, str]]:
+        """``_tagged_vms`` of many ranges through one tag client (the categories and the
+        tn-range tags are listed once, then one attached-objects call per range)."""
+        found: dict[str, set[str]] = {rid: set() for rid in range_ids}
+        notes: dict[str, str] = {}
+        if not self._tags_enabled or not range_ids:
+            return found, notes
+        try:
+            await self._get_session()
+            async with self._client() as client:
+                tagger = self._tag_client(client)
+                for rid in range_ids:
+                    try:
+                        found[rid] = await asyncio.wait_for(tagger.range_tagged_vms(rid), 4 * self._tag_timeout)
+                    except Exception as exc:  # noqa: BLE001 -- the annotation scan still runs; the gap is reported
+                        notes[rid] = f"VMs carrying the range's tn-range tag: {str(exc) or type(exc).__name__}"
+        except Exception as exc:  # noqa: BLE001 -- no session or client at all
+            notes.update(dict.fromkeys(range_ids, f"VMs carrying the range's tn-range tag: {str(exc) or type(exc).__name__}"))
+        return found, notes
+
+    def _marks_sync(self, si) -> tuple[dict[str, dict], dict[str, dict]]:
+        """Every VM's marks and every range-switch port group's owner mark: two calls, shared
+        by every range they are matched against (``inventory.unidentified``)."""
+        dvs = self._find(si, vim.DistributedVirtualSwitch, self._dvs_name)
+        return inventory.all_vm_marks(si), inventory.portgroup_marks(si, dvs)
+
+    def _unidentified_sync(self, si, range_id: str, inv: dict, tagged: set[str]) -> list[dict]:
+        """What carries this range's mark (annotation, tn-range tag, port group owner mark)
+        but is not a recorded item: listed, never deleted here."""
+        return inventory.unidentified(range_id, inv, *self._marks_sync(si), tagged, annotated_range)
+
+    async def _unidentified(self, range_id: str, output: dict, *, tags: bool = True) -> tuple[list[dict], list[str]]:
+        """``_unidentified_sync`` with the tag lookup (``tags``: a range that recorded no VM
+        has had no VM tagged by TrueNorth, and needs no REST login for it)."""
+        tagged, note = await self._tagged_vms(range_id) if tags else (set(), None)
+        notes = [note] if note else []
+        try:
+            with self._vim() as si:
+                found = await asyncio.to_thread(self._unidentified_sync, si, range_id,
+                                                range_inventory.recorded(output), tagged)
+        except Exception as exc:  # noqa: BLE001 -- reported as not checked, never guessed
+            return [], [*notes, f"the scan for unrecorded items carrying the range's mark failed: {self._redact(exc)}"]
+        return found, notes
+
+    async def _teardown_report(self, output: dict, deleted: list[dict], unidentified: list[dict],
+                               notes: list[str]) -> dict:
+        """What the teardown did and what is left, for the record (range_inventory.teardown_status)."""
+        inv = range_inventory.recorded(output)
+        left: list[dict] = []
+        not_checked = list(notes)
+        try:
+            with self._vim() as si:
+                left, more = await asyncio.to_thread(inventory.remaining, si, inv, lambda t: self._wait(t, si))
+            not_checked += more
+        except Exception as exc:  # noqa: BLE001
+            not_checked.append(f"the check for recorded ids that remain failed: {self._redact(exc)}")
+        return {"verified_at": datetime.now(UTC).isoformat(), "vcenter": self._base_url, "legacy": bool(inv["gaps"]),
+                "gaps": inv["gaps"], "deleted": deleted, "remaining": left, "unidentified": unidentified,
+                "not_checked": not_checked}
+
+    async def live_inventory(self, range_id: str, provision_output: dict) -> dict:
+        """The drift reading (range_inventory.compare) of one range."""
+        return (await self.live_inventories([(range_id, provision_output)]))[range_id]
+
+    def _live_many_sync(self, si, items: list[tuple[str, dict]], tagged: dict[str, set[str]]) -> dict[str, dict]:
+        """Every range of ``items`` read in the same handful of calls: all their recorded VMs
+        in one property-collector call (devices, snapshot tree, config), their port groups in
+        one more, and the VM and port group marks once for all of them (unidentified items)."""
+        invs = {rid: range_inventory.recorded(out) for rid, out in items}
+        reading = inventory.live(si, [v for inv in invs.values() for v in inv["vms"]],
+                                 [p for inv in invs.values() for p in inv["portgroups"]])
+        vm_marks, pg_marks = self._marks_sync(si)
+        out = {}
+        for rid, inv in invs.items():
+            out[rid] = {"vms": {v["moid"]: reading["vms"][v["moid"]] for v in inv["vms"]},
+                        "portgroups": {p["moid"]: reading["portgroups"][p["moid"]] for p in inv["portgroups"]
+                                       if p["moid"] in reading["portgroups"]},
+                        "unidentified": inventory.unidentified(rid, inv, vm_marks, pg_marks, tagged.get(rid, set()),
+                                                               annotated_range),
+                        "errors": list(reading["errors"])}
+        return out
+
+    async def live_inventories(self, items: list[tuple[str, dict]]) -> dict[str, dict]:
+        """``live_inventory`` of many ranges on this vCenter at once (the drift sweep), in one
+        Web Services session (the scheduled run's, inside ``session()``). A range whose tag
+        could not be read says so in its ``errors`` (its tagged items are then not seen)."""
+        tagged, notes = await self._tagged_many([rid for rid, _ in items])
+
+        def read(si):
+            return self._live_many_sync(si, items, tagged)
+
+        if self._scope is not None:  # inside a scheduled run's session(): its one login
+            out = await asyncio.to_thread(read, self._scope_si(self._scope))
+        else:
+            def own():
+                with self._vim() as si:
+                    return read(si)
+            out = await asyncio.to_thread(own)
+        for rid, note in notes.items():
+            out[rid]["errors"].append(note)
+        return out
+
+    def _delete_listed_sync(self, si, range_id: str, item: dict, tagged: set[str]) -> tuple[str, str]:
+        """Delete one confirmed unidentified item only if it is still exactly what was listed
+        *and* still carries this range's mark, read now: a VM its instance UUID and (its
+        annotation names the range, or ``tagged``: the range's tn-range tag is on it now); a
+        port group its key and owner mark. Returns ``("deleted" | "gone" | "skipped", why)``."""
+        moid = str(item.get("moid") or "")
+        if item.get("kind") == "vm":
+            props, missing = inventory.read_props(si, vim.VirtualMachine, [moid], inventory.MARK_PATHS)
+            if moid in missing:
+                return "gone", f"{moid} was no longer in vCenter"
+            seen = props[moid]
+            if not item.get("instance_uuid") or not range_inventory.vm_owned(
+                    {"instance_uuid": item["instance_uuid"]}, _str_or_none(seen.get("config.instanceUuid"))):
+                return "skipped", f"{moid} now has instance UUID {seen.get('config.instanceUuid')}, not the listed one"
+            if seen.get("config.template"):
+                return "skipped", f"{moid} is a template"
+            if annotated_range(str(seen.get("config.annotation") or "")) != range_id and moid not in tagged:
+                return "skipped", (f"{moid} no longer carries this range's annotation or tag; the confirmation "
+                                   "was for an item marked as this range's")
+            vm = vim.VirtualMachine(moid, si._stub)
+            if str(vm.runtime.powerState) != "poweredOff":
+                self._wait(vm.PowerOffVM_Task(), si)
+            self._wait(vm.Destroy_Task(), si)
+            return "deleted", ""
+        if item.get("kind") == "portgroup":
+            props, missing = inventory.read_props(si, vim.dvs.DistributedVirtualPortgroup, [moid],
+                                                  inventory.PORTGROUP_PATHS)
+            if moid in missing:
+                return "gone", f"{moid} was no longer in vCenter"
+            seen = props[moid]
+            if str(seen.get("key")) != str(item.get("key")) or \
+                    inventory.description(seen.get("config")) != live_vlans.owner_mark(range_id):
+                return "skipped", f"{moid} is no longer the listed port group (key or owner mark changed)"
+            self._wait(vim.dvs.DistributedVirtualPortgroup(moid, si._stub).Destroy_Task(), si)
+            return "deleted", ""
+        return "skipped", f"{moid}: {item.get('kind')!r} items are not deleted by TrueNorth"
+
+    async def delete_confirmed(self, range_id: str, provision_output: dict, items: list[dict]) -> dict:
+        """Delete the unidentified items an administrator confirmed by moid, each re-checked
+        first against vCenter, the range's mark included (``_delete_listed_sync``); then
+        remove the range's recorded VM folder if that left it empty (a folder holding
+        anything is never touched), and report the teardown again from scratch."""
+        if SmartConnect is None:
+            raise RuntimeError("pyvmomi is required to delete vSphere items (pip install pyvmomi)")
+        done: list[dict] = []
+        skipped: list[dict] = []
+        await self._get_session()  # the dialect, and the tag lookups
+        async with self._soap_scope(always=True):
+            si = self._soap()
+            for item in items:
+                # The range's tag, read again right before this item: one listed for its tag must
+                # still carry it. Unreadable: only the annotation counts (the item is left alone
+                # unless annotated, and says why).
+                tagged, tag_note = await self._tagged_vms(range_id) if item.get("kind") == "vm" else (set(), None)
+                try:
+                    outcome_, why = await asyncio.to_thread(self._delete_listed_sync, si, range_id, item, tagged)
+                except Exception as exc:  # noqa: BLE001 -- one failure does not stop the others
+                    outcome_, why = "skipped", f"delete failed: {self._redact(exc)}"
+                if outcome_ == "deleted":
+                    done.append({k: item.get(k) for k in ("kind", "moid", "name", "instance_uuid", "key")})
+                    logger.warning("range %s: deleted confirmed unidentified %s %s (%s)", range_id, item.get("kind"),
+                                   item.get("moid"), item.get("name"))
+                else:
+                    if tag_note and outcome_ == "skipped" and "tag" in (item.get("marks") or []):
+                        why = f"{why}; {tag_note}"
+                    skipped.append({"moid": item.get("moid"), "why": why, "outcome": outcome_})
+            folder = (provision_output.get("inventory") or {}).get("folder") or {}
+            if folder.get("moid"):
+                await asyncio.to_thread(self._drop_empty_folder_sync, si, folder["moid"])
+            unidentified, notes = await self._unidentified(range_id, provision_output)
+            if not any("tag" in u.get("marks", ()) for u in unidentified):
+                await self._delete_range_tags(range_id)
+            report = await self._teardown_report(provision_output, [], unidentified, notes)
+        return {**report, "confirmed_deleted": done, "confirm_skipped": skipped}
+
+    def _drop_empty_folder_sync(self, si, moid: str) -> None:
+        """The range's recorded folder, once a confirmed delete left it empty. Anything still
+        in it keeps it (and ``remaining`` reports it)."""
+        with contextlib.suppress(vmodl.fault.ManagedObjectNotFound):
+            ref = vim.Folder(moid, si._stub)
+            if not ref.childEntity:
+                self._wait(ref.Destroy_Task(), si)
 
     # The power state each action leaves a VM in.
     _POWER_TARGET = {"stop": "POWERED_OFF", "start": "POWERED_ON"}
@@ -3125,13 +3432,15 @@ class VsphereAPIProvisioner(BaseProvisioner):
         name: str,
     ) -> SnapshotResult:
         start = time.monotonic()
-        snapped, errors, _ = await self._vim_op(range_id, provision_output, self._snapshot_sync, name)
+        taken: dict[str, str] = {}  # VM moid -> the snapshot's moid (range certification S5: drift)
+        snapped, errors, _ = await self._vim_op(range_id, provision_output, self._snapshot_sync, name, taken)
         return SnapshotResult(
             status=outcome(snapped, errors),
             snapshot_name=name,
             vms_snapped=snapped,
             duration_seconds=time.monotonic() - start,
             errors=errors,
+            snapshot_ids=taken,
         )
 
     async def restore(

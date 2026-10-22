@@ -46,6 +46,16 @@
       "description": "",
       "queue": "provision"
     },
+    "worker.tasks.check_range_drift": {
+      "args": {
+        "maxItems": 0,
+        "minItems": 0,
+        "prefixItems": [],
+        "type": "array"
+      },
+      "description": "Compare live ranges with their recorded inventory (S5).",
+      "queue": "default"
+    },
     "worker.tasks.collect_range_metrics": {
       "args": {
         "maxItems": 0,
@@ -71,6 +81,32 @@
       },
       "description": "Post-deploy configure stage of a built range (its Greyspace gs-core: corpus, stack, health).",
       "queue": "provision"
+    },
+    "worker.tasks.delete_confirmed_teardown_items": {
+      "args": {
+        "maxItems": 3,
+        "minItems": 2,
+        "prefixItems": [
+          {
+            "description": "ranges.id (UUID)",
+            "title": "range_id",
+            "type": "string"
+          },
+          {
+            "description": "managed-object ids of unidentified items, each typed back",
+            "title": "moids",
+            "type": "array"
+          },
+          {
+            "description": "users.id of the administrator who confirmed them",
+            "title": "requested_by",
+            "type": "string"
+          }
+        ],
+        "type": "array"
+      },
+      "description": "Delete unidentified items an administrator confirmed by moid, each re-checked first, then re-verify the teardown (ADR 0013 \u00a75; worker/range_teardown.py).",
+      "queue": "destroy"
     },
     "worker.tasks.delete_snapshot": {
       "args": {

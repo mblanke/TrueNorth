@@ -237,14 +237,37 @@ def credentials(output: dict, accounts: list) -> tuple[str, str, dict]:
                   f"{students} Student account(s) set with this build's passwords"), detail
 
 
-def teardown(destroyed: bool, error: str | None, still_held: list) -> tuple[str, str, dict]:
-    """A destroy's outcome. ``fail``: the destroy failed. Otherwise ``incomplete``: the
-    range was recorded destroyed, but the check that none of its recorded inventory remains
-    is S5's. ``still_held``: reservations the worker had not released by then (the API
-    releases them next)."""
+TEARDOWN_LISTS = ("deleted", "remaining", "unidentified", "not_checked", "confirmed_deleted", "confirm_skipped", "gaps")
+
+
+def teardown(destroyed: bool, error: str | None, still_held: list,
+             check: dict | None = None) -> tuple[str, str, dict]:
+    """A destroy's outcome, with the worker's verification of it (S5).
+
+    ``check``: the range's ``teardown`` check (app/range_inventory, written by the worker
+    from the backend's report): ``{"status", "summary", "report"}``, the report listing what
+    was deleted by recorded id, which recorded ids remain (VMs, disk files, port groups, the
+    folder), what carries the range's mark but was not deleted (unidentified), and what
+    could not be checked. Its grade is the section's: ``pass`` only when zero recorded ids
+    remain and nothing is unidentified; ``fail`` when a recorded id remains. None: the
+    backend does not verify its teardown (mock, Proxmox): ``incomplete``, saying so.
+    ``fail`` too when the destroy itself failed. ``still_held``: reservations the worker had
+    not released by then (the API releases them next)."""
     leftovers = [{"kind": r.kind, "holder": r.holder, "value": r.value} for r in still_held]
-    detail = {"destroyed": destroyed, "error": error, "reservations_left": leftovers, "inventory_verified": None}
+    report = (check or {}).get("report") if isinstance((check or {}).get("report"), dict) else {}
+    detail = {"destroyed": destroyed, "error": error, "reservations_left": leftovers,
+              "inventory_verified": None if check is None else check.get("status") == PASS,
+              "inventory": None if check is None else {
+                  "status": check.get("status"), "legacy": bool(report.get("legacy")),
+                  "verified_at": report.get("verified_at"),
+                  **{k: report.get(k) or [] for k in TEARDOWN_LISTS}}}
     if not destroyed:
-        return FAIL, f"destroy failed: {(error or 'no reason recorded')[:300]}", detail
+        left = len(report.get("remaining") or [])
+        return FAIL, (f"destroy failed: {(error or 'no reason recorded')[:300]}"
+                      + (f"; {left} recorded item(s) remain" if left else "")), detail
     extra = f"; {len(leftovers)} reservation(s) still held, released by the API" if leftovers else ""
-    return INCOMPLETE, f"recorded destroyed{extra}; inventory verification not recorded (S5)", detail
+    if check is None:
+        return INCOMPLETE, f"recorded destroyed{extra}; the backend did not verify the teardown against a recorded " \
+                           "inventory", detail
+    status = check.get("status") if check.get("status") in (PASS, FAIL, INCOMPLETE) else INCOMPLETE
+    return status, f"recorded destroyed; {check.get('summary') or 'no summary'}{extra}", detail

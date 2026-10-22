@@ -109,7 +109,7 @@ def plan(range_id: str, rows: list[dict], vms: list[dict], *, operation: str, id
             continue
         for vm in built:
             work.append({"vm_id": str(vm["vm_id"]), "name": str(vm.get("name") or ""), "family": family,
-                         "node_id": machine, "logins": logins, "rows": changes,
+                         "node_id": machine, "logins": logins, "rows": changes, "identity": vm.get("identity"),
                          "changes": [GuestLogin(r["username"], r["password"], family) for r in changes]})
     return work, notes, undone
 

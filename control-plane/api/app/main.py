@@ -341,6 +341,7 @@ from .range_certification.router import keys_router as range_certification_keys_
 from .range_certification.router import router as range_certification_router  # noqa: E402 (ADR 0013 §6; + tables)
 from .range_credentials.issues_router import router as range_credential_issues_router  # noqa: E402 (ADR 0013)
 from .range_credentials.router import router as range_credentials_router  # noqa: E402 (ADR 0012; + its table)
+from .range_inventory.router import router as range_inventory_router  # noqa: E402 (ADR 0013 §5; + its table)
 from .routers import (
     ad_sync_router,
     adaptive_learning_router,
@@ -408,6 +409,7 @@ app.include_router(range_certification_router)  # GET /ranges/{id}/certification
 app.include_router(range_certification_keys_router)  # GET /range-certification/signing-keys
 app.include_router(range_credential_issues_router)  # GET /range-credentials/template-issues (ADR 0013)
 app.include_router(emergency_teardown_router)  # POST /ranges/{id}/emergency-teardown (app/maintenance_windows)
+app.include_router(range_inventory_router)  # GET /ranges/{id}/inventory-checks, confirm unidentified (S5)
 app.include_router(exercises_router)
 app.include_router(detections_router)
 app.include_router(collective_exercises_router)

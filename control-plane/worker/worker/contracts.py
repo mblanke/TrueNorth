@@ -96,6 +96,17 @@ TASKS: dict[str, TaskContract] = {
             "Set rotated range passwords inside running guests (ADR 0013 §3; worker/credential_rotation.py).",
         ),
         TaskContract("delete_snapshot", "provision", (_RANGE, _SNAPSHOT)),
+        TaskContract(
+            "delete_confirmed_teardown_items",
+            "destroy",
+            (
+                _RANGE,
+                Arg("moids", "array", description="managed-object ids of unidentified items, each typed back"),
+                Arg("requested_by", required=False, description="users.id of the administrator who confirmed them"),
+            ),
+            "Delete unidentified items an administrator confirmed by moid, each re-checked first, then re-verify "
+            "the teardown (ADR 0013 §5; worker/range_teardown.py).",
+        ),
         # -- Background noise ------------------------------------------------
         TaskContract(
             "deploy_noise_agents",
@@ -166,6 +177,7 @@ TASKS: dict[str, TaskContract] = {
         TaskContract("ingest_telemetry_batch", "telemetry", (_RANGE, Arg("events", "array"))),
         # -- Periodic (beat) -------------------------------------------------
         TaskContract("health_check_ranges", "default"),
+        TaskContract("check_range_drift", "default", (), "Compare live ranges with their recorded inventory (S5)."),
         TaskContract("collect_range_metrics", "telemetry"),
     )
 }

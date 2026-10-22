@@ -50,6 +50,7 @@ WORKER_TABLES = (
     "range_certification_records",
     "range_credentials",
     "range_greyspace",
+    "range_inventory_checks",  # ADR 0013 §5: the worker writes teardown verification and drift
     "range_leases",
     "range_operations",
     "range_snapshots",
@@ -94,6 +95,7 @@ def render() -> str:
     import app.network_inventory  # noqa: F401 — section models register their tables on import
     import app.range_certification  # noqa: F401
     import app.range_credentials  # noqa: F401
+    import app.range_inventory  # noqa: F401 — range_inventory_checks (worker/range_teardown.py, range_drift.py)
     import app.range_leases  # noqa: F401
     import app.range_ops  # noqa: F401 — range_operations.window_bypass (worker/maintenance_windows.py)
     import app.scenario_runs  # noqa: F401

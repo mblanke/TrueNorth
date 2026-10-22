@@ -3791,6 +3791,98 @@
         "title": "CompetencyProfileOut",
         "type": "object"
       },
+      "ConfirmItemIn": {
+        "properties": {
+          "confirm_moid": {
+            "description": "The same moid, typed back by the administrator; must match exactly",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Confirm Moid",
+            "type": "string"
+          },
+          "moid": {
+            "description": "An unidentified item's moid, as listed",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Moid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "moid",
+          "confirm_moid"
+        ],
+        "title": "ConfirmItemIn",
+        "type": "object"
+      },
+      "ConfirmUnidentifiedIn": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ConfirmItemIn"
+            },
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Items",
+            "type": "array"
+          },
+          "reason": {
+            "maxLength": 500,
+            "minLength": 10,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "items",
+          "reason"
+        ],
+        "title": "ConfirmUnidentifiedIn",
+        "type": "object"
+      },
+      "ConfirmUnidentifiedOut": {
+        "properties": {
+          "accepted": {
+            "items": {
+              "$ref": "#/components/schemas/InventoryItemOut"
+            },
+            "title": "Accepted",
+            "type": "array"
+          },
+          "dispatched": {
+            "title": "Dispatched",
+            "type": "boolean"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "range_id": {
+            "format": "uuid",
+            "title": "Range Id",
+            "type": "string"
+          },
+          "task_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Id"
+          }
+        },
+        "required": [
+          "range_id",
+          "accepted",
+          "dispatched",
+          "message"
+        ],
+        "title": "ConfirmUnidentifiedOut",
+        "type": "object"
+      },
       "ConnectionDiscoveryOut": {
         "properties": {
           "connection_id": {
@@ -5455,6 +5547,121 @@
           "diagram_json"
         ],
         "title": "DiagramIn",
+        "type": "object"
+      },
+      "DriftCheckOut": {
+        "properties": {
+          "changed_at": {
+            "format": "date-time",
+            "title": "Changed At",
+            "type": "string"
+          },
+          "checked": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Checked",
+            "type": "object"
+          },
+          "checked_at": {
+            "format": "date-time",
+            "title": "Checked At",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "findings": {
+            "items": {
+              "$ref": "#/components/schemas/DriftFindingOut"
+            },
+            "title": "Findings",
+            "type": "array"
+          },
+          "gaps": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Gaps",
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "pass",
+              "fail",
+              "incomplete",
+              "error"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "summary",
+          "checked_at",
+          "changed_at"
+        ],
+        "title": "DriftCheckOut",
+        "type": "object"
+      },
+      "DriftFindingOut": {
+        "properties": {
+          "actual": {
+            "title": "Actual"
+          },
+          "expected": {
+            "title": "Expected"
+          },
+          "kind": {
+            "description": "vm_missing, vm_replaced, cpu_changed, memory_changed, nic_portgroup_changed, nic_mac_changed, nic_added, nic_removed, portgroup_missing, portgroup_vlan_changed, snapshot_unexpected, snapshot_missing",
+            "title": "Kind",
+            "type": "string"
+          },
+          "moid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Moid"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "object": {
+            "title": "Object",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "object"
+        ],
+        "title": "DriftFindingOut",
         "type": "object"
       },
       "EOOut": {
@@ -8962,6 +9169,126 @@
           "inject_type"
         ],
         "title": "InstructorInjectIn",
+        "type": "object"
+      },
+      "InventoryItemOut": {
+        "description": "One item a teardown report names: a VM, a disk file, a port group or a folder.",
+        "properties": {
+          "datastore": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Datastore"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The recorded id (a moid, or a disk file's path)",
+            "title": "Id"
+          },
+          "instance_uuid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instance Uuid"
+          },
+          "key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A port group's key",
+            "title": "Key"
+          },
+          "kind": {
+            "description": "vm | disk | portgroup | folder",
+            "title": "Kind",
+            "type": "string"
+          },
+          "marks": {
+            "description": "What ties an unidentified item to the range: annotation, tag, owner_mark",
+            "items": {
+              "type": "string"
+            },
+            "title": "Marks",
+            "type": "array"
+          },
+          "moid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "vCenter managed-object id (unidentified items)",
+            "title": "Moid"
+          },
+          "name": {
+            "default": "",
+            "title": "Name",
+            "type": "string"
+          },
+          "path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A disk file: [datastore] dir/file.vmdk",
+            "title": "Path"
+          },
+          "vlan": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vlan"
+          },
+          "why": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Why"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "title": "InventoryItemOut",
         "type": "object"
       },
       "InventoryVmOut": {
@@ -13828,6 +14155,58 @@
         "title": "RangeIn",
         "type": "object"
       },
+      "RangeInventoryChecksOut": {
+        "properties": {
+          "can_confirm": {
+            "description": "Whether the caller may confirm unidentified items (range:admin) now",
+            "title": "Can Confirm",
+            "type": "boolean"
+          },
+          "confirm_blocked": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why confirming is not possible now, if it is not",
+            "title": "Confirm Blocked"
+          },
+          "drift": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DriftCheckOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "range_id": {
+            "format": "uuid",
+            "title": "Range Id",
+            "type": "string"
+          },
+          "teardown": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TeardownCheckOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "range_id",
+          "can_confirm"
+        ],
+        "title": "RangeInventoryChecksOut",
+        "type": "object"
+      },
       "RangeListOut": {
         "properties": {
           "created_at": {
@@ -16168,6 +16547,30 @@
         "title": "SkillGapOut",
         "type": "object"
       },
+      "SkippedItemOut": {
+        "properties": {
+          "moid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Moid"
+          },
+          "why": {
+            "title": "Why",
+            "type": "string"
+          }
+        },
+        "required": [
+          "why"
+        ],
+        "title": "SkippedItemOut",
+        "type": "object"
+      },
       "SnapshotIn": {
         "properties": {
           "description": {
@@ -17128,6 +17531,112 @@
           }
         },
         "title": "TeamUpdate",
+        "type": "object"
+      },
+      "TeardownCheckOut": {
+        "properties": {
+          "changed_at": {
+            "format": "date-time",
+            "title": "Changed At",
+            "type": "string"
+          },
+          "checked_at": {
+            "format": "date-time",
+            "title": "Checked At",
+            "type": "string"
+          },
+          "confirm_skipped": {
+            "items": {
+              "$ref": "#/components/schemas/SkippedItemOut"
+            },
+            "title": "Confirm Skipped",
+            "type": "array"
+          },
+          "confirmed_deleted": {
+            "description": "Unidentified items an administrator confirmed by moid, then deleted",
+            "items": {
+              "$ref": "#/components/schemas/InventoryItemOut"
+            },
+            "title": "Confirmed Deleted",
+            "type": "array"
+          },
+          "deleted": {
+            "description": "Deleted by recorded id",
+            "items": {
+              "$ref": "#/components/schemas/InventoryItemOut"
+            },
+            "title": "Deleted",
+            "type": "array"
+          },
+          "gaps": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Gaps",
+            "type": "array"
+          },
+          "legacy": {
+            "default": false,
+            "description": "Built before inventory recording: VMs matched by annotation and name",
+            "title": "Legacy",
+            "type": "boolean"
+          },
+          "not_checked": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Not Checked",
+            "type": "array"
+          },
+          "remaining": {
+            "description": "Recorded ids still present",
+            "items": {
+              "$ref": "#/components/schemas/InventoryItemOut"
+            },
+            "title": "Remaining",
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "pass",
+              "fail",
+              "incomplete",
+              "error"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "unidentified": {
+            "description": "Carry the range's mark but are not recorded: listed, not deleted",
+            "items": {
+              "$ref": "#/components/schemas/InventoryItemOut"
+            },
+            "title": "Unidentified",
+            "type": "array"
+          },
+          "verified_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verified At"
+          }
+        },
+        "required": [
+          "status",
+          "summary",
+          "checked_at",
+          "changed_at"
+        ],
+        "title": "TeardownCheckOut",
         "type": "object"
       },
       "TemplateIn": {
@@ -39009,6 +39518,61 @@
         ]
       }
     },
+    "/ranges/{range_id}/inventory-checks": {
+      "get": {
+        "description": "What the range's last teardown deleted by recorded id, which recorded ids remain, and\nwhat carries the range's mark but was not deleted (unidentified); and the latest drift\ncheck of the live range against its recorded inventory (VM ids, CPU/RAM, NICs, port\ngroup VLANs, snapshots). **Permission: range:certification_read**",
+        "operationId": "get_inventory_checks_ranges__range_id__inventory_checks_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "range_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Range Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RangeInventoryChecksOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Not staff (read), or not an administrator (confirm)"
+          },
+          "404": {
+            "description": "No such range in the caller's tenant"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "The range's last teardown verification and drift check",
+        "tags": [
+          "ranges"
+        ]
+      }
+    },
     "/ranges/{range_id}/lease": {
       "get": {
         "description": "Who is acting on the range (its lease), and whether force-releasing that lease is\nproven safe (app/range_ops/lease_status.py); if not, why, and the quarantine guidance.\n**Permission: range:read**",
@@ -39785,6 +40349,67 @@
           }
         ],
         "summary": "Stop Range",
+        "tags": [
+          "ranges"
+        ]
+      }
+    },
+    "/ranges/{range_id}/teardown/confirm-unidentified": {
+      "post": {
+        "description": "DANGEROUS. Delete items the range's last teardown listed as unidentified (they carry\nits annotation, tag or owner mark but were not recorded at clone). Each item's\n``confirm_moid`` must repeat its ``moid`` exactly, and the moid must be in the listed\nset; otherwise nothing is confirmed (422). Audit-logged with the reason and recorded on\nthe range's certification record as an override. The worker re-checks each item against\nvCenter before deleting it, and re-verifies the teardown.\n**Permission: range:admin** (admin only)",
+        "operationId": "confirm_unidentified_ranges__range_id__teardown_confirm_unidentified_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "range_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Range Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmUnidentifiedIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfirmUnidentifiedOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Not staff (read), or not an administrator (confirm)"
+          },
+          "404": {
+            "description": "No such range in the caller's tenant"
+          },
+          "409": {
+            "description": "The range is not torn down, is busy, or lists nothing"
+          },
+          "422": {
+            "description": "An item is not listed, or its typed id does not match exactly"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Confirm unidentified items by their typed-back moid, to be deleted (range:admin)",
         "tags": [
           "ranges"
         ]

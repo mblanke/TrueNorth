@@ -68,6 +68,12 @@ def _now():
     return sa.func.now()
 
 
+def _identity(vm: dict) -> dict:
+    """``run_in_guest``'s ``identity`` keyword for a VM that recorded one (range certification
+    S5: its instance UUID decides ownership); nothing for older records or other backends."""
+    return {"identity": vm["identity"]} if isinstance(vm.get("identity"), dict) else {}
+
+
 def _services(block: dict) -> list[str]:
     """The services the block's stack runs (rendered when the corpus is readable here)."""
     from . import greyspace_host
@@ -306,7 +312,7 @@ def configure(range_id: str) -> str:
                 try:
                     steps = run_async(provisioner.run_in_guest(
                         vm["vm_id"], greyspace_host.login(range_id), greyspace_host.configure_steps(), CONFIGURE_TIMEOUT,
-                        range_id=range_id, vm_name=vm.get("name", "")))  # only the range's own gs-core
+                        range_id=range_id, vm_name=vm.get("name", ""), **_identity(vm)))  # only the range's own gs-core
                     ok = bool(steps) and all(s["status"] == "ok" for s in steps)
                     status = "deployed" if ok else "failed"
                     detail = {**prior, "stage": "configure", "vm_id": vm["vm_id"], "configure": steps,
@@ -347,7 +353,7 @@ def _crumbs_on_host(range_id: str, op: dict) -> tuple[bool, str]:
     vm, backend, provisioner = found
     steps = run_async(provisioner.run_in_guest(vm["vm_id"], greyspace_host.login(range_id),
                                                greyspace_host.crumb_steps(op), CRUMB_TIMEOUT,
-                                               range_id=range_id, vm_name=vm.get("name", "")))
+                                               range_id=range_id, vm_name=vm.get("name", ""), **_identity(vm)))
     bad = next((s for s in steps if s["status"] != "ok"), None)
     if bad:
         return False, f"gs-core: {bad['label']} {bad['status']} (exit {bad['exit_code']})"
