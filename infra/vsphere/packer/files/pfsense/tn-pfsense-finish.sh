@@ -102,6 +102,9 @@ rm -f "$T/var/tmp/tn-admin.hash"
 {
   echo "finished=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   echo "pfsense=$VERSION"
+  # The boot hook of this template applies and acknowledges a range admin hash (issue #248):
+  # the worker waits for that acknowledgement only from a template that says so.
+  echo "admin_ack=1"
   echo "packages=$ORDER"
 } > "$T/cf/conf/tn-template-finish.txt" || die "cannot write the marker"
 [ "$DEVFS" = 1 ] && umount "$T/dev"

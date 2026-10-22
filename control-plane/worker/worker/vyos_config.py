@@ -22,7 +22,12 @@ The policy is the pfSense one, in VyOS 1.4+ syntax:
   the range but depot traffic.
 * input filter on the uplink: replies only (nothing reaches the router from the WAN).
 
-No secrets: the template's users and SSH settings stay as they are.
+No secrets in the configuration: the template's SSH settings stay as they are. The ``vyos``
+login's password is replaced (issue #248, worker/appliance_admin.py) by one more command,
+``set system login user vyos authentication encrypted-password '$6$...'``: a SHA-512-crypt
+**hash** of the range's generated password, never the password. It is added after the
+NIC pins, outside ``commands`` (so the instance id does not depend on it), and the worker
+takes it out of the user data again once the router acknowledged it.
 """
 
 from __future__ import annotations
@@ -39,6 +44,9 @@ DEPOT_PORTS = (8081, 3142)
 # The VMX limit for one guestinfo value is far above a range config (a few KiB).
 MAX_GUESTINFO = 60_000
 _SAFE = re.compile(r"[^A-Za-z0-9 _.:/,-]")
+# SHA-512-crypt, as sha512_crypt.py writes it: the only password value the user data may carry.
+SHA512_CRYPT_RE = re.compile(r"\A\$6\$(rounds=\d+\$)?[./A-Za-z0-9]{1,16}\$[./A-Za-z0-9]{86}\Z")  # \Z: no newline
+ADMIN_USER = "vyos"
 
 
 class VyosConfigError(ValueError):
@@ -222,16 +230,25 @@ def build_config(
     return VyosConfig(commands=cmds, interfaces=ifaces, hostname=name, notes=notes)
 
 
-def guestinfo(cfg: VyosConfig, macs: list[str], instance: str) -> dict[str, str]:
+def admin_command(admin_hash: str) -> str:
+    """The command that gives the ``vyos`` login ``admin_hash`` (a SHA-512-crypt string only)."""
+    if not SHA512_CRYPT_RE.match(admin_hash):
+        raise VyosConfigError("the vyos password must reach the router as a SHA-512-crypt hash")
+    return f"set system login user {ADMIN_USER} authentication encrypted-password '{admin_hash}'"
+
+
+def guestinfo(cfg: VyosConfig, macs: list[str], instance: str, admin_hash: str | None = None) -> dict[str, str]:
     """cloud-init's VMware datasource keys for a VM whose NICs (device-key order) have
-    ``macs``: each ethN is pinned to its MAC first, then the configuration. The instance
-    id carries the config's hash, so a changed config is applied again."""
+    ``macs``: each ethN is pinned to its MAC first, then (``admin_hash``) the ``vyos``
+    login's hash, then the configuration. The instance id carries the config's hash, so a
+    changed config is applied again; it does not depend on ``admin_hash``."""
     if len(macs) != len(cfg.interfaces):
         raise VyosConfigError(f"the VM has {len(macs)} NICs; the VyOS config expects {len(cfg.interfaces)}")
     pins = [f"set interfaces ethernet {i.ifname} hw-id {_q(mac.lower())}"
             for i, mac in zip(cfg.interfaces, macs, strict=True)]
-    userdata = "#cloud-config\n" + yaml.safe_dump({"vyos_config_commands": pins + cfg.commands}, sort_keys=False,
-                                                  width=1000)
+    admin = [admin_command(admin_hash)] if admin_hash is not None else []
+    userdata = "#cloud-config\n" + yaml.safe_dump({"vyos_config_commands": pins + admin + cfg.commands},
+                                                  sort_keys=False, width=1000)
     metadata = yaml.safe_dump({"instance-id": f"{instance}-{cfg.sha256[:12]}", "local-hostname": cfg.hostname},
                               sort_keys=False)
 

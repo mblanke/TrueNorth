@@ -7,6 +7,8 @@ what it says rather than by keystroke timing, then:
 
 * gives the installed image a cloud-init datasource list that starts with VMware, so the
   per-range config the worker puts in guestinfo.userdata (worker/vyos_config.py) is read;
+* installs tn-admin-ack.service, which reports (guestinfo.tn.vyos.admin_ack) which password
+  hash the vyos login has once that config is applied (issue #248);
 * powers the VM off. Packer (communicator "none") only waits for that, then templates it.
 
 A prompt it has no answer for, an installer failure or a timeout: print the transcript and
@@ -19,6 +21,7 @@ installer (TN_VYOS_INSTALLER, TN_VYOS_ROOT, TN_VYOS_NO_POWEROFF, TN_VYOS_STUCK_A
 
 from __future__ import annotations
 
+import hashlib
 import os
 import pty
 import re
@@ -54,6 +57,63 @@ ExecStart=/bin/sh -c 'vmware-rpctool "info-set guestinfo.tn.template.finish $$(t
 
 [Install]
 WantedBy=multi-user.target
+"""
+# Issue #248: once cloud-init has applied the range's config (which gives the vyos login the
+# range's own password as an encrypted-password hash, worker/vyos_config.py), report which
+# hash the login has in force: guestinfo.tn.vyos.admin_ack = the first 16 hex digits of its
+# sha256 (worker/appliance_admin.py fingerprint; never the hash), or "failed <why>".
+# The template's own vyos hash has its fingerprint in /etc/tn-template-admin.fp (written by
+# finish_image): while the login still has that one (cloud-init not done yet), it waits and
+# looks again every TN_ACK_POLL seconds, at most TN_ACK_WAIT (10 min), then reports
+# "failed the vyos password is still the template's". Without that file it reports at once.
+# TN_RPCTOOL / TN_SHADOW / TN_TEMPLATE_FP / TN_ACK_*: test seams
+# (tests/contracts/test_appliance_admin_hooks.py).
+ACK_SCRIPT = """\
+#!/bin/sh
+RPC="${TN_RPCTOOL:-vmware-rpctool}"
+SHADOW="${TN_SHADOW:-/etc/shadow}"
+TEMPLATE_FP_FILE="${TN_TEMPLATE_FP:-/etc/tn-template-admin.fp}"
+WAIT="${TN_ACK_WAIT:-600}"
+POLL="${TN_ACK_POLL:-15}"
+template_fp="$(cat "$TEMPLATE_FP_FILE" 2>/dev/null)"
+waited=0
+while :; do
+  hash="$(awk -F: '$1 == "vyos" {print $2; exit}' "$SHADOW" 2>/dev/null)"
+  case "$hash" in
+    ''|'!'*|'*'*) fp="" ;;
+    *) fp="$(printf '%s' "$hash" | sha256sum | cut -c1-16)" ;;
+  esac
+  if [ -n "$fp" ] && [ "$fp" != "$template_fp" ]; then
+    ack="$fp"
+    break
+  fi
+  if [ "$waited" -ge "$WAIT" ]; then
+    if [ -z "$fp" ]; then
+      ack="failed the vyos login has no password hash"
+    else
+      ack="failed the vyos password is still the template's"
+    fi
+    break
+  fi
+  sleep "$POLL"
+  waited=$((waited + POLL))
+done
+exec "$RPC" "info-set guestinfo.tn.vyos.admin_ack $ack"
+"""
+# After cloud-final (itself after multi-user.target): so wanted by cloud-init.target, which
+# avoids an ordering cycle with multi-user.target. Type=simple: its wait blocks no target.
+ACK_UNIT = """\
+[Unit]
+Description=TrueNorth: report which password hash the vyos login has (guestinfo)
+ConditionVirtualization=vmware
+After=open-vm-tools.service cloud-final.service
+
+[Service]
+Type=simple
+ExecStart=/bin/sh /etc/tn-admin-ack.sh
+
+[Install]
+WantedBy=cloud-init.target
 """
 
 
@@ -170,6 +230,12 @@ def _stop(pid: int) -> None:
         pass
 
 
+def admin_hash_of(config_boot: str) -> str | None:
+    """The vyos login's encrypted-password in a config.boot (the template's own hash)."""
+    m = re.search(r"\buser vyos \{.*?\bencrypted-password \"?([^\"\s]+)\"?", config_boot, re.S)
+    return m.group(1) if m else None
+
+
 def finish_image(root: Path) -> Path:
     """Write the cloud-init datasource list, the finish marker and the unit that publishes it
     into the installed image's persistent layer (its overlay's rw/ directory)."""
@@ -183,8 +249,17 @@ def finish_image(root: Path) -> Path:
     if boot.is_file() and "hw-id" in boot.read_text(encoding="utf-8", errors="replace"):
         print(f"[tn-vyos-install] warning: {boot} still pins hw-id (tn-vyos-prep.sh did not take)")
     rw = images[0] / "rw"
+    # admin_ack=1: this template acknowledges a range admin hash (issue #248); the worker
+    # waits for that acknowledgement only from a template whose marker says so.
     (rw / "etc/tn-template-finish.txt").write_text(
-        f"finished={time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}\nimage={images[0].name}\n", encoding="utf-8")
+        f"finished={time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}\nimage={images[0].name}\nadmin_ack=1\n",
+        encoding="utf-8")
+    template_hash = admin_hash_of(boot.read_text(encoding="utf-8", errors="replace")) if boot.is_file() else None
+    if template_hash:
+        fp = hashlib.sha256(template_hash.encode()).hexdigest()[:16]
+        (rw / "etc/tn-template-admin.fp").write_text(fp + "\n", encoding="utf-8")
+    else:
+        print(f"[tn-vyos-install] warning: no vyos encrypted-password in {boot}; tn-admin-ack reports at once")
     unit = rw / "etc/systemd/system/tn-template-marker.service"
     unit.parent.mkdir(parents=True, exist_ok=True)
     unit.write_text(MARKER_UNIT, encoding="utf-8")
@@ -193,6 +268,13 @@ def finish_image(root: Path) -> Path:
     link = wants / unit.name
     if not link.is_symlink():
         link.symlink_to("/etc/systemd/system/tn-template-marker.service")
+    (rw / "etc/tn-admin-ack.sh").write_text(ACK_SCRIPT, encoding="utf-8")
+    ack = rw / "etc/systemd/system/tn-admin-ack.service"
+    ack.write_text(ACK_UNIT, encoding="utf-8")
+    ack_wants = rw / "etc/systemd/system/cloud-init.target.wants"
+    ack_wants.mkdir(parents=True, exist_ok=True)
+    if not (ack_wants / ack.name).is_symlink():
+        (ack_wants / ack.name).symlink_to("/etc/systemd/system/tn-admin-ack.service")
     return cfg
 
 

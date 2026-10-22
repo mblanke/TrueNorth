@@ -208,6 +208,7 @@ def test_finish_installs_everything_then_powers_off(pf):
         assert os.access(mnt / f, os.X_OK), f
     marker = (mnt / "cf/conf/tn-template-finish.txt").read_text()
     assert "pfsense=2.7.2-RELEASE" in marker and "open-vm-tools-nox11" in marker
+    assert "admin_ack=1" in marker.split()  # issue #248: the worker waits for the ack only then
     assert not (mnt / "var/tmp/tn-admin.hash").exists() and not (mnt / "var/tmp/tn-pkgs").exists()
 
 

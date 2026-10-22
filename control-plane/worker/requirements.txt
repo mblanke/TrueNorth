@@ -12,3 +12,4 @@ kombu==5.3.7
 pywinrm==0.5.0
 pyvmomi==8.0.3.0.1
 cryptography==50.0.2  # secretbox.py: sealed credentials (Fernet)
+bcrypt==5.0.0  # appliance_admin.py: pfSense/OPNsense admin password hashes (issue #248)

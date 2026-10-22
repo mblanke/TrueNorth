@@ -100,8 +100,9 @@ class TestTemplateProvenance:
 
 
 # ── S3: credential state ───────────────────────────────────────────────────────────
-def _login(name: str, status: str) -> dict:
-    return {"name": name, "template_login": {"status": status, "username": "Administrator", "detail": "..."}}
+def _login(name: str, status: str, method: str | None = None) -> dict:
+    rec = {"status": status, "username": "Administrator", "detail": "..."}
+    return {"name": name, "template_login": {**rec, "method": method} if method else rec}
 
 
 def _account(**kw) -> SimpleNamespace:
@@ -113,12 +114,29 @@ def _account(**kw) -> SimpleNamespace:
 
 class TestCredentials:
     def test_template_password_refused_and_student_accounts_set_passes(self):
-        out = {"vms": [_login("web01", "rejected"), _login("fw01", "not_checked")]}
+        out = {"vms": [_login("web01", "rejected"), _login("fw01", "rejected_self_reported", "guestinfo_ack"),
+                       _login("rtr01", "rejected", "ssh")]}
         status, summary, detail = evidence.credentials(out, [_account(), _account(username="lab", scenario=True,
                                                                                  applied=False)])
-        assert (status, summary) == ("pass", "template password refused on 1 VM(s); 1 Student account(s) set "
-                                             "with this build's passwords")
+        # A self-reported replacement passes, but is never counted or worded as a refusal (issue #248).
+        assert (status, summary) == ("pass", "template password refused on 2 VM(s); template password replaced, "
+                                             "reported by the appliance, on 1 VM(s) (no login attempt); "
+                                             "1 Student account(s) set with this build's passwords")
         assert detail["accounts"][0]["rotated_at"] == "2026-10-21T12:00:00+00:00"
+        # Which method proved each one is part of the record.
+        assert [r["method"] for r in detail["template_login"]] == [None, "guestinfo_ack", "ssh"]
+        assert [r["status"] for r in detail["template_login"]] == ["rejected", "rejected_self_reported", "rejected"]
+
+    def test_only_self_reported_appliances_never_read_as_refused(self):
+        status, summary, _ = evidence.credentials(
+            {"vms": [_login("fw01", "rejected_self_reported", "guestinfo_ack")]}, [])
+        assert status == "pass" and "refused" not in summary
+        assert summary.startswith("template password replaced, reported by the appliance, on 1 VM(s)")
+
+    def test_an_appliance_proven_over_ssh_says_nothing_about_acknowledgements(self):
+        status, summary, _ = evidence.credentials({"vms": [_login("fw01", "rejected", "ssh")]}, [])
+        assert (status, summary) == ("pass", "template password refused on 1 VM(s); 0 Student account(s) set "
+                                             "with this build's passwords")
 
     def test_a_template_password_that_still_works_is_not_safe(self):
         status, summary, _ = evidence.credentials({"vms": [_login("web01", "accepted")]}, [])
@@ -127,7 +145,11 @@ class TestCredentials:
     @pytest.mark.parametrize("vms,accounts,expected", [
         ([_login("web01", "inconclusive")], [], "template-password check not proven on web01"),
         ([{"name": "web01"}], [], "template-password check not proven on web01"),  # no check recorded
-        ([_login("fw01", "not_checked")], [], "no VM's template-password check was made"),
+        # An appliance recorded as not checked (a build before issue #248) is no longer a pass.
+        ([_login("web01", "rejected"), _login("fw01", "not_checked")], [], "template-password check not proven on fw01"),
+        ([_login("fw01", "inconclusive", "none")], [], "template-password check not proven on fw01"),
+        # A template built before #248 cannot acknowledge: incomplete, not waited for.
+        ([_login("fw01", "unsupported_template", "none")], [], "template-password check not proven on fw01"),
         ([_login("web01", "rejected")], [_account(sealed_previous="tnsec:rk1:x")],
          "a credential change is still pending on web01/analyst"),
         ([_login("web01", "rejected")], [_account(applied=False)],

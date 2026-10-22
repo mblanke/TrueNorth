@@ -24,9 +24,9 @@ ADR 0013 §3 (owner decision 2026-10-21): every password is generated per range,
 **scenario** account's (``scenario: true``), whose typed-in password is part of the
 exercise and is kept as authored (not rotated; the row says so). A scenario account is
 never a staff login: not ``role: admin``, not the built-in Administrator, the Linux build
-user or Security Onion's ``soadmin`` (``reserved_logins``). ``implicit_staff_logins`` adds a
-generated row for each of those a template leaves undeclared, so no machine keeps its
-golden template's build password.
+user or Security Onion's ``soadmin`` (``reserved_logins``), nor a pfSense, OPNsense or VyOS
+machine's admin login. ``implicit_staff_logins`` adds a generated row for each of those a
+template leaves undeclared, so no machine keeps its golden template's build password.
 
 A typed-in password is never stored as typed: ``seal_yaml`` replaces it in the stored
 template with a template seal (``seal.py``, ``tnsec:rt1:...``, a key derived for this purpose
@@ -182,6 +182,25 @@ def is_securityonion(os_name: str) -> bool:
     return (os_name or "").strip().lower() == SECURITY_ONION
 
 
+# The router appliances TrueNorth configures at deploy, and each one's admin login: worker
+# appliance_admin.ADMIN_USERS (tests/contracts/test_account_os_matches_worker.py).
+APPLIANCE_ADMINS = {"pfsense": "admin", "opnsense": "root", "vyos": "vyos"}
+
+
+def appliance_product(os_name: str) -> str | None:
+    """``pfsense``, ``opnsense`` or ``vyos`` for an OS naming one (as the worker's
+    pfsense_config.product_of / vyos_config.is_vyos decide), else None."""
+    os_name = (os_name or "").lower()
+    return next((p for p in APPLIANCE_ADMINS if p in os_name), None)
+
+
+def appliance_admins(doc: dict[str, Any]) -> dict[str, str]:
+    """Machine id -> its admin login, for every appliance machine TrueNorth configures."""
+    os_of = machine_os(doc)
+    return {m: APPLIANCE_ADMINS[p] for m, fam in machine_families(doc).items()
+            if fam == "appliance" and (p := appliance_product(os_of.get(m, ""))) is not None}
+
+
 def linux_build_user() -> str:
     return os.getenv(LINUX_USER_ENV, "").strip() or DEFAULT_LINUX_USER
 
@@ -199,6 +218,8 @@ IMPLICIT_NOTES = {
     "windows": "Built-in Administrator, generated per range (replaces the template password at deploy)",
     "linux": "Build user of the golden template, generated per range (replaces the template password at deploy)",
     SECURITY_ONION: "Security Onion OS login, generated per range (set when its setup finishes)",
+    "appliance": "Appliance admin login, generated per range (its hash replaces the template password at deploy; "
+                 "staff only)",
 }
 
 
@@ -214,17 +235,26 @@ def implicit_staff_logins(doc: dict[str, Any] | None, declared: list[AccountSpec
     its own Administrator, the product VMs and domain controllers included.
 
     ``role: admin``, staff-only, except for a lab session's range (``student_visible``),
-    which is the Student's own (owner decision 2026-10-21). Appliances get none: their
-    logins are their own configuration (a follow-up issue)."""
+    which is the Student's own (owner decision 2026-10-21).
+
+    A pfSense, OPNsense or VyOS machine gets its admin login (``admin``, ``root``, ``vyos``;
+    issue #248), set at deploy from a hash of this password (worker appliance_admin.py).
+    Always staff-only, a lab session's included: the range's firewall is what keeps the
+    range isolated. Any other appliance (a router role on another image) gets none: TrueNorth
+    does not configure it, so its template-login check stays inconclusive."""
     if not isinstance(doc, dict):
         return []
     have = {spec.key for spec in declared}
     os_of = machine_os(doc)
+    appliances = appliance_admins(doc)
     out: list[AccountSpec] = []
     for machine, fam in machine_families(doc).items():
+        visible = student_visible
         if fam == "appliance":
-            continue
-        if is_securityonion(os_of.get(machine, "")):
+            if machine not in appliances:
+                continue
+            username, kind, visible = appliances[machine], "appliance", False
+        elif is_securityonion(os_of.get(machine, "")):
             username, kind = so_build_user(), SECURITY_ONION
         elif fam == "windows":
             username, kind = "Administrator", "windows"
@@ -233,7 +263,7 @@ def implicit_staff_logins(doc: dict[str, Any] | None, declared: list[AccountSpec
         if (machine, username.casefold()) in have:
             continue
         out.append(AccountSpec(machine=machine, username=username, password=None, generate=True,
-                               student_visible=student_visible, role="admin", notes=IMPLICIT_NOTES[kind],
+                               student_visible=visible, role="admin", notes=IMPLICIT_NOTES[kind],
                                source="implicit"))
     return out
 
@@ -252,6 +282,7 @@ def parse(doc: dict[str, Any] | None, *, tenant_id) -> tuple[list[AccountSpec], 
         return [], [{"path": "accounts", "message": f"at most {MAX_ACCOUNTS} accounts"}]
     known = machines(doc)
     os_of = machine_os(doc)
+    appliances = appliance_admins(doc)
     specs: list[AccountSpec] = []
     errors: list[dict[str, str]] = []
     seen: dict[tuple[str, str], int] = {}
@@ -320,6 +351,10 @@ def parse(doc: dict[str, Any] | None, *, tenant_id) -> tuple[list[AccountSpec], 
                                              and username.casefold() in reserved_logins())):
             bad("a staff login (role: admin, Administrator, the Linux build user or soadmin) cannot be a scenario "
                 "account: its password is always generated (ADR 0013)", "scenario")
+        elif (scenario and isinstance(username, str) and machine_id is not None
+              and username.casefold() == appliances.get(machine_id, "\0")):
+            bad("an appliance's admin login cannot be a scenario account: its password is always generated "
+                "(ADR 0013, issue #248)", "scenario")
         notes = item.get("notes", "")
         if notes is None:
             notes = ""

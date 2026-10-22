@@ -114,8 +114,13 @@ def test_upgrade_reseals_adds_staff_logins_and_scrubs_the_wiki(tmp_path):
         assert implicit[3].startswith(rc_seal.ROW_PREFIX)
         legacy_yaml = db.execute(sa.text("SELECT yaml FROM templates WHERE name = 'legacy-lab'")).scalar()
         assert {k for k in by if k[0] == str(lab_rng)} == {(str(lab_rng), "dc01", "Administrator"),
-                                                          (str(lab_rng), "web01", "ubuntu")}
-        assert not any(k[1] == "fw01" for k in by)  # appliances: none
+                                                          (str(lab_rng), "web01", "ubuntu"),
+                                                          (str(lab_rng), "fw01", "admin")}
+        # Issue #248: a pfSense machine gets its admin row too, staff-only even in a lab, not
+        # applied and noted (its next build delivers the hash).
+        fw = by[(str(lab_rng), "fw01", "admin")]
+        assert fw[4] == "implicit" and not fw[5] and not fw[7] and "template password still valid" in fw[6]
+        assert fw[3].startswith(rc_seal.ROW_PREFIX)
         body = db.execute(sa.text("SELECT body FROM wiki_pages")).scalar()
         revisions = [b for (b,) in db.execute(sa.text("SELECT body FROM wiki_revisions"))]
     assert "tn-credential" not in body and wiki_doc.is_current(body) and body.rstrip().endswith("Keep this note.")
