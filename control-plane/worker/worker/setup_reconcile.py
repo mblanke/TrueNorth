@@ -93,15 +93,60 @@ def _running(output: dict) -> tuple[list[dict], list[dict]]:
     return products, sos
 
 
+READINESS_CHECKS = ("ip_check", "customization")  # vsphere_readiness, vsphere_customization (#255)
+STARTED_NOT_SAFE = "Not safe: a VM failed its readiness after the range was started"
+NOT_YET = ("guest network not verified yet", "guest customization (Sysprep) not finished yet")
+
+
+def _readiness_running(vm: dict) -> bool:
+    return any((vm.get(key) or {}).get("status") == "running" for key in READINESS_CHECKS)
+
+
 def _ip_pending(output: dict) -> list[dict]:
-    """VMs whose guest network check the build left ``running`` (its budget ended the wait;
-    provisioners/vsphere_readiness.py): settled here like a long setup."""
-    return [v for v in output.get("vms") or [] if (v.get("ip_check") or {}).get("status") == "running"]
+    """VMs whose guest network check, or (Windows) guest customization check, the build left
+    ``running`` (its budget ended the wait; provisioners/vsphere_readiness.py,
+    vsphere_customization.py): settled here like a long setup."""
+    return [v for v in output.get("vms") or [] if _readiness_running(v)]
+
+
+def _customization_expired(vms: list[dict], now: float) -> dict[str, dict]:
+    """Windows VMs whose guest customization check is still ``running`` past its window's end
+    plus VSPHERE_CUSTOMIZATION_GRACE, failed from the record alone (#255): vCenter
+    unreachable, or the VM refused by the range-ownership check, never leaves it open."""
+    from .provisioners import vsphere_customization as customization
+
+    return {str(v.get("name")): verdict for v in vms if (verdict := customization.expired(v, now)) is not None}
+
+
+def _combine(expired: dict | None, verdict: dict) -> dict:
+    """A backend's verdict over the record's own expiry: its customization outcome, when it
+    read one, replaces the expiry; otherwise both not-ready reasons are kept."""
+    if not expired or "customization" in verdict:
+        return verdict
+    reasons = [r for r in (expired.get("not_ready"), verdict.get("not_ready")) if r]
+    return {**expired, **verdict, **({"not_ready": "; ".join(reasons)} if reasons else {})}
+
+
+def _sysprep_accounts(range_id: str, vms: list[dict]) -> dict:
+    """The range's declared accounts (node id -> [RangeAccount]) when a Windows VM's
+    customization check is pending: its Administrator proves the template-login check, and
+    every password is masked in Sysprep's messages. {} otherwise, or when they cannot be read."""
+    if not any((v.get("customization") or {}).get("status") == "running" for v in vms):
+        return {}
+    from . import range_accounts
+    from .tasks import _db_session
+
+    try:
+        return range_accounts.load(_db_session, range_id)
+    except Exception as exc:  # noqa: BLE001 — the check then stays unproven (inconclusive), never a pass
+        logger.warning("[reconcile] range %s: range accounts not readable this round: %s", range_id, exc)
+        return {}
 
 
 def _merge_ips(output: dict, settled: dict) -> list[str]:
-    """Store the settled guest network checks on their VMs; drop their "not verified yet"
-    warning. Returns the reasons of the VMs that are not ready (they fail the range)."""
+    """Store the settled readiness checks on their VMs; drop their "not verified yet"
+    warning once none is still running. Returns the reasons of the VMs that are not ready
+    (they fail the range)."""
     warnings = list(output.get("warnings") or [])
     failed: list[str] = []
     for vm in output.get("vms") or []:
@@ -110,8 +155,9 @@ def _merge_ips(output: dict, settled: dict) -> list[str]:
             continue
         reason = change.pop("not_ready", "")
         vm.update(change)
-        warnings = [w for w in warnings if not (w.startswith(f"VM {vm.get('name')}: ")
-                                                and "guest network not verified yet" in w)]
+        if not _readiness_running(vm):
+            warnings = [w for w in warnings if not (w.startswith(f"VM {vm.get('name')}: ")
+                                                    and any(t in w for t in NOT_YET))]
         if reason:
             failed.append(f"VM {vm.get('name')}: {reason}")
             output["not_ready"] = sorted(set(output.get("not_ready") or []) | {vm.get("name")})
@@ -267,12 +313,14 @@ def _reconcile_range(range_id: str, name: str, output: dict, backend: str) -> No
         return
     # Timeouts first, from the record alone: they end even if what follows cannot run.
     changes: dict[str, dict] = _expired(products, sos, time.time())
-    ip_settled: dict[str, dict] = {}
+    ip_settled: dict[str, dict] = _customization_expired(ip_pending, time.time())
     if ip_pending:  # one Tools read per VM; no guest login, so a lab session's range too
         try:
             settle = getattr(_get_backend(backend, range_id, output=output), "reconcile_guest_ips", None)
             if callable(settle):
-                ip_settled = run_async(settle(range_id, output))
+                found = run_async(settle(range_id, output, accounts=_sysprep_accounts(range_id, ip_pending)))
+                for name, verdict in found.items():
+                    ip_settled[name] = _combine(ip_settled.get(name), verdict)
         except SoftTimeLimitExceeded:
             raise
         except Exception as exc:  # noqa: BLE001 — retried next beat; the window's end is in the record
@@ -322,18 +370,29 @@ def _record(range_id: str, output: dict, changes: dict, ip_settled: dict) -> Non
         row = db_ops.range_output_and_backend(db, range_id)
         current = json.loads(row[0]) if row and row[0] else output
         merged, applied = _merge(current, changes)
-        not_ready = _merge_ips(merged, ip_settled) + _merge_template_logins(merged, changes)
+        # A Windows VM's template-login check made once its Sysprep finished (#255) is reported
+        # like a Security Onion one: Not safe, and not ready under enforce.
+        not_ready = (_merge_ips(merged, ip_settled) + _merge_template_logins(merged, changes)
+                     + _merge_template_logins(merged, ip_settled))
         if not db_ops.set_range_output(db, range_id, json.dumps(merged), only_states=LIVE_STATES):
             logger.info("[reconcile] range %s left the live states; nothing recorded", range_id)
             return
         if not_ready:
             # As a build that waited it out would have (range_alloc.build_outcome): failed, with
             # the reason. Only from ready: a range Students have started keeps running, and
-            # says why in its warnings.
+            # says why in its warnings and with a range-level "Not safe" warning; its VMs'
+            # records fail the S6 guest_readiness section, so its certification is not_safe.
+            from .tasks import _notify_api
+
             error = f"{len(not_ready)} VM(s) built but not ready: " + "; ".join(not_ready)
             if db_ops.update_range_state(db, range_id, "failed", error=error, only_from=("ready",)):
-                from .tasks import _notify_api
                 _notify_api("range", {"id": range_id, "state": "failed", "error": error})
+            else:
+                warning = (f"{STARTED_NOT_SAFE}: {error}. The range was already started, so it keeps running; "
+                           "destroy and rebuild it before Students rely on it")
+                merged["warnings"] = [*(merged.get("warnings") or []), warning]
+                db_ops.set_range_output(db, range_id, json.dumps(merged), only_states=LIVE_STATES)
+                _notify_api("range", {"id": range_id, "warning": warning})
             logger.warning("[reconcile] range %s: %s", range_id, error)
         if pairs := {(str(vm["node_id"]), str(n)) for vm in applied if vm.get("node_id")
                      for n in vm["accounts_applied"]}:

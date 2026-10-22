@@ -17,6 +17,9 @@ Not held to it: router appliances (pfSense, OPNsense, VyOS), whose images may no
 VMware Tools at all, and any node a template marks ``verify_ip: false`` (a deliberately
 Tools-less vulnerable image). Their planned addresses are recorded unverified
 (``ip_verified`` None) unless Tools runs and says otherwise. Pure functions, no SDK.
+
+A Windows VM is also held to its guest customization (Sysprep) outcome, in the same window
+and with the same budget rule: vsphere_customization.py (#255).
 """
 
 from __future__ import annotations
