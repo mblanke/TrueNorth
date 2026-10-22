@@ -826,6 +826,60 @@
         "title": "Arc2Status",
         "type": "object"
       },
+      "ArchivedCertificationOut": {
+        "properties": {
+          "deployment_id": {
+            "format": "uuid",
+            "title": "Deployment Id",
+            "type": "string"
+          },
+          "generation": {
+            "title": "Generation",
+            "type": "integer"
+          },
+          "opened_at": {
+            "format": "date-time",
+            "title": "Opened At",
+            "type": "string"
+          },
+          "purge_after": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When retention may delete it (RANGE_CERT_RETENTION_MONTHS); export it before. None: kept forever",
+            "title": "Purge After"
+          },
+          "verdict": {
+            "enum": [
+              "certified",
+              "ready_not_certified",
+              "not_safe"
+            ],
+            "title": "Verdict",
+            "type": "string"
+          },
+          "verdict_label": {
+            "title": "Verdict Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "deployment_id",
+          "generation",
+          "opened_at",
+          "verdict",
+          "verdict_label",
+          "purge_after"
+        ],
+        "title": "ArchivedCertificationOut",
+        "type": "object"
+      },
       "AttachObjectives": {
         "properties": {
           "po_ids": {
@@ -1951,6 +2005,158 @@
         "title": "CapacityResult",
         "type": "object"
       },
+      "CertificationCaptureOut": {
+        "properties": {
+          "deployment_id": {
+            "format": "uuid",
+            "title": "Deployment Id",
+            "type": "string"
+          },
+          "written": {
+            "description": "Entries appended; 0 when the evidence had not changed",
+            "title": "Written",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "deployment_id",
+          "written"
+        ],
+        "title": "CertificationCaptureOut",
+        "type": "object"
+      },
+      "CertificationEntryOut": {
+        "properties": {
+          "actor": {
+            "description": "The person behind it, or 'system' for evidence the platform recorded",
+            "title": "Actor",
+            "type": "string"
+          },
+          "actor_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Id"
+          },
+          "corrects_seq": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The entry this one corrects (it is kept)",
+            "title": "Corrects Seq"
+          },
+          "detail": {
+            "additionalProperties": true,
+            "title": "Detail",
+            "type": "object"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "recorded_at": {
+            "format": "date-time",
+            "title": "Recorded At",
+            "type": "string"
+          },
+          "section": {
+            "title": "Section",
+            "type": "string"
+          },
+          "seq": {
+            "title": "Seq",
+            "type": "integer"
+          },
+          "source": {
+            "description": "What wrote it: api.capture, correction, api.<action>, a slice's worker step",
+            "title": "Source",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "pass",
+              "fail",
+              "incomplete",
+              "info"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "seq",
+          "section",
+          "status",
+          "summary",
+          "detail",
+          "source",
+          "actor",
+          "recorded_at"
+        ],
+        "title": "CertificationEntryOut",
+        "type": "object"
+      },
+      "CertificationExportOut": {
+        "properties": {
+          "exported_at": {
+            "format": "date-time",
+            "title": "Exported At",
+            "type": "string"
+          },
+          "exported_by": {
+            "title": "Exported By",
+            "type": "string"
+          },
+          "format": {
+            "const": "truenorth.range-certification.v1",
+            "title": "Format",
+            "type": "string"
+          },
+          "record": {
+            "$ref": "#/components/schemas/CertificationRecordOut"
+          },
+          "record_sha256": {
+            "description": "SHA-256 of the canonical JSON of `record` alone: the same for every export (and the PDF) of the record in this state",
+            "title": "Record Sha256",
+            "type": "string"
+          },
+          "signature": {
+            "$ref": "#/components/schemas/ExportSignatureOut"
+          }
+        },
+        "required": [
+          "format",
+          "record_sha256",
+          "exported_at",
+          "exported_by",
+          "record",
+          "signature"
+        ],
+        "title": "CertificationExportOut",
+        "type": "object"
+      },
       "CertificationIn": {
         "properties": {
           "cert_name": {
@@ -2138,6 +2344,225 @@
           "created_at"
         ],
         "title": "CertificationOut",
+        "type": "object"
+      },
+      "CertificationRecordOut": {
+        "properties": {
+          "deployment_id": {
+            "description": "The provision operation (GET /ranges/{id}/operations) it certifies",
+            "format": "uuid",
+            "title": "Deployment Id",
+            "type": "string"
+          },
+          "deployment_status": {
+            "description": "The provision operation's status: pending, dispatched (building), succeeded, failed, superseded",
+            "title": "Deployment Status",
+            "type": "string"
+          },
+          "generation": {
+            "title": "Generation",
+            "type": "integer"
+          },
+          "history": {
+            "description": "True: every entry of each section; False: the latest only",
+            "title": "History",
+            "type": "boolean"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "opened_at": {
+            "format": "date-time",
+            "title": "Opened At",
+            "type": "string"
+          },
+          "opened_by": {
+            "title": "Opened By",
+            "type": "string"
+          },
+          "opened_by_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Opened By Id"
+          },
+          "plan_hash": {
+            "title": "Plan Hash",
+            "type": "string"
+          },
+          "plan_hash_basis": {
+            "description": "What plan_hash is a SHA-256 of",
+            "title": "Plan Hash Basis",
+            "type": "string"
+          },
+          "range_id": {
+            "format": "uuid",
+            "title": "Range Id",
+            "type": "string"
+          },
+          "range_name": {
+            "title": "Range Name",
+            "type": "string"
+          },
+          "reasons": {
+            "description": "Why it is not certified: failures, or what is missing",
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasons",
+            "type": "array"
+          },
+          "sections": {
+            "items": {
+              "$ref": "#/components/schemas/CertificationSectionOut"
+            },
+            "title": "Sections",
+            "type": "array"
+          },
+          "template_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Template Id"
+          },
+          "template_name": {
+            "title": "Template Name",
+            "type": "string"
+          },
+          "template_version": {
+            "title": "Template Version",
+            "type": "string"
+          },
+          "tenant_id": {
+            "format": "uuid",
+            "title": "Tenant Id",
+            "type": "string"
+          },
+          "verdict": {
+            "enum": [
+              "certified",
+              "ready_not_certified",
+              "not_safe"
+            ],
+            "title": "Verdict",
+            "type": "string"
+          },
+          "verdict_label": {
+            "description": "Certified for Students / Ready, not certified / Not safe",
+            "title": "Verdict Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "deployment_id",
+          "generation",
+          "range_id",
+          "range_name",
+          "template_name",
+          "template_version",
+          "plan_hash",
+          "plan_hash_basis",
+          "opened_by",
+          "opened_at",
+          "tenant_id",
+          "deployment_status",
+          "verdict",
+          "verdict_label",
+          "reasons",
+          "history",
+          "sections"
+        ],
+        "title": "CertificationRecordOut",
+        "type": "object"
+      },
+      "CertificationSectionOut": {
+        "properties": {
+          "entries": {
+            "description": "The latest entry only, unless history was asked for (?history=1; exports always)",
+            "items": {
+              "$ref": "#/components/schemas/CertificationEntryOut"
+            },
+            "title": "Entries",
+            "type": "array"
+          },
+          "history_count": {
+            "description": "How many entries the section has, superseded ones included",
+            "title": "History Count",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "provided_by": {
+            "description": "The slice or issue that records it",
+            "title": "Provided By",
+            "type": "string"
+          },
+          "required": {
+            "description": "Needed for 'certified'; an optional section can still fail the record",
+            "title": "Required",
+            "type": "boolean"
+          },
+          "status": {
+            "description": "Its latest entry's status; missing when it has none",
+            "enum": [
+              "pass",
+              "fail",
+              "incomplete",
+              "info",
+              "missing"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "name",
+          "title",
+          "required",
+          "provided_by",
+          "status",
+          "summary",
+          "history_count",
+          "entries"
+        ],
+        "title": "CertificationSectionOut",
         "type": "object"
       },
       "ClassAttemptOut": {
@@ -5283,6 +5708,12 @@
             ],
             "title": "Range Id"
           },
+          "require_certified_range": {
+            "default": false,
+            "description": "Require a certified range (ADR 0013 \u00a76). Stored; not enforced until isolation evidence (range certification S4) exists",
+            "title": "Require Certified Range",
+            "type": "boolean"
+          },
           "scenario_id": {
             "anyOf": [
               {
@@ -5447,6 +5878,11 @@
               }
             ],
             "title": "Range Id"
+          },
+          "require_certified_range": {
+            "default": false,
+            "title": "Require Certified Range",
+            "type": "boolean"
           },
           "scenario_id": {
             "anyOf": [
@@ -5843,6 +6279,42 @@
           }
         },
         "title": "ExerciseUpdate",
+        "type": "object"
+      },
+      "ExportSignatureOut": {
+        "properties": {
+          "alg": {
+            "const": "Ed25519",
+            "title": "Alg",
+            "type": "string"
+          },
+          "key_id": {
+            "title": "Key Id",
+            "type": "string"
+          },
+          "public_key": {
+            "description": "Base64 raw public key; trust it only if key_id matches one known out of band",
+            "title": "Public Key",
+            "type": "string"
+          },
+          "signed_sha256": {
+            "description": "SHA-256 of the signed bytes: canonical JSON of the export minus signature",
+            "title": "Signed Sha256",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "alg",
+          "key_id",
+          "public_key",
+          "signed_sha256",
+          "value"
+        ],
+        "title": "ExportSignatureOut",
         "type": "object"
       },
       "ExternalActivityOut": {
@@ -12855,6 +13327,47 @@
         "title": "RangeAbandonIn",
         "type": "object"
       },
+      "RangeCertificationOut": {
+        "properties": {
+          "archived": {
+            "description": "Earlier builds' records, newest first",
+            "items": {
+              "$ref": "#/components/schemas/ArchivedCertificationOut"
+            },
+            "title": "Archived",
+            "type": "array"
+          },
+          "range_id": {
+            "format": "uuid",
+            "title": "Range Id",
+            "type": "string"
+          },
+          "record": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CertificationRecordOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The current record: the newest build's (or the one asked for). None: no build has one yet"
+          },
+          "retention_months": {
+            "description": "Archived records older than this are purged; 0: kept forever",
+            "title": "Retention Months",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "range_id",
+          "record",
+          "archived",
+          "retention_months"
+        ],
+        "title": "RangeCertificationOut",
+        "type": "object"
+      },
       "RangeCredentialOut": {
         "properties": {
           "applied": {
@@ -15325,6 +15838,52 @@
           "valid"
         ],
         "title": "SigmaValidationResult",
+        "type": "object"
+      },
+      "SigningKeyOut": {
+        "properties": {
+          "alg": {
+            "const": "Ed25519",
+            "title": "Alg",
+            "type": "string"
+          },
+          "current": {
+            "description": "The key that signs exports now",
+            "title": "Current",
+            "type": "boolean"
+          },
+          "first_used_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When it first signed an export; None: not yet",
+            "title": "First Used At"
+          },
+          "key_id": {
+            "description": "First 16 hex characters of the SHA-256 of the raw public key",
+            "title": "Key Id",
+            "type": "string"
+          },
+          "public_key": {
+            "description": "Base64 raw Ed25519 public key",
+            "title": "Public Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key_id",
+          "alg",
+          "public_key",
+          "first_used_at",
+          "current"
+        ],
+        "title": "SigningKeyOut",
         "type": "object"
       },
       "SkillGapOut": {
@@ -36113,6 +36672,37 @@
         ]
       }
     },
+    "/range-certification/signing-keys": {
+      "get": {
+        "description": "Every public key that has signed certification exports, the current one first and\nmarked, retired ones kept (an export made before a TN_SECRETS_KEY rotation still\nverifies against its key_id here). Record the current key's id out of band to trust it.\nHow to verify: docs/range-certification.md. **Permission: range:certification_read**",
+        "operationId": "list_certification_signing_keys_range_certification_signing_keys_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SigningKeyOut"
+                  },
+                  "title": "Response List Certification Signing Keys Range Certification Signing Keys Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Certification Signing Keys",
+        "tags": [
+          "ranges"
+        ]
+      }
+    },
     "/range-credentials/template-issues": {
       "get": {
         "description": "Templates whose typed-in passwords are not on scenario accounts (ADR 0013 \u00a73): fix each\nby marking the account ``scenario: true`` (its weak password is the lesson) or using\n``generate: true``. **Permission: template:update**; an admin also sees global templates.",
@@ -36528,6 +37118,294 @@
           }
         ],
         "summary": "Abandon Range",
+        "tags": [
+          "ranges"
+        ]
+      }
+    },
+    "/ranges/{range_id}/certification": {
+      "get": {
+        "description": "The range's current certification record (its newest build's, unless a deployment\nis named), with its verdict: certified / ready_not_certified (reasons) / not_safe\n(failures), each section's latest entry (``history=1``: all of them), and the archived\nrecords of earlier builds. **Permission: range:certification_read**",
+        "operationId": "get_range_certification_ranges__range_id__certification_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "range_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Range Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "A deployment (provision operation) id; the newest when omitted",
+            "in": "query",
+            "name": "deployment_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A deployment (provision operation) id; the newest when omitted",
+              "title": "Deployment Id"
+            }
+          },
+          {
+            "description": "Every entry of each section, superseded ones too (default: latest)",
+            "in": "query",
+            "name": "history",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Every entry of each section, superseded ones too (default: latest)",
+              "title": "History",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RangeCertificationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Not staff: Students and observers do not see certification records"
+          },
+          "404": {
+            "description": "No such range in the caller's tenant, or no record for that deployment"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Range Certification",
+        "tags": [
+          "ranges"
+        ]
+      }
+    },
+    "/ranges/{range_id}/certification/capture": {
+      "post": {
+        "description": "Append the evidence TrueNorth holds now (guest readiness, network allocation,\ntemplate names) to the newest deployment's record, where it changed. Opens the record\nof a build accepted before records began. Appends only; never edits.\n**Permission: range:certification_read and range:provision**",
+        "operationId": "capture_range_certification_ranges__range_id__certification_capture_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "range_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Range Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CertificationCaptureOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Not staff: Students and observers do not see certification records"
+          },
+          "404": {
+            "description": "No such range in the caller's tenant, or no record for that deployment"
+          },
+          "409": {
+            "description": "The range was never provisioned through TrueNorth"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Capture Range Certification",
+        "tags": [
+          "ranges"
+        ]
+      }
+    },
+    "/ranges/{range_id}/certification/export": {
+      "get": {
+        "description": "The record as signed JSON (Ed25519; app/range_certification/signing.py). The\nsignature covers the canonical JSON of everything but ``signature``.\n**Permission: range:certification_read**. Audited.",
+        "operationId": "export_range_certification_ranges__range_id__certification_export_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "range_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Range Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "A deployment (provision operation) id; the newest when omitted",
+            "in": "query",
+            "name": "deployment_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A deployment (provision operation) id; the newest when omitted",
+              "title": "Deployment Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CertificationExportOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Not staff: Students and observers do not see certification records"
+          },
+          "404": {
+            "description": "No such range in the caller's tenant, or no record for that deployment"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Export Range Certification",
+        "tags": [
+          "ranges"
+        ]
+      }
+    },
+    "/ranges/{range_id}/certification/export/pdf": {
+      "get": {
+        "description": "A readable PDF of the record, naming the signed JSON's SHA-256 and key id (the JSON\nis what verifies). **Permission: range:certification_read**. Audited.",
+        "operationId": "export_range_certification_pdf_ranges__range_id__certification_export_pdf_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "range_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Range Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "A deployment (provision operation) id; the newest when omitted",
+            "in": "query",
+            "name": "deployment_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A deployment (provision operation) id; the newest when omitted",
+              "title": "Deployment Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/pdf": {}
+            },
+            "description": "The record as a PDF"
+          },
+          "403": {
+            "description": "Not staff: Students and observers do not see certification records"
+          },
+          "404": {
+            "description": "No such range in the caller's tenant, or no record for that deployment"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Export Range Certification Pdf",
         "tags": [
           "ranges"
         ]

@@ -112,6 +112,7 @@ LATER_COLUMNS: dict[str, tuple[str, ...]] = {
         "scenario_id",  # f9a0b1c2d3e4
         "exercise_id",  # f9a0b1c2d3e4
         "auto_exercise",  # f9a0b1c2d3e4
+        "require_certified_range",  # 68d00729cc34
     ),
     "enrollments": ("source",),  # a1e2b3c4d5f6
 }

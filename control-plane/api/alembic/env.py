@@ -26,6 +26,7 @@ from app import (  # noqa: F401
     moodle_results,
     network_inventory,
     noise,
+    range_certification,
     range_credentials,
     range_leases,
     range_ops,

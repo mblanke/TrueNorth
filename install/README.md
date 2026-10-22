@@ -550,6 +550,7 @@ connection whose last discovery failed, and has **Refresh now** to rediscover at
 | Variable | Default | Effect |
 |---|---|---|
 | `tn_infra_discovery_seconds` | `300` | `INFRA_DISCOVERY_SECONDS`: how often the api rediscovers; `0` turns the schedule off |
+| `tn_range_cert_retention_months` | `12` | `RANGE_CERT_RETENTION_MONTHS`: archived Range Certification Records (earlier builds; never a range's current one) are purged this many months after they were opened, each with an audit row; `0` keeps them forever |
 
 One discovery per connection runs at a time (a lease in `hypervisor_discovery_state`), so
 a slow vCenter never collects overlapping runs; a press of Refresh now while one is running

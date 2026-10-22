@@ -225,6 +225,7 @@ def create_event(
         course_id=course_id,
         scenario_id=scenario_id,
         exercise_id=exercise_id,
+        require_certified_range=body.require_certified_range,
         created_by=service.user_uuid(user),
         start_time=body.start_time,
         end_time=body.end_time,
@@ -407,6 +408,8 @@ def update_event(
     evt.course_id = course_id
     evt.scenario_id = scenario_id
     evt.exercise_id = exercise_id
+    if "require_certified_range" in body.model_fields_set:  # a form that does not send it keeps it
+        evt.require_certified_range = body.require_certified_range
     if evt.state != EventState.draft:  # a draft was never sent to a calendar
         evt.sequence = (evt.sequence or 0) + 1  # calendars replace their copy
     detail = (

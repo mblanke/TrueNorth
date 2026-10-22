@@ -376,6 +376,7 @@ def to_out(e: ScheduledEvent, warnings: list[str] | None = None) -> dict:
         course_id=str(e.course_id) if e.course_id else None,
         scenario_id=str(e.scenario_id) if e.scenario_id else None,
         exercise_id=str(e.exercise_id) if e.exercise_id else None,
+        require_certified_range=bool(e.require_certified_range),
         start_time=as_utc(e.start_time),
         end_time=as_utc(e.end_time),
         vm_count=e.vm_count,

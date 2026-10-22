@@ -14,7 +14,7 @@ import type { UserRole } from '../services/auth.service';
 export type Permission =
   | 'range:create' | 'range:read' | 'range:update' | 'range:delete' | 'range:provision'
   | 'range:destroy' | 'range:batch_provision' | 'range:lease_force_release' | 'range:credentials_read'
-  | 'range:credentials_rotate'
+  | 'range:credentials_rotate' | 'range:certification_read'
   | 'template:create' | 'template:read' | 'template:update' | 'template:delete'
   | 'scenario:create' | 'scenario:read' | 'scenario:update' | 'scenario:delete'
   | 'exercise:create' | 'exercise:read' | 'exercise:start' | 'exercise:complete' | 'exercise:pause'
@@ -38,7 +38,7 @@ export type Permission =
 export const ALL_PERMISSIONS: readonly Permission[] = [
   'range:create', 'range:read', 'range:update', 'range:delete', 'range:provision',
   'range:destroy', 'range:batch_provision', 'range:lease_force_release', 'range:credentials_read',
-  'range:credentials_rotate',
+  'range:credentials_rotate', 'range:certification_read',
   'template:create', 'template:read', 'template:update', 'template:delete',
   'scenario:create', 'scenario:read', 'scenario:update', 'scenario:delete',
   'exercise:create', 'exercise:read', 'exercise:start', 'exercise:complete', 'exercise:pause',
@@ -64,7 +64,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
   admin: ALL_PERMISSIONS,
   instructor: [
     'range:create', 'range:read', 'range:update', 'range:provision', 'range:destroy',
-    'range:batch_provision', 'range:credentials_read',
+    'range:batch_provision', 'range:credentials_read', 'range:certification_read',
     'template:read', 'template:create',
     'scenario:create', 'scenario:read', 'scenario:update',
     'exercise:create', 'exercise:read', 'exercise:start', 'exercise:complete', 'exercise:pause',
@@ -83,7 +83,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
   range_ops: [
     'infra:read', 'infra:write', 'infra:control', 'ai_config:read',
     'range:create', 'range:read', 'range:update', 'range:delete', 'range:provision',
-    'range:destroy', 'range:batch_provision', 'range:credentials_read',
+    'range:destroy', 'range:batch_provision', 'range:credentials_read', 'range:certification_read',
     'template:read', 'template:create', 'template:update',
     'scenario:read', 'exercise:read', 'schedule:read', 'stats:read',
     'telemetry:read', 'telemetry:write',

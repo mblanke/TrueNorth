@@ -273,6 +273,10 @@ def accept(
     rng.state = spec.in_progress
     rng.error_message = None
     db.flush()
+    if action == "provision":
+        from ..range_certification import service as certification
+
+        certification.open_for_provision(db, rng, op, user)  # every deployment gets its record (ADR 0013 §6)
     return op, rng, True
 
 
@@ -378,6 +382,9 @@ def reconcile(db: Session, rng: Range) -> None:
                 }
             continue
         op.status, op.finished_at = outcome, _now()
+        from ..range_certification import service as certification
+
+        certification.on_operation_settled(db, rng, op, outcome)  # before the release: teardown sees what is held
         if op.action == "destroy" and outcome == "succeeded":
             from ..network_inventory import release_range
 
