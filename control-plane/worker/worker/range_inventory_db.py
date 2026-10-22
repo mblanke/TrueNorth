@@ -25,12 +25,15 @@ from .tables import (
     range_certification_records,
     range_inventory_checks,
     range_leases,
+    range_operations,
     range_snapshots,
     ranges,
 )
 
 checks = range_inventory_checks
 LIVE_STATES = ("ready", "running", "stopped")  # a built range nothing is changing
+IN_FLIGHT = ("pending", "dispatched", "held")  # app/range_ops/models.py
+BUSY_SNAPSHOT_STATES = ("creating", "restoring")
 
 
 def _now() -> datetime:
@@ -80,15 +83,51 @@ def _now_in_db(db):
     return sa.func.now() if db.get_bind().dialect.name == "postgresql" else _now()
 
 
+def _leased(db):
+    return sa.select(range_leases.c.range_id).where(range_leases.c.expires_at > _now_in_db(db))
+
+
+def _in_flight():
+    return sa.select(range_operations.c.range_id).where(range_operations.c.status.in_(IN_FLIGHT))
+
+
 def drift_ranges(db) -> list:
     """(id, name, provisioner_output, provisioner_backend) of every built range that is not
-    being changed now: ready, running or stopped, and no worker holds its lease (a build,
-    restore, power change or teardown in progress would show as drift)."""
-    busy = sa.select(range_leases.c.range_id).where(range_leases.c.expires_at > _now_in_db(db))
+    being changed now: ready, running or stopped, no operation in flight and no worker
+    holding its lease (a build, restore, power change or teardown in progress would show as
+    drift)."""
     stmt = (sa.select(ranges.c.id, ranges.c.name, ranges.c.provisioner_output, ranges.c.provisioner_backend)
             .where(sa.cast(ranges.c.state, sa.String).in_(LIVE_STATES), ranges.c.deleted_at.is_(None),
-                   ranges.c.id.not_in(busy)))
+                   ranges.c.id.not_in(_leased(db)), ranges.c.id.not_in(_in_flight())))
     return db.execute(stmt).fetchall()
+
+
+def db_now(db):
+    """The database's clock (every writer stamps ``updated_at`` with it): a sweep's start."""
+    if db.get_bind().dialect.name != "postgresql":
+        return _now()
+    return db.execute(sa.select(sa.func.now())).scalar()
+
+
+def unsettled(db, range_id: str, since) -> str | None:
+    """Why a drift reading taken since ``since`` must not be recorded for the range, or None:
+    it is no longer idle (state, lease, an operation in flight), or the range or one of its
+    snapshots changed while it was read (a snapshot taken, restored or deleted then would
+    show as false drift in the append-only record)."""
+    state = range_state(db, range_id)
+    if state not in LIVE_STATES:
+        return f"the range is {state} now"
+    if db.execute(_leased(db).where(range_leases.c.range_id == range_id)).first() is not None:
+        return "a worker task holds the range's lease"
+    if db.execute(_in_flight().where(range_operations.c.range_id == range_id)).first() is not None:
+        return "an operation of the range is in flight"
+    if db.execute(sa.select(ranges.c.id).where(ranges.c.id == range_id, ranges.c.updated_at > since)).first():
+        return "the range changed while it was read"
+    s = range_snapshots
+    if db.execute(sa.select(s.c.id).where(s.c.range_id == range_id, sa.or_(
+            s.c.snapshot_state.in_(BUSY_SNAPSHOT_STATES), s.c.updated_at > since))).first() is not None:
+        return "a snapshot of the range was being taken, restored or deleted while it was read"
+    return None
 
 
 def snapshot_rows(db, range_ids: list[str]) -> dict[str, list[dict]]:

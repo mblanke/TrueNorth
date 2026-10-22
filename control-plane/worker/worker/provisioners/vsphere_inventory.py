@@ -9,10 +9,10 @@ raised. What the readings are compared with, and how a teardown is graded, is
 * ``identity``: what a VM is recorded as at clone (moid, instance UUID, VMX, datastores,
   disk files, folder, CPU/RAM, NICs with port group key and MAC).
 * ``live``: the same fields now, for the drift check, and each recorded port group's VLAN.
-* ``marked_vms`` / ``marked_portgroups``: everything that carries the range's annotation
-  or port group owner mark (the ``tn-range`` tag is read over REST by the provisioner).
-  Marks are hints, never authority to delete: the provisioner lists what is not recorded
-  as *unidentified*.
+* ``all_vm_marks`` / ``portgroup_marks`` / ``unidentified``: everything that carries the
+  range's annotation or port group owner mark (the ``tn-range`` tag is read over REST by the
+  provisioner), read once and shared by every range of a drift sweep. Marks are hints,
+  never authority to delete: what is not recorded is listed as *unidentified*.
 * ``remaining``: which recorded ids still exist after a teardown: VMs (by moid, and by
   instance UUID anywhere in vCenter), disk files on their datastores (datastore browser),
   port groups, the folder.
@@ -29,6 +29,7 @@ try:
 except ImportError:  # the provisioner refuses to run without it
     vim = vmodl = None  # type: ignore[assignment]
 
+from ..range_inventory import vm_owned
 from . import vsphere_infra as infra
 from . import vsphere_vlans as live_vlans
 
@@ -152,22 +153,47 @@ def _vlan(config) -> int | None:
     return next(iter(vlans)) if len(vlans) == 1 and not trunk else None
 
 
-def live(si, vm_ids: list[str], portgroups: list[dict]) -> dict:
-    """The drift reading: each recorded VM's identity fields and snapshots, each recorded
-    port group's name and VLAN (range_inventory.compare)."""
+def _vm_reading(p: dict) -> dict:
+    return {
+        "exists": True, "name": _str(p.get("name")), "instance_uuid": _str(p.get("config.instanceUuid")),
+        "num_cpu": p.get("config.hardware.numCPU"), "memory_mb": p.get("config.hardware.memoryMB"),
+        "nics": nics_of(p.get("config.hardware.device")), "snapshots": snapshots_of(p.get("snapshot")),
+    }
+
+
+def live(si, vms: list[dict], portgroups: list[dict]) -> dict:
+    """The drift reading of recorded VMs and port groups (range_inventory.recorded entries;
+    may be several ranges' at once): one property-collector call for every VM, one for every
+    vDS port group, one for every standard network and one for the hosts they are on.
+
+    A VM whose recorded moid is gone but whose recorded instance UUID is registered under
+    another moid (re-registered, vMotion to another vCenter and back) is read there and
+    marked ``moved_to``. A standard port group's VLAN is read from each host that has it;
+    one it cannot read on some host is ``vlan_unreadable`` (never assumed to be the record)."""
     out: dict = {"vms": {}, "portgroups": {}, "errors": []}
-    if vm_ids:
-        props, missing = read_props(si, vim.VirtualMachine, vm_ids, IDENTITY_PATHS)
-        for vm_id in vm_ids:
-            if vm_id in missing:
-                out["vms"][vm_id] = {"exists": False}
+    ids = [v["moid"] for v in vms]
+    if ids:
+        props, missing = read_props(si, vim.VirtualMachine, ids, IDENTITY_PATHS)
+        moved: dict[str, str] = {}
+        for v in vms:
+            if v["moid"] not in missing or not v.get("instance_uuid"):
                 continue
-            p = props[vm_id]
-            out["vms"][vm_id] = {
-                "exists": True, "name": _str(p.get("name")), "instance_uuid": _str(p.get("config.instanceUuid")),
-                "num_cpu": p.get("config.hardware.numCPU"), "memory_mb": p.get("config.hardware.memoryMB"),
-                "nics": nics_of(p.get("config.hardware.device")), "snapshots": snapshots_of(p.get("snapshot")),
-            }
+            try:
+                found = si.content.searchIndex.FindByUuid(uuid=v["instance_uuid"], vmSearch=True, instanceUuid=True)
+            except Exception as exc:  # noqa: BLE001 -- reported; the VM is then just "gone"
+                out["errors"].append(f"VM {v.get('name') or v['moid']}: search by instance UUID failed: {exc}")
+                continue
+            if found is not None:
+                moved[v["moid"]] = found._moId
+        more = read_props(si, vim.VirtualMachine, sorted(set(moved.values())), IDENTITY_PATHS)[0] if moved else {}
+        for v in vms:
+            moid = v["moid"]
+            if moved.get(moid) in more:
+                out["vms"][moid] = {**_vm_reading(more[moved[moid]]), "moved_to": moved[moid]}
+            elif moid in missing:
+                out["vms"][moid] = {"exists": False}
+            else:
+                out["vms"][moid] = _vm_reading(props[moid])
     dvs_ids = [pg["moid"] for pg in portgroups if pg.get("moid") and pg.get("switch_mode") != "vss"]
     vss_ids = [pg["moid"] for pg in portgroups if pg.get("moid") and pg.get("switch_mode") == "vss"]
     if dvs_ids:
@@ -176,12 +202,33 @@ def live(si, vm_ids: list[str], portgroups: list[dict]) -> dict:
             out["portgroups"][moid] = {"exists": False} if moid in missing else {
                 "exists": True, "name": _str(props[moid].get("name")),
                 "vlan": _vlan(props[moid].get("config"))}
-    if vss_ids:  # a standard port group's VLAN is per host; its existence is what is read here
-        recorded_vlan = {pg["moid"]: pg.get("vlan") for pg in portgroups}
-        props, missing = read_props(si, vim.Network, vss_ids, ("name",))
-        for moid in vss_ids:
-            out["portgroups"][moid] = {"exists": False} if moid in missing else {
-                "exists": True, "name": _str(props[moid].get("name")), "vlan": recorded_vlan.get(moid)}
+    if vss_ids:
+        out["portgroups"].update(_vss_live(si, vss_ids))
+    return out
+
+
+def _vss_live(si, ids: list[str]) -> dict[str, dict]:
+    """Each standard port group's name and its VLAN as every host that has it reports it."""
+    props, missing = read_props(si, vim.Network, ids, ("name", "host"))
+    host_ids = sorted({h._moId for p in props.values() for h in p.get("host") or []})
+    hosts = read_props(si, vim.HostSystem, host_ids, ("config.network.portgroup",))[0] if host_ids else {}
+    out: dict[str, dict] = {}
+    for moid in ids:
+        if moid in missing:
+            out[moid] = {"exists": False}
+            continue
+        name, vlans, unreadable = _str(props[moid].get("name")), set(), False
+        for host in props[moid].get("host") or []:
+            pgs = hosts.get(host._moId, {}).get("config.network.portgroup")
+            vlan = next((int(pg.spec.vlanId or 0) for pg in pgs or [] if pg.spec.name == name), None)
+            if vlan is None:
+                unreadable = True
+            else:
+                vlans.add(vlan)
+        if unreadable or not vlans:
+            out[moid] = {"exists": True, "name": name, "vlan": None, "vlan_unreadable": True}
+        else:  # one VLAN everywhere: that one; hosts that disagree: all of them (never the record)
+            out[moid] = {"exists": True, "name": name, "vlan": vlans.pop() if len(vlans) == 1 else sorted(vlans)}
     return out
 
 
@@ -208,35 +255,42 @@ def all_vm_marks(si) -> dict[str, dict]:
         view.Destroy()
 
 
-def marked_vms(si, range_id: str, annotated_range: Callable[[str], str], tagged: set[str]) -> dict[str, dict]:
-    """Every non-template VM whose annotation names ``range_id`` or (``tagged``: moids the
-    range's ``tn-range`` tag is attached to) that carries its tag: {moid: {"name",
-    "instance_uuid", "marks"}}."""
-    out = {}
-    for moid, p in all_vm_marks(si).items():
-        if p.get("config.template"):
-            continue
-        marks = []
-        if annotated_range(str(p.get("config.annotation") or "")) == range_id:
-            marks.append("annotation")
-        if moid in tagged:
-            marks.append("tag")
-        if marks:
-            out[moid] = {"name": str(p.get("name") or ""), "instance_uuid": _str(p.get("config.instanceUuid")),
-                         "marks": marks}
-    return out
-
-
-def marked_portgroups(si, dvs, range_id: str) -> dict[str, dict]:
-    """The port groups on ``dvs`` whose description carries the range's owner mark (S1):
-    {moid: {"name", "key", "vlan"}}."""
+def portgroup_marks(si, dvs) -> dict[str, dict]:
+    """Every port group on ``dvs`` with its owner mark (description), key and VLAN, in one
+    call: {moid: {"name", "key", "vlan", "description"}}."""
     if dvs is None:
         return {}
     ids = [pg._moId for pg in dvs.portgroup or []]
     props, _ = read_props(si, vim.dvs.DistributedVirtualPortgroup, ids, PORTGROUP_PATHS) if ids else ({}, set())
+    return {moid: {"name": _str(p.get("name")), "key": _str(p.get("key")), "vlan": _vlan(p.get("config")),
+                   "description": description(p.get("config"))} for moid, p in props.items()}
+
+
+def unidentified(range_id: str, inv: dict, vm_marks: dict[str, dict], pg_marks: dict[str, dict], tagged: set[str],
+                 annotated_range: Callable[[str], str]) -> list[dict]:
+    """What carries ``range_id``'s mark (annotation, its tn-range tag on ``tagged`` moids, the
+    port group owner mark) but is not one of its recorded items (``inv``:
+    range_inventory.recorded), from readings shared by many ranges (``all_vm_marks``,
+    ``portgroup_marks``). Pure: listed, never deleted."""
+    recorded = {v["moid"]: v for v in inv["vms"]}
+    out = []
+    for moid, p in sorted(vm_marks.items()):
+        if p.get("config.template"):
+            continue
+        marks = (["annotation"] if annotated_range(str(p.get("config.annotation") or "")) == range_id else []) + \
+            (["tag"] if moid in tagged else [])
+        rec = recorded.get(moid)
+        if not marks or (rec is not None and vm_owned(rec, _str(p.get("config.instanceUuid"))) is not False):
+            continue  # unmarked, or the recorded VM itself (``remaining`` reports it if still there)
+        out.append({"kind": "vm", "moid": moid, "name": str(p.get("name") or ""),
+                    "instance_uuid": _str(p.get("config.instanceUuid")), "marks": marks})
+    known = {p["moid"] for p in inv["portgroups"] if p["moid"]} | {p["name"] for p in inv["portgroups"] if not p["moid"]}
     mark = live_vlans.owner_mark(range_id)
-    return {moid: {"name": _str(p.get("name")), "key": _str(p.get("key")), "vlan": _vlan(p.get("config"))}
-            for moid, p in props.items() if description(p.get("config")) == mark}
+    for moid, pg in sorted(pg_marks.items()):
+        if pg.get("description") == mark and moid not in known and pg.get("name") not in known:
+            out.append({"kind": "portgroup", "moid": moid, "name": pg.get("name"), "key": pg.get("key"),
+                        "vlan": pg.get("vlan"), "marks": ["owner_mark"]})
+    return out
 
 
 def file_exists(si, datastore_moid: str | None, path: str, wait) -> bool:

@@ -259,6 +259,7 @@ class BaseProvisioner(ABC):
         *,
         range_id: str | None = None,
         vm_name: str = "",
+        identity: dict | None = None,
     ) -> list[dict]:
         """Run ``steps`` in order inside one range VM's guest OS, as ``login``, with no
         network path into the range (vSphere: VMware guest operations). Stops at the
@@ -294,11 +295,17 @@ class BaseProvisioner(ABC):
         (worker/range_drift.py; the shape is range_inventory.compare's ``live``)."""
         raise NotImplementedError(f"{type(self).__name__} does not record a range inventory")
 
+    async def live_inventories(self, items: list[tuple[str, dict]]) -> dict[str, dict]:
+        """``live_inventory`` of many ranges (the drift sweep): {range id: reading}. A backend
+        that can read them all in one go overrides this (vSphere: one call for every VM)."""
+        return {range_id: await self.live_inventory(range_id, output) for range_id, output in items}
+
     async def delete_confirmed(self, range_id: str, provision_output: dict, items: list[dict]) -> dict:
         """Delete items a teardown listed as unidentified and an administrator confirmed by
         managed-object id (worker/range_teardown.py), each only if it is still exactly what
-        was listed (its moid *and* instance UUID or key). Returns the new teardown report
-        plus ``confirmed_deleted`` and ``confirm_skipped``. Never deletes by a mark alone."""
+        was listed (its moid *and* instance UUID or key) and still carries the range's mark;
+        then the range's own recorded folder if that left it empty. Returns the new teardown
+        report plus ``confirmed_deleted`` and ``confirm_skipped``. Never deletes by a mark alone."""
         raise NotImplementedError(f"{type(self).__name__} does not record a range inventory")
 
     @contextlib.asynccontextmanager

@@ -9,8 +9,11 @@ every item: it must be in the listed set of the range's latest teardown report, 
 typed id must equal it exactly (no trimming, no case folding). Nothing is ever deleted by
 a mark alone, nor by an id that was not listed. Each confirmation is audit-logged with its
 reason and written to the range's certification record as an override; the worker then
-re-checks each item against vCenter (moid *and* instance UUID, or port group key and owner
-mark) before deleting it (worker/range_teardown.py).
+re-checks each item against vCenter (moid *and* instance UUID *and* the range's annotation
+or tag, read again; or port group key and owner mark) before deleting it, and afterwards
+removes the range's own recorded VM folder only if that left it empty
+(worker/range_teardown.py). Only VMs and port groups can be confirmed; disk files and
+folders cannot.
 
 Confirming is cleanup after a teardown (the range is ``destroyed`` or ``failed``, nothing
 in flight), done by an administrator with a reason, like an emergency teardown, so a

@@ -1040,6 +1040,39 @@ def test_s5_a_stray_vm_annotated_or_tagged_for_the_range_is_reported_not_deleted
             _wait(si, tagged.Destroy_Task())
 
 
+def test_s5_a_confirmed_vm_that_no_longer_carries_the_ranges_mark_is_not_deleted(env, si, range_id):
+    """Listed for its annotation, then re-annotated (say, adopted by someone) before the admin
+    confirmed it: same moid, same instance UUID, but no longer marked as this range's."""
+    output, _ = _built(range_id)
+    stray = _stray(si, f"stray-re-{range_id[:8]}", mod.range_annotation(range_id))
+    try:
+        gone = _run(mod.VsphereAPIProvisioner().destroy(range_id, output))
+        [listed] = gone.teardown["unidentified"]
+        _wait(si, stray.ReconfigVM_Task(spec=vim.vm.ConfigSpec(annotation="kept by the network team")))
+        after = _run(mod.VsphereAPIProvisioner().delete_confirmed(range_id, output, [listed]))
+        assert after["confirmed_deleted"] == []
+        [skipped] = after["confirm_skipped"]
+        assert skipped["moid"] == stray._moId and "no longer carries this range's" in skipped["why"]
+        assert stray.name == f"stray-re-{range_id[:8]}"  # still there
+    finally:
+        with contextlib.suppress(Exception):
+            _wait(si, stray.Destroy_Task())
+
+
+def test_s5_drift_sees_a_vm_annotated_for_the_range_that_was_never_recorded(env, si, range_id):
+    output, _ = _built(range_id)
+    stray = _stray(si, f"stray-drift-{range_id[:8]}", mod.range_annotation(range_id))
+    try:
+        live = _run(mod.VsphereAPIProvisioner().live_inventory(range_id, output))
+        result = range_inventory.compare(output, live)
+        assert [(f["kind"], f["actual"]) for f in result["findings"]] == [("unidentified_vm", stray._moId)]
+        assert result["status"] == "incomplete"
+    finally:
+        with contextlib.suppress(Exception):
+            _wait(si, stray.Destroy_Task())
+        assert _run(mod.VsphereAPIProvisioner().destroy(range_id, output)).status == "ok"
+
+
 def test_s5_a_port_group_with_the_ranges_owner_mark_that_was_not_recorded_is_reported_not_deleted(env, si, range_id):
     output, _ = _built(range_id)
     dvs = _named(si, vim.DistributedVirtualSwitch, DVS)

@@ -46,7 +46,8 @@ FAIL_KINDS = frozenset({
     "portgroup_missing", "portgroup_vlan_changed",
 })
 INCOMPLETE_KINDS = frozenset({
-    "vm_missing", "cpu_changed", "memory_changed", "snapshot_unexpected", "snapshot_missing",
+    "vm_missing", "vm_reregistered", "cpu_changed", "memory_changed", "snapshot_unexpected", "snapshot_missing",
+    "unidentified_vm", "unidentified_portgroup",
 })
 
 
@@ -164,18 +165,25 @@ def known_snapshots(rows: Iterable[dict]) -> tuple[set[str], set[str], dict[str,
     return ids, names, expected
 
 
-def compare(output: dict, live: dict, snapshot_rows: Iterable[dict] = ()) -> dict:
+def compare(output: dict, live: dict, snapshot_rows: Iterable[dict] = (),
+            ignore_snapshot_prefixes: Iterable[str] = ()) -> dict:
     """Drift of the live range from its record.
 
     ``live`` (the backend's ``live_inventory``): ``{"vms": {moid: {"exists", "instance_uuid",
     "name", "num_cpu", "memory_mb", "nics": [{"portgroup_key", "network", "mac"}],
-    "snapshots": [{"moid", "name"}]}}, "portgroups": {moid: {"exists", "name", "vlan"}},
-    "errors": [...]}``. Returns ``{"status", "summary", "findings", "checked", "gaps"}``,
-    findings sorted so an unchanged range gives an identical result every run."""
+    "snapshots": [{"moid", "name"}], "moved_to"?}}, "portgroups": {moid: {"exists", "name",
+    "vlan", "vlan_unreadable"?}}, "unidentified": [...], "errors": [...]}``. A VM found under
+    another moid by its instance UUID is ``vm_reregistered``; a VLAN that could not be read
+    is a gap (never a pass); items carrying the range's mark but never recorded are
+    ``unidentified_*``; snapshots whose names start with ``ignore_snapshot_prefixes`` (a
+    backup tool's) are not drift. Returns ``{"status", "summary", "findings", "checked",
+    "gaps"}``, findings sorted so an unchanged range gives an identical result every run."""
     inv = recorded(output)
     live_vms, live_pgs = _dict(live.get("vms")), _dict(live.get("portgroups"))
     ids, names, expected = known_snapshots(snapshot_rows)
+    ignored = tuple(p for p in ignore_snapshot_prefixes if p)
     findings: list[dict] = []
+    gaps = list(inv["gaps"])
     checked = {"vms": 0, "portgroups": 0}
     for vm in inv["vms"]:
         seen = live_vms.get(vm["moid"])
@@ -186,6 +194,8 @@ def compare(output: dict, live: dict, snapshot_rows: Iterable[dict] = ()) -> dic
         if not seen.get("exists"):
             findings.append(_finding("vm_missing", label, vm["moid"], None))
             continue
+        if seen.get("moved_to"):  # its instance UUID, under another moid: present, but not where recorded
+            findings.append(_finding("vm_reregistered", label, vm["moid"], seen["moved_to"]))
         if vm_owned(vm, seen.get("instance_uuid")) is False:
             findings.append(_finding("vm_replaced", label, vm["instance_uuid"], seen.get("instance_uuid"),
                                      moid=vm["moid"]))
@@ -212,6 +222,8 @@ def compare(output: dict, live: dict, snapshot_rows: Iterable[dict] = ()) -> dic
         snaps = [s for s in _list(seen.get("snapshots")) if isinstance(s, dict)]
         live_ids = {str(s.get("moid")) for s in snaps}
         for s in snaps:
+            if ignored and str(s.get("name") or "").startswith(ignored):
+                continue  # a backup tool's own snapshot (VSPHERE_DRIFT_IGNORE_SNAPSHOT_PREFIXES)
             if str(s.get("moid")) not in ids and str(s.get("name")) not in names:
                 findings.append(_finding("snapshot_unexpected", label, None, s.get("moid"), name=s.get("name")))
         for snap_id in sorted(expected.get(vm["moid"], set()) - live_ids):
@@ -223,11 +235,17 @@ def compare(output: dict, live: dict, snapshot_rows: Iterable[dict] = ()) -> dic
         checked["portgroups"] += 1
         if not seen.get("exists"):
             findings.append(_finding("portgroup_missing", pg["name"], pg["moid"], None))
+        elif seen.get("vlan_unreadable"):  # never assumed to be the record
+            gaps.append(f"port group {pg['name']}: its live VLAN could not be read on every host")
         elif pg.get("vlan") is not None and seen.get("vlan") != pg["vlan"]:
             findings.append(_finding("portgroup_vlan_changed", pg["name"], pg["vlan"], seen.get("vlan")))
+    for item in _list(live.get("unidentified")):  # carries the range's mark, but was never recorded
+        if isinstance(item, dict) and item.get("kind") in ("vm", "portgroup"):
+            findings.append(_finding(f"unidentified_{item['kind']}", str(item.get("name") or item.get("moid")),
+                                     None, item.get("moid"), marks=list(item.get("marks") or [])))
     findings.sort(key=lambda f: (f["kind"], str(f["object"]), str(f.get("expected")), str(f.get("actual"))))
-    status, summary = drift_status(findings, inv["gaps"])
-    return {"status": status, "summary": summary, "findings": findings, "checked": checked, "gaps": inv["gaps"]}
+    status, summary = drift_status(findings, gaps)
+    return {"status": status, "summary": summary, "findings": findings, "checked": checked, "gaps": gaps}
 
 
 def drift_status(findings: list[dict], gaps: list[str] = ()) -> tuple[str, str]:
@@ -239,5 +257,5 @@ def drift_status(findings: list[dict], gaps: list[str] = ()) -> tuple[str, str]:
     if findings:
         return INCOMPLETE, f"{len(findings)} change(s) from the record: {', '.join(kinds)}"
     if gaps:
-        return INCOMPLETE, f"no drift in what was recorded; {len(gaps)} item(s) were not recorded at clone (built before S5)"
+        return INCOMPLETE, f"no drift in what could be compared; {len(gaps)} item(s) could not be: {gaps[0]}"[:500]
     return PASS, "the range matches its record (VM ids, CPU/RAM, NICs, port group VLANs, snapshots)"

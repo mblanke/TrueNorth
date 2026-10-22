@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import uuid
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -120,6 +121,41 @@ class TestDrift:
         result = range_inventory.compare(out, {"vms": {"vm-1": {"exists": True}}, "portgroups": {}})
         assert result["status"] == "incomplete" and result["gaps"]
 
+    def test_a_vm_re_registered_under_another_moid_is_present_but_reported(self):
+        out = _output()
+        live = _live(out)
+        live["vms"]["vm-1"].update(moved_to="vm-77", memory_mb=8192)  # found by its instance UUID
+        result = range_inventory.compare(out, live)
+        assert [(f["kind"], f.get("actual")) for f in result["findings"]] == [
+            ("memory_changed", 8192), ("vm_reregistered", "vm-77")]  # still compared where it is now
+        assert result["status"] == "incomplete"
+
+    def test_a_vlan_that_could_not_be_read_is_a_gap_never_a_pass(self):
+        out = _output()
+        live = _live(out)
+        live["portgroups"]["dvportgroup-1"] = {"exists": True, "name": "tn-r-v100", "vlan": None,
+                                               "vlan_unreadable": True}
+        result = range_inventory.compare(out, live)
+        assert result["findings"] == [] and result["status"] == "incomplete"
+        assert "could not be read" in result["gaps"][0]
+
+    def test_unrecorded_items_carrying_the_mark_are_drift(self):
+        out = _output()
+        live = {**_live(out), "unidentified": [
+            {"kind": "vm", "moid": "vm-90", "name": "re-created", "marks": ["annotation"]},
+            {"kind": "portgroup", "moid": "dvportgroup-9", "name": "tn-r-v199", "marks": ["owner_mark"]}]}
+        result = range_inventory.compare(out, live)
+        assert [f["kind"] for f in result["findings"]] == ["unidentified_portgroup", "unidentified_vm"]
+        assert result["status"] == "incomplete"
+
+    def test_a_backup_tools_snapshots_are_not_drift(self):
+        out = _output()
+        live = _live(out)
+        live["vms"]["vm-1"]["snapshots"] = [{"moid": "snapshot-3", "name": "VEEAM BACKUP TEMPORARY SNAPSHOT"},
+                                            {"moid": "snapshot-4", "name": "before-patch"}]
+        result = range_inventory.compare(out, live, (), ("VEEAM", "Veeam"))
+        assert [(f["kind"], f.get("name")) for f in result["findings"]] == [("snapshot_unexpected", "before-patch")]
+
     def test_the_result_is_identical_run_to_run(self):
         out = _output()
         live = _live(out)
@@ -171,6 +207,84 @@ class TestOwnership:
         assert vsphere_api._not_ours("abcd1234-0000", vm, {"name": "x", "config.annotation": ""}, "vc")
 
 
+    def test_every_operation_screens_with_the_recorded_identity(self):
+        vm = {"vm_id": "vm-1", "name": "r-web", "identity": {"instance_uuid": UUID1}, "role_setup": {}}
+        assert vsphere_api._screened(vm) == {"vm_id": "vm-1", "name": "r-web", "identity": {"instance_uuid": UUID1}}
+        assert vsphere_api._screened({"vm_id": "vm-1", "name": "old"}) == {"vm_id": "vm-1", "name": "old"}
+
+
+# ── the vSphere readings (pyVmomi calls stubbed at read_props) ─────────────────
+class _Ref:
+    def __init__(self, moid):
+        self._moId = moid
+
+
+class TestVsphereReadings:
+    def test_a_standard_port_groups_vlan_is_read_on_every_host(self, monkeypatch):
+        from worker.provisioners import vsphere_inventory as inv
+
+        def pg(name, vlan):
+            return SimpleNamespace(spec=SimpleNamespace(name=name, vlanId=vlan))
+
+        hosts = {"host-1": {"config.network.portgroup": [pg("tn-r-v100", 100)]},
+                 "host-2": {"config.network.portgroup": [pg("tn-r-v100", 3999)]},
+                 "host-3": {"config.network.portgroup": None}}  # unreadable
+
+        def read_props(si, vimtype, ids, paths):
+            if "host" in paths:
+                return {"network-1": {"name": "tn-r-v100", "host": [_Ref("host-1"), _Ref("host-2")]},
+                        "network-2": {"name": "tn-r-v100", "host": [_Ref("host-1"), _Ref("host-3")]},
+                        "network-3": {"name": "tn-r-v100", "host": [_Ref("host-1")]}}, set()
+            return {h: hosts[h] for h in ids}, set()
+
+        monkeypatch.setattr(inv, "read_props", read_props)
+        got = inv._vss_live(None, ["network-1", "network-2", "network-3"])
+        assert got["network-1"]["vlan"] == [100, 3999]  # hosts disagree: never the record
+        assert got["network-2"]["vlan_unreadable"] is True
+        assert got["network-3"]["vlan"] == 100
+
+    def test_a_missing_moid_is_looked_up_by_its_instance_uuid(self, monkeypatch):
+        from worker.provisioners import vsphere_inventory as inv
+
+        def read_props(si, vimtype, ids, paths):
+            props = {"vm-77": {"name": "r-web", "config.instanceUuid": UUID1, "config.hardware.memoryMB": 4096}}
+            return {i: props[i] for i in ids if i in props}, {i for i in ids if i not in props}
+
+        monkeypatch.setattr(inv, "read_props", read_props)
+        si = SimpleNamespace(content=SimpleNamespace(searchIndex=SimpleNamespace(
+            FindByUuid=lambda uuid, vmSearch, instanceUuid: _Ref("vm-77") if uuid == UUID1 else None)))  # noqa: N803
+        got = inv.live(si, [{"moid": "vm-1", "instance_uuid": UUID1}, {"moid": "vm-2", "instance_uuid": UUID2}], [])
+        assert got["vms"]["vm-1"]["moved_to"] == "vm-77" and got["vms"]["vm-1"]["instance_uuid"] == UUID1
+        assert got["vms"]["vm-2"] == {"exists": False}
+
+    def test_a_sweep_reads_all_its_ranges_in_one_call_each(self, monkeypatch):
+        from worker.provisioners import vsphere_inventory as inv
+
+        calls = {"live": 0, "vm_marks": 0, "pg_marks": 0}
+
+        def live(si, vms, portgroups):
+            calls["live"] += 1
+            return {"vms": {v["moid"]: {"exists": True, "instance_uuid": v["instance_uuid"]} for v in vms},
+                    "portgroups": {}, "errors": []}
+
+        def count(key, value):
+            def f(*a):
+                calls[key] += 1
+                return value
+            return f
+
+        monkeypatch.setattr(inv, "live", live)
+        monkeypatch.setattr(inv, "all_vm_marks", count("vm_marks", {}))
+        monkeypatch.setattr(inv, "portgroup_marks", count("pg_marks", {}))
+        prov = vsphere_api.VsphereAPIProvisioner()
+        monkeypatch.setattr(prov, "_find", lambda *a: None)
+        items = [(f"r{i}", _output(vms=[{"vm_id": f"vm-{i}", "name": f"r{i}",
+                                          "identity": _identity(f"vm-{i}", f"uuid-{i}")}])) for i in range(3)]
+        got = prov._live_many_sync(object(), items, {})
+        assert calls == {"live": 1, "vm_marks": 1, "pg_marks": 1}
+        assert {rid: list(r["vms"]) for rid, r in got.items()} == {"r0": ["vm-0"], "r1": ["vm-1"], "r2": ["vm-2"]}
+
+
 # ── the database, and the two tasks ─────────────────────────────────────────────
 TENANT = str(uuid.uuid4())
 
@@ -181,7 +295,8 @@ def s5db(db):
     with db.begin() as conn:
         conn.execute(sa.text("ALTER TABLE ranges ADD COLUMN tenant_id TEXT"))
         conn.execute(sa.text("ALTER TABLE ranges ADD COLUMN deleted_at TIMESTAMP"))
-    for t in (tables.range_inventory_checks, tables.range_certification_records, tables.range_certification_entries):
+    for t in (tables.range_inventory_checks, tables.range_certification_records, tables.range_certification_entries,
+              tables.range_operations):
         t.create(db)
     return db
 
@@ -212,9 +327,34 @@ def _check(db, rid: str, kind: str):
         return range_inventory_db.load_check(conn, rid, kind)
 
 
+class _Prov:
+    """A backend for the sweep: one endpoint, readings handed out per range; counts its reads."""
+
+    supports_inventory = True
+
+    def __init__(self, readings: dict, during=None):
+        self.readings, self.during, self.calls = readings, during, []
+
+    def connection_record(self):
+        return {"id": "c1", "host": "https://vc"}
+
+    async def live_inventories(self, items):
+        self.calls.append([rid for rid, _ in items])
+        if self.during:
+            self.during()  # something happening while vCenter is being read
+        out = {}
+        for rid, _ in items:
+            got = self.readings.get(rid)
+            if isinstance(got, Exception):
+                raise got
+            out[rid] = got
+        return out
+
+
 class TestDriftTask:
-    def _run(self, monkeypatch, readings: dict) -> dict:
-        monkeypatch.setattr(range_drift.range_sweep, "live_inventories", lambda rows: readings)
+    def _run(self, monkeypatch, readings: dict, during=None) -> dict:
+        self.prov = _Prov(readings, during)
+        monkeypatch.setattr(range_drift.range_sweep.base_tasks, "_get_backend", lambda *a, **k: self.prov)
         return range_drift.check_range_drift()
 
     def test_a_change_is_stored_notified_and_recorded_once(self, s5db, monkeypatch):
@@ -250,11 +390,53 @@ class TestDriftTask:
         with s5db.begin() as conn:
             conn.execute(tables.range_leases.insert().values(range_id=busy, holder="restore:x",
                                                              expires_at=datetime.now(UTC) + timedelta(minutes=3)))
-        seen = []
-        monkeypatch.setattr(range_drift.range_sweep, "live_inventories",
-                            lambda rows: seen.extend(str(r[0]) for r in rows) or {})
-        range_drift.check_range_drift()
-        assert seen == [idle]
+        in_flight = _range(s5db, "ready", _output())
+        _operation(s5db, in_flight)
+        self._run(monkeypatch, {})
+        assert self.prov.calls == [[idle]]
+
+    def test_every_range_of_a_vcenter_is_read_in_one_call_and_saved_as_it_goes(self, s5db, monkeypatch):
+        out = _output()
+        ids = [_range(s5db, "ready", out) for _ in range(3)]
+        self._run(monkeypatch, dict.fromkeys(ids, _live(out)))
+        assert [sorted(c) for c in self.prov.calls] == [sorted(ids)]
+        assert all(_check(s5db, rid, "drift")["status"] == "pass" for rid in ids)
+
+    def test_a_range_that_changed_during_the_read_records_nothing(self, s5db, monkeypatch):
+        out = _output()
+        quiet, busy = _range(s5db, "ready", out), _range(s5db, "ready", out)
+        live = _live(out)
+        live["vms"]["vm-1"]["snapshots"] = [{"moid": "snapshot-5", "name": "tnnew"}]  # mid-snapshot: looks drifted
+        summary = self._run(monkeypatch, {quiet: _live(out), busy: live}, during=lambda: _operation(s5db, busy))
+        assert summary["skipped"] == [busy]
+        assert _check(s5db, busy, "drift") is None and _entries(s5db, busy) == []  # no false drift recorded
+        assert _check(s5db, quiet, "drift")["status"] == "pass"
+
+    def test_a_snapshot_being_taken_during_the_read_records_nothing(self, s5db, monkeypatch):
+        out = _output()
+        rid = _range(s5db, "ready", out)
+
+        def snapshot_starts():
+            with s5db.begin() as conn:
+                conn.execute(sa.text("INSERT INTO range_snapshots (id, range_id, snapshot_state) "
+                                     "VALUES (:i, :r, 'creating')"), {"i": str(uuid.uuid4()), "r": rid})
+        summary = self._run(monkeypatch, {rid: _live(out)}, during=snapshot_starts)
+        assert summary["skipped"] == [rid] and _entries(s5db, rid) == []
+
+    def test_an_overlapping_sweep_does_nothing(self, s5db, monkeypatch):
+        import contextlib
+
+        monkeypatch.setattr(range_drift, "sweep_lock", lambda: contextlib.nullcontext(False))
+        _range(s5db, "ready", _output())
+        assert range_drift.check_range_drift()["status"] == "skipped"
+
+
+def _operation(db, rid: str, status: str = "dispatched") -> None:
+    now = datetime.now(UTC)
+    with db.begin() as conn:
+        conn.execute(tables.range_operations.insert().values(
+            id=uuid.uuid4(), tenant_id=TENANT, range_id=rid, action="restore", generation=1, request_hash="h",
+            status=status, dispatch_attempts=1, created_at=now, updated_at=now))
 
 
 class TestTeardownRecord:
