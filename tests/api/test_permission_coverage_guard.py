@@ -108,6 +108,12 @@ SIGN_IN_ONLY: dict[str, str] = {
     "POST /lab-sessions/{session_id}/evidence": (
         "in-body: _session_for(learning_record:write); Students may only add kind 'submission'"
     ),
+    # ADR 0013 §3: a Student's own lab's accounts. Owner only (staff 404 here; they read lab
+    # accounts on the range with range:credentials_read); every reveal audited.
+    "GET /lab-sessions/{session_id}/credentials": "own: _own_session — the session's owner only, no passwords",
+    "POST /lab-sessions/{session_id}/credentials/{credential_id}/reveal": (
+        "own: _own_session — the session's owner only; one password, audited (range_credential_reveal)"
+    ),
     # ── cmi5 modules (app/cmi5): the AU runtime and TrueNorth's own launch ──
     # Tenant-scoped (get_owned(CourseRelease)); a candidate release is 404 without course:author.
     "GET /cmi5/releases/{release_id}/structure": (

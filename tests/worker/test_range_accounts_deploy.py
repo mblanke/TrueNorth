@@ -1,14 +1,18 @@
-"""A range's declared accounts are what its VMs get at deploy (ADR 0012 §12).
+"""A range's accounts are what its VMs get at deploy (ADR 0012 §12, ADR 0013 §3).
 
 On the fake vCenter of test_vsphere_provision.py:
 
-* Windows: Sysprep sets the declared ``Administrator`` password, and the guest
-  operations that install software log in with that same password; with none declared,
-  TN_RANGE_DEFAULT_PASSWORD; with neither, a random one per VM (as before);
-* Linux: each declared account is a cloud-init user (a SHA-512-crypt hash, never plain
-  text; sudo for an admin other than the image's default user, which keeps its own;
-  password logins on); with none declared, nothing (the template keeps its generic
-  build password, ADR 0012 §5: the platform default is not put into cloud-config);
+* Windows: Sysprep sets the range's ``Administrator`` password (declared, or the implicit
+  staff login the API adds), and the guest operations that install software log in with
+  that same password; with none, a random one per VM. Never a site-wide default or the
+  template password, whatever the environment holds;
+* Linux: each account is a cloud-init user (a SHA-512-crypt hash, never plain text; sudo
+  for an admin other than the image's own users, the build user included, which keep
+  theirs; password logins on); the build user's row is how its template password is
+  replaced. With no account, nothing (the template-login check then reports it);
+* the template-login check (vsphere_credcheck): one login attempt with the template
+  password per VM after its own login worked: refused passes, accepted fails the VM
+  (``enforce``) or warns (``warn``), anything else is inconclusive;
 * H1: on EVERY Linux VM with declared accounts, with or without software, the worker logs
   in as the ephemeral install user once cloud-init has run, checks each account exists
   (``getent passwd``), removes that user, and rewrites the guestinfo without hashes or
@@ -16,7 +20,7 @@ On the fake vCenter of test_vsphere_provision.py:
   remain and records the accounts as not set;
 * each built VM reports ``accounts_applied``: only accounts verified to exist (Linux:
   getent; Windows: a guest-operations login with the declared Administrator password);
-* a lab session's range gets no default login (random per VM, as before; H2);
+* a lab session's range gets its accounts like any other range (ADR 0013 §3);
 * passwords never reach the result, the logs or an error.
 """
 
@@ -44,15 +48,24 @@ ANALYST_PW = "Analyst-Declared-3!"
 DEFAULT_PW = "Range-Default-4!"
 
 
-def _with(template: dict, accounts: dict[str, list[guest.RangeAccount]], default: str | None = None) -> dict:
+@pytest.fixture(autouse=True)
+def site_defaults(monkeypatch):
+    """A site that still has the old default and template passwords in its environment:
+    no VM may be given them (ADR 0013 §3)."""
+    monkeypatch.setenv("TN_RANGE_DEFAULT_PASSWORD", DEFAULT_PW)
+    monkeypatch.setenv("TN_TEMPLATE_WINDOWS_ADMIN_PASSWORD", DEFAULT_PW)
+    monkeypatch.delenv("TN_TEMPLATE_LINUX_USER", raising=False)
+    monkeypatch.delenv("TN_TEMPLATE_LINUX_PASSWORD", raising=False)
+    monkeypatch.delenv("RANGE_TEMPLATE_LOGIN_CHECK", raising=False)
+
+
+def _with(template: dict, accounts: dict[str, list[guest.RangeAccount]]) -> dict:
     out = dict(template)
     out["vms"] = []
     for vm in template["vms"]:
         vm = dict(vm)
         if vm["node_id"] in accounts:
             vm["_accounts"] = accounts[vm["node_id"]]
-        if default:
-            vm["_default_login"] = guest.Secret(default)
         out["vms"].append(vm)
     return out
 
@@ -82,7 +95,7 @@ def _all_userdata(vm) -> list[dict]:
 class TestWindows:
     def test_sysprep_and_guest_operations_use_the_declared_administrator(self, depot):
         vc = depot
-        tpl = _with(_rendered(SW_TEMPLATE), {"dc01": [_acct("Administrator", DC_PW, admin=True)]}, DEFAULT_PW)
+        tpl = _with(_rendered(SW_TEMPLATE), {"dc01": [_acct("Administrator", DC_PW, admin=True)]})
         result = _run(_prov(vc).provision(RANGE_ID, tpl, {}))
         assert result.status == "ok", result.errors
         dc = vc.vms[_vm_out(result, "dc01")["vm_id"]]
@@ -92,10 +105,12 @@ class TestWindows:
         assert logins == {"Administrator"}
         assert DC_PW in vc.guest_ops.passwords_seen  # the installs authenticated with it
 
-    def test_the_platform_default_when_nothing_is_declared(self, vc):
-        result = _run(_prov(vc).provision(RANGE_ID, _with(_rendered(), {}, DEFAULT_PW), {}))
+    def test_no_site_default_or_template_password_whatever_the_environment(self, vc):
+        """ADR 0013 §3: the #185 fallback is gone. With no Administrator row (the API always
+        adds one; a backend or an old range may not) Sysprep sets a random one."""
+        result = _run(_prov(vc).provision(RANGE_ID, _with(_rendered(), {}), {}))
         assert result.status == "ok", result.errors
-        assert vc.vms[_vm_out(result, "dc01")["vm_id"]].guest_password("Administrator") == DEFAULT_PW
+        assert vc.vms[_vm_out(result, "dc01")["vm_id"]].guest_password("Administrator") not in (DEFAULT_PW, None)
 
     def test_random_per_vm_without_either(self, vc):
         two = {**TEMPLATE, "nodes": [*TEMPLATE["nodes"], {**TEMPLATE["nodes"][2], "id": "dc02", "ip": "10.60.201.11"}]}
@@ -124,7 +139,7 @@ class TestLinux:
         vc = depot
         tpl = _with(_rendered(SW_TEMPLATE), {"web01": [_acct("ubuntu", WEB_PW, admin=True),
                                                        _acct("opsadmin", WEB_PW, admin=True),
-                                                       _acct("analyst", ANALYST_PW)]}, DEFAULT_PW)
+                                                       _acct("analyst", ANALYST_PW)]})
         result = _run(_prov(vc).provision(RANGE_ID, tpl, {}))
         assert result.status == "ok", result.errors
         web = vc.vms[_vm_out(result, "web01")["vm_id"]]
@@ -147,15 +162,26 @@ class TestLinux:
         # Applied by then: the guestinfo is rewritten without any account.
         assert "users" not in _userdata(web)
 
-    def test_no_default_login_in_cloud_config_when_nothing_is_declared(self, vc):
-        """Item 2: the template already carries the generic build password (ADR 0012 §5)."""
-        result = _run(_prov(vc).provision(RANGE_ID, _with(_rendered(), {}, DEFAULT_PW), {}))
+    def test_no_default_login_in_cloud_config_without_accounts(self, vc):
+        result = _run(_prov(vc).provision(RANGE_ID, _with(_rendered(), {}), {}))
         assert result.status == "ok", result.errors
         for vm in vc.vms.values():
             for doc in _all_userdata(vm):
                 assert not {"users", "password", "chpasswd", "ssh_pwauth"} & set(doc), vm.name
         assert vc.guest_ops.started == []  # no install user, no scrub: nothing to take out
-        assert vc.vms[_vm_out(result, "dc01")["vm_id"]].guest_password("Administrator") == DEFAULT_PW  # Windows
+
+    def test_the_build_users_row_replaces_its_template_password_and_keeps_its_sudo(self, vc, monkeypatch):
+        """ADR 0013 §3: the implicit staff login for the build user (TN_TEMPLATE_LINUX_USER)
+        is a cloud-init user like any other: its password is the range's, and no
+        password-required sudo rule overrides the one its image gives it."""
+        monkeypatch.setenv("TN_TEMPLATE_LINUX_USER", "tnbuild")
+        tpl = _with(_rendered(), {"web01": [_acct("tnbuild", WEB_PW, admin=True)]})
+        result = _run(_prov(vc).provision(RANGE_ID, tpl, {}))
+        assert result.status == "ok", result.errors
+        users = {u["name"]: u for u in _first_userdata(vc.vms[_vm_out(result, "web01")["vm_id"]])["users"]
+                 if isinstance(u, dict)}
+        assert _crypt_ok(users["tnbuild"]["hashed_passwd"], WEB_PW) and "sudo" not in users["tnbuild"]
+        assert _vm_out(result, "web01")["accounts_applied"] == ["tnbuild"]
 
     def test_nothing_changes_without_accounts_or_default(self, vc):
         result = _run(_prov(vc).provision(RANGE_ID, _rendered(), {}))
@@ -201,7 +227,7 @@ class TestGuestinfoScrub:
     def test_nothing_in_any_guestinfo_is_ever_plain_text(self, depot):
         vc = depot
         tpl = _with(_rendered(SW_TEMPLATE), {"web01": [_acct("analyst", ANALYST_PW)],
-                                             "sensor": [_acct("analyst", ANALYST_PW)]}, DEFAULT_PW)
+                                             "sensor": [_acct("analyst", ANALYST_PW)]})
         result = _run(_prov(vc).provision(RANGE_ID, tpl, {}))
         assert result.status == "ok", result.errors
         for vm in vc.vms.values():
@@ -301,7 +327,7 @@ class TestSecrecy:
 
         vc.guest_ops.StartProgramInGuest = leaky
         tpl = _with(_rendered(SW_TEMPLATE), {"dc01": [_acct("Administrator", DC_PW, True)],
-                                             "web01": [_acct("analyst", ANALYST_PW)]}, DEFAULT_PW)
+                                             "web01": [_acct("analyst", ANALYST_PW)]})
         result = _run(_prov(vc).provision(RANGE_ID, tpl, {}))
         dumped = json.dumps(result.__dict__, default=str)
         for pw in (DC_PW, ANALYST_PW, DEFAULT_PW):
@@ -320,79 +346,38 @@ class TestSecrecy:
 
 
 class TestAttach:
+    @staticmethod
+    @contextmanager
+    def _session():
+        yield None
+
     def test_attach_copies_and_matches_on_node_id(self, monkeypatch):
         rows = [("dc01", "Administrator", DC_PW, "admin"), ("web01", "analyst", ANALYST_PW, "user"),
                 ("ghost", "x", "y", "user")]
-
-        @contextmanager
-        def session():
-            yield None
-
         monkeypatch.setattr(range_accounts.db_ops, "range_accounts", lambda db, rid: rows)
-        monkeypatch.setattr(range_accounts.db_ops, "is_lab_range", lambda db, rid: False)
-        monkeypatch.delenv(range_accounts.DEFAULT_PASSWORD_ENV, raising=False)
         template = _rendered()
-        out = range_accounts.attach(template, session, RANGE_ID)
-        assert all("_accounts" not in vm and "_default_login" not in vm for vm in template["vms"])  # untouched
+        out = range_accounts.attach(template, self._session, RANGE_ID)
+        assert all("_accounts" not in vm for vm in template["vms"])  # the caller's copy is untouched
         by_node = {vm["node_id"]: vm for vm in out["vms"]}
         assert [(a.username, a.admin) for a in by_node["dc01"]["_accounts"]] == [("Administrator", True)]
         assert [a.password.reveal() for a in by_node["web01"]["_accounts"]] == [ANALYST_PW]
-        assert "_accounts" not in by_node["fw"] and "_default_login" not in by_node["fw"]
+        assert "_accounts" not in by_node["fw"]
 
-    def test_the_default_comes_from_the_environment(self, monkeypatch):
-        @contextmanager
-        def session():
-            yield None
-
+    def test_no_default_login_is_attached_whatever_the_environment(self, monkeypatch):
         monkeypatch.setattr(range_accounts.db_ops, "range_accounts", lambda db, rid: [])
-        monkeypatch.setattr(range_accounts.db_ops, "is_lab_range", lambda db, rid: False)
-        monkeypatch.setenv(range_accounts.DEFAULT_PASSWORD_ENV, f"  {DEFAULT_PW}  ")
-        out = range_accounts.attach(_rendered(), session, RANGE_ID)
-        assert {vm["_default_login"].reveal() for vm in out["vms"]} == {DEFAULT_PW}
+        out = range_accounts.attach(_rendered(), self._session, RANGE_ID)
+        assert all(not [k for k in vm if k.startswith("_") and "login" in k] for vm in out["vms"])
+        assert not hasattr(range_accounts, "default_password")
         assert DEFAULT_PW not in repr(out)
 
-    def test_an_undeclared_windows_vm_gets_the_template_password_through_sysprep(self, vc, monkeypatch):
-        """Owner decision: the generic, documented Windows build password is what Sysprep sets
-        on a Windows VM with no declared Administrator (the deprecated alias loses to it)."""
-        @contextmanager
-        def session():
-            yield None
-
-        monkeypatch.setattr(range_accounts.db_ops, "range_accounts", lambda db, rid: [])
-        monkeypatch.setattr(range_accounts.db_ops, "is_lab_range", lambda db, rid: False)
-        monkeypatch.setenv("TN_TEMPLATE_WINDOWS_ADMIN_PASSWORD", "Win-Build-Pass-1!")
-        monkeypatch.setenv(range_accounts.DEFAULT_PASSWORD_ENV, "Old-Default-1!")
-        tpl = range_accounts.attach(_rendered(), session, RANGE_ID)
-        result = _run(_prov(vc).provision(RANGE_ID, tpl, {}))
-        assert result.status == "ok", result.errors
-        assert vc.vms[_vm_out(result, "dc01")["vm_id"]].guest_password("Administrator") == "Win-Build-Pass-1!"
-        assert "users" not in _first_userdata(vc.vms[_vm_out(result, "web01")["vm_id"]])  # Linux untouched
-
-    def test_neither_setting_leaves_windows_random(self, monkeypatch):
-        @contextmanager
-        def session():
-            yield None
-
-        monkeypatch.setattr(range_accounts.db_ops, "range_accounts", lambda db, rid: [])
-        monkeypatch.setattr(range_accounts.db_ops, "is_lab_range", lambda db, rid: False)
-        monkeypatch.delenv("TN_TEMPLATE_WINDOWS_ADMIN_PASSWORD", raising=False)
-        monkeypatch.delenv(range_accounts.DEFAULT_PASSWORD_ENV, raising=False)
-        out = range_accounts.attach(_rendered(), session, RANGE_ID)
-        assert all("_default_login" not in vm for vm in out["vms"])  # Sysprep: random per VM
-
-    def test_a_lab_sessions_range_keeps_random_passwords(self, monkeypatch):
-        """H2: no shared default on lab VMs (and no accounts: labs hold none)."""
-        @contextmanager
-        def session():
-            yield None
-
-        monkeypatch.setattr(range_accounts.db_ops, "is_lab_range", lambda db, rid: True)
+    def test_a_lab_sessions_range_gets_its_accounts_like_any_other(self, monkeypatch):
+        """ADR 0013 §3 (owner decision 2026-10-21): real per-lab generated credentials."""
         monkeypatch.setattr(range_accounts.db_ops, "range_accounts",
-                            lambda db, rid: pytest.fail("a lab range's accounts are not read"))
-        monkeypatch.setenv(range_accounts.DEFAULT_PASSWORD_ENV, DEFAULT_PW)
-        template = _rendered()
-        assert range_accounts.attach(template, session, RANGE_ID) is template
-        assert all("_default_login" not in vm for vm in template["vms"])
+                            lambda db, rid: [("dc01", "Administrator", DC_PW, "admin")])
+        monkeypatch.setattr(range_accounts.db_ops, "is_lab_range", lambda db, rid: True)
+        out = range_accounts.attach(_rendered(), self._session, RANGE_ID)
+        dc = next(vm for vm in out["vms"] if vm["node_id"] == "dc01")
+        assert [a.password.reveal() for a in dc["_accounts"]] == [DC_PW]
 
     def test_what_the_build_set_is_recorded_per_machine(self, monkeypatch):
         @contextmanager
@@ -409,3 +394,123 @@ class TestAttach:
             {"name": f"{R8}-mock", "node_id": "mock"},  # a provisioner that reports nothing
         ])
         assert recorded == [[("dc01", "Administrator"), ("ws", "a")]]
+
+
+# ── The template-login check (ADR 0013 §3, provisioners/vsphere_credcheck.py) ────────────
+TEMPLATE_WIN = "Template-Win-1!"
+TEMPLATE_LINUX = "Template-Linux-2!"
+
+
+class TestTemplateLoginCheck:
+    @pytest.fixture(autouse=True)
+    def template_passwords(self, monkeypatch):
+        monkeypatch.setenv("TN_TEMPLATE_WINDOWS_ADMIN_PASSWORD", TEMPLATE_WIN)
+        monkeypatch.setenv("TN_TEMPLATE_LINUX_PASSWORD", TEMPLATE_LINUX)
+
+    def _accounts(self):
+        return {"dc01": [_acct("Administrator", DC_PW, admin=True)], "web01": [_acct("ubuntu", WEB_PW, admin=True)]}
+
+    def _template_still_works(self, vc, *names):
+        """The fake guests of ``names`` still accept their template password."""
+        real = vc.guest_ops._check
+
+        def check(vm, auth):
+            if any(vm.name.endswith(f"-{n}") for n in names) and auth.password in (TEMPLATE_WIN, TEMPLATE_LINUX):
+                vc.guest_ops.passwords_seen.add(auth.password)
+                return
+            real(vm, auth)
+
+        vc.guest_ops._check = check
+
+    def test_a_refused_template_password_passes_once_the_own_login_worked(self, vc, caplog):
+        caplog.set_level("DEBUG")
+        result = _run(_prov(vc).provision(RANGE_ID, _with(_rendered(), self._accounts()), {}))
+        assert result.status == "ok", result.errors
+        for node, user in (("dc01", "Administrator"), ("web01", "ubuntu")):
+            assert _vm_out(result, node)["template_login"] == {
+                "status": "rejected", "username": user, "detail": "the golden template's password is refused"}
+        assert _vm_out(result, "fw")["template_login"]["status"] == "not_checked"  # appliance
+        assert TEMPLATE_WIN in vc.guest_ops.passwords_seen and TEMPLATE_LINUX in vc.guest_ops.passwords_seen
+        dumped = json.dumps(result.__dict__, default=str)
+        for pw in (TEMPLATE_WIN, TEMPLATE_LINUX, DC_PW, WEB_PW):
+            assert pw not in dumped and pw not in caplog.text
+
+    def test_exactly_one_attempt_per_vm(self, vc):
+        attempts = []
+        real = vc.guest_ops.ValidateCredentialsInGuest
+
+        def validate(vm, auth):
+            if auth.password in (TEMPLATE_WIN, TEMPLATE_LINUX):
+                attempts.append(vm.name)
+            return real(vm, auth)
+
+        vc.guest_ops.ValidateCredentialsInGuest = validate
+        _run(_prov(vc).provision(RANGE_ID, _with(_rendered(), self._accounts()), {}))
+        assert len(attempts) == len(set(attempts)) and {f"{R8}-dc01", f"{R8}-web01"} <= set(attempts)
+        assert f"{R8}-fw" not in attempts  # appliances are not tried
+
+    def test_an_accepted_template_password_fails_the_vm_under_enforce(self, vc):
+        self._template_still_works(vc, "web01")
+        result = _run(_prov(vc).provision(RANGE_ID, _with(_rendered(), self._accounts()), {}))
+        assert _vm_out(result, "web01")["template_login"]["status"] == "accepted"
+        assert f"{R8}-web01" in result.not_ready
+        assert any("Not safe" in e and f"{R8}-web01" in e for e in result.errors)
+        assert _vm_out(result, "dc01")["template_login"]["status"] == "rejected"
+
+    def test_warn_mode_records_it_without_failing_the_vm(self, vc, monkeypatch):
+        monkeypatch.setenv("RANGE_TEMPLATE_LOGIN_CHECK", "warn")
+        self._template_still_works(vc, "dc01")
+        result = _run(_prov(vc).provision(RANGE_ID, _with(_rendered(), self._accounts()), {}))
+        assert result.status == "ok", result.errors
+        assert _vm_out(result, "dc01")["template_login"]["status"] == "accepted"
+        assert any("Not safe" in w and f"{R8}-dc01" in w for w in result.warnings)
+
+    def test_inconclusive_without_the_template_password_or_a_proven_login(self, vc, monkeypatch):
+        monkeypatch.delenv("TN_TEMPLATE_LINUX_PASSWORD")
+        result = _run(_prov(vc).provision(RANGE_ID, _with(_rendered(), {"dc01": []}), {}))
+        assert result.status == "ok", result.errors
+        assert _vm_out(result, "web01")["template_login"]["status"] == "inconclusive"  # password unknown
+        # No account set on dc01, so no own login proven: a refusal is not a pass.
+        assert _vm_out(result, "dc01")["template_login"]["status"] == "inconclusive"
+
+
+class TestCredcheckUnit:
+    class Session:
+        def __init__(self, answer):
+            self.answer, self.tried = answer, []
+
+        def try_login(self):
+            if isinstance(self.answer, Exception):
+                raise self.answer
+            return self.answer
+
+    @pytest.mark.parametrize(("answer", "proven", "status"), [
+        (True, True, "accepted"), (True, False, "accepted"), (False, True, "rejected"),
+        (False, False, "inconclusive"), (None, True, "inconclusive"), (RuntimeError("x"), True, "inconclusive"),
+    ])
+    def test_classification(self, monkeypatch, answer, proven, status):
+        from worker.provisioners import vsphere_credcheck as cc
+
+        monkeypatch.setenv("TN_TEMPLATE_LINUX_PASSWORD", TEMPLATE_LINUX)
+        seen = []
+        session = self.Session(answer)
+        result = cc.check(lambda creds: seen.append(creds) or session, "linux", proven=proven)
+        assert result["status"] == status and len(seen) == 1 and seen[0].username == "ubuntu"
+        assert TEMPLATE_LINUX not in json.dumps(result)
+
+    def test_securityonion_uses_its_build_login(self, monkeypatch):
+        from worker.provisioners import vsphere_credcheck as cc
+
+        monkeypatch.setenv("VSPHERE_SO_INSTALL_USER", "soadmin")
+        monkeypatch.setenv("VSPHERE_SO_INSTALL_PASSWORD", "So-Template-3!")
+        seen = []
+        cc.check(lambda creds: seen.append(creds) or self.Session(False), "linux", proven=True, securityonion=True)
+        assert (seen[0].username, seen[0].password.reveal()) == ("soadmin", "So-Template-3!")
+
+    def test_the_mode_defaults_to_enforce(self, monkeypatch):
+        from worker.provisioners import vsphere_credcheck as cc
+
+        monkeypatch.delenv("RANGE_TEMPLATE_LOGIN_CHECK", raising=False)
+        assert cc.mode() == "enforce"
+        monkeypatch.setenv("RANGE_TEMPLATE_LOGIN_CHECK", "WARN")
+        assert cc.mode() == "warn"

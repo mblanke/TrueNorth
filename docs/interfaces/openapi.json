@@ -8409,6 +8409,29 @@
         "title": "KitDefinitionOut",
         "type": "object"
       },
+      "LabCredentialsOut": {
+        "properties": {
+          "accounts": {
+            "description": "The accounts on the lab's machines, without passwords; empty until the lab is ready",
+            "items": {
+              "$ref": "#/components/schemas/RangeCredentialOut"
+            },
+            "title": "Accounts",
+            "type": "array"
+          },
+          "lab_session_id": {
+            "format": "uuid",
+            "title": "Lab Session Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "lab_session_id",
+          "accounts"
+        ],
+        "title": "LabCredentialsOut",
+        "type": "object"
+      },
       "LabSessionOut": {
         "properties": {
           "access_token": {
@@ -12544,7 +12567,7 @@
       "RangeCredentialOut": {
         "properties": {
           "applied": {
-            "description": "The last build reported setting it. False: not set by TrueNorth (Windows accounts other than Administrator, appliances, other backends, or not built yet). Students only ever get applied accounts",
+            "description": "The last build or rotation reported setting it. False: not set by TrueNorth (Windows accounts other than Administrator, appliances, other backends, a pending rotation, or not built yet). Students only ever get applied accounts",
             "title": "Applied",
             "type": "boolean"
           },
@@ -12552,6 +12575,12 @@
             "description": "TrueNorth made the password up for this range",
             "title": "Generated",
             "type": "boolean"
+          },
+          "id": {
+            "description": "The account's id: POST .../credentials/{id}/reveal shows its password",
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
           },
           "machine": {
             "description": "The template node id (or asset role) the account is on",
@@ -12563,22 +12592,35 @@
             "title": "Notes",
             "type": "string"
           },
-          "password": {
+          "pending_change": {
+            "default": false,
+            "description": "A change of its password is being applied in the guests: a reveal shows the password they still have, and it cannot be rotated again until the change settles",
+            "title": "Pending Change",
+            "type": "boolean"
+          },
+          "role": {
+            "description": "admin | user",
+            "title": "Role",
+            "type": "string"
+          },
+          "rotated_at": {
             "anyOf": [
               {
+                "format": "date-time",
                 "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "description": "None only for a template default that is not configured",
-            "title": "Password"
+            "description": "When its password was last replaced (rebuild, reset, admin rotation)",
+            "title": "Rotated At"
           },
-          "role": {
-            "description": "admin | user",
-            "title": "Role",
-            "type": "string"
+          "scenario": {
+            "default": false,
+            "description": "A typed-in password the template author chose on purpose (the lesson): authored by design, never rotated",
+            "title": "Scenario",
+            "type": "boolean"
           },
           "setup_status": {
             "default": "not_set",
@@ -12593,10 +12635,10 @@
           },
           "source": {
             "default": "declared",
-            "description": "declared: the range template's accounts:. template_default (staff only): the golden template's build login on a machine with no declared account",
+            "description": "declared: the range template's accounts:. implicit: a staff login TrueNorth adds so the machine does not keep its golden template's build password (built-in Administrator, Linux build user, soadmin)",
             "enum": [
               "declared",
-              "template_default"
+              "implicit"
             ],
             "title": "Source",
             "type": "string"
@@ -12612,9 +12654,9 @@
           }
         },
         "required": [
+          "id",
           "machine",
           "username",
-          "password",
           "role",
           "student_visible",
           "generated",
@@ -13802,6 +13844,35 @@
         "title": "ReportIn",
         "type": "object"
       },
+      "RevealedCredentialOut": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "machine": {
+            "title": "Machine",
+            "type": "string"
+          },
+          "password": {
+            "title": "Password",
+            "type": "string"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "machine",
+          "username",
+          "password"
+        ],
+        "title": "RevealedCredentialOut",
+        "type": "object"
+      },
       "RoleSpecsOut": {
         "properties": {
           "disk_gb": {
@@ -13848,6 +13919,56 @@
           }
         },
         "title": "RosterIn",
+        "type": "object"
+      },
+      "RotateIn": {
+        "properties": {
+          "reason": {
+            "description": "Why, for the audit log",
+            "maxLength": 500,
+            "minLength": 3,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "RotateIn",
+        "type": "object"
+      },
+      "RotateOut": {
+        "properties": {
+          "account": {
+            "$ref": "#/components/schemas/RangeCredentialOut"
+          },
+          "applies": {
+            "description": "in_guest: the worker sets it in the running range's guests now (the account shows applied once verified). next_build: the range is not built; its next build sets it",
+            "enum": [
+              "in_guest",
+              "next_build"
+            ],
+            "title": "Applies",
+            "type": "string"
+          },
+          "dispatched": {
+            "description": "False: the task queue was not reachable; rotate again later",
+            "title": "Dispatched",
+            "type": "boolean"
+          },
+          "operation_id": {
+            "description": "Logged by the worker task and in the audit row",
+            "title": "Operation Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "account",
+          "applies",
+          "operation_id",
+          "dispatched"
+        ],
+        "title": "RotateOut",
         "type": "object"
       },
       "RunDetail": {
@@ -15949,6 +16070,58 @@
           "yaml"
         ],
         "title": "TemplateIn",
+        "type": "object"
+      },
+      "TemplateIssueOut": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "problems": {
+            "description": "Which accounts break the rule, and why (no passwords)",
+            "items": {
+              "type": "string"
+            },
+            "title": "Problems",
+            "type": "array"
+          },
+          "template_id": {
+            "format": "uuid",
+            "title": "Template Id",
+            "type": "string"
+          },
+          "tenant_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "None: a global template",
+            "title": "Tenant Id"
+          },
+          "upcoming_bookings": {
+            "description": "Scheduled bookings of ranges built from it that would fail",
+            "title": "Upcoming Bookings",
+            "type": "integer"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "template_id",
+          "name",
+          "version",
+          "problems",
+          "upcoming_bookings"
+        ],
+        "title": "TemplateIssueOut",
         "type": "object"
       },
       "TemplateListOut": {
@@ -29410,6 +29583,135 @@
         ]
       }
     },
+    "/lab-access/{session_id}/credentials": {
+      "get": {
+        "operationId": "get_lab_credentials_by_token_lab_access__session_id__credentials_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-lab-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Lab-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabCredentialsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Lab Credentials By Token",
+        "tags": [
+          "lab-sessions"
+        ]
+      }
+    },
+    "/lab-access/{session_id}/credentials/{credential_id}/reveal": {
+      "post": {
+        "description": "As the signed-in reveal; audited as the session's owner (``via: lab_token``).",
+        "operationId": "reveal_lab_credential_by_token_lab_access__session_id__credentials__credential_id__reveal_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "credential_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Credential Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-lab-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Lab-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevealedCredentialOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reveal Lab Credential By Token",
+        "tags": [
+          "lab-sessions"
+        ]
+      }
+    },
     "/lab-access/{session_id}/end": {
       "post": {
         "operationId": "end_lab_by_token_lab_access__session_id__end_post",
@@ -29823,6 +30125,114 @@
           }
         ],
         "summary": "Open Lab Console",
+        "tags": [
+          "lab-sessions"
+        ]
+      }
+    },
+    "/lab-sessions/{session_id}/credentials": {
+      "get": {
+        "description": "The Student's own lab's accounts (ADR 0013 \u00a73: generated per lab, new after every\nreset), without passwords. Only the session's owner.",
+        "operationId": "get_lab_credentials_lab_sessions__session_id__credentials_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabCredentialsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Lab Credentials",
+        "tags": [
+          "lab-sessions"
+        ]
+      }
+    },
+    "/lab-sessions/{session_id}/credentials/{credential_id}/reveal": {
+      "post": {
+        "description": "One password of the Student's own lab. Audited (``range_credential_reveal``).",
+        "operationId": "reveal_lab_credential_lab_sessions__session_id__credentials__credential_id__reveal_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "credential_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Credential Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevealedCredentialOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Reveal Lab Credential",
         "tags": [
           "lab-sessions"
         ]
@@ -35298,6 +35708,37 @@
         ]
       }
     },
+    "/range-credentials/template-issues": {
+      "get": {
+        "description": "Templates whose typed-in passwords are not on scenario accounts (ADR 0013 \u00a73): fix each\nby marking the account ``scenario: true`` (its weak password is the lesson) or using\n``generate: true``. **Permission: template:update**; an admin also sees global templates.",
+        "operationId": "list_template_issues_range_credentials_template_issues_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TemplateIssueOut"
+                  },
+                  "title": "Response List Template Issues Range Credentials Template Issues Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Template Issues",
+        "tags": [
+          "ranges"
+        ]
+      }
+    },
     "/ranges": {
       "get": {
         "description": "List ranges for the user's tenant.  **Permission: range:read**",
@@ -35689,7 +36130,7 @@
     },
     "/ranges/{range_id}/credentials": {
       "get": {
-        "description": "The accounts on a range's machines, with their passwords, as the caller may see them.\n\n**Permission: range:read**, then by role: staff with ``range:credentials_read`` see every\naccount (``applied`` false: not set by TrueNorth); a Student sees the ``student_visible``\naccounts the last build set, of a range they take part in (an exercise running on it\nwhose booked course they are rostered on; lab sessions are not covered yet) and gets 404\nfor any other; an observer gets 403. Staff also get, for each Windows or Linux machine\nwith no declared account, the golden template's build login (``source:\n\"template_default\"``; no password when the installer did not configure it). Audited per\nread.",
+        "description": "The accounts on a range's machines, as the caller may see them, **without passwords**\n(POST ``.../credentials/{id}/reveal`` shows one, audited).\n\n**Permission: range:read**, then by role: staff with ``range:credentials_read`` see every\naccount (``applied`` false: not set by TrueNorth); a Student sees the ``student_visible``\naccounts the last build or rotation set, of a range they take part in (an exercise\nrunning on it whose booked course they are rostered on, or their own live lab session)\nand gets 404 for any other; an observer gets 403.",
         "operationId": "get_range_credentials_ranges__range_id__credentials_get",
         "parameters": [
           {
@@ -35737,6 +36178,221 @@
           }
         ],
         "summary": "Get Range Credentials",
+        "tags": [
+          "ranges"
+        ]
+      }
+    },
+    "/ranges/{range_id}/credentials/{credential_id}/reveal": {
+      "post": {
+        "description": "One account's password. **Permission: range:read**, then as the list: staff any\naccount of the range, a Student only one handed to them on a range they take part in.\nEvery call writes an audit row (``range_credential_reveal``: who, the range, machine and\nusername, the scope, and the Student's exercise or lab session), never the password.",
+        "operationId": "reveal_range_credential_ranges__range_id__credentials__credential_id__reveal_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "range_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Range Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "credential_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Credential Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevealedCredentialOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "The caller's role sees no range credentials (observers)"
+          },
+          "404": {
+            "description": "No such range or account the caller may see"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Reveal Range Credential",
+        "tags": [
+          "ranges"
+        ]
+      }
+    },
+    "/ranges/{range_id}/credentials/{credential_id}/rotate": {
+      "post": {
+        "description": "Give one account a new generated password. **Permission: range:credentials_rotate**\n(admin). A built range that is ready or running gets it in its guests now (worker task\n``rotate_range_credentials``); an unbuilt one at its next build. Audited\n(``range_credential_rotate``, with the reason). Staff accounts change only this way.",
+        "operationId": "rotate_range_credential_ranges__range_id__credentials__credential_id__rotate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "range_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Range Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "credential_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Credential Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RotateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RotateOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "No such range or account in the caller's tenant"
+          },
+          "409": {
+            "description": "A scenario account (never rotated), or a range no rotation can reach now"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Rotate Range Credential",
+        "tags": [
+          "ranges"
+        ]
+      }
+    },
+    "/ranges/{range_id}/credentials/{credential_id}/settle": {
+      "post": {
+        "description": "End a password change that is stuck pending (its worker task died, or its restore never\nran): the account's password becomes the one the guests have now, set and rotatable\nagain. **Permission: range:credentials_rotate** (admin). Audited\n(``range_credential_settle``, with the reason).",
+        "operationId": "settle_range_credential_ranges__range_id__credentials__credential_id__settle_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "range_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Range Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "credential_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Credential Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RotateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RangeCredentialOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "No such range or account in the caller's tenant"
+          },
+          "409": {
+            "description": "No change of this account's password is pending"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Settle Range Credential",
         "tags": [
           "ranges"
         ]
@@ -40241,7 +40897,7 @@
         ]
       },
       "get": {
-        "description": "Retrieve a single template.  **Permission: template:read**\n\nTyped-in ``accounts[].password`` values are stored sealed (``tnsec:v1:...``). Holders of\nrange:credentials_read in the template's own tenant read them so (an edit sends them back\nunchanged); anyone else reads ``********`` (ADR 0012 \u00a713), and an unparseable document\nnot at all.",
+        "description": "Retrieve a single template.  **Permission: template:read**\n\nTyped-in ``accounts[].password`` values are stored sealed (``tnsec:rt1:...``, bound to\nthe template's tenant). Holders of\nrange:credentials_read in the template's own tenant read them so (an edit sends them back\nunchanged); anyone else reads ``********`` (ADR 0012 \u00a713), and an unparseable document\nnot at all.",
         "operationId": "get_template_templates__template_id__get",
         "parameters": [
           {
@@ -42745,7 +43401,7 @@
         ]
       },
       "get": {
-        "description": "A generated range page (ADR 0012 \u00a714) is the one place the wiki shows passwords: its\ncredential tokens are filled in here, and only for ``range:credentials_read`` holders,\naudited like GET /ranges/{id}/credentials and ``Cache-Control: no-store``. Every other\nresponse (create, edit, restore, a 409's body) returns the tokens.",
+        "description": "A page as stored. A generated range page holds no credentials (ADR 0013 \u00a73): its\npasswords are revealed on the range's credentials panel, never through the wiki.",
         "operationId": "get_page_wiki_pages__page_id__get",
         "parameters": [
           {

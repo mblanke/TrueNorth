@@ -49,10 +49,25 @@ def test_so_logins_carry_the_declared_admin_password():
     declared = {"so01": [RangeAccount("soadmin", Secret("Range-1!"), admin=True)]}
     vm = _so_vm()
     vm["securityonion"]["reconcile"]["install_from_env"] = True
-    assert sr._so_logins(declared, [vm], env) == ({"so01": ("builder", "Build-1!", "Range-1!")}, [])
+    assert sr._so_logins(declared, [vm], env) == ({"so01": ("builder", "Build-1!", "Range-1!", "")}, [])
     vm["securityonion"]["reconcile"]["install_from_env"] = False
-    assert sr._so_logins(declared, [vm], {}) == ({"so01": ("soadmin", "Range-1!", "Range-1!")}, [])
+    assert sr._so_logins(declared, [vm], {}) == ({"so01": ("soadmin", "Range-1!", "Range-1!", "")}, [])
     assert sr._so_logins({}, [vm], {}) == ({}, [])
+
+
+def test_so_logins_use_the_build_logins_own_row_once_it_is_set():
+    """ADR 0013 §3: the build login gets the range's password last. Before that the template
+    login (env) logs in and the row's password is what the reconcile sets; once the row is
+    applied, the row's password logs in (the template's no longer works)."""
+    env = {"VSPHERE_SO_INSTALL_USER": "soadmin", "VSPHERE_SO_INSTALL_PASSWORD": "Build-1!"}
+    declared = {"so01": [RangeAccount("soadmin", Secret("Login-1!"), admin=True),
+                         RangeAccount("tnadmin", Secret("Admin-1!"), admin=True)]}
+    vm = _so_vm(admin_last=True)
+    info = vm["securityonion"]["reconcile"]
+    info.update(install_from_env=True, admin_user="tnadmin", login_user="soadmin")
+    assert sr._so_logins(declared, [vm], env) == ({"so01": ("soadmin", "Build-1!", "Admin-1!", "Login-1!")}, [])
+    assert sr._so_logins(declared, [vm], env, {("so01", "soadmin")}) == (
+        {"so01": ("soadmin", "Login-1!", "Admin-1!", "")}, [])
 
 
 def test_an_admin_that_is_the_build_login_is_never_tried_without_the_build_login():
@@ -120,7 +135,8 @@ def world(monkeypatch):
     monkeypatch.setattr(sr, "run_async", lambda coro: __import__("asyncio").run(coro))
     monkeypatch.setattr(tasks, "_db_session", lambda: FakeDB())
     monkeypatch.setattr(tasks, "_get_backend", backend)
-    monkeypatch.setattr(ra, "load", lambda session, rid: ({}, state["lab"]))
+    monkeypatch.setattr(ra, "load", lambda session, rid: {})
+    monkeypatch.setattr(db_ops, "account_rows", lambda db, rid, ids=None: [])
     monkeypatch.setattr(db_ops, "lock_range", lambda db, rid: None)
     monkeypatch.setattr(db_ops, "range_output_and_backend", lambda db, rid: (json.dumps({"vms": [_so_vm()]}), "v"))
     monkeypatch.setattr(db_ops, "set_range_output", set_output)
@@ -143,10 +159,10 @@ def test_accounts_are_marked_applied_only_when_the_guarded_write_happened(world)
     assert world["marked"] is None
 
 
-def test_a_lab_sessions_range_is_skipped(world):
-    world["lab"] = True
+def test_a_lab_sessions_range_is_reconciled_like_any_other(world):
+    """ADR 0013 §3: a lab's range has its own generated accounts now; no special case."""
     sr._reconcile_range("r1", "Range 1", {"vms": [_product_vm()]}, "vsphere")
-    assert world["backend_calls"] == 0 and world["written"] is None
+    assert world["backend_calls"] == 1
 
 
 def _ip_pending_vm(name="r1-ubu02"):
@@ -322,12 +338,11 @@ def test_an_expired_setup_ends_when_screening_refuses(world):
     assert world["written"]["vms"][0]["securityonion"]["status"] == "timeout"
 
 
-def test_an_expired_setup_ends_on_a_lab_range_too(world, monkeypatch):
-    world["lab"] = True  # no guest work at all, but the record still ends
+def test_an_expired_setup_ends_from_the_record(world, monkeypatch):
+    world["changes"] = {}
     output = {"vms": [_product_vm(since=0.0)]}
     monkeypatch.setattr(db_ops, "range_output_and_backend", lambda db, rid: (json.dumps(output), "v"))
     sr._reconcile_range("r1", "Range 1", output, "vsphere")
-    assert world["backend_calls"] == 0
     assert world["written"]["vms"][0]["role_setup"]["status"] == "timeout"
 
 
@@ -354,3 +369,19 @@ def test_the_lock_outlives_the_tasks_soft_time_limit():
     with sr._single_run(Rec()):
         pass
     assert seen["ex"] == sr.lock_ttl()
+
+
+@pytest.mark.parametrize(("mode", "not_ready"), [("enforce", True), ("warn", False)])
+def test_a_security_onion_template_login_still_accepted_fails_the_vm_under_enforce(world, monkeypatch, mode,
+                                                                                    not_ready):
+    """ADR 0013 §3 (review of #250, item 5): the reconcile applies the check as the build does."""
+    monkeypatch.setenv("RANGE_TEMPLATE_LOGIN_CHECK", mode)
+    world["changes"]["r1-so"]["template_login"] = {"status": "accepted", "username": "soadmin", "detail": "x"}
+    failed = []
+    monkeypatch.setattr(db_ops, "update_range_state", lambda db, rid, state, **kw: failed.append(state) or 1)
+    sr._reconcile_range("r1", "Range 1", {"vms": [_so_vm()]}, "vsphere")
+    written = world["written"]
+    assert written["vms"][0]["template_login"]["status"] == "accepted"
+    assert ("r1-so" in (written.get("not_ready") or [])) == not_ready
+    assert (failed == ["failed"]) == not_ready
+    assert any("Not safe" in w for w in written["warnings"])

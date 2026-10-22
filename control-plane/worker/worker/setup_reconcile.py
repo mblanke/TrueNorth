@@ -10,8 +10,9 @@ sets (the SOC web login, the range admin) are marked ``applied`` only once verif
 
 Secrets are never stored in the range output: the domain Administrator password is re-read
 from the range's credentials each run (worker/range_accounts.py), used only for the
-guest-operations auth, and the Security Onion install login comes from the environment or the
-range's admin account. The write back is conditional on the range still being ``ready`` and
+guest-operations auth, and the Security Onion install login is the range's own ``soadmin``
+row once its password is set (ADR 0013 §3), else the template's from the environment, else
+the range's admin account. The write back is conditional on the range still being ``ready`` and
 done under its row lock, so it never overwrites a range an operator has moved on. A no-op
 when no range has a setup running. Kept out of tasks.py (ADR 0003).
 """
@@ -118,6 +119,26 @@ def _merge_ips(output: dict, settled: dict) -> list[str]:
     return failed
 
 
+def _merge_template_logins(output: dict, changes: dict) -> list[str]:
+    """The template-login checks a reconcile made (a Security Onion node, once its setup
+    changed ``soadmin``; ADR 0013 §3), as the build would record them: an ``accepted`` one is
+    Not safe, and under RANGE_TEMPLATE_LOGIN_CHECK=enforce its VM is not ready (it fails the
+    range, as a build would have). Returns those not-ready reasons."""
+    from .provisioners import vsphere_credcheck as credcheck
+
+    warnings = list(output.get("warnings") or [])
+    failed: list[str] = []
+    for vm in output.get("vms") or []:
+        result = (changes.get(vm.get("name")) or {}).get("template_login")
+        if not result:
+            continue
+        if reason := credcheck.report(str(vm.get("name")), result, warnings):
+            failed.append(f"VM {vm.get('name')}: {reason}")
+            output["not_ready"] = sorted(set(output.get("not_ready") or []) | {vm.get("name")})
+    output["warnings"] = warnings + failed
+    return failed
+
+
 def _domain_passwords(declared: dict, products: list[dict]) -> dict:
     """DC node id -> its Administrator password: the range's own account (declared, or the
     per-range one the credential service generates for a range with product role images).
@@ -134,28 +155,41 @@ def _domain_passwords(declared: dict, products: list[dict]) -> dict:
     return out
 
 
-def _so_logins(declared: dict, sos: list[dict], env: dict) -> tuple[dict, list[str]]:
-    """(Security Onion node id -> (install user, install password, declared admin password or
-    ""), warnings). The template build login from the environment, else the machine's declared
-    admin account; the admin's declared password is what the reconcile sets and verifies.
+def _so_logins(declared: dict, sos: list[dict], env: dict,
+               applied: set | frozenset = frozenset()) -> tuple[dict, list[str]]:
+    """(Security Onion node id -> (install user, install password, admin password or "",
+    the build login's range password or ""), warnings).
 
-    When the admin is the build login itself (``admin_last``) its password is still the build
-    one until the reconcile changes it, so the declared password cannot log in: without
-    VSPHERE_SO_INSTALL_* on this worker that node is skipped with a warning, never tried."""
-    out: dict[str, tuple[str, str, str]] = {}
+    The install login is the build login (``soadmin``): with its range password once that is
+    set (its row ``applied``: ADR 0013 §3), else the template's from the environment
+    (VSPHERE_SO_INSTALL_*), else the machine's admin account. The admin's password is what
+    the reconcile verifies; the build login's range password is what it sets last.
+
+    While the build login still has the template password (``admin_last``), its range
+    password cannot log in: without VSPHERE_SO_INSTALL_* on this worker that node is skipped
+    with a warning, never tried."""
+    out: dict[str, tuple[str, str, str, str]] = {}
     warnings: list[str] = []
     for v in sos:
         info = v["securityonion"]["reconcile"]
         node = str(info.get("node") or "")
-        admin = next((a for a in declared.get(node, []) if a.admin), None)
+        accounts = declared.get(node, [])
+        login_name = info.get("login_user") or (info.get("admin_user") if info.get("admin_last") else None)
+        login = next((a for a in accounts if a.username == login_name), None) if login_name else None
+        admin_name = info.get("admin_user")
+        admin = (next((a for a in accounts if a.username == admin_name), None) if admin_name and admin_name != login_name
+                 else None) if admin_name else next((a for a in accounts if a.admin), None)
         admin_pw = admin.password.reveal() if admin is not None else ""
-        if info.get("install_from_env") and env.get("VSPHERE_SO_INSTALL_USER") and env.get("VSPHERE_SO_INSTALL_PASSWORD"):
-            out[node] = (env["VSPHERE_SO_INSTALL_USER"], env["VSPHERE_SO_INSTALL_PASSWORD"], admin_pw)
+        login_pw = login.password.reveal() if login is not None else ""
+        if login is not None and (node, login.username) in applied:
+            out[node] = (login.username, login_pw, admin_pw, "")  # already set: log in with it
+        elif info.get("install_from_env") and env.get("VSPHERE_SO_INSTALL_USER") and env.get("VSPHERE_SO_INSTALL_PASSWORD"):
+            out[node] = (env["VSPHERE_SO_INSTALL_USER"], env["VSPHERE_SO_INSTALL_PASSWORD"], admin_pw, login_pw)
         elif info.get("admin_last"):
             warnings.append(f"VM {v.get('name')}: Security Onion reconcile skipped: its admin is the build login, "
                             "and VSPHERE_SO_INSTALL_USER / VSPHERE_SO_INSTALL_PASSWORD are not set on this worker")
         elif admin is not None:
-            out[node] = (admin.username, admin_pw, admin_pw)
+            out[node] = (admin.username, admin_pw, admin_pw, "")
     return out, warnings
 
 
@@ -201,11 +235,13 @@ def _merge(output: dict, changes: dict) -> tuple[dict, list[dict]]:
                                                     "detail": change["role_setup"]["detail"]}
         if "securityonion" in change:
             info = (vm.get("securityonion") or {}).get("reconcile") or {}
-            admin = info.get("admin_user")
-            if info.get("admin_last") and admin and admin in (change.get("accounts_applied") or []):
-                # The reconcile gave the admin (the build login) its declared password.
+            login = info.get("login_user") or info.get("admin_user")
+            if info.get("admin_last") and login and login in (change.get("accounts_applied") or []):
+                # The reconcile gave the build login its range password.
                 warnings = [w for w in warnings if not (w.startswith(f"VM {vm.get('name')}: ")
-                                                        and f"admin account {admin} (also the build login)" in w)]
+                                                        and f"admin account {login} (also the build login)" in w)]
+            if change.get("template_login"):  # ADR 0013 §3: checked once the login changed
+                vm["template_login"] = change["template_login"]
             vm["securityonion"] = {**(vm.get("securityonion") or {}), **change["securityonion"]}
             vm["securityonion"].pop("reconcile", None)
             if change.get("accounts_applied"):
@@ -251,30 +287,28 @@ def _reconcile_range(range_id: str, name: str, output: dict, backend: str) -> No
 def _reconcile_guest_setups(range_id: str, output: dict, backend: str, products: list[dict], sos: list[dict],
                             changes: dict) -> None:
     """Read the running product / Security Onion setups in their guests into ``changes``."""
-    from . import range_accounts
+    from . import db_ops, range_accounts
     from .tasks import _db_session, _get_backend
 
-    declared, lab = range_accounts.load(_db_session, range_id)
-    if lab:
-        # A lab session's range has no range credentials (random per VM) and no product role
-        # images; never fall back to the site default password for it.
-        logger.info("[reconcile] range %s is a lab session's: no guest reconcile", range_id)
-    else:
-        so_logins, notes = _so_logins(declared, sos, os.environ)
-        try:
-            provisioner = _get_backend(backend, range_id, output=output)
-            if getattr(provisioner, "supports_setup_reconcile", False):
-                found, warnings = run_async(provisioner.reconcile_setups(
-                    range_id, output, domain_passwords=_domain_passwords(declared, products),
-                    so_logins=so_logins, run_seconds=RANGE_SECONDS))
-                changes.update(found)  # a guest-read outcome (and its clean-up) wins over the record's
-                notes += warnings
-        except SoftTimeLimitExceeded:
-            raise
-        except Exception as exc:  # noqa: BLE001 — vCenter unreachable, connection gone: timeouts still recorded
-            notes.append(f"guest reconcile not possible this round: {type(exc).__name__}: {exc}")
-        for w in notes:
-            logger.warning("[reconcile] range %s: %s", range_id, w)
+    # Every range has its own accounts now, a lab session's included (ADR 0013 §3).
+    declared = range_accounts.load(_db_session, range_id)
+    with _db_session() as db:
+        applied = {(r["machine"], r["username"]) for r in db_ops.account_rows(db, range_id) if r["applied"]}
+    so_logins, notes = _so_logins(declared, sos, os.environ, applied)
+    try:
+        provisioner = _get_backend(backend, range_id, output=output)
+        if getattr(provisioner, "supports_setup_reconcile", False):
+            found, warnings = run_async(provisioner.reconcile_setups(
+                range_id, output, domain_passwords=_domain_passwords(declared, products),
+                so_logins=so_logins, run_seconds=RANGE_SECONDS))
+            changes.update(found)  # a guest-read outcome (and its clean-up) wins over the record's
+            notes += warnings
+    except SoftTimeLimitExceeded:
+        raise
+    except Exception as exc:  # noqa: BLE001 — vCenter unreachable, connection gone: timeouts still recorded
+        notes.append(f"guest reconcile not possible this round: {type(exc).__name__}: {exc}")
+    for w in notes:
+        logger.warning("[reconcile] range %s: %s", range_id, w)
 
 
 def _record(range_id: str, output: dict, changes: dict, ip_settled: dict) -> None:
@@ -288,7 +322,7 @@ def _record(range_id: str, output: dict, changes: dict, ip_settled: dict) -> Non
         row = db_ops.range_output_and_backend(db, range_id)
         current = json.loads(row[0]) if row and row[0] else output
         merged, applied = _merge(current, changes)
-        not_ready = _merge_ips(merged, ip_settled)
+        not_ready = _merge_ips(merged, ip_settled) + _merge_template_logins(merged, changes)
         if not db_ops.set_range_output(db, range_id, json.dumps(merged), only_states=LIVE_STATES):
             logger.info("[reconcile] range %s left the live states; nothing recorded", range_id)
             return

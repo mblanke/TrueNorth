@@ -21,9 +21,10 @@ from typing import Any
 
 import sqlalchemy as sa
 
-from . import secretbox
+from . import range_seal, secretbox
 from .tables import (
     after_action_reports,
+    audit_logs,
     competencies,
     competency_assertions,
     competency_auto_assessments,
@@ -38,6 +39,7 @@ from .tables import (
     learning_recommendations,
     network_reservations,
     objectives,
+    range_credential_snapshots,
     range_credentials,
     range_snapshots,
     ranges,
@@ -220,17 +222,64 @@ def hypervisor_creds_by_id(db, hypervisor_type: str, connection_id: str, range_i
 
 
 def range_accounts(db, range_id: str) -> list[tuple[str, str, str, str]]:
-    """(machine, username, password, role) of every account the range declares (ADR 0012).
-    Written and sealed by the API (app/range_credentials) when the build was accepted;
-    unsealed here. Of the range's own tenant only."""
+    """(machine, username, password, role) of every account of the range (ADR 0012, ADR 0013:
+    declared ones and the implicit staff logins). Written and sealed by the API
+    (app/range_credentials) when the build was accepted; opened here with each row's own
+    binding. Of the range's own tenant only."""
     rc = range_credentials
     stmt = (
-        sa.select(rc.c.machine, rc.c.username, rc.c.password, rc.c.role)
+        sa.select(rc.c.id, rc.c.tenant_id, rc.c.machine, rc.c.username, rc.c.password, rc.c.role)
         .join(ranges, ranges.c.id == rc.c.range_id)
         .where(rc.c.range_id == range_id, rc.c.tenant_id == ranges.c.tenant_id)
         .order_by(rc.c.machine, rc.c.username)
     )
-    return [(m, u, secretbox.unseal(p) or "", r) for m, u, p, r in db.execute(stmt)]
+    return [(r.machine, r.username, range_seal.unseal(r.password, range_seal.row_aad(r.tenant_id, range_id, r.id))
+             or "", r.role) for r in db.execute(stmt)]
+
+
+def account_rows(db, range_id: str, ids: Sequence[str] | None = None) -> list[dict[str, Any]]:
+    """Every account of the range (or the ``ids`` among them) for a change in the guests
+    (worker/credential_rotation.py): id, machine, username, role, student_visible, generated,
+    applied, whether a change is pending (``previous_password`` set: the guests still have
+    that one) and the operation it belongs to, the password and the previous one, opened, and
+    ``sealed``: the stored seal of the password, the version a later apply or revert must
+    still find (compare-and-set)."""
+    rc = range_credentials
+    stmt = (
+        sa.select(rc.c.id, rc.c.tenant_id, rc.c.machine, rc.c.username, rc.c.role, rc.c.student_visible,
+                  rc.c.generated, rc.c.applied, rc.c.password, rc.c.previous_password, rc.c.pending_operation)
+        .join(ranges, ranges.c.id == rc.c.range_id)
+        .where(rc.c.range_id == range_id, rc.c.tenant_id == ranges.c.tenant_id)
+        .order_by(rc.c.machine, rc.c.username)
+    )
+    if ids is not None:
+        stmt = stmt.where(rc.c.id.in_([uuid.UUID(str(i)) for i in ids]))
+    out = []
+    for r in db.execute(stmt):
+        aad = range_seal.row_aad(r.tenant_id, range_id, r.id)
+        out.append({"id": str(r.id), "tenant_id": str(r.tenant_id), "machine": r.machine, "username": r.username,
+                    "role": r.role, "student_visible": bool(r.student_visible), "generated": bool(r.generated),
+                    "applied": bool(r.applied), "pending": r.previous_password is not None,
+                    "operation": r.pending_operation,
+                    "password": range_seal.unseal(r.password, aad) or "", "sealed": r.password,
+                    "previous": range_seal.unseal(r.previous_password, aad) if r.previous_password else None})
+    return out
+
+
+def snapshot_passwords(db, range_id: str, snapshot_id: str) -> dict[str, tuple[str, str]]:
+    """credential id -> (the password the guests had when the snapshot was taken, its seal).
+    The API records each as a copy of the account's own seal (service.on_snapshot), so it
+    opens with the account's binding and can be put back as its password unchanged. Of the
+    range's own snapshot only."""
+    rcs = range_credential_snapshots
+    stmt = (
+        sa.select(rcs.c.credential_id, rcs.c.tenant_id, rcs.c.password)
+        .join(range_snapshots, range_snapshots.c.id == rcs.c.snapshot_id)
+        .where(rcs.c.snapshot_id == snapshot_id, range_snapshots.c.range_id == range_id,
+               rcs.c.tenant_id == range_snapshots.c.tenant_id)
+    )
+    return {str(cid): (range_seal.unseal(pw, range_seal.row_aad(tid, range_id, cid)) or "", pw)
+            for cid, tid, pw in db.execute(stmt)}
 
 
 def is_lab_range(db, range_id: str) -> bool:
@@ -240,8 +289,9 @@ def is_lab_range(db, range_id: str) -> bool:
 
 
 def mark_accounts_applied(db, range_id: str, pairs: Iterable[tuple[str, str]]) -> None:
-    """Set ``applied`` on the range's (machine, username) accounts the build set (ADR 0012).
-    The API resets every row to not applied when it accepts a build."""
+    """Set ``applied`` on the range's (machine, username) accounts a build set (ADR 0012).
+    The API resets every row to not applied when it accepts a build. A change in the guests
+    is settled by ``settle_credential_change`` instead (it checks the version it set)."""
     by_machine: dict[str, list[str]] = {}
     for machine, username in pairs:
         by_machine.setdefault(machine, []).append(username)
@@ -249,9 +299,43 @@ def mark_accounts_applied(db, range_id: str, pairs: Iterable[tuple[str, str]]) -
     for machine, names in sorted(by_machine.items()):
         db.execute(
             sa.update(rc)
-            .where(rc.c.range_id == range_id, rc.c.machine == machine, rc.c.username.in_(sorted(names)))
+            .where(rc.c.range_id == range_id, rc.c.machine == machine, rc.c.username.in_(sorted(names)),
+                   rc.c.previous_password.is_(None))
             .values(applied=True, updated_at=_now())
         )
+
+
+def settle_credential_change(db, range_id: str, credential_id: str, sealed: str, *, applied: bool,
+                             operation: str, revert_to: str | None = None) -> bool:
+    """End one account's pending change of ``operation``, only if its password is still the
+    version the worker set or tried (``sealed``) and the change is still that operation's
+    (review of #250: a task settles only its own changes):
+
+    * ``applied``: the new password logs in: ``applied``, the previous one forgotten;
+    * not ``applied``: the change failed: the password the guests have becomes the password
+      again, ``applied``: ``revert_to`` (a snapshot's seal, after its revert) or else the
+      previous password. Seals move as they are: every value of one account shares its binding.
+
+    Returns whether the row was settled."""
+    rc = range_credentials
+    values: dict[str, Any] = {"applied": True, "previous_password": None, "pending_operation": None,
+                              "updated_at": _now()}
+    if not applied:
+        values["password"] = revert_to if revert_to is not None else rc.c.previous_password
+    return db.execute(
+        sa.update(rc)
+        .where(rc.c.id == uuid.UUID(str(credential_id)), rc.c.range_id == range_id, rc.c.password == sealed,
+               rc.c.previous_password.is_not(None), rc.c.pending_operation == operation)
+        .values(**values)
+    ).rowcount == 1
+
+
+def audit_credential_change(db, range_id: str, tenant_id: str, detail: dict[str, Any]) -> None:
+    """One audit row for the outcome of a change in the guests (never a password)."""
+    db.execute(sa.insert(audit_logs).values(
+        id=uuid.uuid4(), timestamp=sa.func.now(), user_id=None, tenant_id=uuid.UUID(str(tenant_id)),
+        action="range_credential_change", resource_type="range", resource_id=str(range_id),
+        detail=json.dumps(detail, sort_keys=True)[:2000]))
 
 
 def enabled_golden_images(db, hypervisor: str) -> list:

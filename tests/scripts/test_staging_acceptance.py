@@ -749,22 +749,27 @@ def with_personas(c: acc.Ctx, **apis: Api) -> acc.Ctx:
 RID, TPL = "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222"
 GENERATED = "Gen3rated-Pw.4acceptance"
 STAFF_READ = (200, {"range_id": RID, "scope": "all", "accounts": [
-    {"machine": "ws01", "username": "acceptance-analyst", "password": acc.CREDENTIALS_LITERAL, "source": "declared",
+    {"id": "c-an", "machine": "ws01", "username": "acceptance-analyst", "source": "declared", "scenario": True,
      "generated": False, "student_visible": True, "applied": False},
-    {"machine": "ws01", "username": "acceptance-admin", "password": GENERATED, "source": "declared",
+    {"id": "c-ad", "machine": "ws01", "username": "acceptance-admin", "source": "declared",
+     "generated": True, "student_visible": False, "applied": False},
+    {"id": "c-ub", "machine": "ws01", "username": "ubuntu", "source": "implicit",
      "generated": True, "student_visible": False, "applied": False},
 ]})
+REVEALED = {"c-an": acc.CREDENTIALS_LITERAL, "c-ad": GENERATED}
 
 
-def credentials_world(student=(404, {"detail": "Range not found"}), stored_yaml="name: x\n  password: tnsec:rc1:gAAA",
-                      stored_passwords=("tnsec:v1:aaa", "tnsec:v1:bbb"), staff=STAFF_READ):
+def credentials_world(student=(404, {"detail": "Range not found"}), stored_yaml="name: x\n  password: tnsec:rt1:gAAA",
+                      stored_passwords=("tnsec:rk1:aaa", "tnsec:rk1:bbb", "tnsec:rk1:ccc"), staff=STAFF_READ):
     admin = Api("admin", {
         ("GET", "/templates"): (200, []),
         ("POST", "/templates"): lambda j, p: (201, {"id": TPL, **j}),
         ("POST", "/ranges"): lambda j, p: (201, {"id": RID, "name": j["name"], "state": "created"}),
         ("GET", f"/ranges/{RID}/credentials"): staff,
-        ("GET", "/audit-log"): (200, [{"action": "range_credentials_read", "resource_id": RID,
-                                       "detail": "scope=all; accounts=2"}] * 2),
+        **{("POST", f"/ranges/{RID}/credentials/{cid}/reveal"): (200, {"id": cid, "password": pw})
+           for cid, pw in REVEALED.items()},
+        ("GET", "/audit-log"): (200, [{"action": "range_credential_reveal", "resource_id": RID,
+                                       "detail": '{"machine": "ws01", "scope": "all"}'}] * 2),
         ("DELETE", f"/ranges/{RID}"): (204, None),
     })
     personas = {
@@ -790,18 +795,19 @@ def credentials_world(student=(404, {"detail": "Range not found"}), stored_yaml=
 def test_range_credentials_pass_and_create_from_the_declaring_template():
     admin, c = credentials_world()
     detail = acc.ranges_credentials(c)
-    assert "Students 404, Observer 403" in detail and "2 reads audited" in detail
+    assert "Students 404, Observer 403" in detail and "2 reveals audited" in detail
     posted = next(j for m, p, j in admin.calls if (m, p) == ("POST", "/templates"))
     assert posted["name"] == acc.CREDENTIALS_TEMPLATE and acc.CREDENTIALS_LITERAL in posted["yaml"]
     assert c.cleanup() == [] and admin.calls[-1][:2] == ("DELETE", f"/ranges/{RID}")
 
 
 def test_the_credentials_template_declares_what_the_check_expects():
-    """It validates as the API does (accounts rules, ADR 0012 §12): one typed-in, one generated."""
+    """It validates as the API does (accounts rules, ADR 0012 §12, ADR 0013 §3): one typed-in
+    scenario account, one generated."""
     import yaml
     from app.range_credentials import accounts
 
-    specs, errors = accounts.parse_yaml(acc.CREDENTIALS_TEMPLATE_YAML)
+    specs, errors = accounts.parse_yaml(acc.CREDENTIALS_TEMPLATE_YAML, tenant_id=None)
     assert errors == []
     assert {s.username: ("generated" if s.generate else "declared literal") for s in specs} == acc.CREDENTIALS_ACCOUNTS
     assert yaml.safe_load(acc.CREDENTIALS_TEMPLATE_YAML)["accounts"][0]["password"] == acc.CREDENTIALS_LITERAL
@@ -812,7 +818,12 @@ def test_the_credentials_template_declares_what_the_check_expects():
     [
         ({"student": STAFF_READ}, "expected 404"),
         ({"stored_yaml": f"password: {acc.CREDENTIALS_LITERAL}"}, "not sealed"),
-        ({"stored_passwords": ("tnsec:v1:aaa", GENERATED)}, "stored unsealed"),
+        ({"stored_passwords": ("tnsec:rk1:aaa", GENERATED)}, "stored unsealed"),
+        ({"stored_passwords": ("tnsec:rk1:aaa", "tnsec:v1:bbb")}, "stored unsealed"),  # not the range key
+        ({"stored_passwords": ("tnsec:rk1:aaa", "tnsec:rc1:bbb")}, "stored unsealed"),  # legacy seal, not migrated
+        # ADR 0013 §3: the list never carries a password.
+        ({"staff": (200, {**STAFF_READ[1], "accounts": [
+            {**a, "password": "x"} for a in STAFF_READ[1]["accounts"]]})}, "the list shows"),
         # A range never built may not claim an account is set (setup_status, #216).
         ({"staff": (200, {**STAFF_READ[1], "accounts": [
             {**a, "setup_status": "being_set_up"} for a in STAFF_READ[1]["accounts"]]})}, "claim to be set"),
@@ -830,7 +841,7 @@ PID = "33333333-3333-3333-3333-333333333333"
 
 
 def wiki_world(put=(409, {"detail": "managed by TrueNorth"}), student_page=(404, {"detail": "Page not found"}),
-               stored="## Accounts\n{{tn-credential:44444444-4444-4444-4444-444444444444}}"):
+               stored="## Accounts\n| `ws01` | `acceptance-analyst` | user |", staff_body="acceptance-analyst | user"):
     name = f"{acc.PREFIX}credentials-t1"
     admin = Api("admin", {
         ("GET", "/wiki/spaces"): (200, [{"slug": "ranges", "system_owned": True, "visibility": "staff"},
@@ -840,7 +851,7 @@ def wiki_world(put=(409, {"detail": "managed by TrueNorth"}), student_page=(404,
             {"id": PID, "title": name, "children": []}]}]),
     })
     instructor = Api("instructor", {("GET", f"/wiki/pages/{PID}"): (200, {
-        "id": PID, "tags": f"range-doc,range:{RID}", "body": f"analyst / {acc.CREDENTIALS_LITERAL}"})})
+        "id": PID, "tags": f"range-doc,range:{RID}", "body": staff_body})})
 
     def reader(role):
         return Api(role, {("GET", "/wiki/spaces"): (200, [{"slug": "howto"}]),
@@ -866,7 +877,9 @@ def test_ranges_space_passes_when_system_owned_and_hidden():
     [
         ({"put": (200, {"slug": "ranges", "visibility": "all"})}, "expected 409"),
         ({"student_page": (200, {"body": "x"})}, "as student => 200, expected 404"),
-        ({"stored": f"analyst / {acc.CREDENTIALS_LITERAL}"}, "no credential tokens"),
+        ({"stored": f"analyst / {acc.CREDENTIALS_LITERAL}"}, "holds an account password"),
+        ({"stored": "{{tn-credential:44444444-4444-4444-4444-444444444444}}"}, "holds credential tokens"),
+        ({"staff_body": f"acceptance-analyst / {acc.CREDENTIALS_LITERAL}"}, "shows staff an account password"),
     ],
 )
 def test_ranges_space_fails_when_open_or_storing_passwords(world, message):

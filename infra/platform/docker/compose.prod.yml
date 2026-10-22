@@ -470,12 +470,10 @@ services:
       TN_SECRETS_KEY: ${TN_SECRETS_KEY:?set TN_SECRETS_KEY (see .env.production.example)}
       # Site networks a range template's subnets may not overlap (range certification S1).
       TN_RANGE_RESERVED_CIDRS: ${TN_RANGE_RESERVED_CIDRS:-}
-      # The golden templates' build login, shown to staff as "template default" (ADR 0012 §5).
-      TN_TEMPLATE_WINDOWS_ADMIN_PASSWORD: ${TN_TEMPLATE_WINDOWS_ADMIN_PASSWORD:-}
+      # The golden templates' build login NAMES (never their passwords: ADR 0013 §3). Every
+      # range gets its own generated row for each (app/range_credentials/accounts.py).
       TN_TEMPLATE_LINUX_USER: ${TN_TEMPLATE_LINUX_USER:-ubuntu}
-      TN_TEMPLATE_LINUX_PASSWORD: ${TN_TEMPLATE_LINUX_PASSWORD:-}
-      # Deprecated alias of TN_TEMPLATE_WINDOWS_ADMIN_PASSWORD (as the worker reads it).
-      TN_RANGE_DEFAULT_PASSWORD: ${TN_RANGE_DEFAULT_PASSWORD:-}
+      VSPHERE_SO_INSTALL_USER: ${VSPHERE_SO_INSTALL_USER:-soadmin}
       # Production fail-fast (app/settings.py): the API refuses to start, naming every
       # missing or unsafe setting (CSRF_SECRET, KEYCLOAK_AUDIENCE, default passwords...).
       TN_ENV: ${TN_ENV:-production}
@@ -744,12 +742,14 @@ services:
       TN_DEPOT_APT_PROXY: ${TN_DEPOT_APT_PROXY:-}
       TN_DEPOT_PORTS: ${TN_DEPOT_PORTS:-8081,3142}
       TN_SOFTWARE_INSTALL_TIMEOUT: ${TN_SOFTWARE_INSTALL_TIMEOUT:-1800}
-      # A Windows range VM's Administrator password when its template declares no
-      # account for it (ADR 0012). Empty: random per VM, as before. Never logged.
-      TN_RANGE_DEFAULT_PASSWORD: ${TN_RANGE_DEFAULT_PASSWORD:-}
-      # Sysprep's Administrator password for a Windows VM with no declared Administrator: the
-      # templates' generic build password (TN_RANGE_DEFAULT_PASSWORD only when this is unset).
+      # The golden templates' build passwords, used ONLY by the template-login check: one
+      # login attempt per built VM that must fail (provisioners/vsphere_credcheck.py, ADR
+      # 0013 §3). No VM is ever given them. Unset: the check records "inconclusive". Never logged.
       TN_TEMPLATE_WINDOWS_ADMIN_PASSWORD: ${TN_TEMPLATE_WINDOWS_ADMIN_PASSWORD:-}
+      TN_TEMPLATE_LINUX_USER: ${TN_TEMPLATE_LINUX_USER:-ubuntu}
+      TN_TEMPLATE_LINUX_PASSWORD: ${TN_TEMPLATE_LINUX_PASSWORD:-}
+      # enforce (default): a VM whose template password still logs in is not ready. warn: a warning.
+      RANGE_TEMPLATE_LOGIN_CHECK: ${RANGE_TEMPLATE_LOGIN_CHECK:-enforce}
       # Per VM, its Windows Server roles (features, reboots, forest promotion).
       VSPHERE_ROLE_TIMEOUT: ${VSPHERE_ROLE_TIMEOUT:-1800}
       # Security Onion so-setup per range (vmware-site-runbook.md 7.2): the template's build

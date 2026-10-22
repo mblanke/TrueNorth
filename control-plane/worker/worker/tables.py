@@ -372,6 +372,16 @@ objectives = sa.Table(
     sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
 )
 
+range_credential_snapshots = sa.Table(
+    "range_credential_snapshots",
+    metadata,
+    sa.Column("id", GUID(), primary_key=True),
+    sa.Column("tenant_id", GUID(), nullable=False),
+    sa.Column("snapshot_id", GUID(), nullable=False),
+    sa.Column("credential_id", GUID(), nullable=False),
+    sa.Column("password", sa.Text(), nullable=False),
+)
+
 range_credentials = sa.Table(
     "range_credentials",
     metadata,
@@ -386,6 +396,11 @@ range_credentials = sa.Table(
     sa.Column("applied", sa.Boolean(), nullable=False),
     sa.Column("role", sa.String(16), nullable=False),
     sa.Column("notes", sa.Text(), nullable=False),
+    sa.Column("source", sa.String(16), nullable=False),
+    sa.Column("scenario", sa.Boolean(), nullable=False),
+    sa.Column("rotated_at", sa.DateTime(timezone=True)),
+    sa.Column("previous_password", sa.Text()),
+    sa.Column("pending_operation", sa.String(64)),
     sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
     sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
 )
@@ -566,6 +581,7 @@ __all__ = [
     "metadata",
     "network_reservations",
     "objectives",
+    "range_credential_snapshots",
     "range_credentials",
     "range_greyspace",
     "range_leases",

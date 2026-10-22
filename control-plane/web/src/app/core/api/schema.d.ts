@@ -3390,6 +3390,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/lab-access/{session_id}/credentials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Lab Credentials By Token */
+        get: operations["get_lab_credentials_by_token_lab_access__session_id__credentials_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/lab-access/{session_id}/credentials/{credential_id}/reveal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reveal Lab Credential By Token
+         * @description As the signed-in reveal; audited as the session's owner (``via: lab_token``).
+         */
+        post: operations["reveal_lab_credential_by_token_lab_access__session_id__credentials__credential_id__reveal_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/lab-access/{session_id}/end": {
         parameters: {
             query?: never;
@@ -3514,6 +3551,47 @@ export interface paths {
         put?: never;
         /** Open Lab Console */
         post: operations["open_lab_console_lab_sessions__session_id__console_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/lab-sessions/{session_id}/credentials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Lab Credentials
+         * @description The Student's own lab's accounts (ADR 0013 §3: generated per lab, new after every
+         *     reset), without passwords. Only the session's owner.
+         */
+        get: operations["get_lab_credentials_lab_sessions__session_id__credentials_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/lab-sessions/{session_id}/credentials/{credential_id}/reveal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reveal Lab Credential
+         * @description One password of the Student's own lab. Audited (``range_credential_reveal``).
+         */
+        post: operations["reveal_lab_credential_lab_sessions__session_id__credentials__credential_id__reveal_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5585,6 +5663,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/range-credentials/template-issues": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Template Issues
+         * @description Templates whose typed-in passwords are not on scenario accounts (ADR 0013 §3): fix each
+         *     by marking the account ``scenario: true`` (its weak password is the lesson) or using
+         *     ``generate: true``. **Permission: template:update**; an admin also sees global templates.
+         */
+        get: operations["list_template_issues_range_credentials_template_issues_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/ranges": {
         parameters: {
             query?: never;
@@ -5723,20 +5823,87 @@ export interface paths {
         };
         /**
          * Get Range Credentials
-         * @description The accounts on a range's machines, with their passwords, as the caller may see them.
+         * @description The accounts on a range's machines, as the caller may see them, **without passwords**
+         *     (POST ``.../credentials/{id}/reveal`` shows one, audited).
          *
          *     **Permission: range:read**, then by role: staff with ``range:credentials_read`` see every
          *     account (``applied`` false: not set by TrueNorth); a Student sees the ``student_visible``
-         *     accounts the last build set, of a range they take part in (an exercise running on it
-         *     whose booked course they are rostered on; lab sessions are not covered yet) and gets 404
-         *     for any other; an observer gets 403. Staff also get, for each Windows or Linux machine
-         *     with no declared account, the golden template's build login (``source:
-         *     "template_default"``; no password when the installer did not configure it). Audited per
-         *     read.
+         *     accounts the last build or rotation set, of a range they take part in (an exercise
+         *     running on it whose booked course they are rostered on, or their own live lab session)
+         *     and gets 404 for any other; an observer gets 403.
          */
         get: operations["get_range_credentials_ranges__range_id__credentials_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ranges/{range_id}/credentials/{credential_id}/reveal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reveal Range Credential
+         * @description One account's password. **Permission: range:read**, then as the list: staff any
+         *     account of the range, a Student only one handed to them on a range they take part in.
+         *     Every call writes an audit row (``range_credential_reveal``: who, the range, machine and
+         *     username, the scope, and the Student's exercise or lab session), never the password.
+         */
+        post: operations["reveal_range_credential_ranges__range_id__credentials__credential_id__reveal_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ranges/{range_id}/credentials/{credential_id}/rotate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rotate Range Credential
+         * @description Give one account a new generated password. **Permission: range:credentials_rotate**
+         *     (admin). A built range that is ready or running gets it in its guests now (worker task
+         *     ``rotate_range_credentials``); an unbuilt one at its next build. Audited
+         *     (``range_credential_rotate``, with the reason). Staff accounts change only this way.
+         */
+        post: operations["rotate_range_credential_ranges__range_id__credentials__credential_id__rotate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ranges/{range_id}/credentials/{credential_id}/settle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Settle Range Credential
+         * @description End a password change that is stuck pending (its worker task died, or its restore never
+         *     ran): the account's password becomes the one the guests have now, set and rotatable
+         *     again. **Permission: range:credentials_rotate** (admin). Audited
+         *     (``range_credential_settle``, with the reason).
+         */
+        post: operations["settle_range_credential_ranges__range_id__credentials__credential_id__settle_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -7253,7 +7420,8 @@ export interface paths {
          * Get Template
          * @description Retrieve a single template.  **Permission: template:read**
          *
-         *     Typed-in ``accounts[].password`` values are stored sealed (``tnsec:v1:...``). Holders of
+         *     Typed-in ``accounts[].password`` values are stored sealed (``tnsec:rt1:...``, bound to
+         *     the template's tenant). Holders of
          *     range:credentials_read in the template's own tenant read them so (an edit sends them back
          *     unchanged); anyone else reads ``********`` (ADR 0012 §13), and an unparseable document
          *     not at all.
@@ -7809,10 +7977,8 @@ export interface paths {
         };
         /**
          * Get Page
-         * @description A generated range page (ADR 0012 §14) is the one place the wiki shows passwords: its
-         *     credential tokens are filled in here, and only for ``range:credentials_read`` holders,
-         *     audited like GET /ranges/{id}/credentials and ``Cache-Control: no-store``. Every other
-         *     response (create, edit, restore, a 409's body) returns the tokens.
+         * @description A page as stored. A generated range page holds no credentials (ADR 0013 §3): its
+         *     passwords are revealed on the range's credentials panel, never through the wiki.
          */
         get: operations["get_page_wiki_pages__page_id__get"];
         /** Update Page */
@@ -11579,6 +11745,19 @@ export interface components {
             /** Storage Appliance Count */
             storage_appliance_count: number;
         };
+        /** LabCredentialsOut */
+        LabCredentialsOut: {
+            /**
+             * Accounts
+             * @description The accounts on the lab's machines, without passwords; empty until the lab is ready
+             */
+            accounts: components["schemas"]["RangeCredentialOut"][];
+            /**
+             * Lab Session Id
+             * Format: uuid
+             */
+            lab_session_id: string;
+        };
         /** LabSessionOut */
         LabSessionOut: {
             /** Access Token */
@@ -13259,7 +13438,7 @@ export interface components {
         RangeCredentialOut: {
             /**
              * Applied
-             * @description The last build reported setting it. False: not set by TrueNorth (Windows accounts other than Administrator, appliances, other backends, or not built yet). Students only ever get applied accounts
+             * @description The last build or rotation reported setting it. False: not set by TrueNorth (Windows accounts other than Administrator, appliances, other backends, a pending rotation, or not built yet). Students only ever get applied accounts
              */
             applied: boolean;
             /**
@@ -13267,6 +13446,12 @@ export interface components {
              * @description TrueNorth made the password up for this range
              */
             generated: boolean;
+            /**
+             * Id
+             * Format: uuid
+             * @description The account's id: POST .../credentials/{id}/reveal shows its password
+             */
+            id: string;
             /**
              * Machine
              * @description The template node id (or asset role) the account is on
@@ -13278,15 +13463,27 @@ export interface components {
              */
             notes?: string;
             /**
-             * Password
-             * @description None only for a template default that is not configured
+             * Pending Change
+             * @description A change of its password is being applied in the guests: a reveal shows the password they still have, and it cannot be rotated again until the change settles
+             * @default false
              */
-            password: string | null;
+            pending_change?: boolean;
             /**
              * Role
              * @description admin | user
              */
             role: string;
+            /**
+             * Rotated At
+             * @description When its password was last replaced (rebuild, reset, admin rotation)
+             */
+            rotated_at?: string | null;
+            /**
+             * Scenario
+             * @description A typed-in password the template author chose on purpose (the lesson): authored by design, never rotated
+             * @default false
+             */
+            scenario?: boolean;
             /**
              * Setup Status
              * @description applied: verified set. being_set_up (staff only): its machine's deploy-time setup (product role image / Security Onion) is still running, verified later by the reconcile task. not_set: not set by TrueNorth or not built yet
@@ -13296,11 +13493,11 @@ export interface components {
             setup_status?: "applied" | "being_set_up" | "not_set";
             /**
              * Source
-             * @description declared: the range template's accounts:. template_default (staff only): the golden template's build login on a machine with no declared account
+             * @description declared: the range template's accounts:. implicit: a staff login TrueNorth adds so the machine does not keep its golden template's build password (built-in Administrator, Linux build user, soadmin)
              * @default declared
              * @enum {string}
              */
-            source?: "declared" | "template_default";
+            source?: "declared" | "implicit";
             /**
              * Student Visible
              * @description Handed to Students who take part in the range
@@ -13736,6 +13933,20 @@ export interface components {
              */
             version?: string;
         };
+        /** RevealedCredentialOut */
+        RevealedCredentialOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Machine */
+            machine: string;
+            /** Password */
+            password: string;
+            /** Username */
+            username: string;
+        };
         /** RoleSpecsOut */
         RoleSpecsOut: {
             /** Disk Gb */
@@ -13762,6 +13973,34 @@ export interface components {
              * @default false
              */
             replace?: boolean;
+        };
+        /** RotateIn */
+        RotateIn: {
+            /**
+             * Reason
+             * @description Why, for the audit log
+             */
+            reason: string;
+        };
+        /** RotateOut */
+        RotateOut: {
+            account: components["schemas"]["RangeCredentialOut"];
+            /**
+             * Applies
+             * @description in_guest: the worker sets it in the running range's guests now (the account shows applied once verified). next_build: the range is not built; its next build sets it
+             * @enum {string}
+             */
+            applies: "in_guest" | "next_build";
+            /**
+             * Dispatched
+             * @description False: the task queue was not reachable; rotate again later
+             */
+            dispatched: boolean;
+            /**
+             * Operation Id
+             * @description Logged by the worker task and in the audit row
+             */
+            operation_id: string;
         };
         /** RunDetail */
         RunDetail: {
@@ -14615,6 +14854,33 @@ export interface components {
             version?: string;
             /** Yaml */
             yaml: string;
+        };
+        /** TemplateIssueOut */
+        TemplateIssueOut: {
+            /** Name */
+            name: string;
+            /**
+             * Problems
+             * @description Which accounts break the rule, and why (no passwords)
+             */
+            problems: string[];
+            /**
+             * Template Id
+             * Format: uuid
+             */
+            template_id: string;
+            /**
+             * Tenant Id
+             * @description None: a global template
+             */
+            tenant_id?: string | null;
+            /**
+             * Upcoming Bookings
+             * @description Scheduled bookings of ranges built from it that would fail
+             */
+            upcoming_bookings: number;
+            /** Version */
+            version: string;
         };
         /** TemplateListOut */
         TemplateListOut: {
@@ -22181,6 +22447,73 @@ export interface operations {
             };
         };
     };
+    get_lab_credentials_by_token_lab_access__session_id__credentials_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-lab-token"?: string | null;
+            };
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LabCredentialsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reveal_lab_credential_by_token_lab_access__session_id__credentials__credential_id__reveal_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-lab-token"?: string | null;
+            };
+            path: {
+                session_id: string;
+                credential_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RevealedCredentialOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     end_lab_by_token_lab_access__session_id__end_post: {
         parameters: {
             query?: never;
@@ -22417,6 +22750,69 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ConsoleOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_lab_credentials_lab_sessions__session_id__credentials_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LabCredentialsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reveal_lab_credential_lab_sessions__session_id__credentials__credential_id__reveal_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+                credential_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RevealedCredentialOut"];
                 };
             };
             /** @description Validation Error */
@@ -25899,6 +26295,26 @@ export interface operations {
             };
         };
     };
+    list_template_issues_range_credentials_template_issues_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TemplateIssueOut"][];
+                };
+            };
+        };
+    };
     list_ranges_ranges_get: {
         parameters: {
             query?: {
@@ -26176,6 +26592,152 @@ export interface operations {
             };
             /** @description No such range in the caller's tenant, or a Student who does not take part in it */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reveal_range_credential_ranges__range_id__credentials__credential_id__reveal_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                range_id: string;
+                credential_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RevealedCredentialOut"];
+                };
+            };
+            /** @description The caller's role sees no range credentials (observers) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such range or account the caller may see */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rotate_range_credential_ranges__range_id__credentials__credential_id__rotate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                range_id: string;
+                credential_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RotateIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RotateOut"];
+                };
+            };
+            /** @description No such range or account in the caller's tenant */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description A scenario account (never rotated), or a range no rotation can reach now */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    settle_range_credential_ranges__range_id__credentials__credential_id__settle_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                range_id: string;
+                credential_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RotateIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RangeCredentialOut"];
+                };
+            };
+            /** @description No such range or account in the caller's tenant */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No change of this account's password is pending */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

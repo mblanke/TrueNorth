@@ -39,6 +39,7 @@ REGISTERED_BEFORE_SPLIT = {
     "worker.tasks.provision_range",
     "worker.tasks.reconcile_lab_vms",
     "worker.tasks.restore_snapshot",
+    "worker.tasks.rotate_range_credentials",  # ADR 0013 §3 (worker/credential_rotation.py)
     "worker.tasks.run_scenario",
     "worker.tasks.run_scenario_v2",
     "worker.tasks.snapshot_range",

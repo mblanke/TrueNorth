@@ -72,17 +72,21 @@ def test_upgrade_adds_an_empty_sealed_table_and_downgrade_removes_it(tmp_path):
         assert db.execute(sa.text("SELECT count(*) FROM range_credentials")).scalar() == 0
         assert db.execute(sa.text("SELECT count(*) FROM ranges")).scalar() == 1
 
-    # The new code on the migrated schema: a sealed write and an unsealed read.
-    from app.range_credentials import RangeCredential
+    # A row as that revision's code wrote it (sealed tnsec:v1); the current ORM model has the
+    # ADR 0013 columns (0a2276639b3c, tests/api/test_migration_credentials_hardening.py).
+    from app import secretbox
+    unseal_stored = secretbox.unseal
 
     with Session(engine) as db:
         assert db.get(Range, rng).state == RangeState.ready  # untouched
-        db.add(RangeCredential(tenant_id=tenant, range_id=rng, machine="dc01",
-                               username="Administrator", password="Pw-Sealed-1!", role="admin"))
-        db.commit()
-        assert db.query(RangeCredential).one().password == "Pw-Sealed-1!"
+    with engine.begin() as db:
+        db.execute(sa.text("INSERT INTO range_credentials (id, tenant_id, range_id, machine, username, password, "
+                           "generated, student_visible, applied, role, notes) VALUES (:id, :t, :r, 'dc01', "
+                           "'Administrator', :pw, 0, 0, 0, 'admin', '')"),
+                   {"id": str(uuid.uuid4()), "t": str(tenant), "r": str(rng), "pw": secretbox.seal("Pw-Sealed-1!")})
     with engine.connect() as db:
-        assert db.execute(sa.text("SELECT password FROM range_credentials")).scalar().startswith("tnsec:v1:")
+        stored = db.execute(sa.text("SELECT password FROM range_credentials")).scalar()
+        assert stored.startswith("tnsec:v1:") and unseal_stored(stored) == "Pw-Sealed-1!"
 
     _alembic(url, "downgrade", PARENT)
     assert "range_credentials" not in sa.inspect(engine).get_table_names()

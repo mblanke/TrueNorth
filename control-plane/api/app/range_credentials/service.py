@@ -1,30 +1,44 @@
-"""Keep a range's credentials in step with its template, and decide who may read them.
+"""Keep a range's credentials in step with its template, rotate them, and decide who reads them.
 
 Rows (``RangeCredential``) are written:
 
 * when a range is created, and when a build of it is accepted (``range_ops.accept``, the
   allocation step every build goes through: the ranges router, batch provisioning,
-  exercises and the scheduler). ``sync`` makes the rows match the template's
-  ``accounts:``. A generated password is made once per range and kept across rebuilds; a
-  literal one follows the template; an account the template no longer declares goes.
+  exercises and the scheduler), and when a lab session builds its range. ``sync`` makes
+  the rows match the template's ``accounts:`` plus the implicit staff logins
+  (``accounts.implicit_staff_logins``: the built-in Administrator, the Linux build user,
+  ``soadmin``), so no machine keeps its golden template's build password (ADR 0013 §3).
+  Every password is generated per range, except a scenario account's typed-in one, which
+  follows the template. An account the template no longer declares goes.
 * when the template changes, for the ranges of it that are not built (``created``,
   ``destroyed``): the next build applies what the template now says. This runs after the
   response (``regenerate_for_template``), for every tenant's ranges of that template.
 
-Every sync marks the rows not ``applied``; the worker marks applied what a build reports it
-set (worker/range_accounts.py). A generated password is issued by ``_issue``, the one place
-a per-account rotation would call.
+Rotation (ADR 0013 §3, supersedes #198). A new password is issued by ``_issue``:
 
-Reads (ADR 0012 §13), all tenant-scoped (another tenant's range is 404):
+* on a **rebuild** of a range built before (``on_build_accepted``): every Student-visible
+  generated row; the build sets them. Staff rows stay as they are;
+* on a **snapshot restore** (``on_restore``; a lab reset is one): the same rows, minus those
+  on a Security Onion node (its SOC web login cannot be changed in the guest yet). The
+  restore task then changes them in the guests (worker/credential_rotation.py), logging in
+  with the passwords the snapshot recorded (``on_snapshot``) or the staff logins;
+* by an **admin** (``rotate``, ``range:credentials_rotate``): one row, staff ones included.
+
+A scenario account (``scenario: true``) is never rotated: its password is the lesson.
+Every sync and rotation marks the rows it changed not ``applied``; the worker marks applied
+what a build or rotation verified (worker/range_accounts.py, db_ops.mark_accounts_applied).
+
+Reads (ADR 0012 §13, ADR 0013 §3), all tenant-scoped (another tenant's range is 404). The
+list (``GET .../credentials``) carries no password; each password is revealed on its own
+(``reveal``), and every reveal is audited (``range_credential_reveal``: who, which account).
 
 ==================================  ==============================================
 admin, instructor, range_ops         every account (``range:credentials_read``)
-Student                              ``student_visible`` accounts the last build set
-                                     (``applied``), of a range they take part in: an
-                                     exercise running or paused on it whose booked
-                                     course they are rostered on. Otherwise 404. Lab
-                                     sessions are not covered yet (their ranges hold no
-                                     credentials; their VMs keep random passwords).
+Student                              ``student_visible`` accounts the last build or
+                                     rotation set (``applied``), of a range they take
+                                     part in: an exercise running or paused on it whose
+                                     booked course they are rostered on, or their own
+                                     live lab session's range. Otherwise 404.
 observer and anyone else             403
 ==================================  ==============================================
 
@@ -38,20 +52,24 @@ import json
 import logging
 import uuid
 from contextlib import closing
+from datetime import UTC, datetime
 
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
+from .. import safe_yaml
 from ..auth import CurrentUser
-from ..models import AuditLog, Exercise, ExerciseState, Range, RangeState, Template, UserRole
+from ..models import AuditLog, Exercise, ExerciseState, Range, RangeSnapshot, RangeState, Template, UserRole
 from ..rbac import Permission, user_has_permission
 from . import accounts as account_rules
-from .models import RangeCredential
+from .models import RangeCredential, RangeCredentialSnapshot
 
 logger = logging.getLogger("truenorth.range_credentials")
 
 # A range in these states has no VMs a change would leave behind: its next build applies it.
 UNBUILT = (RangeState.created, RangeState.destroyed)
+# A range whose guests an admin rotation can reach now (guest operations need them running).
+ROTATABLE = (RangeState.ready, RangeState.running)
 ACTIVE_EXERCISE = (ExerciseState.running, ExerciseState.paused)
 
 ALL = "all"
@@ -73,33 +91,53 @@ def foreign_template_allowed(tmpl: Template | None, rng: Range) -> bool:
     return tmpl is None or tmpl.tenant_id is None or tmpl.tenant_id == rng.tenant_id
 
 
-def declared(db: Session, rng: Range) -> list[account_rules.AccountSpec]:
-    """The accounts the range's template declares. ``InvalidAccountsError`` if they do not validate.
+def _template_doc(tmpl: Template | None) -> dict:
+    try:
+        doc = safe_yaml.load(tmpl.yaml or "") if tmpl else {}
+    except Exception:  # noqa: BLE001 — unreadable YAML builds nothing: no machine, no login
+        return {}
+    return doc if isinstance(doc, dict) else {}
 
-    None from another tenant's template (a public one, reached through a booking or the
-    designer): its passwords are that tenant's. The range's VMs then get the platform default
-    or a random password, as the range designer's save already decides (routers/ranges.py)."""
+
+def is_lab(db: Session, rng: Range) -> bool:
+    """Whether a lab session builds this range (now, or before a rebuild retired it)."""
+    from ..lab_sessions.service import lab_range_ids
+
+    return rng.id in lab_range_ids(db, [rng.id])
+
+
+def declared(db: Session, rng: Range) -> list[account_rules.AccountSpec]:
+    """The range's accounts: what its template declares, plus the implicit staff logins of
+    its machines (``accounts.implicit_staff_logins``). ``InvalidAccountsError`` if the
+    template's accounts do not validate.
+
+    Only the implicit logins from another tenant's template (a public one, reached through a
+    booking or the designer): its declared passwords are that tenant's. Still never a
+    site-wide default: this range gets its own generated logins (ADR 0013 §3).
+    A lab session's implicit logins are handed to its Student (the lab is theirs)."""
     tmpl = template_of(db, rng)
+    doc = _template_doc(tmpl)
+    lab = is_lab(db, rng)
     if not foreign_template_allowed(tmpl, rng):
-        # Not that tenant's passwords, but still this range's own generated domain
-        # Administrator for its product VMs and DCs: never the site-wide default.
-        return account_rules.implicit_admins(account_rules._load(tmpl.yaml if tmpl else ""), [])
-    specs, errors = account_rules.parse_yaml(tmpl.yaml if tmpl else "")
+        return account_rules.implicit_staff_logins(doc, [], student_visible=lab)
+    specs, errors = account_rules.parse_yaml(tmpl.yaml if tmpl else "", tenant_id=tmpl.tenant_id if tmpl else None)
     if errors:
         detail = "; ".join(f"{e['path']}: {e['message']}" for e in errors[:5])
-        raise InvalidAccountsError(f"the range's template declares invalid accounts: {detail}")
-    # A per-range Administrator for a product role image's VM and the domain controllers, when
-    # the template declares none: generated and sealed here, never the site-wide default (ADR 0012).
-    doc = account_rules._load(tmpl.yaml if tmpl else "")
-    return specs + account_rules.implicit_admins(doc, specs)
+        hint = (" Fix the template: mark an account whose weak password is the lesson `scenario: true`, or "
+                "use `generate: true` (ADR 0013); admins see every affected template at "
+                "GET /range-credentials/template-issues." if any("scenario" in e["message"] for e in errors) else "")
+        raise InvalidAccountsError(f"template {tmpl.name!r} ({tmpl.id}) declares invalid accounts: {detail}.{hint}")
+    return specs + account_rules.implicit_staff_logins(doc, specs, student_visible=lab)
 
 
-def sync(db: Session, rng: Range) -> int:
+def sync(db: Session, rng: Range, *, rotate_student: bool = False) -> int:
     """Make the range's rows match its template. Does not commit. Returns the row count.
 
-    Call only while nothing is built from the current rows (create, build acceptance,
-    an unbuilt range's template changing): a literal password changed here is what the
-    next build sets, so changing it under running VMs would make the record lie."""
+    ``rotate_student``: a rebuild of a range built before; every Student-visible generated
+    password is issued anew (staff ones are kept). Call only while nothing is built from
+    the current rows (create, build acceptance, an unbuilt range's template changing): a
+    password changed here is what the next build sets, so changing it under running VMs
+    would make the record lie (a built range rotates through ``on_restore`` / ``rotate``)."""
     if rng.tenant_id is None:
         return 0
     specs = declared(db, rng)
@@ -110,7 +148,7 @@ def sync(db: Session, rng: Range) -> int:
             row = RangeCredential(
                 tenant_id=rng.tenant_id, range_id=rng.id, machine=spec.machine, username=spec.username,
                 password=spec.password, generated=False, student_visible=spec.student_visible, role=spec.role,
-                notes=spec.notes, applied=False,
+                notes=spec.notes, applied=False, source=spec.source, scenario=spec.scenario,
             )
             if spec.generate:
                 _issue(row)
@@ -118,9 +156,12 @@ def sync(db: Session, rng: Range) -> int:
             continue
         row.username, row.student_visible, row.role, row.notes, row.applied = (
             spec.username, spec.student_visible, spec.role, spec.notes, False)
+        row.source, row.scenario, row.previous_password, row.pending_operation = spec.source, spec.scenario, None, None
         if spec.generate:
-            if not row.generated:  # was a literal: make one up now, once
+            if not row.generated:  # was a literal: make one up now
                 _issue(row)
+            elif rotate_student and row.student_visible:
+                _issue(row, rotated=True)
         elif row.generated or row.password != spec.password:
             row.password, row.generated = spec.password, False
     for gone in rows.values():
@@ -129,10 +170,290 @@ def sync(db: Session, rng: Range) -> int:
     return len(specs)
 
 
-def _issue(row: RangeCredential) -> None:
-    """Give ``row`` a newly generated password. Once per range today; rotating one account
-    (ADR 0012, M1 pending) is this plus ``applied = False`` and a rebuild or in-guest change."""
+def _now() -> datetime:
+    return datetime.now(UTC)
+
+
+def _issue(row: RangeCredential, *, rotated: bool = False) -> None:
+    """Give ``row`` a newly generated password. ``rotated``: it replaces one the row had."""
     row.password, row.generated = account_rules.generate_password(row.username), True
+    if rotated:
+        row.rotated_at = _now()
+
+
+def rotatable(row: RangeCredential) -> bool:
+    """A password TrueNorth may replace: generated, never a scenario account's."""
+    return row.generated and not row.scenario
+
+
+# Backends whose worker can change a password inside a running guest
+# (provisioners/base.py ``supports_credential_rotation``).
+GUEST_ROTATION_BACKENDS = frozenset({"vsphere_api"})
+
+
+def _machine_kinds(db: Session, rng: Range) -> dict[str, str]:
+    """Machine id -> ``windows`` | ``linux`` | ``appliance`` | ``securityonion``."""
+    doc = _template_doc(template_of(db, rng))
+    os_of = account_rules.machine_os(doc)
+    return {m: (account_rules.SECURITY_ONION if account_rules.is_securityonion(os_of.get(m, "")) else fam)
+            for m, fam in account_rules.machine_families(doc).items()}
+
+
+def guest_change_refusal(rng: Range, row: RangeCredential, kinds: dict[str, str]) -> str | None:
+    """Why the worker cannot set ``row``'s password in the range's running guests, or None."""
+    if (rng.provisioner_backend or "") not in GUEST_ROTATION_BACKENDS:
+        return f"the {rng.provisioner_backend or 'unknown'} backend cannot change passwords inside a guest"
+    kind = kinds.get(row.machine)
+    if kind == account_rules.SECURITY_ONION:
+        return "a Security Onion node's logins are set by its own setup (rebuild the range to change them)"
+    if kind == "appliance" or kind is None:
+        return "an appliance's logins are its own configuration (rebuild the range to change them)"
+    return None
+
+
+def _snapshot_state(row: RangeCredential) -> tuple:
+    """What ``undo_rotation`` puts back (the sealed values as stored)."""
+    return row.id, row.sealed_password, row.applied, row.rotated_at, row.sealed_previous, row.pending_operation
+
+
+def _rotate_in_place(row: RangeCredential, guest_has: str, operation_id: str) -> None:
+    """A new password for a built range's account, set in the guests by the worker task of
+    ``operation_id``, which logs in with ``guest_has`` (kept as ``previous_password``) and
+    puts it back if the change fails."""
+    row.previous_password = guest_has
+    row.pending_operation = operation_id
+    _issue(row, rotated=True)
+    row.applied = False
+
+
+def restore_operation(snap: RangeSnapshot) -> str:
+    """The operation id of a restore's password changes (the worker task carries the same)."""
+    return f"restore:{snap.id}"
+
+
+def any_pending(db: Session, rng: Range) -> bool:
+    """Whether a change of any of the range's passwords is still being applied in the guests."""
+    return db.query(RangeCredential.id).filter(RangeCredential.range_id == rng.id,
+                                               RangeCredential.tenant_id == rng.tenant_id,
+                                               RangeCredential.sealed_previous.is_not(None)).first() is not None
+
+
+PENDING_REFUSAL = ("a change of one of the range's passwords is still being applied in the guests; restore once it "
+                   "has settled (or an admin force-settles it)")
+
+
+def on_snapshot(db: Session, rng: Range, snap: RangeSnapshot) -> None:
+    """Record the password each account has **in the guests** as ``snap`` is taken (the one a
+    pending change has not replaced yet): a restore brings those back, and the change after
+    it logs in with them. The account's own seal is copied (same binding), so the worker can
+    put it back without sealing. Does not commit."""
+    for row in _rows(db, rng):
+        db.add(RangeCredentialSnapshot(tenant_id=rng.tenant_id, snapshot_id=snap.id, credential_id=row.id,
+                                       sealed_password=row.sealed_previous if row.pending else row.sealed_password))
+    db.flush()
+
+
+def template_issues(db: Session, tenant_id: uuid.UUID | None, *, include_global: bool) -> list[dict]:
+    """Templates (of ``tenant_id``, and global ones when ``include_global``) whose accounts no
+    longer validate because a typed-in password is not on a scenario account (ADR 0013 §3):
+    ranges of them cannot be provisioned, scheduled bookings included, until they are fixed.
+    Each with its problems (never a password) and how many of ``tenant_id``'s own upcoming
+    bookings use it (never another tenant's, for a global template; every tenant's only in
+    the operator log, ``tenant_id`` None)."""
+    from ..scheduler.models import EventState, ScheduledEvent
+
+    scope = [Template.tenant_id.is_(None) if tenant_id is None else Template.tenant_id == tenant_id]
+    if include_global and tenant_id is not None:
+        scope.append(Template.tenant_id.is_(None))
+    from sqlalchemy import or_
+
+    out = []
+    for tmpl in db.query(Template).filter(or_(*scope)).order_by(Template.name).all():
+        if "password" not in (tmpl.yaml or ""):
+            continue
+        _, errors = account_rules.parse_yaml(tmpl.yaml, tenant_id=tmpl.tenant_id)
+        problems = [f"{e['path']}: {e['message']}" for e in errors if "scenario" in e["message"]]
+        if not problems:
+            continue
+        bookings = (
+            db.query(ScheduledEvent.id)
+            .join(Range, Range.id == ScheduledEvent.range_id)
+            .filter(Range.template_id == tmpl.id, ScheduledEvent.state == EventState.scheduled,
+                    ScheduledEvent.end_time > _now())
+        )
+        if tenant_id is not None:  # the caller's own bookings only, a public or global template's included
+            bookings = bookings.filter(ScheduledEvent.tenant_id == tenant_id, Range.tenant_id == tenant_id)
+        upcoming = bookings.count()
+        out.append({"template_id": tmpl.id, "name": tmpl.name, "version": tmpl.version, "tenant_id": tmpl.tenant_id,
+                    "problems": problems, "upcoming_bookings": upcoming})
+    return out
+
+
+def warn_template_issues_on_start() -> None:
+    """At API start: one WARNING per template (every tenant) whose accounts ADR 0013 no
+    longer accepts, so operators hear of it before a booking fails. Never raises."""
+    try:
+        with session_factory() as db:
+            # tenant-safe: an operator-facing log of every tenant's templates, names and ids only.
+            for tenant_id in [t for (t,) in db.query(Template.tenant_id).distinct()]:
+                for issue in template_issues(db, tenant_id, include_global=False):
+                    logger.warning("ACTION NEEDED (ADR 0013): template %r (%s, tenant %s, %d upcoming booking(s)) "
+                                   "cannot be provisioned: %s", issue["name"], issue["template_id"], tenant_id,
+                                   issue["upcoming_bookings"], "; ".join(issue["problems"]))
+    except Exception as exc:  # noqa: BLE001 — a startup log line must not stop the API
+        logger.warning("could not check templates for ADR 0013 account issues (%s)", type(exc).__name__)
+
+
+def forget_snapshot(db: Session, snap: RangeSnapshot) -> None:
+    """Delete the passwords ``snap`` recorded (it is being deleted). Does not commit."""
+    # tenant-safe: the caller's own snapshot (resolved through its range).
+    db.query(RangeCredentialSnapshot).filter(RangeCredentialSnapshot.snapshot_id == snap.id,
+                                             RangeCredentialSnapshot.tenant_id == snap.tenant_id).delete(
+        synchronize_session=False)
+
+
+def snapshot_passwords(db: Session, rng: Range, snap: RangeSnapshot) -> dict[uuid.UUID, str]:
+    """Account id -> the password ``snap`` recorded for it (opened with the account's binding)."""
+    rows = {r.id: r for r in _rows(db, rng)}
+    # tenant-safe: the caller's own snapshot (resolved through its range).
+    recorded = db.query(RangeCredentialSnapshot).filter(RangeCredentialSnapshot.snapshot_id == snap.id,
+                                                        RangeCredentialSnapshot.tenant_id == rng.tenant_id)
+    return {r.credential_id: r.password_for(rows[r.credential_id]) for r in recorded if r.credential_id in rows}
+
+
+def on_restore(db: Session, rng: Range, snap: RangeSnapshot, actor: CurrentUser | uuid.UUID | None) -> list[tuple]:
+    """A snapshot restore (a lab reset is one) was accepted. 409 while any of the range's
+    passwords has a change pending (review of #250: a restore over a queued admin rotation
+    left a Student a password that did not log in). The revert brings back the passwords the
+    guests had when ``snap`` was taken, so the changes after it are recorded as pending, each
+    tagged with the restore's operation (``restore:<snapshot>``), which the restore task
+    carries out after the revert (worker/credential_rotation.py), logging in with the
+    snapshot's passwords:
+
+    * a Student-visible generated account gets a **new** password (ADR 0013 §3);
+    * any other generated account whose password differs from the snapshot's (an admin
+      rotated it after the snapshot) gets its **current** password set again.
+
+    ``previous_password`` is what the guests have now, which they keep if the restore never
+    runs (the task's failure handler puts it back); after a revert the worker puts the
+    snapshot's password back instead when it cannot set the new one. Machines the worker
+    cannot change (Security Onion, appliances, another backend) are left as they are. One
+    audit row lists what is rotated and re-applied. Does not commit. Returns what
+    ``undo_rotation`` needs should the restore not be sent (in memory only)."""
+    if any_pending(db, rng):
+        raise HTTPException(409, f"Cannot restore: {PENDING_REFUSAL}")
+    operation = restore_operation(snap)
+    kinds = _machine_kinds(db, rng)
+    recorded = snapshot_passwords(db, rng, snap)
+    undo, rotated, reapplied = [], [], []
+    for row in _rows(db, rng):
+        if not rotatable(row) or not row.applied or guest_change_refusal(rng, row, kinds):
+            continue
+        guest_now = row.password
+        if row.student_visible:
+            undo.append(_snapshot_state(row))
+            _rotate_in_place(row, guest_now, operation)
+            rotated.append(f"{row.machine}/{row.username}")
+        elif recorded.get(row.id, guest_now) != guest_now:
+            undo.append(_snapshot_state(row))
+            row.previous_password, row.pending_operation, row.applied = guest_now, operation, False
+            reapplied.append(f"{row.machine}/{row.username}")
+    db.flush()
+    if rotated or reapplied:
+        _audit(db, actor, rng, "range_credential_rotate", {
+            "range_id": str(rng.id), "reason": "snapshot restore", "operation_id": operation,
+            "rotated": rotated, "reapplied": reapplied, "in_guest": True})
+    return undo
+
+
+def undo_rotation(db: Session, undo: list[tuple]) -> None:
+    """Put back what ``on_restore`` changed (the restore task was never sent). Does not commit."""
+    for row_id, sealed, applied, rotated_at, sealed_previous, operation in undo:
+        # tenant-safe: ids on_restore just read from one range of the caller's tenant.
+        row = db.get(RangeCredential, row_id)
+        if row is not None:
+            row.sealed_password, row.applied, row.rotated_at, row.sealed_previous, row.pending_operation = (
+                sealed, applied, rotated_at, sealed_previous, operation)
+    db.flush()
+
+
+def in_guest_password(db: Session, rng: Range, row: RangeCredential) -> str:
+    """The password the guests have for ``row`` now. Settled: its password. A change pending:
+    the previous one, except once a restore's revert has run (its snapshot is no longer
+    ``restoring``): then the one that snapshot recorded."""
+    if not row.pending:
+        return row.password
+    operation = row.pending_operation or ""
+    if operation.startswith("restore:"):
+        try:
+            snap_id = uuid.UUID(operation.split(":", 1)[1])
+        except ValueError:
+            return row.previous_password or ""
+        snap = db.query(RangeSnapshot).filter(RangeSnapshot.id == snap_id, RangeSnapshot.range_id == rng.id,
+                                              RangeSnapshot.tenant_id == rng.tenant_id).first()
+        if snap is not None and snap.snapshot_state != "restoring":
+            recorded = db.query(RangeCredentialSnapshot).filter(
+                RangeCredentialSnapshot.snapshot_id == snap.id, RangeCredentialSnapshot.credential_id == row.id,
+                RangeCredentialSnapshot.tenant_id == rng.tenant_id).first()
+            if recorded is not None:
+                return recorded.password_for(row)
+    return row.previous_password or ""
+
+
+def force_settle(db: Session, rng: Range, row: RangeCredential, user: CurrentUser, reason: str) -> None:
+    """An admin ends a change that is stuck pending (a task that died, a restore that never
+    ran): the account's password becomes the one the guests have (``in_guest_password``),
+    applied, and it can be rotated again. 409 when nothing is pending. Audited
+    (``range_credential_settle``, with the reason and the change's operation). Does not commit."""
+    if not row.pending:
+        raise HTTPException(409, "No change of this account's password is pending")
+    operation = row.pending_operation
+    row.password = in_guest_password(db, rng, row)
+    row.previous_password, row.pending_operation, row.applied = None, None, True
+    db.flush()
+    _audit(db, user, rng, "range_credential_settle", {
+        "range_id": str(rng.id), "machine": row.machine, "username": row.username, "reason": reason,
+        "operation_id": operation})
+
+
+def rotate(db: Session, rng: Range, row: RangeCredential, user: CurrentUser, reason: str,
+           operation_id: str) -> bool:
+    """An admin's rotation of one account. Returns whether the worker must now set it in the
+    guests (a built, running range); an unbuilt range's next build sets it. 409 for a
+    scenario or typed-in password, an account whose last change is still being applied, a
+    machine or backend the worker cannot change in the guest, or a range in a state no
+    rotation can reach. The change is tagged with ``operation_id`` (the worker task settles
+    only its own). Audited, without the password. Does not commit."""
+    if not rotatable(row):
+        raise HTTPException(409, "This account's password was typed into the range template (a scenario "
+                                 "account, authored by design); it is not rotated")
+    if row.pending:
+        raise HTTPException(409, "A change of this account's password is still being applied in the guests; "
+                                 "rotate it again once it shows as set (or failed)")
+    if rng.state in UNBUILT:
+        _issue(row, rotated=True)
+        row.applied = False
+        in_guest = False
+    elif rng.state in ROTATABLE:
+        from ..range_ops import service as ops
+
+        if why := guest_change_refusal(rng, row, _machine_kinds(db, rng)):
+            raise HTTPException(409, f"Cannot rotate this account in the running range: {why}")
+        ops.refuse_while_in_flight(db, rng, "rotate a password")
+        restoring = db.query(RangeSnapshot.id).filter(RangeSnapshot.range_id == rng.id,
+                                                      RangeSnapshot.snapshot_state == "restoring").first()
+        if restoring:
+            raise HTTPException(409, "Cannot rotate a password: a restore of this range is in progress")
+        _rotate_in_place(row, row.password, operation_id)
+        in_guest = True
+    else:
+        raise HTTPException(409, f"Cannot rotate a password of a range in state {rng.state.value}: rotate it "
+                                 "when the range is ready or running, or before it is built")
+    db.flush()
+    _audit(db, user, rng, "range_credential_rotate", {
+        "range_id": str(rng.id), "machine": row.machine, "username": row.username, "reason": reason,
+        "operation_id": operation_id, "in_guest": in_guest})
+    return in_guest
 
 
 def forget(db: Session, range_id: uuid.UUID) -> None:
@@ -165,11 +486,25 @@ def on_range_updated(db: Session, rng: Range, actor: CurrentUser | None) -> None
 
 
 def on_build_accepted(db: Session, rng: Range) -> None:
-    """The allocation step: generated passwords are made here, once per range."""
+    """The allocation step, before the new operation is recorded: a rebuild of a range built
+    (or attempted) before gives every Student-visible account a new password; staff ones
+    are kept."""
+    from ..range_ops.models import RangeOperation
+
+    rebuilt = db.query(RangeOperation.id).filter(RangeOperation.range_id == rng.id,
+                                                 RangeOperation.action == "provision").first() is not None
     try:
-        sync(db, rng)
+        sync(db, rng, rotate_student=rebuilt)
     except InvalidAccountsError as exc:
         raise HTTPException(422, f"Cannot provision: {exc}") from None
+
+
+def on_lab_range(db: Session, rng: Range) -> None:
+    """A lab session's range was just created (app/lab_sessions, which builds it without
+    ``range_ops.accept``): its rows, generated per lab. A lab rebuild makes a new range,
+    so its passwords are new too. Raises nothing a lab start could not survive: a lab
+    profile declares no accounts, only the implicit logins, which always validate."""
+    sync(db, rng)
 
 
 def on_build_succeeded(db: Session, rng: Range) -> None:
@@ -198,7 +533,7 @@ def _regenerate_for_template(template_id: uuid.UUID) -> None:
         scope = [Range.template_id == template_id, Range.deleted_at.is_(None)]
         if tmpl.tenant_id is not None:
             scope.append(Range.tenant_id == tmpl.tenant_id)
-        elif account_rules.parse_yaml(tmpl.yaml)[0]:
+        elif account_rules.parse_yaml(tmpl.yaml, tenant_id=None)[0]:
             logger.warning("global template %s declares accounts; its ranges refresh at their next build",
                            template_id)
             return
@@ -284,12 +619,27 @@ def access_scope(user: CurrentUser) -> str:
 
 def takes_part(db: Session, user: CurrentUser, rng: Range) -> bool:
     """Whether a Student takes part in ``rng`` (module docstring). ``rng`` is in their tenant."""
+    return participation(db, user, rng) is not None
+
+
+def participation(db: Session, user: CurrentUser, rng: Range) -> dict[str, str] | None:
+    """How a Student takes part in ``rng``: ``{"lab_session_id": ...}`` (their own live lab
+    session's range) or ``{"exercise_id": ...}`` (module docstring); None when they do not."""
     from ..enrollment import rostered_course_ids
     from ..exercise_participants import roster_courses
+    from ..lab_sessions.models import LIVE, LabSession
     try:
         uid = uuid.UUID(str(user.id))
     except ValueError:
-        return False
+        return None
+    lab = (
+        db.query(LabSession.id)
+        .filter(LabSession.range_id == rng.id, LabSession.tenant_id == rng.tenant_id, LabSession.user_id == uid,
+                LabSession.state.in_(LIVE))
+        .first()
+    )
+    if lab is not None:
+        return {"lab_session_id": str(lab[0])}
     exercises = (
         db.query(Exercise)
         .filter(
@@ -301,14 +651,18 @@ def takes_part(db: Session, user: CurrentUser, rng: Range) -> bool:
         .all()
     )
     if not exercises:
-        return False
+        return None
     mine = set(rostered_course_ids(db, uid))
-    return bool(mine) and any(roster_courses(db, ex) & mine for ex in exercises)
+    if not mine:
+        return None
+    ex = next((ex for ex in exercises if roster_courses(db, ex) & mine), None)
+    return {"exercise_id": str(ex.id)} if ex is not None else None
 
 
 def readable_range(db: Session, range_id: uuid.UUID, user: CurrentUser, scope: str) -> Range:
     """The caller's range, or 404: another tenant's, a deleted one, a Student's lab to staff
-    without infrastructure rights (as routers/ranges.py), one a Student does not take part in."""
+    without infrastructure rights (as routers/ranges.py), one a Student does not take part in.
+    A Student's own lab session's range is theirs (``participation``)."""
     rng = (
         db.query(Range)
         .filter(Range.id == range_id, Range.tenant_id == uuid.UUID(str(user.tenant_id)), Range.deleted_at.is_(None))
@@ -359,40 +713,47 @@ def setup_status(row: RangeCredential, pending: set[str]) -> str:
     return "being_set_up" if row.machine in pending else "not_set"
 
 
-def template_logins(db: Session, rng: Range, rows: list[RangeCredential], scope: str) -> list:
-    """The golden templates' build login for each machine with no declared account
-    (``template_defaults``). Staff only: a Student's scope gets none, not even a row."""
-    if scope != ALL:
-        return []
-    from . import template_defaults, wiki_doc
-
-    return template_defaults.logins(wiki_doc.template_doc(db, rng), {r.machine for r in rows},
-                                    windows_random=windows_random(db, rng))
-
-
-def windows_random(db: Session, rng: Range) -> bool:
-    """A lab session's range: the worker gives its Windows VMs a random password each
-    (worker/range_accounts.py attaches nothing to labs), whatever the template setting."""
-    from ..lab_sessions.service import lab_range_ids
-
-    return rng.id in lab_range_ids(db, [rng.id])
+def account(db: Session, rng: Range, cred_id: uuid.UUID, scope: str) -> RangeCredential:
+    """One account of ``rng`` the caller may see, or 404 (another range's, or one a
+    Student is not handed: not ``student_visible``, or not set by the last build)."""
+    row = (
+        db.query(RangeCredential)
+        .filter(RangeCredential.id == cred_id, RangeCredential.range_id == rng.id,
+                RangeCredential.tenant_id == rng.tenant_id)
+        .first()
+    )
+    if row is None or (scope != ALL and not (row.student_visible and row.applied)):
+        raise HTTPException(404, "Account not found")
+    return row
 
 
-def audit_read(db: Session, user: CurrentUser, rng: Range, scope: str, rows: list[RangeCredential]) -> None:
-    """One audit row per read: who, which range, how many accounts. Never a password."""
-    machines = sorted({r.machine for r in rows})
+def reveal(db: Session, rng: Range, row: RangeCredential, scope: str, actor: CurrentUser | uuid.UUID | None,
+           via: str, context: dict[str, str] | None = None) -> str:
+    """The password that logs in now, with one audit row: who, which account, how (``via``)
+    and, for a Student, through which exercise or lab session. Never the password. While a
+    change is pending the guests still have the previous password, so that one is shown (a
+    reveal never shows a password the guest does not have). Does not commit."""
+    _audit(db, actor, rng, "range_credential_reveal", {
+        "range_id": str(rng.id), "machine": row.machine, "username": row.username, "scope": scope, "via": via,
+        **({"pending_change": True} if row.pending else {}), **(context or {})})
+    return in_guest_password(db, rng, row)
+
+
+def _audit(db: Session, actor: CurrentUser | uuid.UUID | None, rng: Range, action: str, detail: dict) -> None:
     db.add(AuditLog(
-        user_id=_audit_user(user),
+        user_id=_audit_user(actor),
         tenant_id=rng.tenant_id,
-        action="range_credentials_read",
+        action=action,
         resource_type="range",
         resource_id=str(rng.id),
-        detail=f"scope={scope}; accounts={len(rows)}; machines={','.join(machines)[:900]}",
+        detail=json.dumps(detail, sort_keys=True)[:2000],
     ))
 
 
-def _audit_user(user: CurrentUser) -> uuid.UUID | None:
+def _audit_user(actor: CurrentUser | uuid.UUID | None) -> uuid.UUID | None:
+    if actor is None or isinstance(actor, uuid.UUID):
+        return actor
     try:
-        return uuid.UUID(str(user.id))
+        return uuid.UUID(str(actor.id))
     except ValueError:
         return None

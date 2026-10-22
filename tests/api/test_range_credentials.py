@@ -1,21 +1,22 @@
-"""Range credentials (ADR 0012 §12-14): declared, sealed, role-filtered, audited, documented.
+"""Range credentials (ADR 0012 §12-14 as amended by ADR 0013 §3): declared, sealed,
+role-filtered, revealed one at a time with an audit row, documented without secrets.
 
-``GET /ranges/{id}/credentials``:
+``GET /ranges/{id}/credentials`` (metadata, never a password) and
+``POST /ranges/{id}/credentials/{cred_id}/reveal`` (one password, audited):
 
 * admin, instructor, range_ops: every account of a range in their tenant;
 * a Student: only ``student_visible`` accounts a build set (``applied``), and only on a
-  range they take part in (a running exercise booked to a course they are rostered on).
-  Any other range is 404, as is a range with an exercise nobody booked. Lab sessions are
-  not covered (their ranges hold no credentials; the worker gives their VMs random
-  passwords: tests/worker/test_range_accounts_deploy.py);
+  range they take part in (a running exercise booked to a course they are rostered on, or
+  their own lab session: tests/api/test_range_credentials_hardening.py). Any other range
+  is 404, as is a range with an exercise nobody booked;
 * an observer: 403;
 * another tenant's range: 404 for everyone.
 
 Rows are written when the range is created and when a build is accepted; generated
-passwords are made once and kept; rows are sealed at rest, and so are typed-in passwords
-in stored templates; every read is audited without the password. The range's wiki page is
-in a system-owned, always staff-only space, holds tokens rather than passwords, and keeps
-its notes.
+passwords are kept across rebuilds for staff accounts (Student-visible ones rotate:
+test_range_credentials_hardening.py); rows are sealed at rest (``tnsec:rc1:``), and so are
+typed-in passwords in stored templates. The range's wiki page is in a system-owned, always
+staff-only space, holds account names but no password or token, and keeps its notes.
 """
 
 from __future__ import annotations
@@ -52,6 +53,7 @@ from app.range_ops import service as ops
 from app.scheduler.models import EventState, ScheduledEvent
 from sqlalchemy import text
 
+# A scenario account's typed-in password (ADR 0013 §3: the only literal password allowed).
 DC_PW = "Dc-Literal-1!"
 TEMPLATE_YAML = f"""
 name: creds-lab
@@ -62,10 +64,12 @@ nodes:
   - {{id: dc01, name: Domain Controller, os: windows-server-2022, vlan: lan, ip: 10.70.0.10}}
   - {{id: web01, name: Web, os: ubuntu-2404, vlan: lan, ip: 10.70.0.20}}
 accounts:
-  - {{machine: dc01, username: Administrator, password: "{DC_PW}", role: admin, student_visible: false}}
+  - {{machine: dc01, username: Administrator, generate: true, role: admin, student_visible: false}}
+  - {{machine: dc01, username: jsmith, password: "{DC_PW}", scenario: true, student_visible: false}}
   - {{machine: web01, username: ubuntu, generate: true, role: admin, student_visible: false}}
   - {{machine: Web, username: analyst, generate: true, student_visible: true, notes: "Student login"}}
 """
+ALL_ACCOUNTS = {("dc01", "Administrator"), ("dc01", "jsmith"), ("web01", "ubuntu"), ("web01", "analyst")}
 
 
 @pytest.fixture(autouse=True)
@@ -112,6 +116,16 @@ def _accounts(resp) -> dict[tuple[str, str], dict]:
     return {(a["machine"], a["username"]): a for a in resp.json()["accounts"]}
 
 
+def _row(db, rng, machine: str, username: str) -> RangeCredential:
+    return (db.query(RangeCredential)
+            .filter(RangeCredential.range_id == rng.id, RangeCredential.machine == machine,
+                    RangeCredential.username == username).one())
+
+
+def _reveal(client, rng, cred_id):
+    return client.post(f"/ranges/{rng.id}/credentials/{cred_id}/reveal")
+
+
 def _apply(db, rng, *usernames) -> None:
     """What the worker records after a vSphere build set the accounts (all, or these)."""
     for row in db.query(RangeCredential).filter(RangeCredential.range_id == rng.id):
@@ -154,46 +168,58 @@ def _book(db, ex, students) -> None:
 # ── Roles ───────────────────────────────────────────────────────────────
 class TestWhoSeesWhat:
     @pytest.mark.parametrize("role", ["admin", "instructor", "range_ops"])
-    def test_staff_see_every_account_with_its_password(self, client, db_session, world, role):
+    def test_staff_see_every_account_and_reveal_any_password(self, client, db_session, world, role):
         rng = _create_range(client, db_session, world)
         act_as(world[role])
         resp = _creds(client, rng)
         assert resp.status_code == 200, resp.text
-        assert resp.headers["cache-control"] == "no-store"
         body = resp.json()
         assert body["scope"] == "all" and body["range_id"] == str(rng.id)
         accts = _accounts(resp)
-        assert set(accts) == {("dc01", "Administrator"), ("web01", "ubuntu"), ("web01", "analyst")}
-        assert accts[("dc01", "Administrator")]["password"] == DC_PW
-        assert accts[("dc01", "Administrator")]["generated"] is False
+        assert set(accts) == ALL_ACCOUNTS
+        assert all("password" not in a for a in accts.values())  # the list never carries one
+        scenario = accts[("dc01", "jsmith")]
+        assert scenario["generated"] is False and scenario["scenario"] is True
         gen = accts[("web01", "analyst")]
         assert gen["generated"] is True and gen["student_visible"] is True and gen["notes"] == "Student login"
-        assert len(gen["password"]) == account_rules.GENERATED_LENGTH
         assert {a["applied"] for a in accts.values()} == {False}  # nothing built yet: staff see them flagged
+        revealed = _reveal(client, rng, scenario["id"])
+        assert revealed.status_code == 200 and revealed.json()["password"] == DC_PW
+        assert revealed.headers["cache-control"] == "no-store"
+        assert len(_reveal(client, rng, gen["id"]).json()["password"]) == account_rules.GENERATED_LENGTH
 
     def test_an_observer_is_refused(self, client, db_session, world):
         rng = _create_range(client, db_session, world)
+        row = _row(db_session, rng, "web01", "analyst")
         act_as(world["observer"])
         assert _creds(client, rng).status_code == 403
+        assert _reveal(client, rng, row.id).status_code == 403
 
     def test_a_student_on_no_part_of_the_range_gets_404(self, client, db_session, world):
         rng = _create_range(client, db_session, world)
+        _apply(db_session, rng)
+        row = _row(db_session, rng, "web01", "analyst")
         act_as(world["student"])
         assert _creds(client, rng).status_code == 404
+        assert _reveal(client, rng, row.id).status_code == 404
 
     def test_a_student_sees_only_handed_over_accounts_the_build_set(self, client, db_session, world):
         """M2: an account TrueNorth did not set (not built yet, a Windows account other than
         Administrator, an appliance, a non-vSphere backend) is never shown to a Student."""
         rng = _create_range(client, db_session, world)
         _on_the_course(db_session, rng, world["student"])
+        visible = _row(db_session, rng, "web01", "analyst")
         act_as(world["student"])
         resp = _creds(client, rng)
         assert resp.status_code == 200 and resp.json()["accounts"] == []  # handed over, but not set
+        assert _reveal(client, rng, visible.id).status_code == 404
         _apply(db_session, rng)
         resp = _creds(client, rng)
         assert resp.json()["scope"] == "student"
         assert list(_accounts(resp)) == [("web01", "analyst")]
-        assert DC_PW not in resp.text
+        assert _reveal(client, rng, visible.id).json()["password"] == visible.password
+        for machine, username in ALL_ACCOUNTS - {("web01", "analyst")}:  # staff accounts: never
+            assert _reveal(client, rng, _row(db_session, rng, machine, username).id).status_code == 404
 
     def test_staff_see_unapplied_accounts_flagged(self, client, db_session, world):
         rng = _create_range(client, db_session, world)
@@ -237,60 +263,78 @@ class TestWhoSeesWhat:
     @pytest.mark.parametrize("who", ["foreign_instructor", "foreign_student"])
     def test_another_tenant_gets_404(self, client, db_session, world, who):
         rng = _create_range(client, db_session, world)
+        _apply(db_session, rng)
+        row = _row(db_session, rng, "web01", "analyst")
         act_as(world[who])
         assert _creds(client, rng).status_code == 404
+        assert _reveal(client, rng, row.id).status_code == 404
 
-    def test_an_unknown_range_is_404(self, client, world):
+    def test_an_unknown_range_or_account_is_404(self, client, db_session, world):
+        rng = _create_range(client, db_session, world)
+        other = _create_range(client, db_session, world, "Other")
         act_as(world["instructor"])
         assert client.get(f"/ranges/{uuid.uuid4()}/credentials").status_code == 404
+        assert _reveal(client, rng, uuid.uuid4()).status_code == 404
+        # Another range's account through this range's path: 404, never its password.
+        assert _reveal(client, rng, _row(db_session, other, "web01", "analyst").id).status_code == 404
 
 
 # ── Storage, audit, lifecycle ───────────────────────────────────────────
 class TestStorageAndAudit:
-    def test_passwords_are_sealed_at_rest(self, client, db_session, world):
+    def test_passwords_are_sealed_at_rest_with_the_range_key(self, client, db_session, world):
         _create_range(client, db_session, world)
         stored = db_session.execute(text("SELECT password FROM range_credentials")).scalars().all()
-        assert len(stored) == 3
-        assert all(v.startswith("tnsec:v1:") for v in stored)
+        assert len(stored) == 4
+        assert all(v.startswith(rc_seal.ROW_PREFIX) for v in stored)  # stored-credential seals, bound per row
         assert DC_PW not in " ".join(stored)
 
-    def test_every_read_is_audited_without_the_password(self, client, db_session, world):
+    def test_every_reveal_is_audited_per_account_without_the_password(self, client, db_session, world):
         rng = _create_range(client, db_session, world)
-        _on_the_course(db_session, rng, world["student"])
+        ex = _on_the_course(db_session, rng, world["student"])
         _apply(db_session, rng)
-        for who in ("range_ops", "student"):
-            act_as(world[who])
-            assert _creds(client, rng).status_code == 200
-        rows = db_session.query(AuditLog).filter(AuditLog.action == "range_credentials_read").all()
+        visible, admin = _row(db_session, rng, "web01", "analyst"), _row(db_session, rng, "dc01", "Administrator")
+        act_as(world["range_ops"])
+        assert _creds(client, rng).status_code == 200  # the list is no reveal: no audit row
+        assert db_session.query(AuditLog).filter(AuditLog.action.like("range_credential%")).count() == 0
+        assert _reveal(client, rng, admin.id).status_code == 200
+        act_as(world["student"])
+        assert _reveal(client, rng, visible.id).status_code == 200
+        rows = db_session.query(AuditLog).filter(AuditLog.action == "range_credential_reveal").all()
         assert {(str(r.user_id), r.resource_id) for r in rows} == {
             (world["range_ops"].id, str(rng.id)), (world["student"].id, str(rng.id))}
         assert {r.tenant_id for r in rows} == {world["a"].id}
+        details = {str(r.user_id): json.loads(r.detail) for r in rows}
+        assert details[world["range_ops"].id] == {"range_id": str(rng.id), "machine": "dc01",
+                                                  "username": "Administrator", "scope": "all", "via": "range"}
+        assert details[world["student"].id] == {"range_id": str(rng.id), "machine": "web01", "username": "analyst",
+                                                "scope": "student", "via": "range", "exercise_id": str(ex.id)}
         passwords = [a.password for a in db_session.query(RangeCredential).all()]
         for r in rows:
             assert all(p not in (r.detail or "") for p in passwords)
-        assert any("scope=student; accounts=1" in r.detail for r in rows)
 
-    def test_generated_passwords_are_made_once_and_survive_a_rebuild(self, client, db_session, world):
+    def test_staff_passwords_survive_a_rebuild(self, client, db_session, world):
         rng = _create_range(client, db_session, world)
+        before = {(r.machine, r.username): r.password for r in db_session.query(RangeCredential)}
         act_as(world["instructor"])
-        before = _accounts(_creds(client, rng))
         assert client.post(f"/ranges/{rng.id}/provision").status_code == 202  # allocation: sync again
-        after = _accounts(_creds(client, rng))
-        assert before == after
+        db_session.expire_all()
+        after = {(r.machine, r.username): r.password for r in db_session.query(RangeCredential)}
+        assert before == after  # the first build of a range rotates nothing
 
     def test_an_unbuilt_ranges_rows_follow_a_template_edit(self, client, db_session, world):
         rng = _create_range(client, db_session, world)
-        act_as(world["instructor"])
-        generated = _accounts(_creds(client, rng))[("web01", "analyst")]["password"]
+        generated = _row(db_session, rng, "web01", "analyst").password
         tmpl = db_session.get(Template, rng.template_id)
         new_yaml = TEMPLATE_YAML.replace(DC_PW, "Dc-Changed-2!").replace(
             '  - {machine: web01, username: ubuntu, generate: true, role: admin, student_visible: false}\n', "")
         act_as(world["range_ops"])  # template:update
         assert client.put(f"/templates/{tmpl.id}", json={"yaml": new_yaml}).status_code == 200
+        db_session.expire_all()
         accts = _accounts(_creds(client, rng))
-        assert set(accts) == {("dc01", "Administrator"), ("web01", "analyst")}
-        assert accts[("dc01", "Administrator")]["password"] == "Dc-Changed-2!"
-        assert accts[("web01", "analyst")]["password"] == generated
+        # The build user is no longer declared: it comes back as the implicit staff login.
+        assert set(accts) == ALL_ACCOUNTS and accts[("web01", "ubuntu")]["source"] == "implicit"
+        assert _row(db_session, rng, "dc01", "jsmith").password == "Dc-Changed-2!"
+        assert _row(db_session, rng, "web01", "analyst").password == generated
 
     def test_another_tenants_range_never_takes_a_public_templates_accounts(self, client, db_session, world):
         """Review 2, item 1: a range of tenant B built from tenant A's public template (a
@@ -303,16 +347,24 @@ class TestStorageAndAudit:
         db_session.commit()
         cred_service.on_build_accepted(db_session, theirs)
         db_session.commit()
-        assert db_session.query(RangeCredential).filter(RangeCredential.range_id == theirs.id).count() == 0
+
+        def declared_rows(rng):
+            return db_session.query(RangeCredential).filter(RangeCredential.range_id == rng.id,
+                                                            RangeCredential.source == "declared").count()
+
+        assert declared_rows(theirs) == 0
         act_as(world["range_ops"])
         assert client.put(f"/templates/{tmpl.id}",
                           json={"yaml": TEMPLATE_YAML.replace(DC_PW, "Dc-Changed-2!")}).status_code == 200
-        assert db_session.query(RangeCredential).filter(RangeCredential.range_id == theirs.id).count() == 0
+        assert declared_rows(theirs) == 0
         assert db_session.query(WikiPage).filter(WikiPage.tags.contains(f"range:{theirs.id}")).count() == 0
         rows = db_session.query(RangeCredential).filter(RangeCredential.range_id == ours.id).all()
-        assert next(r.password for r in rows if r.username == "Administrator") == "Dc-Changed-2!"
+        assert next(r.password for r in rows if r.username == "jsmith") == "Dc-Changed-2!"
         act_as(world["foreign_instructor"])
-        assert "Dc-Changed-2!" not in _creds(client, theirs).text
+        listed = _creds(client, theirs).json()["accounts"]
+        assert {a["source"] for a in listed} == {"implicit"}  # its own generated logins, none of A's
+        for a in listed:
+            assert _reveal(client, theirs, a["id"]).json()["password"] not in ("Dc-Changed-2!", DC_PW)
 
     def test_the_reviewers_booking_probe(self, client, db_session, world):
         """The scheduler path of probe2/test_probe_xtenant.py: create_for_booking, begin_provision."""
@@ -330,8 +382,10 @@ class TestStorageAndAudit:
         act_as(world["foreign_instructor"])
         resp = _creds(client, rng)
         assert resp.status_code == 200 and DC_PW not in resp.text
-        # None of tenant A's declared accounts; only the platform's template build logins.
-        assert {a["source"] for a in resp.json()["accounts"]} <= {"template_default"}
+        # None of tenant A's declared accounts; only this range's own generated staff logins.
+        assert {a["source"] for a in resp.json()["accounts"]} == {"implicit"}
+        assert {(a["machine"], a["username"]) for a in resp.json()["accounts"]} == {
+            ("dc01", "Administrator"), ("web01", "ubuntu")}
 
     def test_a_failing_background_refresh_never_fails_the_template_edit(self, client, db_session, world,
                                                                        monkeypatch, caplog):
@@ -355,7 +409,8 @@ class TestStorageAndAudit:
         act_as(world["range_ops"])
         assert client.put(f"/templates/{tmpl.id}",
                           json={"yaml": TEMPLATE_YAML.replace(DC_PW, "Dc-Changed-2!")}).status_code == 200
-        assert _accounts(_creds(client, rng))[("dc01", "Administrator")]["password"] == DC_PW
+        db_session.expire_all()
+        assert _row(db_session, rng, "dc01", "jsmith").password == DC_PW
 
     def test_a_range_from_a_template_with_invalid_accounts_is_refused(self, client, db_session, world):
         bad = _template(db_session, world["a"].id,
@@ -408,44 +463,68 @@ class TestTemplates:
         assert client.put(f"/templates/{resp.json()['id']}", json={"yaml": shown}).status_code == 200
         rng = client.post("/ranges", json={"name": "r", "template_id": resp.json()["id"]}).json()
         accts = {a["username"]: a for a in client.get(f"/ranges/{rng['id']}/credentials").json()["accounts"]}
-        assert accts["Administrator"]["password"] == DC_PW
+        revealed = client.post(f"/ranges/{rng['id']}/credentials/{accts['jsmith']['id']}/reveal").json()
+        assert revealed["password"] == DC_PW
 
-    @pytest.mark.parametrize("purpose", ["hypervisor", "other_key"])
-    def test_a_seal_made_for_another_purpose_is_refused(self, client, world, purpose, monkeypatch):
-        """Review 2, item 3: a hypervisor/AI/LTI secret (app/secretbox) pasted into accounts,
-        or a range seal another key made, is not unsealed into a readable password."""
+    @pytest.mark.parametrize("purpose", ["hypervisor", "other_key", "other_tenant", "stored_row", "legacy_rc1"])
+    def test_a_seal_made_for_another_purpose_or_owner_is_refused(self, client, db_session, world, purpose,
+                                                                 monkeypatch):
+        """No sealed value from anywhere else opens as a template password: a hypervisor/AI/LTI
+        secret, a template seal of another key or another tenant, a stored range credential
+        (the decryption-oracle PoC of the #250 review), a pre-ADR 0013 rc1 token."""
+        secret = "Vcenter-Admin-1!"
         if purpose == "hypervisor":
-            token = secretbox.seal("Vcenter-Admin-1!")
-        else:
+            token = secretbox.seal(secret)
+        elif purpose == "other_key":
             monkeypatch.setenv(secretbox.KEY_ENV, "another-platforms-key-0123456789abcdef")
-            token = rc_seal.seal("Vcenter-Admin-1!")
+            token = rc_seal.seal(secret, world["a"].id)
             monkeypatch.undo()
+        elif purpose == "other_tenant":
+            token = rc_seal.seal(secret, world["b"].id)
+        elif purpose == "stored_row":  # tenant B's stored credential, as it sits in range_credentials
+            rng = _create_range(client, db_session, world)
+            token = _row(db_session, rng, "web01", "analyst").sealed_password
+            secret = _row(db_session, rng, "web01", "analyst").password
+        else:
+            token = rc_seal.seal_legacy(secret)
         act_as(world["range_ops"])
         forged = TEMPLATE_YAML.replace(DC_PW, token)
         resp = client.post("/templates", json={"name": "t", "version": "1", "yaml": forged})
-        assert resp.status_code == 422 and "not a range-account seal" in resp.text
-        assert "Vcenter-Admin-1!" not in account_rules.redact_yaml(forged)
+        assert resp.status_code == 422 and "not this tenant's template seal" in resp.text
+        assert secret not in resp.text
+        _, errors = account_rules.parse_yaml(forged, tenant_id=world["a"].id)
+        assert errors  # the PoC: no plaintext comes back
+        assert secret not in account_rules.redact_yaml(forged, tenant_id=world["a"].id)
 
-    def test_range_seals_are_their_own(self):
-        token = rc_seal.seal("Pw-Range-1!")
-        assert token.startswith("tnsec:rc1:") and rc_seal.unseal(token) == "Pw-Range-1!"
-        with pytest.raises(secretbox.SecretUnreadableError):  # secretbox does not open it either
+    def test_range_seals_are_their_own(self, world):
+        tenant = world["a"].id
+        token = rc_seal.seal("Pw-Range-1!", tenant)
+        assert token.startswith("tnsec:rt1:") and rc_seal.unseal(token, tenant) == "Pw-Range-1!"
+        with pytest.raises(rc_seal.NotARangeSealError):  # another tenant's template cannot open it
+            rc_seal.unseal(token, world["b"].id)
+        row = rc_seal.seal_row("Pw-Row-1!", rc_seal.row_aad(tenant, "r1", "c1"))
+        with pytest.raises(rc_seal.NotARangeSealError):  # a stored credential is no template seal
+            rc_seal.unseal(row, tenant)
+        with pytest.raises(rc_seal.NotARangeSealError):  # nor another row's
+            rc_seal.unseal_row(row, rc_seal.row_aad(tenant, "r1", "c2"))
+        with pytest.raises(secretbox.SecretUnreadableError):  # secretbox does not open either
             secretbox.unseal("tnsec:v1:" + token[len(rc_seal.PREFIX):])
 
     def test_a_sealed_value_that_does_not_unseal_is_refused(self, client, world):
         act_as(world["range_ops"])
         forged = TEMPLATE_YAML.replace(DC_PW, "tnsec:v1:not-a-real-token")
         resp = client.post("/templates", json={"name": "t", "version": "1", "yaml": forged})
-        assert resp.status_code == 422 and "cannot unseal" in resp.text
+        assert resp.status_code == 422 and "not this tenant's template seal" in resp.text
 
     @pytest.mark.parametrize(("yaml_text", "why"), [
         ("nodes: [{id: dc01, os: windows-server-2022}]\naccounts:\n"
-         "  - {machine: dc01, username: Administrator, password: short1!, student_visible: false}\n", "8 characters"),
+         "  - {machine: dc01, username: jdoe, password: short1!, scenario: true, student_visible: false}\n",
+         "8 characters"),
         ("nodes: [{id: dc01, os: windows-11}]\naccounts:\n"
-         "  - {machine: dc01, username: Administrator, password: alllowercase1, student_visible: false}\n",
+         "  - {machine: dc01, username: jdoe, password: alllowercase1, scenario: true, student_visible: false}\n",
          "three of"),
         ("nodes: [{id: dc01, os: windows-server-2022}]\naccounts:\n"
-         "  - {machine: dc01, username: jsmith, password: Xx-JSmith-2026, student_visible: false}\n",
+         "  - {machine: dc01, username: jsmith, password: Xx-JSmith-2026, scenario: true, student_visible: false}\n",
          "contains the account name"),
     ])
     def test_windows_passwords_must_meet_complexity(self, client, world, yaml_text, why):
@@ -468,10 +547,10 @@ class TestTemplates:
                           '  - {machine: dc01, username: root, password: "Hunter2Hunter2!", student_visible: false, '
                           'notes: "same as Hunter2Hunter2! on prod"}\n',
         }[probe]
-        assert "Hunter2Hunter2!" not in account_rules.redact_yaml(doc)
+        assert "Hunter2Hunter2!" not in account_rules.redact_yaml(doc, tenant_id=None)
         anchors = ('name: t\nx: &a {username: Administrator, password: "Hunter2Hunter2!"}\n'
                    'accounts:\n  - {<<: *a, machine: dc01}\n')
-        assert account_rules.redact_yaml(anchors) == ""
+        assert account_rules.redact_yaml(anchors, tenant_id=None) == ""
 
     def test_every_password_is_masked_everywhere_in_the_document(self):
         """Review 2, item 4 (probe2 test_notes_cross_account): another account's notes, the
@@ -483,8 +562,8 @@ class TestTemplates:
                '  - {machine: a, username: alice, password: "Alpha-Pass-1!", student_visible: false}\n'
                '  - {machine: b, username: bob, password: "Bravo-Pass-2!", student_visible: true, '
                'notes: "root on a is Alpha-Pass-1!"}\n')
-        for stored in (doc, account_rules.seal_yaml(doc)):
-            out = account_rules.redact_yaml(stored)
+        for stored in (doc, account_rules.seal_yaml(doc, tenant_id=None)):
+            out = account_rules.redact_yaml(stored, tenant_id=None)
             assert "Alpha-Pass-1!" not in out and "Bravo-Pass-2!" not in out, out
 
     def test_passwords_in_a_template_are_hidden_from_who_may_not_read_them(self, client, db_session, world):
@@ -528,49 +607,36 @@ class TestWikiPage:
                          "creds-lab 2.1", "analyst", "not set by TrueNorth"):
             assert expected in body, expected
         stored = [body] + [r.body for r in db_session.query(WikiRevision).filter(WikiRevision.page_id == page.id)]
-        for pw in self._passwords(db_session):  # Low (c): no wiki row or revision holds one
+        for pw in self._passwords(db_session):  # ADR 0013 §3: no wiki row or revision holds one
             assert all(pw not in b for b in stored)
-        assert len(wiki_doc.TOKEN_RE.findall(body)) == 3
+        assert not wiki_doc.LEGACY_TOKEN_RE.search(body) and "tn-credential" not in body  # nor a token
+        assert wiki_doc.is_current(body) and f"(/ranges/{rng.id})" in body  # a link to the panel instead
+        for username in ("Administrator", "jsmith", "ubuntu", "analyst"):  # account names stay
+            assert username in body
 
-    def test_staff_read_the_page_with_the_passwords_filled_in(self, client, db_session, world):
+    def test_staff_read_the_page_and_it_shows_no_password(self, client, db_session, world):
         rng = _create_range(client, db_session, world)
         page = self._page(db_session, rng)
         act_as(world["instructor"])
         got = client.get(f"/wiki/pages/{page.id}")
-        assert got.headers["cache-control"] == "no-store"
+        assert got.status_code == 200
         shown = got.json()["body"]
-        assert all(pw in shown for pw in self._passwords(db_session)) and DC_PW in shown
-        assert not wiki_doc.TOKEN_RE.search(shown)
-        assert client.get("/wiki/search", params={"q": DC_PW}).json() == []  # not even for staff
-        audit = db_session.query(AuditLog).filter(AuditLog.action == "range_credentials_read").one()
-        assert (audit.resource_id, str(audit.user_id)) == (str(rng.id), world["instructor"].id)
-        assert "via=wiki" in audit.detail and DC_PW not in audit.detail
-
-    def test_wiki_edit_alone_does_not_fill_in_passwords(self, client, db_session, world, monkeypatch):
-        """Review 2, item 5: the fill-in is gated on range:credentials_read, not wiki:edit."""
-        from app import rbac
-
-        rng = _create_range(client, db_session, world)
-        page = self._page(db_session, rng)
-        perms = set(rbac.ROLE_PERMISSIONS[UserRole.instructor]) - {rbac.Permission.RANGE_CREDENTIALS_READ}
-        monkeypatch.setitem(rbac.ROLE_PERMISSIONS, UserRole.instructor, perms)
-        act_as(world["instructor"])
-        got = client.get(f"/wiki/pages/{page.id}")
-        assert got.status_code == 200 and DC_PW not in got.text and wiki_doc.TOKEN_RE.search(got.json()["body"])
-        assert db_session.query(AuditLog).filter(AuditLog.action == "range_credentials_read").count() == 0
+        assert shown == page.body  # as stored: nothing is filled in on read any more
+        assert all(pw not in shown for pw in self._passwords(db_session))
+        assert client.get("/wiki/search", params={"q": DC_PW}).json() == []
+        assert db_session.query(AuditLog).filter(AuditLog.action.like("range_credential%")).count() == 0
 
     def test_an_editor_cannot_store_passwords_through_the_generated_block(self, client, db_session, world):
         rng = _create_range(client, db_session, world)
         page = self._page(db_session, rng)
         act_as(world["instructor"])
-        shown = client.get(f"/wiki/pages/{page.id}").json()  # expanded: holds the passwords
+        shown = client.get(f"/wiki/pages/{page.id}").json()
         notes = "## Notes\n\nEditor's note.\n"
-        tampered = shown["body"].split(wiki_doc.END)[0] + "extra " + wiki_doc.END + "\n\n" + notes
+        tampered = shown["body"].split(wiki_doc.END)[0] + f"pw {DC_PW} " + wiki_doc.END + "\n\n" + notes
         resp = client.put(f"/wiki/pages/{page.id}", json={"base_revision": shown["revision_number"],
                                                           "body": tampered})
         assert resp.status_code == 200, resp.text
-        # Review 2, item 5: only GET fills passwords in; an edit's response carries the tokens.
-        assert DC_PW not in resp.text and wiki_doc.TOKEN_RE.search(resp.json()["body"])
+        assert DC_PW not in resp.text  # what was typed into the generated block is not kept
         stale = client.put(f"/wiki/pages/{page.id}", json={"base_revision": shown["revision_number"],
                                                            "body": tampered})
         assert stale.status_code == 409 and DC_PW not in stale.text  # the conflict body too
@@ -674,7 +740,7 @@ class TestWikiPage:
         assert (space.slug, space.system_owned, space.visibility) == ("ranges-generated", True, "staff")
 
 
-# ── Template default logins (owner decision, 2026-10-19) ───────────────────
+# ── Implicit staff logins (ADR 0013 §3; replaces the 2026-10-19 template defaults) ─────
 MIXED_YAML = f"""
 name: mixed
 nodes:
@@ -684,117 +750,109 @@ nodes:
   - {{id: fw01, os: pfsense, role: firewall}}
   - {{id: so01, os: securityonion}}
 accounts:
-  - {{machine: dc01, username: Administrator, password: "{DC_PW}", role: admin, student_visible: true}}
+  - {{machine: dc01, username: Administrator, generate: true, role: admin, student_visible: true}}
+  - {{machine: ws01, username: jdoe, password: "{DC_PW}", scenario: true, student_visible: false}}
 """
 WIN_BUILD = "Win-Build-Pass-1!"
 LINUX_BUILD = "Linux-Build-Pass-2!"
+SO_BUILD = "So-Build-Pass-3!"
 
 
-class TestTemplateDefaults:
-    @pytest.fixture
-    def configured(self, monkeypatch):
+class TestImplicitStaffLogins:
+    @pytest.fixture(autouse=True)
+    def template_passwords(self, monkeypatch):
+        """The installer's template passwords may still be in the environment: no row uses them."""
         monkeypatch.setenv("TN_TEMPLATE_WINDOWS_ADMIN_PASSWORD", WIN_BUILD)
         monkeypatch.setenv("TN_TEMPLATE_LINUX_PASSWORD", LINUX_BUILD)
-        monkeypatch.delenv("TN_TEMPLATE_LINUX_USER", raising=False)
-        monkeypatch.delenv("TN_RANGE_DEFAULT_PASSWORD", raising=False)
-
-    def _range(self, client, db, world) -> Range:
-        tmpl = _template(db, world["a"].id, MIXED_YAML)
-        act_as(world["instructor"])
-        return db.get(Range, uuid.UUID(client.post("/ranges", json={"name": "Mixed", "template_id": str(tmpl.id)})
-                                        .json()["id"]))
-
-    @pytest.mark.parametrize("role", ["admin", "instructor", "range_ops"])
-    def test_staff_see_the_build_login_of_machines_with_no_declared_account(self, client, db_session, world,
-                                                                             configured, role):
-        rng = self._range(client, db_session, world)
-        act_as(world[role])
-        accts = _accounts(_creds(client, rng))
-        assert set(accts) == {("dc01", "Administrator"), ("ws01", "Administrator"), ("web01", "ubuntu")}
-        assert accts[("dc01", "Administrator")]["source"] == "declared"  # declared wins: no default row
-        assert accts[("dc01", "Administrator")]["password"] == DC_PW
-        assert (accts[("ws01", "Administrator")]["source"], accts[("ws01", "Administrator")]["password"]) == (
-            "template_default", WIN_BUILD)
-        assert (accts[("web01", "ubuntu")]["source"], accts[("web01", "ubuntu")]["password"]) == (
-            "template_default", LINUX_BUILD)
-        assert all(not a["student_visible"] for a in accts.values() if a["source"] == "template_default")
-        # Appliances and Security Onion: no row (their logins are their own config).
-        assert not {m for m, _ in accts} & {"fw01", "so01"}
-
-    def test_the_linux_user_is_configurable(self, client, db_session, world, configured, monkeypatch):
-        monkeypatch.setenv("TN_TEMPLATE_LINUX_USER", "packer")
-        rng = self._range(client, db_session, world)
-        assert ("web01", "packer") in _accounts(_creds(client, rng))
-
-    def test_unset_is_honest_random_on_windows_and_not_configured_on_linux(self, client, db_session, world,
-                                                                          monkeypatch):
-        """Neither TN_TEMPLATE_WINDOWS_ADMIN_PASSWORD nor the deprecated alias: Sysprep set a
-        random password per VM, so the row shows none and says so."""
-        for name in ("TN_TEMPLATE_WINDOWS_ADMIN_PASSWORD", "TN_RANGE_DEFAULT_PASSWORD", "TN_TEMPLATE_LINUX_PASSWORD",
-                     "TN_TEMPLATE_LINUX_USER"):
+        monkeypatch.setenv("TN_RANGE_DEFAULT_PASSWORD", WIN_BUILD)
+        monkeypatch.setenv("VSPHERE_SO_INSTALL_PASSWORD", SO_BUILD)
+        for name in ("TN_TEMPLATE_LINUX_USER", "VSPHERE_SO_INSTALL_USER"):
             monkeypatch.delenv(name, raising=False)
-        rng = self._range(client, db_session, world)
-        accts = _accounts(_creds(client, rng))
-        assert accts[("ws01", "Administrator")]["password"] is None
-        assert accts[("ws01", "Administrator")]["notes"] == "random per VM — not recoverable"
-        assert accts[("web01", "ubuntu")]["password"] is None
-        assert accts[("web01", "ubuntu")]["notes"] == "template default not configured"
+
+    def _range(self, client, db, world, yaml_text: str = MIXED_YAML) -> Range:
+        tmpl = _template(db, world["a"].id, yaml_text)
         act_as(world["instructor"])
-        page = db_session.query(WikiPage).filter(WikiPage.tags.contains(f"range:{rng.id}")).one()
-        body = client.get(f"/wiki/pages/{page.id}").json()["body"]
-        assert "(random per VM — not recoverable)" in body and "(template default not configured)" in body
+        resp = client.post("/ranges", json={"name": "Mixed", "template_id": str(tmpl.id)})
+        assert resp.status_code == 201, resp.text
+        return db.get(Range, uuid.UUID(resp.json()["id"]))
 
-    def test_the_deprecated_alias_is_used_when_the_template_setting_is_unset(self, client, db_session, world,
-                                                                            monkeypatch):
-        monkeypatch.delenv("TN_TEMPLATE_WINDOWS_ADMIN_PASSWORD", raising=False)
-        monkeypatch.setenv("TN_RANGE_DEFAULT_PASSWORD", "Old-Default-1!")
+    def test_every_built_in_login_gets_a_generated_row_and_never_a_template_password(self, client, db_session,
+                                                                                    world):
         rng = self._range(client, db_session, world)
-        assert _accounts(_creds(client, rng))[("ws01", "Administrator")]["password"] == "Old-Default-1!"
-        monkeypatch.setenv("TN_TEMPLATE_WINDOWS_ADMIN_PASSWORD", WIN_BUILD)  # the template setting wins
-        assert _accounts(_creds(client, rng))[("ws01", "Administrator")]["password"] == WIN_BUILD
+        rows = {(r.machine, r.username): r for r in db_session.query(RangeCredential)
+                .filter(RangeCredential.range_id == rng.id)}
+        assert set(rows) == {("dc01", "Administrator"), ("ws01", "jdoe"), ("ws01", "Administrator"),
+                             ("web01", "ubuntu"), ("so01", "soadmin")}
+        assert rows[("dc01", "Administrator")].source == "declared"  # declared wins: no second row
+        for key in (("ws01", "Administrator"), ("web01", "ubuntu"), ("so01", "soadmin")):
+            r = rows[key]
+            assert (r.source, r.generated, r.role, r.student_visible, r.applied) == (
+                "implicit", True, "admin", False, False), key
+        passwords = [r.password for r in rows.values() if r.generated]
+        assert len(set(passwords)) == len(passwords)  # unique per account
+        assert not {WIN_BUILD, LINUX_BUILD, SO_BUILD} & {r.password for r in rows.values()}
+        assert not {m for m, _ in rows} & {"fw01"}  # appliances: their own configuration (follow-up)
 
-    def test_a_lab_sessions_windows_vms_are_random_whatever_the_setting(self, client, db_session, world,
-                                                                      configured, monkeypatch):
-        """The worker attaches no default login to a lab session's range (random per VM)."""
-        from app.lab_sessions import service as lab_service
+    def test_each_range_gets_its_own_passwords(self, client, db_session, world):
+        one, two = self._range(client, db_session, world), self._range(client, db_session, world)
+        assert _row(db_session, one, "ws01", "Administrator").password != \
+            _row(db_session, two, "ws01", "Administrator").password
 
+    def test_the_build_users_are_configurable_names(self, client, db_session, world, monkeypatch):
+        monkeypatch.setenv("TN_TEMPLATE_LINUX_USER", "packer")
+        monkeypatch.setenv("VSPHERE_SO_INSTALL_USER", "sobuild")
         rng = self._range(client, db_session, world)
-        monkeypatch.setattr(lab_service, "lab_range_ids", lambda db, ids: {rng.id})
-        accts = _accounts(_creds(client, rng))
-        assert accts[("ws01", "Administrator")]["password"] is None
-        assert accts[("ws01", "Administrator")]["notes"] == "random per VM — not recoverable"
-        assert accts[("web01", "ubuntu")]["password"] == LINUX_BUILD  # Linux keeps the template login
+        machines = {(r.machine, r.username) for r in db_session.query(RangeCredential)
+                    .filter(RangeCredential.range_id == rng.id)}
+        assert {("web01", "packer"), ("so01", "sobuild")} <= machines
 
-    def test_students_and_observers_never_see_them(self, client, db_session, world, configured):
+    def test_students_and_observers_never_see_staff_logins(self, client, db_session, world):
         rng = self._range(client, db_session, world)
         _on_the_course(db_session, rng, world["student"])
         _apply(db_session, rng)
         act_as(world["student"])
         resp = _creds(client, rng)
-        assert resp.status_code == 200
-        assert [(a["machine"], a["source"]) for a in resp.json()["accounts"]] == [("dc01", "declared")]
-        assert WIN_BUILD not in resp.text and LINUX_BUILD not in resp.text
+        assert [(a["machine"], a["username"]) for a in resp.json()["accounts"]] == [("dc01", "Administrator")]
+        assert _reveal(client, rng, _row(db_session, rng, "ws01", "Administrator").id).status_code == 404
         act_as(world["observer"])
         assert _creds(client, rng).status_code == 403
 
-    def test_the_wiki_page_holds_tokens_filled_in_on_get_for_credential_readers(self, client, db_session, world,
-                                                                              configured, monkeypatch):
+    def test_the_wiki_page_names_them_without_passwords_or_tokens(self, client, db_session, world):
         rng = self._range(client, db_session, world)
         db_session.expire_all()
         page = db_session.query(WikiPage).filter(WikiPage.tags.contains(f"range:{rng.id}")).one()
-        assert "{{tn-credential:template-windows}}" in page.body and "{{tn-credential:template-linux}}" in page.body
-        assert WIN_BUILD not in page.body and LINUX_BUILD not in page.body
-        revs = db_session.query(WikiRevision).filter(WikiRevision.page_id == page.id).all()
-        assert all(WIN_BUILD not in r.body and LINUX_BUILD not in r.body for r in revs)
-        act_as(world["instructor"])
-        got = client.get(f"/wiki/pages/{page.id}")
-        assert got.headers["cache-control"] == "no-store"
-        assert WIN_BUILD in got.json()["body"] and LINUX_BUILD in got.json()["body"]
-        assert "fw01" in got.json()["body"] and got.json()["body"].count("template default |") == 2
-        monkeypatch.delenv("TN_TEMPLATE_LINUX_PASSWORD")  # read when shown, not when written
-        assert "(template default not configured)" in client.get(f"/wiki/pages/{page.id}").json()["body"]
-        act_as(world["student"])
-        assert client.get(f"/wiki/pages/{page.id}").status_code == 404
+        assert "generated (staff login)" in page.body and "typed in (scenario, authored by design)" in page.body
+        assert "tn-credential" not in page.body
+        for r in db_session.query(RangeCredential).filter(RangeCredential.range_id == rng.id):
+            assert r.password not in page.body
+
+
+class TestScenarioAccounts:
+    @pytest.mark.parametrize(("account", "why"), [
+        ("{machine: ws01, username: jdoe, password: Weak-Pass-1!, student_visible: false}",
+         "only on a scenario account"),
+        ("{machine: ws01, username: Administrator, password: Weak-Pass-1!, scenario: true, student_visible: false}",
+         "cannot be a scenario"),
+        ("{machine: web01, username: ubuntu, password: Weak-Pass-1!, scenario: true, student_visible: false}",
+         "cannot be a scenario"),
+        ("{machine: so01, username: soadmin, password: Weak-Pass-1!, scenario: true, student_visible: false}",
+         "cannot be a scenario"),
+        ("{machine: web01, username: ops, password: Weak-Pass-1!, scenario: true, role: admin, "
+         "student_visible: false}", "cannot be a scenario"),
+        ("{machine: web01, username: ops, generate: true, scenario: true, student_visible: false}",
+         "scenario: true is for a typed-in password"),
+    ])
+    def test_typed_in_passwords_only_on_scenario_accounts_never_staff(self, client, world, account, why):
+        act_as(world["range_ops"])
+        doc = ("nodes: [{id: ws01, os: windows-11}, {id: web01, os: ubuntu-2404}, {id: so01, os: securityonion}]\n"
+               f"accounts:\n  - {account}\n")
+        resp = client.post("/templates", json={"name": "t", "version": "1", "yaml": doc})
+        assert resp.status_code == 422 and why in resp.text, resp.text
+
+    def test_a_scenario_account_is_kept_as_authored(self, client, db_session, world):
+        rng = _create_range(client, db_session, world)
+        row = _row(db_session, rng, "dc01", "jsmith")
+        assert (row.scenario, row.generated, row.password) == (True, False, DC_PW)
 
 
 # ── The range designer's save (Low a) ──────────────────────────────────────
@@ -805,7 +863,8 @@ _DESIGN = {"cells": [
      "size": {"width": 120, "height": 80}, "nodeData": {"label": "DC01", "os_template": "windows-server-2022"}},
 ]}  # one node, id dc01
 _DC01_ACCOUNT = ("nodes: [{id: dc01, os: windows-server-2022}]\naccounts:\n"
-                 "  - {machine: dc01, username: Administrator, password: \"Theirs-Secret-9!\", student_visible: false}\n")
+                 "  - {machine: dc01, username: jdoe, password: \"Theirs-Secret-9!\", scenario: true, "
+                 "student_visible: false}\n")
 
 
 class TestDesignerSave:
@@ -816,7 +875,7 @@ class TestDesignerSave:
         return rng
 
     def test_another_tenants_accounts_are_not_copied(self, client, db_session, world):
-        theirs = _template(db_session, world["b"].id, account_rules.seal_yaml(_DC01_ACCOUNT), public=True)
+        theirs = _template(db_session, world["b"].id, account_rules.seal_yaml(_DC01_ACCOUNT, tenant_id=world["b"].id), public=True)
         rng = self._range_on(db_session, theirs, world["a"])
         act_as(world["instructor"])
         resp = client.post(f"/ranges/{rng.id}/topology", json={"diagram_json": _DESIGN})
@@ -826,7 +885,7 @@ class TestDesignerSave:
         assert "accounts" not in saved and "tnsec" not in saved
 
     def test_own_accounts_are_kept_and_must_still_fit(self, client, db_session, world):
-        own = _template(db_session, world["a"].id, account_rules.seal_yaml(_DC01_ACCOUNT))
+        own = _template(db_session, world["a"].id, account_rules.seal_yaml(_DC01_ACCOUNT, tenant_id=world["a"].id))
         rng = self._range_on(db_session, own, world["a"])
         act_as(world["instructor"])
         resp = client.post(f"/ranges/{rng.id}/topology", json={"diagram_json": _DESIGN})
@@ -844,18 +903,18 @@ class TestAccountRules:
     def test_machines_resolve_by_id_name_or_asset_role(self):
         doc = {"nodes": [{"id": "dc01", "name": "DC"}],
                "accounts": [{"machine": "DC", "username": "a", "generate": True, "student_visible": False}]}
-        specs, errors = account_rules.parse(doc)
+        specs, errors = account_rules.parse(doc, tenant_id=None)
         assert errors == [] and [(s.machine, s.generate) for s in specs] == [("dc01", True)]
         assets = {"assets": [{"role": "kali", "type": "vm", "count": 2}],
-                  "accounts": [{"machine": "kali", "username": "kali", "password": "k", "student_visible": True}]}
-        specs, errors = account_rules.parse(assets)
+                  "accounts": [{"machine": "kali", "username": "kali", "generate": True, "student_visible": True}]}
+        specs, errors = account_rules.parse(assets, tenant_id=None)
         assert errors == [] and [s.machine for s in specs] == ["kali"]
 
     def test_assets_beside_nodes_are_not_machines(self):
         """As worker/render.py: with nodes, assets build nothing, so they take no accounts."""
         doc = {"nodes": [{"id": "dc01"}], "assets": [{"role": "kali", "type": "vm", "count": 1}],
                "accounts": [{"machine": "kali", "username": "kali", "generate": True, "student_visible": False}]}
-        assert "not a node or asset" in account_rules.parse(doc)[1][0]["message"]
+        assert "not a node or asset" in account_rules.parse(doc, tenant_id=None)[1][0]["message"]
 
     def test_windows_complexity_follows_the_workers_os(self):
         """Review 2, item 7: an asset's os, a node's os_template or type decide it too."""
@@ -863,7 +922,7 @@ class TestAccountRules:
         for doc in ({"assets": [{"role": "dc", "os": "windows-server-2022"}], "accounts": [{**weak, "machine": "dc"}]},
                     {"nodes": [{"id": "dc", "type": "windows-11"}], "accounts": [{**weak, "machine": "dc"}]},
                     {"nodes": [{"id": "dc", "os_template": "win-2019"}], "accounts": [{**weak, "machine": "dc"}]}):
-            assert any("Windows" in e["message"] for e in account_rules.parse(doc)[1]), doc
+            assert any("Windows" in e["message"] for e in account_rules.parse(doc, tenant_id=None)[1]), doc
 
     def test_generated_passwords_meet_windows_complexity(self):
         """M3: what Windows checks, for the account it is made for."""
@@ -893,62 +952,53 @@ class TestAccountRules:
         assert wiki_doc.notes_of("no heading at all") == wiki_doc.DEFAULT_NOTES
 
 
-class TestImplicitDomainAdmins:
-    """A per-range Administrator is generated for a product role image's VM and the range's
-    domain controllers when the template declares none, so one range's compromise does not
-    give another range's domain admin (ADR 0012; adversarial review R0-C)."""
+class TestImplicitLoginRules:
+    """``accounts.implicit_staff_logins`` (ADR 0013 §3): one generated admin row per built-in
+    login a machine's golden template carries and the template does not declare. It
+    replaces ADR 0012's product-only ``implicit_admins`` (adversarial review R0-C): every
+    Windows machine now gets its own Administrator, product VMs and DCs included."""
 
     DOC = {
         "nodes": [
             {"id": "dc01", "os": "windows-server-2022", "services": ["active_directory", "dns"]},
             {"id": "exch01", "os": "windows-server-2022", "services": ["exchange_2019", "owa"]},
-            {"id": "ws01", "os": "windows-11", "services": ["rdp"]},
+            {"id": "web01", "os": "ubuntu-2404"},
+            {"id": "fw01", "os": "pfsense"},
         ]
     }
 
-    def test_generated_for_the_product_vm_and_the_dc_when_undeclared(self):
-        specs = account_rules.implicit_admins(self.DOC, [])
-        by = {s.machine: s for s in specs}
-        assert set(by) == {"exch01", "dc01"}  # not the plain workstation
+    def test_one_per_machine_by_family(self):
+        specs = account_rules.implicit_staff_logins(self.DOC, [])
+        assert {(s.machine, s.username) for s in specs} == {
+            ("dc01", "Administrator"), ("exch01", "Administrator"), ("web01", "ubuntu")}
         for s in specs:
-            assert s.username == "Administrator" and s.generate and s.role == "admin"
-            assert s.password is None and s.student_visible is False
+            assert s.generate and s.password is None and s.role == "admin" and s.source == "implicit"
+            assert s.student_visible is False and s.scenario is False
 
-    def test_not_added_when_the_template_declares_the_admin(self):
-        declared = [account_rules.AccountSpec("dc01", "Administrator", None, True, False, "admin", "")]
-        machines = {s.machine for s in account_rules.implicit_admins(self.DOC, declared)}
-        assert machines == {"exch01"}  # dc01 already declared, exch01 still generated
+    def test_a_declared_login_wins_and_a_lab_hands_them_over(self):
+        declared = [account_rules.AccountSpec("dc01", "administrator", None, True, False, "admin", "")]
+        assert {s.machine for s in account_rules.implicit_staff_logins(self.DOC, declared)} == {"exch01", "web01"}
+        assert all(s.student_visible for s in account_rules.implicit_staff_logins(self.DOC, [], student_visible=True))
 
-    def test_sharepoint_2019_gets_generated_admins_too(self):
-        doc = {"nodes": [{"id": "dc01", "os": "windows-server-2022", "services": ["active_directory"]},
-                         {"id": "sp01", "os": "windows-server-2022", "services": ["sharepoint_2019", "iis"]}]}
-        assert {s.machine for s in account_rules.implicit_admins(doc, [])} == {"sp01", "dc01"}
-
-    def test_nothing_generated_without_a_product_role(self):
-        doc = {"nodes": [{"id": "dc01", "os": "windows-server-2022", "services": ["active_directory"]}]}
-        assert account_rules.implicit_admins(doc, []) == []
-
-    def test_sync_issues_a_sealed_admin_the_range_keeps(self, db_session):
+    def test_sync_issues_sealed_logins_the_range_keeps(self, db_session):
         tenant = real_tenant(db_session).id
-        tmpl = Template(id=uuid.uuid4(), tenant_id=tenant, name="prod", version="1",
-                        yaml=json.dumps(self.DOC))
+        tmpl = Template(id=uuid.uuid4(), tenant_id=tenant, name="prod", version="1", yaml=json.dumps(self.DOC))
         db_session.add(tmpl)
         rng = Range(id=uuid.uuid4(), tenant_id=tenant, name="r", template_id=tmpl.id, state=RangeState.created)
         db_session.add(rng)
         db_session.flush()
         cred_service.sync(db_session, rng)
-        rows = {(r.machine, r.username): r for r in db_session.query(RangeCredential).all()}
-        exch = rows[("exch01", "Administrator")]
+        exch = db_session.query(RangeCredential).filter_by(machine="exch01", username="Administrator").one()
         assert exch.generated and exch.role == "admin" and exch.student_visible is False and exch.password
         first = exch.password
         cred_service.sync(db_session, rng)  # a second sync keeps the same generated password
         assert db_session.query(RangeCredential).filter_by(machine="exch01", username="Administrator").one().password \
             == first
 
-    def test_another_tenants_template_still_gets_this_ranges_generated_admins(self, db_session):
+    def test_another_tenants_template_still_gets_this_ranges_generated_logins(self, db_session):
         owner, user = real_tenant(db_session).id, real_tenant(db_session).id
-        doc = {**self.DOC, "accounts": [{"machine": "dc01", "username": "Administrator", "password": "Owner-Pw-1!x",
-                                         "student_visible": False, "role": "admin"}]}
+        doc = {**self.DOC, "accounts": [{"machine": "dc01", "username": "jdoe", "password": "Owner-Pw-1!x",
+                                         "scenario": True, "student_visible": False}]}
         tmpl = Template(id=uuid.uuid4(), tenant_id=owner, name="public", version="1", yaml=json.dumps(doc))
         db_session.add(tmpl)
         rng = Range(id=uuid.uuid4(), tenant_id=user, name="r", template_id=tmpl.id, state=RangeState.created)
@@ -956,13 +1006,9 @@ class TestImplicitDomainAdmins:
         db_session.flush()
         cred_service.sync(db_session, rng)
         rows = {(r.machine, r.username): r for r in db_session.query(RangeCredential).filter_by(range_id=rng.id)}
-        # Not the owner tenant's declared password, but generated per range for both machines.
-        assert set(rows) == {("dc01", "Administrator"), ("exch01", "Administrator")}
+        # None of the owner tenant's declared accounts, but this range's own generated logins.
+        assert set(rows) == {("dc01", "Administrator"), ("exch01", "Administrator"), ("web01", "ubuntu")}
         assert all(r.generated and r.password != "Owner-Pw-1!x" for r in rows.values())
-        exch_first = rows[("exch01", "Administrator")].password
-        cred_service.sync(db_session, rng)  # unchanged on the next sync
-        assert db_session.query(RangeCredential).filter_by(
-            range_id=rng.id, machine="exch01", username="Administrator").one().password == exch_first
 
 
 class TestBeingSetUp:

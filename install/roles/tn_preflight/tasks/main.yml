@@ -65,30 +65,12 @@
       upper-case letter, a lower-case letter, a digit and a symbol (Sysprep sets it).
     success_msg: "Windows template password: {{ 'set' if _pw | length else 'not set' }}"
 
-- name: Preflight — vault_range_default_password is deprecated
+- name: Preflight — vault_range_default_password is ignored
   ansible.builtin.debug:
     msg: >-
-      DEPRECATED: vault_range_default_password. Set vault_template_windows_admin_password (the
-      templates' Windows build password) instead; the old setting is used only while that is
-      empty{{ ' (it is empty now, so the old one is in use)'
-            if not (tn_template_windows_admin_password | default('') | string | length) else
-            ' (it is set, so the old one is ignored)' }}.
+      IGNORED: vault_range_default_password. Since ADR 0013 no range machine gets a site-wide
+      password: every account is generated per range. Remove it from the vault.
   when: tn_range_default_password | default('') | string | length > 0
-
-- name: Preflight — the generic range password is usable
-  vars:
-    _pw: "{{ tn_range_default_password | default('') | string }}"
-  ansible.builtin.assert:
-    that: >-
-      _pw | length == 0 or (
-        _pw | length >= 8 and _pw | length <= 128
-        and "'" not in _pw and '\n' not in _pw and '\r' not in _pw
-        and _pw is search('[A-Z]') and _pw is search('[a-z]') and _pw is search('[0-9]')
-        and _pw is search('[^A-Za-z0-9]'))
-    fail_msg: >-
-      vault_range_default_password must be empty, or 8-128 characters with an upper-case
-      letter, a lower-case letter, a digit and a symbol, and no single quote or newline.
-    success_msg: "range default password: {{ 'set' if _pw | length else 'not set (random per VM)' }}"
 
 # The templates' build login goes into .env.production single-quoted. Never prints a value.
 - name: Preflight — the template build login is usable
@@ -103,6 +85,22 @@
       vault_template_windows_admin_password, tn_template_linux_user and
       vault_template_linux_password must not contain a single quote or a newline.
     success_msg: "template build login: no quotes or newlines"
+
+# ADR 0013 §3: every built range VM is proven not to accept its golden template's password.
+# Under enforce (the default) the worker refuses to start without those passwords, so say it
+# here, before deploying. Never prints a value.
+- name: Preflight — the template-login check can run (RANGE_TEMPLATE_LOGIN_CHECK=enforce)
+  ansible.builtin.assert:
+    that: >-
+      (tn_range_template_login_check | default('enforce')) == 'warn' or not (tn_uses_vcenter | bool) or (
+        (tn_template_windows_admin_password | default('') | string | length) > 0
+        and (tn_template_linux_password | default('') | string | length) > 0)
+    fail_msg: >-
+      tn_range_template_login_check is enforce (the default) but vault_template_windows_admin_password
+      or vault_template_linux_password is empty: the worker could never prove a range VM no longer
+      accepts the golden template's password, and refuses to start. Set both (the Packer build
+      values), or set tn_range_template_login_check: warn to build without that proof.
+    success_msg: "template-login check: {{ tn_range_template_login_check | default('enforce') }}"
 
 # SharePoint SE's product key goes into .env.production single-quoted; the worker refuses a
 # malformed one at deploy anyway. Never prints the key.

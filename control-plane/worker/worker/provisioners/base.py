@@ -272,6 +272,18 @@ class BaseProvisioner(ABC):
         """
         raise NotImplementedError(f"{type(self).__name__} cannot run commands inside a guest")
 
+    # A backend that can change account passwords inside running guests (ADR 0013 §3: a
+    # Student's passwords are new after every reset; an admin may rotate any account).
+    supports_credential_rotation: bool = False
+
+    async def rotate_guest_passwords(self, range_id: str, vms: list[dict], timeout: float) -> dict[str, dict]:
+        """Set new passwords inside running VMs of ``range_id`` (worker/credential_rotation.py).
+        Each of ``vms`` is ``{vm_id, name, family, logins, changes}``: ``logins`` the admin
+        logins to try, one attempt each (``GuestLogin``), ``changes`` the new passwords
+        (``GuestLogin``). Returns VM name -> ``{"applied": [usernames verified by a login],
+        "error": str}``. Never logs or returns a password."""
+        raise NotImplementedError(f"{type(self).__name__} cannot change passwords inside a guest")
+
     @contextlib.asynccontextmanager
     async def session(self) -> AsyncIterator[BaseProvisioner]:
         """Scope for several calls in a row (one scheduled run over many ranges).

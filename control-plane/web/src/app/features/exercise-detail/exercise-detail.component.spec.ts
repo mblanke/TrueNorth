@@ -215,10 +215,11 @@ describe('ExerciseDetailComponent range accounts (ADR 0012)', () => {
     api.getRangeDiagram.and.returnValue(of({ range_id: 'r1', diagram_json: null }));
     api.listInjects.and.returnValue(of([]));
     api.listDetections.and.returnValue(of([]));
-    creds = jasmine.createSpyObj('RangeCredentialsApiService', ['getCredentials']);
-    creds.getCredentials.and.returnValue(of({ range_id: 'r1', scope: 'student', accounts: [
-      { machine: 'jump01', username: 'analyst', password: 'Jump-Secret-2!', role: 'user', student_visible: true,
-        generated: true, applied: true, notes: 'The way in' }] }));
+    creds = jasmine.createSpyObj('RangeCredentialsApiService', ['list', 'reveal', 'rotate']);
+    creds.list.and.returnValue(of({ range_id: 'r1', scope: 'student', accounts: [
+      { id: 'c-an', machine: 'jump01', username: 'analyst', role: 'user', student_visible: true,
+        generated: true, applied: true, source: 'declared', scenario: false, setup_status: 'applied',
+        rotated_at: null, notes: 'The way in' }] }));
     await TestBed.configureTestingModule({
       imports: [ExerciseDetailComponent, NoopAnimationsModule],
       providers: [
@@ -240,13 +241,13 @@ describe('ExerciseDetailComponent range accounts (ADR 0012)', () => {
   it("offers a Student their own accounts for the exercise's range, on request", async () => {
     const el = await render('student');
     expect(el.textContent).toContain('Your accounts');
-    expect(creds.getCredentials).not.toHaveBeenCalled();
+    expect(creds.list).not.toHaveBeenCalled();
     const show = Array.from(el.querySelectorAll('button')).find(b => b.textContent?.includes('Show accounts'))!;
     show.click();
     fixture.detectChanges();
-    expect(creds.getCredentials).toHaveBeenCalledOnceWith('r1');
+    expect(creds.list).toHaveBeenCalledOnceWith({ kind: 'range', rangeId: 'r1' });
     expect(el.textContent).toContain('analyst');
-    expect(el.textContent).not.toContain('Jump-Secret-2!');
+    expect(creds.reveal).not.toHaveBeenCalled();
   });
 
   it('shows observers no accounts panel', async () => {

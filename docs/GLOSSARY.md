@@ -105,7 +105,7 @@ plain base image.
 A login a range template lists under `accounts:` for one machine, with its password (or
 "generate") and whether Students get it (`control-plane/api/app/range_credentials/accounts.py`).
 Stored sealed. ADR 0012 §12.
-_Not to be confused with_: applied account; template default.
+_Not to be confused with_: applied account; implicit staff login.
 
 **Applied account**:
 A declared account that the last build reported actually setting on the VM
@@ -113,11 +113,22 @@ A declared account that the last build reported actually setting on the VM
 applied accounts.
 _Not to be confused with_: declared account, which may not be set yet.
 
-**Template default** (login):
-The golden template's generic build login, shown to staff only for a machine with no
-declared account (`range_credentials/template_defaults.py`; API `source: template_default`).
-_Avoid_: default password, build password (in user-facing text).
-_Not to be confused with_: declared account.
+**Implicit staff login**:
+A generated, staff-only account TrueNorth adds for a built-in login a machine's golden
+template carries and the range template does not declare: the built-in Administrator, the
+Linux build user, Security Onion's `soadmin` (`accounts.implicit_staff_logins`; API
+`source: implicit`). It is how the template password is replaced at deploy (ADR 0013 §3).
+On a lab session's range it is handed to the Student.
+_Not to be confused with_: declared account; the template password, which no deployed VM
+keeps (the "template default" of ADR 0012 is gone).
+
+**Scenario account**:
+A declared account with `scenario: true`: its typed-in password is part of the exercise
+(the weak password is the lesson). Kept as authored, never rotated; never a staff login.
+
+**Reveal** (credential):
+Showing one account's password on the credentials panel (`POST
+.../credentials/{id}/reveal`). Every reveal is an audit row; the list never carries passwords.
 
 **Build network**:
 The isolated network golden templates are built on: port group `dPG-TN-BUILD`, VLAN 31,

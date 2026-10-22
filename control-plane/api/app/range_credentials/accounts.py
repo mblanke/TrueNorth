@@ -9,17 +9,31 @@
         student_visible: false   # handed to Students taking part in the range
         role: admin              # admin | user (default user)
         notes: Domain admin      # optional
+      - machine: ws01
+        username: jsmith
+        password: "Summer2024!"  # a typed-in password: only with scenario: true
+        scenario: true           # the weak password is the lesson; never rotated
+        student_visible: false
 
 The JSON Schema (scenario-engine/schemas/template.schema.json) checks the shape; this
 module adds what a schema cannot: the machine exists in the template, a username appears
 once per machine (case-insensitively: Windows account names are), and a typed-in password
 for a Windows machine meets Windows complexity.
 
+ADR 0013 §3 (owner decision 2026-10-21): every password is generated per range, except a
+**scenario** account's (``scenario: true``), whose typed-in password is part of the
+exercise and is kept as authored (not rotated; the row says so). A scenario account is
+never a staff login: not ``role: admin``, not the built-in Administrator, the Linux build
+user or Security Onion's ``soadmin`` (``reserved_logins``). ``implicit_staff_logins`` adds a
+generated row for each of those a template leaves undeclared, so no machine keeps its
+golden template's build password.
+
 A typed-in password is never stored as typed: ``seal_yaml`` replaces it in the stored
-template with a range-credential seal (``seal.py``, ``tnsec:rc1:...``, a key derived for
-this purpose only) on create and update; ``parse`` unseals it where it is used (the
-credentials sync) and refuses any other sealed value (a hypervisor, AI or LTI secret pasted
-in). ``redact_yaml`` masks passwords for readers who may not see them, from the parsed
+template with a template seal (``seal.py``, ``tnsec:rt1:...``, a key derived for this purpose
+only, bound to the template's tenant) on create and update; ``parse`` unseals it where it is
+used (the credentials sync) and refuses any other sealed value: a hypervisor, AI or LTI
+secret, a stored range credential, another tenant's template seal, a pre-ADR 0013 ``rc1``
+token. Every call names the template's tenant (``tenant_id``; None for a global template). ``redact_yaml`` masks passwords for readers who may not see them, from the parsed
 document (decoded keys), never by searching the text.
 
 Which machines are Windows is decided as the worker decides it (``machine_os`` mirrors
@@ -29,6 +43,7 @@ worker/render.py and vsphere_infra.os_family; tests/contracts/test_account_os_ma
 from __future__ import annotations
 
 import contextlib
+import os
 import re
 import secrets
 import string
@@ -41,7 +56,7 @@ from .. import safe_yaml
 from . import seal as rc_seal
 
 ROLES = ("admin", "user")
-FIELDS = frozenset({"machine", "username", "password", "generate", "student_visible", "role", "notes"})
+FIELDS = frozenset({"machine", "username", "password", "generate", "student_visible", "role", "notes", "scenario"})
 MAX_ACCOUNTS = 500
 MAX_PASSWORD = 128
 MAX_NOTES = 500
@@ -65,6 +80,8 @@ class AccountSpec:
     student_visible: bool
     role: str
     notes: str
+    scenario: bool = False  # a typed-in password authored on purpose (never rotated)
+    source: str = "declared"  # declared | implicit (models.DECLARED / IMPLICIT)
 
     @property
     def key(self) -> tuple[str, str]:
@@ -132,47 +149,98 @@ def machines(doc: dict[str, Any]) -> dict[str, str]:
     return out
 
 
-# Role-image roles whose deploy-time product setup joins the range domain and runs as the
-# domain Administrator (worker/provisioners/vsphere_products.py). A range with one of these
-# gets a per-range generated Administrator on the product VM and on each domain controller,
-# so one range's compromise does not expose another range's domain admin (ADR 0012).
-PRODUCT_ROLES = frozenset({"exchange", "sharepoint", "sharepoint-2019", "mecm"})
 ADMIN = "administrator"
+LINUX_USER_ENV = "TN_TEMPLATE_LINUX_USER"  # the golden Linux templates' build user (a name, never a password)
+SO_USER_ENV = "VSPHERE_SO_INSTALL_USER"  # Security Onion's build login (a name)
+DEFAULT_LINUX_USER = "ubuntu"  # infra/vsphere/packer ssh_username's default
+DEFAULT_SO_USER = "soadmin"
+
+# vsphere_infra.os_family and vsphere_securityonion.is_securityonion, mirrored (the API may not
+# import the worker; tests/contracts/test_account_os_matches_worker.py keeps them equal).
+APPLIANCE_PREFIXES = ("pfsense", "opnsense", "vyos")
+APPLIANCE_ROLES = frozenset({"firewall", "router", "gateway"})
+SECURITY_ONION = "securityonion"
 
 
-def _node_roles(node: dict[str, Any]) -> list[str]:
-    from .. import windows_roles
-    os_name = str(node.get("os") or node.get("os_template") or node.get("type") or "")
-    if not windows_roles.is_windows_server(os_name):
-        return []
-    return windows_roles.roles_of(node.get("services"))
+def family(os_name: str, role: str) -> str:
+    """``windows``, ``appliance`` or ``linux``, as the worker's os_family decides."""
+    os_name = (os_name or "").lower()
+    if "win" in os_name:
+        return "windows"
+    if os_name.startswith(APPLIANCE_PREFIXES) or (role or "").lower() in APPLIANCE_ROLES:
+        return "appliance"
+    return "linux"
 
 
-def implicit_admins(doc: dict[str, Any] | None, declared: list[AccountSpec]) -> list[AccountSpec]:
-    """Generated Administrator specs for the product VMs and domain controllers of a template
-    that has a product role image, where the template declares no Administrator for them. Each
-    range gets its own (``generate``), issued and sealed by the credential service; staff-only."""
+def machine_families(doc: dict[str, Any]) -> dict[str, str]:
+    """Machine id -> family, for every machine the worker builds from ``doc``."""
+    roles = {str(n.get("id")): str(n.get("role") or "") for n in built_from(doc)}
+    return {m: family(os_name, roles.get(m, "")) for m, os_name in machine_os(doc).items()}
+
+
+def is_securityonion(os_name: str) -> bool:
+    return (os_name or "").strip().lower() == SECURITY_ONION
+
+
+def linux_build_user() -> str:
+    return os.getenv(LINUX_USER_ENV, "").strip() or DEFAULT_LINUX_USER
+
+
+def so_build_user() -> str:
+    return os.getenv(SO_USER_ENV, "").strip() or DEFAULT_SO_USER
+
+
+def reserved_logins() -> frozenset[str]:
+    """Account names that are always staff logins (case-folded): never a scenario account."""
+    return frozenset({ADMIN, linux_build_user().casefold(), so_build_user().casefold()})
+
+
+IMPLICIT_NOTES = {
+    "windows": "Built-in Administrator, generated per range (replaces the template password at deploy)",
+    "linux": "Build user of the golden template, generated per range (replaces the template password at deploy)",
+    SECURITY_ONION: "Security Onion OS login, generated per range (set when its setup finishes)",
+}
+
+
+def implicit_staff_logins(doc: dict[str, Any] | None, declared: list[AccountSpec], *,
+                          student_visible: bool = False) -> list[AccountSpec]:
+    """A generated row for each built-in login a machine's golden template carries that the
+    template does not declare (ADR 0013 §3): the built-in Administrator of a Windows machine,
+    the Linux build user (``TN_TEMPLATE_LINUX_USER``) of a Linux one, ``soadmin``
+    (``VSPHERE_SO_INSTALL_USER``) of a Security Onion node. The worker sets each at deploy
+    (Sysprep, cloud-init, the Security Onion setup), so the template password stops working.
+
+    It replaces ADR 0012's product-only ``implicit_admins``: every Windows machine now gets
+    its own Administrator, the product VMs and domain controllers included.
+
+    ``role: admin``, staff-only, except for a lab session's range (``student_visible``),
+    which is the Student's own (owner decision 2026-10-21). Appliances get none: their
+    logins are their own configuration (a follow-up issue)."""
     if not isinstance(doc, dict):
         return []
-    nodes = built_from(doc)
-    product = [str(n["id"]) for n in nodes if n.get("id") and (set(_node_roles(n)) & PRODUCT_ROLES)]
-    if not product:
-        return []
-    dcs = [str(n["id"]) for n in nodes if n.get("id")
-           and ("ad-ds" in _node_roles(n) or str(n.get("role", "")).lower() == "domain_controller")]
-    have = {spec.machine for spec in declared if spec.username.casefold() == ADMIN}
+    have = {spec.key for spec in declared}
+    os_of = machine_os(doc)
     out: list[AccountSpec] = []
-    for machine in dict.fromkeys(product + dcs):  # product first, de-duplicated, order kept
-        if machine in have:
+    for machine, fam in machine_families(doc).items():
+        if fam == "appliance":
             continue
-        out.append(AccountSpec(machine=machine, username="Administrator", password=None, generate=True,
-                               student_visible=False, role="admin",
-                               notes="generated: per-range domain Administrator for the product setup (ADR 0012)"))
+        if is_securityonion(os_of.get(machine, "")):
+            username, kind = so_build_user(), SECURITY_ONION
+        elif fam == "windows":
+            username, kind = "Administrator", "windows"
+        else:
+            username, kind = linux_build_user(), "linux"
+        if (machine, username.casefold()) in have:
+            continue
+        out.append(AccountSpec(machine=machine, username=username, password=None, generate=True,
+                               student_visible=student_visible, role="admin", notes=IMPLICIT_NOTES[kind],
+                               source="implicit"))
     return out
 
 
-def parse(doc: dict[str, Any] | None) -> tuple[list[AccountSpec], list[dict[str, str]]]:
-    """The accounts a template declares, and what is wrong with them (``{path, message}``).
+def parse(doc: dict[str, Any] | None, *, tenant_id) -> tuple[list[AccountSpec], list[dict[str, str]]]:
+    """The accounts a template of ``tenant_id`` declares, and what is wrong with them
+    (``{path, message}``).
 
     Only a document with no errors should be acted on; callers refuse it (422) otherwise."""
     if not isinstance(doc, dict) or doc.get("accounts") is None:
@@ -210,10 +278,10 @@ def parse(doc: dict[str, Any] | None) -> tuple[list[AccountSpec], list[dict[str,
         password = item.get("password")
         if rc_seal.looks_sealed(password):
             try:
-                password = rc_seal.unseal(password)
+                password = rc_seal.unseal(password, tenant_id)
             except rc_seal.NotARangeSealError:
-                bad("password is a sealed value (tnsec:) that is not a range-account seal this platform made, "
-                    "so it cannot unseal it; type the password or use generate: true", "password")
+                bad("password is a sealed value (tnsec:) that is not this tenant's template seal, so it cannot "
+                    "be used; type the password or use generate: true", "password")
                 password = ""
         generate = item.get("generate", False)
         if not isinstance(generate, bool):
@@ -238,6 +306,20 @@ def parse(doc: dict[str, Any] | None) -> tuple[list[AccountSpec], list[dict[str,
         role = item.get("role", "user")
         if role not in ROLES:
             bad(f"role must be one of {', '.join(ROLES)}", "role")
+        scenario = item.get("scenario", False)
+        if not isinstance(scenario, bool):
+            bad("scenario must be true or false", "scenario")
+            scenario = False
+        if scenario and password is None:
+            bad("scenario: true is for a typed-in password the exercise needs; set password (or drop scenario "
+                "and use generate: true)", "scenario")
+        elif password is not None and not scenario:
+            bad("a typed-in password is allowed only on a scenario account (scenario: true), whose weak password "
+                "is part of the exercise; use generate: true (ADR 0013)", "password")
+        if scenario and (role == "admin" or (isinstance(username, str)
+                                             and username.casefold() in reserved_logins())):
+            bad("a staff login (role: admin, Administrator, the Linux build user or soadmin) cannot be a scenario "
+                "account: its password is always generated (ADR 0013)", "scenario")
         notes = item.get("notes", "")
         if notes is None:
             notes = ""
@@ -254,18 +336,18 @@ def parse(doc: dict[str, Any] | None) -> tuple[list[AccountSpec], list[dict[str,
         specs.append(AccountSpec(
             machine=machine_id, username=username, password=password if isinstance(password, str) else None,
             generate=bool(generate), student_visible=visible is True, role=role if role in ROLES else "user",
-            notes=notes if isinstance(notes, str) else "",
+            notes=notes if isinstance(notes, str) else "", scenario=scenario is True,
         ))
     return (specs if not errors else []), errors
 
 
-def parse_yaml(text: str | None) -> tuple[list[AccountSpec], list[dict[str, str]]]:
+def parse_yaml(text: str | None, *, tenant_id) -> tuple[list[AccountSpec], list[dict[str, str]]]:
     """``parse`` on template YAML. Unparseable YAML declares nothing (it is refused elsewhere)."""
     try:
         doc = safe_yaml.load(text or "")
     except yaml.YAMLError:  # safe_yaml refusals included
         return [], []
-    return parse(doc if isinstance(doc, dict) else None)
+    return parse(doc if isinstance(doc, dict) else None, tenant_id=tenant_id)
 
 
 def generate_password(username: str = "", length: int = GENERATED_LENGTH) -> str:
@@ -283,8 +365,9 @@ def _load(text: str | None) -> Any:
     return safe_yaml.load(text or "")
 
 
-def seal_yaml(text: str | None) -> str | None:
-    """The template to store: every typed-in ``accounts[].password`` sealed (``tnsec:rc1:``).
+def seal_yaml(text: str | None, *, tenant_id) -> str | None:
+    """The template of ``tenant_id`` to store: every typed-in ``accounts[].password`` sealed
+    (``tnsec:rt1:``, bound to the tenant).
 
     Unchanged (formatting and comments kept) when there is nothing to seal. Call after
     ``parse`` accepted the document: a sealed value that does not unseal is refused there."""
@@ -298,12 +381,12 @@ def seal_yaml(text: str | None) -> str | None:
     for item in doc["accounts"]:
         pw = item.get("password") if isinstance(item, dict) else None
         if isinstance(pw, str) and pw and not rc_seal.looks_sealed(pw):
-            item["password"] = rc_seal.seal(pw)
+            item["password"] = rc_seal.seal(pw, tenant_id)
             changed = True
     return yaml.safe_dump(doc, sort_keys=False, allow_unicode=True) if changed else text
 
 
-def redact_yaml(text: str | None) -> str:
+def redact_yaml(text: str | None, *, tenant_id) -> str:
     """Template YAML for a reader who may not see passwords: every ``accounts[].password``
     (sealed or not) is ``REDACTED``, and so is any of the template's passwords wherever else
     it appears in the document (another account's notes, a description, a key).
@@ -325,7 +408,7 @@ def redact_yaml(text: str | None) -> str:
         if isinstance(pw, str) and pw:
             plains.add(pw)  # the stored token, or a password typed in before sealing
             with contextlib.suppress(Exception):  # not ours, or no key: masked as stored
-                plains.add(rc_seal.unseal(pw))
+                plains.add(rc_seal.unseal(pw, tenant_id))
         item["password"] = REDACTED
     # Longest first, so a password containing another is masked whole.
     return yaml.safe_dump(_mask(doc, sorted(plains, key=len, reverse=True)), sort_keys=False, allow_unicode=True)

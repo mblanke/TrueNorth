@@ -5,6 +5,7 @@ import { provideRouter } from '@angular/router';
 import { RangesComponent } from './ranges.component';
 import { ApiService } from '@core/services/api.service';
 import { NotificationService } from '@core/services/notification.service';
+import { RangeCredentialsApiService } from '@core/services/range-credentials-api.service';
 import { Range, Template } from '@core/models';
 
 describe('RangesComponent', () => {
@@ -12,6 +13,7 @@ describe('RangesComponent', () => {
   let fixture: ComponentFixture<RangesComponent>;
   let mockApi: jasmine.SpyObj<ApiService>;
   let mockNotify: jasmine.SpyObj<NotificationService>;
+  let issuesApi: jasmine.SpyObj<RangeCredentialsApiService>;
 
   const mockRanges: Partial<Range>[] = [
     { id: 'r1', name: 'Range A', state: 'ready', created_at: '2026-01-15T10:00:00Z' },
@@ -38,6 +40,8 @@ describe('RangesComponent', () => {
     ]);
     mockNotify = jasmine.createSpyObj('NotificationService', ['success', 'error', 'info']);
 
+    issuesApi = jasmine.createSpyObj('RangeCredentialsApiService', ['templateIssues']);
+    issuesApi.templateIssues.and.returnValue(of([]));
     mockApi.listRanges.and.returnValue(of(mockRanges as Range[]));
     mockApi.listTemplates.and.returnValue(of(mockTemplates as Template[]));
     mockApi.createRange.and.returnValue(of({ id: 'r5', name: 'New', state: 'created' } as Range));
@@ -55,6 +59,7 @@ describe('RangesComponent', () => {
         provideRouter([]),
         { provide: ApiService, useValue: mockApi },
         { provide: NotificationService, useValue: mockNotify },
+        { provide: RangeCredentialsApiService, useValue: issuesApi },
       ],
     }).compileComponents();
 
