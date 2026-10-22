@@ -195,21 +195,34 @@ def network_allocation(output: dict, reservations: list, external: list,
     return PASS, f"{summary}; no collision with VLANs used outside TrueNorth (live checks, S1)", detail
 
 
-TEMPLATE_LOGIN_OK = ("rejected", "not_checked")
+REFUSED = "rejected"  # a login with the template password was tried and refused
+SELF_REPORTED = "rejected_self_reported"  # an appliance reported the template password replaced
+TEMPLATE_LOGIN_OK = (REFUSED, SELF_REPORTED)
 
 
 def credentials(output: dict, accounts: list) -> tuple[str, str, dict]:
-    """S3 (#241): the golden template's password must be refused on every VM
-    (``vms[].template_login``: rejected / accepted / inconclusive / not_checked, the last
-    for appliances), and the range's own accounts set: no change pending, every
+    """S3 (#241): the golden template's password must be gone from every VM
+    (``vms[].template_login``), and the range's own accounts set: no change pending, every
     Student-visible account applied by this build (a rebuild gives Students new passwords,
     so applied means rotated). Scenario accounts keep their authored passwords by design.
+
+    Appliances (pfSense, OPNsense, VyOS; issue #248): ``rejected`` (``method: ssh``) is a
+    refused login like any other VM's. ``rejected_self_reported`` (``method:
+    guestinfo_ack``) is not a refusal and the summary never calls it one: "template password
+    replaced, reported by the appliance". It still passes the section, because (a) the
+    report is the appliance's own boot hook comparing the hash in force with the one the
+    worker generated (a SHA-256 fingerprint of it, which the template's hash cannot match),
+    (b) the login attempt that would prove more is blocked by the range's own WAN policy by
+    design, and VMware guest operations do not run on these images, so requiring it would
+    leave every range with a firewall incomplete for good. ``unsupported_template``
+    (a template built before #248), ``inconclusive`` and the pre-#248 ``not_checked`` stay
+    ``incomplete``.
 
     ``fail``: the template password still logs in on a VM. ``incomplete``: a check
     inconclusive or missing, a change pending, or a Student account not applied yet."""
     vms = _vms(output)
     logins = [{"vm": v.get("name", ""), **{k: (v.get("template_login") or {}).get(k)
-                                            for k in ("status", "username", "detail")}} for v in vms]
+                                            for k in ("status", "username", "method", "detail")}} for v in vms]
     rows = [{"machine": a.machine, "username": a.username, "student_visible": bool(a.student_visible),
              "generated": bool(a.generated), "scenario": bool(a.scenario), "applied": bool(a.applied),
              "pending": a.sealed_previous is not None or bool(a.pending_operation),
@@ -223,8 +236,6 @@ def credentials(output: dict, accounts: list) -> tuple[str, str, dict]:
     unproven = sorted(r["vm"] for r in logins if r["status"] not in TEMPLATE_LOGIN_OK)
     if unproven:
         return INCOMPLETE, f"template-password check not proven on {', '.join(unproven)}", detail
-    if not any(r["status"] == "rejected" for r in logins):
-        return INCOMPLETE, "no VM's template-password check was made (appliances only)", detail
     pending = sorted(f"{r['machine']}/{r['username']}" for r in rows if r["pending"])
     if pending:
         return INCOMPLETE, f"a credential change is still pending on {', '.join(pending)}", detail
@@ -233,8 +244,12 @@ def credentials(output: dict, accounts: list) -> tuple[str, str, dict]:
     if unset:
         return INCOMPLETE, f"Student account(s) not set by this build yet: {', '.join(unset)}", detail
     students = sum(1 for r in rows if r["student_visible"] and not r["scenario"])
-    return PASS, (f"template password refused on {sum(1 for r in logins if r['status'] == 'rejected')} VM(s); "
-                  f"{students} Student account(s) set with this build's passwords"), detail
+    refused = sum(1 for r in logins if r["status"] == REFUSED)
+    reported = sum(1 for r in logins if r["status"] == SELF_REPORTED)
+    parts = ([f"template password refused on {refused} VM(s)"] if refused else []) + (
+        [f"template password replaced, reported by the appliance, on {reported} VM(s) (no login attempt)"]
+        if reported else [])
+    return PASS, "; ".join([*parts, f"{students} Student account(s) set with this build's passwords"]), detail
 
 
 TEARDOWN_LISTS = ("deleted", "remaining", "unidentified", "not_checked", "confirmed_deleted", "confirm_skipped", "gaps")

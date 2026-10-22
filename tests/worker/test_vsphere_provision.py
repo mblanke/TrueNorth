@@ -659,6 +659,7 @@ def vc(monkeypatch):
         "VSPHERE_RANGE_UPLINK_NETWORK": "", "VSPHERE_RANGE_UPLINK_POOL": "", "VSPHERE_RANGE_UPLINK_GATEWAY": "",
         "VSPHERE_RANGE_UPLINK_PREFIX": 24, "TN_DEPOT_URL": "", "TN_DEPOT_CHOCO_FEED": "", "TN_DEPOT_APT_PROXY": "",
         "TN_SOFTWARE_INSTALL_TIMEOUT": 1800, "VSPHERE_PROVISION_BUDGET": 3300, "TN_DEPOT_PORTS": "8081,3142",
+        "RANGE_APPLIANCE_ACK_TIMEOUT": 0,
     }.items():
         monkeypatch.setattr(mod, name, value)
     return FAKE
@@ -2024,7 +2025,8 @@ class TestMirrorSessions:
         monkeypatch.setenv("RANGE_TEMPLATE_LOGIN_CHECK", "warn")
         result = _run(_prov(vc).provision(RANGE_ID, _mirror_build(), {"used_vlans": [100, 101]}))
         assert result.status == "ok", result.errors
-        assert result.warnings == []
+        # The firewall has no range admin row here, so its template-login check says so (issue #248).
+        assert [w for w in result.warnings if "template-password check inconclusive" not in w] == []
 
         # The RSPAN VLAN is reserved from the pool like a zone's, but gets no port group.
         rspan = next(n for n in result.networks if n.get("rspan"))

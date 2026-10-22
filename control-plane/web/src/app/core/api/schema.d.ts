@@ -14417,7 +14417,7 @@ export interface components {
         RangeCredentialOut: {
             /**
              * Applied
-             * @description The last build or rotation reported setting it. False: not set by TrueNorth (Windows accounts other than Administrator, appliances, other backends, a pending rotation, or not built yet). Students only ever get applied accounts
+             * @description The last build or rotation reported setting it. False: not set by TrueNorth (Windows accounts other than Administrator, appliance accounts other than their admin, an appliance that has not acknowledged its admin password, other backends, a pending rotation, or not built yet). Students only ever get applied accounts
              */
             applied: boolean;
             /**
@@ -14472,7 +14472,7 @@ export interface components {
             setup_status?: "applied" | "being_set_up" | "not_set";
             /**
              * Source
-             * @description declared: the range template's accounts:. implicit: a staff login TrueNorth adds so the machine does not keep its golden template's build password (built-in Administrator, Linux build user, soadmin)
+             * @description declared: the range template's accounts:. implicit: a staff login TrueNorth adds so the machine does not keep its golden template's build password (built-in Administrator, Linux build user, soadmin, a pfSense/OPNsense/VyOS admin)
              * @default declared
              * @enum {string}
              */

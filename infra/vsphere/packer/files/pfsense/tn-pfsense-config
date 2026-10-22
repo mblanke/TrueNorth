@@ -38,6 +38,21 @@
  * the firewall reboots once into it. Any problem: log it, change nothing, exit 1.
  * Log: /conf/tn-pfsense-config.log (and syslog).
  *
+ * The range's own admin password (issue #248, worker/appliance_admin.py), first on boot:
+ *   guestinfo.tn.pfsense.admin      a bcrypt HASH (never a password) for the admin user
+ *                                   (OPNsense: root, its <password> field)
+ *   guestinfo.tn.pfsense.admin_ack  written here: the first 16 hex digits of sha256(hash)
+ *                                   once that hash is the one in force, or "failed <why>"
+ * A hash the config does not hold yet is written into the admin user (whatever hash it had
+ * is removed) and the firewall reboots into it (also when the config itself is unchanged,
+ * and also when applying the config then fails), so the boot that loads it syncs the
+ * system accounts. On the boot that finds it already in force: acknowledge, then clear the
+ * key (info-set to empty; the worker also removes it from the VM's configuration once it
+ * read the acknowledgement). One attempt per hash (/conf/tn-admin-attempt holds its
+ * fingerprint): a hash still not in force on the boot after the one that wrote it gets
+ * "failed hash-not-applied" and no further reboot. The hash is never logged or echoed. Anything wrong with it:
+ * "failed <why>", the admin user is left alone, and the per-range config still applies.
+ *
  * OPNsense: the same script, installed in the OPNsense template as
  * /usr/local/sbin/tn-opnsense-config (the name selects the product). It reads
  * guestinfo.tn.opnsense.*, works on /conf/config.xml (root <opnsense>), and `install`
@@ -52,12 +67,20 @@ define('PRODUCT', getenv('TN_FIREWALL_PRODUCT') !== false ? (string)getenv('TN_F
 define('TN_SCRIPT', '/usr/local/sbin/tn-' . PRODUCT . '-config');
 define('KEY_CONFIG', 'guestinfo.tn.' . PRODUCT . '.config');
 define('KEY_IFMAP', 'guestinfo.tn.' . PRODUCT . '.ifmap');
+define('KEY_ADMIN', 'guestinfo.tn.' . PRODUCT . '.admin');
+define('KEY_ADMIN_ACK', 'guestinfo.tn.' . PRODUCT . '.admin_ack');
+define('ADMIN_USER', PRODUCT === 'opnsense' ? 'root' : 'admin');
+define('ADMIN_FIELD', PRODUCT === 'opnsense' ? 'password' : 'bcrypt-hash');
+// pfsense_config.BCRYPT_RE: the only admin value accepted from guestinfo.
+define('BCRYPT_RE', '/^\$2[aby]\$\d\d\$[.\/A-Za-z0-9]{53}\z/');
 // Test seam only (tests/worker/test_pfsense_config.py): a directory holding conf/,
 // guestinfo/<key> files and ifconfig.txt, in place of the firewall. Never set on pfSense.
 define('TEST_ROOT', (string)getenv('TN_PFSENSE_TEST_ROOT'));
 define('CONF_DIR', TEST_ROOT !== '' ? TEST_ROOT . '/conf' : (PRODUCT === 'opnsense' ? '/conf' : '/cf/conf'));
 define('CONF', CONF_DIR . '/config.xml');
 define('STAMP', CONF_DIR . '/tn-guestinfo.sha256');
+// The fingerprint of the admin hash this firewall last wrote and rebooted for (reboot-loop guard).
+define('ADMIN_ATTEMPT', CONF_DIR . '/tn-admin-attempt');
 define('LOGFILE', CONF_DIR . '/tn-' . PRODUCT . '-config.log');
 define('BOOT_COMMAND', '/usr/local/bin/php -q ' . TN_SCRIPT . ' boot');
 // The release's factory config (template mode starts from it when nothing is installed yet).
@@ -83,9 +106,109 @@ function tnlog($msg) {
 	echo 'tn-' . PRODUCT . "-config: $msg\n";
 }
 
+// Set when the admin user's hash was written this boot: the boot must end in a reboot.
+$GLOBALS['TN_REBOOT'] = false;
+$GLOBALS['TN_REBOOTING'] = false;
+
 function fail($msg) {
 	tnlog("NOT applied: $msg");
+	if ($GLOBALS['TN_REBOOT']) {
+		reboot_now('the admin password changed');
+	}
 	exit(1);
+}
+
+function reboot_now($why) {
+	if ($GLOBALS['TN_REBOOTING']) {
+		return;
+	}
+	$GLOBALS['TN_REBOOTING'] = true;
+	if (TEST_ROOT !== '') {
+		tnlog("would reboot ($why)");
+		return;
+	}
+	exec('/bin/sync');
+	tnlog("rebooting: $why");
+	exec('/sbin/shutdown -r now ' . escapeshellarg("TrueNorth: $why"));
+}
+
+function info_set($key, $value) {
+	if (TEST_ROOT !== '') {
+		@file_put_contents(TEST_ROOT . "/guestinfo/$key", $value === '' ? '' : "$value\n");
+		return;
+	}
+	exec('/usr/local/bin/vmware-rpctool ' . escapeshellarg("info-set $key $value") . ' >/dev/null 2>&1');
+}
+
+function admin_failed($why) {
+	tnlog("admin password NOT changed: $why");
+	info_set(KEY_ADMIN_ACK, "failed $why");
+}
+
+/* The range's admin password hash from guestinfo (issue #248). Returns true when config.xml
+   changed (the boot then ends in a reboot); acknowledges once the hash is in force. */
+function admin_password() {
+	$hash = guestinfo(KEY_ADMIN);
+	if ($hash === '') {
+		return false;
+	}
+	if (!preg_match(BCRYPT_RE, $hash)) {
+		admin_failed(KEY_ADMIN . ' holds no bcrypt hash');  // never echo what it holds
+		return false;
+	}
+	$doc = new DOMDocument();
+	$doc->preserveWhiteSpace = false;
+	$doc->formatOutput = true;
+	if (!@$doc->load(CONF) || $doc->documentElement->nodeName !== PRODUCT) {
+		admin_failed('cannot read ' . CONF);
+		return false;
+	}
+	$x = new DOMXPath($doc);
+	$users = $x->query('/' . PRODUCT . "/system/user[name='" . ADMIN_USER . "']");
+	if ($users->length !== 1) {
+		admin_failed('no single ' . ADMIN_USER . ' user in ' . CONF);
+		return false;
+	}
+	$user = $users->item(0);
+	$current = '';
+	foreach ($x->query(ADMIN_FIELD, $user) as $n) {
+		$current = trim($n->textContent);
+	}
+	$fp = substr(hash('sha256', $hash), 0, 16);
+	if (hash_equals($current, $hash)) {
+		@unlink(ADMIN_ATTEMPT);
+		info_set(KEY_ADMIN_ACK, $fp);
+		info_set(KEY_ADMIN, '');
+		tnlog("admin password: the range's own hash is in force for " . ADMIN_USER . " (ack $fp); " . KEY_ADMIN .
+			' cleared');
+		return false;
+	}
+	// One attempt per hash: written, rebooted, and still not in force (something put the old
+	// config back) -> say so and stop, rather than reboot for ever.
+	if (is_file(ADMIN_ATTEMPT) && trim((string)file_get_contents(ADMIN_ATTEMPT)) === $fp) {
+		admin_failed('hash-not-applied');
+		return false;
+	}
+	if (@file_put_contents(ADMIN_ATTEMPT, "$fp\n") === false) {
+		admin_failed('cannot write ' . ADMIN_ATTEMPT);
+		return false;
+	}
+	foreach (array('bcrypt-hash', 'sha512-hash', 'md5-hash', 'password') as $tag) {
+		foreach (iterator_to_array($x->query($tag, $user)) as $n) {
+			$user->removeChild($n);
+		}
+	}
+	set_text($doc, $user->appendChild($doc->createElement(ADMIN_FIELD)), $hash);
+	$out = $doc->saveXML();
+	$tmp = CONF . '.tn-admin';
+	if (@file_put_contents($tmp, $out) !== strlen($out) || !@rename($tmp, CONF)) {
+		@unlink($tmp);
+		admin_failed('cannot write ' . CONF);
+		return false;
+	}
+	@unlink('/tmp/config.cache');
+	tnlog("admin password: the range's own hash written for " . ADMIN_USER . '; acknowledged after the reboot');
+	return true;
 }
 
 function guestinfo($key) {
@@ -207,7 +330,7 @@ function template_config($hashfile) {
 		fail('template mode is for pfSense only');
 	}
 	$hash = trim((string)@file_get_contents($hashfile));
-	if (!preg_match('/^\$(2[aby]|6)\$[.\/A-Za-z0-9$=]{20,}$/', $hash)) {
+	if (!preg_match('/^\$(2[aby]|6)\$[.\/A-Za-z0-9$=]{20,}\z/', $hash)) {
 		fail("no usable password hash (crypt string) in $hashfile");
 	}
 	$src = is_file(CONF) ? CONF : DEFAULT_CONF;
@@ -359,17 +482,16 @@ function apply($mode) {
 		$names[] = "$k->$v";
 	}
 	tnlog("applied per-range config sha256=$hash (" . implode(' ', $names) . ")");
+	if ($mode === 'boot') {
+		reboot_now('per-range config applied');
+		return 0;
+	}
 	if (TEST_ROOT !== '') {
-		tnlog($mode === 'boot' ? 'would reboot' : 'would reload');
+		tnlog('would reload');
 		return 0;
 	}
 	exec('/bin/sync');
-	if ($mode === 'boot') {
-		tnlog('rebooting into the per-range config');
-		exec('/sbin/shutdown -r now "TrueNorth per-range config applied"');
-	} else {
-		exec(PRODUCT === 'opnsense' ? '/usr/local/etc/rc.reload_all' : '/etc/rc.reload_all');
-	}
+	exec(PRODUCT === 'opnsense' ? '/usr/local/etc/rc.reload_all' : '/etc/rc.reload_all');
 	return 0;
 }
 
@@ -386,7 +508,12 @@ switch ($mode) {
 	case 'boot':
 		start_tools();
 		publish_marker();
-		exit(apply($mode));
+		$GLOBALS['TN_REBOOT'] = admin_password();
+		$rc = apply($mode);
+		if ($GLOBALS['TN_REBOOT']) {
+			reboot_now('the admin password changed');
+		}
+		exit($rc);
 	case 'apply':
 		exit(apply($mode));
 	case 'status':

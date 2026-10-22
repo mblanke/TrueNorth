@@ -49,15 +49,17 @@ class RangeCredentialOut(BaseModel):
     source: Literal["declared", "implicit"] = Field(
         "declared", description="declared: the range template's accounts:. implicit: a staff login TrueNorth "
                                 "adds so the machine does not keep its golden template's build password "
-                                "(built-in Administrator, Linux build user, soadmin)")
+                                "(built-in Administrator, Linux build user, soadmin, a pfSense/OPNsense/VyOS "
+                                "admin)")
     student_visible: bool = Field(description="Handed to Students who take part in the range")
     generated: bool = Field(description="TrueNorth made the password up for this range")
     scenario: bool = Field(False, description="A typed-in password the template author chose on purpose (the "
                                               "lesson): authored by design, never rotated")
     applied: bool = Field(description="The last build or rotation reported setting it. False: not set by "
-                                      "TrueNorth (Windows accounts other than Administrator, appliances, other "
-                                      "backends, a pending rotation, or not built yet). Students only ever get "
-                                      "applied accounts")
+                                      "TrueNorth (Windows accounts other than Administrator, appliance accounts "
+                                      "other than their admin, an appliance that has not acknowledged its admin "
+                                      "password, other backends, a pending rotation, or not built yet). Students "
+                                      "only ever get applied accounts")
     setup_status: Literal["applied", "being_set_up", "not_set"] = Field(
         "not_set", description="applied: verified set. being_set_up (staff only): its machine's deploy-time "
                               "setup (product role image / Security Onion) is still running, verified later by the "
