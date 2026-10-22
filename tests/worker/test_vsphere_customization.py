@@ -313,6 +313,51 @@ class TestRecordDeadline:
         assert cz.expired({**vm, "customization": {"status": "ok"}}, 1e12) is None
 
 
+class TestClockSkew:
+    """A Sysprep success may end up to VSPHERE_CUSTOMIZATION_SKEW (300 s) "before" the power-on
+    request (vCenter and worker clocks disagree: the work site's NTP outage); older is the
+    template's leftover."""
+
+    SINCE = datetime(2026, 10, 22, 12, tzinfo=UTC).timestamp()
+
+    def _guest(self, seconds_before: float):
+        end = datetime.fromtimestamp(self.SINCE - seconds_before, UTC)
+        return SimpleNamespace(guest=SimpleNamespace(customizationInfo=SimpleNamespace(
+            customizationStatus=SUCCEEDED, endTime=end, errorMsg=None)))
+
+    @pytest.mark.parametrize("seconds_before,accepted", [
+        (0, True), (120, True), (299, True), (300, True),  # inside the tolerance: this boot's
+        (301, False), (3600, False), (86400 * 3, False),  # past it: left over
+    ])
+    def test_status_both_sides_of_the_tolerance(self, seconds_before, accepted):
+        assert cz.SKEW_SECONDS == 300  # the default (VSPHERE_CUSTOMIZATION_SKEW)
+        seen = cz.read(None, self._guest(seconds_before), since=self.SINCE)
+        assert seen["status"] == (SUCCEEDED if accepted else "")
+        assert ("stale" in seen) is not accepted
+
+    @pytest.mark.parametrize("seconds_before,accepted", [(299, True), (301, False)])
+    def test_events_both_sides_of_the_tolerance(self, seconds_before, accepted):
+        ev = vim.event.CustomizationSucceeded(key=1, createdTime=datetime.fromtimestamp(
+            self.SINCE - seconds_before, UTC))
+        content = SimpleNamespace(eventManager=SimpleNamespace(QueryEvents=lambda spec: [ev]))
+        seen = cz.read(content, vim.VirtualMachine("vm-7", None), since=self.SINCE)
+        assert seen["status"] == (SUCCEEDED if accepted else "")
+
+    def test_the_setting_moves_the_line(self, monkeypatch):
+        monkeypatch.setattr(cz, "SKEW_SECONDS", 60.0)
+        assert cz.read(None, self._guest(59), since=self.SINCE)["status"] == SUCCEEDED
+        assert cz.read(None, self._guest(61), since=self.SINCE)["status"] == ""
+
+    def test_a_build_whose_vcenter_clock_is_behind_is_ready(self, vc, monkeypatch):
+        """vCenter's clock 2 minutes behind the worker's: its success looks 2 minutes older
+        than the power-on request, and is still this boot's."""
+        _sysprep(monkeypatch, {"win01": [{"status": SUCCEEDED,
+                                          "end": lambda vm: datetime.fromtimestamp(real_time.time() - 120, UTC)}]})
+        result = _run(_prov(vc).provision(RANGE_ID, _rendered(MIXED), {}))
+        assert result.not_ready == [], result.errors
+        assert _out(result)["customization"]["status"] == "ok"
+
+
 class TestRead:
     def test_a_left_over_success_event_is_ignored(self):
         old = vim.event.CustomizationSucceeded(key=1, createdTime=datetime(2026, 1, 1, tzinfo=UTC))

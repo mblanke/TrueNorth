@@ -295,6 +295,12 @@ tn_vsphere_tools_timeout: 120
 # IPs in VMware Tools before the range is failed; "off" only for a simulator without Tools.
 tn_vsphere_guest_ip_timeout: 600
 tn_vsphere_guest_ip_check: require
+# Windows guest customization (Sysprep, #255). GRACE: a check the build's budget left running
+# fails this long (s) after its readiness window ended, even with vCenter unreachable. SKEW:
+# a Sysprep success that ended up to this long (s) before the power-on request still counts
+# (vCenter and worker clocks disagree, e.g. NTP down); an older one is the template's leftover.
+tn_vsphere_customization_grace: 900
+tn_vsphere_customization_skew: 300
 # Golden-image pinning (ADR 0013 §2): every range VM clones its image's PROMOTED build (an
 # admin promotes one on the Golden Images page). Transition only: "true" lets images that are
 # `built` but have no promoted build through, cloning their plain template with a loud

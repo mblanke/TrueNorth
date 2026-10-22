@@ -20,7 +20,9 @@ from worker.provisioners import vsphere_macs  # noqa: E402
 
 SETTINGS = {"VSPHERE_GUEST_IP_TIMEOUT": "tn_vsphere_guest_ip_timeout",
             "VSPHERE_GUEST_IP_CHECK": "tn_vsphere_guest_ip_check",
-            "VSPHERE_MAC_POOL": "tn_vsphere_mac_pool"}
+            "VSPHERE_MAC_POOL": "tn_vsphere_mac_pool",
+            "VSPHERE_CUSTOMIZATION_GRACE": "tn_vsphere_customization_grace",  # #255
+            "VSPHERE_CUSTOMIZATION_SKEW": "tn_vsphere_customization_skew"}
 
 
 def _host_vars(inventory: str) -> dict:
@@ -38,6 +40,8 @@ def test_the_installer_defaults_and_env_template_carry_every_setting():
         assert f"{name}={{{{ {var} }}}}" in env, name
         assert f"{name}: ${{{name}:-" in compose, name
     assert defaults["tn_vsphere_guest_ip_timeout"] == 600 and defaults["tn_vsphere_guest_ip_check"] == "require"
+    assert (defaults["tn_vsphere_customization_grace"], defaults["tn_vsphere_customization_skew"]) == (900, 300)
+    assert "VSPHERE_CUSTOMIZATION_GRACE:-900}" in compose and "VSPHERE_CUSTOMIZATION_SKEW:-300}" in compose
 
 
 def test_each_install_has_its_own_mac_slice_inside_vmwares_manual_range():

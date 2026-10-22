@@ -26,8 +26,9 @@ Now every Windows VM's outcome is read after power-on and recorded on the VM as
 
 Also (review of #264):
 
-* A SUCCEEDED whose ``endTime`` (or CustomizationSucceeded event) predates the power-on is
-  left over from the template or an earlier boot: it counts as not run yet.
+* A SUCCEEDED whose ``endTime`` (or CustomizationSucceeded event) predates the power-on
+  request by more than VSPHERE_CUSTOMIZATION_SKEW (300 s: clock skew) is left over from the
+  template or an earlier boot: it counts as not run yet.
 * Sysprep's message is masked (``scrub``: the VM's passwords, the template passwords, and
   anything password-shaped such as ``net user NAME PASSWORD``) before it is stored, on the
   build path and the reconcile path.
@@ -71,6 +72,9 @@ NOT_FINISHED_YET = "guest customization (Sysprep) not finished yet"
 # whatever vCenter says or whether it can be reached at all (worker/setup_reconcile.py,
 # every SETUP_RECONCILE_SECONDS: three rounds by default). Never left open-ended.
 GRACE_SECONDS = float(os.environ.get("VSPHERE_CUSTOMIZATION_GRACE", "900"))
+# How far a Sysprep success may end "before" the power-on request and still be this boot's:
+# vCenter's and the worker's clocks can disagree (work site, NTP unsynced for days).
+SKEW_SECONDS = float(os.environ.get("VSPHERE_CUSTOMIZATION_SKEW", "300"))
 
 # Sysprep's error text can quote the command that failed. Whatever looks like a password in
 # it is masked before it is stored anywhere (the record, warnings, errors, logs).
@@ -116,10 +120,14 @@ def _epoch(when) -> float | None:
         return None
 
 
-def _before(when, since: float | None) -> bool:
-    """``when`` is known and earlier than ``since`` (this power-on): left over, not this boot's."""
+def _before(when, since: float | None, skew: float | None = None) -> bool:
+    """``when`` (vCenter's clock) is known and more than ``skew`` (VSPHERE_CUSTOMIZATION_SKEW)
+    earlier than ``since`` (this power-on, the worker's clock): left over, not this boot's.
+    The tolerance absorbs clocks that disagree (an NTP outage); a template's leftover success
+    is hours or days old, far past it."""
     t = _epoch(when)
-    return since is not None and t is not None and t < since
+    skew = SKEW_SECONDS if skew is None else skew
+    return since is not None and t is not None and t < since - skew
 
 
 def _from_events(content, vm, since: float | None) -> dict | None:
