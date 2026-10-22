@@ -977,21 +977,26 @@ class VsphereAPIProvisioner(BaseProvisioner):
         return {"tools_ready": tools_ready, "seen": seen, "timeout": round(timeout), "checked": checked,
                 "cut": checked and timeout < full, "deadline": powered_on_at + full}
 
-    async def _await_customization(self, si, vm, powered_on: float, powered_on_at: float) -> dict:
+    async def _await_customization(self, si, vm, vm_def: dict, powered_on: float, powered_on_at: float,
+                                   since: float) -> dict:
         """#255: a Windows VM's guest customization (Sysprep) outcome after power-on
         (vsphere_customization.read), polled until it finishes or the readiness window
         (VSPHERE_GUEST_IP_TIMEOUT from ``powered_on``, monotonic) ends; never past the build
-        budget, but always one look. VSPHERE_GUEST_IP_CHECK=off: the one look only."""
+        budget, but always one look. VSPHERE_GUEST_IP_CHECK=off: the one look only.
+        ``since``: when the power-on was asked for (epoch); a success that ended before it
+        is not this boot's. Sysprep's message is scrubbed of the VM's passwords."""
         full = self._guest_ip_timeout
         end = min(powered_on + full, self._budget_end) if self._budget_end else powered_on + full
         checked = self._guest_ip_check
+        secrets_ = [c.password.reveal() for c in (vm_def.get("_guest"), vm_def.get("_sysprep"),
+                                                  *(vm_def.get("_accounts") or [])) if c is not None]
         while True:
-            seen = await asyncio.to_thread(customization.read, si.content, vm)
+            seen = await asyncio.to_thread(lambda: customization.read(si.content, vm, since=since, secrets=secrets_))
             if seen["status"] in customization.FINISHED or not checked or time.monotonic() >= end:
                 break
             await asyncio.sleep(min(self._guest_poll, max(0.0, end - time.monotonic())))
         # ``cut``: the build budget, not the window, ended the wait (the reconcile task settles it).
-        return {**seen, "checked": checked, "timeout": round(max(0.0, end - powered_on)),
+        return {**seen, "checked": checked, "timeout": round(max(0.0, end - powered_on)), "since": since,
                 "cut": checked and end < powered_on + full, "deadline": powered_on_at + full}
 
     # ------------------------------------------------------------------ #
@@ -1612,7 +1617,11 @@ class VsphereAPIProvisioner(BaseProvisioner):
             self._wait(vm.ReconfigVM_Task(spec=spec), si)
         elif family == "windows":
             password = creds.password.reveal() if creds else guest.admin_password(vm_def)
-            self._wait(vm.CustomizeVM_Task(spec=infra.windows_customization(vm_def, password)), si)
+            spec = infra.windows_customization(vm_def, password)
+            # The password Sysprep sets (random when none was given): masked in any message (#255).
+            vm_def["_sysprep"] = guest.GuestCredentials(
+                "windows", "Administrator", guest.Secret(spec.identity.guiUnattended.password.value))
+            self._wait(vm.CustomizeVM_Task(spec=spec), si)
         elif vm_def.get("_pfsense") is not None or vm_def.get("_vyos") is not None:
             if vm_def.get("_pfsense") is not None:
                 values = pfsense_config.guestinfo(vm_def["_pfsense"], nic_macs)
@@ -1847,7 +1856,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
             self._soap_si = None
             self._tagger = None
             for vm_def in vm_defs:  # the guest passwords end with this call
-                for key in ("_guest", "_accounts", "_scrub", "_will_set", "_proven"):
+                for key in ("_guest", "_accounts", "_scrub", "_will_set", "_proven", "_sysprep"):
                     vm_def.pop(key, None)
 
         built = {v["name"] for v in vms_out}
@@ -1874,7 +1883,8 @@ class VsphereAPIProvisioner(BaseProvisioner):
     def _redact(exc, *vm_defs: dict) -> str:
         # A vSphere fault often has an empty str(); its msg or its type still says what failed.
         text = str(exc) or getattr(exc, "msg", None) or type(exc).__name__
-        secrets_ = [v.get("_guest") for v in vm_defs] + [a for v in vm_defs for a in v.get("_accounts") or []]
+        secrets_ = ([v.get(k) for v in vm_defs for k in ("_guest", "_sysprep")]
+                    + [a for v in vm_defs for a in v.get("_accounts") or []])
         return guest.redact(text, *secrets_)
 
     @staticmethod
@@ -2344,8 +2354,9 @@ class VsphereAPIProvisioner(BaseProvisioner):
         after its accounts were verified: ``template_login`` on the VM's output. A VM whose
         template password still logs in is not ready under RANGE_TEMPLATE_LOGIN_CHECK=enforce.
         A Security Onion node is checked once its setup changed its login (here when it
-        finished in the build, else by the reconcile task); an appliance is not checked
-        (its login is its own configuration)."""
+        finished in the build, else by the reconcile task); so is a Windows VM whose Sysprep the
+        build's budget left running (#255); an appliance is not checked (its login is its own
+        configuration)."""
         by_name = {v["name"]: v for v in vm_defs}
         gate = asyncio.Semaphore(self._concurrency)
 
@@ -2355,6 +2366,11 @@ class VsphereAPIProvisioner(BaseProvisioner):
                                                                             "configuration"}
                 return
             proven = bool(vm_def.get("_proven"))
+            if (out.get("customization") or {}).get("status") == customization.RUNNING:
+                # Sysprep has not replaced the template password yet: a check now proves nothing (#255).
+                out["template_login"] = {"status": credcheck.INCONCLUSIVE, "detail": "checked when its guest "
+                                         "customization (Sysprep) has finished (reconcile)"}
+                return
             if seconion.is_securityonion(vm_def):
                 if (out.get("securityonion") or {}).get("status") != "ok":
                     out["template_login"] = {"status": credcheck.INCONCLUSIVE, "detail": "checked when its Security "
@@ -2729,7 +2745,8 @@ class VsphereAPIProvisioner(BaseProvisioner):
         return await asyncio.to_thread(self._reconcile_sync, range_id, products, sos, domain_passwords,
                                        so_logins, missing, run_end, per_vm_seconds)
 
-    async def reconcile_guest_ips(self, range_id: str, output: dict, *, now: float | None = None) -> dict[str, dict]:
+    async def reconcile_guest_ips(self, range_id: str, output: dict, *, now: float | None = None,
+                                  accounts: dict | None = None) -> dict[str, dict]:
         """Settle the readiness checks a build left ``running`` (its budget ended the wait;
         vsphere_readiness.assess): one VMware Tools read per pending VM, no waiting, so a
         reconcile run stays bounded. Returns {vm name: fields to store} for the VMs that
@@ -2737,7 +2754,11 @@ class VsphereAPIProvisioner(BaseProvisioner):
         VMs are read (``_screen``); a VM vCenter no longer has reports no address.
 
         A Windows VM's guest customization check left ``running`` (#255,
-        vsphere_customization) is settled here too, from one read of its status."""
+        vsphere_customization) is settled here too, from one read of its status (a success
+        that ended before its power-on is not one; Sysprep's message scrubbed of the VM's
+        ``accounts``: node id -> [RangeAccount], range_accounts.load). Once it succeeded, the
+        template-login check the build left for it is made (vsphere_credcheck): proven by a
+        login as the VM's own Administrator, when the range declares it."""
         pending = [v for v in output.get("vms") or []
                    if vsphere_readiness.pending(v) or customization.pending(v)]
         if not pending:
@@ -2756,9 +2777,17 @@ class VsphereAPIProvisioner(BaseProvisioner):
                         seen = [] if v["vm_id"] in missing else await self._guest_ipv4s(client, v["vm_id"])
                         verdict.update(vsphere_readiness.settle(v, seen, now) or {})
                     if customization.pending(v):
-                        status = ({"status": "", "source": "vm not found"} if v["vm_id"] in missing
-                                  else await asyncio.to_thread(self._customization_sync, v["vm_id"]))
+                        node = str(v.get("node_id") or str(v["name"]).removeprefix(f"{range_id[:8]}-"))
+                        accts = list((accounts or {}).get(node) or [])
+                        status = ({"status": "", "error": "", "source": "vm not found"} if v["vm_id"] in missing
+                                  else await asyncio.to_thread(self._customization_sync, v["vm_id"],
+                                                               customization.since(v),
+                                                               [a.password.reveal() for a in accts]))
                         if (sysprep := customization.settle(v, status, now)) is not None:
+                            if sysprep["customization"]["status"] == customization.OK:
+                                admin = next((a for a in accts if a.username.casefold() == guest.WINDOWS_ADMIN), None)
+                                sysprep["template_login"] = await asyncio.to_thread(
+                                    self._windows_template_check_sync, v["vm_id"], admin)
                             reasons = (verdict.pop("not_ready", ""), sysprep.pop("not_ready", ""))
                             verdict.update(sysprep, **({"not_ready": "; ".join(r for r in reasons if r)}
                                                        if any(reasons) else {}))
@@ -2766,9 +2795,26 @@ class VsphereAPIProvisioner(BaseProvisioner):
                         changes[v["name"]] = verdict
         return changes
 
-    def _customization_sync(self, vm_id: str) -> dict:
+    def _customization_sync(self, vm_id: str, since: float | None, secrets_: list[str]) -> dict:
         si = self._soap()
-        return customization.read(si.content, self._vm(si, vm_id))
+        return customization.read(si.content, self._vm(si, vm_id), since=since, secrets=secrets_)
+
+    def _windows_template_check_sync(self, vm_id: str, admin: guest.RangeAccount | None) -> dict:
+        """The template-login check of a Windows VM whose Sysprep finished after the build
+        (#255). ``proven`` by a login as its own Administrator (``admin``), else a refusal is
+        inconclusive. Never raises."""
+        try:
+            si = self._soap()
+            vm = self._vm(si, vm_id)
+
+            def session_for(creds):
+                return guest.GuestSession(si.content, vm, creds, poll=self._guest_poll)
+
+            proven = admin is not None and session_for(
+                guest.GuestCredentials("windows", admin.username, admin.password)).try_login() is True
+            return credcheck.check(session_for, "windows", proven=proven)
+        except Exception as exc:  # noqa: BLE001 — never a pass
+            return {"status": credcheck.INCONCLUSIVE, "detail": f"not checked ({type(exc).__name__})"}
 
     async def _rollback(self, si, range_id: str, networks: list[dict], errors: list[str]) -> None:
         """Best effort: remove what a failed build created (its VMs already removed themselves)."""
@@ -2807,6 +2853,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
                     vm_id = vm._moId
                 await self._tag_vm(vm_def, vm_id)
                 await asyncio.to_thread(self._customize_sync, si, vm, vm_def)
+                power_asked_at = time.time()  # nothing Sysprep finished before this is this boot's
                 await self._power_action(client, vm_id, "start")
             except Exception:
                 if vm_id:  # half-built: do not leave it behind unrecorded
@@ -2817,10 +2864,14 @@ class VsphereAPIProvisioner(BaseProvisioner):
         guest_net = await self._await_guest_network(client, vm_def, vm_id)
         ready = vsphere_readiness.assess(vm_def, guest_net)
         if customization.applies(vm_def):  # #255: Sysprep's outcome, every Windows VM
-            sysprep = customization.assess(await self._await_customization(si, vm, powered_on, powered_on_at))
+            sysprep = customization.assess(await self._await_customization(
+                si, vm, vm_def, powered_on, powered_on_at, power_asked_at))
+            # Sysprep's own error text, already scrubbed by read(): masked again with the build's secrets.
+            if detail := sysprep["customization"].get("detail"):
+                sysprep["customization"]["detail"] = self._redact(detail, vm_def)
             ready["customization"] = sysprep["customization"]
             for key in ("not_ready", "warning"):
-                if sysprep[key]:  # Sysprep's own error text: scrubbed of the VM's passwords
+                if sysprep[key]:
                     ready[key] = "; ".join(t for t in (ready[key], self._redact(sysprep[key], vm_def)) if t)
         mgmt_ip = vm_def.get("_mgmt_ip") if any(n.get("noise") for n in vm_def["nics"]) else None
         host, datastore = vm_def["_placement"]

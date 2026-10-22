@@ -202,6 +202,25 @@ class TestRecord:
         row = next(r for r in readiness["entries"][0]["detail"]["vms"] if r["name"] == "win01")
         assert row["customization"] == failed and row["family"] == "windows"
 
+    def test_a_sysprep_failure_settled_after_students_started_makes_the_record_not_safe(
+            self, client, db_session, world):
+        """#264 review item 2: the range was started while the check was still running; the
+        reconcile cannot fail it under the Students, so it records the VM failed (with a
+        range-level warning) and the record goes from incomplete to not_safe."""
+        running = {"status": "running", "deadline": 1.0, "vsphere_status": "TOOLSDEPLOYPKG_RUNNING"}
+        win = _vm("win01", ip_verified=True, family="windows", customization=running)
+        rng, _ = _built(client, db_session, world, {**GOOD_OUTPUT, "vms": [*GOOD_OUTPUT["vms"], win]})
+        assert _sections(_cert(client, rng).json())["guest_readiness"]["status"] == "incomplete"
+        reason = "guest customization (Sysprep) outcome not confirmed within 900s after its readiness window ended"
+        failed = {**win, "customization": {"status": "failed", "source": "record", "detail": reason}}
+        _worker_reports(db_session, rng, "running", {  # worker/setup_reconcile, state left running
+            **GOOD_OUTPUT, "vms": [*GOOD_OUTPUT["vms"], failed], "not_ready": ["win01"],
+            "warnings": [f"Not safe: a VM failed its readiness after the range was started: {reason}"]})
+        body = _cert(client, rng).json()
+        readiness = _sections(body)["guest_readiness"]
+        assert (readiness["status"], readiness["summary"]) == ("fail", "1 VM(s) not ready: win01")
+        assert body["record"]["verdict"] == "not_safe"
+
     def test_a_windows_sysprep_success_is_named_in_the_pass(self, client, db_session, world):
         ok = {"status": "ok", "vsphere_status": "TOOLSDEPLOYPKG_SUCCEEDED", "source": "guest"}
         rng, _ = _built(client, db_session, world, {**GOOD_OUTPUT, "vms": [

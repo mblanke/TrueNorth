@@ -178,15 +178,18 @@ def ip_world(world, monkeypatch):
 
     output = {"vms": [_ip_pending_vm()], "warnings": [
         "VM r1-ubu02: guest network not verified yet (the build's time ran out within 40s of power-on); x"]}
-    world.update(ips={}, states=[], notified=[])
+    world.update(ips={}, states=[], notified=[], range_state="ready", settle_error=None)
 
     class Prov:
-        async def reconcile_guest_ips(self, range_id, out):
+        async def reconcile_guest_ips(self, range_id, out, **kw):
+            world["settle_kw"] = kw
+            if world["settle_error"]:
+                raise world["settle_error"]
             return world["ips"]
 
-    def state(db, range_id, new_state, **kw):
+    def state(db, range_id, new_state, **kw):  # update_range_state, conditional on the current state
         world["states"].append((new_state, kw))
-        return 1
+        return int(world["range_state"] in (kw.get("only_from") or (world["range_state"],)))
 
     monkeypatch.setattr(tasks, "_get_backend", lambda *a, **k: Prov())
     monkeypatch.setattr(tasks, "_notify_api", lambda channel, msg: world["notified"].append(msg))
@@ -245,6 +248,78 @@ def test_a_windows_customization_check_left_running_is_reconciled_and_can_fail_t
     assert not [w for w in world["written"]["warnings"] if "not finished yet" in w]
     ((new, kw),) = world["states"]
     assert new == "failed" and kw["only_from"] == ("ready",) and reason in kw["error"]
+
+
+def _windows_running(ip_world, deadline: float) -> dict:
+    vm = ip_world["vms"][0]
+    vm.pop("ip_check")
+    vm.update(name="r1-win01", node_id="win01", family="windows",
+              customization={"status": "running", "deadline": deadline, "vsphere_status": "TOOLSDEPLOYPKG_RUNNING"})
+    ip_world["warnings"] = []
+    return vm
+
+
+@pytest.mark.parametrize("backend", ["unreachable", "screened out"])
+def test_a_customization_check_past_its_hard_deadline_fails_from_the_record(ip_world, world, backend):
+    """#264 review item 2: past the window plus the grace, the record alone fails it, whether
+    vCenter cannot be reached or the range-ownership check refused the VM (no verdict)."""
+    _windows_running(ip_world, time.time() - 901)
+    if backend == "unreachable":
+        world["settle_error"] = ConnectionError("vCenter unreachable")
+    sr._reconcile_range("r1", "Range 1", ip_world, "vsphere")
+    (vm,) = world["written"]["vms"]
+    assert vm["customization"]["status"] == "failed" and vm["customization"]["source"] == "record"
+    assert world["written"]["not_ready"] == ["r1-win01"]
+    ((new, kw),) = world["states"]
+    assert new == "failed" and "not confirmed within 900s" in kw["error"]
+
+
+def test_inside_the_grace_the_record_alone_fails_nothing(ip_world, world):
+    _windows_running(ip_world, time.time() - 100)
+    world["settle_error"] = ConnectionError("vCenter unreachable")
+    sr._reconcile_range("r1", "Range 1", ip_world, "vsphere")
+    assert world["written"] is None and world["states"] == []
+
+
+def test_a_started_range_keeps_running_with_a_range_level_not_safe_warning(ip_world, world):
+    """Students already started it: not failed under them, but said loudly, and its record
+    (the VM's failed customization) fails S6 guest_readiness: not_safe."""
+    _windows_running(ip_world, time.time() - 901)
+    world["range_state"] = "running"
+    sr._reconcile_range("r1", "Range 1", ip_world, "vsphere")
+    ((new, kw),) = world["states"]
+    assert new == "failed" and kw["only_from"] == ("ready",)  # tried, refused: the range is running
+    (warning,) = [w for w in world["written"]["warnings"] if w.startswith(sr.STARTED_NOT_SAFE)]
+    assert "keeps running" in warning and "r1-win01" in warning
+    assert world["notified"] == [{"id": "r1", "warning": warning}]  # no state change announced
+    from app.range_certification import evidence
+
+    assert evidence.guest_readiness(world["written"])[:2] == ("fail", "1 VM(s) not ready: r1-win01")
+
+
+def test_the_range_accounts_reach_the_provisioner_for_a_pending_customization(ip_world, world, monkeypatch):
+    import worker.range_accounts as ra
+
+    declared = {"win01": ["an account"]}
+    monkeypatch.setattr(ra, "load", lambda session, rid: declared)
+    _windows_running(ip_world, time.time() + 600)
+    sr._reconcile_range("r1", "Range 1", ip_world, "vsphere")
+    assert world["settle_kw"] == {"accounts": declared}
+
+
+def test_a_template_login_accepted_after_sysprep_fails_the_range(ip_world, world, monkeypatch):
+    """#264 review item 3: the check the reconcile makes once Sysprep finished is reported as
+    the build's would be: an accepted template password is not ready under enforce."""
+    monkeypatch.delenv("RANGE_TEMPLATE_LOGIN_CHECK", raising=False)
+    _windows_running(ip_world, time.time() + 600)
+    world["ips"] = {"r1-win01": {"customization": {"status": "ok"}, "template_login": {
+        "status": "accepted", "username": "Administrator", "detail": "the golden template's password still logs in"}}}
+    sr._reconcile_range("r1", "Range 1", ip_world, "vsphere")
+    (vm,) = world["written"]["vms"]
+    assert vm["customization"]["status"] == "ok" and vm["template_login"]["status"] == "accepted"
+    assert world["written"]["not_ready"] == ["r1-win01"]
+    ((new, kw),) = world["states"]
+    assert new == "failed" and "golden template's password still logs in as Administrator" in kw["error"]
 
 
 def test_the_query_covers_every_live_state():

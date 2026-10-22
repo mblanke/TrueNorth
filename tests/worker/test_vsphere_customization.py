@@ -21,12 +21,14 @@ from test_vsphere_provision import R8, RANGE_ID, _prov, _rendered, _run
 from worker import range_alloc, setup_reconcile
 from worker.provisioners import vsphere_api as mod
 from worker.provisioners import vsphere_customization as cz
+from worker.provisioners import vsphere_guest as guest_mod
 
 vc, worker_reserves = _vsp.vc, _vsp.worker_reserves  # the fake vCenter; the worker's reservations (autouse)
 
 SUCCEEDED, FAILED = "TOOLSDEPLOYPKG_SUCCEEDED", "TOOLSDEPLOYPKG_FAILED"
 RUNNING, PENDING = "TOOLSDEPLOYPKG_RUNNING", "TOOLSDEPLOYPKG_PENDING"
 SYSPREP_ERROR = "Windows could not finish configuring the system (oobeSystem)"
+TEMPLATE_PW = "Template-Build-1!"  # the golden template's build Administrator password
 
 # A Windows workstation with no software (so no ``_guest`` credentials: the #255 case) and a
 # Linux VM beside it.
@@ -43,17 +45,21 @@ WIN = f"{R8}-win01"
 
 def _sysprep(monkeypatch, script: dict[str, list]) -> dict[str, int]:
     """``guest.customizationInfo`` per VM: node suffix -> statuses read in turn (the last one
-    repeats; None: not reported). Returns the read count per VM name."""
+    repeats; None: not reported; a dict: ``status`` with its ``error`` / ``end``, either a
+    value or a callable of the VM). Returns the read count per VM name."""
     reads: dict[str, int] = {}
 
     def info(self):
         name = self._vm.name
         seq = next((s for k, s in script.items() if name.endswith(k)), [SUCCEEDED])
         reads[name] = reads.get(name, 0) + 1
-        status = seq[min(reads[name], len(seq)) - 1]
-        if status is None:
+        item = seq[min(reads[name], len(seq)) - 1]
+        if item is None:
             return None
-        return SimpleNamespace(customizationStatus=status, errorMsg=SYSPREP_ERROR if status == FAILED else None)
+        item = item if isinstance(item, dict) else {"status": item}
+        error, end = (v(self._vm) if callable(v) else v for v in (item.get("error"), item.get("end")))
+        return SimpleNamespace(customizationStatus=item["status"], endTime=end,
+                               errorMsg=error or (SYSPREP_ERROR if item["status"] == FAILED else None))
 
     monkeypatch.setattr(_vsp.FakeGuest, "customizationInfo", property(info, lambda self, v: None), raising=False)
     return reads
@@ -143,6 +149,7 @@ class TestBuild:
     def test_a_budget_cut_is_left_to_reconcile_then_settled(self, vc, monkeypatch, clock):
         """Powered on just before the build's ``finish_by``: the budget, not the window, ended
         the wait. Not failed: left ``running`` with the window's end for the reconcile task."""
+        monkeypatch.setenv("TN_TEMPLATE_WINDOWS_ADMIN_PASSWORD", TEMPLATE_PW)
         script = {"win01": [RUNNING]}
         _sysprep(monkeypatch, script)
         prov = _prov(vc)
@@ -152,6 +159,11 @@ class TestBuild:
         rec = _out(result)["customization"]
         assert rec["status"] == "running" and rec["vsphere_status"] == RUNNING
         assert real_time.time() + 500 < rec["deadline"] <= real_time.time() + 600  # the window's end, epoch
+        assert real_time.time() - 60 < rec["powered_on_at"] <= real_time.time()  # for the stale-success rule
+        # No template-login check while Sysprep is still running: it would prove nothing.
+        assert _out(result)["template_login"] == {"status": "inconclusive", "detail": "checked when its guest "
+                                                  "customization (Sysprep) has finished (reconcile)"}
+        assert TEMPLATE_PW not in vc.guest_ops.passwords_seen
         assert any(w.startswith(f"VM {WIN}: {cz.NOT_FINISHED_YET}") for w in result.warnings), result.warnings
         assert range_alloc.build_outcome(result) == ("ready", None)
         stored = _stored(result)
@@ -170,13 +182,45 @@ class TestBuild:
         script["win01"] = [FAILED]
         failed = _run(_prov(vc).reconcile_guest_ips(RANGE_ID, stored))
         assert failed[WIN]["customization"]["status"] == "failed" and SYSPREP_ERROR in failed[WIN]["not_ready"]
-        # Succeeded: ok, and the stored record then certifies.
+        # Succeeded: ok, then the template-login check the build left, proven by a login as the
+        # VM's own Administrator; the stored record then certifies.
         script["win01"] = [SUCCEEDED]
-        settled = _run(_prov(vc).reconcile_guest_ips(RANGE_ID, stored))
-        assert settled == {WIN: {"customization": {"status": "ok", "vsphere_status": SUCCEEDED, "source": "guest"}}}
+        sysprep_pw = vc.vms[_out(result)["vm_id"]].customize_specs[-1].identity.guiUnattended.password.value
+        accounts = {"win01": [guest_mod.RangeAccount("Administrator", guest_mod.Secret(sysprep_pw), True)]}
+        settled = _run(_prov(vc).reconcile_guest_ips(RANGE_ID, stored, accounts=accounts))
+        assert settled[WIN]["customization"] == {"status": "ok", "vsphere_status": SUCCEEDED, "source": "guest"}
+        assert settled[WIN]["template_login"] == {"status": "rejected", "username": "Administrator",
+                                                  "detail": "the golden template's password is refused"}
+        assert TEMPLATE_PW in vc.guest_ops.passwords_seen  # tried now, once, after Sysprep
         assert setup_reconcile._merge_ips(stored, settled) == []
+        assert setup_reconcile._merge_template_logins(stored, settled) == []
         assert not [w for w in stored["warnings"] if cz.NOT_FINISHED_YET in w]
         assert evidence.guest_readiness(stored)[0] == "pass"
+        # Without the range's Administrator the refusal proves nothing: inconclusive, never a pass.
+        unproven = _run(_prov(vc).reconcile_guest_ips(RANGE_ID, {**stored, "vms": [
+            {**_out(result), "customization": rec}]}))
+        assert unproven[WIN]["template_login"]["status"] == "inconclusive"
+
+    def test_a_success_from_before_this_power_on_is_not_this_boots(self, vc, monkeypatch):
+        """Item 4 of the #264 review: a SUCCEEDED whose endTime predates the power-on is left
+        over (the template's, a previous boot's): not run yet, so the VM is not ready at the
+        window's end; a fresh one is accepted."""
+        old = datetime(2026, 1, 1, tzinfo=UTC)
+        script = {"win01": [{"status": SUCCEEDED, "end": old}]}
+        _sysprep(monkeypatch, script)
+        result = _run(_prov(vc).provision(RANGE_ID, _rendered(MIXED), {}))
+        assert result.not_ready == [WIN]
+        assert _out(result)["customization"]["status"] == "failed"
+        assert any(f"last status {SUCCEEDED} from before this power-on" in e for e in result.errors), result.errors
+
+    def test_a_fresh_success_after_a_left_over_one_is_accepted(self, vc, monkeypatch):
+        _sysprep(monkeypatch, {"win01": [{"status": SUCCEEDED, "end": datetime(2026, 1, 1, tzinfo=UTC)},
+                                         {"status": SUCCEEDED, "end": lambda vm: datetime.now(UTC)}]})
+        prov = _prov(vc)
+        prov._guest_ip_timeout = 60
+        result = _run(prov.provision(RANGE_ID, _rendered(MIXED), {}))
+        assert result.not_ready == [], result.errors
+        assert _out(result)["customization"]["status"] == "ok"
 
     def test_reconcile_never_reads_a_vm_that_is_not_this_ranges(self, vc, monkeypatch):
         reads = _sysprep(monkeypatch, {})
@@ -202,7 +246,81 @@ class TestBuild:
         assert result.not_ready == [WIN]
 
 
+LEAKY = "net user Administrator S3cret! failed"
+
+
+def _secret_free(blob, *secrets: str) -> None:
+    text = json.dumps(blob, default=str)
+    for secret in secrets:
+        assert secret not in text, f"{secret!r} stored"
+
+
+class TestRedaction:
+    """Item 1 of the #264 review: Sysprep's message is masked before it is stored, on the
+    build path and on the reconcile path."""
+
+    def test_build_path(self, vc, monkeypatch):
+        monkeypatch.setenv("TN_TEMPLATE_WINDOWS_ADMIN_PASSWORD", TEMPLATE_PW)
+
+        def error(vm):
+            own = vm.customize_specs[-1].identity.guiUnattended.password.value
+            return f"{LEAKY}; then {own} and {TEMPLATE_PW} were rejected"
+
+        _sysprep(monkeypatch, {"win01": [{"status": FAILED, "error": error}]})
+        result = _run(_prov(vc).provision(RANGE_ID, _rendered(MIXED), {}))
+        own = vc.vms[_out(result)["vm_id"]].customize_specs[-1].identity.guiUnattended.password.value
+        assert result.not_ready == [WIN]
+        detail = _out(result)["customization"]["detail"]
+        assert "net user Administrator *** failed; then *** and *** were rejected" in detail
+        _secret_free({"stored": _stored(result), "errors": result.errors, "warnings": result.warnings},
+                     "S3cret!", own, TEMPLATE_PW)
+
+    def test_reconcile_path(self, vc, monkeypatch, clock):
+        script = {"win01": [RUNNING]}
+        _sysprep(monkeypatch, script)
+        prov = _prov(vc)
+        prov._guest_ip_timeout = 600
+        stored = _stored(_run(prov.provision(RANGE_ID, _rendered(MIXED), {"finish_by": clock.t + 80})))
+        script["win01"] = [{"status": FAILED, "error": f"{LEAKY}; analyst Declared-Pw-9 too"}]
+        accounts = {"win01": [guest_mod.RangeAccount("analyst", guest_mod.Secret("Declared-Pw-9"))]}
+        settled = _run(_prov(vc).reconcile_guest_ips(RANGE_ID, stored, accounts=accounts))
+        assert "net user Administrator *** failed; analyst *** too" in settled[WIN]["customization"]["detail"]
+        assert "net user Administrator *** failed" in settled[WIN]["not_ready"]
+        _secret_free(settled, "S3cret!", "Declared-Pw-9")
+
+    @pytest.mark.parametrize("raw,masked", [
+        (LEAKY, "net user Administrator *** failed"),
+        ("net.exe user bob Pw-1 /add", "net.exe user bob *** /add"),
+        ("net user bob /add", "net user bob /add"),  # no password in it
+        ("Password=Hunter2! rejected", "Password=*** rejected"),
+        ("<Value>Plain-1</Value>", "<Value>***</Value>"),
+    ])
+    def test_scrub(self, raw, masked):
+        assert cz.scrub(raw) == masked
+
+
+class TestRecordDeadline:
+    """Item 2 of the #264 review: a ``running`` check never stays open past its window plus
+    the grace, whatever vCenter does."""
+
+    def test_expired_from_the_record_alone(self):
+        vm = {"name": WIN, "vm_id": "vm-1", "customization": {"status": "running", "deadline": 1000.0,
+                                                              "vsphere_status": RUNNING}}
+        assert cz.expired(vm, 1000.0 + cz.GRACE_SECONDS) is None
+        verdict = cz.expired(vm, 1001.0 + cz.GRACE_SECONDS)
+        assert verdict["customization"]["status"] == "failed" and verdict["customization"]["source"] == "record"
+        assert "not confirmed within" in verdict["not_ready"]
+        assert cz.expired({**vm, "customization": {"status": "ok"}}, 1e12) is None
+
+
 class TestRead:
+    def test_a_left_over_success_event_is_ignored(self):
+        old = vim.event.CustomizationSucceeded(key=1, createdTime=datetime(2026, 1, 1, tzinfo=UTC))
+        content = SimpleNamespace(eventManager=SimpleNamespace(QueryEvents=lambda spec: [old]))
+        vm = vim.VirtualMachine("vm-7", None)
+        assert cz.read(content, vm)["status"] == SUCCEEDED
+        assert cz.read(content, vm, since=datetime(2026, 10, 1, tzinfo=UTC).timestamp())["status"] == ""
+
     def test_a_vcenter_without_customization_info_falls_back_to_events(self):
         queried = []
         ok = vim.event.CustomizationSucceeded(key=1, createdTime=datetime(2026, 10, 22, 10, tzinfo=UTC),
