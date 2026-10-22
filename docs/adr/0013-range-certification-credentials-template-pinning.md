@@ -72,6 +72,12 @@ Not ported: the guard hook and file-based approvals (TrueNorth has RBAC and an a
   - A re-probe is stored next to the build's run, and both stay in the record. It can lower the verdict, but it can raise it only when every zone was measured from a `probe: true` VM using a staff-only account.
   - In `enforce`, a range that is not proven isolated is also powered off.
   - The evidence is "as measured from <VM> using <account class>". Whoever controls a guest can fake its probes.
+  - *Re-review of #267:*
+    - A re-probe VM is trusted only if its node is `probe: true`, the login is staff-only, and no account on that node is Student-visible.
+    - The multi-homed path check is source-aware (`ip route get <t> from <zone ip>`) and also checks the probe's own route.
+    - ICMP errors (unreachable, prohibited, filtered, isolated, TTL exceeded) from outside the range count as reachable.
+    - Long Windows command lines are kept short: zone CIDRs, and each step carries only the lists it reads. An oversize pair splits.
+    - The TTL route probe needs hop 1 to answer before silence counts as proof. **Open for #238:** a first hop that filters before forwarding (pfSense) sends no Time Exceeded for blocked destinations, so behind a correct pfSense edge the route check stays inconclusive and the range cannot reach Isolated. VyOS (Linux) answers. The network team needs to decide whether the route check is required or advisory.
 
 ### 5. Teardown by independently identified inventory, and drift (S5)
 

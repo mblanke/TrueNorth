@@ -495,6 +495,11 @@ STUB_IP = r"""#!/bin/sh
 case "$*" in
   "-o addr show to 10.80.0.20") echo "2: eth0    inet 10.80.0.20/24 brd 10.80.0.255 scope global eth0";;
   "route get 10.30.30.1") echo "10.30.30.1 via 10.80.1.1 dev eth1 src 10.80.1.20 uid 1000";;
+  "route get 10.30.30.1 from 10.80.0.20") echo "10.30.30.1 from 10.80.0.20 via 10.80.1.1 dev eth1 uid 1000";;
+  "route get 192.168.1.10") echo "192.168.1.10 via 10.80.0.1 dev eth0 src 10.80.0.20 uid 1000";;
+  "route get 192.168.1.10 from 10.80.0.20") echo "192.168.1.10 from 10.80.0.20 via 10.80.0.1 dev eth0 uid 1000";;
+  "route get 10.30.30.20") echo "10.30.30.20 via 10.80.0.1 dev eth0 src 10.80.0.20 uid 1000";;
+  "route get 10.30.30.20 from 10.80.0.20") echo "10.30.30.20 from 10.80.0.20 via 10.80.1.1 dev eth1 uid 1000";;
   "-6 route show table all") printf '%s
 ' "$IP6ROUTES";;
   "-6 addr show") printf '%s
@@ -503,14 +508,66 @@ esac
 """
 
 
+# iputils-style output per TTL (PING_T<ttl>, else PING_OUT) and exit status (PING_RC).
+STUB_PING = r"""#!/bin/sh
+ttl=0; prev=
+for a in "$@"; do [ "$prev" = "-t" ] && ttl=$a; prev=$a; done
+eval "out=\${PING_T$ttl:-\$PING_OUT}"
+[ -n "$out" ] && printf '%s\n' "$out"
+exit "${PING_RC:-1}"
+"""
+
+
 def _bash(tmp_path, probes, ctx=scripts.Context(), **env):
-    stub = tmp_path / "ip"
-    stub.write_text(STUB_IP)
-    stub.chmod(stub.stat().st_mode | stat.S_IEXEC)
+    for name, body in (("ip", STUB_IP), ("ping", STUB_PING)):
+        stub = tmp_path / name
+        stub.write_text(body)
+        stub.chmod(stub.stat().st_mode | stat.S_IEXEC)
     script = scripts.linux_script(probes, 1, ctx)
     run = subprocess.run(["bash", "-c", script], env={**os.environ, "PATH": f"{tmp_path}:{os.environ['PATH']}", **env},
                          capture_output=True, timeout=30)
     return scripts.decode(run.returncode, len(probes))
+
+
+@pytest.mark.skipif(not os.path.exists("/bin/bash"), reason="needs bash")
+def test_bash_pin_is_source_aware_and_checks_the_unbound_route_too(tmp_path):
+    """Review: ``ip route get <t> from <zone ip>`` and the probe's own (unbound) route must both
+    use the zone NIC (eth0 here)."""
+    ctx = scripts.Context(src="10.80.0.20", range_addresses=("10.80.0.0/24",))
+    assert _bash(tmp_path, [scripts.Probe("icmp", ("192.168.1.10",)),  # both on eth0: measured (silent)
+                            scripts.Probe("icmp", ("10.30.30.20",))],  # policy route by source: eth1
+                 ctx) == [1, 5]
+
+
+@pytest.mark.skipif(not os.path.exists("/bin/bash"), reason="needs bash")
+@pytest.mark.parametrize("line", [
+    "From 10.30.30.1 icmp_seq=1 Destination Host Unreachable",
+    "From 10.30.30.1 icmp_seq=1 Destination Net Unreachable",
+    "From 10.30.30.1 icmp_seq=1 Destination Host Prohibited",
+    "From 10.30.30.1 icmp_seq=1 Destination Net Prohibited",
+    "From 10.30.30.1 icmp_seq=1 Packet filtered",
+    "From 10.30.30.1 icmp_seq=1 Source Host Isolated",
+    "From 10.30.30.1 icmp_seq=1 Time to live exceeded",
+])
+def test_bash_an_icmp_error_from_outside_the_range_is_reachable_and_from_inside_rejected(tmp_path, line):
+    ctx = scripts.Context(range_addresses=("10.80.0.0/24", "10.30.32.101"))
+    outside = _bash(tmp_path, [scripts.Probe("icmp", ("192.168.1.10",))], ctx, PING_OUT=line)
+    inside = _bash(tmp_path, [scripts.Probe("icmp", ("192.168.1.10",))], ctx,
+                   PING_OUT=line.replace("10.30.30.1", "10.80.0.1"))
+    assert (outside, inside) == ([4], [3])  # 4: a site router answered -> reachable; 3: the range's own edge
+
+
+@pytest.mark.skipif(not os.path.exists("/bin/bash"), reason="needs bash")
+@pytest.mark.parametrize("env,expected", [
+    ({}, 3),  # nothing answers, not even hop 1 (busybox ping, or a filtering first hop): not proof
+    ({"PING_T1": "From 10.80.0.1 icmp_seq=1 Time to live exceeded"}, 0),  # hop 1 in range, then silence
+    ({"PING_T1": "From 10.80.0.1 icmp_seq=1 Time to live exceeded",
+      "PING_T2": "From 10.30.32.1 icmp_seq=1 Time to live exceeded"}, 1),  # hop 2 outside the range
+    ({"PING_RC": "0"}, 1),  # the target itself answered
+])
+def test_bash_route_needs_hop_one_to_answer(tmp_path, env, expected):
+    ctx = scripts.Context(range_addresses=("10.80.0.0/24", "10.30.32.101"))
+    assert _bash(tmp_path, [scripts.Probe("route", ("10.30.30.1",))], ctx, **env) == [expected]
 
 
 @pytest.mark.skipif(not os.path.exists("/bin/bash"), reason="needs bash")
@@ -534,6 +591,57 @@ def test_bash_ipv6_presence_counts_ula(tmp_path, routes, addrs, expected):
     got = _bash(tmp_path, [scripts.Probe("v6route"), scripts.Probe("v6addr")],
                 IP6ROUTES=routes, IP6ADDRS=addrs)
     assert got == expected
+
+
+def _flagged_probe_output():
+    out = _output()
+    out["vms"].append({"vm_id": "vm-p", "name": "a1b2c3d4-probe", "node_id": "probe", "family": "linux",
+                       "tools_ready": True, "nics": [{"network": "tn-a1b2c3d4-101", "ip": "10.80.0.99"}]})
+    return out
+
+
+def test_a_probe_vm_is_trusted_only_with_no_student_visible_account_on_its_node():
+    """Review: a re-probe may raise the verdict only from a probe: true node whose accounts are
+    all staff-only, logged in as one of them."""
+    template = {"nodes": [{"id": "probe", "probe": True}]}
+    staff_only = {**ACCOUNTS, "probe": [staff("tnprobe", "probe-pw-1", admin=False)]}
+    lan = _zone(_run(FakeGuest(), _flagged_probe_output(), template=template, accounts=staff_only), "lan")
+    assert (lan["probe"]["vm"], lan["probe"]["trusted"]) == ("a1b2c3d4-probe", True)
+    mixed = {**ACCOUNTS, "probe": [staff("tnprobe", "probe-pw-1", admin=False), student("student", "s-pw-2")]}
+    lan = _zone(_run(FakeGuest(), _flagged_probe_output(), template=template, accounts=mixed), "lan")
+    assert (lan["probe"]["account"], lan["probe"]["trusted"]) == ("tnprobe", False), "a Student can log in there"
+    lan = _zone(_run(FakeGuest(), _flagged_probe_output(), template={}, accounts=staff_only), "lan")
+    assert lan["probe"]["trusted"] is False, "not a probe: true node"
+
+
+# ── Long range lists on Windows (review) ─────────────────────────────────────────
+def test_a_large_range_is_carried_as_its_zone_cidrs():
+    out = _output()
+    out["vms"] += [{"vm_id": f"vm-{i}", "name": f"n{i}", "family": "linux",
+                    "nics": [{"network": "tn-a1b2c3d4-101", "ip": f"10.80.0.{i % 250 + 2}"}]} for i in range(2000)]
+    assert range_isolation.compact_range(out) == ["10.80.0.0/23", "10.30.32.101"]  # adjacent zones collapse
+
+
+def test_only_the_steps_that_read_the_range_list_carry_it_and_a_long_pair_is_split(monkeypatch):
+    many = tuple(f"172.{16 + i // 250}.{i % 250}.9" for i in range(1500))  # addresses no CIDR collapses
+    ctx = scripts.Context("", many, ("10.80.0.0/24",))
+    probes = [scripts.Probe("tcp", ("10.30.30.1", "443")), scripts.Probe("tcp", ("10.30.30.10", "53")),
+              scripts.Probe("icmp", ("10.30.30.1",)), scripts.Probe("route", ("10.30.30.1",))]
+    pairs = scripts.groups("windows", probes, 2, ctx)
+    assert len(pairs[0][0].arguments) <= scripts.MAX_WINDOWS_ARGS, "the TCP pair carries no range list"
+    assert [len(part) for _, part in pairs] == [2, 1, 1], "the ICMP/route pair is too long together: split"
+    assert [step.label for step, _ in pairs] == ["isolation-0", "isolation-1", "isolation-2"]
+    assert [p for _, part in pairs for p in part] == probes, "every probe once, in order"
+
+
+def test_split_steps_still_grade_the_zone(monkeypatch):
+    monkeypatch.setattr(scripts, "MAX_WINDOWS_ARGS", 1000)  # every Windows pair splits
+    prov = FakeGuest()
+    rec = _run(prov)
+    dmz = _zone(rec, "dmz")
+    (call,) = [c for c in prov.calls if c["vm"].endswith("win01")]
+    assert all(len(probes_of(st)) == 1 for st in call["steps"])
+    assert dmz["verdict"] == "isolated", dmz["reasons"]
 
 
 def test_a_template_probe_node_is_preferred():

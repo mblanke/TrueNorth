@@ -128,8 +128,9 @@ class Probe:
 class Context:
     """What every probe of one zone shares. ``src``: the probe VM's address on the zone when
     it is multi-homed (its probes must leave by that NIC), else "". ``range_addresses``: the
-    range's own IPv4 addresses (a hop or an "unreachable" from one of them has not left the
-    range). ``inside``: CIDRs an external name may resolve into without counting."""
+    range's own IPv4 space, as addresses or CIDRs (a hop or an "unreachable" from it has not
+    left the range; range_isolation.compact_range keeps the list short). ``inside``: CIDRs
+    an external name may resolve into without counting."""
 
     src: str = ""
     range_addresses: tuple[str, ...] = ()
@@ -138,7 +139,7 @@ class Context:
     def __post_init__(self) -> None:
         if self.src and not _ip(self.src):
             raise ValueError(f"source {self.src!r} is not an address")
-        if not all(_ip(a) for a in self.range_addresses) or not all(valid_cidr(c) for c in self.inside):
+        if not all(_ip(a) or valid_cidr(a) for a in self.range_addresses) or not all(valid_cidr(c) for c in self.inside):
             raise ValueError("range addresses and inside CIDRs must be addresses and CIDRs")
 
 
@@ -169,15 +170,25 @@ def decode(exit_code: int | None, count: int) -> list[int | None]:
 
 _BASH_LIB = r"""
 T=%(timeout)d; SRC=%(src)s; R=%(range)s; C=%(inside)s
-inr(){ local a; for a in $R; do [ "$a" = "$1" ] && return 0; done; return 1; }
+inr(){ local a; for a in $R; do case "$a" in */*) incidr "$1" "$a" && return 0;; *) [ "$a" = "$1" ] && return 0;; esac
+  done; return 1; }
 devof(){ ip -o addr show to "$1" 2>/dev/null | sed -n 's/^[0-9]*: *\([^ ]*\) .*/\1/p' | head -n 1; }
+# Multi-homed probe: the route for a packet *from* the zone address (source-aware, so policy
+# routing is honoured) must use the zone NIC, and so must the route the unbound probe itself
+# takes (the kernel picks its source from that route): either one leaving by another NIC
+# means this zone's path is not what would be measured.
 pinned(){ [ -z "$SRC" ] && return 0; command -v ip >/dev/null 2>&1 || return 1
-  local d r; d=$(devof "$SRC"); [ -n "$d" ] || return 1; r=$(ip route get "$1" 2>/dev/null) || return 1
-  case " $r " in *" dev $d "*) return 0;; esac; return 1; }
+  local d r u; d=$(devof "$SRC"); [ -n "$d" ] || return 1
+  r=$(ip route get "$1" from "$SRC" 2>/dev/null) || return 1; u=$(ip route get "$1" 2>/dev/null) || return 1
+  case " $r " in *" dev $d "*) ;; *) return 1;; esac
+  case " $u " in *" dev $d "*) return 0;; esac; return 1; }
 tcp(){ pinned "$1" || return 5; local e r; e=$(timeout "$T" bash -c "exec 3<>/dev/tcp/$1/$2" 2>&1); r=$?
   [ $r -eq 0 ] && return 0; [ $r -eq 124 ] && return 3
   case "$e" in *[Rr]efused*) return 1;; esac; return 2; }
-unreach(){ printf '%%s\n' "$1" | grep -E '^From [0-9.]+.*(nreachable|filtered)' | sed -n 's/^From \([0-9.]*\).*/\1/p' | head -n 1; }
+# iputils' ICMP error lines: Destination Host/Net Unreachable, Destination Host/Net
+# Prohibited, Packet filtered, Source Host Isolated, Time to live exceeded.
+unreach(){ printf '%%s\n' "$1" | grep -Ei '^From [0-9.]+.*(unreachable|prohibited|filtered|isolated|exceeded)' \
+  | sed -n 's/^From \([0-9.]*\).*/\1/p' | head -n 1; }
 icmp(){ pinned "$1" || return 5; command -v ping >/dev/null 2>&1 || return 2
   local o r h; o=$(timeout $((T+2)) ping -n -c 1 -W "$T" "$1" 2>&1); r=$?
   [ $r -eq 0 ] && return 0; h=$(unreach "$o")
@@ -205,11 +216,13 @@ dns_ext(){ local o r ip s out=0 any=0; command -v getent >/dev/null 2>&1 || retu
   for ip in $(printf '%%s\n' "$o" | sed -n 's/^\([0-9.]*\) .*/\1/p' | sort -u); do any=1
     inside "$ip" || out=1; done
   [ $any -eq 1 ] || return 1; [ $out -eq 1 ] && return 0; return 2; }
+# Hop 1 must answer: silence there is not proof (a ping that never prints Time Exceeded,
+# busybox's, or a first hop that filters before forwarding, as pfSense does).
 route(){ pinned "$1" || return 5; local t o r h; command -v ping >/dev/null 2>&1 || return 3
   for t in %(hop_list)s; do o=$(timeout $((T+2)) ping -n -c 1 -W "$T" -t "$t" "$1" 2>&1); r=$?
     [ $r -eq 0 ] && return 1
     h=$(printf '%%s\n' "$o" | sed -n 's/^From \([0-9.]*\)[ :].*/\1/p' | head -n 1)
-    if [ -z "$h" ]; then [ $r -eq 1 ] && continue; return 3; fi
+    if [ -z "$h" ]; then [ "$t" -eq 1 ] && return 3; [ $r -eq 1 ] && continue; return 3; fi
     inr "$h" || return 1; done; return 0; }
 v6route(){ command -v ip >/dev/null 2>&1 || return 3; local o; o=$(ip -6 route show table all 2>/dev/null) || return 3
   printf '%%s\n' "$o" | grep -Eiv '^(local|multicast|anycast|broadcast|unreachable|prohibit|blackhole|throw|nat) |^(fe80|ff[0-9a-f]{2}):|^::1 |^[[:space:]]*$' \
@@ -257,6 +270,9 @@ def linux_step(label: str, probes: list[Probe], timeout: int, ctx: Context = Con
 _PS_LIB = r"""
 $ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue'; $T = %(timeout_ms)d
 $SRC = %(src)s; $R = @(%(range)s); $C = @(%(inside)s)
+# Multi-homed probe: Windows sends from the interface its route picks (strong host model, no
+# source-based policy routing by default), so the route Find-NetRoute picks for the target must
+# be on the interface holding the zone address.
 function Pinned($h) { if (-not $SRC) { return $true }
   try { $i = (Get-NetIPAddress -IPAddress $SRC -ErrorAction Stop | Select-Object -First 1).InterfaceIndex
     $used = @(Find-NetRoute -RemoteIPAddress $h -ErrorAction Stop | ForEach-Object { $_.InterfaceIndex } | Select-Object -Unique)
@@ -269,7 +285,8 @@ function Tcp($h, $p) { if (-not (Pinned $h)) { return 5 }; $c = New-Object Net.S
 function Icmp($h, $pin = $true) { if ($pin -and -not (Pinned $h)) { return 5 }
   try { $r = (New-Object Net.NetworkInformation.Ping).Send($h, $T)
     if ($r.Status -eq 'Success') { return 0 }
-    if ([string]$r.Status -match 'Unreachable|Prohibited' -and $r.Address) { if ($R -contains $r.Address.ToString()) { return 3 }; return 4 }
+    if ([string]$r.Status -match 'Unreachable|Prohibited|TtlExpired|TimeExceeded|Isolated' -and $r.Address -and
+        $r.Address.ToString() -ne '0.0.0.0') { if (InR $r.Address.ToString()) { return 3 }; return 4 }
     return 1 } catch { return 2 } }
 function Selftest([string[]]$hs) { $SRC = ''; foreach ($h in $hs) { if ((Icmp $h $false) -eq 0) { return 0 }
     if ((Tcp $h 53) -le 1) { return 0 }; if ((Tcp $h 443) -le 1) { return 0 } }; return 1 }
@@ -277,6 +294,8 @@ function InCidr($ip, $c) { $p = $c.Split('/'); $a = [Net.IPAddress]::Parse($ip).
   $n = [Net.IPAddress]::Parse($p[0]).GetAddressBytes(); if ($a.Length -ne $n.Length) { return $false }; $b = [int]$p[1]
   for ($i = 0; $i -lt $a.Length; $i++) { $m = if ($b -ge 8) { 255 } elseif ($b -le 0) { 0 } else { (0xFF -shl (8 - $b)) -band 0xFF }
     if (($a[$i] -band $m) -ne ($n[$i] -band $m)) { return $false }; $b -= 8 }; return $true }
+function InR($ip) { foreach ($x in $R) { if ($x -like '*/*') { if (InCidr $ip $x) { return $true } }
+    elseif ($x -eq $ip) { return $true } }; return $false }
 function Inside($ip) { foreach ($c in $C) { if (InCidr $ip $c) { return $true } }; return $false }
 function HasResolver { return [bool](Get-Command Resolve-DnsName -ErrorAction SilentlyContinue) }
 function DnsInt($s, $n) { if (-not (Pinned $s)) { return 5 }; if (-not (HasResolver)) { return 3 }
@@ -289,7 +308,9 @@ function Route($d) { if (-not (Pinned $d)) { return 5 }
   try { $p = New-Object Net.NetworkInformation.Ping; $buf = New-Object byte[] 32
     for ($t = 1; $t -le %(hops)d; $t++) { $r = $p.Send($d, $T, $buf, (New-Object Net.NetworkInformation.PingOptions($t, $true)))
       if ($r.Status -eq 'Success') { return 1 }
-      if ($r.Address -and $r.Address.ToString() -ne '0.0.0.0' -and -not ($R -contains $r.Address.ToString())) { return 1 } }
+      $silent = -not $r.Address -or $r.Address.ToString() -eq '0.0.0.0'
+      if ($silent -and $t -eq 1) { return 3 }  # hop 1 must answer: silence is not proof
+      if (-not $silent -and -not (InR $r.Address.ToString())) { return 1 } }
     return 0 } catch { return 3 } }
 function V6route { if (-not (Get-Command Get-NetRoute -ErrorAction SilentlyContinue)) { return 3 }
   try { $r = @(Get-NetRoute -AddressFamily IPv6 -ErrorAction Stop | Where-Object {
@@ -339,7 +360,37 @@ def windows_step(label: str, probes: list[Probe], timeout: int, ctx: Context = C
 STEP_BUILDERS = {"linux": linux_step, "windows": windows_step}
 
 
+# Windows' CreateProcess takes a command line of at most 32767 characters; keep clear of it.
+MAX_WINDOWS_ARGS = 30_000
+NEEDS_RANGE = frozenset({"icmp", "route"})  # read $R
+NEEDS_INSIDE = frozenset({"dns_ext"})  # read $C
+
+
+def _ctx_for(group: list[Probe], ctx: Context) -> Context:
+    """Only what the step's probes read, so a large range's lists ride only on the steps
+    that need them."""
+    return Context(ctx.src, ctx.range_addresses if any(p.kind in NEEDS_RANGE for p in group) else (),
+                   ctx.inside if any(p.kind in NEEDS_INSIDE for p in group) else ())
+
+
+def groups(family: str, probes: list[Probe], timeout: int, ctx: Context = Context()
+           ) -> list[tuple[GuestStep, list[Probe]]]:
+    """(guest step, the probes it runs, in order) covering ``probes`` on a ``family`` (linux |
+    windows) probe VM. A Windows pair whose command line would pass MAX_WINDOWS_ARGS runs
+    as two steps. A single probe still too long is sent anyway: Windows refuses to start it,
+    the step fails, and its probe is inconclusive (never a pass)."""
+    build = STEP_BUILDERS[family]
+    out: list[tuple[GuestStep, list[Probe]]] = []
+    for group in chunks(probes):
+        parts = [group]
+        if family == "windows" and len(group) > 1 and \
+                len(build("x", group, timeout, _ctx_for(group, ctx)).arguments) > MAX_WINDOWS_ARGS:
+            parts = [[p] for p in group]
+        for part in parts:
+            out.append((build(f"isolation-{len(out)}", part, timeout, _ctx_for(part, ctx)), part))
+    return out
+
+
 def steps(family: str, probes: list[Probe], timeout: int, ctx: Context = Context()) -> list[GuestStep]:
     """The guest steps that run ``probes`` on a ``family`` (linux | windows) probe VM."""
-    build = STEP_BUILDERS[family]
-    return [build(f"isolation-{n}", group, timeout, ctx) for n, group in enumerate(chunks(probes))]
+    return [step for step, _ in groups(family, probes, timeout, ctx)]

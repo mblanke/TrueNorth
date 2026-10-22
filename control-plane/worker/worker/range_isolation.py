@@ -330,7 +330,19 @@ def zone_context(vm: dict, z: dict, output: dict, cfg: Settings) -> scripts.Cont
     probe must leave by that NIC), the range's own addresses, the CIDRs counted inside."""
     src = next((_ip(n.get("ip")) for n in _on(vm, z) if _ip(n.get("ip"))), "") if multi_homed(vm) else ""
     inside = sorted({z2["cidr"] for z2 in zones(output) if scripts.valid_cidr(z2["cidr"])} | set(cfg.simulated_cidrs))
-    return scripts.Context(src, tuple(range_addresses(output)), tuple(inside))
+    return scripts.Context(src, tuple(compact_range(output)), tuple(inside))
+
+
+def compact_range(output: dict) -> list[str]:
+    """The range's own IPv4 space, short: each zone's CIDR, then the addresses outside every
+    zone (the edge's WAN address, a NIC on a leased network). A hop answering from inside a
+    zone CIDR has not left the range, held by a VM or not; so a large range needs no list of
+    every VM address on the guest command line (Windows caps it, isolation_scripts)."""
+    nets = [ipaddress.ip_network(z["cidr"], strict=False) for z in zones(output)
+            if scripts.valid_cidr(z["cidr"]) and ipaddress.ip_network(z["cidr"], strict=False).version == 4]
+    nets = list(ipaddress.collapse_addresses(nets))
+    extra = [a for a in range_addresses(output) if not any(ipaddress.ip_address(a) in n for n in nets)]
+    return [str(n) for n in nets] + extra
 
 
 def _peers(output: dict, z: dict, probe: dict) -> list[str]:
@@ -610,13 +622,14 @@ async def _probe_zone(provisioner, range_id: str, z: dict, output: dict, templat
             return unprobed(z, "budget_exhausted", "the isolation time budget ran out before this zone")
         planned = plan_checks(z, vm, output, cfg, dns)
         ctx = zone_context(vm, z, output, cfg)
-        steps = scripts.steps(_family(vm), [c.probe for c in planned], cfg.probe_timeout, ctx)
+        pairs = scripts.groups(_family(vm), [c.probe for c in planned], cfg.probe_timeout, ctx)
+        steps = [step for step, _ in pairs]
         tried.append(f"{vm.get('name')} as {login.username}")
         is_flagged = node_of(vm, range_id) in flagged
         probe = {"vm": vm.get("name"), "family": _family(vm), "account": login.username, "admin": admin,
                  "account_class": cls, "flagged": is_flagged, "multi_homed": bool(ctx.src), "source_ip": ctx.src,
                  # a re-probe from here may raise the verdict (app/range_certification/evidence.py)
-                 "trusted": is_flagged and cls == STAFF}
+                 "trusted": trusted_probe(vm, accounts, range_id, is_flagged, cls)}
         try:
             ran = await provisioner.run_in_guest(
                 vm["vm_id"], login, steps, min(cfg.zone_timeout, left), range_id=range_id,
@@ -627,7 +640,7 @@ async def _probe_zone(provisioner, range_id: str, z: dict, output: dict, templat
                            vm.get("name"), str(exc)[:300])
             last_error = str(exc)[:300]
             continue
-        codes = _codes(planned, steps, ran)
+        codes = _codes(pairs, ran)
         graded = grade_zone(z, planned, codes, cfg)
         failed_steps = [r.get("label") for r in ran if r.get("status") != "ok"]
         return {**graded, "status": "probed", "probe": probe, **({"step_errors": failed_steps} if failed_steps else {})}
@@ -636,10 +649,19 @@ async def _probe_zone(provisioner, range_id: str, z: dict, output: dict, templat
     return unprobed(z, "guest_op_failed", f"guest operations failed on {', '.join(tried)}: {last_error}"[:400])
 
 
-def _codes(planned: list[Check], steps: list, ran: list[dict]) -> list[int | None]:
+def trusted_probe(vm: dict, accounts: dict, range_id: str, flagged: bool, login_class: str) -> bool:
+    """Whether a re-probe from ``vm`` may raise the verdict (app/range_certification/evidence):
+    its node is ``probe: true``, the login used is staff-only, and no account on that node is
+    Student-visible (a Student with any login there could fake what the probe reports)."""
+    node_accounts = accounts.get(node_of(vm, range_id)) or []
+    return flagged and login_class == STAFF and all(account_class(a) == STAFF for a in node_accounts)
+
+
+def _codes(pairs: list, ran: list[dict]) -> list[int | None]:
+    """Each planned check's probe code, in plan order (``pairs``: isolation_scripts.groups)."""
     by_label = {r.get("label"): r for r in ran if isinstance(r, dict)}
     codes: list[int | None] = []
-    for step, group in zip(steps, scripts.chunks(planned), strict=True):
+    for step, group in pairs:
         r = by_label.get(step.label) or {}
         codes += scripts.decode(r.get("exit_code") if r.get("status") == "ok" else None, len(group))
     return codes

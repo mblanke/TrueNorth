@@ -828,8 +828,8 @@ def _worker_isolation(monkeypatch, respond, *, zones_without_probe=()) -> dict:
     from worker.range_isolation import ProbeAccount
 
     monkeypatch.setenv("TN_RANGE_ISOLATION_PROBE_TARGETS", "10.30.30.1:443,192.168.1.10:443")
-    monkeypatch.setattr(range_isolation.scripts, "steps", lambda family, probes, timeout, ctx=None: [
-        GuestStep(f"isolation-{n}", "fake", json.dumps([[p.kind, list(p.args)] for p in group]))
+    monkeypatch.setattr(range_isolation.scripts, "groups", lambda family, probes, timeout, ctx=None: [
+        (GuestStep(f"isolation-{n}", "fake", json.dumps([[p.kind, list(p.args)] for p in group])), group)
         for n, group in enumerate(isolation_scripts.chunks(probes))])
 
     class Guest:
