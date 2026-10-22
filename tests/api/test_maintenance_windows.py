@@ -301,8 +301,16 @@ class TestEmergencyTeardown:
 
 
 class TestHeldOperations:
-    """The worker gives an operation that reached it inside a window back to ``pending``
-    (worker/maintenance_windows.py): the API's re-send loop keeps it until the window ends."""
+    """The worker marks an operation that reached it inside a window ``held``
+    (worker/maintenance_windows.py): the API's re-send loop sends it once the window ends,
+    and held operations never crowd out anyone else's re-send."""
+
+    @staticmethod
+    def _hold(db, op_id: str) -> RangeOperation:
+        op = db.get(RangeOperation, uuid.UUID(op_id))
+        op.status, op.error = "held", {"code": "maintenance_window", "message": "held"}  # as the worker does
+        db.commit()
+        return op
 
     def test_a_held_operation_is_sent_only_after_the_window(self, client, db_session, no_real_broker):
         from app.range_ops import service as ops
@@ -310,16 +318,74 @@ class TestHeldOperations:
         rng = _range(db_session, RangeState.ready, output=VMS)
         op_id = client.post(f"/ranges/{rng.id}/destroy").headers["Operation-Id"]
         w = _window(client)
-        op = db_session.get(RangeOperation, uuid.UUID(op_id))
-        op.status, op.error = "pending", {"code": "maintenance_window", "message": "held"}  # as the worker does
-        db_session.commit()
+        self._hold(db_session, op_id)
         no_real_broker.sent.clear()
         assert ops.redispatch_pending(db_session, min_age=timedelta(0)) == 0 and no_real_broker.sent == []
         db_session.refresh(rng)
         assert rng.state == RangeState.destroying, "still in progress, not failed"
+        assert client.post(f"/ranges/{rng.id}/stop").status_code == 409, "a held operation is still in flight"
         client.delete(f"/maintenance-windows/{w['id']}")
         assert ops.redispatch_pending(db_session, min_age=timedelta(0)) == 1
         assert no_real_broker.sent == [("worker.tasks.destroy_range", [str(rng.id)])]
+        assert db_session.get(RangeOperation, uuid.UUID(op_id)).status == "dispatched"
+
+    def test_held_operations_never_starve_another_tenants_resend(self, client, db_session, no_real_broker):
+        """Review of #261 (PoC): 50 held for tenant A took every re-send slot from tenant B."""
+        from app.range_ops import service as ops
+
+        a, b = _tenant(db_session, "a-org"), _tenant(db_session, "b-org")
+        with acting_as(db_session, UserRole.admin, a):
+            ids = [client.post(f"/ranges/{_range(db_session, RangeState.ready, tenant=a, output=VMS).id}/destroy")
+                   .headers["Operation-Id"] for _ in range(ops.HELD_PAGE + 10)]  # more than one page
+            _window(client, end=_now() + timedelta(hours=8))
+        for op_id in ids:
+            self._hold(db_session, op_id)
+        victim = _range(db_session, RangeState.ready, tenant=b, output=VMS)
+        with acting_as(db_session, UserRole.admin, b):
+            vop = client.post(f"/ranges/{victim.id}/destroy").headers["Operation-Id"]
+        db_session.get(RangeOperation, uuid.UUID(vop)).status = "pending"  # its broker send failed
+        db_session.commit()
+        no_real_broker.sent.clear()
+        assert ops.redispatch_pending(db_session, min_age=timedelta(0), limit=50) == 1
+        assert no_real_broker.sent == [("worker.tasks.destroy_range", [str(victim.id)])]
+
+    def test_a_released_hold_is_found_past_a_page_of_still_held_ones(self, client, db_session, no_real_broker):
+        from app.range_ops import service as ops
+
+        a, b = _tenant(db_session, "a-org"), _tenant(db_session, "b-org")
+        with acting_as(db_session, UserRole.admin, a):
+            ids = [client.post(f"/ranges/{_range(db_session, RangeState.ready, tenant=a, output=VMS).id}/destroy")
+                   .headers["Operation-Id"] for _ in range(ops.HELD_PAGE + 5)]
+            _window(client, end=_now() + timedelta(hours=8))
+        with acting_as(db_session, UserRole.admin, b):
+            freed = _range(db_session, RangeState.ready, tenant=b, output=VMS)
+            last = client.post(f"/ranges/{freed.id}/destroy").headers["Operation-Id"]  # newest of all
+        for i, op_id in enumerate([*ids, last]):  # oldest first; b's is last, past the first page
+            self._hold(db_session, op_id).created_at = _now() - timedelta(hours=2) + timedelta(seconds=i)
+        db_session.commit()
+        no_real_broker.sent.clear()
+        assert ops.redispatch_pending(db_session, min_age=timedelta(0)) == 1
+        assert no_real_broker.sent == [("worker.tasks.destroy_range", [str(freed.id)])]
+
+    def test_a_task_held_before_the_send_is_recorded_is_not_overwritten(self, client, db_session, monkeypatch):
+        """Review of #261: dispatch() marks ``dispatched`` after the send; a worker that held the
+        task in between must win, or the operation would be stuck ``dispatched``."""
+        from app import celery_client
+        from app.range_ops import service as ops
+
+        rng = _range(db_session, RangeState.ready, output=VMS)
+        monkeypatch.setattr(ops, "dispatch", lambda db, op: False)  # accepted, not yet sent
+        op_id = client.post(f"/ranges/{rng.id}/destroy").headers["Operation-Id"]
+        monkeypatch.undo()
+
+        def send_and_the_worker_holds(name, *args):
+            db_session.get(RangeOperation, uuid.UUID(op_id)).status = "held"  # the task arrived first
+            db_session.flush()
+            return "task-1"
+
+        monkeypatch.setattr(celery_client, "dispatch", send_and_the_worker_holds)
+        ops.dispatch(db_session, db_session.get(RangeOperation, uuid.UUID(op_id)))
+        assert db_session.get(RangeOperation, uuid.UUID(op_id)).status == "held"
 
     def test_a_bypassed_operation_is_never_held(self, client, db_session, no_real_broker):
         from app.range_ops import service as ops
@@ -329,10 +395,75 @@ class TestHeldOperations:
         op_id = client.post(f"/ranges/{rng.id}/emergency-teardown",
                             json={"confirm_range_id": str(rng.id), "reason": "pull it now, it is misbehaving"}
                             ).headers["Operation-Id"]
-        op = db_session.get(RangeOperation, uuid.UUID(op_id))
-        op.status = "pending"
+        db_session.get(RangeOperation, uuid.UUID(op_id)).status = "pending"
         db_session.commit()
         assert ops.redispatch_pending(db_session, min_age=timedelta(0)) == 1
+
+
+class TestParkedRanges:
+    """Review of #261: a range whose work a window holds can still be torn down."""
+
+    def test_emergency_teardown_of_a_held_build(self, client, db_session, no_real_broker):
+        rng = _range(db_session)
+        op_id = client.post(f"/ranges/{rng.id}/provision").headers["Operation-Id"]
+        _window(client, end=_now() + timedelta(hours=8))
+        TestHeldOperations._hold(db_session, op_id)  # the worker held it; the range stays provisioning
+        resp = client.post(f"/ranges/{rng.id}/emergency-teardown",
+                           json={"confirm_range_id": str(rng.id), "reason": "pull it now, it is misbehaving"})
+        assert resp.status_code == 202 and resp.json()["state"] == "destroying"
+        held = db_session.get(RangeOperation, uuid.UUID(op_id))
+        assert held.status == "superseded"
+        assert _audits(db_session, "emergency_teardown")
+
+    def test_emergency_teardown_of_a_build_never_picked_up(self, client, db_session, monkeypatch):
+        """Pending (the broker was down), no worker lease: nothing runs, so it may come down."""
+        from app.range_ops import service as ops
+
+        rng = _range(db_session)
+        monkeypatch.setattr(ops, "dispatch", lambda db, op: False)  # never sent
+        client.post(f"/ranges/{rng.id}/provision")
+        monkeypatch.undo()
+        resp = client.post(f"/ranges/{rng.id}/emergency-teardown",
+                           json={"confirm_range_id": str(rng.id), "reason": "pull it now, it is misbehaving"})
+        assert resp.status_code == 202 and resp.json()["state"] == "destroying"
+
+    def test_a_build_a_worker_holds_the_lease_for_is_not_parked(self, client, db_session, no_real_broker):
+        from app.range_leases import RangeLease
+
+        rng = _range(db_session)
+        op_id = client.post(f"/ranges/{rng.id}/provision").headers["Operation-Id"]
+        TestHeldOperations._hold(db_session, op_id)
+        db_session.add(RangeLease(range_id=rng.id, holder="provision:abc", expires_at=_now() + timedelta(minutes=3)))
+        db_session.commit()
+        resp = client.post(f"/ranges/{rng.id}/emergency-teardown",
+                           json={"confirm_range_id": str(rng.id), "reason": "pull it now, it is misbehaving"})
+        assert resp.status_code == 409
+
+    def test_a_build_that_is_running_is_not_parked(self, client, db_session, no_real_broker):
+        rng = _range(db_session)
+        client.post(f"/ranges/{rng.id}/provision")  # dispatched: a worker may be building it
+        _window(client)
+        resp = client.post(f"/ranges/{rng.id}/emergency-teardown",
+                           json={"confirm_range_id": str(rng.id), "reason": "pull it now, it is misbehaving"})
+        assert resp.status_code == 409
+
+    def test_a_teardown_nothing_identified_has_a_way_out(self, client, db_session, no_real_broker):
+        from app.maintenance_windows.policy import HELD_MARKER
+
+        rng = _range(db_session, RangeState.destroying, output=VMS)
+        rng.error_message = f"Destroying {HELD_MARKER} is in effect until ...: SAN firmware."  # as the worker
+        db_session.commit()
+        _window(client)
+        resp = client.post(f"/ranges/{rng.id}/emergency-teardown",
+                           json={"confirm_range_id": str(rng.id), "reason": "clear the held teardown now"})
+        assert resp.status_code == 202
+        assert "overrode maintenance window" in _audits(db_session, "emergency_teardown")[0].detail
+
+    def test_a_destroying_range_without_the_hold_reason_is_not_parked(self, client, db_session):
+        rng = _range(db_session, RangeState.destroying, output=VMS)
+        resp = client.post(f"/ranges/{rng.id}/emergency-teardown",
+                           json={"confirm_range_id": str(rng.id), "reason": "clear the held teardown now"})
+        assert resp.status_code == 409
 
 
 class TestSchedulerBypass:
@@ -500,6 +631,27 @@ class TestAdministration:
             "reason": "late", "starts_at": _iso(_now() - timedelta(hours=3)), "ends_at": _iso(_now() - timedelta(hours=1)),
         })
         assert resp.status_code == 422 and "past" in resp.json()["detail"]
+
+    def test_bringing_an_ended_window_back_counts_against_the_cap(self, client, db_session):
+        ended = _window(client)
+        db_session.get(MaintenanceWindow, uuid.UUID(ended["id"])).ends_at = _now() - timedelta(minutes=1)
+        db_session.commit()
+        for _ in range(windows.MAX_LIVE_WINDOWS):
+            _window(client)
+        body = {"reason": "back again", "starts_at": _iso(_now()), "ends_at": _iso(_now() + timedelta(hours=1))}
+        resp = client.put(f"/maintenance-windows/{ended['id']}", json=body)
+        assert resp.status_code == 422 and str(windows.MAX_LIVE_WINDOWS) in resp.json()["detail"]
+
+    @pytest.mark.parametrize("reason", ["   ", " a  b ", "x"])
+    def test_a_reason_needs_three_characters_besides_spaces(self, client, reason):
+        resp = client.post("/maintenance-windows", json={
+            "reason": reason, "starts_at": _iso(_now()), "ends_at": _iso(_now() + timedelta(hours=1)),
+        })
+        assert resp.status_code == 422
+
+    def test_a_reason_is_stored_trimmed(self, client):
+        w = _window(client, reason="  vCenter upgrade  ")
+        assert w["reason"] == "vCenter upgrade"
 
     def test_platform_wide_is_fixed_once_created(self, client, db_session):
         w = _window(client)

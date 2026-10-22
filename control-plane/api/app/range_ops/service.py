@@ -42,7 +42,7 @@ from sqlalchemy.orm import Session
 
 from ..auth import CurrentUser
 from ..models import Exercise, ExerciseState, Range, RangeSnapshot, RangeState
-from .models import IN_FLIGHT, RangeOperation
+from .models import HELD, IN_FLIGHT, RangeOperation
 
 logger = logging.getLogger("truenorth.range_ops")
 
@@ -181,7 +181,7 @@ def refuse_while_in_flight(db: Session, rng: Range, what: str) -> None:
 
 def _check(db: Session, rng: Range, action: str) -> None:
     reconcile(db, rng)
-    if not rng.state.can_transition_to(ACTIONS[action].in_progress):
+    if not rng.state.can_transition_to(ACTIONS[action].in_progress) and not (action == "destroy" and parked(db, rng)):
         raise HTTPException(409, f"Cannot {action} range in state {rng.state.value}")
     vms = recorded_vms(rng)
     if action in ("stop", "start"):
@@ -337,24 +337,27 @@ def dispatch(db: Session, op: RangeOperation) -> bool:
     """
     from ..celery_client import dispatch as send
 
-    held = (
-        db.query(RangeOperation.id)
-        .filter(RangeOperation.id == op.id, RangeOperation.status == "pending")
+    row = (
+        db.query(RangeOperation.id, RangeOperation.status)
+        .filter(RangeOperation.id == op.id, RangeOperation.status.in_(("pending", HELD)))
         .with_for_update(skip_locked=True)
         .first()
     )
-    if held is None:  # being sent by someone else, or already sent
+    if row is None:  # being sent by someone else, or already sent
         db.commit()
         return False
+    sent_from = row[1]
     task_id = send(ACTIONS[op.action].task, *_task_args(db, op))
     values: dict = {"dispatch_attempts": RangeOperation.dispatch_attempts + 1}
     if task_id:
         values.update(status="dispatched", task_id=task_id, dispatched_at=_now(), error=None)
     else:
         values.update(error=BROKER_UNAVAILABLE)
+    # Only over the status it was sent from: a worker that already held the task it just got
+    # (status ``held``, worker/maintenance_windows.py) is not overwritten with ``dispatched``.
     db.execute(
         update(RangeOperation)
-        .where(RangeOperation.id == op.id, RangeOperation.status == "pending")
+        .where(RangeOperation.id == op.id, RangeOperation.status == sent_from)
         .values(**values)
         .execution_options(synchronize_session=False)
     )
@@ -374,23 +377,60 @@ def redispatch_pending(db: Session, *, min_age: timedelta = timedelta(seconds=15
         .limit(limit)
         .all()
     )
-    pending = [op for op in pending if not _held_by_window(db, op)]
+    released = released_holds(db, limit - len(pending))
     db.commit()
-    return sum(dispatch(db, op) for op in pending)
+    return sum(dispatch(db, op) for op in [*pending, *released])
 
 
-def _held_by_window(db: Session, op: RangeOperation) -> bool:
-    """A provision or normal destroy the worker gave back to ``pending`` because a
-    maintenance window covered its range (worker/maintenance_windows.py) waits here, still
-    recorded and its range still in progress, and is sent once the window ends."""
-    from ..maintenance_windows import policy as window_policy
+HELD_PAGE = 200
+
+
+def released_holds(db: Session, limit: int) -> list[RangeOperation]:
+    """Up to ``limit`` held operations (worker/maintenance_windows.py) whose range no window
+    covers any more, oldest first. Held operations never take a pending one's place in the
+    re-send (a separate query), and still-held ones are paged past, never counted against
+    ``limit``: one tenant's long window cannot starve another tenant's work. One window
+    lookup per page (``maintenance_windows.service.held_range_ids``)."""
     from ..maintenance_windows import service as windows
 
-    if op.window_bypass or op.action not in window_policy.REFUSED_ACTIONS:
+    out: list[RangeOperation] = []
+    after = None
+    while len(out) < limit:
+        q = db.query(RangeOperation).filter(RangeOperation.status == HELD)
+        if after is not None:
+            q = q.filter(
+                (RangeOperation.created_at > after[0])
+                | ((RangeOperation.created_at == after[0]) & (RangeOperation.id > after[1]))
+            )
+        page = q.order_by(RangeOperation.created_at, RangeOperation.id).limit(HELD_PAGE).all()
+        if not page:
+            break
+        # tenant-safe: the operations' own ranges, recorded in their tenants at acceptance.
+        ranges = db.query(Range).filter(Range.id.in_({op.range_id for op in page})).all()
+        still = windows.held_range_ids(db, ranges)
+        out += [op for op in page if op.range_id not in still][: limit - len(out)]
+        after = (page[-1].created_at, page[-1].id)
+    return out
+
+
+def parked(db: Session, rng: Range) -> bool:
+    """Nothing is running on the range and its work is waiting: no worker holds its lease,
+    and every in-flight operation is ``held`` (a maintenance window) or still ``pending``
+    (not picked up), or, for a teardown the worker could not identify, none is in flight and
+    the worker left its hold reason on a ``destroying`` range. Such a range can be torn down
+    (an emergency teardown, or a destroy after the window) although its state,
+    ``provisioning`` or ``destroying``, would not otherwise allow a destroy. A task of the
+    superseded operation that arrives later finds the range no longer in its state and skips
+    (worker/fencing.py); one already running holds the lease, so the range is not parked."""
+    from ..maintenance_windows.policy import HELD_MARKER
+
+    if rng.state not in (RangeState.provisioning, RangeState.destroying) or worker_acting(db, rng.id):
         return False
-    # tenant-safe: the operation's own range, recorded in its tenant at acceptance.
-    rng = db.get(Range, op.range_id)
-    return rng is not None and bool(windows.covering_range(db, rng))
+    statuses = [s for (s,) in db.query(RangeOperation.status).filter(
+        RangeOperation.range_id == rng.id, RangeOperation.status.in_(IN_FLIGHT))]
+    if statuses:
+        return all(s in (HELD, "pending") for s in statuses)
+    return rng.state == RangeState.destroying and HELD_MARKER in (rng.error_message or "")
 
 
 def stale_after() -> timedelta:

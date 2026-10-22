@@ -891,11 +891,14 @@ A new Student lab waits in its queue (`state: queued`, `error` says why) and sta
 window ends. Never refused: a booking's teardown when it ends, a lab's end, expiry and
 failed-build cleanup, and `POST /ranges/{id}/emergency-teardown`. Stop and start are not
 windowed. The worker re-checks at the task's entry, and a window never leaves a range `failed`:
-a build that reaches it inside a window is held (its operation goes back to `pending`, with
-`error.code = maintenance_window`, and the API re-sends it once the window ends; a lab's build
-puts the range back to `created` and the lab sends it again); a restore gives its snapshot back
-to `ready`. A destroy runs only when identified: a `window_bypass`, an operation accepted before
-the window began, or a Student lab's cleanup; anything else is held. Bookings that overlap a
+a build that reaches it inside a window is held (its operation's status becomes `held`, still
+in flight, with `error.code = maintenance_window`, and the API re-sends it once the window ends;
+a lab's build puts the range back to `created` and the lab sends it again); a restore gives its
+snapshot back to `ready`. A destroy runs only when identified: a `window_bypass`, an operation
+accepted before the window began, or a Student lab's cleanup; anything else is held. A range
+whose work is held and on which nothing runs (every in-flight operation `held`, or a teardown
+the worker held with no operation) can still be destroyed, `provisioning` or `destroying` as it
+is: by emergency teardown inside the window, or a destroy after it. Bookings that overlap a
 window are still made; `EventOut.maintenance_warnings` lists the windows. The clock does not
 build inside a window: the booking stays `scheduled` (past its start too) and is built on the
 first tick after the window ends if the session is still on (`deferred_by_window`,

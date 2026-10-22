@@ -24,9 +24,15 @@ REFUSED_ACTIONS = ("provision", "restore", "destroy")
 # one, so cleanup is never blocked by a missing marker.
 BYPASS_EMERGENCY = "emergency"  # range:admin, a mandatory reason, audited, certification record
 BYPASS_BOOKING_ENDED = "booking_ended"  # the scheduler's teardown when a booking ends (lease expiry)
-BYPASS_FAILURE_CLEANUP = "failure_cleanup"  # automated cleanup of a failed build
-BYPASS_CANARY = "canary"  # the nightly canary tearing its own range down (a later slice)
-BYPASS_KINDS = (BYPASS_EMERGENCY, BYPASS_BOOKING_ENDED, BYPASS_FAILURE_CLEANUP, BYPASS_CANARY)
+BYPASS_CANARY = "canary"  # the nightly canary tearing its own range down (#245's second half)
+BYPASS_KINDS = (BYPASS_EMERGENCY, BYPASS_BOOKING_ENDED, BYPASS_CANARY)
+# Automated failure cleanup needs no marker: a lab's failed build is torn down by its session
+# (no operation row; the worker identifies the range as a lab's), and a failed build's own
+# leftovers are discarded inside the build task, which is never re-checked.
+
+# What the worker writes on a range whose teardown it held without an operation to park
+# (worker/maintenance_windows.py): such a range may be torn down although it is destroying.
+HELD_MARKER = "is held by the worker: a maintenance window"
 
 
 def template_tags(template_yaml: str | None) -> set[str]:

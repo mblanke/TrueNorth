@@ -114,7 +114,7 @@ def test_a_recorded_build_inside_a_window_is_held_pending_not_failed(wdb):
     assert result["status"] == "held" and result["reason"] == "maintenance_window"
     assert _state(wdb, rid) == ("provisioning", None), "not failed; still recorded as being built"
     status, error = _op_row(wdb, oid)
-    assert status == "pending" and error["code"] == "maintenance_window" and "SAN firmware" in error["message"]
+    assert status == "held" and error["code"] == "maintenance_window" and "SAN firmware" in error["message"]
 
 
 def test_a_lab_build_inside_a_window_goes_back_to_created(wdb):
@@ -131,7 +131,7 @@ def test_a_persons_destroy_accepted_inside_the_window_is_held_pending(wdb):
     _window(wdb)
     assert tasks.destroy_range.run(rid)["status"] == "held"
     assert _state(wdb, rid) == ("destroying", None)
-    assert _op_row(wdb, oid)[0] == "pending"
+    assert _op_row(wdb, oid)[0] == "held"
 
 
 def test_a_persons_destroy_accepted_before_the_window_began_runs(wdb):
@@ -169,7 +169,7 @@ def test_a_destroy_nothing_identifies_is_held_not_run_and_not_failed(wdb):
 
 
 # ── always runs ──────────────────────────────────────────────────────────────
-@pytest.mark.parametrize("bypass", ["emergency", "booking_ended", "failure_cleanup", "canary"])
+@pytest.mark.parametrize("bypass", ["emergency", "booking_ended", "canary"])
 def test_a_bypassed_destroy_runs_inside_a_window(wdb, bypass):
     rid = _range(wdb, "destroying", output=OUTPUT)
     _op(wdb, rid, "destroy", bypass=bypass)
@@ -205,8 +205,8 @@ def test_unreadable_windows_never_block_a_teardown_but_do_hold_a_build(wdb):
     oid = _op(wdb, build, "provision")
     assert mw.at_entry(tasks._db_session, "destroy", destroy) is None
     result = mw.at_entry(tasks._db_session, "provision", build)
-    assert result["status"] == "held" and "could not be read" in result["detail"]
-    assert _state(wdb, build)[0] == "provisioning" and _op_row(wdb, oid)[0] == "pending"
+    assert result["status"] == "held" and "windows unreadable" in result["detail"]
+    assert _state(wdb, build)[0] == "provisioning" and _op_row(wdb, oid)[0] == "held"
 
 
 # ── which windows apply ──────────────────────────────────────────────────────
@@ -266,3 +266,12 @@ def test_stop_and_start_are_never_checked(wdb):
 
 def test_template_yaml_with_aliases_declares_no_tags():
     assert mw.template_tags("base: &b [soc]\ntags: *b\n") == set()
+
+
+def test_a_task_that_arrives_before_its_operation_is_marked_dispatched_is_still_held(wdb):
+    """Review of #261: the API marks ``dispatched`` after the send, so the task can win."""
+    rid = _range(wdb, "destroying", output=OUTPUT)
+    oid = _op(wdb, rid, "destroy", status="pending")
+    _window(wdb)
+    assert tasks.destroy_range.run(rid)["status"] == "held"
+    assert _op_row(wdb, oid)[0] == "held"

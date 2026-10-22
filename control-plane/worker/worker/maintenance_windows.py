@@ -8,19 +8,20 @@ the hypervisor. A window never leaves a range ``failed``: the work is held and r
 the window instead.
 
 * ``provision`` is held inside a window. A recorded operation (the ranges router, the
-  scheduler, exercises) goes back to ``pending`` with its range still ``provisioning``;
-  the API's re-send loop leaves it there until the window ends (app/range_ops). A lab's
+  scheduler, exercises) becomes ``held`` with its range still ``provisioning``; the API's
+  re-send loop sends it once the window ends (app/range_ops.released_holds). A lab's
   build (no operation row) puts its range back to ``created``, and the lab session sends
   it again once the window is over (app/lab_sessions).
 * ``restore`` is refused inside a window: the snapshot goes back to ``ready``; the range is
   untouched.
 * ``destroy`` runs only when it is identified as one that must: its operation carries a
-  bypass (an emergency, a booking that ended, failure cleanup, the canary), its operation
-  was accepted before the window began, or the range is a Student lab's (its end, expiry,
-  failed build, or a reset accepted before the window; lab sessions record why in
-  ``end_reason``). Anything else is held: a person's destroy goes back to ``pending`` and is
-  sent after the window; a destroy nothing identifies leaves the range ``destroying``, with
-  the reason, untouched. If the windows cannot be read, a teardown still runs.
+  bypass (an emergency, a booking that ended, the canary), its operation was accepted
+  before the window began, or the range is a Student lab's (its end, expiry, failed build,
+  or a reset accepted before the window; lab sessions record why in ``end_reason``).
+  Anything else is held: a person's destroy becomes ``held`` and is sent after the window;
+  a destroy nothing identifies leaves the range ``destroying``, with the reason
+  (``HELD_MARKER``), untouched: an emergency teardown, or a destroy after the window, may
+  then tear it down (range_ops.parked). If the windows cannot be read, a teardown still runs.
 
 Reads go through the generated table mirror (tables.py); no raw SQL (ADR 0003). Windows are
 read for the range's tenant and the platform only, in effect now, with no limit: another
@@ -43,9 +44,11 @@ from .tables import lab_sessions, maintenance_windows, range_operations, ranges,
 
 logger = logging.getLogger("worker.maintenance_windows")
 
-IN_FLIGHT = ("pending", "dispatched")  # app/range_ops/models.py
+IN_FLIGHT = ("pending", "dispatched", "held")  # app/range_ops/models.py
+HELD = "held"  # app/range_ops/models.py: handed back untouched; the API re-sends it after the window
 GATED = {"provision": "provisioning", "destroy": "destroying", "restore": None}
-BYPASS_KINDS = ("emergency", "booking_ended", "failure_cleanup", "canary")  # app/maintenance_windows/policy.py
+BYPASS_KINDS = ("emergency", "booking_ended", "canary")  # app/maintenance_windows/policy.py
+HELD_MARKER = "is held by the worker: a maintenance window"  # app/maintenance_windows/policy.py
 _WHAT = {"provision": "Provisioning", "destroy": "Destroying", "restore": "Restoring a snapshot"}
 MAX_YAML_BYTES = 1024 * 1024  # app/safe_yaml.py
 
@@ -173,7 +176,7 @@ def _lab_session(db, range_id: str):
 def message(w: dict, action: str) -> str:
     end = _utc(w["ends_at"])
     return (
-        f"{_WHAT.get(action, action)} is held by the worker: a maintenance window is in effect until "
+        f"{_WHAT.get(action, action)} {HELD_MARKER} is in effect until "
         f"{end.isoformat() if end else w['ends_at']}: {w['reason']}. Nothing was changed on the hypervisor; "
         "it runs after the window."
     )
@@ -202,11 +205,13 @@ def decide(db, action: str, range_id: str, now: datetime | None = None) -> tuple
 
 
 def _hold_operation(db, op, why: str) -> None:
-    """Back to ``pending`` (the outbox): the API sends it again once the window is over."""
+    """``held``: the API sends it again once the window is over (range_ops.released_holds).
+    From ``pending`` too: the API marks an operation ``dispatched`` only after the send, so its
+    task can arrive first; the API then leaves a ``held`` operation alone (range_ops.dispatch)."""
     db.execute(
         sa.update(range_operations)
-        .where(range_operations.c.id == op[0], range_operations.c.status == "dispatched")
-        .values(status="pending", dispatched_at=None, error={"code": "maintenance_window", "message": why[:500]})
+        .where(range_operations.c.id == op[0], range_operations.c.status.in_(("pending", "dispatched")))
+        .values(status=HELD, dispatched_at=None, error={"code": "maintenance_window", "message": why[:500]})
     )
 
 
@@ -222,7 +227,7 @@ def at_entry(session_factory, action: str, range_id: str, *args) -> dict | None:
         if action == "destroy":
             logger.error("[destroy] range %s: maintenance windows unreadable (%s); the teardown runs", range_id, exc)
             return None
-        why, op = f"{_WHAT[action]} is held by the worker: maintenance windows could not be read ({exc}).", None
+        why, op = f"{_WHAT[action]} {HELD_MARKER} could not be checked (windows unreadable: {exc}).", None
         try:
             with session_factory() as db:
                 op = _operation(db, range_id, action)

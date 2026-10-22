@@ -24,7 +24,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 
 from fastapi import HTTPException
-from sqlalchemy import or_
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from ..auth import CurrentUser
@@ -123,6 +123,34 @@ def covering_range(db: Session, rng: Range, at: datetime | None = None) -> list[
     at = at or _now()
     windows = [w for w in _candidates(db, rng.tenant_id, at, at + _TICK) if _in_effect(w, at)]
     return _covering(windows, tenant_id=rng.tenant_id, range_id=rng.id, tags=_range_tags_loader(db, rng.template_id))
+
+
+def held_range_ids(db: Session, ranges: list[Range], at: datetime | None = None) -> set:
+    """Of ``ranges``, the ids a window in effect at ``at`` (now) covers. One query for the
+    windows of all their tenants and the platform, one for the templates a ``tags`` window
+    needs, however many ranges."""
+    at = at or _now()
+    if not ranges:
+        return set()
+    tenants = {r.tenant_id for r in ranges if r.tenant_id is not None}
+    live = [
+        w for w in db.query(MaintenanceWindow).filter(
+            or_(MaintenanceWindow.tenant_id.is_(None), MaintenanceWindow.tenant_id.in_(tenants)),
+            MaintenanceWindow.starts_at < at + _TICK, MaintenanceWindow.ends_at > at,
+        ).all()
+        if _in_effect(w, at)
+    ]
+    if not live:
+        return set()
+    tags: dict = {}
+    if any(w.scope == WindowScope.tags.value for w in live):
+        # tenant-safe: the templates of ranges the caller already resolved.
+        rows = db.query(Template.id, Template.yaml).filter(Template.id.in_({r.template_id for r in ranges})).all()
+        tags = {tid: policy.template_tags(y) for tid, y in rows}
+    return {
+        r.id for r in ranges
+        if _covering(live, tenant_id=r.tenant_id, range_id=r.id, tags=lambda r=r: tags.get(r.template_id, set()))
+    }
 
 
 def blocking_new_range(db: Session, tenant_id: uuid.UUID, at: datetime | None = None) -> MaintenanceWindow | None:
@@ -260,16 +288,7 @@ def create(db: Session, user: CurrentUser, body: MaintenanceWindowIn) -> Mainten
     """range:admin; a platform-wide window also needs a platform administrator. Does not commit."""
     if body.platform_wide and not is_platform_admin(user, db):
         raise HTTPException(403, "Only a platform administrator can create a platform-wide maintenance window")
-    owner = None if body.platform_wide else tenant_uuid(user)
-    live = db.query(MaintenanceWindow.id).filter(
-        MaintenanceWindow.tenant_id.is_(None) if owner is None else MaintenanceWindow.tenant_id == owner,
-        MaintenanceWindow.ends_at > _now(),
-    ).count()
-    if live >= MAX_LIVE_WINDOWS:
-        raise HTTPException(
-            422, f"At most {MAX_LIVE_WINDOWS} maintenance windows may be in effect or upcoming at once; "
-            "delete or shorten one first"
-        )
+    _check_cap(db, None if body.platform_wide else tenant_uuid(user))
     w = MaintenanceWindow(
         id=uuid.uuid4(), tenant_id=None if body.platform_wide else tenant_uuid(user), created_by=_user_uuid(user)
     )
@@ -284,11 +303,31 @@ def update(db: Session, user: CurrentUser, w: MaintenanceWindow, body: Maintenan
     """Who the window applies to (its tenant, or platform-wide) is fixed once created. Does not commit."""
     if body.platform_wide != (w.tenant_id is None):
         raise HTTPException(422, "platform_wide cannot be changed; delete the window and create another")
+    if utc(w.ends_at) <= _now():  # an ended window brought back counts again
+        _check_cap(db, w.tenant_id)
     before = describe(w)
     _apply(db, user, w, body)
     db.flush()
     audit(db, user, "update", w, f"{before} -> {describe(w)}")
     return w
+
+
+def _check_cap(db: Session, owner: uuid.UUID | None) -> None:
+    """422 once ``owner`` (a tenant, or None: the platform) holds ``MAX_LIVE_WINDOWS`` windows
+    that have not ended. The count and the write that follows are serialised per owner
+    (a transaction-scoped advisory lock on PostgreSQL; SQLite serialises writers anyway)."""
+    if db.get_bind().dialect.name == "postgresql":
+        key = f"truenorth.maintenance_windows.{owner or 'platform'}"
+        db.execute(select(func.pg_advisory_xact_lock(func.hashtext(key))))
+    live = db.query(MaintenanceWindow.id).filter(
+        MaintenanceWindow.tenant_id.is_(None) if owner is None else MaintenanceWindow.tenant_id == owner,
+        MaintenanceWindow.ends_at > _now(),
+    ).count()
+    if live >= MAX_LIVE_WINDOWS:
+        raise HTTPException(
+            422, f"At most {MAX_LIVE_WINDOWS} maintenance windows may be in effect or upcoming at once; "
+            "delete or shorten one first"
+        )
 
 
 def delete(db: Session, user: CurrentUser, w: MaintenanceWindow) -> None:

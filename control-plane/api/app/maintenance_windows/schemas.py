@@ -37,6 +37,14 @@ class MaintenanceWindowIn(BaseModel):
         False, description="Every tenant's ranges (platform administrator only). Fixed once created."
     )
 
+    @field_validator("reason")
+    @classmethod
+    def _meaningful_reason(cls, v: str) -> str:
+        v = v.strip()
+        if len("".join(v.split())) < 3:
+            raise ValueError("reason must have at least 3 characters besides spaces")
+        return v
+
     @model_validator(mode="after")
     def _consistent(self) -> MaintenanceWindowIn:
         if self.ends_at <= self.starts_at:

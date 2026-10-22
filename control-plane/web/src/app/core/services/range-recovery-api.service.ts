@@ -15,7 +15,7 @@ export type NetworkReservation = S['NetworkReservationOut'];
 export type RangeSnapshot = S['SnapshotOut'];
 
 /** Operation statuses that are still in flight (app/range_ops/models.py IN_FLIGHT). */
-export const OPERATION_IN_FLIGHT = ['pending', 'dispatched'];
+export const OPERATION_IN_FLIGHT = ['pending', 'dispatched', 'held'];
 /** Snapshot states the worker is still writing (routers/ranges.py _SNAPSHOT_BUSY). */
 export const SNAPSHOT_BUSY = ['creating', 'restoring'];
 

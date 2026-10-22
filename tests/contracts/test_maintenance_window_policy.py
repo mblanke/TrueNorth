@@ -81,3 +81,12 @@ def test_the_bodies_are_the_same_code():
 
 def test_the_worker_gates_the_actions_the_api_refuses():
     assert set(worker_policy.GATED) == set(policy.REFUSED_ACTIONS)
+
+
+def test_bypasses_markers_and_statuses_agree():
+    from app.range_ops.models import HELD, IN_FLIGHT
+
+    assert worker_policy.BYPASS_KINDS == policy.BYPASS_KINDS
+    assert worker_policy.HELD_MARKER == policy.HELD_MARKER
+    assert (worker_policy.HELD, worker_policy.IN_FLIGHT) == (HELD, IN_FLIGHT)
+    assert policy.HELD_MARKER in worker_policy.message({"ends_at": "2026-11-02T07:00:00", "reason": "x"}, "destroy")

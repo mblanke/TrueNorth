@@ -15,8 +15,12 @@ from ..models import GUID, TimestampMixin
 # dispatched  the broker has the task
 # succeeded / failed   the range reached the outcome's state (reconciled from it)
 # superseded  a destroy replaced it while it was still in flight
-OP_STATUSES = ("pending", "dispatched", "succeeded", "failed", "superseded")
-IN_FLIGHT = ("pending", "dispatched")
+# held        the worker found it inside a maintenance window and handed it back untouched
+#             (worker/maintenance_windows.py); re-sent once the window ends. Still in flight:
+#             its range stays provisioning / destroying and nothing else may start on it.
+OP_STATUSES = ("pending", "dispatched", "held", "succeeded", "failed", "superseded")
+IN_FLIGHT = ("pending", "dispatched", "held")
+HELD = "held"
 
 
 class RangeOperation(TimestampMixin, Base):
