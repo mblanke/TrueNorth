@@ -485,6 +485,7 @@ class TestSnapshotRangeTask:
             "range_id": "r1",
             "snapshot_name": NAME,
             "vm_count": 2,
+            "snapshot_ids": {},  # S5: the backend's ids as taken (none from this one)
         }
 
     def test_leftovers_of_an_earlier_attempt_are_cleared_first(self, backend, spies):

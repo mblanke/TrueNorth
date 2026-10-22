@@ -72,6 +72,12 @@ Not ported: the guard hook and file-based approvals (TrueNorth has RBAC and an a
 - An admin override confirms items only by their listed MoID, typed back. It never deletes by annotation.
 - Afterwards TrueNorth verifies that none of the recorded IDs remain (VMs, disks, portgroups, folder) and records the result.
 - A periodic drift check next to `health_check_ranges` compares live VM IDs, CPU/RAM, NICs, portgroups, MACs, portgroup VLANs and snapshots with the record, and raises range warnings.
+- As built (S5, #243; `worker/range_inventory.py`, `app/range_inventory/`):
+  - a VM whose instance UUID was recorded is the range's exactly when that UUID is still under its MoID, whatever it is named or annotated now; ranges built before S5 keep the annotation/name rule and their teardown is graded `incomplete` (legacy);
+  - "carrying the range's mark" means its annotation, its `tn-range` tag, or (port groups) S1's owner mark; the tag is kept while an unidentified VM carries it;
+  - teardown is `pass` only with zero recorded IDs left and nothing unidentified, `fail` when a recorded ID remains (a disk file included), else `incomplete`;
+  - drift that can break isolation or identity (VM replaced, NIC port group or MAC, NIC added or removed, port group gone or re-VLANed) is `fail`; a VM gone, CPU/RAM or snapshot changes are `incomplete`. The record gets a `drift` entry only when the result changes;
+  - the override is `range:admin`, needs a reason, and each item's MoID must be typed back exactly and be in the listed set; the worker re-checks MoID plus instance UUID (or port-group key and owner mark) before deleting. Disk files and folders are never deleted by an override. It is cleanup after a teardown, so a maintenance window does not refuse it (§7's teardown rules are unchanged).
 
 ### 6. The Range Certification Record (S6)
 

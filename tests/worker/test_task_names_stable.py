@@ -28,7 +28,9 @@ WORKER = ROOT / "control-plane" / "worker"
 REGISTERED_BEFORE_SPLIT = {
     "worker.tasks.auto_assess_competency",
     "worker.tasks.batch_provision",
+    "worker.tasks.check_range_drift",  # ADR 0013 §5 (worker/range_drift.py)
     "worker.tasks.collect_range_metrics",
+    "worker.tasks.delete_confirmed_teardown_items",  # ADR 0013 §5 (worker/range_teardown.py)
     "worker.tasks.delete_snapshot",
     "worker.tasks.destroy_range",
     "worker.tasks.forge_exercise",

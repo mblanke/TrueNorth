@@ -128,6 +128,7 @@ _API = {
     "create_tag": ("POST", "/api/cis/tagging/tag"),
     "delete_tag": ("DELETE", "/api/cis/tagging/tag/{id}"),
     "attached": ("POST", "/api/cis/tagging/tag-association?action=list-attached-tags"),
+    "attached_objects": ("POST", "/api/cis/tagging/tag-association/{id}?action=list-attached-objects"),
     "attach": ("POST", "/api/cis/tagging/tag-association/{id}?action=attach"),
     "detach": ("POST", "/api/cis/tagging/tag-association/{id}?action=detach"),
 }
@@ -140,6 +141,7 @@ _REST = {
     "create_tag": ("POST", "/rest/com/vmware/cis/tagging/tag"),
     "delete_tag": ("DELETE", "/rest/com/vmware/cis/tagging/tag/id:{id}"),
     "attached": ("POST", "/rest/com/vmware/cis/tagging/tag-association?~action=list-attached-tags"),
+    "attached_objects": ("POST", "/rest/com/vmware/cis/tagging/tag-association/id:{id}?~action=list-attached-objects"),
     "attach": ("POST", "/rest/com/vmware/cis/tagging/tag-association/id:{id}?~action=attach"),
     "detach": ("POST", "/rest/com/vmware/cis/tagging/tag-association/id:{id}?~action=detach"),
 }
@@ -270,6 +272,25 @@ class TagClient:
         for tid in ids.values():
             if tid not in attached:
                 await self._do("attach", id=tid, body=obj)
+
+    async def range_tagged_vms(self, range_id: str) -> set[str]:
+        """Moids of the VMs the range's tn-range tag(s) are attached to (range certification S5:
+        a tag is a hint for finding what a teardown must report, never authority to delete).
+        Raises when the tagging service cannot be read; the caller says it was not checked."""
+        async with self._lock:
+            cats = await self._category_ids()
+            if "tn-range" not in cats:
+                return set()
+            await self._list_tags("tn-range", cats["tn-range"])
+            out: set[str] = set()
+            for (cat, name), tid in self._tags.items():
+                if cat != "tn-range" or folder_key(name) != range_key(range_id):
+                    continue
+                # vcsim and the legacy endpoint want a JSON body, even an empty one.
+                for obj in await self._do("attached_objects", id=tid, body={} if self._rest else None) or []:
+                    if isinstance(obj, dict) and obj.get("type") == "VirtualMachine" and obj.get("id"):
+                        out.add(str(obj["id"]))
+            return out
 
     async def delete_range_tags(self, range_id: str) -> list[str]:
         """Delete the tn-range tags of range ``range_id`` (its VMs are gone), matched by its

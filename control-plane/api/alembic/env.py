@@ -29,6 +29,7 @@ from app import (  # noqa: F401
     noise,
     range_certification,
     range_credentials,
+    range_inventory,
     range_leases,
     range_ops,
     scenario_runs,

@@ -495,6 +495,20 @@ range_greyspace = sa.Table(
     sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
 )
 
+range_inventory_checks = sa.Table(
+    "range_inventory_checks",
+    metadata,
+    sa.Column("id", GUID(), primary_key=True),
+    sa.Column("range_id", GUID(), nullable=False),
+    sa.Column("tenant_id", GUID()),
+    sa.Column("kind", sa.String(16), nullable=False),
+    sa.Column("status", sa.String(16), nullable=False),
+    sa.Column("summary", sa.String(500), nullable=False),
+    sa.Column("report", sa.JSON(), nullable=False),
+    sa.Column("checked_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("changed_at", sa.DateTime(timezone=True), nullable=False),
+)
+
 range_leases = sa.Table(
     "range_leases",
     metadata,
@@ -685,6 +699,7 @@ __all__ = [
     "range_credential_snapshots",
     "range_credentials",
     "range_greyspace",
+    "range_inventory_checks",
     "range_leases",
     "range_operations",
     "range_snapshots",

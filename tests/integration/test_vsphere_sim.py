@@ -52,7 +52,7 @@ httpx = pytest.importorskip("httpx")
 
 from pyVim.connect import Disconnect, SmartConnect  # noqa: E402
 from pyVmomi import vim, vmodl  # noqa: E402
-from worker import render  # noqa: E402
+from worker import range_inventory, render  # noqa: E402
 from worker.provisioners import vsphere_api as mod  # noqa: E402
 from worker.provisioners import vsphere_infra as infra  # noqa: E402
 
@@ -388,6 +388,8 @@ def test_a_two_network_range_lifecycle(env, si, range_id):
     unrecorded = {k: v for k, v in output.items() if k != "connection"}
     refused = _run(mod.VsphereAPIProvisioner().destroy(range_id, unrecorded))
     assert refused.status == "failed" and "does not record which vCenter" in refused.errors[0]
+    # S5: "none of its ids is here" is no proof of a clean teardown on what may be another vCenter.
+    assert range_inventory.teardown_status(refused.teardown)[0] == "incomplete"
 
 
 def test_reserved_manual_macs_land_and_spread_uses_every_host(env, si, range_id):
@@ -929,3 +931,208 @@ def test_a_host_missing_the_promoted_copy_is_avoided_and_none_anywhere_fails(env
     assert failed.status == "failed" and not failed.vms
     assert any("holds its promoted template build" in e for e in failed.errors), failed.errors
     assert _portgroups(si, f"tn-{range_id[:8]}-") == {}
+
+
+# --------------------------------------------------------------------------- #
+# Range certification S5 (#243): teardown by identified inventory, and drift
+# --------------------------------------------------------------------------- #
+
+
+def _built(range_id: str) -> tuple[dict, object]:
+    prov = mod.VsphereAPIProvisioner()
+    template = _template(range_id)
+    built = _run(prov.provision(range_id, template, {**_reserve(prov, range_id, template), "range_name": "Sim Range"}))
+    assert built.status == "ok", built.errors
+    output = {"vms": built.vms, "networks": built.networks, "connection": prov.connection_record(),
+              "inventory": built.inventory}
+    return output, built
+
+
+def _stray(si, name: str, annotation: str = "") -> object:
+    """A VM nobody recorded, cloned from one vcsim ships (not on the range's port groups)."""
+    source = _named(si, vim.VirtualMachine, "DC0_H0_VM1")
+    task = source.CloneVM_Task(folder=source.parent, name=name,
+                               spec=vim.vm.CloneSpec(location=vim.vm.RelocateSpec(), powerOn=False))
+    _wait(si, task)
+    vm = task.info.result
+    if annotation:
+        _wait(si, vm.ReconfigVM_Task(spec=vim.vm.ConfigSpec(annotation=annotation)))
+    return vm
+
+
+def _tag(vm_id: str, tag_name: str) -> None:
+    """Attach the existing tn-range tag ``tag_name`` to a VM, as a person in vCenter would."""
+    def attach(c, h):
+        for cid in c.get(f"{_TAGGING}/category", headers=h).json()["value"]:
+            if c.get(f"{_TAGGING}/category/id:{cid}", headers=h).json()["value"]["name"] != "tn-range":
+                continue
+            for tid in c.post(f"{_TAGGING}/tag/id:{cid}?~action=list-tags-for-category", headers=h).json()["value"]:
+                if c.get(f"{_TAGGING}/tag/id:{tid}", headers=h).json()["value"]["name"] == tag_name:
+                    c.post(f"{_TAGGING}/tag-association/id:{tid}?~action=attach", headers=h,
+                           json={"object_id": {"type": "VirtualMachine", "id": vm_id}}).raise_for_status()
+                    return
+        raise AssertionError(f"no tn-range tag {tag_name}")
+    _cis(attach)
+
+
+def test_s5_the_inventory_is_recorded_at_clone(env, si, range_id):
+    output, built = _built(range_id)
+    try:
+        for out in built.vms:
+            vm = vim.VirtualMachine(out["vm_id"], si._stub)
+            ident = out["identity"]
+            assert ident["moid"] == out["vm_id"] and ident["instance_uuid"] == vm.config.instanceUuid
+            assert ident["folder"] == vm.parent._moId == built.inventory["folder"]["moid"]
+            disks = [d.backing.fileName for d in vm.config.hardware.device if isinstance(d, vim.vm.device.VirtualDisk)]
+            assert [d["path"] for d in ident["disks"]] == disks and all(d["datastore"] for d in ident["disks"])
+            assert ident["datastores"] == sorted(ds._moId for ds in vm.datastore)
+            assert (ident["num_cpu"], ident["memory_mb"]) == (vm.config.hardware.numCPU, vm.config.hardware.memoryMB)
+            assert [n["mac"] for n in ident["nics"]] == [n["mac"] for n in out["nics"]]
+        pgs = _portgroups(si, f"tn-{range_id[:8]}-")
+        assert {n["portgroup"]: (n["moid"], n["key"]) for n in built.networks if n.get("portgroup")} == {
+            name: (pg._moId, pg.key) for name, pg in pgs.items()}
+        assert built.inventory["vlans"] == {"10": 100, "20": 101} and len(built.inventory["macs"]) == 2
+        assert range_inventory.recorded(output)["complete"]
+    finally:
+        assert _run(mod.VsphereAPIProvisioner().destroy(range_id, output)).status == "ok"
+
+
+def test_s5_a_clean_teardown_records_zero_remaining_ids(env, si, range_id):
+    output, built = _built(range_id)
+    gone = _run(mod.VsphereAPIProvisioner().destroy(range_id, output))
+    assert gone.status == "ok", gone.errors
+    report = gone.teardown
+    assert report["remaining"] == [] and report["unidentified"] == [] and report["not_checked"] == []
+    assert {d["id"] for d in report["deleted"]} == {v["vm_id"] for v in built.vms}
+    assert range_inventory.teardown_status(report)[0] == "pass"
+
+
+def test_s5_a_stray_vm_annotated_or_tagged_for_the_range_is_reported_not_deleted(env, si, range_id):
+    output, _ = _built(range_id)
+    key = range_id.replace("-", "")[:12]
+    annotated = _stray(si, f"stray-ann-{range_id[:8]}", mod.range_annotation(range_id))
+    tagged = _stray(si, f"stray-tag-{range_id[:8]}")
+    _tag(tagged._moId, f"sim-range-{key}")
+    try:
+        gone = _run(mod.VsphereAPIProvisioner().destroy(range_id, output))
+        assert gone.status == "ok", gone.errors  # the range's own items went
+        listed = {u["moid"]: u for u in gone.teardown["unidentified"]}
+        assert set(listed) == {annotated._moId, tagged._moId}
+        assert listed[annotated._moId]["marks"] == ["annotation"] and listed[tagged._moId]["marks"] == ["tag"]
+        assert listed[annotated._moId]["instance_uuid"] == annotated.config.instanceUuid
+        # Neither was deleted, and the tag that marks one of them stays as evidence.
+        assert annotated.name and tagged.name
+        assert f"sim-range-{key}" in _tag_names("tn-range")
+        status, summary = range_inventory.teardown_status(gone.teardown)
+        assert status == "incomplete" and "2 unidentified" in summary
+
+        # An admin confirms the annotated one by moid; a listing that no longer matches
+        # (its instance UUID changed) is left alone.
+        wrong = {**listed[tagged._moId], "instance_uuid": "00000000-0000-0000-0000-000000000000"}
+        after = _run(mod.VsphereAPIProvisioner().delete_confirmed(range_id, output, [listed[annotated._moId], wrong]))
+        assert [d["moid"] for d in after["confirmed_deleted"]] == [annotated._moId]
+        assert [s["moid"] for s in after["confirm_skipped"]] == [tagged._moId]
+        with pytest.raises(vmodl.fault.ManagedObjectNotFound):
+            annotated.name  # noqa: B018 -- deleted
+        assert tagged.name and [u["moid"] for u in after["unidentified"]] == [tagged._moId]
+    finally:
+        with contextlib.suppress(Exception):
+            _wait(si, tagged.Destroy_Task())
+
+
+def test_s5_a_port_group_with_the_ranges_owner_mark_that_was_not_recorded_is_reported_not_deleted(env, si, range_id):
+    output, _ = _built(range_id)
+    dvs = _named(si, vim.DistributedVirtualSwitch, DVS)
+    name = f"tn-{range_id[:8]}-v199"  # what a build that died before recording it would leave
+    stray = infra.ensure_dvs_portgroup(dvs, name, 199, False, lambda t: _wait(si, t),
+                                       mod.live_vlans.owner_mark(range_id))
+    try:
+        gone = _run(mod.VsphereAPIProvisioner().destroy(range_id, output))
+        assert gone.status == "ok", gone.errors
+        [listed] = gone.teardown["unidentified"]
+        assert (listed["kind"], listed["moid"], listed["name"], listed["vlan"]) == ("portgroup", stray._moId, name, 199)
+        assert stray.name == name  # left alone
+        after = _run(mod.VsphereAPIProvisioner().delete_confirmed(range_id, output, [listed]))
+        assert [d["moid"] for d in after["confirmed_deleted"]] == [stray._moId] and after["unidentified"] == []
+        assert range_inventory.teardown_status(after)[0] == "pass"
+    finally:
+        _drop(si, name)
+
+
+def test_s5_a_renamed_and_re_annotated_vm_is_still_deleted_by_its_moid(env, si, range_id):
+    output, built = _built(range_id)
+    vm = vim.VirtualMachine(built.vms[0]["vm_id"], si._stub)
+    _wait(si, vm.Rename_Task(newName="someone-renamed-me"))
+    _wait(si, vm.ReconfigVM_Task(spec=vim.vm.ConfigSpec(annotation="not a range VM any more")))
+    gone = _run(mod.VsphereAPIProvisioner().destroy(range_id, output))
+    assert gone.status == "ok", gone.errors
+    with pytest.raises(vmodl.fault.ManagedObjectNotFound):
+        vm.name  # noqa: B018 -- deleted by its recorded moid + instance UUID
+    assert gone.teardown["remaining"] == [] and range_inventory.teardown_status(gone.teardown)[0] == "pass"
+
+
+def test_s5_a_disk_left_behind_on_its_datastore_is_detected(env, si, range_id, monkeypatch):
+    """vCenter leaving a disk file behind (one held by another VM, or on a datastore the
+    delete could not reach) is simulated by putting the file back right after the delete."""
+    output, built = _built(range_id)
+    disk = built.vms[0]["identity"]["disks"][0]
+    dc = _named(si, vim.Datacenter, DC)
+    real = mod.VsphereAPIProvisioner._delete_vm
+
+    async def delete_then_leave_a_disk(self, client, vm_id):
+        await real(self, client, vm_id)
+        if vm_id == built.vms[0]["vm_id"]:
+            si.content.fileManager.MakeDirectory(name=disk["path"].rsplit("/", 1)[0], datacenter=dc,
+                                                 createParentDirectories=True)
+            spec = vim.VirtualDiskManager.FileBackedVirtualDiskSpec(diskType="thin", adapterType="lsiLogic",
+                                                                     capacityKb=1024)
+            _wait(si, si.content.virtualDiskManager.CreateVirtualDisk_Task(name=disk["path"], datacenter=dc,
+                                                                           spec=spec))
+
+    monkeypatch.setattr(mod.VsphereAPIProvisioner, "_delete_vm", delete_then_leave_a_disk)
+    gone = _run(mod.VsphereAPIProvisioner().destroy(range_id, output))
+    try:
+        assert gone.status == "ok", gone.errors  # every VM was deleted ...
+        assert [r for r in gone.teardown["remaining"] if r["kind"] == "disk"] == [
+            {"kind": "disk", "id": disk["path"], "path": disk["path"], "datastore": disk["datastore"],
+             "name": built.vms[0]["name"]}]
+        status, summary = range_inventory.teardown_status(gone.teardown)  # ... but the record says what is left
+        assert status == "fail" and disk["path"] in summary
+    finally:
+        with contextlib.suppress(Exception):
+            _wait(si, si.content.fileManager.DeleteDatastoreFile_Task(name=disk["path"].rsplit("/", 1)[0],
+                                                                      datacenter=dc))
+
+
+def test_s5_drift_ram_vlan_and_snapshots(env, si, range_id):
+    output, built = _built(range_id)
+    try:
+        def drift(rows=()):
+            live = _run(mod.VsphereAPIProvisioner().live_inventory(range_id, output))
+            return range_inventory.compare(output, live, rows)
+
+        clean = drift()
+        assert (clean["status"], clean["findings"], clean["checked"]) == ("pass", [], {"vms": 2, "portgroups": 2})
+        # A snapshot TrueNorth took (its ids recorded as taken) is no drift; one taken by hand is.
+        snap = _run(mod.VsphereAPIProvisioner().snapshot(range_id, output, "tnbaseline"))
+        assert snap.status == "ok" and set(snap.snapshot_ids) == {v["vm_id"] for v in built.vms}
+        rows = [{"state": "ready", "backend_name": "tnbaseline",
+                 "data": {"snapshot_name": "tnbaseline", "snapshot_ids": snap.snapshot_ids}}]
+        assert drift(rows)["findings"] == []
+        vm = vim.VirtualMachine(built.vms[0]["vm_id"], si._stub)
+        _wait(si, vm.CreateSnapshot_Task(name="by-hand", memory=False, quiesce=False))
+        # RAM changed by hand: drift, not a failure; a port group moved to another VLAN: a failure.
+        _wait(si, vm.ReconfigVM_Task(spec=vim.vm.ConfigSpec(memoryMB=built.vms[0]["identity"]["memory_mb"] * 2)))
+        result = drift(rows)
+        assert {f["kind"] for f in result["findings"]} == {"memory_changed", "snapshot_unexpected"}
+        assert result["status"] == "incomplete"
+        pg = next(iter(_portgroups(si, f"tn-{range_id[:8]}-").values()))
+        spec = vim.dvs.DistributedVirtualPortgroup.ConfigSpec(
+            configVersion=pg.config.configVersion,
+            defaultPortConfig=vim.dvs.VmwareDistributedVirtualSwitch.VmwarePortConfigPolicy(
+                vlan=vim.dvs.VmwareDistributedVirtualSwitch.VlanIdSpec(inherited=False, vlanId=3999)))
+        _wait(si, pg.ReconfigureDVPortgroup_Task(spec))
+        result = drift(rows)
+        assert "portgroup_vlan_changed" in {f["kind"] for f in result["findings"]} and result["status"] == "fail"
+    finally:
+        assert _run(mod.VsphereAPIProvisioner().destroy(range_id, output)).status == "ok"

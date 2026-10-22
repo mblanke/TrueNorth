@@ -24,8 +24,14 @@ one call, in its own transaction, for the deployment it worked on:
   S4 (#242)              ``isolation``              by S4 calling ``append``: pass when
                                                     every zone is probed and every non-
                                                     exception check proven_unreachable
-  S5 (#243)              ``drift``, ``teardown``    by S5 (teardown has a basic entry
-                                                    now: the destroy's outcome)
+  S5 (#243)              ``teardown``               here, at a destroy's settle (and on
+                                                    read after a re-verification): its
+                                                    outcome with the worker's check of
+                                                    the recorded inventory (app/range_
+                                                    inventory, ``teardown_evidence``)
+  S5 (#243)              ``drift``                  by the worker, through its table
+                                                    mirror, when the result changes
+                                                    (worker/range_inventory_db.py)
   S7, any force          ``overrides`` via          (info) who, what, why
                          ``record_override``
   =====================  =========================  ===================================
@@ -327,12 +333,53 @@ def capture_build(db: Session, rng: Range, record: RangeCertificationRecord, bui
     return sum(1 for e in written if e is not None)
 
 
-def capture_teardown(db: Session, rng: Range, record: RangeCertificationRecord, destroyed: bool) -> None:
+def _aware(value):
+    from datetime import UTC
+
+    return value.replace(tzinfo=UTC) if value is not None and value.tzinfo is None else value
+
+
+def teardown_check(db: Session, rng: Range, record: RangeCertificationRecord) -> dict | None:
+    """The worker's verification of this deployment's teardown (S5, app/range_inventory): the
+    range's ``teardown`` check, if it was written after this record was opened (an older one
+    is an earlier build's teardown)."""
+    from ..range_inventory.models import RangeInventoryCheck
+
+    # tenant-safe: ``rng`` is the caller's (or the reconciled) range; a check row belongs to it.
+    row = (db.query(RangeInventoryCheck)
+           .filter(RangeInventoryCheck.range_id == rng.id, RangeInventoryCheck.kind == "teardown").first())
+    if row is None or _aware(row.checked_at) < _aware(record.opened_at):
+        return None
+    return {"status": row.status, "summary": row.summary, "report": row.report if isinstance(row.report, dict) else {}}
+
+
+def teardown_evidence(db: Session, rng: Range, record: RangeCertificationRecord,
+                      destroyed: bool) -> tuple[str, str, dict]:
     from ..network_inventory import NetworkReservation
 
     held = db.query(NetworkReservation).filter(NetworkReservation.range_id == rng.id).all() if destroyed else []
-    append(db, record, "teardown", *evidence.teardown(destroyed, rng.error_message, held), source="api.capture",
+    return evidence.teardown(destroyed, rng.error_message, held, teardown_check(db, rng, record))
+
+
+def capture_teardown(db: Session, rng: Range, record: RangeCertificationRecord, destroyed: bool) -> None:
+    append(db, record, "teardown", *teardown_evidence(db, rng, record, destroyed), source="api.capture",
            skip_if_unchanged=True)
+
+
+def refresh_teardown_if_changed(db: Session, rng: Range, record: RangeCertificationRecord) -> bool:
+    """A destroyed range whose teardown the worker verified again since its destroy settled
+    (an administrator's confirmed items deleted, worker/range_teardown.py): append the new
+    verification. Only once the destroy's own entry is there (it settles first)."""
+    rows = entries_of(db, record)
+    top = sec.latest(rows, "teardown")
+    if top is None:
+        return False
+    found = teardown_evidence(db, rng, record, destroyed=True)
+    # Only a new verification counts: reservations the API released after the settle do not.
+    if found[2].get("inventory") is None or (top.detail or {}).get("inventory") == found[2]["inventory"]:
+        return False
+    with db.begin_nested():
+        return append(db, record, "teardown", *found, source="api.capture", skip_if_unchanged=True) is not None
 
 
 def on_operation_settled(db: Session, rng: Range, op, outcome: str) -> None:
@@ -360,7 +407,9 @@ def refresh_if_changed(db: Session, rng: Range) -> bool:
 
     try:
         record = latest_record(db, rng.tenant_id, rng.id)
-        if record is None or rng.state in (RangeState.destroying, RangeState.destroyed):
+        if record is not None and rng.state == RangeState.destroyed:
+            return refresh_teardown_if_changed(db, rng, record)  # S5: a teardown verified again since
+        if record is None or rng.state == RangeState.destroying:
             return False
         op = _operation(db, record)
         if op is None or op.status not in ("succeeded", "failed") or op.generation != _last_generation(db, rng):

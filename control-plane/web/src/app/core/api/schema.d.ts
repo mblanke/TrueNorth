@@ -6347,6 +6347,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/ranges/{range_id}/inventory-checks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The range's last teardown verification and drift check
+         * @description What the range's last teardown deleted by recorded id, which recorded ids remain, and
+         *     what carries the range's mark but was not deleted (unidentified); and the latest drift
+         *     check of the live range against its recorded inventory (VM ids, CPU/RAM, NICs, port
+         *     group VLANs, snapshots). **Permission: range:certification_read**
+         */
+        get: operations["get_inventory_checks_ranges__range_id__inventory_checks_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/ranges/{range_id}/lease": {
         parameters: {
             query?: never;
@@ -6598,6 +6621,32 @@ export interface paths {
          *     Until CR1-05 this set ``stopped`` and sent nothing.  **Permission: range:provision**
          */
         post: operations["stop_range_ranges__range_id__stop_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ranges/{range_id}/teardown/confirm-unidentified": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm unidentified items by their typed-back moid, to be deleted (range:admin)
+         * @description DANGEROUS. Delete items the range's last teardown listed as unidentified (they carry
+         *     its annotation, tag or owner mark but were not recorded at clone). Each item's
+         *     ``confirm_moid`` must repeat its ``moid`` exactly, and the moid must be in the listed
+         *     set; otherwise nothing is confirmed (422). Audit-logged with the reason and recorded on
+         *     the range's certification record as an override. The worker re-checks each item against
+         *     vCenter before deleting it, and re-verifies the teardown.
+         *     **Permission: range:admin** (admin only)
+         */
+        post: operations["confirm_unidentified_ranges__range_id__teardown_confirm_unidentified_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -10166,6 +10215,42 @@ export interface components {
              */
             user_id: string;
         };
+        /** ConfirmItemIn */
+        ConfirmItemIn: {
+            /**
+             * Confirm Moid
+             * @description The same moid, typed back by the administrator; must match exactly
+             */
+            confirm_moid: string;
+            /**
+             * Moid
+             * @description An unidentified item's moid, as listed
+             */
+            moid: string;
+        };
+        /** ConfirmUnidentifiedIn */
+        ConfirmUnidentifiedIn: {
+            /** Items */
+            items: components["schemas"]["ConfirmItemIn"][];
+            /** Reason */
+            reason: string;
+        };
+        /** ConfirmUnidentifiedOut */
+        ConfirmUnidentifiedOut: {
+            /** Accepted */
+            accepted: components["schemas"]["InventoryItemOut"][];
+            /** Dispatched */
+            dispatched: boolean;
+            /** Message */
+            message: string;
+            /**
+             * Range Id
+             * Format: uuid
+             */
+            range_id: string;
+            /** Task Id */
+            task_id?: string | null;
+        };
         /** ConnectionDiscoveryOut */
         ConnectionDiscoveryOut: {
             /**
@@ -10847,6 +10932,54 @@ export interface components {
              * @default Range Design
              */
             name?: string;
+        };
+        /** DriftCheckOut */
+        DriftCheckOut: {
+            /**
+             * Changed At
+             * Format: date-time
+             */
+            changed_at: string;
+            /** Checked */
+            checked?: {
+                [key: string]: number;
+            };
+            /**
+             * Checked At
+             * Format: date-time
+             */
+            checked_at: string;
+            /** Error */
+            error?: string | null;
+            /** Findings */
+            findings?: components["schemas"]["DriftFindingOut"][];
+            /** Gaps */
+            gaps?: string[];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pass" | "fail" | "incomplete" | "error";
+            /** Summary */
+            summary: string;
+        };
+        /** DriftFindingOut */
+        DriftFindingOut: {
+            /** Actual */
+            actual?: unknown;
+            /** Expected */
+            expected?: unknown;
+            /**
+             * Kind
+             * @description vm_missing, vm_replaced, cpu_changed, memory_changed, nic_portgroup_changed, nic_mac_changed, nic_added, nic_removed, portgroup_missing, portgroup_vlan_changed, snapshot_unexpected, snapshot_missing
+             */
+            kind: string;
+            /** Moid */
+            moid?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Object */
+            object: string;
         };
         /** EOOut */
         EOOut: {
@@ -12320,6 +12453,55 @@ export interface components {
             params?: {
                 [key: string]: unknown;
             };
+        };
+        /**
+         * InventoryItemOut
+         * @description One item a teardown report names: a VM, a disk file, a port group or a folder.
+         */
+        InventoryItemOut: {
+            /** Datastore */
+            datastore?: string | null;
+            /**
+             * Id
+             * @description The recorded id (a moid, or a disk file's path)
+             */
+            id?: string | null;
+            /** Instance Uuid */
+            instance_uuid?: string | null;
+            /**
+             * Key
+             * @description A port group's key
+             */
+            key?: string | null;
+            /**
+             * Kind
+             * @description vm | disk | portgroup | folder
+             */
+            kind: string;
+            /**
+             * Marks
+             * @description What ties an unidentified item to the range: annotation, tag, owner_mark
+             */
+            marks?: string[];
+            /**
+             * Moid
+             * @description vCenter managed-object id (unidentified items)
+             */
+            moid?: string | null;
+            /**
+             * Name
+             * @default
+             */
+            name?: string;
+            /**
+             * Path
+             * @description A disk file: [datastore] dir/file.vmdk
+             */
+            path?: string | null;
+            /** Vlan */
+            vlan?: number | null;
+            /** Why */
+            why?: string | null;
         };
         /** InventoryVmOut */
         InventoryVmOut: {
@@ -14342,6 +14524,26 @@ export interface components {
              */
             template_id: string;
         };
+        /** RangeInventoryChecksOut */
+        RangeInventoryChecksOut: {
+            /**
+             * Can Confirm
+             * @description Whether the caller may confirm unidentified items (range:admin) now
+             */
+            can_confirm: boolean;
+            /**
+             * Confirm Blocked
+             * @description Why confirming is not possible now, if it is not
+             */
+            confirm_blocked?: string | null;
+            drift?: components["schemas"]["DriftCheckOut"] | null;
+            /**
+             * Range Id
+             * Format: uuid
+             */
+            range_id: string;
+            teardown?: components["schemas"]["TeardownCheckOut"] | null;
+        };
         /** RangeListOut */
         RangeListOut: {
             /**
@@ -15224,6 +15426,13 @@ export interface components {
             /** Required Level */
             required_level: string;
         };
+        /** SkippedItemOut */
+        SkippedItemOut: {
+            /** Moid */
+            moid?: string | null;
+            /** Why */
+            why: string;
+        };
         /** SnapshotIn */
         SnapshotIn: {
             /** Description */
@@ -15627,6 +15836,60 @@ export interface components {
             name?: string;
             /** Team Type */
             team_type?: string | null;
+        };
+        /** TeardownCheckOut */
+        TeardownCheckOut: {
+            /**
+             * Changed At
+             * Format: date-time
+             */
+            changed_at: string;
+            /**
+             * Checked At
+             * Format: date-time
+             */
+            checked_at: string;
+            /** Confirm Skipped */
+            confirm_skipped?: components["schemas"]["SkippedItemOut"][];
+            /**
+             * Confirmed Deleted
+             * @description Unidentified items an administrator confirmed by moid, then deleted
+             */
+            confirmed_deleted?: components["schemas"]["InventoryItemOut"][];
+            /**
+             * Deleted
+             * @description Deleted by recorded id
+             */
+            deleted?: components["schemas"]["InventoryItemOut"][];
+            /** Gaps */
+            gaps?: string[];
+            /**
+             * Legacy
+             * @description Built before inventory recording: VMs matched by annotation and name
+             * @default false
+             */
+            legacy?: boolean;
+            /** Not Checked */
+            not_checked?: string[];
+            /**
+             * Remaining
+             * @description Recorded ids still present
+             */
+            remaining?: components["schemas"]["InventoryItemOut"][];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pass" | "fail" | "incomplete" | "error";
+            /** Summary */
+            summary: string;
+            /**
+             * Unidentified
+             * @description Carry the range's mark but are not recorded: listed, not deleted
+             */
+            unidentified?: components["schemas"]["InventoryItemOut"][];
+            /** Verified At */
+            verified_at?: string | null;
         };
         /** TemplateIn */
         TemplateIn: {
@@ -28520,6 +28783,51 @@ export interface operations {
             };
         };
     };
+    get_inventory_checks_ranges__range_id__inventory_checks_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                range_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RangeInventoryChecksOut"];
+                };
+            };
+            /** @description Not staff (read), or not an administrator (confirm) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such range in the caller's tenant */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_range_lease_ranges__range_id__lease_get: {
         parameters: {
             query?: never;
@@ -28963,6 +29271,60 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+        };
+    };
+    confirm_unidentified_ranges__range_id__teardown_confirm_unidentified_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                range_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConfirmUnidentifiedIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfirmUnidentifiedOut"];
+                };
+            };
+            /** @description Not staff (read), or not an administrator (confirm) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such range in the caller's tenant */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The range is not torn down, is busy, or lists nothing */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description An item is not listed, or its typed id does not match exactly */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

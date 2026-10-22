@@ -20,6 +20,7 @@ import {
 } from '../../shared/components/impact-dialog/impact-dialog.component';
 import { RangeCertificationComponent } from '../../shared/components/range-certification/range-certification.component';
 import { RangeCredentialsComponent } from '../../shared/components/range-credentials/range-credentials.component';
+import { RangeInventoryComponent } from '../../shared/components/range-inventory/range-inventory.component';
 import { RangeTopologyComponent } from '../../shared/components/range-topology/range-topology.component';
 import { RangeSnapshotsComponent } from './range-snapshots.component';
 import { apiError, rangeCapabilities } from './range-capabilities';
@@ -39,7 +40,8 @@ const POLL_MS = 10_000;
 @Component({
   selector: 'tn-range-detail',
   imports: [CommonModule, RouterLink, MatButtonModule, MatCardModule, MatIconModule, MatTooltipModule,
-    RangeCertificationComponent, RangeCredentialsComponent, RangeSnapshotsComponent, RangeTopologyComponent],
+    RangeCertificationComponent, RangeCredentialsComponent, RangeInventoryComponent, RangeSnapshotsComponent,
+    RangeTopologyComponent],
   template: `
     <div class="page-container">
       <a mat-button routerLink="/authoring/ranges" class="back"><mat-icon>arrow_back</mat-icon> Ranges</a>
@@ -217,6 +219,10 @@ const POLL_MS = 10_000;
         @if (seeCertification()) {
           <mat-card class="section">
             <tn-range-certification [rangeId]="r.id" />
+          </mat-card>
+          <!-- Drift warnings and teardown verification, unidentified items (ADR 0013 §5) -->
+          <mat-card class="section">
+            <tn-range-inventory [rangeId]="r.id" />
           </mat-card>
         }
 

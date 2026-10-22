@@ -44,6 +44,12 @@ def metrics(rows) -> dict[str, object]:
     return _sweep(rows, "collect_metrics")
 
 
+def live_inventories(rows) -> dict[str, object]:
+    """{range id: the backend's ``live_inventory`` reading, or the exception it raised}, for
+    the drift check (worker/range_drift.py), grouped and logged in once per endpoint."""
+    return _sweep(rows, "live_inventory")
+
+
 def backend_of(row) -> str:
     """The backend a db_ops.active_ranges row was built on (the worker's default if unset)."""
     return (row[3] if len(row) > 3 and row[3] else None) or os.getenv("PROVISIONER_BACKEND", "mock")

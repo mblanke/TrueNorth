@@ -118,6 +118,7 @@ def test_beat_schedule_names_contracted_tasks_that_expire():
              "worker.setup_reconcile.reconcile_setups": ("worker.setup_reconcile.*", "destroy")}
     assert {e["task"] for e in schedule.values()} == {
         "worker.tasks.health_check_ranges",
+        "worker.tasks.check_range_drift",  # range certification S5
         "worker.tasks.collect_range_metrics",
         *daily,
     }

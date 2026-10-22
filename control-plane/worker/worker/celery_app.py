@@ -102,6 +102,7 @@ app.conf.update(
         "worker.tasks.delete_snapshot": RANGE_TASK_LIMITS,
         "worker.tasks.deploy_noise_agents": RANGE_TASK_LIMITS,
         "worker.tasks.reconcile_lab_vms": RANGE_TASK_LIMITS,
+        "worker.tasks.delete_confirmed_teardown_items": RANGE_TASK_LIMITS,
         "worker.tasks.ingest_telemetry_batch": {"rate_limit": "100/m"},
     },
     # Retry
@@ -128,6 +129,13 @@ app.conf.beat_schedule = {
         "task": "worker.tasks.health_check_ranges",
         "schedule": 60.0,  # every minute
         "options": {"expires": 60},
+    },
+    # Range certification S5 (worker/range_drift.py): live VM ids, CPU/RAM, NICs, port group
+    # VLANs and snapshots against each range's recorded inventory; warnings + record on change.
+    "check-range-drift": {
+        "task": "worker.tasks.check_range_drift",
+        "schedule": float(os.getenv("RANGE_DRIFT_SECONDS", "300")),
+        "options": {"expires": float(os.getenv("RANGE_DRIFT_SECONDS", "300"))},
     },
     "collect-range-metrics": {
         "task": "worker.tasks.collect_range_metrics",
@@ -206,6 +214,8 @@ from . import (
     lab_tasks,  # noqa: F401, E402
     noise_tasks,  # noqa: F401, E402
     power_tasks,  # noqa: F401, E402
+    range_drift,  # noqa: F401, E402
+    range_teardown,  # noqa: F401, E402
     setup_reconcile,  # noqa: F401, E402
     tasks,  # noqa: F401, E402
     telemetry_tasks,  # noqa: F401, E402

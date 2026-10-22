@@ -284,6 +284,23 @@ class BaseProvisioner(ABC):
         "error": str}``. Never logs or returns a password."""
         raise NotImplementedError(f"{type(self).__name__} cannot change passwords inside a guest")
 
+    # Range certification S5 (ADR 0013 §5): the backend records each VM's independently
+    # identified inventory at clone, deletes only recorded ids on destroy (its DestroyResult
+    # carries a ``teardown`` report), and can read the live state for the drift check.
+    supports_inventory: bool = False
+
+    async def live_inventory(self, range_id: str, provision_output: dict) -> dict:
+        """What the hypervisor holds now under the range's recorded ids, for the drift check
+        (worker/range_drift.py; the shape is range_inventory.compare's ``live``)."""
+        raise NotImplementedError(f"{type(self).__name__} does not record a range inventory")
+
+    async def delete_confirmed(self, range_id: str, provision_output: dict, items: list[dict]) -> dict:
+        """Delete items a teardown listed as unidentified and an administrator confirmed by
+        managed-object id (worker/range_teardown.py), each only if it is still exactly what
+        was listed (its moid *and* instance UUID or key). Returns the new teardown report
+        plus ``confirmed_deleted`` and ``confirm_skipped``. Never deletes by a mark alone."""
+        raise NotImplementedError(f"{type(self).__name__} does not record a range inventory")
+
     @contextlib.asynccontextmanager
     async def session(self) -> AsyncIterator[BaseProvisioner]:
         """Scope for several calls in a row (one scheduled run over many ranges).
