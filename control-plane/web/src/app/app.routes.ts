@@ -325,6 +325,14 @@ export const routes: Routes = [
     title: 'Registration approvals - TrueNorth Range',
   },
   {
+    // ADR 0013 §7: windows in which provision, reset and normal destroy are refused.
+    path: 'maintenance-windows',
+    canActivate: [authGuard, onboardingGuard, pageGuard('maintenanceWindows')],
+    loadComponent: () =>
+      import('./features/maintenance-windows/maintenance-windows.component').then(m => m.MaintenanceWindowsComponent),
+    title: 'Maintenance windows - TrueNorth Range',
+  },
+  {
     path: 'admin',
     canActivate: [authGuard, adminGuard],
     loadComponent: () =>

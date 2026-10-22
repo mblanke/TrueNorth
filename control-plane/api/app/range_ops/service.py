@@ -42,7 +42,7 @@ from sqlalchemy.orm import Session
 
 from ..auth import CurrentUser
 from ..models import Exercise, ExerciseState, Range, RangeSnapshot, RangeState
-from .models import IN_FLIGHT, RangeOperation
+from .models import HELD, IN_FLIGHT, RangeOperation
 
 logger = logging.getLogger("truenorth.range_ops")
 
@@ -79,6 +79,8 @@ class RangeOperationOut(BaseModel):
     generation: int
     status: str
     idempotency_key: str | None = None
+    # Set on a teardown that runs inside a maintenance window: emergency, booking_ended, ...
+    window_bypass: str | None = None
     task_id: str | None = None
     dispatch_attempts: int
     error: dict | None = None
@@ -179,7 +181,7 @@ def refuse_while_in_flight(db: Session, rng: Range, what: str) -> None:
 
 def _check(db: Session, rng: Range, action: str) -> None:
     reconcile(db, rng)
-    if not rng.state.can_transition_to(ACTIONS[action].in_progress):
+    if not rng.state.can_transition_to(ACTIONS[action].in_progress) and not (action == "destroy" and parked(db, rng)):
         raise HTTPException(409, f"Cannot {action} range in state {rng.state.value}")
     vms = recorded_vms(rng)
     if action in ("stop", "start"):
@@ -228,13 +230,28 @@ def _check(db: Session, rng: Range, action: str) -> None:
 
 
 def accept(
-    db: Session, range_id: uuid.UUID, user: CurrentUser, action: str, idempotency_key: str | None = None
+    db: Session,
+    range_id: uuid.UUID,
+    user: CurrentUser,
+    action: str,
+    idempotency_key: str | None = None,
+    *,
+    window_bypass: str | None = None,
 ) -> tuple[RangeOperation, Range, bool]:
     """Record ``action`` on the range and move it to the in-progress state. Does not commit.
 
     Returns (operation, range, created). ``created`` is False when an Idempotency-Key
     replay returned the original operation; the caller then changes nothing.
+
+    A provision or destroy is refused (409) while a maintenance window covers the range,
+    unless it is a teardown that always runs: ``window_bypass`` (a destroy only) names
+    which, and is recorded on the operation for the worker's re-check.
     """
+    from ..maintenance_windows import policy as window_policy
+    from ..maintenance_windows import service as windows
+
+    if window_bypass is not None and (action != "destroy" or window_bypass not in window_policy.BYPASS_KINDS):
+        raise ValueError(f"no maintenance-window bypass {window_bypass!r} for {action}")
     spec = ACTIONS[action]
     rng = _locked_range(db, range_id, user)
     digest = _request_hash(action)
@@ -248,6 +265,8 @@ def accept(
             if existing.request_hash != digest:
                 raise HTTPException(409, "This Idempotency-Key was already used for a different request")
             return existing, rng, False
+    if action in window_policy.REFUSED_ACTIONS and window_bypass is None:
+        windows.refuse_inside(db, rng, action)  # before _check, which supersedes in-flight work
     _check(db, rng, action)
     if action == "provision":
         _reserve_for_provision(db, rng)
@@ -266,6 +285,7 @@ def accept(
         idempotency_key=idempotency_key,
         request_hash=digest,
         requested_by=_user_uuid(user),
+        window_bypass=window_bypass,
         status="pending",
         dispatch_attempts=0,
     )
@@ -317,24 +337,27 @@ def dispatch(db: Session, op: RangeOperation) -> bool:
     """
     from ..celery_client import dispatch as send
 
-    held = (
-        db.query(RangeOperation.id)
-        .filter(RangeOperation.id == op.id, RangeOperation.status == "pending")
+    row = (
+        db.query(RangeOperation.id, RangeOperation.status)
+        .filter(RangeOperation.id == op.id, RangeOperation.status.in_(("pending", HELD)))
         .with_for_update(skip_locked=True)
         .first()
     )
-    if held is None:  # being sent by someone else, or already sent
+    if row is None:  # being sent by someone else, or already sent
         db.commit()
         return False
+    sent_from = row[1]
     task_id = send(ACTIONS[op.action].task, *_task_args(db, op))
     values: dict = {"dispatch_attempts": RangeOperation.dispatch_attempts + 1}
     if task_id:
         values.update(status="dispatched", task_id=task_id, dispatched_at=_now(), error=None)
     else:
         values.update(error=BROKER_UNAVAILABLE)
+    # Only over the status it was sent from: a worker that already held the task it just got
+    # (status ``held``, worker/maintenance_windows.py) is not overwritten with ``dispatched``.
     db.execute(
         update(RangeOperation)
-        .where(RangeOperation.id == op.id, RangeOperation.status == "pending")
+        .where(RangeOperation.id == op.id, RangeOperation.status == sent_from)
         .values(**values)
         .execution_options(synchronize_session=False)
     )
@@ -354,8 +377,104 @@ def redispatch_pending(db: Session, *, min_age: timedelta = timedelta(seconds=15
         .limit(limit)
         .all()
     )
+    released = released_holds(db, limit - len(pending))
     db.commit()
-    return sum(dispatch(db, op) for op in pending)
+    return sum(dispatch(db, op) for op in [*pending, *released])
+
+
+HELD_PAGE = 200
+
+
+def released_holds(db: Session, limit: int) -> list[RangeOperation]:
+    """Up to ``limit`` held operations (worker/maintenance_windows.py) whose range no window
+    covers any more, oldest first. Held operations never take a pending one's place in the
+    re-send (a separate query), and still-held ones are paged past, never counted against
+    ``limit``: one tenant's long window cannot starve another tenant's work. One window
+    lookup per page (``maintenance_windows.service.held_range_ids``)."""
+    from ..maintenance_windows import service as windows
+
+    out: list[RangeOperation] = []
+    after = None
+    while len(out) < limit:
+        q = db.query(RangeOperation).filter(RangeOperation.status == HELD)
+        if after is not None:
+            q = q.filter(
+                (RangeOperation.created_at > after[0])
+                | ((RangeOperation.created_at == after[0]) & (RangeOperation.id > after[1]))
+            )
+        page = q.order_by(RangeOperation.created_at, RangeOperation.id).limit(HELD_PAGE).all()
+        if not page:
+            break
+        # tenant-safe: the operations' own ranges, recorded in their tenants at acceptance.
+        ranges = (
+            db.query(Range.id, Range.tenant_id, Range.template_id)
+            .filter(Range.id.in_({op.range_id for op in page}))
+            .all()
+        )
+        still = windows.held_range_ids(db, ranges)
+        out += [op for op in page if op.range_id not in still][: limit - len(out)]
+        after = (page[-1].created_at, page[-1].id)
+    return out
+
+
+def run_destroy_with_bypass(
+    db: Session, rng: Range, window_bypass: str, *, force: bool = False
+) -> RangeOperation | None:
+    """A teardown that always runs (``window_bypass``) on a range already ``destroying``
+    because of a person's destroy that a window holds or that has not run yet: that destroy
+    takes the bypass and is sent now (a held one goes back to ``pending``; one already sent
+    finds the bypass when its task starts, worker/maintenance_windows.py). Returns the
+    operation, or None when there is no such destroy in flight. Does not send; the caller
+    commits and then ``dispatch``es it."""
+    from ..maintenance_windows import policy as window_policy
+
+    if window_bypass not in window_policy.BYPASS_KINDS:
+        raise ValueError(f"no maintenance-window bypass {window_bypass!r}")
+    op = (
+        db.query(RangeOperation)
+        .filter(
+            RangeOperation.range_id == rng.id,
+            RangeOperation.action == "destroy",
+            RangeOperation.status.in_(IN_FLIGHT),
+        )
+        .order_by(RangeOperation.generation.desc())
+        .with_for_update()
+        .first()
+    )
+    if op is None:
+        return None
+    if not op.window_bypass or force:  # force: an emergency is recorded as one
+        op.window_bypass = window_bypass
+    if op.status == HELD:
+        op.status = "pending"
+        op.error = {"code": "bypass", "message": f"Runs now: {window_bypass} teardown of a held destroy"}
+    db.flush()
+    return op
+
+
+def parked(db: Session, rng: Range) -> bool:
+    """A destroy may start on this range although its state would not allow one: no worker
+    holds its lease, and either
+
+    * it is ``provisioning`` and every in-flight operation is its build, ``held`` by a
+      maintenance window or still ``pending`` (not picked up). A build task that arrives
+      later finds the range no longer provisioning and skips (worker/fencing.py); or
+    * it is ``destroying`` with no operation in flight, and the worker left its hold reason
+      on it (a teardown it held and could not identify, worker/maintenance_windows.py).
+
+    Never over a destroy already in flight, whatever its status: one teardown is one
+    destroy operation. Two scheduler passes racing to tear down one booking's range (the
+    second used to find the first's still-pending destroy "parked" and add another), or an
+    emergency teardown over a held destroy, use that operation (``run_destroy_with_bypass``)."""
+    from ..maintenance_windows.policy import HELD_MARKER
+
+    if rng.state not in (RangeState.provisioning, RangeState.destroying) or worker_acting(db, rng.id):
+        return False
+    in_flight = db.query(RangeOperation.action, RangeOperation.status).filter(
+        RangeOperation.range_id == rng.id, RangeOperation.status.in_(IN_FLIGHT)).all()
+    if rng.state == RangeState.provisioning:
+        return bool(in_flight) and all(a == "provision" and s in (HELD, "pending") for a, s in in_flight)
+    return not in_flight and HELD_MARKER in (rng.error_message or "")
 
 
 def stale_after() -> timedelta:

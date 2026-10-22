@@ -15,8 +15,12 @@ from ..models import GUID, TimestampMixin
 # dispatched  the broker has the task
 # succeeded / failed   the range reached the outcome's state (reconciled from it)
 # superseded  a destroy replaced it while it was still in flight
-OP_STATUSES = ("pending", "dispatched", "succeeded", "failed", "superseded")
-IN_FLIGHT = ("pending", "dispatched")
+# held        the worker found it inside a maintenance window and handed it back untouched
+#             (worker/maintenance_windows.py); re-sent once the window ends. Still in flight:
+#             its range stays provisioning / destroying and nothing else may start on it.
+OP_STATUSES = ("pending", "dispatched", "held", "succeeded", "failed", "superseded")
+IN_FLIGHT = ("pending", "dispatched", "held")
+HELD = "held"
 
 
 class RangeOperation(TimestampMixin, Base):
@@ -41,6 +45,10 @@ class RangeOperation(TimestampMixin, Base):
     idempotency_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
     request_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     requested_by: Mapped[uuid.UUID | None] = mapped_column(GUID(), nullable=True)
+    # A teardown that runs inside a maintenance window (app/maintenance_windows/policy.py
+    # BYPASS_KINDS): an emergency, or a booking that ended. None: a normal operation, refused
+    # inside a window by the API and again by the worker at the task's entry.
+    window_bypass: Mapped[str | None] = mapped_column(String(32), nullable=True)
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending")
     task_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     dispatch_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

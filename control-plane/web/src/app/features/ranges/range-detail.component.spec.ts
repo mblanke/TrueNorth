@@ -11,6 +11,7 @@ import {
   RangeLeaseStatus, RangeOperation, RangeRecoveryApiService,
 } from '@core/services/range-recovery-api.service';
 import { RangeCredentialsApiService } from '@core/services/range-credentials-api.service';
+import { MaintenanceWindowsApiService } from '@core/services/maintenance-windows-api.service';
 import { ApiService } from '@core/services/api.service';
 import { RangeDetailComponent, leftOnHypervisor } from './range-detail.component';
 import { rangeCapabilities } from './range-capabilities';
@@ -47,6 +48,7 @@ describe('RangeDetailComponent', () => {
   let dialogResult: { reason: string } | null;
   let credentialsApi: jasmine.SpyObj<RangeCredentialsApiService>;
   let diagramApi: jasmine.SpyObj<ApiService>;
+  let windowsApi: jasmine.SpyObj<MaintenanceWindowsApiService>;
 
   async function render(role: UserRole, opts: { ops?: RangeOperation[]; lease?: RangeLeaseStatus; fail?: boolean;
     platformAdmin?: boolean } = {}) {
@@ -80,6 +82,8 @@ describe('RangeDetailComponent', () => {
             runtime: { status: 'planned', built: false } } },
       ] },
     }));
+    windowsApi = jasmine.createSpyObj('MaintenanceWindowsApiService', ['emergencyTeardown', 'active']);
+    windowsApi.active.and.returnValue(of([]));
     dialogResult = { reason: 'vCenter checked: no tasks for this range' };
     dialogOpen = jasmine.createSpy('open').and.callFake(() => ({ afterClosed: () => of(dialogResult) }));
 
@@ -89,6 +93,7 @@ describe('RangeDetailComponent', () => {
         provideRouter([]),
         { provide: RangeRecoveryApiService, useValue: api },
         { provide: RangeCredentialsApiService, useValue: credentialsApi },
+        { provide: MaintenanceWindowsApiService, useValue: windowsApi },
         { provide: ApiService, useValue: diagramApi },
         { provide: NotificationService, useValue: notify },
         { provide: AuthService, useValue: { user: signal({ id: 'u1', role }),
@@ -271,7 +276,8 @@ describe('RangeDetailComponent', () => {
   it('reads the permission table: the screen (PAGE_ACCESS.rangeRecovery) and each action', () => {
     expect(rangeCapabilities('student').view).toBeFalse();
     expect(rangeCapabilities('observer')).toEqual(
-      { view: false, changeRange: false, deleteSnapshot: false, forceRelease: false, abandonRange: false });
+      { view: false, changeRange: false, deleteSnapshot: false, forceRelease: false, abandonRange: false,
+        emergencyTeardown: false });
     expect(rangeCapabilities('range_ops').view).toBeTrue();
     expect(rangeCapabilities('range_ops').deleteSnapshot).toBeTrue();
     expect(rangeCapabilities('instructor').view).toBeTrue();
@@ -281,6 +287,27 @@ describe('RangeDetailComponent', () => {
     expect(rangeCapabilities('admin').abandonRange).toBeFalse();
     expect(rangeCapabilities('admin', true).abandonRange).toBeTrue();
     expect(rangeCapabilities('instructor', true).abandonRange).toBeFalse();
+  });
+
+  it('offers emergency teardown only with range:admin (ADR 0013 §7)', async () => {
+    await render('range_ops');
+    expect(buttons('Emergency teardown').length).toBe(0);
+    fixture.destroy();
+    TestBed.resetTestingModule();
+    await render('admin');
+    expect(buttons('Emergency teardown').length).toBe(1);
+  });
+
+  it('tears down in an emergency with a reason and the name typed, stating the impact first', async () => {
+    await render('admin');
+    windowsApi.emergencyTeardown.and.returnValue(of({ ...RANGE, state: 'destroying' } as any));
+    buttons('Emergency teardown')[0].click();
+    const data = dialogOpen.calls.mostRecent().args[1].data;
+    expect(data.reasonMin).toBe(10);
+    expect(data.typeToConfirm).toBe('blue-range');
+    expect(data.impact.join(' ')).toContain('maintenance window');
+    expect(windowsApi.emergencyTeardown).toHaveBeenCalledWith('r1', 'vCenter checked: no tasks for this range');
+    expect(component.outcome()?.title).toContain('destroying');
   });
 
   it('reads nothing left behind from a range that was not abandoned', () => {

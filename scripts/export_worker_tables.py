@@ -42,6 +42,7 @@ WORKER_TABLES = (
     "inject_records",
     "lab_sessions",
     "learning_recommendations",
+    "maintenance_windows",
     "network_reservations",
     "objectives",
     "range_credential_snapshots",
@@ -50,6 +51,7 @@ WORKER_TABLES = (
     "range_credentials",
     "range_greyspace",
     "range_leases",
+    "range_operations",
     "range_snapshots",
     "ranges",
     "scenario_executions",
@@ -88,10 +90,12 @@ def render() -> str:
     import app.golden_image_builds  # noqa: F401 — golden_image_builds (worker/template_pins.py)
     import app.greyspace.models  # noqa: F401
     import app.lab_sessions  # noqa: F401 — lab_sessions
+    import app.maintenance_windows  # noqa: F401 — the worker re-checks windows at a range task's entry
     import app.network_inventory  # noqa: F401 — section models register their tables on import
     import app.range_certification  # noqa: F401
     import app.range_credentials  # noqa: F401
     import app.range_leases  # noqa: F401
+    import app.range_ops  # noqa: F401 — range_operations.window_bypass (worker/maintenance_windows.py)
     import app.scenario_runs  # noqa: F401
     from app import models
     from app.db import Base

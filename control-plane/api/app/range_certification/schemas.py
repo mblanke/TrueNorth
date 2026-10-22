@@ -55,7 +55,8 @@ class CertificationRecordOut(BaseModel):
     opened_at: datetime
     tenant_id: uuid.UUID
     deployment_status: str = Field(
-        description="The provision operation's status: pending, dispatched (building), succeeded, failed, superseded")
+        description="The provision operation's status: pending, dispatched (building), held (by a maintenance "
+        "window, re-sent when it ends), succeeded, failed, superseded")
     verdict: Verdict
     verdict_label: str = Field(description="Certified for Students / Ready, not certified / Not safe")
     reasons: list[str] = Field(description="Why it is not certified: failures, or what is missing")

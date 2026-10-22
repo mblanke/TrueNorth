@@ -6,6 +6,7 @@ import { of } from 'rxjs';
 import { ApiService } from '@core/services/api.service';
 import { AuthService, CurrentUser } from '@core/services/auth.service';
 import { Booking, CapacityResult, SchedulerApiService, Timeline } from '@core/services/scheduler-api.service';
+import { MaintenanceWindowsApiService } from '@core/services/maintenance-windows-api.service';
 import { ScheduleComponent } from './schedule.component';
 import { addDays, isoDate, weekStart } from './schedule.util';
 
@@ -39,6 +40,7 @@ describe('ScheduleComponent', () => {
   let fixture: ComponentFixture<ScheduleComponent>;
   let component: ScheduleComponent;
   let scheduler: jasmine.SpyObj<SchedulerApiService>;
+  let maintenance: jasmine.SpyObj<MaintenanceWindowsApiService>;
   let api: jasmine.SpyObj<ApiService>;
   const user = signal<CurrentUser | null>(null);
 
@@ -73,10 +75,15 @@ describe('ScheduleComponent', () => {
     api.listRanges.and.returnValue(of([{ id: 'r1', name: 'SOC Training A', state: 'created' }, { id: 'r2', name: 'Old', state: 'destroyed' }] as any));
     api.listUsers.and.returnValue(of([{ id: 'me', display_name: 'WO Morgan Roy', role: 'instructor' }, { id: 'chen', display_name: 'Lt Sam Chen', role: 'instructor' }] as any));
 
+    maintenance = jasmine.createSpyObj('MaintenanceWindowsApiService', ['active', 'list']);
+    maintenance.active.and.returnValue(of([]));
+    maintenance.list.and.returnValue(of({ items: [], total: 0 }));
+
     await TestBed.configureTestingModule({
       imports: [ScheduleComponent, NoopAnimationsModule],
       providers: [
         { provide: SchedulerApiService, useValue: scheduler },
+        { provide: MaintenanceWindowsApiService, useValue: maintenance },
         { provide: ApiService, useValue: api },
         { provide: AuthService, useValue: { user, canViewSchedule: signal(true) } },
         provideRouter([]),

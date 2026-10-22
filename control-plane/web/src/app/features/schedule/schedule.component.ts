@@ -6,6 +6,7 @@ import { FormsModule } from '@angular/forms';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { forkJoin, of, catchError } from 'rxjs';
 import { ApiService } from '@core/services/api.service';
+import { MaintenanceBannerComponent } from '../../shared/components/maintenance-banner/maintenance-banner.component';
 import { AuthService } from '@core/services/auth.service';
 import {
   Booking, BookingIn, CapacityResult, CourseOption, OvercapacityPolicy, SchedulerApiService, Timeline,
@@ -13,8 +14,9 @@ import {
 import type { RangeSummary, ScenarioSummary, TemplateSummary, User } from '@core/models';
 import {
   DAY_MS, HOLDING_STATES, Level, addDays, at, diskLabel, gb, hhmm, hourOf, isLive, isoDate, layoutLanes, level,
-  localizeUtcWindows, peakLoad, previewConflicts, sameDay, slotLoads, weekStart,
+  localizeUtcWindows, peakLoad, previewConflicts, sameDay, slotLoads, weekStart, windowsOverlapping,
 } from './schedule.util';
+import { MaintenanceWindow, MaintenanceWindowsApiService } from '@core/services/maintenance-windows-api.service';
 
 interface Form {
   id?: string; name: string; templateId: string; date: string; from: string; to: string;
@@ -30,8 +32,9 @@ const ROW = 46; // px per hour
 @Component({
   selector: 'tn-schedule',
   standalone: true,
-  imports: [FormsModule, MatSnackBarModule, NgTemplateOutlet, RouterLink],
+  imports: [FormsModule, MatSnackBarModule, NgTemplateOutlet, RouterLink, MaintenanceBannerComponent],
   template: `
+  <tn-maintenance-banner />
   @if (isRangeOps()) {
     <!-- ── Range Ops: capacity ─────────────────────────────── -->
     <div class="pagehead"><div><span class="eyebrow">Capacity</span><h1>Cluster this week</h1>
@@ -120,6 +123,10 @@ const ROW = 46; // px per hour
             <h3>Cluster at that time</h3>
             <ng-container *ngTemplateOutlet="meters; context: { $implicit: c, need: true }" />
             <p class="small muted">Hatched: this booking.{{ c.supply_source === 'env' ? ' Totals are the env fallback until host discovery reports capacity.' : '' }}</p>
+          }
+          @for (w of formWindows(); track w.id) {
+            <div class="note" role="note"><strong>Maintenance window {{ shortWhen(toMs(w.starts_at)) }} to {{ shortWhen(toMs(w.ends_at)) }}:</strong> {{ w.reason }}.
+              <br><span class="small muted">It still books, but the range is not built while the window is in effect; it is built once the window ends, if the session is still on{{ w.scope === 'tags' ? ' (if the window covers this range’s tags)' : '' }}.</span></div>
           }
           @if (formProblem(); as p) {
             <div class="note"><strong>{{ p.title }}</strong>@for (r of p.reasons; track r) {<br>{{ r }}}
@@ -339,6 +346,7 @@ const ROW = 46; // px per hour
 })
 export class ScheduleComponent implements OnInit, OnDestroy {
   private readonly scheduler = inject(SchedulerApiService);
+  private readonly maintenance = inject(MaintenanceWindowsApiService);
   private readonly api = inject(ApiService);
   private readonly auth = inject(AuthService);
   private readonly snack = inject(MatSnackBar);
@@ -364,6 +372,7 @@ export class ScheduleComponent implements OnInit, OnDestroy {
   readonly focusDay = signal(0);
   readonly form = signal<Form | null>(null);
   readonly check = signal<CapacityResult | null>(null);
+  readonly maintenanceWindows = signal<MaintenanceWindow[]>([]);
   readonly submitError = signal<string | null>(null);
   readonly actionError = signal<string | null>(null);
   readonly confirmCancel = signal<string | null>(null);
@@ -481,6 +490,11 @@ export class ScheduleComponent implements OnInit, OnDestroy {
     }
     return null;
   });
+  /** Maintenance windows the proposed booking runs into: it books, but is not built inside one. */
+  readonly formWindows = computed(() => {
+    const f = this.form(); if (!f || !f.date || !f.from || !f.to) return [];
+    return windowsOverlapping(this.maintenanceWindows(), at(f.date, f.from), at(f.date, f.to), this.lead(), f.rangeId || null);
+  });
   readonly overButWarn = computed(() => !!this.check() && !this.check()!.fits && this.policy() === 'warn' && !this.formConflicts().length);
   readonly canSubmit = computed(() => {
     const f = this.form(); if (!f || !f.name || !f.templateId || !f.date || !f.from || !f.to) return false;
@@ -513,6 +527,7 @@ export class ScheduleComponent implements OnInit, OnDestroy {
       this.api.listUsers().subscribe({ next: u => this.people.set(u), error: () => {} });
       this.scheduler.courses().subscribe({ next: c => this.courses.set(c.items), error: () => {} });
       this.api.listScenarios(200).subscribe({ next: sc => this.scenarios.set(sc), error: () => {} });
+      this.maintenance.list().subscribe({ next: w => this.maintenanceWindows.set(w.items), error: () => {} });
     }
     this.scheduler.getPolicy().subscribe({
       next: p => { this.policy.set(p.overcapacity); this.canChangePolicy.set(!!p.can_change); },
@@ -614,7 +629,8 @@ export class ScheduleComponent implements OnInit, OnDestroy {
         this.busy.set(false);
         this.form.set(null);
         this.check.set(null);
-        const warn = b.warnings?.length ? ` Over capacity: ${b.warnings.join('; ')}` : '';
+        const warn = (b.warnings?.length ? ` Over capacity: ${b.warnings.join('; ')}` : '')
+          + (b.maintenance_warnings?.length ? ` Maintenance: ${b.maintenance_warnings.join('; ')}` : '');
         this.snack.open(`${draft ? 'Draft saved' : f.id ? 'Booking updated' : 'Booked'}: ${b.name}.${warn}`, 'OK', { duration: warn ? 8000 : 3000 });
         this.load();
       },
@@ -720,6 +736,7 @@ export class ScheduleComponent implements OnInit, OnDestroy {
   }
   longWhen(b: Booking): string { return `${this.dayLabel(new Date(b.start_time))}, ${this.hhmm(b.start_time)}–${this.hhmm(b.end_time)}`; }
   shortWhen(ms: number): string { const d = new Date(ms); return `${this.dayLabel(d)} ${hhmm(d)}`; }
+  toMs(iso: string): number { return new Date(iso).getTime(); }
   hhmm(iso: string): string { return hhmm(new Date(iso)); }
   /** Under way now (#201); read at render, so it turns live as the page is re-rendered. */
   live(b: Booking): boolean { return isLive(b); }

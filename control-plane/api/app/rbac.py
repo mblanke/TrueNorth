@@ -47,6 +47,9 @@ class Permission(str, Enum):
     RANGE_CREDENTIALS_ROTATE = "range:credentials_rotate"
     # The Range Certification Record (ADR 0013 §6): staff only, never Students or observers.
     RANGE_CERTIFICATION_READ = "range:certification_read"
+    # Maintenance windows and emergency teardown (ADR 0013 §7). Admin only: an emergency
+    # teardown runs inside a window that refuses everyone else's destroy.
+    RANGE_ADMIN = "range:admin"
 
     # Template management
     TEMPLATE_CREATE = "template:create"

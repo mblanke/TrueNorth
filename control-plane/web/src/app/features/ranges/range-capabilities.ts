@@ -13,6 +13,7 @@ import { PAGE_ACCESS, roleCan, roleHasAccess } from '@core/auth/permissions';
  * - force-release a lease: range:lease_force_release
  * - abandon a range: a platform administrator only (an admin of the operator's tenant), as
  *   GET /auth/me reports it (`platform_admin`); other admins would only get a 403
+ * - emergency teardown, even inside a maintenance window: range:admin (ADR 0013 §7)
  */
 export interface RangeCapabilities {
   view: boolean;
@@ -21,6 +22,7 @@ export interface RangeCapabilities {
   deleteSnapshot: boolean;
   forceRelease: boolean;
   abandonRange: boolean;
+  emergencyTeardown: boolean;
 }
 
 export function rangeCapabilities(role: UserRole | null | undefined, platformAdmin = false): RangeCapabilities {
@@ -30,6 +32,7 @@ export function rangeCapabilities(role: UserRole | null | undefined, platformAdm
     deleteSnapshot: roleCan(role, 'range:destroy'),
     forceRelease: roleCan(role, 'range:lease_force_release'),
     abandonRange: role === 'admin' && platformAdmin,
+    emergencyTeardown: roleCan(role, 'range:admin'),
   };
 }
 

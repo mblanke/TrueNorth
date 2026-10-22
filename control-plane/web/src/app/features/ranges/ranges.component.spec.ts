@@ -6,6 +6,7 @@ import { RangesComponent } from './ranges.component';
 import { ApiService } from '@core/services/api.service';
 import { NotificationService } from '@core/services/notification.service';
 import { RangeCredentialsApiService } from '@core/services/range-credentials-api.service';
+import { MaintenanceWindow, MaintenanceWindowsApiService } from '@core/services/maintenance-windows-api.service';
 import { Range, Template } from '@core/models';
 
 describe('RangesComponent', () => {
@@ -14,6 +15,7 @@ describe('RangesComponent', () => {
   let mockApi: jasmine.SpyObj<ApiService>;
   let mockNotify: jasmine.SpyObj<NotificationService>;
   let issuesApi: jasmine.SpyObj<RangeCredentialsApiService>;
+  let mockWindows: jasmine.SpyObj<MaintenanceWindowsApiService>;
 
   const mockRanges: Partial<Range>[] = [
     { id: 'r1', name: 'Range A', state: 'ready', created_at: '2026-01-15T10:00:00Z' },
@@ -53,6 +55,9 @@ describe('RangesComponent', () => {
       total_ranges: 4, by_state: { ready: 1, created: 1 }, total_vms: 12, active_exercises: 2,
     }));
 
+    mockWindows = jasmine.createSpyObj('MaintenanceWindowsApiService', ['active']);
+    mockWindows.active.and.returnValue(of([]));
+
     await TestBed.configureTestingModule({
       imports: [RangesComponent, NoopAnimationsModule],
       providers: [
@@ -60,6 +65,7 @@ describe('RangesComponent', () => {
         { provide: ApiService, useValue: mockApi },
         { provide: NotificationService, useValue: mockNotify },
         { provide: RangeCredentialsApiService, useValue: issuesApi },
+        { provide: MaintenanceWindowsApiService, useValue: mockWindows },
       ],
     }).compileComponents();
 
@@ -184,5 +190,21 @@ describe('RangesComponent', () => {
     expect(states).toContain('created');
     expect(states).toContain('provisioning');
     expect(states).toContain('destroyed');
+  });
+  it('shows a banner while a maintenance window is in effect (ADR 0013 §7)', () => {
+    mockWindows.active.and.returnValue(of([{
+      id: 'w1', reason: 'vCenter upgrade', ends_at: '2026-11-02T12:00:00Z', starts_at: '2026-11-02T10:00:00Z',
+      scope: 'all', range_ids: [], tags: [], platform_wide: false, active: true, can_edit: false, tenant_id: 't',
+    } as MaintenanceWindow]));
+    const f = TestBed.createComponent(RangesComponent);
+    f.detectChanges();
+    const banner = f.nativeElement.querySelector('tn-maintenance-banner [role="status"]') as HTMLElement;
+    expect(banner?.textContent).toContain('vCenter upgrade');
+    expect(banner?.textContent).toContain('Automated cleanup still runs');
+  });
+
+  it('shows no banner when no window is in effect', () => {
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('tn-maintenance-banner [role="status"]')).toBeNull();
   });
 });

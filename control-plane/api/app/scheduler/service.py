@@ -306,6 +306,10 @@ def my_sessions(db: Session, user: CurrentUser) -> list[ScheduledEvent]:
 def release_range(db: Session, evt: ScheduledEvent) -> str | None:
     """Tear down the range this booking built, if it still holds one.
 
+    A booking that ended (``completed``) is the range's lease expiring: its teardown runs
+    inside a maintenance window too (ADR 0013 §7). A cancelled one's is a normal destroy:
+    a window defers it, and the clock retries once the window is over.
+
     ``auto_provisioned`` means "this booking owns a live build". It is cleared once the
     teardown is settled (dispatched, or the range is already going or gone); while the
     range is still being built it stays set, and the clock retries.
@@ -328,7 +332,10 @@ def release_range(db: Session, evt: ScheduledEvent) -> str | None:
         heir.auto_provisioned = True
         evt.auto_provisioned = False
         return f"range kept up for '{heir.name}' ({heir.id}), which now owns it"
-    settled, what = range_lifecycle.destroy_for_booking(db, evt.range_id)
+    from ..maintenance_windows.policy import BYPASS_BOOKING_ENDED
+
+    bypass = BYPASS_BOOKING_ENDED if evt.state == EventState.completed else None
+    settled, what = range_lifecycle.destroy_for_booking(db, evt.range_id, bypass)
     if settled:
         evt.auto_provisioned = False
     return what
@@ -362,7 +369,17 @@ def user_uuid(user: CurrentUser) -> uuid.UUID | None:
         return None
 
 
-def to_out(e: ScheduledEvent, warnings: list[str] | None = None) -> dict:
+def maintenance_warnings(db: Session, evt: ScheduledEvent) -> list[str]:
+    """Maintenance windows over the booking's build-to-end span (app/maintenance_windows)."""
+    from ..maintenance_windows import service as windows
+
+    return windows.booking_warnings(
+        db, tenant_id=evt.tenant_id, range_id=evt.range_id, template_id=evt.template_id,
+        build_from=as_utc(evt.start_time) - PROVISION_LEAD, end=as_utc(evt.end_time),
+    )
+
+
+def to_out(e: ScheduledEvent, warnings: list[str] | None = None, maintenance: list[str] | None = None) -> dict:
     return EventOut(
         id=str(e.id),
         name=e.name,
@@ -386,6 +403,7 @@ def to_out(e: ScheduledEvent, warnings: list[str] | None = None) -> dict:
         created_at=as_utc(e.created_at),
         updated_at=as_utc(e.updated_at),
         warnings=warnings or [],
+        maintenance_warnings=maintenance or [],
     ).model_dump()
 
 

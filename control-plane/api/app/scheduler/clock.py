@@ -3,10 +3,14 @@
 Once a minute it moves bookings along their lifecycle as time passes:
 
 1. provisioning lead reached: ``scheduled -> provisioning``, and the booked range is
-   built (``provision_range`` on the worker) unless it is already up;
+   built (``provision_range`` on the worker) unless it is already up. Not while a
+   maintenance window covers the range (ADR 0013 §7): the booking stays ``scheduled``,
+   past its start too, and is built on the first tick after the window ends if the
+   session has not ended (1b catches a booking that went ``active`` with its range never
+   built);
 2. session start: ``scheduled | provisioning -> active``;
 3. teardown grace after the end: ``active -> completed``, and the range is torn down
-   (``destroy_range``) if this booking built it;
+   (``destroy_range``) if this booking built it, inside a maintenance window too;
 4. reminder lead reached: the instructor is emailed once.
 
 The clock runs in the API, where the scheduler's tables and rules live; the work itself
@@ -28,6 +32,7 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from .. import exercise_lifecycle, range_lifecycle
+from ..models import Range, RangeState
 from . import invites, lifecycle, service
 from .capacity import PROVISION_LEAD, TEARDOWN_GRACE, window_label
 from .models import EventState, ScheduledEvent
@@ -55,6 +60,8 @@ class TickResult:
     activated: int = 0
     completed: int = 0
     torn_down: int = 0
+    deferred_by_window: int = 0
+    built_after_window: int = 0
     reminders: list[Reminder] = field(default_factory=list)
 
     def summary(self) -> dict:
@@ -64,6 +71,8 @@ class TickResult:
             "activated": self.activated,
             "completed": self.completed,
             "torn_down": self.torn_down,
+            "deferred_by_window": self.deferred_by_window,
+            "built_after_window": self.built_after_window,
             "reminders": len(self.reminders),
         }
 
@@ -100,6 +109,7 @@ def tick(db: Session, now: datetime | None = None) -> TickResult:
         res.ranges_created += 1
 
     # 1. Provisioning lead reached, session not over: build the range.
+    held: set = set()  # bookings a maintenance window keeps from being built this tick
     for evt in _due(
         db,
         ScheduledEvent.state == S.scheduled,
@@ -107,6 +117,9 @@ def tick(db: Session, now: datetime | None = None) -> TickResult:
         ScheduledEvent.start_time <= now + PROVISION_LEAD,
         ScheduledEvent.end_time > now,
     ):
+        if _held_by_window(db, evt, now):
+            held.add(evt.id)
+            continue
         if _claim(db, evt, S.provisioning):
             db.refresh(evt)  # the range the booking points at now, after any edit that won the row
 
@@ -124,9 +137,40 @@ def tick(db: Session, now: datetime | None = None) -> TickResult:
             db.commit()
             res.provisioning += 1
 
+    # 1b. A booking that is under way with its range never built (it went active while a
+    #     window held the build, before this was fixed, or a build refused by the worker
+    #     put the range back to ``created``): build it now, unless a window still holds it.
+    for evt in _due(
+        db,
+        ScheduledEvent.state == S.active,
+        ScheduledEvent.range_id.isnot(None),
+        ScheduledEvent.end_time > now,
+    ):
+        # tenant-safe: a booking's range, checked against its tenant when booked (resolve_range).
+        rng = db.get(Range, evt.range_id)
+        if rng is None or rng.state != RangeState.created:
+            continue
+        if _held_by_window(db, evt, now):
+            held.add(evt.id)
+            continue
+
+        def owned(evt=evt):
+            evt.auto_provisioned = True
+
+        built, what = range_lifecycle.provision_for_booking(db, evt.range_id, before_build=owned)
+        if built:
+            service.audit_system(db, evt, "build_after_window", what)
+            db.commit()
+            res.built_after_window += 1
+        else:
+            db.rollback()
+
     # 2. Session started (a booking whose whole window was missed passes through here
-    #    to step 3 in the same tick, without building anything).
+    #    to step 3 in the same tick, without building anything). A booking a window holds
+    #    stays scheduled while its session is on, so step 1 builds it once the window ends.
     for evt in _due(db, ScheduledEvent.state.in_([S.scheduled, S.provisioning]), ScheduledEvent.start_time <= now):
+        if evt.id in held and evt.state == S.scheduled and _aware(evt.end_time) > now:
+            continue
         before = evt.state.value
         if _claim(db, evt, S.active):
             service.audit_system(db, evt, "transition", f"{before} -> active")
@@ -158,6 +202,8 @@ def tick(db: Session, now: datetime | None = None) -> TickResult:
             res.torn_down += 1
         db.commit()
 
+    res.deferred_by_window = len(held)
+
     # 4. Reminders, once per booking, to its Instructor and its course's Students.
     if timedelta(0) < REMINDER_LEAD:
         for evt in _due(
@@ -185,6 +231,25 @@ def tick(db: Session, now: datetime | None = None) -> TickResult:
                 )
             db.commit()
     return res
+
+
+def _aware(value: datetime) -> datetime:
+    return value.replace(tzinfo=UTC) if value.tzinfo is None else value
+
+
+def _held_by_window(db: Session, evt: ScheduledEvent, now: datetime) -> bool:
+    """A maintenance window keeps the clock from building this booking's range now. A
+    range that is already up needs no build, so nothing holds it."""
+    from ..maintenance_windows import service as windows
+
+    # tenant-safe: a booking's range, checked against its tenant when booked (resolve_range).
+    rng = db.get(Range, evt.range_id) if evt.range_id else None
+    if rng is not None and rng.state in range_lifecycle.UP_STATES:
+        return False
+    w = windows.provision_blocked(db, tenant_id=evt.tenant_id, range_id=evt.range_id, at=now)
+    if w is not None:
+        logger.info("booking %s: not building its range during maintenance window %s (%s)", evt.id, w.id, w.reason)
+    return w is not None
 
 
 def _due(db: Session, *crit) -> list[ScheduledEvent]:

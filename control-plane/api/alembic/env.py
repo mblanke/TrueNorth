@@ -20,6 +20,7 @@ from app import (  # noqa: F401
     golden_image_builds,
     lab_sessions,
     lti_identity,
+    maintenance_windows,
     models,
     models_tickets,
     models_wiki,

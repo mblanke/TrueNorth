@@ -335,6 +335,8 @@ from .class_setup.router import router as class_setup_router  # noqa: E402 (#200
 from .cmi5.router import router as cmi5_router  # noqa: E402 (also registers the cmi5 tables)
 from .golden_image_builds.router import router as golden_image_builds_router  # noqa: E402 (ADR 0013; + its table)
 from .live_class.router import router as live_class_router  # noqa: E402 (issue #199)
+from .maintenance_windows.router import emergency_router as emergency_teardown_router  # noqa: E402 (ADR 0013 §7)
+from .maintenance_windows.router import router as maintenance_windows_router  # noqa: E402 (+ its table)
 from .range_certification.router import keys_router as range_certification_keys_router  # noqa: E402
 from .range_certification.router import router as range_certification_router  # noqa: E402 (ADR 0013 §6; + tables)
 from .range_credentials.issues_router import router as range_credential_issues_router  # noqa: E402 (ADR 0013)
@@ -405,6 +407,7 @@ app.include_router(range_credentials_router)  # GET /ranges/{id}/credentials (ap
 app.include_router(range_certification_router)  # GET /ranges/{id}/certification (app/range_certification)
 app.include_router(range_certification_keys_router)  # GET /range-certification/signing-keys
 app.include_router(range_credential_issues_router)  # GET /range-credentials/template-issues (ADR 0013)
+app.include_router(emergency_teardown_router)  # POST /ranges/{id}/emergency-teardown (app/maintenance_windows)
 app.include_router(exercises_router)
 app.include_router(detections_router)
 app.include_router(collective_exercises_router)
@@ -419,6 +422,7 @@ app.include_router(proxmox_router)
 app.include_router(scheduling_router)  # app/scheduler (ADR 0004)
 app.include_router(scheduling_feed_router)  # token-authenticated .ics feed
 app.include_router(scheduling_me_router)  # your own sessions and feed link
+app.include_router(maintenance_windows_router)  # app/maintenance_windows (ADR 0013 §7)
 # LMS & Integration routers
 app.include_router(courses_router)
 app.include_router(course_releases_router)

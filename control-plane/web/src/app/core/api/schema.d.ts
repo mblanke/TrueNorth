@@ -4067,6 +4067,77 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/maintenance-windows": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List maintenance windows
+         * @description The caller's tenant's windows and the platform-wide ones, soonest first.
+         */
+        get: operations["list_windows_maintenance_windows_get"];
+        put?: never;
+        /**
+         * Create a maintenance window
+         * @description Inside it, provision, reset/restore and normal destroy of the ranges it covers are
+         *     refused (409 with its reason and end time); automated cleanup and emergency teardown
+         *     still run. ``platform_wide`` needs a platform administrator. Audit-logged.
+         */
+        post: operations["create_window_maintenance_windows_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/maintenance-windows/active": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Maintenance windows in effect now
+         * @description For the banner on the Ranges and Schedule pages: what is refused now, why and until when.
+         */
+        get: operations["active_windows_maintenance_windows_active_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/maintenance-windows/{window_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a maintenance window */
+        get: operations["get_window_maintenance_windows__window_id__get"];
+        /**
+         * Change a maintenance window
+         * @description Audit-logged, with what it was. A window's tenant (or platform-wide) is fixed.
+         */
+        put: operations["update_window_maintenance_windows__window_id__put"];
+        post?: never;
+        /**
+         * Delete a maintenance window
+         * @description Ends it at once. Audit-logged, with what it was.
+         */
+        delete: operations["delete_window_maintenance_windows__window_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/network-devices/": {
         parameters: {
             query?: never;
@@ -6200,6 +6271,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/ranges/{range_id}/emergency-teardown": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Tear a range down now, inside a maintenance window if need be (range:admin)
+         * @description DANGEROUS. A destroy that a maintenance window does not refuse, for a range that must
+         *     come down now. ``confirm_range_id`` repeats the range's id; ``reason`` is mandatory. It
+         *     is audit-logged (``emergency_teardown``, with the reason and any window it overrode) and
+         *     written to the range's certification record as an override. The worker's re-check lets
+         *     it through (``range_operations.window_bypass = emergency``). Otherwise exactly a destroy:
+         *     same state rules, and it supersedes an operation in flight.
+         *     **Permission: range:admin** (admin only)
+         */
+        post: operations["emergency_teardown_ranges__range_id__emergency_teardown_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/ranges/{range_id}/greyspace": {
         parameters: {
             query?: never;
@@ -6456,7 +6553,7 @@ export interface paths {
         put?: never;
         /**
          * Restore Snapshot
-         * @description Restore a range from a snapshot.
+         * @description Restore a range from a snapshot. Refused (409) inside a maintenance window.
          */
         post: operations["restore_snapshot_ranges__range_id__snapshots__snapshot_id__restore_post"];
         delete?: never;
@@ -6959,7 +7056,8 @@ export interface paths {
          * @description Book a session. Refused with 409 when its range or instructor is already booked
          *     then. One that does not fit the cluster is refused with 409 (policy `block`) or
          *     created with warnings (policy `warn`). A draft holds nothing and is checked when it
-         *     is scheduled.
+         *     is scheduled. A booking that overlaps a maintenance window is made, with
+         *     `maintenance_warnings`: the clock does not build its range while a window covers it.
          */
         post: operations["create_event_schedule_events_post"];
         delete?: never;
@@ -9410,7 +9508,7 @@ export interface components {
             deployment_id: string;
             /**
              * Deployment Status
-             * @description The provision operation's status: pending, dispatched (building), succeeded, failed, superseded
+             * @description The provision operation's status: pending, dispatched (building), held (by a maintenance window, re-sent when it ends), succeeded, failed, superseded
              */
             deployment_status: string;
             /** Generation */
@@ -10766,6 +10864,22 @@ export interface components {
             /** Title */
             title: string;
         };
+        /**
+         * EmergencyTeardownIn
+         * @description A deliberate act: the caller repeats the range's id and says why.
+         */
+        EmergencyTeardownIn: {
+            /**
+             * Confirm Range Id
+             * Format: uuid
+             */
+            confirm_range_id: string;
+            /**
+             * Reason
+             * @description At least 10 characters besides spaces
+             */
+            reason: string;
+        };
         /** EnrollmentIn */
         EnrollmentIn: {
             /**
@@ -10930,6 +11044,11 @@ export interface components {
             id: string;
             /** Instructor Id */
             instructor_id?: string | null;
+            /**
+             * Maintenance Warnings
+             * @default []
+             */
+            maintenance_warnings?: string[];
             /** Name */
             name: string;
             /** Ram Mb Total */
@@ -12589,6 +12708,93 @@ export interface components {
             /** Tool Url */
             tool_url: string;
         };
+        /** MaintenanceWindowIn */
+        MaintenanceWindowIn: {
+            /**
+             * Ends At
+             * Format: date-time
+             * @description With a time zone offset; the window is [starts_at, ends_at)
+             */
+            ends_at: string;
+            /**
+             * Platform Wide
+             * @description Every tenant's ranges (platform administrator only). Fixed once created.
+             * @default false
+             */
+            platform_wide?: boolean;
+            /** Range Ids */
+            range_ids?: string[];
+            /**
+             * Reason
+             * @description Shown in every refusal and banner
+             */
+            reason: string;
+            /** @default all */
+            scope?: components["schemas"]["WindowScope"];
+            /**
+             * Starts At
+             * Format: date-time
+             * @description With a time zone offset, e.g. 2026-11-01T22:00:00-04:00
+             */
+            starts_at: string;
+            /** Tags */
+            tags?: string[];
+        };
+        /** MaintenanceWindowListOut */
+        MaintenanceWindowListOut: {
+            /** Items */
+            items: components["schemas"]["MaintenanceWindowOut"][];
+            /** Total */
+            total: number;
+        };
+        /** MaintenanceWindowOut */
+        MaintenanceWindowOut: {
+            /**
+             * Active
+             * @description In effect now
+             */
+            active: boolean;
+            /**
+             * Can Edit
+             * @description Whether the caller may change or delete it
+             */
+            can_edit: boolean;
+            /** Created At */
+            created_at?: string | null;
+            /** Created By */
+            created_by?: string | null;
+            /**
+             * Ends At
+             * Format: date-time
+             */
+            ends_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Platform Wide */
+            platform_wide: boolean;
+            /** Range Ids */
+            range_ids: string[];
+            /** Reason */
+            reason: string;
+            scope: components["schemas"]["WindowScope"];
+            /**
+             * Starts At
+             * Format: date-time
+             */
+            starts_at: string;
+            /** Tags */
+            tags: string[];
+            /**
+             * Tenant Id
+             * @description None: platform-wide
+             */
+            tenant_id?: string | null;
+            /** Updated At */
+            updated_at?: string | null;
+        };
         /** MeslEventPatch */
         MeslEventPatch: {
             /** Attack Technique */
@@ -14199,6 +14405,8 @@ export interface components {
             status: string;
             /** Task Id */
             task_id?: string | null;
+            /** Window Bypass */
+            window_bypass?: string | null;
         };
         /** RangeOut */
         RangeOut: {
@@ -16695,6 +16903,11 @@ export interface components {
             /** Title */
             title: string;
         };
+        /**
+         * WindowScope
+         * @enum {string}
+         */
+        WindowScope: "all" | "ranges" | "tags";
         /** WindowsRoleCatalogueOut */
         WindowsRoleCatalogueOut: {
             base: components["schemas"]["RoleSpecsOut"];
@@ -24100,6 +24313,200 @@ export interface operations {
             };
         };
     };
+    list_windows_maintenance_windows_get: {
+        parameters: {
+            query?: {
+                /** @description Also windows that have ended */
+                include_past?: boolean;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MaintenanceWindowListOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_window_maintenance_windows_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MaintenanceWindowIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MaintenanceWindowOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    active_windows_maintenance_windows_active_get: {
+        parameters: {
+            query?: {
+                /** @description Only the windows that cover this range */
+                range_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MaintenanceWindowOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_window_maintenance_windows__window_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                window_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MaintenanceWindowOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_window_maintenance_windows__window_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                window_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MaintenanceWindowIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MaintenanceWindowOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_window_maintenance_windows__window_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                window_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_devices_network_devices__get: {
         parameters: {
             query?: never;
@@ -27880,6 +28287,50 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    emergency_teardown_ranges__range_id__emergency_teardown_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                range_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmergencyTeardownIn"];
+            };
+        };
+        responses: {
+            /** @description Accepted: the teardown is recorded and runs even inside a maintenance window. */
+            202: {
+                headers: {
+                    /** @description The operation's id */
+                    "Operation-Id"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RangeOut"];
+                };
+            };
+            /** @description Not allowed in the range's state, or the range is a lab session's */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

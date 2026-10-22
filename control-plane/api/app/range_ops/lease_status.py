@@ -7,7 +7,7 @@ or teardown could run on beside the next build, and a destroy queued behind the 
 could start at once beside it. The plan of record (R0-B, "no lease is recycled while
 resources may still be live") asks for proof instead. What the API can prove:
 
-* no operation of the range is in flight (pending or dispatched) and no snapshot is being
+* no operation of the range is in flight (pending, dispatched or held) and no snapshot is being
   taken or restored: nothing queued behind the tombstone would start beside it;
 * the abandoned worker has stopped renewing: a live worker's heartbeat
   (worker/fencing.py, every ``RANGE_LEASE_HEARTBEAT_SECONDS``) pushes the tombstone's
@@ -125,6 +125,12 @@ def assess(db: Session, rng: Range, *, lock: bool = False) -> tuple[LeaseStatusO
     def refused(reason: str, **extra) -> tuple[LeaseStatusOut, object]:
         return LeaseStatusOut(**base, **extra, kind="tombstone", reason=reason, guidance=quarantine_guidance()), lease
 
+    if busy_op and busy_op.status == "held":
+        return refused(
+            f"A {busy_op.action} of this range is held by a maintenance window (operation {busy_op.id}). It is "
+            "sent when the window ends and then waits for this tombstone; releasing the tombstone would let it "
+            "start beside the abandoned worker's work. Abandon the held operation first if it is no longer wanted."
+        )
     if busy_op:
         return refused(
             f"A {busy_op.action} of this range is in flight (operation {busy_op.id}). It waits for this tombstone; "

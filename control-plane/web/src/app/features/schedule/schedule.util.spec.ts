@@ -1,5 +1,9 @@
 import type { Booking } from '@core/services/scheduler-api.service';
-import { addDays, isLive, layoutLanes, level, localizeUtcWindows, peakLoad, previewConflicts, slotLoads, weekStart } from './schedule.util';
+import type { MaintenanceWindow } from '@core/services/maintenance-windows-api.service';
+import {
+  addDays, isLive, layoutLanes, level, localizeUtcWindows, peakLoad, previewConflicts, slotLoads, weekStart,
+  windowsOverlapping,
+} from './schedule.util';
 
 function booking(p: Partial<Booking>): Booking {
   return {
@@ -96,5 +100,30 @@ describe('schedule.util', () => {
     expect(out).not.toContain('UTC');
     expect(out.startsWith('vCPU: need 69, 41 free ')).toBeTrue();
     expect(localizeUtcWindows('no window here')).toBe('no window here');
+  });
+});
+
+describe('windowsOverlapping (ADR 0013 §7)', () => {
+  const w = (p: Partial<MaintenanceWindow>): MaintenanceWindow => ({
+    id: 'w', tenant_id: 't', platform_wide: false, reason: 'upgrade', scope: 'all', range_ids: [], tags: [],
+    active: false, can_edit: true, starts_at: '2026-11-02T10:00:00Z', ends_at: '2026-11-02T12:00:00Z', ...p,
+  } as MaintenanceWindow);
+  const start = new Date('2026-11-02T13:00:00Z'), end = new Date('2026-11-02T15:00:00Z');
+
+  it('counts the build lead before the session', () => {
+    expect(windowsOverlapping([w({ ends_at: '2026-11-02T12:45:00Z' })], start, end, 30, null).length).toBe(1);
+    expect(windowsOverlapping([w({ ends_at: '2026-11-02T12:30:00Z' })], start, end, 30, null).length).toBe(0);
+  });
+
+  it('a window starting at the end does not overlap', () => {
+    expect(windowsOverlapping([w({ starts_at: '2026-11-02T15:00:00Z', ends_at: '2026-11-02T17:00:00Z' })],
+      start, end, 30, null).length).toBe(0);
+  });
+
+  it('a ranges window covers only its ranges', () => {
+    const only = w({ scope: 'ranges', range_ids: ['r1'], ends_at: '2026-11-02T14:00:00Z' });
+    expect(windowsOverlapping([only], start, end, 30, 'r1').length).toBe(1);
+    expect(windowsOverlapping([only], start, end, 30, 'r2').length).toBe(0);
+    expect(windowsOverlapping([only], start, end, 30, null).length).toBe(0);
   });
 });

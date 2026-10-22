@@ -2355,7 +2355,7 @@
             "type": "string"
           },
           "deployment_status": {
-            "description": "The provision operation's status: pending, dispatched (building), succeeded, failed, superseded",
+            "description": "The provision operation's status: pending, dispatched (building), held (by a maintenance window, re-sent when it ends), succeeded, failed, superseded",
             "title": "Deployment Status",
             "type": "string"
           },
@@ -5499,6 +5499,29 @@
         "title": "EOOut",
         "type": "object"
       },
+      "EmergencyTeardownIn": {
+        "description": "A deliberate act: the caller repeats the range's id and says why.",
+        "properties": {
+          "confirm_range_id": {
+            "format": "uuid",
+            "title": "Confirm Range Id",
+            "type": "string"
+          },
+          "reason": {
+            "description": "At least 10 characters besides spaces",
+            "maxLength": 500,
+            "minLength": 10,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "confirm_range_id",
+          "reason"
+        ],
+        "title": "EmergencyTeardownIn",
+        "type": "object"
+      },
       "EnrollmentIn": {
         "properties": {
           "course_id": {
@@ -5859,6 +5882,14 @@
               }
             ],
             "title": "Instructor Id"
+          },
+          "maintenance_warnings": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Maintenance Warnings",
+            "type": "array"
           },
           "name": {
             "title": "Name",
@@ -9919,6 +9950,204 @@
         "title": "LtiToolConfigOut",
         "type": "object"
       },
+      "MaintenanceWindowIn": {
+        "properties": {
+          "ends_at": {
+            "description": "With a time zone offset; the window is [starts_at, ends_at)",
+            "format": "date-time",
+            "title": "Ends At",
+            "type": "string"
+          },
+          "platform_wide": {
+            "default": false,
+            "description": "Every tenant's ranges (platform administrator only). Fixed once created.",
+            "title": "Platform Wide",
+            "type": "boolean"
+          },
+          "range_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 200,
+            "title": "Range Ids",
+            "type": "array"
+          },
+          "reason": {
+            "description": "Shown in every refusal and banner",
+            "maxLength": 500,
+            "minLength": 3,
+            "title": "Reason",
+            "type": "string"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/WindowScope",
+            "default": "all"
+          },
+          "starts_at": {
+            "description": "With a time zone offset, e.g. 2026-11-01T22:00:00-04:00",
+            "format": "date-time",
+            "title": "Starts At",
+            "type": "string"
+          },
+          "tags": {
+            "items": {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 50,
+            "title": "Tags",
+            "type": "array"
+          }
+        },
+        "required": [
+          "reason",
+          "starts_at",
+          "ends_at"
+        ],
+        "title": "MaintenanceWindowIn",
+        "type": "object"
+      },
+      "MaintenanceWindowListOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MaintenanceWindowOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "MaintenanceWindowListOut",
+        "type": "object"
+      },
+      "MaintenanceWindowOut": {
+        "properties": {
+          "active": {
+            "description": "In effect now",
+            "title": "Active",
+            "type": "boolean"
+          },
+          "can_edit": {
+            "description": "Whether the caller may change or delete it",
+            "title": "Can Edit",
+            "type": "boolean"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By"
+          },
+          "ends_at": {
+            "format": "date-time",
+            "title": "Ends At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "platform_wide": {
+            "title": "Platform Wide",
+            "type": "boolean"
+          },
+          "range_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Range Ids",
+            "type": "array"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/WindowScope"
+          },
+          "starts_at": {
+            "format": "date-time",
+            "title": "Starts At",
+            "type": "string"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tags",
+            "type": "array"
+          },
+          "tenant_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "None: platform-wide",
+            "title": "Tenant Id"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "id",
+          "platform_wide",
+          "reason",
+          "starts_at",
+          "ends_at",
+          "scope",
+          "range_ids",
+          "tags",
+          "active",
+          "can_edit"
+        ],
+        "title": "MaintenanceWindowOut",
+        "type": "object"
+      },
       "MeslEventPatch": {
         "properties": {
           "attack_technique": {
@@ -13748,6 +13977,17 @@
               }
             ],
             "title": "Task Id"
+          },
+          "window_bypass": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Window Bypass"
           }
         },
         "required": [
@@ -19826,6 +20066,15 @@
         ],
         "title": "WikiTreeNode",
         "type": "object"
+      },
+      "WindowScope": {
+        "enum": [
+          "all",
+          "ranges",
+          "tags"
+        ],
+        "title": "WindowScope",
+        "type": "string"
       },
       "WindowsRoleCatalogueOut": {
         "properties": {
@@ -32075,6 +32324,332 @@
         ]
       }
     },
+    "/maintenance-windows": {
+      "get": {
+        "description": "The caller's tenant's windows and the platform-wide ones, soonest first.",
+        "operationId": "list_windows_maintenance_windows_get",
+        "parameters": [
+          {
+            "description": "Also windows that have ended",
+            "in": "query",
+            "name": "include_past",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Also windows that have ended",
+              "title": "Include Past",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MaintenanceWindowListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List maintenance windows",
+        "tags": [
+          "maintenance-windows"
+        ]
+      },
+      "post": {
+        "description": "Inside it, provision, reset/restore and normal destroy of the ranges it covers are\nrefused (409 with its reason and end time); automated cleanup and emergency teardown\nstill run. ``platform_wide`` needs a platform administrator. Audit-logged.",
+        "operationId": "create_window_maintenance_windows_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MaintenanceWindowIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MaintenanceWindowOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create a maintenance window",
+        "tags": [
+          "maintenance-windows"
+        ]
+      }
+    },
+    "/maintenance-windows/active": {
+      "get": {
+        "description": "For the banner on the Ranges and Schedule pages: what is refused now, why and until when.",
+        "operationId": "active_windows_maintenance_windows_active_get",
+        "parameters": [
+          {
+            "description": "Only the windows that cover this range",
+            "in": "query",
+            "name": "range_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only the windows that cover this range",
+              "title": "Range Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MaintenanceWindowOut"
+                  },
+                  "title": "Response Active Windows Maintenance Windows Active Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Maintenance windows in effect now",
+        "tags": [
+          "maintenance-windows"
+        ]
+      }
+    },
+    "/maintenance-windows/{window_id}": {
+      "delete": {
+        "description": "Ends it at once. Audit-logged, with what it was.",
+        "operationId": "delete_window_maintenance_windows__window_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "window_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Window Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete a maintenance window",
+        "tags": [
+          "maintenance-windows"
+        ]
+      },
+      "get": {
+        "operationId": "get_window_maintenance_windows__window_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "window_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Window Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MaintenanceWindowOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get a maintenance window",
+        "tags": [
+          "maintenance-windows"
+        ]
+      },
+      "put": {
+        "description": "Audit-logged, with what it was. A window's tenant (or platform-wide) is fixed.",
+        "operationId": "update_window_maintenance_windows__window_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "window_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Window Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MaintenanceWindowIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MaintenanceWindowOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Change a maintenance window",
+        "tags": [
+          "maintenance-windows"
+        ]
+      }
+    },
     "/network-devices/": {
       "get": {
         "operationId": "list_devices_network_devices__get",
@@ -38148,6 +38723,76 @@
         ]
       }
     },
+    "/ranges/{range_id}/emergency-teardown": {
+      "post": {
+        "description": "DANGEROUS. A destroy that a maintenance window does not refuse, for a range that must\ncome down now. ``confirm_range_id`` repeats the range's id; ``reason`` is mandatory. It\nis audit-logged (``emergency_teardown``, with the reason and any window it overrode) and\nwritten to the range's certification record as an override. The worker's re-check lets\nit through (``range_operations.window_bypass = emergency``). Otherwise exactly a destroy:\nsame state rules, and it supersedes an operation in flight.\n**Permission: range:admin** (admin only)",
+        "operationId": "emergency_teardown_ranges__range_id__emergency_teardown_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "range_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Range Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmergencyTeardownIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RangeOut"
+                }
+              }
+            },
+            "description": "Accepted: the teardown is recorded and runs even inside a maintenance window.",
+            "headers": {
+              "Operation-Id": {
+                "description": "The operation's id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Not allowed in the range's state, or the range is a lab session's"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Tear a range down now, inside a maintenance window if need be (range:admin)",
+        "tags": [
+          "ranges"
+        ]
+      }
+    },
     "/ranges/{range_id}/greyspace": {
       "delete": {
         "description": "Detach the range's Greyspace block. The shared corpus is untouched.",
@@ -38934,7 +39579,7 @@
     },
     "/ranges/{range_id}/snapshots/{snapshot_id}/restore": {
       "post": {
-        "description": "Restore a range from a snapshot.",
+        "description": "Restore a range from a snapshot. Refused (409) inside a maintenance window.",
         "operationId": "restore_snapshot_ranges__range_id__snapshots__snapshot_id__restore_post",
         "parameters": [
           {
@@ -40355,7 +41000,7 @@
         ]
       },
       "post": {
-        "description": "Book a session. Refused with 409 when its range or instructor is already booked\nthen. One that does not fit the cluster is refused with 409 (policy `block`) or\ncreated with warnings (policy `warn`). A draft holds nothing and is checked when it\nis scheduled.",
+        "description": "Book a session. Refused with 409 when its range or instructor is already booked\nthen. One that does not fit the cluster is refused with 409 (policy `block`) or\ncreated with warnings (policy `warn`). A draft holds nothing and is checked when it\nis scheduled. A booking that overlaps a maintenance window is made, with\n`maintenance_warnings`: the clock does not build its range while a window covers it.",
         "operationId": "create_event_schedule_events_post",
         "requestBody": {
           "content": {

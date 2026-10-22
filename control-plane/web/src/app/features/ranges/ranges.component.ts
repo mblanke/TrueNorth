@@ -17,6 +17,7 @@ import { NotificationService } from '@core/services/notification.service';
 import { RangeSummary, TemplateSummary } from '@core/models';
 import { EmptyStateComponent } from '../../shared/components/empty-state/empty-state.component';
 import { RangeNotesComponent } from '../../shared/components/range-notes/range-notes.component';
+import { MaintenanceBannerComponent } from '../../shared/components/maintenance-banner/maintenance-banner.component';
 import { CountUpDirective } from '../../shared/motion';
 import { TemplateIssuesBannerComponent } from '../../shared/components/template-issues-banner/template-issues-banner.component';
 
@@ -27,6 +28,7 @@ import { TemplateIssuesBannerComponent } from '../../shared/components/template-
     MatIconModule, MatChipsModule, MatDialogModule, MatFormFieldModule,
     MatInputModule, MatSelectModule, MatTooltipModule, FormsModule, RouterLink,
     EmptyStateComponent, CountUpDirective, RangeNotesComponent, TemplateIssuesBannerComponent,
+    MaintenanceBannerComponent,
   ],
   template: `
     <div class="page-container">
@@ -49,6 +51,8 @@ import { TemplateIssuesBannerComponent } from '../../shared/components/template-
           </button>
         </div>
       </div>
+
+      <tn-maintenance-banner />
 
       @if (stats(); as s) {
         <div class="stats-strip">

@@ -230,6 +230,7 @@ export class RangeCertificationComponent {
   /** The build's own state, when the verdict alone would mislead (still building, failed). */
   buildNote(status: string): string {
     if (status === 'pending' || status === 'dispatched') return 'Build in progress';
+    if (status === 'held') return 'Build held by a maintenance window';
     if (status === 'failed') return 'Build failed';
     return '';
   }

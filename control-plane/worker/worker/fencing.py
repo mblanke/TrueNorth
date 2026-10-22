@@ -72,7 +72,7 @@ from datetime import UTC, datetime, timedelta
 import sqlalchemy as sa
 from celery.exceptions import SoftTimeLimitExceeded
 
-from . import db_ops
+from . import db_ops, maintenance_windows
 from .provisioners.base import ConnectionBindingError, ExperimentalProvisionerError
 from .range_alloc import AllocationError
 
@@ -493,7 +493,11 @@ def fenced(action: str, state: str | None, on_lost=None):
             token = _current.set(lease)
             lease.start()
             try:
-                result = fn(task, range_id, *args, **kwargs)
+                # A maintenance window refuses a build, a restore or a person's destroy that
+                # reached the worker inside it; cleanup always runs (maintenance_windows.py).
+                result = maintenance_windows.at_entry(_db_session, action, range_id, *args) or fn(
+                    task, range_id, *args, **kwargs
+                )
             except SoftTimeLimitExceeded:
                 lease.stop()
                 lease.keep()  # the lease, or the tombstone: the call may still be running

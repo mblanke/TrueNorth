@@ -889,8 +889,11 @@ def restore_snapshot(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_permission(Permission.RANGE_PROVISION)),
 ) -> RangeOut:
-    """Restore a range from a snapshot."""
+    """Restore a range from a snapshot. Refused (409) inside a maintenance window."""
     rng = _changeable_range(db, range_id, user)
+    from ..maintenance_windows import service as windows
+
+    windows.refuse_inside(db, rng, "restore")
     if rng.state not in (RangeState.ready, RangeState.running, RangeState.stopped, RangeState.failed):
         raise HTTPException(409, f"Cannot restore range in state '{rng.state.value}'")
     ops.refuse_while_in_flight(db, rng, "restore")
