@@ -100,6 +100,21 @@ course production with a local-model fallback, and the cleanup of unsupported su
   `0a2276639b3c` reseals stored passwords,
   adds the implicit rows to existing ranges (noted "template password still valid until
   rebuilt") and strips credential tokens from wiki pages and their revisions.
+- **Templates pinned to a promoted build** (#240, ADR 0013 §2): golden images get build
+  records (build id, checksum, build date, ISO checksum, per-host copies; table
+  `golden_image_builds`) that `build.sh` / `build-phase.sh` register, and the platform
+  administrator promotes one on Infrastructure → Golden images (audited; a build with no
+  host copy cannot be promoted). Every vSphere range VM clones exactly its image's promoted
+  build: placement uses only hosts holding that build's copy stamped
+  `tn-build: <catalogue id> <build id> sha256:<checksum>`, a missing or mismatched copy
+  fails the build, and each VM records the build it got (`vms[].template_build`). The
+  newest-copy selection, the plain-name and Content Library fallbacks for promoted images,
+  the role-image plain-OS fallback, and the date-based prune are gone; the prune keeps
+  promoted, pending and in-use copies. `greyspace-host` (gs-core) is now a catalogue image.
+  Transition flag `TN_TEMPLATE_ALLOW_UNPROMOTED` (installer default `false`, work overlay
+  `true`; or a list such as `ubuntu-lts`) lets `built` images without a promoted build
+  through with a warning, still cloning from the placed host's own copy; it switches off per
+  image once that image is promoted.
 - **Greyspace on vSphere** (#133): gs-core VM in the range build, `configure_range` stage,
   mail/NTP/HTTPS, NPC traffic, `greyspace_breadcrumb` inject, designer stencil, corpus ingest.
   Proven on vcsim and the T0 Docker stack only.

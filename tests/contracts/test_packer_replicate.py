@@ -9,6 +9,8 @@ or template is an error. Also: the vSphere Packer tree is checked by CI.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 import shutil
 import subprocess
@@ -36,8 +38,12 @@ case "$1" in
     elif [ "$name" = srv2022 ]; then echo "/DC/vm/TrueNorth/Templates/srv2022"
     elif [ -e "$state/vm/$name" ]; then echo "/DC/vm/TrueNorth/Templates/$name"
     fi ;;
-  object.collect) cat "$state/vm/$(basename "$3")" ;;
-  vm.clone) mkdir -p "$state/vm"; echo false > "$state/vm/${@: -1}" ;;
+  object.collect)
+    if [ "${4:-}" = config.annotation ]; then cat "$state/ann/$(basename "$3")" 2>/dev/null
+    else cat "$state/vm/$(basename "$3")"; fi ;;
+  vm.clone)
+    mkdir -p "$state/vm" "$state/ann"; echo false > "$state/vm/${@: -1}"
+    for a in "$@"; do case "$a" in -annotation=*) printf '%s\n' "${a#-annotation=}" > "$state/ann/${@: -1}" ;; esac; done ;;
   vm.markastemplate) echo true > "$state/vm/$(basename "$2")" ;;
 esac
 """
@@ -54,16 +60,18 @@ def govc(tmp_path):
     stub.chmod(0o755)
     state = tmp_path / "state"
     (state / "vm").mkdir(parents=True)
+    records = tmp_path / "records"
     env = {**os.environ, "PATH": f"{bindir}:{os.environ['PATH']}", "STUB_STATE": str(state),
-           "GOVC_URL": "https://vcsa.test", "REPLICA_DATE": "20261019"}
-    env.pop("RANGE_HOSTS", None)
-    env.pop("TEMPLATE_FOLDER", None)
+           "GOVC_URL": "https://vcsa.test", "REPLICA_DATE": "20261019", "TN_BUILD_RECORDS": str(records)}
+    for name in ("RANGE_HOSTS", "TEMPLATE_FOLDER", "TN_API_URL", "TN_API_TOKEN", "TN_BUILD_ID", "TN_ISO_CHECKSUM"):
+        env.pop(name, None)
 
-    def run(*args, **extra):
-        return subprocess.run(["bash", str(BUILD), "replicate", *args], env={**env, **extra},
+    def run(*args, command="replicate", **extra):
+        return subprocess.run(["bash", str(BUILD), command, *args], env={**env, **extra},
                               capture_output=True, text=True, timeout=60)
 
     run.state = state
+    run.records = records
     return run
 
 
@@ -130,6 +138,62 @@ def test_dry_run_changes_nothing(govc):
     got = govc("srv2022", DRY_RUN="1")
     assert got.returncode == 0 and got.stdout.count("DRY_RUN: govc vm.clone") == 3
     assert _calls(govc.state, "vm.clone") == []
+
+
+# -- build records and stamps (ADR 0013 §2) ------------------------------------------------
+needs_jq = pytest.mark.skipif(shutil.which("jq") is None, reason="jq is required for build records")
+
+
+@needs_jq
+def test_manifest_records_a_build_the_api_accepts(govc):
+    got = govc("srv2022", command="manifest", TN_BUILD_ID="srv2022-20261019T120000Z",
+               TN_ISO_CHECKSUM="sha256:" + "c" * 64,
+               # Never registered before replicate (an incomplete, unpromotable record): an
+               # unreachable API would fail the command if manifest tried to.
+               TN_API_URL="http://127.0.0.1:9/api", TN_API_TOKEN="t")
+    assert got.returncode == 0, got.stderr
+    assert "register-back" not in got.stdout and "replicate" in got.stdout
+    rec = json.loads((govc.records / "srv2022.build.json").read_text())
+    core = {"build_id": rec["build_id"], "template": "srv2022", "iso_checksum": rec["iso_checksum"],
+            "inputs_sha256": rec["inputs_sha256"]}
+    # The checksum is the sha256 of the build's identity, as jq -c writes it.
+    assert rec["checksum"] == hashlib.sha256(json.dumps(core, separators=(",", ":")).encode()).hexdigest()
+    assert (rec["build_id"], rec["copies"]) == ("srv2022-20261019T120000Z", {})
+    from app.golden_image_builds.schemas import GoldenImageBuildIn
+
+    GoldenImageBuildIn(build_id=rec["build_id"], checksum=rec["checksum"], build_date=rec["build_date"],
+                       iso_checksum=rec["iso_checksum"], template_name=rec["template"], copies=rec["copies"])
+
+
+@needs_jq
+def test_replicate_stamps_each_copy_and_records_it(govc):
+    assert govc("srv2022", command="manifest", TN_BUILD_ID="b1").returncode == 0
+    rec = json.loads((govc.records / "srv2022.build.json").read_text())
+    got = govc("srv2022")
+    assert got.returncode == 0, got.stderr
+    stamp = f"tn-build: srv2022 b1 sha256:{rec['checksum']}"
+    for short in ("esx02", "esx03", "esx04"):
+        assert (govc.state / "ann" / f"srv2022@{short}-20261019").read_text().splitlines()[-1] == stamp
+    rec = json.loads((govc.records / "srv2022.build.json").read_text())
+    assert rec["copies"] == {s: f"srv2022@{s}-20261019" for s in ("esx02", "esx03", "esx04")}
+    again = govc("srv2022")  # the same build's copies: reused
+    assert again.returncode == 0 and "already exists; skipped" in again.stdout
+
+
+@needs_jq
+def test_a_copy_of_that_name_from_another_build_fails_replicate(govc):
+    assert govc("srv2022", command="manifest", TN_BUILD_ID="b1").returncode == 0
+    assert govc("srv2022", "esx02").returncode == 0
+    assert govc("srv2022", command="manifest", TN_BUILD_ID="b2").returncode == 0  # a newer build, same day
+    got = govc("srv2022", "esx02")
+    assert got.returncode == 1 and "exists as tn-build: srv2022 b1" in got.stderr and "set REPLICA_DATE" in got.stderr
+    assert len(_calls(govc.state, "vm.clone")) == 1
+
+
+def test_without_a_record_copies_are_unstamped_and_it_says_so(govc):
+    got = govc("srv2022", "esx02")
+    assert got.returncode == 0 and "no build record" in got.stderr
+    assert not (govc.state / "ann" / "srv2022@esx02-20261019").exists()
 
 
 def test_ci_checks_the_vsphere_packer_tree():

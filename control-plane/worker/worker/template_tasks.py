@@ -1,10 +1,12 @@
-"""Pruning of host-local golden-template copies (ADR 0012 decision 6).
+"""Pruning of host-local golden-template copies (ADR 0012 decision 6, ADR 0013 §2).
 
-``infra/vsphere/packer/build.sh replicate`` puts a copy of each template on every range
-host as ``<id>@<host>-<yyyymmdd>``; the vSphere provisioner clones the newest copy on the
-VM's host and records it as ``vms[].template`` in the range's provisioner_output. This
-task removes, per template and host, the copies older than the newest one, unless a range
-that is not destroyed records a VM cloned from it.
+``infra/vsphere/packer/build.sh replicate`` puts a copy of each build on every range host
+as ``<id>@<host>-<yyyymmdd>``; the vSphere provisioner clones the promoted build's copy on
+the VM's host and records it as ``vms[].template`` in the range's provisioner_output. This
+task removes copies of an image **with a promoted build** that no build record still
+needs: never a promoted build's copy, never a copy of a build registered since that
+promotion (awaiting its own), never a copy a range that is not destroyed records, and
+never anything of an image with no promoted build. There is no "newest copy" rule.
 
 Contract:
 
@@ -12,8 +14,10 @@ Contract:
   ``dry_run=False`` (an operator: ``celery call worker.template_tasks.prune_template_copies
   --kwargs '{"dry_run": false}'``), or beat with ``TEMPLATE_COPY_PRUNE=delete``.
 * **Never races a build.** While any range is ``provisioning`` a deleting run is downgraded
-  to a dry run (``deferred``): a build may have resolved a copy that a newer one has since
-  superseded. The newest copy on a host is never a candidate at all.
+  to a dry run (``deferred``): a build may have pinned a build that was since replaced.
+* **Build records decide** (``template_copies.PrunePolicy``): the names a promoted build
+  (and any newer build) records are kept, and so is any copy stamped as one of those
+  builds whatever its name.
 * **Conservative "in use".** The names recorded by every undestroyed range, on any
   vCenter, are kept. A range whose output cannot be read defers deleting, as a build does.
 * **Every vCenter.** Each active vSphere hypervisor connection, and the worker's own
@@ -36,7 +40,7 @@ from . import db_ops
 from .base_tasks import ReliableTask
 from .celery_app import app
 from .provisioners import CREDENTIALS_HYPERVISOR, get_provisioner
-from .provisioners.template_copies import names_in_use
+from .provisioners.template_copies import PrunePolicy, names_in_use, parse
 from .task_plumbing import db_session as _db_session
 
 logger = logging.getLogger(__name__)
@@ -74,10 +78,47 @@ def _provisioners(connections: list[dict]) -> list[tuple[str, object]]:
     return out
 
 
+def _copies(raw) -> dict:
+    try:
+        got = json.loads(raw or "{}")
+    except (TypeError, ValueError):
+        return {}
+    return got if isinstance(got, dict) else {}
+
+
+def prune_policy(build_rows: list[dict], in_use: set[str]) -> PrunePolicy:
+    """What pruning keeps, from every registered build (db_ops.golden_image_build_copies).
+
+    Per image with a promoted build: its templates (the image's and each build's, and the
+    bases of their copy names) become ``managed``; the promoted build and every build
+    registered after it are protected, by copy name and by stamp. Images with no promoted
+    build contribute nothing, so none of their copies is ever a candidate."""
+    by_image: dict = {}
+    for row in build_rows:
+        by_image.setdefault(row["image_id"], []).append(row)
+    managed: set[str] = set()
+    protected: set[str] = set(in_use)
+    builds: set[tuple[str, str]] = set()
+    for rows in by_image.values():
+        promoted = [r for r in rows if r["promoted"]]
+        if not promoted:
+            continue
+        since = promoted[0]["created_at"]
+        for r in rows:
+            names = [str(n) for n in _copies(r["copies"]).values()]
+            managed.update(n for n in (r["image_template"], r["catalogue_id"], r["build_template"]) if n)
+            managed.update(c.base for n in names if (c := parse(n)) is not None)
+            if r["promoted"] or since is None or r["created_at"] is None or r["created_at"] >= since:
+                protected.update(names)
+                builds.add((r["catalogue_id"], r["build_id"], r["checksum"]))
+    return PrunePolicy(protected=frozenset(protected), managed=frozenset(managed), builds=frozenset(builds))
+
+
 def run_prune(*, dry_run: bool = True) -> dict:
     """The work of ``prune_template_copies`` (no Celery: callable from an admin action)."""
     with _db_session() as db:
         rows = db_ops.undestroyed_range_outputs(db)
+        build_rows = db_ops.golden_image_build_copies(db)
         connections = db_ops.active_connection_creds(db, CREDENTIALS_HYPERVISOR[BACKEND])
     outputs, unreadable, building = [], [], []
     for range_id, state, raw in rows:
@@ -89,7 +130,9 @@ def run_prune(*, dry_run: bool = True) -> dict:
         if str(getattr(state, "value", state)) == "provisioning":
             building.append(str(range_id))
     in_use = names_in_use(outputs)
-    result: dict = {"requested_dry_run": dry_run, "in_use": sorted(in_use), "endpoints": {}}
+    policy = prune_policy(build_rows, in_use)
+    result: dict = {"requested_dry_run": dry_run, "in_use": sorted(in_use), "endpoints": {},
+                    "protected": sorted(policy.protected), "managed": sorted(policy.managed)}
     if not dry_run and (building or unreadable):
         dry_run = True
         why = [f"{len(building)} range(s) provisioning"] if building else []
@@ -107,7 +150,7 @@ def run_prune(*, dry_run: bool = True) -> dict:
             result["endpoints"][label] = {"unsupported": True}
             continue
         try:
-            got = asyncio.run(prune(in_use, dry_run=dry_run))
+            got = asyncio.run(prune(policy, dry_run=dry_run))
         except Exception as exc:  # noqa: BLE001 -- the other vCenters still run
             logger.error("[templates] pruning copies on %s failed: %s", label, exc)
             result["endpoints"][label] = {"error": str(exc)}
@@ -123,5 +166,5 @@ def run_prune(*, dry_run: bool = True) -> dict:
 
 @app.task(base=ReliableTask, bind=True, name="worker.template_tasks.prune_template_copies")
 def prune_template_copies(self, dry_run: bool = True) -> dict:
-    """Remove superseded host-local template copies; reports only unless ``dry_run=False``."""
+    """Remove template copies no build record needs (ADR 0013); reports only unless ``dry_run=False``."""
     return run_prune(dry_run=dry_run)

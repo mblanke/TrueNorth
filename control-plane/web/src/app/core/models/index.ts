@@ -138,6 +138,14 @@ export type VmInventory = S['VmInventoryOut'];
 export type InventoryVm = S['InventoryVmOut'];
 export type VmGroup = InventoryVm['group'];
 
+/** GET /golden-images: the template library, each image with its promoted build (ADR 0013 §2). */
+export type GoldenImage = S['GoldenImageOut'];
+/** A registered build of a golden image: build id, checksum, dates, per-host copies. */
+export type GoldenImageBuild = S['GoldenImageBuildOut'];
+/** GET /golden-images/:id/builds: the builds, which is promoted, and the image's audit trail. */
+export type GoldenImageBuilds = S['GoldenImageBuildsOut'];
+export type GoldenImageAuditEntry = S['GoldenImageAuditEntry'];
+
 // ── AI Models ─────────────────────────────────────────────────────
 export type AIBackendType = 'ollama' | 'openai' | 'azure_openai' | 'vllm' | 'custom';
 

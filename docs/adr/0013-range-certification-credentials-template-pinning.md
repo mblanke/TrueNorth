@@ -34,9 +34,10 @@ Not ported: the guard hook and file-based approvals (TrueNorth has RBAC and an a
 ### 2. Templates are pinned to one promoted build (S2)
 
 - A golden image gets a **promoted build**: build id, checksum, build date, ISO checksum and per-host copy names. Promotion is an audited admin action; registering a build records it, a human promotes it.
-- At provision, a range resolves **one** promoted build per catalogue image and requires that exact build's copy on every host its placement uses. A missing or mismatched copy fails the build.
+- At provision, a range resolves **one** promoted build per catalogue image and requires that exact build's copy on every host its placement uses. Placement chooses only hosts that hold it; a missing or mismatched copy on every host that fits fails the build.
+- Promotion needs **at least one host copy** recorded for the build (a build recorded before replication cannot be promoted). Hosts without a copy are not used for that image.
 - **No newest-copy selection and no plain-name fallback.** Both are removed from `vsphere_api` and from `template_tasks.prune_template_copies`. Every VM of one image in a range runs the same verified build, and the certification record (§6) says which.
-- Transition: a flag allows the currently built, unpromoted Ubuntu image until the first promotion, then turns off.
+- Transition: a flag (`TN_TEMPLATE_ALLOW_UNPROMOTED`) allows currently built, unpromoted images. It turns off **per image**: once an image has a promoted build, that image always uses it, whatever the flag says. (Amended 2026-10-21 after the S2 adversarial review; the first text turned the flag off globally at the first promotion.)
 
 ### 3. Credential hardening (S3)
 
@@ -172,7 +173,7 @@ flowchart LR
 ## Consequences
 
 - **Safer, slower first deploys.** A missing promoted copy or a VLAN collision now fails a build that would previously have "worked" with the wrong template or a shared VLAN.
-- **Templates need a promotion step.** Building a template is no longer enough; an admin must promote it before ranges use it (transition flag for the current Ubuntu image).
+- **Templates need a promotion step.** Building a template is no longer enough; the platform administrator must promote it before ranges use it (transition flag, per image, for images not yet promoted).
 - **Credentials can no longer be read in the wiki.** Staff use the credentials panel, and every reveal leaves an audit entry. Students must re-read their passwords after a reset.
 - **Isolation becomes evidence, not assumption**, but `enforce` is blocked on an external decision. Until then the certification verdict reports isolation honestly as weaker than required where it is.
 - **Teardown may leave things behind on purpose.** Unidentified items are reported, not deleted; an admin confirms them by MoID. This trades tidiness for never deleting something TrueNorth did not create.

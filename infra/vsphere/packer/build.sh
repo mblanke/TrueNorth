@@ -9,19 +9,34 @@
 #   ./build.sh variants                 # build every variant under variants/
 #   ./build.sh register win11-analyst   # (re-)register a built variant with the API
 #   ./build.sh replicate srv2022 [esx02 esx03]   # copy a built template to each range host
+#   ./build.sh manifest ubuntu-lts      # adopt an existing template as a build (no rebuild)
 #
 # For each template: packer build -force -only='*.<builder>.<name>' . with a per-template log
 # under logs/. A variant adds -var-file=variants/<name>.pkrvars.hcl and builds the
 # variant-windows or variant-linux source (see variants.pkr.hcl).
 #
+# Build record (ADR 0013 §2): each successful build writes logs/<name>.build.json: build id
+# (<name>-<UTC timestamp>, or TN_BUILD_ID), build date, ISO checksum (TN_ISO_CHECKSUM, e.g.
+# sha256:<hex> of the install ISO; empty when not given), the sha256 of every Packer input
+# file, and the build's checksum: sha256 of that identity (build id, template, ISO checksum,
+# inputs). It fingerprints the build; it is not a hash of the disks. Replicate stamps each
+# copy's annotation "tn-build: <id> <build id> sha256:<checksum>" and adds it to the record.
+# Ranges clone only a PROMOTED build's stamped copies: the platform administrator promotes
+# a registered build on the Golden Images page, and only a build that names host copies
+# (after replicate) can be promoted. `manifest <id>` writes a record (not registered) for a
+# template built before records existed; replicate it again (a new REPLICA_DATE) to stamp,
+# record and register its copies. Recording a build needs a platform-admin API token.
+#
 # Register-back, when TN_API_URL and TN_API_TOKEN are set:
-#   base/derived  PATCH the catalogue image to build_status=built, template_name=<name>
+#   base/derived  PATCH the catalogue image to build_status=built, template_name=<name>, and
+#                 the build record (build); replicate PATCHes the record again with its copies
 #   variant       POST /golden-images (create or update) from the variant file's metadata,
-#                 so it is offered in the Range Designer
+#                 so it is offered in the Range Designer, then PATCH its build record
 #
 # Replicate (ADR 0012 decision 6; needs govc and GOVC_URL pointing at vCenter): clone the
 # inventory template <id> to each range host's local datastore as <id>@<host>-<yyyymmdd>
-# and mark it a template. The provisioner clones the newest copy on a VM's own host.
+# and mark it a template, stamped as the template's recorded build. A copy of that name that
+# already exists must carry the same stamp (else replicate fails: set REPLICA_DATE).
 #   RANGE_HOSTS          hosts when none are named (default "esx02 esx03 esx04")
 #   RANGE_DATASTORE_FMT  printf format for a host's datastore (default "%s-local")
 #   TEMPLATE_FOLDER      inventory folder path for the copies (default: the template's own folder)
@@ -112,9 +127,71 @@ in_order() {
   done
 }
 
+# --- build records (ADR 0013 §2): logs/<id>.build.json ---------------------------------
+BUILD_RECORDS="${TN_BUILD_RECORDS:-logs}"  # where build records live (tests point it elsewhere)
+manifest_file() { mkdir -p "$BUILD_RECORDS"; echo "${BUILD_RECORDS%/}/$1.build.json"; }
+
+sha256_stdin() {
+  if command -v sha256sum >/dev/null 2>&1; then sha256sum | cut -d' ' -f1; else shasum -a 256 | cut -d' ' -f1; fi
+}
+
+# sha256 over "<sha256>  <path>" of every Packer input (*.pkr.hcl, http/, files/, variants/), in name order.
+inputs_digest() {
+  local f
+  { find . -maxdepth 1 -name '*.pkr.hcl' -type f; find http files variants -type f 2>/dev/null; } | LC_ALL=C sort |
+    while IFS= read -r f; do printf '%s  %s\n' "$(sha256_stdin < "$f")" "$f"; done | sha256_stdin
+}
+
+# write_manifest <id>: the record of the build just made (or adopted). Needs jq.
+write_manifest() {
+  local id="$1" build_id core sum
+  if ! command -v jq >/dev/null 2>&1; then
+    echo "WARN: jq not found; no build record for ${id} (its copies will be unstamped and cannot be promoted)" >&2
+    return 0
+  fi
+  build_id="${TN_BUILD_ID:-${id}-$(date -u +%Y%m%dT%H%M%SZ)}"
+  core="$(jq -cn --arg b "$build_id" --arg t "$id" --arg i "${TN_ISO_CHECKSUM:-}" --arg p "$(inputs_digest)" \
+    '{build_id:$b, template:$t, iso_checksum:$i, inputs_sha256:$p}')"
+  sum="$(printf '%s' "$core" | sha256_stdin)"
+  jq -n --argjson c "$core" --arg s "$sum" --arg d "$(date -u +%Y-%m-%d)" \
+    '$c + {checksum:$s, build_date:$d, copies:{}}' > "$(manifest_file "$id")"
+  echo "build record: ${id} = ${build_id} sha256:${sum} ($(manifest_file "$id"))"
+}
+
+# The "tn-build: <id> <build id> sha256:<checksum>" stamp of <id>'s record, or nothing.
+build_stamp() {
+  local m
+  m="$(manifest_file "$1")"
+  [ -f "$m" ] && command -v jq >/dev/null 2>&1 || return 0
+  jq -r '"tn-build: \(.template) \(.build_id) sha256:\(.checksum)"' "$m"
+}
+
+record_copy() { # record_copy <id> <host short> <copy name>
+  local m tmp
+  m="$(manifest_file "$1")"
+  [ -f "$m" ] && [ -z "${DRY_RUN:-}" ] || return 0
+  tmp="$(mktemp)"
+  jq --arg h "$2" --arg c "$3" '.copies[$h] = $c' "$m" > "$tmp" && mv "$tmp" "$m"
+}
+
+# The API's `build` body from <id>'s record, or nothing.
+build_body() {
+  local m
+  m="$(manifest_file "$1")"
+  [ -f "$m" ] || return 0
+  jq -c '{build_id, checksum, build_date, iso_checksum, template_name: .template, copies}' "$m"
+}
+
 # --- register-back: look up the golden image by catalogue_id and PATCH it -------------
+golden_image_id() {
+  curl -fsS -H "Authorization: Bearer ${TN_API_TOKEN}" "${TN_API_URL%/}/golden-images?hypervisor=vsphere" \
+    | jq -r --arg c "$1" '.[] | select(.catalogue_id == $c) | .id' | head -n1
+}
+
+# register_back <name> [build-only]: built + template name + the build record; with
+# "build-only" the build record alone (after replicate added its copies).
 register_back() {
-  local name="$1"
+  local name="$1" only="${2:-}"
   if [ -z "${TN_API_URL:-}" ] || [ -z "${TN_API_TOKEN:-}" ]; then
     return 0
   fi
@@ -122,22 +199,27 @@ register_back() {
     echo "WARN: jq not found; skipping register-back for $name" >&2
     return 0
   fi
-  local base id
-  base="${TN_API_URL%/}"
+  local id build body
   echo "register-back: resolving golden image for catalogue_id=$name"
-  id="$(curl -fsS -H "Authorization: Bearer ${TN_API_TOKEN}" \
-          "${base}/golden-images?hypervisor=vsphere" \
-        | jq -r --arg c "$name" '.[] | select(.catalogue_id == $c) | .id' | head -n1)"
+  id="$(golden_image_id "$name")"
   if [ -z "$id" ] || [ "$id" = "null" ]; then
     echo "WARN: no golden image with catalogue_id=$name on vsphere; skipping register-back" >&2
     return 0
   fi
+  build="$(build_body "$name")"
+  if [ -n "$only" ]; then
+    [ -n "$build" ] || return 0
+    body="$(jq -n --argjson b "$build" '{build:$b}')"
+  else
+    body="$(jq -n --arg t "$name" --argjson b "${build:-null}" \
+      '{build_status:"built", template_name:$t} + (if $b then {build:$b} else {} end)')"
+  fi
   curl -fsS -X PATCH \
     -H "Authorization: Bearer ${TN_API_TOKEN}" \
     -H "Content-Type: application/json" \
-    -d "$(jq -n --arg t "$name" '{build_status:"built", template_name:$t}')" \
-    "${base}/golden-images/${id}" >/dev/null
-  echo "register-back: ${name} -> built (id=$id)"
+    -d "$body" \
+    "${TN_API_URL%/}/golden-images/${id}" >/dev/null
+  echo "register-back: ${name} -> ${only:+build record}${only:-built} (id=$id)${build:+; promote it on the Golden Images page}"
 }
 
 # --- variant registration: POST /golden-images (create or update) ---------------------
@@ -248,21 +330,30 @@ find_host() {
 }
 
 replicate_one() {
-  local id="$1" host="$2" date="$3" source="$4" folder="$5" short ds copy existing host_path
+  local id="$1" host="$2" date="$3" source="$4" folder="$5" stamp="$6" short ds copy existing host_path have
+  local annotation=()
   short="${host%%.*}"
   copy="${id}@${short}-${date}"
   # shellcheck disable=SC2059 # the format is the operator's RANGE_DATASTORE_FMT
   ds="$(printf "$RANGE_DATASTORE_FMT" "$short")"
   existing="$(find_vm "$copy")"
   if [ -n "$existing" ]; then
+    # A copy of this name is reused only when it is this build (ADR 0013 §2).
+    if [ -n "$stamp" ]; then
+      have="$(govc object.collect -s "$existing" config.annotation 2>/dev/null | grep '^tn-build:' || true)"
+      if [ "$have" != "$stamp" ]; then
+        echo "FAIL: replicate ${id}: ${copy} exists as ${have:-an unstamped copy}, not ${stamp}; set REPLICA_DATE (or remove it)" >&2
+        return 1
+      fi
+    fi
     if [ "$(govc object.collect -s "$existing" config.template 2>/dev/null)" = "true" ]; then
       echo "replicate: ${copy} already exists; skipped"
-      tag_vm "$existing" template-copy "$id"
-      return 0
+    else
+      echo "replicate: ${copy} exists but is not a template yet; marking it"
+      run_govc vm.markastemplate "$existing"
     fi
-    echo "replicate: ${copy} exists but is not a template yet; marking it"
-    run_govc vm.markastemplate "$existing"
     tag_vm "$existing" template-copy "$id"
+    record_copy "$id" "$short" "$copy"
     return 0
   fi
   host_path="$(find_host "$short")"
@@ -270,9 +361,10 @@ replicate_one() {
     echo "FAIL: replicate ${id}: host '${short}' is not in vCenter inventory" >&2
     return 1
   fi
-  echo "replicate: ${id} -> ${copy} on ${host_path} [${ds}]"
+  echo "replicate: ${id} -> ${copy} on ${host_path} [${ds}]${stamp:+ ($stamp)}"
+  [ -z "$stamp" ] || annotation=(-annotation="TrueNorth golden copy of ${id}"$'\n'"${stamp}")
   run_govc vm.clone -vm "$source" -on=false -template=false -link=false \
-    -host="$host_path" -ds="$ds" -folder="$folder" "$copy" || {
+    -host="$host_path" -ds="$ds" -folder="$folder" ${annotation[@]+"${annotation[@]}"} "$copy" || {
     echo "FAIL: replicate ${id}: clone to ${short} failed" >&2
     return 1
   }
@@ -281,11 +373,12 @@ replicate_one() {
     return 1
   }
   tag_vm "${folder%/}/${copy}" template-copy "$id"
+  record_copy "$id" "$short" "$copy"
   echo "replicate: OK ${copy}"
 }
 
 replicate() {
-  local id="$1" date source folder failed=0 h hosts=()
+  local id="$1" date source folder stamp failed=0 h hosts=()
   shift
   if [ "$#" -gt 0 ]; then hosts=("$@"); else read -r -a hosts <<< "$RANGE_HOSTS"; fi
   if ! command -v govc >/dev/null 2>&1 || [ -z "${GOVC_URL:-}" ]; then
@@ -304,10 +397,16 @@ replicate() {
   fi
   folder="${TEMPLATE_FOLDER:-$(dirname "$source")}"  # default: next to the template it copies
   date="${REPLICA_DATE:-$(date +%Y%m%d)}"
+  stamp="$(build_stamp "$id")"
+  if [ -z "$stamp" ]; then
+    echo "WARN: replicate ${id}: no build record ($(manifest_file "$id")): the copies are unstamped and no range" \
+      "will clone them once a build is promoted. Rebuild, or './build.sh manifest ${id}' then replicate with a new REPLICA_DATE." >&2
+  fi
   tag_vm "$source" golden-template "$id"
   for h in "${hosts[@]}"; do
-    replicate_one "$id" "$h" "$date" "$source" "$folder" || failed=1
+    replicate_one "$id" "$h" "$date" "$source" "$folder" "$stamp" || failed=1
   done
+  [ -z "$stamp" ] || [ -n "${DRY_RUN:-}" ] || register_back "$id" build-only || failed=1
   return "$failed"
 }
 
@@ -341,6 +440,7 @@ build_one() {
   sweep_cd_cache
   if [ "$rc" = 0 ]; then
     echo "OK: ${name}"
+    write_manifest "$name"
     register_back "$name"
     if command -v govc >/dev/null 2>&1 && [ -n "${GOVC_URL:-}" ]; then
       tag_vm "$(find_vm "$name")" golden-template "$name"
@@ -367,7 +467,8 @@ build_variant() {
   packer validate -var-file="$file" .
   if packer build -force -var-file="$file" -only="variants.vsphere-clone.variant-${family}" . 2>&1 | tee "$log"; then
     echo "OK: variant ${name}"
-    register_variant "$name"
+    write_manifest "$name"
+    register_variant "$name" && register_back "$name" build-only
   else
     echo "FAIL: variant ${name} (see ${log})" >&2
     return 1
@@ -389,13 +490,24 @@ main() {
   if [ "$#" -eq 0 ]; then
     print_list
     echo
-    echo "Pass 'all', 'variants', 'variant <name>...', 'register <name>...', 'replicate <id> [host...]', or template names." >&2
+    echo "Pass 'all', 'variants', 'variant <name>...', 'register <name>...', 'replicate <id> [host...]'," \
+      "'manifest <id>...', or template names." >&2
     exit 2
   fi
 
   local failed=0 n VARIANTS=()
   case "$1" in
     list) print_list; exit 0 ;;
+    manifest)
+      shift
+      [ "$#" -gt 0 ] || { echo "manifest: name at least one template" >&2; exit 2; }
+      command -v jq >/dev/null 2>&1 || { echo "manifest: jq is required" >&2; exit 2; }
+      # Record only: a build with no host copies is incomplete (not promotable); replicate
+      # stamps the copies and registers the record then.
+      for n in "$@"; do write_manifest "$n" || failed=1; done
+      echo "manifest: now './build.sh replicate <id>' (a new REPLICA_DATE if today's copies exist) to stamp," \
+        "record and register the copies"
+      exit "$failed" ;;
     replicate)
       shift
       [ "$#" -gt 0 ] || { echo "replicate: name a template id, then optionally hosts" >&2; exit 2; }

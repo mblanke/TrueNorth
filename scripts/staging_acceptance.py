@@ -2099,29 +2099,32 @@ def replicate_name(base: str, host_name: str, date: str) -> str:
 
 
 def copy_resolution_problems(tc: Any, hosts: list[str], base: str = "acceptance-base") -> list[str]:
-    """For each host, what the provisioner (``newest_on_host``) and the prune (``stale``) make
-    of copies named the way build.sh replicate names them on that host."""
+    """For each host, what the provisioner and the prune make of a promoted build whose copy
+    is named the way build.sh replicate names it on that host (ADR 0013 §2): the copy name's
+    host is the key the provisioner looks the host up by (``host_short_name``), and pruning
+    by the build records keeps that copy and deletes a newer one no record names."""
     problems = []
     for host in hosts:
-        old, new = replicate_name(base, host, "20261001"), replicate_name(base, host, "20261019")
-        others = [replicate_name(base, h, "20261020") for h in hosts if h != host] or [f"{base}@elsewhere-20261020"]
-        names = [base, old, new, *others]
-        got = tc.newest_on_host(names, base, host)
-        if got != new:
-            problems.append(f"host {host!r}: build.sh names its copy {new!r}, the provisioner resolves {got!r}")
+        copy, newer = replicate_name(base, host, "20261001"), replicate_name(base, host, "20261019")
+        parsed, key = tc.parse(copy), tc.host_short_name(host)
+        if parsed is None or parsed.host != key:
+            problems.append(f"host {host!r}: build.sh names its copy {copy!r}, the provisioner looks the host up "
+                            f"as {key!r}")
             continue
-        if tc.stale(names, {old}) != ([], [old]) or tc.stale(names, set()) != ([old], []):
-            problems.append(f"host {host!r}: pruning would not keep the newest copy and the one in use")
+        policy = tc.PrunePolicy(protected=frozenset({copy}), managed=frozenset({base}),
+                                builds=frozenset({("acceptance-build", "0" * 64)}))
+        if tc.prunable({base: "", copy: "", newer: ""}, policy) != ([newer], [copy]):
+            problems.append(f"host {host!r}: pruning would not keep the promoted copy and drop the unrecorded one")
     return problems
 
 
 @check("provisioners", "host-local template copies resolve per discovered host")
 def provisioners_template_copies(ctx: Ctx) -> str:
-    """ADR 0012 decision 6, against the configured vCenter's inventory: for every ESXi host
-    its discovery found, a copy named as ``build.sh replicate`` names it there is the one the
-    vSphere provisioner clones from on that host (newest wins, other hosts' copies and the
-    plain template ignored), and the prune keeps the newest and any copy a range uses. A pure
-    check on the real host names; nothing is cloned or deleted."""
+    """ADR 0012 decision 6 and ADR 0013 §2, against the configured vCenter's inventory: for
+    every ESXi host its discovery found, a promoted build's copy named as ``build.sh replicate``
+    names it there is the one the vSphere provisioner looks up for that host, and the prune
+    keeps it while dropping a newer copy no build records. A pure check on the real host
+    names; nothing is cloned or deleted."""
     if "vsphere" in ctx.absent:
         skip(f"{NEEDS_VCENTER}: vsphere declared absent on this stack (--absent): {FACILITIES['vsphere']}", True)
     conns = [c for c in listing(ctx.admin, "/hypervisors/connections") if c.get("hypervisor_type") == "vsphere"]
@@ -2138,7 +2141,7 @@ def provisioners_template_copies(ctx: Ctx) -> str:
     expect(not problems, "; ".join(problems))
     return (
         f"{conn['name']}: {len(hosts)} hosts ({', '.join(hosts[:4])}{'…' if len(hosts) > 4 else ''}); each resolves "
-        "its own newest build.sh copy; prune keeps the newest and the in-use copy"
+        "the promoted build's copy build.sh names for it; prune keeps it"
     )
 
 

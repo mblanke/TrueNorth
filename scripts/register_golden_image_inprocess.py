@@ -19,6 +19,12 @@ differ: ``template_name``, ``build_status`` and, when given, ``datastore``. A cu
 variant (``--variant``) that is not registered yet is created with ``POST /golden-images``
 from the metadata flags, as ``build.sh register`` would.
 
+With ``--build-record`` (``infra/vsphere/packer/logs/<id>.build.json``, written by
+``build.sh`` and filled in by ``build.sh replicate``) the build is recorded too (ADR 0013
+§2): build id, checksum, build date, ISO checksum and per-host copies. Recording never
+promotes; an admin promotes a build on the Golden Images page, and only then do ranges
+clone it.
+
 Idempotent: an image already built with the same template is reported unchanged.
 
 Exit: 0 registered or unchanged; 1 not registered (no such image, refused, API error);
@@ -54,9 +60,11 @@ def register(
     status: str = "built",
     datastore: str | None = None,
     variant: dict | None = None,
+    build: dict | None = None,
 ) -> int:
     """Reconcile one image. ``api`` has ``get``/``post``/``patch`` returning ``(status, body)``.
-    ``variant`` (os_family, version, role, os_aliases) allows creating a missing custom image."""
+    ``variant`` (os_family, version, role, os_aliases) allows creating a missing custom image.
+    ``build`` (``build_body``) is recorded with the image (never promoted)."""
     code, rows = api.get("/golden-images", params={"hypervisor": hypervisor})
     if not _ok(code) or not isinstance(rows, list):
         print(f"golden image: FAIL listing images: {code} {_brief(rows)}")
@@ -94,7 +102,7 @@ def register(
             print(f"golden image: FAIL create variant '{catalogue_id}': {code} {_brief(out)}")
             return 1
         print(f"golden image: created variant {catalogue_id} -> {out.get('build_status')} (template {template})")
-        return 0
+        return _record_build(api, out, catalogue_id, build)
 
     want = {"template_name": template, "build_status": status}
     if datastore:
@@ -102,7 +110,7 @@ def register(
     drift = {k: v for k, v in want.items() if img.get(k) != v}
     if not drift:
         print(f"golden image: unchanged {catalogue_id} ({status}, template {template})")
-        return 0
+        return _record_build(api, img, catalogue_id, build)
     code, out = api.patch(f"/golden-images/{img['id']}", json=drift)
     if not _ok(code) or not isinstance(out, dict):
         print(f"golden image: FAIL update '{catalogue_id}': {code} {_brief(out)}")
@@ -113,6 +121,27 @@ def register(
     )
     if not out.get("enabled", True):
         print(f"golden image: NOTE {catalogue_id} is disabled in the catalogue; ranges will not resolve to it")
+    return _record_build(api, out, catalogue_id, build)
+
+
+def build_body(record: dict) -> dict:
+    """The API's ``build`` from a build.sh record (``logs/<id>.build.json``)."""
+    return {"build_id": record["build_id"], "checksum": record["checksum"],
+            "build_date": record.get("build_date") or None, "iso_checksum": record.get("iso_checksum") or "",
+            "template_name": record.get("template") or "", "copies": record.get("copies") or {}}
+
+
+def _record_build(api: Any, img: dict, catalogue_id: str, build: dict | None) -> int:
+    """PATCH the build record onto the image (idempotent on the API's side)."""
+    if build is None:
+        return 0
+    code, out = api.patch(f"/golden-images/{img['id']}", json={"build": build})
+    if not _ok(code):
+        print(f"golden image: FAIL recording build {build.get('build_id')} of '{catalogue_id}': {code} {_brief(out)}")
+        return 1
+    hosts = ", ".join(sorted(build.get("copies") or {})) or "no host copies yet"
+    print(f"golden image: {catalogue_id} build {build['build_id']} recorded ({hosts}); "
+          "an admin promotes it on the Golden Images page before ranges use it")
     return 0
 
 
@@ -129,7 +158,18 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--version", dest="os_version", default=None)
     ap.add_argument("--role", default=None)
     ap.add_argument("--alias", action="append", default=[], help="topology OS alias (repeatable)")
+    ap.add_argument("--build-record", default=None,
+                    help="build.sh's logs/<id>.build.json: record the build too (ADR 0013; never promotes)")
     args = ap.parse_args(argv)
+    build = None
+    if args.build_record:
+        import json
+
+        try:
+            build = build_body(json.loads(Path(args.build_record).read_text()))
+        except (OSError, ValueError, KeyError) as exc:
+            print(f"golden image: FAIL reading build record {args.build_record}: {exc}")
+            return 1
     variant = None
     if args.variant:
         if not args.os_family:
@@ -151,6 +191,7 @@ def main(argv: list[str] | None = None) -> int:
         status=args.status,
         datastore=args.datastore,
         variant=variant,
+        build=build,
     )
 
 

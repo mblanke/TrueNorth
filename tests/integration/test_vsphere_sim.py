@@ -209,9 +209,28 @@ RANGE = {
 }
 
 
-def _template(range_id: str) -> dict:
+UNPROMOTED = {"promoted": False, "catalogue_id": "ubuntu-2404", "allowed_by": "TN_TEMPLATE_ALLOW_UNPROMOTED"}
+
+
+@pytest.fixture(autouse=True)
+def _pin_step(monkeypatch):
+    """The worker's pin step (worker/template_pins.py) for builds a test does not pin itself:
+    each VM let through unpromoted to its plain template, as the transition flag does."""
+    real = mod.VsphereAPIProvisioner.provision
+
+    async def provision(self, range_id, template, allocations):
+        vms = [v if "template_build" in v else {**v, "template_build": UNPROMOTED} for v in template.get("vms", [])]
+        return await real(self, range_id, {**template, "vms": vms}, allocations)
+
+    monkeypatch.setattr(mod.VsphereAPIProvisioner, "provision", provision)
+
+
+def _template(range_id: str, build: dict | None = None) -> dict:
+    """The rendered range, each VM pinned as worker/template_pins.py would (ADR 0013 §2):
+    to ``build``, or, by default, let through unpromoted to the plain template."""
     out = render.render_topology(RANGE, range_id, lambda alias: TEMPLATE_VM)
-    return {"name": "sim", "vms": out["vm_definitions"], "networks": out["network_definitions"]}
+    vms = [{**v, "template_build": build or UNPROMOTED} for v in out["vm_definitions"]]
+    return {"name": "sim", "vms": vms, "networks": out["network_definitions"]}
 
 
 def _reserve(prov, range_id: str, template: dict, taken=()) -> dict:
@@ -684,45 +703,73 @@ def test_greyspace_gs_core_is_built_wired_and_torn_down(env, si, range_id, monke
     assert _portgroups(si, f"tn-{range_id[:8]}-") == {}
 
 
-def test_host_local_template_copies_are_cloned_and_pruned(env, si, range_id, template):
-    """ADR 0012 decision 6 on real managed objects: each VM clones the newest
-    ``<template>@<host>-<yyyymmdd>`` copy registered on its own host (``VirtualMachine.datastore``
-    and the property-collector listing as vCenter serves them); pruning removes only the
-    superseded copy. vcsim's hosts share LocalDS_0, so residence holds on every host here;
-    the per-host datastore check is covered by the fakes."""
+def _copies(si, template, dates_builds: dict[str, tuple[str, str]], hosts=None) -> list:
+    """``<template>@<host>-<date>`` on each host (default: every host of the cluster), stamped
+    in its annotation as the build ``dates_builds[date]``, as build.sh replicate leaves them."""
     from worker.provisioners import template_copies
 
     cluster = _named(si, vim.ClusterComputeResource, CLUSTER)
     made = []
-    for host in cluster.host:
+    for host in hosts or cluster.host:
         short = template_copies.host_short_name(host.name)
-        for date in ("20261001", "20261019"):
+        for date, (build_id, checksum) in dates_builds.items():
             spec = vim.vm.CloneSpec(powerOn=False, location=vim.vm.RelocateSpec(
                 host=host, pool=cluster.resourcePool, datastore=host.datastore[0]))
             task = template.CloneVM_Task(folder=template.parent, name=f"{TEMPLATE_VM}@{short}-{date}", spec=spec)
             _wait(si, task)
-            task.info.result.MarkAsTemplate()
-            made.append(task.info.result)
+            copy = task.info.result
+            _wait(si, copy.ReconfigVM_Task(spec=vim.vm.ConfigSpec(
+                annotation=f"TrueNorth golden\n{template_copies.stamp('ubuntu-2404', build_id, checksum)}")))
+            copy.MarkAsTemplate()
+            made.append(copy)
+    return made
+
+
+def _pinned_build(si, date: str, build_id: str = "b1", checksum: str = "a" * 64) -> dict:
+    """A promoted build naming ``<template>@<host>-<date>`` on every host (worker/template_pins.py)."""
+    from worker.provisioners import template_copies
+
+    shorts = [template_copies.host_short_name(h.name) for h in _named(si, vim.ClusterComputeResource, CLUSTER).host]
+    return {"promoted": True, "catalogue_id": "ubuntu-2404", "build_id": build_id, "checksum": checksum,
+            "build_date": "2026-10-01", "iso_checksum": "", "template_name": TEMPLATE_VM,
+            "copies": {s: f"{TEMPLATE_VM}@{s}-{date}" for s in shorts}}
+
+
+def test_the_promoted_builds_copies_are_cloned_and_pruning_keeps_them(env, si, range_id, template):
+    """ADR 0013 §2 on real managed objects: every host has an older copy of the promoted
+    build b1 and a newer copy of b2. Each VM clones b1's copy on its own host (no newest-copy
+    selection; ``VirtualMachine.datastore`` and the annotation as vCenter serves them), and
+    pruning by the build records removes only b2's copies. vcsim's hosts share LocalDS_0, so
+    residence holds on every host here; the per-host datastore check is covered by the fakes."""
+    from worker.provisioners import template_copies
+
+    b1, b2 = ("b1", "a" * 64), ("b2", "b" * 64)
+    made = _copies(si, template, {"20261001": b1, "20261019": b2})
+    cluster = _named(si, vim.ClusterComputeResource, CLUSTER)
     try:
         prov = mod.VsphereAPIProvisioner()
-        tpl = _template(range_id)
+        tpl = _template(range_id, _pinned_build(si, "20261001"))
         built = _run(prov.provision(range_id, tpl, _reserve(prov, range_id, tpl)))
         assert built.status == "ok", built.errors
         for out in built.vms:
             short = template_copies.host_short_name(out["host"])
-            assert out["template"] == f"{TEMPLATE_VM}@{short}-20261019"
+            assert out["template"] == f"{TEMPLATE_VM}@{short}-20261001"
+            assert (out["template_build"]["build_id"], out["template_build"]["checksum"]) == b1
             assert vim.VirtualMachine(out["vm_id"], si._stub).runtime.host.name == out["host"]
 
-        in_use = template_copies.names_in_use([{"vms": built.vms}])
-        report = _run(mod.VsphereAPIProvisioner().prune_template_copies(in_use))
+        promoted = {f"{TEMPLATE_VM}@{template_copies.host_short_name(h.name)}-20261001" for h in cluster.host}
+        policy = template_copies.PrunePolicy(
+            protected=frozenset(promoted | template_copies.names_in_use([{"vms": built.vms}])),
+            managed=frozenset({TEMPLATE_VM}), builds=frozenset({("ubuntu-2404", *b1)}))
+        report = _run(mod.VsphereAPIProvisioner().prune_template_copies(policy))
         assert report["dry_run"] and report["deleted"] == []
-        assert len(report["deletable"]) == len(cluster.host) and all(n.endswith("-20261001")
+        assert len(report["deletable"]) == len(cluster.host) and all(n.endswith("-20261019")
                                                                       for n in report["deletable"])
-        done = _run(mod.VsphereAPIProvisioner().prune_template_copies(in_use, dry_run=False))
+        done = _run(mod.VsphereAPIProvisioner().prune_template_copies(policy, dry_run=False))
         assert sorted(done["deleted"]) == sorted(report["deletable"]) and done["errors"] == []
         left = {_name(vm) for vm in _all(si, vim.VirtualMachine)}
         assert not left & set(done["deleted"]) and TEMPLATE_VM in left
-        assert all(f"{TEMPLATE_VM}@{template_copies.host_short_name(h.name)}-20261019" in left for h in cluster.host)
+        assert promoted <= left
         _run(mod.VsphereAPIProvisioner().destroy(range_id, {"vms": built.vms, "networks": built.networks}))
     finally:
         for vm in made:
@@ -858,3 +905,27 @@ def test_a_vlan_appearing_between_allocation_and_creation_stops_the_build(env, s
         assert len(db.rows("mac")) == 2  # its NIC MACs stay until its destroy, as for any failed build
     finally:
         _drop(si, late)
+
+
+def test_a_host_missing_the_promoted_copy_is_avoided_and_none_anywhere_fails(env, si, range_id, template):
+    """Only the first host holds b1's copy: every VM goes there. With no copy on any host the
+    build fails and leaves nothing behind (no plain-name fallback)."""
+    first = _named(si, vim.ClusterComputeResource, CLUSTER).host[0]
+    made = _copies(si, template, {"20261001": ("b1", "a" * 64)}, hosts=[first])
+    try:
+        prov = mod.VsphereAPIProvisioner()
+        tpl = _template(range_id, _pinned_build(si, "20261001"))
+        built = _run(prov.provision(range_id, tpl, _reserve(prov, range_id, tpl)))
+        assert built.status == "ok", built.errors
+        assert {out["host"] for out in built.vms} == {first.name}
+        _run(mod.VsphereAPIProvisioner().destroy(range_id, {"vms": built.vms, "networks": built.networks}))
+    finally:
+        for vm in made:
+            with contextlib.suppress(Exception):
+                _wait(si, vm.Destroy_Task())
+    prov = mod.VsphereAPIProvisioner()
+    tpl = _template(range_id, _pinned_build(si, "20261001"))
+    failed = _run(prov.provision(range_id, tpl, _reserve(prov, range_id, tpl)))
+    assert failed.status == "failed" and not failed.vms
+    assert any("holds its promoted template build" in e for e in failed.errors), failed.errors
+    assert _portgroups(si, f"tn-{range_id[:8]}-") == {}

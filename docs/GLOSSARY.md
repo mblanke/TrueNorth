@@ -85,11 +85,20 @@ The stable short name of a golden template, such as `srv2022`, keyed in
 lab profiles may name only enabled catalogue ids.
 _Not to be confused with_: the hypervisor template name, or an OS alias that maps to it.
 
+**Promoted build**:
+The one registered build of a golden template (build id, checksum, build date, ISO
+checksum, per-host copy names; `golden_image_builds`) that an administrator promoted on the
+Golden Images page; every new range clones exactly it, and each VM records which build it
+got. ADR 0013 §2.
+_Not to be confused with_: a registered build (recorded by the template kit, not yet
+promoted, never cloned); the newest copy on a host.
+
 **Host-local template copy**:
 A clone of a golden template on each range host's own datastore, named
-`<id>@<host>-<yyyymmdd>`; the provisioner clones the newest copy on the target host
-(`infra/vsphere/packer/README.md`, "Host-local copies"; pruned by
-`worker.template_tasks.prune_template_copies`). ADR 0012 §6.
+`<id>@<host>-<yyyymmdd>` and stamped with the build it is; the provisioner clones only the
+**promoted build's** copy on the target host (`infra/vsphere/packer/README.md`, "Build
+records and promotion"; pruned by `worker.template_tasks.prune_template_copies`). ADR 0012
+§6, ADR 0013 §2.
 _Avoid_: replica, cached template.
 _Not to be confused with_: the golden template itself, which the copies are made from.
 

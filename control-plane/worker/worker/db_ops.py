@@ -32,6 +32,7 @@ from .tables import (
     exercise_runs,
     exercises,
     forged_exercises,
+    golden_image_builds,
     golden_images,
     hypervisor_connections,
     inject_records,
@@ -355,6 +356,33 @@ def unbuilt_golden_images(db, hypervisor: str) -> set[str]:
         gi.c.build_status != "built",
     )
     return {row[0] for row in db.execute(stmt).fetchall()}
+
+
+def golden_image_pin_rows(db, hypervisor: str) -> list[dict]:
+    """Every enabled, undeleted image of a hypervisor with its promoted build, if any
+    (ADR 0013 §2; worker/template_pins.py). Build keys are None when none is promoted."""
+    gi, gb = golden_images, golden_image_builds
+    stmt = (
+        sa.select(gi.c.catalogue_id, gi.c.template_name.label("image_template"), gi.c.build_status,
+                  gb.c.build_id, gb.c.checksum, gb.c.build_date, gb.c.iso_checksum, gb.c.copies,
+                  gb.c.template_name.label("build_template"), gb.c.promoted_at, gb.c.promoted_by)
+        .select_from(gi.outerjoin(gb, sa.and_(gb.c.golden_image_id == gi.c.id, gb.c.promoted == sa.true())))
+        .where(gi.c.hypervisor == hypervisor, gi.c.enabled == sa.true(), gi.c.deleted_at.is_(None))
+        .order_by(gi.c.catalogue_id)
+    )
+    return [dict(row._mapping) for row in db.execute(stmt)]
+
+
+def golden_image_build_copies(db) -> list[dict]:
+    """Every registered build of every undeleted image, for pruning (worker/template_tasks.py):
+    image template and catalogue id, build id, promoted flag, registration time and copies."""
+    gi, gb = golden_images, golden_image_builds
+    stmt = (sa.select(gi.c.id.label("image_id"), gi.c.catalogue_id, gi.c.template_name.label("image_template"),
+                      gb.c.build_id, gb.c.checksum, gb.c.template_name.label("build_template"), gb.c.promoted,
+                      gb.c.created_at, gb.c.copies)
+            .select_from(gb.join(gi, gi.c.id == gb.c.golden_image_id))
+            .where(gi.c.deleted_at.is_(None)))
+    return [dict(row._mapping) for row in db.execute(stmt)]
 
 
 # -- exercises + objectives --------------------------------------------------

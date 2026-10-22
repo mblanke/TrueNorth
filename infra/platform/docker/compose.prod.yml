@@ -729,6 +729,8 @@ services:
       # Readiness: each Linux/Windows VM must show its planned IPs in VMware Tools within this.
       VSPHERE_GUEST_IP_TIMEOUT: ${VSPHERE_GUEST_IP_TIMEOUT:-600}
       VSPHERE_GUEST_IP_CHECK: ${VSPHERE_GUEST_IP_CHECK:-require}
+      # ADR 0013: ranges clone only promoted golden-image builds; true/a list = transition only.
+      TN_TEMPLATE_ALLOW_UNPROMOTED: ${TN_TEMPLATE_ALLOW_UNPROMOTED:-false}
       # Range NIC MACs: TrueNorth's slice of VMware's manual range (empty: 00:50:56:3c:00:00-00:50:56:3f:ff:ff).
       VSPHERE_MAC_POOL: ${VSPHERE_MAC_POOL:-}
       VSPHERE_SNAPSHOT_TIMEOUT: ${VSPHERE_SNAPSHOT_TIMEOUT:-1800}

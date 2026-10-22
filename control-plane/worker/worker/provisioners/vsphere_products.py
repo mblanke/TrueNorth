@@ -234,7 +234,7 @@ def needs_setup(vm_def: dict) -> bool:
 def not_built(vm_def: dict) -> tuple[str, str] | None:
     """(role, image) when the VM's node asked for one of these role images but the VM is
     the plain OS instead: the image is not ``built`` in the golden-image registry (render.py)
-    or its template is not on the vCenter (vsphere_api ``_use_role_fallback``)."""
+    or it has no promoted build (worker/template_pins.py)."""
     image = str(vm_def.get("role_image_missing") or "")
     if image in SETUP_IMAGES and infra.os_family(vm_def) == "windows":
         return SETUP_IMAGES[image], image

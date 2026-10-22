@@ -98,7 +98,8 @@ def test_a_port_group_outside_the_lab_pool_is_refused_before_anything_is_touched
     monkeypatch.setattr(mod, "SmartConnect", MagicMock(side_effect=AssertionError("must not connect")))
     prov = mod.VsphereAPIProvisioner()
     prov._get_session = MagicMock(side_effect=AssertionError("must not log in"))
-    vm = {"name": "r-x", "template_name": "t", "port_group": "Management Network"}
+    vm = {"name": "r-x", "template_name": "t", "port_group": "Management Network",
+          "template_build": {"promoted": False, "catalogue_id": "t", "allowed_by": "test"}}  # worker/template_pins.py
     result = asyncio.run(prov.provision("rid", {"vms": [vm]}, {}))
     assert result.status == "failed" and result.vms == []
     assert any("not a lab network" in e for e in result.errors), result.errors

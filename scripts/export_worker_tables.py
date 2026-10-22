@@ -36,6 +36,7 @@ WORKER_TABLES = (
     "exercise_runs",
     "exercises",
     "forged_exercises",
+    "golden_image_builds",
     "golden_images",
     "hypervisor_connections",
     "inject_records",
@@ -82,6 +83,7 @@ def _type_src(t) -> str:
 
 def render() -> str:
     import app.audit_integrity  # noqa: F401 — audit_exports
+    import app.golden_image_builds  # noqa: F401 — golden_image_builds (worker/template_pins.py)
     import app.greyspace.models  # noqa: F401
     import app.lab_sessions  # noqa: F401 — lab_sessions
     import app.network_inventory  # noqa: F401 — section models register their tables on import

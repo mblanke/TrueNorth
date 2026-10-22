@@ -176,21 +176,57 @@ DRY_RUN=1 ./build.sh replicate srv2022       # print the govc changes only
 
 For each host it clones the inventory template `<id>` powered off onto that host and its
 datastore (`RANGE_DATASTORE_FMT`, default `%s-local`), as `<id>@<host>-<yyyymmdd>`, in the
-template's own folder (or `TEMPLATE_FOLDER`), then `govc vm.markastemplate`. It is
-idempotent: today's copy that exists is skipped, and one that was cloned but not yet
-marked is marked. It refuses to run unless `GOVC_URL` is a vCenter (see the warning
-below about ESXi). An unknown host or a template that is not built yet exits non-zero;
-the other hosts are still copied.
+template's own folder (or `TEMPLATE_FOLDER`), then `govc vm.markastemplate`. Each copy's
+annotation carries the template's build stamp, `tn-build: <id> <build id> sha256:<checksum>`,
+from its build record (below), and the copy is added to that record. It is idempotent: a
+copy of today's name that exists is reused only when it carries the same stamp (one from
+another build fails: set `REPLICA_DATE` or remove it), and one that was cloned but not yet
+marked is marked. It refuses to run unless `GOVC_URL` is a vCenter (see the warning below
+about ESXi). An unknown host or a template that is not built yet exits non-zero; the other
+hosts are still copied.
 
-The `vsphere_api` provisioner then clones, for each VM, the newest copy that resides on
-the datastore of the host placement chose (`VSPHERE_PLACEMENT=spread`). The host's short
-name is the first label of its vCenter name (`esx03.truenorth.lab` → `esx03`). With no
-copy on that host it clones the plain `<id>` as before; it logs which one it used and
-records it as `vms[].template` in the range's output. Copies older than the newest on a
-host, that no undestroyed range records, are removed by the worker task
-`worker.template_tasks.prune_template_copies`: a dry run by default (beat runs it daily at
-03:30 UTC and reports), deleting only with `dry_run=false` or `TEMPLATE_COPY_PRUNE=delete`
-on beat, and never while a range is provisioning.
+### Build records and promotion (ADR 0013 §2)
+
+Every successful build writes `logs/<id>.build.json`: the build id (`<id>-<UTC time>`, or
+`TN_BUILD_ID`), build date, the install ISO's checksum (`TN_ISO_CHECKSUM=sha256:<hex>`;
+empty when not given), the sha256 of every Packer input file, and the build's **checksum**:
+the sha256 of that identity. It fingerprints the build and its inputs; it is not a hash of
+the disks. `replicate` stamps the copies with it and records their names per host;
+register-back (or `build-phase.sh`'s in-process register) sends the record to the API
+(`PATCH /golden-images/{id}` with `build`; the token's user must be the platform
+administrator). A template built before records existed is adopted with
+`./build.sh manifest <id>` (writes the record only), then replicated again with a new
+`REPLICA_DATE` (its old copies are unstamped), which stamps, records and registers the copies.
+
+A registered build is **not used** until the platform administrator promotes it on the
+Golden Images page (Infrastructure → Golden images; audited). A build that names no host
+copy (before replicate) cannot be promoted; the page lists discovered hosts without a copy,
+which placement will then not use for that image. The `vsphere_api` provisioner then places
+each VM only on a host whose promoted copy exists, is a template on that host's datastore
+and carries that build's stamp, and clones exactly that copy; there is no newest-copy
+selection and no plain-name fallback. A missing or mismatched copy on every host that fits
+fails the build with each host's reason. Each VM records the build it got
+(`vms[].template_build` in the range's output). With `VSPHERE_PLACEMENT=cluster` (no host)
+the build's own template is cloned and must carry the stamp. The host's short name is the
+first label of its vCenter name (`esx03.truenorth.lab` → `esx03`).
+
+Transition: `TN_TEMPLATE_ALLOW_UNPROMOTED` (installer `tn_template_allow_unpromoted`,
+default `false`; the work-site overlay sets `true`) lets `built` images with no promoted
+build through with a warning on the range; a comma list of catalogue ids (`ubuntu-lts`)
+allows only those. Such a VM still prefers a host holding a copy of its template and clones
+the newest copy there (unverified: there is no build to check it against), else the plain
+template. It switches off per image: an image with a promoted build always uses it. A role
+image without a promoted build fails its VM; the plain OS is never built in its place.
+`greyspace-host` (gs-core) is a catalogue image like any other; until its catalogue row is
+imported the flag may let it through by name when it allows `greyspace-host`.
+
+Copies of an image that has a promoted build are removed by the worker task
+`worker.template_tasks.prune_template_copies` unless a build record still needs them (the
+promoted build's, and those of builds registered since, awaiting promotion; by name or by
+stamp) or an undestroyed range records them. Copies of images with no promoted build are
+never touched. It is a dry run by default (beat runs it daily at 03:30 UTC and reports),
+deleting only with `dry_run=false` or `TEMPLATE_COPY_PRUNE=delete` on beat, and never while
+a range is provisioning.
 
 ### Register-back
 

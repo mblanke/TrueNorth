@@ -9,6 +9,7 @@ variant is created, and a role without infra:write is refused (exit 1, nothing w
 from __future__ import annotations
 
 import importlib.util
+import json
 from pathlib import Path
 
 import pytest
@@ -104,3 +105,27 @@ def test_a_role_without_infra_write_is_refused(client, db_session, seeded):
     act_as(real_user(db_session, UserRole.instructor, seeded.id))
     assert _script().register(_Api(client), catalogue_id="srv2022", template="srv2022") == 1
     assert _row(db_session, "srv2022").build_status == "planned"
+
+
+def test_a_build_record_is_recorded_never_promoted_and_rerun_is_idempotent(client, db_session, seeded, capsys,
+                                                                          monkeypatch):
+    """ADR 0013 §2: build.sh's record (logs/<id>.build.json) rides along; an admin promotes later.
+    Recording a build is the platform administrator's: range_ops (infra:write) is refused."""
+    from app.golden_image_builds.models import GoldenImageBuild
+
+    monkeypatch.setenv("PLATFORM_TENANT_ID", str(seeded.id))
+    mod = _script()
+    record = {"build_id": "srv2022-20261019T120000Z", "template": "srv2022", "iso_checksum": "sha256:" + "c" * 64,
+              "inputs_sha256": "d" * 64, "checksum": "a" * 64, "build_date": "2026-10-19",
+              "copies": {"esx02": "srv2022@esx02-20261019", "esx03": "srv2022@esx03-20261019"}}
+    act_as(real_user(db_session, UserRole.range_ops, seeded.id))
+    assert mod.register(_Api(client), catalogue_id="srv2022", template="srv2022", build=mod.build_body(record)) == 1
+    act_as(real_user(db_session, UserRole.admin, seeded.id))
+    for _ in range(2):
+        assert mod.register(_Api(client), catalogue_id="srv2022", template="srv2022",
+                            build=mod.build_body(record)) == 0
+    db_session.expire_all()
+    (b,) = db_session.query(GoldenImageBuild).all()
+    assert (b.build_id, b.checksum, b.promoted, json.loads(b.copies)) == (
+        "srv2022-20261019T120000Z", "a" * 64, False, record["copies"])
+    assert "promotes it on the Golden Images page" in capsys.readouterr().out
