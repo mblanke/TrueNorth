@@ -13,6 +13,7 @@
 - [Network Security](#network-security)
 - [Encryption](#encryption)
 - [Rate Limiting and Input Validation](#rate-limiting-and-input-validation)
+- [Golden-image build pinning (ADR 0013 §2)](#golden-image-build-pinning-adr-0013-2)
 - [Audit Logging](#audit-logging)
 - [Vulnerability Management](#vulnerability-management)
 - [Security Hardening Checklist](#security-hardening-checklist)
@@ -644,6 +645,29 @@ class RangeIn(BaseModel):
 - **YAML validation** — Scenario YAML parsed with safe_load, schema-validated
 
 ---
+
+## Golden-image build pinning (ADR 0013 §2)
+
+Ranges clone only an image's **promoted build**: the copy its build record names for the
+placed host, which must carry the stamp `tn-build: <catalogue id> <build id> sha256:<checksum>`
+in its vCenter annotation. Recording a build (`PATCH /golden-images/{id}` with `build`) and
+promoting one (`POST /golden-images/{id}/builds/{build_id}/promote`) are **platform
+administrator** only (`rbac.require_platform_admin`): one record serves every tenant. Each
+promotion is in the audit log.
+
+What this does and does not prove:
+
+- The **checksum** is the sha256 of the build's identity: build id, template, the ISO
+  checksum the operator supplies (`TN_ISO_CHECKSUM`) and the hash of every Packer input
+  file. It fingerprints what the build was made from; it is **not** a hash of the
+  template's disks.
+- The **stamp** guards against **mix-ups**: a copy of another build, another image, a
+  rebuild left under the same name, a copy moved to another host. It does **not** guard
+  against **tampering**: anyone with vCenter rights to edit a template's annotation or
+  disks can make a modified template carry a valid stamp. Protecting the templates is
+  vCenter's access control (who may edit `TrueNorth/Templates`), not TrueNorth's.
+- `TN_TEMPLATE_ALLOW_UNPROMOTED` (transition only) lets `built` images without a
+  promoted build through, unverified, with a warning on the range.
 
 ## Audit Logging
 

@@ -2721,11 +2721,64 @@ export interface paths {
         head?: never;
         /**
          * Update Image
-         * @description Operator registration: set the real template name / datastore / enabled / build status.
+         * @description Operator registration: set the real template name / datastore / enabled / build status,
+         *     and record a build (``build``: id, checksum, build date, ISO checksum, per-host copies).
+         *
+         *     A recorded build is not used by ranges until an admin promotes it
+         *     (POST /golden-images/{image_id}/builds/{build_id}/promote, ADR 0013 §2).
          *
          *     **Permission: infra:write** — the registry is platform-wide, so only operators edit it.
+         *     A ``build`` needs the platform administrator (403 otherwise).
          */
         patch: operations["update_image_golden_images__image_id__patch"];
+        trace?: never;
+    };
+    "/golden-images/{image_id}/builds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Image Builds
+         * @description The image's registered builds (newest first), which one is promoted, and its audit trail.
+         *
+         *     **Permission: infra:read**
+         */
+        get: operations["list_image_builds_golden_images__image_id__builds_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/golden-images/{image_id}/builds/{build_id}/promote": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Promote Image Build
+         * @description Make this build the one every new range clones (ADR 0013 §2). Audited.
+         *
+         *     Ranges then require this build's copy on every host they are placed on; a host
+         *     without it is not used, and a build with no host that has it fails. A build that names
+         *     no host copy is refused (422); a concurrent promotion of the same image is 409.
+         *
+         *     **Platform administrator only**: the registry serves every tenant.
+         */
+        post: operations["promote_image_build_golden_images__image_id__builds__build_id__promote_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/greyspace/corpora": {
@@ -11073,6 +11126,122 @@ export interface components {
             /** Scenario Yaml */
             scenario_yaml: string;
         };
+        /** GoldenImageAuditEntry */
+        GoldenImageAuditEntry: {
+            /** Action */
+            action: string;
+            /** Actor */
+            actor: string;
+            /** Detail */
+            detail: {
+                [key: string]: unknown;
+            };
+            /** Timestamp */
+            timestamp: string | null;
+        };
+        /**
+         * GoldenImageBuildIn
+         * @description A build the template kit registers (``build.sh`` / ``build-phase.sh register``).
+         *
+         *     ``copies`` names the build's copy on each range host, keyed by the host's short name
+         *     (``{"esx03": "srv2022@esx03-20261021"}``). Registering the same ``build_id`` again
+         *     adds copies for new hosts; a promoted build never changes.
+         */
+        GoldenImageBuildIn: {
+            /** Build Date */
+            build_date?: string | null;
+            /** Build Id */
+            build_id: string;
+            /**
+             * Checksum
+             * @description sha256 (hex) of the build manifest
+             */
+            checksum: string;
+            /** Copies */
+            copies?: {
+                [key: string]: string;
+            };
+            /**
+             * Iso Checksum
+             * @default
+             */
+            iso_checksum?: string;
+            /**
+             * Template Name
+             * @default
+             */
+            template_name?: string;
+        };
+        /** GoldenImageBuildOut */
+        GoldenImageBuildOut: {
+            /** Build Date */
+            build_date: string | null;
+            /** Build Id */
+            build_id: string;
+            /** Checksum */
+            checksum: string;
+            /** Copies */
+            copies: {
+                [key: string]: string;
+            };
+            /** Id */
+            id: string;
+            /** Iso Checksum */
+            iso_checksum: string;
+            /** Missing Hosts */
+            missing_hosts?: string[];
+            /**
+             * Not Promotable Reason
+             * @default
+             */
+            not_promotable_reason?: string;
+            /**
+             * Promotable
+             * @default false
+             */
+            promotable?: boolean;
+            /** Promoted */
+            promoted: boolean;
+            /** Promoted At */
+            promoted_at: string | null;
+            /** Promoted By */
+            promoted_by: string;
+            /** Registered At */
+            registered_at: string | null;
+            /** Registered By */
+            registered_by: string;
+            /** Template Name */
+            template_name: string;
+        };
+        /**
+         * GoldenImageBuildPromoteIn
+         * @description Why this build is being promoted; kept in the audit entry.
+         */
+        GoldenImageBuildPromoteIn: {
+            /**
+             * Reason
+             * @default
+             */
+            reason?: string;
+        };
+        /** GoldenImageBuildsOut */
+        GoldenImageBuildsOut: {
+            /** Audit */
+            audit: components["schemas"]["GoldenImageAuditEntry"][];
+            /** Builds */
+            builds: components["schemas"]["GoldenImageBuildOut"][];
+            /**
+             * Can Promote
+             * @default false
+             */
+            can_promote?: boolean;
+            /** Catalogue Id */
+            catalogue_id: string;
+            /** Image Id */
+            image_id: string;
+            /** Promoted Build Id */
+            promoted_build_id: string | null;
+        };
         /**
          * GoldenImageCreate
          * @description A custom (non-catalogue) image, e.g. a Packer variant from infra/vsphere/packer/variants/.
@@ -11151,6 +11320,7 @@ export interface components {
             os_aliases: string[];
             /** Os Family */
             os_family: string;
+            promoted_build?: components["schemas"]["GoldenImageBuildOut"] | null;
             /** Role */
             role: string;
             /** Sensor Baked */
@@ -11162,6 +11332,7 @@ export interface components {
         };
         /** GoldenImagePatch */
         GoldenImagePatch: {
+            build?: components["schemas"]["GoldenImageBuildIn"] | null;
             /** Build Status */
             build_status?: string | null;
             /** Checksum */
@@ -21343,6 +21514,73 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GoldenImageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_image_builds_golden_images__image_id__builds_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                image_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoldenImageBuildsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    promote_image_build_golden_images__image_id__builds__build_id__promote_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                image_id: string;
+                build_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["GoldenImageBuildPromoteIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoldenImageBuildsOut"];
                 };
             };
             /** @description Validation Error */

@@ -28,6 +28,7 @@ from .celery_app import app
 from .fencing import FINAL_ERRORS, fenced, guarded_range_update, provision_finish_by, run_async, snapshot_back_to_ready
 from .fencing import last_attempt as _last_attempt
 from .provisioners import discard_built
+from .template_pins import pin as pin_templates
 
 logger = logging.getLogger("truenorth.worker")
 
@@ -151,14 +152,13 @@ def provision_range(self, range_id: str, noise_mgmt: dict | None = None):
             template = {**template, "name": rendered["range_name"], "vms": rendered["vm_definitions"],
                         "networks": rendered["network_definitions"], "hypervisor": hv}
             allocations = {"vlan_map": rendered["vlan_map"]}
-            logger.info(
-                "[provision] rendered %d VMs across %d networks (backend=%s)",
-                len(rendered["vm_definitions"]), len(rendered["network_definitions"]), backend,
-            )
+            logger.info("[provision] rendered %d VMs across %d networks (backend=%s)", len(rendered["vm_definitions"]),
+                        len(rendered["network_definitions"]), backend)
             if rendered["unresolved"]:
                 logger.warning("[provision] unresolved OS templates: %s", rendered["unresolved"])
 
         template = greyspace.plan_host(range_id, backend, template)  # + gs-core on HOSTED backends (ADR 0007)
+        template = pin_templates(_db_session, backend, template)  # each VM -> its promoted build (ADR 0013)
         provisioner = _get_backend(backend, range_id, build=True)  # its tenant's connection (H6), recorded
         allocations.update(range_alloc.reserve_for_build(_db_session, range_id, provisioner, template))
         allocations.update(finish_by=finish_by, range_name=row[2] if row and len(row) > 2 else None)  # stop-by; folder

@@ -38,6 +38,17 @@ tn_depot_vcenter_datacenter: DC-Lab
 # Keep the two equal (tests/contracts/test_work_site_depot_range_nic.py).
 tn_vsphere_range_folder: TrueNorth/Ranges
 
+# Golden-image pinning (ADR 0013 §2). The work site's current Ubuntu image was built before
+# build records existed, so it has no promoted build. TRANSITION ONLY: "true" lets it (and
+# any other `built`, unpromoted image, gs-core's greyspace-host included) build ranges, with
+# a loud warning on each range. It switches off per image: once an image has a promoted
+# build (Golden Images page), that image always clones it. To cover only the Ubuntu image
+# use "ubuntu-lts" instead of "true". Set it back to "false" (the installer default) once
+# every image the site's ranges use is promoted. To get there: re-import the catalogue (adds
+# greyspace-host), build-phase.sh (or build.sh manifest <id> + replicate with a new
+# REPLICA_DATE), then promote the registered builds as the platform administrator.
+tn_template_allow_unpromoted: "true"
+
 tn_depot_nexus_port: 8081
 tn_depot_acng_port: 3142
 tn_depot_nexus_url: "http://{{ tn_depot_ip }}:{{ tn_depot_nexus_port }}"

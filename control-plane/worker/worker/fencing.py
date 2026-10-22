@@ -78,6 +78,7 @@ from .range_alloc import AllocationError
 
 # The API owns the table (app/range_leases, migration d2e3f4a5b6c7); tables.py mirrors it.
 from .tables import range_leases
+from .template_pins import TemplatePinError
 from .windows_roles import RoleError
 
 logger = logging.getLogger("worker.fencing")
@@ -112,9 +113,9 @@ LEASE_HELD = "lease-held"  # claim(): the state matches but another execution ho
 # Failures that end a task for good on the first attempt: no retry, record failed.
 # A full VLAN/address pool, Windows Server roles that cannot share a VM, or an experimental
 # backend that is switched off, a hypervisor connection that is incomplete or not the one
-# the range was built on: retrying won't help.
+# the range was built on, a VM whose template has no promoted build (ADR 0013): retrying won't help.
 FINAL_ERRORS = (SoftTimeLimitExceeded, AllocationError, RoleError, ExperimentalProvisionerError,
-                ConnectionBindingError)
+                ConnectionBindingError, TemplatePinError)
 
 
 class LeaseLost(BaseException):  # noqa: N818 — a fence, not an error the task handles

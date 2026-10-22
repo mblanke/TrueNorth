@@ -6779,6 +6779,277 @@
         "title": "ForgeResultOut",
         "type": "object"
       },
+      "GoldenImageAuditEntry": {
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "actor": {
+            "title": "Actor",
+            "type": "string"
+          },
+          "detail": {
+            "additionalProperties": true,
+            "title": "Detail",
+            "type": "object"
+          },
+          "timestamp": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timestamp"
+          }
+        },
+        "required": [
+          "timestamp",
+          "action",
+          "actor",
+          "detail"
+        ],
+        "title": "GoldenImageAuditEntry",
+        "type": "object"
+      },
+      "GoldenImageBuildIn": {
+        "description": "A build the template kit registers (``build.sh`` / ``build-phase.sh register``).\n\n``copies`` names the build's copy on each range host, keyed by the host's short name\n(``{\"esx03\": \"srv2022@esx03-20261021\"}``). Registering the same ``build_id`` again\nadds copies for new hosts; a promoted build never changes.",
+        "properties": {
+          "build_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Build Date"
+          },
+          "build_id": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:+-]{0,119}$",
+            "title": "Build Id",
+            "type": "string"
+          },
+          "checksum": {
+            "description": "sha256 (hex) of the build manifest",
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Checksum",
+            "type": "string"
+          },
+          "copies": {
+            "maxProperties": 64,
+            "patternProperties": {
+              "^[A-Za-z0-9][A-Za-z0-9_-]{0,62}$": {
+                "pattern": "^[^@\\s]{1,100}@[A-Za-z0-9_-]{1,63}-\\d{8}$",
+                "type": "string"
+              }
+            },
+            "title": "Copies",
+            "type": "object"
+          },
+          "iso_checksum": {
+            "default": "",
+            "maxLength": 160,
+            "pattern": "^[A-Za-z0-9:._-]*$",
+            "title": "Iso Checksum",
+            "type": "string"
+          },
+          "template_name": {
+            "default": "",
+            "maxLength": 120,
+            "title": "Template Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "build_id",
+          "checksum"
+        ],
+        "title": "GoldenImageBuildIn",
+        "type": "object"
+      },
+      "GoldenImageBuildOut": {
+        "properties": {
+          "build_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Build Date"
+          },
+          "build_id": {
+            "title": "Build Id",
+            "type": "string"
+          },
+          "checksum": {
+            "title": "Checksum",
+            "type": "string"
+          },
+          "copies": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Copies",
+            "type": "object"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "iso_checksum": {
+            "title": "Iso Checksum",
+            "type": "string"
+          },
+          "missing_hosts": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing Hosts",
+            "type": "array"
+          },
+          "not_promotable_reason": {
+            "default": "",
+            "title": "Not Promotable Reason",
+            "type": "string"
+          },
+          "promotable": {
+            "default": false,
+            "title": "Promotable",
+            "type": "boolean"
+          },
+          "promoted": {
+            "title": "Promoted",
+            "type": "boolean"
+          },
+          "promoted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Promoted At"
+          },
+          "promoted_by": {
+            "title": "Promoted By",
+            "type": "string"
+          },
+          "registered_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Registered At"
+          },
+          "registered_by": {
+            "title": "Registered By",
+            "type": "string"
+          },
+          "template_name": {
+            "title": "Template Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "build_id",
+          "template_name",
+          "checksum",
+          "build_date",
+          "iso_checksum",
+          "copies",
+          "registered_by",
+          "registered_at",
+          "promoted",
+          "promoted_at",
+          "promoted_by"
+        ],
+        "title": "GoldenImageBuildOut",
+        "type": "object"
+      },
+      "GoldenImageBuildPromoteIn": {
+        "description": "Why this build is being promoted; kept in the audit entry.",
+        "properties": {
+          "reason": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "title": "GoldenImageBuildPromoteIn",
+        "type": "object"
+      },
+      "GoldenImageBuildsOut": {
+        "properties": {
+          "audit": {
+            "items": {
+              "$ref": "#/components/schemas/GoldenImageAuditEntry"
+            },
+            "title": "Audit",
+            "type": "array"
+          },
+          "builds": {
+            "items": {
+              "$ref": "#/components/schemas/GoldenImageBuildOut"
+            },
+            "title": "Builds",
+            "type": "array"
+          },
+          "can_promote": {
+            "default": false,
+            "title": "Can Promote",
+            "type": "boolean"
+          },
+          "catalogue_id": {
+            "title": "Catalogue Id",
+            "type": "string"
+          },
+          "image_id": {
+            "title": "Image Id",
+            "type": "string"
+          },
+          "promoted_build_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Promoted Build Id"
+          }
+        },
+        "required": [
+          "image_id",
+          "catalogue_id",
+          "promoted_build_id",
+          "builds",
+          "audit"
+        ],
+        "title": "GoldenImageBuildsOut",
+        "type": "object"
+      },
       "GoldenImageCreate": {
         "description": "A custom (non-catalogue) image, e.g. a Packer variant from infra/vsphere/packer/variants/.",
         "properties": {
@@ -6933,6 +7204,16 @@
             "title": "Os Family",
             "type": "string"
           },
+          "promoted_build": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GoldenImageBuildOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "role": {
             "title": "Role",
             "type": "string"
@@ -6971,6 +7252,16 @@
       },
       "GoldenImagePatch": {
         "properties": {
+          "build": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GoldenImageBuildIn"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "build_status": {
             "anyOf": [
               {
@@ -27685,7 +27976,7 @@
     },
     "/golden-images/{image_id}": {
       "patch": {
-        "description": "Operator registration: set the real template name / datastore / enabled / build status.\n\n**Permission: infra:write** \u2014 the registry is platform-wide, so only operators edit it.",
+        "description": "Operator registration: set the real template name / datastore / enabled / build status,\nand record a build (``build``: id, checksum, build date, ISO checksum, per-host copies).\n\nA recorded build is not used by ranges until an admin promotes it\n(POST /golden-images/{image_id}/builds/{build_id}/promote, ADR 0013 \u00a72).\n\n**Permission: infra:write** \u2014 the registry is platform-wide, so only operators edit it.\nA ``build`` needs the platform administrator (403 otherwise).",
         "operationId": "update_image_golden_images__image_id__patch",
         "parameters": [
           {
@@ -27736,6 +28027,120 @@
           }
         ],
         "summary": "Update Image",
+        "tags": [
+          "golden-images"
+        ]
+      }
+    },
+    "/golden-images/{image_id}/builds": {
+      "get": {
+        "description": "The image's registered builds (newest first), which one is promoted, and its audit trail.\n\n**Permission: infra:read**",
+        "operationId": "list_image_builds_golden_images__image_id__builds_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "image_id",
+            "required": true,
+            "schema": {
+              "title": "Image Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GoldenImageBuildsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Image Builds",
+        "tags": [
+          "golden-images"
+        ]
+      }
+    },
+    "/golden-images/{image_id}/builds/{build_id}/promote": {
+      "post": {
+        "description": "Make this build the one every new range clones (ADR 0013 \u00a72). Audited.\n\nRanges then require this build's copy on every host they are placed on; a host\nwithout it is not used, and a build with no host that has it fails. A build that names\nno host copy is refused (422); a concurrent promotion of the same image is 409.\n\n**Platform administrator only**: the registry serves every tenant.",
+        "operationId": "promote_image_build_golden_images__image_id__builds__build_id__promote_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "image_id",
+            "required": true,
+            "schema": {
+              "title": "Image Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "build_id",
+            "required": true,
+            "schema": {
+              "title": "Build Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GoldenImageBuildPromoteIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GoldenImageBuildsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Promote Image Build",
         "tags": [
           "golden-images"
         ]

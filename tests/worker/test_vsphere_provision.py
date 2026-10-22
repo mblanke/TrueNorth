@@ -26,6 +26,7 @@ import yaml
 from pyVmomi import vim, vmodl
 from vsphere_cis_fake import FakeCis
 from worker import pfsense_config, range_alloc, render, vlan_pool
+from worker.provisioners import template_copies as tc
 from worker.provisioners import vsphere_api as mod
 from worker.provisioners import vsphere_guest as guest_mod
 from worker.provisioners import vsphere_infra as infra
@@ -60,6 +61,12 @@ def worker_reserves(monkeypatch):
     real = mod.VsphereAPIProvisioner.provision
 
     async def provision(self, range_id, template, allocations):
+        # And the pin step's (worker/template_pins.py, ADR 0013): a VM a test does not pin to
+        # a promoted build is let through as the transition flag would, cloning its plain
+        # template. TestTemplatePinning pins builds explicitly.
+        template = {**template, "vms": [v if "template_build" in v else {**v, "template_build": {
+            "promoted": False, "catalogue_id": v.get("template_name", ""), "allowed_by": "test"}}
+            for v in template.get("vms", [])]}
         allocations = dict(allocations)
         taken = {"vlan": {str(v) for v in allocations.pop("used_vlans", ())},
                  "uplink_ip": {str(v) for v in allocations.pop("used_uplink_ips", ())},
@@ -72,7 +79,9 @@ def worker_reserves(monkeypatch):
                 raise AssertionError(f"test pool too small for {need}")
             got = dict(zip(need.holders, free, strict=False))
             allocations[need.key] = got[need.holders[0]] if need.single else got
-        return await real(self, range_id, template, allocations)
+        result = await real(self, range_id, template, allocations)
+        result.warnings = [w for w in result.warnings if "(allowed by test)" not in w]  # the fixture's own pins
+        return result
 
     monkeypatch.setattr(mod.VsphereAPIProvisioner, "provision", provision)
 
@@ -1595,19 +1604,17 @@ class TestProductSetup:
         assert not vc.templates["srv2022-exchange2019"].clone_specs
         assert not [e for e in events if e[0] in ("prepare", "run") and e[1] == f"{R8}-exch"]
 
-    def test_a_role_image_missing_on_the_vcenter_falls_back_too(self, flow, vc):
+    def test_a_role_image_missing_on_the_vcenter_fails_that_vm_never_the_plain_os(self, flow, vc):
+        """ADR 0013 §2: no plain-name fallback at clone time. A role image with no promoted
+        build falls back to the plain OS when it is pinned (worker/template_pins.py,
+        tests/worker/test_template_pins.py); one that is pinned but absent fails its VM."""
         prov, template, events, _ = flow
         gone = vc.templates.pop("srv2022-exchange2019")  # registered as built, but not in vCenter
         vc.dc.vmFolder.childEntity.remove(gone)
         result = _run(prov.provision(RANGE_ID, template, {}))
-        assert result.status == "ok", result.errors
-        exch = _vm_out(result, "exch")
-        assert exch["role_setup"]["status"] == "skipped"
-        assert exch["role_setup"]["detail"].startswith("role image srv2022-exchange2019 not built — using tmpl-win2022")
-        assert exch["template"] == "tmpl-win2022"
-        assert any(n == f"{R8}-exch" for _, n, _ in vc.templates["tmpl-win2022"].clone_specs)
-        assert not [e for e in events if e[0] in ("prepare", "run") and e[1] == f"{R8}-exch"]
-        assert ("run", f"{R8}-exch") not in [e[:2] for e in events]
+        assert result.status == "partial"
+        assert any(e.startswith(f"VM {R8}-exch:") and "srv2022-exchange2019" in e for e in result.errors)
+        assert not any(n == f"{R8}-exch" for _, n, _ in vc.templates["tmpl-win2022"].clone_specs)
 
     SP2019_TEMPLATE = {**TEMPLATE, "name": "Product Range", "nodes": [
         TEMPLATE["nodes"][0],
@@ -2585,36 +2592,54 @@ def test_nic_order_follows_unit_numbers_not_device_keys():
 
 
 # --------------------------------------------------------------------------- #
-# Host-local template copies (ADR 0012 decision 6): <template>@<host>-<yyyymmdd>
+# Pinned template builds (ADR 0013 §2): the promoted build's copy on every placed host
 # --------------------------------------------------------------------------- #
 
 ONLY_ESX02 = "esx01.truenorth.lab,esx03.truenorth.lab,esx04.truenorth.lab"
+SUM_A = "a" * 64
+SUM_B = "b" * 64
 
 
 def _host(vc, short: str):
     return next(h for h in vc.hosts if h.name.split(".")[0] == short)
 
 
-def _add_copy(vc, name: str, on: str) -> FakeVM:
-    """An inventory template ``name`` whose disks are on host ``on``'s local datastore."""
+def _add_copy(vc, name: str, on: str, build: str | None = "b1", checksum: str = SUM_A) -> FakeVM:
+    """An inventory template ``name`` whose disks are on host ``on``'s local datastore,
+    stamped as ``build`` (build.sh replicate), or unstamped with ``build=None``."""
     tmpl = FakeVM(name, [], template=True)
     tmpl.config.hardware = FreshHardware(MGMT)
+    tmpl.config.annotation = "TrueNorth golden\n" + (tc.stamp(name.split("@")[0], build, checksum) if build else "")
     tmpl.datastore = list(_host(vc, on).datastore)
     vc.templates[name] = tmpl
     vc.dc.vmFolder.childEntity.append(tmpl)
     return tmpl
 
 
+def _build(base: str, copies: dict[str, str], build_id: str = "b1", checksum: str = SUM_A) -> dict:
+    return {"promoted": True, "catalogue_id": base, "build_id": build_id, "checksum": checksum,
+            "build_date": "2026-10-19", "iso_checksum": "sha256:" + "c" * 64, "template_name": base,
+            "copies": copies}
+
+
+def _pinned(template: dict, builds: dict[str, dict]) -> dict:
+    """``template``'s VMs pinned as worker/template_pins.py would: ``builds`` by template name."""
+    return {**template, "vms": [{**v, "template_build": builds[v["template_name"]]} for v in template["vms"]]}
+
+
 ONE_LINUX = {**TEMPLATE, "nodes": [TEMPLATE["nodes"][1]]}
+UBUNTU = "tmpl-ubuntu-2404"
 
 
-class TestHostLocalTemplateCopies:
-    def test_each_vm_clones_the_copy_on_its_own_host(self, vc, caplog):
-        for short in ("esx02", "esx03", "esx04"):
-            for base in ("tmpl-ubuntu-2404", "tmpl-win2022", "tmpl-pfsense"):
+class TestTemplatePinning:
+    def test_each_vm_clones_the_promoted_builds_copy_on_its_own_host(self, vc, caplog):
+        builds = {}
+        for base in (UBUNTU, "tmpl-win2022", "tmpl-pfsense"):
+            for short in ("esx02", "esx03", "esx04"):
                 _add_copy(vc, f"{base}@{short}-20261019", short)
+            builds[base] = _build(base, {h: f"{base}@{h}-20261019" for h in ("esx02", "esx03", "esx04")})
         caplog.set_level("INFO", logger=mod.__name__)
-        result = _run(_prov(vc).provision(RANGE_ID, _rendered(), {}))
+        result = _run(_prov(vc).provision(RANGE_ID, _pinned(_rendered(), builds), {}))
         assert result.status == "ok", result.errors
         assert len({vm["host"] for vm in result.vms}) > 1  # spread: the test covers several hosts
         for vm in result.vms:
@@ -2622,125 +2647,263 @@ class TestHostLocalTemplateCopies:
             assert vm["template"].endswith(f"@{short}-20261019")
             (clone,) = [s for s in vc.templates[vm["template"]].clone_specs if s[1] == vm["name"]]
             assert clone[2].location.datastore in _host(vc, short).datastore
-        assert not any(vc.templates[b].clone_specs for b in ("tmpl-ubuntu-2404", "tmpl-win2022", "tmpl-pfsense"))
-        assert "host-local template copy 'tmpl-ubuntu-2404@" in caplog.text
+            # The record says which build each VM got (the S6 certification record reads it).
+            assert vm["template_build"] == {"promoted": True, "catalogue_id": vm["template"].split("@")[0],
+                                            "build_id": "b1", "checksum": SUM_A, "build_date": "2026-10-19",
+                                            "iso_checksum": "sha256:" + "c" * 64, "source": vm["template"]}
+        assert not any(vc.templates[b].clone_specs for b in builds)  # never the plain template
+        assert "(promoted build b1 of tmpl-ubuntu-2404)" in caplog.text
+        assert not result.warnings
 
-    def test_the_newest_date_wins(self, vc, monkeypatch):
+    def test_only_the_promoted_build_is_used_not_a_newer_copy(self, vc, monkeypatch):
+        """Copies of different dates on the host: the newest is no longer chosen."""
         monkeypatch.setattr(mod, "VSPHERE_EXCLUDE_HOSTS", ONLY_ESX02)
-        for date in ("20260701", "20261019", "20261001"):
-            _add_copy(vc, f"tmpl-ubuntu-2404@esx02-{date}", "esx02")
-        result = _run(_prov(vc).provision(RANGE_ID, _rendered(ONE_LINUX), {}))
+        _add_copy(vc, f"{UBUNTU}@esx02-20261001", "esx02", build="b1")
+        _add_copy(vc, f"{UBUNTU}@esx02-20261019", "esx02", build="b2", checksum=SUM_B)  # newer, not promoted
+        build = _build(UBUNTU, {"esx02": f"{UBUNTU}@esx02-20261001"})
+        result = _run(_prov(vc).provision(RANGE_ID, _pinned(_rendered(ONE_LINUX), {UBUNTU: build}), {}))
         assert result.status == "ok", result.errors
-        assert result.vms[0]["template"] == "tmpl-ubuntu-2404@esx02-20261019"
-        assert not vc.templates["tmpl-ubuntu-2404@esx02-20261001"].clone_specs
+        assert result.vms[0]["template"] == f"{UBUNTU}@esx02-20261001"
+        assert not vc.templates[f"{UBUNTU}@esx02-20261019"].clone_specs
 
-    def test_no_copy_on_the_host_falls_back_to_the_plain_name(self, vc, monkeypatch, caplog):
-        monkeypatch.setattr(mod, "VSPHERE_EXCLUDE_HOSTS", ONLY_ESX02)
-        _add_copy(vc, "tmpl-ubuntu-2404@esx03-20261019", "esx03")  # another host's copy: not used
-        caplog.set_level("INFO", logger=mod.__name__)
-        result = _run(_prov(vc).provision(RANGE_ID, _rendered(ONE_LINUX), {}))
+    def test_two_hosts_with_different_copy_dates_each_use_the_promoted_build(self, vc, monkeypatch):
+        """esx03's copy of build b1 is older than esx04's copy of b2; b1 is promoted, so b1 on both."""
+        monkeypatch.setattr(mod, "VSPHERE_EXCLUDE_HOSTS", "esx01.truenorth.lab,esx02.truenorth.lab")
+        _add_copy(vc, f"{UBUNTU}@esx03-20261001", "esx03", build="b1")
+        _add_copy(vc, f"{UBUNTU}@esx04-20261005", "esx04", build="b1")
+        _add_copy(vc, f"{UBUNTU}@esx04-20261019", "esx04", build="b2", checksum=SUM_B)
+        build = _build(UBUNTU, {"esx03": f"{UBUNTU}@esx03-20261001", "esx04": f"{UBUNTU}@esx04-20261005"})
+        two = {**TEMPLATE, "nodes": [TEMPLATE["nodes"][1], {**TEMPLATE["nodes"][1], "id": "web02",
+                                                              "ip": "10.10.20.21"}]}
+        result = _run(_prov(vc).provision(RANGE_ID, _pinned(_rendered(two), {UBUNTU: build}), {}))
         assert result.status == "ok", result.errors
-        assert result.vms[0]["host"] == "esx02.truenorth.lab"
-        assert result.vms[0]["template"] == "tmpl-ubuntu-2404"
-        assert vc.templates["tmpl-ubuntu-2404"].clone_specs
-        assert not vc.templates["tmpl-ubuntu-2404@esx03-20261019"].clone_specs
-        assert "no host-local copy on esx02.truenorth.lab" in caplog.text
+        assert {vm["host"] for vm in result.vms} == {"esx03.truenorth.lab", "esx04.truenorth.lab"}
+        assert {vm["template"] for vm in result.vms} == {f"{UBUNTU}@esx03-20261001", f"{UBUNTU}@esx04-20261005"}
+        assert {vm["template_build"]["build_id"] for vm in result.vms} == {"b1"}
+
+    def test_placement_avoids_a_host_without_the_builds_copy(self, vc):
+        _add_copy(vc, f"{UBUNTU}@esx03-20261019", "esx03")  # esx02 and esx04 have none
+        build = _build(UBUNTU, {"esx03": f"{UBUNTU}@esx03-20261019"})
+        result = _run(_prov(vc).provision(RANGE_ID, _pinned(_rendered(ONE_LINUX), {UBUNTU: build}), {}))
+        assert result.status == "ok", result.errors
+        assert result.vms[0]["host"] == "esx03.truenorth.lab"
+
+    def test_a_vm_only_fitting_a_host_without_the_copy_fails_and_builds_nothing(self, vc, monkeypatch):
+        monkeypatch.setattr(mod, "VSPHERE_EXCLUDE_HOSTS", ONLY_ESX02)  # only esx02 may be used
+        _add_copy(vc, f"{UBUNTU}@esx03-20261019", "esx03")
+        build = _build(UBUNTU, {"esx02": f"{UBUNTU}@esx02-20261019", "esx03": f"{UBUNTU}@esx03-20261019"})
+        result = _run(_prov(vc).provision(RANGE_ID, _pinned(_rendered(ONE_LINUX), {UBUNTU: build}), {}))
+        assert result.status == "failed" and not result.vms
+        assert "holds its promoted template build" in result.errors[0]
+        assert f"copy '{UBUNTU}@esx02-20261019' is not an inventory template" in result.errors[0]
+        assert not vc.templates[UBUNTU].clone_specs  # no plain-name fallback
+        assert not vc.templates[f"{UBUNTU}@esx03-20261019"].clone_specs  # no cross-host copy either
+
+    def test_a_host_the_build_records_no_copy_for_is_not_used(self, vc, monkeypatch):
+        monkeypatch.setattr(mod, "VSPHERE_EXCLUDE_HOSTS", ONLY_ESX02)
+        _add_copy(vc, f"{UBUNTU}@esx02-20261019", "esx02")  # present, but not named by the build
+        build = _build(UBUNTU, {"esx03": f"{UBUNTU}@esx03-20261019"})
+        result = _run(_prov(vc).provision(RANGE_ID, _pinned(_rendered(ONE_LINUX), {UBUNTU: build}), {}))
+        assert result.status == "failed"
+        assert "records no copy for host esx02" in result.errors[0]
+
+    def test_a_checksum_mismatch_fails_the_build(self, vc, monkeypatch):
+        monkeypatch.setattr(mod, "VSPHERE_EXCLUDE_HOSTS", ONLY_ESX02)
+        _add_copy(vc, f"{UBUNTU}@esx02-20261019", "esx02", build="b1", checksum=SUM_B)  # replaced by hand
+        build = _build(UBUNTU, {"esx02": f"{UBUNTU}@esx02-20261019"})
+        result = _run(_prov(vc).provision(RANGE_ID, _pinned(_rendered(ONE_LINUX), {UBUNTU: build}), {}))
+        assert result.status == "failed" and not result.vms
+        assert "is stamped tmpl-ubuntu-2404 build b1 sha256:bbbbbbbbbbbb..., not tmpl-ubuntu-2404 build b1 sha256:aaaaaaaaaaaa..." in result.errors[0]
+        assert not vc.templates[f"{UBUNTU}@esx02-20261019"].clone_specs
+
+    def test_an_unstamped_copy_is_not_trusted(self, vc, monkeypatch):
+        monkeypatch.setattr(mod, "VSPHERE_EXCLUDE_HOSTS", ONLY_ESX02)
+        _add_copy(vc, f"{UBUNTU}@esx02-20261019", "esx02", build=None)
+        build = _build(UBUNTU, {"esx02": f"{UBUNTU}@esx02-20261019"})
+        result = _run(_prov(vc).provision(RANGE_ID, _pinned(_rendered(ONE_LINUX), {UBUNTU: build}), {}))
+        assert result.status == "failed" and "carries no single build stamp" in result.errors[0]
 
     def test_a_copy_named_for_the_host_but_stored_elsewhere_is_not_used(self, vc, monkeypatch):
         monkeypatch.setattr(mod, "VSPHERE_EXCLUDE_HOSTS", ONLY_ESX02)
-        _add_copy(vc, "tmpl-ubuntu-2404@esx02-20261019", "esx03")  # misnamed, or moved by hand
-        result = _run(_prov(vc).provision(RANGE_ID, _rendered(ONE_LINUX), {}))
-        assert result.vms[0]["template"] == "tmpl-ubuntu-2404"
+        _add_copy(vc, f"{UBUNTU}@esx02-20261019", "esx03")  # misnamed, or moved by hand
+        build = _build(UBUNTU, {"esx02": f"{UBUNTU}@esx02-20261019"})
+        result = _run(_prov(vc).provision(RANGE_ID, _pinned(_rendered(ONE_LINUX), {UBUNTU: build}), {}))
+        assert result.status == "failed" and "is not on a datastore of esx02.truenorth.lab" in result.errors[0]
 
-    def test_no_copy_anywhere_still_clones_the_plain_template(self, vc):
-        result = _run(_prov(vc).provision(RANGE_ID, _rendered(ONE_LINUX), {}))
-        assert result.status == "ok", result.errors
-        assert result.vms[0]["template"] == "tmpl-ubuntu-2404"
-
-    def test_a_copy_without_the_plain_template_still_builds_on_that_host(self, vc, monkeypatch):
+    def test_two_templates_of_the_copys_name_fail(self, vc, monkeypatch):
         monkeypatch.setattr(mod, "VSPHERE_EXCLUDE_HOSTS", ONLY_ESX02)
-        _add_copy(vc, "tmpl-ubuntu-2404@esx02-20261019", "esx02")
-        vc.templates.pop("tmpl-ubuntu-2404")
-        result = _run(_prov(vc).provision(RANGE_ID, _rendered(ONE_LINUX), {}))
+        _add_copy(vc, f"{UBUNTU}@esx02-20261019", "esx02")
+        twin = FakeVM(f"{UBUNTU}@esx02-20261019", [], template=True)
+        twin.config.annotation = tc.stamp(UBUNTU, "b1", SUM_A)
+        twin.datastore = list(_host(vc, "esx02").datastore)
+        vc.templates["twin"] = twin  # the inventory view lists the values: two of one name
+        vc.dc.vmFolder.childEntity.append(twin)
+        build = _build(UBUNTU, {"esx02": f"{UBUNTU}@esx02-20261019"})
+        result = _run(_prov(vc).provision(RANGE_ID, _pinned(_rendered(ONE_LINUX), {UBUNTU: build}), {}))
+        assert result.status == "failed" and "more than one template is named" in result.errors[0]
+
+    def test_per_range_host_needs_every_pinned_copy_on_the_one_host(self, vc, monkeypatch):
+        monkeypatch.setattr(mod, "VSPHERE_PLACEMENT", "per-range-host")
+        rendered = _rendered({**TEMPLATE, "nodes": TEMPLATE["nodes"][1:3]})
+        bases = sorted({v["template_name"] for v in rendered["vms"]})
+        assert len(bases) == 2
+        builds = {}
+        for base in bases:  # both on esx04; esx03 lacks the second
+            _add_copy(vc, f"{base}@esx04-20261019", "esx04")
+            builds[base] = _build(base, {"esx03": f"{base}@esx03-20261019", "esx04": f"{base}@esx04-20261019"})
+        _add_copy(vc, f"{bases[0]}@esx03-20261019", "esx03")
+        _host(vc, "esx03").summary.quickStats.overallMemoryUsage = 0  # esx03 has the most free RAM
+        result = _run(_prov(vc).provision(RANGE_ID, _pinned(rendered, builds), {}))
         assert result.status == "ok", result.errors
+        assert {vm["host"] for vm in result.vms} == {"esx04.truenorth.lab"}
 
-    def test_a_host_local_copy_is_used_before_the_content_library(self, vc, monkeypatch):
-        monkeypatch.setattr(mod, "VSPHERE_EXCLUDE_HOSTS", ONLY_ESX02)
-        monkeypatch.setattr(mod, "VSPHERE_CONTENT_LIBRARY", "TrueNorth-Templates")
-        vc.library = {"name": "TrueNorth-Templates", "items": {"tmpl-ubuntu-2404": "item-ubuntu"}}
-        _add_copy(vc, "tmpl-ubuntu-2404@esx02-20261019", "esx02")
-        result = _run(_prov(vc).provision(RANGE_ID, _rendered(ONE_LINUX), {}))
-        assert result.vms[0]["template"] == "tmpl-ubuntu-2404@esx02-20261019"
-        assert not any("/ovf/library-item/" in path for _, path, _ in vc.requests)
-
-    def test_the_library_path_is_unchanged_without_a_copy(self, vc, monkeypatch):
-        monkeypatch.setattr(mod, "VSPHERE_CONTENT_LIBRARY", "TrueNorth-Templates")
-        vc.library = {"name": "TrueNorth-Templates", "items": {"tmpl-ubuntu-2404": "item-ubuntu"}}
-        result = _run(_prov(vc).provision(RANGE_ID, _rendered(ONE_LINUX), {}))
-        assert result.vms[0]["template"] == "library:tmpl-ubuntu-2404"
-        assert not vc.templates["tmpl-ubuntu-2404"].clone_specs
-
-    def test_cluster_placement_has_no_host_and_uses_the_plain_name(self, vc, monkeypatch):
+    def test_cluster_placement_clones_the_builds_stamped_template(self, vc, monkeypatch):
         monkeypatch.setattr(mod, "VSPHERE_PLACEMENT", "cluster")
         monkeypatch.setattr(mod, "VSPHERE_DATASTORE", "esx02-local")
-        _add_copy(vc, "tmpl-ubuntu-2404@esx02-20261019", "esx02")
-        result = _run(_prov(vc).provision(RANGE_ID, _rendered(ONE_LINUX), {}))
+        vc.templates[UBUNTU].config.annotation = tc.stamp(UBUNTU, "b1", SUM_A)
+        build = _build(UBUNTU, {"esx02": f"{UBUNTU}@esx02-20261019"})
+        result = _run(_prov(vc).provision(RANGE_ID, _pinned(_rendered(ONE_LINUX), {UBUNTU: build}), {}))
         assert result.status == "ok", result.errors
-        assert result.vms[0]["template"] == "tmpl-ubuntu-2404"
+        assert result.vms[0]["template"] == UBUNTU
+
+    def test_cluster_placement_refuses_an_unstamped_template(self, vc, monkeypatch):
+        monkeypatch.setattr(mod, "VSPHERE_PLACEMENT", "cluster")
+        monkeypatch.setattr(mod, "VSPHERE_DATASTORE", "esx02-local")
+        build = _build(UBUNTU, {"esx02": f"{UBUNTU}@esx02-20261019"})
+        result = _run(_prov(vc).provision(RANGE_ID, _pinned(_rendered(ONE_LINUX), {UBUNTU: build}), {}))
+        assert result.status == "failed" and "carries no single build stamp" in result.errors[0]
+
+    def test_a_promoted_build_never_uses_the_content_library(self, vc, monkeypatch):
+        monkeypatch.setattr(mod, "VSPHERE_EXCLUDE_HOSTS", ONLY_ESX02)
+        monkeypatch.setattr(mod, "VSPHERE_CONTENT_LIBRARY", "TrueNorth-Templates")
+        vc.library = {"name": "TrueNorth-Templates", "items": {UBUNTU: "item-ubuntu"}}
+        _add_copy(vc, f"{UBUNTU}@esx02-20261019", "esx02")
+        build = _build(UBUNTU, {"esx02": f"{UBUNTU}@esx02-20261019"})
+        result = _run(_prov(vc).provision(RANGE_ID, _pinned(_rendered(ONE_LINUX), {UBUNTU: build}), {}))
+        assert result.vms[0]["template"] == f"{UBUNTU}@esx02-20261019"
+        assert not any("/ovf/library-item/" in path or "/content/library" in path for _, path, _ in vc.requests)
+
+    def test_an_unpinned_vm_is_refused_before_anything_is_built(self, vc):
+        vm = {"name": f"{R8}-web01", "template_name": UBUNTU}
+        with pytest.raises(RuntimeError, match="not pinned to a promoted template build"):
+            _prov(vc)._plan_templates([vm], [])
+
+    UNPROMOTED = {"promoted": False, "catalogue_id": "ubuntu-lts", "allowed_by": "TN_TEMPLATE_ALLOW_UNPROMOTED"}
+
+    def test_an_unpromoted_vm_without_a_local_copy_clones_its_plain_template_with_a_loud_warning(self, vc,
+                                                                                                    monkeypatch):
+        monkeypatch.setattr(mod, "VSPHERE_EXCLUDE_HOSTS", ONLY_ESX02)
+        result = _run(_prov(vc).provision(RANGE_ID, _pinned(_rendered(ONE_LINUX), {UBUNTU: self.UNPROMOTED}), {}))
+        assert result.status == "ok", result.errors
+        assert result.vms[0]["template"] == UBUNTU
+        assert result.vms[0]["template_build"] == {"promoted": False, "catalogue_id": "ubuntu-lts",
+                                                   "allowed_by": "TN_TEMPLATE_ALLOW_UNPROMOTED", "source": UBUNTU}
+        assert any("is NOT a promoted build (allowed by TN_TEMPLATE_ALLOW_UNPROMOTED)" in w for w in result.warnings)
+
+    def test_an_unpromoted_vm_clones_the_newest_copy_on_its_own_host_never_across_hosts(self, vc, monkeypatch):
+        """Transition only: no build to check against, so the copy is unverified, but the clone
+        stays on the host's own disk. Placement prefers the host holding a copy."""
+        _add_copy(vc, f"{UBUNTU}@esx03-20261001", "esx03", build=None)
+        _add_copy(vc, f"{UBUNTU}@esx03-20261019", "esx03", build=None)
+        result = _run(_prov(vc).provision(RANGE_ID, _pinned(_rendered(ONE_LINUX), {UBUNTU: self.UNPROMOTED}), {}))
+        assert result.status == "ok", result.errors
+        assert result.vms[0]["host"] == "esx03.truenorth.lab"
+        assert result.vms[0]["template"] == f"{UBUNTU}@esx03-20261019"
+        assert not vc.templates[UBUNTU].clone_specs  # no cross-host disk copy
+
+    def test_an_unpromoted_vm_on_a_full_copy_host_falls_back_to_the_plain_template(self, vc, monkeypatch):
+        monkeypatch.setattr(mod, "VSPHERE_EXCLUDE_HOSTS", ONLY_ESX02)  # only esx02, which has no copy
+        _add_copy(vc, f"{UBUNTU}@esx03-20261019", "esx03", build=None)
+        result = _run(_prov(vc).provision(RANGE_ID, _pinned(_rendered(ONE_LINUX), {UBUNTU: self.UNPROMOTED}), {}))
+        assert result.status == "ok", result.errors
+        assert result.vms[0]["template"] == UBUNTU  # another host's copy is never used
+
+    def test_the_library_path_is_unchanged_for_an_unpromoted_vm(self, vc, monkeypatch):
+        monkeypatch.setattr(mod, "VSPHERE_CONTENT_LIBRARY", "TrueNorth-Templates")
+        vc.library = {"name": "TrueNorth-Templates", "items": {UBUNTU: "item-ubuntu"}}
+        result = _run(_prov(vc).provision(RANGE_ID, _rendered(ONE_LINUX), {}))
+        assert result.vms[0]["template"] == f"library:{UBUNTU}"
+        assert not vc.templates[UBUNTU].clone_specs
 
 
 class FakeCopy:
-    def __init__(self, vm_id, name, template=True, fail=None):
+    def __init__(self, vm_id, name, template=True, fail=None, build=None):
         self._moId, self.name, self.fail, self.destroyed = vm_id, name, fail, False
-        self.config = SimpleNamespace(template=template)
+        self.config = SimpleNamespace(template=template, annotation=tc.stamp(*build) if build else "")
 
     def Destroy_Task(self):  # noqa: N802
         self.destroyed = True
         return FakeTask(fail=self.fail, label=f"destroy-template:{self.name}")
 
 
+# srv has a promoted build b1 (its copies on esx02 and esx03); web has none.
+PROMOTED = ("srv", "b1", SUM_A)
+POLICY = tc.PrunePolicy(protected=frozenset({"srv@esx02-20261001", "srv@esx03-20260701"}),
+                        managed=frozenset({"srv"}), builds=frozenset({PROMOTED}))
+
+
+def _policy(*in_use: str) -> tc.PrunePolicy:
+    return tc.PrunePolicy(protected=POLICY.protected | set(in_use), managed=POLICY.managed, builds=POLICY.builds)
+
+
 class TestPruneTemplateCopies:
     @pytest.fixture
     def inv(self, vc):
         objs = {o._moId: o for o in (
-            FakeCopy("vm-1", "srv@esx02-20260701"), FakeCopy("vm-2", "srv@esx02-20261001"),
-            FakeCopy("vm-3", "srv@esx02-20261019"), FakeCopy("vm-4", "srv@esx03-20260701"),
+            FakeCopy("vm-1", "srv@esx02-20260701"), FakeCopy("vm-2", "srv@esx02-20261001", build=PROMOTED),
+            FakeCopy("vm-3", "srv@esx02-20261019", build=("srv", "b2", SUM_B)), FakeCopy("vm-4", "srv@esx03-20260701"),
             FakeCopy("vm-5", "srv"), FakeCopy("vm-6", "web@esx02-20260101", template=False),
-            FakeCopy("vm-7", "web@esx02-20261019"))}
+            FakeCopy("vm-7", "web@esx02-20261019"), FakeCopy("vm-8", "srv@esx04-20260101", build=PROMOTED))}
         prov = _prov(vc)
-        listed = [(o._moId, o.name, "", o.config.template) for o in objs.values()]  # as listed, before any change
+        listed = [(o._moId, o.name, o.config.annotation, o.config.template)
+                  for o in objs.values()]  # as listed, before any change
         prov._vm_rows_sync = lambda si: listed
         prov._vm = lambda si, vm_id: objs[vm_id]
         return prov, objs
 
     def test_dry_run_is_the_default_and_deletes_nothing(self, inv):
         prov, objs = inv
-        out = _run(prov.prune_template_copies(set()))
+        out = _run(prov.prune_template_copies(POLICY))
         assert out["dry_run"] is True and out["deleted"] == []
-        assert out["deletable"] == ["srv@esx02-20260701", "srv@esx02-20261001"]
+        # The newer, unpromoted copy is as deletable as the older one: no newest-copy rule.
+        assert out["deletable"] == ["srv@esx02-20260701", "srv@esx02-20261019"]
         assert not any(o.destroyed for o in objs.values())
 
-    def test_deletes_the_superseded_copies_not_in_use(self, inv):
+    def test_never_deletes_the_promoted_builds_copies_or_one_a_range_uses(self, inv):
         prov, objs = inv
-        out = _run(prov.prune_template_copies({"srv@esx02-20260701"}, dry_run=False))
-        assert out["deleted"] == ["srv@esx02-20261001"] and out["kept_in_use"] == ["srv@esx02-20260701"]
-        # The newest per host, the only copy on esx03, the plain template and a VM are never touched.
-        assert [o.name for o in objs.values() if o.destroyed] == ["srv@esx02-20261001"]
+        out = _run(prov.prune_template_copies(_policy("srv@esx02-20260701"), dry_run=False))
+        assert out["deleted"] == ["srv@esx02-20261019"]
+        assert out["kept_in_use"] == ["srv@esx02-20260701", "srv@esx02-20261001", "srv@esx03-20260701",
+                                      "srv@esx04-20260101"]  # in use; promoted by name (2); promoted by stamp
+        # The plain template, a VM and the copies of an image with no promoted build are never touched.
+        assert [o.name for o in objs.values() if o.destroyed] == ["srv@esx02-20261019"]
         assert out["errors"] == []
+
+    def test_an_image_with_no_promoted_build_is_never_pruned(self, inv):
+        prov, objs = inv
+        out = _run(prov.prune_template_copies(tc.PrunePolicy(), dry_run=False))
+        assert out["deletable"] == [] and out["deleted"] == [] and not any(o.destroyed for o in objs.values())
+
+    def test_a_copy_restamped_as_a_protected_build_since_the_listing_is_left_alone(self, inv):
+        prov, objs = inv
+        objs["vm-1"].config.annotation = tc.stamp(*PROMOTED)
+        out = _run(prov.prune_template_copies(POLICY, dry_run=False))
+        assert not objs["vm-1"].destroyed
+        assert "srv@esx02-20260701 (vm-1): stamped as a protected build, left alone" in out["errors"]
 
     def test_a_failed_delete_is_reported_and_the_rest_go_on(self, inv):
         prov, objs = inv
         objs["vm-1"].fail = "locked by a clone"
-        out = _run(prov.prune_template_copies(set(), dry_run=False))
-        assert out["deleted"] == ["srv@esx02-20261001"]
+        out = _run(prov.prune_template_copies(POLICY, dry_run=False))
+        assert out["deleted"] == ["srv@esx02-20261019"]
         assert out["errors"] == ["srv@esx02-20260701 (vm-1): locked by a clone"]
 
     def test_an_object_that_is_no_longer_that_template_is_left_alone(self, inv):
         prov, objs = inv
-        objs["vm-2"].config.template = False  # converted to a VM since the listing
-        out = _run(prov.prune_template_copies(set(), dry_run=False))
-        assert not objs["vm-2"].destroyed
-        assert out["errors"] == ["srv@esx02-20261001 (vm-2): no longer that template, left alone"]
+        objs["vm-3"].config.template = False  # converted to a VM since the listing
+        out = _run(prov.prune_template_copies(POLICY, dry_run=False))
+        assert not objs["vm-3"].destroyed
+        assert out["errors"] == ["srv@esx02-20261019 (vm-3): no longer that template, left alone"]
 
 
 # --------------------------------------------------------------------------- #
@@ -3101,24 +3264,28 @@ class TestSpreadPlacement:
         with pytest.raises(infra.PlacementError, match="no host fits"):
             infra.place([_cap("esx03", free_mb=4_000)], _vms(1, mem=8192), "spread", 4)
 
-    def test_spread_prefers_a_host_and_datastore_holding_the_template_copy(self):
+    def test_spread_prefers_the_datastore_holding_the_pinned_copy(self):
         a, b = _cap("esx02"), _cap("esx03")
         b.datastores["esx03-small"] = [200 * GIB, "esx03-small"]  # holds the copy; less free space
-        local = {"esx03": frozenset({"esx03-small"})}
-        placed = infra.place([a, b], _vms(1), "spread", 4, local=lambda v, h: local.get(h.name, frozenset()))
+        held = {"esx03": frozenset({"esx03-small"})}
+        placed = infra.place([a, b], _vms(1), "spread", 4, copies=lambda v, h: held.get(h.name, "no copy here"))
         assert (placed[0][0].name, placed[0][1]) == ("esx03", "esx03-small")
 
-    def test_spread_deals_across_the_hosts_with_a_local_copy_before_any_cross_host_copy(self):
+    def test_spread_never_uses_a_host_without_the_pinned_copy(self):
         hosts = [_cap("esx02"), _cap("esx03"), _cap("esx04")]
-        copies = {"esx02": frozenset({"esx02-local"}), "esx03": frozenset({"esx03-local"})}
-        names = [h.name for h, _ in infra.place(hosts, _vms(4, cores=2), "spread", 4,
-                                                local=lambda v, h: copies.get(h.name, frozenset()))]
-        assert sorted(names) == ["esx02", "esx02", "esx03", "esx03"]  # esx04 would copy disks across hosts
-        # Only when the hosts with a copy are full does a VM go to one without.
+        held = {"esx02": frozenset({"esx02-local"}), "esx03": frozenset({"esx03-local"})}
+        check = lambda v, h: held.get(h.name, f"no copy on {h.name}")  # noqa: E731
+        names = [h.name for h, _ in infra.place(hosts, _vms(4, cores=2), "spread", 4, copies=check)]
+        assert sorted(names) == ["esx02", "esx02", "esx03", "esx03"]
+        # When the hosts with the copy are full, the VM does NOT go to one without: it fails.
         hosts = [_cap("esx02", vcpus=60), _cap("esx03", vcpus=60), _cap("esx04")]  # 4 vCPU headroom each
-        names = [h.name for h, _ in infra.place(hosts, _vms(3, cores=4), "spread", 4,
-                                                local=lambda v, h: copies.get(h.name, frozenset()))]
-        assert sorted(names) == ["esx02", "esx03", "esx04"]
+        with pytest.raises(infra.PlacementError, match="holds its promoted template build: esx04: no copy on esx04"):
+            infra.place(hosts, _vms(3, cores=4), "spread", 4, copies=check)
+
+    def test_an_unpinned_vm_may_go_anywhere(self):
+        hosts = [_cap("esx02"), _cap("esx03")]
+        names = [h.name for h, _ in infra.place(hosts, _vms(2), "spread", 4, copies=lambda v, h: frozenset())]
+        assert sorted(names) == ["esx02", "esx03"]
 
     @pytest.mark.parametrize("exclude", ["esx01", "ESX01", "esx01.truenorth.lab", "esx01.other.domain"])
     def test_the_excluded_host_matches_by_short_name_or_fqdn(self, vc, monkeypatch, exclude):
@@ -3137,7 +3304,8 @@ class TestSpreadPlacement:
             infra.place([_cap("esx02")], _vms(1), "packed", 4)
 
     def test_the_starter_range_spans_esx02_to_esx04_from_their_local_copies(self, vc):
-        result = _run(_prov(_starter_vc(vc)).provision(RANGE_ID, _rendered(STARTER), {}))
+        build = _build(UBUNTU, {h: f"{UBUNTU}@{h}-20261019" for h in ("esx02", "esx03", "esx04")})
+        result = _run(_prov(_starter_vc(vc)).provision(RANGE_ID, _pinned(_rendered(STARTER), {UBUNTU: build}), {}))
         assert result.status == "ok", result.errors
         hosts = sorted(out["host"] for out in result.vms)
         assert hosts == ["esx02.truenorth.lab", "esx03.truenorth.lab", "esx04.truenorth.lab"]  # never esx01
@@ -3344,7 +3512,8 @@ class TestRangeFolderAndTags:
     def test_a_vm_from_a_host_copy_is_tagged_with_the_catalogue_id(self, vc, monkeypatch):
         monkeypatch.setattr(mod, "VSPHERE_EXCLUDE_HOSTS", ONLY_ESX02)
         _add_copy(vc, "tmpl-ubuntu-2404@esx02-20261019", "esx02")
-        result = _run(_prov(vc).provision(RANGE_ID, _rendered(ONE_LINUX), {}))
+        build = _build(UBUNTU, {"esx02": f"{UBUNTU}@esx02-20261019"})
+        result = _run(_prov(vc).provision(RANGE_ID, _pinned(_rendered(ONE_LINUX), {UBUNTU: build}), {}))
         assert result.vms[0]["template"] == "tmpl-ubuntu-2404@esx02-20261019"
         assert vc.cis.tags_of(result.vms[0]["vm_id"])["tn-template"] == "tmpl-ubuntu-2404"
         assert vc.cis.tags_of(result.vms[0]["vm_id"])["tn-range"] == KEY  # no range name given: the id

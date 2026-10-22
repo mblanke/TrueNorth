@@ -328,6 +328,7 @@ app.state.ws_manager = ws_manager
 # -- Routers (fine-grained RBAC via require_permission) --------------------
 from .class_setup.router import router as class_setup_router  # noqa: E402 (#200)
 from .cmi5.router import router as cmi5_router  # noqa: E402 (also registers the cmi5 tables)
+from .golden_image_builds.router import router as golden_image_builds_router  # noqa: E402 (ADR 0013; + its table)
 from .live_class.router import router as live_class_router  # noqa: E402 (issue #199)
 from .range_credentials.issues_router import router as range_credential_issues_router  # noqa: E402 (ADR 0013)
 from .range_credentials.router import router as range_credentials_router  # noqa: E402 (ADR 0012; + its table)
@@ -425,6 +426,7 @@ app.include_router(lti_router)
 # Infrastructure & Directory routers
 app.include_router(hypervisors_router)
 app.include_router(golden_images_router)
+app.include_router(golden_image_builds_router)  # builds + promote (app/golden_image_builds, ADR 0013)
 app.include_router(ai_config_router)
 # ARC² Course Studio; answers 404 unless ARC2_STUDIO_ENABLED is set. GET /arc2/status
 # always answers, so the web app can hide the Studio rather than show it failing.

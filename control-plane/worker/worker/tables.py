@@ -214,6 +214,25 @@ forged_exercises = sa.Table(
     sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
 )
 
+golden_image_builds = sa.Table(
+    "golden_image_builds",
+    metadata,
+    sa.Column("id", GUID(), primary_key=True),
+    sa.Column("golden_image_id", GUID(), nullable=False),
+    sa.Column("build_id", sa.String(120), nullable=False),
+    sa.Column("template_name", sa.String(120), nullable=False),
+    sa.Column("checksum", sa.String(128), nullable=False),
+    sa.Column("build_date", sa.Date()),
+    sa.Column("iso_checksum", sa.String(160), nullable=False),
+    sa.Column("copies", sa.Text(), nullable=False),
+    sa.Column("registered_by", sa.String(255), nullable=False),
+    sa.Column("promoted", sa.Boolean(), nullable=False),
+    sa.Column("promoted_at", sa.DateTime(timezone=True)),
+    sa.Column("promoted_by", sa.String(255), nullable=False),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+)
+
 golden_images = sa.Table(
     "golden_images",
     metadata,
@@ -573,6 +592,7 @@ __all__ = [
     "exercise_runs",
     "exercises",
     "forged_exercises",
+    "golden_image_builds",
     "golden_images",
     "hypervisor_connections",
     "inject_records",

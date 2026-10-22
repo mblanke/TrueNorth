@@ -167,9 +167,28 @@ class TestRanges:
             m.HypervisorConnection(name="main", hypervisor_type="vsphere", host="vc-a", port=443, username="u1",
                                    password_encrypted="pw", is_primary=True, is_active=True, datacenter="DC1"),
         )
+        from app.golden_image_builds.models import GoldenImageBuild
+        from worker.template_pins import TemplatePinError
+
+        ubuntu = db.query(m.GoldenImage).filter_by(catalogue_id="ubuntu-2404").one()
+        _add(db, GoldenImageBuild(golden_image_id=ubuntu.id, build_id="b1", checksum="a" * 64,
+                                  template_name="tpl-ubuntu", copies='{"esx02": "tpl-ubuntu@esx02-20261019"}',
+                                  promoted=True))
         backend = _fake_backend(provision=ProvisionResult(status="ok", vms=[{"name": "web"}], networks=[]))
         monkeypatch.setattr(tasks, "_get_backend", lambda name=None, range_id=None, **kw: backend)
 
+        # Disabled and soft-deleted images are not candidates: "old" stays unresolved, and an
+        # unresolved template cannot be pinned to a promoted build (ADR 0013): nothing is built.
+        with pytest.raises(TemplatePinError, match="'win-2008' is not an enabled golden image") as err:
+            tasks.provision_range(str(world.range.id))
+        assert "-web'" not in str(err.value)  # web resolved through os_aliases, and pinned
+        backend.provision.assert_not_awaited()
+        assert _fresh(db, world.range).state == m.RangeState.failed
+
+        world.template.yaml = ("nodes:\n  - id: web\n    os: house-ubuntu\n    vlan: lan\n"
+                               "network:\n  vlans:\n    - name: lan\n      cidr: 10.9.0.0/24\n")
+        world.range.state = m.RangeState.provisioning
+        db.commit()
         out = tasks.provision_range(str(world.range.id))
 
         assert out == {"status": "ready", "range_id": str(world.range.id), "vm_count": 1}
@@ -180,9 +199,9 @@ class TestRanges:
         with tasks._db_session() as s:
             creds = db_ops.hypervisor_creds(s, "vsphere", str(world.range.id))
         assert (creds["host"], creds["datacenter"]) == ("vc-a", "DC1")  # primary first
-        by_name = {vm["node_id"]: vm["template_name"] for vm in template["vms"]}
-        assert by_name["web"] == "tpl-ubuntu"  # resolved through os_aliases
-        assert by_name["old"] == "win-2008"  # disabled and soft-deleted images are not candidates: unresolved
+        (web,) = template["vms"]
+        assert web["template_name"] == "tpl-ubuntu"  # resolved through os_aliases
+        assert web["template_build"]["build_id"] == "b1"  # pinned to the promoted build
         r = _fresh(db, world.range)
         assert r.state == m.RangeState.ready
         assert json.loads(r.provisioner_output)["provider"] == "vsphere_api"
@@ -406,13 +425,33 @@ class TestTemplateCopyPrune:
             def connection_record(self):
                 return {"id": self.creds.get("connection_id"), "host": self.creds.get("host")}
 
-            async def prune_template_copies(self, in_use, *, dry_run):
-                seen.append((self.creds["host"], set(in_use), dry_run))
+            async def prune_template_copies(self, policy, *, dry_run):
+                seen.append((self.creds["host"], set(policy.protected), set(policy.managed), dry_run))
                 return {"deletable": [], "kept_in_use": [], "deleted": [], "errors": []}
+
+        # ADR 0013: the build records decide too. srv has a promoted build and a newer one
+        # awaiting promotion (both kept); an older build's copy is not protected; kali has no
+        # promoted build, so none of its copies is ever a candidate (not managed).
+        from app.golden_image_builds.models import GoldenImageBuild
+
+        srv = m.GoldenImage(catalogue_id="srv", hypervisor="vsphere", template_name="srv")
+        kali = m.GoldenImage(catalogue_id="kali", hypervisor="vsphere", template_name="kali")
+        _add(db, srv, kali)
+        t0 = datetime(2026, 10, 1, tzinfo=UTC)
+        _add(db,
+             GoldenImageBuild(golden_image_id=srv.id, build_id="old", checksum="0" * 64, created_at=t0,
+                              copies='{"esx02": "srv@esx02-20260901"}'),
+             GoldenImageBuild(golden_image_id=srv.id, build_id="cur", checksum="a" * 64, promoted=True,
+                              created_at=t0.replace(day=2), copies='{"esx02": "srv@esx02-20261002"}'),
+             GoldenImageBuild(golden_image_id=srv.id, build_id="next", checksum="b" * 64,
+                              created_at=t0.replace(day=19), copies='{"esx02": "srv@esx02-20261019"}'),
+             GoldenImageBuild(golden_image_id=kali.id, build_id="k1", checksum="c" * 64,
+                              copies='{"esx02": "kali@esx02-20261001"}'))
 
         monkeypatch.setattr(template_tasks, "get_provisioner", lambda backend, creds=None, **kw: Prov(creds or {}))
         out = template_tasks.prune_template_copies()
-        assert seen == [("vc-a", {"srv@esx02-20261001"}, True)]  # the destroyed range holds nothing back
+        # The destroyed range holds nothing back; the promoted and the newer build's copies are kept.
+        assert seen == [("vc-a", {"srv@esx02-20261001", "srv@esx02-20261002", "srv@esx02-20261019"}, {"srv"}, True)]
         assert out["status"] == "ok" and out["dry_run"] is True
 
 
@@ -978,6 +1017,8 @@ PG_CALLS = {
     "hypervisor_creds_by_id": lambda db: db_ops.hypervisor_creds_by_id(db, "vsphere", ID, ID),
     "enabled_golden_images": lambda db: db_ops.enabled_golden_images(db, "vsphere"),
     "unbuilt_golden_images": lambda db: db_ops.unbuilt_golden_images(db, "vsphere"),
+    "golden_image_pin_rows": lambda db: db_ops.golden_image_pin_rows(db, "vsphere"),
+    "golden_image_build_copies": db_ops.golden_image_build_copies,
     "ranges_with_running_setups": db_ops.ranges_with_running_setups,
     "set_range_output": lambda db: db_ops.set_range_output(db, ID, "{}"),
     "range_accounts": lambda db: db_ops.range_accounts(db, ID),

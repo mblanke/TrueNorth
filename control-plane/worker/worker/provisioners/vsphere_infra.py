@@ -123,42 +123,58 @@ def _take(host: HostCapacity, cores: int, mem: int, disk: int,
     return host, host.datastores[name][1]
 
 
-# (vm_def, host) -> names of the host's datastores holding a host-local copy of the VM's template.
-LocalCopies = Callable[[dict, HostCapacity], frozenset]
+# (vm_def, host) -> the names of the host's datastores holding the VM's pinned template copy
+# (ADR 0013 §2); an empty set when the VM has no pinned copy (any host will do); or a str:
+# why this host cannot take the VM (it lacks that build's copy, or the copy is not that build).
+CopyCheck = Callable[[dict, HostCapacity], "frozenset | str"]
 
 
 def place(hosts: list[HostCapacity], vm_defs: list[dict], mode: str, ratio: float,
-          local: LocalCopies | None = None) -> list[tuple[HostCapacity, object]]:
+          copies: CopyCheck | None = None) -> list[tuple[HostCapacity, object]]:
     """Choose a (host, datastore) for every VM, in ``vm_defs`` order.
 
-    ``spread``: the range's VMs are dealt round the hosts that fit them, those holding a
-    host-local copy of the VM's template (``local``) first: a host without one means a
-    full cross-host copy of the template's disks (local storage only, ADR 0012), dearer
-    than an uneven spread. Among them, the host holding the fewest of this range's VMs so
-    far, then the most vCPU headroom, then free RAM; on that host, the datastore holding
-    the copy when it has room. Capacity is tallied as it goes, so a full host drops out
-    (and only then does a VM go to a host without a copy) and a range larger than one host
-    spans hosts (the vDS port groups exist on every host). Until 2026-10-20 spread was
+    ``copies`` (ADR 0013 §2): a VM pinned to a promoted build goes only to a host holding
+    that build's copy; a host without it is never chosen, and when no host that fits has
+    it the placement fails with each host's reason. A VM let through unpromoted (transition)
+    prefers a host holding a copy of its template, but may go anywhere. On the chosen host
+    the datastore holding the copy is preferred when it has room.
+
+    ``spread``: the range's VMs are dealt round the hosts that fit them: the host holding
+    the fewest of this range's VMs so far, then the most vCPU headroom, then free RAM.
+    Capacity is tallied as it goes, so a full host drops out and a range larger than one
+    host spans hosts (the vDS port groups exist on every host). Until 2026-10-20 spread was
     "most vCPU headroom first" alone, which packs rather than spreads: a host with more
     headroom than the whole range needs (esx02 beside busier esx03/esx04) took every VM.
     ``per-range-host``: the whole range on the one host with the most free RAM that fits
-    all of it. A host fits when RAM, the vCPU overcommit cap (threads x ``ratio``,
-    counting powered-on VMs) and one of its datastores (THIN_DISK_FRACTION of the disk)
-    all have room.
+    all of it and holds every pinned VM's copy. A host fits when RAM, the vCPU overcommit
+    cap (threads x ``ratio``, counting powered-on VMs) and one of its datastores
+    (THIN_DISK_FRACTION of the disk) all have room.
     """
     if not hosts:
         raise PlacementError("no eligible host: all are excluded, disconnected or in maintenance mode")
+
+    def check(vm_def: dict, host: HostCapacity) -> frozenset | str:
+        return copies(vm_def, host) if copies else frozenset()
+
     if mode == "per-range-host":
         cores = sum(vm_needs(v)[0] for v in vm_defs)
         mem = sum(vm_needs(v)[1] for v in vm_defs)
         disk = sum(vm_needs(v)[2] for v in vm_defs)
-        reasons = [r for h in hosts if (r := _why_not(h, cores, mem, disk, ratio))]
-        fitting = [h for h in hosts if not _why_not(h, cores, mem, disk, ratio)]
+        reasons = []
+        fitting = []
+        for h in hosts:
+            why = _why_not(h, cores, mem, disk, ratio) or next(
+                (f"VM {v.get('name')!r}: {got}" for v in vm_defs if isinstance(got := check(v, h), str)), None)
+            if why:
+                reasons.append(why)
+            else:
+                fitting.append(h)
         if not fitting:
-            raise PlacementError(f"no single host fits the range ({cores} vCPU, {mem} MiB): " + "; ".join(reasons))
+            raise PlacementError(f"no single host fits the range ({cores} vCPU, {mem} MiB) with its template "
+                                 "builds: " + "; ".join(reasons))
         host = max(fitting, key=lambda h: h.free_mem_mb)
-        ds = host.datastores[_best_datastore(host, disk)][1]
-        _take(host, cores, mem, disk)
+        prefer = frozenset().union(*(check(v, host) for v in vm_defs))
+        _, ds = _take(host, cores, mem, disk, prefer)
         return [(host, ds)] * len(vm_defs)
     if mode != "spread":
         raise PlacementError(f"unknown VSPHERE_PLACEMENT {mode!r}: spread, per-range-host or cluster")
@@ -170,11 +186,18 @@ def place(hosts: list[HostCapacity], vm_defs: list[dict], mode: str, ratio: floa
         if not fitting:
             reasons = "; ".join(r for h in hosts if (r := _why_not(h, cores, mem, disk, ratio)))
             raise PlacementError(f"no host fits VM {vm_def.get('name')!r}: {reasons}")
-        copies = {h.name: frozenset(local(vm_def, h)) if local else frozenset() for h in fitting}
-        best = min(fitting, key=lambda h: (not copies[h.name], count[h.name], -h.vcpu_headroom(ratio),
-                                           -h.free_mem_mb))
+        held = {h.name: check(vm_def, h) for h in fitting}
+        usable = [h for h in fitting if not isinstance(held[h.name], str)]
+        if not usable:
+            reasons = "; ".join(f"{h.name}: {held[h.name]}" for h in fitting)
+            raise PlacementError(f"no host that fits VM {vm_def.get('name')!r} holds its promoted template "
+                                 f"build: {reasons}")
+        # A host holding a copy first (a transition VM's own-host copy; a pinned VM's hosts all
+        # hold one): a host without means a cross-host disk copy, dearer than an uneven spread.
+        best = min(usable, key=lambda h: (not held[h.name], count[h.name], -h.vcpu_headroom(ratio),
+                                          -h.free_mem_mb))
         count[best.name] += 1
-        out.append(_take(best, cores, mem, disk, copies[best.name]))
+        out.append(_take(best, cores, mem, disk, held[best.name]))
     return out
 
 

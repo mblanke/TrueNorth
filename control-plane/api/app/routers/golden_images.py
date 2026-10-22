@@ -18,8 +18,11 @@ from sqlalchemy.orm import Session
 from .. import golden_images
 from ..auth import CurrentUser, get_current_user
 from ..db import get_db
+from ..golden_image_builds import service as builds
+from ..golden_image_builds.models import GoldenImageBuild
+from ..golden_image_builds.schemas import GoldenImageBuildIn, GoldenImageBuildOut
 from ..models import GoldenImage
-from ..rbac import Permission, require_permission
+from ..rbac import Permission, is_platform_admin, require_permission
 
 logger = logging.getLogger("truenorth.api.golden_images")
 
@@ -43,6 +46,8 @@ class GoldenImageOut(BaseModel):
     build_status: str
     golden_gb: int
     notes: str
+    # The build every new range clones (ADR 0013 §2); None until an admin promotes one.
+    promoted_build: GoldenImageBuildOut | None = None
 
 
 class GoldenImageCreate(BaseModel):
@@ -70,9 +75,20 @@ class GoldenImagePatch(BaseModel):
     enabled: bool | None = None
     build_status: str | None = None
     checksum: str | None = None
+    # A build the template kit registers (ADR 0013 §2). Recorded, never promoted, here.
+    build: GoldenImageBuildIn | None = None
 
 
-def _out(img: GoldenImage) -> GoldenImageOut:
+def _promoted(db: Session, images: list[GoldenImage]) -> dict:
+    ids = [i.id for i in images]
+    if not ids:
+        return {}
+    rows = db.query(GoldenImageBuild).filter(GoldenImageBuild.golden_image_id.in_(ids),
+                                             GoldenImageBuild.promoted.is_(True)).all()
+    return {r.golden_image_id: builds.build_out(r) for r in rows}
+
+
+def _out(img: GoldenImage, promoted: dict | None = None) -> GoldenImageOut:
     try:
         aliases = json.loads(img.os_aliases or "[]")
     except json.JSONDecodeError:
@@ -92,6 +108,7 @@ def _out(img: GoldenImage) -> GoldenImageOut:
         build_status=img.build_status,
         golden_gb=img.golden_gb,
         notes=img.notes,
+        promoted_build=(promoted or {}).get(img.id),
     )
 
 
@@ -144,7 +161,7 @@ def upsert_custom_image(
         # Raised before anything is written, so there is nothing to roll back.
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     response.status_code = 201 if created else 200
-    return _out(img)
+    return _out(img, _promoted(db, [img]))
 
 
 @router.get("", response_model=list[GoldenImageOut])
@@ -156,7 +173,9 @@ def list_images(
     q = db.query(GoldenImage).filter(GoldenImage.deleted_at.is_(None))
     if hypervisor:
         q = q.filter(GoldenImage.hypervisor == hypervisor)
-    return [_out(i) for i in q.order_by(GoldenImage.catalogue_id).all()]
+    images = q.order_by(GoldenImage.catalogue_id).all()
+    promoted = _promoted(db, images)
+    return [_out(i, promoted) for i in images]
 
 
 @router.get("/resolve")
@@ -186,11 +205,16 @@ def update_image(
     image_id: str,
     body: GoldenImagePatch,
     db: Session = Depends(get_db),
-    _user: CurrentUser = Depends(require_permission(Permission.INFRA_WRITE)),
+    user: CurrentUser = Depends(require_permission(Permission.INFRA_WRITE)),
 ) -> GoldenImageOut:
-    """Operator registration: set the real template name / datastore / enabled / build status.
+    """Operator registration: set the real template name / datastore / enabled / build status,
+    and record a build (``build``: id, checksum, build date, ISO checksum, per-host copies).
+
+    A recorded build is not used by ranges until an admin promotes it
+    (POST /golden-images/{image_id}/builds/{build_id}/promote, ADR 0013 §2).
 
     **Permission: infra:write** — the registry is platform-wide, so only operators edit it.
+    A ``build`` needs the platform administrator (403 otherwise).
     """
     # tenant-safe: the golden-image registry is platform infrastructure, one row per
     # (catalogue_id, hypervisor) for the whole install (uq_image_hypervisor), shared by
@@ -199,10 +223,18 @@ def update_image(
     img = db.query(GoldenImage).filter_by(id=image_id).one_or_none()
     if img is None:
         raise HTTPException(status_code=404, detail="golden image not found")
+    if body.build is not None:  # checked before anything is changed: a conflict writes nothing
+        if not is_platform_admin(user, db):  # one record serves every tenant's ranges (ADR 0013 §2)
+            raise HTTPException(status_code=403, detail="Only a platform administrator can record a golden-image "
+                                "build: it applies to every tenant")
+        try:
+            builds.record_build(db, img, body.build, user, template_name=body.template_name)
+        except builds.BuildConflictError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
     for field in ("template_name", "datastore", "enabled", "build_status", "checksum"):
         val = getattr(body, field)
         if val is not None:
             setattr(img, field, val)
     db.commit()
     db.refresh(img)
-    return _out(img)
+    return _out(img, _promoted(db, [img]))

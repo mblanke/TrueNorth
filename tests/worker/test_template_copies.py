@@ -1,6 +1,7 @@
-"""Host-local golden-template copies (ADR 0012 decision 6): naming, pruning rules, and the
-prune task's contract (dry run by default, deferred while a range builds, one vCenter's
-failure does not stop the others, an unsupported backend is reported as such).
+"""Host-local golden-template copies (ADR 0012 decision 6, ADR 0013 §2): naming, build
+stamps, pruning rules (from the build records: never a promoted build's copy or one a range
+records), and the prune task's contract (dry run by default, deferred while a range builds,
+one vCenter's failure does not stop the others, an unsupported backend is reported as such).
 
 The provisioner's side (which copy a clone uses, and the vCenter deletes) is in
 test_vsphere_provision.py, against the same fakes as every other vSphere build test.
@@ -8,7 +9,9 @@ test_vsphere_provision.py, against the same fakes as every other vSphere build t
 
 from __future__ import annotations
 
+import json
 from contextlib import contextmanager
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from worker.provisioners import template_copies as tc
@@ -33,28 +36,51 @@ class TestNames:
         assert tc.host_short_name("10.30.30.12") == "10.30.30.12"
         assert tc.copy_name("srv2022", "esx02.truenorth.lab", "20261019") == "srv2022@esx02-20261019"
 
-    def test_newest_on_host(self):
-        names = ["srv@esx02-20261001", "srv@esx02-20261019", "srv@esx03-20261101", "other@esx02-20261231", "srv"]
-        assert tc.newest_on_host(names, "srv", "esx02.truenorth.lab") == "srv@esx02-20261019"
-        assert tc.newest_on_host(names, "srv", "esx04.truenorth.lab") is None
+    def test_newest_copy_selection_is_gone_for_builds(self):
+        """ADR 0013 §2: no newest-copy selection and no date-ordered staleness for a build;
+        ``newest_local`` exists only for the transition flag's unpromoted VMs."""
+        assert not hasattr(tc, "newest_on_host") and not hasattr(tc, "stale")
+        names = ["srv@esx02-20261001", "srv@esx02-20261019", "srv@esx03-20261101", "srv"]
+        assert tc.newest_local(names, "srv", "esx02.truenorth.lab") == "srv@esx02-20261019"
+        assert tc.newest_local(names, "srv", "esx04") is None
 
 
-class TestStale:
-    NAMES = ["srv@esx02-20260701", "srv@esx02-20261001", "srv@esx02-20261019",
-             "srv@esx03-20261001", "kali@esx02-20260101", "kali@esx02-20261019", "srv", "unrelated-vm"]
+SUM = "a" * 64
 
-    def test_older_than_the_newest_per_template_and_host(self):
-        deletable, kept = tc.stale(self.NAMES, set())
-        assert deletable == ["kali@esx02-20260101", "srv@esx02-20260701", "srv@esx02-20261001"]
-        assert kept == []
 
-    def test_a_copy_a_range_vm_was_cloned_from_is_kept(self):
-        deletable, kept = tc.stale(self.NAMES, {"srv@esx02-20261001"})
-        assert "srv@esx02-20261001" not in deletable and kept == ["srv@esx02-20261001"]
+class TestStamps:
+    def test_round_trip(self):
+        note = "TrueNorth golden: Ubuntu 24.04\n" + tc.stamp("ubuntu-lts", "ubuntu-lts-20261019T1200", SUM)
+        assert tc.stamp_of(note) == ("ubuntu-lts", "ubuntu-lts-20261019T1200", SUM)
+        assert tc.stamp_problem(note, "ubuntu-lts", "ubuntu-lts-20261019T1200", SUM) is None
 
-    def test_the_only_copy_on_a_host_and_plain_names_are_never_stale(self):
-        deletable, _ = tc.stale(self.NAMES, set())
-        assert "srv@esx03-20261001" not in deletable and "srv" not in deletable
+    def test_missing_mismatched_and_ambiguous_stamps_are_problems(self):
+        assert "no single build stamp" in tc.stamp_problem("TrueNorth golden", "srv", "b1", SUM)
+        assert "no single build stamp" in tc.stamp_problem(None, "srv", "b1", SUM)
+        assert "not srv build b1" in tc.stamp_problem(tc.stamp("srv", "b0", SUM), "srv", "b1", SUM)
+        assert "not srv build b1" in tc.stamp_problem(tc.stamp("srv", "b1", "b" * 64), "srv", "b1", SUM)
+        two = tc.stamp("srv", "b1", SUM) + "\n" + tc.stamp("srv", "b2", "b" * 64)
+        assert tc.stamp_of(two) is None  # cannot be shown to be one build
+
+    def test_another_images_build_with_the_same_id_and_checksum_is_refused(self):
+        assert "is stamped kali build b1" in tc.stamp_problem(tc.stamp("kali", "b1", SUM), "srv", "b1", SUM)
+
+
+class TestPrunable:
+    NOTES = {"srv@esx02-20260701": "", "srv@esx02-20261001": tc.stamp("srv", "b1", SUM), "srv@esx02-20261019": "",
+             "srv@esx04-20260101": tc.stamp("srv", "b1", SUM), "kali@esx02-20260101": "", "srv": "",
+             "unrelated-vm": ""}
+    POLICY = tc.PrunePolicy(protected=frozenset({"srv@esx02-20261001"}), managed=frozenset({"srv"}),
+                            builds=frozenset({("srv", "b1", SUM)}))
+
+    def test_only_copies_of_a_managed_template_not_protected(self):
+        deletable, kept = tc.prunable(self.NOTES, self.POLICY)
+        # The newest unrecorded copy goes as well as the oldest: no date ordering.
+        assert deletable == ["srv@esx02-20260701", "srv@esx02-20261019"]
+        assert kept == ["srv@esx02-20261001", "srv@esx04-20260101"]  # by name; by stamp
+
+    def test_nothing_without_a_policy(self):
+        assert tc.prunable(self.NOTES, tc.PrunePolicy()) == ([], [])
 
     def test_names_in_use_reads_every_recorded_vm(self):
         outputs = [{"vms": [{"template": "a@esx02-20261001"}, {"name": "legacy"}]}, {}, {"vms": None},
@@ -72,8 +98,8 @@ class FakeProvisioner:
     def connection_record(self):
         return {"id": None, "host": self.host}
 
-    async def prune_template_copies(self, in_use, *, dry_run):
-        self.calls.append((set(in_use), dry_run))
+    async def prune_template_copies(self, policy, *, dry_run):
+        self.calls.append((set(policy.protected), dry_run))
         if self.fail:
             raise RuntimeError(self.fail)
         return {"deletable": ["x@esx02-20260101"], "kept_in_use": [], "deleted": [] if dry_run else
@@ -82,7 +108,7 @@ class FakeProvisioner:
 
 @pytest.fixture
 def world(monkeypatch):
-    state = {"rows": [], "connections": [], "provisioners": {}}
+    state = {"rows": [], "builds": [], "connections": [], "provisioners": {}}
 
     @contextmanager
     def session():
@@ -90,6 +116,7 @@ def world(monkeypatch):
 
     monkeypatch.setattr(template_tasks, "_db_session", session)
     monkeypatch.setattr(template_tasks.db_ops, "undestroyed_range_outputs", lambda db: state["rows"])
+    monkeypatch.setattr(template_tasks.db_ops, "golden_image_build_copies", lambda db: state["builds"])
     monkeypatch.setattr(template_tasks.db_ops, "active_connection_creds", lambda db, kind: state["connections"])
     monkeypatch.setattr(template_tasks, "get_provisioner",
                         lambda backend, creds=None, **kw: state["provisioners"][(creds or {}).get("host", "env")])
@@ -157,3 +184,45 @@ class TestPruneTask:
         out = template_tasks.run_prune(dry_run=False)
         assert out["unreadable_outputs"] == ["r1"]
         assert out["dry_run"] is True and "unreadable" in out["deferred"]  # it may hold any copy
+
+
+# -- what pruning keeps, from the build records (ADR 0013 §2) ---------------------------
+T0 = datetime(2026, 10, 1, tzinfo=UTC)
+
+
+def _row(image, build_id, copies, *, promoted=False, at=T0, checksum=SUM, template="srv2022"):
+    return {"image_id": image, "catalogue_id": template, "image_template": template, "build_id": build_id,
+            "checksum": checksum, "build_template": template, "promoted": promoted, "created_at": at,
+            "copies": json.dumps(copies)}
+
+
+class TestPrunePolicy:
+    def test_promoted_and_newer_builds_are_protected_older_ones_are_not(self):
+        rows = [
+            _row("i1", "old", {"esx02": "srv2022@esx02-20260901"}, at=T0 - timedelta(days=30)),
+            _row("i1", "cur", {"esx02": "srv2022@esx02-20261001"}, promoted=True, at=T0),
+            _row("i1", "next", {"esx02": "srv2022@esx02-20261019"}, at=T0 + timedelta(days=18), checksum="b" * 64),
+        ]
+        policy = template_tasks.prune_policy(rows, {"srv2022@esx03-20260801"})
+        assert policy.managed == {"srv2022"}
+        assert policy.protected == {"srv2022@esx02-20261001", "srv2022@esx02-20261019", "srv2022@esx03-20260801"}
+        assert policy.builds == {("srv2022", "cur", SUM), ("srv2022", "next", "b" * 64)}
+        notes = {"srv2022@esx02-20260901": "", "srv2022@esx02-20261001": "", "srv2022@esx02-20261019": "",
+                 "srv2022@esx03-20260801": ""}
+        assert tc.prunable(notes, policy) == (["srv2022@esx02-20260901"],
+                                             ["srv2022@esx02-20261001", "srv2022@esx02-20261019",
+                                              "srv2022@esx03-20260801"])
+
+    def test_an_image_without_a_promoted_build_is_not_managed(self):
+        rows = [_row("i2", "b1", {"esx02": "kali@esx02-20261001"}, template="kali")]
+        policy = template_tasks.prune_policy(rows, set())
+        assert policy.managed == frozenset() and policy.builds == frozenset()
+        assert tc.prunable({"kali@esx02-20260101": "", "kali@esx02-20261001": ""}, policy) == ([], [])
+
+    def test_the_task_passes_the_policy_built_from_the_records(self, world):
+        a = _vc(world, "vc-a")
+        world["builds"] = [_row("i1", "cur", {"esx02": "srv2022@esx02-20261001"}, promoted=True)]
+        world["rows"] = [("r1", "ready", '{"vms": [{"template": "srv2022@esx03-20260801"}]}')]
+        out = template_tasks.run_prune(dry_run=False)
+        assert a.calls == [({"srv2022@esx02-20261001", "srv2022@esx03-20260801"}, False)]
+        assert out["managed"] == ["srv2022"]

@@ -1213,22 +1213,97 @@ class VsphereAPIProvisioner(BaseProvisioner):
         return _inventory_props(si, paths)
 
     @staticmethod
-    def _copy_index(templates: dict) -> dict[tuple[str, str], set[str]]:
-        """(base template, host short name) -> ids of the datastores its host-local copies
-        (``<template>@<host>-<date>``, ADR 0012) are on. Each copy's datastores read once."""
-        index: dict[tuple[str, str], set[str]] = {}
-        for name, vm in templates.items():
-            if (copy := template_copies.parse(name)) is not None:
-                index.setdefault((copy.base, copy.host), set()).update(
-                    str(getattr(d, "_moId", "")) for d in getattr(vm, "datastore", None) or [])
-        return index
+    def _source_names(vm_defs: list[dict]) -> tuple[set[str], set[str]]:
+        """(exact names, copy bases) of the inventory templates the build may clone (ADR 0013
+        §2): each pinned VM's promoted build's copies (and the build's own template, for
+        cluster placement), nothing else of its image. A VM the transition flag lets through
+        unpromoted: its plain template and its host-local copies (``<base>@<host>-<date>``),
+        so it still clones from its own host's disk (``_transition_copy``)."""
+        names: set[str] = set()
+        bases: set[str] = set()
+        for v in vm_defs:
+            build = v["template_build"]
+            if build.get("promoted"):
+                names.update((build.get("copies") or {}).values())
+                names.add(build.get("template_name") or "")
+            else:
+                names.add(v["template_name"])
+                bases.add(v["template_name"])
+        return {n for n in names if n}, bases
 
     @staticmethod
-    def _copy_stores(index: dict, vm_def: dict, host: infra.HostCapacity) -> frozenset:
-        """Names of ``host``'s datastores holding a host-local copy of the VM's template
-        (``_copy_index``): placement prefers such a host, and that datastore on it."""
-        ids = index.get((vm_def["template_name"], template_copies.host_short_name(host.name))) or set()
-        return frozenset(name for name, (_, ref) in host.datastores.items() if str(getattr(ref, "_moId", "")) in ids)
+    def _stores_of(vm, host: infra.HostCapacity) -> frozenset:
+        """Names of ``host``'s datastores the template ``vm`` is on."""
+        ids = {str(getattr(d, "_moId", "")) for d in getattr(vm, "datastore", None) or []}
+        return frozenset(n for n, (_, ref) in host.datastores.items() if str(getattr(ref, "_moId", "")) in ids)
+
+    def _transition_copy(self, templates: dict, vm_def: dict, host: infra.HostCapacity) -> tuple[str, frozenset]:
+        """TRANSITION ONLY (an unpromoted VM): the newest copy of its template on ``host``'s
+        own datastores, unverified (no build record to check it against), and those
+        datastores; ("", empty) when the host has none and the plain template is cloned."""
+        base = vm_def["template_name"]
+        local = {n: st for n, vm in templates.items() if template_copies.is_copy_of(n, base)
+                 and (st := self._stores_of(vm, host))}
+        name = template_copies.newest_local(local, base, host.name) or ""
+        return name, local.get(name, frozenset())
+
+    @staticmethod
+    def _plan_templates(vm_defs: list[dict], warnings: list[str]) -> None:
+        """Every VM must carry the build it is pinned to (worker/template_pins.py, ADR 0013 §2),
+        before anything is built. A VM let through unpromoted by the transition flag says so."""
+        if missing := [v["name"] for v in vm_defs if not isinstance(v.get("template_build"), dict)]:
+            raise RuntimeError(f"VMs {missing} are not pinned to a promoted template build (worker/template_pins.py); "
+                               "nothing was built")
+        for v in vm_defs:
+            if not v["template_build"].get("promoted"):
+                warnings.append(f"VM {v['name']}: template {v['template_name']!r} is NOT a promoted build (allowed by "
+                                f"{v['template_build'].get('allowed_by') or 'the transition flag'}); promote a build "
+                                "on the Golden Images page")
+
+    def _copy_check(self, templates: dict, dupes: set[str], vm_def: dict, host: infra.HostCapacity) -> frozenset | str:
+        """Placement's view of a pinned VM on ``host`` (vsphere_infra.CopyCheck): the names of
+        the host's datastores holding the promoted build's copy for that host, or why the
+        host cannot take the VM. A VM let through unpromoted may go anywhere (empty set)."""
+        build = vm_def["template_build"]
+        if not build.get("promoted"):
+            return self._transition_copy(templates, vm_def, host)[1]  # preferred, never required
+        short = template_copies.host_short_name(host.name)
+        what = f"build {build['build_id']} of {build['catalogue_id']}"
+        name = (build.get("copies") or {}).get(short)
+        if not name:
+            return f"{what} records no copy for host {short}"
+        if name in dupes:
+            return f"more than one template is named {name!r}"
+        if (vm := templates.get(name)) is None:
+            return f"{what}'s copy {name!r} is not an inventory template"
+        annotation = getattr(getattr(vm, "config", None), "annotation", None)
+        if problem := template_copies.stamp_problem(annotation, build["catalogue_id"], build["build_id"],
+                                                    build["checksum"]):
+            return f"copy {name!r} {problem}"
+        return self._stores_of(vm, host) or f"copy {name!r} is not on a datastore of {host.name}"
+
+    def _pinned_source(self, templates: dict, dupes: set[str], vm_def: dict) -> str:
+        """The exact template the placed VM clones (ADR 0013 §2), checked once more against
+        its placement: the promoted build's copy on its host; with cluster placement (no
+        host) the build's own template, stamped as that build. A failure names the VM."""
+        build = vm_def["template_build"]
+        host, _ = vm_def["_placement"]
+        if not build.get("promoted"):  # transition: its own host's copy when there is one
+            return (self._transition_copy(templates, vm_def, host)[0] if host is not None else "") \
+                or vm_def["template_name"]
+        if host is not None:
+            if isinstance(got := self._copy_check(templates, dupes, vm_def, host), str):
+                raise RuntimeError(f"VM {vm_def['name']} on {host.name}: {got}")
+            return build["copies"][template_copies.host_short_name(host.name)]
+        name = build.get("template_name") or ""
+        vm = None if name in dupes else templates.get(name)
+        problem = ("is not an inventory template (or is not unique)" if vm is None else
+                   template_copies.stamp_problem(getattr(vm.config, "annotation", None), build["catalogue_id"],
+                                                 build["build_id"], build["checksum"]))
+        if problem:
+            raise RuntimeError(f"VM {vm_def['name']}: build {build['build_id']} of {build['catalogue_id']}: template "
+                               f"{name!r} {problem} (VSPHERE_PLACEMENT=cluster clones the build's own template)")
+        return name
 
     def _prepare_sync(self, si, range_id: str, vm_defs: list[dict], networks: list[dict], physical: dict) -> dict:
         """Placement, the range's VM folder and port groups, and the inventory templates.
@@ -1240,17 +1315,20 @@ class VsphereAPIProvisioner(BaseProvisioner):
         site_notes: list[str] = []
         dc, cluster = self._datacenter_and_cluster(si)
         hosts = self._eligible_hosts(cluster)
-        # A role image's plain-OS fallback too (``_use_role_fallback``).
-        wanted = {v["template_name"] for v in vm_defs} | {
-            v["role_fallback_template"] for v in vm_defs if v.get("role_fallback_template")}
+        wanted, bases = self._source_names(vm_defs)
         view = si.content.viewManager.CreateContainerView(dc.vmFolder, [vim.VirtualMachine], True)
+        templates: dict = {}
+        dupes: set[str] = set()
         try:
-            # The plain templates and their host-local copies <id>@<host>-<yyyymmdd> (ADR 0012),
-            # in any folder but _retired (old hand-made templates moved aside: never a source).
-            templates = {vm.name: vm for vm in view.view
-                         if (vm.name in wanted or getattr(template_copies.parse(vm.name), "base", None) in wanted)
-                         and vm.config.template
-                         and getattr(getattr(vm, "parent", None), "name", None) != tags.RETIRED_FOLDER}
+            # Exactly the named templates (ADR 0013 §2: the promoted builds' copies), in any
+            # folder but _retired (old hand-made templates moved aside: never a source).
+            for vm in view.view:
+                if (vm.name in wanted or getattr(template_copies.parse(vm.name), "base", None) in bases) \
+                        and vm.config.template \
+                        and getattr(getattr(vm, "parent", None), "name", None) != tags.RETIRED_FOLDER:
+                    if vm.name in templates:
+                        dupes.add(vm.name)  # two templates of one name: neither is provably the build
+                    templates[vm.name] = vm
         finally:
             view.Destroy()
         if self._placement == "cluster":
@@ -1259,11 +1337,11 @@ class VsphereAPIProvisioner(BaseProvisioner):
                 raise RuntimeError(f"Datastore not found: {self._datastore!r}")
             placements = [(None, datastore)] * len(vm_defs)
         else:
-            index = self._copy_index(templates)
             placements = infra.place(hosts, vm_defs, self._placement, self._vcpu_ratio,
-                                     local=lambda v, h: self._copy_stores(index, v, h))
+                                     copies=lambda v, h: self._copy_check(templates, dupes, v, h))
         for vm_def, placed in zip(vm_defs, placements, strict=True):
             vm_def["_placement"] = placed
+            vm_def["_source"] = self._pinned_source(templates, dupes, vm_def)
 
         refs: dict = {}
         names = {n.get("vlan_id"): n.get("name", "") for n in networks}
@@ -1347,8 +1425,6 @@ class VsphereAPIProvisioner(BaseProvisioner):
             ]
 
         self._check_macs(si, dc, range_id, vm_defs)
-        for vm_def in vm_defs:
-            vm_def["_local_copy"] = self._local_copy(templates, vm_def)
         label = vm_defs[0].get("_label") if vm_defs else None
         folder = infra.ensure_range_folder(dc, self._range_folder, range_id, label or tags.range_key(range_id))
         return {"dc": dc, "cluster": cluster, "pool": self._pool(cluster), "folder": folder, "templates": templates,
@@ -1404,35 +1480,16 @@ class VsphereAPIProvisioner(BaseProvisioner):
         if name not in lab_port_groups():
             raise RuntimeError(f"port group {name!r} is not a lab network (LAB_PORT_GROUPS)")
 
-    @staticmethod
-    def _local_copy(templates: dict, vm_def: dict) -> str | None:
-        """The newest ``<template>@<host>-<yyyymmdd>`` copy that resides on the VM's placed
-        host's datastore, or None (no per-host placement, or no copy there: the plain name).
-
-        ADR 0012 decision 6: the hosts have local storage only, so a clone from a template
-        on another host copies its disks across the network."""
-        host, datastore = vm_def.get("_placement") or (None, None)
-        if host is None or datastore is None:
-            return None
-        here = getattr(datastore, "_moId", None)
-
-        def resides(vm) -> bool:
-            stores = getattr(vm, "datastore", None) or []
-            return any(d is datastore or (here and getattr(d, "_moId", None) == here) for d in stores)
-
-        local = [name for name, vm in templates.items()
-                 if template_copies.is_copy_of(name, vm_def["template_name"]) and resides(vm)]
-        return template_copies.newest_on_host(local, vm_def["template_name"], host.name)
-
     def _clone_sync(self, si, site: dict, vm_def: dict):
         """Clone the inventory VM template onto the placed host and datastore, NICs wired, powered off.
 
-        From the host-local copy when there is one (``_local_copy``), else the plain template."""
-        source = vm_def.get("_local_copy") or vm_def["template_name"]
+        Exactly ``_source`` (``_pinned_source``): the promoted build's copy on the placed host,
+        or, let through unpromoted by the transition flag, the image's plain template."""
+        source = vm_def["_source"]
         template = site["templates"].get(source)
         if template is None:
             raise RuntimeError(
-                f"template {vm_def['template_name']!r} is neither a Content Library item nor an inventory VM template"
+                f"template {source!r} is neither a Content Library item nor an inventory VM template"
             )
         host, datastore = vm_def["_placement"]
         config = infra.hardware_spec(vm_def, template.config.hardware.device, vm_def["_refs"])
@@ -1444,13 +1501,13 @@ class VsphereAPIProvisioner(BaseProvisioner):
             template=False,
             config=config,
         )
-        if vm_def.get("_local_copy"):
-            logger.info("Cloning %r from host-local template copy %r on %s", vm_def["name"], source,
-                        host.name if host else "?")
+        build = vm_def["template_build"]
+        if build.get("promoted"):
+            logger.info("Cloning %r from %r (promoted build %s of %s) on %s", vm_def["name"], source,
+                        build["build_id"], build["catalogue_id"], host.name if host else "the cluster")
         else:
-            logger.info("Cloning %r from template %r (no host-local copy on %s)", vm_def["name"], source,
-                        host.name if host else "the cluster")
-        vm_def["_source"] = source
+            logger.warning("Cloning %r from UNPROMOTED template %r on %s (%s)", vm_def["name"], source,
+                           host.name if host else "the cluster", build.get("allowed_by"))
         task = template.CloneVM_Task(folder=site["folder"], name=vm_def["name"], spec=spec)
         self._wait(task, si)
         vm = task.info.result
@@ -1671,6 +1728,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
         try:
             if SmartConnect is None:
                 raise RuntimeError("pyvmomi is required to build vSphere ranges (pip install pyvmomi)")
+            self._plan_templates(vm_defs, warnings)  # pinned builds (ADR 0013), before anything is built
             uplink = self._plan_uplink(vm_defs, allocations)
             self._plan_accounts(vm_defs, warnings)
             self._plan_software(vm_defs, uplink, warnings)
@@ -2682,36 +2740,25 @@ class VsphereAPIProvisioner(BaseProvisioner):
             errors.append(f"cleanup after the failed build: {exc}")
 
     @staticmethod
-    def _role_image_absent(site: dict, vm_def: dict) -> bool:
-        """The VM's role image is neither a library item (checked by the caller) nor an
-        inventory template or host-local copy on this vCenter, and it has a plain OS to fall
-        back to (render.py ``role_fallback_template``)."""
-        return bool(vm_def.get("role_fallback_template")) and not vm_def.get("_local_copy") \
-            and vm_def["template_name"] not in site["templates"]
-
-    def _use_role_fallback(self, site: dict, vm_def: dict) -> None:
-        """Build the plain OS instead; the role then reports itself not installed
-        (``_install_roles``), as for an image the registry does not list as built."""
-        image = vm_def["template_name"]
-        vm_def["role_image_missing"] = image
-        vm_def["template_name"] = vm_def.pop("role_fallback_template")
-        vm_def["_local_copy"] = self._local_copy(site["templates"], vm_def)
-        logger.warning("VM %s: role image %s is not on the vCenter; building %s", vm_def["name"], image,
-                       vm_def["template_name"])
+    def _build_record(vm_def: dict) -> dict:
+        """What the VM was built from, for its range record (ADR 0013 §2, read by the S6
+        certification record): the promoted build, or that it was not one."""
+        build = vm_def["template_build"]
+        keys = ("catalogue_id", "build_id", "checksum", "build_date", "iso_checksum") if build.get("promoted") \
+            else ("catalogue_id", "allowed_by")
+        return {"promoted": bool(build.get("promoted")), **{k: build.get(k, "") for k in keys},
+                "source": vm_def["_source"]}
 
     async def _provision_one_vm(self, client: httpx.AsyncClient, si, site: dict, vm_def: dict) -> dict:
         """Create one VM (OVF item or inventory clone), wire and customize it, power it on."""
         vm_id = None
         async with self._semaphore:
             try:
-                # A host-local inventory copy first (ADR 0012); else the Content Library item,
-                # else the plain inventory template, as before.
-                item = None if vm_def.get("_local_copy") else await self._find_library_item(
-                    client, vm_def["template_name"])
-                if item is None and self._role_image_absent(site, vm_def):
-                    self._use_role_fallback(site, vm_def)
-                    item = None if vm_def.get("_local_copy") else await self._find_library_item(
-                        client, vm_def["template_name"])
+                # A promoted build: exactly its copy on the placed host, never a library item
+                # (ADR 0013 §2). Let through unpromoted: its own host's copy, else the library
+                # item, else the plain template.
+                item = None if vm_def["template_build"].get("promoted") or vm_def["_source"] != \
+                    vm_def["template_name"] else await self._find_library_item(client, vm_def["template_name"])
                 if item:
                     vm_def["_source"] = f"library:{vm_def['template_name']}"
                     vm_id = await self._deploy_ovf(client, item, vm_def, site)
@@ -2754,7 +2801,8 @@ class VsphereAPIProvisioner(BaseProvisioner):
             ],
             "host": host.name if host else "",
             "datastore": getattr(datastore, "name", ""),
-            "template": vm_def.get("_source", vm_def["template_name"]),  # template_copies.names_in_use
+            "template": vm_def["_source"],  # template_copies.names_in_use
+            "template_build": self._build_record(vm_def),
             "tools_ready": guest_net["tools_ready"],
             "family": infra.os_family(vm_def),  # windows | linux | appliance (credential rotation)
         }
@@ -2786,12 +2834,13 @@ class VsphereAPIProvisioner(BaseProvisioner):
                 out.append({"vm_id": vm_id, "name": name, "range_id": rid})
         return out
 
-    async def prune_template_copies(self, in_use: set[str], *, dry_run: bool = True) -> dict:
-        """Delete host-local template copies (``<id>@<host>-<yyyymmdd>``) older than the newest
-        copy of the same template on the same host, unless a range VM records it was cloned
-        from one (``in_use``). ``dry_run`` (the default) only reports. Only inventory
-        *templates* whose names parse as copies are candidates; plain templates and VMs never
-        are, and each is re-checked to still be a template just before it is destroyed.
+    async def prune_template_copies(self, policy: template_copies.PrunePolicy, *, dry_run: bool = True) -> dict:
+        """Delete host-local template copies (``<id>@<host>-<yyyymmdd>``) of images with a
+        promoted build that no build record still needs and no range records
+        (``template_copies.prunable``, ADR 0013 §2). ``dry_run`` (the default) only reports.
+        Only inventory *templates* whose names parse as copies are candidates; plain templates
+        and VMs never are. Each is re-checked just before it is destroyed: still that template,
+        and not stamped as a protected build.
 
         Returns ``{"deletable", "kept_in_use", "deleted", "errors", "dry_run"}`` (names)."""
         if SmartConnect is None:
@@ -2800,10 +2849,14 @@ class VsphereAPIProvisioner(BaseProvisioner):
         def run() -> dict:
             with self._vim() as si:
                 ids: dict[str, list[str]] = {}
-                for vm_id, name, _annotation, template in self._vm_rows_sync(si):
+                notes: dict[str, str | None] = {}
+                for vm_id, name, annotation, template in self._vm_rows_sync(si):
                     if template and template_copies.parse(name):
                         ids.setdefault(name, []).append(vm_id)
-                deletable, kept = template_copies.stale(ids, in_use)
+                        # Two templates of one name: kept when either carries a protected stamp.
+                        if template_copies.stamp_of(notes.get(name)) not in policy.builds:
+                            notes[name] = annotation
+                deletable, kept = template_copies.prunable(notes, policy)
                 deleted: list[str] = []
                 errors: list[str] = []
                 for name in [] if dry_run else deletable:
@@ -2812,6 +2865,9 @@ class VsphereAPIProvisioner(BaseProvisioner):
                             vm = self._vm(si, vm_id)
                             if vm.name != name or not vm.config.template:
                                 errors.append(f"{name} ({vm_id}): no longer that template, left alone")
+                                continue
+                            if template_copies.stamp_of(getattr(vm.config, "annotation", None)) in policy.builds:
+                                errors.append(f"{name} ({vm_id}): stamped as a protected build, left alone")
                                 continue
                             self._wait(vm.Destroy_Task(), si)
                             deleted.append(name)

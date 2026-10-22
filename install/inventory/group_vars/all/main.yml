@@ -291,6 +291,12 @@ tn_vsphere_tools_timeout: 120
 # IPs in VMware Tools before the range is failed; "off" only for a simulator without Tools.
 tn_vsphere_guest_ip_timeout: 600
 tn_vsphere_guest_ip_check: require
+# Golden-image pinning (ADR 0013 §2): every range VM clones its image's PROMOTED build (an
+# admin promotes one on the Golden Images page). Transition only: "true" lets images that are
+# `built` but have no promoted build through, cloning their plain template with a loud
+# warning; a comma list of catalogue ids (ubuntu-lts) lets only those through. It switches
+# off per image: an image with a promoted build always clones that build. Default: off.
+tn_template_allow_unpromoted: "false"
 # Range NIC MACs come from this slice of VMware's manual range (00:50:56:00:00:00-
 # 00:50:56:3f:ff:ff), reserved per NIC. EACH TrueNorth install on a shared vCenter needs its
 # OWN, non-overlapping slice (two installs on one slice hand out the same MACs). Empty: the

@@ -196,6 +196,14 @@ depot_url_set() { pkrvars_check 2>/dev/null | grep -q '^depot_url=.\+'; }
 register() { # register <id> [extra args for register_golden_image_inprocess.py]
   local id="$1"; shift
   local compose="$APP_DIR/infra/platform/docker/compose.prod.yml"
+  # The build record build.sh wrote and replicate filled in (ADR 0013 §2): recorded with the
+  # image, never promoted. An admin promotes it on the Golden Images page.
+  if [[ -f "$PACKER_DIR/logs/$id.build.json" ]]; then
+    set -- "$@" --build-record "/srcapp/infra/vsphere/packer/logs/$id.build.json"
+  else
+    warn "$id: no build record ($PACKER_DIR/logs/$id.build.json): registered built with no build to promote." \
+      "Ranges need TN_TEMPLATE_ALLOW_UNPROMOTED until '$PACKER_DIR/build.sh manifest $id' + replicate (new REPLICA_DATE)."
+  fi
   local cmd=(docker compose -f "$compose" --env-file "$ENV_FILE" run --rm --no-deps -T -w /app
              -e PYTHONPATH=/app -v "$REPO:/srcapp:ro" --entrypoint python api
              /srcapp/scripts/register_golden_image_inprocess.py --admin "${ADMIN:-<admin upn>}"
