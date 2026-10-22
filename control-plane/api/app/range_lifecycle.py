@@ -143,6 +143,15 @@ def destroy_for_booking(db: Session, range_id: uuid.UUID, window_bypass: str | N
     rng = db.get(Range, range_id)
     if rng is None or rng.deleted_at is not None:
         return True, "range no longer exists"
+    if rng.state == RangeState.destroying and window_bypass:
+        # A person's destroy may be held by a maintenance window on this range: a teardown
+        # that always runs takes it over and sends it now, rather than counting it as settled.
+        from .range_ops import service as ops
+
+        if (op := ops.run_destroy_with_bypass(db, rng, window_bypass)) is not None:
+            db.commit()
+            sent = ops.dispatch(db, op) if op.status == "pending" else True
+            return True, f"teardown already in progress; now as {window_bypass}" + ("" if sent else ", will be re-sent")
     if rng.state in (RangeState.destroying, RangeState.destroyed):
         return True, f"range already {rng.state.value}"
     try:

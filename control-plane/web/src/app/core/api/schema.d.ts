@@ -9508,7 +9508,7 @@ export interface components {
             deployment_id: string;
             /**
              * Deployment Status
-             * @description The provision operation's status: pending, dispatched (building), succeeded, failed, superseded
+             * @description The provision operation's status: pending, dispatched (building), held (by a maintenance window, re-sent when it ends), succeeded, failed, superseded
              */
             deployment_status: string;
             /** Generation */

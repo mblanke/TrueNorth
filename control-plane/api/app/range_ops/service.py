@@ -406,11 +406,48 @@ def released_holds(db: Session, limit: int) -> list[RangeOperation]:
         if not page:
             break
         # tenant-safe: the operations' own ranges, recorded in their tenants at acceptance.
-        ranges = db.query(Range).filter(Range.id.in_({op.range_id for op in page})).all()
+        ranges = (
+            db.query(Range.id, Range.tenant_id, Range.template_id)
+            .filter(Range.id.in_({op.range_id for op in page}))
+            .all()
+        )
         still = windows.held_range_ids(db, ranges)
         out += [op for op in page if op.range_id not in still][: limit - len(out)]
         after = (page[-1].created_at, page[-1].id)
     return out
+
+
+def run_destroy_with_bypass(db: Session, rng: Range, window_bypass: str) -> RangeOperation | None:
+    """A teardown that always runs (``window_bypass``) on a range already ``destroying``
+    because of a person's destroy that a window holds or that has not run yet: that destroy
+    takes the bypass and is sent now (a held one goes back to ``pending``; one already sent
+    finds the bypass when its task starts, worker/maintenance_windows.py). Returns the
+    operation, or None when there is no such destroy in flight. Does not send; the caller
+    commits and then ``dispatch``es it."""
+    from ..maintenance_windows import policy as window_policy
+
+    if window_bypass not in window_policy.BYPASS_KINDS:
+        raise ValueError(f"no maintenance-window bypass {window_bypass!r}")
+    op = (
+        db.query(RangeOperation)
+        .filter(
+            RangeOperation.range_id == rng.id,
+            RangeOperation.action == "destroy",
+            RangeOperation.status.in_(IN_FLIGHT),
+        )
+        .order_by(RangeOperation.generation.desc())
+        .with_for_update()
+        .first()
+    )
+    if op is None:
+        return None
+    if not op.window_bypass:
+        op.window_bypass = window_bypass
+    if op.status == HELD:
+        op.status = "pending"
+        op.error = {"code": "bypass", "message": f"Runs now: {window_bypass} teardown of a held destroy"}
+    db.flush()
+    return op
 
 
 def parked(db: Session, rng: Range) -> bool:

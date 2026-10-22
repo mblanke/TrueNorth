@@ -459,6 +459,21 @@ class TestParkedRanges:
         assert resp.status_code == 202
         assert "overrode maintenance window" in _audits(db_session, "emergency_teardown")[0].detail
 
+    def test_force_release_explains_a_held_operation(self, client, db_session, no_real_broker):
+        from app.range_leases import RangeLease
+
+        rng = _range(db_session, RangeState.ready, output=VMS)
+        op_id = client.post(f"/ranges/{rng.id}/destroy").headers["Operation-Id"]
+        _window(client)
+        TestHeldOperations._hold(db_session, op_id)
+        db_session.add(RangeLease(range_id=rng.id, holder="abandoned:stop:abc",
+                                  expires_at=_now() - timedelta(minutes=1)))
+        db_session.commit()
+        status = client.get(f"/ranges/{rng.id}/lease").json()
+        assert status["force_release_allowed"] is False
+        assert "held by a maintenance window" in status["reason"] and op_id in status["reason"]
+        assert "Abandon the held operation first" in status["reason"]
+
     def test_a_destroying_range_without_the_hold_reason_is_not_parked(self, client, db_session):
         rng = _range(db_session, RangeState.destroying, output=VMS)
         resp = client.post(f"/ranges/{rng.id}/emergency-teardown",
@@ -485,6 +500,22 @@ class TestSchedulerBypass:
         db_session.refresh(rng)
         assert rng.state == RangeState.destroying
         assert _ops(db_session, rng)[-1].window_bypass == "booking_ended"
+
+    def test_a_booking_end_takes_over_a_held_persons_destroy(self, client, db_session, no_real_broker):
+        """Third review of #261: the range was already destroying (a person's destroy, held by the
+        window), so the booking's teardown counted as settled and nothing ran until the window ended."""
+        rng = _range(db_session, RangeState.ready, output=VMS)
+        self._booking(db_session, rng, EventState.active, auto=True)
+        op_id = client.post(f"/ranges/{rng.id}/destroy").headers["Operation-Id"]  # before the window
+        _window(client)
+        TestHeldOperations._hold(db_session, op_id)  # the worker held it: accepted inside the window
+        no_real_broker.sent.clear()
+        res = clock.tick(db_session, now=self.START + timedelta(hours=4))
+        assert res.completed == 1
+        op = db_session.get(RangeOperation, uuid.UUID(op_id))
+        assert (op.window_bypass, op.status) == ("booking_ended", "dispatched")
+        assert no_real_broker.sent == [("worker.tasks.destroy_range", [str(rng.id)])]
+        assert len(_ops(db_session, rng)) == 1, "the same teardown, now with the bypass; not a second one"
 
     def test_a_cancelled_bookings_teardown_waits_for_the_window(self, client, db_session, no_real_broker):
         rng = _range(db_session, RangeState.ready, output=VMS)
