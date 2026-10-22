@@ -335,11 +335,11 @@ from .class_setup.router import router as class_setup_router  # noqa: E402 (#200
 from .cmi5.router import router as cmi5_router  # noqa: E402 (also registers the cmi5 tables)
 from .golden_image_builds.router import router as golden_image_builds_router  # noqa: E402 (ADR 0013; + its table)
 from .live_class.router import router as live_class_router  # noqa: E402 (issue #199)
+from .maintenance_windows.router import emergency_router as emergency_teardown_router  # noqa: E402 (ADR 0013 §7)
+from .maintenance_windows.router import router as maintenance_windows_router  # noqa: E402 (+ its table)
 from .range_certification.router import keys_router as range_certification_keys_router  # noqa: E402
 from .range_certification.router import router as range_certification_router  # noqa: E402 (ADR 0013 §6; + tables)
 from .range_credentials.issues_router import router as range_credential_issues_router  # noqa: E402 (ADR 0013)
-from .maintenance_windows.router import emergency_router as emergency_teardown_router  # noqa: E402 (ADR 0013 §7)
-from .maintenance_windows.router import router as maintenance_windows_router  # noqa: E402 (+ its table)
 from .range_credentials.router import router as range_credentials_router  # noqa: E402 (ADR 0012; + its table)
 from .routers import (
     ad_sync_router,
