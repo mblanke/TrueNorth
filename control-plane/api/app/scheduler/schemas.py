@@ -42,6 +42,9 @@ class EventIn(BaseModel):
     )
     exercise_id: str | None = Field(None, description="Use this existing exercise (and its range) instead")
     draft: bool = Field(False, description="Create as a draft: holds nothing and is not checked until scheduled")
+    require_certified_range: bool = Field(
+        False, description="Require a certified range (ADR 0013 §6). Stored; not enforced until isolation "
+                           "evidence (range certification S4) exists")
 
 
 class EventOut(BaseModel):
@@ -57,6 +60,7 @@ class EventOut(BaseModel):
     course_id: str | None = None
     scenario_id: str | None = None
     exercise_id: str | None = None
+    require_certified_range: bool = False
     start_time: datetime
     end_time: datetime
     vm_count: int

@@ -11,11 +11,13 @@ import { catchError, map } from 'rxjs/operators';
 import {
   NetworkReservation, OPERATION_IN_FLIGHT, RangeDetail, RangeLeaseStatus, RangeOperation, RangeRecoveryApiService,
 } from '@core/services/range-recovery-api.service';
+import { roleCan } from '@core/auth/permissions';
 import { AuthService } from '@core/services/auth.service';
 import { NotificationService } from '@core/services/notification.service';
 import {
   ImpactDialogComponent, ImpactDialogData, ImpactDialogResult,
 } from '../../shared/components/impact-dialog/impact-dialog.component';
+import { RangeCertificationComponent } from '../../shared/components/range-certification/range-certification.component';
 import { RangeCredentialsComponent } from '../../shared/components/range-credentials/range-credentials.component';
 import { RangeTopologyComponent } from '../../shared/components/range-topology/range-topology.component';
 import { RangeSnapshotsComponent } from './range-snapshots.component';
@@ -36,7 +38,7 @@ const POLL_MS = 10_000;
 @Component({
   selector: 'tn-range-detail',
   imports: [CommonModule, RouterLink, MatButtonModule, MatCardModule, MatIconModule, MatTooltipModule,
-    RangeCredentialsComponent, RangeSnapshotsComponent, RangeTopologyComponent],
+    RangeCertificationComponent, RangeCredentialsComponent, RangeSnapshotsComponent, RangeTopologyComponent],
   template: `
     <div class="page-container">
       <a mat-button routerLink="/authoring/ranges" class="back"><mat-icon>arrow_back</mat-icon> Ranges</a>
@@ -200,6 +202,13 @@ const POLL_MS = 10_000;
           }
         </mat-card>
 
+        <!-- Range Certification Record (ADR 0013 §6): staff only -->
+        @if (seeCertification()) {
+          <mat-card class="section">
+            <tn-range-certification [rangeId]="r.id" />
+          </mat-card>
+        }
+
         <!-- Machine accounts (ADR 0012): masked, fetched on request, audited by the API -->
         <mat-card class="section">
           <tn-range-credentials [rangeId]="r.id" />
@@ -254,6 +263,7 @@ export class RangeDetailComponent implements OnInit, OnDestroy {
   outcome = signal<{ kind: 'ok' | 'error'; title: string; lines: string[] } | null>(null);
 
   readonly caps = computed(() => rangeCapabilities(this.auth.user()?.role, this.auth.isPlatformAdmin()));
+  readonly seeCertification = computed(() => roleCan(this.auth.user()?.role, 'range:certification_read'));
   readonly polling = computed(() => {
     const ops = this.operations().data ?? [];
     return ops.some(op => this.inFlight(op)) || !!this.lease().data?.blocking;

@@ -56,6 +56,7 @@ from ..models import (
 )
 from ..network_inventory import NetworkReservation, NetworkReservationOut
 from ..provisioner_choice import configured_backend
+from ..range_certification import service as certification
 from ..range_credentials import accounts as template_accounts
 from ..range_credentials import service as range_credentials
 from ..range_ops import service as ops
@@ -694,6 +695,8 @@ def abandon_range_operation(
     fenced = ops.abandon(db, rng, op, user)
     detail = f"operation {op.id}" + ("; worker lease fenced (tombstone)" if fenced else "")
     _audit(db, user, "abandon_operation", "range", str(rng.id), detail)
+    certification.record_override(db, rng, "force", "abandon_operation", user, None,
+                                  {"operation_id": str(op.id), "lease_fenced": fenced})
     db.commit()
     return op
 
@@ -738,6 +741,8 @@ def force_release_range_lease(
         db, user, "force_release_lease", "range", str(rng.id),
         f"released {holder} (expired: {expired}); reason: {body.reason}",
     )
+    certification.record_override(db, rng, "force", "force_release_lease", user, body.reason,
+                                  {"released_holder": holder, "was_expired": expired})
     db.commit()
     logger.warning("range %s: lease tombstone force-released by user %s: %s", rng.id, user.id, body.reason)
     return ops.ForceReleaseOut(
@@ -762,6 +767,8 @@ def abandon_range(
     its VLANs and NIC MACs for other ranges while those VMs may still exist.
     **Permission: platform administrator**"""
     rng = range_abandon.abandon(db, range_id, user, body.reason, body.force_release_resources)
+    certification.record_override(db, rng, "force", "abandon_range", user, body.reason,
+                                  {"force_release_resources": body.force_release_resources})
     db.commit()
     db.refresh(rng)
     logger.warning("range %s: abandoned (marked destroyed, hypervisor untouched) by %s: %s", rng.id, user.id,

@@ -283,6 +283,10 @@ tn_vcenter_connection_update_password: false
 # stay current without anyone pressing Discover. 0 turns the schedule off (figures then
 # change only on Refresh now / Discover). install/README.md "Infrastructure page".
 tn_infra_discovery_seconds: 300
+# Rendered as RANGE_CERT_RETENTION_MONTHS. Range Certification Records of earlier builds
+# (archived; a range's current record is never purged) are deleted this many months after
+# they were opened, each with an audit row; export them first. 0 keeps them forever.
+tn_range_cert_retention_months: 12
 # Empty: clone the inventory VM templates (tmpl-*). Set once a Content Library exists.
 tn_vsphere_content_library: ""
 tn_vsphere_concurrency: 4

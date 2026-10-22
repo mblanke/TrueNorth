@@ -51,6 +51,10 @@ class ScheduledEvent(TimestampMixin, Base):
     scenario_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("scenarios.id"), nullable=True)
     exercise_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("exercises.id"), nullable=True)
     auto_exercise: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    # The instructor requires a certified range (ADR 0013 §6, range certification S6). Stored
+    # only: the booking is not refused yet, because no range can be certified until isolation
+    # evidence (S4) exists. Enforcement calls range_certification.service.booking_gate.
+    require_certified_range: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
 
     # Schedule
     start_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

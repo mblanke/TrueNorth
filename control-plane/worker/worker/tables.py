@@ -401,6 +401,45 @@ range_credential_snapshots = sa.Table(
     sa.Column("password", sa.Text(), nullable=False),
 )
 
+range_certification_entries = sa.Table(
+    "range_certification_entries",
+    metadata,
+    sa.Column("id", GUID(), primary_key=True),
+    sa.Column("record_id", GUID(), nullable=False),
+    sa.Column("tenant_id", GUID(), nullable=False),
+    sa.Column("seq", sa.Integer(), nullable=False),
+    sa.Column("section", sa.String(32), nullable=False),
+    sa.Column("status", sa.String(16), nullable=False),
+    sa.Column("summary", sa.String(500), nullable=False),
+    sa.Column("detail", sa.JSON(), nullable=False),
+    sa.Column("source", sa.String(64), nullable=False),
+    sa.Column("actor_id", GUID()),
+    sa.Column("actor", sa.String(255), nullable=False),
+    sa.Column("reason", sa.Text()),
+    sa.Column("corrects_seq", sa.Integer()),
+    sa.Column("recorded_at", sa.DateTime(timezone=True), nullable=False),
+)
+
+range_certification_records = sa.Table(
+    "range_certification_records",
+    metadata,
+    sa.Column("id", GUID(), primary_key=True),
+    sa.Column("deployment_id", GUID(), nullable=False),
+    sa.Column("generation", sa.Integer(), nullable=False),
+    sa.Column("tenant_id", GUID(), nullable=False),
+    sa.Column("range_id", GUID(), nullable=False),
+    sa.Column("range_name", sa.String(255), nullable=False),
+    sa.Column("template_id", GUID()),
+    sa.Column("template_name", sa.String(255), nullable=False),
+    sa.Column("template_version", sa.String(50), nullable=False),
+    sa.Column("plan_hash", sa.String(64), nullable=False),
+    sa.Column("plan_hash_basis", sa.String(64), nullable=False),
+    sa.Column("prior_output_sha256", sa.String(64), nullable=False),
+    sa.Column("opened_by_id", GUID()),
+    sa.Column("opened_by", sa.String(255), nullable=False),
+    sa.Column("opened_at", sa.DateTime(timezone=True), nullable=False),
+)
+
 range_credentials = sa.Table(
     "range_credentials",
     metadata,
@@ -601,6 +640,8 @@ __all__ = [
     "metadata",
     "network_reservations",
     "objectives",
+    "range_certification_entries",
+    "range_certification_records",
     "range_credential_snapshots",
     "range_credentials",
     "range_greyspace",

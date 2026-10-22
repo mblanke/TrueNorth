@@ -593,6 +593,9 @@ services:
       # Scheduled rediscovery of every active hypervisor connection, in seconds; 0 turns it
       # off (app/infra_discovery; installer: tn_infra_discovery_seconds).
       INFRA_DISCOVERY_SECONDS: ${INFRA_DISCOVERY_SECONDS:-300}
+      # Archived Range Certification Records older than this are purged; 0 keeps them
+      # (app/range_certification/retention.py; installer: tn_range_cert_retention_months).
+      RANGE_CERT_RETENTION_MONTHS: ${RANGE_CERT_RETENTION_MONTHS:-12}
     volumes:
       # Matches SCENARIO_ENGINE_DIR above. The engine is not part of the api
       # build context, so without this mount it is simply absent at runtime.

@@ -45,6 +45,8 @@ class Permission(str, Enum):
     RANGE_CREDENTIALS_READ = "range:credentials_read"
     # Give one range account a new password (staff accounts change only this way). Admin only.
     RANGE_CREDENTIALS_ROTATE = "range:credentials_rotate"
+    # The Range Certification Record (ADR 0013 §6): staff only, never Students or observers.
+    RANGE_CERTIFICATION_READ = "range:certification_read"
 
     # Template management
     TEMPLATE_CREATE = "template:create"
@@ -171,6 +173,7 @@ ROLE_PERMISSIONS: dict[UserRole, set[Permission]] = {
         Permission.RANGE_DESTROY,
         Permission.RANGE_BATCH_PROVISION,
         Permission.RANGE_CREDENTIALS_READ,
+        Permission.RANGE_CERTIFICATION_READ,
         # Templates
         Permission.TEMPLATE_READ,
         Permission.TEMPLATE_CREATE,
@@ -238,6 +241,7 @@ ROLE_PERMISSIONS: dict[UserRole, set[Permission]] = {
         Permission.RANGE_DESTROY,
         Permission.RANGE_BATCH_PROVISION,
         Permission.RANGE_CREDENTIALS_READ,
+        Permission.RANGE_CERTIFICATION_READ,
         Permission.TEMPLATE_READ,
         Permission.TEMPLATE_CREATE,
         Permission.TEMPLATE_UPDATE,

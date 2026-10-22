@@ -45,6 +45,8 @@ WORKER_TABLES = (
     "network_reservations",
     "objectives",
     "range_credential_snapshots",
+    "range_certification_entries",  # ADR 0013 §6: worker-side slices append evidence (never update)
+    "range_certification_records",
     "range_credentials",
     "range_greyspace",
     "range_leases",
@@ -87,6 +89,7 @@ def render() -> str:
     import app.greyspace.models  # noqa: F401
     import app.lab_sessions  # noqa: F401 — lab_sessions
     import app.network_inventory  # noqa: F401 — section models register their tables on import
+    import app.range_certification  # noqa: F401
     import app.range_credentials  # noqa: F401
     import app.range_leases  # noqa: F401
     import app.scenario_runs  # noqa: F401

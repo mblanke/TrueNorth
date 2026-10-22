@@ -267,7 +267,7 @@ Permissions follow the pattern `resource:action`:
 
 | Category | Permissions |
 |----------|------------|
-| **Range** | `range:create`, `range:read`, `range:update`, `range:delete`, `range:provision`, `range:destroy`, `range:batch_provision`, `range:lease_force_release`, `range:credentials_read` |
+| **Range** | `range:create`, `range:read`, `range:update`, `range:delete`, `range:provision`, `range:destroy`, `range:batch_provision`, `range:lease_force_release`, `range:credentials_read`, `range:certification_read` |
 | **Template** | `template:create`, `template:read`, `template:update`, `template:delete` |
 | **Scenario** | `scenario:create`, `scenario:read`, `scenario:update`, `scenario:delete` |
 | **Exercise** | `exercise:create`, `exercise:read`, `exercise:update`, `exercise:delete`, `exercise:control` |
@@ -296,6 +296,7 @@ Complete role-to-permission mapping as defined in `rbac.py`:
 | `range:batch_provision` | X | | | | X |
 | `range:lease_force_release` | X | | | | |
 | `range:credentials_read` (ADR 0012; Students read only accounts handed to them on ranges they take part in, without it) | X | X | | | X |
+| `range:certification_read` (ADR 0013 §6: the Range Certification Record and its signed exports) | X | X | | | X |
 | `template:create` | X | X | | | |
 | `template:read` | X | X | X | X | X |
 | `template:update` | X | X | | | |
