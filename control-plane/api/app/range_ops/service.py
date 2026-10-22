@@ -79,6 +79,8 @@ class RangeOperationOut(BaseModel):
     generation: int
     status: str
     idempotency_key: str | None = None
+    # Set on a teardown that runs inside a maintenance window: emergency, booking_ended, ...
+    window_bypass: str | None = None
     task_id: str | None = None
     dispatch_attempts: int
     error: dict | None = None
@@ -228,13 +230,28 @@ def _check(db: Session, rng: Range, action: str) -> None:
 
 
 def accept(
-    db: Session, range_id: uuid.UUID, user: CurrentUser, action: str, idempotency_key: str | None = None
+    db: Session,
+    range_id: uuid.UUID,
+    user: CurrentUser,
+    action: str,
+    idempotency_key: str | None = None,
+    *,
+    window_bypass: str | None = None,
 ) -> tuple[RangeOperation, Range, bool]:
     """Record ``action`` on the range and move it to the in-progress state. Does not commit.
 
     Returns (operation, range, created). ``created`` is False when an Idempotency-Key
     replay returned the original operation; the caller then changes nothing.
+
+    A provision or destroy is refused (409) while a maintenance window covers the range,
+    unless it is a teardown that always runs: ``window_bypass`` (a destroy only) names
+    which, and is recorded on the operation for the worker's re-check.
     """
+    from ..maintenance_windows import policy as window_policy
+    from ..maintenance_windows import service as windows
+
+    if window_bypass is not None and (action != "destroy" or window_bypass not in window_policy.BYPASS_KINDS):
+        raise ValueError(f"no maintenance-window bypass {window_bypass!r} for {action}")
     spec = ACTIONS[action]
     rng = _locked_range(db, range_id, user)
     digest = _request_hash(action)
@@ -248,6 +265,8 @@ def accept(
             if existing.request_hash != digest:
                 raise HTTPException(409, "This Idempotency-Key was already used for a different request")
             return existing, rng, False
+    if action in window_policy.REFUSED_ACTIONS and window_bypass is None:
+        windows.refuse_inside(db, rng, action)  # before _check, which supersedes in-flight work
     _check(db, rng, action)
     if action == "provision":
         _reserve_for_provision(db, rng)
@@ -266,6 +285,7 @@ def accept(
         idempotency_key=idempotency_key,
         request_hash=digest,
         requested_by=_user_uuid(user),
+        window_bypass=window_bypass,
         status="pending",
         dispatch_attempts=0,
     )

@@ -876,6 +876,87 @@ transaction (one refusal accepts none). `task_id` carries the operations' ids, c
 
 ---
 
+## Maintenance windows
+
+ADR 0013 §7 (range certification S7). While a window covers a range, these are refused with
+`409`, the window's reason and end time (UTC) in `detail`, and `Retry-After` (seconds until
+it ends):
+
+- `POST /ranges/{id}/provision`, `POST /ranges/batch-provision` (one covered range refuses
+  the batch), an exercise run that provisions its range, and the scheduler clock's build;
+- `POST /ranges/{id}/snapshots/{snapshot_id}/restore` and a Student lab's reset;
+- `POST /ranges/{id}/destroy` (a person's normal destroy).
+
+A new Student lab waits in its queue (`state: queued`, `error` says why) and starts when the
+window ends. Never refused: a booking's teardown when it ends, a lab's end, expiry and
+failed-build cleanup, and `POST /ranges/{id}/emergency-teardown`. Stop and start are not
+windowed. The worker re-checks at the task's entry: a build or restore that reaches it inside
+a window is refused (the range goes to `failed` with the reason; a restore's snapshot goes back
+to `ready`), and so is a normal destroy; every other teardown runs. Bookings that overlap a
+window are still made; `EventOut.maintenance_warnings` lists the windows, and the clock does not
+build the range until the window ends.
+
+Times must carry a zone offset (`Z` or `+hh:mm`): a time without one is `422`. They are stored
+and returned in UTC; a window is `[starts_at, ends_at)`. A tenant's window covers its ranges; a
+platform-wide one (`tenant_id: null`, platform administrator only) covers every tenant's.
+`scope`: `all`, `ranges` (`range_ids`, the caller's own ranges; any tenant's for a platform-wide
+window) or `tags` (ranges whose range template declares a matching top-level `tags:` entry).
+
+| Method | Path | Permission |
+|--------|------|------------|
+| `GET` | `/maintenance-windows?include_past=false&limit=50&offset=0` | `schedule:read` |
+| `GET` | `/maintenance-windows/active?range_id=` | `range:read` (the banner) |
+| `GET` | `/maintenance-windows/{id}` | `schedule:read` |
+| `POST` | `/maintenance-windows` | `range:admin`; `platform_wide` also needs a platform administrator |
+| `PUT` | `/maintenance-windows/{id}` | as `POST`; `platform_wide` cannot change |
+| `DELETE` | `/maintenance-windows/{id}` | as `POST` |
+| `POST` | `/ranges/{id}/emergency-teardown` | `range:admin` |
+
+Another tenant's window is `404`; a platform-wide one is `403` to change for anyone but a
+platform administrator. Every write is audited (`resource_type: maintenance_window`).
+
+**`POST /maintenance-windows`**
+```json
+{
+  "reason": "vCenter 8.0U3 upgrade",
+  "starts_at": "2026-11-01T22:00:00-04:00",
+  "ends_at": "2026-11-02T02:00:00-05:00",
+  "scope": "ranges",
+  "range_ids": ["f6a7b8c9-d0e1-2345-f012-456789012345"],
+  "tags": [],
+  "platform_wide": false
+}
+```
+
+**Response `201 Created`:**
+```json
+{
+  "id": "3b0d…", "tenant_id": "00000000-0000-0000-0000-000000000001", "platform_wide": false,
+  "reason": "vCenter 8.0U3 upgrade",
+  "starts_at": "2026-11-02T02:00:00Z", "ends_at": "2026-11-02T07:00:00Z",
+  "scope": "ranges", "range_ids": ["f6a7b8c9-d0e1-2345-f012-456789012345"], "tags": [],
+  "active": false, "can_edit": true, "created_by": "…", "created_at": "…", "updated_at": "…"
+}
+```
+
+**A refusal inside it (`409`, `Retry-After: 16200`):**
+```json
+{"detail": "Provisioning is refused during a maintenance window until 2026-11-02T07:00:00+00:00 (2026-11-02 02:00 to 2026-11-02 07:00 UTC): vCenter 8.0U3 upgrade. Automated cleanup still runs; an administrator can tear a range down in an emergency (range:admin, with a reason)."}
+```
+
+### `POST /ranges/{range_id}/emergency-teardown`
+
+**Permission: `range:admin` (admin only). Dangerous.** A destroy that a maintenance window does
+not refuse. Body: `{"confirm_range_id": "<range id again>", "reason": "<10-500 characters>"}`.
+`202` with the range (`destroying`) and an `Operation-Id` header; the operation's
+`window_bypass` is `emergency`. Audited as `emergency_teardown` with the reason and the window
+it overrode, and written to the range's certification record as an override (once S6's record
+exists). Otherwise a destroy: `409` in a state that cannot be destroyed, or for a Student lab's
+range (end the lab session instead; that always runs); `422` when `confirm_range_id` differs
+or the reason is missing or short; `404` for another tenant's range.
+
+---
+
 ## Exercises
 
 ### `POST /exercises`
@@ -1417,6 +1498,8 @@ The auto-generated OpenAPI specification is available at:
 | 31d | `POST` | `/ranges/{id}/credentials/{cred_id}/rotate` | `range:credentials_rotate` | A new generated password; audited (`range_credential_rotate`) |
 | 31e | `GET` | `/range-credentials/template-issues` | `template:update` | Templates whose typed-in passwords ADR 0013 refuses |
 | 31f | `POST` | `/ranges/{id}/credentials/{cred_id}/settle` | `range:credentials_rotate` | A stuck pending change back to the in-guest password; audited (`range_credential_settle`) |
+| 31g | `POST` | `/ranges/{id}/emergency-teardown` | `range:admin` | Tear a range down inside a maintenance window, with a reason (admin) |
+| 31h | `GET/POST/PUT/DELETE` | `/maintenance-windows` | `schedule:read` / `range:admin` | Maintenance windows (ADR 0013 §7) |
 | 32 | `POST` | `/exercises` | `exercise:create` | Create exercise |
 | 33 | `GET` | `/exercises` | `exercise:read` | List exercises |
 | 34 | `GET` | `/exercises/{id}` | `exercise:read` | Get exercise |

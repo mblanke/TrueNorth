@@ -52,16 +52,23 @@ def is_lab_range(db: Session, range_id: uuid.UUID) -> bool:
     return range_id in lab_range_ids(db, [range_id])
 
 
-def _begin(db: Session, rng: Range, action: str, before_commit: Callable[[], None] | None = None) -> str | None:
+def _begin(
+    db: Session,
+    rng: Range,
+    action: str,
+    before_commit: Callable[[], None] | None = None,
+    window_bypass: str | None = None,
+) -> str | None:
     """Accept ``action`` through range_ops, run ``before_commit`` in the same transaction,
     commit, then send. Returns the task id (None when the broker is down: the operation
-    stays pending and is re-sent)."""
+    stays pending and is re-sent). A maintenance window refuses it (RangeTransitionError)
+    unless ``window_bypass`` names a teardown that always runs."""
     from .range_ops import service as ops
 
     if is_lab_range(db, rng.id):
         raise RangeTransitionError("This range belongs to a student's lab session; manage it from the lab session")
     try:
-        op, _, created = ops.accept(db, rng.id, _scheduler_identity(rng), action)
+        op, _, created = ops.accept(db, rng.id, _scheduler_identity(rng), action, window_bypass=window_bypass)
     except HTTPException as exc:  # refused before anything was written
         raise RangeTransitionError(str(exc.detail)) from None
     if before_commit:
@@ -77,9 +84,9 @@ def begin_provision(db: Session, rng: Range, before_commit: Callable[[], None] |
     return _begin(db, rng, "provision", before_commit)
 
 
-def begin_destroy(db: Session, rng: Range) -> str | None:
+def begin_destroy(db: Session, rng: Range, window_bypass: str | None = None) -> str | None:
     """Accept and send a teardown of the range. Supersedes an operation in flight."""
-    return _begin(db, rng, "destroy")
+    return _begin(db, rng, "destroy", window_bypass=window_bypass)
 
 
 # -- For the scheduler ----------------------------------------------------------
@@ -124,11 +131,13 @@ def provision_for_booking(
     return True, "provisioning dispatched" if task else "provisioning accepted; broker unavailable, will be re-sent"
 
 
-def destroy_for_booking(db: Session, range_id: uuid.UUID) -> tuple[bool, str]:
+def destroy_for_booking(db: Session, range_id: uuid.UUID, window_bypass: str | None = None) -> tuple[bool, str]:
     """Take down a range a booking built. Returns (settled, what happened).
 
     Settled means there is nothing left to tear down: dispatched now, already going or
-    gone. A range still being built cannot be destroyed yet; the caller retries later.
+    gone. A range still being built cannot be destroyed yet; the caller retries later. So
+    is one a maintenance window covers, unless ``window_bypass`` (a booking that ended:
+    its teardown always runs, ADR 0013 §7); a cancelled booking's waits for the window.
     """
     # tenant-safe: a booking's range, checked against its tenant when booked (resolve_range).
     rng = db.get(Range, range_id)
@@ -137,7 +146,7 @@ def destroy_for_booking(db: Session, range_id: uuid.UUID) -> tuple[bool, str]:
     if rng.state in (RangeState.destroying, RangeState.destroyed):
         return True, f"range already {rng.state.value}"
     try:
-        task = begin_destroy(db, rng)
+        task = begin_destroy(db, rng, window_bypass)
     except RangeTransitionError as exc:
         return False, f"{exc}; will retry"
     return True, "teardown dispatched" if task else "teardown accepted; broker unavailable, will be re-sent"

@@ -41,6 +41,10 @@ class RangeOperation(TimestampMixin, Base):
     idempotency_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
     request_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     requested_by: Mapped[uuid.UUID | None] = mapped_column(GUID(), nullable=True)
+    # A teardown that runs inside a maintenance window (app/maintenance_windows/policy.py
+    # BYPASS_KINDS): an emergency, or a booking that ended. None: a normal operation, refused
+    # inside a window by the API and again by the worker at the task's entry.
+    window_bypass: Mapped[str | None] = mapped_column(String(32), nullable=True)
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending")
     task_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     dispatch_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

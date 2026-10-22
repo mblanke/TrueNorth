@@ -22,6 +22,20 @@ def lease_always_free(monkeypatch):
     monkeypatch.setattr(fencing._Lease, "observe", lambda self, holder_now: "held")
 
 
+@pytest.fixture(autouse=True)
+def _no_maintenance_windows(request, monkeypatch):
+    """Range tasks re-check maintenance windows at their entry (worker/maintenance_windows.py),
+    reading two more tables first. Tests of the tasks' own behaviour stub their database
+    reads in sequence, or build only the tables they need, so here no window is ever in
+    effect. A test module that tests the re-check itself sets ``REAL_MAINTENANCE_WINDOWS =
+    True`` (tests/worker/test_maintenance_windows_worker.py)."""
+    if getattr(request.module, "REAL_MAINTENANCE_WINDOWS", False):
+        return
+    from worker import maintenance_windows
+
+    monkeypatch.setattr(maintenance_windows, "at_entry", lambda *a, **k: None)
+
+
 # ── A real (SQLite) worker database, for the range-task tests ────────────
 
 

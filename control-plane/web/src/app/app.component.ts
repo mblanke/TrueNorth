@@ -391,6 +391,7 @@ export class AppComponent implements OnDestroy {
         { label: 'Approvals',       icon: 'how_to_reg',           route: '/approvals', access: 'approvals' },
         { label: 'Teams',           icon: 'groups',               route: '/teams', access: 'teams' },
         { label: 'Infrastructure',  icon: 'storage',              route: '/infrastructure', access: 'infrastructure' },
+        { label: 'Maintenance windows', icon: 'construction',     route: '/maintenance-windows', access: 'maintenanceWindows' },
         { label: 'AI Orchestrator', icon: 'memory',               route: '/ai-orchestrator', access: 'aiOrchestrator' },
         { label: 'Integrations',    icon: 'device_hub',           route: '/integrations', adminOnly: true },
         { label: 'Users',           icon: 'people',               route: '/users', adminOnly: true },

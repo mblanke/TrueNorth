@@ -512,6 +512,9 @@ def _start(
     keeps its lifetime); stays queued, with why, otherwise."""
     rebuild = networks is not None
     if not rebuild:
+        if held := _window_holds(db, session):  # ADR 0013 §7: no new build; it starts after the window
+            session.error = held
+            return
         # One quota decision per tenant at a time (CR1-12): without this lock two launches
         # by different students each counted the labs running before either was written,
         # and together went past the tenant's limits. The student's own row, which launch
@@ -689,6 +692,9 @@ def _advance_resetting(db: Session, session: LabSession, rng: Range | None, now:
         return None
     # Rebuild: the old range must be gone before a new one is built on the same networks.
     if rng is not None and rng.state == RangeState.destroyed:
+        if held := _window_holds(db, session):  # reset accepted before the window: rebuilt after it
+            session.error = held
+            return None
         session.retired_ranges = json.dumps(json.loads(session.retired_ranges or "[]") + [str(rng.id)])
         _send(db, session, "reconcile_lab_vms", [str(rng.id)], session.backend)
         _start(db, session, profile, networks=_session_networks(db, session))
@@ -729,6 +735,14 @@ def _advance_cleaning(db: Session, session: LabSession, rng: Range | None, now: 
         _set_state(session, CLEANING)
 
 
+def _window_holds(db: Session, session: LabSession) -> str | None:
+    """Why a maintenance window holds back this lab's new build now (ADR 0013 §7), or None.
+    Its teardowns (end, expiry, a failed build) are never held back."""
+    from ..maintenance_windows import service as windows
+
+    return windows.refusal_for_new_range(db, session.tenant_id)
+
+
 def _fail(db: Session, session: LabSession, error: str) -> None:
     session.error = error[:2000]
     session.end_reason = session.end_reason or "failed"
@@ -764,6 +778,10 @@ def reset(db: Session, session: LabSession) -> LabSession:
     if session.state not in (READY, ACTIVE):
         raise LabRefusedError(f"the lab is {session.state}; it can be reset once it is ready")
     rng = db.get(Range, session.range_id)  # tenant-safe: the session's own range
+    from ..maintenance_windows import service as windows
+
+    if hit := windows.covering_range(db, rng):  # a reset restores or rebuilds: refused in a window
+        raise LabRefusedError(windows.refusal_message(hit[0], "reset"))
     profile = _profile(db, session)
     if profile["reset"]["mode"] == "snapshot":
         # tenant-safe: the session's own baseline snapshot, taken by this module.

@@ -358,6 +358,23 @@ learning_recommendations = sa.Table(
     sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
 )
 
+maintenance_windows = sa.Table(
+    "maintenance_windows",
+    metadata,
+    sa.Column("id", GUID(), primary_key=True),
+    sa.Column("tenant_id", GUID()),
+    sa.Column("reason", sa.String(500), nullable=False),
+    sa.Column("starts_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("ends_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("scope", sa.String(16), nullable=False),
+    sa.Column("range_ids", sa.JSON(), nullable=False),
+    sa.Column("tags", sa.JSON(), nullable=False),
+    sa.Column("created_by", GUID()),
+    sa.Column("updated_by", GUID()),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+)
+
 network_reservations = sa.Table(
     "network_reservations",
     metadata,
@@ -484,6 +501,28 @@ range_leases = sa.Table(
     sa.Column("range_id", GUID(), primary_key=True),
     sa.Column("holder", sa.String(64), nullable=False),
     sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
+)
+
+range_operations = sa.Table(
+    "range_operations",
+    metadata,
+    sa.Column("id", GUID(), primary_key=True),
+    sa.Column("tenant_id", GUID(), nullable=False),
+    sa.Column("range_id", GUID(), nullable=False),
+    sa.Column("action", sa.String(32), nullable=False),
+    sa.Column("generation", sa.Integer(), nullable=False),
+    sa.Column("idempotency_key", sa.String(255)),
+    sa.Column("request_hash", sa.String(64), nullable=False),
+    sa.Column("requested_by", GUID()),
+    sa.Column("window_bypass", sa.String(32)),
+    sa.Column("status", sa.String(16), nullable=False),
+    sa.Column("task_id", sa.String(255)),
+    sa.Column("dispatch_attempts", sa.Integer(), nullable=False),
+    sa.Column("error", sa.JSON()),
+    sa.Column("dispatched_at", sa.DateTime(timezone=True)),
+    sa.Column("finished_at", sa.DateTime(timezone=True)),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
 )
 
 range_snapshots = sa.Table(
@@ -637,6 +676,7 @@ __all__ = [
     "inject_records",
     "lab_sessions",
     "learning_recommendations",
+    "maintenance_windows",
     "metadata",
     "network_reservations",
     "objectives",
@@ -646,6 +686,7 @@ __all__ = [
     "range_credentials",
     "range_greyspace",
     "range_leases",
+    "range_operations",
     "range_snapshots",
     "ranges",
     "scenario_executions",

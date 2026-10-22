@@ -15,6 +15,7 @@ export type Permission =
   | 'range:create' | 'range:read' | 'range:update' | 'range:delete' | 'range:provision'
   | 'range:destroy' | 'range:batch_provision' | 'range:lease_force_release' | 'range:credentials_read'
   | 'range:credentials_rotate' | 'range:certification_read'
+  | 'range:admin'
   | 'template:create' | 'template:read' | 'template:update' | 'template:delete'
   | 'scenario:create' | 'scenario:read' | 'scenario:update' | 'scenario:delete'
   | 'exercise:create' | 'exercise:read' | 'exercise:start' | 'exercise:complete' | 'exercise:pause'
@@ -39,6 +40,7 @@ export const ALL_PERMISSIONS: readonly Permission[] = [
   'range:create', 'range:read', 'range:update', 'range:delete', 'range:provision',
   'range:destroy', 'range:batch_provision', 'range:lease_force_release', 'range:credentials_read',
   'range:credentials_rotate', 'range:certification_read',
+  'range:admin',
   'template:create', 'template:read', 'template:update', 'template:delete',
   'scenario:create', 'scenario:read', 'scenario:update', 'scenario:delete',
   'exercise:create', 'exercise:read', 'exercise:start', 'exercise:complete', 'exercise:pause',
@@ -161,6 +163,8 @@ export const PAGE_ACCESS = {
   scoring: { all: ['aar:read'] },
   telemetry: { all: ['telemetry:read'] },
   schedule: { all: ['schedule:read'] },
+  /** GET /maintenance-windows (schedule:read); changing them needs range:admin (admins). */
+  maintenanceWindows: { all: ['schedule:read', 'range:admin'] },
   approvals: { all: ['registration:read'] },
   infrastructure: { all: ['infra:read'] },
   aiOrchestrator: { all: ['ai_config:read'] },

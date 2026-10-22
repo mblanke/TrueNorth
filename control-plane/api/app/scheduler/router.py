@@ -199,7 +199,8 @@ def create_event(
     """Book a session. Refused with 409 when its range or instructor is already booked
     then. One that does not fit the cluster is refused with 409 (policy `block`) or
     created with warnings (policy `warn`). A draft holds nothing and is checked when it
-    is scheduled."""
+    is scheduled. A booking that overlaps a maintenance window is made, with
+    `maintenance_warnings`: the clock does not build its range while a window covers it."""
     _check_times(body)
     service.serialize_bookings(db)
     range_id = service.resolve_range(db, user, body.range_id)
@@ -242,7 +243,7 @@ def create_event(
     db.refresh(evt)
     if evt.state == EventState.scheduled:
         _announce(background, db, evt, "REQUEST")
-    return _to_out(evt, warnings)
+    return _to_out(evt, warnings, service.maintenance_warnings(db, evt))
 
 
 def _announce(
@@ -357,7 +358,8 @@ def _changeable(db: Session, event_id: str, user: CurrentUser) -> ScheduledEvent
 
 @router.get("/events/{event_id}", response_model=EventOut, summary="Get a scheduled event")
 def get_event(event_id: str, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)):
-    return _to_out(_owned(db, event_id, user))
+    evt = _owned(db, event_id, user)
+    return _to_out(evt, maintenance=service.maintenance_warnings(db, evt))
 
 
 @router.put("/events/{event_id}", response_model=EventOut, summary="Update a scheduled event", dependencies=_WRITE)
@@ -423,7 +425,7 @@ def update_event(
     db.refresh(evt)
     if evt.state == EventState.scheduled:  # an updated invite: same UID, higher SEQUENCE
         _announce(background, db, evt, "REQUEST", previous_instructor, previous_course)
-    return _to_out(evt, warnings)
+    return _to_out(evt, warnings, service.maintenance_warnings(db, evt))
 
 
 @router.post("/events/{event_id}/schedule", response_model=EventOut, summary="Schedule a draft", dependencies=_WRITE)
@@ -514,7 +516,8 @@ def _move(
             _announce(background, db, evt, "REQUEST")
         elif to == EventState.cancelled and before != EventState.draft.value:
             _announce(background, db, evt, "CANCEL")
-    return _to_out(evt, warnings)
+    holding = evt.state in (EventState.draft, EventState.scheduled)
+    return _to_out(evt, warnings, service.maintenance_warnings(db, evt) if holding else None)
 
 
 @router.post(

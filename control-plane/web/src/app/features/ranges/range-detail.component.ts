@@ -13,6 +13,7 @@ import {
 } from '@core/services/range-recovery-api.service';
 import { roleCan } from '@core/auth/permissions';
 import { AuthService } from '@core/services/auth.service';
+import { MaintenanceWindowsApiService } from '@core/services/maintenance-windows-api.service';
 import { NotificationService } from '@core/services/notification.service';
 import {
   ImpactDialogComponent, ImpactDialogData, ImpactDialogResult,
@@ -178,6 +179,16 @@ const POLL_MS = 10_000;
               <p class="muted">Only a failed range can be abandoned; this one is {{ r.state }}.</p>
             }
           }
+
+          @if (caps().emergencyTeardown) {
+            <h3>Emergency teardown</h3>
+            <p class="muted">Tears the range down now, even during a maintenance window. Administrators only; the
+              reason is audited and recorded on the range's certification record.</p>
+            <button mat-stroked-button color="warn" (click)="emergencyTeardown(r)"
+                    [disabled]="busy() || r.state === 'destroyed' || r.state === 'destroying'">
+              <mat-icon>bolt</mat-icon> Emergency teardown
+            </button>
+          }
         </mat-card>
 
         <!-- Network reservations -->
@@ -247,6 +258,7 @@ const POLL_MS = 10_000;
 export class RangeDetailComponent implements OnInit, OnDestroy {
   private api = inject(RangeRecoveryApiService);
   private auth = inject(AuthService);
+  private windows = inject(MaintenanceWindowsApiService);
   private notify = inject(NotificationService);
   private dialog = inject(MatDialog);
 
@@ -381,6 +393,25 @@ export class RangeDetailComponent implements OnInit, OnDestroy {
     }, reason => this.api.abandonRange(this.id(), reason, vms.length > 0), (out: RangeDetail) => ({
       title: `Range is now ${out.state}.`,
       lines: leftOnHypervisor(out),
+    }));
+  }
+
+  emergencyTeardown(r: RangeDetail): void {
+    this.confirm({
+      title: `Emergency teardown of ${r.name}?`,
+      impact: [
+        'Destroys the range now: its VMs and port groups are removed from the hypervisor.',
+        'Runs even while a maintenance window refuses every other destroy.',
+        'Your reason is written to the audit log and to the range\'s certification record.',
+      ],
+      confirmText: 'Tear down now',
+      danger: true,
+      reasonLabel: 'Reason (why it cannot wait)',
+      reasonMin: 10,
+      typeToConfirm: r.name,
+    }, reason => this.windows.emergencyTeardown(this.id(), reason), (out: RangeDetail) => ({
+      title: `Range is now ${out.state}.`,
+      lines: ['The teardown is recorded as an emergency override.'],
     }));
   }
 

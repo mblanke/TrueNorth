@@ -4,6 +4,7 @@
  * the authority; these only shape what the page shows before it asks.
  */
 import type { Booking, Timeline } from '@core/services/scheduler-api.service';
+import type { MaintenanceWindow } from '@core/services/maintenance-windows-api.service';
 
 export const HOUR_MS = 3_600_000;
 export const DAY_MS = 24 * HOUR_MS;
@@ -141,4 +142,19 @@ export function localizeUtcWindows(text: string): string {
       return sameDay(a, b) ? `${day(a)} ${hhmm(a)}–${hhmm(b)}` : `${day(a)} ${hhmm(a)}–${day(b)} ${hhmm(b)}`;
     },
   );
+}
+
+/**
+ * Maintenance windows a proposed booking runs into (ADR 0013 §7): those overlapping its
+ * build-to-end span [start - lead, end) that cover its range. A `tags` window may cover it
+ * (the range template's tags are not known here), so it is included too; the API's
+ * `maintenance_warnings` on the saved booking is the authority.
+ */
+export function windowsOverlapping(
+  windows: readonly MaintenanceWindow[], start: Date, end: Date, leadMinutes: number, rangeId: string | null,
+): MaintenanceWindow[] {
+  const from = start.getTime() - leadMinutes * 60_000, to = end.getTime();
+  return windows.filter(w =>
+    new Date(w.starts_at).getTime() < to && new Date(w.ends_at).getTime() > from
+    && (w.scope !== 'ranges' || (!!rangeId && w.range_ids.includes(rangeId))));
 }

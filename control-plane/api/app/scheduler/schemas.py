@@ -71,6 +71,9 @@ class EventOut(BaseModel):
     updated_at: datetime
     # Over-capacity warnings, when the policy is `warn` and the booking did not fit.
     warnings: list[str] = []
+    # Maintenance windows its build-to-end span overlaps (ADR 0013 §7): the booking stands,
+    # but the clock does not build its range while a window covers it.
+    maintenance_warnings: list[str] = []
 
     class Config:
         from_attributes = True
