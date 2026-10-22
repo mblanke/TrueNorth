@@ -18,13 +18,18 @@ function Write-Step($m) { Write-Host "=== $m" }
 
 # --- VMware Tools (silent) from the mounted Tools ISO --------------------------------
 Write-Step 'VMware Tools'
-$toolsSetup = Get-ChildItem -Path (Get-PSDrive -PSProvider FileSystem | ForEach-Object { "$($_.Root)setup64.exe" }) -ErrorAction SilentlyContinue |
-  Select-Object -First 1
+# The Tools CD is the drive with VMwareToolsUpgrader.exe (the Windows ISO has a setup.exe too).
+# Older Tools ISOs ship setup64.exe, Tools 12.x only setup.exe (64-bit).
+$toolsDrive = Get-PSDrive -PSProvider FileSystem | Where-Object { Test-Path (Join-Path $_.Root 'VMwareToolsUpgrader.exe') } | Select-Object -First 1
+$toolsSetup = if ($toolsDrive) {
+  Get-ChildItem -Path (@('setup64.exe', 'setup.exe') | ForEach-Object { Join-Path $toolsDrive.Root $_ }) -ErrorAction SilentlyContinue | Select-Object -First 1
+}
+if ((Get-Service VMTools -ErrorAction SilentlyContinue).Status -eq 'Running') { Write-Host 'VMware Tools already running'; $toolsSetup = $null }
 if ($toolsSetup) {
   Write-Host "Installing VMware Tools from $($toolsSetup.FullName)"
   Start-Process -FilePath $toolsSetup.FullName -ArgumentList '/S /v "/qn REBOOT=R"' -Wait
 } else {
-  Write-Warning 'VMware Tools setup64.exe not found on any CD drive; ensure the Tools ISO is attached (vmtools_iso_path). Guest customization needs Tools.'
+  Write-Warning 'VMware Tools setup not found on any CD drive (or already running); ensure the Tools ISO is attached (vmtools_iso_path). Guest customization needs Tools.'
 }
 
 # --- WinRM already enabled by Autounattend; make sure OpenSSH server is present -------

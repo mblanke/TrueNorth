@@ -13,15 +13,25 @@ d-i console-keymaps-at/keymap select us
 d-i netcfg/choose_interface select auto
 d-i netcfg/get_hostname string kali
 d-i netcfg/get_domain string range.local
+# dPG-TN-BUILD has no gateway (ADR 0012): without this the installer stops and asks.
+d-i netcfg/no_default_route boolean true
 d-i netcfg/hostname string kali
 
 # Mirror
+%{ if apt_proxy != "" ~}
 d-i mirror/country string enter information manually
 d-i mirror/http/hostname string http.kali.org
 d-i mirror/http/directory string /kali
 # Build-time apt proxy (apt_proxy: TN-DEPOT01 apt-cacher-ng); empty = none. cleanup.sh
 # removes it from the installed system.
 d-i mirror/http/proxy string ${apt_proxy}
+%{ else ~}
+# Offline base (no depot yet): install from the ISO only, no network mirror.
+d-i apt-setup/use_mirror boolean false
+d-i mirror/http/proxy string
+d-i apt-setup/services-select multiselect
+d-i apt-setup/non-free-firmware boolean true
+%{ endif ~}
 
 # Clock and timezone
 d-i clock-setup/utc boolean true
@@ -50,13 +60,28 @@ d-i user-setup/encrypt-home boolean false
 
 # Package selection — open-vm-tools instead of qemu-guest-agent
 tasksel tasksel/first multiselect standard
-d-i pkgsel/include string openssh-server open-vm-tools sudo curl wget git net-tools
+# cloud-init is REQUIRED: the worker gives a Linux range VM its name, static IPs and
+# accounts only through cloud-init's VMware datasource (guestinfo), never vSphere Linux
+# customization. It is not in pkgsel/include, because a package missing from the ISO pool
+# stops the whole install there; late_command below tries it from the ISO, and Packer's
+# files/linux/install-cloud-init.sh tries the mirror/apt proxy and the ISO again, then
+# require-cloud-init.sh fails the build if it is still missing.
+# ifupdown: cloud-init's network renderer writes /etc/network/interfaces on Kali (no netplan).
+d-i pkgsel/include string openssh-server open-vm-tools ifupdown sudo curl wget git net-tools
+%{ if apt_proxy != "" ~}
 d-i pkgsel/upgrade select full-upgrade
+%{ else ~}
+d-i pkgsel/upgrade select none
+%{ endif ~}
 
 # Enable SSH and VMware tools
+# The installed system must bring its NIC up by DHCP (Packer waits for the IP). Kali's core
+# set has no NetworkManager; netcfg's ifupdown DHCP config is used, else systemd-networkd.
 d-i preseed/late_command string \
+  in-target sh -c 'dpkg -s network-manager >/dev/null 2>&1 || grep -q dhcp /etc/network/interfaces 2>/dev/null || { mkdir -p /etc/systemd/network; printf "[Match]\\nName=en* eth*\\n\\n[Network]\\nDHCP=yes\\n" > /etc/systemd/network/20-tn-dhcp.network; systemctl enable systemd-networkd; }' ; \
   in-target systemctl enable ssh ; \
   in-target systemctl enable open-vm-tools ; \
+  in-target sh -c 'DEBIAN_FRONTEND=noninteractive apt-get install -y cloud-init || true' ; \
   echo "${user} ALL=(ALL) NOPASSWD:ALL" > /target/etc/sudoers.d/${user} ; \
   chmod 0440 /target/etc/sudoers.d/${user} ; \
   in-target sed -i 's/^#PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config ; \
@@ -69,5 +94,4 @@ d-i grub-installer/bootdev string default
 # Avoid the last prompt about install being complete
 d-i finish-install/reboot_in_progress note
 
-# Power off after install so Packer can detect completion
-d-i debian-installer/exit/poweroff boolean true
+# Reboot (not power off): vsphere-iso waits for the installed system's IP and SSH.

@@ -43,22 +43,12 @@
       <ImageInstall>
         <OSImage>
           <InstallFrom>
-            <MetaData wcm:action="add"><Key>/IMAGE/NAME</Key><Value>${image_name}</Value></MetaData>
+            <MetaData wcm:action="add"><Key>/IMAGE/%{ if length(regexall("^[0-9]+$", image_name)) > 0 }INDEX%{ else }NAME%{ endif }</Key><Value>${image_name}</Value></MetaData>
           </InstallFrom>
           <InstallTo><DiskID>0</DiskID><PartitionID>4</PartitionID></InstallTo>
           <WillShowUI>OnError</WillShowUI>
         </OSImage>
       </ImageInstall>
-%{ if length(pvscsi_driver_paths) > 0 }
-      <!-- pvscsi controller driver, loaded in WinPE off the mounted VMware Tools ISO.
-           Tools-ISO layout varies by version, so several candidate drive letters and
-           relative paths are listed; Setup uses the first that matches. -->
-      <DriverPaths>
-%{ for p in pvscsi_driver_paths ~}
-        <PathAndCredentials wcm:action="add" wcm:keyValue="${p.key}"><Path>${p.path}</Path></PathAndCredentials>
-%{ endfor ~}
-      </DriverPaths>
-%{ endif }
 %{ if labconfig }
       <!-- Win11 / new-setup lab bypasses (no vTPM / Secure Boot / RAM / CPU requirement). -->
       <RunSynchronous>
@@ -80,6 +70,21 @@
 %{ endif }
       </UserData>
     </component>
+%{ if length(pvscsi_driver_paths) > 0 }
+    <!-- pvscsi controller driver, loaded in WinPE off the mounted VMware Tools ISO.
+         DriverPaths belongs to PnpCustomizationsWinPE: inside Microsoft-Windows-Setup it
+         makes Setup stop with "a component or setting ... does not exist" (2026-10-20).
+         Tools-ISO layout varies by version, so several candidate drive letters and
+         relative paths are listed; Setup uses the first that matches. -->
+    <component name="Microsoft-Windows-PnpCustomizationsWinPE" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS"
+               xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
+      <DriverPaths>
+%{ for p in pvscsi_driver_paths ~}
+        <PathAndCredentials wcm:action="add" wcm:keyValue="${p.key}"><Path>${p.path}</Path></PathAndCredentials>
+%{ endfor ~}
+      </DriverPaths>
+    </component>
+%{ endif }
   </settings>
 
   <settings pass="specialize">
@@ -131,33 +136,48 @@
       </AutoLogon>
       <TimeZone>UTC</TimeZone>
       <FirstLogonCommands>
+        <!-- VMware Tools first, from the Tools CD (vmtools_iso_path; the drive with VMwareToolsUpgrader.exe:
+             the Windows ISO has a setup.exe too). setup64.exe on older Tools, setup.exe on 12.x. Windows
+             has no inbox vmxnet3 driver, so without it there is no network, no IP for Packer and
+             no WinRM. REBOOT=R: the driver loads now; setup.ps1 re-runs it harmlessly. -->
         <SynchronousCommand wcm:action="add">
           <Order>1</Order>
+          <CommandLine>powershell -NoProfile -ExecutionPolicy Bypass -Command "$d = Get-PSDrive -PSProvider FileSystem | Where-Object { Test-Path (Join-Path $_.Root 'VMwareToolsUpgrader.exe') } | Select-Object -First 1; if ($d) { $s = @('setup64.exe','setup.exe') | ForEach-Object { Join-Path $d.Root $_ } | Where-Object { Test-Path $_ } | Select-Object -First 1; if ($s) { Start-Process $s -ArgumentList '/S /v \"/qn REBOOT=R\"' -Wait } }"</CommandLine>
+          <Description>Install VMware Tools (vmxnet3 driver)</Description>
+        </SynchronousCommand>
+        <!-- The build network is unidentified (Public); winrm quickconfig refuses on Public. -->
+        <SynchronousCommand wcm:action="add">
+          <Order>2</Order>
+          <CommandLine>powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Sleep 20; Get-NetConnectionProfile | Set-NetConnectionProfile -NetworkCategory Private"</CommandLine>
+          <Description>Network profile Private</Description>
+        </SynchronousCommand>
+        <SynchronousCommand wcm:action="add">
+          <Order>3</Order>
           <CommandLine>powershell -NoProfile -ExecutionPolicy Bypass -Command "Set-ExecutionPolicy Bypass -Scope LocalMachine -Force"</CommandLine>
           <Description>Set execution policy</Description>
         </SynchronousCommand>
         <SynchronousCommand wcm:action="add">
-          <Order>2</Order>
+          <Order>4</Order>
           <CommandLine>powershell -NoProfile -ExecutionPolicy Bypass -Command "winrm quickconfig -q"</CommandLine>
           <Description>Enable WinRM</Description>
         </SynchronousCommand>
         <SynchronousCommand wcm:action="add">
-          <Order>3</Order>
+          <Order>5</Order>
           <CommandLine>powershell -NoProfile -ExecutionPolicy Bypass -Command "winrm set winrm/config/service '@{AllowUnencrypted=\"true\"}'"</CommandLine>
           <Description>Allow unencrypted WinRM</Description>
         </SynchronousCommand>
         <SynchronousCommand wcm:action="add">
-          <Order>4</Order>
+          <Order>6</Order>
           <CommandLine>powershell -NoProfile -ExecutionPolicy Bypass -Command "winrm set winrm/config/service/auth '@{Basic=\"true\"}'"</CommandLine>
           <Description>Enable WinRM basic auth</Description>
         </SynchronousCommand>
         <SynchronousCommand wcm:action="add">
-          <Order>5</Order>
+          <Order>7</Order>
           <CommandLine>powershell -NoProfile -ExecutionPolicy Bypass -Command "winrm set winrm/config '@{MaxTimeoutms=\"1800000\"}'"</CommandLine>
           <Description>WinRM timeout</Description>
         </SynchronousCommand>
         <SynchronousCommand wcm:action="add">
-          <Order>6</Order>
+          <Order>8</Order>
           <CommandLine>netsh advfirewall firewall add rule name="WinRM-HTTP" dir=in localport=5985 protocol=tcp action=allow</CommandLine>
           <Description>Open WinRM firewall port</Description>
         </SynchronousCommand>

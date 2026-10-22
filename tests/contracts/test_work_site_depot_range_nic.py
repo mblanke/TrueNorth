@@ -849,16 +849,36 @@ def test_depot_yml_checks_choco_paths_open_and_roles_office_closed_to_anonymous(
 def test_sysprep_clears_build_secrets_and_powershell_logs_first():
     pk = ROOT / "infra/vsphere/packer"
     ps = (pk / "files/windows/sysprep.ps1").read_text()
-    run = ps.index("Sysprep\\sysprep.exe")
+    run = ps.index("shutdown.exe")
     for step in ("'packer-ps-env-vars-*'", "'Microsoft-Windows-PowerShell/Operational'", "'Windows PowerShell'",
                  "wevtutil.exe cl", "PowerShell_transcript*", "PSReadLine", "exit 1"):
         assert -1 < ps.index(step) < run, step
-    # Every Windows flow ends in sysprep.ps1: last script of the bases, shutdown of roles/variants.
+    # Every Windows flow ends in sysprep.ps1, as its shutdown_command (bases, roles, variants):
+    # staged after the last environment_vars provisioner of the bases.
     win = (pk / "windows.pkr.hcl").read_text()
-    assert win.rindex('script = "${path.root}/files/windows/sysprep.ps1"') > win.rindex("environment_vars")
+    assert win.rindex('source      = "${path.root}/files/windows/sysprep.ps1"') > win.rindex("environment_vars")
+    assert win.count("-File C:\\\\Windows\\\\Temp\\\\sysprep.ps1") == win.count('source "vsphere-iso"')
     for f in ("roles.pkr.hcl", "variants.pkr.hcl"):
         text = (pk / f).read_text()
         assert "-File C:\\\\Windows\\\\Temp\\\\sysprep.ps1" in text, f
+
+
+def test_packer_does_not_generalize_windows_templates():
+    """vSphere customization runs Sysprep on every clone; a template already generalized by
+    Packer cannot take the customization spec (win11-24h2, 2026-10-21). sysprep.ps1 only scrubs
+    and shuts down, through the scheduled task (WinRM kills its own child processes)."""
+    pk = ROOT / "infra/vsphere/packer"
+    ps = (pk / "files/windows/sysprep.ps1").read_text()
+    assert "sysprep.exe" not in ps.lower() and "/generalize" not in ps
+    assert "New-ScheduledTaskAction -Execute \"$env:SystemRoot\\System32\\cmd.exe\"" in ps
+    action = ps.split("New-ScheduledTaskAction", 1)[1].split("Register-ScheduledTask", 1)[0]
+    # Shut down first (/t 5 only schedules it), then the task deletes its own registration,
+    # so no template or clone keeps a SYSTEM task that shuts the machine down.
+    assert action.index("shutdown.exe /s /t 5 /f") < action.index("schtasks.exe /Delete /TN $task /F")
+    assert "Start-ScheduledTask" in ps
+    assert not (pk / "files/windows/sysprep-unattend.xml").exists()
+    for f in ("windows.pkr.hcl", "roles.pkr.hcl", "variants.pkr.hcl"):
+        assert "sysprep-unattend.xml" not in (pk / f).read_text(), f
 
 
 def test_readme_says_online_switches_bounce_the_range_nic():

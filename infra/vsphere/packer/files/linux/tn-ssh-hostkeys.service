@@ -1,0 +1,16 @@
+# TrueNorth Range - SSH host keys for clones of a Linux template.
+# cleanup.sh deletes the template's host keys so clones never share them. cloud-init's ssh
+# module regenerates them on a new instance; this unit is the guarantee when it does not
+# (cloud-init disabled, failed, or its ssh module off): any key missing before sshd starts
+# is generated. Installed and enabled on every Linux template by linux.pkr.hcl.
+[Unit]
+Description=TrueNorth: generate missing SSH host keys
+Before=ssh.service sshd.service
+ConditionPathExists=!/etc/ssh/ssh_host_ed25519_key
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/ssh-keygen -A
+
+[Install]
+WantedBy=multi-user.target

@@ -32,9 +32,15 @@ http/                        Linux seeds, all templatefiles (*.pkrtpl.hcl) rende
   ubuntu/user-data.pkrtpl.hcl    autoinstall (cd_content on a 'cidata' CD, with meta-data)
   rocky/ks.cfg.pkrtpl.hcl        kickstart (cd_content on an 'OEMDRV' CD)
   {kali,debian,parrot}/preseed.cfg.pkrtpl.hcl   preseed (http_content)
-  pfsense/config.xml             pfSense bootstrap (vmx0/vmx1); applied at deploy
+  pfsense/config.xml             reference pfSense config (vmx0/vmx1), the boot-script tests' fixture
 files/windows/               autounattend.pkrtpl.hcl, choco-bootstrap.ps1, setup.ps1, sysprep.ps1,
-                             sysprep-unattend.xml, variant-packages.ps1, role-image.ps1
+                             variant-packages.ps1, role-image.ps1
+files/pfsense/               template finish on the build's 2nd CD: tn-pfsense-finish.sh,
+                             tn-pfsense-config, tn-vmtools.sh, pkgs.lock (sha256-pinned
+                             Open-VM-Tools set; .pkg files staged into stage/pfsense/ by
+                             scripts/lab/stage_pfsense_pkgs.py, never committed)
+files/vyos/                  template finish on the build's 2nd CD: tn-vyos-prep.sh,
+                             tn-vyos-install.py (answers `install image` by prompt text)
 files/linux/                 99-vmware.cfg, apt-proxy.sh, cleanup.sh, roles/<name>.sh,
                              variant-packages.sh
 build.sh                     build driver (order, logging, register-back)
@@ -102,7 +108,7 @@ The variables you must set per site:
 | `vmtools_iso_path` | VMware Tools `windows.iso` (ESXi default path works) |
 | `build_network` | `dPG-TN-BUILD` (DHCP + reachability to the Packer host; no WAN egress, packages come from the depot) |
 | `content_library`, `publish_to_library` | `TrueNorth-Templates`, `true` |
-| `windows_admin_password` | build-time Administrator password (reset by sysprep) |
+| `windows_admin_password` | build-time Administrator password (reset by vSphere customization on clone) |
 | `ssh_username` / `ssh_password` / `ssh_password_hash` | the one generic Linux build login (ADR 0012 decision 5), created by every Linux seed. The hash is `openssl passwd -6` of the password (`scripts/lab/pkrvars-work.py` writes it); defaults `ubuntu`/`ubuntu` |
 | `win10_image_name` + `gvlk_win10`, `srv2019_image_name` + `gvlk_srv2019` | edition select for Visual Studio media (defaults: Windows 10 Enterprise / Server 2019 Standard Desktop Experience and their public GVLKs). Evaluation ISOs: `win10_eval = true` / `srv2019_eval = true` |
 | `win11_vtpm` | `false` unless you have a vCenter key provider |
@@ -140,6 +146,19 @@ the derived images, then any variants (`./build.sh variants`, not part of `all`)
 the Linux/Windows bases before their derived clones. The derived builds clone
 `base_ubuntu_template` / `base_win10_template` from inventory, and each variant clones
 its own `variant_base`.
+
+### Where the seed and secret CDs go
+
+`cd_files` / `cd_content` (Ubuntu `cidata`, Rocky `OEMDRV`, the Windows `autounattend.xml`
+with the build Administrator password, the Linux seeds with the build password hash, the
+pfSense `tn-admin.hash`, the VyOS `tn-vyos.pw`) are made into an ISO on the build host,
+uploaded to **`[vsphere_datastore] packer_cache/`** (esx04-local on the work site) and
+attached as a second CD. They are removed three ways: every `vsphere-iso` source sets
+`remove_cdrom = true` (no CD stays attached to the template, so no clone inherits a seed),
+the vSphere plugin deletes the uploaded ISO when the build ends, success or failure
+("Deleting CD disk"), with `remote_cache_cleanup = true` removing the cache too, and
+`build.sh` sweeps any `packer_cache/*.iso` a killed Packer left behind after every build
+(needs `govc`/`GOVC_URL`). Nothing of it reaches a range host's datastore.
 
 ### Host-local copies (`replicate`)
 
@@ -216,13 +235,13 @@ The deploy provisioner can use either, so keeping both costs only datastore spac
 | srv2016 | iso | **Solid** (once ISO uploaded) | Eval media; classic engine |
 | rocky | iso | **Solid** | Rocky 10 kickstart via `OEMDRV` CD |
 | debian13 | iso | **Likely** | Debian installer preseed over Packer HTTP |
-| kali | iso | **Likely** | Preseed over Packer HTTP; the `kali-linux-default` metapackage is online-only (best-effort, skipped offline) |
+| kali | iso | **Likely** | Preseed over Packer HTTP; the `kali-linux-default` metapackage is online-only (best-effort, skipped offline). cloud-init is required (the worker configures Linux only through it): from the ISO pool or the depot apt proxy, else the build fails (`require-cloud-init.sh`). Not yet confirmed that the 2026.1 "everything" ISO's pool has it: build with the depot if not |
 | srv2025 | iso | **Needs tuning** | New Setup engine; unattended UEFI partitioning is fragile (see below) |
 | win11-24h2 | iso | **Needs tuning — highest risk** | New Setup engine + 64 GB + LabConfig bypass. See below |
 | parrot | iso | **Fragile** | Live ISO usually installs via Calamares (GUI), which ignores preseed. Works only off the ISO's text/debian-installer entry; else treat as manual |
-| pfsense | iso | **Fragile (keystroke)** | Blind `boot_command`; timing needs on-site tuning. config.xml applied at deploy |
+| pfsense | iso | **Not run since the finish was automated (2026-10-21)** | Keystrokes reach the installer's Shell, then `files/pfsense/tn-pfsense-finish.sh` (2nd CD) adds Open-VM-Tools offline from `pkgs.lock`, installs `tn-pfsense-config` + `tn-vmtools.sh`, writes the template config (WAN vmx0, LAN vmx1, SSH, boot hook, admin = the build password hash) and powers off. Any failure: no power-off, no template. Needs the packages staged first (`build-phase.sh appliances` does it; pin once with `stage_pfsense_pkgs.py resolve`; NOT pinned yet). Test clone: `finish` (Tools + the `guestinfo.tn.template.finish` marker) |
 | securityonion | iso | **Fragile (keystroke)** | Base OS install only; `so-setup` runs per range at deploy (standalone, airgap: `vmware-site-runbook.md` §7.2). Finish the OS install by hand the first time, then template **without** running setup. Check before templating: open-vm-tools is running (`systemctl is-active vmtoolsd`). The installer's user is the build login the worker uses (`VSPHERE_SO_INSTALL_USER`/`_PASSWORD`, documented in the wiki) and can `sudo`. Two NICs, management first |
-| vyos | iso | **Fragile (keystroke)** | `install image` driven blind over the console |
+| vyos | iso | **Not run yet** | Logs in on the live console, `tn-vyos-prep.sh` drops the hw-id pins, `tn-vyos-install.py` answers `install image` by prompt text (vyos password = the build password), sets cloud-init's datasource to VMware first and powers off; an unknown prompt fails with no template. Test clone: `finish` (Tools + the marker from `tn-template-marker.service`) |
 | remnux, sift, svc-emulators, ca-host, usersim, cloudlog-emu | clone | **Likely** | Clone `ubuntu-lts`, run `files/linux/roles/<name>.sh` over SSH. Role installers have honest `TODO(offline)` / `TODO(deploy)` where media is online-only or range-specific |
 | greyspace-host | clone | **Not run on vSphere yet** | Clone `ubuntu-lts`, Docker >= 27 + every Greyspace stack image pulled by digest (`files/linux/roles/greyspace-host.sh`, needs internet or the depot as apt proxy and registry mirror). Proven: the stack on Docker (CI `greyspace`), gs-core on vcsim; not a real vCenter |
 | c2-server | clone | **Gated** | Catalogue `enabled=no`; needs instructor/Standards sign-off |
@@ -239,7 +258,7 @@ All Linux images (bases, derived, variants) log in with the one generic build lo
 `roles.pkr.hcl` builds the images `control-plane/api/app/windows_roles.py` names for its
 "image" roles. Each clones `srv2022` (`base_srv2022_template`), gets WinRM back with the
 same guest customization the Windows variants use, attaches its media as extra CD-ROMs,
-and runs `files/windows/role-image.ps1` twice with a reboot in between, then sysprep.
+and runs `files/windows/role-image.ps1` twice with a reboot in between, then `sysprep.ps1` (scrub and shut down).
 `depot_url` is required. Files that are not on the product media come from the depot's raw
 `installers` repository, `<depot_url>/installers/roles/<image>/`. Upload them once as the
 `tn-prefetch` user, for example
@@ -280,10 +299,15 @@ packer build -force -var-file=variants/win11-analyst.pkrvars.hcl \
   -only=variants.vsphere-clone.variant-windows .
 ```
 
-**How a Windows variant gets WinRM back.** Every Windows base ends in
-`sysprep /generalize /oobe /shutdown`. That disables the built-in Administrator on client
-SKUs and leaves no password Packer knows, so a plain clone has nothing Packer can log in
-to (this is why precomp-host/detonation-host are clone-only). `variant-windows` attaches a
+**No generalize in Packer (2026-10-21).** Windows bases, roles and variants are NOT
+generalized by Packer: `sysprep.ps1` scrubs build secrets and logs, then shuts down
+(`shutdown /s /t 5 /f` from a SYSTEM scheduled task). vSphere guest customization runs
+Sysprep itself on every clone (the worker's `windows_customization()`, and
+`scripts/lab/test-clone.sh` with `-type Windows`); a template Packer had already
+generalized could not take that spec (win11-24h2).
+
+**How a Windows variant gets WinRM back.** A plain clone of a base has no WinRM listener
+Packer can rely on after customization, so precomp-host/detonation-host stay clone-only. `variant-windows` attaches a
 vSphere **guest-customization spec** to the clone (`customize { windows_options { … } }`):
 - `admin_password` = `windows_admin_password`, with `auto_logon` once. Naming
   Administrator for auto-logon re-enables the account.
@@ -296,8 +320,8 @@ the same Sysprep customization the deploy provisioner
 (`control-plane/worker/worker/provisioners/vsphere_api.py`) applies to every Windows
 clone of these templates, so any base that deploys can also be a variant base. It needs
 VMware Tools in the base (setup.ps1 installs it). After the packages and scripts, a
-`windows-restart` clears pending reboots. `shutdown_command` then runs `sysprep.ps1`, so
-the variant is generalized again and deploys exactly like a base. Two alternatives were
+`windows-restart` clears pending reboots. `shutdown_command` then runs `sysprep.ps1` (scrub and
+shut down, no generalize), so the variant deploys exactly like a base. Two alternatives were
 rejected:
 - A guestinfo-gated first-boot hook needs every Windows base rebuilt and leaves the
   password in the VMX extraConfig.

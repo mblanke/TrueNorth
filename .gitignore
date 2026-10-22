@@ -91,3 +91,6 @@ Credentials_*
 truenorth-content-pack/truenorth-content/qsp_source/*.docx
 truenorth-content-pack/truenorth-content/qsp_source/*.pdf
 truenorth-content-pack/truenorth-content/qsp_source/approval_letters/
+
+# Packer: staged offline packages for the pfSense template (scripts/lab/stage_pfsense_pkgs.py)
+infra/vsphere/packer/stage/

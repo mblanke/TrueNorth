@@ -83,7 +83,10 @@ SITE: dict[str, object] = {
     "build_network": "dPG-TN-BUILD",
     "http_bind_address": "10.30.31.20",
     "content_library": "TrueNorth-Templates",
-    "publish_to_library": True,
+    # Off by default here (--library turns it on): the provisioner clones the host-local
+    # copies (build.sh replicate), VSPHERE_CONTENT_LIBRARY is empty on this site, and the
+    # svc-truenorth account gets 403 from the Content Library API (2026-10-20).
+    "publish_to_library": False,
     "win11_vtpm": False,
     "base_ubuntu_template": "ubuntu-lts",
     "base_win10_template": "win10-22h2",
@@ -151,8 +154,12 @@ def parse_isos(path: Path) -> tuple[dict[str, str], list[str]]:
         parts = line.split()
         if not parts:
             continue
+        # Optional third token: sha256=<hex>, the ISO's pinned checksum (iso-sync-esx04.sh
+        # --verify records a match; build-phase.sh builds that ISO only once it is recorded).
+        if len(parts) == 3 and re.fullmatch(r"sha256=[0-9a-fA-F]{64}", parts[2]):
+            parts = parts[:2]
         if len(parts) != 2:
-            raise InputError(f"{path}: expected '<var|-> <path|PENDING>', got: {raw.strip()}")
+            raise InputError(f"{path}: expected '<var|-> <path|PENDING> [sha256=<hex>]', got: {raw.strip()}")
         var, rel = parts
         if rel == "PENDING":
             pending.append(f"{var} ({note.strip() or 'no note'})")
@@ -378,6 +385,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--apt-proxy", default=DEFAULT_APT_PROXY, help="apt-cacher-ng URL written with --depot")
     ap.add_argument("--depot-env", type=Path, default=DEFAULT_DEPOT_ENV,
                     help=f"root-only file with {DEPOT_READ_KEY} (written by build-phase.sh depot)")
+    ap.add_argument("--library", action="store_true",
+                    help="also publish each base build to the content library (publish_to_library = true)")
     ap.add_argument("--check", action="store_true", help="validate the existing file and exit")
     ap.add_argument("--non-interactive", action="store_true", help="never prompt; missing input is an error")
     ap.add_argument("--allow-non-root", action="store_true", help="tests only: do not require root")
@@ -412,6 +421,9 @@ def main(argv: list[str] | None = None) -> int:
             ssh_hash,
             depot_read_password(args.depot_env) if args.depot else "",
         )
+        if args.library:
+            values["publish_to_library"] = True
+            sources["publish_to_library"] = "--library"
         write_private(args.out, render(values, sources), chown_root=is_root)
     except InputError as exc:
         print(f"pkrvars: {exc}", file=sys.stderr)

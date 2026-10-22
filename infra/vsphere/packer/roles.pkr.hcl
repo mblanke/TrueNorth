@@ -312,10 +312,6 @@ build {
   ]
 
   provisioner "file" {
-    source      = "${path.root}/files/windows/sysprep-unattend.xml"
-    destination = "C:/Windows/Temp/sysprep-unattend.xml"
-  }
-  provisioner "file" {
     source      = "${path.root}/files/windows/sysprep.ps1"
     destination = "C:/Windows/Temp/sysprep.ps1"
   }

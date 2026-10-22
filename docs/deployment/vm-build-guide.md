@@ -141,7 +141,25 @@ cloned many times, so a manual build is a fine outcome.
    `TrueNorth-Templates`, using the same name.
 7. **Register** it (§7).
 
+**If guest customization fails on a Windows clone** (Sysprep error, customization timeout),
+the clone keeps the template's state: the generic build Administrator password
+(`windows_admin_password`, ADR 0012 decision 5) and WinRM with Basic auth from `setup.ps1`.
+The worker treats a failed customization as "not ready" only for VMs it installs software
+on (`vsphere_guest.GuestSession.wait_ready`, `TOOLSDEPLOYPKG_FAILED`); a range VM with no
+software to install is not checked yet (tracked as a follow-up). Until then, a range whose
+Windows VMs show a customization error in vCenter (`guest.customizationInfo`) must be torn
+down, not used: its machines have the build password and Basic WinRM.
+
 ### Linux (Ubuntu, Rocky, Debian, Kali, Parrot)
+
+**The worker configures Linux range VMs only through cloud-init** (VMware datasource:
+`guestinfo.metadata` / `guestinfo.userdata` give the hostname, static IPs and accounts;
+`vsphere_api.py` `_customize_sync`). It runs no vSphere Linux guest customization. So every
+Linux template must have cloud-init with the VMware datasource first; without it a clone
+has no IP and no accounts. The Packer builds enforce it (`files/linux/install-cloud-init.sh`,
+then `require-cloud-init.sh` fails the build), and `test-clone.sh` configures a Linux clone
+the same way the worker does (`scripts/lab/linux_guestinfo.py`), so a template without
+working cloud-init is never registered.
 
 Fastest path: use a **cloud image** with no OS install. This is how `tmpl-ubuntu-2404` was
 made:
@@ -161,12 +179,32 @@ ISO path:
      `open-vm-tools-desktop`).
    - Rocky: `dnf install -y open-vm-tools cloud-init`.
 4. Copy `files/linux/99-vmware.cfg` to `/etc/cloud/cloud.cfg.d/`. This sets the VMware
-   datasource, which TrueNorth's guestinfo IP config needs.
+   datasource, which TrueNorth's guestinfo IP config needs. Install
+   `files/linux/tn-ssh-hostkeys.service` to `/etc/systemd/system/` and
+   `systemctl enable tn-ssh-hostkeys.service` (it regenerates the host keys cleanup.sh
+   removes, if cloud-init does not). Then run `files/linux/require-cloud-init.sh`: it must
+   print "template OK".
 5. Run `files/linux/cleanup.sh`. It cleans cloud-init, truncates the machine-id, removes
    the SSH host keys and powers off.
 6. Convert to a template and name it after the catalogue id. Then register it (§7).
 
 ### pfSense
+
+**The Packer build (`appliances.pkr.hcl`, `pfsense`) does steps 2–5 itself** from its
+second CD (`files/pfsense/tn-pfsense-finish.sh`, run from the installer's Shell): it adds
+the Open-VM-Tools package set from `files/pfsense/pkgs.lock` offline (sha256-checked),
+installs `tn-pfsense-config` and `/usr/local/etc/rc.d/tn-vmtools.sh`, writes the template
+config (`tn-pfsense-config template`: the release's factory config with WAN `vmx0`, LAN
+`vmx1`, SSH on, the boot hook, and the admin password = the build's `ssh_password_hash`,
+ADR 0012 decision 5) and powers off; on any failure it does not power off, so the build
+fails and no template is made. Before building, stage the packages:
+`python3 scripts/lab/stage_pfsense_pkgs.py stage --depot <depot_url>` (or `--from-dir`;
+`build-phase.sh appliances` does it). The lock is pinned once, on a host with internet:
+`stage_pfsense_pkgs.py resolve --out <dir>`, review and commit `pkgs.lock`, upload
+`<dir>/*.pkg` to the depot's `installers/pfsense/2.7.2/`. `build-phase.sh` registers the
+template only after a test clone shows VMware Tools running and publishes the finish marker
+(`guestinfo.tn.template.finish`, from `/cf/conf/tn-template-finish.txt`). The hand steps below remain
+the fallback, and the reference for what the finish does.
 
 1. New VM: FreeBSD 14 64-bit, BIOS, 2 vCPU / 2 GB / 20 GB.
    **Two vmxnet3 NICs**: NIC 1 (WAN) on `dPG-TN-BUILD` for the build, NIC 2 (LAN) on the
@@ -240,6 +278,17 @@ stay the template's. Log: `/conf/tn-opnsense-config.log`.
    eval) per range, or bake an eval install and snapshot it as a role snapshot.
 
 ### VyOS 1.4
+
+**The Packer build (`appliances.pkr.hcl`, `vyos`) does steps 2–4 itself** from its second
+CD: it logs in on the live console, runs `files/vyos/tn-vyos-prep.sh` (step 3, before the
+install, so the copied config pins no MACs), then `files/vyos/tn-vyos-install.py`, which
+answers `install image` by each prompt's text (vyos password = the build's `ssh_password`,
+ADR 0012 decision 5; SSH host keys not copied; the saved config as boot config), writes
+`/etc/cloud/cloud.cfg.d/99-tn-vmware.cfg` (`datasource_list: [ VMware, NoCloud, None ]`)
+into the installed image and powers off. A prompt it does not know, or any failure, prints
+the transcript and does not power off: the build fails, no template. The installed image
+has never booted, so there is no cloud-init state to clean. Test clone: `finish` (Tools and
+the `guestinfo.tn.template.finish` marker that `tn-template-marker.service` publishes).
 
 1. New VM: Debian 12 64-bit, 1 vCPU / 2 GB / 8 GB, two vmxnet3 NICs.
 2. Boot the ISO and log in as `vyos`/`vyos`. Run `install image` and accept the defaults.

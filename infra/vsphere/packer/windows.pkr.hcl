@@ -1,7 +1,7 @@
 # TrueNorth Range — Windows golden templates (vsphere-iso).
 # Sources: srv2022, srv2025, srv2019, srv2016, win10-22h2, win10-ltsc, win11-24h2.
 # All sources share the Autounattend templatefile and the setup.ps1 / sysprep.ps1
-# provisioners. Build one with:  packer build -only='windows.vsphere-iso.<id>' .
+# provisioners. No source generalizes: vSphere guest customization runs Sysprep on clone. Build one with:  packer build -only='windows.vsphere-iso.<id>' .
 # (or ./build.sh <id>). A bare 'vsphere-iso.<id>' matches nothing: the build is named.
 #
 # ISOs are pre-staged on a host-local datastore, so every source pins host/datastore to
@@ -10,7 +10,7 @@
 # Highest build risk: win11-24h2 and srv2025 use the new Windows Setup engine whose
 # unattended UEFI partitioning is fragile (see README "Windows 11 / Server 2025"). The
 # proven 4-partition layout in autounattend.pkrtpl.hcl is the best-effort automated path;
-# the manual-install + sysprep fallback is documented in the README.
+# the manual-install fallback is documented in the README.
 
 # ---- Server 2022 (classic engine; most reliable Windows build) ----------------------
 source "vsphere-iso" "srv2022" {
@@ -26,7 +26,7 @@ source "vsphere-iso" "srv2022" {
 
   vm_name       = "srv2022"
   notes         = "TrueNorth golden: Windows Server 2022 (built by Packer)"
-  guest_os_type = "windows2019srvNext64Guest"
+  guest_os_type = "windows2019srvNext_64Guest" # vSphere id for Server 2022 (the underscore matters)
   firmware      = "efi"
 
   CPUs                 = 4
@@ -42,10 +42,18 @@ source "vsphere-iso" "srv2022" {
   }
 
   iso_paths = ["${local.iso_dir}/${var.iso_srv2022}", var.vmtools_iso_path]
-  cd_label  = "PROVISION"
+  # Seed and secret CDs (seeds, passwords, hashes) are uploaded to [datastore]
+  # packer_cache/; the plugin deletes that ISO on cleanup, this removes the cache too, and
+  # remove_cdrom detaches every CD before the VM becomes a template.
+  remote_cache_cleanup = true
+  remove_cdrom         = true # no clone inherits the install ISO or a seed/secret CD
+  cd_label             = "PROVISION"
   cd_content = {
     "autounattend.xml" = templatefile("${path.root}/files/windows/autounattend.pkrtpl.hcl", {
-      image_name          = "Windows Server 2022 Standard (Desktop Experience)"
+      # install.wim index 2 = Standard (Desktop Experience). /IMAGE/NAME takes the WIM NAME,
+      # not the display name Setup shows, and "...Standard (Desktop Experience)" matched nothing
+      # (Setup stopped at the image picker, 2026-10-20). A number here selects /IMAGE/INDEX.
+      image_name          = "2"
       product_key         = var.gvlk_srv2022
       computer_name       = "SRV2022"
       admin_password      = var.windows_admin_password
@@ -59,8 +67,13 @@ source "vsphere-iso" "srv2022" {
   winrm_username = "Administrator"
   winrm_password = var.windows_admin_password
   winrm_timeout  = "3h"
-  winrm_use_ssl  = false
-  winrm_insecure = true
+  # sysprep.ps1 scrubs build secrets and powers the VM off; it does NOT generalize (vSphere
+  # customization runs Sysprep on each clone). It is the shutdown step, not a provisioner (as in
+  # roles/variants). Run as a provisioner it cut WinRM mid-step and failed the build.
+  shutdown_command = "powershell -NoProfile -ExecutionPolicy Bypass -File C:\\Windows\\Temp\\sysprep.ps1"
+  shutdown_timeout = "1h"
+  winrm_use_ssl    = false
+  winrm_insecure   = true
 
   boot_wait    = "3s"
   boot_command = ["<spacebar>"]
@@ -91,7 +104,7 @@ source "vsphere-iso" "srv2025" {
 
   vm_name       = "srv2025"
   notes         = "TrueNorth golden: Windows Server 2025 (built by Packer)"
-  guest_os_type = "windows2019srvNext64Guest"
+  guest_os_type = "windows2022srvNext_64Guest" # Server 2025 (vSphere API 8.0.2+)
   firmware      = "efi"
 
   CPUs                 = 4
@@ -107,10 +120,18 @@ source "vsphere-iso" "srv2025" {
   }
 
   iso_paths = ["${local.iso_dir}/${var.iso_srv2025}", var.vmtools_iso_path]
-  cd_label  = "PROVISION"
+  # Seed and secret CDs (seeds, passwords, hashes) are uploaded to [datastore]
+  # packer_cache/; the plugin deletes that ISO on cleanup, this removes the cache too, and
+  # remove_cdrom detaches every CD before the VM becomes a template.
+  remote_cache_cleanup = true
+  remove_cdrom         = true # no clone inherits the install ISO or a seed/secret CD
+  cd_label             = "PROVISION"
   cd_content = {
     "autounattend.xml" = templatefile("${path.root}/files/windows/autounattend.pkrtpl.hcl", {
-      image_name          = "Windows Server 2025 Standard (Desktop Experience)"
+      # install.wim index 2 = Standard (Desktop Experience). /IMAGE/NAME takes the WIM NAME,
+      # not the display name Setup shows, and "...Standard (Desktop Experience)" matched nothing
+      # (Setup stopped at the image picker, 2026-10-20). A number here selects /IMAGE/INDEX.
+      image_name          = "2"
       product_key         = var.gvlk_srv2025
       computer_name       = "SRV2025"
       admin_password      = var.windows_admin_password
@@ -124,8 +145,13 @@ source "vsphere-iso" "srv2025" {
   winrm_username = "Administrator"
   winrm_password = var.windows_admin_password
   winrm_timeout  = "3h"
-  winrm_use_ssl  = false
-  winrm_insecure = true
+  # sysprep.ps1 scrubs build secrets and powers the VM off; it does NOT generalize (vSphere
+  # customization runs Sysprep on each clone). It is the shutdown step, not a provisioner (as in
+  # roles/variants). Run as a provisioner it cut WinRM mid-step and failed the build.
+  shutdown_command = "powershell -NoProfile -ExecutionPolicy Bypass -File C:\\Windows\\Temp\\sysprep.ps1"
+  shutdown_timeout = "1h"
+  winrm_use_ssl    = false
+  winrm_insecure   = true
 
   boot_wait    = "3s"
   boot_command = ["<spacebar>"]
@@ -172,7 +198,12 @@ source "vsphere-iso" "srv2019" {
   }
 
   iso_paths = ["${local.iso_dir}/${var.iso_srv2019}", var.vmtools_iso_path]
-  cd_label  = "PROVISION"
+  # Seed and secret CDs (seeds, passwords, hashes) are uploaded to [datastore]
+  # packer_cache/; the plugin deletes that ISO on cleanup, this removes the cache too, and
+  # remove_cdrom detaches every CD before the VM becomes a template.
+  remote_cache_cleanup = true
+  remove_cdrom         = true # no clone inherits the install ISO or a seed/secret CD
+  cd_label             = "PROVISION"
   cd_content = {
     "autounattend.xml" = templatefile("${path.root}/files/windows/autounattend.pkrtpl.hcl", {
       image_name          = local.srv2019_image_name
@@ -189,8 +220,13 @@ source "vsphere-iso" "srv2019" {
   winrm_username = "Administrator"
   winrm_password = var.windows_admin_password
   winrm_timeout  = "3h"
-  winrm_use_ssl  = false
-  winrm_insecure = true
+  # sysprep.ps1 scrubs build secrets and powers the VM off; it does NOT generalize (vSphere
+  # customization runs Sysprep on each clone). It is the shutdown step, not a provisioner (as in
+  # roles/variants). Run as a provisioner it cut WinRM mid-step and failed the build.
+  shutdown_command = "powershell -NoProfile -ExecutionPolicy Bypass -File C:\\Windows\\Temp\\sysprep.ps1"
+  shutdown_timeout = "1h"
+  winrm_use_ssl    = false
+  winrm_insecure   = true
 
   boot_wait    = "3s"
   boot_command = ["<spacebar>"]
@@ -237,7 +273,12 @@ source "vsphere-iso" "srv2016" {
   }
 
   iso_paths = ["${local.iso_dir}/${var.iso_srv2016}", var.vmtools_iso_path]
-  cd_label  = "PROVISION"
+  # Seed and secret CDs (seeds, passwords, hashes) are uploaded to [datastore]
+  # packer_cache/; the plugin deletes that ISO on cleanup, this removes the cache too, and
+  # remove_cdrom detaches every CD before the VM becomes a template.
+  remote_cache_cleanup = true
+  remove_cdrom         = true # no clone inherits the install ISO or a seed/secret CD
+  cd_label             = "PROVISION"
   cd_content = {
     "autounattend.xml" = templatefile("${path.root}/files/windows/autounattend.pkrtpl.hcl", {
       image_name          = "Windows Server 2016 Standard (Desktop Experience)"
@@ -254,8 +295,13 @@ source "vsphere-iso" "srv2016" {
   winrm_username = "Administrator"
   winrm_password = var.windows_admin_password
   winrm_timeout  = "3h"
-  winrm_use_ssl  = false
-  winrm_insecure = true
+  # sysprep.ps1 scrubs build secrets and powers the VM off; it does NOT generalize (vSphere
+  # customization runs Sysprep on each clone). It is the shutdown step, not a provisioner (as in
+  # roles/variants). Run as a provisioner it cut WinRM mid-step and failed the build.
+  shutdown_command = "powershell -NoProfile -ExecutionPolicy Bypass -File C:\\Windows\\Temp\\sysprep.ps1"
+  shutdown_timeout = "1h"
+  winrm_use_ssl    = false
+  winrm_insecure   = true
 
   boot_wait    = "3s"
   boot_command = ["<spacebar>"]
@@ -302,7 +348,12 @@ source "vsphere-iso" "win10-22h2" {
   }
 
   iso_paths = ["${local.iso_dir}/${var.iso_win10}", var.vmtools_iso_path]
-  cd_label  = "PROVISION"
+  # Seed and secret CDs (seeds, passwords, hashes) are uploaded to [datastore]
+  # packer_cache/; the plugin deletes that ISO on cleanup, this removes the cache too, and
+  # remove_cdrom detaches every CD before the VM becomes a template.
+  remote_cache_cleanup = true
+  remove_cdrom         = true # no clone inherits the install ISO or a seed/secret CD
+  cd_label             = "PROVISION"
   cd_content = {
     "autounattend.xml" = templatefile("${path.root}/files/windows/autounattend.pkrtpl.hcl", {
       image_name          = local.win10_image_name
@@ -319,8 +370,13 @@ source "vsphere-iso" "win10-22h2" {
   winrm_username = "Administrator"
   winrm_password = var.windows_admin_password
   winrm_timeout  = "3h"
-  winrm_use_ssl  = false
-  winrm_insecure = true
+  # sysprep.ps1 scrubs build secrets and powers the VM off; it does NOT generalize (vSphere
+  # customization runs Sysprep on each clone). It is the shutdown step, not a provisioner (as in
+  # roles/variants). Run as a provisioner it cut WinRM mid-step and failed the build.
+  shutdown_command = "powershell -NoProfile -ExecutionPolicy Bypass -File C:\\Windows\\Temp\\sysprep.ps1"
+  shutdown_timeout = "1h"
+  winrm_use_ssl    = false
+  winrm_insecure   = true
 
   boot_wait    = "3s"
   boot_command = ["<spacebar>"]
@@ -370,7 +426,12 @@ source "vsphere-iso" "win10-ltsc" {
   }
 
   iso_paths = ["${local.iso_dir}/${var.iso_win10_ltsc}", var.vmtools_iso_path]
-  cd_label  = "PROVISION"
+  # Seed and secret CDs (seeds, passwords, hashes) are uploaded to [datastore]
+  # packer_cache/; the plugin deletes that ISO on cleanup, this removes the cache too, and
+  # remove_cdrom detaches every CD before the VM becomes a template.
+  remote_cache_cleanup = true
+  remove_cdrom         = true # no clone inherits the install ISO or a seed/secret CD
+  cd_label             = "PROVISION"
   cd_content = {
     "autounattend.xml" = templatefile("${path.root}/files/windows/autounattend.pkrtpl.hcl", {
       image_name          = var.win10_ltsc_image_name
@@ -387,8 +448,13 @@ source "vsphere-iso" "win10-ltsc" {
   winrm_username = "Administrator"
   winrm_password = var.windows_admin_password
   winrm_timeout  = "3h"
-  winrm_use_ssl  = false
-  winrm_insecure = true
+  # sysprep.ps1 scrubs build secrets and powers the VM off; it does NOT generalize (vSphere
+  # customization runs Sysprep on each clone). It is the shutdown step, not a provisioner (as in
+  # roles/variants). Run as a provisioner it cut WinRM mid-step and failed the build.
+  shutdown_command = "powershell -NoProfile -ExecutionPolicy Bypass -File C:\\Windows\\Temp\\sysprep.ps1"
+  shutdown_timeout = "1h"
+  winrm_use_ssl    = false
+  winrm_insecure   = true
 
   boot_wait    = "3s"
   boot_command = ["<spacebar>"]
@@ -423,9 +489,11 @@ source "vsphere-iso" "win11-24h2" {
   firmware      = "efi-secure"
   vTPM          = var.win11_vtpm
 
-  CPUs                 = 2
-  RAM                  = 4096
-  disk_controller_type = ["pvscsi"]
+  CPUs = 2
+  RAM  = 4096
+  # NVMe: Windows has an inbox driver, so WinPE needs no DriverPaths. With pvscsi DriverPaths
+  # the 24H2 setup stopped with 0x80070103 - 0x40031 (2026-10-20, ESXi 8.0.3).
+  disk_controller_type = ["nvme"]
   storage {
     disk_size             = 65536
     disk_thin_provisioned = true
@@ -436,7 +504,12 @@ source "vsphere-iso" "win11-24h2" {
   }
 
   iso_paths = ["${local.iso_dir}/${var.iso_win11_24h2}", var.vmtools_iso_path]
-  cd_label  = "PROVISION"
+  # Seed and secret CDs (seeds, passwords, hashes) are uploaded to [datastore]
+  # packer_cache/; the plugin deletes that ISO on cleanup, this removes the cache too, and
+  # remove_cdrom detaches every CD before the VM becomes a template.
+  remote_cache_cleanup = true
+  remove_cdrom         = true # no clone inherits the install ISO or a seed/secret CD
+  cd_label             = "PROVISION"
   cd_content = {
     "autounattend.xml" = templatefile("${path.root}/files/windows/autounattend.pkrtpl.hcl", {
       image_name          = "Windows 11 Pro"
@@ -445,7 +518,7 @@ source "vsphere-iso" "win11-24h2" {
       admin_password      = var.windows_admin_password
       labconfig           = !var.win11_vtpm
       bypass_nro          = true
-      pvscsi_driver_paths = local.pvscsi_driver_paths
+      pvscsi_driver_paths = []
     })
   }
 
@@ -453,8 +526,13 @@ source "vsphere-iso" "win11-24h2" {
   winrm_username = "Administrator"
   winrm_password = var.windows_admin_password
   winrm_timeout  = "3h"
-  winrm_use_ssl  = false
-  winrm_insecure = true
+  # sysprep.ps1 scrubs build secrets and powers the VM off; it does NOT generalize (vSphere
+  # customization runs Sysprep on each clone). It is the shutdown step, not a provisioner (as in
+  # roles/variants). Run as a provisioner it cut WinRM mid-step and failed the build.
+  shutdown_command = "powershell -NoProfile -ExecutionPolicy Bypass -File C:\\Windows\\Temp\\sysprep.ps1"
+  shutdown_timeout = "1h"
+  winrm_use_ssl    = false
+  winrm_insecure   = true
 
   boot_wait    = "3s"
   boot_command = ["<spacebar>"]
@@ -484,11 +562,6 @@ build {
     "source.vsphere-iso.win11-24h2",
   ]
 
-  provisioner "file" {
-    source      = "${path.root}/files/windows/sysprep-unattend.xml"
-    destination = "C:/Windows/Temp/sysprep-unattend.xml"
-  }
-
   # Chocolatey from the depot feed's own .nupkg (no install.ps1 on Nexus), then the baseline.
   provisioner "powershell" {
     environment_vars = ["DEPOT_URL=${var.depot_url}", "CHOCOLATEY_VERSION=${var.chocolatey_version}"]
@@ -498,8 +571,10 @@ build {
     ]
   }
 
-  # Final: generalize and shut down. Keep this last.
-  provisioner "powershell" {
-    script = "${path.root}/files/windows/sysprep.ps1"
+  # Final: scrub and shut down (no generalize). Keep this last.
+  # Staged here; shutdown_command runs it (scrubs build secrets, then shutdown /s).
+  provisioner "file" {
+    source      = "${path.root}/files/windows/sysprep.ps1"
+    destination = "C:/Windows/Temp/sysprep.ps1"
   }
 }

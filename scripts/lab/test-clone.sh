@@ -5,13 +5,18 @@
 #
 #   scripts/lab/test-clone.sh srv2022                     # asks y/N, then esx02 esx03 esx04
 #   scripts/lab/test-clone.sh ubuntu-lts --hosts esx04 --yes
-#   scripts/lab/test-clone.sh pfsense --mode power        # appliances without Tools
+#   scripts/lab/test-clone.sh pfsense --mode finish       # appliances: Tools + finish marker
 #
 # Options:
 #   --hosts "H..."   range hosts (default "esx02 esx03 esx04", or RANGE_HOSTS)
-#   --mode M         customize (default): guest customization (Windows Sysprep name + IP +
-#                    a throwaway Administrator password; Linux name + IP), pass when Tools
-#                    reports that name and IP
+#   --mode M         customize (default): the worker's customization path. Windows: a
+#                    Sysprep spec (name + IP + a throwaway Administrator password). Linux:
+#                    cloud-init guestinfo rendered by the worker's own linux_guestinfo()
+#                    (linux_guestinfo.py), never govc vm.customize. Pass when Tools reports
+#                    that name and IP (Linux: only a template with working cloud-init can)
+#                    finish: no customization, pass when Tools is running AND the guest has
+#                    published guestinfo.tn.template.finish (pfSense: tn-pfsense-config boot;
+#                    VyOS: tn-template-marker.service), i.e. its template finish ran
 #                    tools: no customization, pass when Tools is running
 #                    power: no customization, pass when the VM is still powered on after 90 s
 #   --network PG     port group for the clone's first NIC (default dPG-TN-BUILD)
@@ -31,7 +36,7 @@ set -euo pipefail
 # shellcheck source-path=SCRIPTDIR source=lib.sh
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
-usage() { sed -n '2,29p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+usage() { sed -n '2,34p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 ID=""; HOSTS="${RANGE_HOSTS:-esx02 esx03 esx04}"; MODE="customize"; NET="dPG-TN-BUILD"
 IP_BASE="10.30.31"; TIMEOUT_MIN=25; KEEP=0
 ENV_FILE="${TN_ENV_FILE:-/srv/truenorth/config/.env.production}"
@@ -52,7 +57,7 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 [[ -n "$ID" ]] || usage 2
-case "$MODE" in customize|tools|power) ;; *) die "--mode customize|tools|power" ;; esac
+case "$MODE" in customize|finish|tools|power) ;; *) die "--mode customize|finish|tools|power" ;; esac
 [[ "$TIMEOUT_MIN" =~ ^[0-9]+$ ]] || die "--timeout takes minutes"
 if [[ -z "${GOVC_USERNAME:-}" || -z "${GOVC_PASSWORD:-}" ]]; then govc_from_env_file "$ENV_FILE"; fi
 APPLY=1   # every change below is confirmed first; act() echoes each command
@@ -73,17 +78,45 @@ source_for() {
   if [[ -n "$copy" ]]; then echo "$copy"; else govc find / -type m -name "$ID" | awk '!/\/_retired\//' | head -n1; fi
 }
 
+# What the guest published as guestinfo.tn.template.finish (empty: nothing). The appliance
+# templates' boot hooks set it from the marker their template finish wrote.
+finish_marker() {
+  govc vm.info -e -json "$1" 2>/dev/null \
+    | jq -r '[.. | objects | select((.Key? // .key?) == "guestinfo.tn.template.finish") | (.Value? // .value?) | strings][0] // empty'
+}
+
+# cloud-init guestinfo for a Linux clone, rendered by the worker's own code
+# (scripts/lab/linux_guestinfo.py loads vsphere_infra.linux_guestinfo from this checkout).
+linux_guestinfo() {
+  local vm="$1" nic="$2" want_name="$3" ip="$4" mac args=() line
+  mac="$(govc device.info -vm "$vm" -json "$nic" 2>/dev/null \
+    | jq -r '[.. | objects | (.MacAddress? // .macAddress? // empty) | strings][0] // empty')"
+  [[ -n "$mac" ]] || { warn "no MAC for $nic"; return 1; }
+  while IFS= read -r line; do args+=(-e "$line"); done \
+    < <("${TN_LAB_PYTHON:-python3}" "$LAB_DIR/linux_guestinfo.py" --name "$want_name" --ip "$ip" --mac "$mac") || return 1
+  [[ "${#args[@]}" -eq 8 ]] || { warn "linux_guestinfo.py gave ${#args[@]} arguments, want 8"; return 1; }
+  echo "  + govc vm.change -vm $vm -e guestinfo.metadata=... -e guestinfo.userdata=... (cloud-init: $want_name, $ip, $mac)"
+  govc vm.change -vm "$vm" "${args[@]}"
+}
+
 # Network, customization (customize mode) and power-on. Non-zero: the clone is not testable.
 prepare() {
   local vm="$1" nic="$2" want_name="$3" ip="$4"
   if [[ -n "$nic" ]]; then act govc vm.network.change -vm "$vm" -net "$NET" "$nic" || return 1; fi
   if [[ "$MODE" == "customize" ]]; then
     case "$(collect "$vm" config.guestId)" in
-      win*) # A throwaway password, set by Sysprep like a range password; never printed.
-            echo "  + govc vm.customize -vm $vm -name $want_name -ip $ip -netmask 255.255.255.0 -pwd <random>"
-            govc vm.customize -vm "$vm" -name "$want_name" -ip "$ip" -netmask 255.255.255.0 \
+      win*) # Windows Sysprep spec, as the worker's windows_customization() (vsphere_infra.py):
+            # govc defaults to -type Linux, which a Windows guest cannot apply. A throwaway
+            # password, set by Sysprep like a range password; never printed.
+            echo "  + govc vm.customize -vm $vm -type Windows -name $want_name -username TrueNorth -org TrueNorth -tz 85 -ip $ip -netmask 255.255.255.0 -pwd <random>"
+            govc vm.customize -vm "$vm" -type Windows -name "$want_name" -username TrueNorth -org TrueNorth -tz 85 \
+              -ip "$ip" -netmask 255.255.255.0 \
               -pwd "Tc!$(od -An -N9 -tx1 /dev/urandom | tr -d ' \n')" || return 1 ;;
-      *)    act govc vm.customize -vm "$vm" -name "$want_name" -ip "$ip" -netmask 255.255.255.0 || return 1 ;;
+      *)    # Linux: the worker's path, not govc vm.customize. vsphere_api.py _customize_sync
+            # writes cloud-init guestinfo (vsphere_infra.linux_guestinfo) and runs no vSphere
+            # Linux customization, so that is what a clone must take: a template without
+            # cloud-init (VMware datasource) gets no name and no IP here and is not registered.
+            linux_guestinfo "$vm" "$nic" "$want_name" "$ip" || return 1 ;;
     esac
   fi
   act govc vm.power -on "$vm"
@@ -142,18 +175,20 @@ for item in "${plan[@]}"; do
     sleep "${TN_TEST_POLL:-15}"
     got_ip="$(collect "$vm" guest.ipAddress)"; got_name="$(collect "$vm" guest.hostName)"
     tools="$(collect "$vm" guest.toolsRunningStatus)"; power="$(collect "$vm" runtime.powerState)"
+    [[ "$MODE" == finish ]] && marker="$(finish_marker "$vm")"
     case "$MODE" in
       customize)
         shopt -s nocasematch
         if [[ "$got_ip" == "$ip" && "${got_name%%.*}" == "$want_name" ]]; then ok=1; fi
         shopt -u nocasematch ;;
+      finish) [[ "$tools" == "guestToolsRunning" && -n "${marker:-}" ]] && ok=1 ;;
       tools) [[ "$tools" == "guestToolsRunning" ]] && ok=1 ;;
       power) [[ "$power" == "poweredOn" && $(( $(date +%s) - started )) -ge 90 ]] && ok=1 ;;
     esac
     (( ok )) && break
     [[ "$power" == "poweredOn" ]] || break
   done
-  info "tools=${tools:-?} power=${power:-?} ip=${got_ip:-none} name=${got_name:-none}"
+  info "tools=${tools:-?} power=${power:-?} ip=${got_ip:-none} name=${got_name:-none}$([[ "$MODE" == finish ]] && echo " finish=${marker:-none}")"
   if (( ok )); then
     info "PASS $short"
     if [[ "$KEEP" == "1" ]]; then info "kept (--keep): govc vm.destroy '$vm'"

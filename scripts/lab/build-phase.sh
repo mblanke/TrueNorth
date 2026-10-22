@@ -107,23 +107,33 @@ role_server_ids() { local p; for p in $ROLE_SERVER; do printf '%s ' "${p%%:*}"; 
 
 test_mode() {
   case "$1" in
-    pfsense|vyos) echo power ;;   # no guest customization on the appliances
+    # No guest customization on the appliances. A clone must run VMware Tools AND publish
+    # guestinfo.tn.template.finish, which only a finished template does (pfSense: the boot
+    # hook reads /cf/conf/tn-template-finish.txt from tn-pfsense-finish.sh; VyOS:
+    # tn-template-marker.service, from tn-vyos-install.py). Tools alone is not proof: a
+    # hand-built VyOS has Tools without the cloud-init datasource fix. No marker: not
+    # registered.
+    pfsense|vyos) echo finish ;;
     securityonion) echo tools ;;  # OS-only template; so-setup runs per range (decision 8)
-    *) echo customize ;;
+    *) echo customize ;;  # the worker's path: Windows Sysprep spec, Linux cloud-init guestinfo
   esac
 }
 
 appliance_note() {
   case "$1" in
-    pfsense) echo "Keystroke build: boot_command types blind into the installer. Watch the console in vCenter; timing may need tuning (appliances.pkr.hcl)." ;;
-    vyos) echo "Keystroke build: 'install image' is driven blind over the console. Watch the console in vCenter." ;;
+    pfsense) echo "Keystroke build to the installer's Shell, then tn-pfsense-finish.sh (second CD) adds Open-VM-Tools offline, the boot hook and the template config, and powers off. Watch the console in vCenter: a 'tn-finish: FAILED' line means no template (appliances.pkr.hcl)." ;;
+    vyos) echo "Logs in on the live console, then tn-vyos-install.py (second CD) answers 'install image' by prompt text and powers off. Watch the console in vCenter: '[tn-vyos-install] FAILED' means no template." ;;
     securityonion) echo "OS-only install (so-setup runs per range). The first time, finish the OS install by hand if the keystrokes miss, then let Packer template it." ;;
   esac
 }
 
 # ── helpers ───────────────────────────────────────────────────────────
 run_or_show() { if [[ "$DRY" == "1" ]]; then echo "  [dry-run] $*"; else echo "  + $*"; "$@"; fi; }
-exists() { [[ -n "$(govc find / -type m -name "$1" 2>/dev/null | head -n1)" ]]; }
+# A template, not just a VM of that name: a build still in progress is a VM called <id>, and
+# treating it as built replicated a half-installed pfsense (2026-10-20). TN-MGMT01/TN-DEPOT01
+# are VMs, so exists_vm keeps the plain name check for them.
+exists() { [[ -n "$(govc find / -type m -name "$1" -config.template true 2>/dev/null | head -n1)" ]]; }
+exists_vm() { [[ -n "$(govc find / -type m -name "$1" 2>/dev/null | head -n1)" ]]; }
 
 filter_only() { # the ids of "$@" that --only allows, on one line (bash 3.2: no mapfile)
   local id o out=()
@@ -134,15 +144,47 @@ filter_only() { # the ids of "$@" that --only allows, on one line (bash 3.2: no 
   echo "${out[*]-}"
 }
 
-# The ISO for packer variable $1 is listed in isos.conf, on esx04-local and in the pkrvars.
+iso_size() { # iso_size <datastore> <path>: bytes, or empty when it is not there
+  govc datastore.ls -json -l -ds "$1" "$2" 2>/dev/null \
+    | jq -r "$JQ_CI"' [ci("fileSize")[] | select(type == "number")][0] // empty' 2>/dev/null || true
+}
+
+# The ISO for packer variable $1 is buildable: listed in isos.conf (not PENDING), in the
+# vars file, and on esx04-local with EXACTLY the size it has on the source (esx01-local, the
+# copy iso-sync-esx04.sh makes it from), so a partial or stale copy is not ready. When
+# isos.conf pins sha256=<hex>, iso-sync-esx04.sh --verify must also have recorded a match
+# for this size. ISO_WHY says why not.
+ISO_SRC_DS="esx01-local"; ISO_BUILD_DS="esx04-local"
+ISO_STATE="${TN_ISO_STATE:-/var/lib/truenorth/iso-verified}"
+ISO_WHY=""
 iso_ready() {
-  local var="$1" rel size
-  rel="$(awk -v v="$var" '$1 == v && $2 != "PENDING" {print $2}' "$ISOS" | head -n1)"
-  [[ -n "$rel" ]] || return 1
-  grep -q "^${var} = " "$PKRVARS" 2>/dev/null || return 1
-  size="$(govc datastore.ls -json -l -ds esx04-local "ISO/$rel" 2>/dev/null \
-    | jq -r "$JQ_CI"' [ci("fileSize")[] | select(type == "number")][0] // empty' 2>/dev/null || true)"
-  [[ -n "$size" ]]
+  local var="$1" rel src dst sum
+  rel="$(awk -v v="$var" '{sub(/#.*/, "")} $1 == v && $2 != "PENDING" {print $2}' "$ISOS" | head -n1)"
+  [[ -n "$rel" ]] || { ISO_WHY="$var is PENDING or not in isos.conf"; return 1; }
+  grep -q "^${var} = " "$PKRVARS" 2>/dev/null || { ISO_WHY="$var is not in the vars file (pkrvars-work.py)"; return 1; }
+  dst="$(iso_size "$ISO_BUILD_DS" "ISO/$rel")"
+  [[ -n "$dst" ]] || { ISO_WHY="ISO/$rel is not on $ISO_BUILD_DS (iso-sync-esx04.sh --apply)"; return 1; }
+  src="$(iso_size "$ISO_SRC_DS" "ISO/$rel")"
+  [[ -n "$src" ]] || { ISO_WHY="ISO/$rel is not on $ISO_SRC_DS: the $ISO_BUILD_DS copy cannot be checked"; return 1; }
+  [[ "$dst" == "$src" ]] || { ISO_WHY="ISO/$rel is $dst bytes on $ISO_BUILD_DS, $src on $ISO_SRC_DS (partial or stale; iso-sync-esx04.sh --apply)"; return 1; }
+  sum="$(awk -v r="$rel" '{sub(/#.*/, "")} $2 == r {for (i = 3; i <= NF; i++) if ($i ~ /^sha256=/) {sub(/^sha256=/, "", $i); print tolower($i)}}' "$ISOS" | head -n1)"
+  if [[ -n "$sum" && "$(cat "$ISO_STATE/$rel.sha256" 2>/dev/null)" != "$sum $dst" ]]; then
+    ISO_WHY="ISO/$rel pins sha256 in isos.conf but no matching check is recorded (iso-sync-esx04.sh --verify)"
+    return 1
+  fi
+  ISO_WHY=""
+}
+
+# The isos.conf variable an ISO-built template boots from (empty: a clone, no ISO of its own).
+iso_var_of() {
+  case "$1" in
+    srv2022) echo iso_srv2022 ;; srv2025) echo iso_srv2025 ;; srv2019) echo iso_srv2019 ;;
+    win11-24h2) echo iso_win11_24h2 ;; win10-22h2) echo iso_win10 ;;
+    ubuntu-lts) echo iso_ubuntu ;; debian13) echo iso_debian ;; rocky) echo iso_rocky ;;
+    kali) echo iso_kali ;; parrot) echo iso_parrot ;;
+    pfsense) echo iso_pfsense ;; vyos) echo iso_vyos ;; securityonion) echo iso_securityonion ;;
+    *) echo "" ;;
+  esac
 }
 
 pkrvars_check() {
@@ -194,6 +236,10 @@ build_and_post() {
   local id="$1" mode="$2"; shift 2
   if exists "$id" && [[ "$REBUILD" != "1" ]]; then
     info "$id: template exists; not rebuilt (--rebuild to rebuild)"
+  elif [[ -n "$(iso_var_of "$id")" ]] && ! iso_ready "$(iso_var_of "$id")"; then
+    # Never build from a missing, partial or unverified ISO (a 2026-10 copy was truncated).
+    warn "$id: NOT BUILDABLE: $ISO_WHY"
+    return 1
   elif [[ "$DRY" == "1" ]]; then
     echo "  [dry-run] (cd $PACKER_DIR && ./build.sh $id)"
   else
@@ -245,7 +291,7 @@ phase_status() {
     printf '  %-22s %-8s %s\n' "$id" "$(exists "$id" && echo built || echo -)" "${copies:-}"
   done
   step "Depot"
-  if exists "$DEPOT_VM"; then info "$DEPOT_VM exists"; else info "$DEPOT_VM not deployed"; fi
+  if exists_vm "$DEPOT_VM"; then info "$DEPOT_VM exists"; else info "$DEPOT_VM not deployed"; fi
   pkrvars_check || true
 }
 
@@ -269,8 +315,10 @@ phase_prereq() {
   step "vCenter objects"
   local lib dc folder
   lib="$(awk -F'"' '/^content_library = /{print $2}' "$PKRVARS")"
-  if govc library.info "/${lib:-TrueNorth-Templates}" >/dev/null 2>&1; then info "ok    content library ${lib:-TrueNorth-Templates}"
-  else die "content library ${lib:-TrueNorth-Templates} not found"; fi
+  if ! grep -q '^publish_to_library = true' "$PKRVARS"; then
+    info "skip  content library (publish_to_library = false: ranges clone the host-local copies)"
+  elif govc library.info "/${lib:-TrueNorth-Templates}" >/dev/null 2>&1; then info "ok    content library ${lib:-TrueNorth-Templates}"
+  else die "content library ${lib:-TrueNorth-Templates} not found (or not readable by this account); re-run pkrvars-work.py without --library to skip publishing"; fi
   dc="$GOVC_DATACENTER"
   for folder in "/$dc/vm/TrueNorth" "/$dc/vm/TrueNorth/Templates"; do
     if govc folder.info "$folder" >/dev/null 2>&1; then info "ok    folder $folder"
@@ -289,15 +337,28 @@ phase_prereq() {
   if [[ "$DRY" == "1" ]]; then "$LAB_DIR/iso-sync-esx04.sh" --env-file "$ENV_FILE"
   else
     local yes=(); [[ "$ASSUME_YES" == "1" ]] && yes=(--yes)
-    "$LAB_DIR/iso-sync-esx04.sh" --apply --env-file "$ENV_FILE" ${yes[@]+"${yes[@]}"}
+    # One ISO that cannot be copied (e.g. locked by a VM that mounts it) must not stop the
+    # rest of prereq: the builds that need it fail their own iso check later.
+    "$LAB_DIR/iso-sync-esx04.sh" --apply --env-file "$ENV_FILE" ${yes[@]+"${yes[@]}"} \
+      || warn "ISO sync incomplete (see FAILED above); continuing. A file locked by a running VM: try iso-sync-esx04.sh --stream"
   fi
+  # What the sync left buildable: each template's ISO against the source (iso_ready). The
+  # builds refuse the rest (build_and_post), so this list is what the phases will skip.
+  local id var not_buildable=0
+  for id in $BASE_IDS win10-22h2 srv2019 $APPLIANCE_IDS; do
+    var="$(iso_var_of "$id")"
+    [[ -n "$var" ]] || continue
+    if iso_ready "$var"; then info "ok    $id ($var)"
+    else warn "NOT BUILDABLE $id: $ISO_WHY"; not_buildable=$((not_buildable + 1)); fi
+  done
+  [[ "$not_buildable" == "0" ]] || warn "$not_buildable template(s) not buildable until their ISO is fixed (the builds will refuse them)"
 
   step "DRS: $MGMT_VM should run on $BUILD_HOST (VLAN 31 reaches only $BUILD_HOST)"
   local host_path groups rules drs
   host_path="$(govc find / -type h -name "${BUILD_HOST}" | head -n1)"
   [[ -n "$host_path" ]] || host_path="$(govc find / -type h -name "${BUILD_HOST}.*" | head -n1)"
   [[ -n "$host_path" ]] || die "host $BUILD_HOST not found"
-  exists "$MGMT_VM" || die "$MGMT_VM not found in inventory"
+  exists_vm "$MGMT_VM" || die "$MGMT_VM not found in inventory"
   drs="$(govc object.collect -s "$CLUSTER_PATH" configurationEx.drsConfig.enabled 2>/dev/null || true)"
   [[ "$drs" == "true" ]] || warn "DRS is not enabled on $TN_CLUSTER (${drs:-unknown}): the rule is kept but not acted on"
   groups="$(govc cluster.group.ls -cluster "$CLUSTER_PATH" 2>/dev/null || true)"
@@ -409,7 +470,7 @@ phase_depot() {
   fi
 
   step "2/5 $DEPOT_VM (10.30.30.30 MGMT + ${DEPOT_BUILD_IP} BUILD + ${DEPOT_RANGE_IP} on $RANGE_UPLINK_PG, on $BUILD_HOST)"
-  if exists "$DEPOT_VM"; then info "ok    $DEPOT_VM exists (left alone; step 3/5 checks its range NIC)"
+  if exists_vm "$DEPOT_VM"; then info "ok    $DEPOT_VM exists (left alone; step 3/5 checks its range NIC)"
   else
     [[ -n "$SSH_PUB" ]] || die "--ssh-key <public key for tnadmin> is needed to deploy $DEPOT_VM"
     local deploy=("$LAB_DIR/deploy-mgmt-vm.sh" "$DEPOT_VM" --site work --ssh-key "$SSH_PUB" --data-disk "${TN_DEPOT_DATA_DISK:-500G}"
@@ -422,7 +483,7 @@ phase_depot() {
 
   step "3/5 range uplink NIC (${DEPOT_RANGE_IP} on $RANGE_UPLINK_PG, #214)"
   local range_ok=1
-  if exists "$DEPOT_VM"; then depot_range_nic || range_ok=0
+  if exists_vm "$DEPOT_VM"; then depot_range_nic || range_ok=0
   else info "skip  $DEPOT_VM is not deployed yet"; range_ok=0; fi
 
   step "4/5 depot software (install/lab/depot.yml: apt-cacher-ng :3142, Nexus Chocolatey feed :8081, range NIC firewall, no forwarding)"
@@ -471,7 +532,7 @@ phase_base() {
   read -r -a ids <<<"$BASE_IDS"
   for pair in $BASE_PENDING; do
     id="${pair%%:*}"; var="${pair#*:}"
-    if iso_ready "$var"; then ids+=("$id"); else info "skip  $id: $var is PENDING in isos.conf, not on esx04-local, or not in the vars file yet"; fi
+    if iso_ready "$var"; then ids+=("$id"); else info "skip  $id: $ISO_WHY"; fi
   done
   if depot_url_set; then warn "depot_url is set: ADR 0012 builds the bases offline. Re-run pkrvars-work.py without --depot first"; fi
   read -r -a ids <<<"$(filter_only "${ids[@]}")"
@@ -491,9 +552,30 @@ phase_appliances() {
       { read -r -p "  Open the console of '$id' in vCenter once it appears. Build $id now? [y/N] " ans </dev/tty; } 2>/dev/null || ans=""
       [[ "$ans" =~ ^[Yy]([Ee][Ss])?$ ]] || { warn "$id skipped"; continue; }
     fi
+    if [[ "$id" == "pfsense" ]] && ! { exists pfsense && [[ "$REBUILD" != "1" ]]; }; then
+      pfsense_stage || { warn "pfsense: Open-VM-Tools packages not staged; not built"; failed=1; continue; }
+    fi
     build_and_post "$id" "$(test_mode "$id")" || failed=1
   done
   return "$failed"
+}
+
+# pfSense: the template finish pkg-adds Open-VM-Tools from the build's second CD, offline
+# (files/pfsense/pkgs.lock, sha256-pinned). Stage the .pkg files before building: from
+# TN_PFSENSE_PKG_DIR when set, else the depot's installers repository (tn-build-read).
+# Never from the internet. Without them the build would only fail later, at the console.
+pfsense_stage() {
+  local stage=(python3 "$LAB_DIR/stage_pfsense_pkgs.py")
+  if [[ "$DRY" == "1" ]]; then
+    echo "  [dry-run] ${stage[*]} check || ${stage[*]} stage --depot $DEPOT_URL_DEFAULT"
+    return 0
+  fi
+  "${stage[@]}" check >/dev/null 2>&1 && { info "ok    pfSense packages staged (pkgs.lock)"; return 0; }
+  if [[ -n "${TN_PFSENSE_PKG_DIR:-}" ]]; then
+    "${stage[@]}" stage --from-dir "$TN_PFSENSE_PKG_DIR"
+  else
+    "${stage[@]}" stage --depot "$DEPOT_URL_DEFAULT" --depot-env "$DEPOT_BUILD_ENV"
+  fi
 }
 
 phase_derived() {

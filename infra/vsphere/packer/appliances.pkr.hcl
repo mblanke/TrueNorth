@@ -1,10 +1,18 @@
 # TrueNorth Range — appliance golden templates (vsphere-iso).
 # These are KEYSTROKE builds: no unattended answer-file path exists for the installers,
 # so boot_command drives the UI blind. They are the least reliable builds in the set and
-# WILL need on-site timing tuning. All three use communicator="none"; after boot_command
-# Packer powers the VM off through vCenter and converts it to a template. Read the README
-# "Appliance builds" section before running, and expect to finish pfSense/SO by hand the
-# first time, then capture the VM as the template.
+# WILL need on-site timing tuning. All three use communicator="none", and with no
+# communicator Packer does NOT power the VM off: shutdown_command is unused and Packer only
+# waits shutdown_timeout for the GUEST to power itself off, then converts it to a template.
+# So each boot_command must end by powering the guest off, or the build fails "timeout
+# while waiting for machine to shutdown" (pfSense, 2026-10-21).
+#
+# pfSense and VyOS finish themselves from a second CD and power off ONLY when every
+# finishing step worked: a failed finish leaves the VM running, the build fails at
+# shutdown_timeout and no template is made. So a green pfSense/VyOS build is a usable
+# template (VMware Tools, boot hook / cloud-init datasource); build-phase.sh then proves it
+# with a test clone in "tools" mode before registering. Security Onion is still finished by
+# hand. Read the README "Appliance builds" section before running.
 #
 # ISOs for all three are NOT on the lab datastore yet (iso_* default "MUST-UPLOAD-FIRST").
 
@@ -42,10 +50,27 @@ source "vsphere-iso" "pfsense" {
   }
 
   iso_paths = ["${local.iso_dir}/${var.iso_pfsense}"]
-  # Second CD (label TNPFSENSE) with the per-range config boot script, for the hand finish
-  # (vm-build-guide.md, pfSense): install it as /usr/local/sbin/tn-pfsense-config and run
-  # `tn-pfsense-config install`. communicator="none" means Packer cannot copy it in itself.
-  cd_files = ["${path.root}/files/pfsense/tn-pfsense-config", "${path.root}/http/pfsense/config.xml"]
+  # Seed and secret CDs (seeds, passwords, hashes) are uploaded to [datastore]
+  # packer_cache/; the plugin deletes that ISO on cleanup, this removes the cache too, and
+  # remove_cdrom detaches every CD before the VM becomes a template.
+  remote_cache_cleanup = true
+  remove_cdrom         = true # no clone inherits the install ISO or a seed/secret CD
+  # Second CD (label TNPFSENSE): everything the template finish needs, with no network.
+  # tn-pfsense-finish.sh (run from the installer's Shell) pkg-adds the Open-VM-Tools set in
+  # pkgs.lock (sha256-checked; the .pkg files are staged into stage/pfsense/ by
+  # scripts/lab/stage_pfsense_pkgs.py, which build-phase.sh checks first), installs
+  # tn-pfsense-config + tn-vmtools.sh and writes the template's config.xml (WAN vmx0,
+  # LAN vmx1, SSH, boot hook, admin password = ssh_password_hash: ADR 0012 decision 5).
+  cd_files = [
+    "${path.root}/files/pfsense/tn-pfsense-finish.sh",
+    "${path.root}/files/pfsense/tn-pfsense-config",
+    "${path.root}/files/pfsense/tn-vmtools.sh",
+    "${path.root}/files/pfsense/pkgs.lock",
+    "${path.root}/stage/pfsense/*.pkg",
+  ]
+  cd_content = {
+    "tn-admin.hash" = var.ssh_password_hash
+  }
   cd_label = "TNPFSENSE"
 
   communicator = "none"
@@ -58,10 +83,17 @@ source "vsphere-iso" "pfsense" {
     "<enter><wait5>",           # Proceed
     "<enter><wait5>",           # stripe - no redundancy
     "<spacebar><enter><wait5>", # select disk
-    "<left><enter><wait180>",   # confirm -> install
-    "<enter><wait30>"           # reboot
+    "<left><enter><wait240>",   # confirm -> install (ZFS extract; the next dialog just waits)
+    # Final "Complete" dialog [Reboot] [Shell], focus on Reboot. Do NOT reboot: nothing
+    # would ever power the VM off (2026-10-21: 15m shutdown timeout after "Reboot"). <tab>
+    # moves to Shell (and, if a "Manual Configuration" Yes/No-default-No dialog comes first,
+    # wraps to Yes = a chroot shell in the new system); either way a root shell.
+    "<tab><enter><wait10>",
+    # Mount the second CD and finish the template; the script powers off only on success.
+    "mkdir -p /tmp/tncd; mount_cd9660 /dev/iso9660/TNPFSENSE /tmp/tncd || mount_cd9660 /dev/cd1 /tmp/tncd; sh /tmp/tncd/tn-pfsense-finish.sh<enter>"
   ]
-  shutdown_timeout = "15m"
+  # The finish (a few pkg adds) powers off within a minute or two; 8m is margin.
+  shutdown_timeout = "8m"
 
   convert_to_template = true
   dynamic "content_library_destination" {
@@ -109,6 +141,11 @@ source "vsphere-iso" "securityonion" {
   }
 
   iso_paths = ["${local.iso_dir}/${var.iso_securityonion}"]
+  # Seed and secret CDs (seeds, passwords, hashes) are uploaded to [datastore]
+  # packer_cache/; the plugin deletes that ISO on cleanup, this removes the cache too, and
+  # remove_cdrom detaches every CD before the VM becomes a template.
+  remote_cache_cleanup = true
+  remove_cdrom         = true # no clone inherits the install ISO or a seed/secret CD
 
   communicator = "none"
   boot_wait    = "60s"
@@ -164,25 +201,38 @@ source "vsphere-iso" "vyos" {
   }
 
   iso_paths = ["${local.iso_dir}/${var.iso_vyos}"]
+  # Seed and secret CDs (seeds, passwords, hashes) are uploaded to [datastore]
+  # packer_cache/; the plugin deletes that ISO on cleanup, this removes the cache too, and
+  # remove_cdrom detaches every CD before the VM becomes a template.
+  remote_cache_cleanup = true
+  remove_cdrom         = true # no clone inherits the install ISO or a seed/secret CD
+  # Second CD (label TNVYOS). tn-vyos-prep.sh drops the live config's NIC MAC pins (hw-id)
+  # and saves it; tn-vyos-install.py drives `install image` by matching each prompt's text
+  # (not keystroke timing: the rolling installer's questions change between builds), copies
+  # that config, sets the vyos password (ssh_password: ADR 0012 decision 5), gives the image
+  # a cloud-init datasource list starting with VMware (worker/vyos_config.py's guestinfo
+  # user data) and powers off only on success. Open-VM-Tools is part of the VyOS image.
+  cd_files = [
+    "${path.root}/files/vyos/tn-vyos-prep.sh",
+    "${path.root}/files/vyos/tn-vyos-install.py",
+  ]
+  cd_content = {
+    "tn-vyos.pw" = var.ssh_password
+  }
+  cd_label = "TNVYOS"
 
   communicator = "none"
-  boot_wait    = "40s"
-  # Live boot auto-logs in as vyos/vyos on the console, then `install image` with defaults.
+  # GRUB's menu times out to the live entry; the console login prompt comes up after it.
+  boot_wait = "90s"
   boot_command = [
-    "vyos<enter><wait>",   # login user
-    "vyos<enter><wait10>", # login password
-    "install image<enter><wait5>",
-    "<enter><wait5>",    # Would you like to continue? Yes
-    "<enter><wait5>",    # partition: Auto
-    "<enter><wait5>",    # select drive
-    "<enter><wait5>",    # root partition size default
-    "<enter><wait30>",   # confirm
-    "vyos<enter><wait>", # set admin password
-    "vyos<enter><wait5>",
-    "<enter><wait5>", # grub target default
-    "<wait30>"
+    "vyos<enter><wait5>",  # live login user
+    "vyos<enter><wait15>", # live login password
+    "sudo mkdir -p /run/tncd && sudo mount -o ro /dev/disk/by-label/TNVYOS /run/tncd<enter><wait5>",
+    "/bin/vbash /run/tncd/tn-vyos-prep.sh<enter><wait30>",
+    "sudo python3 /run/tncd/tn-vyos-install.py<enter>"
   ]
-  shutdown_timeout = "15m"
+  # install image copies the squashfs (a few minutes); the script powers off when done.
+  shutdown_timeout = "20m"
 
   convert_to_template = true
   dynamic "content_library_destination" {
@@ -203,8 +253,9 @@ build {
     "source.vsphere-iso.securityonion",
     "source.vsphere-iso.vyos",
   ]
-  # communicator="none": nothing to provision in-guest. Each range's pfSense config.xml is
-  # rendered by the worker (worker/pfsense_config.py) and put in the VM's guestinfo; the
-  # template's files/pfsense/tn-pfsense-config applies it at boot (needs Open-VM-Tools).
-  # http/pfsense/config.xml is the template's own config. SO so-setup runs at deploy time.
+  # communicator="none": nothing to provision in-guest; pfSense and VyOS finish from their
+  # second CD (above). Each range's pfSense config.xml is rendered by the worker
+  # (worker/pfsense_config.py) and put in the VM's guestinfo; the template's
+  # tn-pfsense-config applies it at boot (VMware Tools: tn-vmtools.sh). VyOS gets its
+  # commands as cloud-init user data (worker/vyos_config.py). SO so-setup runs at deploy.
 }

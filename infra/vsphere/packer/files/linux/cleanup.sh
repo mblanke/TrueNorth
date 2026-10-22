@@ -20,6 +20,8 @@ if [ -f /var/lib/dbus/machine-id ]; then
   sudo ln -s /etc/machine-id /var/lib/dbus/machine-id || true
 fi
 
+# Regenerated on a clone's first boot by cloud-init's ssh module, else tn-ssh-hostkeys.service
+# (require-cloud-init.sh checked both before this runs).
 echo "=== remove SSH host keys (regenerated on first boot)"
 sudo rm -f /etc/ssh/ssh_host_* || true
 

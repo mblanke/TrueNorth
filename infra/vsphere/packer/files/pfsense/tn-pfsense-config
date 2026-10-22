@@ -11,6 +11,19 @@
  *   tn-pfsense-config boot      (the earlyshellcmd) apply a new config, then reboot into it
  *   tn-pfsense-config apply     apply a new config, then /etc/rc.reload_all (no reboot)
  *   tn-pfsense-config status    print what guestinfo holds and what was applied
+ *   tn-pfsense-config template HASHFILE
+ *                               (template build only, chrooted into the just-installed,
+ *                               never-booted system by tn-pfsense-finish.sh) write the
+ *                               template's own config.xml: the installed config, else the
+ *                               release's /conf.default/config.xml, with WAN = vmx0,
+ *                               LAN = vmx1 (first boot does not stop at interface
+ *                               assignment), SSH on, the boot hook as an earlyshellcmd and
+ *                               the admin password hash read from HASHFILE (a crypt string)
+ *
+ * On boot it first starts VMware Tools (/usr/local/etc/rc.d/tn-vmtools.sh, also installed
+ * by tn-pfsense-finish.sh), so guestinfo is readable and vCenter sees Tools running, then
+ * publishes the template-finish marker (/cf/conf/tn-template-finish.txt) as
+ * guestinfo.tn.template.finish: the test clone's proof that the finish ran.
  *
  * The worker (control-plane/worker/worker/pfsense_config.py) sets, before first power-on:
  *   guestinfo.tn.pfsense.config  config.xml, gzip + base64
@@ -47,6 +60,13 @@ define('CONF', CONF_DIR . '/config.xml');
 define('STAMP', CONF_DIR . '/tn-guestinfo.sha256');
 define('LOGFILE', CONF_DIR . '/tn-' . PRODUCT . '-config.log');
 define('BOOT_COMMAND', '/usr/local/bin/php -q ' . TN_SCRIPT . ' boot');
+// The release's factory config (template mode starts from it when nothing is installed yet).
+define('DEFAULT_CONF', TEST_ROOT !== '' ? TEST_ROOT . '/conf.default/config.xml' : '/conf.default/config.xml');
+define('VMTOOLS_RC', '/usr/local/etc/rc.d/tn-vmtools.sh');
+// Written by tn-pfsense-finish.sh when the template finish completed; published on every
+// boot as guestinfo.tn.template.finish, which scripts/lab/test-clone.sh --mode finish reads.
+define('FINISH_MARKER', CONF_DIR . '/tn-template-finish.txt');
+define('KEY_FINISH', 'guestinfo.tn.template.finish');
 // OPNsense runs every executable in rc.syshook.d/early before the network comes up.
 define('OPNSENSE_HOOK', '/usr/local/etc/rc.syshook.d/early/50-tn-opnsense-config');
 // Taken from the config being replaced, never from guestinfo.
@@ -165,6 +185,94 @@ function install() {
 	return 0;
 }
 
+/* The <name> child of $parent, created when missing. */
+function child_el($doc, $parent, $name) {
+	foreach ($parent->childNodes as $n) {
+		if ($n->nodeType === XML_ELEMENT_NODE && $n->nodeName === $name) {
+			return $n;
+		}
+	}
+	return $parent->appendChild($doc->createElement($name));
+}
+
+function set_text($doc, $el, $text) {
+	while ($el->firstChild) {
+		$el->removeChild($el->firstChild);
+	}
+	$el->appendChild($doc->createTextNode($text));
+}
+
+function template_config($hashfile) {
+	if (PRODUCT !== 'pfsense') {
+		fail('template mode is for pfSense only');
+	}
+	$hash = trim((string)@file_get_contents($hashfile));
+	if (!preg_match('/^\$(2[aby]|6)\$[.\/A-Za-z0-9$=]{20,}$/', $hash)) {
+		fail("no usable password hash (crypt string) in $hashfile");
+	}
+	$src = is_file(CONF) ? CONF : DEFAULT_CONF;
+	$doc = new DOMDocument();
+	$doc->preserveWhiteSpace = false;
+	$doc->formatOutput = true;
+	if (!@$doc->load($src) || $doc->documentElement->nodeName !== PRODUCT) {
+		fail("cannot read a pfSense config from $src");
+	}
+	$root = $doc->documentElement;
+	$sys = child_el($doc, $root, 'system');
+	$ifs = child_el($doc, $root, 'interfaces');
+	set_text($doc, child_el($doc, child_el($doc, $ifs, 'wan'), 'if'), 'vmx0');
+	set_text($doc, child_el($doc, child_el($doc, $ifs, 'lan'), 'if'), 'vmx1');
+	set_text($doc, child_el($doc, $sys, 'enablesshd'), 'enabled');
+	$x = new DOMXPath($doc);
+	$hooked = false;
+	foreach ($x->query('earlyshellcmd', $sys) as $n) {
+		$hooked = $hooked || trim($n->textContent) === BOOT_COMMAND;
+	}
+	if (!$hooked) {
+		set_text($doc, $sys->appendChild($doc->createElement('earlyshellcmd')), BOOT_COMMAND);
+	}
+	$admins = $x->query("user[name='admin']", $sys);
+	if ($admins->length !== 1) {
+		fail("$src has no single admin user");
+	}
+	$admin = $admins->item(0);
+	foreach (array('bcrypt-hash', 'sha512-hash', 'md5-hash', 'password') as $tag) {
+		foreach (iterator_to_array($x->query($tag, $admin)) as $n) {
+			$admin->removeChild($n);
+		}
+	}
+	// password_verify() (the web GUI) and crypt(3) (console, SSH) both take $6$ and $2y$.
+	set_text($doc, $admin->appendChild($doc->createElement('bcrypt-hash')), $hash);
+
+	$out = $doc->saveXML();
+	@mkdir(CONF_DIR, 0755, true);
+	$tmp = CONF . '.tn-new';
+	if (@file_put_contents($tmp, $out) !== strlen($out) || !@rename($tmp, CONF)) {
+		@unlink($tmp);
+		fail('cannot write ' . CONF);
+	}
+	tnlog("template config written from $src: WAN vmx0, LAN vmx1, SSH on, boot hook, admin password set");
+	return 0;
+}
+
+function start_tools() {
+	if (TEST_ROOT === '' && is_executable(VMTOOLS_RC)) {
+		exec(VMTOOLS_RC . ' start >/dev/null 2>&1');
+	}
+}
+
+function publish_marker() {
+	if (!is_file(FINISH_MARKER)) {
+		return;
+	}
+	$line = trim(preg_replace('/\s+/', ' ', (string)file_get_contents(FINISH_MARKER)));
+	if (TEST_ROOT !== '') {
+		@file_put_contents(TEST_ROOT . '/guestinfo/' . KEY_FINISH, "$line\n");
+		return;
+	}
+	exec('/usr/local/bin/vmware-rpctool ' . escapeshellarg('info-set ' . KEY_FINISH . ' ' . $line) . ' >/dev/null 2>&1');
+}
+
 function status() {
 	$blob = guestinfo(KEY_CONFIG);
 	$ifmap = guestinfo(KEY_IFMAP);
@@ -269,12 +377,21 @@ $mode = isset($argv[1]) ? $argv[1] : 'status';
 switch ($mode) {
 	case 'install':
 		exit(install());
+	case 'template':
+		if (!isset($argv[2])) {
+			fwrite(STDERR, "usage: tn-pfsense-config template HASHFILE\n");
+			exit(2);
+		}
+		exit(template_config($argv[2]));
 	case 'boot':
+		start_tools();
+		publish_marker();
+		exit(apply($mode));
 	case 'apply':
 		exit(apply($mode));
 	case 'status':
 		exit(status());
 	default:
-		fwrite(STDERR, 'usage: tn-' . PRODUCT . "-config install|boot|apply|status\n");
+		fwrite(STDERR, 'usage: tn-' . PRODUCT . "-config install|boot|apply|status|template HASHFILE\n");
 		exit(2);
 }

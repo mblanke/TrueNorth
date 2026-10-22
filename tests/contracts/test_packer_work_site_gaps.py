@@ -90,19 +90,24 @@ def _variable_default(name: str):
 
 
 # ── the template subset the seeds use, rendered like Packer's templatefile ──
-CONTROL = re.compile(r'^%\{ (?:if (\w+) != "" |endif )~\}$')
+CONTROL = re.compile(r'^%\{ (?:if (\w+) != "" |(else) |endif )~\}$')
 INTERP = re.compile(r"\$\{(\w+)\}")
 
 
 def render(path: Path, **vars_: str) -> str:
-    out, keep = [], [True]
+    out, keep, conds = [], [True], []
     for line in path.read_text(encoding="utf-8").splitlines(keepends=True):
         m = CONTROL.match(line.rstrip("\n"))
         if m:  # whole-line directive with ~}: Packer strips the line and its newline
             if m.group(1):
                 keep.append(keep[-1] and vars_[m.group(1)] != "")
+                conds.append(vars_[m.group(1)] != "")
+            elif m.group(2):  # else: the parent's state and the opposite branch
+                keep.pop()
+                keep.append(keep[-1] and not conds[-1])
             else:
                 keep.pop()
+                conds.pop()
             continue
         if keep[-1]:
             out.append(INTERP.sub(lambda x: vars_[x.group(1)], line))
