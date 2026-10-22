@@ -265,6 +265,27 @@ class TestEmergencyTeardown:
                            json={"confirm_range_id": str(rng.id), "reason": "already gone, try anyway"})
         assert resp.status_code == 409 and _audits(db_session, "emergency_teardown") == []
 
+    def test_it_is_written_to_the_ranges_certification_record(self, client, db_session, no_real_broker):
+        """ADR 0013 §6/§7: who, why, the operation and the window, as an override entry."""
+        from app.range_certification import service as certification
+
+        rng = _range(db_session)
+        assert client.post(f"/ranges/{rng.id}/provision").status_code == 202  # opens the record (S6)
+        rng.state, rng.provisioner_output = RangeState.ready, VMS
+        db_session.commit()
+        w = _window(client)
+        reason = "Range is attacking the management network; pulling it now"
+        resp = client.post(f"/ranges/{rng.id}/emergency-teardown", json={"confirm_range_id": str(rng.id),
+                                                                          "reason": reason})
+        assert resp.status_code == 202
+        record = certification.latest_record(db_session, rng.tenant_id, rng.id)
+        assert record is not None
+        [entry] = [e for e in certification.entries_of(db_session, record) if e.section == "overrides"]
+        assert entry.reason == reason and entry.detail["kind"] == "override"
+        assert entry.detail["action"] == "emergency_teardown"
+        assert entry.detail["operation_id"] == resp.headers["Operation-Id"]
+        assert entry.detail["maintenance_window_id"] == w["id"]
+
     def test_it_writes_the_certification_record_through_the_s6_hook(self, client, db_session, monkeypatch):
         from app.maintenance_windows import router
 

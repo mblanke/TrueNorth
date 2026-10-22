@@ -29,6 +29,7 @@ from sqlalchemy.orm import Session
 from ..auth import CurrentUser
 from ..db import get_db
 from ..models import AuditLog, Range
+from ..range_certification import service as certification
 from ..range_ops import service as ops
 from ..rbac import Permission, require_permission
 from ..schemas import RangeOut
@@ -204,14 +205,9 @@ def emergency_teardown(
 
 
 def record_override(db: Session, rng: Range, user: CurrentUser, reason: str, detail: dict) -> object | None:
-    """Write the emergency teardown into the range's certification record (ADR 0013 §6).
-
-    HOOK, range certification S6 (PR #252, ``range_certification.service.record_override``):
-    until that is on main there is no record to write to, and this does nothing; the audit
-    entry above is then the only trace. It must never block the teardown: S6's
+    """Write the emergency teardown into the range's newest certification record (ADR 0013
+    §6, ``range_certification.service.record_override``) as an ``override`` entry, with who,
+    why, the operation and the window it overrode. A range with no record (never built since
+    S6) gets none; the audit entry is the trace then. It never blocks the teardown:
     ``record_override`` writes in a savepoint and never raises."""
-    try:
-        from ..range_certification import service as certification  # type: ignore[import-not-found]
-    except ImportError:
-        return None  # S6 not merged yet
     return certification.record_override(db, rng, "override", "emergency_teardown", user, reason, detail)

@@ -957,8 +957,8 @@ not refuse. Body: `{"confirm_range_id": "<range id again>", "reason": "<10-500 c
 besides spaces>"}`.
 `202` with the range (`destroying`) and an `Operation-Id` header; the operation's
 `window_bypass` is `emergency`. Audited as `emergency_teardown` with the reason and the window
-it overrode, and written to the range's certification record as an override (once S6's record
-exists). Otherwise a destroy: `409` in a state that cannot be destroyed, or for a Student lab's
+it overrode, and written to the range's newest certification record as an `overrides` entry
+(kind `override`, action `emergency_teardown`, the operation and window ids). Otherwise a destroy: `409` in a state that cannot be destroyed, or for a Student lab's
 range (end the lab session instead; that always runs); `422` when `confirm_range_id` differs
 or the reason is missing or short; `404` for another tenant's range.
 

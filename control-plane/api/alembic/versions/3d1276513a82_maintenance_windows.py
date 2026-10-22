@@ -1,7 +1,7 @@
 """maintenance windows, and the window bypass on range operations
 
 Revision ID: 3d1276513a82
-Revises: ce2a35194081
+Revises: 68d00729cc34
 Create Date: 2026-10-21 23:30:00.000000
 
 Range certification S7 (ADR 0013 §7). ``maintenance_windows``: periods in which
@@ -20,7 +20,7 @@ from alembic import op
 from app.models import GUID
 
 revision: str = "3d1276513a82"
-down_revision: str | None = "ce2a35194081"
+down_revision: str | None = "68d00729cc34"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
