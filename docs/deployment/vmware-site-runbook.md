@@ -281,7 +281,9 @@ guide, pfSense) applies it on first boot and reboots once into it. The config ho
   `tn-pfsense-config status` in the firewall shell shows what guestinfo holds and what
   was applied (`/conf/tn-pfsense-config.log`).
 - **Passwords:** none in guestinfo. Range firewalls keep the template's users, groups,
-  web GUI/SSH settings and certificates, so the admin password is the template's.
+  web GUI/SSH settings and certificates; the admin user's hash alone is replaced by the
+  range's own (a bcrypt hash in `guestinfo.tn.pfsense.admin`, cleared once applied; see
+  "Range appliances (issue #248)" in §7.0a).
 - The UniFi side of VLAN 32 denies `dPG-TN-SVC` → internet, MGMT, BUILD and
   192.168.1.0/24 (`scripts/lab/create-portgroups.sh --site work` prints the checklist).
   Three layers are needed: the UniFi rule and the depot's own firewall protect the
@@ -537,6 +539,45 @@ every rebuild and every snapshot restore or lab reset; the worker sets them in t
 guests through an uploaded owner-only file, never a command line, and puts the previous
 password back (audited, `range_credential_change`) whenever it cannot verify the new one.
 
+**Range appliances (issue #248).** A pfSense, OPNsense or VyOS machine gets a generated,
+sealed, **staff-only** admin row too (`admin`, `root`, `vyos`; a lab session's Student never
+gets it: the firewall is what keeps the range isolated). At deploy the worker sends the
+appliance only a **hash** of that password, never the password, through its existing boot
+path (`control-plane/worker/worker/appliance_admin.py`):
+
+- pfSense / OPNsense: bcrypt (`$2y$`) in `guestinfo.tn.<product>.admin`. The template's boot
+  hook (`tn-pfsense-config boot`) writes it into the admin user (`bcrypt-hash`; OPNsense
+  `root`'s `password`), reboots once into it, and on the boot that finds it in force writes
+  `guestinfo.tn.<product>.admin_ack` (the first 16 hex digits of the hash's SHA-256) and
+  clears the key. Anything that is not a bcrypt hash is refused (`failed ...` ack).
+- VyOS: `set system login user vyos authentication encrypted-password '$6$...'` in the
+  cloud-init user data; `tn-admin-ack.service` (installed by the template finish) reports the
+  fingerprint of the vyos login's shadow hash after cloud-init.
+
+The appliance's `template_login` records `method`: `ssh` when the worker can reach the
+appliance's uplink address on port 22 (one login with the range password, then one with the
+template password, `TN_TEMPLATE_APPLIANCE_PASSWORD`, else `TN_TEMPLATE_LINUX_PASSWORD`; the
+worker image ships no SSH client, and the range's own WAN policy blocks SSH by design, so
+this is rare), else `guestinfo_ack` (the boot hook's acknowledgement: self-reported, no login
+attempt), else `none` (`inconclusive`). The worker waits up to `RANGE_APPLIANCE_ACK_TIMEOUT`
+(600 s, never past `VSPHERE_PROVISION_BUDGET`); after a matching acknowledgement it marks the
+admin row applied and removes the hash from the VM's configuration (`admin_login.hash_cleared`
+on the VM's output). The range certification's credential section counts ack-proven
+appliances separately and no longer passes an appliance recorded `not_checked`.
+
+**Needs rebuilt appliance templates.** The new boot hook and ack unit are in
+`infra/vsphere/packer/files/{pfsense,vyos}`; an appliance template built before this change
+neither applies the hash nor acknowledges, so its check stays `inconclusive` and the hash
+stays in its guestinfo. Rebuild the pfSense, OPNsense and VyOS templates.
+
+**Rotation, restore and reset.** An appliance admin row is a staff row: kept on a rebuild
+(the rebuilt appliance gets the same password's new hash), never changed in a running range
+(an admin rotation is refused: "rebuild the range to change them"). A snapshot restore or lab
+reset brings the appliance back to the config it had when the snapshot was taken, which
+already holds that same hash, and nothing rotates it; there is no snapshot-with-password path
+for appliances. Security Onion's SOC web login is not rotated on a restore either (follow-up,
+issue #248 part 2): it changes on a rebuild only.
+
 **After the upgrade (migration `0a2276639b3c`):** check the migration output, the API log at
 start, or the Ranges page for `ACTION NEEDED (ADR 0013)`: those templates carry a typed-in
 password not on a `scenario: true` account and cannot be provisioned (scheduled bookings
@@ -546,7 +587,12 @@ included) until fixed.
 is `rejected` on every Windows and Linux VM; open the range's wiki page and confirm it shows
 account names and no password; reveal one password and find the `range_credential_reveal`
 row in the audit log; reset a lab (or restore a snapshot) and confirm the Student's password
-changed and still logs in.
+changed and still logs in. For appliances (issue #248), with rebuilt templates: confirm each
+pfSense/OPNsense/VyOS VM's `template_login` is `rejected` with its `method`, that its console
+refuses the template password and takes the revealed one, and that
+`govc vm.info -e <vm>` no longer shows `guestinfo.tn.<product>.admin` (VyOS: no
+`encrypted-password` in the decoded `guestinfo.userdata`). As with the Linux account hashes
+above, the first reconfigure task's arguments in vCenter's event history still hold the hash.
 
 ### 7.1 Port mirroring (SPAN / TAP zones)
 

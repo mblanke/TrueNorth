@@ -127,11 +127,15 @@ class TestWindows:
                    for w in result.warnings)
         assert _vm_out(result, "dc01")["accounts_applied"] == ["Administrator"]  # M2: jsmith is not
 
-    def test_appliances_set_nothing(self, vc):
-        result = _run(_prov(vc).provision(RANGE_ID, _with(_rendered(), {"fw": [_acct("admin", "Fw-Pass-1!")]}), {}))
+    def test_appliances_set_their_admin_only(self, vc):
+        """Issue #248: a pfSense VM's admin login is set (as a hash; tests/worker/test_appliance_admin.py);
+        any other account on it is reported, and nothing counts as set before the appliance
+        acknowledged it."""
+        accounts = {"fw": [_acct("admin", "Fw-Pass-1!x", True), _acct("operator", "Op-Pass-2!x")]}
+        result = _run(_prov(vc).provision(RANGE_ID, _with(_rendered(), accounts), {}))
         assert result.status == "ok", result.errors
-        assert _vm_out(result, "fw")["accounts_applied"] == []
-        assert any(f"{R8}-fw" in w and "admin" in w for w in result.warnings)
+        assert _vm_out(result, "fw")["accounts_applied"] == []  # the fake firewall never acknowledges
+        assert any(f"{R8}-fw" in w and "operator" in w and "admin" not in w.split(":")[-1] for w in result.warnings)
 
 
 class TestLinux:
@@ -429,7 +433,8 @@ class TestTemplateLoginCheck:
         for node, user in (("dc01", "Administrator"), ("web01", "ubuntu")):
             assert _vm_out(result, node)["template_login"] == {
                 "status": "rejected", "username": user, "detail": "the golden template's password is refused"}
-        assert _vm_out(result, "fw")["template_login"]["status"] == "not_checked"  # appliance
+        # An appliance without a range admin row: not provable, never a pass (issue #248).
+        assert _vm_out(result, "fw")["template_login"]["status"] == "inconclusive"
         assert TEMPLATE_WIN in vc.guest_ops.passwords_seen and TEMPLATE_LINUX in vc.guest_ops.passwords_seen
         dumped = json.dumps(result.__dict__, default=str)
         for pw in (TEMPLATE_WIN, TEMPLATE_LINUX, DC_PW, WEB_PW):

@@ -782,16 +782,17 @@ class TestImplicitStaffLogins:
         rows = {(r.machine, r.username): r for r in db_session.query(RangeCredential)
                 .filter(RangeCredential.range_id == rng.id)}
         assert set(rows) == {("dc01", "Administrator"), ("ws01", "jdoe"), ("ws01", "Administrator"),
-                             ("web01", "ubuntu"), ("so01", "soadmin")}
+                             ("web01", "ubuntu"), ("so01", "soadmin"), ("fw01", "admin")}
         assert rows[("dc01", "Administrator")].source == "declared"  # declared wins: no second row
-        for key in (("ws01", "Administrator"), ("web01", "ubuntu"), ("so01", "soadmin")):
+        for key in (("ws01", "Administrator"), ("web01", "ubuntu"), ("so01", "soadmin"), ("fw01", "admin")):
             r = rows[key]
             assert (r.source, r.generated, r.role, r.student_visible, r.applied) == (
                 "implicit", True, "admin", False, False), key
         passwords = [r.password for r in rows.values() if r.generated]
         assert len(set(passwords)) == len(passwords)  # unique per account
         assert not {WIN_BUILD, LINUX_BUILD, SO_BUILD} & {r.password for r in rows.values()}
-        assert not {m for m, _ in rows} & {"fw01"}  # appliances: their own configuration (follow-up)
+        # Issue #248: the pfSense admin row is sealed like every other (rk1), never stored plain.
+        assert rows[("fw01", "admin")].sealed_password.startswith("tnsec:rk1:")
 
     def test_each_range_gets_its_own_passwords(self, client, db_session, world):
         one, two = self._range(client, db_session, world), self._range(client, db_session, world)
@@ -970,15 +971,35 @@ class TestImplicitLoginRules:
     def test_one_per_machine_by_family(self):
         specs = account_rules.implicit_staff_logins(self.DOC, [])
         assert {(s.machine, s.username) for s in specs} == {
-            ("dc01", "Administrator"), ("exch01", "Administrator"), ("web01", "ubuntu")}
+            ("dc01", "Administrator"), ("exch01", "Administrator"), ("web01", "ubuntu"), ("fw01", "admin")}
         for s in specs:
             assert s.generate and s.password is None and s.role == "admin" and s.source == "implicit"
             assert s.student_visible is False and s.scenario is False
 
     def test_a_declared_login_wins_and_a_lab_hands_them_over(self):
         declared = [account_rules.AccountSpec("dc01", "administrator", None, True, False, "admin", "")]
-        assert {s.machine for s in account_rules.implicit_staff_logins(self.DOC, declared)} == {"exch01", "web01"}
-        assert all(s.student_visible for s in account_rules.implicit_staff_logins(self.DOC, [], student_visible=True))
+        assert {s.machine for s in account_rules.implicit_staff_logins(self.DOC, declared)} == {
+            "exch01", "web01", "fw01"}
+        lab = {s.machine: s.student_visible for s in account_rules.implicit_staff_logins(self.DOC, [],
+                                                                                        student_visible=True)}
+        # A lab's Student gets its machines' logins, never the firewall's (issue #248: staff only).
+        assert lab == {"dc01": True, "exch01": True, "web01": True, "fw01": False}
+
+    @pytest.mark.parametrize("os_name,user", [("pfsense", "admin"), ("opnsense", "root"), ("vyos-1.4", "vyos")])
+    def test_each_router_appliance_gets_its_own_admin_and_others_none(self, os_name, user):
+        doc = {"nodes": [{"id": "fw", "os": os_name}, {"id": "gw", "os": "ubuntu-2404", "role": "gateway"}]}
+        specs = account_rules.implicit_staff_logins(doc, [])
+        assert [(s.machine, s.username, s.student_visible) for s in specs] == [("fw", user, False)]
+        assert "staff only" in specs[0].notes
+
+    def test_an_appliance_admin_cannot_be_a_scenario_account(self):
+        doc = {**self.DOC, "accounts": [{"machine": "fw01", "username": "Admin", "password": "weak-Lesson-1",
+                                         "scenario": True, "student_visible": True}]}
+        specs, errors = account_rules.parse(doc, tenant_id=None)
+        assert specs == [] and any("appliance's admin login" in e["message"] for e in errors)
+        # Another account on the firewall may still be the lesson.
+        doc["accounts"][0]["username"] = "operator"
+        assert account_rules.parse(doc, tenant_id=None)[1] == []
 
     def test_sync_issues_sealed_logins_the_range_keeps(self, db_session):
         tenant = real_tenant(db_session).id
@@ -994,6 +1015,15 @@ class TestImplicitLoginRules:
         cred_service.sync(db_session, rng)  # a second sync keeps the same generated password
         assert db_session.query(RangeCredential).filter_by(machine="exch01", username="Administrator").one().password \
             == first
+        # Issue #248: the firewall's admin is a staff row: sealed, kept on a rebuild (S3 rules),
+        # and never changed in a running range (its hash only reaches it at deploy).
+        fw = db_session.query(RangeCredential).filter_by(range_id=rng.id, machine="fw01", username="admin").one()
+        fw_pw = fw.password
+        assert fw.sealed_password.startswith("tnsec:rk1:") and fw_pw not in fw.sealed_password
+        cred_service.sync(db_session, rng, rotate_student=True)
+        assert db_session.query(RangeCredential).filter_by(range_id=rng.id, machine="fw01").one().password == fw_pw
+        rng.provisioner_backend = "vsphere_api"
+        assert "appliance" in cred_service.guest_change_refusal(rng, fw, cred_service._machine_kinds(db_session, rng))
 
     def test_another_tenants_template_still_gets_this_ranges_generated_logins(self, db_session):
         owner, user = real_tenant(db_session).id, real_tenant(db_session).id
@@ -1007,7 +1037,8 @@ class TestImplicitLoginRules:
         cred_service.sync(db_session, rng)
         rows = {(r.machine, r.username): r for r in db_session.query(RangeCredential).filter_by(range_id=rng.id)}
         # None of the owner tenant's declared accounts, but this range's own generated logins.
-        assert set(rows) == {("dc01", "Administrator"), ("exch01", "Administrator"), ("web01", "ubuntu")}
+        assert set(rows) == {("dc01", "Administrator"), ("exch01", "Administrator"), ("web01", "ubuntu"),
+                             ("fw01", "admin")}
         assert all(r.generated and r.password != "Owner-Pw-1!x" for r in rows.values())
 
 

@@ -24,10 +24,13 @@ What the config holds:
   ports, block out everything else. Whatever the zone rules say, nothing leaves the range
   but depot traffic.
 
-No secrets: the guest keeps the template's users, groups, web GUI certificate and SSH
-settings (the boot script copies them over from the config it replaces), so the admin
-password stays the template's and nothing a vCenter reader can see in guestinfo is a
-credential.
+No secrets in the config: the guest keeps the template's users, groups, web GUI
+certificate and SSH settings (the boot script copies them over from the config it
+replaces). The admin password is replaced separately (issue #248, worker/appliance_admin.py):
+``guestinfo.tn.<product>.admin`` carries a bcrypt **hash** of the range's generated admin
+password (never the password), which the boot script writes into the admin user (pfSense
+``admin``, ``bcrypt-hash``; OPNsense ``root``, ``password``), reboots into, then
+acknowledges in ``guestinfo.tn.<product>.admin_ack`` and clears.
 
 OPNsense (``product="opnsense"``) gets the same config in OPNsense's legacy config.xml
 layout (root ``<opnsense>``, flags as ``1`` rather than empty elements, no
@@ -51,6 +54,8 @@ from dataclasses import dataclass, field
 BOOT_COMMAND = "/usr/local/bin/php -q /usr/local/sbin/tn-pfsense-config boot"
 GUESTINFO_CONFIG = "guestinfo.tn.pfsense.config"
 GUESTINFO_IFMAP = "guestinfo.tn.pfsense.ifmap"
+# A bcrypt crypt string: the only admin value guestinfo may carry (never a password).
+BCRYPT_RE = re.compile(r"^\$2[aby]\$\d\d\$[./A-Za-z0-9]{53}$")
 PRODUCTS = ("pfsense", "opnsense")
 # pfSense CE 2.7.2's config version. The boot script replaces it with the version of the
 # config it finds in the guest, so a newer or older pfSense template still upgrades cleanly.
@@ -362,9 +367,16 @@ def encode(xml: str) -> str:
     return base64.b64encode(gzip.compress(xml.encode(), mtime=0)).decode()
 
 
-def guestinfo(cfg: PfsenseConfig, macs: list[str]) -> dict[str, str]:
+def admin_key(product: str) -> str:
+    """The guestinfo key that carries the admin user's new hash (cleared once applied)."""
+    return f"guestinfo.tn.{product}.admin"
+
+
+def guestinfo(cfg: PfsenseConfig, macs: list[str], admin_hash: str | None = None) -> dict[str, str]:
     """``guestinfo.tn.pfsense.*`` (``guestinfo.tn.opnsense.*`` for OPNsense) for a VM whose
-    NICs (device-key order) have ``macs``.
+    NICs (device-key order) have ``macs``. ``admin_hash``: a bcrypt hash of the range's admin
+    password (appliance_admin.py), as ``guestinfo.tn.<product>.admin``; anything that is not
+    a bcrypt crypt string (a password) is refused.
 
     ``ifmap`` lets the boot script rename ``vmxN`` to whatever the guest called the NIC
     with that MAC (FreeBSD numbers vmxnet3 cards by PCI slot, which can differ from the
@@ -376,9 +388,12 @@ def guestinfo(cfg: PfsenseConfig, macs: list[str]) -> dict[str, str]:
     if len(blob) > MAX_GUESTINFO:
         raise PfsenseConfigError(f"the pfSense config is {len(blob)} bytes encoded; guestinfo takes {MAX_GUESTINFO}")
     ifmap = " ".join(f"{i.ifname}={mac.lower()}" for i, mac in zip(cfg.interfaces, macs, strict=True))
-    if cfg.product != "pfsense":
-        return {f"guestinfo.tn.{cfg.product}.config": blob, f"guestinfo.tn.{cfg.product}.ifmap": ifmap}
-    return {GUESTINFO_CONFIG: blob, GUESTINFO_IFMAP: ifmap}
+    out = {f"guestinfo.tn.{cfg.product}.config": blob, f"guestinfo.tn.{cfg.product}.ifmap": ifmap}
+    if admin_hash is not None:
+        if not BCRYPT_RE.match(admin_hash):
+            raise PfsenseConfigError("the admin password must reach the firewall as a bcrypt hash")
+        out[admin_key(cfg.product)] = admin_hash
+    return out
 
 
 def decode(blob: str) -> str:

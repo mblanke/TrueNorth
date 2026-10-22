@@ -26,6 +26,9 @@ Each pfSense or OPNsense VM gets a per-range config.xml (worker/pfsense_config.p
 gateways, WAN, NAT, the template's firewall rules, depot-only egress) in its guestinfo
 before its first power-on; the template's boot script applies it. Each VyOS VM gets the
 same policy as configuration commands (worker/vyos_config.py) in cloud-init user data.
+Each of the three also gets a hash (never the password) of its range's own admin password
+(worker/appliance_admin.py, issue #248), and its template-login check is an SSH attempt or
+the appliance's acknowledgement (``_appliance_check_sync``).
 
 A lab session's network is the exception to per-range port groups: its segment names a
 pre-created, isolated ``port_group`` leased from LAB_PORT_GROUPS. Those NICs attach to
@@ -70,7 +73,15 @@ try:
 except ImportError:  # only the snapshot operations need it
     Disconnect = SmartConnect = vim = vmodl = None  # type: ignore[assignment]
 
-from .. import pfsense_config, range_inventory, software_catalogue, uplink_pool, vlan_pool, vyos_config
+from .. import (
+    appliance_admin,
+    pfsense_config,
+    range_inventory,
+    software_catalogue,
+    uplink_pool,
+    vlan_pool,
+    vyos_config,
+)
 from . import template_copies, vsphere_products, vsphere_readiness, vsphere_roles
 from . import vsphere_credcheck as credcheck
 from . import vsphere_customization as customization
@@ -195,6 +206,10 @@ VSPHERE_ROLE_TIMEOUT: int = int(os.environ.get("VSPHERE_ROLE_TIMEOUT", "1800"))
 # still unacknowledged after its visibility timeout (celery_app.py, 3600s), and a second
 # copy of a range build is the one thing worse than a slow one.
 VSPHERE_PROVISION_BUDGET: int = int(os.environ.get("VSPHERE_PROVISION_BUDGET", "3300"))
+# How long the template-login check waits for an appliance's admin-password acknowledgement
+# (appliance_admin.py, issue #248; a pfSense first boot applies its config and reboots once);
+# never past the budget above.
+RANGE_APPLIANCE_ACK_TIMEOUT: float = float(os.environ.get("RANGE_APPLIANCE_ACK_TIMEOUT", "600") or 600)
 # Socket timeout (seconds) of the session the scheduled metrics read opens: connect and
 # every SOAP reply. Keep it well under the metrics run's budget (worker.tasks).
 VSPHERE_METRICS_TIMEOUT: int = int(os.environ.get("VSPHERE_METRICS_TIMEOUT", "15"))
@@ -566,6 +581,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
         self._scrub_timeout = VSPHERE_ACCOUNT_SCRUB_TIMEOUT
         self._budget = VSPHERE_PROVISION_BUDGET
         self._budget_end = 0.0  # absolute monotonic deadline for new build work (set in provision)
+        self._appliance_ack_timeout = RANGE_APPLIANCE_ACK_TIMEOUT
         self._guest_poll = 5.0
         self._guest_put = None  # a guest file-transfer PUT for tests; None = real HTTPS to the ESXi host
         self._library_id: str | None = None
@@ -1661,10 +1677,13 @@ class VsphereAPIProvisioner(BaseProvisioner):
                 "windows", "Administrator", guest.Secret(spec.identity.guiUnattended.password.value))
             self._wait(vm.CustomizeVM_Task(spec=spec), si)
         elif vm_def.get("_pfsense") is not None or vm_def.get("_vyos") is not None:
+            # The range's admin login as a hash only (appliance_admin.py, issue #248).
+            admin = vm_def.get("_appliance_admin")
+            admin_hash = admin.hash.reveal() if admin is not None else None
             if vm_def.get("_pfsense") is not None:
-                values = pfsense_config.guestinfo(vm_def["_pfsense"], nic_macs)
+                values = pfsense_config.guestinfo(vm_def["_pfsense"], nic_macs, admin_hash)
             else:
-                values = vyos_config.guestinfo(vm_def["_vyos"], nic_macs, vm_def["name"])
+                values = vyos_config.guestinfo(vm_def["_vyos"], nic_macs, vm_def["name"], admin_hash)
             spec = vim.vm.ConfigSpec(extraConfig=[vim.option.OptionValue(key=k, value=v) for k, v in values.items()])
             self._wait(vm.ReconfigVM_Task(spec=spec), si)
         # Any other appliance boots with its template config (the runbook, §4.1a, says what
@@ -1905,7 +1924,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
             self._soap_si = None
             self._tagger = None
             for vm_def in vm_defs:  # the guest passwords end with this call
-                for key in ("_guest", "_accounts", "_scrub", "_will_set", "_proven", "_sysprep"):
+                for key in ("_guest", "_accounts", "_scrub", "_will_set", "_proven", "_sysprep", "_appliance_admin"):
                     vm_def.pop(key, None)
 
         built = {v["name"] for v in vms_out}
@@ -1933,9 +1952,13 @@ class VsphereAPIProvisioner(BaseProvisioner):
     def _redact(exc, *vm_defs: dict) -> str:
         # A vSphere fault often has an empty str(); its msg or its type still says what failed.
         text = str(exc) or getattr(exc, "msg", None) or type(exc).__name__
-        secrets_ = ([v.get(k) for v in vm_defs for k in ("_guest", "_sysprep")]
+        secrets_ = ([v.get(k) for v in vm_defs for k in ("_guest", "_sysprep", "_appliance_admin")]
                     + [a for v in vm_defs for a in v.get("_accounts") or []])
-        return guest.redact(text, *secrets_)
+        text = guest.redact(text, *secrets_)
+        for v in vm_defs:  # an appliance's admin hash is not a password, but it is not for logs either
+            if (admin := v.get("_appliance_admin")) is not None:
+                text = text.replace(admin.hash.reveal(), "***")
+        return text
 
     @staticmethod
     def _domain(what: str) -> str:
@@ -2066,6 +2089,10 @@ class VsphereAPIProvisioner(BaseProvisioner):
             else:
                 continue
             warnings += [f"VM {vm_def['name']}: {n}" for n in cfg.notes]
+            try:  # its own admin password, as a hash (issue #248); the template's otherwise
+                vm_def["_appliance_admin"] = appliance_admin.plan(vm_def)
+            except appliance_admin.ApplianceAdminError as exc:
+                warnings.append(f"VM {vm_def['name']}: {exc}")
 
     def _plan_mirrors(self, template: dict, networks: list[dict], warnings: list[str]) -> list[dict]:
         """The template's mirror rules, grouped by destination zone (vsphere_infra.plan_mirrors).
@@ -2283,9 +2310,9 @@ class VsphereAPIProvisioner(BaseProvisioner):
         """What this build sets of each VM's declared accounts (ADR 0012).
 
         Windows: only the built-in Administrator (Sysprep); other accounts are scenario
-        content. Linux: every name useradd accepts (cloud-init). Appliances: none (they keep
-        their own config). ``_will_set`` names what will be set (the build reports it as
-        ``accounts_applied`` once verified); the rest is a warning. A Linux VM whose
+        content. Linux: every name useradd accepts (cloud-init). pfSense, OPNsense, VyOS: their
+        admin user only (``appliance_admin``, issue #248). ``_will_set`` names what will be
+        set (the build reports it as ``accounts_applied`` once verified); the rest is a warning. A Linux VM whose
         cloud-config will carry account hashes is marked ``_scrub`` and given the ephemeral
         install login, used after first boot to see cloud-init finish, check each account
         exists and take the hashes out of its guestinfo (``_verify_accounts``)."""
@@ -2306,7 +2333,8 @@ class VsphereAPIProvisioner(BaseProvisioner):
                     vm_def["_scrub"] = True
                     vm_def.setdefault("_guest", guest.linux_credentials())
             else:
-                will = []
+                admin = appliance_admin.ADMIN_USERS.get(appliance_admin.product_of(vm_def) or "")
+                will = [n for n in names if n.casefold() == admin]
             vm_def["_will_set"] = will
             if left := [n for n in names if n not in will]:
                 warnings.append(f"VM {vm_def['name']}: declared account(s) not set at deploy on this {family} "
@@ -2388,9 +2416,48 @@ class VsphereAPIProvisioner(BaseProvisioner):
             # A guest-operations login worked in this VM: the template-login check can trust a refusal.
             vm_def["_proven"] = bool(verified)
 
-        # Security Onion VMs report their own (``_setup_securityonion``).
+        # Security Onion VMs report their own (``_setup_securityonion``), appliances theirs
+        # with their template-login check (``_appliance_check_sync``: no guest operations).
         await asyncio.gather(*(one(by_name[o["name"]], o) for o in vms_out if o["name"] in by_name
-                               and not seconion.is_securityonion(by_name[o["name"]])))
+                               and not seconion.is_securityonion(by_name[o["name"]])
+                               and infra.os_family(by_name[o["name"]]) != "appliance"))
+
+    def _appliance_check_sync(self, si, vm_def: dict, out: dict) -> dict:
+        """An appliance's template-login check (appliance_admin.check): SSH at its uplink
+        address when the worker can reach it, else its boot hook's acknowledgement in
+        guestinfo, read until RANGE_APPLIANCE_ACK_TIMEOUT (never past the build budget). A
+        proven change marks its admin account set (``accounts_applied``) and takes the hash
+        out of the VM's configuration."""
+        admin = vm_def.get("_appliance_admin")
+        vm = self._vm(si, out["vm_id"])
+        nics = vm_def.get("nics") or []
+        mgmt_ip = str(nics[0].get("ip") or "") if nics and nics[0].get("uplink") else ""
+        key = appliance_admin.ack_key(admin.product) if admin is not None else ""
+
+        def read_ack() -> str:
+            return next((str(o.value or "") for o in (getattr(vm.config, "extraConfig", None) or [])
+                         if o.key == key), "")
+
+        now = time.monotonic()
+        deadline = min(now + self._appliance_ack_timeout, self._budget_end or float("inf"))
+        res = appliance_admin.check(admin, mgmt_ip=mgmt_ip, read_ack=read_ack, deadline=deadline,
+                                    poll=3 * self._guest_poll)
+        out["accounts_applied"] = [admin.account] if admin is not None and res["status"] == credcheck.REJECTED \
+            else []
+        if admin is not None:
+            cleared = False
+            if res["status"] == credcheck.REJECTED:
+                nic_macs = [str(card.macAddress) for card in infra.nic_cards(vm.config.hardware.device)]
+                values = appliance_admin.scrub_values(vm_def, nic_macs)
+                try:
+                    self._wait(vm.ReconfigVM_Task(spec=vim.vm.ConfigSpec(extraConfig=[
+                        vim.option.OptionValue(key=k, value=v) for k, v in values.items()])), si)
+                    cleared = True
+                except Exception as exc:  # noqa: BLE001 — a hash, not a password: say so, keep the result
+                    logger.warning("VM %s: could not take the admin hash out of its guestinfo (%s)",
+                                   out.get("name"), type(exc).__name__)
+            out["admin_login"] = {**admin.summary(), "hash_cleared": cleared}
+        return res
 
     def _template_check_sync(self, si, vm_def: dict, vm_id: str, proven: bool) -> dict:
         vm = self._vm(si, vm_id)
@@ -2405,15 +2472,22 @@ class VsphereAPIProvisioner(BaseProvisioner):
         template password still logs in is not ready under RANGE_TEMPLATE_LOGIN_CHECK=enforce.
         A Security Onion node is checked once its setup changed its login (here when it
         finished in the build, else by the reconcile task); so is a Windows VM whose Sysprep the
-        build's budget left running (#255); an appliance is not checked (its login is its own
-        configuration)."""
+        build's budget left running (#255); an appliance over SSH or by its boot hook's
+        acknowledgement (``_appliance_check_sync``, issue #248)."""
         by_name = {v["name"]: v for v in vm_defs}
         gate = asyncio.Semaphore(self._concurrency)
 
         async def one(vm_def: dict, out: dict) -> None:
             if infra.os_family(vm_def) == "appliance":
-                out["template_login"] = {"status": "not_checked", "detail": "appliance: its login is its own "
-                                                                            "configuration"}
+                try:  # no gate: mostly waiting for the appliance's acknowledgement
+                    res = await asyncio.to_thread(self._appliance_check_sync, si, vm_def, out)
+                except Exception as exc:  # noqa: BLE001 — never a pass
+                    res = {"status": credcheck.INCONCLUSIVE, "method": appliance_admin.NONE,
+                           "detail": f"not checked ({type(exc).__name__})"}
+                out["template_login"] = res
+                if reason := credcheck.report(out["name"], res, warnings):
+                    errors.append(f"VM {out['name']}: {reason}")
+                    not_ready.append(out["name"])
                 return
             proven = bool(vm_def.get("_proven"))
             if (out.get("customization") or {}).get("status") == customization.RUNNING:

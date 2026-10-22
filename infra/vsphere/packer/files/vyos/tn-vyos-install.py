@@ -7,6 +7,8 @@ what it says rather than by keystroke timing, then:
 
 * gives the installed image a cloud-init datasource list that starts with VMware, so the
   per-range config the worker puts in guestinfo.userdata (worker/vyos_config.py) is read;
+* installs tn-admin-ack.service, which reports (guestinfo.tn.vyos.admin_ack) which password
+  hash the vyos login has once that config is applied (issue #248);
 * powers the VM off. Packer (communicator "none") only waits for that, then templates it.
 
 A prompt it has no answer for, an installer failure or a timeout: print the transcript and
@@ -54,6 +56,37 @@ ExecStart=/bin/sh -c 'vmware-rpctool "info-set guestinfo.tn.template.finish $$(t
 
 [Install]
 WantedBy=multi-user.target
+"""
+# Issue #248: once cloud-init has applied the range's config (which gives the vyos login the
+# range's own password as an encrypted-password hash, worker/vyos_config.py), report which
+# hash the login has in force: guestinfo.tn.vyos.admin_ack = the first 16 hex digits of its
+# sha256 (worker/appliance_admin.py fingerprint; never the hash), or "failed <why>".
+# TN_RPCTOOL / TN_SHADOW: test seams (tests/contracts/test_packer_appliance_finish.py).
+ACK_SCRIPT = """\
+#!/bin/sh
+RPC="${TN_RPCTOOL:-vmware-rpctool}"
+SHADOW="${TN_SHADOW:-/etc/shadow}"
+hash="$(awk -F: '$1 == "vyos" {print $2; exit}' "$SHADOW" 2>/dev/null)"
+case "$hash" in
+  ''|'!'*|'*'*) ack="failed the vyos login has no password hash" ;;
+  *) ack="$(printf '%s' "$hash" | sha256sum | cut -c1-16)" ;;
+esac
+exec "$RPC" "info-set guestinfo.tn.vyos.admin_ack $ack"
+"""
+# After cloud-final (itself after multi-user.target): so wanted by cloud-init.target, which
+# avoids an ordering cycle with multi-user.target.
+ACK_UNIT = """\
+[Unit]
+Description=TrueNorth: report which password hash the vyos login has (guestinfo)
+ConditionVirtualization=vmware
+After=open-vm-tools.service cloud-final.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh /etc/tn-admin-ack.sh
+
+[Install]
+WantedBy=cloud-init.target
 """
 
 
@@ -193,6 +226,13 @@ def finish_image(root: Path) -> Path:
     link = wants / unit.name
     if not link.is_symlink():
         link.symlink_to("/etc/systemd/system/tn-template-marker.service")
+    (rw / "etc/tn-admin-ack.sh").write_text(ACK_SCRIPT, encoding="utf-8")
+    ack = rw / "etc/systemd/system/tn-admin-ack.service"
+    ack.write_text(ACK_UNIT, encoding="utf-8")
+    ack_wants = rw / "etc/systemd/system/cloud-init.target.wants"
+    ack_wants.mkdir(parents=True, exist_ok=True)
+    if not (ack_wants / ack.name).is_symlink():
+        (ack_wants / ack.name).symlink_to("/etc/systemd/system/tn-admin-ack.service")
     return cfg
 
 

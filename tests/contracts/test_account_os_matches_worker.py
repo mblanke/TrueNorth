@@ -69,3 +69,17 @@ def test_windows_machines_match(name):
     worker = {str(vm["node_id"]): os_family(vm) == "windows" for vm in rendered}
     api = {m: accounts.is_windows(os) for m, os in accounts.machine_os(doc).items()}
     assert api == worker, name
+
+
+@pytest.mark.parametrize("name", sorted(CASES))
+def test_appliance_admin_logins_match(name):
+    """Issue #248: the API gives an appliance machine an implicit admin row exactly when the
+    worker sets that login (worker/appliance_admin.py), and for the same user name."""
+    from worker import appliance_admin
+
+    doc = CASES[name]
+    rendered = render_topology(doc, RANGE_ID, lambda alias: None)["vm_definitions"]
+    worker = {str(vm["node_id"]): appliance_admin.ADMIN_USERS[product] for vm in rendered
+              if os_family(vm) == "appliance" and (product := appliance_admin.product_of(vm)) is not None}
+    assert accounts.appliance_admins(doc) == worker, name
+    assert accounts.APPLIANCE_ADMINS == appliance_admin.ADMIN_USERS

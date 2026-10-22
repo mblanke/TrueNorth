@@ -195,21 +195,26 @@ def network_allocation(output: dict, reservations: list, external: list,
     return PASS, f"{summary}; no collision with VLANs used outside TrueNorth (live checks, S1)", detail
 
 
-TEMPLATE_LOGIN_OK = ("rejected", "not_checked")
+TEMPLATE_LOGIN_OK = ("rejected",)
 
 
 def credentials(output: dict, accounts: list) -> tuple[str, str, dict]:
     """S3 (#241): the golden template's password must be refused on every VM
-    (``vms[].template_login``: rejected / accepted / inconclusive / not_checked, the last
-    for appliances), and the range's own accounts set: no change pending, every
-    Student-visible account applied by this build (a rebuild gives Students new passwords,
-    so applied means rotated). Scenario accounts keep their authored passwords by design.
+    (``vms[].template_login``: rejected / accepted / inconclusive), and the range's own
+    accounts set: no change pending, every Student-visible account applied by this build (a
+    rebuild gives Students new passwords, so applied means rotated). Scenario accounts keep
+    their authored passwords by design.
+
+    Appliances (pfSense, OPNsense, VyOS; issue #248) are checked too: ``method`` says how,
+    ``ssh`` (a login attempt) or ``guestinfo_ack`` (the appliance's boot hook reported the
+    range's own admin hash in force; no login attempt), and the summary counts the latter.
+    ``not_checked``, which builds before #248 recorded for appliances, is no longer a pass.
 
     ``fail``: the template password still logs in on a VM. ``incomplete``: a check
     inconclusive or missing, a change pending, or a Student account not applied yet."""
     vms = _vms(output)
     logins = [{"vm": v.get("name", ""), **{k: (v.get("template_login") or {}).get(k)
-                                            for k in ("status", "username", "detail")}} for v in vms]
+                                            for k in ("status", "username", "method", "detail")}} for v in vms]
     rows = [{"machine": a.machine, "username": a.username, "student_visible": bool(a.student_visible),
              "generated": bool(a.generated), "scenario": bool(a.scenario), "applied": bool(a.applied),
              "pending": a.sealed_previous is not None or bool(a.pending_operation),
@@ -223,8 +228,6 @@ def credentials(output: dict, accounts: list) -> tuple[str, str, dict]:
     unproven = sorted(r["vm"] for r in logins if r["status"] not in TEMPLATE_LOGIN_OK)
     if unproven:
         return INCOMPLETE, f"template-password check not proven on {', '.join(unproven)}", detail
-    if not any(r["status"] == "rejected" for r in logins):
-        return INCOMPLETE, "no VM's template-password check was made (appliances only)", detail
     pending = sorted(f"{r['machine']}/{r['username']}" for r in rows if r["pending"])
     if pending:
         return INCOMPLETE, f"a credential change is still pending on {', '.join(pending)}", detail
@@ -233,7 +236,9 @@ def credentials(output: dict, accounts: list) -> tuple[str, str, dict]:
     if unset:
         return INCOMPLETE, f"Student account(s) not set by this build yet: {', '.join(unset)}", detail
     students = sum(1 for r in rows if r["student_visible"] and not r["scenario"])
-    return PASS, (f"template password refused on {sum(1 for r in logins if r['status'] == 'rejected')} VM(s); "
+    acked = sum(1 for r in logins if r["method"] == "guestinfo_ack")
+    how = f" ({acked} appliance(s) by boot-hook acknowledgement, no login attempt)" if acked else ""
+    return PASS, (f"template password refused on {len(logins)} VM(s){how}; "
                   f"{students} Student account(s) set with this build's passwords"), detail
 
 
