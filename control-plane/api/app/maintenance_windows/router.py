@@ -28,7 +28,7 @@ from sqlalchemy.orm import Session
 
 from ..auth import CurrentUser
 from ..db import get_db
-from ..models import AuditLog, Range
+from ..models import AuditLog, Range, RangeState
 from ..range_certification import service as certification
 from ..range_ops import service as ops
 from ..rbac import Permission, require_permission
@@ -177,7 +177,16 @@ def emergency_teardown(
         raise HTTPException(409, "This range belongs to a student's lab session; end the lab session (that always runs)")
     overridden = service.covering_range(db, rng)
     try:
-        op, rng, created = ops.accept(db, range_id, user, "destroy", window_bypass=policy.BYPASS_EMERGENCY)
+        # One teardown is one destroy operation: a destroy already in flight (a person's, held
+        # by the window, say) takes the emergency bypass and is sent now; otherwise a new one.
+        op = None
+        if rng.state == RangeState.destroying:
+            rng = ops._locked_range(db, range_id, user)
+            op = ops.run_destroy_with_bypass(db, rng, policy.BYPASS_EMERGENCY, force=True)
+        if op is not None:
+            created = True
+        else:
+            op, rng, created = ops.accept(db, range_id, user, "destroy", window_bypass=policy.BYPASS_EMERGENCY)
         if created:
             window = f"overrode maintenance window {service.label(overridden[0])} ({overridden[0].reason})" \
                 if overridden else "no maintenance window in effect"
@@ -196,7 +205,7 @@ def emergency_teardown(
     except Exception:
         db.rollback()
         raise
-    if created:
+    if created and op.status in ("pending", "held"):
         ops.dispatch(db, op)
     logger.warning("range %s: emergency teardown by %s: %s", rng.id, user.id, body.reason)
     response.headers["Operation-Id"] = str(op.id)

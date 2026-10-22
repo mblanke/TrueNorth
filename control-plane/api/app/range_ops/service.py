@@ -417,7 +417,9 @@ def released_holds(db: Session, limit: int) -> list[RangeOperation]:
     return out
 
 
-def run_destroy_with_bypass(db: Session, rng: Range, window_bypass: str) -> RangeOperation | None:
+def run_destroy_with_bypass(
+    db: Session, rng: Range, window_bypass: str, *, force: bool = False
+) -> RangeOperation | None:
     """A teardown that always runs (``window_bypass``) on a range already ``destroying``
     because of a person's destroy that a window holds or that has not run yet: that destroy
     takes the bypass and is sent now (a held one goes back to ``pending``; one already sent
@@ -441,7 +443,7 @@ def run_destroy_with_bypass(db: Session, rng: Range, window_bypass: str) -> Rang
     )
     if op is None:
         return None
-    if not op.window_bypass:
+    if not op.window_bypass or force:  # force: an emergency is recorded as one
         op.window_bypass = window_bypass
     if op.status == HELD:
         op.status = "pending"
@@ -451,23 +453,28 @@ def run_destroy_with_bypass(db: Session, rng: Range, window_bypass: str) -> Rang
 
 
 def parked(db: Session, rng: Range) -> bool:
-    """Nothing is running on the range and its work is waiting: no worker holds its lease,
-    and every in-flight operation is ``held`` (a maintenance window) or still ``pending``
-    (not picked up), or, for a teardown the worker could not identify, none is in flight and
-    the worker left its hold reason on a ``destroying`` range. Such a range can be torn down
-    (an emergency teardown, or a destroy after the window) although its state,
-    ``provisioning`` or ``destroying``, would not otherwise allow a destroy. A task of the
-    superseded operation that arrives later finds the range no longer in its state and skips
-    (worker/fencing.py); one already running holds the lease, so the range is not parked."""
+    """A destroy may start on this range although its state would not allow one: no worker
+    holds its lease, and either
+
+    * it is ``provisioning`` and every in-flight operation is its build, ``held`` by a
+      maintenance window or still ``pending`` (not picked up). A build task that arrives
+      later finds the range no longer provisioning and skips (worker/fencing.py); or
+    * it is ``destroying`` with no operation in flight, and the worker left its hold reason
+      on it (a teardown it held and could not identify, worker/maintenance_windows.py).
+
+    Never over a destroy already in flight, whatever its status: one teardown is one
+    destroy operation. Two scheduler passes racing to tear down one booking's range (the
+    second used to find the first's still-pending destroy "parked" and add another), or an
+    emergency teardown over a held destroy, use that operation (``run_destroy_with_bypass``)."""
     from ..maintenance_windows.policy import HELD_MARKER
 
     if rng.state not in (RangeState.provisioning, RangeState.destroying) or worker_acting(db, rng.id):
         return False
-    statuses = [s for (s,) in db.query(RangeOperation.status).filter(
-        RangeOperation.range_id == rng.id, RangeOperation.status.in_(IN_FLIGHT))]
-    if statuses:
-        return all(s in (HELD, "pending") for s in statuses)
-    return rng.state == RangeState.destroying and HELD_MARKER in (rng.error_message or "")
+    in_flight = db.query(RangeOperation.action, RangeOperation.status).filter(
+        RangeOperation.range_id == rng.id, RangeOperation.status.in_(IN_FLIGHT)).all()
+    if rng.state == RangeState.provisioning:
+        return bool(in_flight) and all(a == "provision" and s in (HELD, "pending") for a, s in in_flight)
+    return not in_flight and HELD_MARKER in (rng.error_message or "")
 
 
 def stale_after() -> timedelta:

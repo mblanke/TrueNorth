@@ -474,6 +474,49 @@ class TestParkedRanges:
         assert "held by a maintenance window" in status["reason"] and op_id in status["reason"]
         assert "Abandon the held operation first" in status["reason"]
 
+    def test_a_second_teardown_over_a_pending_destroy_is_refused_not_duplicated(
+        self, client, db_session, monkeypatch
+    ):
+        """CI on 9483551f: two scheduler passes tore one booking's range down at once; the second
+        found the first's destroy still pending, called the range parked, and added a second
+        destroy. One teardown is one destroy operation."""
+        from app import range_lifecycle
+        from app.range_ops import service as ops
+
+        rng = _range(db_session, RangeState.ready, output=VMS)
+        monkeypatch.setattr(ops, "dispatch", lambda db, op: False)  # the first pass, before its send
+        assert range_lifecycle.destroy_for_booking(db_session, rng.id)[0] is True
+        assert [o.status for o in _ops(db_session, rng)] == ["pending"]
+        with pytest.raises(range_lifecycle.RangeTransitionError):
+            range_lifecycle.begin_destroy(db_session, rng)  # the second pass, after its stale read
+        assert [(o.action, o.status) for o in _ops(db_session, rng)] == [("destroy", "pending")]
+
+    def test_emergency_teardown_over_a_held_destroy_uses_that_operation(self, client, db_session, no_real_broker):
+        rng = _range(db_session, RangeState.ready, output=VMS)
+        op_id = client.post(f"/ranges/{rng.id}/destroy").headers["Operation-Id"]
+        _window(client)
+        TestHeldOperations._hold(db_session, op_id)
+        no_real_broker.sent.clear()
+        resp = client.post(f"/ranges/{rng.id}/emergency-teardown",
+                           json={"confirm_range_id": str(rng.id), "reason": "pull it now, it is misbehaving"})
+        assert resp.status_code == 202 and resp.headers["Operation-Id"] == op_id
+        (op,) = _ops(db_session, rng)
+        assert (op.action, op.window_bypass, op.status) == ("destroy", "emergency", "dispatched")
+        assert no_real_broker.sent == [("worker.tasks.destroy_range", [str(rng.id)])]
+        assert _audits(db_session, "emergency_teardown")
+
+    def test_emergency_teardown_over_a_running_destroy_marks_it_and_sends_nothing_more(
+        self, client, db_session, no_real_broker
+    ):
+        rng = _range(db_session, RangeState.ready, output=VMS)
+        op_id = client.post(f"/ranges/{rng.id}/destroy").headers["Operation-Id"]  # dispatched
+        no_real_broker.sent.clear()
+        resp = client.post(f"/ranges/{rng.id}/emergency-teardown",
+                           json={"confirm_range_id": str(rng.id), "reason": "make sure it comes down now"})
+        assert resp.status_code == 202 and resp.headers["Operation-Id"] == op_id
+        assert [o.window_bypass for o in _ops(db_session, rng)] == ["emergency"]
+        assert no_real_broker.sent == [], "already sent: its task reads the bypass when it starts"
+
     def test_a_destroying_range_without_the_hold_reason_is_not_parked(self, client, db_session):
         rng = _range(db_session, RangeState.destroying, output=VMS)
         resp = client.post(f"/ranges/{rng.id}/emergency-teardown",
