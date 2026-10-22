@@ -186,10 +186,32 @@ jobs:
             -r ai-orchestrator/requirements.txt \
             -r scenario-engine/requirements.txt \
             -f json -o pip-audit.json
+      # npm 10 (bundled with Node 22) falls back to the retired /audits/quick endpoint
+      # whenever the bulk advisory call fails, and that endpoint now answers 400, which
+      # hides the real error. npm 11 queries only /advisories/bulk. The registry's bulk
+      # endpoint sometimes hangs until fetch-timeout (2026-10-22, npm status incident),
+      # so an attempt that gets no report is retried; one that gets a report is final and
+      # fails the job on any advisory, as before. Pinned exactly; bump deliberately.
+      - name: Install npm 11 (bulk advisory endpoint only)
+        if: success() || failure()
+        run: npm install -g npm@11.19.0 && npm --version
       - name: npm audit
         if: success() || failure()
+        timeout-minutes: 12
         working-directory: control-plane/web
-        run: npm audit --omit=dev --json > ../../npm-audit.json
+        run: |
+          for attempt in 1 2 3; do
+            rc=0
+            npm audit --omit=dev --json --fetch-timeout=180000 > ../../npm-audit.json || rc=$?
+            if jq -e 'has("auditReportVersion")' ../../npm-audit.json > /dev/null 2>&1; then
+              jq -r '.metadata.vulnerabilities | "npm audit (production): \(.)"' ../../npm-audit.json
+              exit "$rc"
+            fi
+            echo "::warning::npm audit attempt $attempt got no report: $(jq -r '.message // "unparseable output"' ../../npm-audit.json 2>/dev/null)"
+            if [ "$attempt" -lt 3 ]; then sleep 20; fi
+          done
+          echo "::error::npm audit: no advisory report after 3 attempts (registry bulk endpoint unavailable); not a pass"
+          exit 1
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
