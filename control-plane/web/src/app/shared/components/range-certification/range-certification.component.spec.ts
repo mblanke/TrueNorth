@@ -157,7 +157,7 @@ describe('RangeCertificationComponent', () => {
       ...entry(7, 'incomplete', 'isolation not proven (warn mode)'), section: 'isolation',
       detail: { mode: 'warn', ran_at: '2026-10-22T10:00:00Z', zones: [
         { zone: 'lan', cidr: '10.80.0.0/24', status: 'probed', verdict: 'isolated', reasons: [],
-          probe: { vm: 'web01', family: 'linux', account: 'student', admin: false },
+          probe: { vm: 'web01', family: 'linux', account: 'tnprobe', admin: false, account_class: 'staff' },
           selftest: { passed: true }, checks: [
             { check: 'selftest', target: '10.80.0.1', expect: 'precondition', result: 'reachable' },
             { check: 'tcp', target: '10.30.30.1:443', expect: 'unreachable', result: 'proven_unreachable' },
@@ -173,13 +173,23 @@ describe('RangeCertificationComponent', () => {
     await render('instructor', PROBED);
     const lan = el.querySelector('.isolation tr[data-zone="lan"]')!;
     expect(lan.textContent).toContain('web01');
-    expect(lan.textContent).toContain('student');
+    expect(lan.textContent).toContain('tnprobe');
+    expect(lan.textContent).toContain('staff account');
     expect(lan.textContent).toContain('2 proven unreachable, 1 exceptions connected');
     expect(lan.querySelector('.state')?.getAttribute('data-status')).toBe('pass');
     const dmz = el.querySelector('.isolation tr[data-zone="dmz"]')!;
     expect(dmz.textContent).toContain('No probe VM');
     expect(dmz.querySelector('.state')?.textContent).toContain('Not proven');
     expect(el.querySelector('.isolation')?.textContent).toContain('recorded; does not block a build');
+  });
+
+  it('says when a re-probe from VMs Students may control was not allowed to raise the verdict', async () => {
+    const iso = PROBED.record!.sections[0];
+    const held: RangeCertification = { ...PROBED, record: { ...PROBED.record!, sections: [{ ...iso, entries: [{
+      ...iso.entries[0], detail: { ...iso.entries[0].detail, decided_by: 'build',
+        reprobe: { status: 'pass', trusted: false } } }] }] } };
+    await render('instructor', held);
+    expect(el.querySelector('.isolation')?.textContent).toContain('did not raise this verdict');
   });
 
   it('probes again on request (staff who may provision only)', async () => {

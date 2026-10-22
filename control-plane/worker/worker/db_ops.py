@@ -238,6 +238,16 @@ def range_accounts(db, range_id: str) -> list[tuple[str, str, str, str]]:
              or "", r.role) for r in db.execute(stmt)]
 
 
+def range_account_visibility(db, range_id: str) -> dict[tuple[str, str], bool]:
+    """(machine, username) -> whether Students can see that account's password (range
+    certification S4 prefers staff-only accounts for its probes). No passwords read."""
+    rc = range_credentials
+    stmt = (sa.select(rc.c.machine, rc.c.username, rc.c.student_visible)
+            .join(ranges, ranges.c.id == rc.c.range_id)
+            .where(rc.c.range_id == range_id, rc.c.tenant_id == ranges.c.tenant_id))
+    return {(str(r.machine), str(r.username)): bool(r.student_visible) for r in db.execute(stmt)}
+
+
 def account_rows(db, range_id: str, ids: Sequence[str] | None = None) -> list[dict[str, Any]]:
     """Every account of the range (or the ``ids`` among them) for a change in the guests
     (worker/credential_rotation.py): id, machine, username, role, student_visible, generated,
@@ -999,11 +1009,12 @@ def range_state(db, range_id: str) -> str | None:
 
 
 def store_isolation(db, range_id: str, record: dict, vm_ids: set[str], *, states: Sequence[str] = ("ready",)) -> str:
-    """Replace the ``isolation`` evidence in a range's provisioner_output with ``record``
-    (range certification S4 re-probe, worker/isolation_task.py), under the range's row lock,
-    only if: the range is still in ``states``; its recorded VMs are still exactly ``vm_ids``
-    (the ones probed: a rebuild meanwhile makes this evidence another build's); and no
-    re-probe that started later has stored its own. Returns ``stored`` or why not."""
+    """Store a re-probe's evidence as ``isolation_reprobe`` in a range's provisioner_output
+    (range certification S4, worker/isolation_task.py); the build's own ``isolation`` is
+    never touched. Under the range's row lock, only if: the range is still in ``states``;
+    its recorded VMs are still exactly ``vm_ids`` (the ones probed: a rebuild meanwhile
+    makes this evidence another build's); and no re-probe that started later has stored
+    its own. Returns ``stored`` or why not."""
     row = db.execute(sa.select(ranges.c.provisioner_output)
                      .where(ranges.c.id == range_id, sa.cast(ranges.c.state, sa.Text).in_(list(states)))
                      .with_for_update()).first()
@@ -1017,10 +1028,10 @@ def store_isolation(db, range_id: str, record: dict, vm_ids: set[str], *, states
         return "the range's output is unreadable"
     if {str(v.get("vm_id")) for v in current.get("vms") or [] if isinstance(v, dict) and v.get("vm_id")} != vm_ids:
         return "the range was rebuilt while it was probed"
-    old = current.get("isolation") if isinstance(current.get("isolation"), dict) else {}
+    old = current.get("isolation_reprobe") if isinstance(current.get("isolation_reprobe"), dict) else {}
     if str(old.get("started_at") or "") > str(record.get("started_at") or ""):
         return "a later probe has stored its evidence"
-    current["isolation"] = record
+    current["isolation_reprobe"] = record
     db.execute(sa.update(ranges).where(ranges.c.id == range_id)
                .values(provisioner_output=json.dumps(current), updated_at=_now()))
     return "stored"

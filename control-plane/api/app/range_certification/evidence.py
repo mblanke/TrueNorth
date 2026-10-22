@@ -293,6 +293,63 @@ def _zone_gap(z: dict) -> str | None:
     return None
 
 
+def _measured_from(rows: list[dict]) -> str:
+    """"as measured from <VM> using <account class>", per probed zone."""
+    parts = [f"{z.get('zone')}: {(z.get('probe') or {}).get('vm')} using a "
+             f"{str((z.get('probe') or {}).get('account_class') or 'student_visible').replace('_', '-')} account"
+             for z in rows if z.get("probe")]
+    return f"as measured from {'; '.join(parts)}" if parts else ""
+
+
+def _trusted(rows: list[dict]) -> bool:
+    """A re-probe may raise the verdict only when every zone was measured from a VM the
+    template marks ``probe: true``, logged in with a staff-only account (Students control
+    the rest: whoever controls a guest can make its probes report silence)."""
+    return bool(rows) and all((z.get("probe") or {}).get("trusted") is True for z in rows)
+
+
+def _grade(rec: dict) -> tuple[str, str, dict]:
+    """One probe run (the build's, or a re-probe), graded from its rows."""
+    rows = [{**{k: z.get(k) for k in _ZONE_KEYS if k in z},
+             "checks": [{k: c.get(k) for k in _CHECK_KEYS if k in c} for c in z.get("checks") or []
+                        if isinstance(c, dict)]}
+            for z in rec.get("zones") or [] if isinstance(z, dict)]
+    settings = rec.get("settings") if isinstance(rec.get("settings"), dict) else None
+    notes = [str(n) for n in rec.get("notes") or []]
+    skipped = [str(n) for n in rec.get("excluded") or []]
+    detail = {"source": rec.get("source") or "build", "mode": rec.get("mode"), "started_at": rec.get("started_at"),
+              "ran_at": rec.get("ran_at"), "worker_verdict": rec.get("verdict"), "settings": settings, "zones": rows,
+              "notes": notes, "excluded": skipped, "measured_from": _measured_from(rows),
+              **({"enforced": rec["enforced"]} if isinstance(rec.get("enforced"), dict) else {})}
+    tail = "".join(f" ({part})" for part in (detail["measured_from"], "; ".join(
+        f"not probed: {n}" for n in skipped)) if part)
+    mode = f" ({rec.get('mode') or 'warn'} mode)"
+    leaks = []
+    for z in rows:
+        bad = [f"{c.get('check')} {c.get('target')}" for c in z["checks"]
+               if c.get("expect") == "unreachable" and c.get("result") == "reachable"]
+        if bad:
+            leaks.append(f"zone {z.get('zone')}: {', '.join(bad)}")
+    if leaks:
+        return FAIL, f"not isolated{mode}: reachable outside its exceptions: {'; '.join(leaks)}{tail}", detail
+    gaps = [g for g in map(_zone_gap, rows) if g]
+    if not rows:
+        gaps.append("no range networks recorded")
+    if settings is None:
+        gaps.append("the probes did not run" + (f": {'; '.join(notes)}" if notes else ""))
+    elif not settings.get("targets"):
+        gaps.append("no site probe targets configured (tn_range_isolation_probe_targets)")
+    if gaps:
+        probed = sum(1 for z in rows if z.get("status") == "probed")
+        return INCOMPLETE, (f"isolation not proven{mode}, {probed} of {len(rows)} zone(s) probed: "
+                            f"{'; '.join(gaps)}{tail}"), detail
+    return PASS, (f"isolated{mode}: {len(rows)} zone(s) probed, every check that must fail proven unreachable, "
+                  f"permitted exceptions connected{tail}"), detail
+
+
+_RANK = {FAIL: 0, INCOMPLETE: 1, PASS: 2}
+
+
 def isolation(output: dict) -> tuple[str, str, dict]:
     """S4 (#242): isolation evidence per security zone.
 
@@ -303,37 +360,28 @@ def isolation(output: dict) -> tuple[str, str, dict]:
     connected and site targets were configured; else ``incomplete``, naming the zones and
     checks that fall short (``connect_failed_only`` and ``inconclusive`` are never proof).
     The mode (warn / enforce) is recorded; it decides only whether the build was blocked,
-    never this grade."""
-    rec = output.get("isolation") if isinstance(output.get("isolation"), dict) else None
-    if rec is None:
+    never this grade. Every summary says what the evidence is: "as measured from <VM>
+    using <account class>"; a compromised guest can fake it (worker/range_isolation.py).
+
+    ``isolation`` is the build's run (before the range was handed over);
+    ``isolation_reprobe`` the newest staff re-probe (worker/isolation_task.py). A re-probe
+    decides when it is trusted (every zone from a ``probe: true`` VM with a staff-only
+    account) or when it is worse than the build's run; an untrusted re-probe never raises
+    the verdict. The build's entry stays in the record's history either way."""
+    build = output.get("isolation") if isinstance(output.get("isolation"), dict) else None
+    again = output.get("isolation_reprobe") if isinstance(output.get("isolation_reprobe"), dict) else None
+    if build is None and again is None:
         return INCOMPLETE, "no isolation probes recorded for this build (S4 probes every zone once it is ready)", {}
-    rows = [{**{k: z.get(k) for k in _ZONE_KEYS if k in z},
-             "checks": [{k: c.get(k) for k in _CHECK_KEYS if k in c} for c in z.get("checks") or []
-                        if isinstance(c, dict)]}
-            for z in rec.get("zones") or [] if isinstance(z, dict)]
-    settings = rec.get("settings") if isinstance(rec.get("settings"), dict) else None
-    notes = [str(n) for n in rec.get("notes") or []]
-    detail = {"mode": rec.get("mode"), "started_at": rec.get("started_at"), "ran_at": rec.get("ran_at"),
-              "worker_verdict": rec.get("verdict"), "settings": settings, "zones": rows, "notes": notes}
-    mode = f" ({rec.get('mode') or 'warn'} mode)"
-    leaks = []
-    for z in rows:
-        bad = [f"{c.get('check')} {c.get('target')}" for c in z["checks"]
-               if c.get("expect") == "unreachable" and c.get("result") == "reachable"]
-        if bad:
-            leaks.append(f"zone {z.get('zone')}: {', '.join(bad)}")
-    if leaks:
-        return FAIL, f"not isolated{mode}: reachable outside its exceptions: {'; '.join(leaks)}", detail
-    gaps = [g for g in map(_zone_gap, rows) if g]
-    if not rows:
-        gaps.append("no range networks recorded")
-    if settings is None:
-        gaps.append("the probes did not run" + (f": {'; '.join(notes)}" if notes else ""))
-    elif not settings.get("targets"):
-        gaps.append("no site probe targets configured (tn_range_isolation_probe_targets)")
-    if gaps:
-        probed = sum(1 for z in rows if z.get("status") == "probed")
-        return INCOMPLETE, f"isolation not proven{mode}, {probed} of {len(rows)} zone(s) probed: {'; '.join(gaps)}", \
-            detail
-    return PASS, (f"isolated{mode}: {len(rows)} zone(s) probed, every check that must fail proven unreachable, "
-                  "permitted exceptions connected"), detail
+    graded = _grade(build) if build is not None else (
+        INCOMPLETE, "no isolation probes recorded for this build (S4 probes every zone once it is ready)", {})
+    if again is None:
+        return graded
+    status, summary, detail = _grade(again)
+    trusted = _trusted(detail["zones"])
+    if trusted or _RANK[status] <= _RANK[graded[0]]:
+        return status, f"re-probe {again.get('ran_at') or ''}: {summary}", {
+            **detail, "decided_by": "reprobe", "reprobe_trusted": trusted, "build_summary": graded[1]}
+    return graded[0], (f"{graded[1]}; a later re-probe from VMs Students may control "
+                       f"({status}) cannot raise this"), {
+        **graded[2], "decided_by": "build",
+        "reprobe": {"ran_at": again.get("ran_at"), "status": status, "summary": summary, "trusted": False}}

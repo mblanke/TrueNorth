@@ -8,6 +8,9 @@ it up on its next read (app/range_certification ``refresh_if_changed``).
 
 Contract:
 
+* the evidence is stored as ``isolation_reprobe``; the build's own ``isolation`` stays (the
+  record keeps both as entries). It can lower the certification verdict, and raise it only
+  when every zone was measured from a ``probe: true`` VM with a staff-only account;
 * only a ``ready`` range is probed, and the evidence is stored only if the range is still
   ``ready`` with the same VMs (a rebuild meanwhile makes it another build's) and no probe
   that started later stored first (db_ops.store_isolation, under the range's row lock);
@@ -22,7 +25,7 @@ import json
 import logging
 import time
 
-from . import db_ops, range_accounts, range_isolation
+from . import db_ops, range_isolation
 from .base_tasks import _get_backend
 from .celery_app import app
 from .fencing import run_async
@@ -76,10 +79,10 @@ def check(range_id: str, lock_factory=_lock) -> dict:
         if not lock.held:
             return {"status": "skipped", "reason": "another isolation probe of this range is running, or Redis is down"}
         provisioner = _get_backend(row[1], range_id, output=output)
-        accounts = range_accounts.load(_db_session, range_id)
+        accounts = range_isolation.load_accounts(_db_session, range_id)
         record = run_async(range_isolation.run(provisioner, range_id, output, _template(tmpl[0] if tmpl else None),
                                                accounts, finish_by=time.monotonic()
-                                               + range_isolation.settings().budget + 30.0))
+                                               + range_isolation.settings().budget + 30.0, source="reprobe"))
         with _db_session() as db:
             outcome = db_ops.store_isolation(db, range_id, record, vm_ids)
     logger.info("[isolation] range %s: %s (%s); %s", range_id, record["verdict"], record["mode"], outcome)

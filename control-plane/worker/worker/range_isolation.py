@@ -15,21 +15,30 @@ States and who moves them (one build, worker only):
                          └─ no time left / no guest channel: zones ``inconclusive``, never a pass
 
 ``check_range_isolation`` (isolation_task.py) re-runs the probes on a ready range and
-replaces the stored result (newer ``ran_at`` only); it never changes the range's state.
+stores them as ``isolation_reprobe`` next to the build's own ``isolation`` (newest run
+only); it never changes the range's state. A re-probe can lower the certification verdict
+but raise it only when every zone was measured from a ``probe: true`` VM with a staff-only
+account (app/range_certification/evidence.py).
 
 Per zone:
 
 * **probe VM**: a VM with a NIC on the zone, VMware Tools running and an account the range
-  declares; a template node flagged ``probe: true`` first, then Linux, then Windows
-  (PowerShell), single-homed before multi-homed. None: the zone is ``no_probe``.
+  declares; a template node flagged ``probe: true`` first, then single-homed before
+  multi-homed, then Linux before Windows (PowerShell). None: the zone is ``no_probe``. A
+  multi-homed probe measures a target only if its route to it leaves by the zone's NIC
+  (isolation_scripts ``Context.src``); otherwise that check is inconclusive.
+* **account**: a staff-only account (not visible to Students: the built-in Administrator,
+  the build-replacement login) before a Student-visible one, then the least privileged.
 * **checks**: a self-test (the zone's gateway, else a peer, answers); TCP and ICMP to each
   site target (``TN_RANGE_ISOLATION_PROBE_TARGETS``); the permitted exceptions
   (``TN_RANGE_ISOLATION_EXCEPTIONS``, default the depot 10.30.32.10:8081 and :3142) must
   connect, every other port of the same hosts (``TN_RANGE_ISOLATION_CLOSED_PORTS``) and
   ICMP to them must not; DNS (the range's internal name resolves through its DNS server,
   if it has one; an external name must not resolve to anything outside the range); a TTL
-  probe must not get past the range's own addresses; IPv6 (default route, global address,
-  the site's IPv6 targets).
+  probe must not get past the range's own addresses (an ICMP "unreachable" from a router
+  outside the range counts as reachable); IPv6: any route other than link-local,
+  multicast or loopback, or any address other than fe80::/10 and ::1 (ULA included),
+  means IPv6 is present, and only the site's IPv6 targets can then prove it contained.
 * **result classes** (``classify``): ``proven_unreachable`` (timed out / no reply **and**
   the self-test passed), ``reachable``, ``inconclusive`` (self-test failed, the guest
   operation failed, no probe), ``connect_failed_only`` (refused or failed connect: never
@@ -40,7 +49,14 @@ must fail is ``proven_unreachable`` and every exception connected; ``not_isolate
 anything that must fail was ``reachable``; otherwise ``incomplete``, naming what is missing.
 
 Passwords are never logged or stored: the login is chosen here and handed to
-``run_in_guest`` only; the record keeps the account's name and whether it is an admin.
+``run_in_guest`` only; the record keeps the account's name, its class (staff or
+Student-visible) and whether it is an admin.
+
+**What this evidence is.** It is what the probe VM reported, "as measured from <VM> using
+<account class>". Whoever controls that guest can fake it: an administrator inside the VM
+(or a Student who has one of its accounts, for a Student-visible one) can make the probes
+report silence. The build-time run happens before the range is handed over; re-probes from
+Student-reachable VMs are therefore never allowed to raise the verdict.
 """
 
 from __future__ import annotations
@@ -70,7 +86,8 @@ RESULTS = (PROVEN, REACHABLE, INCONCLUSIVE, CONNECT_FAILED)
 ISOLATED, NOT_ISOLATED, INCOMPLETE = "isolated", "not_isolated", "incomplete"
 # What a check expects: must fail, must connect, a precondition, a recorded fact.
 MUST_FAIL, MUST_CONNECT, PRECONDITION, FACT = "unreachable", "reachable", "precondition", "fact"
-FACT_STATES = {0: "present", 1: "absent"}  # v6route / v6global codes; anything else "unknown"
+FACT_STATES = {0: "present", 1: "absent"}  # v6route / v6addr codes; anything else "unknown"
+STAFF, STUDENT_VISIBLE = "staff", "student_visible"  # account classes
 
 # Zones never probed: the background-noise control channel is an out-of-band management
 # network by design (render.noise_mgmt_plan), not a range security zone.
@@ -120,6 +137,34 @@ def parse_target(text: str) -> Target:
             raise SettingsError(f"target {text!r}: port {port!r} is not 1-65535")
         return Target(host, int(port))
     return Target(host)
+
+
+@dataclass(frozen=True)
+class ProbeAccount:
+    """An account a probe may log in as. ``student_visible``: a Student can reveal its
+    password (app/range_credentials), so a guest it opens may report what a Student wants."""
+
+    username: str
+    password: object  # vsphere_guest.Secret: never printed
+    admin: bool = False
+    student_visible: bool = True  # unknown: assumed visible (never trusted more than it is)
+
+
+def load_accounts(session, range_id: str) -> dict[str, list[ProbeAccount]]:
+    """Machine (node id) -> its accounts with their class (db_ops.range_accounts and
+    range_account_visibility)."""
+    from . import db_ops
+    from .provisioners.vsphere_guest import Secret
+
+    with session() as db:
+        rows = db_ops.range_accounts(db, range_id)
+        visible = db_ops.range_account_visibility(db, range_id)
+    out: dict[str, list[ProbeAccount]] = {}
+    for machine, username, password, role in rows:
+        if password:
+            out.setdefault(str(machine), []).append(ProbeAccount(
+                username, Secret(password), role == "admin", visible.get((str(machine), username), True)))
+    return out
 
 
 def _list(name: str, default: str) -> list[str]:
@@ -174,7 +219,7 @@ def settings() -> Settings:
         raise SettingsError(f"TN_RANGE_ISOLATION_SIMULATED_CIDRS={','.join(cidrs)!r} is not a list of CIDRs")
     try:
         timeout = int(os.getenv("TN_RANGE_ISOLATION_PROBE_TIMEOUT", "2"))
-        budget = float(os.getenv("TN_RANGE_ISOLATION_BUDGET", "600"))
+        budget = float(os.getenv("TN_RANGE_ISOLATION_BUDGET", "900"))
         zone = float(os.getenv("TN_RANGE_ISOLATION_ZONE_TIMEOUT", "180"))
     except ValueError as exc:
         raise SettingsError(f"an isolation time setting is not a number: {exc}") from None
@@ -192,6 +237,12 @@ def _ip(text) -> str:
         return str(ipaddress.ip_address(str(text)))
     except ValueError:
         return ""
+
+
+def excluded(output: dict) -> list[str]:
+    """Range networks deliberately not probed, each with why (stated with the verdict)."""
+    return [f"{n.get('name')} (out-of-band background-noise control channel, not a range security zone)"
+            for n in output.get("networks") or [] if isinstance(n, dict) and n.get("name") in NOT_ZONES]
 
 
 def zones(output: dict) -> list[dict]:
@@ -250,19 +301,36 @@ def probe_candidates(output: dict, z: dict, flagged: set[str], range_id: str, ra
             continue
         if any(k in v for k in APPLIANCE_KEYS) or v.get("tools_ready") is False or v.get("ip_verified") is False:
             continue
-        zones_on = {n.get("network") for n in v.get("nics") or [] if isinstance(n, dict)} & range_zone_keys
-        out.append((node_of(v, range_id) not in flagged, _family(v) != "linux", len(zones_on) > 1,
-                    str(v.get("name")), v))
+        out.append((node_of(v, range_id) not in flagged, multi_homed(v), _family(v) != "linux", str(v.get("name")), v))
     return [row[-1] for row in sorted(out, key=lambda r: r[:4])]
 
 
-def logins(vm: dict, accounts: dict, range_id: str) -> list[tuple[GuestLogin, bool]]:
-    """(login, is admin) to try on ``vm``, least privileged first; accounts the build verified
-    (``accounts_applied``) before the rest. ``accounts``: node id -> [RangeAccount]."""
+def multi_homed(vm: dict) -> bool:
+    """More than one NIC (any network: a noise control NIC counts too)."""
+    return len([n for n in vm.get("nics") or [] if isinstance(n, dict)]) > 1
+
+
+def account_class(acct) -> str:
+    return STUDENT_VISIBLE if getattr(acct, "student_visible", True) else STAFF
+
+
+def logins(vm: dict, accounts: dict, range_id: str) -> list[tuple[GuestLogin, bool, str]]:
+    """(login, is admin, account class) to try on ``vm``: staff-only accounts before
+    Student-visible ones, then those the build verified (``accounts_applied``), then the
+    least privileged. ``accounts``: node id -> [ProbeAccount]."""
     applied = {str(n).casefold() for n in vm.get("accounts_applied") or []}
     rows = sorted(accounts.get(node_of(vm, range_id)) or [],
-                  key=lambda a: (a.username.casefold() not in applied, bool(a.admin), a.username))
-    return [(GuestLogin(a.username, a.password.reveal(), _family(vm)), bool(a.admin)) for a in rows]
+                  key=lambda a: (account_class(a) != STAFF, a.username.casefold() not in applied, bool(a.admin),
+                                 a.username))
+    return [(GuestLogin(a.username, a.password.reveal(), _family(vm)), bool(a.admin), account_class(a)) for a in rows]
+
+
+def zone_context(vm: dict, z: dict, output: dict, cfg: Settings) -> scripts.Context:
+    """The probe's shared context in zone ``z``: its zone address when multi-homed (every
+    probe must leave by that NIC), the range's own addresses, the CIDRs counted inside."""
+    src = next((_ip(n.get("ip")) for n in _on(vm, z) if _ip(n.get("ip"))), "") if multi_homed(vm) else ""
+    inside = sorted({z2["cidr"] for z2 in zones(output) if scripts.valid_cidr(z2["cidr"])} | set(cfg.simulated_cidrs))
+    return scripts.Context(src, tuple(range_addresses(output)), tuple(inside))
 
 
 def _peers(output: dict, z: dict, probe: dict) -> list[str]:
@@ -341,13 +409,12 @@ def plan_checks(z: dict, probe_vm: dict, output: dict, cfg: Settings, dns: tuple
             out.append(Check("icmp", host, MUST_FAIL, Probe("icmp", (host,))))
     if dns is not None:
         out.append(Check("dns_internal", f"{dns[1]} @ {dns[0]}", PRECONDITION, Probe("dns_int", dns)))
-    inside = sorted({z2["cidr"] for z2 in zones(output) if scripts.valid_cidr(z2["cidr"])} | set(cfg.simulated_cidrs))
-    out.append(Check("dns_external", cfg.external_name, MUST_FAIL, Probe("dns_ext", (cfg.external_name, *inside))))
+    out.append(Check("dns_external", cfg.external_name, MUST_FAIL, Probe("dns_ext", (cfg.external_name,))))
     route_to = next((t.host for t in cfg.targets if not t.v6 and _ip(t.host)), "")
     if route_to:
-        out.append(Check("route", route_to, MUST_FAIL, Probe("route", (route_to, *range_addresses(output)))))
-    out.append(Check("ipv6_route", "default route", FACT, Probe("v6route")))
-    out.append(Check("ipv6_global", "global address", FACT, Probe("v6global")))
+        out.append(Check("route", route_to, MUST_FAIL, Probe("route", (route_to,))))
+    out.append(Check("ipv6_route", "route", FACT, Probe("v6route")))
+    out.append(Check("ipv6_address", "address", FACT, Probe("v6addr")))
     return out
 
 
@@ -368,8 +435,8 @@ def classify(check: Check, code: int | None, selftest_ok: bool, dns_ok: bool | N
 
     if kind == "tcp":
         return {0: REACHABLE, 1: CONNECT_FAILED, 2: CONNECT_FAILED, 3: silent()}.get(code, INCONCLUSIVE)
-    if kind == "icmp":
-        return {0: REACHABLE, 1: silent()}.get(code, INCONCLUSIVE)
+    if kind == "icmp":  # 3: rejected by one of the range's own routers; 4: a site router answered
+        return {0: REACHABLE, 1: silent(), 3: CONNECT_FAILED, 4: REACHABLE}.get(code, INCONCLUSIVE)
     if kind == "selftest":
         return REACHABLE if code == 0 else INCONCLUSIVE
     if kind == "dns_int":
@@ -405,26 +472,32 @@ def grade_zone(z: dict, planned: list[Check], codes: list[int | None], cfg: Sett
         if c.expect == FACT:
             continue
         result = classify(c, by[c], selftest_ok, dns_ok)
-        rows.append({"check": c.check, "target": c.target, "expect": c.expect, "result": result,
-                     "code": by[c], "passed": passed(c.expect, result)})
+        row = {"check": c.check, "target": c.target, "expect": c.expect, "result": result, "code": by[c],
+               "passed": passed(c.expect, result)}
+        if by[c] == scripts.NOT_MEASURABLE and c.probe.kind != "selftest":
+            row["note"] = "not measured from this zone: the probe VM's route leaves by another NIC"
+        elif c.probe.kind == "icmp" and by[c] == 4:
+            row["note"] = "an ICMP unreachable came from a router outside the range"
+        rows.append(row)
     # IPv6 facts (not checks): with no default route and no global address the zone has no
     # IPv6 path out; with either, only the site's IPv6 targets (if any are set) can prove
     # it contained.
     ipv6 = {c.check.removeprefix("ipv6_"): FACT_STATES.get(by[c], "unknown") for c in planned if c.expect == FACT}
     v6_targets = [t for t in cfg.targets if t.v6]
-    absent = ipv6.get("route") == "absent" and ipv6.get("global") == "absent"
+    absent = ipv6.get("route") == "absent" and ipv6.get("address") == "absent"
     if absent:
         for r in rows:  # a refused/failed IPv6 connect is no weaker than having no IPv6 at all
             if r["check"] in ("tcp", "icmp") and r["result"] == CONNECT_FAILED and _is_v6(r["target"]):
-                r.update(result=PROVEN if selftest_ok else INCONCLUSIVE, note="no IPv6 route or global address")
+                r.update(result=PROVEN if selftest_ok else INCONCLUSIVE, note="no IPv6 route and no IPv6 address")
                 r["passed"] = passed(r["expect"], r["result"])
     if not v6_targets:
         if absent:
-            v6, note = (PROVEN if selftest_ok else INCONCLUSIVE), "no IPv6 default route and no global address"
+            v6, note = (PROVEN if selftest_ok else INCONCLUSIVE), "no IPv6 route and no IPv6 address (not even ULA)"
         elif "unknown" in ipv6.values():
             v6, note = INCONCLUSIVE, "the guest's IPv6 state could not be read"
         else:
-            v6, note = INCONCLUSIVE, "IPv6 is configured but no site IPv6 targets are set to prove it contained (#238)"
+            v6, note = INCONCLUSIVE, ("IPv6 is present (a route or an address, ULA included) but no site IPv6 "
+                                      "targets are set to prove it contained (#238)")
         rows.append({"check": "ipv6_egress", "target": "IPv6", "expect": MUST_FAIL, "result": v6, "code": None,
                      "passed": passed(MUST_FAIL, v6), "note": note})
     return {**z, "selftest": {"passed": selftest_ok, "targets": self_rows[0].target if self_rows else ""},
@@ -464,9 +537,17 @@ def unprobed(z: dict, status: str, reason: str) -> dict:
             "verdict": INCOMPLETE, "reasons": [reason]}
 
 
-def aggregate(zone_rows: list[dict], cfg: Settings | None, *, notes: list[str] | None = None) -> dict:
+def measured_from(zone_rows: list[dict]) -> str:
+    """"as measured from <VM> using <account class>", per probed zone."""
+    parts = [f"{z['zone']}: {z['probe']['vm']} using a {z['probe'].get('account_class', STUDENT_VISIBLE).replace('_', '-')}"
+             f" account" for z in zone_rows if z.get("probe")]
+    return f"as measured from {'; '.join(parts)}" if parts else ""
+
+
+def aggregate(zone_rows: list[dict], cfg: Settings | None, *, notes: list[str] | None = None,
+              skipped_nets: list[str] | None = None) -> dict:
     """The range's verdict over its zones (ADR 0013 §4)."""
-    notes = list(notes or [])
+    notes = list(notes or []) + [f"not probed: {n}" for n in skipped_nets or []]
     failures = [f"zone {z['zone']}: {'; '.join(z['reasons'])}" for z in zone_rows if z["verdict"] == NOT_ISOLATED]
     gaps = [f"zone {z['zone']}: {'; '.join(z['reasons'])}" for z in zone_rows if z["verdict"] == INCOMPLETE]
     if not zone_rows:
@@ -481,18 +562,21 @@ def aggregate(zone_rows: list[dict], cfg: Settings | None, *, notes: list[str] |
         summary = "not isolated: " + "; ".join(failures)
     else:
         summary = f"incomplete ({probed} of {len(zone_rows)} zone(s) probed): " + "; ".join(gaps)
-    return {"verdict": verdict, "summary": summary[:900], "failures": failures, "missing": gaps, "notes": notes}
+    summary += "".join(f" ({part})" for part in (measured_from(zone_rows), "; ".join(
+        f"not probed: {n}" for n in skipped_nets or [])) if part)
+    return {"verdict": verdict, "summary": summary[:900], "failures": failures, "missing": gaps, "notes": notes,
+            "excluded": list(skipped_nets or [])}
 
 
 def record(zone_rows: list[dict], cfg: Settings | None, current_mode: str, *, notes: list[str] | None = None,
-           started: float | None = None) -> dict:
+           started: float | None = None, source: str = "build", skipped_nets: list[str] | None = None) -> dict:
     """What provisioner_output's ``isolation`` holds. ``started``: the run's monotonic start
     (``started_at`` orders re-probes, db_ops.store_isolation)."""
     now = datetime.now(UTC)
     elapsed = max(time.monotonic() - started, 0.0) if started is not None else 0.0
     return {"version": VERSION, "mode": current_mode, "started_at": (now - timedelta(seconds=elapsed)).isoformat(),
             "ran_at": now.isoformat(), "seconds": round(elapsed, 1), "settings": cfg.public() if cfg else None,
-            "zones": zone_rows, **aggregate(zone_rows, cfg, notes=notes)}
+            "source": source, "zones": zone_rows, **aggregate(zone_rows, cfg, notes=notes, skipped_nets=skipped_nets)}
 
 
 def blocking(rec: dict | None) -> str | None:
@@ -506,11 +590,11 @@ def blocking(rec: dict | None) -> str | None:
 # Running the probes
 # --------------------------------------------------------------------------- #
 
-def attempts(candidates: list[dict], accounts: dict, range_id: str) -> list[tuple[dict, GuestLogin, bool]]:
+def attempts(candidates: list[dict], accounts: dict, range_id: str) -> list[tuple[dict, GuestLogin, bool, str]]:
     """(VM, login, is admin) to try, at most ATTEMPTS_PER_ZONE: each candidate VM with its
     least-privileged login first (a VM whose Tools are down fails whatever the login), then
     the VMs' other logins. Each failed attempt can cost a zone's whole timeout."""
-    per_vm = [[(vm, login, admin) for login, admin in logins(vm, accounts, range_id)] for vm in candidates]
+    per_vm = [[(vm, *login) for login in logins(vm, accounts, range_id)] for vm in candidates]
     ordered = [row[0] for row in per_vm if row] + [a for row in per_vm for a in row[1:]]
     return ordered[:ATTEMPTS_PER_ZONE]
 
@@ -520,15 +604,19 @@ async def _probe_zone(provisioner, range_id: str, z: dict, output: dict, templat
     dns = range_dns(output, template, range_id)
     tried: list[str] = []
     last_error = ""
-    for vm, login, admin in attempts(probe_candidates(output, z, flagged, range_id, all_keys), accounts, range_id):
+    for vm, login, admin, cls in attempts(probe_candidates(output, z, flagged, range_id, all_keys), accounts, range_id):
         left = deadline - time.monotonic()
         if left < MIN_ZONE_SECONDS:
             return unprobed(z, "budget_exhausted", "the isolation time budget ran out before this zone")
         planned = plan_checks(z, vm, output, cfg, dns)
-        steps = scripts.steps(_family(vm), [c.probe for c in planned], cfg.probe_timeout)
+        ctx = zone_context(vm, z, output, cfg)
+        steps = scripts.steps(_family(vm), [c.probe for c in planned], cfg.probe_timeout, ctx)
         tried.append(f"{vm.get('name')} as {login.username}")
+        is_flagged = node_of(vm, range_id) in flagged
         probe = {"vm": vm.get("name"), "family": _family(vm), "account": login.username, "admin": admin,
-                 "flagged": node_of(vm, range_id) in flagged}
+                 "account_class": cls, "flagged": is_flagged, "multi_homed": bool(ctx.src), "source_ip": ctx.src,
+                 # a re-probe from here may raise the verdict (app/range_certification/evidence.py)
+                 "trusted": is_flagged and cls == STAFF}
         try:
             ran = await provisioner.run_in_guest(
                 vm["vm_id"], login, steps, min(cfg.zone_timeout, left), range_id=range_id,
@@ -558,7 +646,7 @@ def _codes(planned: list[Check], steps: list, ran: list[dict]) -> list[int | Non
 
 
 async def run(provisioner, range_id: str, output: dict, template: dict, accounts: dict, *,
-              finish_by: float | None = None) -> dict:
+              finish_by: float | None = None, source: str = "build") -> dict:
     """Probe every zone of a built range; returns the ``isolation`` record. Never raises:
     whatever goes wrong is recorded as inconclusive evidence. Zones run one after another
     (one guest-operations session at a time), within ``TN_RANGE_ISOLATION_BUDGET`` and
@@ -570,7 +658,8 @@ async def run(provisioner, range_id: str, output: dict, template: dict, accounts
     except SettingsError as exc:
         logger.error("range %s: isolation probes not run: %s", range_id, exc)
         rows = [unprobed(z, "not_run", f"setting unusable: {exc}") for z in zones(output)]
-        return record(rows, None, current, notes=[str(exc)], started=started)
+        return record(rows, None, current, notes=[str(exc)], started=started, source=source,
+                      skipped_nets=excluded(output))
     notes = list(cfg.notes)
     deadline = started + cfg.budget
     if finish_by is not None:
@@ -578,7 +667,8 @@ async def run(provisioner, range_id: str, output: dict, template: dict, accounts
     found = zones(output)
     if not getattr(provisioner, "supports_guest_commands", False):
         reason = f"the {output.get('provider') or type(provisioner).__name__} backend cannot run commands in a guest"
-        return record([unprobed(z, "no_probe", reason) for z in found], cfg, cfg.mode, notes=notes, started=started)
+        return record([unprobed(z, "no_probe", reason) for z in found], cfg, cfg.mode, notes=notes, started=started,
+                      source=source, skipped_nets=excluded(output))
     flagged = flagged_probes(template)
     all_keys = {k for z in found for k in _zone_keys(z)}
     rows = []
@@ -589,30 +679,31 @@ async def run(provisioner, range_id: str, output: dict, template: dict, accounts
         except Exception as exc:  # noqa: BLE001 — never a crashed build over evidence
             logger.exception("range %s zone %s: isolation probe error", range_id, z["zone"])
             rows.append(unprobed(z, "guest_op_failed", f"probe error: {type(exc).__name__}"))
-    return record(rows, cfg, cfg.mode, notes=notes, started=started)
+    return record(rows, cfg, cfg.mode, notes=notes, started=started, source=source, skipped_nets=excluded(output))
 
 
 def skipped(output: dict, reason: str) -> dict:
     """The record of a build whose probes were not run (not ready, failed)."""
     current, _ = mode()
-    return record([unprobed(z, "not_run", reason) for z in zones(output)], None, current, notes=[reason])
+    return record([unprobed(z, "not_run", reason) for z in zones(output)], None, current, notes=[reason],
+                  skipped_nets=excluded(output))
 
 
 async def after_build(provisioner, range_id: str, template: dict, result, allocations: dict, session) -> None:
     """range_accounts.provision, once the build returned: probe a ready build and attach
     ``result.isolation`` (stored with the output; enforce fails the build in
-    range_alloc.build_outcome). A failed or not-ready build is not probed."""
+    range_alloc.build_outcome). A failed or not-ready build is not probed. In enforce mode a
+    range not proven isolated also has its VMs powered off here (``enforced``), so it is
+    not left running on a path out while it waits to be destroyed."""
     if getattr(result, "status", "failed") == "failed":
         return
-    from . import range_accounts
-
     output = {"provider": type(provisioner).__name__, "vms": list(result.vms or []),
               "networks": list(result.networks or []), "uplink": getattr(result, "uplink", None)}
     if getattr(result, "not_ready", None):
         result.isolation = skipped(output, "the range is not ready (guest network check failed); probes not run")
         return
     try:
-        accounts = range_accounts.load(session, range_id)
+        accounts = load_accounts(session, range_id)
     except Exception as exc:  # noqa: BLE001
         logger.warning("range %s: accounts for the isolation probes not read (%s)", range_id, type(exc).__name__)
         accounts = {}
@@ -623,4 +714,24 @@ async def after_build(provisioner, range_id: str, template: dict, result, alloca
         logger.exception("range %s: isolation probes failed", range_id)
         result.isolation = skipped(output, f"isolation probes failed: {type(exc).__name__}")
     logger.info("range %s: isolation %s (%s mode)", range_id, result.isolation["verdict"], result.isolation["mode"])
+    if blocking(result.isolation):
+        result.isolation["enforced"] = await power_off(provisioner, range_id, output)
+
+
+async def power_off(provisioner, range_id: str, output: dict) -> dict:
+    """Enforce mode: power off every VM of a range that failed isolation (its edge
+    firewall's uplink with it). Never raises; what happened is recorded."""
+    stop_output = dict(output)
+    record_of = getattr(provisioner, "connection_record", None)
+    try:
+        if callable(record_of) and isinstance(rec := record_of(), dict) and rec:
+            stop_output["connection"] = rec
+        stopped = await provisioner.stop(range_id, stop_output)
+        logger.warning("range %s: not proven isolated in enforce mode; %s VM(s) powered off", range_id,
+                       getattr(stopped, "vms_stopped", "?"))
+        return {"action": "powered_off", "status": getattr(stopped, "status", "unknown"),
+                "vms_stopped": getattr(stopped, "vms_stopped", None), "errors": list(getattr(stopped, "errors", []))[:5]}
+    except Exception as exc:  # noqa: BLE001 — the build fails anyway; say the VMs may still run
+        logger.error("range %s: VMs not powered off after failed isolation (%s)", range_id, type(exc).__name__)
+        return {"action": "power_off_failed", "error": f"{type(exc).__name__}: {str(exc)[:200]}"}
 

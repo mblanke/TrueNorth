@@ -487,7 +487,17 @@ Use soc-training, or a small PO range. Check:
       that has VMware Tools and a declared account says *No probe VM*). With owner approval
       only: plant a route out on the range firewall, press *Probe again*, and the verdict
       turns *Not safe* (Isolation: not isolated); remove it and probe again. The probes run
-      through VMware guest operations, write no files, and take about a minute per zone
+      through VMware guest operations, write no files, and take one to two minutes per zone
+      (`TN_RANGE_ISOLATION_BUDGET`, default 900 s per range). Know what this evidence is:
+      it is what the probe VM reported, from the account named on the card. Anyone who
+      controls that guest can fake it; a re-probe can raise the verdict only from a
+      `probe: true` VM using a staff-only account. Put a small single-homed `probe: true`
+      VM in each zone of a template you want certified: a multi-homed probe cannot measure
+      what its route sends out of another NIC, and a Linux guest behind systemd-resolved
+      (127.0.0.53) cannot have its external-DNS check pinned. Side effect: the first
+      guest-operations login as an account creates its Windows user profile (a Linux PAM
+      stack may create a home directory); the probes themselves leave nothing. In
+      `enforce` mode a range not proven isolated fails and is powered off
 - [ ] the pfSense LAN interface is the `.1` of each range subnet
 - [ ] Security Onion is set up (`securityonion.status` `ok`, see **7.2**) and sees traffic
       on the monitoring port group (promiscuous mode is enabled only there)

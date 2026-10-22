@@ -5,7 +5,9 @@
   operation makes everything ``inconclusive``;
 * per-zone aggregation: a zone without a probe keeps the verdict from Isolated and is named;
 * exceptions: the depot's 8081 and 3142 must connect, every other depot port must not;
-* IPv6 present / absent; the Windows (PowerShell) probe path; least privilege; budget;
+* IPv6 present / absent (a ULA address or route is present); multi-homed probe VMs
+  (ranked after single-homed ones; a target routed out of another NIC is not measured);
+  the Windows (PowerShell) probe path; staff-only accounts first; budget;
 * warn (the default) records, enforce fails the build; the re-probe task's store is
   conditional (still ready, same VMs, newest run).
 
@@ -20,8 +22,11 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+import os
 import re
 import shlex
+import stat
+import subprocess
 import time
 import uuid
 
@@ -30,7 +35,8 @@ import sqlalchemy as sa
 from worker import isolation_scripts as scripts
 from worker import isolation_task, range_alloc, range_isolation
 from worker.provisioners.results import ProvisionResult
-from worker.provisioners.vsphere_guest import RangeAccount, Secret
+from worker.provisioners.vsphere_guest import Secret
+from worker.range_isolation import ProbeAccount
 
 RID = "a1b2c3d4-0000-4000-8000-000000000001"
 SITE = "10.30.30.1:443,10.30.30.10:53,192.168.1.10:443,10.30.30.30:22,10.30.30.20:443"
@@ -67,9 +73,17 @@ def _output(**over) -> dict:
     return out
 
 
+def staff(name, pw, admin=True):
+    return ProbeAccount(name, Secret(pw), admin, student_visible=False)
+
+
+def student(name, pw):
+    return ProbeAccount(name, Secret(pw), False, student_visible=True)
+
+
 ACCOUNTS = {
-    "web01": [RangeAccount("soadmin", Secret(PASSWORDS[1]), True), RangeAccount("student", Secret(PASSWORDS[0]), False)],
-    "win01": [RangeAccount("Administrator", Secret(PASSWORDS[2]), True)],
+    "web01": [staff("soadmin", PASSWORDS[1]), student("student", PASSWORDS[0])],
+    "win01": [staff("Administrator", PASSWORDS[2])],
 }
 PS_KINDS = {v: k for k, v in scripts._PS_CALL.items()}
 
@@ -77,7 +91,8 @@ PS_KINDS = {v: k for k, v in scripts._PS_CALL.items()}
 def probes_of(step) -> list[tuple[str, tuple[str, ...]]]:
     """The probes a generated step runs, read back from its script."""
     if step.program == scripts.BASH:
-        script = shlex.split(step.arguments)[1]
+        wrapper = shlex.split(step.arguments)[1]
+        script = base64.b64decode(re.search(r"printf %s (\S+) \| base64 -d", wrapper).group(1)).decode()
         calls = [m.group(1) for m in map(re.compile(r"^(.*) & p\d+=\$!$").match, script.splitlines()) if m]
         return [(parts[0], tuple(parts[1:])) for parts in map(shlex.split, calls)]
     assert step.program == scripts.POWERSHELL
@@ -96,7 +111,7 @@ def isolated_world(vm: str, kind: str, args: tuple[str, ...]) -> int | None:
     """A range whose edge drops everything but the depot's two ports."""
     if kind == "tcp":
         return 0 if args[0] == DEPOT and args[1] in ("8081", "3142") else 3
-    return {"icmp": 1, "selftest": 0, "dns_int": 0, "dns_ext": 1, "route": 0, "v6route": 1, "v6global": 1}[kind]
+    return {"icmp": 1, "selftest": 0, "dns_int": 0, "dns_ext": 1, "route": 0, "v6route": 1, "v6addr": 1}[kind]
 
 
 class FakeGuest:
@@ -123,9 +138,14 @@ class FakeGuest:
                 out.append({"label": st.label, "status": "timeout", "exit_code": None})
                 stopped = True
                 continue
-            out.append({"label": st.label, "status": "ok",
-                        "exit_code": scripts.MARK + sum(c * 4 ** i for i, c in enumerate(codes))})
+            out.append({"label": st.label, "status": "ok", "exit_code": scripts.pack(codes)})
         return out
+
+    async def stop(self, range_id, output):
+        from worker.provisioners.results import StopResult
+
+        self.stopped = [v["vm_id"] for v in output["vms"]]
+        return StopResult(status="ok", vms_stopped=len(self.stopped))
 
 
 def _run(prov, output=None, template=None, accounts=ACCOUNTS, finish_by=None) -> dict:
@@ -151,6 +171,7 @@ def _c(kind, check="tcp", expect=range_isolation.MUST_FAIL, args=("10.30.30.1", 
     (1, True, "connect_failed_only"),  # refused: the target answered, but it is never proof
     (2, True, "connect_failed_only"),  # no route / ICMP unreachable: a failed connect, never proof
     (3, True, "proven_unreachable"),  # timed out, and the probe itself works
+    (5, True, "inconclusive"),  # multi-homed: the route to it leaves by another NIC
     (3, False, "inconclusive"),  # timed out, but so might everything: the self-test failed
     (None, True, "inconclusive"),  # the guest operation failed or timed out
 ])
@@ -165,8 +186,11 @@ def test_a_refused_connect_is_never_proof_even_with_a_passing_selftest():
 
 def test_icmp_route_and_dns_classes():
     icmp = range_isolation.Check("icmp", "h", "unreachable", scripts.Probe("icmp", ("10.30.30.1",)))
-    assert [range_isolation.classify(icmp, c, True) for c in (0, 1, 2)] == ["reachable", "proven_unreachable",
-                                                                           "inconclusive"]
+    assert [range_isolation.classify(icmp, c, True) for c in (0, 1, 2, 3, 4, 5)] == [
+        "reachable", "proven_unreachable", "inconclusive",
+        "connect_failed_only",  # an "unreachable" from the range's own edge: rejected there
+        "reachable",  # an "unreachable" from a router outside the range: the packet got out
+        "inconclusive"]
     assert range_isolation.classify(icmp, 1, False) == "inconclusive"
     route = range_isolation.Check("route", "h", "unreachable", scripts.Probe("route", ("10.30.30.1",)))
     assert [range_isolation.classify(route, c, True) for c in (0, 1, 3)] == ["proven_unreachable", "reachable",
@@ -178,13 +202,16 @@ def test_icmp_route_and_dns_classes():
     assert range_isolation.classify(ext, 3, True) == "inconclusive"  # no resolver tool
 
 
-@pytest.mark.parametrize("exit_code", [None, 0, 1, 2, 63, 128, 255])
+@pytest.mark.parametrize("exit_code", [None, 0, 1, 2, 63, 126, 127, 128, 137, 255, 64 + 7, 64 + 7 * 8])
 def test_an_exit_code_outside_the_packed_range_carries_no_outcome(exit_code):
-    assert scripts.decode(exit_code, 3) == [None, None, None]
+    """Including bash's own 126/127 and a killed shell's 128+: a digit of 7 is never a code."""
+    assert scripts.decode(exit_code, 2) == [None, None]
 
 
 def test_packing_round_trips():
-    assert scripts.decode(64 + 3 + 4 * 1 + 16 * 2, 3) == [3, 1, 2]
+    assert scripts.decode(scripts.pack([3, 5]), 2) == [3, 5]
+    assert scripts.decode(scripts.pack([6]), 1) == [6]
+    assert scripts.decode(scripts.pack([1, 2]), 1) == [None], "a digit beyond the step's probes is no outcome"
 
 
 # ── A whole range ────────────────────────────────────────────────────────────────
@@ -248,7 +275,7 @@ def test_a_guest_operation_failure_tries_the_next_candidate_then_is_inconclusive
     out = _output()
     out["vms"].append({"vm_id": "vm-web2", "name": "a1b2c3d4-web02", "node_id": "web02", "family": "linux",
                        "tools_ready": True, "nics": [{"network": "tn-a1b2c3d4-101", "ip": "10.80.0.21"}]})
-    accounts = {**ACCOUNTS, "web02": [RangeAccount("student", Secret("x-pw-web02"), False)]}
+    accounts = {**ACCOUNTS, "web02": [student("student", "x-pw-web02")]}
     prov = FakeGuest(fail={"a1b2c3d4-web01"})
     rec = _run(prov, out, accounts=accounts)
     assert _zone(rec, "lan")["probe"]["vm"] == "a1b2c3d4-web02"
@@ -332,17 +359,17 @@ def test_exceptions_come_from_the_setting(monkeypatch):
 # ── IPv6 ─────────────────────────────────────────────────────────────────────────
 def test_no_ipv6_route_or_address_proves_there_is_no_ipv6_path():
     lan = _zone(_run(FakeGuest()), "lan")
-    assert lan["ipv6"] == {"route": "absent", "global": "absent"}
+    assert lan["ipv6"] == {"route": "absent", "address": "absent"}
     assert _check(lan, "ipv6_egress", "IPv6")["result"] == "proven_unreachable"
 
 
 def test_ipv6_present_without_site_v6_targets_is_inconclusive():
     def v6(vm, kind, args):
-        return 0 if kind in ("v6route", "v6global") else isolated_world(vm, kind, args)
+        return 0 if kind in ("v6route", "v6addr") else isolated_world(vm, kind, args)
 
     rec = _run(FakeGuest(v6))
     lan = _zone(rec, "lan")
-    assert lan["ipv6"] == {"route": "present", "global": "present"}
+    assert lan["ipv6"] == {"route": "present", "address": "present"}
     egress = _check(lan, "ipv6_egress", "IPv6")
     assert egress["result"] == "inconclusive" and "#238" in egress["note"]
     assert rec["verdict"] == "incomplete"
@@ -352,7 +379,7 @@ def test_site_ipv6_targets_decide_when_ipv6_is_present(monkeypatch):
     monkeypatch.setenv("TN_RANGE_ISOLATION_PROBE_TARGETS", SITE + ",[fd00:30::20]:443")
 
     def v6(vm, kind, args):
-        return 0 if kind in ("v6route", "v6global") else isolated_world(vm, kind, args)
+        return 0 if kind in ("v6route", "v6addr") else isolated_world(vm, kind, args)
 
     lan = _zone(_run(FakeGuest(v6)), "lan")
     assert _check(lan, "tcp", "[fd00:30::20]:443")["result"] == "proven_unreachable"
@@ -368,7 +395,18 @@ def test_a_failed_v6_connect_counts_as_proof_only_when_the_guest_has_no_ipv6(mon
 
     lan = _zone(_run(FakeGuest(unreachable_v6)), "lan")
     row = _check(lan, "tcp", "[fd00:30::20]:443")
-    assert (row["result"], row["note"]) == ("proven_unreachable", "no IPv6 route or global address")
+    assert (row["result"], row["note"]) == ("proven_unreachable", "no IPv6 route and no IPv6 address")
+
+
+def test_an_ipv6_address_alone_ula_included_means_ipv6_is_present():
+    """Review of #267: a ULA (fd00::/8) address with no default route is still IPv6."""
+    def ula(vm, kind, args):
+        return 0 if kind == "v6addr" else isolated_world(vm, kind, args)
+
+    lan = _zone(_run(FakeGuest(ula)), "lan")
+    assert lan["ipv6"] == {"route": "absent", "address": "present"}
+    assert _check(lan, "ipv6_egress", "IPv6")["result"] == "inconclusive"
+    assert lan["verdict"] == "incomplete"
 
 
 # ── Probe VMs: Windows, the probe flag, least privilege ──────────────────────────
@@ -377,29 +415,136 @@ def test_a_zone_with_only_a_windows_vm_is_probed_with_powershell():
     rec = _run(prov)
     dmz = _zone(rec, "dmz")
     assert dmz["probe"] == {"vm": "a1b2c3d4-win01", "family": "windows", "account": "Administrator", "admin": True,
-                            "flagged": False}
+                            "account_class": "staff", "flagged": False, "multi_homed": False, "source_ip": "",
+                            "trusted": False}
     (call,) = [c for c in prov.calls if c["vm"] == "a1b2c3d4-win01"]
     assert {s.program for s in call["steps"]} == {scripts.POWERSHELL}
     assert all("-EncodedCommand" in s.arguments and s.ok_codes == scripts.EVERY_CODE for s in call["steps"])
     assert dmz["verdict"] == "isolated"
 
 
-def test_the_least_privileged_declared_account_is_used():
+def test_a_staff_only_account_is_preferred_over_a_student_visible_one():
+    """Review of #267: Students control the accounts they can reveal."""
     prov = FakeGuest()
     rec = _run(prov)
-    assert _zone(rec, "lan")["probe"]["account"] == "student"
-    assert _zone(rec, "lan")["probe"]["admin"] is False
-    assert [c["user"] for c in prov.calls if c["vm"].endswith("web01")] == ["student"]
+    probe = _zone(rec, "lan")["probe"]
+    assert (probe["account"], probe["account_class"]) == ("soadmin", "staff")
+    assert [c["user"] for c in prov.calls if c["vm"].endswith("web01")] == ["soadmin"]
+    assert "lan: a1b2c3d4-web01 using a staff account" in rec["summary"]
+
+
+def test_among_staff_accounts_the_least_privileged_is_used():
+    accounts = {**ACCOUNTS, "web01": [staff("soadmin", PASSWORDS[1]), staff("tnprobe", "probe-pw", admin=False),
+                                      student("student", PASSWORDS[0])]}
+    out = _output()
+    out["vms"][1]["accounts_applied"].append("tnprobe")  # verified by the build, like soadmin
+    probe = _zone(_run(FakeGuest(), out, accounts=accounts), "lan")["probe"]
+    assert (probe["account"], probe["admin"]) == ("tnprobe", False)
+
+
+def test_a_student_visible_account_is_used_only_when_there_is_no_other():
+    accounts = {**ACCOUNTS, "web01": [student("student", PASSWORDS[0])]}
+    probe = _zone(_run(FakeGuest(), accounts=accounts), "lan")["probe"]
+    assert (probe["account"], probe["account_class"], probe["trusted"]) == ("student", "student_visible", False)
+
+
+# ── Multi-homed probe VMs (review of #267) ───────────────────────────────────────
+def _multi(out):
+    """web01 also on dmz: multi-homed; and a single-homed Windows VM on lan."""
+    web = next(v for v in out["vms"] if v["node_id"] == "web01")
+    web["nics"].append({"network": "tn-a1b2c3d4-102", "ip": "10.80.1.20"})
+    out["vms"].append({"vm_id": "vm-w2", "name": "a1b2c3d4-win02", "node_id": "win02", "family": "windows",
+                       "tools_ready": True, "nics": [{"network": "tn-a1b2c3d4-101", "ip": "10.80.0.40"}]})
+    return out
+
+
+def test_a_single_homed_vm_is_ranked_above_a_multi_homed_one_of_a_better_family():
+    accounts = {**ACCOUNTS, "win02": [staff("Administrator", "w2-pw")]}
+    lan = _zone(_run(FakeGuest(), _multi(_output()), accounts=accounts), "lan")
+    assert lan["probe"]["vm"] == "a1b2c3d4-win02" and lan["probe"]["multi_homed"] is False
+
+
+def test_a_multi_homed_probe_is_pinned_to_its_zone_address():
+    prov = FakeGuest()
+    out = _multi(_output())
+    out["vms"] = [v for v in out["vms"] if v["node_id"] != "win02"]
+    lan = _zone(_run(prov, out), "lan")
+    assert (lan["probe"]["multi_homed"], lan["probe"]["source_ip"]) == (True, "10.80.0.20")
+    (call,) = [c for c in prov.calls if c["vm"].endswith("web01") and c is prov.calls[0]]
+    script = base64.b64decode(re.search(r"printf %s (\S+) \|", shlex.split(call["steps"][0].arguments)[1])
+                              .group(1)).decode()
+    assert "SRC=10.80.0.20" in script
+
+
+def test_targets_a_multi_homed_probe_reaches_by_another_nic_are_not_measured():
+    """The guest reports 5 for every probe whose route leaves by the other NIC."""
+    out = _multi(_output())
+    out["vms"] = [v for v in out["vms"] if v["node_id"] != "win02"]
+
+    def other_nic(vm, kind, args):
+        return 5 if vm.endswith("web01") and kind in ("tcp", "icmp", "route", "dns_ext") else isolated_world(vm, kind, args)
+
+    lan = _zone(_run(FakeGuest(other_nic), out), "lan")
+    row = _check(lan, "tcp", "10.30.30.1:443")
+    assert row["result"] == "inconclusive" and "another NIC" in row["note"]
+    assert lan["verdict"] == "incomplete"
+
+
+# ── The real bash, against a stubbed ``ip`` (needs bash and coreutils timeout) ────
+STUB_IP = r"""#!/bin/sh
+case "$*" in
+  "-o addr show to 10.80.0.20") echo "2: eth0    inet 10.80.0.20/24 brd 10.80.0.255 scope global eth0";;
+  "route get 10.30.30.1") echo "10.30.30.1 via 10.80.1.1 dev eth1 src 10.80.1.20 uid 1000";;
+  "-6 route show table all") printf '%s
+' "$IP6ROUTES";;
+  "-6 addr show") printf '%s
+' "$IP6ADDRS";;
+esac
+"""
+
+
+def _bash(tmp_path, probes, ctx=scripts.Context(), **env):
+    stub = tmp_path / "ip"
+    stub.write_text(STUB_IP)
+    stub.chmod(stub.stat().st_mode | stat.S_IEXEC)
+    script = scripts.linux_script(probes, 1, ctx)
+    run = subprocess.run(["bash", "-c", script], env={**os.environ, "PATH": f"{tmp_path}:{os.environ['PATH']}", **env},
+                         capture_output=True, timeout=30)
+    return scripts.decode(run.returncode, len(probes))
+
+
+@pytest.mark.skipif(not os.path.exists("/bin/bash"), reason="needs bash")
+def test_bash_pin_refuses_a_target_routed_out_of_another_nic(tmp_path):
+    ctx = scripts.Context(src="10.80.0.20", range_addresses=("10.80.0.1",))
+    assert _bash(tmp_path, [scripts.Probe("tcp", ("10.30.30.1", "443")), scripts.Probe("icmp", ("10.30.30.1",))],
+                 ctx) == [5, 5]
+
+
+@pytest.mark.skipif(not os.path.exists("/bin/bash"), reason="needs bash")
+@pytest.mark.parametrize("routes,addrs,expected", [
+    ("fe80::/64 dev eth0 proto kernel metric 256\nlocal ::1 dev lo table local\nmulticast ff00::/8 dev eth0 table local",
+     "    inet6 ::1/128 scope host\n    inet6 fe80::1/64 scope link", [1, 1]),  # link-local only: absent
+    ("fe80::/64 dev eth0 proto kernel", "    inet6 fd00:80::20/64 scope global\n    inet6 fe80::1/64 scope link",
+     [1, 0]),  # a ULA address: present
+    ("fd00:80::/64 dev eth0 proto kernel\nfe80::/64 dev eth0", "    inet6 fe80::1/64 scope link",
+     [0, 1]),  # a ULA route: present
+    ("default via fe80::1 dev eth0 proto ra", "    inet6 2001:db8::5/64 scope global", [0, 0]),
+])
+def test_bash_ipv6_presence_counts_ula(tmp_path, routes, addrs, expected):
+    got = _bash(tmp_path, [scripts.Probe("v6route"), scripts.Probe("v6addr")],
+                IP6ROUTES=routes, IP6ADDRS=addrs)
+    assert got == expected
 
 
 def test_a_template_probe_node_is_preferred():
     out = _output()
     out["vms"].append({"vm_id": "vm-p", "name": "a1b2c3d4-probe", "node_id": "probe", "family": "windows",
                        "tools_ready": True, "nics": [{"network": "tn-a1b2c3d4-101", "ip": "10.80.0.99"}]})
-    accounts = {**ACCOUNTS, "probe": [RangeAccount("tnprobe", Secret("probe-pw-9"), False)]}
+    accounts = {**ACCOUNTS, "probe": [student("tnprobe", "probe-pw-9")]}
     rec = _run(FakeGuest(), out, template={"nodes": [{"id": "probe", "probe": True}]}, accounts=accounts)
     assert _zone(rec, "lan")["probe"]["vm"] == "a1b2c3d4-probe"
     assert _zone(rec, "lan")["probe"]["flagged"] is True
+    assert _zone(rec, "lan")["probe"]["trusted"] is False, "a Student-visible account is never trusted"
 
 
 def test_no_password_ever_reaches_the_record_or_the_log(caplog):
@@ -427,15 +572,15 @@ def test_a_spent_budget_leaves_zones_unprobed(monkeypatch):
 
 
 def test_scripts_write_no_files():
-    probes = [scripts.Probe("tcp", ("10.30.30.1", "443")), scripts.Probe("dns_ext", ("example.com", "10.0.0.0/8")),
-              scripts.Probe("route", ("10.30.30.1", "10.80.0.1"))]
-    bash = scripts.linux_script(probes, 2)
+    probes = [scripts.Probe("tcp", ("10.30.30.1", "443")), scripts.Probe("route", ("10.30.30.1",))]
+    ctx = scripts.Context("10.80.0.20", ("10.80.0.1",), ("10.80.0.0/24",))
+    bash = scripts.linux_script(probes, 2, ctx)
     # The only redirections: to /dev/null, fd duplication, and the probe's own TCP socket.
     rest = bash.replace(">/dev/null", "").replace("2>&1", "").replace("3<>/dev/tcp/", "")
     assert ">" not in rest, "a redirection to a file"
     assert "<<" not in rest.replace("<<(32-b)", "").replace("<<24", "").replace("<<16", "").replace("<<8", "")
     assert "mktemp" not in bash and "/tmp" not in bash and "tee " not in bash
-    ps = scripts.windows_script(probes, 2)
+    ps = scripts.windows_script(probes, 2, ctx)
     for cmdlet in ("Out-File", "Set-Content", "Add-Content", "New-Item", "Start-Transcript", "Export-"):
         assert cmdlet not in ps
 
@@ -490,7 +635,7 @@ def test_enforce_fails_the_build_end_to_end(monkeypatch, lease_always_free):
     monkeypatch.setattr(tasks.db_ops, "range_template_and_backend", lambda db, rid: ("{}", "vsphere_api"))
     monkeypatch.setattr(tasks.range_alloc, "reserve_for_build", lambda *a: {})
     monkeypatch.setattr(range_accounts, "attach", lambda template, session, rid: template)
-    monkeypatch.setattr(range_accounts, "load", lambda session, rid: ACCOUNTS)
+    monkeypatch.setattr(range_isolation, "load_accounts", lambda session, rid: ACCOUNTS)
 
     class Built(FakeGuest):
         async def provision(self, range_id, template, allocations):
@@ -502,7 +647,29 @@ def test_enforce_fails_the_build_end_to_end(monkeypatch, lease_always_free):
     assert "ready" not in [s for s, _ in states]
     kw = next(kw for s, kw in states if s == "failed" and kw.get("output"))  # recorded with its VMs (destroy needs them)
     assert "RANGE_ISOLATION_CHECK=enforce" in kw["error"]
-    assert json.loads(kw["output"])["isolation"]["verdict"] == "not_isolated"
+    stored = json.loads(kw["output"])["isolation"]
+    assert stored["verdict"] == "not_isolated"
+    # Enforce powers the range off rather than leave it running on a path out.
+    assert stored["enforced"] == {"action": "powered_off", "status": "ok", "vms_stopped": 3, "errors": []}
+    assert sorted(leak.stopped) == ["vm-fw", "vm-web", "vm-win"]
+
+
+def test_warn_never_powers_anything_off(monkeypatch):
+    prov = FakeGuest(lambda vm, kind, args: 1 if kind == "route" else isolated_world(vm, kind, args))
+    result = ProvisionResult(status="ok", vms=_output()["vms"], networks=_output()["networks"])
+    monkeypatch.setattr(range_isolation, "load_accounts", lambda session, rid: ACCOUNTS)
+    asyncio.run(range_isolation.after_build(prov, RID, {}, result, {}, None))
+    assert result.isolation["verdict"] == "not_isolated" and "enforced" not in result.isolation
+    assert not hasattr(prov, "stopped")
+
+
+def test_the_noise_channel_exclusion_is_stated_with_the_verdict():
+    out = _output()
+    out["networks"].append({"name": "noise_mgmt", "cidr": "172.31.0.0/24", "gateway": ""})
+    rec = _run(FakeGuest(), out)
+    assert [z["zone"] for z in rec["zones"]] == ["lan", "dmz"]
+    assert rec["excluded"] and rec["excluded"][0].startswith("noise_mgmt (out-of-band")
+    assert "not probed: noise_mgmt" in rec["summary"]
 
 
 class _NoDb:
@@ -524,7 +691,6 @@ def test_a_not_ready_build_is_not_probed():
 # ── The re-probe task ────────────────────────────────────────────────────────────
 @pytest.fixture
 def ready_range(db, monkeypatch):
-    from worker import range_accounts
 
     rid = str(uuid.uuid4())
     with db.begin() as conn:
@@ -532,7 +698,7 @@ def ready_range(db, monkeypatch):
         conn.execute(sa.text("INSERT INTO ranges (id, name, template_id, state, provisioner_backend, provisioner_output) "
                              "VALUES (:id, 'r', 't1', 'ready', 'vsphere_api', :o)"),
                      {"id": rid, "o": json.dumps(_output())})
-    monkeypatch.setattr(range_accounts, "load", lambda session, r: ACCOUNTS)
+    monkeypatch.setattr(range_isolation, "load_accounts", lambda session, r: ACCOUNTS)
     return rid
 
 
@@ -554,7 +720,10 @@ def test_the_reprobe_stores_new_evidence_and_never_changes_the_state(db, ready_r
     monkeypatch.setattr(isolation_task, "_get_backend", lambda b, rid, **kw: prov)
     got = isolation_task.check(ready_range, _lock_factory(fake_redis))
     assert (got["status"], got["verdict"]) == ("stored", "not_isolated")
-    assert _stored(db, ready_range)["isolation"]["verdict"] == "not_isolated"
+    stored = _stored(db, ready_range)
+    assert stored["isolation_reprobe"]["verdict"] == "not_isolated"
+    assert stored["isolation_reprobe"]["source"] == "reprobe"
+    assert "isolation" not in stored, "the build's own evidence is never overwritten"
     with db.connect() as conn:
         assert conn.execute(sa.text("SELECT state FROM ranges WHERE id = :id"), {"id": ready_range}).scalar() == "ready"
 
@@ -584,7 +753,7 @@ def test_a_reprobe_finishing_after_a_rebuild_is_discarded(db, ready_range, monke
     got = isolation_task.check(ready_range, _lock_factory(fake_redis))
     assert got == {"status": "discarded", "reason": "the range was rebuilt while it was probed",
                    "verdict": "isolated"}
-    assert "isolation" not in _stored(db, ready_range)
+    assert "isolation_reprobe" not in _stored(db, ready_range)
 
 
 def test_an_older_probe_never_overwrites_a_newer_one(db, ready_range):
@@ -597,4 +766,4 @@ def test_an_older_probe_never_overwrites_a_newer_one(db, ready_range):
     with tasks._db_session() as s:
         assert db_ops.store_isolation(s, ready_range, {"started_at": "2026-10-22T09:00:00+00:00", "n": 1},
                                       vm_ids) == "a later probe has stored its evidence"
-    assert _stored(db, ready_range)["isolation"]["n"] == 2
+    assert _stored(db, ready_range)["isolation_reprobe"]["n"] == 2

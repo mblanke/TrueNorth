@@ -117,8 +117,12 @@ const ZONE_STATUS: Record<string, string> = {
                 </div>
                 <p class="muted small">
                   Mode: <strong>{{ iso.mode }}</strong>{{ iso.mode === 'enforce' ? ' (a range that is not isolated fails its build)' : ' (recorded; does not block a build)' }}.
-                  @if (iso.ranAt) { Probed {{ iso.ranAt | date: 'medium' }}. }
+                  @if (iso.ranAt) { Probed {{ iso.ranAt | date: 'medium' }}{{ iso.source === 'reprobe' ? ' (re-probe)' : ' (at build)' }}. }
+                  Evidence is what each probe VM reported; whoever controls a guest can fake it.
                 </p>
+                @if (iso.untrustedReprobe) {
+                  <p class="muted small" role="note">A later re-probe from VMs Students may control did not raise this verdict.</p>
+                }
                 <table class="tn-table">
                   <caption class="sr-only">Isolation evidence per zone</caption>
                   <thead>
@@ -130,7 +134,8 @@ const ZONE_STATUS: Record<string, string> = {
                         <td>{{ z.zone }}@if (z.cidr) { <span class="muted"> {{ z.cidr }}</span> }</td>
                         <td>
                           @if (z.probe; as p) {
-                            {{ p.vm }} <span class="muted">({{ p.family }}, {{ p.account }}{{ p.admin ? ', admin' : '' }})</span>
+                            {{ p.vm }} <span class="muted">({{ p.family }}, {{ p.account }}{{ p.admin ? ', admin' : '' }},
+                              {{ p.account_class === 'staff' ? 'staff account' : 'Student-visible account' }}{{ p.multi_homed ? ', multi-homed, from ' + p.source_ip : '' }})</span>
                           } @else { <span class="muted">{{ zoneStatus(z.status) }}</span> }
                         </td>
                         <td>{{ z.status === 'probed' ? (z.selftest?.passed ? 'passed' : 'failed') : '—' }}</td>
@@ -275,6 +280,8 @@ export class RangeCertificationComponent {
     return {
       mode: typeof detail?.['mode'] === 'string' ? detail['mode'] as string : 'warn',
       ranAt: typeof detail?.['ran_at'] === 'string' ? detail['ran_at'] as string : null,
+      source: detail?.['source'] === 'reprobe' ? 'reprobe' : 'build',
+      untrustedReprobe: detail?.['decided_by'] === 'build' && !!detail?.['reprobe'],
       zones: zones as IsolationZone[],
     };
   });

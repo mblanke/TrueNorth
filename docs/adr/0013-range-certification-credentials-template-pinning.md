@@ -65,6 +65,13 @@ Not ported: the guard hook and file-based approvals (TrueNorth has RBAC and an a
 - The verdict is **Isolated** only if every zone has a probe and every non-exception check is `proven_unreachable`. Any weaker verdict states exactly what is missing.
 - Site targets and permitted exceptions come from installer settings. The mode `RANGE_ISOLATION_CHECK=warn|enforce` stays at **`warn`**. **`enforce` waits for the network team's decision** on the isolation model and trust boundaries (below).
 - *Implemented (S4, #242):* `worker/range_isolation.py` and `worker/isolation_scripts.py`. On Windows the probes run as PowerShell through guest operations (`-EncodedCommand`); **no probe container is injected**, so nothing is installed or left in the guest. A template node can be marked `probe: true` to be its zone's probe VM. A staff re-probe (`POST /ranges/{id}/certification/isolation-check`) re-runs the probes on a ready range and never changes its state.
+  *Amended after the adversarial review of #267:*
+  - A multi-homed probe VM measures a target only if its route to it leaves by the zone's NIC; otherwise that check is inconclusive. Single-homed VMs are preferred.
+  - IPv6 counts as present on any route other than link-local, multicast or loopback, and on any address other than `fe80::/10` and `::1` (ULA included). A present IPv6 stack is proven contained only by site IPv6 targets.
+  - Staff-only accounts are used before Student-visible ones.
+  - A re-probe is stored next to the build's run, and both stay in the record. It can lower the verdict, but it can raise it only when every zone was measured from a `probe: true` VM using a staff-only account.
+  - In `enforce`, a range that is not proven isolated is also powered off.
+  - The evidence is "as measured from <VM> using <account class>". Whoever controls a guest can fake its probes.
 
 ### 5. Teardown by independently identified inventory, and drift (S5)
 

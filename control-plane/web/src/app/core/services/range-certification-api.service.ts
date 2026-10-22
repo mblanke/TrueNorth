@@ -20,7 +20,10 @@ export interface IsolationZone {
   zone: string;
   cidr?: string;
   status: 'probed' | 'no_probe' | 'guest_op_failed' | 'budget_exhausted' | 'not_run' | string;
-  probe?: { vm: string; family: string; account: string; admin: boolean; flagged?: boolean } | null;
+  probe?: {
+    vm: string; family: string; account: string; admin: boolean; flagged?: boolean;
+    account_class?: 'staff' | 'student_visible'; multi_homed?: boolean; source_ip?: string; trusted?: boolean;
+  } | null;
   selftest?: { passed: boolean; targets?: string };
   ipv6?: Record<string, string>;
   verdict?: 'isolated' | 'not_isolated' | 'incomplete' | string;

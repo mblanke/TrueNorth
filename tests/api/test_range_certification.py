@@ -397,17 +397,19 @@ def _pinned(vm: dict, catalogue: str, login: str) -> dict:
             "template_login": {"status": login, "username": "ubuntu", "detail": "..."}}
 
 
-def isolation_record(result: str = "proven_unreachable", exception: str = "reachable") -> dict:
+def isolation_record(result: str = "proven_unreachable", exception: str = "reachable", *, source: str = "build",
+                     trusted: bool = False, account_class: str = "staff", ran_at: str = "2026-10-22T00:01:00+00:00") -> dict:
     """provisioner_output ``isolation`` as worker/range_isolation.py records it: one zone,
     probed, one site target and the depot exception (the API grades the rows again)."""
     checks = [{"check": "selftest", "target": "10.80.0.1", "expect": "precondition", "result": "reachable"},
               {"check": "tcp", "target": "10.30.30.1:443", "expect": "unreachable", "result": result},
               {"check": "exception", "target": "10.30.32.10:8081", "expect": "reachable", "result": exception}]
-    return {"version": 1, "mode": "warn", "started_at": "2026-10-22T00:00:00+00:00",
-            "ran_at": "2026-10-22T00:01:00+00:00", "verdict": "isolated",
+    return {"version": 1, "mode": "warn", "started_at": "2026-10-22T00:00:00+00:00", "source": source,
+            "ran_at": ran_at, "verdict": "isolated",
             "settings": {"targets": ["10.30.30.1:443"], "exceptions": ["10.30.32.10:8081"]},
             "zones": [{"zone": "lan", "cidr": "10.80.0.0/24", "status": "probed",
-                       "probe": {"vm": "web01", "family": "linux", "account": "student", "admin": False},
+                       "probe": {"vm": "web01", "family": "linux", "account": "tnprobe", "admin": False,
+                                 "account_class": account_class, "flagged": trusted, "trusted": trusted},
                        "selftest": {"passed": True}, "checks": checks, "verdict": "isolated", "reasons": []}]}
 
 
@@ -447,7 +449,8 @@ class TestMergedSlices:
         body = _cert(client, rng).json()
         assert body["record"]["verdict"] == "not_safe"
         assert body["record"]["reasons"] == ["Isolation failed: not isolated (warn mode): reachable outside its "
-                                             "exceptions: zone lan: tcp 10.30.30.1:443"]
+                                             "exceptions: zone lan: tcp 10.30.30.1:443 (as measured from lan: web01 "
+                                             "using a staff account)"]
 
     @pytest.mark.parametrize("change,section,expected", [
         (lambda o: o["vms"][0]["template_login"].update(status="accepted"), "credentials",
@@ -821,10 +824,11 @@ def _worker_isolation(monkeypatch, respond, *, zones_without_probe=()) -> dict:
 
     from worker import isolation_scripts, range_isolation
     from worker.provisioners.base import GuestStep
-    from worker.provisioners.vsphere_guest import RangeAccount, Secret
+    from worker.provisioners.vsphere_guest import Secret
+    from worker.range_isolation import ProbeAccount
 
     monkeypatch.setenv("TN_RANGE_ISOLATION_PROBE_TARGETS", "10.30.30.1:443,192.168.1.10:443")
-    monkeypatch.setattr(range_isolation.scripts, "steps", lambda family, probes, timeout: [
+    monkeypatch.setattr(range_isolation.scripts, "steps", lambda family, probes, timeout, ctx=None: [
         GuestStep(f"isolation-{n}", "fake", json.dumps([[p.kind, list(p.args)] for p in group]))
         for n, group in enumerate(isolation_scripts.chunks(probes))])
 
@@ -832,22 +836,21 @@ def _worker_isolation(monkeypatch, respond, *, zones_without_probe=()) -> dict:
         supports_guest_commands = True
 
         async def run_in_guest(self, vm_id, login, steps, timeout, **kw):
-            return [{"label": s.label, "status": "ok", "exit_code": isolation_scripts.MARK + sum(
-                respond(kind, tuple(args)) * 4 ** i for i, (kind, args) in enumerate(json.loads(s.arguments)))}
-                for s in steps]
+            return [{"label": s.label, "status": "ok", "exit_code": isolation_scripts.pack(
+                [respond(kind, tuple(args)) for kind, args in json.loads(s.arguments)])} for s in steps]
 
     output = json.loads(json.dumps(CERTIFIABLE))
     output["vms"][0].update(family="linux", node_id="web01")
     if "lan" in zones_without_probe:
         output["vms"][0]["family"] = "appliance"
-    accounts = {"web01": [RangeAccount("student", Secret("pw-not-in-record"), False)]}
+    accounts = {"web01": [ProbeAccount("tnprobe", Secret("pw-not-in-record"), False, student_visible=False)]}
     return asyncio.run(range_isolation.run(Guest(), "r", output, {}, accounts))
 
 
 def _drops_all_but_the_depot(kind, args):
     if kind == "tcp":
         return 0 if args[0] == "10.30.32.10" and args[1] in ("8081", "3142") else 3
-    return {"icmp": 1, "selftest": 0, "dns_ext": 1, "route": 0, "v6route": 1, "v6global": 1}[kind]
+    return {"icmp": 1, "selftest": 0, "dns_ext": 1, "route": 0, "v6route": 1, "v6addr": 1}[kind]
 
 
 class TestIsolationS4:
@@ -866,8 +869,10 @@ class TestIsolationS4:
         assert body["record"]["verdict"] == "certified", body["record"]["reasons"]
         iso = _sections(body)["isolation"]["entries"][0]["detail"]
         assert [z["zone"] for z in iso["zones"]] == ["lan"] and iso["mode"] == "warn"
-        assert iso["zones"][0]["probe"] == {"vm": "web01", "family": "linux", "account": "student", "admin": False,
-                                            "flagged": False}
+        assert iso["zones"][0]["probe"] == {"vm": "web01", "family": "linux", "account": "tnprobe", "admin": False,
+                                            "account_class": "staff", "flagged": False, "multi_homed": False,
+                                            "source_ip": "", "trusted": False}
+        assert "as measured from lan: web01 using a staff account" in _sections(body)["isolation"]["summary"]
         assert "pw-not-in-record" not in json.dumps(body)
 
     def test_a_zone_without_a_probe_is_ready_not_certified_naming_the_zone(self, client, db_session, world,
@@ -892,6 +897,41 @@ class TestIsolationS4:
         lying = {**isolation_record(result="reachable"), "verdict": "isolated"}
         rng, _ = self._certifiable(client, db_session, world, lying)
         assert _cert(client, rng).json()["record"]["verdict"] == "not_safe"
+
+    # Re-probes (review of #267): stored next to the build's run; trusted ones decide, others only lower.
+    def _reprobed(self, client, db_session, world, build: dict, again: dict):
+        rng, op_id = self._certifiable(client, db_session, world, build)
+        first = _cert(client, rng).json()
+        _worker_reports(db_session, rng, "ready", {**CERTIFIABLE, "isolation": build, "isolation_reprobe": again})
+        return rng, first, _cert(client, rng).json()
+
+    def test_an_untrusted_reprobe_never_raises_the_verdict(self, client, db_session, world):
+        build = isolation_record(exception="proven_unreachable")  # the depot did not answer: incomplete
+        again = isolation_record(source="reprobe", account_class="student_visible", ran_at="2026-10-22T05:00:00+00:00")
+        rng, first, body = self._reprobed(client, db_session, world, build, again)
+        assert first["record"]["verdict"] == body["record"]["verdict"] == "ready_not_certified"
+        iso = _sections(body)["isolation"]
+        assert "cannot raise this" in iso["summary"]
+        assert iso["entries"][0]["detail"]["decided_by"] == "build"
+
+    def test_an_untrusted_reprobe_can_lower_the_verdict(self, client, db_session, world):
+        again = isolation_record(result="reachable", source="reprobe", account_class="student_visible")
+        rng, first, body = self._reprobed(client, db_session, world, isolation_record(), again)
+        assert first["record"]["verdict"] == "certified"
+        assert body["record"]["verdict"] == "not_safe"
+        iso = _sections(body)["isolation"]
+        assert iso["entries"][0]["detail"]["decided_by"] == "reprobe" and iso["history_count"] == 2
+        history = _cert(client, rng, history=True).json()
+        kept = [e for s_ in history["record"]["sections"] if s_["name"] == "isolation" for e in s_["entries"]]
+        assert [e["status"] for e in kept] == ["pass", "fail"], "the build's entry stays in the record"
+
+    def test_a_trusted_reprobe_from_a_probe_vm_with_a_staff_account_decides(self, client, db_session, world):
+        build = isolation_record(exception="proven_unreachable")
+        again = isolation_record(source="reprobe", trusted=True)
+        _, first, body = self._reprobed(client, db_session, world, build, again)
+        assert first["record"]["verdict"] == "ready_not_certified"
+        assert body["record"]["verdict"] == "certified"
+        assert _sections(body)["isolation"]["entries"][0]["detail"]["reprobe_trusted"] is True
 
     def test_staff_can_ask_for_a_reprobe_of_a_ready_range(self, client, db_session, world, monkeypatch):
         from app import celery_client
