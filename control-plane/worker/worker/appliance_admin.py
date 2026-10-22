@@ -21,22 +21,29 @@ VyOS       ``set system login user vyos authentication      cloud-init (``vyos_c
 The plain password never leaves the worker's memory: not guestinfo, not the result, not a
 log line. The acknowledgement is ``guestinfo.tn.<product>.admin_ack``: the first 16 hex
 digits of SHA-256 of the hash the appliance has in force (``fingerprint``), or
-``failed <why>``. The worker removes the hash from the VM's configuration once it has
-seen the matching acknowledgement (``scrub_values``).
+``failed <why>``. The worker removes the hash from the VM's configuration after the check
+whatever its outcome (``scrub_values``): an appliance that has not taken it by then keeps
+its template login and says so, rather than a hash lingering in vCenter.
 
 **The template-login check** of an appliance (``check``; VMware guest operations do not work
 on these images) records ``template_login = {status, username, method, detail}``:
 
-================  =======================================================================
-``ssh``           the worker reached the appliance's management address on port 22 and
-                  made one SSH login attempt with the template password (after the range's
-                  own login worked): refused = ``rejected``, accepted = ``accepted``.
-``guestinfo_ack`` no SSH (the range's own firewall policy blocks it from the uplink by
-                  design, or the worker has no SSH client): the appliance's boot hook
-                  reported that the admin hash in force is the range's = ``rejected``.
-                  Self-reported, so the record names the method.
-``none``          neither: ``inconclusive``, never a pass.
-================  =======================================================================
+=============================  ==========================================================
+``rejected`` (``ssh``)         the worker reached the appliance's management address on
+                               port 22; after the range's own login worked, the template
+                               password was refused. Proof by a login attempt.
+``accepted`` (``ssh``)         the template password logs in. Not safe.
+``rejected_self_reported``     no SSH (the range's own firewall policy blocks it from the
+(``guestinfo_ack``)            uplink by design, or the worker has no SSH client): the
+                               appliance's boot hook reported the range's hash in force,
+                               i.e. the template password replaced. No login was tried.
+``unsupported_template``       the template's finish marker (``guestinfo.tn.template.finish``)
+(``none``)                     lacks ``admin_ack=1`` (built before issue #248), or there is
+                               none after ``MARKER_GRACE``: no acknowledgement can come, so
+                               the worker does not wait for one. Rebuild the template.
+``inconclusive`` (``none`` or  anything else, a ``failed <why>`` acknowledgement included.
+``guestinfo_ack``)             Never a pass.
+=============================  ==========================================================
 """
 
 from __future__ import annotations
@@ -65,7 +72,12 @@ LINUX_PASSWORD_ENV = "TN_TEMPLATE_LINUX_PASSWORD"
 SSH_PORT = 22
 
 REJECTED, ACCEPTED, INCONCLUSIVE = "rejected", "accepted", "inconclusive"
+SELF_REPORTED, UNSUPPORTED = "rejected_self_reported", "unsupported_template"
+PROVEN = (REJECTED, SELF_REPORTED)  # the template password is gone (by a login, or as reported)
 SSH, ACK, NONE = "ssh", "guestinfo_ack", "none"
+FINISH_KEY = "guestinfo.tn.template.finish"  # the template finish's marker, published at boot
+ACK_CAPABLE = "admin_ack=1"  # in that marker: the template's boot hook acknowledges (issue #248)
+MARKER_GRACE = 180.0  # seconds to wait for any marker at all before calling the template unsupported
 
 
 class ApplianceAdminError(ValueError):
@@ -223,19 +235,33 @@ def classify_ack(value: str, admin: AdminLogin) -> dict | None:
         return {"status": INCONCLUSIVE, "method": ACK, "detail": f"the appliance's boot hook could not set the "
                                                                   f"range's admin password: {why}"}
     if value == admin.fingerprint:
-        return {"status": REJECTED, "method": ACK, "detail": "the appliance's boot hook reports the range's own "
-                "admin password hash in force (the template password is replaced; no login attempt was made)"}
+        return {"status": SELF_REPORTED, "method": ACK, "detail": "template password replaced, reported by the "
+                "appliance (its boot hook found the range's own admin hash in force; no login attempt was made)"}
     return None  # another hash (the template's, before cloud-init or the reboot): keep waiting
+
+
+def template_support(marker: str) -> str | None:
+    """Why the template that published finish ``marker`` cannot acknowledge, or None when it
+    can. "" (nothing published yet) is None: the caller decides how long to wait for one."""
+    tokens = (marker or "").split()
+    if tokens and ACK_CAPABLE not in tokens:
+        return ("its template's finish marker does not offer the admin-password acknowledgement (built before "
+                "issue #248); rebuild the template")
+    return None
 
 
 def check(admin: AdminLogin | None, *, mgmt_ip: str = "", read_ack: Callable[[], str],
           deadline: float, poll: float = 10.0, env: dict | None = None,
+          read_marker: Callable[[], str] | None = None, marker_grace: float = MARKER_GRACE,
           ssh_login: SshLogin | None = None, is_reachable: Callable[[str], bool] | None = None,
           clock: Callable[[], float] = time.monotonic, sleep: Callable[[float], None] = time.sleep) -> dict:
     """The template-login check of one appliance (module docstring). Never raises; the
     result never holds a password or a hash. ``read_ack``: the VM's current
-    ``guestinfo.tn.<product>.admin_ack`` ("" when unset). ``ssh_login`` / ``is_reachable``:
-    this module's ``paramiko_login`` / ``reachable`` unless given."""
+    ``guestinfo.tn.<product>.admin_ack`` ("" when unset). ``read_marker``: its
+    ``guestinfo.tn.template.finish``; a template without ``admin_ack=1`` there (or with no
+    marker after ``marker_grace`` seconds) is ``unsupported_template`` at once, not waited
+    for. ``ssh_login`` / ``is_reachable``: this module's ``paramiko_login`` / ``reachable``
+    unless given."""
     ssh_login = ssh_login or paramiko_login
     is_reachable = is_reachable or reachable
     if admin is None:
@@ -259,14 +285,23 @@ def check(admin: AdminLogin | None, *, mgmt_ip: str = "", read_ack: Callable[[],
     else:
         notes.append("the worker does not know the template password (installer setting), so it cannot try SSH")
     last = ""
+    started = clock()
     while True:
         try:
             last = read_ack() or ""
+            marker = (read_marker() or "") if read_marker is not None else None
         except Exception as exc:  # noqa: BLE001 — never a pass
             notes.append(f"reading the acknowledgement failed ({type(exc).__name__})")
             break
         if (res := classify_ack(last, admin)) is not None:
             return {**out, **res, "detail": "; ".join([res["detail"], *notes])}
+        if marker is not None:
+            why = template_support(marker)
+            if why is None and not marker and clock() - started >= marker_grace:
+                why = ("its template publishes no finish marker (built before the template finish step); "
+                       "rebuild the template")
+            if why is not None:
+                return {**out, "status": UNSUPPORTED, "method": NONE, "detail": "; ".join([*notes, why])}
         if clock() >= deadline:
             break
         sleep(min(poll, max(0.0, deadline - clock())))

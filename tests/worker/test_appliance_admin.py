@@ -112,7 +112,8 @@ class TestGuestinfo:
         assert pf.guestinfo(cfg, macs) == {k: v for k, v in values.items() if not k.endswith(".admin")}
         assert FW_PW not in json.dumps(values) and FW_PW not in pf.decode(values[f"guestinfo.tn.{product}.config"])
 
-    @pytest.mark.parametrize("value", [FW_PW, "$6$abc$" + "x" * 86, "$2y$10$short", ""])
+    @pytest.mark.parametrize("value", [FW_PW, "$6$abc$" + "x" * 86, "$2y$10$short", "",
+                                       aa.hash_password("pfsense", FW_PW) + "\n"])  # \Z: no trailing newline
     def test_anything_but_a_bcrypt_hash_is_refused(self, value):
         cfg, macs = self._pf()
         with pytest.raises(pf.PfsenseConfigError):
@@ -133,7 +134,8 @@ class TestGuestinfo:
         # The instance id does not depend on the hash: taking it out later re-runs nothing.
         assert values["guestinfo.metadata"] == vy.guestinfo(cfg, macs, "r-fw")["guestinfo.metadata"]
 
-    @pytest.mark.parametrize("value", [FW_PW, "$2y$10$" + "a" * 53, "$6$salt$short", "$6$s$" + "x" * 86 + "'; rm"])
+    @pytest.mark.parametrize("value", [FW_PW, "$2y$10$" + "a" * 53, "$6$salt$short", "$6$s$" + "x" * 86 + "'; rm",
+                                       aa.hash_password("vyos", FW_PW) + "\n"])  # \Z: no trailing newline
     def test_vyos_refuses_anything_but_sha512_crypt(self, value):
         cfg, macs = self._vy()
         with pytest.raises(vy.VyosConfigError):
@@ -168,7 +170,8 @@ class Clock:
         self.now += max(s, 1.0)
 
 
-def _check(admin, *, acks=("",), ssh=None, reach=False, mgmt="10.30.32.101", env=None, deadline=30.0):
+def _check(admin, *, acks=("",), ssh=None, reach=False, mgmt="10.30.32.101", env=None, deadline=30.0,
+           marker=None):
     clock = Clock()
     seq = list(acks)
     reads = []
@@ -185,8 +188,43 @@ def _check(admin, *, acks=("",), ssh=None, reach=False, mgmt="10.30.32.101", env
 
     env = {"TN_TEMPLATE_LINUX_PASSWORD": TEMPLATE_PW} if env is None else env
     res = aa.check(admin, mgmt_ip=mgmt, read_ack=read_ack, deadline=deadline, poll=5, env=env,
+                   read_marker=None if marker is None else (lambda: marker), marker_grace=60,
                    ssh_login=ssh_login, is_reachable=lambda host: reach, clock=clock, sleep=clock.sleep)
     return res, tried, reads
+
+
+CAPABLE = "finished=2026-10-22T00:00:00Z pfsense=2.7.2-RELEASE admin_ack=1 packages=open-vm-tools-nox11.pkg"
+OLD_TEMPLATE = "finished=2026-10-21T00:00:00Z pfsense=2.7.2-RELEASE packages=open-vm-tools-nox11.pkg"
+
+
+class TestTemplateSupport:
+    """Review of #268, item 4: a template that cannot acknowledge is not waited for."""
+
+    def test_a_template_without_admin_ack_is_unsupported_at_once(self):
+        res, _, reads = _check(_admin(), marker=OLD_TEMPLATE, deadline=600)
+        assert (res["status"], res["method"]) == ("unsupported_template", "none")
+        assert "rebuild the template" in res["detail"] and len(reads) == 1  # no 600 s wait
+
+    def test_no_marker_at_all_is_unsupported_after_the_grace_only(self):
+        res, _, reads = _check(_admin(), marker="", deadline=600)
+        assert res["status"] == "unsupported_template" and "publishes no finish marker" in res["detail"]
+        assert 1 < len(reads) <= 60 // 5 + 2  # waited the 60 s grace, not the 600 s deadline
+
+    def test_a_capable_template_is_waited_for_and_its_ack_counts(self):
+        admin = _admin()
+        res, _, _ = _check(admin, marker=CAPABLE, acks=("", "", admin.fingerprint))
+        assert res["status"] == "rejected_self_reported"
+        res, _, reads = _check(admin, marker=CAPABLE, deadline=30)
+        assert res["status"] == "inconclusive" and len(reads) > 1
+
+    def test_an_ack_wins_over_an_old_marker(self):
+        admin = _admin()
+        res, _, _ = _check(admin, marker=OLD_TEMPLATE, acks=(admin.fingerprint,))
+        assert res["status"] == "rejected_self_reported"
+
+    def test_marker_tokens_not_substrings(self):
+        assert aa.template_support(CAPABLE) is None and aa.template_support("") is None
+        assert aa.template_support("finished=x admin_ack=10") is not None
 
 
 class TestCheck:
@@ -203,20 +241,20 @@ class TestCheck:
     def test_ssh_without_proof_of_the_own_login_falls_back_to_the_ack(self):
         admin = _admin()
         res, tried, _ = _check(admin, reach=True, ssh=lambda pw: False, acks=(admin.fingerprint,))
-        assert (res["status"], res["method"]) == ("rejected", "guestinfo_ack")
+        assert (res["status"], res["method"]) == ("rejected_self_reported", "guestinfo_ack")
         assert len(tried) == 1  # the template password is never tried when the own one did not work
         assert "answered no login decisively" in res["detail"]
 
     def test_unreachable_management_address_uses_the_ack(self):
         admin = _admin("vyos")
         res, tried, _ = _check(admin, acks=("", "", admin.fingerprint))
-        assert (res["status"], res["method"], res["username"]) == ("rejected", "guestinfo_ack", "vyos")
+        assert (res["status"], res["method"], res["username"]) == ("rejected_self_reported", "guestinfo_ack", "vyos")
         assert tried == [] and "not reachable" in res["detail"] and "no login attempt" in res["detail"]
 
     def test_no_management_address_or_template_password_skips_ssh(self):
         admin = _admin()
         res, tried, _ = _check(admin, mgmt="", reach=True, ssh=lambda pw: True, acks=(admin.fingerprint,))
-        assert tried == [] and res["status"] == "rejected" and "no management address" in res["detail"]
+        assert tried == [] and res["status"] == "rejected_self_reported" and "no management address" in res["detail"]
         res, tried, _ = _check(admin, env={}, reach=True, ssh=lambda pw: True, acks=(admin.fingerprint,))
         assert tried == [] and "does not know the template password" in res["detail"]
 
@@ -320,7 +358,7 @@ class TestProvision:
         first = {o.key: o.value for o in fw.reconfig_specs[0].extraConfig}
         assert _bcrypt_ok(first["guestinfo.tn.pfsense.admin"], FW_PW)
         out = _vm_out(result, "fw")
-        assert out["template_login"]["status"] == "rejected"
+        assert out["template_login"]["status"] == "rejected_self_reported"
         assert out["template_login"]["method"] == "guestinfo_ack" and out["template_login"]["username"] == "admin"
         assert out["accounts_applied"] == ["admin"]
         assert out["admin_login"] == {"username": "admin", "hash_format": "bcrypt",
@@ -335,14 +373,29 @@ class TestProvision:
         for text in (json.dumps(result.__dict__, default=str), stored, caplog.text):
             assert first["guestinfo.tn.pfsense.admin"] not in text  # nor the hash
 
-    def test_without_an_ack_nothing_is_marked_set_and_the_hash_stays(self, vc):
+    def test_without_an_ack_nothing_is_marked_set_and_the_hash_is_still_cleared(self, vc):
         result, fw = _build(vc, "pfsense", {"fw": [_acct("admin")]})
         out = _vm_out(result, "fw")
         assert out["template_login"]["status"] == "inconclusive" and out["accounts_applied"] == []
-        assert out["admin_login"]["hash_cleared"] is False
-        assert len(fw.reconfig_specs) == 1  # not cleared: the appliance may still need it
+        # Review of #268, item 4: the hash leaves the VM's configuration whatever the outcome.
+        assert out["admin_login"]["hash_cleared"] is True
+        assert {o.key: o.value for o in fw.reconfig_specs[-1].extraConfig} == {"guestinfo.tn.pfsense.admin": ""}
         assert any(f"{R8}-fw" in w and "template-password check inconclusive" in w for w in result.warnings)
         assert f"{R8}-fw" not in result.not_ready  # inconclusive warns; only accepted fails readiness
+
+    def test_an_old_template_is_not_waited_for_and_is_recorded_unsupported(self, vc, monkeypatch):
+        monkeypatch.setattr(_vsp.mod, "RANGE_APPLIANCE_ACK_TIMEOUT", 3600)  # would hang if it waited
+
+        def old_marker(vm, extra):
+            vm.config.extraConfig = [SimpleNamespace(key="guestinfo.tn.template.finish",
+                                                     value="finished=2026-10-21T00:00:00Z pfsense=2.7.2-RELEASE")]
+
+        result, fw = _build(vc, "pfsense", {"fw": [_acct("admin")]}, ack=old_marker)
+        out = _vm_out(result, "fw")
+        assert (out["template_login"]["status"], out["template_login"]["method"]) == ("unsupported_template", "none")
+        assert out["accounts_applied"] == [] and out["admin_login"]["hash_cleared"] is True
+        assert {o.key: o.value for o in fw.reconfig_specs[-1].extraConfig} == {"guestinfo.tn.pfsense.admin": ""}
+        assert any(f"{R8}-fw" in w and "rebuild the template" in w for w in result.warnings)
 
     def test_a_hook_failure_is_recorded_not_a_pass(self, vc):
         result, _ = _build(vc, "pfsense", {"fw": [_acct("admin")]},
@@ -381,7 +434,7 @@ class TestProvision:
         first = {o.key: o.value for o in fw.reconfig_specs[0].extraConfig}
         assert _bcrypt_ok(first["guestinfo.tn.opnsense.admin"], FW_PW)
         out = _vm_out(result, "fw")
-        assert out["template_login"]["status"] == "rejected" and out["accounts_applied"] == ["root"]
+        assert out["template_login"]["status"] == "rejected_self_reported" and out["accounts_applied"] == ["root"]
         assert {o.key: o.value for o in fw.reconfig_specs[-1].extraConfig} == {"guestinfo.tn.opnsense.admin": ""}
 
     def test_vyos_gets_an_encrypted_password_and_the_hash_leaves_the_user_data(self, vc):
@@ -396,7 +449,7 @@ class TestProvision:
         assert line.startswith("set system login user vyos authentication encrypted-password '$6$")
         assert _crypt_ok(line.rsplit(" ", 1)[1].strip("'"), FW_PW)
         out = _vm_out(result, "fw")
-        assert (out["template_login"]["status"], out["accounts_applied"]) == ("rejected", ["vyos"])
+        assert (out["template_login"]["status"], out["accounts_applied"]) == ("rejected_self_reported", ["vyos"])
         last = {o.key: o.value for o in fw.reconfig_specs[-1].extraConfig}
         assert set(last) == {"guestinfo.userdata"}
         assert not any("encrypted-password" in c for c in vy.commands_of(last))

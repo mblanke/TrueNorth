@@ -45,7 +45,7 @@ DEPOT_PORTS = (8081, 3142)
 MAX_GUESTINFO = 60_000
 _SAFE = re.compile(r"[^A-Za-z0-9 _.:/,-]")
 # SHA-512-crypt, as sha512_crypt.py writes it: the only password value the user data may carry.
-SHA512_CRYPT_RE = re.compile(r"^\$6\$(rounds=\d+\$)?[./A-Za-z0-9]{1,16}\$[./A-Za-z0-9]{86}$")
+SHA512_CRYPT_RE = re.compile(r"\A\$6\$(rounds=\d+\$)?[./A-Za-z0-9]{1,16}\$[./A-Za-z0-9]{86}\Z")  # \Z: no newline
 ADMIN_USER = "vyos"
 
 

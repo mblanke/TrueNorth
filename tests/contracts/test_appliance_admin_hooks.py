@@ -192,13 +192,44 @@ class TestFirewallBootHook:
         assert (root / "conf/config.xml").read_text() == before
         assert _gi(root, "guestinfo.tn.pfsense.admin_ack") is None
 
+    def test_one_attempt_per_hash_then_hash_not_applied_and_no_reboot_loop(self, tmp_path):
+        """Review of #268, item 2: written and rebooted, but the boot after finds the old hash
+        again (something restored the old config): report it and stop rebooting."""
+        root = _firewall(tmp_path)
+        template_conf = (root / "conf/config.xml").read_text()
+        hashed = _hash()
+        (root / "guestinfo/guestinfo.tn.pfsense.admin").write_text(hashed)
+        first = PHP(root, {}, "boot")
+        assert first.returncode == 0 and first.stdout.count("would reboot") == 1
+        assert (root / "conf/tn-admin-attempt").read_text().strip() == aa.fingerprint(hashed)
+        (root / "conf/config.xml").write_text(template_conf)  # the write did not survive the reboot
+        for _ in range(2):  # and it stays that way on every later boot: never another reboot
+            r = PHP(root, {}, "boot")
+            assert r.returncode == 0, r.stdout + r.stderr
+            assert "would reboot" not in r.stdout
+            assert _gi(root, "guestinfo.tn.pfsense.admin_ack") == "failed hash-not-applied"
+            assert (root / "conf/config.xml").read_text() == template_conf
+
+    def test_a_new_hash_gets_its_own_attempt_and_success_clears_the_marker(self, tmp_path):
+        root = _firewall(tmp_path)
+        (root / "conf/tn-admin-attempt").write_text("0123456789abcdef\n")  # an earlier, other hash
+        hashed = _hash()
+        (root / "guestinfo/guestinfo.tn.pfsense.admin").write_text(hashed)
+        assert "would reboot" in PHP(root, {}, "boot").stdout
+        assert PHP(root, {}, "boot").returncode == 0
+        assert _gi(root, "guestinfo.tn.pfsense.admin_ack") == aa.fingerprint(hashed)
+        assert not (root / "conf/tn-admin-attempt").exists()
+
 
 def test_hook_and_worker_agree_on_keys_and_hash_shape():
     text = (PF / "tn-pfsense-config").read_text()
     assert "define('KEY_ADMIN', 'guestinfo.tn.' . PRODUCT . '.admin');" in text
     assert "define('KEY_ADMIN_ACK', 'guestinfo.tn.' . PRODUCT . '.admin_ack');" in text
     assert pf.admin_key("pfsense") == "guestinfo.tn.pfsense.admin" and aa.ack_key("pfsense").endswith(".admin_ack")
-    assert "define('BCRYPT_RE', '/^\\$2[aby]\\$\\d\\d\\$[.\\/A-Za-z0-9]{53}$/');" in text
+    # Anchored with \z (PHP's $ also matches before a final newline), like \Z in pfsense_config.
+    assert "define('BCRYPT_RE', '/^\\$2[aby]\\$\\d\\d\\$[.\\/A-Za-z0-9]{53}\\z/');" in text
+    assert "{20,}\\z/'" in text  # template mode's hash file check too
+    assert pf.BCRYPT_RE.pattern.endswith("\\Z")
     assert "substr(hash('sha256', $hash), 0, 16)" in text  # == appliance_admin.fingerprint
 
 
@@ -210,33 +241,74 @@ def _install_module():
     return mod
 
 
-def _vyos_ack(tmp_path: Path, shadow: str) -> tuple[subprocess.CompletedProcess, str]:
+def _shadow(hashed: str) -> str:
+    return f"root:*:19000:0:99999:7:::\nvyos:{hashed}:19000:0:99999:7:::\n"
+
+
+def _vyos_ack(tmp_path: Path, shadow: str, *, template_hash: str | None = None, later: str | None = None,
+              wait: int = 0, poll: int = 15) -> tuple[subprocess.CompletedProcess, str, int]:
+    """Run tn-admin-ack.sh with a stub vmware-rpctool and a stub ``sleep`` (no real waiting).
+    ``later``: the shadow file the stub sleep puts in place on its first call (cloud-init
+    finishing while the script waits). Returns (result, rpctool calls, sleeps)."""
     mod = _install_module()
     script = tmp_path / "tn-admin-ack.sh"
     script.write_text(mod.ACK_SCRIPT)
     calls = tmp_path / "rpc.calls"
-    rpc = tmp_path / "vmware-rpctool"
+    bindir = tmp_path / "bin"
+    bindir.mkdir()
+    rpc = bindir / "vmware-rpctool"
     rpc.write_text(f'#!/bin/sh\nprintf "%s\\n" "$*" >> {calls}\n')
-    rpc.chmod(0o755)
+    sleeps = tmp_path / "sleeps"
+    swap = f'[ -f {tmp_path}/shadow.later ] && mv {tmp_path}/shadow.later {tmp_path}/shadow\n'
+    stub_sleep = bindir / "sleep"
+    stub_sleep.write_text(f'#!/bin/sh\necho "$1" >> {sleeps}\n{swap}')
+    for f in (rpc, stub_sleep):
+        f.chmod(0o755)
     (tmp_path / "shadow").write_text(shadow)
-    r = subprocess.run(["/bin/sh", str(script)], capture_output=True, text=True, timeout=30,
-                       env={"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "TN_RPCTOOL": str(rpc),
-                            "TN_SHADOW": str(tmp_path / "shadow")})
-    return r, calls.read_text() if calls.exists() else ""
+    if later is not None:
+        (tmp_path / "shadow.later").write_text(later)
+    env = {"PATH": f"{bindir}:{os.environ.get('PATH', '/usr/bin:/bin')}", "TN_RPCTOOL": str(rpc),
+           "TN_SHADOW": str(tmp_path / "shadow"), "TN_ACK_WAIT": str(wait), "TN_ACK_POLL": str(poll),
+           "TN_TEMPLATE_FP": str(tmp_path / "template.fp")}
+    if template_hash is not None:
+        (tmp_path / "template.fp").write_text(aa.fingerprint(template_hash) + "\n")
+    r = subprocess.run(["/bin/sh", str(script)], capture_output=True, text=True, timeout=30, env=env)
+    n = len(sleeps.read_text().split()) if sleeps.exists() else 0
+    return r, calls.read_text() if calls.exists() else "", n
 
 
 @pytest.mark.skipif(not (shutil.which("sha256sum") and shutil.which("awk")), reason="needs sha256sum and awk")
 class TestVyosAck:
     def test_reports_the_fingerprint_of_the_vyos_shadow_hash(self, tmp_path):
         hashed = aa.hash_password("vyos", RANGE_PW)
-        r, calls = _vyos_ack(tmp_path, f"root:*:19000:0:99999:7:::\nvyos:{hashed}:19000:0:99999:7:::\n")
+        template = aa.hash_password("vyos", "Template-Build-9!")
+        r, calls, sleeps = _vyos_ack(tmp_path, _shadow(hashed), template_hash=template, wait=600)
         assert r.returncode == 0, r.stderr
         assert calls.strip() == f"info-set guestinfo.tn.vyos.admin_ack {aa.fingerprint(hashed)}"
         assert hashed not in calls and hashed not in r.stdout + r.stderr
+        assert sleeps == 0  # already changed: reported at once
+
+    def test_waits_while_the_template_hash_is_in_force_then_reports_the_new_one(self, tmp_path):
+        """Review of #268, item 3: cloud-init may finish after the unit starts."""
+        hashed = aa.hash_password("vyos", RANGE_PW)
+        template = aa.hash_password("vyos", "Template-Build-9!")
+        r, calls, sleeps = _vyos_ack(tmp_path, _shadow(template), template_hash=template, later=_shadow(hashed),
+                                     wait=600, poll=15)
+        assert r.returncode == 0, r.stderr
+        assert calls.strip() == f"info-set guestinfo.tn.vyos.admin_ack {aa.fingerprint(hashed)}"
+        assert sleeps == 1  # one poll, one report: never the template's fingerprint
+
+    def test_gives_up_after_the_bound_and_says_the_template_password_stayed(self, tmp_path):
+        template = aa.hash_password("vyos", "Template-Build-9!")
+        r, calls, sleeps = _vyos_ack(tmp_path, _shadow(template), template_hash=template, wait=600, poll=15)
+        assert r.returncode == 0, r.stderr
+        assert calls.strip() == "info-set guestinfo.tn.vyos.admin_ack failed the vyos password is still the template's"
+        assert sleeps == 600 // 15  # 10 minutes, every 15 s
+        assert len(calls.strip().splitlines()) == 1  # one report only
 
     @pytest.mark.parametrize("shadow", ["root:*:1::::::\n", "vyos:!:1::::::\n", "vyos:*:1::::::\n"])
     def test_no_usable_hash_is_a_failed_ack(self, tmp_path, shadow):
-        r, calls = _vyos_ack(tmp_path, shadow)
+        r, calls, _ = _vyos_ack(tmp_path, shadow, wait=30, poll=15)
         assert r.returncode == 0, r.stderr
         assert calls.strip() == "info-set guestinfo.tn.vyos.admin_ack failed the vyos login has no password hash"
 
@@ -244,11 +316,18 @@ class TestVyosAck:
 def test_vyos_finish_installs_the_ack_unit_after_cloud_init(tmp_path):
     mod = _install_module()
     rw = tmp_path / "boot/img/rw"
-    rw.mkdir(parents=True)
+    template = aa.hash_password("vyos", "Template-Build-9!")
+    boot = rw / "opt/vyatta/etc/config/config.boot"
+    boot.parent.mkdir(parents=True)
+    boot.write_text("system {\n    login {\n        user vyos {\n            authentication {\n"
+                    f"                encrypted-password \"{template}\"\n            }}\n        }}\n    }}\n}}\n")
     mod.finish_image(tmp_path)
     assert (rw / "etc/tn-admin-ack.sh").read_text() == mod.ACK_SCRIPT
+    # The template's own hash, as a fingerprint: what tn-admin-ack.sh waits to see replaced.
+    assert (rw / "etc/tn-template-admin.fp").read_text().strip() == aa.fingerprint(template)
+    assert "admin_ack=1" in (rw / "etc/tn-template-finish.txt").read_text().split()  # the worker waits only then
     unit = (rw / "etc/systemd/system/tn-admin-ack.service").read_text()
-    assert "After=open-vm-tools.service cloud-final.service" in unit
+    assert "After=open-vm-tools.service cloud-final.service" in unit and "Type=simple" in unit
     assert "WantedBy=cloud-init.target" in unit and "ExecStart=/bin/sh /etc/tn-admin-ack.sh" in unit
     link = rw / "etc/systemd/system/cloud-init.target.wants/tn-admin-ack.service"
     assert link.is_symlink() and str(os.readlink(link)) == "/etc/systemd/system/tn-admin-ack.service"

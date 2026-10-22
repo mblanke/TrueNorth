@@ -549,26 +549,40 @@ path (`control-plane/worker/worker/appliance_admin.py`):
   hook (`tn-pfsense-config boot`) writes it into the admin user (`bcrypt-hash`; OPNsense
   `root`'s `password`), reboots once into it, and on the boot that finds it in force writes
   `guestinfo.tn.<product>.admin_ack` (the first 16 hex digits of the hash's SHA-256) and
-  clears the key. Anything that is not a bcrypt hash is refused (`failed ...` ack).
+  clears the key. Anything that is not a bcrypt hash is refused (`failed ...` ack). One
+  attempt per hash (`/conf/tn-admin-attempt`): if the hash is still not in force on the boot
+  after the one that wrote it, the hook acknowledges `failed hash-not-applied` and stops
+  rebooting.
 - VyOS: `set system login user vyos authentication encrypted-password '$6$...'` in the
   cloud-init user data; `tn-admin-ack.service` (installed by the template finish) reports the
-  fingerprint of the vyos login's shadow hash after cloud-init.
+  fingerprint of the vyos login's shadow hash once it differs from the template's own
+  (`/etc/tn-template-admin.fp`), checking every 15 s for at most 10 minutes, after which it
+  reports `failed the vyos password is still the template's`.
 
-The appliance's `template_login` records `method`: `ssh` when the worker can reach the
-appliance's uplink address on port 22 (one login with the range password, then one with the
-template password, `TN_TEMPLATE_APPLIANCE_PASSWORD`, else `TN_TEMPLATE_LINUX_PASSWORD`; the
-worker image ships no SSH client, and the range's own WAN policy blocks SSH by design, so
-this is rare), else `guestinfo_ack` (the boot hook's acknowledgement: self-reported, no login
-attempt), else `none` (`inconclusive`). The worker waits up to `RANGE_APPLIANCE_ACK_TIMEOUT`
-(600 s, never past `VSPHERE_PROVISION_BUDGET`); after a matching acknowledgement it marks the
-admin row applied and removes the hash from the VM's configuration (`admin_login.hash_cleared`
-on the VM's output). The range certification's credential section counts ack-proven
-appliances separately and no longer passes an appliance recorded `not_checked`.
+The appliance's `template_login` records `status` and `method`:
 
-**Needs rebuilt appliance templates.** The new boot hook and ack unit are in
-`infra/vsphere/packer/files/{pfsense,vyos}`; an appliance template built before this change
-neither applies the hash nor acknowledges, so its check stays `inconclusive` and the hash
-stays in its guestinfo. Rebuild the pfSense, OPNsense and VyOS templates.
+| status | method | meaning | credential section |
+| --- | --- | --- | --- |
+| `rejected` | `ssh` | the worker reached the uplink address on port 22; after the range password logged in, the template password (`TN_TEMPLATE_APPLIANCE_PASSWORD`, else `TN_TEMPLATE_LINUX_PASSWORD`) was refused | pass ("refused") |
+| `accepted` | `ssh` | the template password logs in | **fail** (Not safe; not ready under `enforce`) |
+| `rejected_self_reported` | `guestinfo_ack` | the boot hook reported the range's hash in force; no login was tried | pass, worded "template password replaced, reported by the appliance", never "refused" |
+| `unsupported_template` | `none` | the template's finish marker lacks `admin_ack=1`, or it publishes none within 3 minutes: built before this change | incomplete (warning: rebuild the template) |
+| `inconclusive` | `none` / `guestinfo_ack` | no acknowledgement by the deadline, or a `failed ...` one | incomplete |
+
+The worker image ships no SSH client and the range's own WAN policy blocks SSH by design, so
+`rejected_self_reported` is the usual result. It passes the section because the report is the
+appliance comparing the hash in force with the fingerprint of the one the worker generated
+(the template's hash cannot match it), and a stronger proof is not reachable without opening
+the firewall. The worker waits for the acknowledgement up to `RANGE_APPLIANCE_ACK_TIMEOUT`
+(600 s, never past `VSPHERE_PROVISION_BUDGET`) and only from a template that offers it. After
+the check, **whatever its outcome**, it removes the hash from the VM's configuration
+(`admin_login.hash_cleared`); a proven change also marks the admin row applied. An appliance
+that had not taken the hash by then keeps its template login, and its record says so.
+
+**Needs rebuilt appliance templates.** The new boot hook, ack unit and `admin_ack=1` marker
+are in `infra/vsphere/packer/files/{pfsense,vyos}`; a template built before this change is
+recorded `unsupported_template` (not waited for). Rebuild the pfSense, OPNsense and VyOS
+templates.
 
 **Rotation, restore and reset.** An appliance admin row is a staff row: kept on a rebuild
 (the rebuilt appliance gets the same password's new hash), never changed in a running range
@@ -576,7 +590,7 @@ stays in its guestinfo. Rebuild the pfSense, OPNsense and VyOS templates.
 reset brings the appliance back to the config it had when the snapshot was taken, which
 already holds that same hash, and nothing rotates it; there is no snapshot-with-password path
 for appliances. Security Onion's SOC web login is not rotated on a restore either (follow-up,
-issue #248 part 2): it changes on a rebuild only.
+issue #269): it changes on a rebuild only.
 
 **After the upgrade (migration `0a2276639b3c`):** check the migration output, the API log at
 start, or the Ranges page for `ACTION NEEDED (ADR 0013)`: those templates carry a typed-in
@@ -587,8 +601,9 @@ included) until fixed.
 is `rejected` on every Windows and Linux VM; open the range's wiki page and confirm it shows
 account names and no password; reveal one password and find the `range_credential_reveal`
 row in the audit log; reset a lab (or restore a snapshot) and confirm the Student's password
-changed and still logs in. For appliances (issue #248), with rebuilt templates: confirm each
-pfSense/OPNsense/VyOS VM's `template_login` is `rejected` with its `method`, that its console
+changed and still logs in. For appliances (issue #248; this check closes it), with rebuilt
+templates: confirm each pfSense/OPNsense/VyOS VM's `template_login` is `rejected` (`ssh`) or
+`rejected_self_reported` (`guestinfo_ack`), that its console
 refuses the template password and takes the revealed one, and that
 `govc vm.info -e <vm>` no longer shows `guestinfo.tn.<product>.admin` (VyOS: no
 `encrypted-password` in the decoded `guestinfo.userdata`). As with the Linux account hashes

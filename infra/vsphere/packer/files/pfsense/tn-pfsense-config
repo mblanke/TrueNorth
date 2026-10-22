@@ -48,7 +48,9 @@
  * and also when applying the config then fails), so the boot that loads it syncs the
  * system accounts. On the boot that finds it already in force: acknowledge, then clear the
  * key (info-set to empty; the worker also removes it from the VM's configuration once it
- * read the acknowledgement). The hash is never logged or echoed. Anything wrong with it:
+ * read the acknowledgement). One attempt per hash (/conf/tn-admin-attempt holds its
+ * fingerprint): a hash still not in force on the boot after the one that wrote it gets
+ * "failed hash-not-applied" and no further reboot. The hash is never logged or echoed. Anything wrong with it:
  * "failed <why>", the admin user is left alone, and the per-range config still applies.
  *
  * OPNsense: the same script, installed in the OPNsense template as
@@ -70,13 +72,15 @@ define('KEY_ADMIN_ACK', 'guestinfo.tn.' . PRODUCT . '.admin_ack');
 define('ADMIN_USER', PRODUCT === 'opnsense' ? 'root' : 'admin');
 define('ADMIN_FIELD', PRODUCT === 'opnsense' ? 'password' : 'bcrypt-hash');
 // pfsense_config.BCRYPT_RE: the only admin value accepted from guestinfo.
-define('BCRYPT_RE', '/^\$2[aby]\$\d\d\$[.\/A-Za-z0-9]{53}$/');
+define('BCRYPT_RE', '/^\$2[aby]\$\d\d\$[.\/A-Za-z0-9]{53}\z/');
 // Test seam only (tests/worker/test_pfsense_config.py): a directory holding conf/,
 // guestinfo/<key> files and ifconfig.txt, in place of the firewall. Never set on pfSense.
 define('TEST_ROOT', (string)getenv('TN_PFSENSE_TEST_ROOT'));
 define('CONF_DIR', TEST_ROOT !== '' ? TEST_ROOT . '/conf' : (PRODUCT === 'opnsense' ? '/conf' : '/cf/conf'));
 define('CONF', CONF_DIR . '/config.xml');
 define('STAMP', CONF_DIR . '/tn-guestinfo.sha256');
+// The fingerprint of the admin hash this firewall last wrote and rebooted for (reboot-loop guard).
+define('ADMIN_ATTEMPT', CONF_DIR . '/tn-admin-attempt');
 define('LOGFILE', CONF_DIR . '/tn-' . PRODUCT . '-config.log');
 define('BOOT_COMMAND', '/usr/local/bin/php -q ' . TN_SCRIPT . ' boot');
 // The release's factory config (template mode starts from it when nothing is installed yet).
@@ -170,12 +174,23 @@ function admin_password() {
 	foreach ($x->query(ADMIN_FIELD, $user) as $n) {
 		$current = trim($n->textContent);
 	}
+	$fp = substr(hash('sha256', $hash), 0, 16);
 	if (hash_equals($current, $hash)) {
-		$fp = substr(hash('sha256', $hash), 0, 16);
+		@unlink(ADMIN_ATTEMPT);
 		info_set(KEY_ADMIN_ACK, $fp);
 		info_set(KEY_ADMIN, '');
 		tnlog("admin password: the range's own hash is in force for " . ADMIN_USER . " (ack $fp); " . KEY_ADMIN .
 			' cleared');
+		return false;
+	}
+	// One attempt per hash: written, rebooted, and still not in force (something put the old
+	// config back) -> say so and stop, rather than reboot for ever.
+	if (is_file(ADMIN_ATTEMPT) && trim((string)file_get_contents(ADMIN_ATTEMPT)) === $fp) {
+		admin_failed('hash-not-applied');
+		return false;
+	}
+	if (@file_put_contents(ADMIN_ATTEMPT, "$fp\n") === false) {
+		admin_failed('cannot write ' . ADMIN_ATTEMPT);
 		return false;
 	}
 	foreach (array('bcrypt-hash', 'sha512-hash', 'md5-hash', 'password') as $tag) {
@@ -315,7 +330,7 @@ function template_config($hashfile) {
 		fail('template mode is for pfSense only');
 	}
 	$hash = trim((string)@file_get_contents($hashfile));
-	if (!preg_match('/^\$(2[aby]|6)\$[.\/A-Za-z0-9$=]{20,}$/', $hash)) {
+	if (!preg_match('/^\$(2[aby]|6)\$[.\/A-Za-z0-9$=]{20,}\z/', $hash)) {
 		fail("no usable password hash (crypt string) in $hashfile");
 	}
 	$src = is_file(CONF) ? CONF : DEFAULT_CONF;

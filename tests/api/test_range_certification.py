@@ -399,8 +399,8 @@ def _pinned(vm: dict, catalogue: str, login: str) -> dict:
 
 def _acked(vm: dict) -> dict:
     """An appliance whose boot hook acknowledged the range's own admin hash (issue #248)."""
-    return {**vm, "template_login": {"status": "rejected", "username": "admin", "method": "guestinfo_ack",
-                                     "detail": "..."}}
+    return {**vm, "template_login": {"status": "rejected_self_reported", "username": "admin",
+                                     "method": "guestinfo_ack", "detail": "..."}}
 
 
 CERTIFIABLE = {**GOOD_OUTPUT, "vms": [_pinned(GOOD_OUTPUT["vms"][0], "ubuntu-2404", "rejected"),
@@ -426,7 +426,8 @@ class TestMergedSlices:
         assert sec_["template_provenance"]["summary"] == (
             "2 VM(s) on registered promoted builds: pfsense 20261021-1, ubuntu-2404 20261021-1")
         assert sec_["credentials"]["summary"].startswith(
-            "template password refused on 2 VM(s) (1 appliance(s) by boot-hook acknowledgement, no login attempt)")
+            "template password refused on 1 VM(s); template password replaced, reported by the appliance, on 1 "
+            "VM(s) (no login attempt)")
         assert sec_["credentials"]["entries"][-1]["detail"]["template_login"][1]["method"] == "guestinfo_ack"
         assert body["record"]["verdict"] == "ready_not_certified"
         assert body["record"]["reasons"] == ["Isolation evidence missing (provided by S4 (#242))"]

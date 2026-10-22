@@ -55,7 +55,7 @@ BOOT_COMMAND = "/usr/local/bin/php -q /usr/local/sbin/tn-pfsense-config boot"
 GUESTINFO_CONFIG = "guestinfo.tn.pfsense.config"
 GUESTINFO_IFMAP = "guestinfo.tn.pfsense.ifmap"
 # A bcrypt crypt string: the only admin value guestinfo may carry (never a password).
-BCRYPT_RE = re.compile(r"^\$2[aby]\$\d\d\$[./A-Za-z0-9]{53}$")
+BCRYPT_RE = re.compile(r"\A\$2[aby]\$\d\d\$[./A-Za-z0-9]{53}\Z")  # \Z: no trailing newline
 PRODUCTS = ("pfsense", "opnsense")
 # pfSense CE 2.7.2's config version. The boot script replaces it with the version of the
 # config it finds in the guest, so a newer or older pfSense template still upgrades cleanly.

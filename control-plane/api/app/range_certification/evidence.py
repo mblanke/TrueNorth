@@ -195,20 +195,28 @@ def network_allocation(output: dict, reservations: list, external: list,
     return PASS, f"{summary}; no collision with VLANs used outside TrueNorth (live checks, S1)", detail
 
 
-TEMPLATE_LOGIN_OK = ("rejected",)
+REFUSED = "rejected"  # a login with the template password was tried and refused
+SELF_REPORTED = "rejected_self_reported"  # an appliance reported the template password replaced
+TEMPLATE_LOGIN_OK = (REFUSED, SELF_REPORTED)
 
 
 def credentials(output: dict, accounts: list) -> tuple[str, str, dict]:
-    """S3 (#241): the golden template's password must be refused on every VM
-    (``vms[].template_login``: rejected / accepted / inconclusive), and the range's own
-    accounts set: no change pending, every Student-visible account applied by this build (a
-    rebuild gives Students new passwords, so applied means rotated). Scenario accounts keep
-    their authored passwords by design.
+    """S3 (#241): the golden template's password must be gone from every VM
+    (``vms[].template_login``), and the range's own accounts set: no change pending, every
+    Student-visible account applied by this build (a rebuild gives Students new passwords,
+    so applied means rotated). Scenario accounts keep their authored passwords by design.
 
-    Appliances (pfSense, OPNsense, VyOS; issue #248) are checked too: ``method`` says how,
-    ``ssh`` (a login attempt) or ``guestinfo_ack`` (the appliance's boot hook reported the
-    range's own admin hash in force; no login attempt), and the summary counts the latter.
-    ``not_checked``, which builds before #248 recorded for appliances, is no longer a pass.
+    Appliances (pfSense, OPNsense, VyOS; issue #248): ``rejected`` (``method: ssh``) is a
+    refused login like any other VM's. ``rejected_self_reported`` (``method:
+    guestinfo_ack``) is not a refusal and the summary never calls it one: "template password
+    replaced, reported by the appliance". It still passes the section, because (a) the
+    report is the appliance's own boot hook comparing the hash in force with the one the
+    worker generated (a SHA-256 fingerprint of it, which the template's hash cannot match),
+    (b) the login attempt that would prove more is blocked by the range's own WAN policy by
+    design, and VMware guest operations do not run on these images, so requiring it would
+    leave every range with a firewall incomplete for good. ``unsupported_template``
+    (a template built before #248), ``inconclusive`` and the pre-#248 ``not_checked`` stay
+    ``incomplete``.
 
     ``fail``: the template password still logs in on a VM. ``incomplete``: a check
     inconclusive or missing, a change pending, or a Student account not applied yet."""
@@ -236,10 +244,12 @@ def credentials(output: dict, accounts: list) -> tuple[str, str, dict]:
     if unset:
         return INCOMPLETE, f"Student account(s) not set by this build yet: {', '.join(unset)}", detail
     students = sum(1 for r in rows if r["student_visible"] and not r["scenario"])
-    acked = sum(1 for r in logins if r["method"] == "guestinfo_ack")
-    how = f" ({acked} appliance(s) by boot-hook acknowledgement, no login attempt)" if acked else ""
-    return PASS, (f"template password refused on {len(logins)} VM(s){how}; "
-                  f"{students} Student account(s) set with this build's passwords"), detail
+    refused = sum(1 for r in logins if r["status"] == REFUSED)
+    reported = sum(1 for r in logins if r["status"] == SELF_REPORTED)
+    parts = ([f"template password refused on {refused} VM(s)"] if refused else []) + (
+        [f"template password replaced, reported by the appliance, on {reported} VM(s) (no login attempt)"]
+        if reported else [])
+    return PASS, "; ".join([*parts, f"{students} Student account(s) set with this build's passwords"]), detail
 
 
 TEARDOWN_LISTS = ("deleted", "remaining", "unidentified", "not_checked", "confirmed_deleted", "confirm_skipped", "gaps")

@@ -2425,37 +2425,38 @@ class VsphereAPIProvisioner(BaseProvisioner):
     def _appliance_check_sync(self, si, vm_def: dict, out: dict) -> dict:
         """An appliance's template-login check (appliance_admin.check): SSH at its uplink
         address when the worker can reach it, else its boot hook's acknowledgement in
-        guestinfo, read until RANGE_APPLIANCE_ACK_TIMEOUT (never past the build budget). A
-        proven change marks its admin account set (``accounts_applied``) and takes the hash
-        out of the VM's configuration."""
+        guestinfo, read until RANGE_APPLIANCE_ACK_TIMEOUT (never past the build budget; not
+        at all from a template whose finish marker does not offer it). A proven change marks
+        its admin account set (``accounts_applied``). The hash is taken out of the VM's
+        configuration after the check, whatever its outcome."""
         admin = vm_def.get("_appliance_admin")
         vm = self._vm(si, out["vm_id"])
         nics = vm_def.get("nics") or []
         mgmt_ip = str(nics[0].get("ip") or "") if nics and nics[0].get("uplink") else ""
         key = appliance_admin.ack_key(admin.product) if admin is not None else ""
 
-        def read_ack() -> str:
+        def extra(name: str) -> str:
             return next((str(o.value or "") for o in (getattr(vm.config, "extraConfig", None) or [])
-                         if o.key == key), "")
+                         if o.key == name), "")
 
         now = time.monotonic()
         deadline = min(now + self._appliance_ack_timeout, self._budget_end or float("inf"))
-        res = appliance_admin.check(admin, mgmt_ip=mgmt_ip, read_ack=read_ack, deadline=deadline,
+        res = appliance_admin.check(admin, mgmt_ip=mgmt_ip, read_ack=lambda: extra(key), deadline=deadline,
+                                    read_marker=lambda: extra(appliance_admin.FINISH_KEY),
                                     poll=3 * self._guest_poll)
-        out["accounts_applied"] = [admin.account] if admin is not None and res["status"] == credcheck.REJECTED \
-            else []
+        proven = admin is not None and res["status"] in appliance_admin.PROVEN
+        out["accounts_applied"] = [admin.account] if proven else []
         if admin is not None:
             cleared = False
-            if res["status"] == credcheck.REJECTED:
-                nic_macs = [str(card.macAddress) for card in infra.nic_cards(vm.config.hardware.device)]
-                values = appliance_admin.scrub_values(vm_def, nic_macs)
-                try:
-                    self._wait(vm.ReconfigVM_Task(spec=vim.vm.ConfigSpec(extraConfig=[
-                        vim.option.OptionValue(key=k, value=v) for k, v in values.items()])), si)
-                    cleared = True
-                except Exception as exc:  # noqa: BLE001 — a hash, not a password: say so, keep the result
-                    logger.warning("VM %s: could not take the admin hash out of its guestinfo (%s)",
-                                   out.get("name"), type(exc).__name__)
+            nic_macs = [str(card.macAddress) for card in infra.nic_cards(vm.config.hardware.device)]
+            values = appliance_admin.scrub_values(vm_def, nic_macs)
+            try:
+                self._wait(vm.ReconfigVM_Task(spec=vim.vm.ConfigSpec(extraConfig=[
+                    vim.option.OptionValue(key=k, value=v) for k, v in values.items()])), si)
+                cleared = True
+            except Exception as exc:  # noqa: BLE001 — a hash, not a password: say so, keep the result
+                logger.warning("VM %s: could not take the admin hash out of its guestinfo (%s)",
+                               out.get("name"), type(exc).__name__)
             out["admin_login"] = {**admin.summary(), "hash_cleared": cleared}
         return res
 
@@ -2485,6 +2486,8 @@ class VsphereAPIProvisioner(BaseProvisioner):
                     res = {"status": credcheck.INCONCLUSIVE, "method": appliance_admin.NONE,
                            "detail": f"not checked ({type(exc).__name__})"}
                 out["template_login"] = res
+                if res["status"] == appliance_admin.UNSUPPORTED:
+                    warnings.append(f"VM {out['name']}: template-password check not possible: {res['detail']}")
                 if reason := credcheck.report(out["name"], res, warnings):
                     errors.append(f"VM {out['name']}: {reason}")
                     not_ready.append(out["name"])
