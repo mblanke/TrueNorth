@@ -26,9 +26,13 @@ because the probe VM is multi-homed and its route to the target leaves by anothe
 ``dns_ext``   0 the external name resolved to an address outside the range,
               1 it did not resolve, 2 it resolved only to addresses inside the range (a
               simulated internet such as Greyspace), 3 no resolver tool, 5 not measurable
-``route``     0 no hop outside the range answered a TTL-limited probe, 1 one did (or the
-              target itself answered): the path crosses the range edge, 3 no ping,
-              5 not measurable
+``route``     0 hop 1 answered and no hop outside the range did, 1 a hop outside the
+              range answered (or the target itself did): the path crosses the range
+              edge, 2 hop 1 stayed silent toward the target but is proven live by a
+              TTL-1 connect toward the permitted exception (an edge that filters
+              before forwarding, as pfSense does, sends no Time Exceeded for a blocked
+              destination), 3 no ping, 5 not measurable, 6 hop 1 silent and not proven
+              live (busybox ping, no exception path): never proof
 ``v6route``   0 an IPv6 route other than link-local, multicast or loopback is present
               (ULA included), 1 none, 3 could not tell
 ``v6addr``    0 an IPv6 address other than link-local (fe80::/10) or ::1 is assigned
@@ -216,14 +220,33 @@ dns_ext(){ local o r ip s out=0 any=0; command -v getent >/dev/null 2>&1 || retu
   for ip in $(printf '%%s\n' "$o" | sed -n 's/^\([0-9.]*\) .*/\1/p' | sort -u); do any=1
     inside "$ip" || out=1; done
   [ $any -eq 1 ] || return 1; [ $out -eq 1 ] && return 0; return 2; }
-# Hop 1 must answer: silence there is not proof (a ping that never prints Time Exceeded,
-# busybox's, or a first hop that filters before forwarding, as pfSense does).
-route(){ pinned "$1" || return 5; local t o r h; command -v ping >/dev/null 2>&1 || return 3
+# Hop-1 liveness through the permitted exception ($1 host, $2 port), which the edge forwards:
+# a TCP SYN with TTL 1 makes hop 1 send Time Exceeded, and Linux aborts the connect with
+# EHOSTUNREACH; else a TTL-1 ping that a hop answers. Success: hop 1 is alive.
+hop1(){ [ -n "$1" ] || return 1; local o
+  if command -v python3 >/dev/null 2>&1; then
+    timeout $((T+2)) python3 -c '
+import errno, socket, sys
+s = socket.socket()
+s.setsockopt(socket.IPPROTO_IP, socket.IP_TTL, 1)
+s.settimeout(float(sys.argv[3]))
+try:
+    s.connect((sys.argv[1], int(sys.argv[2])))
+except OSError as e:
+    sys.exit(0 if e.errno in (errno.EHOSTUNREACH, errno.ENETUNREACH) else 1)
+sys.exit(0)' "$1" "$2" "$T" >/dev/null 2>&1 && return 0; fi
+  command -v ping >/dev/null 2>&1 || return 1
+  o=$(timeout $((T+2)) ping -n -c 1 -W "$T" -t 1 "$1" 2>&1)
+  [ -n "$(printf '%%s\n' "$o" | sed -n 's/^From \([0-9.]*\)[ :].*/\1/p')" ]; }
+# Hop 1 must be shown alive: answering here, or (pfSense-style silent drop) via the exception path.
+route(){ pinned "$1" || return 5; local t o r h live=0; command -v ping >/dev/null 2>&1 || return 3
   for t in %(hop_list)s; do o=$(timeout $((T+2)) ping -n -c 1 -W "$T" -t "$t" "$1" 2>&1); r=$?
     [ $r -eq 0 ] && return 1
     h=$(printf '%%s\n' "$o" | sed -n 's/^From \([0-9.]*\)[ :].*/\1/p' | head -n 1)
-    if [ -z "$h" ]; then [ "$t" -eq 1 ] && return 3; [ $r -eq 1 ] && continue; return 3; fi
-    inr "$h" || return 1; done; return 0; }
+    if [ -z "$h" ]; then
+      if [ "$t" -eq 1 ]; then hop1 "$2" "$3" || return 6; live=1; continue; fi
+      [ $r -eq 1 ] && continue; return 3; fi
+    inr "$h" || return 1; done; [ $live -eq 1 ] && return 2; return 0; }
 v6route(){ command -v ip >/dev/null 2>&1 || return 3; local o; o=$(ip -6 route show table all 2>/dev/null) || return 3
   printf '%%s\n' "$o" | grep -Eiv '^(local|multicast|anycast|broadcast|unreachable|prohibit|blackhole|throw|nat) |^(fe80|ff[0-9a-f]{2}):|^::1 |^[[:space:]]*$' \
     | grep -q . && return 0; return 1; }
@@ -304,14 +327,27 @@ function DnsInt($s, $n) { if (-not (Pinned $s)) { return 5 }; if (-not (HasResol
 function DnsExt($n) { if ($SRC) { return 5 }; if (-not (HasResolver)) { return 3 }
   try { $r = @(Resolve-DnsName -Name $n -Type A -DnsOnly -NoHostsFile -QuickTimeout | Where-Object { $_.IPAddress }) } catch { return 1 }
   if (-not $r.Count) { return 1 }; foreach ($x in $r) { if (-not (Inside $x.IPAddress)) { return 0 } }; return 2 }
-function Route($d) { if (-not (Pinned $d)) { return 5 }
+# Hop-1 liveness through the permitted exception: a TCP connect with TTL 1 that hop 1 answers
+# (host/network unreachable), else a TTL-1 ping it answers with TtlExpired.
+function Hop1($h, $p) { if (-not $h) { return $false }
+  $s = New-Object Net.Sockets.Socket([Net.Sockets.AddressFamily]::InterNetwork, [Net.Sockets.SocketType]::Stream,
+    [Net.Sockets.ProtocolType]::Tcp)
+  try { $s.Ttl = 1; if ($s.ConnectAsync($h, [int]$p).Wait($T)) { return $true } }
+  catch { $e = $_.Exception; while ($e.InnerException) { $e = $e.InnerException }
+    if ($e -is [Net.Sockets.SocketException] -and [string]$e.SocketErrorCode -match 'HostUnreachable|NetworkUnreachable') {
+      return $true } }
+  finally { $s.Close() }
+  try { $r = (New-Object Net.NetworkInformation.Ping).Send($h, $T, (New-Object byte[] 32),
+      (New-Object Net.NetworkInformation.PingOptions(1, $true)))
+    return ([string]$r.Status -match 'TtlExpired|TimeExceeded') } catch { return $false } }
+function Route($d, $eh = '', $ep = 0) { if (-not (Pinned $d)) { return 5 }; $live = $false
   try { $p = New-Object Net.NetworkInformation.Ping; $buf = New-Object byte[] 32
     for ($t = 1; $t -le %(hops)d; $t++) { $r = $p.Send($d, $T, $buf, (New-Object Net.NetworkInformation.PingOptions($t, $true)))
       if ($r.Status -eq 'Success') { return 1 }
       $silent = -not $r.Address -or $r.Address.ToString() -eq '0.0.0.0'
-      if ($silent -and $t -eq 1) { return 3 }  # hop 1 must answer: silence is not proof
+      if ($silent -and $t -eq 1) { if (-not (Hop1 $eh $ep)) { return 6 }; $live = $true; continue }
       if (-not $silent -and -not (InR $r.Address.ToString())) { return 1 } }
-    return 0 } catch { return 3 } }
+    if ($live) { return 2 }; return 0 } catch { return 3 } }
 function V6route { if (-not (Get-Command Get-NetRoute -ErrorAction SilentlyContinue)) { return 3 }
   try { $r = @(Get-NetRoute -AddressFamily IPv6 -ErrorAction Stop | Where-Object {
       $_.DestinationPrefix -notmatch '^(fe80|ff[0-9a-f]{2}):' -and $_.DestinationPrefix -ne '::1/128' })

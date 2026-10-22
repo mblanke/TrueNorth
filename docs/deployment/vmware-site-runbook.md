@@ -496,7 +496,11 @@ Use soc-training, or a small PO range. Check:
       what its route sends out of another NIC, and a Linux guest behind systemd-resolved
       (127.0.0.53) cannot have its external-DNS check pinned. Side effect: the first
       guest-operations login as an account creates its Windows user profile (a Linux PAM
-      stack may create a home directory); the probes themselves leave nothing. In
+      stack may create a home directory); the probes themselves leave nothing. The route
+      (TTL) check needs the first hop proven alive: a pfSense edge answers nothing for a
+      blocked destination, so the probe shows it alive with a TTL-1 connect toward the
+      first permitted exception (the depot on 8081); keep that exception allowed, or the
+      route check stays inconclusive (with no exception configured it is advisory). In
       `enforce` mode a range not proven isolated fails and is powered off
 - [ ] the pfSense LAN interface is the `.1` of each range subnet
 - [ ] Security Onion is set up (`securityonion.status` `ok`, see **7.2**) and sees traffic

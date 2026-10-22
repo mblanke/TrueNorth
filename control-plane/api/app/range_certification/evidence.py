@@ -327,7 +327,7 @@ def _grade(rec: dict) -> tuple[str, str, dict]:
     leaks = []
     for z in rows:
         bad = [f"{c.get('check')} {c.get('target')}" for c in z["checks"]
-               if c.get("expect") == "unreachable" and c.get("result") == "reachable"]
+               if c.get("expect") in ("unreachable", "advisory") and c.get("result") == "reachable"]
         if bad:
             leaks.append(f"zone {z.get('zone')}: {', '.join(bad)}")
     if leaks:
@@ -359,6 +359,8 @@ def isolation(output: dict) -> tuple[str, str, dict]:
     every check that must fail is ``proven_unreachable``, every permitted exception
     connected and site targets were configured; else ``incomplete``, naming the zones and
     checks that fall short (``connect_failed_only`` and ``inconclusive`` are never proof).
+    An ``advisory`` check (the route check with no permitted exception to prove hop 1
+    alive through) fails the range when it finds a path out and is otherwise ignored.
     The mode (warn / enforce) is recorded; it decides only whether the build was blocked,
     never this grade. Every summary says what the evidence is: "as measured from <VM>
     using <account class>"; a compromised guest can fake it (worker/range_isolation.py).

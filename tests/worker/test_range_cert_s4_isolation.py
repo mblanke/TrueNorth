@@ -184,6 +184,51 @@ def test_a_refused_connect_is_never_proof_even_with_a_passing_selftest():
         assert range_isolation.classify(_c("tcp"), code, True) != range_isolation.PROVEN
 
 
+def test_route_classes():
+    route = range_isolation.Check("route", "h", "unreachable", scripts.Probe("route", ("10.30.30.1",)))
+    assert [range_isolation.classify(route, c, True) for c in (0, 1, 2, 3, 5, 6)] == [
+        "proven_unreachable", "reachable",
+        "proven_unreachable",  # hop 1 silent toward it, proven alive via the exception (pfSense)
+        "inconclusive", "inconclusive",
+        "inconclusive"]  # hop 1 silent and not proven alive
+    assert range_isolation.classify(route, 2, False) == "inconclusive", "the self-test still has to pass"
+
+
+def _route_world(code):
+    return lambda vm, kind, args: code if kind == "route" else isolated_world(vm, kind, args)
+
+
+def test_the_route_probe_proves_hop_one_through_the_first_exception():
+    prov = FakeGuest()
+    _run(prov)
+    probes = [pr for c in prov.calls for st in c["steps"] for pr in probes_of(st)]
+    assert ("route", ("10.30.30.1", DEPOT, "8081")) in probes
+
+
+def test_a_pfsense_style_edge_proven_alive_through_the_exception_is_isolated():
+    rec = _run(FakeGuest(_route_world(2)))
+    row = _check(_zone(rec, "lan"), "route", "10.30.30.1")
+    assert row["result"] == "proven_unreachable" and "permitted exception" in row["note"]
+    assert rec["verdict"] == "isolated"
+
+
+def test_a_silent_first_hop_not_proven_alive_keeps_the_range_from_isolated():
+    rec = _run(FakeGuest(_route_world(6)))
+    row = _check(_zone(rec, "lan"), "route", "10.30.30.1")
+    assert row["result"] == "inconclusive" and rec["verdict"] == "incomplete"
+
+
+def test_with_no_exception_the_route_check_is_advisory(monkeypatch):
+    monkeypatch.setenv("TN_RANGE_ISOLATION_EXCEPTIONS", "")
+    rec = _run(FakeGuest(_route_world(6)))
+    row = _check(_zone(rec, "lan"), "route", "10.30.30.1")
+    assert row["expect"] == "advisory" and "advisory" in row["note"]
+    assert rec["verdict"] == "isolated", "a silent hop 1 proves nothing, so it holds nothing back"
+    assert any(n.startswith("route check advisory") for n in rec["notes"])
+    leaked = _run(FakeGuest(_route_world(1)))
+    assert leaked["verdict"] == "not_isolated", "a path out still fails the range"
+
+
 def test_icmp_route_and_dns_classes():
     icmp = range_isolation.Check("icmp", "h", "unreachable", scripts.Probe("icmp", ("10.30.30.1",)))
     assert [range_isolation.classify(icmp, c, True) for c in (0, 1, 2, 3, 4, 5)] == [
@@ -508,18 +553,24 @@ esac
 """
 
 
-# iputils-style output per TTL (PING_T<ttl>, else PING_OUT) and exit status (PING_RC).
+# iputils-style output per TTL (PING_T<ttl>, else PING_OUT) and exit status (PING_RC); toward
+# the exception host PING_EX, PING_EX_OUT instead. The last argument is the destination.
 STUB_PING = r"""#!/bin/sh
-ttl=0; prev=
-for a in "$@"; do [ "$prev" = "-t" ] && ttl=$a; prev=$a; done
-eval "out=\${PING_T$ttl:-\$PING_OUT}"
+ttl=0; prev=; dest=
+for a in "$@"; do [ "$prev" = "-t" ] && ttl=$a; prev=$a; dest=$a; done
+if [ -n "$PING_EX" ] && [ "$dest" = "$PING_EX" ]; then out=$PING_EX_OUT
+else eval "out=\${PING_T$ttl:-\$PING_OUT}"; fi
 [ -n "$out" ] && printf '%s\n' "$out"
 exit "${PING_RC:-1}"
+"""
+# The TTL-1 connect toward the exception (hop1): 0 hop 1 answered, else silent.
+STUB_PYTHON3 = r"""#!/bin/sh
+exit "${HOP1_RC:-1}"
 """
 
 
 def _bash(tmp_path, probes, ctx=scripts.Context(), **env):
-    for name, body in (("ip", STUB_IP), ("ping", STUB_PING)):
+    for name, body in (("ip", STUB_IP), ("ping", STUB_PING), ("python3", STUB_PYTHON3)):
         stub = tmp_path / name
         stub.write_text(body)
         stub.chmod(stub.stat().st_mode | stat.S_IEXEC)
@@ -557,17 +608,34 @@ def test_bash_an_icmp_error_from_outside_the_range_is_reachable_and_from_inside_
     assert (outside, inside) == ([4], [3])  # 4: a site router answered -> reachable; 3: the range's own edge
 
 
+HOP1 = "From 10.80.0.1 icmp_seq=1 Time to live exceeded"
+
+
 @pytest.mark.skipif(not os.path.exists("/bin/bash"), reason="needs bash")
 @pytest.mark.parametrize("env,expected", [
-    ({}, 3),  # nothing answers, not even hop 1 (busybox ping, or a filtering first hop): not proof
-    ({"PING_T1": "From 10.80.0.1 icmp_seq=1 Time to live exceeded"}, 0),  # hop 1 in range, then silence
-    ({"PING_T1": "From 10.80.0.1 icmp_seq=1 Time to live exceeded",
-      "PING_T2": "From 10.30.32.1 icmp_seq=1 Time to live exceeded"}, 1),  # hop 2 outside the range
+    # VyOS-style edge (Linux checks TTL before its forward filter): hop 1 answers, then silence.
+    ({"PING_T1": HOP1}, 0),
+    # pfSense-style edge (filters before forwarding): silent toward the blocked target, but hop 1
+    # answers a TTL-1 connect toward the permitted exception (python3) -> alive, silence counts.
+    ({"HOP1_RC": "0"}, 2),
+    # ... or, with no python3 result, a TTL-1 ping toward the exception that hop 1 answers.
+    ({"PING_EX": "10.30.32.10", "PING_EX_OUT": HOP1}, 2),
+    # The exception path's hop 1 is silent too (busybox ping, a dead edge): never proof.
+    ({}, 6),
+    ({"PING_T1": HOP1, "PING_T2": "From 10.30.32.1 icmp_seq=1 Time to live exceeded"}, 1),  # a hop outside
+    ({"HOP1_RC": "0", "PING_T3": "From 192.168.1.1 icmp_seq=1 Time to live exceeded"}, 1),  # pfSense leaking
     ({"PING_RC": "0"}, 1),  # the target itself answered
 ])
-def test_bash_route_needs_hop_one_to_answer(tmp_path, env, expected):
+def test_bash_route_needs_hop_one_proven_alive(tmp_path, env, expected):
     ctx = scripts.Context(range_addresses=("10.80.0.0/24", "10.30.32.101"))
-    assert _bash(tmp_path, [scripts.Probe("route", ("10.30.30.1",))], ctx, **env) == [expected]
+    probe = scripts.Probe("route", ("10.30.30.1", "10.30.32.10", "8081"))
+    assert _bash(tmp_path, [probe], ctx, **env) == [expected]
+
+
+@pytest.mark.skipif(not os.path.exists("/bin/bash"), reason="needs bash")
+def test_bash_route_without_an_exception_cannot_prove_a_silent_first_hop(tmp_path):
+    ctx = scripts.Context(range_addresses=("10.80.0.0/24",))
+    assert _bash(tmp_path, [scripts.Probe("route", ("10.30.30.1",))], ctx, HOP1_RC="0") == [6]
 
 
 @pytest.mark.skipif(not os.path.exists("/bin/bash"), reason="needs bash")

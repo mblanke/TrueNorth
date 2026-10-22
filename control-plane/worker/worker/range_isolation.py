@@ -86,6 +86,11 @@ RESULTS = (PROVEN, REACHABLE, INCONCLUSIVE, CONNECT_FAILED)
 ISOLATED, NOT_ISOLATED, INCOMPLETE = "isolated", "not_isolated", "incomplete"
 # What a check expects: must fail, must connect, a precondition, a recorded fact.
 MUST_FAIL, MUST_CONNECT, PRECONDITION, FACT = "unreachable", "reachable", "precondition", "fact"
+# A check that can only lower the verdict: a leak it finds counts, its silence proves nothing
+# (the route check with no permitted exception to prove hop 1 alive through).
+ADVISORY = "advisory"
+ROUTE_ADVISORY = ("route check advisory: no permitted exception (tn_range_isolation_exceptions) to prove the first "
+                  "hop alive through, so a silent first hop proves nothing; a path out still fails the range")
 FACT_STATES = {0: "present", 1: "absent"}  # v6route / v6addr codes; anything else "unknown"
 STAFF, STUDENT_VISIBLE = "staff", "student_visible"  # account classes
 
@@ -423,8 +428,10 @@ def plan_checks(z: dict, probe_vm: dict, output: dict, cfg: Settings, dns: tuple
         out.append(Check("dns_internal", f"{dns[1]} @ {dns[0]}", PRECONDITION, Probe("dns_int", dns)))
     out.append(Check("dns_external", cfg.external_name, MUST_FAIL, Probe("dns_ext", (cfg.external_name,))))
     route_to = next((t.host for t in cfg.targets if not t.v6 and _ip(t.host)), "")
-    if route_to:
-        out.append(Check("route", route_to, MUST_FAIL, Probe("route", (route_to,))))
+    if route_to:  # hop-1 liveness through the first permitted exception (the edge forwards it)
+        live = next((t for t in cfg.exceptions if not t.v6 and _ip(t.host)), None)
+        out.append(Check("route", route_to, MUST_FAIL if live else ADVISORY,
+                         Probe("route", (route_to, live.host, str(live.port)) if live else (route_to,))))
     out.append(Check("ipv6_route", "route", FACT, Probe("v6route")))
     out.append(Check("ipv6_address", "address", FACT, Probe("v6addr")))
     return out
@@ -459,14 +466,16 @@ def classify(check: Check, code: int | None, selftest_ok: bool, dns_ok: bool | N
         if code in (1, 2):
             return PROVEN if selftest_ok and dns_ok is not False else INCONCLUSIVE
         return INCONCLUSIVE
-    if kind == "route":
-        return {0: silent(), 1: REACHABLE}.get(code, INCONCLUSIVE)
+    if kind == "route":  # 2: hop 1 silent toward it, proven live via the exception; 6: not proven live
+        return {0: silent(), 2: silent(), 1: REACHABLE}.get(code, INCONCLUSIVE)
     return INCONCLUSIVE
 
 
 def passed(expect: str, result: str) -> bool | None:
     if expect == MUST_FAIL:
         return result == PROVEN
+    if expect == ADVISORY:
+        return False if result == REACHABLE else None
     if expect in (MUST_CONNECT, PRECONDITION):
         return result == REACHABLE
     return None  # a fact is not graded
@@ -490,6 +499,13 @@ def grade_zone(z: dict, planned: list[Check], codes: list[int | None], cfg: Sett
             row["note"] = "not measured from this zone: the probe VM's route leaves by another NIC"
         elif c.probe.kind == "icmp" and by[c] == 4:
             row["note"] = "an ICMP unreachable came from a router outside the range"
+        elif c.probe.kind == "route" and by[c] == 2:
+            row["note"] = ("hop 1 stayed silent toward the target (it drops before forwarding) and is proven alive "
+                           "by a TTL-1 connect toward the permitted exception")
+        elif c.probe.kind == "route" and by[c] == 6:
+            row["note"] = "hop 1 stayed silent and could not be proven alive through the permitted exception"
+        if c.expect == ADVISORY:
+            row["note"] = "; ".join(n for n in (row.get("note"), ROUTE_ADVISORY) if n)
         rows.append(row)
     # IPv6 facts (not checks): with no default route and no global address the zone has no
     # IPv6 path out; with either, only the site's IPv6 targets (if any are set) can prove
@@ -525,7 +541,8 @@ def _is_v6(target: str) -> bool:
 
 
 def verdict_of_checks(rows: list[dict], selftest_ok: bool, has_selftest: bool) -> dict:
-    leaks = [f"{r['check']} {r['target']}" for r in rows if r["expect"] == MUST_FAIL and r["result"] == REACHABLE]
+    leaks = [f"{r['check']} {r['target']}" for r in rows
+             if r["expect"] in (MUST_FAIL, ADVISORY) and r["result"] == REACHABLE]
     if leaks:
         return {"verdict": NOT_ISOLATED, "reasons": [f"reachable outside its exceptions: {', '.join(leaks)}"]}
     reasons = []
@@ -683,6 +700,8 @@ async def run(provisioner, range_id: str, output: dict, template: dict, accounts
         return record(rows, None, current, notes=[str(exc)], started=started, source=source,
                       skipped_nets=excluded(output))
     notes = list(cfg.notes)
+    if cfg.targets and not any(not t.v6 and _ip(t.host) for t in cfg.exceptions):
+        notes.append(ROUTE_ADVISORY)
     deadline = started + cfg.budget
     if finish_by is not None:
         deadline = min(deadline, finish_by - 30.0)  # leave the build time to store its result
