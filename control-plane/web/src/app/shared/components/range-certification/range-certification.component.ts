@@ -8,7 +8,7 @@ import { roleCan } from '@core/auth/permissions';
 import { AuthService } from '@core/services/auth.service';
 import { NotificationService } from '@core/services/notification.service';
 import {
-  CertificationRecord, CertificationSection, RangeCertification, RangeCertificationApiService,
+  CertificationRecord, CertificationSection, IsolationZone, RangeCertification, RangeCertificationApiService,
 } from '@core/services/range-certification-api.service';
 
 const STATUS_LABEL: Record<CertificationSection['status'], string> = {
@@ -16,6 +16,15 @@ const STATUS_LABEL: Record<CertificationSection['status'], string> = {
 };
 const STATUS_ICON: Record<CertificationSection['status'], string> = {
   pass: 'check_circle', fail: 'cancel', incomplete: 'pending', missing: 'help_outline', info: 'info',
+};
+/** ADR 0013 §4 result classes. */
+const RESULT_LABEL: Record<string, string> = {
+  proven_unreachable: 'proven unreachable', reachable: 'REACHABLE', inconclusive: 'inconclusive',
+  connect_failed_only: 'connect failed only',
+};
+const ZONE_STATUS: Record<string, string> = {
+  no_probe: 'No probe VM', guest_op_failed: 'Guest operations failed', budget_exhausted: 'Out of time',
+  not_run: 'Not run',
 };
 
 /**
@@ -95,6 +104,52 @@ const STATUS_ICON: Record<CertificationSection['status'], string> = {
                 }
               </tbody>
             </table>
+            @if (isolation(); as iso) {
+              <div class="isolation" aria-label="Isolation evidence per zone">
+                <div class="iso-head">
+                  <h4>Isolation evidence per zone</h4>
+                  @if (canCapture()) {
+                    <button mat-stroked-button (click)="reprobe()" [disabled]="busy()"
+                            matTooltip="Run the probes again from every zone (a ready range only). The range's state is never changed.">
+                      <mat-icon>network_check</mat-icon> Probe again
+                    </button>
+                  }
+                </div>
+                <p class="muted small">
+                  Mode: <strong>{{ iso.mode }}</strong>{{ iso.mode === 'enforce' ? ' (a range that is not isolated fails its build)' : ' (recorded; does not block a build)' }}.
+                  @if (iso.ranAt) { Probed {{ iso.ranAt | date: 'medium' }}{{ iso.source === 'reprobe' ? ' (re-probe)' : ' (at build)' }}. }
+                  Evidence is what each probe VM reported; whoever controls a guest can fake it.
+                </p>
+                @if (iso.untrustedReprobe) {
+                  <p class="muted small" role="note">A later re-probe from VMs Students may control did not raise this verdict.</p>
+                }
+                <table class="tn-table">
+                  <caption class="sr-only">Isolation evidence per zone</caption>
+                  <thead>
+                    <tr><th scope="col">Zone</th><th scope="col">Probe</th><th scope="col">Self-test</th><th scope="col">Checks</th><th scope="col">Result</th></tr>
+                  </thead>
+                  <tbody>
+                    @for (z of iso.zones; track z.zone) {
+                      <tr [attr.data-zone]="z.zone">
+                        <td>{{ z.zone }}@if (z.cidr) { <span class="muted"> {{ z.cidr }}</span> }</td>
+                        <td>
+                          @if (z.probe; as p) {
+                            {{ p.vm }} <span class="muted">({{ p.family }}, {{ p.account }}{{ p.admin ? ', admin' : '' }},
+                              {{ p.account_class === 'staff' ? 'staff account' : 'Student-visible account' }}{{ p.multi_homed ? ', multi-homed, from ' + p.source_ip : '' }})</span>
+                          } @else { <span class="muted">{{ zoneStatus(z.status) }}</span> }
+                        </td>
+                        <td>{{ z.status === 'probed' ? (z.selftest?.passed ? 'passed' : 'failed') : '—' }}</td>
+                        <td class="small">{{ counts(z) }}</td>
+                        <td>
+                          <span class="state" [attr.data-status]="zoneState(z)">{{ zoneLabel(z) }}</span>
+                          @if (z.reasons?.length) { <div class="muted small">{{ z.reasons!.join('; ') }}</div> }
+                        </td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+            }
             <p class="muted small">Plan hash ({{ r.plan_hash_basis }}): <code>{{ r.plan_hash.slice(0, 16) }}…</code>.
               Records are never edited; corrections are appended.</p>
             @if (superseded() > 0) {
@@ -190,6 +245,9 @@ const STATUS_ICON: Record<CertificationSection['status'], string> = {
     .link { margin-top: 4px; }
     .history h4 { margin: 8px 0 2px; font-size: 13px; }
     .history ol { margin: 0; padding-left: 20px; font-size: 13px; }
+    .isolation { margin: 12px 0 4px; }
+    .iso-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .iso-head h4 { margin: 0; font-size: 14px; }
     .archived { margin-top: 12px; }
     .archived summary { cursor: pointer; font-size: 14px; }
     code { font-family: var(--font-mono); font-size: 12px; }
@@ -213,6 +271,20 @@ export class RangeCertificationComponent {
   readonly error = signal('');
   readonly historyOpen = signal(false);
   readonly history = signal<CertificationRecord | null>(null);
+  /** The isolation section's per-zone evidence (S4), from its latest entry's detail. */
+  readonly isolation = computed(() => {
+    const s = this.record()?.sections.find(x => x.name === 'isolation');
+    const detail = s?.entries?.[0]?.detail as Record<string, unknown> | undefined;
+    const zones = detail?.['zones'];
+    if (!Array.isArray(zones)) return null;
+    return {
+      mode: typeof detail?.['mode'] === 'string' ? detail['mode'] as string : 'warn',
+      ranAt: typeof detail?.['ran_at'] === 'string' ? detail['ran_at'] as string : null,
+      source: detail?.['source'] === 'reprobe' ? 'reprobe' : 'build',
+      untrustedReprobe: detail?.['decided_by'] === 'build' && !!detail?.['reprobe'],
+      zones: zones as IsolationZone[],
+    };
+  });
   /** Entries hidden from the card: every section's entries but its latest. */
   readonly superseded = computed(() =>
     (this.record()?.sections ?? []).reduce((n, s) => n + Math.max(0, s.history_count - 1), 0));
@@ -235,6 +307,45 @@ export class RangeCertificationComponent {
     return '';
   }
   icon(s: CertificationSection): string { return STATUS_ICON[s.status]; }
+
+  zoneStatus(status: string): string { return ZONE_STATUS[status] ?? status; }
+
+  /** The zone's grade as a section status, for the colour. */
+  zoneState(z: IsolationZone): CertificationSection['status'] {
+    return z.verdict === 'isolated' ? 'pass' : z.verdict === 'not_isolated' ? 'fail' : 'incomplete';
+  }
+
+  zoneLabel(z: IsolationZone): string {
+    return z.verdict === 'isolated' ? 'Isolated' : z.verdict === 'not_isolated' ? 'Not isolated' : 'Not proven';
+  }
+
+  /** "12 proven unreachable, 1 connect failed only" — how each graded check came out. */
+  counts(z: IsolationZone): string {
+    const n = new Map<string, number>();
+    for (const c of z.checks ?? []) {
+      if (c.expect === 'precondition') continue;
+      const key = c.expect === 'reachable' ? (c.result === 'reachable' ? 'exceptions connected' : 'exceptions failed')
+        : RESULT_LABEL[c.result] ?? c.result;
+      n.set(key, (n.get(key) ?? 0) + 1);
+    }
+    return [...n.entries()].map(([k, v]) => `${v} ${k}`).join(', ') || '—';
+  }
+
+  reprobe(): void {
+    const id = this.rangeId();
+    this.busy.set(true);
+    this.api.checkIsolation(id).subscribe({
+      next: res => {
+        this.busy.set(false);
+        if (res.dispatched) this.notify.success('Isolation probes started; the record shows the result when they finish');
+        else this.notify.error('The task queue could not be reached; try again later');
+      },
+      error: (err: unknown) => {
+        this.busy.set(false);
+        this.notify.error(describe(err));
+      },
+    });
+  }
 
   toggleHistory(): void {
     const open = !this.historyOpen();

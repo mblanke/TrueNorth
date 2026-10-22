@@ -95,7 +95,13 @@ def record_applied(session: Session, range_id: str, built_vms: list[dict]) -> No
 
 
 async def provision(provisioner, range_id: str, template: dict, allocations: dict, session: Session):
-    """``provisioner.provision`` with the range's accounts attached, then recorded."""
+    """``provisioner.provision`` with the range's accounts attached, then recorded; then,
+    once the build is ready, its isolation probed from every zone as the least-privileged
+    of those accounts (range certification S4, range_isolation.after_build: bounded by the
+    build's ``finish_by``, never raises; ``result.isolation``)."""
+    from . import range_isolation
+
     result = await provisioner.provision(range_id, attach(template, session, range_id), allocations)
     record_applied(session, range_id, getattr(result, "vms", None) or [])
+    await range_isolation.after_build(provisioner, range_id, template, result, allocations, session)
     return result

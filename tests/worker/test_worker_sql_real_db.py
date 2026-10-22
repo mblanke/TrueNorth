@@ -1072,6 +1072,10 @@ PG_CALLS = {
     "insert_reservations": lambda db: db_ops.insert_reservations(db, ID, "vsphere:vlans", "vlan", {"200": "100"}),
     "release_destroyed_range": lambda db: db_ops.release_destroyed_range(db, ID),
     "merge_range_output": lambda db: db_ops.merge_range_output(db, ID, {"k": 1}),
+    # Range certification S4: the re-probe's read and its conditional store.
+    "range_state": lambda db: db_ops.range_state(db, ID),
+    "range_account_visibility": lambda db: db_ops.range_account_visibility(db, ID),
+    "store_isolation": lambda db: db_ops.store_isolation(db, ID, {"started_at": "2026-10-22T00:00:00+00:00"}, set()),
     # Range certification S1: external reservations and the collision release.
     "range_held_values": lambda db: db_ops.range_held_values(db, "vsphere:vlans", "vlan"),
     "external_reservations": lambda db: db_ops.external_reservations(db, "vsphere:vlans", "vlan"),

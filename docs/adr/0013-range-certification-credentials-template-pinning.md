@@ -64,6 +64,24 @@ Not ported: the guard hook and file-based approvals (TrueNorth has RBAC and an a
 
 - The verdict is **Isolated** only if every zone has a probe and every non-exception check is `proven_unreachable`. Any weaker verdict states exactly what is missing.
 - Site targets and permitted exceptions come from installer settings. The mode `RANGE_ISOLATION_CHECK=warn|enforce` stays at **`warn`**. **`enforce` waits for the network team's decision** on the isolation model and trust boundaries (below).
+- *Implemented (S4, #242):* `worker/range_isolation.py` and `worker/isolation_scripts.py`. On Windows the probes run as PowerShell through guest operations (`-EncodedCommand`); **no probe container is injected**, so nothing is installed or left in the guest. A template node can be marked `probe: true` to be its zone's probe VM. A staff re-probe (`POST /ranges/{id}/certification/isolation-check`) re-runs the probes on a ready range and never changes its state.
+  *Amended after the adversarial review of #267:*
+  - A multi-homed probe VM measures a target only if its route to it leaves by the zone's NIC; otherwise that check is inconclusive. Single-homed VMs are preferred.
+  - IPv6 counts as present on any route other than link-local, multicast or loopback, and on any address other than `fe80::/10` and `::1` (ULA included). A present IPv6 stack is proven contained only by site IPv6 targets.
+  - Staff-only accounts are used before Student-visible ones.
+  - A re-probe is stored next to the build's run, and both stay in the record. It can lower the verdict, but it can raise it only when every zone was measured from a `probe: true` VM using a staff-only account.
+  - In `enforce`, a range that is not proven isolated is also powered off.
+  - The evidence is "as measured from <VM> using <account class>". Whoever controls a guest can fake its probes.
+  - *Re-review of #267:*
+    - A re-probe VM is trusted only if its node is `probe: true`, the login is staff-only, and no account on that node is Student-visible.
+    - The multi-homed path check is source-aware (`ip route get <t> from <zone ip>`) and also checks the probe's own route.
+    - ICMP errors (unreachable, prohibited, filtered, isolated, TTL exceeded) from outside the range count as reachable.
+    - Long Windows command lines are kept short: zone CIDRs, and each step carries only the lists it reads. An oversize pair splits.
+    - The TTL route probe needs hop 1 to be shown alive before silence counts as proof. *Decided 2026-10-22 (coordinator):*
+      - Hop 1 is alive if it answers the TTL-limited probe toward the site target (VyOS: Linux checks TTL before its forward filter).
+      - Otherwise (pfSense filters before forwarding, so it sends no Time Exceeded for a blocked destination), hop 1 is alive if it answers a TTL-1 connect toward the **first permitted exception** (the depot), which the edge does forward: a TCP SYN to its port (Linux: the kernel aborts the connect with `EHOSTUNREACH`; Windows: a `Socket` with `Ttl = 1`), else a TTL-1 ping.
+      - Once hop 1 is alive, silence toward a blocked site target counts as `proven_unreachable`, consistent with the TCP and ICMP timeouts. If the exception path's hop 1 does not answer either, the route check is inconclusive.
+      - With **no permitted exception configured**, the route check is **advisory**: a path out still fails the range, but its silence holds nothing back, and the record says so.
 
 ### 5. Teardown by independently identified inventory, and drift (S5)
 

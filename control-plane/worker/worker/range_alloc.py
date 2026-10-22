@@ -290,7 +290,8 @@ def stored_output(backend: str, range_id: str, result, provisioner=None) -> dict
     and the range pages read back, and the endpoint it was built on (``connection``:
     worker/connection_binding.py), which every later operation must reach again."""
     out = {"provider": backend, "range_id": range_id, "vms": result.vms, "networks": result.networks}
-    for key in ("uplink", "mirrors", "warnings", "not_ready", "inventory"):  # inventory: S5 (range_inventory.py)
+    # inventory: S5 (range_inventory.py); isolation: S4 (range_isolation.py)
+    for key in ("uplink", "mirrors", "warnings", "not_ready", "inventory", "isolation"):
         if getattr(result, key, None):
             out[key] = getattr(result, key)
     record = getattr(provisioner, "connection_record", None)  # BaseProvisioner's; None: not one
@@ -307,9 +308,16 @@ def build_outcome(result) -> tuple[str, str | None]:
 
     Not ``ready`` with the plan's addresses on show (2026-10-20). Recorded as ``failed``
     with the built output, not raised: a retry would clone the same VMs again, and the
-    recorded VMs are what destroy, and the API's "destroy it first" check, work from."""
+    recorded VMs are what destroy, and the API's "destroy it first" check, work from.
+
+    Range certification S4: with RANGE_ISOLATION_CHECK=enforce, a ready build whose
+    isolation verdict is not ``isolated`` (``result.isolation``, range_isolation.py) is
+    ``failed`` the same way. In ``warn`` (the default) the verdict is only recorded."""
     names = list(getattr(result, "not_ready", None) or [])
     if not names:
-        return "ready", None
+        from .range_isolation import blocking
+
+        error = blocking(getattr(result, "isolation", None))
+        return ("failed", error) if error else ("ready", None)
     reasons = [e for e in result.errors if any(e.startswith(f"VM {n}:") for n in names)] or names
     return "failed", f"{len(names)} VM(s) built but not ready: " + "; ".join(reasons)

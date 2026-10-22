@@ -56,6 +56,22 @@
       "description": "Compare live ranges with their recorded inventory (S5).",
       "queue": "default"
     },
+    "worker.tasks.check_range_isolation": {
+      "args": {
+        "maxItems": 1,
+        "minItems": 1,
+        "prefixItems": [
+          {
+            "description": "ranges.id (UUID)",
+            "title": "range_id",
+            "type": "string"
+          }
+        ],
+        "type": "array"
+      },
+      "description": "Re-run a ready range's per-zone isolation probes and store the evidence; never changes the range's state (ADR 0013 \u00a74; worker/isolation_task.py).",
+      "queue": "provision"
+    },
     "worker.tasks.collect_range_metrics": {
       "args": {
         "maxItems": 0,

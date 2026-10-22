@@ -1169,3 +1169,40 @@ def test_s5_drift_ram_vlan_and_snapshots(env, si, range_id):
         assert "portgroup_vlan_changed" in {f["kind"] for f in result["findings"]} and result["status"] == "fail"
     finally:
         assert _run(mod.VsphereAPIProvisioner().destroy(range_id, output)).status == "ok"
+
+
+def test_s4_isolation_probes_fail_closed_on_the_simulator(env, si, range_id, monkeypatch):
+    """Range certification S4 against a real build: every zone the build made is probed or
+    recorded as not, and nothing passes without proof. vcsim runs no VMware Tools (so no zone
+    has a probe VM) and cannot do guest operations (so a forced attempt fails): both are
+    recorded inconclusive, the verdict never ``isolated``, and no password in the record."""
+    import json
+
+    from worker import range_isolation
+    from worker.provisioners.vsphere_guest import RangeAccount, Secret
+
+    monkeypatch.setenv("TN_RANGE_ISOLATION_PROBE_TARGETS", "10.30.30.1:443,192.168.1.10:443")
+    monkeypatch.setenv("TN_RANGE_ISOLATION_ZONE_TIMEOUT", "20")
+    prov = mod.VsphereAPIProvisioner()
+    template = _template(range_id)
+    built = _run(prov.provision(range_id, template, {**_reserve(prov, range_id, template), "range_name": "Sim S4"}))
+    assert built.status == "ok", built.errors
+    output = {"provider": "vsphere_api", "vms": built.vms, "networks": built.networks,
+              "connection": prov.connection_record()}
+    try:
+        rec = _run(range_isolation.run(mod.VsphereAPIProvisioner(), range_id, output, RANGE, {}))
+        assert sorted(z["zone"] for z in rec["zones"]) == ["blue", "red"]
+        assert {z["status"] for z in rec["zones"]} == {"no_probe"}, "Tools is not running in a vcsim VM"
+        assert rec["verdict"] == "incomplete"
+
+        forced = {**output, "vms": [{**v, "tools_ready": True, "ip_verified": True} for v in built.vms]}
+        accounts = {range_isolation.node_of(v, range_id): [RangeAccount("student", Secret("sim-pw-s4"), False)]
+                    for v in built.vms}
+        guest = mod.VsphereAPIProvisioner()
+        guest._guest_poll = 0.2
+        rec = _run(range_isolation.run(guest, range_id, forced, RANGE, accounts))
+        assert {z["status"] for z in rec["zones"]} == {"guest_op_failed"}, [z["reasons"] for z in rec["zones"]]
+        assert rec["verdict"] == "incomplete" and "sim-pw-s4" not in json.dumps(rec)
+        assert {z["probe"] for z in rec["zones"]} == {None}
+    finally:
+        assert _run(mod.VsphereAPIProvisioner().destroy(range_id, output)).status == "ok"

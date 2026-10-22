@@ -9351,6 +9351,26 @@
         "title": "InventoryVmOut",
         "type": "object"
       },
+      "IsolationCheckOut": {
+        "properties": {
+          "dispatched": {
+            "description": "False: the task queue was not reachable; ask again later. The new evidence (with the worker's mode) shows on the certification record",
+            "title": "Dispatched",
+            "type": "boolean"
+          },
+          "range_id": {
+            "format": "uuid",
+            "title": "Range Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "range_id",
+          "dispatched"
+        ],
+        "title": "IsolationCheckOut",
+        "type": "object"
+      },
       "JobView": {
         "properties": {
           "action": {
@@ -38490,6 +38510,64 @@
           }
         ],
         "summary": "Export Range Certification Pdf",
+        "tags": [
+          "ranges"
+        ]
+      }
+    },
+    "/ranges/{range_id}/certification/isolation-check": {
+      "post": {
+        "description": "Probe the range's isolation again from every zone (ADR 0013 \u00a74: the worker runs the\nprobes in each zone's probe VM through guest operations and stores the result; the\nrecord appends it on its next read). Use it after the network around the range\nchanged. It never changes the range's state, in warn or enforce mode. Audited.\n**Permission: range:certification_read and range:provision**",
+        "operationId": "check_range_isolation_ranges__range_id__certification_isolation_check_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "range_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Range Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IsolationCheckOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Not staff: Students and observers do not see certification records"
+          },
+          "404": {
+            "description": "No such range in the caller's tenant, or no record for that deployment"
+          },
+          "409": {
+            "description": "The range is not ready (its VMs must be up to be probed)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Check Range Isolation",
         "tags": [
           "ranges"
         ]
