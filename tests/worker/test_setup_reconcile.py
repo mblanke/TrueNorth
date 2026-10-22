@@ -224,6 +224,29 @@ def test_a_guest_network_check_still_inside_its_window_writes_nothing(ip_world, 
     assert world["written"] is None and world["states"] == []
 
 
+def test_a_windows_customization_check_left_running_is_reconciled_and_can_fail_the_range(ip_world, world):
+    """#255: a Windows VM whose Sysprep outcome the build's budget cut off. Its network check
+    settles first: the "not finished yet" warning stays until the customization one does."""
+    vm = ip_world["vms"][0]
+    vm["customization"] = {"status": "running", "deadline": time.time() + 600}
+    ip_world["warnings"] = ["VM r1-ubu02: guest network not verified yet (x); "
+                            "guest customization (Sysprep) not finished yet (y)"]
+    assert sr._ip_pending({"vms": [{**vm, "ip_check": {"status": "ok"}}]}) != []  # customization alone counts
+    world["ips"] = {"r1-ubu02": {"ip_verified": True, "ip_check": {"status": "ok"}}}
+    sr._reconcile_range("r1", "Range 1", ip_world, "vsphere")
+    assert world["written"]["warnings"] == ip_world["warnings"] and world["states"] == []
+
+    vm["ip_check"] = {"status": "ok"}  # what that round stored (the fake DB re-reads ``ip_world``)
+    reason = "guest customization (Sysprep) failed (TOOLSDEPLOYPKG_FAILED); the template's build Administrator ..."
+    world["ips"] = {"r1-ubu02": {"customization": {"status": "failed", "detail": reason}, "not_ready": reason}}
+    sr._reconcile_range("r1", "Range 1", ip_world, "vsphere")
+    (written,) = world["written"]["vms"]
+    assert written["customization"]["status"] == "failed" and world["written"]["not_ready"] == ["r1-ubu02"]
+    assert not [w for w in world["written"]["warnings"] if "not finished yet" in w]
+    ((new, kw),) = world["states"]
+    assert new == "failed" and kw["only_from"] == ("ready",) and reason in kw["error"]
+
+
 def test_the_query_covers_every_live_state():
     from sqlalchemy.dialects import postgresql
 

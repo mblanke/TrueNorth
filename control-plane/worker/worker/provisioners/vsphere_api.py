@@ -73,6 +73,7 @@ except ImportError:  # only the snapshot operations need it
 from .. import pfsense_config, software_catalogue, uplink_pool, vlan_pool, vyos_config
 from . import template_copies, vsphere_products, vsphere_readiness, vsphere_roles
 from . import vsphere_credcheck as credcheck
+from . import vsphere_customization as customization
 from . import vsphere_guest as guest
 from . import vsphere_infra as infra
 from . import vsphere_macs as macs
@@ -976,6 +977,23 @@ class VsphereAPIProvisioner(BaseProvisioner):
         return {"tools_ready": tools_ready, "seen": seen, "timeout": round(timeout), "checked": checked,
                 "cut": checked and timeout < full, "deadline": powered_on_at + full}
 
+    async def _await_customization(self, si, vm, powered_on: float, powered_on_at: float) -> dict:
+        """#255: a Windows VM's guest customization (Sysprep) outcome after power-on
+        (vsphere_customization.read), polled until it finishes or the readiness window
+        (VSPHERE_GUEST_IP_TIMEOUT from ``powered_on``, monotonic) ends; never past the build
+        budget, but always one look. VSPHERE_GUEST_IP_CHECK=off: the one look only."""
+        full = self._guest_ip_timeout
+        end = min(powered_on + full, self._budget_end) if self._budget_end else powered_on + full
+        checked = self._guest_ip_check
+        while True:
+            seen = await asyncio.to_thread(customization.read, si.content, vm)
+            if seen["status"] in customization.FINISHED or not checked or time.monotonic() >= end:
+                break
+            await asyncio.sleep(min(self._guest_poll, max(0.0, end - time.monotonic())))
+        # ``cut``: the build budget, not the window, ended the wait (the reconcile task settles it).
+        return {**seen, "checked": checked, "timeout": round(max(0.0, end - powered_on)),
+                "cut": checked and end < powered_on + full, "deadline": powered_on_at + full}
+
     # ------------------------------------------------------------------ #
     # Snapshots: vSphere Web Services API through pyVmomi
     # ------------------------------------------------------------------ #
@@ -1568,6 +1586,8 @@ class VsphereAPIProvisioner(BaseProvisioner):
         default. Linux gets its accounts as cloud-init users, the build user's included (the
         implicit staff login), which replaces the template password it was built with.
         ``vsphere_credcheck`` then proves the template password no longer logs in.
+        ``CustomizeVM_Task`` only applies the Windows spec: Sysprep runs after power-on, and
+        its outcome is checked on every Windows VM (``_await_customization``, #255).
 
         Every NIC's MAC is read back first and must be the reserved one the clone spec set
         (vsphere_macs.py): the guest config is keyed to it, so a NIC that came out with
@@ -2714,8 +2734,12 @@ class VsphereAPIProvisioner(BaseProvisioner):
         vsphere_readiness.assess): one VMware Tools read per pending VM, no waiting, so a
         reconcile run stays bounded. Returns {vm name: fields to store} for the VMs that
         are settled (verified, or past their window: ``not_ready``). Only the range's own
-        VMs are read (``_screen``); a VM vCenter no longer has reports no address."""
-        pending = [v for v in output.get("vms") or [] if vsphere_readiness.pending(v)]
+        VMs are read (``_screen``); a VM vCenter no longer has reports no address.
+
+        A Windows VM's guest customization check left ``running`` (#255,
+        vsphere_customization) is settled here too, from one read of its status."""
+        pending = [v for v in output.get("vms") or []
+                   if vsphere_readiness.pending(v) or customization.pending(v)]
         if not pending:
             return {}
         now = time.time() if now is None else now
@@ -2727,10 +2751,24 @@ class VsphereAPIProvisioner(BaseProvisioner):
             mine = {v["vm_id"] for v in ours}  # not ours under that id: left alone (and logged)
             async with self._client() as client:
                 for v in (v for v in pending if v["vm_id"] in mine):
-                    seen = [] if v["vm_id"] in missing else await self._guest_ipv4s(client, v["vm_id"])
-                    if (verdict := vsphere_readiness.settle(v, seen, now)) is not None:
+                    verdict: dict = {}
+                    if vsphere_readiness.pending(v):
+                        seen = [] if v["vm_id"] in missing else await self._guest_ipv4s(client, v["vm_id"])
+                        verdict.update(vsphere_readiness.settle(v, seen, now) or {})
+                    if customization.pending(v):
+                        status = ({"status": "", "source": "vm not found"} if v["vm_id"] in missing
+                                  else await asyncio.to_thread(self._customization_sync, v["vm_id"]))
+                        if (sysprep := customization.settle(v, status, now)) is not None:
+                            reasons = (verdict.pop("not_ready", ""), sysprep.pop("not_ready", ""))
+                            verdict.update(sysprep, **({"not_ready": "; ".join(r for r in reasons if r)}
+                                                       if any(reasons) else {}))
+                    if verdict:
                         changes[v["name"]] = verdict
         return changes
+
+    def _customization_sync(self, vm_id: str) -> dict:
+        si = self._soap()
+        return customization.read(si.content, self._vm(si, vm_id))
 
     async def _rollback(self, si, range_id: str, networks: list[dict], errors: list[str]) -> None:
         """Best effort: remove what a failed build created (its VMs already removed themselves)."""
@@ -2775,11 +2813,18 @@ class VsphereAPIProvisioner(BaseProvisioner):
                     with contextlib.suppress(Exception):
                         await self._delete_vm(client, vm_id)
                 raise
+        powered_on, powered_on_at = time.monotonic(), time.time()
         guest_net = await self._await_guest_network(client, vm_def, vm_id)
         ready = vsphere_readiness.assess(vm_def, guest_net)
+        if customization.applies(vm_def):  # #255: Sysprep's outcome, every Windows VM
+            sysprep = customization.assess(await self._await_customization(si, vm, powered_on, powered_on_at))
+            ready["customization"] = sysprep["customization"]
+            for key in ("not_ready", "warning"):
+                if sysprep[key]:  # Sysprep's own error text: scrubbed of the VM's passwords
+                    ready[key] = "; ".join(t for t in (ready[key], self._redact(sysprep[key], vm_def)) if t)
         mgmt_ip = vm_def.get("_mgmt_ip") if any(n.get("noise") for n in vm_def["nics"]) else None
         host, datastore = vm_def["_placement"]
-        extra = {key: ready[key] for key in ("not_ready", "warning", "ip_check") if ready[key]}
+        extra = {key: ready[key] for key in ("not_ready", "warning", "ip_check", "customization") if ready.get(key)}
         if (cfg := vm_def.get("_pfsense") or vm_def.get("_vyos")) is not None:
             extra[getattr(cfg, "product", "vyos")] = cfg.summary()  # pfsense | opnsense | vyos
         if mgmt_ip:

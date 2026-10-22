@@ -175,11 +175,43 @@ class TestRecord:
         ([_vm("web01", ip_verified=None)], "guest network not verified by VMware Tools: web01"),  # DHCP or opted out
         ([_vm("fw01", ip_verified=None, vyos={})], "guest network not verified by VMware Tools: every VM is an appliance"),
         ([_vm("web01", ip_verified=True, ip_check={"status": "running"})], "guest network check still running on web01"),
+        # #255: a Windows VM is proven only by a recorded Sysprep success.
+        ([_vm("win01", ip_verified=True, family="windows")],
+         "guest customization (Sysprep) success not recorded on win01"),
+        ([_vm("win01", ip_verified=True, family="windows", customization={"status": "unverified"})],
+         "guest customization (Sysprep) success not recorded on win01"),
+        ([_vm("win01", ip_verified=True, family="windows", customization={"status": "running", "deadline": 1.0})],
+         "guest customization (Sysprep) check still running on win01"),
     ])
     def test_readiness_passes_only_on_verified_guests(self, client, db_session, world, vms, expected):
         rng, _ = _built(client, db_session, world, {**GOOD_OUTPUT, "vms": vms})
         readiness = _sections(_cert(client, rng).json())["guest_readiness"]
         assert (readiness["status"], readiness["summary"]) == ("incomplete", expected)
+
+    def test_a_windows_sysprep_failure_fails_the_record(self, client, db_session, world):
+        """#255: a recorded Sysprep failure fails the section (and the verdict), with the
+        VM's outcome in the entry's detail."""
+        failed = {"status": "failed", "vsphere_status": "TOOLSDEPLOYPKG_FAILED", "source": "guest",
+                  "detail": "guest customization (Sysprep) failed (TOOLSDEPLOYPKG_FAILED)"}
+        rng, _ = _built(client, db_session, world, {**GOOD_OUTPUT, "vms": [
+            *GOOD_OUTPUT["vms"], _vm("win01", ip_verified=True, family="windows", customization=failed)]})
+        body = _cert(client, rng).json()
+        readiness = _sections(body)["guest_readiness"]
+        assert (readiness["status"], readiness["summary"]) == ("fail", "1 VM(s) not ready: win01")
+        assert body["record"]["verdict"] == "not_safe"
+        row = next(r for r in readiness["entries"][0]["detail"]["vms"] if r["name"] == "win01")
+        assert row["customization"] == failed and row["family"] == "windows"
+
+    def test_a_windows_sysprep_success_is_named_in_the_pass(self, client, db_session, world):
+        ok = {"status": "ok", "vsphere_status": "TOOLSDEPLOYPKG_SUCCEEDED", "source": "guest"}
+        rng, _ = _built(client, db_session, world, {**GOOD_OUTPUT, "vms": [
+            *GOOD_OUTPUT["vms"], _vm("win01", ip_verified=True, family="windows", customization=ok)]})
+        readiness = _sections(_cert(client, rng).json())["guest_readiness"]
+        assert readiness["status"] == "pass" and "Sysprep succeeded on 1 Windows VM(s)" in readiness["summary"]
+        row = next(r for r in readiness["entries"][0]["detail"]["vms"] if r["name"] == "win01")
+        assert row["customization"] == ok
+        linux = next(r for r in readiness["entries"][0]["detail"]["vms"] if r["name"] == "web01")
+        assert linux["customization"] is None  # cloud-init: no Sysprep to record
 
     def test_a_check_settled_after_the_build_reaches_the_record_on_read(self, client, db_session, world):
         rng, _ = _built(client, db_session, world, {**GOOD_OUTPUT, "vms": [

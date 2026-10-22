@@ -43,19 +43,27 @@ def guest_readiness(output: dict, build_error: str | None = None) -> tuple[str, 
     build left). ``incomplete``: a check
     still running, a VM left unverified that the worker did not exempt (``ip_verified``
     None on a non-appliance: DHCP, ``verify_ip: false``), or a backend that records no
-    readiness. ``pass``: at least one VM verified and every other one an appliance."""
+    readiness. ``pass``: at least one VM verified and every other one an appliance.
+
+    #255: every Windows VM's guest customization (Sysprep) outcome (``vms[].customization``
+    .status: ok / failed / running / unverified; worker vsphere_customization). ``failed``
+    fails the section; ``running`` (left to the reconcile task), ``unverified``, or a
+    Windows VM with no outcome recorded keep it ``incomplete``: a failed Sysprep leaves the
+    template's build login on the VM, so only ``ok`` is proof."""
     vms = _vms(output)
     rows = [{"name": v.get("name", ""), "ip_verified": v.get("ip_verified"), "tools_ready": v.get("tools_ready"),
              "planned_ip": v.get("planned_ip", ""), "guest_ips": v.get("guest_ips") or [],
              "not_ready": v.get("not_ready", ""), "ip_check": (v.get("ip_check") or {}).get("status", ""),
-             "appliance": any(k in v for k in APPLIANCE_KEYS)}
+             "appliance": any(k in v for k in APPLIANCE_KEYS), "family": v.get("family", ""),
+             "customization": _customization(v)}
             for v in vms]
     detail = {"vms": rows, "not_ready": list(output.get("not_ready") or [])}
     if build_error:
         return FAIL, f"the build failed: {build_error[:300]}", detail
     if not vms:
         return INCOMPLETE, "no built VMs recorded", detail
-    bad = [r["name"] for r in rows if r["not_ready"] or r["ip_verified"] is False] + [
+    bad = [r["name"] for r in rows if r["not_ready"] or r["ip_verified"] is False
+           or (r["customization"] or {}).get("status") == "failed"] + [
         n for n in detail["not_ready"] if n not in {r["name"] for r in rows}]
     if bad:
         return FAIL, f"{len(bad)} VM(s) not ready: {', '.join(sorted(set(bad)))}", detail
@@ -64,12 +72,30 @@ def guest_readiness(output: dict, build_error: str | None = None) -> tuple[str, 
     pending = [r["name"] for r in rows if r["ip_check"] == "running"]
     if pending:
         return INCOMPLETE, f"guest network check still running on {', '.join(sorted(pending))}", detail
+    pending = [r["name"] for r in rows if (r["customization"] or {}).get("status") == "running"]
+    if pending:
+        return INCOMPLETE, f"guest customization (Sysprep) check still running on {', '.join(sorted(pending))}", \
+            detail
     unverified = sorted(r["name"] for r in rows if r["ip_verified"] is not True and not r["appliance"])
     verified = sum(1 for r in rows if r["ip_verified"] is True)
     if unverified or not verified:
         names = ", ".join(unverified) or "every VM is an appliance"
         return INCOMPLETE, f"guest network not verified by VMware Tools: {names}", detail
-    return PASS, f"{verified} of {len(rows)} VM(s) verified by VMware Tools; the rest router appliances", detail
+    windows = [r for r in rows if r["family"] == "windows"]
+    unproven = sorted(r["name"] for r in windows if (r["customization"] or {}).get("status") != "ok")
+    if unproven:
+        return INCOMPLETE, f"guest customization (Sysprep) success not recorded on {', '.join(unproven)}", detail
+    sysprep = f"; Sysprep succeeded on {len(windows)} Windows VM(s)" if windows else ""
+    return PASS, f"{verified} of {len(rows)} VM(s) verified by VMware Tools; the rest router appliances{sysprep}", \
+        detail
+
+
+def _customization(vm: dict) -> dict | None:
+    """A VM's recorded guest customization outcome (#255), or None when none was recorded."""
+    rec = vm.get("customization")
+    if not isinstance(rec, dict):
+        return None
+    return {k: rec.get(k) for k in ("status", "vsphere_status", "source", "detail") if rec.get(k) is not None}
 
 
 def template_provenance(output: dict, builds: dict[str, dict[str, dict]]) -> tuple[str, str, dict]:

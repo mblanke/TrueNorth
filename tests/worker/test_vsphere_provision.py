@@ -1425,8 +1425,11 @@ class TestDeployTimeSoftware:
 
         monkeypatch.setattr(FakeVM, "__init__", init)
         tpl = {**SW_TEMPLATE, "nodes": [SW_TEMPLATE["nodes"][0], SW_TEMPLATE["nodes"][2]]}
-        result = _run(_prov(vc).provision(RANGE_ID, _rendered(tpl), {}))
+        prov = _prov(vc)
+        prov._guest_ip_timeout = 30  # the readiness window: Sysprep's outcome is awaited in it (#255)
+        result = _run(prov.provision(RANGE_ID, _rendered(tpl), {}))
         assert result.status == "ok", result.errors
+        assert _vm_out(result, "dc01")["customization"]["status"] == "ok"
         # No login attempt while customization was still running: one by the iis role
         # install once it had finished, one by the software install after it.
         assert polls["n"] == 2

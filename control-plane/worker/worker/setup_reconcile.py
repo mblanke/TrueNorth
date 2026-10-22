@@ -93,15 +93,25 @@ def _running(output: dict) -> tuple[list[dict], list[dict]]:
     return products, sos
 
 
+READINESS_CHECKS = ("ip_check", "customization")  # vsphere_readiness, vsphere_customization (#255)
+NOT_YET = ("guest network not verified yet", "guest customization (Sysprep) not finished yet")
+
+
+def _readiness_running(vm: dict) -> bool:
+    return any((vm.get(key) or {}).get("status") == "running" for key in READINESS_CHECKS)
+
+
 def _ip_pending(output: dict) -> list[dict]:
-    """VMs whose guest network check the build left ``running`` (its budget ended the wait;
-    provisioners/vsphere_readiness.py): settled here like a long setup."""
-    return [v for v in output.get("vms") or [] if (v.get("ip_check") or {}).get("status") == "running"]
+    """VMs whose guest network check, or (Windows) guest customization check, the build left
+    ``running`` (its budget ended the wait; provisioners/vsphere_readiness.py,
+    vsphere_customization.py): settled here like a long setup."""
+    return [v for v in output.get("vms") or [] if _readiness_running(v)]
 
 
 def _merge_ips(output: dict, settled: dict) -> list[str]:
-    """Store the settled guest network checks on their VMs; drop their "not verified yet"
-    warning. Returns the reasons of the VMs that are not ready (they fail the range)."""
+    """Store the settled readiness checks on their VMs; drop their "not verified yet"
+    warning once none is still running. Returns the reasons of the VMs that are not ready
+    (they fail the range)."""
     warnings = list(output.get("warnings") or [])
     failed: list[str] = []
     for vm in output.get("vms") or []:
@@ -110,8 +120,9 @@ def _merge_ips(output: dict, settled: dict) -> list[str]:
             continue
         reason = change.pop("not_ready", "")
         vm.update(change)
-        warnings = [w for w in warnings if not (w.startswith(f"VM {vm.get('name')}: ")
-                                                and "guest network not verified yet" in w)]
+        if not _readiness_running(vm):
+            warnings = [w for w in warnings if not (w.startswith(f"VM {vm.get('name')}: ")
+                                                    and any(t in w for t in NOT_YET))]
         if reason:
             failed.append(f"VM {vm.get('name')}: {reason}")
             output["not_ready"] = sorted(set(output.get("not_ready") or []) | {vm.get("name")})
