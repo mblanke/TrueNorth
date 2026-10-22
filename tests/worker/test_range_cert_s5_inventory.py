@@ -352,6 +352,11 @@ class _Prov:
 
 
 class TestDriftTask:
+    @pytest.fixture(autouse=True)
+    def _lock(self, fake_redis):
+        """The sweep's Redis lock on a fake Redis (tests/worker/test_redis_lock.py tests it)."""
+        self.redis = fake_redis
+
     def _run(self, monkeypatch, readings: dict, during=None) -> dict:
         self.prov = _Prov(readings, during)
         monkeypatch.setattr(range_drift.range_sweep.base_tasks, "_get_backend", lambda *a, **k: self.prov)
@@ -423,12 +428,21 @@ class TestDriftTask:
         summary = self._run(monkeypatch, {rid: _live(out)}, during=snapshot_starts)
         assert summary["skipped"] == [rid] and _entries(s5db, rid) == []
 
-    def test_an_overlapping_sweep_does_nothing(self, s5db, monkeypatch):
-        import contextlib
+    def test_a_sweep_that_lost_its_lock_writes_nothing_more(self, s5db, monkeypatch):
+        import threading
 
-        monkeypatch.setattr(range_drift, "sweep_lock", lambda: contextlib.nullcontext(False))
+        out = _output()
+        rid = _range(s5db, "ready", out)
+        lost = threading.Event()  # the lock lapsed while vCenter was being read (redis_lock: ``lost``)
+        self.prov = _Prov({rid: _live(out)}, during=lost.set)
+        monkeypatch.setattr(range_drift.range_sweep.base_tasks, "_get_backend", lambda *a, **k: self.prov)
+        assert range_drift.sweep(lost)["status"] == "lock_lost"
+        assert _check(s5db, rid, "drift") is None and _entries(s5db, rid) == []
+
+    def test_no_redis_no_sweep(self, s5db, monkeypatch):
         _range(s5db, "ready", _output())
-        assert range_drift.check_range_drift()["status"] == "skipped"
+        self.redis.down = True
+        assert self._run(monkeypatch, {})["status"] == "skipped"
 
 
 def _operation(db, rid: str, status: str = "dispatched") -> None:

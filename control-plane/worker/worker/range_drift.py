@@ -14,8 +14,11 @@ and items carrying the range's annotation, tag or owner mark that were never rec
 with one login and a handful of calls for all of its ranges (vSphere ``live_inventories``:
 one property-collector call for every VM, one for the port groups, one pass for the marks).
 Each range is saved as soon as its group is read; one group failing does not lose the
-others. Sweeps never overlap: a PostgreSQL session advisory lock is held for the sweep, and
-a sweep that finds it held does nothing.
+others. Sweeps never overlap: a Redis lock with a TTL, owned by a token and renewed while
+the sweep runs (redis_lock.py), is held for the sweep; a sweep that finds it held, or cannot
+reach Redis, does nothing, and one that loses it stops before its next range. (Not a
+PostgreSQL session advisory lock: through pgbouncer's transaction pooling the lock and its
+unlock land on different server connections.)
 
 **Never false drift.** Right before a range's result is saved its state is read again in
 the same transaction (``range_inventory_db.unsettled``): a range that is no longer idle, or
@@ -37,15 +40,14 @@ into no record: it says nothing about the range. Kept out of tasks.py (ADR 0003)
 
 from __future__ import annotations
 
-import contextlib
 import json
 import logging
 import os
-
-import sqlalchemy as sa
+import threading
 
 from . import range_inventory, range_inventory_db, range_sweep
 from .celery_app import app
+from .redis_lock import RedisLock
 from .task_plumbing import db_session, notify_api
 
 logger = logging.getLogger("truenorth.worker.range_drift")
@@ -54,8 +56,11 @@ TASK = "worker.tasks.check_range_drift"
 # Snapshots a backup tool takes and removes on its own schedule are not drift.
 IGNORE_SNAPSHOT_PREFIXES = tuple(
     p.strip() for p in os.getenv("VSPHERE_DRIFT_IGNORE_SNAPSHOT_PREFIXES", "VEEAM,Veeam,veeam").split(",") if p.strip())
-# pg_try_advisory_lock key of the sweep (any constant no other lock uses: "tn-drift").
-SWEEP_LOCK_KEY = 0x746E2D6472696674
+# The sweep's Redis lock. Renewed every TTL/4 while the sweep runs, so a live sweep never loses
+# it; a killed worker's lapses within the TTL. Longer than the default hard-minus-soft time
+# limit margin (celery_app: 1900 - 1800 s) so the soft limit's cleanup still holds it.
+SWEEP_LOCK_KEY = "truenorth:range-drift:lock"
+SWEEP_LOCK_TTL_MS = int(float(os.getenv("RANGE_DRIFT_LOCK_TTL_SECONDS", "300")) * 1000)
 
 
 def _output(raw) -> dict:
@@ -72,41 +77,31 @@ def recorded(output: dict) -> bool:
                                                 for v in output.get("vms") or [])
 
 
-@contextlib.contextmanager
-def sweep_lock():
-    """True while this sweep holds the drift lock, False when another sweep holds it. A
-    session advisory lock on a connection of its own, held for the sweep (PostgreSQL); other
-    databases (the tests' SQLite) have no concurrent sweeps to fence."""
-    from . import tasks  # its DATABASE_URL (tests repoint it); imported here: tasks imports task modules
-    from .base_tasks import db_connect_args
+def redis_client():
+    """The worker's Redis (its broker, REDIS_URL), short socket timeouts."""
+    import redis
 
-    if not tasks.DATABASE_URL.startswith("postgresql"):
-        yield True
-        return
-    engine = sa.create_engine(tasks.DATABASE_URL, poolclass=sa.pool.NullPool,
-                              connect_args=db_connect_args(tasks.DATABASE_URL))
-    try:
-        with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
-            held = bool(conn.execute(sa.select(sa.func.pg_try_advisory_lock(SWEEP_LOCK_KEY))).scalar())
-            try:
-                yield held
-            finally:
-                if held:
-                    conn.execute(sa.select(sa.func.pg_advisory_unlock(SWEEP_LOCK_KEY)))
-    finally:
-        engine.dispose()
+    from .tasks import REDIS_URL  # tasks imports this module's siblings at load: read it at call time
+
+    return redis.Redis.from_url(REDIS_URL, socket_timeout=5, socket_connect_timeout=5)
+
+
+def sweep_lock(client=None) -> RedisLock:
+    """The drift sweep's lock (redis_lock.py): one sweep at a time across every worker."""
+    return RedisLock(client if client is not None else redis_client(), SWEEP_LOCK_KEY, SWEEP_LOCK_TTL_MS)
 
 
 @app.task(bind=True, name=TASK)
 def check_range_drift(self):
-    with sweep_lock() as held:
-        if not held:
-            logger.info("[drift] another drift sweep is still running; this one does nothing")
-            return {"status": "skipped", "reason": "a drift sweep is already running"}
-        return sweep()
+    with sweep_lock() as lock:
+        if not lock.held:
+            logger.info("[drift] another drift sweep holds the lock (or Redis is down); this one does nothing")
+            return {"status": "skipped", "reason": "a drift sweep is already running, or Redis is unavailable"}
+        return sweep(lock.lost)
 
 
-def sweep() -> dict:
+def sweep(lost: threading.Event | None = None) -> dict:
+    """``lost``: set when the lock was lost; the sweep then stops before its next range."""
     with db_session() as db:
         rows = [r for r in range_inventory_db.drift_ranges(db) if recorded(_output(r[2]))]
     summary = {"status": "ok", "checked": len(rows), "drifted": [], "errors": [], "skipped": []}
@@ -117,10 +112,14 @@ def sweep() -> dict:
     for range_id, exc in failed.items():
         settle(range_id, names[range_id], {}, exc, None, summary)
     for provisioner, items in grouped:
+        if lost is not None and lost.is_set():
+            return {**summary, "status": "lock_lost"}
         with db_session() as db:
             since = range_inventory_db.db_now(db)  # before the read: anything after it voids the reading
         readings = range_sweep.read_group(provisioner, items)
         for range_id, output in items:  # saved as it goes: a later group's failure loses nothing here
+            if lost is not None and lost.is_set():  # another sweep may be running now: write nothing
+                return {**summary, "status": "lock_lost"}
             settle(range_id, names[range_id], output, readings.get(range_id), since, summary)
     return summary
 

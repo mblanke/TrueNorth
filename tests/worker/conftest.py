@@ -8,6 +8,60 @@ import pytest
 import sqlalchemy as sa
 
 
+class FakeRedis:
+    """The part of Redis a lock uses (SET NX PX, GET, the compare-and-PEXPIRE / -DEL scripts of
+    worker/redis_lock.py), with a clock the test moves (``now`` ms) so expiry can be shown."""
+
+    def __init__(self):
+        self.now = 0
+        self.data: dict[str, tuple[str, int]] = {}  # key -> (value, expires at ms)
+        self.down = False
+
+    def _live(self, key):
+        if self.down:
+            raise ConnectionError("redis down")
+        got = self.data.get(key)
+        if got is not None and got[1] <= self.now:
+            del self.data[key]
+            got = None
+        return got
+
+    def set(self, key, value, nx=False, px=None):
+        if nx and self._live(key) is not None:
+            return None
+        self._live(key)
+        self.data[key] = (value, self.now + int(px))
+        return True
+
+    def get(self, key):
+        got = self._live(key)
+        return got[0].encode() if got else None
+
+    def eval(self, script, numkeys, key, token, *args):
+        from worker import redis_lock
+
+        got = self._live(key)
+        if got is None or got[0] != token:
+            return 0
+        if script == redis_lock.RENEW:
+            self.data[key] = (got[0], self.now + int(args[0]))
+            return 1
+        if script == redis_lock.RELEASE:
+            del self.data[key]
+            return 1
+        raise AssertionError("unknown script")
+
+
+@pytest.fixture
+def fake_redis(monkeypatch):
+    """A FakeRedis the drift sweep's lock uses instead of the broker's Redis."""
+    from worker import range_drift
+
+    client = FakeRedis()
+    monkeypatch.setattr(range_drift, "redis_client", lambda: client)
+    return client
+
+
 @pytest.fixture
 def lease_always_free(monkeypatch):
     """For tests that stub the worker's database: the range's lease (worker/fencing.py)

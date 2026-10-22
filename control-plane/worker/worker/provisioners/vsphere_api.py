@@ -444,7 +444,9 @@ def _not_ours(range_id: str, vm: dict, seen: dict, where: str) -> str | None:
     The range-ownership rule (see VsphereAPIProvisioner._screen). A VM whose instance UUID
     was recorded at clone (range certification S5) is the range's exactly when that UUID is
     still the one under its moid, renamed or re-annotated or not: the record decides, never a
-    mark. Older records: its annotation names the range (RANGE_TAG), or, built before the
+    mark. (Trust: ``config.instanceUuid`` can be set only with vCenter privileges to edit a
+    VM's configuration, i.e. by someone who could delete the VM outright; the pairing with the
+    recorded moid guards against TrueNorth's own mistakes, not a vCenter administrator.) Older records: its annotation names the range (RANGE_TAG), or, built before the
     tag (2026-10-07), it carries no tag and still has its recorded ``<range8>-<node>`` name.
     ``seen`` holds OWNER_PATHS."""
     name = str(seen.get("name") or "")
@@ -461,6 +463,10 @@ def _not_ours(range_id: str, vm: dict, seen: dict, where: str) -> str | None:
         return None
     whose = f"range {owner}" if owner else "no TrueNorth range"
     return f"VM {vm.get('name') or vm.get('vm_id')}: {vm.get('vm_id')} on {where} is {name!r} of {whose}, not this range's"
+
+
+def _str_or_none(value) -> str | None:
+    return None if value is None else str(value)
 
 
 def _screened(vm: dict) -> dict:
@@ -3283,7 +3289,8 @@ class VsphereAPIProvisioner(BaseProvisioner):
             if moid in missing:
                 return "gone", f"{moid} was no longer in vCenter"
             seen = props[moid]
-            if not item.get("instance_uuid") or str(seen.get("config.instanceUuid")) != str(item["instance_uuid"]):
+            if not item.get("instance_uuid") or not range_inventory.vm_owned(
+                    {"instance_uuid": item["instance_uuid"]}, _str_or_none(seen.get("config.instanceUuid"))):
                 return "skipped", f"{moid} now has instance UUID {seen.get('config.instanceUuid')}, not the listed one"
             if seen.get("config.template"):
                 return "skipped", f"{moid} is a template"
@@ -3317,13 +3324,14 @@ class VsphereAPIProvisioner(BaseProvisioner):
             raise RuntimeError("pyvmomi is required to delete vSphere items (pip install pyvmomi)")
         done: list[dict] = []
         skipped: list[dict] = []
-        await self._get_session()  # the dialect, and the tag lookup after
-        # The range's tag, read now: an item listed for its tag must still carry it. Unreadable:
-        # only the annotation counts (such an item is then left alone, and says why).
-        tagged, tag_note = await self._tagged_vms(range_id)
+        await self._get_session()  # the dialect, and the tag lookups
         async with self._soap_scope(always=True):
             si = self._soap()
             for item in items:
+                # The range's tag, read again right before this item: one listed for its tag must
+                # still carry it. Unreadable: only the annotation counts (the item is left alone
+                # unless annotated, and says why).
+                tagged, tag_note = await self._tagged_vms(range_id) if item.get("kind") == "vm" else (set(), None)
                 try:
                     outcome_, why = await asyncio.to_thread(self._delete_listed_sync, si, range_id, item, tagged)
                 except Exception as exc:  # noqa: BLE001 -- one failure does not stop the others
