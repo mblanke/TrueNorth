@@ -5213,6 +5213,10 @@ export interface paths {
          * Generate Exercises
          * @description Scaffold one pending Exercise per PO-course (Scenario from PO + placeholder Range).
          *
+         *     Only objectives of the caller's tenant's and shared qualifications are scaffolded. A
+         *     module bound to another tenant's objective is skipped and counted in
+         *     `skipped_foreign_objectives`.
+         *
          *     **Permission: course:author and exercise:create.**
          */
         post: operations["generate_exercises_qsp_generate_exercises_post"];
@@ -5234,6 +5238,9 @@ export interface paths {
         /**
          * Generate Learning Paths
          * @description Build per-PO courses, qualification paths, role paths, and the developmental progression.
+         *
+         *     Built only from the caller's tenant's and shared qualifications; another tenant's
+         *     objectives never reach the caller's courses or paths.
          *
          *     **Permission: course:author.**
          */

@@ -34282,7 +34282,7 @@
     },
     "/qsp/generate-exercises": {
       "post": {
-        "description": "Scaffold one pending Exercise per PO-course (Scenario from PO + placeholder Range).\n\n**Permission: course:author and exercise:create.**",
+        "description": "Scaffold one pending Exercise per PO-course (Scenario from PO + placeholder Range).\n\nOnly objectives of the caller's tenant's and shared qualifications are scaffolded. A\nmodule bound to another tenant's objective is skipped and counted in\n`skipped_foreign_objectives`.\n\n**Permission: course:author and exercise:create.**",
         "operationId": "generate_exercises_qsp_generate_exercises_post",
         "responses": {
           "200": {
@@ -34311,7 +34311,7 @@
     },
     "/qsp/generate-learning-paths": {
       "post": {
-        "description": "Build per-PO courses, qualification paths, role paths, and the developmental progression.\n\n**Permission: course:author.**",
+        "description": "Build per-PO courses, qualification paths, role paths, and the developmental progression.\n\nBuilt only from the caller's tenant's and shared qualifications; another tenant's\nobjectives never reach the caller's courses or paths.\n\n**Permission: course:author.**",
         "operationId": "generate_learning_paths_qsp_generate_learning_paths_post",
         "responses": {
           "200": {

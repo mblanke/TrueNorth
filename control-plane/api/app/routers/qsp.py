@@ -659,6 +659,9 @@ def generate_learning_paths(
 ) -> dict:
     """Build per-PO courses, qualification paths, role paths, and the developmental progression.
 
+    Built only from the caller's tenant's and shared qualifications; another tenant's
+    objectives never reach the caller's courses or paths.
+
     **Permission: course:author.**"""
     try:
         stats = qsp_paths.generate_learning_paths(db, tenant_id=user.tenant_id or None)
@@ -675,6 +678,10 @@ def generate_exercises(
     user: CurrentUser = Depends(require_permission(Permission.COURSE_AUTHOR, Permission.EXERCISE_CREATE)),
 ) -> dict:
     """Scaffold one pending Exercise per PO-course (Scenario from PO + placeholder Range).
+
+    Only objectives of the caller's tenant's and shared qualifications are scaffolded. A
+    module bound to another tenant's objective is skipped and counted in
+    `skipped_foreign_objectives`.
 
     **Permission: course:author and exercise:create.**"""
     try:

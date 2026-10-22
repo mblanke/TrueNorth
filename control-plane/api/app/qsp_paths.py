@@ -15,6 +15,7 @@ import json
 from sqlalchemy.orm import Session
 
 from . import range_topology
+from .qsp_scope import visible_qualifications
 from .scheduler import service as scheduler
 
 from .models import (
@@ -497,10 +498,15 @@ def purge_orphaned_stubs(db: Session, tenant_id: str | None = None) -> int:
 
 
 def generate_learning_paths(db: Session, tenant_id: str | None = None) -> dict:
-    """Build per-PO courses + qualification paths + role paths + a developmental progression."""
+    """Build per-PO courses + qualification paths + role paths + a developmental progression.
+
+    Built only from qualifications the tenant may read — its own plus shared ones. Until
+    issue #257 this read every tenant's qualifications, so an author's run copied other
+    tenants' objectives into their own tenant's courses and paths.
+    """
     stats = {"po_courses": 0, "qualification_paths": 0, "role_paths": 0, "progression_paths": 0}
 
-    quals = db.query(Qualification).order_by(Qualification.dp_order, Qualification.qsp_code).all()
+    quals = visible_qualifications(db, tenant_id).order_by(Qualification.dp_order, Qualification.qsp_code).all()
 
     # 1) one reusable course per PO
     po_course: dict[str, str] = {}  # po.id -> course.id
@@ -526,9 +532,10 @@ def generate_learning_paths(db: Session, tenant_id: str | None = None) -> dict:
         )
         stats["qualification_paths"] += 1
 
-    # 3) role paths (one per distinct target_role, across NQuals)
+    # 3) role paths (one per distinct target_role, across the visible NQuals only)
     roles: dict[str, list[PerformanceObjective]] = {}
-    for po in db.query(PerformanceObjective).all():
+    visible_qual_ids = [q.id for q in quals]
+    for po in db.query(PerformanceObjective).filter(PerformanceObjective.qualification_id.in_(visible_qual_ids)).all():
         role = (po.target_role or "").strip()
         if role and role not in {"-", "TODO", "n/a"}:
             roles.setdefault(role, []).append(po)
@@ -689,7 +696,12 @@ def generate_exercises(db: Session, tenant_id: str | None = None) -> dict:
     Idempotent. Ranges are unprovisioned mock placeholders (state=created) for a human to
     provision later; scenarios are structural stubs. No LLM.
     """
-    stats = {"scenarios": 0, "ranges": 0, "exercises": 0, "objectives": 0, "wired_modules": 0}
+    stats = {"scenarios": 0, "ranges": 0, "exercises": 0, "objectives": 0, "wired_modules": 0,
+             "skipped_foreign_objectives": 0}
+    # Only objectives of qualifications this tenant may read (own + shared; issue #257).
+    # A module bound to another tenant's PO — e.g. by a learning-path run before that
+    # fix — is skipped and counted, never scaffolded from the foreign objective.
+    quals_by_id = {str(q.id): q for q in visible_qualifications(db, tenant_id).all()}
     # Every lookup below is within the caller's tenant. Until 2026-10-08 none was: any
     # instructor's run deleted every tenant's "* Assessment Range", rewrote other tenants'
     # scenarios found by name and scaffolded exercises for other tenants' modules.
@@ -704,10 +716,8 @@ def generate_exercises(db: Session, tenant_id: str | None = None) -> dict:
         db.delete(old)
     db.flush()
 
-    def _range_for_po(po: PerformanceObjective) -> Range:
+    def _range_for_po(po: PerformanceObjective, qual: Qualification) -> Range:
         """One placeholder Range per PO, carrying a generated topology diagram."""
-        # tenant-safe: the spine (qualification of a PO) is platform-global by design.
-        qual = db.query(Qualification).filter_by(id=po.qualification_id).one()
         tmpl_name = f"{qual.qsp_code} {po.po_code} Range"
         template = db.query(Template).filter_by(name=tmpl_name, tenant_id=tenant_id).one_or_none()
         if template is None:
@@ -741,6 +751,10 @@ def generate_exercises(db: Session, tenant_id: str | None = None) -> dict:
     for module in modules:
         po = db.query(PerformanceObjective).filter_by(id=module.po_id).one_or_none()
         if po is None:
+            continue
+        qual = quals_by_id.get(str(po.qualification_id))
+        if qual is None:
+            stats["skipped_foreign_objectives"] += 1
             continue
         try:
             crit = json.loads(po.critical_events or "[]")
@@ -786,9 +800,7 @@ def generate_exercises(db: Session, tenant_id: str | None = None) -> dict:
             assess.scenario_id = scenario.id
             stats["wired_modules"] += 1
 
-        rng = _range_for_po(po)
-        # tenant-safe: the spine (qualification of a PO) is platform-global by design.
-        qual = db.query(Qualification).filter_by(id=po.qualification_id).one()
+        rng = _range_for_po(po, qual)
         ex_name = f"{course_code(po, qual)} — {po.title}"
         exercise = db.query(Exercise).filter_by(scenario_id=scenario.id, tenant_id=tenant_id).one_or_none()
         if exercise is None:
@@ -940,7 +952,9 @@ def programme_courses(db: Session, tenant_id: str | None = None) -> dict[tuple, 
     if not courses:
         return {}
 
-    quals = {str(q.id): q for q in db.query(Qualification).all()}
+    # Delivery notes and lanes name only qualifications the tenant may read (issue #257).
+    qual_q = visible_qualifications(db, tenant_id) if tenant_id is not None else db.query(Qualification)
+    quals = {str(q.id): q for q in qual_q.all()}
 
     # po_id -> (qualification, po), for the delivery notes.
     delivers: dict[str, list[dict]] = {}
@@ -952,6 +966,8 @@ def programme_courses(db: Session, tenant_id: str | None = None) -> dict[tuple, 
     )
     for module, po in rows:
         qual = quals.get(str(po.qualification_id))
+        if qual is None:
+            continue  # another tenant's objective: not the caller's to see
         delivers.setdefault(str(module.course_id), []).append({
             "qsp_code": qual.qsp_code if qual else "",
             "dp_order": qual.dp_order if qual else 0,
