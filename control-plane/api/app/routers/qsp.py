@@ -37,6 +37,7 @@ from ..models import (
     RangeObjectiveMap,
     Template,
 )
+from ..qsp_scope import visible_qualifications
 from ..rbac import PLATFORM_CURRICULUM_WRITE, Permission, require_any_permission, require_permission
 from ..tenancy import get_owned, tenant_uuid
 
@@ -403,11 +404,11 @@ def _visible_qualifications(db: Session, user: CurrentUser):
     qualification, so every list here shows exactly what the caller could pick. There
     is no admin bypass: a platform admin reads the spine as a member of their own
     tenant. Issue #227: every read here was unscoped, so a Student could list every
-    tenant's qualifications and objectives.
+    tenant's qualifications and objectives. The rule itself lives in ``app.qsp_scope``,
+    shared with the generators and coverage report (#257, #258); an empty tenant claim
+    reads shared qualifications only.
     """
-    return db.query(Qualification).filter(
-        (Qualification.tenant_id == tenant_uuid(user)) | Qualification.tenant_id.is_(None)
-    )
+    return visible_qualifications(db, user.tenant_id)
 
 
 @router.get("/qualifications", response_model=list[QualificationOut])
@@ -659,6 +660,9 @@ def generate_learning_paths(
 ) -> dict:
     """Build per-PO courses, qualification paths, role paths, and the developmental progression.
 
+    Built only from the caller's tenant's and shared qualifications; another tenant's
+    objectives never reach the caller's courses or paths.
+
     **Permission: course:author.**"""
     try:
         stats = qsp_paths.generate_learning_paths(db, tenant_id=user.tenant_id or None)
@@ -675,6 +679,10 @@ def generate_exercises(
     user: CurrentUser = Depends(require_permission(Permission.COURSE_AUTHOR, Permission.EXERCISE_CREATE)),
 ) -> dict:
     """Scaffold one pending Exercise per PO-course (Scenario from PO + placeholder Range).
+
+    Only objectives of the caller's tenant's and shared qualifications are scaffolded. A
+    module bound to another tenant's objective is skipped and counted in
+    `skipped_foreign_objectives`.
 
     **Permission: course:author and exercise:create.**"""
     try:
@@ -801,6 +809,9 @@ def po_coverage(
     A PO with no module can never show progress on the career map, because
     `CourseModule.po_id` is the only link the progress resolver walks. This is the
     working list for deciding which authored modules Standards should map.
+
+    Objectives of the caller's tenant's and shared qualifications; delivering modules
+    from the caller's tenant's courses only.
     """
     return qsp_paths.po_coverage(db, tenant_id=user.tenant_id or None)
 
