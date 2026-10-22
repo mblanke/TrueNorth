@@ -165,7 +165,7 @@ class TestRecord:
         assert body["record"]["verdict"] == "ready_not_certified"
         reasons = " | ".join(body["record"]["reasons"])
         assert "Template provenance incomplete" in reasons and "Credential state incomplete" in reasons
-        assert "Isolation evidence missing" in reasons
+        assert "Isolation incomplete: no isolation probes recorded" in reasons
         count = db_session.query(RangeCertificationEntry).count()
         _cert(client, rng)
         client.post(f"/ranges/{rng.id}/certification/capture")
@@ -366,7 +366,7 @@ class TestRecord:
         act_as(world["range_ops"])
         resp = client.post(f"/ranges/{rng.id}/certification/capture")
         assert resp.status_code == 200, resp.text
-        assert resp.json() == {"deployment_id": str(op.id), "written": 4}
+        assert resp.json() == {"deployment_id": str(op.id), "written": 5}
         late = _record(db_session, str(op.id))
         assert late.opened_by == "Test range_ops"
         assert late.plan_hash_basis == "template_yaml_sha256_at_capture", "says the hash is not build-time"
@@ -397,6 +397,20 @@ def _pinned(vm: dict, catalogue: str, login: str) -> dict:
             "template_login": {"status": login, "username": "ubuntu", "detail": "..."}}
 
 
+def isolation_record(result: str = "proven_unreachable", exception: str = "reachable") -> dict:
+    """provisioner_output ``isolation`` as worker/range_isolation.py records it: one zone,
+    probed, one site target and the depot exception (the API grades the rows again)."""
+    checks = [{"check": "selftest", "target": "10.80.0.1", "expect": "precondition", "result": "reachable"},
+              {"check": "tcp", "target": "10.30.30.1:443", "expect": "unreachable", "result": result},
+              {"check": "exception", "target": "10.30.32.10:8081", "expect": "reachable", "result": exception}]
+    return {"version": 1, "mode": "warn", "started_at": "2026-10-22T00:00:00+00:00",
+            "ran_at": "2026-10-22T00:01:00+00:00", "verdict": "isolated",
+            "settings": {"targets": ["10.30.30.1:443"], "exceptions": ["10.30.32.10:8081"]},
+            "zones": [{"zone": "lan", "cidr": "10.80.0.0/24", "status": "probed",
+                       "probe": {"vm": "web01", "family": "linux", "account": "student", "admin": False},
+                       "selftest": {"passed": True}, "checks": checks, "verdict": "isolated", "reasons": []}]}
+
+
 CERTIFIABLE = {**GOOD_OUTPUT, "vms": [_pinned(GOOD_OUTPUT["vms"][0], "ubuntu-2404", "rejected"),
                                       _pinned(GOOD_OUTPUT["vms"][1], "pfsense", "not_checked")]}
 
@@ -420,11 +434,20 @@ class TestMergedSlices:
         assert sec_["template_provenance"]["summary"] == (
             "2 VM(s) on registered promoted builds: pfsense 20261021-1, ubuntu-2404 20261021-1")
         assert body["record"]["verdict"] == "ready_not_certified"
-        assert body["record"]["reasons"] == ["Isolation evidence missing (provided by S4 (#242))"]
-        service.append(db_session, _record(db_session, op_id), "isolation", "pass", "every zone isolated", {},
-                       source="test.s4")
-        assert _cert(client, rng).json()["record"]["verdict"] == "certified"
+        assert body["record"]["reasons"] == [
+            "Isolation incomplete: no isolation probes recorded for this build (S4 probes every zone once it is ready)"]
+        # S4: the worker's per-zone probes, stored with the output (a re-probe, isolation_task.py).
+        _worker_reports(db_session, rng, "ready", {**CERTIFIABLE, "isolation": isolation_record()})
+        body = _cert(client, rng).json()
+        assert body["record"]["verdict"] == "certified", body["record"]["reasons"]
+        assert _sections(body)["isolation"]["summary"].startswith("isolated (warn mode): 1 zone(s) probed")
         assert service.booking_gate(db_session, rng.tenant_id, rng.id) == (True, [])
+        # A route planted out of the range: the next probe finds the site reachable -> Not safe.
+        _worker_reports(db_session, rng, "ready", {**CERTIFIABLE, "isolation": isolation_record(result="reachable")})
+        body = _cert(client, rng).json()
+        assert body["record"]["verdict"] == "not_safe"
+        assert body["record"]["reasons"] == ["Isolation failed: not isolated (warn mode): reachable outside its "
+                                             "exceptions: zone lan: tcp 10.30.30.1:443"]
 
     @pytest.mark.parametrize("change,section,expected", [
         (lambda o: o["vms"][0]["template_login"].update(status="accepted"), "credentials",
@@ -783,8 +806,127 @@ class TestBooking:
         assert not ok and len(reasons) == 5  # opened at provision; the build is not settled until read
         _cert(client, rng)
         ok, reasons = service.booking_gate(db_session, rng.tenant_id, rng.id)
-        assert not ok and any("Isolation evidence missing" in r for r in reasons)
+        assert not ok and any("Isolation incomplete: no isolation probes recorded" in r for r in reasons)
         rec = _record(db_session, op_id)
         for name in ("template_provenance", "network_allocation", "credentials", "isolation"):
             service.append(db_session, rec, name, "pass", f"{name} proven", {}, source="test")
         assert service.booking_gate(db_session, rng.tenant_id, rng.id) == (True, [])
+
+
+# ── S4 (#242): isolation evidence, graded by the API, re-probed on demand ────────
+def _worker_isolation(monkeypatch, respond, *, zones_without_probe=()) -> dict:
+    """provisioner_output ``isolation`` made by the worker's own range_isolation.run over
+    CERTIFIABLE's VMs (one zone, ``lan``), its guest channel faked per probe."""
+    import asyncio
+
+    from worker import isolation_scripts, range_isolation
+    from worker.provisioners.base import GuestStep
+    from worker.provisioners.vsphere_guest import RangeAccount, Secret
+
+    monkeypatch.setenv("TN_RANGE_ISOLATION_PROBE_TARGETS", "10.30.30.1:443,192.168.1.10:443")
+    monkeypatch.setattr(range_isolation.scripts, "steps", lambda family, probes, timeout: [
+        GuestStep(f"isolation-{n}", "fake", json.dumps([[p.kind, list(p.args)] for p in group]))
+        for n, group in enumerate(isolation_scripts.chunks(probes))])
+
+    class Guest:
+        supports_guest_commands = True
+
+        async def run_in_guest(self, vm_id, login, steps, timeout, **kw):
+            return [{"label": s.label, "status": "ok", "exit_code": isolation_scripts.MARK + sum(
+                respond(kind, tuple(args)) * 4 ** i for i, (kind, args) in enumerate(json.loads(s.arguments)))}
+                for s in steps]
+
+    output = json.loads(json.dumps(CERTIFIABLE))
+    output["vms"][0].update(family="linux", node_id="web01")
+    if "lan" in zones_without_probe:
+        output["vms"][0]["family"] = "appliance"
+    accounts = {"web01": [RangeAccount("student", Secret("pw-not-in-record"), False)]}
+    return asyncio.run(range_isolation.run(Guest(), "r", output, {}, accounts))
+
+
+def _drops_all_but_the_depot(kind, args):
+    if kind == "tcp":
+        return 0 if args[0] == "10.30.32.10" and args[1] in ("8081", "3142") else 3
+    return {"icmp": 1, "selftest": 0, "dns_ext": 1, "route": 0, "v6route": 1, "v6global": 1}[kind]
+
+
+class TestIsolationS4:
+    def _certifiable(self, client, db_session, world, isolation: dict):
+        _register_builds(db_session)
+        rng, op_id = _built(client, db_session, world, {**CERTIFIABLE, "isolation": isolation})
+        TestMergedSlices()._set_accounts(db_session, rng)
+        return rng, op_id
+
+    def test_a_full_range_is_certified_only_with_the_workers_isolated_verdict(self, client, db_session, world,
+                                                                              monkeypatch):
+        rec = _worker_isolation(monkeypatch, _drops_all_but_the_depot)
+        assert rec["verdict"] == "isolated", rec["missing"]
+        rng, _ = self._certifiable(client, db_session, world, rec)
+        body = _cert(client, rng).json()
+        assert body["record"]["verdict"] == "certified", body["record"]["reasons"]
+        iso = _sections(body)["isolation"]["entries"][0]["detail"]
+        assert [z["zone"] for z in iso["zones"]] == ["lan"] and iso["mode"] == "warn"
+        assert iso["zones"][0]["probe"] == {"vm": "web01", "family": "linux", "account": "student", "admin": False,
+                                            "flagged": False}
+        assert "pw-not-in-record" not in json.dumps(body)
+
+    def test_a_zone_without_a_probe_is_ready_not_certified_naming_the_zone(self, client, db_session, world,
+                                                                           monkeypatch):
+        rec = _worker_isolation(monkeypatch, _drops_all_but_the_depot, zones_without_probe=("lan",))
+        rng, _ = self._certifiable(client, db_session, world, rec)
+        body = _cert(client, rng).json()
+        assert body["record"]["verdict"] == "ready_not_certified"
+        (reason,) = body["record"]["reasons"]
+        assert reason.startswith("Isolation incomplete: isolation not proven (warn mode), 0 of 1 zone(s) probed: "
+                                 "zone lan: no_probe")
+
+    def test_refused_connects_never_certify(self, client, db_session, world, monkeypatch):
+        rec = _worker_isolation(monkeypatch, lambda k, a: 1 if k == "tcp" and a[0] != "10.30.32.10"
+                                else _drops_all_but_the_depot(k, a))
+        rng, _ = self._certifiable(client, db_session, world, rec)
+        body = _cert(client, rng).json()
+        assert body["record"]["verdict"] == "ready_not_certified"
+        assert "tcp 10.30.30.1:443 connect_failed_only" in body["record"]["reasons"][0]
+
+    def test_the_api_grades_the_rows_not_the_workers_verdict(self, client, db_session, world):
+        lying = {**isolation_record(result="reachable"), "verdict": "isolated"}
+        rng, _ = self._certifiable(client, db_session, world, lying)
+        assert _cert(client, rng).json()["record"]["verdict"] == "not_safe"
+
+    def test_staff_can_ask_for_a_reprobe_of_a_ready_range(self, client, db_session, world, monkeypatch):
+        from app import celery_client
+
+        rng, _ = _built(client, db_session, world)
+        sent = []
+        monkeypatch.setattr(celery_client, "dispatch", lambda name, *a: sent.append((name, *a)) or "task-1")
+        act_as(world["range_ops"])
+        resp = client.post(f"/ranges/{rng.id}/certification/isolation-check")
+        assert resp.status_code == 202, resp.text
+        assert resp.json() == {"range_id": str(rng.id), "dispatched": True}
+        assert sent == [("check_range_isolation", str(rng.id))]
+        audit = db_session.query(AuditLog).filter(AuditLog.action == "range_isolation_check").one()
+        assert audit.resource_id == str(rng.id)
+
+    def test_a_reprobe_needs_a_ready_range_and_provision_rights(self, client, db_session, world, monkeypatch):
+        from app import celery_client
+
+        rng, _ = _built(client, db_session, world)
+        sent = []
+        monkeypatch.setattr(celery_client, "dispatch", lambda *a: sent.append(a))
+        for who in ("student", "observer"):
+            act_as(world[who])
+            assert client.post(f"/ranges/{rng.id}/certification/isolation-check").status_code == 403
+        act_as(world["foreign_instructor"])
+        assert client.post(f"/ranges/{rng.id}/certification/isolation-check").status_code == 404
+        _worker_reports(db_session, rng, "stopped")
+        act_as(world["instructor"])
+        assert client.post(f"/ranges/{rng.id}/certification/isolation-check").status_code == 409
+        assert sent == [], "nothing is sent for a refused request"
+
+    def test_a_broker_outage_says_so(self, client, db_session, world, monkeypatch):
+        from app import celery_client
+
+        rng, _ = _built(client, db_session, world)
+        monkeypatch.setattr(celery_client, "dispatch", lambda *a: None)
+        resp = client.post(f"/ranges/{rng.id}/certification/isolation-check")
+        assert resp.status_code == 202 and resp.json()["dispatched"] is False

@@ -6050,6 +6050,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/ranges/{range_id}/certification/isolation-check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check Range Isolation
+         * @description Probe the range's isolation again from every zone (ADR 0013 §4: the worker runs the
+         *     probes in each zone's probe VM through guest operations and stores the result; the
+         *     record appends it on its next read). Use it after the network around the range
+         *     changed. It never changes the range's state, in warn or enforce mode. Audited.
+         *     **Permission: range:certification_read and range:provision**
+         */
+        post: operations["check_range_isolation_ranges__range_id__certification_isolation_check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/ranges/{range_id}/credentials": {
         parameters: {
             query?: never;
@@ -12526,6 +12550,19 @@ export interface components {
             };
             /** Vm Id */
             vm_id: string;
+        };
+        /** IsolationCheckOut */
+        IsolationCheckOut: {
+            /**
+             * Dispatched
+             * @description False: the task queue was not reachable; ask again later. The new evidence (with the worker's mode) shows on the certification record
+             */
+            dispatched: boolean;
+            /**
+             * Range Id
+             * Format: uuid
+             */
+            range_id: string;
         };
         /** JobView */
         JobView: {
@@ -28084,6 +28121,58 @@ export interface operations {
             };
             /** @description No such range in the caller's tenant, or no record for that deployment */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    check_range_isolation_ranges__range_id__certification_isolation_check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                range_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IsolationCheckOut"];
+                };
+            };
+            /** @description Not staff: Students and observers do not see certification records */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such range in the caller's tenant, or no record for that deployment */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The range is not ready (its VMs must be up to be probed) */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

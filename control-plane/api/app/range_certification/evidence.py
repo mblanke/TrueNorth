@@ -271,3 +271,69 @@ def teardown(destroyed: bool, error: str | None, still_held: list,
                            "inventory", detail
     status = check.get("status") if check.get("status") in (PASS, FAIL, INCOMPLETE) else INCOMPLETE
     return status, f"recorded destroyed; {check.get('summary') or 'no summary'}{extra}", detail
+
+
+# Range certification S4 (#242): the per-zone isolation evidence the worker probed after
+# the build was ready (worker/range_isolation.py, provisioner_output ``isolation``).
+ISOLATION_RESULTS = ("proven_unreachable", "reachable", "inconclusive", "connect_failed_only")
+_ZONE_KEYS = ("zone", "cidr", "gateway", "status", "probe", "selftest", "ipv6", "verdict", "reasons", "step_errors")
+_CHECK_KEYS = ("check", "target", "expect", "result", "passed", "note")
+
+
+def _zone_gap(z: dict) -> str | None:
+    """Why a zone that leaked nothing still is not proven isolated, or None."""
+    if z.get("status") != "probed":
+        why = "; ".join(z.get("reasons") or [])
+        return f"zone {z.get('zone')}: {z.get('status') or 'not probed'}" + (f" ({why})" if why else "")
+    weak = [f"{c.get('check')} {c.get('target')} {c.get('result')}" for c in z["checks"]
+            if (c.get("expect") == "unreachable" and c.get("result") != "proven_unreachable")
+            or (c.get("expect") == "reachable" and c.get("result") != "reachable")]
+    if weak or not z["checks"]:
+        return f"zone {z.get('zone')}: " + (", ".join(weak) or "no checks recorded")
+    return None
+
+
+def isolation(output: dict) -> tuple[str, str, dict]:
+    """S4 (#242): isolation evidence per security zone.
+
+    Graded again here from each check's result class, never taken from the worker's
+    verdict: ``fail`` when any check that must fail was ``reachable`` (a zone reaches
+    something outside its permitted exceptions); ``pass`` only when every zone was probed,
+    every check that must fail is ``proven_unreachable``, every permitted exception
+    connected and site targets were configured; else ``incomplete``, naming the zones and
+    checks that fall short (``connect_failed_only`` and ``inconclusive`` are never proof).
+    The mode (warn / enforce) is recorded; it decides only whether the build was blocked,
+    never this grade."""
+    rec = output.get("isolation") if isinstance(output.get("isolation"), dict) else None
+    if rec is None:
+        return INCOMPLETE, "no isolation probes recorded for this build (S4 probes every zone once it is ready)", {}
+    rows = [{**{k: z.get(k) for k in _ZONE_KEYS if k in z},
+             "checks": [{k: c.get(k) for k in _CHECK_KEYS if k in c} for c in z.get("checks") or []
+                        if isinstance(c, dict)]}
+            for z in rec.get("zones") or [] if isinstance(z, dict)]
+    settings = rec.get("settings") if isinstance(rec.get("settings"), dict) else None
+    notes = [str(n) for n in rec.get("notes") or []]
+    detail = {"mode": rec.get("mode"), "started_at": rec.get("started_at"), "ran_at": rec.get("ran_at"),
+              "worker_verdict": rec.get("verdict"), "settings": settings, "zones": rows, "notes": notes}
+    mode = f" ({rec.get('mode') or 'warn'} mode)"
+    leaks = []
+    for z in rows:
+        bad = [f"{c.get('check')} {c.get('target')}" for c in z["checks"]
+               if c.get("expect") == "unreachable" and c.get("result") == "reachable"]
+        if bad:
+            leaks.append(f"zone {z.get('zone')}: {', '.join(bad)}")
+    if leaks:
+        return FAIL, f"not isolated{mode}: reachable outside its exceptions: {'; '.join(leaks)}", detail
+    gaps = [g for g in map(_zone_gap, rows) if g]
+    if not rows:
+        gaps.append("no range networks recorded")
+    if settings is None:
+        gaps.append("the probes did not run" + (f": {'; '.join(notes)}" if notes else ""))
+    elif not settings.get("targets"):
+        gaps.append("no site probe targets configured (tn_range_isolation_probe_targets)")
+    if gaps:
+        probed = sum(1 for z in rows if z.get("status") == "probed")
+        return INCOMPLETE, f"isolation not proven{mode}, {probed} of {len(rows)} zone(s) probed: {'; '.join(gaps)}", \
+            detail
+    return PASS, (f"isolated{mode}: {len(rows)} zone(s) probed, every check that must fail proven unreachable, "
+                  "permitted exceptions connected"), detail

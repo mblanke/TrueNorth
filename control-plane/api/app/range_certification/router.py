@@ -7,6 +7,8 @@ GET  /ranges/{range_id}/certification           range:certification_read (admin,
 GET  /ranges/{range_id}/certification/export    instructor, range_ops); Students and
 GET  /ranges/{range_id}/certification/export/pdf  observers 403; another tenant's range 404
 POST /ranges/{range_id}/certification/capture   range:certification_read + range:provision
+POST /ranges/{range_id}/certification/          range:certification_read + range:provision
+     isolation-check (S4 re-probe; 409 unless ready)
 GET  /range-certification/signing-keys          range:certification_read
 ==============================================  ==========================================
 
@@ -36,6 +38,7 @@ from .schemas import (
     CertificationCaptureOut,
     CertificationExportOut,
     CertificationRecordOut,
+    IsolationCheckOut,
     RangeCertificationOut,
     SigningKeyOut,
 )
@@ -163,6 +166,35 @@ def capture_range_certification(
     service.audit(db, user, rng, "range_certification_capture", f"deployment={record.deployment_id}; written={written}")
     db.commit()
     return CertificationCaptureOut(deployment_id=record.deployment_id, written=written)
+
+
+@router.post(
+    "/{range_id}/certification/isolation-check",
+    response_model=IsolationCheckOut,
+    status_code=202,
+    responses={**_ERRORS, 409: {"description": "The range is not ready (its VMs must be up to be probed)"}},
+)
+def check_range_isolation(
+    range_id: uuid.UUID = Path(...),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(_READ),
+) -> IsolationCheckOut:
+    """Probe the range's isolation again from every zone (ADR 0013 §4: the worker runs the
+    probes in each zone's probe VM through guest operations and stores the result; the
+    record appends it on its next read). Use it after the network around the range
+    changed. It never changes the range's state, in warn or enforce mode. Audited.
+    **Permission: range:certification_read and range:provision**"""
+    if not user_has_permission(user, Permission.RANGE_PROVISION):
+        raise HTTPException(403, "Probing a range needs range:provision")
+    rng = service.readable_range(db, range_id, user)
+    if getattr(rng.state, "value", rng.state) != "ready":
+        raise HTTPException(409, "Only a ready range can be probed")
+    from ..celery_client import dispatch
+
+    dispatched = dispatch("check_range_isolation", str(rng.id)) is not None
+    service.audit(db, user, rng, "range_isolation_check", f"dispatched={dispatched}")
+    db.commit()
+    return IsolationCheckOut(range_id=rng.id, dispatched=dispatched)
 
 
 keys_router = APIRouter(prefix="/range-certification", tags=["ranges"])

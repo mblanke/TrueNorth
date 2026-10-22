@@ -46,6 +46,10 @@ class ProvisionResult:
     # (vSphere: the range folder, VLAN and MAC reservations); per VM it is ``vms[].identity``
     # and per port group ``networks[].moid``/``key`` (worker/range_inventory.py).
     inventory: dict | None = None
+    # Range certification S4: the per-zone isolation evidence probed once the build was
+    # ready (worker/range_isolation.py, attached by the worker, not the backend). In
+    # RANGE_ISOLATION_CHECK=enforce a verdict short of isolated fails the range.
+    isolation: dict | None = None
 
 
 @dataclass

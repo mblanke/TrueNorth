@@ -13,6 +13,20 @@ export type CertificationSection = S['CertificationSectionOut'];
 export type CertificationCapture = S['CertificationCaptureOut'];
 export type ArchivedCertification = S['ArchivedCertificationOut'];
 export type CertificationEntry = S['CertificationEntryOut'];
+export type IsolationCheck = S['IsolationCheckOut'];
+
+/** One security zone's row of the isolation section's detail (worker/range_isolation.py). */
+export interface IsolationZone {
+  zone: string;
+  cidr?: string;
+  status: 'probed' | 'no_probe' | 'guest_op_failed' | 'budget_exhausted' | 'not_run' | string;
+  probe?: { vm: string; family: string; account: string; admin: boolean; flagged?: boolean } | null;
+  selftest?: { passed: boolean; targets?: string };
+  ipv6?: Record<string, string>;
+  verdict?: 'isolated' | 'not_isolated' | 'incomplete' | string;
+  reasons?: string[];
+  checks: { check: string; target: string; expect: string; result: string; passed?: boolean | null; note?: string }[];
+}
 
 /**
  * The Range Certification Record (ADR 0013 §6): GET /ranges/{id}/certification and its
@@ -38,6 +52,15 @@ export class RangeCertificationApiService {
   /** Append the evidence TrueNorth holds now (needs range:provision too). */
   capture(rangeId: string): Observable<CertificationCapture> {
     return this.http.post<CertificationCapture>(`${this.base}/${rangeId}/certification/capture`, {});
+  }
+
+  /**
+   * Probe the range's isolation again from every zone (ADR 0013 §4; needs range:provision
+   * and a ready range, else 409). The worker stores the result; the record shows it on its
+   * next read. Never changes the range's state.
+   */
+  checkIsolation(rangeId: string): Observable<IsolationCheck> {
+    return this.http.post<IsolationCheck>(`${this.base}/${rangeId}/certification/isolation-check`, {});
   }
 
   /** The signed JSON export (`json`) or its readable PDF (`pdf`), as a file. */

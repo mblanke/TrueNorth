@@ -329,6 +329,28 @@ tn_range_reserved_cidrs:
   - 10.30.30.0/24
   - 10.30.31.0/24
   - 10.30.32.0/24
+# Isolation evidence per zone (range certification S4, ADR 0013 §4). Once a range is ready,
+# one VM in every range network probes these site addresses through VMware guest operations
+# (as the least-privileged account the range declares on it); each must be proven
+# unreachable. host:port (TCP and ICMP), a bare host (ICMP only), [v6-address]:port for IPv6.
+# warn records the verdict on the certification record; enforce also fails a range that is
+# not proven isolated. It stays warn until the network team signs off the model (#238).
+tn_range_isolation_check: warn
+tn_range_isolation_probe_targets:
+  - 10.30.30.1:443    # management gateway
+  - 10.30.30.10:53    # site DNS
+  - 192.168.1.10:443  # vCenter
+  - 10.30.30.30:22    # TN-DEPOT01 management address
+  - 10.30.30.20:443   # TN-MGMT01
+# Permitted exceptions: each MUST connect from every zone; every other port of the same
+# hosts (tn_range_isolation_closed_ports) and ICMP to them must not.
+tn_range_isolation_exceptions:
+  - 10.30.32.10:8081  # TN-DEPOT01 range NIC, Nexus
+  - 10.30.32.10:3142  # TN-DEPOT01 range NIC, apt-cacher-ng
+tn_range_isolation_closed_ports: [22, 80, 443, 8080]
+# A name that must not resolve from inside a range (answers inside the range, or in the
+# simulated internet 198.18.0.0/15 that Greyspace serves, do not count as resolving).
+tn_range_isolation_external_name: example.com
 # spread | per-range-host | cluster. Hosts have 16 threads, so a big range must spread.
 tn_vsphere_placement: spread
 tn_vsphere_range_folder: TrueNorth/Ranges  # <range-name>-<id8> per range; the old truenorth/ranges is still found (vcenter-organize.sh moves it)

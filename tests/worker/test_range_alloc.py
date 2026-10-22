@@ -319,7 +319,11 @@ def test_provision_reserves_first_and_stores_uplink_mirrors_warnings(task_env, m
     assert {k: v for k, v in seen["allocations"].items() if k not in context} == {"physical_vlans": {"200": "101"}}
     assert all(k in seen["allocations"] for k in context)
     (ready,) = [kw for s, kw in task_env["states"] if s == "ready"]
-    assert json.loads(ready["output"]) == {
+    stored = json.loads(ready["output"])
+    # S4: the isolation evidence is stored with the output (warn mode: never blocks the build).
+    isolation = stored.pop("isolation")
+    assert (isolation["mode"], isolation["verdict"]) == ("warn", "incomplete")
+    assert stored == {
         "provider": "vsphere_api", "range_id": "r-1", "vms": [{"vm_id": "vm-1", "name": "x"}],
         "networks": [{"vlan_id": 200}], "uplink": {"ip": "10.30.32.100"}, "mirrors": [{"name": "tn-x-mon"}],
         "warnings": ["w"]}

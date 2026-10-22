@@ -64,6 +64,7 @@ Not ported: the guard hook and file-based approvals (TrueNorth has RBAC and an a
 
 - The verdict is **Isolated** only if every zone has a probe and every non-exception check is `proven_unreachable`. Any weaker verdict states exactly what is missing.
 - Site targets and permitted exceptions come from installer settings. The mode `RANGE_ISOLATION_CHECK=warn|enforce` stays at **`warn`**. **`enforce` waits for the network team's decision** on the isolation model and trust boundaries (below).
+- *Implemented (S4, #242):* `worker/range_isolation.py` and `worker/isolation_scripts.py`. On Windows the probes run as PowerShell through guest operations (`-EncodedCommand`); **no probe container is injected**, so nothing is installed or left in the guest. A template node can be marked `probe: true` to be its zone's probe VM. A staff re-probe (`POST /ranges/{id}/certification/isolation-check`) re-runs the probes on a ready range and never changes its state.
 
 ### 5. Teardown by independently identified inventory, and drift (S5)
 

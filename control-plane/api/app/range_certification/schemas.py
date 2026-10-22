@@ -105,6 +105,12 @@ class CertificationCaptureOut(BaseModel):
     written: int = Field(description="Entries appended; 0 when the evidence had not changed")
 
 
+class IsolationCheckOut(BaseModel):
+    range_id: uuid.UUID
+    dispatched: bool = Field(description="False: the task queue was not reachable; ask again later. The new "
+                                         "evidence (with the worker's mode) shows on the certification record")
+
+
 class SigningKeyOut(BaseModel):
     key_id: str = Field(description="First 16 hex characters of the SHA-256 of the raw public key")
     alg: Literal["Ed25519"]

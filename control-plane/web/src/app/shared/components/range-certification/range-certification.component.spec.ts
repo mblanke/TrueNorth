@@ -50,7 +50,7 @@ describe('RangeCertificationComponent', () => {
   let notify: jasmine.SpyObj<NotificationService>;
 
   async function render(role: UserRole, response: RangeCertification | HttpErrorResponse = READY) {
-    api = jasmine.createSpyObj('RangeCertificationApiService', ['get', 'capture', 'export']);
+    api = jasmine.createSpyObj('RangeCertificationApiService', ['get', 'capture', 'export', 'checkIsolation']);
     api.get.and.returnValue(response instanceof HttpErrorResponse ? throwError(() => response) : of(response));
     api.capture.and.returnValue(of({ deployment_id: 'd1', written: 3 }));
     api.export.and.returnValue(of(new Blob(['{}'], { type: 'application/json' })));
@@ -150,6 +150,52 @@ describe('RangeCertificationComponent', () => {
     await render('instructor', { range_id: 'r1', record: null, archived: [], retention_months: 12 });
     expect(el.textContent).toContain('No build of this range has a certification record yet');
     expect(button('Export JSON')).toBeUndefined();
+  });
+
+  const PROBED: RangeCertification = { ...READY, record: { ...READY.record!, sections: [
+    { ...section('isolation', 'Isolation', 'incomplete', 'isolation not proven (warn mode)'), entries: [{
+      ...entry(7, 'incomplete', 'isolation not proven (warn mode)'), section: 'isolation',
+      detail: { mode: 'warn', ran_at: '2026-10-22T10:00:00Z', zones: [
+        { zone: 'lan', cidr: '10.80.0.0/24', status: 'probed', verdict: 'isolated', reasons: [],
+          probe: { vm: 'web01', family: 'linux', account: 'student', admin: false },
+          selftest: { passed: true }, checks: [
+            { check: 'selftest', target: '10.80.0.1', expect: 'precondition', result: 'reachable' },
+            { check: 'tcp', target: '10.30.30.1:443', expect: 'unreachable', result: 'proven_unreachable' },
+            { check: 'icmp', target: '10.30.30.1', expect: 'unreachable', result: 'proven_unreachable' },
+            { check: 'exception', target: '10.30.32.10:8081', expect: 'reachable', result: 'reachable' },
+          ] },
+        { zone: 'dmz', status: 'no_probe', verdict: 'incomplete', probe: null, checks: [],
+          reasons: ['no VM with VMware Tools and a declared account on this zone to probe from'] },
+      ] } }] },
+  ] } };
+
+  it('shows the isolation evidence of every zone, a zone without a probe named', async () => {
+    await render('instructor', PROBED);
+    const lan = el.querySelector('.isolation tr[data-zone="lan"]')!;
+    expect(lan.textContent).toContain('web01');
+    expect(lan.textContent).toContain('student');
+    expect(lan.textContent).toContain('2 proven unreachable, 1 exceptions connected');
+    expect(lan.querySelector('.state')?.getAttribute('data-status')).toBe('pass');
+    const dmz = el.querySelector('.isolation tr[data-zone="dmz"]')!;
+    expect(dmz.textContent).toContain('No probe VM');
+    expect(dmz.querySelector('.state')?.textContent).toContain('Not proven');
+    expect(el.querySelector('.isolation')?.textContent).toContain('recorded; does not block a build');
+  });
+
+  it('probes again on request (staff who may provision only)', async () => {
+    await render('instructor', PROBED);
+    api.checkIsolation.and.returnValue(of({ range_id: 'r1', dispatched: true }));
+    button('Probe again').click();
+    expect(api.checkIsolation).toHaveBeenCalledOnceWith('r1');
+    expect(notify.success).toHaveBeenCalled();
+  });
+
+  it('says when the probes could not be started', async () => {
+    await render('admin', PROBED);
+    api.checkIsolation.and.returnValue(throwError(() => new HttpErrorResponse({
+      status: 409, error: { detail: 'Only a ready range can be probed' } })));
+    button('Probe again').click();
+    expect(notify.error).toHaveBeenCalledWith('Only a ready range can be probed');
   });
 
   it('explains a refusal', async () => {

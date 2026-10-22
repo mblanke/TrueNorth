@@ -991,3 +991,36 @@ def merge_range_output(db, range_id: str, updates: dict) -> None:
     merged = {**(current if isinstance(current, dict) else {}), **updates}
     db.execute(sa.update(ranges).where(ranges.c.id == range_id)
                .values(provisioner_output=json.dumps(merged), updated_at=_now()))
+
+
+def range_state(db, range_id: str) -> str | None:
+    """The range's state as text, or None when there is no such range."""
+    return db.execute(sa.select(sa.cast(ranges.c.state, sa.Text)).where(ranges.c.id == range_id)).scalar()
+
+
+def store_isolation(db, range_id: str, record: dict, vm_ids: set[str], *, states: Sequence[str] = ("ready",)) -> str:
+    """Replace the ``isolation`` evidence in a range's provisioner_output with ``record``
+    (range certification S4 re-probe, worker/isolation_task.py), under the range's row lock,
+    only if: the range is still in ``states``; its recorded VMs are still exactly ``vm_ids``
+    (the ones probed: a rebuild meanwhile makes this evidence another build's); and no
+    re-probe that started later has stored its own. Returns ``stored`` or why not."""
+    row = db.execute(sa.select(ranges.c.provisioner_output)
+                     .where(ranges.c.id == range_id, sa.cast(ranges.c.state, sa.Text).in_(list(states)))
+                     .with_for_update()).first()
+    if row is None:
+        return "the range is no longer ready"
+    try:
+        current = json.loads(row[0]) if row[0] else {}
+    except (TypeError, ValueError):
+        current = {}
+    if not isinstance(current, dict):
+        return "the range's output is unreadable"
+    if {str(v.get("vm_id")) for v in current.get("vms") or [] if isinstance(v, dict) and v.get("vm_id")} != vm_ids:
+        return "the range was rebuilt while it was probed"
+    old = current.get("isolation") if isinstance(current.get("isolation"), dict) else {}
+    if str(old.get("started_at") or "") > str(record.get("started_at") or ""):
+        return "a later probe has stored its evidence"
+    current["isolation"] = record
+    db.execute(sa.update(ranges).where(ranges.c.id == range_id)
+               .values(provisioner_output=json.dumps(current), updated_at=_now()))
+    return "stored"

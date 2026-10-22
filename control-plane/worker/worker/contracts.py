@@ -95,6 +95,13 @@ TASKS: dict[str, TaskContract] = {
             ),
             "Set rotated range passwords inside running guests (ADR 0013 §3; worker/credential_rotation.py).",
         ),
+        TaskContract(
+            "check_range_isolation",
+            "provision",
+            (_RANGE,),
+            "Re-run a ready range's per-zone isolation probes and store the evidence; never changes the range's "
+            "state (ADR 0013 §4; worker/isolation_task.py).",
+        ),
         TaskContract("delete_snapshot", "provision", (_RANGE, _SNAPSHOT)),
         TaskContract(
             "delete_confirmed_teardown_items",

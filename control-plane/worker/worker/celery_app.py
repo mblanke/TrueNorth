@@ -211,6 +211,7 @@ from . import (
     configure_tasks,  # noqa: F401, E402
     credential_rotation,  # noqa: F401, E402
     exercise_run,  # noqa: F401, E402
+    isolation_task,  # noqa: F401, E402
     lab_tasks,  # noqa: F401, E402
     noise_tasks,  # noqa: F401, E402
     power_tasks,  # noqa: F401, E402

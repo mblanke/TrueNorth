@@ -21,9 +21,12 @@ one call, in its own transaction, for the deployment it worked on:
                                                     reservations (external ones too),
                                                     golden_image_builds, range_
                                                     credentials
-  S4 (#242)              ``isolation``              by S4 calling ``append``: pass when
-                                                    every zone is probed and every non-
-                                                    exception check proven_unreachable
+  S4 (#242)              ``isolation``              **now**, from provisioner_output
+                                                    ``isolation`` (the worker's per-zone
+                                                    probes, worker/range_isolation.py),
+                                                    graded by evidence.isolation: pass
+                                                    when every zone is probed and every
+                                                    non-exception check proven_unreachable
   S5 (#243)              ``teardown``               here, at a destroy's settle (and on
                                                     read after a re-verification): its
                                                     outcome with the worker's check of
@@ -272,7 +275,9 @@ def record_override(
 def build_evidence(db: Session, rng: Range, record: RangeCertificationRecord,
                    build_error: str | None = None) -> dict[str, tuple[str, str, dict]]:
     """{section: (status, summary, detail)} for the build's evidence: readiness (#232),
-    network allocation (S1), template provenance (S2) and credential state (S3). Reads only."""
+    network allocation (S1), template provenance (S2), credential state (S3) and isolation
+    (S4; a re-probe, worker/isolation_task.py, changes it later, and refresh_if_changed
+    appends the new result). Reads only."""
     from ..network_inventory import NetworkReservation
     from ..range_credentials import RangeCredential
 
@@ -289,7 +294,8 @@ def build_evidence(db: Session, rng: Range, record: RangeCertificationRecord,
     return {"guest_readiness": evidence.guest_readiness(output, build_error),
             "network_allocation": evidence.network_allocation(output, held, external, build_error),
             "template_provenance": evidence.template_provenance(output, golden_builds(db, rng, output)),
-            "credentials": evidence.credentials(output, accounts)}
+            "credentials": evidence.credentials(output, accounts),
+            "isolation": evidence.isolation(output)}
 
 
 def golden_builds(db: Session, rng: Range, output: dict) -> dict[str, dict[str, dict]]:

@@ -109,6 +109,9 @@ In `install/inventory/group_vars/all/main.yml` (most values are already set for 
 | `tn_vsphere_vlan_pool` | `"100-199"` |
 | `tn_vsphere_reserved_vlans` | `"30-32"`: never handed to a range, even if inside the pool (`VSPHERE_RESERVED_VLANS`) |
 | `tn_range_reserved_cidrs` | `[10.30.30.0/24, 10.30.31.0/24, 10.30.32.0/24]`: a range template whose subnets overlap these is refused (`TN_RANGE_RESERVED_CIDRS`) |
+| `tn_range_isolation_check` | `warn` (`RANGE_ISOLATION_CHECK`): isolation evidence is recorded on the certification record; `enforce` also fails a range that is not proven isolated. Stays `warn` until the network team signs off (#238) |
+| `tn_range_isolation_probe_targets` | `[10.30.30.1:443, 10.30.30.10:53, 192.168.1.10:443, 10.30.30.30:22, 10.30.30.20:443]`: site addresses every range zone must be proven unable to reach, TCP and ICMP (`TN_RANGE_ISOLATION_PROBE_TARGETS`; `[v6]:port` for IPv6 targets) |
+| `tn_range_isolation_exceptions` | `[10.30.32.10:8081, 10.30.32.10:3142]`: must connect from every zone; `tn_range_isolation_closed_ports` (`[22, 80, 443, 8080]`) of the same hosts must not |
 | `tn_vsphere_placement` | `spread` (each VM goes on the host with the most vCPU headroom, on that host's local datastore) |
 | `tn_vsphere_exclude_hosts` | `[esx01.truenorth.lab]` (the VCSA host) |
 | `tn_vsphere_max_vcpu_per_thread` | `4` (see §8) |
@@ -479,6 +482,12 @@ Use soc-training, or a small PO range. Check:
 - [ ] from the range firewall's shell: 10.30.32.10 tcp/22, 8082, 8083 and ping get no
       answer; 10.30.30.30 and 10.30.31.30 are unreachable (#214)
 - [ ] a range VM cannot reach 10.30.30.0/24, 192.168.1.0/24 or vCenter
+- [ ] **isolation evidence** (range certification S4): the range's Certification card shows
+      one row per zone under *Isolation evidence per zone*, each probed (a zone with no VM
+      that has VMware Tools and a declared account says *No probe VM*). With owner approval
+      only: plant a route out on the range firewall, press *Probe again*, and the verdict
+      turns *Not safe* (Isolation: not isolated); remove it and probe again. The probes run
+      through VMware guest operations, write no files, and take about a minute per zone
 - [ ] the pfSense LAN interface is the `.1` of each range subnet
 - [ ] Security Onion is set up (`securityonion.status` `ok`, see **7.2**) and sees traffic
       on the monitoring port group (promiscuous mode is enabled only there)
