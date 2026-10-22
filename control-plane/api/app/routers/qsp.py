@@ -37,6 +37,7 @@ from ..models import (
     RangeObjectiveMap,
     Template,
 )
+from ..qsp_scope import visible_qualifications
 from ..rbac import PLATFORM_CURRICULUM_WRITE, Permission, require_any_permission, require_permission
 from ..tenancy import get_owned, tenant_uuid
 
@@ -403,11 +404,11 @@ def _visible_qualifications(db: Session, user: CurrentUser):
     qualification, so every list here shows exactly what the caller could pick. There
     is no admin bypass: a platform admin reads the spine as a member of their own
     tenant. Issue #227: every read here was unscoped, so a Student could list every
-    tenant's qualifications and objectives.
+    tenant's qualifications and objectives. The rule itself lives in ``app.qsp_scope``,
+    shared with the generators and coverage report (#257, #258); an empty tenant claim
+    reads shared qualifications only.
     """
-    return db.query(Qualification).filter(
-        (Qualification.tenant_id == tenant_uuid(user)) | Qualification.tenant_id.is_(None)
-    )
+    return visible_qualifications(db, user.tenant_id)
 
 
 @router.get("/qualifications", response_model=list[QualificationOut])

@@ -161,6 +161,20 @@ def test_platform_admin_gets_no_cross_tenant_bypass(client, db_session, spine, m
     assert "THRS227" not in codes
 
 
+def test_an_empty_tenant_claim_reads_shared_qualifications_only(client, db_session, spine):
+    """One rule with the generators and coverage (app.qsp_scope, #257/#258): no tenant
+    means shared only — not every tenant's, and not a 500 from parsing an empty id."""
+    with acting_as(db_session, UserRole.student) as who:
+        fastapi_app.dependency_overrides[get_current_user] = lambda: who.model_copy(update={"tenant_id": ""})
+        res = client.get("/qsp/qualifications")
+        own = client.get("/qsp/qualifications/MINE227/objectives")
+        shared = client.get("/qsp/qualifications/SHRD227/objectives")
+    assert res.status_code == 200
+    codes = _codes(res.json())
+    assert "SHRD227" in codes and not codes & {"MINE227", "THRS227"}
+    assert own.status_code == 404 and shared.status_code == 200
+
+
 class TestAttachCannotPullInForeignObjectives:
     """Linking a foreign PO to an own template would read it back via /curriculum."""
 
