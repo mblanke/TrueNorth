@@ -1,7 +1,7 @@
 """golden_image_builds: registered builds of a golden image and the promoted one (ADR 0013 §2)
 
 Revision ID: ce2a35194081
-Revises: d9e0f1a2b3c4
+Revises: 0a2276639b3c
 Create Date: 2026-10-21 12:00:00.000000
 
 One row per build the template kit registers: build id, checksum, build date, ISO
@@ -18,7 +18,7 @@ from alembic import op
 from app.models import GUID
 
 revision: str = "ce2a35194081"
-down_revision: str | None = "d9e0f1a2b3c4"
+down_revision: str | None = "0a2276639b3c"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

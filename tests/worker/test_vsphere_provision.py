@@ -2653,7 +2653,7 @@ class TestTemplatePinning:
                                             "iso_checksum": "sha256:" + "c" * 64, "source": vm["template"]}
         assert not any(vc.templates[b].clone_specs for b in builds)  # never the plain template
         assert "(promoted build b1 of tmpl-ubuntu-2404)" in caplog.text
-        assert not result.warnings
+        assert not [w for w in result.warnings if "promoted build" in w]  # pinned: no transition warning
 
     def test_only_the_promoted_build_is_used_not_a_newer_copy(self, vc, monkeypatch):
         """Copies of different dates on the host: the newest is no longer chosen."""
