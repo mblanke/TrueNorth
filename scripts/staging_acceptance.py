@@ -1985,7 +1985,9 @@ def ranges_credentials(ctx: Ctx) -> str:
     rows = ctx.sql("SELECT password FROM range_credentials WHERE range_id = :id", id=uuid.UUID(rid))
     # The declared accounts, and the implicit staff login(s) of the machine (ADR 0013 §3).
     expect(len(rows) >= len(CREDENTIALS_ACCOUNTS), f"{len(rows)} range_credentials rows for the range")
-    plain = [r for r in rows if not str(r[0]).startswith("tnsec:rc1:") or CREDENTIALS_LITERAL in r[0]
+    # Rows are sealed with the row key bound to tenant/range/credential (tnsec:rk1:); the
+    # legacy Fernet seal (tnsec:rc1:) only survives until the ADR 0013 §3 migration runs.
+    plain = [r for r in rows if not str(r[0]).startswith("tnsec:rk1:") or CREDENTIALS_LITERAL in r[0]
              or generated in r[0]]
     expect(not plain, f"{len(plain)} range_credentials passwords stored unsealed (or not with the range key)")
     audited = [

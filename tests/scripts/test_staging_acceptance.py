@@ -760,7 +760,7 @@ REVEALED = {"c-an": acc.CREDENTIALS_LITERAL, "c-ad": GENERATED}
 
 
 def credentials_world(student=(404, {"detail": "Range not found"}), stored_yaml="name: x\n  password: tnsec:rt1:gAAA",
-                      stored_passwords=("tnsec:rc1:aaa", "tnsec:rc1:bbb", "tnsec:rc1:ccc"), staff=STAFF_READ):
+                      stored_passwords=("tnsec:rk1:aaa", "tnsec:rk1:bbb", "tnsec:rk1:ccc"), staff=STAFF_READ):
     admin = Api("admin", {
         ("GET", "/templates"): (200, []),
         ("POST", "/templates"): lambda j, p: (201, {"id": TPL, **j}),
@@ -818,8 +818,9 @@ def test_the_credentials_template_declares_what_the_check_expects():
     [
         ({"student": STAFF_READ}, "expected 404"),
         ({"stored_yaml": f"password: {acc.CREDENTIALS_LITERAL}"}, "not sealed"),
-        ({"stored_passwords": ("tnsec:rc1:aaa", GENERATED)}, "stored unsealed"),
-        ({"stored_passwords": ("tnsec:rc1:aaa", "tnsec:v1:bbb")}, "stored unsealed"),  # not the range key
+        ({"stored_passwords": ("tnsec:rk1:aaa", GENERATED)}, "stored unsealed"),
+        ({"stored_passwords": ("tnsec:rk1:aaa", "tnsec:v1:bbb")}, "stored unsealed"),  # not the range key
+        ({"stored_passwords": ("tnsec:rk1:aaa", "tnsec:rc1:bbb")}, "stored unsealed"),  # legacy seal, not migrated
         # ADR 0013 §3: the list never carries a password.
         ({"staff": (200, {**STAFF_READ[1], "accounts": [
             {**a, "password": "x"} for a in STAFF_READ[1]["accounts"]]})}, "the list shows"),
