@@ -5313,6 +5313,9 @@ export interface paths {
          *     A PO with no module can never show progress on the career map, because
          *     `CourseModule.po_id` is the only link the progress resolver walks. This is the
          *     working list for deciding which authored modules Standards should map.
+         *
+         *     Objectives of the caller's tenant's and shared qualifications; delivering modules
+         *     from the caller's tenant's courses only.
          */
         get: operations["po_coverage_qsp_po_coverage_get"];
         put?: never;

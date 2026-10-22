@@ -34438,7 +34438,7 @@
     },
     "/qsp/po-coverage": {
       "get": {
-        "description": "Which performance objectives have a module delivering them, and which do not.\n\nA PO with no module can never show progress on the career map, because\n`CourseModule.po_id` is the only link the progress resolver walks. This is the\nworking list for deciding which authored modules Standards should map.",
+        "description": "Which performance objectives have a module delivering them, and which do not.\n\nA PO with no module can never show progress on the career map, because\n`CourseModule.po_id` is the only link the progress resolver walks. This is the\nworking list for deciding which authored modules Standards should map.\n\nObjectives of the caller's tenant's and shared qualifications; delivering modules\nfrom the caller's tenant's courses only.",
         "operationId": "po_coverage_qsp_po_coverage_get",
         "responses": {
           "200": {

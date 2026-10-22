@@ -157,10 +157,13 @@ def test_coverage_names_the_delivering_course_and_module(spine):
     assert by_po["PO_009"]["delivered_by"][0]["module"] == "Log Sources and Collection"
 
 
-def test_coverage_is_empty_for_a_tenant_with_no_spine(spine):
-    """Tenant scoping: another tenant must not see this tenant's objectives."""
+def test_another_tenant_sees_the_shared_spine_but_none_of_its_courses(spine):
+    """The spine here is shared (NULL tenant), so every tenant sees its objectives
+    (issue #258) — but delivery counts only the caller's own courses, and these are
+    shared catalogue courses, not that tenant's."""
     cov = qsp_paths.po_coverage(spine, tenant_id="00000000-0000-0000-0000-0000000000ff")
-    assert cov["objective_count"] == 0
+    assert cov["objective_count"] == 16
+    assert cov["covered"] == 0 and cov["unbound_modules"] == 0
 
 
 # -- programme delivery paths ---------------------------------------------

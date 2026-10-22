@@ -19,7 +19,8 @@ from sqlalchemy.orm import Query, Session
 from .models import PerformanceObjective, Qualification
 
 
-def _as_uuid(tenant_id: uuid.UUID | str | None) -> uuid.UUID | None:
+def tenant_uuid_or_none(tenant_id: uuid.UUID | str | None) -> uuid.UUID | None:
+    """A tenant id as a UUID; ``None`` or an empty claim is no tenant (shared-only reads)."""
     if tenant_id is None or tenant_id == "":
         return None
     return tenant_id if isinstance(tenant_id, uuid.UUID) else uuid.UUID(str(tenant_id))
@@ -30,7 +31,7 @@ def visible_qualifications(db: Session, tenant_id: uuid.UUID | str | None) -> Qu
 
     With no tenant (``None``) only shared qualifications are visible — never all of them.
     """
-    tid = _as_uuid(tenant_id)
+    tid = tenant_uuid_or_none(tenant_id)
     shared = Qualification.tenant_id.is_(None)
     if tid is None:
         return db.query(Qualification).filter(shared)

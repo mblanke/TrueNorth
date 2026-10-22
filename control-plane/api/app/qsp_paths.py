@@ -15,7 +15,7 @@ import json
 from sqlalchemy.orm import Session
 
 from . import range_topology
-from .qsp_scope import visible_qualifications
+from .qsp_scope import tenant_uuid_or_none, visible_qualifications
 from .scheduler import service as scheduler
 
 from .models import (
@@ -849,13 +849,14 @@ def po_coverage(db: Session, tenant_id: str | None = None) -> dict:
     map as permanently not-started regardless of what courseware exists. This report
     is what Standards needs in order to decide which authored modules should be
     mapped to which objectives.
+
+    Qualifications are the visible set (own tenant + shared); delivering courses are the
+    tenant's own. With no tenant it is shared qualifications and shared courses — never
+    every tenant's, which an empty tenant claim used to yield (issue #258).
     """
-    qual_q = db.query(Qualification)
-    course_q = db.query(Course)
-    if tenant_id is not None:
-        qual_q = qual_q.filter(Qualification.tenant_id == tenant_id)
-        course_q = course_q.filter(Course.tenant_id == tenant_id)
-    quals = qual_q.order_by(Qualification.dp_order, Qualification.qsp_code).all()
+    tid = tenant_uuid_or_none(tenant_id)
+    course_q = db.query(Course).filter(Course.tenant_id == tid if tid is not None else Course.tenant_id.is_(None))
+    quals = visible_qualifications(db, tid).order_by(Qualification.dp_order, Qualification.qsp_code).all()
     qual_by_id = {str(q.id): q for q in quals}
 
     if not quals:

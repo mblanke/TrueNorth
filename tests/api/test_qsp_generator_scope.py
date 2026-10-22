@@ -161,3 +161,48 @@ def test_visible_objectives_follow_visible_qualifications(db_session, world):
 def test_students_still_cannot_generate(client, db_session, world, path):
     act_as(real_user(db_session, UserRole.student, world["a"].id))
     assert client.post(path).status_code == 403
+
+
+# ── Issue #258: /qsp/po-coverage ───────────────────────────────────────
+
+
+def _bind(db, tenant_id, po, name: str) -> Course:
+    c = Course(name=name, tenant_id=tenant_id)
+    db.add(c)
+    db.flush()
+    db.add(CourseModule(course_id=c.id, ordinal=0, title=f"{name} module",
+                        content_type=ModuleContentType.scenario, po_id=po.id))
+    db.flush()
+    return c
+
+
+def test_po_coverage_is_own_and_shared_qualifications_and_own_courses(client, db_session, world):
+    _bind(db_session, world["a"].id, world["own"][1], "A delivers own")
+    _bind(db_session, world["b"].id, world["shared"][1], "B delivers shared")
+    act_as(real_user(db_session, UserRole.instructor, world["a"].id))
+
+    r = client.get("/qsp/po-coverage")
+
+    assert r.status_code == 200, r.text
+    by_code = {o["po_code"]: o for o in r.json()["objectives"]}
+    assert {world["own"][1].po_code, world["shared"][1].po_code} <= set(by_code)
+    assert world["foreign"][1].po_code not in by_code  # B's qualification
+    assert by_code[world["own"][1].po_code]["module_count"] == 1
+    assert by_code[world["shared"][1].po_code]["module_count"] == 0  # B's course is not A's
+    assert "B delivers shared" not in r.text
+
+
+def test_po_coverage_with_an_empty_tenant_claim_is_shared_only(client, db_session, world):
+    _bind(db_session, world["a"].id, world["shared"][1], "A delivers shared")
+    who = real_user(db_session, UserRole.instructor, world["a"].id)
+    act_as(who.model_copy(update={"tenant_id": ""}))
+
+    r = client.get("/qsp/po-coverage")
+
+    assert r.status_code == 200, r.text
+    objectives = r.json()["objectives"]
+    codes = {o["po_code"] for o in objectives}
+    assert world["shared"][1].po_code in codes
+    assert not codes & {world["own"][1].po_code, world["foreign"][1].po_code}
+    assert all(o["module_count"] == 0 for o in objectives)  # no tenant's courses
+    assert "A delivers shared" not in r.text

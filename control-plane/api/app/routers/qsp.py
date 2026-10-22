@@ -808,6 +808,9 @@ def po_coverage(
     A PO with no module can never show progress on the career map, because
     `CourseModule.po_id` is the only link the progress resolver walks. This is the
     working list for deciding which authored modules Standards should map.
+
+    Objectives of the caller's tenant's and shared qualifications; delivering modules
+    from the caller's tenant's courses only.
     """
     return qsp_paths.po_coverage(db, tenant_id=user.tenant_id or None)
 
