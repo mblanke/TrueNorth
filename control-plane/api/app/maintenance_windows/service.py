@@ -54,6 +54,10 @@ def utc(value: datetime) -> datetime:
     return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
 
 
+# Windows not yet ended that one tenant (or the platform) may hold at once: bounds every
+# lookup above, which reads all of a tenant's and the platform's live windows.
+MAX_LIVE_WINDOWS = 50
+
 _TICK = timedelta(microseconds=1)  # [at, at + 1 µs): "in effect at this instant" as an overlap
 
 
@@ -67,7 +71,10 @@ def label(w: MaintenanceWindow) -> str:
 
 # ── Which windows cover a range ─────────────────────────────────────────────
 def _candidates(db: Session, tenant_id: uuid.UUID | None, start: datetime, end: datetime) -> list[MaintenanceWindow]:
-    """Windows of the tenant, and platform-wide ones, overlapping [start, end). Bounded."""
+    """Windows of the tenant, and platform-wide ones, overlapping [start, end), every one of
+    them. No LIMIT before the scope is matched: a tenant creating many windows must never
+    push a platform-wide window (or any other) out of the set. Bounded instead by the cap on
+    windows a tenant may hold (``MAX_LIVE_WINDOWS``), and to the tenant plus platform-wide."""
     tenant_filter = MaintenanceWindow.tenant_id.is_(None)
     if tenant_id is not None:
         tenant_filter = or_(tenant_filter, MaintenanceWindow.tenant_id == tenant_id)
@@ -75,7 +82,6 @@ def _candidates(db: Session, tenant_id: uuid.UUID | None, start: datetime, end: 
         db.query(MaintenanceWindow)
         .filter(tenant_filter, MaintenanceWindow.starts_at < end, MaintenanceWindow.ends_at > start)
         .order_by(MaintenanceWindow.ends_at.desc())
-        .limit(200)
         .all()
     )
 
@@ -173,8 +179,8 @@ def booking_warnings(
         tenant_id=tenant_id, range_id=range_id, tags=_range_tags_loader(db, template_id),
     )
     return [
-        f"Overlaps maintenance window {label(w)} ({w.reason}): the range is not built automatically while it "
-        "is in effect"
+        f"Overlaps maintenance window {label(w)} ({w.reason}): the range is not built while the window is in "
+        "effect; it is built on the scheduler's first tick after the window ends, if the session has not ended"
         for w in sorted(hit, key=lambda w: utc(w.starts_at))
     ]
 
@@ -254,6 +260,16 @@ def create(db: Session, user: CurrentUser, body: MaintenanceWindowIn) -> Mainten
     """range:admin; a platform-wide window also needs a platform administrator. Does not commit."""
     if body.platform_wide and not is_platform_admin(user, db):
         raise HTTPException(403, "Only a platform administrator can create a platform-wide maintenance window")
+    owner = None if body.platform_wide else tenant_uuid(user)
+    live = db.query(MaintenanceWindow.id).filter(
+        MaintenanceWindow.tenant_id.is_(None) if owner is None else MaintenanceWindow.tenant_id == owner,
+        MaintenanceWindow.ends_at > _now(),
+    ).count()
+    if live >= MAX_LIVE_WINDOWS:
+        raise HTTPException(
+            422, f"At most {MAX_LIVE_WINDOWS} maintenance windows may be in effect or upcoming at once; "
+            "delete or shorten one first"
+        )
     w = MaintenanceWindow(
         id=uuid.uuid4(), tenant_id=None if body.platform_wide else tenant_uuid(user), created_by=_user_uuid(user)
     )

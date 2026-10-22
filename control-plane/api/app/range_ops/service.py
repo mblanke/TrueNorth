@@ -374,8 +374,23 @@ def redispatch_pending(db: Session, *, min_age: timedelta = timedelta(seconds=15
         .limit(limit)
         .all()
     )
+    pending = [op for op in pending if not _held_by_window(db, op)]
     db.commit()
     return sum(dispatch(db, op) for op in pending)
+
+
+def _held_by_window(db: Session, op: RangeOperation) -> bool:
+    """A provision or normal destroy the worker gave back to ``pending`` because a
+    maintenance window covered its range (worker/maintenance_windows.py) waits here, still
+    recorded and its range still in progress, and is sent once the window ends."""
+    from ..maintenance_windows import policy as window_policy
+    from ..maintenance_windows import service as windows
+
+    if op.window_bypass or op.action not in window_policy.REFUSED_ACTIONS:
+        return False
+    # tenant-safe: the operation's own range, recorded in its tenant at acceptance.
+    rng = db.get(Range, op.range_id)
+    return rng is not None and bool(windows.covering_range(db, rng))
 
 
 def stale_after() -> timedelta:

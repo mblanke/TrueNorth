@@ -120,3 +120,25 @@ def test_a_rebuild_reset_accepted_before_a_window_rebuilds_after_it(lab, db_sess
     db_session.commit()
     until(db_session, s, "ready")
     assert s.range_id != old
+
+
+def test_a_build_the_worker_held_is_sent_again_after_the_window(lab, db_session, worker):  # noqa: F811
+    """The worker puts a lab's range back to created when a window covers it (never failed)."""
+    _, rid, _ = lab
+    worker.hold = True
+    s, _ = launch(db_session, student(db_session), rid)
+    worker.queue.clear()  # the worker held this build: the range goes back to created
+    rng = db_session.get(Range, s.range_id)
+    rng.state, rng.error_message = RangeState.created, "Provisioning is held by the worker: a maintenance window"
+    db_session.commit()
+    w = _window(db_session)
+    worker.calls.clear()
+    act(db_session, service.advance, s)
+    assert s.state == "provisioning" and "maintenance window" in s.error and worker.calls == []
+    db_session.delete(w)
+    db_session.commit()
+    act(db_session, service.advance, s)
+    assert _calls(worker, "provision_range") and db_session.get(Range, s.range_id).state == RangeState.provisioning
+    worker.hold = False
+    worker.run()
+    until(db_session, s, "ready")

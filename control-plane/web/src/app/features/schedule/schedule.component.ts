@@ -126,7 +126,7 @@ const ROW = 46; // px per hour
           }
           @for (w of formWindows(); track w.id) {
             <div class="note" role="note"><strong>Maintenance window {{ shortWhen(toMs(w.starts_at)) }} to {{ shortWhen(toMs(w.ends_at)) }}:</strong> {{ w.reason }}.
-              <br><span class="small muted">It still books, but the range is not built automatically while the window is in effect{{ w.scope === 'tags' ? ' (if the window covers this range’s tags)' : '' }}.</span></div>
+              <br><span class="small muted">It still books, but the range is not built while the window is in effect; it is built once the window ends, if the session is still on{{ w.scope === 'tags' ? ' (if the window covers this range’s tags)' : '' }}.</span></div>
           }
           @if (formProblem(); as p) {
             <div class="note"><strong>{{ p.title }}</strong>@for (r of p.reasons; track r) {<br>{{ r }}}

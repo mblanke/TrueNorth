@@ -61,6 +61,7 @@ def test_applies_agrees(window, rng):
         "nodes:\n  - id: a\n    tags: [user]\n",
         "tags: [unclosed\n",
         "- just\n- a list\n",
+        "base: &b [soc]\ntags: *b\n",  # aliases are refused by both: no tags
     ],
 )
 def test_template_tags_agree(yml):

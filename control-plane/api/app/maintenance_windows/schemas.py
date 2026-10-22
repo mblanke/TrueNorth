@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 from enum import Enum
 from typing import Annotated
 
-from pydantic import AfterValidator, AwareDatetime, BaseModel, Field, model_validator
+from pydantic import AfterValidator, AwareDatetime, BaseModel, Field, field_validator, model_validator
 
 
 def _utc(v: datetime) -> datetime:
@@ -78,4 +78,12 @@ class EmergencyTeardownIn(BaseModel):
     """A deliberate act: the caller repeats the range's id and says why."""
 
     confirm_range_id: uuid.UUID
-    reason: str = Field(..., min_length=10, max_length=500)
+    reason: str = Field(..., min_length=10, max_length=500, description="At least 10 characters besides spaces")
+
+    @field_validator("reason")
+    @classmethod
+    def _meaningful(cls, v: str) -> str:
+        v = v.strip()
+        if len("".join(v.split())) < 10:
+            raise ValueError("reason must have at least 10 characters besides spaces")
+        return v

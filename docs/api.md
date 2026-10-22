@@ -890,11 +890,17 @@ it ends):
 A new Student lab waits in its queue (`state: queued`, `error` says why) and starts when the
 window ends. Never refused: a booking's teardown when it ends, a lab's end, expiry and
 failed-build cleanup, and `POST /ranges/{id}/emergency-teardown`. Stop and start are not
-windowed. The worker re-checks at the task's entry: a build or restore that reaches it inside
-a window is refused (the range goes to `failed` with the reason; a restore's snapshot goes back
-to `ready`), and so is a normal destroy; every other teardown runs. Bookings that overlap a
-window are still made; `EventOut.maintenance_warnings` lists the windows, and the clock does not
-build the range until the window ends.
+windowed. The worker re-checks at the task's entry, and a window never leaves a range `failed`:
+a build that reaches it inside a window is held (its operation goes back to `pending`, with
+`error.code = maintenance_window`, and the API re-sends it once the window ends; a lab's build
+puts the range back to `created` and the lab sends it again); a restore gives its snapshot back
+to `ready`. A destroy runs only when identified: a `window_bypass`, an operation accepted before
+the window began, or a Student lab's cleanup; anything else is held. Bookings that overlap a
+window are still made; `EventOut.maintenance_warnings` lists the windows. The clock does not
+build inside a window: the booking stays `scheduled` (past its start too) and is built on the
+first tick after the window ends if the session is still on (`deferred_by_window`,
+`built_after_window` in the tick summary). A tenant, and the platform, may each hold at most 50
+windows that have not ended (`422` beyond that).
 
 Times must carry a zone offset (`Z` or `+hh:mm`): a time without one is `422`. They are stored
 and returned in UTC; a window is `[starts_at, ends_at)`. A tenant's window covers its ranges; a
@@ -947,7 +953,8 @@ platform administrator. Every write is audited (`resource_type: maintenance_wind
 ### `POST /ranges/{range_id}/emergency-teardown`
 
 **Permission: `range:admin` (admin only). Dangerous.** A destroy that a maintenance window does
-not refuse. Body: `{"confirm_range_id": "<range id again>", "reason": "<10-500 characters>"}`.
+not refuse. Body: `{"confirm_range_id": "<range id again>", "reason": "<10-500 characters, at least 10
+besides spaces>"}`.
 `202` with the range (`destroying`) and an `Operation-Id` header; the operation's
 `window_bypass` is `emergency`. Audited as `emergency_teardown` with the reason and the window
 it overrode, and written to the range's certification record as an override (once S6's record

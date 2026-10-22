@@ -2,8 +2,10 @@
 ADR 0013 §7, range certification S7).
 
 A task the API accepted before a window opened, or sent late, can reach a worker inside the
-window. A build or a restore is then refused, and so is a person's normal destroy; every
-other destroy (an emergency, a booking that ended, a lab's end, expiry or failed build) runs.
+window. Builds and restores are then held, never failed: a recorded operation goes back to
+``pending`` (the API re-sends it after the window), a lab's build puts its range back to
+``created`` (its session re-sends it). A destroy runs only when identified as one that must:
+a bypass, accepted before the window began, or a Student lab's cleanup; anything else is held.
 These run the real tasks against SQLite, with the hypervisor stubbed to fail if touched.
 """
 
@@ -31,6 +33,8 @@ def wdb(db):
     """The worker test database (conftest ``db``) with what the re-check reads."""
     with db.begin() as conn:
         conn.execute(sa.text("ALTER TABLE ranges ADD COLUMN tenant_id TEXT"))
+        conn.execute(sa.text("CREATE TABLE lab_sessions (id TEXT PRIMARY KEY, range_id TEXT, state TEXT, "
+                             "end_reason TEXT)"))
     tables.maintenance_windows.create(db)
     tables.range_operations.create(db)
     return db
@@ -58,26 +62,38 @@ def _range(db, state: str, *, tenant: str = TENANT, tags: list[str] | None = Non
     return rid
 
 
-def _window(db, *, tenant: str | None = TENANT, scope: str = "all", range_ids=(), tags=(), start=None, end=None):
+def _window(db, *, tenant: str | None = TENANT, scope: str = "all", range_ids=(), tags=(), start=None, end=None,
+            reason: str = "SAN firmware"):
     with db.begin() as conn:
         conn.execute(
             tables.maintenance_windows.insert().values(
-                id=uuid.uuid4(), tenant_id=tenant, reason="SAN firmware", scope=scope,
+                id=uuid.uuid4(), tenant_id=tenant, reason=reason, scope=scope,
                 starts_at=start or NOW - timedelta(minutes=10), ends_at=end or NOW + timedelta(hours=1),
                 range_ids=list(range_ids), tags=list(tags), created_at=NOW, updated_at=NOW,
             )
         )
 
 
-def _op(db, rid: str, action: str, *, bypass: str | None = None, status: str = "dispatched", generation: int = 1):
+def _op(db, rid: str, action: str, *, bypass: str | None = None, status: str = "dispatched",
+        created: datetime | None = None) -> uuid.UUID:
+    oid = uuid.uuid4()
     with db.begin() as conn:
         conn.execute(
             tables.range_operations.insert().values(
-                id=uuid.uuid4(), tenant_id=TENANT, range_id=rid, action=action, generation=generation,
+                id=oid, tenant_id=TENANT, range_id=rid, action=action, generation=1,
                 request_hash="h", status=status, dispatch_attempts=1, window_bypass=bypass,
-                created_at=NOW, updated_at=NOW,
+                created_at=created or NOW, updated_at=NOW,
             )
         )
+    return oid
+
+
+def _op_row(db, oid: uuid.UUID):
+    with db.connect() as conn:
+        return conn.execute(
+            sa.select(tables.range_operations.c.status, tables.range_operations.c.error)
+            .where(tables.range_operations.c.id == oid)
+        ).one()
 
 
 def _state(db, rid: str) -> tuple:
@@ -85,30 +101,45 @@ def _state(db, rid: str) -> tuple:
         return tuple(conn.execute(sa.text("SELECT state, error_message FROM ranges WHERE id = :id"), {"id": rid}).one())
 
 
-# ── refused ──────────────────────────────────────────────────────────────────
-def test_a_build_inside_a_window_is_refused_and_recorded_failed(wdb):
+def _session():
+    return tasks._db_session()
+
+
+# ── held, never failed ───────────────────────────────────────────────────────
+def test_a_recorded_build_inside_a_window_is_held_pending_not_failed(wdb):
     rid = _range(wdb, "provisioning")
-    _op(wdb, rid, "provision")
+    oid = _op(wdb, rid, "provision")
     _window(wdb)
     result = tasks.provision_range.run(rid)
-    assert result["status"] == "refused" and result["reason"] == "maintenance_window"
-    state, error = _state(wdb, rid)
-    assert state == "failed" and "maintenance window" in error and "SAN firmware" in error
+    assert result["status"] == "held" and result["reason"] == "maintenance_window"
+    assert _state(wdb, rid) == ("provisioning", None), "not failed; still recorded as being built"
+    status, error = _op_row(wdb, oid)
+    assert status == "pending" and error["code"] == "maintenance_window" and "SAN firmware" in error["message"]
 
 
-def test_a_lab_build_with_no_operation_row_is_refused_too(wdb):
+def test_a_lab_build_inside_a_window_goes_back_to_created(wdb):
     rid = _range(wdb, "provisioning")
     _window(wdb)
-    assert tasks.provision_range.run(rid)["status"] == "refused"
-
-
-def test_a_persons_destroy_inside_a_window_is_refused(wdb):
-    rid = _range(wdb, "destroying", output=OUTPUT)
-    _op(wdb, rid, "destroy")
-    _window(wdb)
-    assert tasks.destroy_range.run(rid)["status"] == "refused"
+    assert tasks.provision_range.run(rid)["status"] == "held"
     state, error = _state(wdb, rid)
-    assert state == "failed" and "Destroying was refused" in error and "Nothing was changed" in error
+    assert state == "created" and "maintenance window" in error
+
+
+def test_a_persons_destroy_accepted_inside_the_window_is_held_pending(wdb):
+    rid = _range(wdb, "destroying", output=OUTPUT)
+    oid = _op(wdb, rid, "destroy")  # accepted after the window began (a race with the API's check)
+    _window(wdb)
+    assert tasks.destroy_range.run(rid)["status"] == "held"
+    assert _state(wdb, rid) == ("destroying", None)
+    assert _op_row(wdb, oid)[0] == "pending"
+
+
+def test_a_persons_destroy_accepted_before_the_window_began_runs(wdb):
+    rid = _range(wdb, "destroying", output=OUTPUT)
+    _op(wdb, rid, "destroy", created=NOW - timedelta(hours=1))
+    _window(wdb)  # began 10 minutes ago
+    with pytest.raises(AssertionError, match="hypervisor was touched"):
+        tasks.destroy_range.run(rid)
 
 
 def test_a_restore_inside_a_window_gives_the_snapshot_back_and_leaves_the_range(wdb):
@@ -121,11 +152,20 @@ def test_a_restore_inside_a_window_gives_the_snapshot_back_and_leaves_the_range(
             {"i": sid, "r": rid},
         )
     _window(wdb)
-    assert tasks.restore_snapshot.run(rid, sid)["status"] == "refused"
+    assert tasks.restore_snapshot.run(rid, sid)["status"] == "held"
     with wdb.connect() as conn:
         assert conn.execute(sa.text("SELECT snapshot_state FROM range_snapshots WHERE id = :i"), {"i": sid}).scalar() \
             == "ready"
     assert _state(wdb, rid) == ("ready", None)
+
+
+def test_a_destroy_nothing_identifies_is_held_not_run_and_not_failed(wdb):
+    """Default deny: no operation row, not a lab's range."""
+    rid = _range(wdb, "destroying", output=OUTPUT)
+    _window(wdb)
+    assert tasks.destroy_range.run(rid)["status"] == "held"
+    state, error = _state(wdb, rid)
+    assert state == "destroying" and "maintenance window" in error
 
 
 # ── always runs ──────────────────────────────────────────────────────────────
@@ -134,50 +174,67 @@ def test_a_bypassed_destroy_runs_inside_a_window(wdb, bypass):
     rid = _range(wdb, "destroying", output=OUTPUT)
     _op(wdb, rid, "destroy", bypass=bypass)
     _window(wdb)
-    with tables_session(wdb) as s:
-        assert mw.refusal(s, "destroy", rid) is None
+    with pytest.raises(AssertionError, match="hypervisor was touched"):
+        tasks.destroy_range.run(rid)
 
 
-def test_a_lab_teardown_with_no_operation_row_runs_inside_a_window(wdb):
+def test_an_unknown_bypass_marker_does_not_count(wdb):
     rid = _range(wdb, "destroying", output=OUTPUT)
-    _op(wdb, rid, "provision", status="succeeded")  # its last operation was something else
+    _op(wdb, rid, "destroy", bypass="because")
     _window(wdb)
-    with tables_session(wdb) as s:
-        assert mw.refusal(s, "destroy", rid) is None
+    with _session() as s:
+        assert mw.decide(s, "destroy", rid)[0]
 
 
-def test_a_destroy_that_reaches_the_hypervisor_is_the_one_that_bypassed(wdb):
-    """End to end through the task: past the re-check, the teardown asks for its backend."""
+@pytest.mark.parametrize("state, reason", [("expired", "expired"), ("cleaning", "failed"), ("completed", "completed")])
+def test_a_lab_cleanup_runs_inside_a_window(wdb, state, reason):
     rid = _range(wdb, "destroying", output=OUTPUT)
-    _op(wdb, rid, "destroy", bypass="emergency")
+    with wdb.begin() as conn:
+        conn.execute(sa.text("INSERT INTO lab_sessions VALUES (:i, :r, :s, :e)"),
+                     {"i": str(uuid.uuid4()), "r": rid, "s": state, "e": reason})
     _window(wdb)
     with pytest.raises(AssertionError, match="hypervisor was touched"):
         tasks.destroy_range.run(rid)
 
 
-def test_unreadable_windows_never_block_a_teardown_but_do_block_a_build(wdb):
+def test_unreadable_windows_never_block_a_teardown_but_do_hold_a_build(wdb):
     with wdb.begin() as conn:
         conn.execute(sa.text("DROP TABLE maintenance_windows"))
     destroy, build = _range(wdb, "destroying", output=OUTPUT), _range(wdb, "provisioning")
     _op(wdb, destroy, "destroy")
+    oid = _op(wdb, build, "provision")
     assert mw.at_entry(tasks._db_session, "destroy", destroy) is None
     result = mw.at_entry(tasks._db_session, "provision", build)
-    assert result["status"] == "refused" and "could not be read" in _state(wdb, build)[1]
+    assert result["status"] == "held" and "could not be read" in result["detail"]
+    assert _state(wdb, build)[0] == "provisioning" and _op_row(wdb, oid)[0] == "pending"
 
 
 # ── which windows apply ──────────────────────────────────────────────────────
 def test_another_tenants_window_does_not_apply(wdb):
     rid = _range(wdb, "provisioning")
     _window(wdb, tenant=OTHER)
-    with tables_session(wdb) as s:
-        assert mw.refusal(s, "provision", rid) is None
+    with _session() as s:
+        assert mw.decide(s, "provision", rid)[0] is None
 
 
 def test_a_platform_wide_window_applies_to_every_tenant(wdb):
     rid = _range(wdb, "provisioning", tenant=OTHER)
     _window(wdb, tenant=None)
-    with tables_session(wdb) as s:
-        assert "SAN firmware" in mw.refusal(s, "provision", rid)
+    with _session() as s:
+        assert "SAN firmware" in mw.decide(s, "provision", rid)[0]
+
+
+def test_many_windows_never_crowd_out_the_one_that_applies(wdb):
+    """Review of #261: a LIMIT before scope matching let a tenant hide a platform window."""
+    rid = _range(wdb, "provisioning")
+    decoy = _range(wdb, "created")
+    for _ in range(250):  # this tenant's own, for another range, ending later than the platform's
+        _window(wdb, scope="ranges", range_ids=[decoy], end=NOW + timedelta(days=3650), reason="decoy")
+    for _ in range(250):  # another tenant's, covering everything of theirs
+        _window(wdb, tenant=OTHER, end=NOW + timedelta(days=3650), reason="theirs")
+    _window(wdb, tenant=None, reason="platform vCenter upgrade")
+    with _session() as s:
+        assert "platform vCenter upgrade" in mw.decide(s, "provision", rid)[0]
 
 
 def test_ranges_and_tags_scopes(wdb):
@@ -185,20 +242,20 @@ def test_ranges_and_tags_scopes(wdb):
         wdb, "provisioning", tags=["red"])
     _window(wdb, scope="ranges", range_ids=[listed])
     _window(wdb, scope="tags", tags=["soc"])
-    with tables_session(wdb) as s:
-        assert mw.refusal(s, "provision", listed) and mw.refusal(s, "provision", tagged)
-        assert mw.refusal(s, "provision", neither) is None
+    with _session() as s:
+        assert mw.decide(s, "provision", listed)[0] and mw.decide(s, "provision", tagged)[0]
+        assert mw.decide(s, "provision", neither)[0] is None
 
 
 def test_the_window_is_start_inclusive_end_exclusive(wdb):
     rid = _range(wdb, "provisioning")
     start, end = NOW + timedelta(days=1), NOW + timedelta(days=1, hours=2)
     _window(wdb, start=start, end=end)
-    with tables_session(wdb) as s:
-        assert mw.refusal(s, "provision", rid, now=start - timedelta(microseconds=1)) is None
-        assert mw.refusal(s, "provision", rid, now=start)
-        assert mw.refusal(s, "provision", rid, now=end - timedelta(microseconds=1))
-        assert mw.refusal(s, "provision", rid, now=end) is None
+    with _session() as s:
+        assert mw.decide(s, "provision", rid, now=start - timedelta(microseconds=1))[0] is None
+        assert mw.decide(s, "provision", rid, now=start)[0]
+        assert mw.decide(s, "provision", rid, now=end - timedelta(microseconds=1))[0]
+        assert mw.decide(s, "provision", rid, now=end)[0] is None
 
 
 def test_stop_and_start_are_never_checked(wdb):
@@ -207,6 +264,5 @@ def test_stop_and_start_are_never_checked(wdb):
     assert mw.at_entry(tasks._db_session, "stop", rid) is None
 
 
-def tables_session(db):
-    """A session on the test database, as tasks._db_session opens one."""
-    return tasks._db_session()
+def test_template_yaml_with_aliases_declares_no_tags():
+    assert mw.template_tags("base: &b [soc]\ntags: *b\n") == set()

@@ -10874,7 +10874,10 @@ export interface components {
              * Format: uuid
              */
             confirm_range_id: string;
-            /** Reason */
+            /**
+             * Reason
+             * @description At least 10 characters besides spaces
+             */
             reason: string;
         };
         /** EnrollmentIn */

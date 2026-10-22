@@ -5508,6 +5508,7 @@
             "type": "string"
           },
           "reason": {
+            "description": "At least 10 characters besides spaces",
             "maxLength": 500,
             "minLength": 10,
             "title": "Reason",

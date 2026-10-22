@@ -627,6 +627,14 @@ def _advance_provisioning(db: Session, session: LabSession, rng: Range | None, n
         return _fail(db, session, "the lab's range record is missing")
     if rng.state == RangeState.failed:
         return _fail(db, session, f"the lab could not be built: {rng.error_message or 'provisioning failed'}")
+    if rng.state == RangeState.created:  # the worker refused the build inside a maintenance window
+        if held := _window_holds(db, session):
+            session.error = held
+            return None
+        rng.state, rng.error_message = RangeState.provisioning, None
+        session.provisioning_at, session.error = now, ""  # the timeout counts from the new build
+        _send(db, session, "provision_range", str(rng.id))
+        return None
     timeout = timedelta(seconds=_int_env("LAB_PROVISION_TIMEOUT", 3600))
     if now - _aware(session.provisioning_at or now) > timeout:
         return _fail(db, session, f"the lab was not ready within {int(timeout.total_seconds() // 60)} minutes")

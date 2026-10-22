@@ -82,7 +82,7 @@ def active_windows(
             w for w in service.visible(db, user)
             .filter(MaintenanceWindow.starts_at <= now, MaintenanceWindow.ends_at > now)
             .order_by(MaintenanceWindow.ends_at)
-            .limit(50)
+            .limit(2 * service.MAX_LIVE_WINDOWS)  # the tenant's and the platform's, each capped
             .all()
             if service._in_effect(w, now)
         ]
