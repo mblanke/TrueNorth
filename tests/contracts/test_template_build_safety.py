@@ -20,6 +20,7 @@ import base64
 import importlib.util
 import os
 import re
+import shutil
 import stat
 import subprocess
 import textwrap
@@ -100,9 +101,16 @@ def guest(tmp_path):
         esac
         """)
 
+    # PATH is the stub directory ONLY, so nothing on the host leaks in: a CI runner (or this
+    # Mac) with its own cloud-init/vmtoolsd/python3 must not make a "missing" case pass
+    # (#247 CI, 2026-10-21: the Ubuntu runner's cloud-init 24.1 did). The one real tool the
+    # script needs, grep, is linked in by absolute path.
+    (bin_ / "grep").symlink_to(shutil.which("grep"))
+    bash = shutil.which("bash")
+
     def run(**extra):
-        env = {"PATH": f"{bin_}:/usr/bin:/bin", "TN_TEST_ROOT": str(tmp_path), **extra}
-        return subprocess.run(["bash", str(LINUX / "require-cloud-init.sh")], env=env,
+        env = {"PATH": str(bin_), "TN_TEST_ROOT": str(tmp_path), **extra}
+        return subprocess.run([bash, str(LINUX / "require-cloud-init.sh")], env=env,
                               capture_output=True, text=True, timeout=30)
 
     return tmp_path, bin_, run
@@ -122,6 +130,7 @@ def test_require_cloud_init_refuses_an_unusable_template(guest, breakage):
     extra = {}
     if breakage == "no-cloud-init":
         (bin_ / "cloud-init").unlink()
+        assert shutil.which("cloud-init", path=str(bin_)) is None  # not the host's either
     elif breakage == "no-vmware-ds":
         extra["NO_VMWARE_DS"] = "1"
     elif breakage == "datasource":
@@ -130,6 +139,7 @@ def test_require_cloud_init_refuses_an_unusable_template(guest, breakage):
         (root / "etc/cloud/cloud-init.disabled").write_text("")
     elif breakage == "no-tools":
         (bin_ / "vmtoolsd").unlink()
+        assert shutil.which("vmtoolsd", path=str(bin_)) is None
     else:
         extra["NO_HOSTKEYS"] = "1"
     r = run(**extra)

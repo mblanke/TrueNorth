@@ -156,9 +156,13 @@ def pf(tmp_path):
         lines.append(f"{hashlib.sha256(_pkg(p)).hexdigest()}  {p}")
     (cd / "pkgs.lock").write_text("\n".join(lines) + "\n")
     (cd / "tn-admin.hash").write_text("$6$salt$" + "a" * 86 + "\n")
-    _exe(bin_ / "sha256", '#!/bin/sh\nshasum -a 256 "$2" | cut -d" " -f1\n')
+    _exe(bin_ / "sha256", '#!/bin/sh\n'
+         'if command -v sha256sum >/dev/null; then sha256sum "$2"; else shasum -a 256 "$2"; fi | cut -d" " -f1\n')
+    # Everything the script would otherwise take from the host (mounts, pools, the root
+    # filesystem) is stubbed, so the result never depends on the machine running the tests.
+    _exe(bin_ / "df", '#!/bin/sh\nprintf "Filesystem 1K-blocks\\n/dev/fake0 1\\n"\n')
     _exe(bin_ / "poweroff", f'#!/bin/sh\necho poweroff >> "{log}"\n')
-    for tool in ("zpool", "zfs", "mount", "umount"):
+    for tool in ("zpool", "zfs", "mount", "umount", "sync"):
         _exe(bin_ / tool, f'#!/bin/sh\necho "{tool} $*" >> "{log}"\n')
     _exe(bin_ / "chroot", f"""
         #!/bin/sh
