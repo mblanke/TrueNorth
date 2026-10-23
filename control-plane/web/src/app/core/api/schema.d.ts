@@ -1052,6 +1052,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/classes/{class_id}/roll-call/{entry_id}/reinstate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Give a Student who lost their seat their seat back
+         * @description Its lead or an admin (ADR 0014 §4). Back to signed in if they have signed in since,
+         *     otherwise invited; their seat is taken again if it fits the approved sessions, otherwise
+         *     it waits for an approver (ADR 0014 §17). Never forfeited again. Audited.
+         */
+        post: operations["reinstateRollCallEntry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/classes/{class_id}/roll-call/{entry_id}/reject": {
         parameters: {
             query?: never;
@@ -9918,6 +9940,8 @@ export interface components {
             platform_admin?: boolean;
             prefill?: components["schemas"]["RegistrationPrefill"] | null;
             request?: components["schemas"]["RegistrationRequestOut"] | null;
+            /** Roll Call Forfeited */
+            roll_call_forfeited?: string[];
             /** Status */
             status: string;
             suggestions?: components["schemas"]["RegistrationSuggestions"] | null;
@@ -16253,6 +16277,29 @@ export interface components {
             /** Tenant Name */
             tenant_name?: string | null;
         };
+        /**
+         * ReinstateOut
+         * @description What reinstating a Student who lost their seat did (ADR 0014 §4).
+         */
+        ReinstateOut: {
+            /**
+             * Class Id
+             * Format: uuid
+             */
+            class_id: string;
+            /**
+             * Entry Id
+             * Format: uuid
+             */
+            entry_id: string;
+            /**
+             * Pending Reason
+             * @description What did not fit, when it waits for an approver
+             */
+            pending_reason?: string | null;
+            /** @description signed_in or invited when their seat was taken again; pending when it waits for an approver */
+            status: components["schemas"]["RollCallStatusOut"];
+        };
         /** RejectIn */
         RejectIn: {
             /**
@@ -16371,6 +16418,16 @@ export interface components {
             /** Email */
             email: string;
             /**
+             * Forfeit Deadline
+             * @description A forfeited Student: the time by which they had to sign in (2 hours after the start)
+             */
+            forfeit_deadline?: string | null;
+            /**
+             * Forfeited At
+             * @description When they lost their seat for not signing in in time; kept after a reinstatement
+             */
+            forfeited_at?: string | null;
+            /**
              * Id
              * Format: uuid
              */
@@ -16403,7 +16460,7 @@ export interface components {
          * RollCallStatusOut
          * @enum {string}
          */
-        RollCallStatusOut: "invited" | "signed_in" | "ready" | "removed" | "pending";
+        RollCallStatusOut: "invited" | "signed_in" | "ready" | "removed" | "pending" | "forfeited";
         /** RosterIn */
         RosterIn: {
             /**
@@ -20888,6 +20945,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdditionDecisionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reinstateRollCallEntry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                class_id: string;
+                entry_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReinstateOut"];
                 };
             };
             /** @description Validation Error */

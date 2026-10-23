@@ -9,8 +9,11 @@ import { PAGE_ACCESS, PageKey, Permission, roleCan, roleHasAccess } from './perm
  */
 export function fakeAuth(initial: UserRole | null) {
   const role = signal<UserRole | null>(initial);
+  // GET /auth/me as the shell reads it; a spec sets what it needs (e.g. roll_call_forfeited).
+  const me = signal<{ roll_call_forfeited?: string[] } | null>(null);
   return {
     role,
+    me,
     user: computed(() => (role() ? { id: 'u-self', role: role()!, sub: '', email: '', display_name: 'Me' } : null)),
     userId: computed(() => (role() ? 'u-self' : null)),
     isAuthenticated: computed(() => role() !== null),

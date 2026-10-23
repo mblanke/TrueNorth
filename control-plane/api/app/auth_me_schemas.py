@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from .schemas import RegistrationPrefill, RegistrationRequestOut, RegistrationSuggestions, UserFullOut
 
@@ -33,3 +33,6 @@ class AuthMeOut(BaseModel):
     mfa_required: bool = False
     mfa_satisfied: bool = True
     acknowledgement_required: bool = False
+    # ADR 0014 §4 (#280): classes whose seat this person lost for not signing in in time. A
+    # forfeited roll-call entry never admits anyone; the SPA tells them to ask their instructor.
+    roll_call_forfeited: list[str] = Field(default_factory=list)

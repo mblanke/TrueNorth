@@ -21,7 +21,7 @@ from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.orm import Session
 
-from ..models import Course
+from ..models import Course, User, UserRole
 from . import service
 from .models import Class, ClassStatus, RollCallEntry, RollCallStatus
 
@@ -53,6 +53,10 @@ def tick(db: Session, now: datetime | None = None) -> list[service.Mail]:
         for entry in due:
             if entry.onboarding_sent_at is not None and entry.onboarding_sent_at.date() == now.date():
                 continue
+            if _has_signed_in(db, cls, entry):
+                # Linked to an account that has signed in (adopted another way): in effect
+                # signed in (forfeit._signed_in_since), so no "you have not signed in" reminder.
+                continue
             # Reminders draw on the same per-instructor daily budget as onboarding emails
             # (whoever added the entry), so a roll call over the cap is not mailed by the clock
             # instead. reminded_at counts once claimed, so the count stays exact as we go.
@@ -79,6 +83,23 @@ def tick(db: Session, now: datetime | None = None) -> list[service.Mail]:
 
 
 PAGE = 500
+
+
+def _has_signed_in(db: Session, cls: Class, entry: RollCallEntry) -> bool:
+    """The entry's linked account is an active Student of the class's tenant that is no
+    longer a roster row: it has signed in, though the entry still says invited."""
+    if entry.user_id is None:
+        return False
+    # tenant-safe: the entry's own link, checked against the class's tenant on the next line.
+    u = db.get(User, entry.user_id)
+    return (
+        u is not None
+        and u.tenant_id == cls.tenant_id
+        and u.is_active
+        and u.deleted_at is None
+        and u.role == UserRole.student
+        and service.has_signed_in(u)
+    )
 
 
 def _classes_starting(db: Session, day):

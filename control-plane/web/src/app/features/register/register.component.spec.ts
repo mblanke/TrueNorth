@@ -49,6 +49,20 @@ describe('RegisterComponent', () => {
 
   afterEach(() => http.verify());
 
+  it('tells someone who lost their seat on a class to ask their instructor', async () => {
+    const auth = TestBed.inject(AuthService) as jasmine.SpyObj<AuthService>;
+    auth.bootstrap.and.resolveTo({ status: 'unregistered', roll_call_forfeited: ['C201-26-03'] });
+    await init();
+    http.expectOne(`${API}/registration/nations`).flush([]);
+    http.expectOne(`${API}/registration/qualifications`).flush([]);
+    fixture.detectChanges();
+
+    const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+    expect(component.forfeited()).toEqual(['C201-26-03']);
+    expect(text).toContain('You lost your seat on C201-26-03');
+    expect(text).toContain('Ask your instructor');
+  });
+
   async function init(): Promise<void> {
     fixture.detectChanges();
     await fixture.whenStable();

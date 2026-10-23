@@ -155,7 +155,7 @@ def _resend(evt: ScheduledEvent) -> None:
     was cancelled in calendars at its current SEQUENCE: the new REQUEST must be newer, or a
     calendar keeps it cancelled (RFC 5546 §2.1.5). A first approval was never sent: 0 stays."""
     if evt.sequence:
-        evt.sequence += 1
+        service.resequence(evt)
 
 
 def _require_pending(evt: ScheduledEvent) -> None:

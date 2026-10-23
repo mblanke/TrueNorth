@@ -486,7 +486,7 @@ def update_event(
     if "require_certified_range" in body.model_fields_set:  # a form that does not send it keeps it
         evt.require_certified_range = body.require_certified_range
     if evt.state not in lifecycle.UNSENT:  # a draft or a pending session was never sent to a calendar
-        evt.sequence = (evt.sequence or 0) + 1  # calendars replace their copy
+        service.resequence(evt)  # calendars replace their copy
     detail = (
         f"instructor {previous_instructor or 'none'} -> {instructor_id or 'none'}"
         if previous_instructor != instructor_id
@@ -603,7 +603,7 @@ def _move(
         detail = f"{before} -> {to.value}"
         # Cancelling after the clock built the range: take down what we built.
         if to == EventState.cancelled:
-            evt.sequence = (evt.sequence or 0) + 1
+            service.resequence(evt)
             for what in (service.release_range(db, evt), service.withdraw_exercise(db, evt)):
                 if what:
                     detail += f"; {what}"

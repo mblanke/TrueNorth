@@ -167,10 +167,21 @@ registration form, with no link to a class).
 
 **Roll call** (ADR 0014):
 The Students on a class, by email (`RollCallEntry`, `app/classes/models.py`; statuses invited,
-signed_in, ready, removed, and pending: added after the sessions were approved with no room
-left, waiting for an approver). Being on it is approval to join: a roll-call Student's first AD
-sign-in with a verified email admits them (`app/classes/onboarding.py`). A class is visible
-only to its roll call, instructors, observers and admins.
+signed_in, ready, removed, pending: added after the sessions were approved with no room
+left, waiting for an approver, and forfeited: see **Seat forfeit**). Being on it is approval
+to join: a roll-call Student's first AD sign-in with a verified email admits them
+(`app/classes/onboarding.py`). A class is visible only to its roll call, instructors,
+observers and admins.
+
+**Seat forfeit** (ADR 0014 §4):
+A roll-call Student still *invited* (not signed in) 2 hours after the class's first approved
+session started loses their seat: status forfeited, the seat freed, their invites withdrawn,
+the lead and assistants emailed (`app/classes/forfeit.py`). A session approved after it
+started counts from the approval; someone added later counts from the next approved session
+not yet over; someone never emailed and with no account never forfeits. An account made by
+a directory sign-in with the entry's address counts as signed in. This class's roll call only. The
+lead or an admin **reinstates** them in one click; a reinstated Student never forfeits again.
+_Avoid_: kicked, dropped, no-show (in the UI: "Lost seat").
 _Avoid_: roster (in the UI), attendees.
 
 **Class session** (ADR 0014):
