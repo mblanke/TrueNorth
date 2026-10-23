@@ -9352,6 +9352,34 @@ export interface components {
              */
             target?: string;
         };
+        /**
+         * AdditionDecisionOut
+         * @description What an approver's decision on an addition did, without naming the Student.
+         */
+        AdditionDecisionOut: {
+            /**
+             * Class Id
+             * Format: uuid
+             */
+            class_id: string;
+            /**
+             * Emailed
+             * @description An onboarding email went to them
+             * @default false
+             */
+            emailed?: boolean;
+            /**
+             * Entry Id
+             * Format: uuid
+             */
+            entry_id: string;
+            /**
+             * Not Emailed
+             * @description Why no onboarding email went, if one was due
+             */
+            not_emailed?: string | null;
+            status: components["schemas"]["RollCallStatusOut"];
+        };
         /** AdditionRejectIn */
         AdditionRejectIn: {
             /** Reason */
@@ -15168,11 +15196,11 @@ export interface components {
         };
         /**
          * PendingAdditionOut
-         * @description A roll-call addition waiting for an approver (ADR 0014 §17).
+         * @description A roll-call addition waiting for an approver (ADR 0014 §17): only what a capacity
+         *     decision needs. Approvers (range ops among them) need not be on the class, so no Student
+         *     is named here; the class's own people see who it is on its roll call.
          */
         PendingAdditionOut: {
-            /** Added By */
-            added_by: string | null;
             /**
              * Class Id
              * Format: uuid
@@ -15182,8 +15210,6 @@ export interface components {
             class_name: string;
             /** Created At */
             created_at: string | null;
-            /** Email */
-            email: string;
             /**
              * Entry Id
              * Format: uuid
@@ -15191,6 +15217,18 @@ export interface components {
             entry_id: string;
             /** Reason */
             reason: string | null;
+            /**
+             * Roll Call Count
+             * @description Students on the class's roll call now
+             * @default 0
+             */
+            roll_call_count?: number;
+            /**
+             * Seats
+             * @description Seats the addition needs in each approved session
+             * @default 1
+             */
+            seats?: number;
         };
         /** PolicyIn */
         PolicyIn: {
@@ -20473,7 +20511,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["RollCallEntryOut"];
+                    "application/json": components["schemas"]["AdditionDecisionOut"];
                 };
             };
             /** @description Validation Error */
@@ -20509,7 +20547,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["RollCallEntryOut"];
+                    "application/json": components["schemas"]["AdditionDecisionOut"];
                 };
             };
             /** @description Validation Error */

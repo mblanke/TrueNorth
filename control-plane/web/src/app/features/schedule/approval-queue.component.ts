@@ -83,7 +83,7 @@ export function whenLabel(start: string, end: string): string {
       <h3>Roll-call additions that didn’t fit</h3>
       @for (a of additions(); track a.entry_id) {
         <div class="item">
-          <div><strong>{{ a.email }}</strong> <span class="small muted">· {{ a.class_name }}</span></div>
+          <div><strong>{{ a.class_name }}</strong> <span class="small muted">· {{ a.seats }} more seat{{ a.seats === 1 ? '' : 's' }}, {{ a.roll_call_count }} on the roll call</span></div>
           @if (a.reason) { <p class="small">{{ localize(a.reason) }}</p> }
           @if (open()?.id === a.entry_id) {
             <label><span>Reason</span><input class="input" [ngModel]="open()!.reason" (ngModelChange)="patch({ reason: $event })" maxlength="1000"></label>

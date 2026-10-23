@@ -662,7 +662,11 @@ def test_an_addition_that_does_not_fit_waits_for_an_approver(client, db_session,
     # The approver's list; others do not see it.
     act_as(world["range_ops"])
     pending = client.get("/classes/pending-additions").json()
-    assert [p["email"] for p in pending] == ["late@corp.test"]
+    assert [p["entry_id"] for p in pending] == [str(entry.id)]
+    # Only what a capacity decision needs: no Student named to an approver who need not be on the class.
+    assert "email" not in pending[0] and "added_by" not in pending[0]
+    assert pending[0]["class_name"] == "C201-26-03" and pending[0]["seats"] == 1 and "vCPU" in pending[0]["reason"]
+    assert "late@corp.test" not in client.get("/classes/pending-additions").text
     for who in ("lead", "observer"):
         act_as(world[who])
         assert client.get("/classes/pending-additions").status_code == 403
@@ -703,7 +707,8 @@ def test_an_approver_rejects_an_addition(client, db_session, world, seats):
     act_as(world["admin"])
     r = client.post(f"{url}/reject", json={"reason": "The lab is full this week"})
     assert r.status_code == 200 and r.json()["status"] == "removed"
-    assert "full" in r.json()["pending_reason"]
+    assert "email" not in r.json() and "pending_reason" not in r.json()
+    assert "full" in db_session.get(RollCallEntry, entry.id).pending_reason
     assert client.post(f"{url}/approve").status_code == 409
     rows = db_session.query(AuditLog).filter(AuditLog.action == "roll_call_addition_rejected").all()
     assert len(rows) == 1
@@ -733,7 +738,8 @@ def test_a_plain_booking_of_a_running_class_course_is_refused_to_its_instructors
     course = str(world["course"].id)
     act_as(world["lead"])
     r = client.post("/schedule/events", json=_session(course_id=course, vcpu_total=5))
-    assert r.status_code == 422 and "C201-26-03" in r.json()["detail"]
+    assert r.status_code == 422 and "open class" in r.json()["detail"]
+    assert "C201-26-03" not in r.json()["detail"]  # never names a class the caller may not be on
     # A draft holds nothing; scheduling it is refused the same way.
     draft = client.post("/schedule/events", json=_session(course_id=course, vcpu_total=5, draft=True))
     assert draft.status_code == 201
@@ -818,3 +824,189 @@ def test_a_students_own_sessions_follow_the_roll_call(client, db_session, world)
     uid = ics.booking_uid(uuid.UUID(ev["id"]))
     assert uid in feed.render(db_session, world["on_roll"]).replace("\r\n ", "")
     assert uid not in feed.render(db_session, world["enrolled_only"]).replace("\r\n ", "")
+
+
+# ── Second review of PR #297 ───────────────────────────────────────────────
+
+
+def _class_body(w, **over) -> dict:
+    body = {"name": "C201-26-03", "course_id": str(w["course"].id), "start_date": str(DAY.date()),
+            "end_date": str((DAY + timedelta(days=4)).date()), "assistant_ids": [w["assistant"].id],
+            "observer_ids": []}
+    body.update(over)
+    return body
+
+
+def test_1_a_class_changing_course_tells_the_old_course_nothing(client, db_session, world, outbox):
+    act_as(world["lead"])
+    cls = client.post("/classes", json=_class_body(world, name="C2", assistant_ids=[])).json()
+    with patch("app.notifications.get_channel", return_value=Outbox()):
+        client.post(f"/classes/{cls['id']}/roll-call", json={"emails": ["solo@corp.test"]})
+    ev = client.post("/schedule/events", json=_session(class_id=cls["id"], vcpu_total=10)).json()
+    act_as(world["admin"])
+    assert client.post(f"/schedule/events/{ev['id']}/approve").status_code == 200
+    other = Course(id=uuid.uuid4(), name="Other", tenant_id=world["a"].id, is_published=True)
+    db_session.add(other)
+    db_session.flush()
+    act_as(world["lead"])
+    assert client.put(f"/classes/{cls['id']}", json=_class_body(
+        world, name="C2", assistant_ids=[], course_id=str(other.id))).status_code == 200
+    outbox.clear()
+    assert client.put(f"/schedule/events/{ev['id']}", json=_session(name="renamed", vcpu_total=10)).status_code == 200
+    assert "eve@corp.test" not in outbox.invited("CANCEL")  # enrolled on the old course only
+    assert outbox.invited("CANCEL") == set()
+
+
+def test_2_a_student_put_back_gets_a_newer_request_than_their_cancel(client, db_session, world, outbox):
+    ev = _approved(client, world)
+    entry = db_session.query(RollCallEntry).filter(RollCallEntry.email == "newbie@corp.test").one()
+    act_as(world["lead"])
+    assert client.delete(f"/classes/{world['class']['id']}/roll-call/{entry.id}").status_code == 204
+    cancelled_at = db_session.get(ScheduledEvent, uuid.UUID(ev["id"])).sequence
+    outbox.clear()
+    assert client.post(f"/classes/{world['class']['id']}/roll-call", json={"emails": ["newbie@corp.test"]}).status_code == 200
+    assert "newbie@corp.test" in outbox.invited("REQUEST")
+    assert db_session.get(ScheduledEvent, uuid.UUID(ev["id"])).sequence > cancelled_at
+
+
+def test_4_session_control_follows_the_class_after_a_handover(client, db_session, world):
+    from app.class_setup import scope
+
+    ev = _book_class(client, world)
+    act_as(world["lead"])
+    assert client.put(f"/classes/{world['class']['id']}", json=_class_body(
+        world, lead_instructor_id=world["other_instructor"].id)).status_code == 200
+    evt = db_session.get(ScheduledEvent, uuid.UUID(ev["id"]))
+    assert str(evt.instructor_id) == world["other_instructor"].id  # the new lead teaches it
+    # The old lead has no say over it, nor class_setup authority through it; the new lead does.
+    assert client.put(f"/schedule/events/{ev['id']}", json=_session(vcpu_total=40)).status_code == 403
+    assert not scope._my_live_bookings(db_session, world["lead"]).all()
+    act_as(world["other_instructor"])
+    assert client.put(f"/schedule/events/{ev['id']}", json=_session(name="New lead's", vcpu_total=40)).status_code == 200
+    # An assistant is not the class's editor, even when named the session's instructor.
+    r = client.put(f"/schedule/events/{ev['id']}",
+                   json=_session(vcpu_total=40, instructor_id=world["assistant"].id))
+    assert r.status_code == 200 and r.json()["instructor_id"] == world["assistant"].id
+    act_as(world["assistant"])
+    assert client.post(f"/schedule/events/{ev['id']}/cancel").status_code == 403
+
+
+def test_4_a_class_session_is_taught_by_the_lead_or_an_assistant(client, world):
+    act_as(world["lead"])
+    body = _session(class_id=world["class"]["id"], vcpu_total=5, instructor_id=world["other_instructor"].id)
+    assert client.post("/schedule/events", json=body).status_code == 422
+    body["instructor_id"] = world["assistant"].id
+    assert client.post("/schedule/events", json=body).status_code == 201
+
+
+def test_5_a_draft_class_session_makes_nobody_a_participant(client, db_session, world):
+    from types import SimpleNamespace
+
+    from app import exercise_participants
+
+    ev = _book_class(client, world, draft=True)
+    tpl = Template(id=uuid.uuid4(), name="t", yaml="id: t\n", tenant_id=world["a"].id)
+    db_session.add(tpl)
+    db_session.flush()
+    rng = Range(id=uuid.uuid4(), tenant_id=world["a"].id, name="r", template_id=tpl.id)
+    db_session.add(rng)
+    db_session.flush()
+    db_session.get(ScheduledEvent, uuid.UUID(ev["id"])).range_id = rng.id
+    db_session.flush()
+    ex = SimpleNamespace(id=uuid.uuid4(), tenant_id=world["a"].id, range_id=rng.id)
+    assert exercise_participants._bookings(db_session, ex).all() == []
+
+
+def test_6_additions_take_the_booking_lock_only_when_a_seat_costs_something(client, world, monkeypatch, outbox):
+    from app.scheduler import service as scheduler_service
+
+    _approved(client, world)
+    taken = []
+    real = scheduler_service.serialize_bookings
+    monkeypatch.setattr(scheduler_service, "serialize_bookings", lambda db: (taken.append(1), real(db)))
+    act_as(world["lead"])
+    assert client.post(f"/classes/{world['class']['id']}/roll-call", json={"emails": ["a1@corp.test"]}).status_code == 200
+    assert taken == []
+    monkeypatch.setattr(class_sessions, "seat_demand", lambda db, cls, evt: Resources(1, 0, 0))
+    assert client.post(f"/classes/{world['class']['id']}/roll-call", json={"emails": ["a2@corp.test"]}).status_code == 200
+    assert taken
+
+
+def test_6_a_lost_lock_race_is_409_not_500(client, world, monkeypatch):
+    from app.classes import service as class_service
+    from sqlalchemy.exc import OperationalError
+
+    class DeadlockError(Exception):
+        sqlstate = "40P01"
+
+    def boom(*a, **k):
+        raise OperationalError("INSERT ...", {}, DeadlockError())
+
+    monkeypatch.setattr(class_service, "add_to_roll_call", boom)
+    act_as(world["lead"])
+    r = client.post(f"/classes/{world['class']['id']}/roll-call", json={"emails": ["x@corp.test"]})
+    assert r.status_code == 409
+
+
+def _pending_addition(client, db_session, world) -> RollCallEntry:
+    _approved(client, world, vcpu=40)
+    _fill(db_session, world["b"].id, vcpu=55)
+    act_as(world["lead"])
+    with patch("app.notifications.get_channel", return_value=Outbox()):
+        client.post(f"/classes/{world['class']['id']}/roll-call", json={"emails": ["late@corp.test"]})
+    entry = db_session.query(RollCallEntry).filter_by(email="late@corp.test").one()
+    assert entry.status == "pending"
+    db_session.query(ScheduledEvent).filter(ScheduledEvent.name == "someone else").delete()
+    db_session.flush()
+    return entry
+
+
+def test_8_approving_an_addition_rechecks_the_domain_allow_list(client, db_session, world, seats):
+    entry = _pending_addition(client, db_session, world)
+    db_session.get(RollCallSettings, world["a"].id).email_domains = ["other.test"]
+    db_session.flush()
+    act_as(world["admin"])
+    r = client.post(f"/classes/{world['class']['id']}/roll-call/{entry.id}/approve")
+    assert r.status_code == 422 and "corp.test" in r.json()["detail"]
+
+
+def test_8_approving_an_addition_counts_against_the_daily_email_budget(client, db_session, world, seats, monkeypatch,
+                                                                        outbox):
+    from app.classes import service as class_service
+
+    entry = _pending_addition(client, db_session, world)
+    monkeypatch.setattr(class_service, "EMAILS_PER_INSTRUCTOR_PER_DAY", 0)
+    outbox.clear()
+    act_as(world["admin"])
+    r = client.post(f"/classes/{world['class']['id']}/roll-call/{entry.id}/approve")
+    assert r.status_code == 200 and r.json()["emailed"] is False and r.json()["not_emailed"]
+    assert not [m for m in outbox.sent if m["method"] is None]  # no onboarding email
+    assert db_session.get(RollCallEntry, entry.id).onboarding_sent_at is None
+
+
+def test_9_a_proposal_stays_inside_the_class_dates_and_out_of_maintenance(client, db_session, world):
+    from app.maintenance_windows.models import MaintenanceWindow
+
+    ev = _book_class(client, world)
+    act_as(world["admin"])
+    late = DAY + timedelta(days=10, hours=9)
+    r = client.post(f"/schedule/events/{ev['id']}/propose",
+                    json={"start_time": late.isoformat(), "end_time": (late + timedelta(hours=3)).isoformat()})
+    assert r.status_code == 409 and any("class's dates" in x for x in r.json()["detail"]["reasons"])
+    day2 = NINE + timedelta(days=1)
+    db_session.add(MaintenanceWindow(tenant_id=world["a"].id, reason="patching", scope="all",
+                                     starts_at=day2 - timedelta(hours=1), ends_at=day2 + timedelta(hours=4)))
+    db_session.flush()
+    r = client.post(f"/schedule/events/{ev['id']}/propose",
+                    json={"start_time": day2.isoformat(), "end_time": (day2 + timedelta(hours=3)).isoformat()})
+    assert r.status_code == 409 and any("maintenance" in x for x in r.json()["detail"]["reasons"])
+    # The next free slot steps past the window: its build starts once the window ends.
+    assert datetime.fromisoformat(r.json()["detail"]["next_free"]["start_time"]) == day2 + timedelta(hours=4, minutes=30)
+
+
+def test_9_next_free_never_leaves_the_class_dates(client, db_session, world):
+    ev = _book_class(client, world, vcpu=40)
+    _fill(db_session, world["b"].id, start=DAY, hours=24 * 6, vcpu=80)  # the whole class, and past it
+    act_as(world["lead"])
+    body = client.get(f"/schedule/events/{ev['id']}/next-free").json()
+    assert body["fits"] is False and body["next_free"] is None

@@ -31,7 +31,7 @@ from sqlalchemy.orm import Session
 
 from ..auth import CurrentUser
 from . import lifecycle, service
-from .capacity import get_capacity_provider, window_label
+from .capacity import PROVISION_LEAD, get_capacity_provider, window_label
 from .models import BookingApproval, EventState, OvercapacityPolicy, ScheduledEvent
 from .schemas import FitOut, SlotOut, as_utc
 
@@ -45,19 +45,49 @@ class Checked:
 
 
 def check(
-    db: Session, evt: ScheduledEvent, start: datetime, end: datetime, now: datetime | None = None, provider=None
+    db: Session,
+    evt: ScheduledEvent,
+    start: datetime,
+    end: datetime,
+    now: datetime | None = None,
+    provider=None,
+    *,
+    strict: bool = False,
 ) -> Checked:
     """Would ``evt`` fit at [start, end), and if not, where next? From ``start`` on. Pass
-    ``provider`` to share one capacity read across many checks (the queue)."""
+    ``provider`` to share one capacity read across many checks (the queue).
+
+    ``strict`` (a time an approver proposes): it must also lie within the class's dates and
+    clear of maintenance windows. The next free slot always does both."""
     provider = provider or get_capacity_provider(db)
     f = service.fit(db, provider, evt, start, end)
+    within = _class_dates(db, evt)
+    if strict:
+        f = service.Fit([*f.conflicts, *_off_limits(db, evt, start, end, within)], f.assessment)
     if f.ok:
         nxt, until = (as_utc(start), as_utc(end)), as_utc(start)
     else:
         probe = at_time(evt, start, end)
-        nxt, until = service.next_free_slot(db, provider, probe, after=start, now=now)
+        nxt, until = service.next_free_slot(db, provider, probe, after=start, now=now, within=within)
     slot = SlotOut(start_time=nxt[0], end_time=nxt[1]) if nxt else None
     return Checked(f, FitOut(fits=f.ok, reasons=f.reasons, next_free=slot, searched_until=until))
+
+
+def _off_limits(db: Session, evt: ScheduledEvent, start: datetime, end: datetime, within) -> list[str]:
+    out = []
+    if within is not None and not (within[0] <= as_utc(start).date() and as_utc(end).date() <= within[1]):
+        out.append(f"Outside the class's dates ({within[0]} to {within[1]}, UTC)")
+    if service.maintenance_spans(db, evt, as_utc(start) - PROVISION_LEAD, as_utc(end)):
+        out.append("A maintenance window covers it: its range would not be built")
+    return out
+
+
+def _class_dates(db: Session, evt: ScheduledEvent):
+    """A class session's class's first and last day, or None for a plain booking."""
+    from ..classes import sessions
+
+    cls = sessions.class_of(db, evt)
+    return (cls.start_date, cls.end_date) if cls is not None else None
 
 
 def at_time(evt: ScheduledEvent, start: datetime, end: datetime) -> ScheduledEvent:
@@ -92,7 +122,9 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
-def _admit(db: Session, evt: ScheduledEvent, start: datetime, end: datetime, what: str) -> list[str]:
+def _admit(
+    db: Session, evt: ScheduledEvent, start: datetime, end: datetime, what: str, strict: bool = False
+) -> list[str]:
     """Check [start, end) for ``evt`` as approving it there: 409 (with the next free slot)
     on a double booking, or on no room under ``block``; under ``warn`` the warnings."""
     if as_utc(end) <= _now():
@@ -108,9 +140,9 @@ def _admit(db: Session, evt: ScheduledEvent, start: datetime, end: datetime, wha
             raise HTTPException(409, "The booked range can no longer be built; the instructor must book another")
         if range_lifecycle.is_lab_range(db, rng.id):
             raise HTTPException(409, "The booked range belongs to a student's lab session")
-    checked = check(db, evt, start, end)
+    checked = check(db, evt, start, end, strict=strict)
     if checked.fit.conflicts:
-        raise _refuse(f"{what}: double-booked", checked)
+        raise _refuse(f"{what}: the time is not free", checked)
     if not checked.fit.assessment.fits:
         if service.get_policy(db) is OvercapacityPolicy.block:
             raise _refuse(f"{what}: it does not fit the cluster", checked)
@@ -182,7 +214,7 @@ def propose(db: Session, user: CurrentUser, evt: ScheduledEvent, start: datetime
         raise HTTPException(400, "end_time must be after start_time")
     if as_utc(start) <= _now():
         raise HTTPException(422, "Propose a time in the future")
-    warnings = _admit(db, evt, start, end, "Cannot propose that time")
+    warnings = _admit(db, evt, start, end, "Cannot propose that time", strict=True)
     a.proposed_start, a.proposed_end = as_utc(start), as_utc(end)
     a.proposed_by, a.proposed_at = service.user_uuid(user), _now()
     service.audit(db, user, "propose", str(evt.id), f"proposed {window_label(start, end)}")

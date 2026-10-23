@@ -31,7 +31,7 @@ from ..scheduler import service as scheduler
 from ..scheduler.capacity import Resources
 from ..scheduler.models import ScheduledEvent
 from . import access
-from .models import OFF_ROLL_CALL, Class, ClassSession, ClassStatus, RollCallEntry
+from .models import OFF_ROLL_CALL, Class, ClassSession, ClassStaff, ClassStatus, RollCallEntry, StaffRole
 
 
 def class_for_booking(db: Session, user: CurrentUser, class_id: str) -> Class:
@@ -137,6 +137,39 @@ def roll_call_for_booking(db: Session, evt: ScheduledEvent) -> list[str] | None:
     return class_roll_call_emails(db, cls) if cls is not None else []
 
 
+def edits_class_of(db: Session, evt: ScheduledEvent, user: CurrentUser) -> bool:
+    """Whether the caller is the lead or an admin of the class ``evt`` is a session of."""
+    cls = class_of(db, evt)
+    return cls is not None and access.role_in(db, cls, user) in access.EDITORS
+
+
+def teachers(db: Session, cls: Class) -> set[uuid.UUID]:
+    """Who may teach a class's sessions: its lead and its assistant instructors."""
+    assistants = {
+        uid
+        for (uid,) in db.query(ClassStaff.user_id).filter(
+            ClassStaff.class_id == cls.id, ClassStaff.role == StaffRole.assistant.value
+        )
+    }
+    return {cls.lead_instructor_id, *assistants}
+
+
+def assert_class_teacher(db: Session, cls: Class, instructor_id: uuid.UUID | None) -> None:
+    """A class session is taught by the class's lead or one of its assistants (422)."""
+    if instructor_id is None or instructor_id not in teachers(db, cls):
+        raise HTTPException(422, "A class session is taught by the class's lead or one of its assistant instructors")
+
+
+def hand_over(db: Session, cls: Class, actor: CurrentUser, old_lead: uuid.UUID) -> list:
+    """The class has a new lead: its sessions that ``old_lead`` taught and that have not
+    finished pass to the new lead, unless ``old_lead`` stays on as an assistant. The old lead
+    then holds no booking of the class, so no authority over it (app/class_setup/scope.py).
+    Returns the invites the change calls for. Does not commit."""
+    if old_lead == cls.lead_instructor_id or old_lead in teachers(db, cls):
+        return []
+    return scheduler.reassign_instructor(db, actor, session_ids(db, cls), old_lead, cls.lead_instructor_id)
+
+
 def assert_same_class(db: Session, evt: ScheduledEvent, class_id: str | None) -> None:
     """A session's class is fixed when it is booked: naming another (or one for a booking
     that is no class's session) is 422. Naming none keeps it."""
@@ -171,20 +204,22 @@ def _scaled(r: Resources, n: int) -> Resources:
 
 def room_for_seats(db: Session, cls: Class, seats: int) -> list[str]:
     """Why ``seats`` more Students would not fit the class's approved sessions (none: they
-    fit). Takes the scheduler's booking lock before reading the sessions, so two additions
-    (or an addition and an approval) cannot both take the last room. The caller commits or
-    rolls back, which releases it."""
+    fit). When a seat costs anything, takes the scheduler's booking lock and reads the
+    sessions again under it, so two additions (or an addition and an approval) cannot both
+    take the last room. The caller commits or rolls back, which releases it."""
     ids = session_ids(db, cls)
     if not ids:
         return []
+
+    def needs():
+        out = [(evt, _scaled(seat_demand(db, cls, evt), seats)) for evt in scheduler.approved_upcoming(db, ids)]
+        return [(evt, need) for evt, need in out if need != Resources()]
+
+    if not needs():
+        return []  # a seat costs nothing: no reason to queue behind every booking in the platform
     scheduler.serialize_bookings(db)
-    sessions = scheduler.approved_upcoming(db, ids)
-    needs = [(evt, _scaled(seat_demand(db, cls, evt), seats)) for evt in sessions]
-    needs = [(evt, need) for evt, need in needs if need != Resources()]
-    if not needs:
-        return []
     reasons: list[str] = []
-    for evt, need in needs:
+    for evt, need in needs():  # read again under the lock
         reasons += scheduler.room_for(db, evt, need)
     return reasons
 
@@ -195,6 +230,7 @@ def take_seats(db: Session, cls: Class, seats: int) -> list[ScheduledEvent]:
     sessions = approved_sessions(db, cls)
     for evt in sessions:
         scheduler.resize(db, evt, _scaled(seat_demand(db, cls, evt), seats), 1)
+        scheduler.resequence(evt)  # the new Student may hold an older CANCEL of it
     db.flush()
     return sessions
 
@@ -205,6 +241,7 @@ def free_seats(db: Session, cls: Class, seats: int) -> list[ScheduledEvent]:
     sessions = approved_sessions(db, cls)
     for evt in sessions:
         scheduler.resize(db, evt, _scaled(seat_demand(db, cls, evt), seats), -1)
+        scheduler.resequence(evt)
     return sessions
 
 

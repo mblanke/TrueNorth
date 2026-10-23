@@ -311,6 +311,10 @@ def add_to_roll_call(db: Session, cls: Class, actor: CurrentUser, emails: list[s
             continue
         if is_hidden:
             hidden.append(email)
+        # After approval, one more Student must fit every approved session (ADR 0014 §17).
+        # Checked (under the booking lock, when a seat costs anything) before the entry is
+        # written, so the lock is the transaction's first write-side step.
+        no_room = sessions.room_for_seats(db, cls, 1)
         if entry is None:
             entry = RollCallEntry(class_id=cls.id, tenant_id=cls.tenant_id, email=email)
             db.add(entry)
@@ -318,8 +322,6 @@ def add_to_roll_call(db: Session, cls: Class, actor: CurrentUser, emails: list[s
         entry.removed_at = None
         entry.user_id = None
         entry.signed_in_at = None
-        # After approval, one more Student must fit every approved session (ADR 0014 §17).
-        no_room = sessions.room_for_seats(db, cls, 1)
         if no_room:
             entry.status = RollCallStatus.pending.value
             entry.pending_reason = "; ".join(no_room)[:1000]
@@ -375,6 +377,7 @@ class AdditionDecision:
     entry: RollCallEntry
     sessions: list
     onboard: bool
+    not_emailed: str | None = None
 
 
 def approve_addition(db: Session, cls: Class, entry: RollCallEntry, actor: CurrentUser) -> AdditionDecision:
@@ -385,6 +388,13 @@ def approve_addition(db: Session, cls: Class, entry: RollCallEntry, actor: Curre
         raise HTTPException(409, f"This addition is {entry.status}, not waiting for approval")
     if cls.status != ClassStatus.open.value:
         raise HTTPException(409, "The class is cancelled; its roll call cannot change")
+    # The allow-list may have changed since it was added: the same rule as adding it now.
+    domains, source = allowed_domains(db, cls.tenant_id)
+    if not domains and source == "accounts":
+        raise HTTPException(422, NO_DOMAINS)
+    domain = entry.email.rsplit("@", 1)[1]
+    if domains and domain not in domains:
+        raise HTTPException(422, f"{domain} is not an email domain this organisation's roll calls accept")
     account, refusal, _hidden = _account_for(accounts_with_email(db, entry.email), cls)
     if refusal:
         raise HTTPException(422, f"{entry.email} {refusal}")
@@ -395,8 +405,13 @@ def approve_addition(db: Session, cls: Class, entry: RollCallEntry, actor: Curre
     taken = sessions.take_seats(db, cls, 1)
     put_on_roll_call(db, cls, entry, account)
     onboard = entry.status == RollCallStatus.invited.value and entry.onboarding_sent_at is None
+    not_emailed = None
+    # The onboarding email counts against the budget of whoever added them, as any addition's.
+    sender = entry.added_by or uuid.UUID(actor.id)
+    if onboard and emails_sent_today(db, sender) >= EMAILS_PER_INSTRUCTOR_PER_DAY:
+        onboard, not_emailed = False, DAILY_LIMIT
     audit(db, actor.id, cls, "roll_call_addition_approved", entry.email)
-    return AdditionDecision(entry, taken, onboard)
+    return AdditionDecision(entry, taken, onboard, not_emailed)
 
 
 def reject_addition(db: Session, cls: Class, entry: RollCallEntry, actor: CurrentUser, reason: str) -> None:

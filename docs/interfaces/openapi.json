@@ -586,6 +586,49 @@
         "title": "ActivityReport",
         "type": "object"
       },
+      "AdditionDecisionOut": {
+        "description": "What an approver's decision on an addition did, without naming the Student.",
+        "properties": {
+          "class_id": {
+            "format": "uuid",
+            "title": "Class Id",
+            "type": "string"
+          },
+          "emailed": {
+            "default": false,
+            "description": "An onboarding email went to them",
+            "title": "Emailed",
+            "type": "boolean"
+          },
+          "entry_id": {
+            "format": "uuid",
+            "title": "Entry Id",
+            "type": "string"
+          },
+          "not_emailed": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why no onboarding email went, if one was due",
+            "title": "Not Emailed"
+          },
+          "status": {
+            "$ref": "#/components/schemas/RollCallStatusOut"
+          }
+        },
+        "required": [
+          "entry_id",
+          "class_id",
+          "status"
+        ],
+        "title": "AdditionDecisionOut",
+        "type": "object"
+      },
       "AdditionRejectIn": {
         "properties": {
           "reason": {
@@ -14259,20 +14302,8 @@
         "type": "object"
       },
       "PendingAdditionOut": {
-        "description": "A roll-call addition waiting for an approver (ADR 0014 \u00a717).",
+        "description": "A roll-call addition waiting for an approver (ADR 0014 \u00a717): only what a capacity\ndecision needs. Approvers (range ops among them) need not be on the class, so no Student\nis named here; the class's own people see who it is on its roll call.",
         "properties": {
-          "added_by": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Added By"
-          },
           "class_id": {
             "format": "uuid",
             "title": "Class Id",
@@ -14294,10 +14325,6 @@
             ],
             "title": "Created At"
           },
-          "email": {
-            "title": "Email",
-            "type": "string"
-          },
           "entry_id": {
             "format": "uuid",
             "title": "Entry Id",
@@ -14313,15 +14340,25 @@
               }
             ],
             "title": "Reason"
+          },
+          "roll_call_count": {
+            "default": 0,
+            "description": "Students on the class's roll call now",
+            "title": "Roll Call Count",
+            "type": "integer"
+          },
+          "seats": {
+            "default": 1,
+            "description": "Seats the addition needs in each approved session",
+            "title": "Seats",
+            "type": "integer"
           }
         },
         "required": [
           "entry_id",
           "class_id",
           "class_name",
-          "email",
           "reason",
-          "added_by",
           "created_at"
         ],
         "title": "PendingAdditionOut",
@@ -25562,7 +25599,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/RollCallEntryOut"
+                  "$ref": "#/components/schemas/AdditionDecisionOut"
                 }
               }
             },
@@ -25631,7 +25668,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/RollCallEntryOut"
+                  "$ref": "#/components/schemas/AdditionDecisionOut"
                 }
               }
             },

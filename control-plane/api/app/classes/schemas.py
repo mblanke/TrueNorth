@@ -143,15 +143,27 @@ class RollCallAddOut(BaseModel):
 
 
 class PendingAdditionOut(BaseModel):
-    """A roll-call addition waiting for an approver (ADR 0014 §17)."""
+    """A roll-call addition waiting for an approver (ADR 0014 §17): only what a capacity
+    decision needs. Approvers (range ops among them) need not be on the class, so no Student
+    is named here; the class's own people see who it is on its roll call."""
 
     entry_id: uuid.UUID
     class_id: uuid.UUID
     class_name: str
-    email: str
+    seats: int = Field(1, description="Seats the addition needs in each approved session")
+    roll_call_count: int = Field(0, description="Students on the class's roll call now")
     reason: str | None
-    added_by: uuid.UUID | None
     created_at: datetime | None
+
+
+class AdditionDecisionOut(BaseModel):
+    """What an approver's decision on an addition did, without naming the Student."""
+
+    entry_id: uuid.UUID
+    class_id: uuid.UUID
+    status: RollCallStatusOut
+    emailed: bool = Field(False, description="An onboarding email went to them")
+    not_emailed: str | None = Field(None, description="Why no onboarding email went, if one was due")
 
 
 class AdditionRejectIn(BaseModel):

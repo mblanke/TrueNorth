@@ -10,7 +10,7 @@ from __future__ import annotations
 import os
 import uuid
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 
 from fastapi import HTTPException
 from sqlalchemy import or_, text
@@ -166,10 +166,13 @@ def next_free_slot(
     *,
     after: datetime | None = None,
     now: datetime | None = None,
+    within: tuple[date, date] | None = None,
 ) -> tuple[tuple[datetime, datetime] | None, datetime]:
     """The first window of ``evt``'s length, from ``after`` (default: its own start) on a
-    15-minute grid, that it fits: no conflict and room for its demand (``fit``). Never
-    sooner than the provisioning lead from now, since the range must be built first.
+    15-minute grid, that it fits: no conflict and room for its demand (``fit``), and no
+    maintenance window over its build-to-end span. Never sooner than the provisioning lead
+    from now, since the range must be built first. ``within``: the class's first and last
+    day (UTC dates; there is no site time zone yet): a slot must lie inside them.
 
     Returns (slot or None, searched until). Bookings and running ranges are read once;
     the slot found is then checked again with ``fit`` so it never disagrees with what
@@ -179,23 +182,38 @@ def next_free_slot(
     length = end - start
     first = _ceil(max(as_utc(after) if after else start, now + PROVISION_LEAD), SLOT_STEP)
     horizon = first + timedelta(days=NEXT_FREE_DAYS)
+    if within is not None:
+        first = max(first, datetime.combine(within[0], time.min, tzinfo=UTC))
+        horizon = min(horizon, datetime.combine(within[1] + timedelta(days=1), time.min, tzinfo=UTC) - length)
     candidates: list[datetime] = []
     t = first
-    while t < horizon:
+    while t <= horizon:
         candidates.append(t)
         t += SLOT_STEP
     need = need_of(evt)
     supply = provider.supply()
     committed = provider.committed_many(db, [held_window(c, c + length) for c in candidates], evt.id)
     blocked = _blocked_spans(db, evt, first, horizon + length)
+    windows = maintenance_spans(db, evt, first - PROVISION_LEAD, horizon + length)
     for c, com in zip(candidates, committed, strict=True):
         if shortfalls(need, available(supply, com.resources), c, c + length):
             continue
         if any(a < c + length and z > c for a, z in blocked):
             continue
+        if any(a < c + length and z > c - PROVISION_LEAD for a, z in windows):
+            continue
         if fit(db, provider, evt, c, c + length).ok:
             return (c, c + length), horizon
     return None, horizon
+
+
+def maintenance_spans(db: Session, evt: ScheduledEvent, start: datetime, end: datetime) -> list[tuple[datetime, datetime]]:
+    """Maintenance windows over [start, end) that would hold ``evt``'s range (ADR 0013 §7)."""
+    from ..maintenance_windows import service as windows
+
+    return windows.booking_spans(
+        db, tenant_id=evt.tenant_id, range_id=evt.range_id, template_id=evt.template_id, start=start, end=end
+    )
 
 
 def _blocked_spans(db: Session, evt: ScheduledEvent, start: datetime, end: datetime) -> list[tuple[datetime, datetime]]:
@@ -656,6 +674,36 @@ def resize(db: Session, evt: ScheduledEvent, delta: Resources, sign: int) -> Non
     evt.vcpu_total = max(0, (evt.vcpu_total or 0) + sign * delta.vcpu)
     evt.ram_mb_total = max(0, (evt.ram_mb_total or 0) + sign * delta.ram_mb)
     evt.disk_gb_total = max(0, (evt.disk_gb_total or 0) + sign * delta.disk_gb)
+
+
+def reassign_instructor(
+    db: Session, user: CurrentUser, event_ids: list[uuid.UUID], old: uuid.UUID, new: uuid.UUID
+) -> list:
+    """Pass these bookings, where ``old`` teaches and that have not finished, to ``new`` (a
+    class handed to a new lead). Audited. Returns the invites: the new instructor's REQUEST
+    and the old one's CANCEL, for sessions already sent. Does not commit."""
+    from . import invites, lifecycle
+
+    if not event_ids:
+        return []
+    live = (EventState.draft, EventState.pending_approval, *HOLDING)
+    out: list = []
+    # tenant-safe: ids of one class's sessions, all in the class's tenant (sessions.link).
+    for evt in db.query(ScheduledEvent).filter(
+        ScheduledEvent.id.in_(event_ids), ScheduledEvent.instructor_id == old, ScheduledEvent.state.in_(live)
+    ):
+        evt.instructor_id = new
+        audit(db, user, "update", str(evt.id), f"instructor {old} -> {new}: the class has a new lead")
+        if evt.state not in lifecycle.UNSENT:
+            resequence(evt)
+            out += invites.plan(db, evt, "REQUEST", previous_instructor=old)
+    return out
+
+
+def resequence(evt: ScheduledEvent) -> None:
+    """Raise iCalendar SEQUENCE before a per-attendee REQUEST or CANCEL: a Student taken off
+    and put back must get a REQUEST newer than their CANCEL (RFC 5546 §2.1.5). Does not commit."""
+    evt.sequence = (evt.sequence or 0) + 1
 
 
 def attendee_invites(db: Session, events: list[ScheduledEvent], emails: list[str], method: str) -> list:

@@ -110,9 +110,9 @@ describe('ApprovalQueueComponent', () => {
   });
 
   it('decides roll-call additions that did not fit', () => {
-    render([], [{ entry_id: 'r1', class_id: 'c1', class_name: 'C201-26-03', email: 'late@corp.test', reason: 'no room', added_by: null, created_at: null }]);
+    render([], [{ entry_id: 'r1', class_id: 'c1', class_name: 'C201-26-03', seats: 1, roll_call_count: 14, reason: 'no room', created_at: null }]);
     expect(text()).toContain('Nothing awaiting approval');
-    expect(text()).toContain('late@corp.test');
+    expect(text()).toContain('1 more seat, 14 on the roll call');
     button('Approve')!.click();
     expect(classes.approveAddition).toHaveBeenCalledWith('c1', 'r1');
   });

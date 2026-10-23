@@ -215,6 +215,8 @@ def create_event(
     instructor_id = service.resolve_instructor(db, user, body.instructor_id)
     if cls is not None and not body.instructor_id:
         instructor_id = cls.lead_instructor_id  # the class's lead teaches it unless another is named
+    if cls is not None:
+        sessions.assert_class_teacher(db, cls, instructor_id)
     course_id = _class_course(db, user, cls, body.course_id)
     if cls is None and not body.draft:
         _refuse_class_course(db, user, course_id, body.start_time, body.end_time)
@@ -275,11 +277,13 @@ def _refuse_class_course(
     still book it plainly; they would approve it anyway."""
     if course_id is None or user_has_permission(user, Permission.SCHEDULE_APPROVE):
         return
+    # Class dates are calendar days, compared in UTC: there is no site or tenant time zone yet.
     running = sessions.class_running_course(db, tenant_uuid(user), course_id, as_utc(start), as_utc(end))
     if running is not None:
+        # The class is not named: the caller may not be on it, and a class is visible only
+        # to its own people (ADR 0014 §5).
         raise HTTPException(
-            422,
-            f"The class {running.name} runs this course then: book it as a session of that class (it needs approval)",
+            422, "This course has an open class then; book its sessions from the class (they need approval)"
         )
 
 
@@ -391,8 +395,16 @@ def _changeable(db: Session, event_id: str, user: CurrentUser) -> ScheduledEvent
     else, because a booking is what gives an instructor authority over their class
     (app/class_setup/scope.py) and cancelling, completing or rescheduling it would hand that
     class to whoever books next. A booking with no instructor, or your own, stays yours to
-    change."""
+    change.
+
+    A class session follows its class, not its instructor (ADR 0014 §8): its lead or an
+    admin of its tenant changes it (and schedule:admin), nobody else, not even an
+    instructor it names who is no longer the lead."""
     evt = _owned(db, event_id, user)
+    if sessions.class_of(db, evt) is not None:
+        if not (sessions.edits_class_of(db, evt, user) or user_has_permission(user, Permission.SCHEDULE_ADMIN)):
+            raise HTTPException(403, "Only the class's lead instructor or an admin changes its sessions")
+        return evt
     if (
         evt.instructor_id is not None
         and evt.instructor_id != service.user_uuid(user)
@@ -434,7 +446,12 @@ def update_event(
     instructor_id = (
         service.resolve_instructor(db, user, body.instructor_id) if body.instructor_id else evt.instructor_id
     )
-    _check_handover(user, evt, instructor_id)
+    if cls is not None:
+        # Its lead or an admin (``_changeable``) picks among the class's own teachers.
+        if instructor_id != evt.instructor_id:
+            sessions.assert_class_teacher(db, cls, instructor_id)
+    else:
+        _check_handover(user, evt, instructor_id)
     if exercise_id != evt.exercise_id:
         _check_bookable_exercise(db, user, exercise_id)
     typed = Resources(body.vcpu_total, body.ram_mb_total, body.disk_gb_total)

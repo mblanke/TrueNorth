@@ -111,6 +111,12 @@ def recipients(db: Session, evt: ScheduledEvent) -> list[tuple[str, bool]]:
     return out
 
 
+def _is_class_session(db: Session, evt: ScheduledEvent) -> bool:
+    from ..classes import sessions
+
+    return sessions.roll_call_for_booking(db, evt) is not None
+
+
 def attendee_emails(db: Session, evt: ScheduledEvent) -> list[str]:
     from ..classes import sessions
 
@@ -146,7 +152,9 @@ def plan(
         old = instructor_email(db, previous_instructor)
         if old:
             gone.append((old, False))
-    if previous_course and previous_course != evt.course_id:
+    if previous_course and previous_course != evt.course_id and not _is_class_session(db, evt):
+        # A class session's attendees are its roll call, never a course's enrolment: a
+        # class that changed course tells the old course's Students nothing.
         gone += [(e, True) for e in student_emails(db, previous_course, evt.tenant_id)]
     out += [build(evt, "CANCEL", to, attending) for to, attending in gone if to not in current]
     return out
