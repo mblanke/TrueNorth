@@ -156,16 +156,20 @@ _Avoid_: repo server, proxy (alone).
 
 ## Training delivery
 
-**Class** (planned, ADR 0014):
-One running of a course for a named group, e.g. "C201-26-03". It has a lead instructor,
-assistant instructors, observers, a **roll call**, dates and its **class sessions**. Until it
-is built, a class is only a scheduler booking (see **Teaches**).
+**Class** (ADR 0014):
+One running of a course for a named group, e.g. "C201-26-03", in one tenant. It has a lead
+instructor, assistant instructors, observers, a **roll call**, dates and (planned) its
+**class sessions** (`Class` in `control-plane/api/app/classes/models.py`). Only its lead or an
+admin changes it; it is cancelled, never deleted. Until sessions are built, its bookings are
+not linked to it (see **Teaches**).
 _Not to be confused with_: course (the content a class teaches), cohort (free text on the
 registration form, with no link to a class).
 
-**Roll call** (planned, ADR 0014):
-The Students on a class. Being on it is approval to join: a roll-call Student signs in and
-goes straight in. A class is visible only to its roll call, instructors, observers and admins.
+**Roll call** (ADR 0014):
+The Students on a class, by email (`RollCallEntry`, `app/classes/models.py`; statuses invited,
+signed_in, ready, removed). Being on it is approval to join: a roll-call Student's first AD
+sign-in with a verified email admits them (`app/classes/onboarding.py`). A class is visible
+only to its roll call, instructors, observers and admins.
 _Avoid_: roster (in the UI), attendees.
 
 **Class session** (planned, ADR 0014):

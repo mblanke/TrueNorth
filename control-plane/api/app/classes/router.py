@@ -50,6 +50,11 @@ logger = logging.getLogger("truenorth.api.classes.router")
 
 router = APIRouter(prefix="/classes", tags=["classes"])
 
+# The permission is the role's floor; the class decides the rest (access.py). Every lead is
+# an instructor or admin, who hold class:create; assistants and observers hold class:read.
+_CHANGE = require_permission(Permission.CLASS_CREATE)
+_STAFF_READ = require_permission(Permission.CLASS_READ)
+
 
 def _person(u: User | None) -> ClassPerson | None:
     return ClassPerson(id=u.id, display_name=u.display_name, email=u.email) if u is not None else None
@@ -170,7 +175,7 @@ def update_class(
     class_id: uuid.UUID,
     body: ClassIn,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(_CHANGE),
 ) -> ClassOut:
     """Its lead or an admin. Naming another lead hands the class over."""
     cls = _editable(db, class_id, user)
@@ -193,7 +198,7 @@ def update_class(
 def cancel_class(
     class_id: uuid.UUID,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(_CHANGE),
 ):
     """Its lead or an admin. A class is history (who was invited, who joined), so it is
     cancelled, not deleted (ADR 0010); it leaves the lists and no longer admits anyone."""
@@ -215,7 +220,7 @@ def get_roll_call(
     class_id: uuid.UUID,
     include_removed: bool = True,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(_STAFF_READ),
 ) -> list[RollCallEntryOut]:
     """Its lead, assistants, observers and admins. Not the Students on it."""
     cls, role = access.get_visible(db, class_id, user)
@@ -259,7 +264,7 @@ def add_to_roll_call(
     body: RollCallAddIn,
     background: BackgroundTasks,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(_CHANGE),
 ) -> RollCallAddOut:
     """Its lead or an admin. A Student with no account yet is emailed to onboard."""
     cls = _editable(db, class_id, user)
@@ -276,7 +281,7 @@ async def import_roll_call_csv(
     file: UploadFile,
     background: BackgroundTasks,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(_CHANGE),
 ) -> RollCallAddOut:
     """Its lead or an admin. An ``email`` column if the CSV has a header with one;
     otherwise every cell that is an email address."""
@@ -293,11 +298,15 @@ def remove_from_roll_call(
     class_id: uuid.UUID,
     entry_id: uuid.UUID,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(_CHANGE),
 ):
     """Its lead or an admin. The entry is kept, marked removed; account and enrolment stay."""
     cls = _editable(db, class_id, user)
-    entry = db.query(RollCallEntry).filter(RollCallEntry.id == entry_id, RollCallEntry.class_id == cls.id).first()
+    entry = (
+        db.query(RollCallEntry)
+        .filter(RollCallEntry.id == entry_id, RollCallEntry.class_id == cls.id, RollCallEntry.tenant_id == cls.tenant_id)
+        .first()
+    )
     if entry is None:
         raise HTTPException(404, "Roll-call entry not found")
     if entry.status != RollCallStatus.removed.value:

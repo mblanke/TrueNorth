@@ -183,10 +183,13 @@ def test_staff_and_admins_see_the_class_and_its_roll_call(client, world, klass, 
 
 @pytest.mark.parametrize("who", ["other_instructor", "student", "range_ops"])
 def test_anyone_else_in_the_tenant_does_not_find_it(client, world, klass, who):
+    """404 where the role may use classes at all; 403 at the permission floor for roles that
+    may not (Students, range ops). Never 200, and never a hint the class exists."""
     act_as(world[who])
+    expect = 404 if who == "other_instructor" else 403
     assert client.get(f"/classes/{klass['id']}").status_code == 404
-    assert client.get(f"/classes/{klass['id']}/roll-call").status_code == 404
-    assert client.post(f"/classes/{klass['id']}/roll-call", json={"text": "x@corp.test"}).status_code == 404
+    assert client.get(f"/classes/{klass['id']}/roll-call").status_code == expect
+    assert client.post(f"/classes/{klass['id']}/roll-call", json={"text": "x@corp.test"}).status_code == expect
     assert klass["id"] not in [c["id"] for c in client.get("/classes").json()]
 
 
