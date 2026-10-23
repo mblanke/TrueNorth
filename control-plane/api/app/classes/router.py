@@ -216,6 +216,7 @@ def set_roll_call_domains(
 ) -> RollCallDomainsOut:
     """For the caller's own organisation only. An empty list allows any domain.  **tenant:update**"""
     tid = tenant_uuid(user)
+    # tenant-safe: keyed by the caller's own tenant id.
     row = db.get(RollCallSettings, tid)
     if row is None:
         row = RollCallSettings(tenant_id=tid)

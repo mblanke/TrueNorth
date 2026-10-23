@@ -220,6 +220,7 @@ ONBOARDING_EMAILS_PER_DAY = 100
 def allowed_domains(db: Session, tenant_id: uuid.UUID) -> tuple[list[str], str]:
     """(domains, source). An admin's setting if there is one; otherwise the domains of the
     tenant's active accounts. An empty list means any domain."""
+    # tenant-safe: keyed by the tenant id itself (the class's or the caller's).
     row = db.get(RollCallSettings, tenant_id)
     if row is not None:
         return sorted(row.email_domains or []), "setting"
