@@ -18,9 +18,10 @@ import uuid
 from datetime import UTC, date, datetime, timedelta
 
 import pytest
+from app.auth import CurrentUser
 from app.classes import forfeit
 from app.classes import sessions as class_sessions
-from app.classes.models import Class, ClassSession, RollCallEntry
+from app.classes.models import Class, ClassSession, RollCallEntry, RollCallSettings
 from app.models import AuditLog, Course, Tenant, User, UserRole
 from app.scheduler.capacity import Resources
 from app.scheduler.models import BookingApproval, EventState, ScheduledEvent
@@ -54,11 +55,18 @@ def world(postgres_engine, monkeypatch):
         db.add(ClassSession(class_id=cls, event_id=event, tenant_id=tenant, created_by=lead))
         db.add(BookingApproval(event_id=event, tenant_id=tenant, requested_by=lead, decided_by=lead,
                                decided_at=datetime.now(UTC)))
+        db.add(RollCallSettings(tenant_id=tenant, email_domains=["corp.test"]))
+        sent = datetime.now(UTC) - timedelta(days=1)  # their onboarding emails went out
         for name in ("ann", "bob", "cat"):
             db.add(RollCallEntry(class_id=cls, tenant_id=tenant, email=f"{name}@corp.test", status="invited",
-                                 added_by=lead))
+                                 added_by=lead, onboarding_sent_at=sent))
+        # Lost their seat earlier; the lead reinstates them while the clock runs.
+        db.add(RollCallEntry(class_id=cls, tenant_id=tenant, email="dan@corp.test", status="forfeited",
+                             added_by=lead, onboarding_sent_at=sent, forfeited_at=sent))
         db.commit()
-    return {"engine": eng, "class": cls, "event": event}
+    lead_user = CurrentUser(id=str(lead), email="lead@corp.test", display_name="Lead", role=UserRole.instructor,
+                            tenant_id=str(tenant), keycloak_id=f"kc-{lead.hex[:8]}")
+    return {"engine": eng, "class": cls, "event": event, "lead": lead_user}
 
 
 def test_two_replicas_forfeit_each_seat_once(world, monkeypatch):
@@ -100,7 +108,7 @@ def test_two_replicas_forfeit_each_seat_once(world, monkeypatch):
         evt = db.get(ScheduledEvent, world["event"])
         assert evt.vcpu_total == 30  # three seats of 10, freed once
         assert evt.sequence == 1
-        assert {e.status for e in db.query(RollCallEntry)} == {"forfeited"}
+        assert {e.status for e in db.query(RollCallEntry)} == {"forfeited"}  # dan's untouched too
         assert db.query(AuditLog).filter(AuditLog.action == "roll_call_forfeit").count() == 1
 
 
@@ -129,3 +137,53 @@ def test_a_sign_in_and_the_clock_never_both_win(world):
         clock.rollback()
     with Session(world["engine"]) as db:
         assert db.query(RollCallEntry).filter_by(email="ann@corp.test").one().status == "signed_in"
+
+
+def test_the_clock_and_a_reinstatement_both_land_on_the_session(world, monkeypatch):
+    """#280 third review (item 7): the clock frees three seats while the lead reinstates a
+    fourth Student on the same session. Each change is an increment in SQL, so the second
+    waits for the first's row lock and adds to what it committed: both land, exactly."""
+    real_free = class_sessions.free_seats
+    clock_holds = threading.Event()
+
+    def slow_free(db, cls, seats):
+        out = real_free(db, cls, seats)  # the session row is now locked by the clock
+        clock_holds.set()
+        time.sleep(HOLD)
+        return out
+
+    monkeypatch.setattr(class_sessions, "free_seats", slow_free)
+    errors: list = []
+
+    def clock():
+        try:
+            with Session(world["engine"]) as db:
+                forfeit.tick(db, now=DUE)
+        except Exception as exc:  # pragma: no cover - reported below
+            errors.append(exc)
+
+    def reinstate():
+        try:
+            with Session(world["engine"]) as db:
+                cls = db.get(Class, world["class"])
+                db.get(ScheduledEvent, world["event"])  # read before the clock commits: a stale copy
+                dan = db.query(RollCallEntry).filter_by(email="dan@corp.test").one()
+                forfeit.reinstate(db, cls, dan, world["lead"])
+                db.commit()
+        except Exception as exc:  # pragma: no cover - reported below
+            errors.append(exc)
+
+    a = threading.Thread(target=clock)
+    a.start()
+    assert clock_holds.wait(10)
+    b = threading.Thread(target=reinstate)
+    b.start()
+    a.join(20)
+    b.join(20)
+    assert not errors, errors
+    with Session(world["engine"]) as db:
+        evt = db.get(ScheduledEvent, world["event"])
+        assert evt.vcpu_total == 60 - 30 + 10
+        assert evt.sequence == 2  # one raise each: the CANCELs and the REQUEST differ
+        assert db.query(RollCallEntry).filter_by(email="dan@corp.test").one().status == "invited"
+

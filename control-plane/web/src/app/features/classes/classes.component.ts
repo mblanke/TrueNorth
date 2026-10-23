@@ -202,8 +202,8 @@ export function addSummary(r: RollCallAddResult): string {
                     <td>{{ e.display_name ?? '' }}</td>
                     <td>
                       <mat-chip [class]="'status-' + e.status">{{ label(e) }}</mat-chip>
-                      @if (e.status === 'forfeited' && e.forfeited_at) {
-                        <span class="when">not signed in by {{ e.forfeited_at | date:'short' }}</span>
+                      @if (e.status === 'forfeited' && (e.forfeit_deadline ?? e.forfeited_at); as by) {
+                        <span class="when">not signed in by {{ by | date:'short' }}</span>
                       }
                     </td>
                     <td>

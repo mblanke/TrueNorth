@@ -138,6 +138,16 @@ interface NavSection {
           </mat-toolbar>
 
           <main class="app-content" #content>
+            @if (lostSeats().length && !seatNoticeDismissed()) {
+              <div class="seat-notice" role="alert">
+                <mat-icon>event_busy</mat-icon>
+                <span>
+                  You lost your seat on {{ lostSeats().join(', ') }}: you had not signed in by 2 hours
+                  after the class started. Ask your instructor to reinstate you.
+                </span>
+                <button mat-button (click)="seatNoticeDismissed.set(true)">Dismiss</button>
+              </div>
+            }
             <router-outlet />
           </main>
         </mat-sidenav-content>
@@ -148,6 +158,11 @@ interface NavSection {
     }
   `,
   styles: [`
+    .seat-notice {
+      display: flex; align-items: center; gap: 12px; margin: 0 0 16px; padding: 12px 16px;
+      border-radius: 8px; background: var(--mat-sys-error-container); color: var(--mat-sys-on-error-container);
+    }
+    .seat-notice span { flex: 1; }
     .app-container  { height: 100vh; background: transparent !important; }
 
     /* ── Sidenav rail ────────────────────────────────── */
@@ -325,6 +340,9 @@ export class AppComponent implements OnDestroy {
   @ViewChild('sideNavEl') sideNavRef?: ElementRef<HTMLElement>;
 
   collapsed = signal(false);
+  /** Classes whose seat this signed-in Student lost (ADR 0014 §4), from GET /auth/me. */
+  readonly lostSeats = computed(() => this.auth.me()?.roll_call_forfeited ?? []);
+  readonly seatNoticeDismissed = signal(false);
   private readonly mobileQuery = window.matchMedia('(max-width: 720px)');
   readonly mobile = signal(this.mobileQuery.matches);
   private readonly onViewportChange = (event: MediaQueryListEvent) => {

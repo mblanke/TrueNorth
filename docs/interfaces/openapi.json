@@ -17007,6 +17007,19 @@
             "title": "Email",
             "type": "string"
           },
+          "forfeit_deadline": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A forfeited Student: the time by which they had to sign in (2 hours after the start)",
+            "title": "Forfeit Deadline"
+          },
           "forfeited_at": {
             "anyOf": [
               {

@@ -116,6 +116,9 @@ class RollCallEntryOut(BaseModel):
     forfeited_at: datetime | None = Field(
         None, description="When they lost their seat for not signing in in time; kept after a reinstatement"
     )
+    forfeit_deadline: datetime | None = Field(
+        None, description="A forfeited Student: the time by which they had to sign in (2 hours after the start)"
+    )
 
 
 class RollCallAddIn(BaseModel):

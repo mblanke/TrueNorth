@@ -176,7 +176,10 @@ observers and admins.
 **Seat forfeit** (ADR 0014 §4):
 A roll-call Student still *invited* (not signed in) 2 hours after the class's first approved
 session started loses their seat: status forfeited, the seat freed, their invites withdrawn,
-the lead and assistants emailed (`app/classes/forfeit.py`). This class's roll call only. The
+the lead and assistants emailed (`app/classes/forfeit.py`). A session approved after it
+started counts from the approval; someone added later counts from the next approved session
+not yet over; someone never emailed and with no account never forfeits. An account made by
+a directory sign-in with the entry's address counts as signed in. This class's roll call only. The
 lead or an admin **reinstates** them in one click; a reinstated Student never forfeits again.
 _Avoid_: kicked, dropped, no-show (in the UI: "Lost seat").
 _Avoid_: roster (in the UI), attendees.

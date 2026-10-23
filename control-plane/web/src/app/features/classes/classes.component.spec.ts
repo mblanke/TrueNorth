@@ -2,6 +2,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { HttpErrorResponse } from '@angular/common/http';
 import { signal } from '@angular/core';
+import { DatePipe } from '@angular/common';
 import { of, throwError } from 'rxjs';
 import { AuthService } from '@core/services/auth.service';
 import { ClassRecord, ClassesApiService, RollCallEntry } from '@core/services/classes-api.service';
@@ -20,7 +21,7 @@ const ENTRIES: RollCallEntry[] = [
   { id: 'e2', email: 'ann@corp.test', user_id: 'u2', display_name: 'Ann', status: 'signed_in' },
   { id: 'e3', email: 'old@corp.test', user_id: null, display_name: null, status: 'removed' },
   { id: 'e4', email: 'late@corp.test', user_id: null, display_name: null, status: 'forfeited',
-    forfeited_at: '2026-11-02T11:00:00Z' },
+    forfeited_at: '2026-11-02T11:07:00Z', forfeit_deadline: '2026-11-02T11:00:00Z' },
 ] as RollCallEntry[];
 
 describe('class form helpers', () => {
@@ -119,6 +120,12 @@ describe('ClassesComponent', () => {
     setup('instructor');
     component.open(CLASS);
     fixture.detectChanges();
+    // The deadline they missed, not when the clock happened to notice.
+    const when = el.querySelector('.when')?.textContent ?? '';
+    const shown = new DatePipe('en-US').transform('2026-11-02T11:00:00Z', 'short');
+    const ticked = new DatePipe('en-US').transform('2026-11-02T11:07:00Z', 'short');
+    expect(when).toContain(shown!);
+    expect(when).not.toContain(ticked!);
     const reinstate = buttons('Reinstate');
     expect(reinstate.length).toBe(1);  // only the forfeited entry
     reinstate[0].click();

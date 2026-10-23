@@ -16418,6 +16418,11 @@ export interface components {
             /** Email */
             email: string;
             /**
+             * Forfeit Deadline
+             * @description A forfeited Student: the time by which they had to sign in (2 hours after the start)
+             */
+            forfeit_deadline?: string | null;
+            /**
              * Forfeited At
              * @description When they lost their seat for not signing in in time; kept after a reinstatement
              */

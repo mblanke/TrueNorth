@@ -98,7 +98,7 @@ def _has_signed_in(db: Session, cls: Class, entry: RollCallEntry) -> bool:
         and u.is_active
         and u.deleted_at is None
         and u.role == UserRole.student
-        and not service.is_pre_provisioned(u)
+        and service.has_signed_in(u)
     )
 
 

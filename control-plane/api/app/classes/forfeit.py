@@ -5,9 +5,9 @@ class's *first approved session* starts loses their seat. The 2 hours are fixed 
 (ADR 0014, Assumptions).
 
 - *The start* is the start of the earliest class session an approver let through
-  (``scheduler.service.first_approved_start``): approved and holding, or already over.
+  (``scheduler.service.approved_windows``): approved and holding, or already over.
   Sessions awaiting approval, rejected or cancelled never count. No approved session: no
-  start, so nobody forfeits.
+  start, so nobody forfeits. A session approved after it started counts from the approval.
 - *Signed in* means the entry reached ``signed_in`` or later. An entry gets there when:
   the Student's first AD sign-in admits them from the roll call
   (``onboarding.admit_from_roll_call``); they were added already holding an account that
@@ -15,12 +15,21 @@ class's *first approved session* starts loses their seat. The 2 hours are fixed 
   account but still ``invited`` (a roster row adopted some other way, such as Request
   access), when that account next authenticates (``note_sign_in``, from ``GET /auth/me``),
   before or after the class starts. The clock itself also counts such an entry as signed in
-  when its account is no longer a roster row (``service.is_pre_provisioned``, the same test
+  when its account has signed in (``service.has_signed_in``, the same test
   ``put_on_roll_call`` uses), so an entry adopted before this rule existed, or by a Student
   whose open tab never calls ``/auth/me`` again, is not forfeited. Only ``invited`` entries
   can forfeit.
-- *Late additions.* Someone put on the roll call after the start gets their own 2 hours,
-  from when they were added (``joined_at``).
+- *Late additions.* Someone put on the roll call after the start counts from the first
+  approved session not over when they were added (``joined_at``): from when they were added
+  if that is during it, from its start if it is later (added in the evening: the next
+  morning's session). ``deadline`` holds the whole rule.
+- *Never told, never forfeited.* An entry with no account whose onboarding email was never
+  sent (held by the daily email limit) is never forfeited.
+- *Signed in by email.* An unlinked entry whose address names exactly one account, an
+  active Student of the class's tenant made by a directory sign-in (``source = ad``:
+  Request access, ambiguous or failed admission, adoption), counts as signed in, and is
+  linked and enrolled: on that account's next ``GET /auth/me``, or by the clock
+  (``counting_account``). An address an LTI platform asserted never counts.
 - *Once.* A reinstated entry keeps ``forfeited_at`` and is never forfeited again.
 
 **Forfeiting** (``tick``, the API's class clock, every ``CLASS_FORFEIT_TICK_SECONDS``):
@@ -71,10 +80,11 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
 from fastapi import HTTPException
-from sqlalchemy import or_
+from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session
 
 from ..auth import CurrentUser
+from ..enrollment import ensure_enrollment
 from ..models import AuditLog, User, UserRole
 from ..scheduler import service as scheduler
 from . import service, sessions
@@ -85,6 +95,8 @@ logger = logging.getLogger("truenorth.api.classes.forfeit")
 FORFEIT_AFTER = timedelta(hours=2)  # ADR 0014 §4; fixed for now (Assumptions)
 TICK_SECONDS = float(os.getenv("CLASS_FORFEIT_TICK_SECONDS", "60"))
 PAGE = 500
+# At most this many forfeit notices per class per day (one per tick that forfeited anyone).
+NOTICES_PER_CLASS_PER_DAY = 24
 
 
 def _now() -> datetime:
@@ -95,16 +107,33 @@ def _aware(value: datetime) -> datetime:
     return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
 
 
-def class_start(db: Session, cls: Class) -> datetime | None:
-    """When the class's first approved session starts; None when none is approved."""
-    return scheduler.first_approved_start(db, sessions.session_ids(db, cls))
+def class_windows(db: Session, cls: Class) -> list:
+    """The class's approved sessions, earliest first (``scheduler.service.ApprovedWindow``)."""
+    return scheduler.approved_windows(db, sessions.session_ids(db, cls))
 
 
-def deadline(start: datetime, entry: RollCallEntry) -> datetime:
-    """When ``entry`` forfeits, given the class's start: 2 hours after the later of the start
-    and when the entry was put on the roll call."""
+def deadline(windows: list, entry: RollCallEntry) -> datetime | None:
+    """When ``entry`` forfeits; None while nothing can start its clock.
+
+    The clock starts at the first approved session that has not ended by the time the entry
+    was put on the roll call (``joined_at``; an entry older than the rule: the class's first
+    approved session), at the latest of: that session's start, when an approver let it
+    through (a session approved after it started gives its 2 hours from the approval), and
+    when the entry joined (someone added during a session gets their own 2 hours; someone
+    added in the evening, from the next session's start)."""
     joined = _aware(entry.joined_at) if entry.joined_at is not None else None
-    return max(start, joined or start) + FORFEIT_AFTER
+    for w in windows:
+        if joined is not None and w.end <= joined:
+            continue
+        anchor = max(w.start, w.approved_at or w.start, joined or w.start)
+        return anchor + FORFEIT_AFTER
+    return None
+
+
+def never_told(entry: RollCallEntry) -> bool:
+    """No account and no onboarding email ever sent (held by the daily email limit): nobody
+    told them to sign in, so they cannot lose a seat for not doing it."""
+    return entry.user_id is None and entry.onboarding_sent_at is None
 
 
 @dataclass
@@ -135,7 +164,9 @@ def tick(db: Session, now: datetime | None = None) -> TickResult:
                 db.commit()  # an entry the clock found signed in (_signed_in_since) is kept
                 continue
             invites = scheduler.attendee_invites(db, done.sessions, done.emails, "CANCEL")
-            mails = notice_mails(db, cls, done.emails)
+            # One notice per tick that forfeited anyone, at most NOTICES_PER_CLASS_PER_DAY a day.
+            db.flush()  # this round's audit row counts
+            mails = notice_mails(db, cls, done.emails) if _notices_today(db, cls) <= NOTICES_PER_CLASS_PER_DAY else []
             db.commit()
             # Only now: a commit that failed sends no CANCEL and no notice for a seat still held.
             res.invites += invites
@@ -176,65 +207,95 @@ def _classes_with_invited(db: Session, now: datetime):
 def forfeit_due(db: Session, cls: Class, now: datetime) -> Forfeited | None:
     """Claim and forfeit the entries of ``cls`` that are due at ``now``. Does not commit.
     None when nothing was won (nothing due, or another replica got there first)."""
-    start = class_start(db, cls)
-    if start is None or now < start + FORFEIT_AFTER:
+    windows = class_windows(db, cls)
+    if not windows:
         return None
-    due = [
-        e
-        for e in db.query(RollCallEntry).filter(
-            RollCallEntry.class_id == cls.id,
-            RollCallEntry.tenant_id == cls.tenant_id,
-            RollCallEntry.status == RollCallStatus.invited.value,
-            RollCallEntry.forfeited_at.is_(None),
-        )
-        if now >= deadline(start, e)
-    ]
-    due = [e for e in due if not _signed_in_since(db, cls, e, now)]
-    won = [e for e in due if _claim(db, e, now)]
+    due = []
+    for e in db.query(RollCallEntry).filter(
+        RollCallEntry.class_id == cls.id,
+        RollCallEntry.tenant_id == cls.tenant_id,
+        RollCallEntry.status == RollCallStatus.invited.value,
+        RollCallEntry.forfeited_at.is_(None),
+    ):
+        when = deadline(windows, e)
+        if when is not None and now >= when and not never_told(e):
+            due.append((e, when))
+    due = [(e, when) for e, when in due if not _signed_in_since(db, cls, e, now)]
+    won = [(e, when) for e, when in due if _claim(db, e, now)]
     if not won:
         return None
-    for e in won:
+    for e, _ in won:
         db.refresh(e)
     freed = sessions.free_seats(db, cls, len(won))
     service.audit(
         db, None, cls, "roll_call_forfeit",
-        (f"{len(won)} Student(s) not signed in by {_hhmm(start + FORFEIT_AFTER)} (2 hours after the first "
-         f"approved session started) lost their seat: {', '.join(e.email for e in won)}")[:2000],
+        ("lost their seat, not signed in 2 hours after their class's approved session started: "
+         + ", ".join(f"{e.email} (by {_hhmm(when)})" for e, when in won))[:2000],
     )
-    return Forfeited(class_id=cls.id, emails=[e.email for e in won], sessions=freed)
+    return Forfeited(class_id=cls.id, emails=[e.email for e, _ in won], sessions=freed)
 
 
-def _signed_in_since(db: Session, cls: Class, entry: RollCallEntry, now: datetime) -> bool:
-    """An entry linked to an account of the class's tenant that has signed in (no longer a
-    roster row: adopted through Request access or another roll call) counts as signed in:
-    it becomes ``signed_in`` here, guarded on ``invited``, and is not forfeited."""
-    if entry.user_id is None:
-        return False
-    # tenant-safe: the entry's own link, checked against the class's tenant on the next line.
-    u = db.get(User, entry.user_id)
-    if (
-        u is None
-        or u.tenant_id != cls.tenant_id
-        or not u.is_active
-        or u.deleted_at is not None
-        or u.role != UserRole.student
-        or service.is_pre_provisioned(u)
-    ):
-        return False
+def counting_account(db: Session, cls: Class, entry: RollCallEntry) -> User | None:
+    """The account whose sign-in counts for ``entry``, if it has signed in; else None.
+
+    - Linked (``user_id``): that account, when it is an active Student of the class's tenant
+      that has signed in (``service.has_signed_in``: no roster or admin-made row).
+    - Not linked: the one account with the entry's address (ignoring case, in any tenant),
+      when it is an active Student of the class's tenant made by a directory sign-in
+      (``source = ad``: Request access, roll-call admission, adoption). An address an LTI
+      platform asserted (``lti``) or an admin typed (``local``) is not proof of anything."""
+    if entry.user_id is not None:
+        # tenant-safe: the entry's own link, checked against the class's tenant below.
+        u = db.get(User, entry.user_id)
+        if u is None or not service.has_signed_in(u):
+            return None
+    else:
+        rows = service.accounts_with_email(db, entry.email)
+        if len(rows) != 1 or rows[0].source != "ad":
+            return None
+        u = rows[0]
+    if u.tenant_id != cls.tenant_id or not u.is_active or u.deleted_at is not None or u.role != UserRole.student:
+        return None
+    return u
+
+
+def sign_in_entry(db: Session, cls: Class, entry: RollCallEntry, user: User, now: datetime, why: str) -> bool:
+    """Mark ``entry`` signed in for ``user``: linked, enrolled on the class's course, audited.
+    Guarded: only while it is ``invited`` and unlinked or linked to ``user``."""
     claimed = (
         db.query(RollCallEntry)
-        .filter(RollCallEntry.id == entry.id, RollCallEntry.status == RollCallStatus.invited.value)
+        .filter(
+            RollCallEntry.id == entry.id,
+            RollCallEntry.status == RollCallStatus.invited.value,
+            or_(RollCallEntry.user_id.is_(None), RollCallEntry.user_id == user.id),
+        )
         .update(
-            {RollCallEntry.status: RollCallStatus.signed_in.value, RollCallEntry.signed_in_at: now},
+            {
+                RollCallEntry.status: RollCallStatus.signed_in.value,
+                RollCallEntry.user_id: user.id,
+                RollCallEntry.signed_in_at: now,
+            },
             synchronize_session=False,
         )
     )
-    if claimed == 1:
-        db.add(AuditLog(
-            user_id=None, tenant_id=cls.tenant_id, action="roll_call_signed_in", resource_type="class",
-            resource_id=str(cls.id),
-            detail=f"roll-call entry {entry.id}: its linked account has signed in (found by the forfeit clock)",
-        ))
+    if claimed != 1:
+        return False
+    ensure_enrollment(db, user_id=user.id, course_id=cls.course_id, tenant_id=cls.tenant_id)
+    db.add(AuditLog(
+        user_id=user.id, tenant_id=cls.tenant_id, action="roll_call_signed_in", resource_type="class",
+        resource_id=str(cls.id), detail=f"roll-call entry {entry.id}: {why}"[:2000],
+    ))
+    return True
+
+
+def _signed_in_since(db: Session, cls: Class, entry: RollCallEntry, now: datetime) -> bool:
+    """The entry's account has signed in although the entry still says invited (an account
+    made through Request access, adopted, or made before this rule): it becomes
+    ``signed_in`` here and is not forfeited."""
+    u = counting_account(db, cls, entry)
+    if u is None:
+        return False
+    sign_in_entry(db, cls, entry, u, now, "its account has signed in (found by the forfeit clock)")
     return True
 
 
@@ -282,6 +343,20 @@ def instructors(db: Session, cls: Class) -> list[User]:
     )
 
 
+def _notices_today(db: Session, cls: Class) -> int:
+    """Forfeit rounds audited for this class since midnight (UTC), this one included."""
+    start = datetime.combine(_now().date(), datetime.min.time(), tzinfo=UTC)
+    return (
+        db.query(func.count(AuditLog.id))
+        .filter(
+            AuditLog.resource_type == "class", AuditLog.resource_id == str(cls.id),
+            AuditLog.action == "roll_call_forfeit", AuditLog.timestamp >= start,
+        )
+        .scalar()
+        or 0
+    )
+
+
 def tenant_admins(db: Session, cls: Class) -> list[User]:
     """The class's tenant's active admins: told instead when the class has no active lead or
     assistant left, so a forfeit never goes unannounced."""
@@ -303,7 +378,7 @@ def notice_mails(db: Session, cls: Class, emails: list[str]) -> list[service.Mai
     names = "\n".join(f"  - {e}" for e in emails)
     body = (
         f"{len(emails)} Student(s) on the roll call of {cls.name} had not signed in to TrueNorth Range by 2 hours "
-        f"after the class's first session started, and lost their seat:\n\n{names}\n\n"
+        f"after the class's session started, and lost their seat:\n\n{names}\n\n"
         "Their seat in the class's sessions was freed and their calendar invites withdrawn. Nothing else changed: "
         "their account, their enrolment and their other classes are as they were.\n\n"
         f"To give someone their seat back, open the class's roll call on the Classes page{where} and choose "
@@ -317,18 +392,23 @@ def notice_mails(db: Session, cls: Class, emails: list[str]) -> list[service.Mai
 # ── Signing in ─────────────────────────────────────────────────────────────
 
 
-def note_sign_in(db: Session, user: User) -> int:
-    """``user`` has just authenticated (``GET /auth/me``): every entry of an open class still
-    ``invited`` and linked to them becomes ``signed_in``. Guarded on ``invited``, so a
-    forfeited entry stays forfeited. Only an active Student of the entry's own tenant counts.
-    Commits when it changes anything; returns how many entries it signed in."""
+def note_sign_in(db: Session, user: User, *, directory: bool = True) -> int:
+    """``user`` has just authenticated (``GET /auth/me``): every entry of an open class of
+    their tenant that is still ``invited`` and is theirs becomes ``signed_in`` (linked and
+    enrolled): entries linked to them, and, for a directory sign-in (``directory``; not an
+    LTI hand-off), unlinked entries with their address when ``counting_account`` says it is
+    theirs. A forfeited entry stays forfeited. Commits when it changes anything; returns how
+    many entries it signed in."""
     if user.role != UserRole.student or not user.is_active or user.deleted_at is not None:
         return 0
+    mine = [RollCallEntry.user_id == user.id]
+    if directory and user.source == "ad" and user.email:
+        mine.append(and_(RollCallEntry.user_id.is_(None), RollCallEntry.email == service.normalise_email(user.email)))
     rows = (
         db.query(RollCallEntry, Class)
         .join(Class, Class.id == RollCallEntry.class_id)
         .filter(
-            RollCallEntry.user_id == user.id,
+            or_(*mine),
             RollCallEntry.tenant_id == user.tenant_id,
             Class.tenant_id == user.tenant_id,
             Class.status == ClassStatus.open.value,
@@ -336,27 +416,17 @@ def note_sign_in(db: Session, user: User) -> int:
         )
         .all()
     )
-    if not rows:
-        return 0
     now = _now()
     n = 0
     for entry, cls in rows:
-        claimed = (
-            db.query(RollCallEntry)
-            .filter(RollCallEntry.id == entry.id, RollCallEntry.status == RollCallStatus.invited.value)
-            .update(
-                {RollCallEntry.status: RollCallStatus.signed_in.value, RollCallEntry.signed_in_at: now},
-                synchronize_session=False,
-            )
-        )
-        if claimed == 1:
+        if entry.user_id is None:
+            counted = counting_account(db, cls, entry)
+            if counted is None or counted.id != user.id:
+                continue
+        if sign_in_entry(db, cls, entry, user, now, "its account signed in"):
             n += 1
-            db.add(AuditLog(
-                user_id=user.id, tenant_id=cls.tenant_id, action="roll_call_signed_in",
-                resource_type="class", resource_id=str(cls.id),
-                detail=f"roll-call entry {entry.id}: its linked account signed in",
-            ))
-    db.commit()
+    if n:
+        db.commit()
     return n
 
 

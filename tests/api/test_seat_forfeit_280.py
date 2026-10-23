@@ -250,19 +250,71 @@ def test_a_finished_first_session_still_counts(client, db_session, world):
     assert len(forfeit.tick(db_session, now=DUE + SECOND).forfeited) == 1
 
 
-def test_a_late_addition_gets_its_own_two_hours(client, db_session, world):
-    _book(client, world)
-    act_as(world["lead"])
-    assert client.post(f"/classes/{world['class']['id']}/roll-call", json={"emails": ["late@corp.test"]}).status_code == 200
-    late = _entry(db_session, "late@corp.test")
-    assert late.joined_at is not None
-    late.joined_at = NINE + timedelta(hours=3)  # as if added three hours into the class
-    db_session.flush()
-    forfeit.tick(db_session, now=DUE + timedelta(hours=1))
+def _add_late(client, db, w, email, joined) -> RollCallEntry:
+    act_as(w["lead"])
+    assert client.post(f"/classes/{w['class']['id']}/roll-call", json={"emails": [email]}).status_code == 200
+    e = _entry(db, email)
+    assert e.joined_at is not None and e.onboarding_sent_at is not None
+    e.joined_at = joined
+    db.flush()
+    return e
+
+
+def test_a_late_addition_during_a_session_gets_its_own_two_hours(client, db_session, world):
+    _book(client, world)  # 09:00-12:00
+    _add_late(client, db_session, world, "late@corp.test", NINE + timedelta(hours=1))  # added at 10:00
+    forfeit.tick(db_session, now=DUE + timedelta(minutes=30))
     assert _entry(db_session, "late@corp.test").status == "invited"
     assert _entry(db_session, "newbie@corp.test").status == "forfeited"
-    forfeit.tick(db_session, now=NINE + timedelta(hours=5) + SECOND)
+    forfeit.tick(db_session, now=NINE + timedelta(hours=3) - SECOND)
+    assert _entry(db_session, "late@corp.test").status == "invited"
+    forfeit.tick(db_session, now=NINE + timedelta(hours=3) + SECOND)
     assert _entry(db_session, "late@corp.test").status == "forfeited"
+
+
+def test_i3_an_evening_addition_counts_from_the_next_sessions_start(client, db_session, world):
+    """Reviewer probe p3: added at 18:00 after the day's only session; forfeited at 20:01
+    before. Now the next morning's session starts the clock."""
+    _book(client, world, hours=3)
+    tomorrow = NINE + timedelta(days=1)
+    _book(client, world, start=tomorrow, hours=3)
+    _add_late(client, db_session, world, "eve@corp.test", NINE + timedelta(hours=9))
+    forfeit.tick(db_session, now=NINE + timedelta(hours=11, minutes=1))
+    assert _entry(db_session, "eve@corp.test").status == "invited"
+    forfeit.tick(db_session, now=tomorrow + forfeit.FORFEIT_AFTER - SECOND)
+    assert _entry(db_session, "eve@corp.test").status == "invited"
+    forfeit.tick(db_session, now=tomorrow + forfeit.FORFEIT_AFTER + SECOND)
+    assert _entry(db_session, "eve@corp.test").status == "forfeited"
+
+
+def test_i3_an_addition_after_the_last_session_is_never_forfeited(client, db_session, world):
+    _book(client, world, hours=3)
+    _add_late(client, db_session, world, "after@corp.test", NINE + timedelta(hours=4))
+    forfeit.tick(db_session, now=NINE + timedelta(days=3))
+    assert _entry(db_session, "after@corp.test").status == "invited"
+
+
+def test_i3_someone_never_emailed_and_with_no_account_is_never_forfeited(client, db_session, world):
+    """Their onboarding email was held by the daily limit: nobody told them to sign in."""
+    _book(client, world)
+    newbie = _entry(db_session, "newbie@corp.test")
+    newbie.onboarding_sent_at = None
+    db_session.flush()
+    forfeit.tick(db_session, now=DUE + timedelta(hours=5))
+    assert _entry(db_session, "newbie@corp.test").status == "invited"
+    assert _entry(db_session, "rosie@corp.test").status == "forfeited"  # has an account: told by it
+
+
+def test_i2_a_session_approved_after_it_started_counts_from_the_approval(client, db_session, world):
+    """Reviewer probe p2: approved 2h05 after the start, the clock forfeited a minute later."""
+    from app.scheduler.models import BookingApproval
+
+    ev = _book(client, world)
+    db_session.get(BookingApproval, uuid.UUID(ev["id"])).decided_at = NINE + timedelta(hours=2, minutes=5)
+    db_session.flush()
+    assert forfeit.tick(db_session, now=NINE + timedelta(hours=2, minutes=6)).forfeited == []
+    assert forfeit.tick(db_session, now=NINE + timedelta(hours=4, minutes=5) - SECOND).forfeited == []
+    assert len(forfeit.tick(db_session, now=NINE + timedelta(hours=4, minutes=5) + SECOND).forfeited) == 1
 
 
 # ── Signed in ──────────────────────────────────────────────────────────────
@@ -761,3 +813,154 @@ def test_r9_no_day_before_reminder_for_an_entry_whose_account_has_signed_in(db_s
     db_session.flush()
     eve = datetime.combine(DAY.date() - timedelta(days=1), datetime.min.time(), tzinfo=UTC) + timedelta(hours=12)
     assert {m.to for m in reminder_clock.tick(db_session, now=eve)} == {"newbie@corp.test"}
+
+
+# ── Third review: accounts made outside roll-call admission (item 1) ────────
+
+
+def _account(db, w, email, sub, source="ad") -> User:
+    u = _student(db, w["a"].id, email, source=source)
+    u.keycloak_id = sub
+    db.flush()
+    return u
+
+
+def test_i1_p1_an_account_made_by_request_access_signs_the_entry_in(client, db_session, world, sign_in):
+    """Reviewer probe p1. Request access approved (registration makes the account ``ad``);
+    the entry is not linked. Their sign-in links, enrols and signs it in."""
+    _book(client, world)
+    u = _account(db_session, world, "newbie@corp.test", "ad-newbie")
+    assert sign_in(_identity("newbie@corp.test", "ad-newbie"))["status"] == "registered"
+    e = _entry(db_session, "newbie@corp.test")
+    assert e.status == "signed_in" and e.user_id == u.id
+    assert db_session.query(Enrollment).filter_by(user_id=u.id, course_id=world["course"].id).count() == 1
+    forfeit.tick(db_session, now=DUE + SECOND)
+    assert _entry(db_session, "newbie@corp.test").status == "signed_in"
+
+
+def test_i1_request_access_through_the_api_then_sign_in(client, db_session, world, sign_in):
+    """The real path: an identity without ad_object_guid (a Keycloak-local user) is not
+    admitted, asks for access, an admin approves; then signs in."""
+    from app.models import RegistrationRequest
+
+    _book(client, world)
+    ident = _identity("newbie@corp.test", "kc-local-newbie", ad_object_guid=None)
+    assert sign_in(ident)["status"] == "unregistered"
+    fastapi_app.dependency_overrides[get_token_identity] = lambda: ident
+    r = client.post("/registration", json={"justification": "on C201"})
+    assert r.status_code == 201, r.text
+    req = db_session.query(RegistrationRequest).filter_by(keycloak_id="kc-local-newbie").one()
+    from app.routers.registration import _approve_one  # what an admin's Approve runs
+
+    _approve_one(db_session, req, world["admin"], role="student", tenant_id=world["a"].id,
+                 qualification_id=None, learning_path_id=None, note="on the C201 roll call")
+    db_session.flush()
+    assert sign_in(ident)["status"] == "registered"
+    assert _entry(db_session, "newbie@corp.test").status == "signed_in"
+
+
+def test_i1_an_account_found_by_the_clock_is_not_forfeited(client, db_session, world):
+    """Deploy-time, in-flight class: the account was made by Request access before this rule,
+    and the Student has not called /auth/me since. The clock signs the entry in."""
+    _book(client, world)
+    u = _account(db_session, world, "newbie@corp.test", "ad-newbie")
+    res = forfeit.tick(db_session, now=DUE + timedelta(days=1))
+    assert [f.emails for f in res.forfeited] == [["rosie@corp.test"]]
+    e = _entry(db_session, "newbie@corp.test")
+    assert e.status == "signed_in" and e.user_id == u.id
+
+
+def test_i1_an_ambiguous_or_failed_admission_then_request_access(client, db_session, world, sign_in):
+    """Admission refused (an inactive lead, or the address on two tenants' roll calls): the
+    Student gets in by Request access, so the account is ``ad`` and the sign-in counts."""
+    db_session.get(User, uuid.UUID(world["lead"].id)).is_active = False
+    db_session.flush()
+    _book(client, world)
+    assert sign_in(_identity("newbie@corp.test", "ad-newbie"))["status"] == "unregistered"
+    _account(db_session, world, "newbie@corp.test", "ad-newbie")  # approved by an admin
+    assert sign_in(_identity("newbie@corp.test", "ad-newbie"))["status"] == "registered"
+    assert _entry(db_session, "newbie@corp.test").status == "signed_in"
+
+
+def test_i1_an_admin_made_account_counts_once_its_owner_signs_in(client, db_session, world, sign_in):
+    """An admin made a ``local`` account the lead then linked (it is invited, not signed in);
+    the person signs in under it: that authentication counts."""
+    made = _student(db_session, world["a"].id, "made@corp.test", source="local")
+    made.keycloak_id = "kc-made"
+    db_session.flush()
+    act_as(world["lead"])
+    client.post(f"/classes/{world['class']['id']}/roll-call", json={"emails": ["made@corp.test"]})
+    assert _entry(db_session, "made@corp.test").status == "invited"
+    _book(client, world)
+    assert sign_in(_identity("made@corp.test", "kc-made"))["status"] == "registered"
+    assert _entry(db_session, "made@corp.test").status == "signed_in"
+
+
+def test_i1_an_unlinked_local_account_is_no_proof(client, db_session, world):
+    """An address an admin typed onto an account proves nobody signed in."""
+    _book(client, world)
+    _account(db_session, world, "newbie@corp.test", "kc-x", source="local")
+    forfeit.tick(db_session, now=DUE + SECOND)
+    assert _entry(db_session, "newbie@corp.test").status == "forfeited"
+
+
+def test_i1_an_lti_account_never_signs_in_an_entry_by_email(client, db_session, world, sign_in):
+    """An LTI platform asserts whatever email it likes: neither the clock nor an LTI session
+    links an entry by that address."""
+    _book(client, world)
+    _account(db_session, world, "newbie@corp.test", "lti-newbie", source="lti")
+    sign_in(_identity("newbie@corp.test", "lti-newbie", tn_session="lti"))
+    assert _entry(db_session, "newbie@corp.test").user_id is None
+    forfeit.tick(db_session, now=DUE + SECOND)
+    assert _entry(db_session, "newbie@corp.test").status == "forfeited"
+
+
+def test_i1_an_account_in_another_tenant_or_two_accounts_is_no_proof(client, db_session, world):
+    _book(client, world)
+    other = _student(db_session, world["b"].id, "newbie@corp.test")
+    forfeit.tick(db_session, now=DUE + SECOND)
+    assert _entry(db_session, "newbie@corp.test").status == "forfeited"
+    assert db_session.query(Enrollment).filter_by(user_id=other.id).count() == 0
+
+
+# ── Third review: the rest ──────────────────────────────────────────────────
+
+
+def test_i6_a_reinstate_that_loses_a_lock_race_is_409(client, db_session, world, monkeypatch):
+    from sqlalchemy.exc import OperationalError
+
+    class SerializationError(Exception):
+        sqlstate = "40001"
+
+    _book(client, world)
+    forfeit.tick(db_session, now=DUE + SECOND)
+
+    def lose(*a, **k):
+        raise OperationalError("COMMIT", {}, SerializationError())
+
+    monkeypatch.setattr(forfeit.scheduler, "attendee_invites", lose)
+    r = _reinstate(client, world, "newbie@corp.test", db_session)
+    assert r.status_code == 409, r.text
+
+
+def test_i8_the_roll_call_shows_the_deadline_they_missed(client, db_session, world):
+    _book(client, world)
+    forfeit.tick(db_session, now=DUE + timedelta(minutes=7))
+    act_as(world["lead"])
+    rows = {e["email"]: e for e in client.get(f"/classes/{world['class']['id']}/roll-call").json()}
+    missed = datetime.fromisoformat(rows["newbie@corp.test"]["forfeit_deadline"])
+    assert forfeit._aware(missed) == DUE
+    assert rows["ann@corp.test"]["forfeit_deadline"] is None
+
+
+def test_i8_notices_are_capped_per_class_per_day(client, db_session, world, monkeypatch):
+    monkeypatch.setattr(forfeit, "NOTICES_PER_CLASS_PER_DAY", 2)
+    _book(client, world)
+    cls = _cls(db_session, world)
+    for _ in range(2):  # two earlier forfeit rounds today
+        class_service.audit(db_session, None, cls, "roll_call_forfeit", "earlier")
+    db_session.flush()
+    res = forfeit.tick(db_session, now=DUE + SECOND)
+    assert len(res.forfeited) == 1 and res.mails == []  # still forfeited, not mailed
+    assert len(res.invites) == 2  # the Students still get their CANCEL
+

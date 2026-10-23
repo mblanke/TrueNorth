@@ -137,8 +137,12 @@ def _out(db: Session, cls: Class, user: CurrentUser) -> ClassOut:
     return _outs(db, [cls], user)[0]
 
 
-def _entry_out(e: RollCallEntry, names: dict[uuid.UUID, str]) -> RollCallEntryOut:
+def _entry_out(e: RollCallEntry, names: dict[uuid.UUID, str], windows: list | None = None) -> RollCallEntryOut:
+    # The deadline they missed, for a forfeited entry (as the rule computes it from the
+    # class's approved sessions now).
+    missed = forfeit.deadline(windows, e) if windows and e.status == RollCallStatus.forfeited.value else None
     return RollCallEntryOut(
+        forfeit_deadline=missed,
         id=e.id, email=e.email, user_id=e.user_id, display_name=names.get(e.user_id) if e.user_id else None,
         status=e.status, onboarding_sent_at=e.onboarding_sent_at, reminded_at=e.reminded_at,
         signed_in_at=e.signed_in_at, removed_at=e.removed_at, created_at=e.created_at,
@@ -393,7 +397,8 @@ def get_roll_call(
         q = q.filter(RollCallEntry.status != RollCallStatus.removed.value)
     entries = q.order_by(RollCallEntry.email).all()
     names = _names(db, entries, cls.tenant_id)
-    return [_entry_out(e, names) for e in entries]
+    windows = forfeit.class_windows(db, cls) if any(e.status == RollCallStatus.forfeited.value for e in entries) else []
+    return [_entry_out(e, names, windows) for e in entries]
 
 
 def _add(
@@ -517,8 +522,8 @@ def reinstate_roll_call_entry(
         raise HTTPException(404, "Roll-call entry not found")
     with _lock_conflicts(db):
         done = forfeit.reinstate(db, cls, entry, user)
-    invites = scheduler.attendee_invites(db, done.sessions, [entry.email], "REQUEST")
-    db.commit()
+        invites = scheduler.attendee_invites(db, done.sessions, [entry.email], "REQUEST")
+        db.commit()
     background.add_task(scheduler.send_invites, invites)
     return ReinstateOut(entry_id=entry.id, class_id=cls.id, status=entry.status, pending_reason=entry.pending_reason)
 

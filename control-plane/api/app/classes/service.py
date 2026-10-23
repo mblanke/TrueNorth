@@ -217,8 +217,18 @@ def accounts_with_email(db: Session, email: str) -> list[User]:
 
 
 def is_pre_provisioned(u: User) -> bool:
-    """A roster row (CSV import) that no directory identity has claimed yet."""
+    """A roster row (CSV import) that no directory identity has claimed yet: the only kind
+    roll-call admission adopts."""
     return u.source == "csv_import"
+
+
+def has_signed_in(u: User) -> bool:
+    """Whether an account counts as having signed in, for its roll-call entries. Not a CSV
+    roster row, and not an account an admin made (``local``) that no directory identity has
+    claimed: registration adopts both kinds by email (``routers/registration._approve_one``)
+    and makes them ``ad`` when it does. A ``local`` account that signs in under its own
+    identity is signed in on that authentication (``forfeit.note_sign_in``)."""
+    return u.source not in ("csv_import", "local")
 
 
 # An admin may set an empty allow-list: any domain, in smaller batches. Emails (onboarding
@@ -373,7 +383,7 @@ def put_on_roll_call(db: Session, cls: Class, entry: RollCallEntry, account: Use
     if account is not None:
         entry.user_id = account.id
         ensure_enrollment(db, user_id=account.id, course_id=cls.course_id, tenant_id=cls.tenant_id)
-        if not is_pre_provisioned(account):
+        if has_signed_in(account):
             entry.status = RollCallStatus.signed_in.value
             entry.signed_in_at = _now()
 

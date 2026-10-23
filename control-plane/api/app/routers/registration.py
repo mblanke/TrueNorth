@@ -135,8 +135,9 @@ def auth_me(
         user = admit_from_roll_call(db, identity, client_ip(request))
     elif not identity.tn_session or identity.tn_session == "lti":
         # An account that already exists authenticating counts as signing in for any roll
-        # call still waiting on it (ADR 0014 §4; app/classes/forfeit.py).
-        forfeit.note_sign_in(db, user)
+        # call still waiting on it (ADR 0014 §4; app/classes/forfeit.py). Matching an unlinked
+        # entry by address needs a directory sign-in: never an LTI platform's say-so.
+        forfeit.note_sign_in(db, user, directory=not identity.tn_session)
     # Seats lost for not signing in in time: no admission through them; say whom to ask.
     lost = forfeit.forfeited_class_names(
         db, email=trusted_email(identity), user_id=user.id if user else None, tenant_id=user.tenant_id if user else None
