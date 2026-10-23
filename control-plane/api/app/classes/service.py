@@ -322,11 +322,18 @@ def add_to_roll_call(db: Session, cls: Class, actor: CurrentUser, emails: list[s
     if res.added:
         audit(db, actor.id, cls, "roll_call_add", f"added {len(res.added)}: {', '.join(e.email for e in res.added)}"[:2000])
     for email in hidden:
-        # For a platform admin (who reads every tenant's audit): this address names an account
-        # elsewhere, or several case variants; it was added unlinked and cannot be admitted.
-        audit(db, actor.id, cls, "roll_call_cross_tenant",
-              f"{email}: names an account in another tenant or several case variants; added unlinked, "
-              "admission will refuse it until an administrator resolves the accounts")
+        # For the platform admin only: this address names an account elsewhere, or several
+        # case variants; it was added unlinked and cannot be admitted. tenant_id is None on
+        # purpose: GET /audit-log shows a tenant's admin only rows of their own tenant, and
+        # only the platform administrator rows with none, so the row is no oracle for the
+        # class's own tenant either. The class's tenant is named in the detail instead.
+        db.add(AuditLog(
+            user_id=uuid.UUID(actor.id), tenant_id=None, action="roll_call_cross_tenant",
+            resource_type="class", resource_id=str(cls.id),
+            detail=(f"tenant {cls.tenant_id}: {email} names an account in another tenant or several case "
+                    "variants; added unlinked, admission will refuse it until an administrator resolves "
+                    "the accounts"),
+        ))
     return res
 
 

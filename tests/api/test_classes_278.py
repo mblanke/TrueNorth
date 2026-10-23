@@ -926,3 +926,33 @@ def test_low_a_student_does_not_see_staff_email_addresses(client, world, klass, 
     assert all(p["email"] is None for p in body["assistants"] + body["observers"])
     act_as(world["assistant"])
     assert client.get(f"/classes/{klass['id']}").json()["lead_instructor"]["email"]
+
+
+def test_n1_the_cross_tenant_audit_row_is_for_the_platform_admin_only(
+    client, world, klass, db_session, outbox, monkeypatch
+):
+    """Final review: a tenant admin's GET /audit-log must not reopen the oracle. Their log
+    for an address used elsewhere reads exactly as for an unknown one: the lead's own
+    roll_call_add row (the address they typed), nothing more."""
+    platform = real_tenant(db_session, "cls-platform")
+    operator = real_user(db_session, UserRole.admin, platform.id)
+    monkeypatch.setenv("PLATFORM_TENANT_ID", str(platform.id))
+    _student_row(db_session, world["b"].id, "secret.op@corp.test")
+    act_as(world["lead"])
+    client.post(f"/classes/{klass['id']}/roll-call", json={"emails": ["nobody@corp.test"]})
+    client.post(f"/classes/{klass['id']}/roll-call", json={"emails": ["secret.op@corp.test"]})
+
+    def mentions(log: list[dict], email: str) -> list[tuple]:
+        return [(a["action"], (a.get("detail") or "").replace(email, "<email>")) for a in log
+                if email in (a.get("detail") or "")]
+
+    for tenant_admin in ("admin", "b_admin"):
+        act_as(world[tenant_admin])
+        log = client.get("/audit-log?limit=500").json()
+        assert all(a["action"] != "roll_call_cross_tenant" for a in log)
+        assert mentions(log, "secret.op@corp.test") == mentions(log, "nobody@corp.test")
+    act_as(operator)
+    rows = [a for a in client.get("/audit-log?limit=500").json() if a["action"] == "roll_call_cross_tenant"]
+    assert len(rows) == 1 and "secret.op@corp.test" in rows[0]["detail"] and str(world["a"].id) in rows[0]["detail"]
+    stored = db_session.query(AuditLog).filter_by(action="roll_call_cross_tenant").one()
+    assert stored.tenant_id is None
