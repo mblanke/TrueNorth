@@ -304,6 +304,10 @@ def authorize_new_team(db: Session, user: CurrentUser, exercise_id: uuid.UUID | 
         ex = get_owned(db, Exercise, exercise_id, user, not_found="Exercise not found")
         _refuse_finished(ex)
         exercise_id = ex.id
+        from ..classes import teams as class_teams
+
+        if class_teams.authorize_exercise(db, user, ex):
+            return exercise_id  # a class session's exercise: its class's lead or an admin (#299 review)
     if user_has_permission(user, Permission.USER_UPDATE):
         return exercise_id
     if exercise_id is None:
@@ -322,12 +326,14 @@ def team_member_target(db: Session, user: CurrentUser, team: Team, subject_id: u
     session of the exercise.
     """
     refuse_frozen_team(db, user, team)
-    if user_has_permission(user, Permission.USER_UPDATE):
-        return get_owned(db, User, subject_id, user, not_found="User not found")
     from ..classes import teams as class_teams
 
+    # Before the user:update shortcut: an admin, too, puts only roll-call Students on a class
+    # session's team (#299 review).
     if (on_roll_call := class_teams.member_target(db, user, team, subject_id)) is not None:
-        return on_roll_call  # a class session's team: a Student on its roll call (#282)
+        return on_roll_call
+    if user_has_permission(user, Permission.USER_UPDATE):
+        return get_owned(db, User, subject_id, user, not_found="User not found")
     target = own_student(db, user, subject_id)
     courses = {
         cid

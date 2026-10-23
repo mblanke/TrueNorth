@@ -34,14 +34,19 @@ operation; the worker destroys only what S5 recorded at clone time):
 =================================  ==================================  =====================
 When                               Which                               Maintenance window
 =================================  ==================================  =====================
-after the last session needing it  that template's ranges              never blocks it
-                                                                       (``booking_ended``)
-its Student taken off the roll     that seat                           never blocks it
-call                                                                   (``booking_ended``)
-the class is closed                all of them                         never blocks it
-the class is cancelled             all of them                         waits, like a
+the class's last day is over       all of them (``class_ended``)       never blocks it: lease
+                                                                       expiry (``booking_ended``)
+its Student taken off the roll     that seat (``student_removed``)     waits (a normal
+call                                                                   destroy)
+no session uses it any more        that kind and template's ranges     waits
+(cancelled, rejected, mode         (``no_session_needs_it``)
+switched; drafts still count)
+the class is cancelled or closed   all of them (``class_<status>``)    waits, like a
                                                                        cancelled booking's
 =================================  ==================================  =====================
+
+Kept until the class's end, not its last booked session, so booking day by day does not wipe
+the Students' work (ADR 0014 §10). Capacity holds them over that span (``holds.py``).
 
 A range still being built cannot be destroyed yet; the next tick tries again. Every step is
 audited against the class.
@@ -61,7 +66,6 @@ from .. import range_lifecycle
 from ..models import Range, RangeState, Template
 from ..scheduler import service as scheduler
 from ..scheduler.capacity import TEARDOWN_GRACE
-from ..scheduler.lifecycle import HOLDING
 from ..scheduler.models import EventState, ScheduledEvent
 from . import service
 from .models import (
@@ -86,8 +90,9 @@ FAILED_PREFIX = "Build could not be started: "
 WAITING_PREFIX = "Waiting: "
 
 # Teardown reasons, as recorded on the row and in the audit log.
-LAST_SESSION = "last_session_ended"
+CLASS_ENDED = "class_ended"  # the class's last day is over: lease expiry
 STUDENT_REMOVED = "student_removed"
+NO_SESSION = "no_session_needs_it"  # its sessions were cancelled, rejected or switched mode
 
 
 def _now() -> datetime:
@@ -112,6 +117,33 @@ def is_class_range(db: Session, range_id: uuid.UUID | None) -> bool:
         .first()
         is not None
     )
+
+
+def _of_class(db: Session, cls: Class, range_id: uuid.UUID) -> bool:
+    """Whether ``range_id`` is one of THIS class's ranges (another class's is never ours)."""
+    return (
+        db.query(ClassRange.id)
+        .filter(ClassRange.class_id == cls.id, ClassRange.tenant_id == cls.tenant_id, ClassRange.range_id == range_id)
+        .first()
+        is not None
+    )
+
+
+def observes_only(db: Session, user, rng: Range) -> bool:
+    """Whether the caller's part in a class that owns ``rng`` is observer (not its lead, an
+    assistant or an admin): ADR 0014 §19, observers never see range login details."""
+    from . import access
+    from .schemas import ClassRole
+
+    class_ids = {
+        cid for (cid,) in db.query(ClassRange.class_id).filter(
+            ClassRange.range_id == rng.id, ClassRange.tenant_id == rng.tenant_id)
+    }
+    for cid in class_ids:
+        cls = db.get(Class, cid)  # tenant-safe: a class of the range's own tenant (filtered above)
+        if cls is not None and access.role_in(db, cls, user) == ClassRole.observer:
+            return True
+    return False
 
 
 def rows_of(db: Session, cls: Class) -> list[ClassRange]:
@@ -158,6 +190,9 @@ def student_participation(db: Session, user_id: uuid.UUID, rng: Range, now: date
         .all()
     )
     for row in rows:
+        cls = db.get(Class, row.class_id)  # tenant-safe: the row's own class, checked next
+        if cls is None or cls.tenant_id != rng.tenant_id or cls.status != ClassStatus.open.value:
+            continue  # a cancelled or closed class hands out no credentials
         if row.kind == ClassRangeKind.seat.value:
             # tenant-safe: the seat's own entry, checked against the range's tenant below.
             entry = db.get(RollCallEntry, row.entry_id) if row.entry_id else None
@@ -219,7 +254,7 @@ def tick(db: Session, now: datetime | None = None) -> dict[str, int]:
                         db.rollback()
                         out["failed"] += 1
                         logger.exception("class range: seat %s could not be handled; retrying next tick", entry_id)
-            elif evt.range_id is None or is_class_range(db, evt.range_id):
+            elif evt.range_id is None or _of_class(db, cls, evt.range_id):
                 row = _ensure(db, cls, evt.template_id, None, now, out, budget)
                 if row is not None and row.range_id is not None and evt.range_id is None:
                     if scheduler.attach_range(db, evt.id, row.range_id):
@@ -229,9 +264,10 @@ def tick(db: Session, now: datetime | None = None) -> dict[str, int]:
         except Exception:  # noqa: BLE001 — one session's trouble never stops the clock
             db.rollback()
             logger.exception("class ranges: session %s could not be handled; retrying next tick", evt.id)
-    for row in _live(db):
+    needed: dict = {}  # class -> what its sessions still use, read once per class per tick
+    for row in list(_live(db)):
         try:
-            if _teardown_if_done(db, row, now):
+            if _teardown_if_done(db, row, now, needed):
                 out["torn_down"] += 1
         except Exception:  # noqa: BLE001
             db.rollback()
@@ -362,75 +398,116 @@ def _note(db: Session, row_id: uuid.UUID, error: str | None) -> None:
     db.commit()
 
 
-def _live(db: Session) -> list[ClassRange]:
-    return (
-        db.query(ClassRange)
-        .filter(ClassRange.range_id.isnot(None), ClassRange.torn_down_at.is_(None))
-        .order_by(ClassRange.created_at)
-        .limit(2000)
-        .all()
-    )
+PAGE = 500  # rows per page of the teardown pass
 
 
-def _why_done(db: Session, cls: Class | None, row: ClassRange, now: datetime) -> tuple[str, str | None] | None:
-    """(reason, maintenance-window bypass) when ``row`` is no longer needed; None while it is."""
+def _live(db: Session):
+    """Every class range that stands, a page at a time (keyset on id), so a large site is
+    never cut off at one page."""
+    last = None
+    while True:
+        q = db.query(ClassRange).filter(ClassRange.range_id.isnot(None), ClassRange.torn_down_at.is_(None))
+        if last is not None:
+            q = q.filter(ClassRange.id > last)
+        page = q.order_by(ClassRange.id).limit(PAGE).all()
+        yield from page
+        if len(page) < PAGE:
+            return
+        last = page[-1].id
+
+
+def _why_done(db: Session, cls: Class | None, row: ClassRange, now: datetime,
+              needed: set[tuple[str, uuid.UUID]]) -> tuple[str, str | None] | None:
+    """(reason, maintenance-window bypass) when ``row`` is no longer needed; None while it is.
+
+    Only the class's end is lease expiry (ADR 0013 §7): its teardown runs inside a
+    maintenance window too (``booking_ended``). Everything else is a normal destroy that a
+    window defers, as a cancelled booking's is (``scheduler.service.release_range``): the
+    class cancelled or closed, a Student taken off the roll call, no session left that uses
+    the range (its sessions cancelled, rejected or switched to the other mode)."""
     from ..maintenance_windows.policy import BYPASS_BOOKING_ENDED
 
     if cls is None or cls.status != ClassStatus.open.value:
-        status_ = cls.status if cls is not None else "gone"
-        # A cancelled class is a cancelled booking's teardown: a window defers it. A class
-        # closed at the end (close-out, #283) is its ranges' lease expiring: it always runs.
-        return f"class_{status_}", (None if status_ == ClassStatus.cancelled.value else BYPASS_BOOKING_ENDED)
+        return f"class_{cls.status if cls is not None else 'gone'}", None
     if row.kind == ClassRangeKind.seat.value:
         entry = db.get(RollCallEntry, row.entry_id) if row.entry_id else None  # tenant-safe: the row's own entry
         if entry is None or entry.status in OFF_ROLL_CALL:
-            return STUDENT_REMOVED, BYPASS_BOOKING_ENDED
-    if not _still_needed(db, row, now):
-        return LAST_SESSION, BYPASS_BOOKING_ENDED
+            return STUDENT_REMOVED, None
+    if (row.kind, row.template_id) not in needed:
+        return NO_SESSION, None
+    if now >= _ends(db, cls) + TEARDOWN_GRACE:
+        return CLASS_ENDED, BYPASS_BOOKING_ENDED
     return None
 
 
-def _still_needed(db: Session, row: ClassRange, now: datetime) -> bool:
-    """A session of the class that uses this range (its mode and template) has not ended
-    yet, its teardown grace included: approved, or sent back for approval."""
-    mode = RangeMode.individual.value if row.kind == ClassRangeKind.seat.value else RangeMode.collective.value
+def _needed(db: Session, class_id: uuid.UUID) -> set[tuple[str, uuid.UUID]]:
+    """(kind, template) the class's sessions still use, in one query per class: a session of
+    that mode and template that is not called off (drafts and sessions awaiting approval
+    count: booking day by day must not wipe the Students' work; ADR 0014 §10)."""
+    from .holds import kind_of
+
     rows = (
-        db.query(ScheduledEvent.end_time)
-        .join(ClassSession, ClassSession.event_id == ScheduledEvent.id)
+        db.query(ClassSession.range_mode, ScheduledEvent.template_id)
+        .join(ScheduledEvent, ScheduledEvent.id == ClassSession.event_id)
         .filter(
-            ClassSession.class_id == row.class_id,
-            ClassSession.range_mode == mode,
-            ScheduledEvent.template_id == row.template_id,
-            ScheduledEvent.state.in_((*HOLDING, EventState.pending_approval)),
+            ClassSession.class_id == class_id,
+            ScheduledEvent.template_id.isnot(None),
+            ScheduledEvent.state.notin_((EventState.cancelled, EventState.rejected)),
         )
+        .distinct()
         .all()
     )
-    return any(_aware(end) + TEARDOWN_GRACE > now for (end,) in rows)
+    return {(kind_of(mode), tid) for mode, tid in rows}
 
 
-def _teardown_if_done(db: Session, row: ClassRange, now: datetime) -> bool:
-    cls = db.get(Class, row.class_id)  # tenant-safe: the row's own class
-    why = _why_done(db, cls, row, now)
+def _ends(db: Session, cls: Class) -> datetime:
+    """The class's end: its last day, or its last session's end if that runs later."""
+    from .holds import last_day_end
+
+    last = (
+        db.query(ScheduledEvent.end_time)
+        .join(ClassSession, ClassSession.event_id == ScheduledEvent.id)
+        .filter(ClassSession.class_id == cls.id,
+                ScheduledEvent.state.notin_((EventState.cancelled, EventState.rejected)))
+        .order_by(ScheduledEvent.end_time.desc())
+        .first()
+    )
+    return max([last_day_end(cls.end_date), *([_aware(last[0])] if last else [])])
+
+
+def _teardown_if_done(db: Session, row: ClassRange, now: datetime, needed: dict | None = None) -> bool:
+    # What the row held when this pass read it: a commit below reloads the row, and a replica
+    # may have rebuilt the seat onto a new range meanwhile.
+    row_id, class_id, range_id, kind, seat_key = row.id, row.class_id, row.range_id, row.kind, row.seat_key
+    cls = db.get(Class, class_id)  # tenant-safe: the row's own class
+    needed = needed if needed is not None else {}
+    if class_id not in needed:
+        needed[class_id] = _needed(db, class_id)
+    why = _why_done(db, cls, row, now, needed[class_id])
     if why is None:
         return False
     reason, bypass = why
-    rng = db.get(Range, row.range_id)  # tenant-safe: the row's own range
+    rng = db.get(Range, range_id)  # tenant-safe: the row's own range
     if rng is not None and rng.state == RangeState.created:
         settled, what = range_lifecycle.discard_unbuilt(db, rng.id)
     else:
-        settled, what = range_lifecycle.destroy_for_booking(db, row.range_id, bypass)
+        settled, what = range_lifecycle.destroy_for_booking(db, range_id, bypass)
     if not settled:
-        _note(db, row.id, f"{WAITING_PREFIX}teardown: {what}")
+        _note(db, row_id, f"{WAITING_PREFIX}teardown: {what}")
         return False
-    # tenant-safe: a row of the class's own, loaded by this tick.
-    db.query(ClassRange).filter(ClassRange.id == row.id, ClassRange.torn_down_at.is_(None)).update(
+    # tenant-safe: a row of the class's own, loaded by this tick. Only the range it tore down:
+    # a replica that rebuilt the seat meanwhile keeps its new range standing.
+    db.query(ClassRange).filter(
+        ClassRange.id == row_id, ClassRange.range_id == range_id, ClassRange.torn_down_at.is_(None)
+    ).update(
         # A status change (the range is gone), not a reference nulled on delete (ADR 0010).
         {ClassRange.last_error: None, ClassRange.torn_down_at: now, ClassRange.teardown_reason: reason},
         synchronize_session=False,
     )
     if cls is not None:
-        service.audit(db, None, cls, "class_range_teardown", f"{row.kind} {row.seat_key}: range {row.range_id}: "
-                                                            f"{reason}; {what}"[:2000])
+        how = f"teardown that always runs ({bypass})" if bypass else "normal teardown (a maintenance window defers it)"
+        service.audit(db, None, cls, "class_range_teardown",
+                      f"{kind} {seat_key}: range {range_id}: {reason}; {how}; {what}"[:2000])
     db.commit()
     return True
 
@@ -443,6 +520,12 @@ def retry(db: Session, cls: Class, row: ClassRange, actor) -> None:
     never started. Audited. Commits (the build is a range operation)."""
     from fastapi import HTTPException
 
+    if cls.status != ClassStatus.open.value:
+        raise HTTPException(409, "The class is not open; its ranges are not built again")
+    if row.kind == ClassRangeKind.seat.value:
+        entry = db.get(RollCallEntry, row.entry_id) if row.entry_id else None  # tenant-safe: the row's own entry
+        if entry is None or entry.tenant_id != cls.tenant_id or entry.status in OFF_ROLL_CALL:
+            raise HTTPException(409, "This Student is no longer on the roll call")
     rng = db.get(Range, row.range_id) if row.range_id else None  # tenant-safe: the row's own range
     if row.torn_down_at is not None or rng is None or status(row, rng) != "failed":
         raise HTTPException(409, "Only a range whose build failed can be retried")

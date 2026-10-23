@@ -327,8 +327,8 @@ def add_to_roll_call(db: Session, cls: Class, actor: CurrentUser, emails: list[s
             entry.pending_reason = "; ".join(no_room)[:1000]
             res.pending.append(entry)
             continue
-        res.sessions = sessions.take_seats(db, cls, 1)
         put_on_roll_call(db, cls, entry, account)
+        res.sessions = sessions.take_seats(db, cls, 1)  # sized from the roll call, with them on it
         if entry.status == RollCallStatus.invited.value and entry.onboarding_sent_at is None:
             res.to_onboard.append(entry)
         res.added.append(entry)
@@ -402,8 +402,8 @@ def approve_addition(db: Session, cls: Class, entry: RollCallEntry, actor: Curre
     if no_room:
         raise HTTPException(409, {"message": "It still does not fit the class's approved sessions",
                                   "reasons": no_room})
-    taken = sessions.take_seats(db, cls, 1)
     put_on_roll_call(db, cls, entry, account)
+    taken = sessions.take_seats(db, cls, 1)
     onboard = entry.status == RollCallStatus.invited.value and entry.onboarding_sent_at is None
     not_emailed = None
     # The onboarding email counts against the budget of whoever added them, as any addition's.

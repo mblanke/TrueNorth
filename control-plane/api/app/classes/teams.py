@@ -228,6 +228,32 @@ def authorize(db: Session, user: CurrentUser, team: Team) -> bool:
     return True
 
 
+def authorize_exercise(db: Session, user: CurrentUser, ex) -> bool:
+    """For ``POST /teams`` naming ``ex``: a class session's exercise takes new teams only from
+    its class's lead or an admin (403 for anyone else, its session's instructor included).
+    True when ``ex`` is one (and the caller may); False when it is no class session's."""
+    from . import access
+
+    cls = (
+        db.query(Class)
+        .join(ClassSession, ClassSession.class_id == Class.id)
+        .join(ScheduledEvent, ScheduledEvent.id == ClassSession.event_id)
+        .filter(ScheduledEvent.exercise_id == ex.id, Class.tenant_id == ex.tenant_id)
+        .first()
+    )
+    if cls is None:
+        return False
+    if access.role_in(db, cls, user) not in access.EDITORS:
+        raise HTTPException(403, "This exercise is a class session's; only the class's lead or an admin adds its teams")
+    return True
+
+
+def unlink(db: Session, team: Team) -> None:
+    """Before a team is deleted: its link to a class session. Does not commit."""
+    # tenant-safe: the link of a team the caller already resolved in its tenant.
+    db.query(ClassSessionTeam).filter(ClassSessionTeam.team_id == team.id).delete(synchronize_session=False)
+
+
 def member_target(db: Session, user: CurrentUser, team: Team, subject_id: uuid.UUID) -> User | None:
     """For ``/teams/{id}/members``: who may join a class session's team: a Student on the roll
     call (422 otherwise). None when the team is not a class's."""

@@ -42,6 +42,7 @@ DAY = (datetime.now(UTC) + timedelta(days=40)).replace(hour=0, minute=0, second=
 MON = DAY + timedelta(hours=9)
 TUE = MON + timedelta(days=1)
 LEAD, GRACE = timedelta(minutes=30), timedelta(minutes=15)
+END = datetime.combine((DAY + timedelta(days=5)).date(), datetime.min.time(), tzinfo=UTC)  # the class's last day is over
 
 # One Student's range: 2 VMs, 4 vCPU, 8 GB RAM, 100 GB disk.
 SEAT_YAML = """
@@ -365,7 +366,7 @@ def test_individual_ranges_are_built_at_the_lead_once_per_seat(client, db_sessio
     assert _evt(db_session, ev).state == EventState.active
 
 
-def test_ranges_are_kept_across_sessions_and_torn_down_after_the_last(client, db_session, world, dispatched):
+def test_ranges_are_kept_across_sessions_and_torn_down_when_the_class_ends(client, db_session, world, dispatched):
     mon = _approve(client, world, _book(client, world, mode="individual", name="Mon"))
     tue = _approve(client, world, _book(client, world, start=TUE, mode="individual", name="Tue"))
     clock.tick(db_session, now=MON - LEAD)
@@ -380,12 +381,14 @@ def test_ranges_are_kept_across_sessions_and_torn_down_after_the_last(client, db
     clock.tick(db_session, now=TUE)
     clock.tick(db_session, now=TUE + timedelta(hours=3) + GRACE)
     assert _evt(db_session, tue).state == EventState.completed
+    assert _destroys(dispatched) == []  # kept until the class's last day is over (ADR 0014 §10)
+    clock.tick(db_session, now=END + GRACE)
     assert sorted(_destroys(dispatched)) == sorted(str(r.range_id) for r in rows)
     for r in _rows(db_session, world):
-        assert r.torn_down_at is not None and r.teardown_reason == "last_session_ended"
+        assert r.torn_down_at is not None and r.teardown_reason == "class_ended"
         (op,) = db_session.query(RangeOperation).filter_by(range_id=r.range_id, action="destroy").all()
         assert op.window_bypass == "booking_ended"  # lease expiry: a maintenance window never blocks it
-    clock.tick(db_session, now=TUE + timedelta(hours=4))
+    clock.tick(db_session, now=END + timedelta(hours=1))
     assert len(_destroys(dispatched)) == 3  # once
 
 
@@ -423,7 +426,7 @@ def test_a_removed_students_range_is_torn_down_and_the_others_kept(client, db_se
     clock.tick(db_session, now=MON + timedelta(minutes=10))
     assert _destroys(dispatched) == [str(bob_seat.range_id)]
     (op,) = db_session.query(RangeOperation).filter_by(range_id=bob_seat.range_id, action="destroy").all()
-    assert op.window_bypass == "booking_ended"  # the seat's lease ended
+    assert op.window_bypass is None  # a normal destroy: a maintenance window defers it
     assert _seat_of(db_session, world, "bob").teardown_reason == "student_removed"
     # A Student added mid-session gets their seat built on the next tick.
     act_as(world["lead"])
@@ -448,6 +451,8 @@ def test_collective_sessions_share_one_range_kept_across_sessions(client, db_ses
     assert _evt(db_session, tue).range_id == row.range_id and len(_builds(dispatched)) == 1
     clock.tick(db_session, now=TUE)
     clock.tick(db_session, now=TUE + timedelta(hours=3) + GRACE)
+    assert _destroys(dispatched) == []
+    clock.tick(db_session, now=END + GRACE)
     assert _destroys(dispatched) == [str(row.range_id)]
 
 
@@ -805,3 +810,282 @@ def test_an_aar_roster_counts_the_roll_call_at_the_runs_end(client, db_session, 
     assert w["students"]["ann"].id in at_end and w["students"]["bob"].id not in at_end
     now = class_sessions.roll_call_user_ids(db_session, [eid])
     assert now == {w["students"]["cat"].id}
+
+
+# ── Adversarial review of #299 ─────────────────────────────────────────────
+
+def _plain(client, w, start, hours, vcpu, as_who=None):
+    act_as(as_who or w["admin"])
+    return client.post("/schedule/events", json={
+        "name": "someone else", "start_time": start.isoformat(),
+        "end_time": (start + timedelta(hours=hours)).isoformat(), "vcpu_total": vcpu})
+
+
+def _destroy_ops(db, rows):
+    return db.query(RangeOperation).filter(
+        RangeOperation.range_id.in_([r.range_id for r in rows]), RangeOperation.action == "destroy").all()
+
+
+def test_r1_a_classs_ranges_hold_capacity_between_its_sessions(client, db_session, world):
+    """Approved days ahead, before anything is built: the evening between two sessions is
+    the class's (its ranges stay up), so a booking that needs the whole cluster then is refused."""
+    _approve(client, world, _book(client, world, mode="individual", name="Mon"))
+    _approve(client, world, _book(client, world, start=TUE, mode="individual", name="Tue"))
+    r = _plain(client, world, MON + timedelta(hours=9), 2, 95)  # Monday 18:00-20:00
+    assert r.status_code == 409 and "vCPU" in r.json()["detail"]
+    assert _plain(client, world, MON + timedelta(hours=9), 2, 88).status_code == 201  # 12 are the class's
+    # Until the class's last day is over, not just its last booked session.
+    assert _plain(client, world, DAY + timedelta(days=3, hours=20), 1, 95).status_code == 409
+    assert _plain(client, world, END + timedelta(hours=2), 1, 95).status_code == 201
+
+
+def test_r1_overlapping_sessions_and_built_ranges_are_counted_once(client, db_session, world, dispatched):
+    from app.scheduler.capacity import get_capacity_provider
+
+    _approve(client, world, _book(client, world, mode="individual", name="Mon"))
+    _approve(client, world, _book(client, world, start=MON + timedelta(hours=1), mode="individual", name="Mon 2",
+                                  instructor_id=world["assistant"].id))
+    held = get_capacity_provider(db_session).committed(db_session, MON + timedelta(hours=1), MON + timedelta(hours=2))
+    assert held.resources.vcpu == 12  # one class, one template: one hold, not 12 + 12
+    clock.tick(db_session, now=MON - LEAD)
+    _ready(db_session, _rows(db_session, world))
+    evening = get_capacity_provider(db_session).committed(db_session, MON + timedelta(hours=9),
+                                                          MON + timedelta(hours=10))
+    assert evening.resources.vcpu == 12 and evening.ranges == 0  # the running seats are the hold, not extra
+
+
+def test_r1_approving_a_later_session_checks_up_to_the_class_end(client, db_session, world):
+    """A session added before the first one moves the class's hold earlier: that span is checked."""
+    _approve(client, world, _book(client, world, start=TUE, mode="individual", name="Tue"))
+    _plain(client, world, MON + timedelta(hours=9), 2, 90)  # Monday evening: fits now
+    early = _book(client, world, mode="individual", name="Mon")
+    act_as(world["admin"])
+    r = client.post(f"/schedule/events/{early['id']}/approve")
+    assert r.status_code == 409  # its ranges would stay up through Monday evening
+
+
+def test_r2_a_removed_students_seat_waits_for_a_maintenance_window(client, db_session, world, dispatched):
+    _approve(client, world, _book(client, world, mode="individual"))
+    clock.tick(db_session, now=MON - LEAD)
+    _ready(db_session, _rows(db_session, world))
+    bob = _seat_of(db_session, world, "bob")
+    act_as(world["lead"])
+    client.delete(f"/classes/{world['cid']}/roll-call/{bob.entry_id}")
+    clock.tick(db_session, now=MON + timedelta(minutes=10))
+    (op,) = _destroy_ops(db_session, [bob])
+    assert op.window_bypass is None  # a normal destroy: no lease expired
+    assert _seat_of(db_session, world, "bob").teardown_reason == "student_removed"
+
+
+def test_r2_a_cancelled_class_or_session_is_a_normal_destroy(client, db_session, world, dispatched):
+    ev = _approve(client, world, _book(client, world, mode="individual"))
+    clock.tick(db_session, now=MON - LEAD)
+    rows = _rows(db_session, world)
+    _ready(db_session, rows)
+    act_as(world["lead"])
+    assert client.post(f"/schedule/events/{ev['id']}/cancel").status_code == 200  # its only session
+    clock.tick(db_session, now=MON - LEAD + timedelta(minutes=1))
+    ops = _destroy_ops(db_session, rows)
+    assert len(ops) == 3 and {o.window_bypass for o in ops} == {None}
+    assert {r.teardown_reason for r in _rows(db_session, world)} == {"no_session_needs_it"}
+
+
+def test_r4_ranges_are_kept_until_the_class_ends_for_day_by_day_booking(client, db_session, world, dispatched):
+    _approve(client, world, _book(client, world, mode="individual", name="Mon"))
+    clock.tick(db_session, now=MON - LEAD)
+    rows = _rows(db_session, world)
+    _ready(db_session, rows)
+    clock.tick(db_session, now=MON + timedelta(hours=3) + GRACE)  # Monday over, nothing else booked yet
+    assert _destroys(dispatched) == []
+    _approve(client, world, _book(client, world, start=TUE, mode="individual", name="Tue"))
+    clock.tick(db_session, now=TUE - LEAD)
+    assert len(_builds(dispatched)) == 3  # Tuesday finds Monday's ranges
+    clock.tick(db_session, now=TUE + timedelta(hours=3) + GRACE)
+    assert _destroys(dispatched) == []  # the class still runs till its last day
+    clock.tick(db_session, now=END + GRACE)
+    ops = _destroy_ops(db_session, rows)
+    assert len(ops) == 3 and {o.window_bypass for o in ops} == {"booking_ended"}  # the class's lease expired
+    assert {r.teardown_reason for r in _rows(db_session, world)} == {"class_ended"}
+
+
+def test_r3a_an_exercise_cannot_carry_a_class_range_onto_another_booking(client, db_session, world, dispatched):
+    _approve(client, world, _book(client, world, mode="collective", template="shared_tpl"))
+    clock.tick(db_session, now=MON - LEAD)
+    (row,) = _rows(db_session, world)
+    ex = Exercise(id=uuid.uuid4(), name="on the class range", range_id=row.range_id, tenant_id=world["a"].id)
+    db_session.add(ex)
+    db_session.flush()
+    later = MON + timedelta(days=20)
+    r = _plain(client, world, later, 1, 1)
+    assert r.status_code == 201
+    act_as(world["admin"])
+    r = client.put(f"/schedule/events/{r.json()['id']}", json={
+        "name": "steal", "start_time": later.isoformat(), "end_time": (later + timedelta(hours=1)).isoformat(),
+        "exercise_id": str(ex.id), "vcpu_total": 1})
+    assert r.status_code == 409 and "class" in r.json()["detail"]
+
+
+def test_r3b_a_session_on_another_classs_range_is_not_treated_as_this_classs(client, db_session, world, dispatched):
+    w = world
+    _approve(client, w, _book(client, w, mode="collective", template="shared_tpl"))
+    clock.tick(db_session, now=MON - LEAD)
+    (x_row,) = _rows(db_session, w)
+    act_as(w["lead"])
+    other = client.post("/classes", json={"name": "C202", "course_id": str(w["course"].id),
+                                          "start_date": str(DAY.date()), "end_date": str(DAY.date())}).json()
+    ev = _approve(client, w, _book(client, {**w, "cid": other["id"]}, start=MON + timedelta(hours=4),
+                                   mode="collective", template="shared_tpl"))
+    db_session.query(ScheduledEvent).filter(ScheduledEvent.id == uuid.UUID(ev["id"])).update(
+        {ScheduledEvent.range_id: x_row.range_id}, synchronize_session=False)
+    db_session.commit()
+    clock.tick(db_session, now=MON + timedelta(hours=4) - LEAD)
+    assert db_session.query(ClassRange).filter(ClassRange.class_id == uuid.UUID(other["id"])).count() == 0
+
+
+def test_r3c_an_edit_keeps_the_range_its_exercise_brings(client, db_session, world, dispatched):
+    w = world
+    ev = _approve(client, w, _book(client, w, mode="collective", template="shared_tpl"))
+    clock.tick(db_session, now=MON - LEAD)
+    rng = Range(id=uuid.uuid4(), name="own", template_id=w["shared_tpl"].id, tenant_id=w["a"].id,
+                state=RangeState.created)
+    db_session.add(rng)
+    db_session.flush()
+    ex = Exercise(id=uuid.uuid4(), name="elsewhere", range_id=rng.id, tenant_id=w["a"].id)
+    db_session.add(ex)
+    # Not built yet: back to scheduled, so it can be edited.
+    evt = _evt(db_session, ev)
+    evt.state = EventState.scheduled
+    db_session.commit()
+    act_as(w["lead"])
+    r = client.put(f"/schedule/events/{ev['id']}", json={
+        "name": "x", "start_time": ev["start_time"], "end_time": ev["end_time"], "class_id": w["cid"],
+        "template_id": str(w["shared_tpl"].id), "exercise_id": str(ex.id)})
+    assert r.status_code == 200, r.text
+    assert r.json()["range_id"] == str(rng.id)
+
+
+def test_r5_seat_changes_recompute_the_size_from_the_roll_call(client, db_session, world):
+    ev = _approve(client, world, _book(client, world, mode="individual"))
+    db_session.query(ScheduledEvent).filter(ScheduledEvent.id == uuid.UUID(ev["id"])).update(
+        {ScheduledEvent.vcpu_total: 999}, synchronize_session=False)  # drifted
+    db_session.commit()
+    act_as(world["lead"])
+    client.post(f"/classes/{world['cid']}/roll-call", json={"emails": ["dan@corp.test"]})
+    assert (_evt(db_session, ev).vcpu_total, _evt(db_session, ev).vm_count) == (16, 8)
+    dan = db_session.query(RollCallEntry).filter_by(email="dan@corp.test").one()
+    client.delete(f"/classes/{world['cid']}/roll-call/{dan.id}")
+    assert _evt(db_session, ev).vcpu_total == 12
+
+
+def test_r5_an_addition_takes_the_booking_lock_while_an_individual_session_waits(client, db_session, world):
+    _book(client, world, mode="individual")  # pending: it will hold a seat per Student when approved
+    calls = []
+    with patch.object(class_sessions.scheduler, "serialize_bookings", side_effect=lambda db: calls.append(1)):
+        act_as(world["lead"])
+        client.post(f"/classes/{world['cid']}/roll-call", json={"emails": ["dan@corp.test"]})
+    assert calls
+
+
+def test_r6_teardown_does_not_mark_a_rebuilt_seat_torn_down(client, db_session, world, dispatched):
+    _approve(client, world, _book(client, world, mode="individual"))
+    clock.tick(db_session, now=MON - LEAD)
+    rows = _rows(db_session, world)
+    _ready(db_session, rows)
+    stale = rows[0]
+    newer = Range(id=uuid.uuid4(), name="rebuilt", template_id=world["seat_tpl"].id, tenant_id=world["a"].id,
+                  state=RangeState.ready)
+    db_session.add(newer)
+    db_session.flush()
+    db_session.query(ClassRange).filter(ClassRange.id == stale.id).update(
+        {ClassRange.range_id: newer.id}, synchronize_session=False)  # another replica rebuilt it meanwhile
+    cls = _cls(db_session, world)
+    cls.status = "cancelled"
+    db_session.flush()
+    class_ranges._teardown_if_done(db_session, stale, MON)  # still holds the old range id
+    db_session.expire_all()
+    assert db_session.get(ClassRange, stale.id).torn_down_at is None
+
+
+def _class_exercise(client, db_session, w, dispatched, instructor=None) -> tuple[dict, Exercise]:
+    sc = Scenario(id=uuid.uuid4(), name="Ransomware", yaml="id: s\n", tenant_id=w["a"].id)
+    db_session.add(sc)
+    db_session.flush()
+    extra = {"instructor_id": instructor.id} if instructor else {}
+    ev = _approve(client, w, _book(client, w, start=datetime.now(UTC) + timedelta(minutes=20), mode="collective",
+                                   template="shared_tpl", scenario_id=str(sc.id), **extra))
+    clock.tick(db_session)
+    return ev, db_session.get(Exercise, _evt(db_session, ev).exercise_id)
+
+
+def test_r7_teams_endpoints_cannot_get_around_the_class(client, db_session, world, dispatched):
+    from app.classes.models import ClassSessionTeam
+    from app.models import Team
+
+    w = world
+    ev, ex = _class_exercise(client, db_session, w, dispatched, instructor=w["assistant"])
+    # The session's instructor (an assistant) is not the class's lead: no team of their own.
+    act_as(w["assistant"])
+    assert client.post("/teams", json={"name": "rogue", "exercise_id": str(ex.id)}).status_code == 403
+    t = Team(name="T", tenant_id=w["a"].id, exercise_id=ex.id)
+    db_session.add(t)
+    db_session.flush()
+    link = db_session.query(ClassSession).filter_by(event_id=uuid.UUID(ev["id"])).one()
+    db_session.add(ClassSessionTeam(tenant_id=w["a"].id, session_id=link.id, team_id=t.id))
+    db_session.commit()
+    # Even an admin (user:update) puts only Students on the roll call on a class session's team.
+    act_as(w["admin"])
+    r = client.post(f"/teams/{t.id}/members", params={"user_id": str(w["enrolled_only"].id)})
+    assert r.status_code == 422
+    # Deleting a class session's team removes its link first.
+    assert client.delete(f"/teams/{t.id}").status_code == 204
+
+
+def test_r9_retry_needs_an_open_class_and_a_seat_still_on_the_roll_call(client, db_session, world, dispatched):
+    _approve(client, world, _book(client, world, mode="individual"))
+    clock.tick(db_session, now=MON - LEAD)
+    rows = _rows(db_session, world)
+    for r in rows:
+        db_session.get(Range, r.range_id).state = RangeState.failed
+    db_session.commit()
+    bob = _seat_of(db_session, world, "bob")
+    act_as(world["lead"])
+    client.delete(f"/classes/{world['cid']}/roll-call/{bob.entry_id}")
+    assert client.post(f"/classes/{world['cid']}/ranges/{bob.id}/retry").status_code == 409
+    ann = _seat_of(db_session, world, "ann")
+    act_as(world["admin"])
+    client.delete(f"/classes/{world['cid']}")
+    assert client.post(f"/classes/{world['cid']}/ranges/{ann.id}/retry").status_code == 409
+
+
+def test_r9_credentials_close_with_the_class_and_never_reach_its_observers(client, db_session, world, dispatched):
+    w = world
+    instructor_observer = real_user(db_session, UserRole.instructor, w["a"].id)
+    from app.classes.models import ClassStaff
+
+    db_session.add(ClassStaff(class_id=uuid.UUID(w["cid"]), user_id=uuid.UUID(instructor_observer.id), role="observer"))
+    db_session.commit()
+    _approve(client, w, _book(client, w, mode="individual"))
+    clock.tick(db_session, now=MON - LEAD)
+    rows = _rows(db_session, w)
+    _ready(db_session, rows)
+    _applied(db_session, rows)
+    ann_seat = _seat_of(db_session, w, "ann")
+    act_as(instructor_observer)  # an instructor by role, but this class's observer (ADR 0014 §19)
+    assert client.get(f"/ranges/{ann_seat.range_id}/credentials").status_code == 403
+    act_as(_as_current(w["students"]["ann"]))
+    assert client.get(f"/ranges/{ann_seat.range_id}/credentials").status_code == 200
+    _cls(db_session, w).status = "cancelled"
+    db_session.commit()
+    assert client.get(f"/ranges/{ann_seat.range_id}/credentials").status_code == 404
+
+
+def test_r9_the_teardown_pass_pages_past_its_page_size(client, db_session, world, dispatched, monkeypatch):
+    _approve(client, world, _book(client, world, mode="individual"))
+    clock.tick(db_session, now=MON - LEAD)
+    rows = _rows(db_session, world)
+    _ready(db_session, rows)
+    monkeypatch.setattr(class_ranges, "PAGE", 2)
+    act_as(world["lead"])
+    client.delete(f"/classes/{world['cid']}")
+    clock.tick(db_session, now=MON)
+    assert len(_destroy_ops(db_session, rows)) == 3

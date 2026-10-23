@@ -458,6 +458,10 @@ def update_event(
     range_id = service.resolve_range(db, user, body.range_id, keep=evt.range_id)
     scenario_id = service.resolve_scenario(db, user, body.scenario_id)
     exercise_id, range_id = service.resolve_exercise(db, user, body.exercise_id, range_id)
+    if range_id:
+        # An exercise brings its range: it must be buildable and no class's (but the one this
+        # session already uses), as a named range must (#299 review).
+        service.resolve_range(db, user, str(range_id), keep=evt.range_id)
     mode, was_mode, range_id = _updated_mode(db, cls, evt, body, range_id, exercise_id, scenario_id)
     instructor_id = (
         service.resolve_instructor(db, user, body.instructor_id) if body.instructor_id else evt.instructor_id
@@ -545,8 +549,8 @@ def _updated_mode(db: Session, cls, evt: ScheduledEvent, body: EventIn, range_id
     if mode == sessions.RangeMode.individual:
         if range_id == evt.range_id and service.class_owns_range(db, range_id):
             range_id = None  # its class's shared range: no longer this session's
-    elif not body.range_id and evt.range_id and service.class_owns_range(db, evt.range_id):
-        range_id = evt.range_id
+    elif not body.range_id and not exercise_id and evt.range_id and service.class_owns_range(db, evt.range_id):
+        range_id = evt.range_id  # never over a range an exercise brings
     sessions.check_mode(mode, body.template_id, range_id, exercise_id, scenario_id)
     return mode, was, range_id
 

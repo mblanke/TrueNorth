@@ -53,8 +53,6 @@ from .models import (
     DEFAULT_RANGE_MODE,
     OFF_ROLL_CALL,
     Class,
-    ClassRange,
-    ClassRangeKind,
     ClassSession,
     ClassStaff,
     ClassStatus,
@@ -352,12 +350,6 @@ def seat_demand(db: Session, cls: Class, evt: ScheduledEvent) -> Resources:
     return per_seat(db, cls, evt.template_id)[0]
 
 
-def _seat_vms(db: Session, cls: Class, evt: ScheduledEvent) -> int:
-    if mode_of(db, evt) != RangeMode.individual:
-        return 0
-    return per_seat(db, cls, evt.template_id)[1]
-
-
 def _scaled(r: Resources, n: int) -> Resources:
     return Resources(r.vcpu * n, r.ram_mb * n, r.disk_gb * n)
 
@@ -375,8 +367,10 @@ def room_for_seats(db: Session, cls: Class, seats: int) -> list[str]:
         out = [(evt, _scaled(seat_demand(db, cls, evt), seats)) for evt in scheduler.approved_upcoming(db, ids)]
         return [(evt, need) for evt, need in out if need != Resources()]
 
-    if not needs():
+    if not needs() and not _has_individual(db, cls):
         return []  # a seat costs nothing: no reason to queue behind every booking in the platform
+    # A seat costs something now, or will once an individual session is approved: take the
+    # lock, so the roll call and the sizes taken from it change in one order (#299 review).
     scheduler.serialize_bookings(db)
     reasons: list[str] = []
     for evt, need in needs():  # read again under the lock
@@ -385,24 +379,57 @@ def room_for_seats(db: Session, cls: Class, seats: int) -> list[str]:
 
 
 def take_seats(db: Session, cls: Class, seats: int) -> list[ScheduledEvent]:
-    """Grow each approved session by ``seats`` seats (after ``room_for_seats`` said they fit).
-    Returns the sessions, whose invites the new Students now get. Does not commit."""
+    """The approved sessions after ``seats`` Students joined the roll call (call it once they
+    are on it, after ``room_for_seats`` said they fit). Returns the sessions, whose invites the
+    new Students now get. Does not commit."""
+    return _reseat(db, cls, seats, 1)
+
+
+def free_seats(db: Session, cls: Class, seats: int) -> list[ScheduledEvent]:
+    """The approved sessions after ``seats`` Students left the roll call. Always allowed.
+    Returns the sessions, whose invites are withdrawn from those Students. Does not commit."""
+    return _reseat(db, cls, seats, -1)
+
+
+def _reseat(db: Session, cls: Class, seats: int, sign: int) -> list[ScheduledEvent]:
+    """An individual session's size is recomputed, never stepped: one seat's size times the
+    Students on the roll call now, under the booking lock, so no addition, removal or
+    forfeit can leave it drifting from the roll call. Any other session moves by its seat
+    cost (nothing, for a collective one). Its SEQUENCE goes up: a Student who left and came
+    back may hold an older CANCEL of it."""
+    db.flush()  # the roll-call change itself, before it is counted
     sessions = approved_sessions(db, cls)
+    if any(mode_of(db, e) == RangeMode.individual for e in sessions):
+        scheduler.serialize_bookings(db)
+    n = None
     for evt in sessions:
-        scheduler.resize(db, evt, _scaled(seat_demand(db, cls, evt), seats), 1, vms=_seat_vms(db, cls, evt) * seats)
-        scheduler.resequence(evt)  # the new Student may hold an older CANCEL of it
+        if mode_of(db, evt) == RangeMode.individual:
+            n = active_seats(db, cls) if n is None else n
+            seat, vms = per_seat(db, cls, evt.template_id)
+            scheduler.set_size(db, evt, _scaled(seat, n), vms * n)
+        else:
+            scheduler.resize(db, evt, _scaled(seat_demand(db, cls, evt), seats), sign)
+        scheduler.resequence(evt)
     db.flush()
     return sessions
 
 
-def free_seats(db: Session, cls: Class, seats: int) -> list[ScheduledEvent]:
-    """Shrink each approved session by ``seats`` seats (Students taken off). Always allowed.
-    Returns the sessions, whose invites are withdrawn from those Students. Does not commit."""
-    sessions = approved_sessions(db, cls)
-    for evt in sessions:
-        scheduler.resize(db, evt, _scaled(seat_demand(db, cls, evt), seats), -1, vms=_seat_vms(db, cls, evt) * seats)
-        scheduler.resequence(evt)
-    return sessions
+def _has_individual(db: Session, cls: Class) -> bool:
+    """Whether the class has an individual session awaiting approval or approved."""
+    from ..scheduler.lifecycle import HOLDING
+    from ..scheduler.models import EventState
+
+    return (
+        db.query(ClassSession.id)
+        .join(ScheduledEvent, ScheduledEvent.id == ClassSession.event_id)
+        .filter(
+            ClassSession.class_id == cls.id,
+            ClassSession.range_mode == RangeMode.individual.value,
+            ScheduledEvent.state.in_((*HOLDING, EventState.pending_approval)),
+        )
+        .first()
+        is not None
+    )
 
 
 def on_exercise(db: Session, evt: ScheduledEvent) -> None:
@@ -413,34 +440,6 @@ def on_exercise(db: Session, evt: ScheduledEvent) -> None:
 
 
 # ── For the scheduler's capacity view and the rosters ────────────────────────
-
-
-def covered_ranges(db: Session, events: list[ScheduledEvent]) -> dict[uuid.UUID, set[uuid.UUID]]:
-    """booking id -> the class ranges it uses, for those of ``events`` that are class
-    sessions: its seats' ranges (individual) or its shared range (collective) of its
-    template, while they stand. A booking's size already counts them, so capacity must not
-    count them again as running ranges (``scheduler.capacity``)."""
-    if not events:
-        return {}
-    by_id = {e.id: e for e in events}
-    # tenant-safe: the links of bookings the caller already loaded, and the class's own ranges.
-    rows = (
-        db.query(ClassSession.event_id, ClassSession.range_mode, ClassRange.kind, ClassRange.template_id,
-                 ClassRange.range_id)
-        .join(ClassRange, (ClassRange.class_id == ClassSession.class_id) & (ClassRange.tenant_id == ClassSession.tenant_id))
-        .filter(
-            ClassSession.event_id.in_(list(by_id)),
-            ClassRange.range_id.isnot(None),
-            ClassRange.torn_down_at.is_(None),
-        )
-        .all()
-    )
-    out: dict[uuid.UUID, set[uuid.UUID]] = {}
-    for eid, mode, kind, template_id, range_id in rows:
-        wanted = ClassRangeKind.seat.value if mode == RangeMode.individual.value else ClassRangeKind.shared.value
-        if kind == wanted and template_id == by_id[eid].template_id:
-            out.setdefault(eid, set()).add(range_id)
-    return out
 
 
 def roll_call_user_ids(db: Session, event_ids: list[uuid.UUID], as_of: datetime | None = None) -> set[uuid.UUID]:

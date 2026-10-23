@@ -150,7 +150,16 @@ def fit(db: Session, provider: CapacityProvider, evt: ScheduledEvent, start: dat
     clash = conflicts(
         db, start=start, end=end, range_id=evt.range_id, instructor_id=evt.instructor_id, exclude_id=evt.id
     )
-    return Fit(clash, assess(db, provider, start, end, need_of(evt), exclude_id=evt.id))
+    return Fit(clash, assess(db, provider, start, until_class_end(db, evt, end), need_of(evt), exclude_id=evt.id))
+
+
+def until_class_end(db: Session, evt: ScheduledEvent, end: datetime) -> datetime:
+    """How long a booking holds what it needs: to its end, or, for a class session that uses
+    its class's ranges, to the class's end (they stay up between sessions; ``classes.holds``)."""
+    from ..classes import holds
+
+    last = holds.class_end(db, evt)
+    return max(as_utc(end), last) if last is not None else end
 
 
 def _ceil(t: datetime, step: timedelta) -> datetime:
@@ -470,9 +479,9 @@ def release_range(db: Session, evt: ScheduledEvent) -> str | None:
         return None
     if class_owns_range(db, evt.range_id):
         # A class's range outlives its sessions (ADR 0014 §10): the class tears it down after
-        # its last session, or when it is cancelled (classes/ranges.py).
+        # its end, or when it is cancelled (classes/ranges.py).
         evt.auto_provisioned = False
-        return "range kept by its class until the class's last session"
+        return "range kept by its class until the class ends"
     # Another live booking of the same range (the next class in a series) takes the range
     # over instead: ranges cannot be built again once destroyed.
     heir = (
@@ -684,7 +693,8 @@ def room_for(db: Session, evt: ScheduledEvent, extra: Resources) -> list[str]:
     The caller holds ``serialize_bookings``."""
     if extra == Resources():
         return []
-    a = assess(db, get_capacity_provider(db), as_utc(evt.start_time), as_utc(evt.end_time), extra)
+    end = until_class_end(db, evt, as_utc(evt.end_time))
+    a = assess(db, get_capacity_provider(db), max(as_utc(evt.start_time), datetime.now(UTC)), end, extra)
     return [f"'{evt.name}': {r}" for r in a.reasons]
 
 

@@ -194,11 +194,16 @@ Content (courses, modules, labs, scenarios, range templates, golden images) has 
    (`class_ranges`, `app/classes/ranges.py`) are built by a step of the scheduler's clock at
    the provisioning lead before the first session that needs them, through the scheduler's
    own path (`range_lifecycle`, range operations, the worker's tasks), one operation per seat
-   so a failed seat holds up nobody and is reported on the class; they are kept across
-   sessions (capacity counts them once, through the session that uses them) and torn down
-   after the last session that needs them or when the Student is taken off the roll call
-   (both the `booking_ended` teardown that a maintenance window never blocks), or when the
-   class is cancelled (a normal destroy). A collective session books its class's shared
+   so a failed seat holds up nobody and is reported on the class. They are kept until the
+   class's last day is over (drafts and day-by-day booking do not wipe the Students' work),
+   and capacity holds them as one span per class, kind and template, from the first
+   approved session's lead to the class's end (`app/classes/holds.py`): sessions inside it,
+   and the ranges it builds, are counted once, and approving a session checks up to the
+   class's end. Only the class's end is lease expiry (the `booking_ended` teardown a
+   maintenance window never blocks); a Student taken off the roll call, a class cancelled
+   or closed, or no session left that uses a range is a normal destroy a window defers.
+   An individual session's size is recomputed from the roll call (seat size times
+   Students) under the booking lock on every roll-call change. A collective session books its class's shared
    range. Its teams are ordinary `teams` rows linked in `class_session_teams`, split evenly
    from the roll call and moved by the lead before the start; the `/teams` endpoints treat
    them as the class's. Exercise, AAR and telemetry rosters of class sessions follow the

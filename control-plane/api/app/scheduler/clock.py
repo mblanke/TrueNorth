@@ -97,7 +97,7 @@ def tick(db: Session, now: datetime | None = None) -> TickResult:
     now = now or datetime.now(UTC)
     res = TickResult()
 
-    # 00. Class ranges: built at the lead, kept all week, torn down after the last session.
+    # 00. Class ranges: built at the lead, kept all week, torn down when the class ends.
     try:
         from ..classes import ranges as class_ranges
 

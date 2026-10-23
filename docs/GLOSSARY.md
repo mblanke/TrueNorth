@@ -186,9 +186,10 @@ unless the instructor picks the other when booking (#282).
 A range a class owns (`ClassRange`, `app/classes/ranges.py`): a **seat** (one Student's own
 range, for individual sessions) or the class's **shared** range (for collective sessions).
 Built at the provisioning lead before the first session that needs it, kept across the
-class's sessions, and torn down after the last one, when the class is cancelled, or (a seat)
-when its Student is taken off the roll call. A seat costs the template's size, so an
-individual session's size is that times its seats.
+class's sessions until the class's last day is over, and torn down then; earlier when the
+class is cancelled, when no session uses it any more, or (a seat) when its Student is taken
+off the roll call. A seat costs the template's size, so an individual session's size is
+that times its seats; capacity holds a class's ranges from its first session to its end.
 _Not to be confused with_: lab session (a self-serve range from a course release's lab
 profile, launched by the Student).
 

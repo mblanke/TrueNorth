@@ -7,7 +7,9 @@ fresh copy of ``alembic upgrade head``).
 Every API replica runs the scheduler's clock, and with it the class ranges step. Two ticks at
 the provisioning lead at once must still give each seat one ``class_ranges`` row (its unique
 key) and one built range (the guarded claim of the row's ``range_id``): the replica that loses
-discards the range it made. The teardown after the last session also happens once.
+discards the range it made. The teardown when the class ends also happens once. Two
+roll-call additions at once leave an individual session sized from the roll call (seat
+size times Students), whichever commits first (#299 review item 5).
 """
 
 from __future__ import annotations
@@ -143,7 +145,7 @@ def test_two_replicas_build_each_seat_once_and_tear_it_down_once(world):
                 {ScheduledEvent.state: EventState.completed}, synchronize_session=False)
             db.commit()
 
-        after = NINE + timedelta(hours=3) + GRACE
+        after = datetime.combine(NINE.date() + timedelta(days=1), datetime.min.time(), tzinfo=UTC) + GRACE
         barrier = threading.Barrier(2)
         threads = [threading.Thread(target=_tick, args=(eng, after, barrier, errors)) for _ in range(2)]
         for t in threads:
@@ -154,7 +156,49 @@ def test_two_replicas_build_each_seat_once_and_tear_it_down_once(world):
 
     with Session(eng) as db:
         rows = db.query(ClassRange).filter(ClassRange.class_id == world["class"]).all()
-        assert all(r.torn_down_at is not None and r.teardown_reason == "last_session_ended" for r in rows)
+        assert all(r.torn_down_at is not None and r.teardown_reason == "class_ended" for r in rows)
         destroys = db.query(RangeOperation).filter(
             RangeOperation.range_id.in_([r.range_id for r in rows]), RangeOperation.action == "destroy").all()
         assert len(destroys) == 3 and {d.window_bypass for d in destroys} == {"booking_ended"}
+
+
+def test_concurrent_additions_leave_the_size_equal_to_the_roll_call(world, monkeypatch):
+    for k, v in (("CLUSTER_TOTAL_VCPU", "1000"), ("CLUSTER_TOTAL_RAM_MB", str(1000 * 1024)),
+                 ("CLUSTER_TOTAL_DISK_GB", "10000"), ("CLUSTER_OVERHEAD_PCT", "0")):
+        monkeypatch.setenv(k, v)
+    from app.auth import CurrentUser
+    from app.classes import service as class_service
+    from app.classes.models import RollCallSettings
+    from app.scheduler.models import BookingApproval
+
+    eng = world["engine"]
+    with Session(eng) as db:
+        cls = db.get(Class, world["class"])
+        db.add(RollCallSettings(tenant_id=cls.tenant_id, email_domains=["corp.test"]))
+        db.add(BookingApproval(event_id=world["event"], tenant_id=cls.tenant_id))
+        lead = db.get(User, cls.lead_instructor_id)
+        actor = CurrentUser(id=str(lead.id), email=lead.email, display_name="Lead", role=UserRole.instructor,
+                            tenant_id=str(cls.tenant_id), keycloak_id=lead.keycloak_id)
+        db.commit()
+    go = threading.Barrier(2)
+    errors: list = []
+
+    def add(email: str):
+        try:
+            with Session(eng, autoflush=False) as db:
+                cls = db.get(Class, world["class"])
+                go.wait(timeout=10)
+                class_service.add_to_roll_call(db, cls, actor, [email])
+                db.commit()
+        except Exception as exc:  # noqa: BLE001
+            errors.append(exc)
+
+    threads = [threading.Thread(target=add, args=(f"{n}@corp.test",)) for n in ("dan", "eve")]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=60)
+    assert not errors, errors
+    with Session(eng) as db:
+        evt = db.get(ScheduledEvent, world["event"])
+        assert (evt.vcpu_total, evt.vm_count) == (2 * 5, 1 * 5)  # five Students, one 2-vCPU VM each

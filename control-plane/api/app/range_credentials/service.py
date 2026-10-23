@@ -680,6 +680,12 @@ def readable_range(db: Session, range_id: uuid.UUID, user: CurrentUser, scope: s
     if rng is None:
         raise HTTPException(404, "Range not found")
     if scope == ALL:
+        from ..classes.ranges import observes_only
+
+        if observes_only(db, user, rng):
+            # ADR 0014 §19: a class's observers never see its range login details, whatever
+            # their platform role.
+            raise HTTPException(403, "Observers of this range's class do not see its credentials")
         if not user_has_permission(user, Permission.INFRA_READ):
             from ..lab_sessions.service import lab_range_ids
 
