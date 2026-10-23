@@ -378,6 +378,16 @@ def put_on_roll_call(db: Session, cls: Class, entry: RollCallEntry, account: Use
             entry.signed_in_at = _now()
 
 
+def assert_domain_allowed(db: Session, cls: Class, email: str) -> None:
+    """422 unless the roll call may take ``email`` now: the tenant's allow-list as it stands."""
+    domains, source = allowed_domains(db, cls.tenant_id)
+    if not domains and source == "accounts":
+        raise HTTPException(422, NO_DOMAINS)
+    domain = email.rsplit("@", 1)[1]
+    if domains and domain not in domains:
+        raise HTTPException(422, f"{domain} is not an email domain this organisation's roll calls accept")
+
+
 @dataclass
 class AdditionDecision:
     entry: RollCallEntry
@@ -395,12 +405,7 @@ def approve_addition(db: Session, cls: Class, entry: RollCallEntry, actor: Curre
     if cls.status != ClassStatus.open.value:
         raise HTTPException(409, "The class is cancelled; its roll call cannot change")
     # The allow-list may have changed since it was added: the same rule as adding it now.
-    domains, source = allowed_domains(db, cls.tenant_id)
-    if not domains and source == "accounts":
-        raise HTTPException(422, NO_DOMAINS)
-    domain = entry.email.rsplit("@", 1)[1]
-    if domains and domain not in domains:
-        raise HTTPException(422, f"{domain} is not an email domain this organisation's roll calls accept")
+    assert_domain_allowed(db, cls, entry.email)
     account, refusal, _hidden = _account_for(accounts_with_email(db, entry.email), cls)
     if refusal:
         raise HTTPException(422, f"{entry.email} {refusal}")
@@ -461,11 +466,23 @@ def remove_from_roll_call(db: Session, cls: Class, entry: RollCallEntry, actor: 
     """Take a Student off the roll call: always allowed, before or after approval (ADR 0014
     §17). The entry stays, marked removed (ADR 0010). Their account and enrolment are
     untouched: they may be on the course for other reasons. Their seat in each approved
-    session is freed; returns those sessions, whose invites they lose. Does not commit."""
+    session is freed; returns those sessions, whose invites they lose. Does not commit.
+
+    Guarded on the status it was read with: if the forfeit clock, a reinstatement or an
+    approver changed it meanwhile, 409 rather than free (or keep) a seat twice."""
+    before = entry.status
     # A pending addition never took a seat, and a forfeited Student's was freed already.
-    was_on = entry.status not in (RollCallStatus.pending.value, RollCallStatus.forfeited.value)
-    entry.status = RollCallStatus.removed.value
-    entry.removed_at = _now()
+    was_on = before not in (RollCallStatus.pending.value, RollCallStatus.forfeited.value)
+    now = _now()
+    claimed = (
+        db.query(RollCallEntry)
+        .filter(RollCallEntry.id == entry.id, RollCallEntry.status == before)
+        .update({RollCallEntry.status: RollCallStatus.removed.value, RollCallEntry.removed_at: now},
+                synchronize_session=False)
+    )
+    if claimed != 1:
+        raise HTTPException(409, "This Student's place on the roll call changed at the same moment; reload and try again")
+    db.refresh(entry)
     audit(db, actor.id, cls, "roll_call_remove", entry.email)
     return sessions.free_seats(db, cls, 1) if was_on else []
 

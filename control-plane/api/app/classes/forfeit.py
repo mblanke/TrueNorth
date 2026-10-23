@@ -14,7 +14,11 @@ class's *first approved session* starts loses their seat. The 2 hours are fixed 
   has signed in (``service.put_on_roll_call``); or, for an entry linked to an existing
   account but still ``invited`` (a roster row adopted some other way, such as Request
   access), when that account next authenticates (``note_sign_in``, from ``GET /auth/me``),
-  before or after the class starts. Only ``invited`` entries can forfeit.
+  before or after the class starts. The clock itself also counts such an entry as signed in
+  when its account is no longer a roster row (``service.is_pre_provisioned``, the same test
+  ``put_on_roll_call`` uses), so an entry adopted before this rule existed, or by a Student
+  whose open tab never calls ``/auth/me`` again, is not forfeited. Only ``invited`` entries
+  can forfeit.
 - *Late additions.* Someone put on the roll call after the start gets their own 2 hours,
   from when they were added (``joined_at``).
 - *Once.* A reinstated entry keeps ``forfeited_at`` and is never forfeited again.
@@ -28,7 +32,9 @@ class's *first approved session* starts loses their seat. The 2 hours are fixed 
   all of them, which raises each approved session's SEQUENCE, and each forfeited Student
   is sent a CANCEL of the sessions still to come;
 - an audit row per class names who forfeited;
-- the class's lead and assistant instructors get one email per class per tick.
+- the class's lead and assistant instructors get one email per class per tick (the
+  tenant's admins when the class has no active lead or assistant left);
+- the CANCELs and emails are handed back only once the class's commit succeeded.
 
 That email does **not** draw on the per-instructor daily email budget
 (``service.EMAILS_PER_INSTRUCTOR_PER_DAY``). The budget caps mail an instructor causes to be
@@ -45,7 +51,10 @@ the Student's entries on other classes.
 back to ``signed_in`` if their account has signed in since (or now names one that has),
 otherwise to ``invited``; their seat is taken again with ADR 0014 §17's rule, automatically
 if it fits every approved session, otherwise as an addition waiting for an approver.
-Audited.
+Each step is guarded: the entry is claimed with ``status = forfeited`` before a seat is
+taken, so two clicks (or the lead and an admin together) take one seat, and a removal
+racing it is refused (``service.remove_from_roll_call``). The address must still be one the
+roll call accepts, as for an approver's decision. Audited.
 
 **Signing in after forfeiting.** Admission matches ``invited`` entries only, so a forfeited
 entry never admits anyone; ``forfeited_class_names`` lets ``GET /auth/me`` tell the Student
@@ -123,10 +132,14 @@ def tick(db: Session, now: datetime | None = None) -> TickResult:
         try:
             done = forfeit_due(db, cls, now)
             if done is None:
+                db.commit()  # an entry the clock found signed in (_signed_in_since) is kept
                 continue
-            res.invites += scheduler.attendee_invites(db, done.sessions, done.emails, "CANCEL")
-            res.mails += notice_mails(db, cls, done.emails)
+            invites = scheduler.attendee_invites(db, done.sessions, done.emails, "CANCEL")
+            mails = notice_mails(db, cls, done.emails)
             db.commit()
+            # Only now: a commit that failed sends no CANCEL and no notice for a seat still held.
+            res.invites += invites
+            res.mails += mails
             res.forfeited.append(done)
         except Exception:
             db.rollback()
@@ -176,6 +189,7 @@ def forfeit_due(db: Session, cls: Class, now: datetime) -> Forfeited | None:
         )
         if now >= deadline(start, e)
     ]
+    due = [e for e in due if not _signed_in_since(db, cls, e, now)]
     won = [e for e in due if _claim(db, e, now)]
     if not won:
         return None
@@ -188,6 +202,40 @@ def forfeit_due(db: Session, cls: Class, now: datetime) -> Forfeited | None:
          f"approved session started) lost their seat: {', '.join(e.email for e in won)}")[:2000],
     )
     return Forfeited(class_id=cls.id, emails=[e.email for e in won], sessions=freed)
+
+
+def _signed_in_since(db: Session, cls: Class, entry: RollCallEntry, now: datetime) -> bool:
+    """An entry linked to an account of the class's tenant that has signed in (no longer a
+    roster row: adopted through Request access or another roll call) counts as signed in:
+    it becomes ``signed_in`` here, guarded on ``invited``, and is not forfeited."""
+    if entry.user_id is None:
+        return False
+    # tenant-safe: the entry's own link, checked against the class's tenant on the next line.
+    u = db.get(User, entry.user_id)
+    if (
+        u is None
+        or u.tenant_id != cls.tenant_id
+        or not u.is_active
+        or u.deleted_at is not None
+        or u.role != UserRole.student
+        or service.is_pre_provisioned(u)
+    ):
+        return False
+    claimed = (
+        db.query(RollCallEntry)
+        .filter(RollCallEntry.id == entry.id, RollCallEntry.status == RollCallStatus.invited.value)
+        .update(
+            {RollCallEntry.status: RollCallStatus.signed_in.value, RollCallEntry.signed_in_at: now},
+            synchronize_session=False,
+        )
+    )
+    if claimed == 1:
+        db.add(AuditLog(
+            user_id=None, tenant_id=cls.tenant_id, action="roll_call_signed_in", resource_type="class",
+            resource_id=str(cls.id),
+            detail=f"roll-call entry {entry.id}: its linked account has signed in (found by the forfeit clock)",
+        ))
+    return True
 
 
 def _claim(db: Session, entry: RollCallEntry, now: datetime) -> bool:
@@ -234,6 +282,20 @@ def instructors(db: Session, cls: Class) -> list[User]:
     )
 
 
+def tenant_admins(db: Session, cls: Class) -> list[User]:
+    """The class's tenant's active admins: told instead when the class has no active lead or
+    assistant left, so a forfeit never goes unannounced."""
+    return (
+        db.query(User)
+        .filter(
+            User.tenant_id == cls.tenant_id, User.role == UserRole.admin, User.is_active == True,  # noqa: E712
+            User.deleted_at.is_(None),
+        )
+        .order_by(User.email)
+        .all()
+    )
+
+
 def notice_mails(db: Session, cls: Class, emails: list[str]) -> list[service.Mail]:
     """One email per instructor: who lost their seat on this class, and how to reinstate them."""
     url = service.sign_in_url()
@@ -248,7 +310,8 @@ def notice_mails(db: Session, cls: Class, emails: list[str]) -> list[service.Mai
         "Reinstate.\n"
     )
     subject = f"{service._subject_safe(cls.name)}: {len(emails)} Student(s) lost their seat"
-    return [service.Mail(to=u.email, subject=subject, body=body) for u in instructors(db, cls) if u.email]
+    to = instructors(db, cls) or tenant_admins(db, cls)
+    return [service.Mail(to=u.email, subject=subject, body=body) for u in to if u.email]
 
 
 # ── Signing in ─────────────────────────────────────────────────────────────
@@ -345,10 +408,21 @@ def reinstate(db: Session, cls: Class, entry: RollCallEntry, actor: CurrentUser)
         raise HTTPException(409, f"This Student is {entry.status}; only one who lost their seat is reinstated")
     if cls.status != ClassStatus.open.value:
         raise HTTPException(409, "The class is cancelled; its roll call cannot change")
+    service.assert_domain_allowed(db, cls, entry.email)
     account, refusal, _hidden = service._account_for(service.accounts_with_email(db, entry.email), cls)
     if refusal:
         raise HTTPException(422, f"{entry.email} {refusal}")
+    # The booking lock first (when a seat costs anything), as every roll-call addition does.
     no_room = sessions.room_for_seats(db, cls, 1)
+    # Then claim the entry: two clicks, or the lead and an admin at once, reinstate it once.
+    claimed = (
+        db.query(RollCallEntry)
+        .filter(RollCallEntry.id == entry.id, RollCallEntry.status == RollCallStatus.forfeited.value)
+        .update({RollCallEntry.status: RollCallStatus.pending.value}, synchronize_session=False)
+    )
+    if claimed != 1:
+        raise HTTPException(409, "This Student's place on the roll call changed at the same moment; reload")
+    db.refresh(entry)
     if no_room:
         # ADR 0014 §17: an addition that does not fit goes to the approver. forfeited_at stays,
         # so once approved the clock leaves them alone.

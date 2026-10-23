@@ -38,6 +38,8 @@ from app.main import app as fastapi_app
 from app.models import AuditLog, Course, Enrollment, User, UserRole
 from app.scheduler.capacity import Resources
 from app.scheduler.models import EventState, ScheduledEvent
+from fastapi import HTTPException
+from sqlalchemy.orm.attributes import set_committed_value
 
 DAY = (datetime.now(UTC) + timedelta(days=40)).replace(hour=0, minute=0, second=0, microsecond=0)
 NINE = DAY + timedelta(hours=9)
@@ -297,10 +299,10 @@ def test_an_existing_linked_student_counts_as_signed_in_when_they_authenticate(c
 
 def test_authenticating_after_the_forfeit_does_not_undo_it(client, db_session, world, sign_in):
     rosie = world["rosie"]
-    rosie.source, rosie.keycloak_id = "ad", "ad-rosie"
-    db_session.flush()
     _book(client, world)
     forfeit.tick(db_session, now=DUE + SECOND)
+    rosie.source, rosie.keycloak_id = "ad", "ad-rosie"  # adopted through Request access, too late
+    db_session.flush()
     me = sign_in(_identity("rosie@corp.test", "ad-rosie"))
     assert me["status"] == "registered" and me["roll_call_forfeited"] == ["C201-26-03"]
     assert _entry(db_session, "rosie@corp.test").status == "forfeited"
@@ -639,3 +641,97 @@ def test_signing_in_never_signs_in_another_tenants_entry(client, db_session, wor
     assert forfeit.note_sign_in(db_session, ann) == 0
     db_session.refresh(stray)
     assert stray.status == "invited"
+
+
+# ── Second review (adversarial pass on #280) ───────────────────────────────
+
+
+def test_r1_an_adopted_entry_the_student_never_refreshed_is_not_forfeited(client, db_session, world):
+    """Rosie's roster row was adopted (Request access) before this rule existed; her entry is
+    still invited and she has not called /auth/me since. The clock counts her as signed in."""
+    rosie = world["rosie"]
+    rosie.source, rosie.keycloak_id = "ad", "ad-rosie"
+    db_session.flush()
+    _book(client, world)
+    res = forfeit.tick(db_session, now=DUE + SECOND)
+    assert [f.emails for f in res.forfeited] == [["newbie@corp.test"]]
+    entry = _entry(db_session, "rosie@corp.test")
+    assert entry.status == "signed_in" and entry.signed_in_at is not None and entry.forfeited_at is None
+    assert len(_audits(db_session, world, "roll_call_signed_in")) == 1
+
+
+def test_r1_a_staff_account_is_no_students_sign_in(client, db_session, world):
+    rosie = world["rosie"]
+    rosie.source, rosie.role = "ad", UserRole.instructor
+    db_session.flush()
+    _book(client, world)
+    forfeit.tick(db_session, now=DUE + SECOND)
+    assert _entry(db_session, "rosie@corp.test").status == "forfeited"
+
+
+class _FailingCommit:
+    """The session as a replica sees it when its commit fails (a deadlock, a lost connection)."""
+
+    def __init__(self, db):
+        self._db = db
+
+    def __getattr__(self, name):
+        return getattr(self._db, name)
+
+    def commit(self):
+        raise RuntimeError("connection lost")
+
+    def rollback(self):
+        self._db.expire_all()
+
+
+def test_r2_a_failed_commit_sends_no_cancel_and_no_notice(client, db_session, world):
+    _book(client, world)
+    res = forfeit.tick(_FailingCommit(db_session), now=DUE + SECOND)
+    assert res.forfeited == [] and res.mails == [] and res.invites == []
+
+
+def test_r3_a_removal_racing_the_clock_frees_nothing_twice(client, db_session, world, seats):
+    ev = _book(client, world)
+    stale = _entry(db_session, "newbie@corp.test")  # the lead's request read it as invited
+    forfeit.tick(db_session, now=DUE + SECOND)
+    vcpu = _event(db_session, ev).vcpu_total
+    set_committed_value(stale, "status", "invited")
+    with pytest.raises(HTTPException) as exc:
+        class_service.remove_from_roll_call(db_session, _cls(db_session, world), stale, world["lead"])
+    assert exc.value.status_code == 409
+    assert _event(db_session, ev).vcpu_total == vcpu
+
+
+def test_r4_two_reinstatements_at_once_take_one_seat(client, db_session, world, seats):
+    ev = _book(client, world)
+    forfeit.tick(db_session, now=DUE + SECOND)
+    entry = _entry(db_session, "newbie@corp.test")
+    cls = _cls(db_session, world)
+    forfeit.reinstate(db_session, cls, entry, world["lead"])
+    db_session.flush()
+    vcpu, seq = _event(db_session, ev).vcpu_total, _event(db_session, ev).sequence
+    set_committed_value(entry, "status", "forfeited")  # the admin's request read it before the lead's landed
+    with pytest.raises(HTTPException) as exc:
+        forfeit.reinstate(db_session, cls, entry, world["admin"])
+    assert exc.value.status_code == 409
+    assert (_event(db_session, ev).vcpu_total, _event(db_session, ev).sequence) == (vcpu, seq)
+
+
+def test_r6_reinstate_rechecks_the_domain_allow_list(client, db_session, world):
+    _book(client, world)
+    forfeit.tick(db_session, now=DUE + SECOND)
+    db_session.get(RollCallSettings, world["a"].id).email_domains = ["other.test"]
+    db_session.flush()
+    r = _reinstate(client, world, "newbie@corp.test", db_session)
+    assert r.status_code == 422 and "corp.test" in r.json()["detail"]
+    assert _entry(db_session, "newbie@corp.test").status == "forfeited"
+
+
+def test_r7_with_no_active_lead_or_assistant_the_admins_are_told(client, db_session, world):
+    for who in ("lead", "assistant"):
+        db_session.get(User, uuid.UUID(world[who].id)).is_active = False
+    db_session.flush()
+    _book(client, world)
+    res = forfeit.tick(db_session, now=DUE + SECOND)
+    assert {m.to for m in res.mails} == {world["admin"].email}
