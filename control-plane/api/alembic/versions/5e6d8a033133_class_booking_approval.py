@@ -1,7 +1,7 @@
 """class booking approval: class sessions, booking approvals, two booking states
 
 Revision ID: 5e6d8a033133
-Revises: c1465c4964a6
+Revises: 4c0dab4abfa8
 Create Date: 2026-10-23 12:00:00.000000
 
 Classes 4 (ADR 0014 §14-17; issue #281):
@@ -28,7 +28,7 @@ from alembic import op
 from app.models import GUID
 
 revision: str = "5e6d8a033133"
-down_revision: str | None = "c1465c4964a6"
+down_revision: str | None = "4c0dab4abfa8"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
