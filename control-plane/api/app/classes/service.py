@@ -453,10 +453,15 @@ def remove_from_roll_call(db: Session, cls: Class, entry: RollCallEntry, actor: 
     """Take a Student off the roll call: always allowed, before or after approval (ADR 0014
     §17). The entry stays, marked removed (ADR 0010). Their account and enrolment are
     untouched: they may be on the course for other reasons. Their seat in each approved
-    session is freed; returns those sessions, whose invites they lose. Does not commit."""
+    session is freed; returns those sessions, whose invites they lose. Their own ranges are
+    torn down by the class's next range tick (``ranges``), and they leave the teams of
+    sessions that have not started. Does not commit."""
+    from . import teams
+
     was_on = entry.status != RollCallStatus.pending.value
     entry.status = RollCallStatus.removed.value
     entry.removed_at = _now()
+    teams.drop_member(db, cls, entry.user_id)
     audit(db, actor.id, cls, "roll_call_remove", entry.email)
     return sessions.free_seats(db, cls, 1) if was_on else []
 

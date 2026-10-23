@@ -7,7 +7,9 @@ with the scheduler's own bookings:
 
 - committed = bookings holding the window, plus every running range that no booking of
   it covers in that window (a range started without a booking, or kept up between two
-  sessions), from now on;
+  sessions), from now on. A class session covers the class ranges it uses (its Students'
+  ranges, or the class's shared range: ``classes.sessions.covered_ranges``), which its size
+  already counts;
 - ``supply_source`` says whether totals were discovered or fell back to env values.
 """
 
@@ -94,7 +96,7 @@ class ClusterCapacity:
 
     def committed(self, db: Session, start: datetime, end: datetime, exclude_id: uuid.UUID | None = None) -> Committed:
         held = self._bookings(db, start, end, exclude_id)
-        return self._sum(held, _utc(start), _utc(end), self._excluded_range(db, exclude_id))
+        return self._sum(held, _utc(start), _utc(end), self._excluded_ranges(db, exclude_id))
 
     def committed_series(self, db: Session, start: datetime, end: datetime, step: timedelta) -> list[Committed]:
         held = self._bookings(db, start, end)
@@ -111,7 +113,7 @@ class ClusterCapacity:
         if not windows:
             return []
         held = self._bookings(db, min(a for a, _ in windows), max(z for _, z in windows), exclude_id)
-        skip = self._excluded_range(db, exclude_id)
+        skip = self._excluded_ranges(db, exclude_id)
         return [self._sum(held, _utc(a), _utc(z), skip) for a, z in windows]
 
     # -- internals ------------------------------------------------------------
@@ -125,30 +127,46 @@ class ClusterCapacity:
         )
         if exclude_id:
             q = q.filter(ScheduledEvent.id != exclude_id)
-        return [(_utc(e.start_time) - PROVISION_LEAD, _utc(e.end_time) + TEARDOWN_GRACE, e) for e in q.all()]
+        events = q.all()
+        uses = _ranges_used(db, events)
+        return [
+            (_utc(e.start_time) - PROVISION_LEAD, _utc(e.end_time) + TEARDOWN_GRACE, e, uses.get(e.id, set()))
+            for e in events
+        ]
 
     @staticmethod
-    def _excluded_range(db: Session, exclude_id: uuid.UUID | None) -> uuid.UUID | None:
-        """The range of the booking being re-checked: its own demand is what is asked."""
+    def _excluded_ranges(db: Session, exclude_id: uuid.UUID | None) -> set[uuid.UUID]:
+        """The ranges of the booking being re-checked: its own demand is what is asked."""
         if not exclude_id:
-            return None
+            return set()
         # tenant-safe: exclude_id is the id of a booking the router already loaded with get_owned.
         evt = db.get(ScheduledEvent, exclude_id)
-        return evt.range_id if evt else None
+        return _ranges_used(db, [evt]).get(evt.id, set()) if evt else set()
 
-    def _sum(self, held, t0: datetime, t1: datetime, skip_range: uuid.UUID | None = None) -> Committed:
-        now = [e for a, z, e in held if a < t1 and z > t0]
-        covered = {e.range_id for e in now if e.range_id}
-        vcpu = sum(e.vcpu_total for e in now)
-        ram = sum(e.ram_mb_total for e in now)
-        disk = sum(e.disk_gb_total for e in now)
+    def _sum(self, held, t0: datetime, t1: datetime, skip: set[uuid.UUID] | None = None) -> Committed:
+        now = [(e, uses) for a, z, e, uses in held if a < t1 and z > t0]
+        covered = set().union(*(uses for _, uses in now)) if now else set()
+        vcpu = sum(e.vcpu_total for e, _ in now)
+        ram = sum(e.ram_mb_total for e, _ in now)
+        disk = sum(e.disk_gb_total for e, _ in now)
         ranges = 0
         if t1 > datetime.now(UTC):  # running ranges hold capacity from now on, not in the past
             for r in self._running:
-                if r.range_id in covered or r.range_id == skip_range:
+                if r.range_id in covered or r.range_id in (skip or ()):
                     continue
                 vcpu, ram, disk, ranges = vcpu + r.vcpu, ram + r.ram_mb, disk + r.disk_gb, ranges + 1
         return Committed(Resources(vcpu, ram, disk), len(now), ranges)
+
+
+def _ranges_used(db: Session, events: list[ScheduledEvent]) -> dict[uuid.UUID, set[uuid.UUID]]:
+    """booking id -> the ranges its size already counts: its own, and a class session's class ranges."""
+    from ..classes import sessions
+
+    out = sessions.covered_ranges(db, events)
+    for e in events:
+        if e.range_id:
+            out.setdefault(e.id, set()).add(e.range_id)
+    return out
 
 
 def _utc(dt: datetime) -> datetime:

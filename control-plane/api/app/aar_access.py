@@ -13,7 +13,8 @@ A Student now reads an AAR only when both hold:
 - they took part in this run (``took_part``), by any of:
     * the roster: an assigned enrolment, made before the run ended and not withdrawn, in a
       course whose booking overlaps the run (``exercise_participants.roster_courses``; a
-      self-enrolment is no seat; a later cohort on the same course is not this run's);
+      self-enrolment is no seat; a later cohort on the same course is not this run's); for a
+      class session, its class's roll call by the run's end instead (``class_roster``, #282);
     * a member of one of the exercise's teams, as staff have them now (teams belong to the
       exercise, not to one run: a replay keeps them, and a Student taken off a team is out);
     * a detection submitted in this run (``window_start >= started_at``, as ``_attempts``
@@ -35,7 +36,7 @@ from sqlalchemy.orm import Session
 from .auth import CurrentUser
 from .detections.models import DetectionSubmission
 from .enrollment import ACTIVE_STATUSES, ASSIGNED, seated_by
-from .exercise_participants import roster_courses
+from .exercise_participants import class_roster, roster_courses
 from .models import Enrollment, EnrollmentStatus, Exercise, ExerciseState, Team, TeamMembership, UserRole
 
 
@@ -78,10 +79,15 @@ def _rostered_during_run(
     Known limitation: only the current seat is recorded, so re-enrolling after a run the
     Student sat on the roster drops that run (unless a team or detection ties them to it).
     """
+    run_end = _aware(ex.completed_at or now or datetime.now(UTC))
+    # A class session's roster is its roll call (ADR 0014, #282): on it by the run's end and
+    # not taken off before; for the live class (``active_only``), on it now.
+    roll_call = class_roster(db, ex, now, as_of=None if active_only else run_end)
+    if user_id is not None:
+        roll_call &= {user_id}
     courses = roster_courses(db, ex, now)
     if not courses:
-        return set()
-    run_end = _aware(ex.completed_at or now or datetime.now(UTC))
+        return roll_call
     q = db.query(Enrollment.user_id, Enrollment.created_at, Enrollment.enrolled_at).filter(
         Enrollment.course_id.in_(courses),
         Enrollment.source == ASSIGNED,
@@ -91,7 +97,7 @@ def _rostered_during_run(
         q = q.filter(Enrollment.status.in_(ACTIVE_STATUSES))
     if user_id is not None:
         q = q.filter(Enrollment.user_id == user_id)
-    return {uid for uid, created, enrolled in q.all() if seated_by(created, enrolled, run_end)}
+    return roll_call | {uid for uid, created, enrolled in q.all() if seated_by(created, enrolled, run_end)}
 
 
 def _on_a_team(db: Session, ex: Exercise, user_id: uuid.UUID | None = None) -> set[uuid.UUID]:

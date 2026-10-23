@@ -266,10 +266,15 @@ def authorize_team(db: Session, user: CurrentUser, team: Team) -> None:
 
     ``user:update``: any team of the tenant. ``team:manage_own``: a team of an exercise of
     their own upcoming or running session (409 while another's runs); a standing team (no
-    exercise) stays an admin's.
+    exercise) stays an admin's. A class session's team (``classes/teams.py``): its class's
+    lead, before the session starts, whether or not it has an exercise yet.
     """
     if user_has_permission(user, Permission.USER_UPDATE):
         return
+    from ..classes import teams as class_teams
+
+    if class_teams.authorize(db, user, team):
+        return  # a class session's team: its class's lead, before the session (ADR 0014 §11)
     if not user_has_permission(user, Permission.TEAM_MANAGE_OWN) or team.exercise_id is None:
         raise HTTPException(403, "You can change only the teams of an exercise you run")
     require_exercise_scope(db, user, team.exercise_id)
@@ -319,6 +324,10 @@ def team_member_target(db: Session, user: CurrentUser, team: Team, subject_id: u
     refuse_frozen_team(db, user, team)
     if user_has_permission(user, Permission.USER_UPDATE):
         return get_owned(db, User, subject_id, user, not_found="User not found")
+    from ..classes import teams as class_teams
+
+    if (on_roll_call := class_teams.member_target(db, user, team, subject_id)) is not None:
+        return on_roll_call  # a class session's team: a Student on its roll call (#282)
     target = own_student(db, user, subject_id)
     courses = {
         cid

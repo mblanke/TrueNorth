@@ -37,8 +37,11 @@ admin, instructor, range_ops         every account (``range:credentials_read``)
 Student                              ``student_visible`` accounts the last build or
                                      rotation set (``applied``), of a range they take
                                      part in: an exercise running or paused on it whose
-                                     booked course they are rostered on, or their own
-                                     live lab session's range. Otherwise 404.
+                                     booked course they are rostered on (for a class
+                                     session: whose roll call they are on), their own
+                                     live lab session's range, their own seat of a class,
+                                     or their class's shared range while its collective
+                                     session is on (#282). Otherwise 404.
 observer and anyone else             403
 ==================================  ==============================================
 
@@ -624,7 +627,9 @@ def takes_part(db: Session, user: CurrentUser, rng: Range) -> bool:
 
 def participation(db: Session, user: CurrentUser, rng: Range) -> dict[str, str] | None:
     """How a Student takes part in ``rng``: ``{"lab_session_id": ...}`` (their own live lab
-    session's range) or ``{"exercise_id": ...}`` (module docstring); None when they do not."""
+    session's range), ``{"class_seat_id": ...}`` / ``{"class_id": ...}`` (their own seat of a
+    class, or its shared range during a collective session; ``classes.ranges``) or
+    ``{"exercise_id": ...}`` (module docstring); None when they do not."""
     from ..enrollment import rostered_course_ids
     from ..exercise_participants import roster_courses
     from ..lab_sessions.models import LIVE, LabSession
@@ -640,6 +645,10 @@ def participation(db: Session, user: CurrentUser, rng: Range) -> dict[str, str] 
     )
     if lab is not None:
         return {"lab_session_id": str(lab[0])}
+    from ..classes.ranges import student_participation
+
+    if (seat := student_participation(db, uid, rng)) is not None:
+        return seat  # their own seat of a class, or its shared range during a collective session
     exercises = (
         db.query(Exercise)
         .filter(
@@ -652,10 +661,10 @@ def participation(db: Session, user: CurrentUser, rng: Range) -> dict[str, str] 
     )
     if not exercises:
         return None
+    from ..exercise_participants import class_roster
+
     mine = set(rostered_course_ids(db, uid))
-    if not mine:
-        return None
-    ex = next((ex for ex in exercises if roster_courses(db, ex) & mine), None)
+    ex = next((ex for ex in exercises if roster_courses(db, ex) & mine or uid in class_roster(db, ex)), None)
     return {"exercise_id": str(ex.id)} if ex is not None else None
 
 

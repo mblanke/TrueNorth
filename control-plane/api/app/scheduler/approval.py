@@ -163,6 +163,13 @@ def _require_pending(evt: ScheduledEvent) -> None:
         raise HTTPException(409, f"The booking is {evt.state.value}, not awaiting approval")
 
 
+def _size(db: Session, evt: ScheduledEvent) -> None:
+    """An individual session is approved for the Students on its roll call now (#282)."""
+    from ..classes import sessions
+
+    sessions.size_for_approval(db, evt)
+
+
 def _class_open(db: Session, evt: ScheduledEvent) -> None:
     from ..classes import sessions
 
@@ -179,6 +186,7 @@ def approve(db: Session, user: CurrentUser, evt: ScheduledEvent) -> tuple[bool, 
         return False, []
     _require_pending(evt)
     _class_open(db, evt)
+    _size(db, evt)
     warnings = _admit(db, evt, evt.start_time, evt.end_time, "Cannot approve")
     lifecycle.transition(db, evt, S.scheduled)
     _resend(evt)
@@ -231,6 +239,7 @@ def accept(db: Session, user: CurrentUser, evt: ScheduledEvent) -> list[str]:
         raise HTTPException(409, "No time has been proposed")
     _class_open(db, evt)
     lifecycle.lock_editable(db, evt)
+    _size(db, evt)
     start, end = as_utc(a.proposed_start), as_utc(a.proposed_end)
     probe = at_time(evt, start, end)
     warnings = _admit(db, probe, start, end, "The proposed time no longer fits")

@@ -225,8 +225,11 @@ def create_event(
     _check_bookable_exercise(db, user, exercise_id)
     if range_id:
         service.resolve_range(db, user, str(range_id))  # an exercise's range must still be buildable
+    mode = _session_mode(db, cls, body.range_mode, body.template_id, range_id, exercise_id, scenario_id)
     typed = Resources(body.vcpu_total, body.ram_mb_total, body.disk_gb_total)
     demand = service.demand_for(db, user, body.template_id, typed, body.vm_count)
+    if cls is not None:
+        demand = sessions.session_demand(db, cls, mode, body.template_id, demand)
     # Nothing is checked or held for a class session until an approver acts (ADR 0014 §15).
     warnings = [] if body.draft or cls else _admit(db, body, demand.resources, range_id, instructor_id)
     approved = EventState.pending_approval if cls else EventState.scheduled
@@ -256,7 +259,7 @@ def create_event(
     db.flush()
     service.audit(db, user, "create", str(evt.id), evt.state.value)
     if cls is not None:
-        sessions.link(db, cls, evt, user)
+        sessions.link(db, cls, evt, user, mode)
         approval.request(db, user, evt)
         service.audit(db, user, "approval_requested", str(evt.id), f"a session of class {cls.name} ({cls.id})")
     _audit_warnings(db, user, evt, warnings)
@@ -285,6 +288,18 @@ def _refuse_class_course(
         raise HTTPException(
             422, "This course has an open class then; book its sessions from the class (they need approval)"
         )
+
+
+def _session_mode(db: Session, cls, requested: str | None, template_id, range_id, exercise_id, scenario_id):
+    """A class session's mode (ADR 0014 §9): the one asked for, else the course's default;
+    checked against what it books (422). A booking with no class has none."""
+    if cls is None:
+        if requested:
+            raise HTTPException(422, "range_mode is for class sessions (book it with class_id)")
+        return None
+    mode = sessions.resolve_mode(db, cls, requested)
+    sessions.check_mode(mode, template_id, range_id, exercise_id, scenario_id)
+    return mode
 
 
 def _class_course(db: Session, user: CurrentUser, cls, course_id: str | None) -> uuid.UUID | None:
@@ -440,9 +455,10 @@ def update_event(
     lifecycle.lock_editable(db, evt)
     sessions.assert_same_class(db, evt, body.class_id)
     cls = sessions.class_of(db, evt)
-    range_id = service.resolve_range(db, user, body.range_id)
+    range_id = service.resolve_range(db, user, body.range_id, keep=evt.range_id)
     scenario_id = service.resolve_scenario(db, user, body.scenario_id)
     exercise_id, range_id = service.resolve_exercise(db, user, body.exercise_id, range_id)
+    mode, was_mode, range_id = _updated_mode(db, cls, evt, body, range_id, exercise_id, scenario_id)
     instructor_id = (
         service.resolve_instructor(db, user, body.instructor_id) if body.instructor_id else evt.instructor_id
     )
@@ -456,8 +472,14 @@ def update_event(
         _check_bookable_exercise(db, user, exercise_id)
     typed = Resources(body.vcpu_total, body.ram_mb_total, body.disk_gb_total)
     demand = service.demand_for(db, user, body.template_id, typed, body.vm_count)
+    if cls is not None:
+        # Sized from the roll call as additions size it, so an unchanged edit of a session that
+        # grew by an automatic addition asks for what it already holds (#297 review note).
+        demand = sessions.session_demand(db, cls, mode, body.template_id, demand)
     template_id = uuid.UUID(body.template_id) if body.template_id else None
     held_change = _held_change(evt, body, demand, range_id, template_id, instructor_id)
+    if mode != was_mode:
+        held_change.append("mode")
     reapprove = cls is not None and evt.state == EventState.scheduled and bool(held_change)
     unchecked = evt.state in (EventState.draft, EventState.pending_approval) or reapprove
     warnings = [] if unchecked else _admit(db, body, demand.resources, range_id, instructor_id, exclude_id=evt.id)
@@ -485,6 +507,8 @@ def update_event(
     evt.exercise_id = exercise_id
     if "require_certified_range" in body.model_fields_set:  # a form that does not send it keeps it
         evt.require_certified_range = body.require_certified_range
+    if mode != was_mode:
+        sessions.set_mode(db, evt, mode)
     if evt.state not in lifecycle.UNSENT:  # a draft or a pending session was never sent to a calendar
         evt.sequence = (evt.sequence or 0) + 1  # calendars replace their copy
     detail = (
@@ -505,6 +529,26 @@ def update_event(
     elif reapprove and previous_state == EventState.scheduled:  # not confirmed any more
         _announce(background, db, evt, "CANCEL", previous_instructor, previous_course)
     return service.out(db, evt, warnings, service.maintenance_warnings(db, evt))
+
+
+def _updated_mode(db: Session, cls, evt: ScheduledEvent, body: EventIn, range_id, exercise_id, scenario_id):
+    """(mode, mode before, range) for an edit. A class session keeps its mode unless the
+    edit names one, and keeps the shared range its class attached to it unless the edit
+    names another (a form that does not send it does not take it away). A plain booking has
+    no mode (422 if one is named)."""
+    if cls is None:
+        if body.range_mode:
+            raise HTTPException(422, "range_mode is for class sessions")
+        return None, None, range_id
+    was = sessions.mode_of(db, evt)
+    mode = sessions.RangeMode(body.range_mode) if body.range_mode else was
+    if mode == sessions.RangeMode.individual:
+        if range_id == evt.range_id and service.class_owns_range(db, range_id):
+            range_id = None  # its class's shared range: no longer this session's
+    elif not body.range_id and evt.range_id and service.class_owns_range(db, evt.range_id):
+        range_id = evt.range_id
+    sessions.check_mode(mode, body.template_id, range_id, exercise_id, scenario_id)
+    return mode, was, range_id
 
 
 def _held_change(evt: ScheduledEvent, body: EventIn, demand, range_id, template_id, instructor_id) -> list[str]:

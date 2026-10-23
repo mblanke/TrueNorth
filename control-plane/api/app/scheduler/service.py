@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, time, timedelta
 
 from fastapi import HTTPException
-from sqlalchemy import or_, text
+from sqlalchemy import case, func, or_, text
 from sqlalchemy.orm import Session
 
 from .. import exercise_lifecycle, range_lifecycle
@@ -318,10 +318,13 @@ def resolve_exercise(
     return ex.id, ex.range_id
 
 
-def resolve_range(db: Session, user: CurrentUser, range_id: str | None) -> uuid.UUID | None:
+def resolve_range(
+    db: Session, user: CurrentUser, range_id: str | None, keep: uuid.UUID | None = None
+) -> uuid.UUID | None:
     """A booked range must be the caller's tenant's (404 otherwise, as for any range),
     must still be buildable (a destroyed range cannot be provisioned again), and must not
-    be a lab session's (only its session drives it)."""
+    be a lab session's (only its session drives it) or a class's (only its class does;
+    ``keep``: the one a class session already uses)."""
     if not range_id:
         return None
     rng = get_owned(db, Range, range_id, user, not_found="Range not found")
@@ -330,7 +333,16 @@ def resolve_range(db: Session, user: CurrentUser, range_id: str | None) -> uuid.
     if range_lifecycle.is_lab_range(db, rng.id):
         # The clock would build and tear it down under a student's session.
         raise HTTPException(409, "This range belongs to a student's lab session; book another range")
+    if rng.id != keep and class_owns_range(db, rng.id):
+        # A class builds, keeps and tears down its own ranges (classes/ranges.py).
+        raise HTTPException(409, "This range belongs to a class's Students; book a session of that class instead")
     return rng.id
+
+
+def class_owns_range(db: Session, range_id: uuid.UUID) -> bool:
+    from ..classes import ranges as class_ranges
+
+    return class_ranges.is_class_range(db, range_id)
 
 
 def conflicts(
@@ -456,6 +468,11 @@ def release_range(db: Session, evt: ScheduledEvent) -> str | None:
     """
     if not (evt.auto_provisioned and evt.range_id):
         return None
+    if class_owns_range(db, evt.range_id):
+        # A class's range outlives its sessions (ADR 0014 §10): the class tears it down after
+        # its last session, or when it is cancelled (classes/ranges.py).
+        evt.auto_provisioned = False
+        return "range kept by its class until the class's last session"
     # Another live booking of the same range (the next class in a series) takes the range
     # over instead: ranges cannot be built again once destroyed.
     heir = (
@@ -556,14 +573,14 @@ def outs(db: Session, events: list[ScheduledEvent]) -> list[dict]:
 
     # tenant-safe: rows keyed by bookings the caller already loaded tenant-scoped.
     approvals = {a.event_id: a for a in db.query(BookingApproval).filter(BookingApproval.event_id.in_(ids))}
-    classes = sessions.class_ids_for(db, ids)
-    return [to_out(e, approval=approvals.get(e.id), class_id=classes.get(e.id)) for e in events]
+    links = sessions.links_for(db, ids)
+    return [to_out(e, approval=approvals.get(e.id), link=links.get(e.id)) for e in events]
 
 
 def out(db: Session, e: ScheduledEvent, warnings: list[str] | None = None, maintenance: list[str] | None = None) -> dict:
     from ..classes import sessions
 
-    return to_out(e, warnings, maintenance, approval=approval_of(db, e.id), class_id=sessions.class_ids_for(db, [e.id]).get(e.id))
+    return to_out(e, warnings, maintenance, approval=approval_of(db, e.id), link=sessions.links_for(db, [e.id]).get(e.id))
 
 
 def to_out(
@@ -572,8 +589,9 @@ def to_out(
     maintenance: list[str] | None = None,
     *,
     approval: BookingApproval | None = None,
-    class_id: uuid.UUID | None = None,
+    link: tuple[uuid.UUID, str] | None = None,
 ) -> dict:
+    class_id, range_mode = link or (None, None)
     return EventOut(
         id=str(e.id),
         name=e.name,
@@ -599,6 +617,7 @@ def to_out(
         warnings=warnings or [],
         maintenance_warnings=maintenance or [],
         class_id=str(class_id) if class_id else None,
+        range_mode=range_mode,
         approval=_approval_out(approval),
     ).model_dump()
 
@@ -669,11 +688,60 @@ def room_for(db: Session, evt: ScheduledEvent, extra: Resources) -> list[str]:
     return [f"'{evt.name}': {r}" for r in a.reasons]
 
 
-def resize(db: Session, evt: ScheduledEvent, delta: Resources, sign: int) -> None:
-    """Grow (sign 1) or shrink (sign -1) a held booking's demand, never below zero. Does not commit."""
-    evt.vcpu_total = max(0, (evt.vcpu_total or 0) + sign * delta.vcpu)
-    evt.ram_mb_total = max(0, (evt.ram_mb_total or 0) + sign * delta.ram_mb)
-    evt.disk_gb_total = max(0, (evt.disk_gb_total or 0) + sign * delta.disk_gb)
+def _floored(col, d: int):
+    """``greatest(0, col + d)`` in SQL, on PostgreSQL and SQLite alike."""
+    total = func.coalesce(col, 0) + d
+    return case((total < 0, 0), else_=total)
+
+
+def resize(db: Session, evt: ScheduledEvent, delta: Resources, sign: int, vms: int = 0) -> None:
+    """Grow (sign 1) or shrink (sign -1) a held booking's demand, never below zero. Does not commit.
+
+    SQL-side increments, not a read-modify-write in Python: two roll-call changes at once
+    (seat taken, seat freed, forfeit) each add their own delta and neither is lost."""
+    if delta == Resources() and not vms:
+        return
+    db.flush()  # anything pending on the row goes out first; the attributes are re-read after
+    # tenant-safe: a booking the caller already loaded tenant-scoped (a class's own session).
+    db.query(ScheduledEvent).filter(ScheduledEvent.id == evt.id).update(
+        {
+            ScheduledEvent.vcpu_total: _floored(ScheduledEvent.vcpu_total, sign * delta.vcpu),
+            ScheduledEvent.ram_mb_total: _floored(ScheduledEvent.ram_mb_total, sign * delta.ram_mb),
+            ScheduledEvent.disk_gb_total: _floored(ScheduledEvent.disk_gb_total, sign * delta.disk_gb),
+            ScheduledEvent.vm_count: _floored(ScheduledEvent.vm_count, sign * vms),
+        },
+        synchronize_session=False,
+    )
+    db.expire(evt, ["vcpu_total", "ram_mb_total", "disk_gb_total", "vm_count"])
+
+
+def set_size(db: Session, evt: ScheduledEvent, size: Resources, vms: int) -> None:
+    """Set a booking's demand outright (a class session sized from its roll call when it is
+    approved). Does not commit."""
+    evt.vcpu_total, evt.ram_mb_total, evt.disk_gb_total, evt.vm_count = size.vcpu, size.ram_mb, size.disk_gb, vms
+
+
+def holding_sessions(db: Session, event_ids, *, now: datetime, lead: bool) -> list[ScheduledEvent]:
+    """Of ``event_ids`` (a subquery of class sessions), the approved ones that have not ended
+    and, with ``lead``, whose provisioning lead has been reached: whose ranges must be up."""
+    # tenant-safe: the class clock's system-wide pass; each session is handled in its own tenant.
+    q = db.query(ScheduledEvent).filter(
+        ScheduledEvent.id.in_(event_ids), ScheduledEvent.state.in_(HOLDING), ScheduledEvent.end_time > now
+    )
+    if lead:
+        q = q.filter(ScheduledEvent.start_time <= now + PROVISION_LEAD)
+    return q.order_by(ScheduledEvent.start_time).limit(500).all()
+
+
+def attach_range(db: Session, event_id: uuid.UUID, range_id: uuid.UUID) -> bool:
+    """Point a collective class session that has no range yet at its class's shared range.
+    A guarded update: an edit or another replica that set one first wins. Does not commit."""
+    # tenant-safe: a class session's booking and its class's own range, both the class's tenant's.
+    return (
+        db.query(ScheduledEvent)
+        .filter(ScheduledEvent.id == event_id, ScheduledEvent.range_id.is_(None), ScheduledEvent.state.in_(HOLDING))
+        .update({ScheduledEvent.range_id: range_id}, synchronize_session=False)
+    ) == 1
 
 
 def reassign_instructor(
@@ -730,8 +798,21 @@ def reassign_instructor(
 
 def resequence(evt: ScheduledEvent) -> None:
     """Raise iCalendar SEQUENCE before a per-attendee REQUEST or CANCEL: a Student taken off
-    and put back must get a REQUEST newer than their CANCEL (RFC 5546 §2.1.5). Does not commit."""
-    evt.sequence = (evt.sequence or 0) + 1
+    and put back must get a REQUEST newer than their CANCEL (RFC 5546 §2.1.5). Does not commit.
+
+    ``sequence + 1`` in SQL: concurrent roll-call changes each raise it."""
+    from sqlalchemy.orm import object_session
+
+    db = object_session(evt)
+    if db is None:  # a detached copy (never stored): nothing to race with
+        evt.sequence = (evt.sequence or 0) + 1
+        return
+    db.flush()
+    # tenant-safe: a booking the caller already loaded tenant-scoped.
+    db.query(ScheduledEvent).filter(ScheduledEvent.id == evt.id).update(
+        {ScheduledEvent.sequence: func.coalesce(ScheduledEvent.sequence, 0) + 1}, synchronize_session=False
+    )
+    db.expire(evt, ["sequence"])
 
 
 def attendee_invites(db: Session, events: list[ScheduledEvent], emails: list[str], method: str) -> list:
