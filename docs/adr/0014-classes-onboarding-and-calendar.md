@@ -2,7 +2,7 @@
 
 - **Status:** accepted 2026-10-22 (owner decisions, grilling session). **Amends ADR 0004** (see "What this changes in ADR 0004").
 - **Date:** 2026-10-22
-- **Code:** none yet. The work is sliced into GitHub issues, one PR each, listed under "Delivery". Slices that touch auth, tenancy or provisioning get an adversarial review.
+- **Code:** sliced into GitHub issues, one PR each, listed under "Delivery". Slices that touch auth, tenancy or provisioning get an adversarial review. Built so far: Class and roll call (#278, `app/classes/`), the content clock (#286, `app/content_review/`), booking approval (#281: `app/scheduler/approval.py`, `app/classes/sessions.py`).
 - **Design reference:** the calendar mockups "TrueNorth Calendars" (Events and Content views, week and month), approved by the owner on 2026-10-22.
 
 ## Context
@@ -160,10 +160,21 @@ Content (courses, modules, labs, scenarios, range templates, golden images) has 
    This folds in #272 and is blocked by #276.
 2. **Acknowledgement form:** versions, signatures, re-signing yearly and on every change, audit, export.
 3. **Seat forfeit and reinstate.**
-4. **Booking approval:**
+4. **Booking approval** (#281, built):
    - approve, reject, or propose a time;
    - nothing is sent or held before approval;
    - the roll-call change rules.
+
+   As built: a class session is linked to its booking by `class_sessions` (classes section)
+   and its approval lives in `scheduler_booking_approvals` (scheduler). New booking states
+   `pending_approval` (holds nothing; the clock skips it and cancels it if nobody decides
+   before it ends) and `rejected` (final). Approvers hold `schedule:approve` (admins, range
+   ops). Approve and accept re-check under the booking lock; under the over-capacity
+   policy `warn` an approval that does not fit goes through with audited warnings, as any
+   booking does, and under `block` it is 409 with the next free slot. Moving or resizing an
+   approved session sends it back for approval. Additions after approval are checked
+   against a per-seat demand seam (`sessions.seat_demand`) that is zero until #282 builds
+   per-Student ranges. Bookings with no class stay self-service.
 5. **Per-session ranges:**
    - individual or collective, with the course default and an instructor override;
    - kept up all week and torn down at the end;

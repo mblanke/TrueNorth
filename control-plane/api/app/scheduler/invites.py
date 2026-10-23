@@ -7,8 +7,10 @@ mail clients show Accept and Decline.
   a higher ``SEQUENCE``, when it moves;
 - ``METHOD:CANCEL`` when it is cancelled, or to the old instructor when it changes hands.
 
-Recipients are the booking's Instructor and the active Students of its course in the
-booking's tenant (a shared catalogue course has other tenants' Students, #276). Accept/Decline replies go to the
+Recipients are the booking's Instructor and its class: for a class session, the class's roll
+call (ADR 0014, #281); otherwise the active Students of its course in the booking's tenant (a
+shared catalogue course has other tenants' Students, #276). A class session awaiting
+approval is sent nothing at all. Accept/Decline replies go to the
 organizer mailbox (``SCHEDULER_ORGANIZER_EMAIL``, else ``SMTP_FROM``) and are not read
 back. Sending happens after the response (FastAPI background task) and is best effort:
 a failure is logged, the booking is unaffected.
@@ -94,17 +96,26 @@ def instructor_email(db: Session, instructor_id: uuid.UUID | None) -> str | None
 
 
 def recipients(db: Session, evt: ScheduledEvent) -> list[tuple[str, bool]]:
-    """(email, attending) for everyone a booking concerns: its Instructor, and the active
-    Students of its course. Each gets only their own invite, never the others' names.
+    """(email, attending) for everyone a booking concerns: its Instructor, and its class.
+    Each gets only their own invite, never the others' names.
 
-    TODO(#281): for a booking linked to a class, the attendees are its roll call
-    (``app.classes.service.class_roll_call_emails``), not the course's Students (ADR 0014)."""
+    The class of a class session is its roll call (ADR 0014; ``classes.sessions``), which
+    replaces course enrolment: a Student enrolled on the course but not on the roll call is
+    not invited. Any other booking's class is its course's active Students. Both are
+    tenant-pinned to the booking's tenant (#276, #291)."""
     out: list[tuple[str, bool]] = []
     teacher = instructor_email(db, evt.instructor_id)
     if teacher:
         out.append((teacher, False))
-    out += [(e, True) for e in student_emails(db, evt.course_id, evt.tenant_id) if e != teacher]
+    out += [(e, True) for e in attendee_emails(db, evt) if e != teacher]
     return out
+
+
+def attendee_emails(db: Session, evt: ScheduledEvent) -> list[str]:
+    from ..classes import sessions
+
+    roll_call = sessions.roll_call_for_booking(db, evt)
+    return roll_call if roll_call is not None else student_emails(db, evt.course_id, evt.tenant_id)
 
 
 def student_emails(db: Session, course_id: uuid.UUID | None, tenant_id: uuid.UUID) -> list[str]:

@@ -28,7 +28,8 @@ from sqlalchemy.orm import Session
 from ..auth import CurrentUser
 from ..enrollment import ensure_enrollment
 from ..models import AuditLog, Course, User, UserRole
-from .models import Class, ClassStaff, RollCallEntry, RollCallSettings, RollCallStatus, StaffRole
+from . import sessions
+from .models import Class, ClassStaff, ClassStatus, RollCallEntry, RollCallSettings, RollCallStatus, StaffRole
 from .schemas import MAX_ROLL_CALL_BATCH, ClassIn, RollCallRefusal, has_control_chars
 
 logger = logging.getLogger("truenorth.api.classes")
@@ -41,6 +42,8 @@ _WRAP = "<>\"'()[]"
 MAX_CSV_BYTES = 1_000_000
 
 LEAD_ROLES = (UserRole.instructor, UserRole.admin)
+# Entries that are not (or not yet) on the roll call: no invites, no admission, no count.
+OFF_ROLL_CALL = (RollCallStatus.removed.value, RollCallStatus.pending.value)
 ROLES_FOR = {
     StaffRole.assistant: (UserRole.instructor, UserRole.admin),
     StaffRole.observer: (UserRole.observer, UserRole.instructor, UserRole.admin),
@@ -270,6 +273,10 @@ class AddResult:
     refused: list[RollCallRefusal]
     to_onboard: list[RollCallEntry]
     not_emailed: list[RollCallRefusal] = field(default_factory=list)
+    # Added after approval with no room left: waiting for an approver (ADR 0014 §17).
+    pending: list[RollCallEntry] = field(default_factory=list)
+    # The approved sessions the added Students are now invited to.
+    sessions: list = field(default_factory=list)
 
 
 def add_to_roll_call(db: Session, cls: Class, actor: CurrentUser, emails: list[str]) -> AddResult:
@@ -304,13 +311,15 @@ def add_to_roll_call(db: Session, cls: Class, actor: CurrentUser, emails: list[s
         entry.removed_at = None
         entry.user_id = None
         entry.signed_in_at = None
-        entry.status = RollCallStatus.invited.value
-        if account is not None:
-            entry.user_id = account.id
-            ensure_enrollment(db, user_id=account.id, course_id=cls.course_id, tenant_id=cls.tenant_id)
-            if not is_pre_provisioned(account):
-                entry.status = RollCallStatus.signed_in.value
-                entry.signed_in_at = _now()
+        # After approval, one more Student must fit every approved session (ADR 0014 §17).
+        no_room = sessions.room_for_seats(db, cls, 1)
+        if no_room:
+            entry.status = RollCallStatus.pending.value
+            entry.pending_reason = "; ".join(no_room)[:1000]
+            res.pending.append(entry)
+            continue
+        res.sessions = sessions.take_seats(db, cls, 1)
+        put_on_roll_call(db, cls, entry, account)
         if entry.status == RollCallStatus.invited.value and entry.onboarding_sent_at is None:
             res.to_onboard.append(entry)
         res.added.append(entry)
@@ -321,6 +330,8 @@ def add_to_roll_call(db: Session, cls: Class, actor: CurrentUser, emails: list[s
     db.flush()
     if res.added:
         audit(db, actor.id, cls, "roll_call_add", f"added {len(res.added)}: {', '.join(e.email for e in res.added)}"[:2000])
+    for entry in res.pending:
+        audit(db, actor.id, cls, "roll_call_add_pending", f"{entry.email}: {entry.pending_reason}"[:2000])
     for email in hidden:
         # For the platform admin only: this address names an account elsewhere, or several
         # case variants; it was added unlinked and cannot be admitted. tenant_id is None on
@@ -335,6 +346,60 @@ def add_to_roll_call(db: Session, cls: Class, actor: CurrentUser, emails: list[s
                     "the accounts"),
         ))
     return res
+
+
+def put_on_roll_call(db: Session, cls: Class, entry: RollCallEntry, account: User | None) -> None:
+    """Put ``entry`` on the roll call: linked and enrolled when ``account`` is this tenant's
+    Student, signed in when that account has signed in before, otherwise invited. Does not commit."""
+    entry.status = RollCallStatus.invited.value
+    entry.pending_reason = None
+    entry.user_id = None
+    entry.signed_in_at = None
+    if account is not None:
+        entry.user_id = account.id
+        ensure_enrollment(db, user_id=account.id, course_id=cls.course_id, tenant_id=cls.tenant_id)
+        if not is_pre_provisioned(account):
+            entry.status = RollCallStatus.signed_in.value
+            entry.signed_in_at = _now()
+
+
+@dataclass
+class AdditionDecision:
+    entry: RollCallEntry
+    sessions: list
+    onboard: bool
+
+
+def approve_addition(db: Session, cls: Class, entry: RollCallEntry, actor: CurrentUser) -> AdditionDecision:
+    """An approver lets a pending addition onto the roll call (ADR 0014 §17). It must fit the
+    approved sessions now (409 with the reasons otherwise), and its address must still be
+    one the roll call may take (422). Does not commit."""
+    if entry.status != RollCallStatus.pending.value:
+        raise HTTPException(409, f"This addition is {entry.status}, not waiting for approval")
+    if cls.status != ClassStatus.open.value:
+        raise HTTPException(409, "The class is cancelled; its roll call cannot change")
+    account, refusal, _hidden = _account_for(accounts_with_email(db, entry.email), cls)
+    if refusal:
+        raise HTTPException(422, f"{entry.email} {refusal}")
+    no_room = sessions.room_for_seats(db, cls, 1)
+    if no_room:
+        raise HTTPException(409, {"message": "It still does not fit the class's approved sessions",
+                                  "reasons": no_room})
+    taken = sessions.take_seats(db, cls, 1)
+    put_on_roll_call(db, cls, entry, account)
+    onboard = entry.status == RollCallStatus.invited.value and entry.onboarding_sent_at is None
+    audit(db, actor.id, cls, "roll_call_addition_approved", entry.email)
+    return AdditionDecision(entry, taken, onboard)
+
+
+def reject_addition(db: Session, cls: Class, entry: RollCallEntry, actor: CurrentUser, reason: str) -> None:
+    """An approver turns a pending addition down: it is removed, with the reason. Does not commit."""
+    if entry.status != RollCallStatus.pending.value:
+        raise HTTPException(409, f"This addition is {entry.status}, not waiting for approval")
+    entry.status = RollCallStatus.removed.value
+    entry.removed_at = _now()
+    entry.pending_reason = f"rejected: {reason}"[:1000]
+    audit(db, actor.id, cls, "roll_call_addition_rejected", f"{entry.email}: {reason}"[:2000])
 
 
 DAILY_LIMIT = (
@@ -362,12 +427,16 @@ def emails_sent_today(db: Session, added_by: uuid.UUID, now: datetime | None = N
     return onboarding + reminders
 
 
-def remove_from_roll_call(db: Session, cls: Class, entry: RollCallEntry, actor: CurrentUser) -> None:
-    """Take a Student off the roll call. The entry stays, marked removed (ADR 0010). Their
-    account and enrolment are untouched: they may be on the course for other reasons."""
+def remove_from_roll_call(db: Session, cls: Class, entry: RollCallEntry, actor: CurrentUser) -> list:
+    """Take a Student off the roll call: always allowed, before or after approval (ADR 0014
+    §17). The entry stays, marked removed (ADR 0010). Their account and enrolment are
+    untouched: they may be on the course for other reasons. Their seat in each approved
+    session is freed; returns those sessions, whose invites they lose. Does not commit."""
+    was_on = entry.status != RollCallStatus.pending.value
     entry.status = RollCallStatus.removed.value
     entry.removed_at = _now()
     audit(db, actor.id, cls, "roll_call_remove", entry.email)
+    return sessions.free_seats(db, cls, 1) if was_on else []
 
 
 def class_roll_call_emails(db: Session, cls: Class) -> list[str]:
@@ -377,14 +446,20 @@ def class_roll_call_emails(db: Session, cls: Class) -> list[str]:
     An entry linked to an account counts only while that account is an active Student of
     the class's own tenant, with the account's current email. A Student who moved tenant
     is dropped: a class belongs to one tenant, and its mail goes nowhere else. An entry
-    with no account yet is the address the lead typed. Removed entries never count.
+    with no account yet is the address the lead typed. Removed entries never count, nor do
+    additions still waiting for an approver (ADR 0014 §17).
 
-    TODO(#281): scheduler/invites.recipients uses this for bookings linked to a class.
+    ``scheduler/invites.recipients`` uses this for a class's sessions (#281,
+    ``sessions.roll_call_for_booking``).
     """
     out: set[str] = set()
     rows = (
         db.query(RollCallEntry)
-        .filter(RollCallEntry.class_id == cls.id, RollCallEntry.status != RollCallStatus.removed.value)
+        .filter(
+            RollCallEntry.class_id == cls.id,
+            RollCallEntry.tenant_id == cls.tenant_id,
+            RollCallEntry.status.notin_(OFF_ROLL_CALL),
+        )
         .all()
     )
     for e in rows:

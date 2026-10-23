@@ -7,6 +7,7 @@ not fit.
 
 from __future__ import annotations
 
+import os
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -28,17 +29,19 @@ from .capacity import (
     Committed,
     Resources,
     available,
+    get_capacity_provider,
     held_window,
     shortfalls,
     window_label,
 )
 from .lifecycle import HOLDING
-from .models import EventState, OvercapacityPolicy, ScheduledEvent, SchedulerSetting
-from .schemas import EventOut, as_utc
+from .models import BookingApproval, EventState, OvercapacityPolicy, ScheduledEvent, SchedulerSetting
+from .schemas import ApprovalOut, EventOut, as_utc
 
 # States in which an event still holds its range, for range deletion. A draft counts:
-# deleting the range would silently break a booking someone is still preparing.
-RESERVING_STATES = (EventState.draft, *HOLDING)
+# deleting the range would silently break a booking someone is still preparing. So does
+# one awaiting approval.
+RESERVING_STATES = (EventState.draft, EventState.pending_approval, *HOLDING)
 
 POLICY_KEY = "overcapacity_policy"
 DEFAULT_POLICY = OvercapacityPolicy.block
@@ -114,6 +117,115 @@ def enforce(db: Session, assessment: Assessment) -> list[str]:
     if get_policy(db) is OvercapacityPolicy.block:
         raise HTTPException(409, "; ".join(assessment.reasons))
     return assessment.reasons
+
+
+# -- Fit and the next free slot ----------------------------------------------
+SLOT_STEP = timedelta(minutes=15)
+NEXT_FREE_DAYS = int(os.getenv("SCHEDULER_NEXT_FREE_DAYS", "14"))
+
+
+@dataclass(frozen=True)
+class Fit:
+    """Whether a booking fits a window: no double booking, and room in the cluster."""
+
+    conflicts: list[str]
+    assessment: Assessment
+
+    @property
+    def ok(self) -> bool:
+        return not self.conflicts and self.assessment.fits
+
+    @property
+    def reasons(self) -> list[str]:
+        return [*self.conflicts, *self.assessment.reasons]
+
+
+def need_of(evt: ScheduledEvent) -> Resources:
+    return Resources(evt.vcpu_total or 0, evt.ram_mb_total or 0, evt.disk_gb_total or 0)
+
+
+def fit(db: Session, provider: CapacityProvider, evt: ScheduledEvent, start: datetime, end: datetime) -> Fit:
+    """Would ``evt`` fit at [start, end)? The same checks a booking gets (``_admit`` in the
+    router): conflicts of its range and instructor, and capacity over its held window."""
+    clash = conflicts(
+        db, start=start, end=end, range_id=evt.range_id, instructor_id=evt.instructor_id, exclude_id=evt.id
+    )
+    return Fit(clash, assess(db, provider, start, end, need_of(evt), exclude_id=evt.id))
+
+
+def _ceil(t: datetime, step: timedelta) -> datetime:
+    epoch = datetime(2000, 1, 1, tzinfo=UTC)
+    n = -((epoch - t) // step)  # ceiling division
+    return epoch + n * step
+
+
+def next_free_slot(
+    db: Session,
+    provider: CapacityProvider,
+    evt: ScheduledEvent,
+    *,
+    after: datetime | None = None,
+    now: datetime | None = None,
+) -> tuple[tuple[datetime, datetime] | None, datetime]:
+    """The first window of ``evt``'s length, from ``after`` (default: its own start) on a
+    15-minute grid, that it fits: no conflict and room for its demand (``fit``). Never
+    sooner than the provisioning lead from now, since the range must be built first.
+
+    Returns (slot or None, searched until). Bookings and running ranges are read once;
+    the slot found is then checked again with ``fit`` so it never disagrees with what
+    approving at that time would say."""
+    now = now or datetime.now(UTC)
+    start, end = as_utc(evt.start_time), as_utc(evt.end_time)
+    length = end - start
+    first = _ceil(max(as_utc(after) if after else start, now + PROVISION_LEAD), SLOT_STEP)
+    horizon = first + timedelta(days=NEXT_FREE_DAYS)
+    candidates: list[datetime] = []
+    t = first
+    while t < horizon:
+        candidates.append(t)
+        t += SLOT_STEP
+    need = need_of(evt)
+    supply = provider.supply()
+    committed = provider.committed_many(db, [held_window(c, c + length) for c in candidates], evt.id)
+    blocked = _blocked_spans(db, evt, first, horizon + length)
+    for c, com in zip(candidates, committed, strict=True):
+        if shortfalls(need, available(supply, com.resources), c, c + length):
+            continue
+        if any(a < c + length and z > c for a, z in blocked):
+            continue
+        if fit(db, provider, evt, c, c + length).ok:
+            return (c, c + length), horizon
+    return None, horizon
+
+
+def _blocked_spans(db: Session, evt: ScheduledEvent, start: datetime, end: datetime) -> list[tuple[datetime, datetime]]:
+    """Spans a start must not fall in for ``evt``'s session to overlap: its range's other
+    bookings (widened by lead and grace) and its instructor's (``conflicts``)."""
+    reach = PROVISION_LEAD + TEARDOWN_GRACE
+    out: list[tuple[datetime, datetime]] = []
+
+    def others(*crit):
+        return (
+            db.query(ScheduledEvent)
+            .filter(ScheduledEvent.state.in_(HOLDING), ScheduledEvent.id != evt.id, *crit)
+            .all()
+        )
+
+    if evt.range_id:
+        for o in others(
+            ScheduledEvent.range_id == evt.range_id,
+            ScheduledEvent.start_time < end + reach,
+            ScheduledEvent.end_time > start - reach,
+        ):
+            out.append((as_utc(o.start_time) - reach, as_utc(o.end_time) + reach))
+    if evt.instructor_id:
+        for o in others(
+            ScheduledEvent.instructor_id == evt.instructor_id,
+            ScheduledEvent.start_time < end,
+            ScheduledEvent.end_time > start,
+        ):
+            out.append((as_utc(o.start_time), as_utc(o.end_time)))
+    return out
 
 
 # -- Conflicts ----------------------------------------------------------------
@@ -379,7 +491,61 @@ def maintenance_warnings(db: Session, evt: ScheduledEvent) -> list[str]:
     )
 
 
-def to_out(e: ScheduledEvent, warnings: list[str] | None = None, maintenance: list[str] | None = None) -> dict:
+def approval_of(db: Session, event_id: uuid.UUID) -> BookingApproval | None:
+    """The booking's approval row: it needs an approver (a class session) when there is one."""
+    # tenant-safe: keyed by a booking the caller already loaded tenant-scoped.
+    return db.get(BookingApproval, event_id)
+
+
+def needs_approval(db: Session, evt: ScheduledEvent) -> bool:
+    return approval_of(db, evt.id) is not None
+
+
+def _approval_out(a: BookingApproval | None) -> ApprovalOut | None:
+    if a is None:
+        return None
+
+    def sid(v):
+        return str(v) if v else None
+
+    def t(v):
+        return as_utc(v) if v else None
+
+    return ApprovalOut(
+        requested_by=sid(a.requested_by), requested_at=t(a.requested_at),
+        proposed_start_time=t(a.proposed_start), proposed_end_time=t(a.proposed_end),
+        proposed_by=sid(a.proposed_by), proposed_at=t(a.proposed_at),
+        decided_by=sid(a.decided_by), decided_at=t(a.decided_at), reason=a.reason,
+    )
+
+
+def outs(db: Session, events: list[ScheduledEvent]) -> list[dict]:
+    """Bookings as the API returns them, with their class and approval, in two queries."""
+    ids = [e.id for e in events]
+    if not ids:
+        return []
+    from ..classes import sessions
+
+    # tenant-safe: rows keyed by bookings the caller already loaded tenant-scoped.
+    approvals = {a.event_id: a for a in db.query(BookingApproval).filter(BookingApproval.event_id.in_(ids))}
+    classes = sessions.class_ids_for(db, ids)
+    return [to_out(e, approval=approvals.get(e.id), class_id=classes.get(e.id)) for e in events]
+
+
+def out(db: Session, e: ScheduledEvent, warnings: list[str] | None = None, maintenance: list[str] | None = None) -> dict:
+    from ..classes import sessions
+
+    return to_out(e, warnings, maintenance, approval=approval_of(db, e.id), class_id=sessions.class_ids_for(db, [e.id]).get(e.id))
+
+
+def to_out(
+    e: ScheduledEvent,
+    warnings: list[str] | None = None,
+    maintenance: list[str] | None = None,
+    *,
+    approval: BookingApproval | None = None,
+    class_id: uuid.UUID | None = None,
+) -> dict:
     return EventOut(
         id=str(e.id),
         name=e.name,
@@ -404,6 +570,8 @@ def to_out(e: ScheduledEvent, warnings: list[str] | None = None, maintenance: li
         updated_at=as_utc(e.updated_at),
         warnings=warnings or [],
         maintenance_warnings=maintenance or [],
+        class_id=str(class_id) if class_id else None,
+        approval=_approval_out(approval),
     ).model_dump()
 
 
@@ -446,3 +614,49 @@ def reserving_event_count(db: Session, range_id: uuid.UUID) -> int:
 def detach_range(db: Session, range_id: uuid.UUID) -> None:
     """Unlink a range being deleted (see :func:`detach`)."""
     detach(db, "range", range_id)
+
+
+# -- For the classes section (ADR 0014 §17: roll-call changes after approval) ----------
+def approved_upcoming(db: Session, event_ids: list[uuid.UUID], now: datetime | None = None) -> list[ScheduledEvent]:
+    """Of these bookings, the approved ones that still hold capacity and have not ended."""
+    if not event_ids:
+        return []
+    now = now or datetime.now(UTC)
+    # tenant-safe: ids of one class's sessions, all in the class's tenant (sessions.link).
+    return (
+        db.query(ScheduledEvent)
+        .filter(ScheduledEvent.id.in_(event_ids), ScheduledEvent.state.in_(HOLDING), ScheduledEvent.end_time > now)
+        .order_by(ScheduledEvent.start_time)
+        .all()
+    )
+
+
+def room_for(db: Session, evt: ScheduledEvent, extra: Resources) -> list[str]:
+    """Why ``extra`` more demand on the already-held ``evt`` would not fit (none: it fits).
+    The booking itself is counted at its current size, so this asks for the growth only.
+    The caller holds ``serialize_bookings``."""
+    if extra == Resources():
+        return []
+    a = assess(db, get_capacity_provider(db), as_utc(evt.start_time), as_utc(evt.end_time), extra)
+    return [f"'{evt.name}': {r}" for r in a.reasons]
+
+
+def resize(db: Session, evt: ScheduledEvent, delta: Resources, sign: int) -> None:
+    """Grow (sign 1) or shrink (sign -1) a held booking's demand, never below zero. Does not commit."""
+    evt.vcpu_total = max(0, (evt.vcpu_total or 0) + sign * delta.vcpu)
+    evt.ram_mb_total = max(0, (evt.ram_mb_total or 0) + sign * delta.ram_mb)
+    evt.disk_gb_total = max(0, (evt.disk_gb_total or 0) + sign * delta.disk_gb)
+
+
+def attendee_invites(db: Session, events: list[ScheduledEvent], emails: list[str], method: str) -> list:
+    """Invites (REQUEST) or withdrawals (CANCEL) of these sessions for Students joining or
+    leaving the roll call after approval. Built now, sent by the caller after commit."""
+    from . import invites
+
+    return [invites.build(evt, method, to, attending=True) for evt in events for to in emails]
+
+
+async def send_invites(items: list) -> None:
+    from . import invites
+
+    await invites.send(items)

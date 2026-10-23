@@ -3,6 +3,15 @@
     draft -> scheduled -> provisioning -> active -> completed
     cancelled from any state before completed
 
+A booking that needs approval (a class session, ADR 0014 §14) goes through
+``pending_approval`` instead of straight to ``scheduled``:
+
+    draft -> pending_approval -> scheduled (approved) | rejected
+    scheduled -> pending_approval (an approved session moved or resized: approve again)
+
+``pending_approval`` holds nothing: no capacity, no range, no instructor, no invites. Only
+:mod:`.approval` moves a booking from it to ``scheduled``.
+
 Every move is a guarded UPDATE (``... WHERE state IN (allowed sources)``), so two
 requests racing to move the same booking cannot both succeed, and a retry cannot move
 it twice. Asking for the state a booking is already in is a no-op, so retries by the
@@ -22,19 +31,28 @@ S = EventState
 
 # target state -> the states it may be reached from
 SOURCES: dict[EventState, frozenset[EventState]] = {
-    S.scheduled: frozenset({S.draft}),
+    S.pending_approval: frozenset({S.draft, S.scheduled}),
+    # From pending_approval only through approval.approve / approval.accept_proposal.
+    S.scheduled: frozenset({S.draft, S.pending_approval}),
+    S.rejected: frozenset({S.pending_approval}),
     S.provisioning: frozenset({S.scheduled}),
     # Activating straight from scheduled covers a range that was already up.
     S.active: frozenset({S.scheduled, S.provisioning}),
     S.completed: frozenset({S.active}),
-    S.cancelled: frozenset({S.draft, S.scheduled, S.provisioning, S.active}),
+    S.cancelled: frozenset({S.draft, S.pending_approval, S.scheduled, S.provisioning, S.active}),
 }
 
 # Only a booking that has not started being built can be rescheduled or resized.
-EDITABLE = frozenset({S.draft, S.scheduled})
+EDITABLE = frozenset({S.draft, S.pending_approval, S.scheduled})
 
-# States that hold capacity, the range and the instructor.
+# States that hold capacity, the range and the instructor. Never pending_approval.
 HOLDING = (S.scheduled, S.provisioning, S.active)
+
+# Called off for good: no authority, roster or calendar comes from these.
+CALLED_OFF = (S.cancelled, S.rejected)
+
+# Never sent to a calendar: cancelling one withdraws no invite.
+UNSENT = (S.draft, S.pending_approval)
 
 
 def transition(db: Session, evt: ScheduledEvent, to: EventState) -> bool:
@@ -67,7 +85,9 @@ def lock_editable(db: Session, evt: ScheduledEvent) -> None:
     waits for the clock and then finds the booking no longer editable. 409 either way
     rather than an edit landing on a booking that is already being built."""
     if evt.state not in EDITABLE:
-        raise HTTPException(409, f"Event is {evt.state.value}; only draft or scheduled events can be changed")
+        raise HTTPException(
+            409, f"Event is {evt.state.value}; only draft, pending approval or scheduled events can be changed"
+        )
     locked = (
         db.query(ScheduledEvent)
         .filter(ScheduledEvent.id == evt.id, ScheduledEvent.state.in_(EDITABLE))

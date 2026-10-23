@@ -129,6 +129,10 @@ class Permission(str, Enum):
     SCHEDULE_WRITE = "schedule:write"
     # Platform-wide scheduler policy (over-capacity block/warn). Admin only: no role lists it.
     SCHEDULE_ADMIN = "schedule:admin"
+    # Approve, reject or propose another time for a class session, and decide roll-call
+    # additions that no longer fit (ADR 0014 §14-17). Admins and range ops: the people who
+    # answer for the cluster. Instructors book; they never approve, their own or others'.
+    SCHEDULE_APPROVE = "schedule:approve"
     # The content clock (ADR 0014 decisions 22-24): the Content view's review dates and stale
     # flags. CONTENT_REVIEW_OWN marks reviewed, or assigns a reviewer to, only content the
     # caller owns (app/content_review/service.py); CONTENT_REVIEW_ADMIN does anything to the
@@ -270,6 +274,8 @@ ROLE_PERMISSIONS: dict[UserRole, set[Permission]] = {
         Permission.SCENARIO_READ,
         Permission.EXERCISE_READ,
         Permission.SCHEDULE_READ,
+        # Class sessions wait for an approver: range ops answers for the cluster.
+        Permission.SCHEDULE_APPROVE,
         Permission.CONTENT_REVIEW_READ,
         Permission.STATS_READ,
         Permission.TELEMETRY_READ,

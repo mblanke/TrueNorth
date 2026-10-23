@@ -784,6 +784,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/classes/pending-additions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Roll-call additions waiting for an approver
+         * @description Students added after their class's sessions were approved, for whom there was no room
+         *     (ADR 0014 §17), in the caller's tenant.  **schedule:approve**
+         */
+        get: operations["listPendingRollCallAdditions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/classes/roll-call-domains": {
         parameters: {
             query?: never;
@@ -893,9 +914,53 @@ export interface paths {
         post?: never;
         /**
          * Take a Student off a roll call
-         * @description Its lead or an admin. The entry is kept, marked removed; account and enrolment stay.
+         * @description Its lead or an admin, at any time (ADR 0014 §17). The entry is kept, marked removed;
+         *     account and enrolment stay. Their seat in the approved sessions is freed and those
+         *     sessions' invites are withdrawn from them.
          */
         delete: operations["removeFromClassRollCall"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/classes/{class_id}/roll-call/{entry_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve a roll-call addition that did not fit
+         * @description It must fit the class's approved sessions now (409 with the reasons otherwise). The
+         *     Student then joins as any addition does: linked or emailed to onboard, and invited to
+         *     the approved sessions. Audited.  **schedule:approve**
+         */
+        post: operations["approveRollCallAddition"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/classes/{class_id}/roll-call/{entry_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reject a roll-call addition that did not fit
+         * @description It is removed, with the reason, which the class's lead sees. Audited.  **schedule:approve**
+         */
+        post: operations["rejectRollCallAddition"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -7426,6 +7491,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/schedule/approvals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Class sessions awaiting approval
+         * @description The caller's tenant's class sessions awaiting approval, soonest first, each with
+         *     whether it fits now and the next free slot when it does not (ADR 0014 §16).
+         */
+        get: operations["approval_queue_schedule_approvals_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/schedule/capacity": {
         parameters: {
             query?: never;
@@ -7490,6 +7576,11 @@ export interface paths {
          *     created with warnings (policy `warn`). A draft holds nothing and is checked when it
          *     is scheduled. A booking that overlaps a maintenance window is made, with
          *     `maintenance_warnings`: the clock does not build its range while a window covers it.
+         *
+         *     A session of a class (`class_id`, ADR 0014 §14) is booked `pending_approval` instead:
+         *     only the class's lead or an admin books it, its course is the class's, it is not checked
+         *     and holds nothing until an approver (`schedule:approve`) approves it, and nobody is
+         *     invited until then. Bookings with no class stay self-service.
          */
         post: operations["create_event_schedule_events_post"];
         delete?: never;
@@ -7509,7 +7600,12 @@ export interface paths {
         get: operations["get_event_schedule_events__event_id__get"];
         /**
          * Update a scheduled event
-         * @description Reschedule or resize a draft or scheduled booking (409 once it is being built).
+         * @description Reschedule or resize a draft, pending or scheduled booking (409 once it is being built).
+         *
+         *     A class session awaiting approval is changed without any check (it holds nothing); an
+         *     open proposal for it lapses when its time changes. An approved class session that moves
+         *     or changes size, range or instructor goes back to awaiting approval (ADR 0014 §14): it
+         *     stops holding anything and its invites are withdrawn until it is approved again.
          */
         put: operations["update_event_schedule_events__event_id__put"];
         post?: never;
@@ -7538,6 +7634,28 @@ export interface paths {
          * @description scheduled or provisioning -> active.
          */
         post: operations["activate_event_schedule_events__event_id__activate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/schedule/events/{event_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve a class session
+         * @description pending_approval -> scheduled, checked again now under the booking lock. 409 with
+         *     ``{message, reasons, next_free}`` when it is double-booked or (policy ``block``) does not
+         *     fit. Only now are the invites sent: to its instructor and its class's roll call.
+         */
+        post: operations["approve_event_schedule_events__event_id__approve_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -7584,6 +7702,113 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/schedule/events/{event_id}/next-free": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Does a booking fit; the next free slot
+         * @description Whether the booking fits where it is, and the first slot of its length, on a
+         *     15-minute grid from ``after``, where it would: no double booking and room for its
+         *     demand, its build lead and teardown grace included. Searches 14 days
+         *     (``SCHEDULER_NEXT_FREE_DAYS``).
+         */
+        get: operations["next_free_schedule_events__event_id__next_free_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/schedule/events/{event_id}/proposal/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Accept the proposed time
+         * @description The session's instructor (or an admin) takes the approver's time. Checked again under
+         *     the booking lock (409 with the next free slot when it no longer fits); it then moves and
+         *     is approved, and its invites go out.
+         */
+        post: operations["accept_proposal_schedule_events__event_id__proposal_accept_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/schedule/events/{event_id}/proposal/decline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Decline the proposed time
+         * @description The session stays pending at its own time, for the approver to decide.
+         */
+        post: operations["decline_proposal_schedule_events__event_id__proposal_decline_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/schedule/events/{event_id}/propose": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Propose another time for a class session
+         * @description The time must fit now (409 with the next free slot otherwise). The session stays
+         *     pending, holding nothing, until its instructor accepts or declines.
+         */
+        post: operations["propose_time_schedule_events__event_id__propose_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/schedule/events/{event_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reject a class session
+         * @description pending_approval -> rejected, with a reason the instructor sees. Nothing was sent, so
+         *     nothing is withdrawn.
+         */
+        post: operations["reject_event_schedule_events__event_id__reject_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/schedule/events/{event_id}/schedule": {
         parameters: {
             query?: never;
@@ -7595,7 +7820,9 @@ export interface paths {
         put?: never;
         /**
          * Schedule a draft
-         * @description draft -> scheduled, checked for conflicts and capacity exactly as a new booking.
+         * @description draft -> scheduled, checked for conflicts and capacity exactly as a new booking. A
+         *     class session's draft goes to pending_approval instead, unchecked; one already pending
+         *     stays so (only an approver schedules it).
          */
         post: operations["schedule_event_schedule_events__event_id__schedule_post"];
         delete?: never;
@@ -9122,6 +9349,11 @@ export interface components {
              */
             target?: string;
         };
+        /** AdditionRejectIn */
+        AdditionRejectIn: {
+            /** Reason */
+            reason: string;
+        };
         /** AgentIn */
         AgentIn: {
             /** Node */
@@ -9231,6 +9463,54 @@ export interface components {
             qsp_code: string;
             /** Title */
             title: string;
+        };
+        /**
+         * ApprovalItemOut
+         * @description One class session awaiting approval, as the approver's queue shows it.
+         */
+        ApprovalItemOut: {
+            /** Class Name */
+            class_name?: string | null;
+            event: components["schemas"]["EventOut"];
+            fit: components["schemas"]["FitOut"];
+        };
+        /**
+         * ApprovalOut
+         * @description A class session's approval (ADR 0014 §14-16). The booking's state says where it is.
+         */
+        ApprovalOut: {
+            /** Decided At */
+            decided_at?: string | null;
+            /**
+             * Decided By
+             * @description Who approved or rejected it
+             */
+            decided_by?: string | null;
+            /** Proposed At */
+            proposed_at?: string | null;
+            /** Proposed By */
+            proposed_by?: string | null;
+            /** Proposed End Time */
+            proposed_end_time?: string | null;
+            /**
+             * Proposed Start Time
+             * @description An approver's proposed time, until accepted or declined
+             */
+            proposed_start_time?: string | null;
+            /**
+             * Reason
+             * @description Why it was rejected
+             */
+            reason?: string | null;
+            /** Requested At */
+            requested_at?: string | null;
+            /** Requested By */
+            requested_by?: string | null;
+        };
+        /** ApprovalQueueOut */
+        ApprovalQueueOut: {
+            /** Items */
+            items: components["schemas"]["ApprovalItemOut"][];
         };
         /**
          * Arc2Status
@@ -11851,6 +12131,11 @@ export interface components {
         /** EventIn */
         EventIn: {
             /**
+             * Class Id
+             * @description A session of this class (ADR 0014 §14): it waits for an approver, holds nothing until approved, and its roll call attends. Set when the session is booked; it cannot change
+             */
+            class_id?: string | null;
+            /**
              * Course Id
              * @description The class: this course's active Students attend
              */
@@ -11933,6 +12218,9 @@ export interface components {
         };
         /** EventOut */
         EventOut: {
+            approval?: components["schemas"]["ApprovalOut"] | null;
+            /** Class Id */
+            class_id?: string | null;
             /** Course Id */
             course_id?: string | null;
             /**
@@ -12348,6 +12636,26 @@ export interface components {
             active: boolean;
             /** Issued At */
             issued_at?: string | null;
+        };
+        /**
+         * FitOut
+         * @description Whether a booking fits where it is asked for, and the next slot where it would.
+         */
+        FitOut: {
+            /** Fits */
+            fits: boolean;
+            /** @description The first slot from the asked-for start that fits; none within the search horizon */
+            next_free?: components["schemas"]["SlotOut"] | null;
+            /**
+             * Reasons
+             * @description Double bookings, then one per short resource
+             */
+            reasons?: string[];
+            /**
+             * Searched Until
+             * Format: date-time
+             */
+            searched_until: string;
         };
         /** FleetNodeCreateIn */
         FleetNodeCreateIn: {
@@ -14855,6 +15163,32 @@ export interface components {
             /** Total */
             total: number;
         };
+        /**
+         * PendingAdditionOut
+         * @description A roll-call addition waiting for an approver (ADR 0014 §17).
+         */
+        PendingAdditionOut: {
+            /** Added By */
+            added_by: string | null;
+            /**
+             * Class Id
+             * Format: uuid
+             */
+            class_id: string;
+            /** Class Name */
+            class_name: string;
+            /** Created At */
+            created_at: string | null;
+            /** Email */
+            email: string;
+            /**
+             * Entry Id
+             * Format: uuid
+             */
+            entry_id: string;
+            /** Reason */
+            reason: string | null;
+        };
         /** PolicyIn */
         PolicyIn: {
             overcapacity: components["schemas"]["OvercapacityPolicy"];
@@ -14913,6 +15247,19 @@ export interface components {
             user_id: string;
             /** Weakest Areas */
             weakest_areas: string[];
+        };
+        /** ProposeIn */
+        ProposeIn: {
+            /**
+             * End Time
+             * Format: date-time
+             */
+            end_time: string;
+            /**
+             * Start Time
+             * Format: date-time
+             */
+            start_time: string;
         };
         /** PublishIn */
         PublishIn: {
@@ -15681,6 +16028,14 @@ export interface components {
             /** Tenant Name */
             tenant_name?: string | null;
         };
+        /** RejectIn */
+        RejectIn: {
+            /**
+             * Reason
+             * @description Shown to the instructor
+             */
+            reason: string;
+        };
         /** Reply */
         Reply: {
             /** Action */
@@ -15756,6 +16111,11 @@ export interface components {
              * @description Added, but the onboarding email was not sent (and why)
              */
             not_emailed?: components["schemas"]["RollCallRefusal"][];
+            /**
+             * Pending Approval
+             * @description Not added yet: the class's approved sessions have no room for them, so an approver decides (ADR 0014 §17). The reason says what does not fit
+             */
+            pending_approval?: components["schemas"]["RollCallRefusal"][];
             /** Refused */
             refused: components["schemas"]["RollCallRefusal"][];
         };
@@ -15792,6 +16152,11 @@ export interface components {
             id: string;
             /** Onboarding Sent At */
             onboarding_sent_at: string | null;
+            /**
+             * Pending Reason
+             * @description Why an addition waits for an approver, or was rejected
+             */
+            pending_reason?: string | null;
             /** Reminded At */
             reminded_at: string | null;
             /** Removed At */
@@ -15813,7 +16178,7 @@ export interface components {
          * RollCallStatusOut
          * @enum {string}
          */
-        RollCallStatusOut: "invited" | "signed_in" | "ready" | "removed";
+        RollCallStatusOut: "invited" | "signed_in" | "ready" | "removed" | "pending";
         /** RosterIn */
         RosterIn: {
             /**
@@ -16326,6 +16691,19 @@ export interface components {
             moid?: string | null;
             /** Why */
             why: string;
+        };
+        /** SlotOut */
+        SlotOut: {
+            /**
+             * End Time
+             * Format: date-time
+             */
+            end_time: string;
+            /**
+             * Start Time
+             * Format: date-time
+             */
+            start_time: string;
         };
         /** SnapshotIn */
         SnapshotIn: {
@@ -19773,6 +20151,26 @@ export interface operations {
             };
         };
     };
+    listPendingRollCallAdditions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PendingAdditionOut"][];
+                };
+            };
+        };
+    };
     getRollCallDomains: {
         parameters: {
             query?: never;
@@ -20042,6 +20440,74 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    approveRollCallAddition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                class_id: string;
+                entry_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RollCallEntryOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rejectRollCallAddition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                class_id: string;
+                entry_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdditionRejectIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RollCallEntryOut"];
+                };
             };
             /** @description Validation Error */
             422: {
@@ -31737,6 +32203,26 @@ export interface operations {
             };
         };
     };
+    approval_queue_schedule_approvals_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalQueueOut"];
+                };
+            };
+        };
+    };
     get_capacity_schedule_capacity_get: {
         parameters: {
             query?: {
@@ -32000,6 +32486,37 @@ export interface operations {
             };
         };
     };
+    approve_event_schedule_events__event_id__approve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     cancel_event_schedule_events__event_id__cancel_post: {
         parameters: {
             query?: never;
@@ -32041,6 +32558,172 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    next_free_schedule_events__event_id__next_free_get: {
+        parameters: {
+            query?: {
+                /** @description Search from here (default: the booking's own start) */
+                after?: string | null;
+            };
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FitOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    accept_proposal_schedule_events__event_id__proposal_accept_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    decline_proposal_schedule_events__event_id__proposal_decline_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    propose_time_schedule_events__event_id__propose_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProposeIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reject_event_schedule_events__event_id__reject_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RejectIn"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

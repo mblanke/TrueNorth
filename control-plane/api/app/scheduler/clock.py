@@ -13,6 +13,10 @@ Once a minute it moves bookings along their lifecycle as time passes:
    (``destroy_range``) if this booking built it, inside a maintenance window too;
 4. reminder lead reached: the instructor is emailed once.
 
+A class session awaiting approval (``pending_approval``, ADR 0014 §15) is never touched by
+steps 0-4: nothing is built, activated or reminded until an approver approves it. One whose
+session ends before anyone decides is cancelled (step 3c), so it leaves the approver's queue.
+
 The clock runs in the API, where the scheduler's tables and rules live; the work itself
 goes to the worker through the contracted tasks, exactly as the ranges router sends it.
 Every step is claimed with a guarded update (a lifecycle transition, or
@@ -62,6 +66,7 @@ class TickResult:
     torn_down: int = 0
     deferred_by_window: int = 0
     built_after_window: int = 0
+    approvals_lapsed: int = 0
     reminders: list[Reminder] = field(default_factory=list)
 
     def summary(self) -> dict:
@@ -73,6 +78,7 @@ class TickResult:
             "torn_down": self.torn_down,
             "deferred_by_window": self.deferred_by_window,
             "built_after_window": self.built_after_window,
+            "approvals_lapsed": self.approvals_lapsed,
             "reminders": len(self.reminders),
         }
 
@@ -204,7 +210,14 @@ def tick(db: Session, now: datetime | None = None) -> TickResult:
 
     res.deferred_by_window = len(held)
 
-    # 4. Reminders, once per booking, to its Instructor and its course's Students.
+    # 3c. A class session nobody approved before it ended: it lapses (cancelled, audited).
+    for evt in _due(db, ScheduledEvent.state == S.pending_approval, ScheduledEvent.end_time <= now):
+        if _claim(db, evt, S.cancelled):
+            service.audit_system(db, evt, "approval_lapsed", "pending_approval -> cancelled: never approved")
+            db.commit()
+            res.approvals_lapsed += 1
+
+    # 4. Reminders, once per booking, to its Instructor and its class (course or roll call).
     if timedelta(0) < REMINDER_LEAD:
         for evt in _due(
             db,

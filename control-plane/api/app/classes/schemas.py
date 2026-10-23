@@ -34,6 +34,7 @@ class RollCallStatusOut(str, Enum):
     signed_in = "signed_in"
     ready = "ready"
     removed = "removed"
+    pending = "pending"  # added after approval with no room: waits for an approver (ADR 0014 §17)
 
 
 class ClassRole(str, Enum):
@@ -110,6 +111,7 @@ class RollCallEntryOut(BaseModel):
     signed_in_at: datetime | None
     removed_at: datetime | None
     created_at: datetime | None = None
+    pending_reason: str | None = Field(None, description="Why an addition waits for an approver, or was rejected")
 
 
 class RollCallAddIn(BaseModel):
@@ -133,6 +135,27 @@ class RollCallAddOut(BaseModel):
     not_emailed: list[RollCallRefusal] = Field(
         default_factory=list, description="Added, but the onboarding email was not sent (and why)"
     )
+    pending_approval: list[RollCallRefusal] = Field(
+        default_factory=list,
+        description="Not added yet: the class's approved sessions have no room for them, so an approver "
+        "decides (ADR 0014 §17). The reason says what does not fit",
+    )
+
+
+class PendingAdditionOut(BaseModel):
+    """A roll-call addition waiting for an approver (ADR 0014 §17)."""
+
+    entry_id: uuid.UUID
+    class_id: uuid.UUID
+    class_name: str
+    email: str
+    reason: str | None
+    added_by: uuid.UUID | None
+    created_at: datetime | None
+
+
+class AdditionRejectIn(BaseModel):
+    reason: str = Field(..., min_length=1, max_length=1000)
 
 
 class RollCallDomainsIn(BaseModel):

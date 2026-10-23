@@ -68,7 +68,7 @@ def _takes_part(db: Session, user: CurrentUser, rng: Range) -> bool:
     bookings = db.query(ScheduledEvent.course_id).filter(
         ScheduledEvent.tenant_id == rng.tenant_id,
         ScheduledEvent.course_id.isnot(None),
-        ScheduledEvent.state != EventState.cancelled,
+        ScheduledEvent.state.notin_((EventState.cancelled, EventState.rejected)),
         or_(ScheduledEvent.exercise_id.in_([eid for eid, _, _ in exercises]), ScheduledEvent.range_id == rng.id),
     )
     if bookings.first() is None:

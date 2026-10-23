@@ -12,6 +12,7 @@ export type ClassIn = S['ClassIn'];
 export type RollCallEntry = S['RollCallEntryOut'];
 export type RollCallAddResult = S['RollCallAddOut'];
 export type RollCallStatus = S['RollCallStatusOut'];
+export type PendingAddition = S['PendingAdditionOut'];
 
 /**
  * Classes and their roll call (ADR 0014). The API decides who sees and changes what:
@@ -55,6 +56,16 @@ export class ClassesApiService {
     const form = new FormData();
     form.append('file', file, file.name);
     return this.http.post<RollCallAddResult>(`${this.base}/${id}/roll-call/csv`, form);
+  }
+  // ── Additions after approval that did not fit (ADR 0014 §17; schedule:approve) ──
+  pendingAdditions(): Observable<PendingAddition[]> {
+    return this.http.get<PendingAddition[]>(`${this.base}/pending-additions`);
+  }
+  approveAddition(id: string, entryId: string): Observable<RollCallEntry> {
+    return this.http.post<RollCallEntry>(`${this.base}/${id}/roll-call/${entryId}/approve`, {});
+  }
+  rejectAddition(id: string, entryId: string, reason: string): Observable<RollCallEntry> {
+    return this.http.post<RollCallEntry>(`${this.base}/${id}/roll-call/${entryId}/reject`, { reason });
   }
   /** Marks the entry removed; it stays on record. */
   remove(id: string, entryId: string): Observable<void> {

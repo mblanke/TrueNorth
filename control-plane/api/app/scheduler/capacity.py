@@ -69,6 +69,13 @@ class CapacityProvider(Protocol):
         in one pass (the timeline and the scheduler's load bars)."""
         ...
 
+    def committed_many(
+        self, db: Session, windows: list[tuple[datetime, datetime]], exclude_id: uuid.UUID | None = None
+    ) -> list[Committed]:
+        """``committed`` for each window, exactly as it answers one, in one pass (the
+        next free slot for a booking, ``service.next_free_slot``)."""
+        ...
+
 
 class ClusterCapacity:
     """Supply and running ranges from ``app/capacity``, bookings from the scheduler."""
@@ -97,6 +104,15 @@ class ClusterCapacity:
             out.append(self._sum(held, t, t + step))
             t += step
         return out
+
+    def committed_many(
+        self, db: Session, windows: list[tuple[datetime, datetime]], exclude_id: uuid.UUID | None = None
+    ) -> list[Committed]:
+        if not windows:
+            return []
+        held = self._bookings(db, min(a for a, _ in windows), max(z for _, z in windows), exclude_id)
+        skip = self._excluded_range(db, exclude_id)
+        return [self._sum(held, _utc(a), _utc(z), skip) for a, z in windows]
 
     # -- internals ------------------------------------------------------------
     @staticmethod
