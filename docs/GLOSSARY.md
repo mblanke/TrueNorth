@@ -156,6 +156,29 @@ _Avoid_: repo server, proxy (alone).
 
 ## Training delivery
 
+**Class** (planned, ADR 0014):
+One running of a course for a named group, e.g. "C201-26-03". It has a lead instructor,
+assistant instructors, observers, a **roll call**, dates and its **class sessions**. Until it
+is built, a class is only a scheduler booking (see **Teaches**).
+_Not to be confused with_: course (the content a class teaches), cohort (free text on the
+registration form, with no link to a class).
+
+**Roll call** (planned, ADR 0014):
+The Students on a class. Being on it is approval to join: a roll-call Student signs in and
+goes straight in. A class is visible only to its roll call, instructors, observers and admins.
+_Avoid_: roster (in the UI), attendees.
+
+**Class session** (planned, ADR 0014):
+One calendar booking of a class. It is *individual* (every Student gets their own small range;
+blue on the calendar) or *collective* (one shared range for an **Exercise**; orange).
+
+**Acknowledgement** (planned, ADR 0014):
+The rules of use everyone signs on first sign-in, whenever the version changes, and yearly.
+
+**Stale** (content, planned, ADR 0014):
+Content whose review is due by time (90–120 days) or that a new release or a known-exploited
+vulnerability has flagged, directly or through a golden image or range template it depends on.
+
 **Exercise**:
 One run of training on a range: an `assessment` (individual practical) or a `collective`
 (team exercise driven by a MESL), with objectives and a score (`Exercise` in `models.py`;
