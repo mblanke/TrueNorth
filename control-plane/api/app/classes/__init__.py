@@ -5,6 +5,6 @@ Importing this package registers its tables on ``Base.metadata``. Other sections
 ``onboarding.admit_from_roll_call`` (roll call is approval, called by ``GET /auth/me``).
 """
 
-from .models import Class, ClassStaff, RollCallEntry
+from .models import Class, ClassStaff, RollCallEntry, RollCallSettings
 
-__all__ = ["Class", "ClassStaff", "RollCallEntry"]
+__all__ = ["Class", "ClassStaff", "RollCallEntry", "RollCallSettings"]

@@ -3014,8 +3014,16 @@
             "type": "string"
           },
           "email": {
-            "title": "Email",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Omitted when the caller is a Student",
+            "title": "Email"
           },
           "id": {
             "format": "uuid",
@@ -3025,8 +3033,7 @@
         },
         "required": [
           "id",
-          "display_name",
-          "email"
+          "display_name"
         ],
         "title": "ClassPerson",
         "type": "object"
@@ -15622,6 +15629,14 @@
             "title": "Invalid",
             "type": "array"
           },
+          "not_emailed": {
+            "description": "Added, but the onboarding email was not sent (and why)",
+            "items": {
+              "$ref": "#/components/schemas/RollCallRefusal"
+            },
+            "title": "Not Emailed",
+            "type": "array"
+          },
           "refused": {
             "items": {
               "$ref": "#/components/schemas/RollCallRefusal"
@@ -15637,6 +15652,46 @@
           "refused"
         ],
         "title": "RollCallAddOut",
+        "type": "object"
+      },
+      "RollCallDomainsIn": {
+        "properties": {
+          "email_domains": {
+            "description": "e.g. forces.gc.ca; empty: any domain",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Email Domains",
+            "type": "array"
+          }
+        },
+        "required": [
+          "email_domains"
+        ],
+        "title": "RollCallDomainsIn",
+        "type": "object"
+      },
+      "RollCallDomainsOut": {
+        "properties": {
+          "email_domains": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Email Domains",
+            "type": "array"
+          },
+          "source": {
+            "description": "'setting' (set by an admin) or 'accounts' (the tenant's own accounts)",
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email_domains",
+          "source"
+        ],
+        "title": "RollCallDomainsOut",
         "type": "object"
       },
       "RollCallEntryOut": {
@@ -23816,6 +23871,78 @@
           }
         ],
         "summary": "Classes the caller staffs",
+        "tags": [
+          "classes"
+        ]
+      }
+    },
+    "/classes/roll-call-domains": {
+      "get": {
+        "description": "The admin's setting, or else the domains of the organisation's own accounts. Empty:\nany domain, in smaller batches.  **class:create**",
+        "operationId": "getRollCallDomains",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RollCallDomainsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Email domains this organisation's roll calls accept",
+        "tags": [
+          "classes"
+        ]
+      },
+      "put": {
+        "description": "For the caller's own organisation only. An empty list allows any domain.  **tenant:update**",
+        "operationId": "setRollCallDomains",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RollCallDomainsIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RollCallDomainsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Set the email domains this organisation's roll calls accept",
         "tags": [
           "classes"
         ]

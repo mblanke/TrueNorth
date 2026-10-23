@@ -44,7 +44,9 @@ describe('class form helpers', () => {
 
   it('summarises an add', () => {
     const s = addSummary({ added: [ENTRIES[0]], already_on_roll_call: ['a@b.c'], invalid: ['x@'],
-      refused: [{ email: 'i@corp.test', reason: 'staff' }] });
+      refused: [{ email: 'i@corp.test', reason: 'staff' }],
+      not_emailed: [{ email: 'n@corp.test', reason: 'daily limit' }] });
+    expect(s).toContain('not emailed: n@corp.test (daily limit)');
     expect(s).toContain('Added 1');
     expect(s).toContain('already on it: 1');
     expect(s).toContain('i@corp.test (staff)');

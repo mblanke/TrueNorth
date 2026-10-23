@@ -30,9 +30,19 @@ import pytest
 from _shared import act_as, real_tenant, real_user
 from app.auth import TokenPayload, get_token_identity
 from app.classes import clock, service
-from app.classes.models import Class, RollCallEntry
+from app.classes.models import Class, RollCallEntry, RollCallSettings
 from app.main import app as fastapi_app
-from app.models import AuditLog, Course, Enrollment, RegistrationRequest, RegistrationStatus, User, UserRole
+from app.models import (
+    AuditLog,
+    Course,
+    Enrollment,
+    Qualification,
+    RegistrationRequest,
+    RegistrationStatus,
+    User,
+    UserRole,
+)
+from sqlalchemy import func
 
 TODAY = datetime.now(UTC).date()
 
@@ -93,6 +103,10 @@ def world(db_session):
         "shared": _course(db, None, "Shared catalogue course"),
         "b_course": _course(db, b.id, "B course"),
     }
+    # The domains these tests' addresses use (default would be the accounts' example.test).
+    for t in (a, b):
+        db.add(RollCallSettings(tenant_id=t.id, email_domains=["corp.test", "example.test"]))
+    db.flush()
     return w
 
 
@@ -312,11 +326,14 @@ def test_staff_and_disabled_accounts_are_refused(client, world, klass, db_sessio
     assert "deactivated" in reasons["gone@corp.test"]
 
 
-def test_an_address_another_tenant_uses_is_not_disclosed(client, world, klass, db_session, outbox):
-    b_student = _student_row(db_session, world["b"].id, "b.student@corp.test")
+def test_an_address_another_tenant_uses_is_refused_and_not_emailed(client, world, klass, db_session, outbox):
+    """Review #294 item 6: never email "you will be enrolled" to another tenant's account."""
+    b_student = _student_row(db_session, world["b"].id, "B.Student@corp.test")
     act_as(world["lead"])
-    r = client.post(f"/classes/{klass['id']}/roll-call", json={"emails": [b_student.email]}).json()
-    assert r["refused"] == [] and r["added"][0]["status"] == "invited" and r["added"][0]["user_id"] is None
+    r = client.post(f"/classes/{klass['id']}/roll-call", json={"emails": ["b.student@corp.test"]}).json()
+    assert r["added"] == [] and "outside this organisation" in r["refused"][0]["reason"]
+    assert outbox.sent == []
+    assert db_session.query(RollCallEntry).filter_by(email="b.student@corp.test").count() == 0
     assert db_session.query(Enrollment).filter_by(user_id=b_student.id).count() == 0
 
 
@@ -571,3 +588,257 @@ def test_the_migration_upgrades_and_downgrades(tmp_path):
     finally:
         eng.dispose()
     _alembic(url, "upgrade", "head")
+
+
+# ── Adversarial review of #294 (B1-B3, items 4-7, low) ────────────────────
+
+
+def _admit_count(db):
+    return db.query(AuditLog).filter_by(action="roll_call_admit").count()
+
+
+@pytest.mark.parametrize("change", ["deactivated", "deleted"])
+def test_b1_a_linked_roster_row_that_was_deactivated_or_deleted_is_not_revived(
+    client, world, klass, sign_in, db_session, outbox, change
+):
+    roster = _student_row(db_session, world["a"].id, "joe.bloggs@corp.test", source="csv_import")
+    entry = _on_roll_call(client, world, klass, "joe.bloggs@corp.test")[0]
+    assert entry["user_id"] == str(roster.id)
+    if change == "deactivated":
+        roster.is_active = False
+    else:
+        roster.deleted_at = datetime.now(UTC)
+    db_session.flush()
+    assert sign_in(_identity())["status"] == "unregistered"
+    db_session.refresh(roster)
+    assert roster.keycloak_id.startswith("csv-import:") and roster.source == "csv_import"
+    assert (roster.is_active is False) if change == "deactivated" else (roster.deleted_at is not None)
+    assert _admit_count(db_session) == 0
+
+
+@pytest.mark.parametrize("change", ["deactivated", "deleted"])
+def test_b1_an_unlinked_entry_never_revives_a_same_tenant_row(client, world, klass, sign_in, db_session, outbox, change):
+    """The row appears (or is disabled) after the entry was added, so the entry is unlinked."""
+    _on_roll_call(client, world, klass, "joe.bloggs@corp.test")
+    roster = _student_row(db_session, world["a"].id, "joe.bloggs@corp.test", source="csv_import",
+                          active=change != "deactivated")
+    if change == "deleted":
+        roster.deleted_at = datetime.now(UTC)
+    db_session.flush()
+    assert sign_in(_identity())["status"] == "unregistered"
+    db_session.refresh(roster)
+    assert roster.keycloak_id.startswith("csv-import:")
+    assert _admit_count(db_session) == 0
+
+
+@pytest.mark.parametrize("role", [UserRole.observer, UserRole.admin, UserRole.instructor, UserRole.range_ops])
+@pytest.mark.parametrize("source", ["local", "csv_import"])
+def test_b2_only_a_student_row_is_ever_adopted(client, world, klass, sign_in, db_session, outbox, role, source):
+    _on_roll_call(client, world, klass, "joe.bloggs@corp.test")
+    row = _student_row(db_session, world["a"].id, "joe.bloggs@corp.test", source=source, role=role)
+    before = row.keycloak_id
+    assert sign_in(_identity())["status"] == "unregistered"
+    db_session.refresh(row)
+    assert row.keycloak_id == before and row.role == role
+    assert _admit_count(db_session) == 0
+
+
+def test_b2_a_local_student_account_is_not_taken_over(client, world, klass, sign_in, db_session, outbox):
+    """A 'local' Student row has its own sign-in; the roll call adopts CSV roster rows only."""
+    _on_roll_call(client, world, klass, "joe.bloggs@corp.test")
+    row = _student_row(db_session, world["a"].id, "joe.bloggs@corp.test", source="local")
+    before = row.keycloak_id
+    assert sign_in(_identity())["status"] == "unregistered"
+    db_session.refresh(row)
+    assert row.keycloak_id == before
+
+
+def test_b3_nothing_the_requester_typed_is_approved(client, world, klass, sign_in, db_session, outbox):
+    other_course = _course(db_session, world["a"].id, "Other Course")
+    q = Qualification(id=uuid.uuid4(), tenant_id=world["a"].id, qsp_code="REV1", nqual="REV", title="Review")
+    db_session.add(q)
+    db_session.flush()
+    other_course.qualification_id = q.id
+    db_session.flush()
+    _on_roll_call(client, world, klass, "joe.bloggs@corp.test")
+    ident = _identity(groups=["TN-Students"])
+    fastapi_app.dependency_overrides[get_token_identity] = lambda: ident
+    r = client.post("/registration", json={"rank": "Gen", "unit": "CJOC HQ", "callsign": "BOSS",
+                                           "justification": "trust me", "requested_qualification_id": str(q.id)})
+    assert r.status_code == 201, r.text
+    assert sign_in(ident)["status"] == "registered"
+    u = db_session.query(User).filter_by(keycloak_id="ad-sub-joe").one()
+    assert (u.rank, u.unit, u.callsign) == (None, None, None)
+    courses = {e.course_id for e in db_session.query(Enrollment).filter_by(user_id=u.id)}
+    assert courses == {world["course"].id}
+    reqs = {r.status for r in db_session.query(RegistrationRequest).filter_by(keycloak_id="ad-sub-joe")}
+    assert reqs == {RegistrationStatus.withdrawn, RegistrationStatus.approved}
+
+
+def test_4_a_case_variant_roster_row_is_adopted_not_duplicated(client, world, klass, sign_in, db_session, outbox):
+    _on_roll_call(client, world, klass, "joe.bloggs@corp.test")
+    roster = _student_row(db_session, world["a"].id, "Joe.Bloggs@corp.test", source="csv_import")
+    assert sign_in(_identity())["status"] == "registered"
+    rows = db_session.query(User).filter(func.lower(User.email) == "joe.bloggs@corp.test").all()
+    assert [r.id for r in rows] == [roster.id] and rows[0].keycloak_id == "ad-sub-joe"
+
+
+def test_4_a_case_variant_in_another_tenant_is_request_access(client, world, klass, sign_in, db_session, outbox):
+    _on_roll_call(client, world, klass, "joe.bloggs@corp.test")
+    other = _student_row(db_session, world["b"].id, "Joe.Bloggs@corp.test", source="csv_import")
+    assert sign_in(_identity())["status"] == "unregistered"
+    db_session.refresh(other)
+    assert other.keycloak_id.startswith("csv-import:")
+    assert db_session.query(User).filter(func.lower(User.email) == "joe.bloggs@corp.test").count() == 1
+
+
+def test_4_two_case_variants_are_request_access(client, world, klass, sign_in, db_session, outbox):
+    _on_roll_call(client, world, klass, "joe.bloggs@corp.test")
+    _student_row(db_session, world["a"].id, "Joe.Bloggs@corp.test", source="csv_import")
+    _student_row(db_session, world["a"].id, "JOE.BLOGGS@corp.test", source="csv_import")
+    assert sign_in(_identity())["status"] == "unregistered"
+    assert db_session.query(User).filter_by(keycloak_id="ad-sub-joe").count() == 0
+
+
+def test_5_registration_allowed_groups_does_not_apply_to_the_roll_call(
+    client, world, klass, sign_in, db_session, outbox, monkeypatch
+):
+    """Owner decision (ADR 0014 §1): the roll call is the approval."""
+    monkeypatch.setenv("REGISTRATION_ALLOWED_GROUPS", "TN-Students")
+    _on_roll_call(client, world, klass, "joe.bloggs@corp.test")
+    assert sign_in(_identity(groups=["Domain Users"]))["status"] == "registered"
+
+
+def test_6_domains_default_to_the_tenants_own_accounts(client, world, klass, db_session, outbox):
+    db_session.query(RollCallSettings).filter_by(tenant_id=world["a"].id).delete()
+    db_session.flush()
+    act_as(world["lead"])
+    got = client.get("/classes/roll-call-domains").json()
+    assert got == {"email_domains": ["example.test"], "source": "accounts"}
+    r = client.post(f"/classes/{klass['id']}/roll-call", json={"emails": ["x@evil.test", "y@example.test"]}).json()
+    assert [e["email"] for e in r["added"]] == ["y@example.test"]
+    assert "evil.test" in r["refused"][0]["reason"]
+    assert outbox.to() == ["y@example.test"]
+
+
+def test_6_only_an_admin_sets_the_domains_and_empty_means_any_in_small_batches(client, world, klass, db_session, outbox):
+    act_as(world["lead"])
+    assert client.put("/classes/roll-call-domains", json={"email_domains": ["x.test"]}).status_code == 403
+    act_as(world["admin"])
+    assert client.put("/classes/roll-call-domains", json={"email_domains": ["not a domain"]}).status_code == 422
+    r = client.put("/classes/roll-call-domains", json={"email_domains": []})
+    assert r.status_code == 200 and r.json() == {"email_domains": [], "source": "setting"}
+    act_as(world["lead"])
+    many = [f"s{i}@anywhere.test" for i in range(service.UNRESTRICTED_BATCH + 1)]
+    assert client.post(f"/classes/{klass['id']}/roll-call", json={"emails": many}).status_code == 422
+    ok = client.post(f"/classes/{klass['id']}/roll-call", json={"emails": many[:3]}).json()
+    assert len(ok["added"]) == 3
+    # Tenant B's setting is its own.
+    act_as(world["b_admin"])
+    assert client.get("/classes/roll-call-domains").json()["email_domains"] == ["corp.test", "example.test"]
+
+
+def test_6_onboarding_emails_are_capped_per_instructor_per_day(client, world, klass, db_session, outbox, monkeypatch):
+    monkeypatch.setattr(service, "ONBOARDING_EMAILS_PER_DAY", 3)
+    act_as(world["lead"])
+    r = client.post(f"/classes/{klass['id']}/roll-call", json={"emails": [f"s{i}@corp.test" for i in range(5)]}).json()
+    assert len(r["added"]) == 5 and len(outbox.sent) == 3
+    assert len(r["not_emailed"]) == 2 and "daily limit" in r["not_emailed"][0]["reason"]
+    again = client.post(f"/classes/{klass['id']}/roll-call", json={"emails": ["late@corp.test"]}).json()
+    assert len(outbox.sent) == 3 and again["not_emailed"][0]["email"] == "late@corp.test"
+
+
+@pytest.mark.parametrize("name", ["C201\r\nBcc: victim@corp.test", "C201\nX", "C201\x00", "C201 X"])
+def test_6_a_class_name_with_control_characters_is_refused(client, world, name):
+    act_as(world["lead"])
+    assert client.post("/classes", json=_body(world, name=name)).status_code == 422
+
+
+def test_6_the_subject_is_sanitised_anyway(world):
+    cls = Class(name="C201\r\nBcc: victim@corp.test", start_date=TODAY, end_date=TODAY)
+    for mail in (service.onboarding_mail(cls, "SOC", "a@corp.test"), service.reminder_mail(cls, "SOC", "a@corp.test")):
+        assert "\r" not in mail.subject and "\n" not in mail.subject
+
+
+def test_7_two_case_variant_accounts_in_the_tenant_are_refused_on_add(client, world, klass, db_session, outbox):
+    _student_row(db_session, world["a"].id, "Dup@corp.test")
+    _student_row(db_session, world["a"].id, "dup@CORP.test")
+    act_as(world["lead"])
+    r = client.post(f"/classes/{klass['id']}/roll-call", json={"emails": ["dup@corp.test"]}).json()
+    assert r["added"] == [] and "letter case" in r["refused"][0]["reason"]
+
+
+def test_low_a_unicode_look_alike_email_does_not_match(client, world, klass, sign_in, db_session, outbox):
+    _on_roll_call(client, world, klass, "kate@corp.test")
+    assert "Kate@corp.test".lower() == "kate@corp.test"  # why it matters
+    assert sign_in(_identity(email="Kate@corp.test"))["status"] == "unregistered"
+    assert sign_in(_identity(email="Kate@corp.test", sub="ad-sub-kate"))["status"] == "registered"
+
+
+def test_low_a_concurrent_add_of_the_same_email_is_409(client, world, klass, db_session, outbox, monkeypatch):
+    real = service.add_to_roll_call
+
+    def racing(db, cls, actor, emails):
+        res = real(db, cls, actor, emails)
+        # Another request committed the same address in the meantime.
+        db.add(RollCallEntry(class_id=cls.id, tenant_id=cls.tenant_id, email=emails[0]))
+        return res
+
+    monkeypatch.setattr(service, "add_to_roll_call", racing)
+    act_as(world["lead"])
+    r = client.post(f"/classes/{klass['id']}/roll-call", json={"emails": ["race@corp.test"]})
+    assert r.status_code == 409
+
+
+def test_low_a_lead_who_lost_the_instructor_role_loses_the_class(client, world, klass):
+    demoted = world["lead"].model_copy(update={"role": UserRole.student})
+    act_as(demoted)
+    assert client.get(f"/classes/{klass['id']}").status_code == 404
+
+
+def test_low_listing_classes_does_not_query_per_class(client, world, db_session):
+    from sqlalchemy import event
+
+    act_as(world["lead"])
+
+    def count_list() -> int:
+        n = 0
+
+        def on(*_a, **_k):
+            nonlocal n
+            n += 1
+
+        engine = db_session.get_bind()
+        event.listen(engine, "before_cursor_execute", on)
+        try:
+            assert client.get("/classes").status_code == 200
+        finally:
+            event.remove(engine, "before_cursor_execute", on)
+        return n
+
+    client.post("/classes", json=_body(world, name="One"))
+    one = count_list()
+    for i in range(5):
+        client.post("/classes", json=_body(world, name=f"More {i}"))
+    assert count_list() == one
+
+
+def test_low_the_reminder_clock_pages_past_its_page_size(client, world, db_session, outbox, monkeypatch):
+    monkeypatch.setattr(clock, "PAGE", 2)
+    act_as(world["lead"])
+    start = TODAY + timedelta(days=7)
+    for i in range(5):
+        k = client.post("/classes", json=_body(world, name=f"P{i}", start_date=str(start), end_date=str(start))).json()
+        client.post(f"/classes/{k['id']}/roll-call", json={"emails": [f"p{i}@corp.test"]})
+    eve = datetime.combine(start - timedelta(days=1), datetime.min.time(), tzinfo=UTC).replace(hour=9)
+    assert sorted(m.to for m in clock.tick(db_session, now=eve)) == [f"p{i}@corp.test" for i in range(5)]
+
+
+def test_low_a_student_does_not_see_staff_email_addresses(client, world, klass, outbox):
+    _on_roll_call(client, world, klass, world["student"].email)
+    act_as(world["student"])
+    body = client.get(f"/classes/{klass['id']}").json()
+    assert body["lead_instructor"]["email"] is None
+    assert all(p["email"] is None for p in body["assistants"] + body["observers"])
+    act_as(world["assistant"])
+    assert client.get(f"/classes/{klass['id']}").json()["lead_instructor"]["email"]

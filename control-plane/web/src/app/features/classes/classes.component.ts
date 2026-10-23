@@ -52,6 +52,7 @@ export function addSummary(r: RollCallAddResult): string {
   if (r.already_on_roll_call.length) parts.push(`already on it: ${r.already_on_roll_call.length}`);
   if (r.refused.length) parts.push(`refused: ${r.refused.map(x => `${x.email} (${x.reason})`).join(', ')}`);
   if (r.invalid.length) parts.push(`not email addresses: ${r.invalid.join(', ')}`);
+  if (r.not_emailed?.length) parts.push(`not emailed: ${r.not_emailed.map(x => `${x.email} (${x.reason})`).join(', ')}`);
   return parts.join('; ') + '.';
 }
 

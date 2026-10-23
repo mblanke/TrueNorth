@@ -27,15 +27,16 @@ import uuid
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, UploadFile
 from fastapi.responses import Response
 from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ..auth import CurrentUser, get_current_user
 from ..db import get_db
-from ..models import Course, User
+from ..models import AuditLog, Course, User
 from ..rbac import Permission, require_permission
 from ..tenancy import tenant_uuid
 from . import access, service
-from .models import Class, ClassStaff, ClassStatus, RollCallEntry, RollCallStatus
+from .models import Class, ClassStaff, ClassStatus, RollCallEntry, RollCallSettings, RollCallStatus
 from .schemas import (
     ClassIn,
     ClassOut,
@@ -43,6 +44,8 @@ from .schemas import (
     ClassRole,
     RollCallAddIn,
     RollCallAddOut,
+    RollCallDomainsIn,
+    RollCallDomainsOut,
     RollCallEntryOut,
 )
 
@@ -56,34 +59,62 @@ _CHANGE = require_permission(Permission.CLASS_CREATE)
 _STAFF_READ = require_permission(Permission.CLASS_READ)
 
 
-def _person(u: User | None) -> ClassPerson | None:
-    return ClassPerson(id=u.id, display_name=u.display_name, email=u.email) if u is not None else None
+def _person(u: User | None, *, with_email: bool) -> ClassPerson | None:
+    if u is None:
+        return None
+    return ClassPerson(id=u.id, display_name=u.display_name, email=u.email if with_email else None)
 
 
-def _out(db: Session, cls: Class, role: ClassRole | None) -> ClassOut:
-    # tenant-safe: the class's own course, lead and staff, each checked against its tenant when set.
-    course = db.get(Course, cls.course_id)
-    lead = db.get(User, cls.lead_instructor_id)
-    staff = (
+def _outs(db: Session, classes: list[Class], user: CurrentUser) -> list[ClassOut]:
+    """Classes as the caller sees them, in a fixed number of queries whatever their count."""
+    if not classes:
+        return []
+    ids = [c.id for c in classes]
+    uid = uuid.UUID(user.id)
+    tid = tenant_uuid(user)
+    # tenant-safe: courses, leads and staff of classes already scoped to the caller's tenant.
+    courses = {c.id: c.name for c in db.query(Course).filter(Course.id.in_({c.course_id for c in classes}))}
+    leads = {u.id: u for u in db.query(User).filter(User.id.in_({c.lead_instructor_id for c in classes}),
+                                                    User.tenant_id == tid)}
+    staff_rows = (
         db.query(ClassStaff, User)
         .join(User, User.id == ClassStaff.user_id)
-        .filter(ClassStaff.class_id == cls.id)
+        .filter(ClassStaff.class_id.in_(ids), User.tenant_id == tid)
         .order_by(User.display_name)
         .all()
     )
-    count = (
-        db.query(func.count(RollCallEntry.id))
-        .filter(RollCallEntry.class_id == cls.id, RollCallEntry.status != RollCallStatus.removed.value)
-        .scalar()
+    counts = dict(
+        db.query(RollCallEntry.class_id, func.count(RollCallEntry.id))
+        .filter(RollCallEntry.class_id.in_(ids), RollCallEntry.status != RollCallStatus.removed.value)
+        .group_by(RollCallEntry.class_id)
+        .all()
     )
-    return ClassOut(
-        id=cls.id, tenant_id=cls.tenant_id, name=cls.name, course_id=cls.course_id,
-        course_name=course.name if course else "", start_date=cls.start_date, end_date=cls.end_date,
-        status=cls.status, lead_instructor=_person(lead),
-        assistants=[_person(u) for s, u in staff if s.role == "assistant"],
-        observers=[_person(u) for s, u in staff if s.role == "observer"],
-        my_role=role, can_edit=role in access.EDITORS, roll_call_count=count or 0, created_at=cls.created_at,
-    )
+    on_roll_call = {
+        cid for (cid,) in db.query(RollCallEntry.class_id).filter(
+            RollCallEntry.class_id.in_(ids), RollCallEntry.user_id == uid,
+            RollCallEntry.status != RollCallStatus.removed.value,
+        )
+    }
+    out = []
+    for c in classes:
+        staff = [(s, u) for s, u in staff_rows if s.class_id == c.id]
+        role = access.role_from(c, user, {s.user_id: s.role for s, _ in staff}, c.id in on_roll_call)
+        # A Student sees who teaches the class, not their email addresses.
+        with_email = role is not None and role != ClassRole.student
+        out.append(ClassOut(
+            id=c.id, tenant_id=c.tenant_id, name=c.name, course_id=c.course_id,
+            course_name=courses.get(c.course_id, ""), start_date=c.start_date, end_date=c.end_date,
+            status=c.status, lead_instructor=_person(leads.get(c.lead_instructor_id), with_email=with_email),
+            assistants=[_person(u, with_email=with_email) for s, u in staff if s.role == "assistant"],
+            observers=[_person(u, with_email=with_email) for s, u in staff if s.role == "observer"],
+            my_role=role, can_edit=role in access.EDITORS, roll_call_count=counts.get(c.id, 0),
+            created_at=c.created_at,
+        ))
+    return out
+
+
+def _out(db: Session, cls: Class, user: CurrentUser) -> ClassOut:
+    return _outs(db, [cls], user)[0]
 
 
 def _entry_out(e: RollCallEntry, names: dict[uuid.UUID, str]) -> RollCallEntryOut:
@@ -123,7 +154,7 @@ def list_classes(
     if not include_cancelled:
         q = q.filter(Class.status == ClassStatus.open.value)
     rows = q.order_by(Class.start_date.desc(), Class.name).limit(500).all()
-    return [_out(db, c, access.role_in(db, c, user)) for c in rows]
+    return _outs(db, rows, user)
 
 
 @router.get(
@@ -139,7 +170,7 @@ def list_my_classes(
     if not include_cancelled:
         q = q.filter(Class.status == ClassStatus.open.value)
     rows = q.order_by(Class.start_date.desc(), Class.name).limit(500).all()
-    return [_out(db, c, access.role_in(db, c, user)) for c in rows]
+    return _outs(db, rows, user)
 
 
 @router.post("", response_model=ClassOut, status_code=201, operation_id="createClass", summary="Create a class")
@@ -157,7 +188,44 @@ def create_class(
     service.audit(db, user.id, cls, "class_create", cls.name)
     db.commit()
     db.refresh(cls)
-    return _out(db, cls, access.role_in(db, cls, user))
+    return _out(db, cls, user)
+
+
+@router.get(
+    "/roll-call-domains", response_model=RollCallDomainsOut, operation_id="getRollCallDomains",
+    summary="Email domains this organisation's roll calls accept",
+)
+def get_roll_call_domains(
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(_CHANGE),
+) -> RollCallDomainsOut:
+    """The admin's setting, or else the domains of the organisation's own accounts. Empty:
+    any domain, in smaller batches.  **class:create**"""
+    domains, source = service.allowed_domains(db, tenant_uuid(user))
+    return RollCallDomainsOut(email_domains=domains, source=source)
+
+
+@router.put(
+    "/roll-call-domains", response_model=RollCallDomainsOut, operation_id="setRollCallDomains",
+    summary="Set the email domains this organisation's roll calls accept",
+)
+def set_roll_call_domains(
+    body: RollCallDomainsIn,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_permission(Permission.TENANT_UPDATE)),
+) -> RollCallDomainsOut:
+    """For the caller's own organisation only. An empty list allows any domain.  **tenant:update**"""
+    tid = tenant_uuid(user)
+    row = db.get(RollCallSettings, tid)
+    if row is None:
+        row = RollCallSettings(tenant_id=tid)
+        db.add(row)
+    row.email_domains = body.email_domains
+    row.updated_by = uuid.UUID(user.id)
+    db.add(AuditLog(user_id=uuid.UUID(user.id), tenant_id=tid, action="roll_call_domains_set",
+                    resource_type="tenant", resource_id=str(tid), detail=", ".join(body.email_domains) or "(any)"))
+    db.commit()
+    return RollCallDomainsOut(email_domains=body.email_domains, source="setting")
 
 
 @router.get("/{class_id}", response_model=ClassOut, operation_id="getClass", summary="One class")
@@ -166,8 +234,8 @@ def get_class(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ) -> ClassOut:
-    cls, role = access.get_visible(db, class_id, user)
-    return _out(db, cls, role)
+    cls, _ = access.get_visible(db, class_id, user)
+    return _out(db, cls, user)
 
 
 @router.put("/{class_id}", response_model=ClassOut, operation_id="updateClass", summary="Change a class")
@@ -188,7 +256,7 @@ def update_class(
     db.commit()
     db.refresh(cls)
     # None when the caller just handed their class to another lead.
-    return _out(db, cls, access.role_in(db, cls, user))
+    return _out(db, cls, user)
 
 
 @router.delete(
@@ -238,20 +306,25 @@ def _add(
 ) -> RollCallAddOut:
     if cls.status != ClassStatus.open.value:
         raise HTTPException(409, "A cancelled class's roll call cannot change")
-    res = service.add_to_roll_call(db, cls, user, emails)
-    # tenant-safe: the class's own course.
-    course = db.get(Course, cls.course_id)
-    now = service._now()
-    mails = []
-    for entry in res.to_onboard:
-        entry.onboarding_sent_at = now
-        mails.append(service.onboarding_mail(cls, course.name if course else "the course", entry.email))
-    db.commit()
+    try:
+        res = service.add_to_roll_call(db, cls, user, emails)
+        # tenant-safe: the class's own course.
+        course = db.get(Course, cls.course_id)
+        now = service._now()
+        mails = []
+        for entry in res.to_onboard:
+            entry.onboarding_sent_at = now
+            mails.append(service.onboarding_mail(cls, course.name if course else "the course", entry.email))
+        db.commit()
+    except IntegrityError:
+        # Someone else added the same address to this roll call at the same moment.
+        db.rollback()
+        raise HTTPException(409, "The roll call changed while this was being added; reload and try again") from None
     background.add_task(service.send, mails)
     names = _names(db, res.added, cls.tenant_id)
     return RollCallAddOut(
         added=[_entry_out(e, names) for e in res.added], already_on_roll_call=res.already,
-        invalid=invalid, refused=res.refused,
+        invalid=invalid, refused=res.refused, not_emailed=res.not_emailed,
     )
 
 

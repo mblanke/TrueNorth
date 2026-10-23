@@ -1,7 +1,10 @@
 """The day-before reminder (ADR 0014 §2).
 
 Every roll-call Student who has not signed in yet (``invited``) is emailed once, the day
-before their class starts (in UTC). Each entry is claimed with a guarded update
+before their class starts. "The day before" is the UTC date: a class has dates, not
+times or a time zone, and a tenant has no time zone setting yet. Where the site is far
+from UTC the reminder lands up to a day early or late in local terms; per-tenant time
+zones would change that, here only. Each entry is claimed with a guarded update
 (``reminded_at IS NULL``) before its email is built, so any number of API replicas can tick
 and each Student still gets one reminder. Someone added that same day already had their
 onboarding email that day and is not reminded on top of it.
@@ -32,14 +35,7 @@ def tick(db: Session, now: datetime | None = None) -> list[service.Mail]:
     now = now or datetime.now(UTC)
     tomorrow = (now + timedelta(days=1)).date()
     out: list[service.Mail] = []
-    classes = (
-        db.query(Class)
-        .filter(Class.status == ClassStatus.open.value, Class.start_date == tomorrow)
-        .order_by(Class.id)
-        .limit(500)
-        .all()
-    )
-    for cls in classes:
+    for cls in _classes_starting(db, tomorrow):
         # tenant-safe: the class's own course, which was checked against its tenant when set.
         course = db.get(Course, cls.course_id)
         course_name = course.name if course else "the course"
@@ -68,6 +64,24 @@ def tick(db: Session, now: datetime | None = None) -> list[service.Mail]:
             service.audit(db, None, cls, "roll_call_reminder", f"reminded {sent} Student(s) who have not signed in")
         db.commit()
     return out
+
+
+PAGE = 500
+
+
+def _classes_starting(db: Session, day):
+    """Every open class starting on ``day``, a page at a time (keyset on id), so a large
+    site is never cut off at the first page."""
+    last = None
+    while True:
+        q = db.query(Class).filter(Class.status == ClassStatus.open.value, Class.start_date == day)
+        if last is not None:
+            q = q.filter(Class.id > last)
+        page = q.order_by(Class.id).limit(PAGE).all()
+        yield from page
+        if len(page) < PAGE:
+            return
+        last = page[-1].id
 
 
 def _tick_in_own_session() -> list[service.Mail]:

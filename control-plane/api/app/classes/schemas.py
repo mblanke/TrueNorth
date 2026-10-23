@@ -2,11 +2,23 @@
 
 from __future__ import annotations
 
+import re
+import unicodedata
 import uuid
 from datetime import date, datetime
 from enum import Enum
 
 from pydantic import BaseModel, Field, field_validator, model_validator
+
+_DOMAIN = re.compile(r"^[a-z0-9-]+(\.[a-z0-9-]+)+$")
+
+
+def has_control_chars(value: str) -> bool:
+    """Any character of Unicode category C (CR, LF, NUL, format characters...)."""
+    # C*: control and format characters (CR, LF, NUL...); Zl/Zp: the Unicode line and
+    # paragraph separators, which mail software may also treat as line breaks.
+    return any(unicodedata.category(ch)[0] == "C" or unicodedata.category(ch) in ("Zl", "Zp") for ch in value)
+
 
 # What one paste or CSV may add. A class is 12-15 Students; a whole course intake fits.
 MAX_ROLL_CALL_BATCH = 500
@@ -51,6 +63,9 @@ class ClassIn(BaseModel):
         v = v.strip()
         if len(v) < 2:
             raise ValueError("name must be at least 2 characters")
+        # The name goes into email subjects: no line breaks or other control characters.
+        if has_control_chars(v):
+            raise ValueError("name must not contain line breaks or control characters")
         return v
 
     @model_validator(mode="after")
@@ -63,7 +78,7 @@ class ClassIn(BaseModel):
 class ClassPerson(BaseModel):
     id: uuid.UUID
     display_name: str
-    email: str
+    email: str | None = Field(None, description="Omitted when the caller is a Student")
 
 
 class ClassOut(BaseModel):
@@ -115,3 +130,27 @@ class RollCallAddOut(BaseModel):
     already_on_roll_call: list[str]
     invalid: list[str] = Field(..., description="Pieces of the input that are not an email address")
     refused: list[RollCallRefusal]
+    not_emailed: list[RollCallRefusal] = Field(
+        default_factory=list, description="Added, but the onboarding email was not sent (and why)"
+    )
+
+
+class RollCallDomainsIn(BaseModel):
+    email_domains: list[str] = Field(..., max_length=100, description="e.g. forces.gc.ca; empty: any domain")
+
+    @field_validator("email_domains")
+    @classmethod
+    def _domains(cls, v: list[str]) -> list[str]:
+        out: list[str] = []
+        for d in v:
+            d = d.strip().lower().lstrip("@")
+            if not _DOMAIN.match(d):
+                raise ValueError(f"not a domain: {d[:80]!r}")
+            if d not in out:
+                out.append(d)
+        return out
+
+
+class RollCallDomainsOut(BaseModel):
+    email_domains: list[str]
+    source: str = Field(..., description="'setting' (set by an admin) or 'accounts' (the tenant's own accounts)")

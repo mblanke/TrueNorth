@@ -19,7 +19,7 @@ import enum
 import uuid
 from datetime import date, datetime
 
-from sqlalchemy import Date, DateTime, ForeignKey, Index, String, UniqueConstraint
+from sqlalchemy import JSON, Date, DateTime, ForeignKey, Index, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..db import Base
@@ -94,3 +94,15 @@ class RollCallEntry(TimestampMixin, Base):
     reminded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     signed_in_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     removed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class RollCallSettings(TimestampMixin, Base):
+    """A tenant's roll-call settings. ``email_domains``: the domains a roll call may add
+    (lower-case, no @). No row: the domains of the tenant's active accounts' emails
+    (``service.allowed_domains``)."""
+
+    __tablename__ = "class_roll_call_settings"
+
+    tenant_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("tenants.id"), primary_key=True)
+    email_domains: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    updated_by: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("users.id"), nullable=True)

@@ -16,6 +16,8 @@ What is trusted, and why (anti-spoofing):
    an account made in Keycloak itself has no ``ad_object_guid``, and self-registration is
    off. So the email is the one AD holds, not one the user typed. Without both claims,
    Request access is the way in, as before.
+   The address must be plain ASCII: Unicode look-alikes that lower-case onto ASCII
+   (the Kelvin sign) never match.
 3. **Exact, case-insensitive match** on the whole address, against entries still
    ``invited`` on an open class that has not ended. Removed entries, cancelled or
    finished classes, and entries already claimed by an account that has signed in never
@@ -24,7 +26,14 @@ What is trusted, and why (anti-spoofing):
    guessed: the person goes to Request access and an admin decides.
 5. **The auth zone still applies** (the registration zone's network rule, as
    ``POST /registration`` applies it).
-6. **The approver is the class's lead**, who must still be an active instructor or admin
+6. **Only a roster Student is ever adopted.** If the address (ignoring case, any tenant,
+   deleted or deactivated included) already names an account, it must be exactly one
+   CSV-imported, active Student of the class's tenant; otherwise nothing is admitted.
+   The request is built afresh from directory claims: nothing the person typed into
+   Request access (rank, unit, a qualification) is approved by the roll call.
+7. **REGISTRATION_ALLOWED_GROUPS does not apply**: the roll call is the approval (owner
+   decision, ADR 0014 §1).
+8. **The approver is the class's lead**, who must still be an active instructor or admin
    of the class's tenant; ``_approve_one`` re-checks that they could grant the Student
    role in that tenant. Any refusal there (an email that is a staff account, an account
    in another tenant) rolls back and falls back to Request access.
@@ -42,23 +51,40 @@ from sqlalchemy.orm import Session
 from .. import identity as ident
 from ..auth import CurrentUser, TokenPayload
 from ..enrollment import ensure_enrollment
-from ..models import AuditLog, RegistrationRequest, RegistrationStatus, User
+from ..models import AuditLog, RegistrationRequest, RegistrationStatus, User, UserRole
 from .models import Class, ClassStatus, RollCallEntry, RollCallStatus
-from .service import LEAD_ROLES, is_pre_provisioned, normalise_email
+from .service import LEAD_ROLES, accounts_with_email, is_pre_provisioned, normalise_email
 
 logger = logging.getLogger("truenorth.api.classes.onboarding")
 
 
 def trusted_email(identity: TokenPayload) -> str | None:
-    """The token's email if it may be matched to a roll call (rules 1 and 2), else None."""
+    """The token's email if it may be matched to a roll call (rules 1 and 2), else None.
+
+    ASCII only: ``str.lower`` folds look-alikes such as the Kelvin sign (U+212A) onto ASCII
+    letters, so "\u212aate@corp.test" would otherwise match a roll call's kate@corp.test."""
     if identity.tn_session:
         return None
     if identity.email_verified is not True:
         return None
     if not (identity.ad_object_guid or "").strip():
         return None
-    email = normalise_email(identity.email)
-    return email or None
+    raw = (identity.email or "").strip()
+    if not raw or not raw.isascii():
+        return None
+    return normalise_email(raw)
+
+
+def _adoptable_roster_row(u: User, tenant_id) -> bool:
+    """A roster row a roll-call sign-in may take over: a CSV-imported, active, undeleted
+    Student of the class's own tenant. Nothing else, whatever ``_approve_one`` would allow."""
+    return (
+        u.tenant_id == tenant_id
+        and u.deleted_at is None
+        and u.is_active
+        and u.role == UserRole.student
+        and is_pre_provisioned(u)
+    )
 
 
 def matching_entries(db: Session, email: str, today: date | None = None) -> list[tuple[RollCallEntry, Class]]:
@@ -82,7 +108,7 @@ def matching_entries(db: Session, email: str, today: date | None = None) -> list
         if entry.user_id is not None:
             # tenant-safe: the entry's own link, checked against the class's tenant below.
             linked = db.get(User, entry.user_id)
-            if linked is None or linked.tenant_id != cls.tenant_id or not is_pre_provisioned(linked):
+            if linked is None or not _adoptable_roster_row(linked, cls.tenant_id):
                 continue
         out.append((entry, cls))
     return out
@@ -105,28 +131,41 @@ def _lead_as_approver(db: Session, cls: Class) -> CurrentUser | None:
     )
 
 
-def _request_for(db: Session, identity: TokenPayload, cls: Class, email: str) -> RegistrationRequest:
-    """The identity's open request, or a new one from its claims, for ``_approve_one``."""
-    req = (
+def _fresh_request(db: Session, identity: TokenPayload, cls: Class, email: str) -> RegistrationRequest:
+    """A new request built from the token's directory claims only, for ``_approve_one``.
+
+    Never the identity's own pending request: its rank, unit, callsign, nation,
+    justification and requested qualification or path were typed by the requester, and
+    the roll call approves none of them. That request is withdrawn; the Student fills in
+    their profile in the onboarding wizard, and the class's course is their only enrolment.
+    """
+    for old in (
         db.query(RegistrationRequest)
         .filter(RegistrationRequest.keycloak_id == identity.sub, RegistrationRequest.status == RegistrationStatus.pending)
-        .first()
-    )
+        .all()
+    ):
+        old.status = RegistrationStatus.withdrawn
+        old.decided_at = datetime.now(UTC)
+        old.decision_reason = f"superseded by roll-call admission ({cls.name})"[:500]
+    db.flush()  # before the insert: one pending request per identity (partial unique index)
     prefill = ident.claims_to_prefill(identity.model_dump())
-    if req is None:
-        req = RegistrationRequest(keycloak_id=identity.sub, timezone="UTC")
-        db.add(req)
-        req.display_name = prefill["display_name"] or email
-        req.first_name = prefill["first_name"]
-        req.last_name = prefill["last_name"]
-        req.ad_object_guid = prefill["ad_object_guid"]
-        req.ad_distinguished_name = prefill["ad_distinguished_name"]
-        req.ad_groups = "[]"
-        req.requested_cohort = cls.name[:100]
-        req.status = RegistrationStatus.pending
-    req.email = prefill["email"]
-    req.suggested_role = "student"
-    req.suggested_tenant_id = cls.tenant_id
+    req = RegistrationRequest(
+        keycloak_id=identity.sub,
+        email=email,
+        display_name=prefill["display_name"] or email,
+        first_name=prefill["first_name"],
+        last_name=prefill["last_name"],
+        ad_object_guid=prefill["ad_object_guid"],
+        ad_distinguished_name=prefill["ad_distinguished_name"],
+        ad_groups="[]",
+        timezone="UTC",
+        requested_cohort=cls.name[:100],
+        suggested_role="student",
+        suggested_tenant_id=cls.tenant_id,
+        status=RegistrationStatus.pending,
+    )
+    db.add(req)
+    db.flush()
     return req
 
 
@@ -148,31 +187,36 @@ def admit_from_roll_call(db: Session, identity: TokenPayload, client_ip: str | N
     if denial:
         return None
 
+    # REGISTRATION_ALLOWED_GROUPS is deliberately not applied here: the owner decided the
+    # roll call is the approval (ADR 0014 §1). The auth-zone check above still applies.
+
     first = matches[0][1]
     approver = _lead_as_approver(db, first)
     if approver is None:
         logger.warning("Class %s has no active lead in its tenant; roll-call admission skipped", first.id)
         return None
 
+    # The account this email already names, if any, ignoring case and across tenants. Only
+    # one, and only an adoptable roster Student of this tenant; anything else (a staff or
+    # observer row, a deactivated or deleted one, another tenant's, two case variants) is
+    # for an admin to resolve through Request access, never taken over here.
+    existing = accounts_with_email(db, email)
+    if len(existing) > 1 or (existing and not _adoptable_roster_row(existing[0], first.tenant_id)):
+        logger.info("Roll-call admission for sub %s refused: the email names an existing account", identity.sub)
+        return None
+    adopt_as = existing[0].email if existing else email
+
     from ..routers.registration import _approve_one
 
     try:
         with db.begin_nested():
-            req = _request_for(db, identity, first, email)
-            db.flush()
-            # The roster row this entry is linked to keeps its address's spelling, so the
-            # adoption by email in _approve_one finds it whatever the token's case.
-            for entry, _ in matches:
-                if entry.user_id is not None:
-                    # tenant-safe: matching_entries checked the link is in the class's tenant.
-                    linked = db.get(User, entry.user_id)
-                    if linked is not None and normalise_email(linked.email) == email:
-                        req.email = linked.email
-                        break
+            req = _fresh_request(db, identity, first, adopt_as)
             user = _approve_one(
                 db, req, approver, role="student", tenant_id=first.tenant_id,
                 qualification_id=None, learning_path_id=None, note=f"roll call: {first.name}"[:500],
             )
+            if user.role != UserRole.student or user.tenant_id != first.tenant_id:
+                raise HTTPException(409, "roll-call admission produced something other than a Student")
             now = datetime.now(UTC)
             for entry, cls in matches:
                 claimed = (

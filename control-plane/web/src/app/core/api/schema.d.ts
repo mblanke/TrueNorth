@@ -784,6 +784,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/classes/roll-call-domains": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Email domains this organisation's roll calls accept
+         * @description The admin's setting, or else the domains of the organisation's own accounts. Empty:
+         *     any domain, in smaller batches.  **class:create**
+         */
+        get: operations["getRollCallDomains"];
+        /**
+         * Set the email domains this organisation's roll calls accept
+         * @description For the caller's own organisation only. An empty list allows any domain.  **tenant:update**
+         */
+        put: operations["setRollCallDomains"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/classes/{class_id}": {
         parameters: {
             query?: never;
@@ -10032,8 +10057,11 @@ export interface components {
         ClassPerson: {
             /** Display Name */
             display_name: string;
-            /** Email */
-            email: string;
+            /**
+             * Email
+             * @description Omitted when the caller is a Student
+             */
+            email?: string | null;
             /**
              * Id
              * Format: uuid
@@ -15235,8 +15263,31 @@ export interface components {
              * @description Pieces of the input that are not an email address
              */
             invalid: string[];
+            /**
+             * Not Emailed
+             * @description Added, but the onboarding email was not sent (and why)
+             */
+            not_emailed?: components["schemas"]["RollCallRefusal"][];
             /** Refused */
             refused: components["schemas"]["RollCallRefusal"][];
+        };
+        /** RollCallDomainsIn */
+        RollCallDomainsIn: {
+            /**
+             * Email Domains
+             * @description e.g. forces.gc.ca; empty: any domain
+             */
+            email_domains: string[];
+        };
+        /** RollCallDomainsOut */
+        RollCallDomainsOut: {
+            /** Email Domains */
+            email_domains: string[];
+            /**
+             * Source
+             * @description 'setting' (set by an admin) or 'accounts' (the tenant's own accounts)
+             */
+            source: string;
         };
         /** RollCallEntryOut */
         RollCallEntryOut: {
@@ -19162,6 +19213,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ClassOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    getRollCallDomains: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RollCallDomainsOut"];
+                };
+            };
+        };
+    };
+    setRollCallDomains: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RollCallDomainsIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RollCallDomainsOut"];
                 };
             };
             /** @description Validation Error */

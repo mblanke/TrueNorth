@@ -21,6 +21,7 @@ from ..tenancy import tenant_uuid
 from .models import Class, ClassStaff, RollCallEntry, RollCallStatus
 from .schemas import ClassRole
 
+LEAD_ROLES = (UserRole.instructor, UserRole.admin)
 EDITORS = (ClassRole.lead, ClassRole.admin)
 STAFF = (ClassRole.lead, ClassRole.assistant, ClassRole.observer, ClassRole.admin)
 
@@ -47,18 +48,33 @@ def staffed_by(db: Session, user: CurrentUser) -> Query:
     )
 
 
+def role_from(cls: Class, user: CurrentUser, staff: dict, on_roll_call: bool) -> ClassRole | None:
+    """The caller's part in ``cls`` from already-loaded facts (``staff``: user id -> role)."""
+    if str(cls.tenant_id) != str(user.tenant_id):
+        return None
+    uid = uuid.UUID(user.id)
+    # The lead counts as lead only while they still hold a lead's role (an instructor
+    # demoted to Student keeps no rights over the class). The caller's role is the
+    # database's, read on every request (get_current_user), and a disabled account
+    # never gets that far.
+    if cls.lead_instructor_id == uid and user.role in LEAD_ROLES:
+        return ClassRole.lead
+    if user.role == UserRole.admin:
+        return ClassRole.admin
+    if uid in staff and user.role != UserRole.student:
+        return ClassRole(staff[uid])
+    return ClassRole.student if on_roll_call else None
+
+
 def role_in(db: Session, cls: Class, user: CurrentUser) -> ClassRole | None:
     """The caller's part in ``cls``, or None when they have none (and may not see it)."""
     if str(cls.tenant_id) != str(user.tenant_id):
         return None
     uid = uuid.UUID(user.id)
-    if cls.lead_instructor_id == uid:
-        return ClassRole.lead
-    if user.role == UserRole.admin:
-        return ClassRole.admin
-    staff = db.query(ClassStaff).filter(ClassStaff.class_id == cls.id, ClassStaff.user_id == uid).first()
-    if staff is not None:
-        return ClassRole(staff.role)
+    staff = {
+        s.user_id: s.role
+        for s in db.query(ClassStaff).filter(ClassStaff.class_id == cls.id, ClassStaff.user_id == uid)
+    }
     on = (
         db.query(RollCallEntry.id)
         .filter(
@@ -68,7 +84,7 @@ def role_in(db: Session, cls: Class, user: CurrentUser) -> ClassRole | None:
         )
         .first()
     )
-    return ClassRole.student if on is not None else None
+    return role_from(cls, user, staff, on is not None)
 
 
 def get_visible(db: Session, class_id: uuid.UUID, user: CurrentUser) -> tuple[Class, ClassRole]:

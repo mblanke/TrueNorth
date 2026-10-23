@@ -6,9 +6,10 @@ Create Date: 2026-10-22 18:00:00.000000
 
 Classes 1 (ADR 0014 §1, §2, §5, §8; issue #278). ``classes`` (one running of a course,
 with its lead instructor and dates), ``class_staff`` (assistants and observers) and
-``class_roll_call`` (the Students on it, by lower-cased email). Additive.
+``class_roll_call`` (the Students on it, by lower-cased email) and
+``class_roll_call_settings`` (a tenant's allowed email domains). Additive.
 
-Downgrade drops the three tables.
+Downgrade drops the four tables.
 """
 
 from collections.abc import Sequence
@@ -77,9 +78,18 @@ def upgrade() -> None:
         )
         op.create_index("ix_class_roll_call_email", "class_roll_call", ["email"])
         op.create_index("ix_class_roll_call_user", "class_roll_call", ["user_id"])
+    if "class_roll_call_settings" not in existing:
+        op.create_table(
+            "class_roll_call_settings",
+            sa.Column("tenant_id", GUID(), sa.ForeignKey("tenants.id"), primary_key=True),
+            sa.Column("email_domains", sa.JSON(), nullable=False),
+            sa.Column("updated_by", GUID(), sa.ForeignKey("users.id"), nullable=True),
+            *_stamps(),
+        )
 
 
 def downgrade() -> None:
+    op.drop_table("class_roll_call_settings")
     op.drop_index("ix_class_roll_call_user", table_name="class_roll_call")
     op.drop_index("ix_class_roll_call_email", table_name="class_roll_call")
     op.drop_table("class_roll_call")

@@ -18,8 +18,8 @@ import logging
 import os
 import re
 import uuid
-from dataclasses import dataclass
-from datetime import UTC, datetime
+from dataclasses import dataclass, field
+from datetime import UTC, datetime, time
 
 from fastapi import HTTPException
 from sqlalchemy import func
@@ -28,8 +28,8 @@ from sqlalchemy.orm import Session
 from ..auth import CurrentUser
 from ..enrollment import ensure_enrollment
 from ..models import AuditLog, Course, User, UserRole
-from .models import Class, ClassStaff, RollCallEntry, RollCallStatus, StaffRole
-from .schemas import MAX_ROLL_CALL_BATCH, ClassIn, RollCallRefusal
+from .models import Class, ClassStaff, RollCallEntry, RollCallSettings, RollCallStatus, StaffRole
+from .schemas import MAX_ROLL_CALL_BATCH, ClassIn, RollCallRefusal, has_control_chars
 
 logger = logging.getLogger("truenorth.api.classes")
 
@@ -200,13 +200,53 @@ def audit(db: Session, actor_id: uuid.UUID | str | None, cls: Class, action: str
 # ── The roll call ──────────────────────────────────────────────────────────
 
 
-def _user_by_email(db: Session, email: str) -> User | None:
-    return db.query(User).filter(func.lower(User.email) == email, User.deleted_at.is_(None)).first()
+def accounts_with_email(db: Session, email: str) -> list[User]:
+    """Every account whose email equals ``email`` ignoring case, in any tenant, deleted and
+    deactivated ones included, oldest first: callers decide, never ``.first()`` at random."""
+    return db.query(User).filter(func.lower(User.email) == email).order_by(User.created_at, User.id).all()
 
 
 def is_pre_provisioned(u: User) -> bool:
     """A roster row (CSV import) that no directory identity has claimed yet."""
     return u.source == "csv_import"
+
+
+# Without a domain allow-list (an admin set it empty) any domain may be added, in smaller
+# batches. Onboarding emails are capped per instructor per day either way.
+UNRESTRICTED_BATCH = 50
+ONBOARDING_EMAILS_PER_DAY = 100
+
+
+def allowed_domains(db: Session, tenant_id: uuid.UUID) -> tuple[list[str], str]:
+    """(domains, source). An admin's setting if there is one; otherwise the domains of the
+    tenant's active accounts. An empty list means any domain."""
+    row = db.get(RollCallSettings, tenant_id)
+    if row is not None:
+        return sorted(row.email_domains or []), "setting"
+    emails = (
+        db.query(User.email)
+        .filter(User.tenant_id == tenant_id, User.is_active == True, User.deleted_at.is_(None))  # noqa: E712
+        .all()
+    )
+    return sorted({e.rsplit("@", 1)[1].lower() for (e,) in emails if e and "@" in e}), "accounts"
+
+
+def _account_refusal(rows: list[User], cls: Class) -> tuple[User | None, str | None]:
+    """The account an email belongs to in the class's tenant, or why it may not be added."""
+    if any(u.tenant_id != cls.tenant_id for u in rows):
+        return None, "has a TrueNorth account outside this organisation; an administrator must resolve it"
+    if len(rows) > 1:
+        return None, "several accounts share this address in different letter case; an administrator must resolve it"
+    if not rows:
+        return None, None
+    u = rows[0]
+    if u.deleted_at is not None:
+        return None, "belongs to a deleted account"
+    if not u.is_active:
+        return None, "belongs to a deactivated account"
+    if u.role != UserRole.student:
+        return None, f"belongs to a {u.role.value} account; a roll call holds Students only"
+    return u, None
 
 
 @dataclass
@@ -215,25 +255,28 @@ class AddResult:
     already: list[str]
     refused: list[RollCallRefusal]
     to_onboard: list[RollCallEntry]
+    not_emailed: list[RollCallRefusal] = field(default_factory=list)
 
 
 def add_to_roll_call(db: Session, cls: Class, actor: CurrentUser, emails: list[str]) -> AddResult:
     """Add ``emails`` (already normalised) to the roll call. Does not commit."""
-    if len(emails) > MAX_ROLL_CALL_BATCH:
-        raise HTTPException(422, f"At most {MAX_ROLL_CALL_BATCH} emails at a time")
+    domains, _ = allowed_domains(db, cls.tenant_id)
+    cap = MAX_ROLL_CALL_BATCH if domains else UNRESTRICTED_BATCH
+    if len(emails) > cap:
+        raise HTTPException(422, f"At most {cap} emails at a time")
     res = AddResult(added=[], already=[], refused=[], to_onboard=[])
     for email in emails:
         entry = db.query(RollCallEntry).filter(RollCallEntry.class_id == cls.id, RollCallEntry.email == email).first()
         if entry is not None and entry.status != RollCallStatus.removed.value:
             res.already.append(email)
             continue
-        account = _user_by_email(db, email)
-        here = account is not None and account.tenant_id == cls.tenant_id
-        if here and account.role != UserRole.student:
-            res.refused.append(RollCallRefusal(email=email, reason=f"belongs to a {account.role.value} account; a roll call holds Students only"))
+        domain = email.rsplit("@", 1)[1]
+        if domains and domain not in domains:
+            res.refused.append(RollCallRefusal(email=email, reason=f"{domain} is not an email domain this organisation's roll calls accept"))
             continue
-        if here and not account.is_active:
-            res.refused.append(RollCallRefusal(email=email, reason="belongs to a deactivated account"))
+        account, refusal = _account_refusal(accounts_with_email(db, email), cls)
+        if refusal:
+            res.refused.append(RollCallRefusal(email=email, reason=refusal))
             continue
         if entry is None:
             entry = RollCallEntry(class_id=cls.id, tenant_id=cls.tenant_id, email=email)
@@ -243,7 +286,7 @@ def add_to_roll_call(db: Session, cls: Class, actor: CurrentUser, emails: list[s
         entry.user_id = None
         entry.signed_in_at = None
         entry.status = RollCallStatus.invited.value
-        if here:
+        if account is not None:
             entry.user_id = account.id
             ensure_enrollment(db, user_id=account.id, course_id=cls.course_id, tenant_id=cls.tenant_id)
             if not is_pre_provisioned(account):
@@ -252,10 +295,28 @@ def add_to_roll_call(db: Session, cls: Class, actor: CurrentUser, emails: list[s
         if entry.status == RollCallStatus.invited.value and entry.onboarding_sent_at is None:
             res.to_onboard.append(entry)
         res.added.append(entry)
+    budget = max(0, ONBOARDING_EMAILS_PER_DAY - onboarding_sent_today(db, actor))
+    for entry in res.to_onboard[budget:]:
+        res.not_emailed.append(RollCallRefusal(
+            email=entry.email,
+            reason=f"daily limit of {ONBOARDING_EMAILS_PER_DAY} onboarding emails reached; they get the day-before reminder",
+        ))
+    res.to_onboard = res.to_onboard[:budget]
     db.flush()
     if res.added:
         audit(db, actor.id, cls, "roll_call_add", f"added {len(res.added)}: {', '.join(e.email for e in res.added)}"[:2000])
     return res
+
+
+def onboarding_sent_today(db: Session, actor: CurrentUser) -> int:
+    """Onboarding emails sent today (UTC) for entries this person added, in any class."""
+    start = datetime.combine(_now().date(), time.min, tzinfo=UTC)
+    return (
+        db.query(func.count(RollCallEntry.id))
+        .filter(RollCallEntry.added_by == uuid.UUID(actor.id), RollCallEntry.onboarding_sent_at >= start)
+        .scalar()
+        or 0
+    )
 
 
 def remove_from_roll_call(db: Session, cls: Class, entry: RollCallEntry, actor: CurrentUser) -> None:
@@ -329,10 +390,16 @@ def _how_to_join() -> str:
     )
 
 
+def _subject_safe(value: str) -> str:
+    """No header injection: control characters (CR, LF...) become spaces, whatever the
+    schema let through before it refused them."""
+    return " ".join("".join(" " if has_control_chars(ch) else ch for ch in value).split())[:150]
+
+
 def onboarding_mail(cls: Class, course_name: str, email: str) -> Mail:
     return Mail(
         to=email,
-        subject=f"You are on the roll call for {cls.name}",
+        subject=f"You are on the roll call for {_subject_safe(cls.name)}",
         body=(
             f"You have been added to the class {cls.name} ({course_name}), {_dates(cls)}.\n\n"
             + _how_to_join()
@@ -343,7 +410,7 @@ def onboarding_mail(cls: Class, course_name: str, email: str) -> Mail:
 def reminder_mail(cls: Class, course_name: str, email: str) -> Mail:
     return Mail(
         to=email,
-        subject=f"Reminder: {cls.name} starts tomorrow",
+        subject=f"Reminder: {_subject_safe(cls.name)} starts tomorrow",
         body=(
             f"Your class {cls.name} ({course_name}) starts tomorrow, {cls.start_date:%A %d %B %Y}.\n\n"
             "You have not signed in to TrueNorth Range yet. " + _how_to_join()
