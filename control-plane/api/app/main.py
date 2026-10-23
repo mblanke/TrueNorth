@@ -146,6 +146,10 @@ async def lifespan(app: FastAPI):
     range_resend = asyncio.create_task(redispatch_loop(SessionLocal, interval)) if interval > 0 else None
     # Moves bookings along as time passes (docs/adr/0004-scheduler-module.md).
     clock_task = asyncio.create_task(scheduler_clock.run_forever()) if _env_flag("SCHEDULER_CLOCK_ENABLED") else None
+    # The day-before reminder to roll-call Students not yet signed in (ADR 0014 §2).
+    from .classes import clock as class_clock
+
+    class_reminders = asyncio.create_task(class_clock.run_forever()) if _env_flag("SCHEDULER_CLOCK_ENABLED") else None
 
     # WebSocket heartbeat (no Redis): drops dead sockets and closes those whose token has
     # expired (app/ws_auth.py). Nothing started it before, so a socket outlived its user.
@@ -154,8 +158,8 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    for sweep in (range_resend, lab_sweep, exercise_clock, clock_task, results_pull, cmi5_ags, infra_discovery_task,
-                  cert_retention):
+    for sweep in (range_resend, lab_sweep, exercise_clock, clock_task, class_reminders, results_pull, cmi5_ags,
+                  infra_discovery_task, cert_retention):
         if sweep is not None:
             sweep.cancel()
 
@@ -332,6 +336,7 @@ app.state.ws_manager = ws_manager
 
 # -- Routers (fine-grained RBAC via require_permission) --------------------
 from .class_setup.router import router as class_setup_router  # noqa: E402 (#200)
+from .classes.router import router as classes_router  # noqa: E402 (ADR 0014, + its tables)
 from .cmi5.router import router as cmi5_router  # noqa: E402 (also registers the cmi5 tables)
 from .golden_image_builds.router import router as golden_image_builds_router  # noqa: E402 (ADR 0013; + its table)
 from .live_class.router import router as live_class_router  # noqa: E402 (issue #199)
@@ -430,6 +435,7 @@ app.include_router(courses_router)
 app.include_router(course_releases_router)
 app.include_router(course_publications_router)
 app.include_router(class_setup_router)  # an instructor's own class (#200)
+app.include_router(classes_router)  # app/classes: Class records and roll call (ADR 0014)
 app.include_router(cmi5_router)  # app/cmi5 (docs/cmi5.md)
 app.include_router(lab_sessions_router)
 app.include_router(learning_paths_router)

@@ -29,6 +29,7 @@ export type Permission =
   | 'enrollment:manage_own' | 'team:manage_own'
   | 'course:author' | 'course:release'
   | 'schedule:read' | 'schedule:write' | 'schedule:admin'
+  | 'class:create' | 'class:read'
   | 'tenant:create' | 'tenant:read' | 'tenant:update'
   | 'audit:read' | 'telemetry:read' | 'telemetry:write' | 'stats:read' | 'aar:generate' | 'aar:read'
   | 'noise:read' | 'noise:control'
@@ -54,6 +55,7 @@ export const ALL_PERMISSIONS: readonly Permission[] = [
   'enrollment:manage_own', 'team:manage_own',
   'course:author', 'course:release',
   'schedule:read', 'schedule:write', 'schedule:admin',
+  'class:create', 'class:read',
   'tenant:create', 'tenant:read', 'tenant:update',
   'audit:read', 'telemetry:read', 'telemetry:write', 'stats:read', 'aar:generate', 'aar:read',
   'noise:read', 'noise:control',
@@ -72,6 +74,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     'exercise:create', 'exercise:read', 'exercise:start', 'exercise:complete', 'exercise:pause',
     'detection:submit', 'objective:ack',
     'schedule:read', 'schedule:write',
+    'class:create', 'class:read',
     'user:read',
     'registration:read', 'registration:approve',
     'infra:read', 'ai_config:read', 'integration:read',
@@ -97,7 +100,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
   ],
   observer: [
     'range:read', 'template:read', 'scenario:read', 'exercise:read', 'aar:read',
-    'schedule:read', 'telemetry:read', 'wiki:read',
+    'schedule:read', 'class:read', 'telemetry:read', 'wiki:read',
   ],
 };
 // mirror:end
@@ -163,6 +166,8 @@ export const PAGE_ACCESS = {
   scoring: { all: ['aar:read'] },
   telemetry: { all: ['telemetry:read'] },
   schedule: { all: ['schedule:read'] },
+  /** GET /classes/mine: the staff Classes page (ADR 0014). Creating one needs class:create. */
+  classes: { all: ['class:read'] },
   /** GET /maintenance-windows (schedule:read); changing them needs range:admin (admins). */
   maintenanceWindows: { all: ['schedule:read', 'range:admin'] },
   approvals: { all: ['registration:read'] },

@@ -675,6 +675,10 @@ export interface paths {
         /**
          * Auth Me
          * @description Identity state for the current token. Always 200 while the token is valid.
+         *
+         *     An identity with no account whose verified AD email is on a class's roll call is
+         *     admitted here, on its first sign-in, and answers ``registered`` (ADR 0014 §1;
+         *     ``app/classes/onboarding.py`` holds the rules).
          */
         get: operations["auth_me_auth_me_get"];
         put?: never;
@@ -729,6 +733,143 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/classes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Classes the caller may see
+         * @description Admins: every class of their tenant. Anyone else: the classes they lead, assist or
+         *     observe, or are on the roll call of.
+         */
+        get: operations["listClasses"];
+        put?: never;
+        /**
+         * Create a class
+         * @description In the caller's own tenant, always. An instructor leads it unless they name another
+         *     instructor of the tenant.  **class:create**
+         */
+        post: operations["createClass"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/classes/mine": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Classes the caller staffs
+         * @description The caller's own classes as lead, assistant instructor or observer.  **class:read**
+         */
+        get: operations["listMyClasses"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/classes/{class_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One class */
+        get: operations["getClass"];
+        /**
+         * Change a class
+         * @description Its lead or an admin. Naming another lead hands the class over.
+         */
+        put: operations["updateClass"];
+        post?: never;
+        /**
+         * Cancel a class
+         * @description Its lead or an admin. A class is history (who was invited, who joined), so it is
+         *     cancelled, not deleted (ADR 0010); it leaves the lists and no longer admits anyone.
+         */
+        delete: operations["cancelClass"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/classes/{class_id}/roll-call": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A class's roll call
+         * @description Its lead, assistants, observers and admins. Not the Students on it.
+         */
+        get: operations["getClassRollCall"];
+        put?: never;
+        /**
+         * Add Students to a roll call by email or pasted list
+         * @description Its lead or an admin. A Student with no account yet is emailed to onboard.
+         */
+        post: operations["addToClassRollCall"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/classes/{class_id}/roll-call/csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add Students to a roll call from a CSV
+         * @description Its lead or an admin. An ``email`` column if the CSV has a header with one;
+         *     otherwise every cell that is an email address.
+         */
+        post: operations["importClassRollCallCsv"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/classes/{class_id}/roll-call/{entry_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Take a Student off a roll call
+         * @description Its lead or an admin. The entry is kept, marked removed; account and enrolment stay.
+         */
+        delete: operations["removeFromClassRollCall"];
         options?: never;
         head?: never;
         patch?: never;
@@ -9214,6 +9355,11 @@ export interface components {
             /** Task Id */
             task_id: string;
         };
+        /** Body_importClassRollCallCsv */
+        Body_importClassRollCallCsv: {
+            /** File */
+            file: string;
+        };
         /** Body_import_catalogue_golden_images_import_catalogue_post */
         Body_import_catalogue_golden_images_import_catalogue_post: {
             /** File */
@@ -9709,6 +9855,38 @@ export interface components {
             /** Verdict */
             verdict: string;
         };
+        /** ClassIn */
+        ClassIn: {
+            /** Assistant Ids */
+            assistant_ids?: string[];
+            /**
+             * Course Id
+             * Format: uuid
+             */
+            course_id: string;
+            /**
+             * End Date
+             * Format: date
+             */
+            end_date: string;
+            /**
+             * Lead Instructor Id
+             * @description An instructor or admin of the tenant. Default: the caller (an instructor)
+             */
+            lead_instructor_id?: string | null;
+            /**
+             * Name
+             * @description Name or serial, e.g. C201-26-03
+             */
+            name: string;
+            /** Observer Ids */
+            observer_ids?: string[];
+            /**
+             * Start Date
+             * Format: date
+             */
+            start_date: string;
+        };
         /** ClassItemOut */
         ClassItemOut: {
             /**
@@ -9798,6 +9976,70 @@ export interface components {
              */
             state: "credited" | "pending" | "missed" | "not_attempted";
         };
+        /** ClassOut */
+        ClassOut: {
+            /** Assistants */
+            assistants: components["schemas"]["ClassPerson"][];
+            /**
+             * Can Edit
+             * @description The caller is its lead or an admin: may change it and its roll call
+             */
+            can_edit: boolean;
+            /**
+             * Course Id
+             * Format: uuid
+             */
+            course_id: string;
+            /** Course Name */
+            course_name: string;
+            /** Created At */
+            created_at?: string | null;
+            /**
+             * End Date
+             * Format: date
+             */
+            end_date: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            lead_instructor: components["schemas"]["ClassPerson"] | null;
+            /** @description None once the caller has handed the class over */
+            my_role: components["schemas"]["ClassRole"] | null;
+            /** Name */
+            name: string;
+            /** Observers */
+            observers: components["schemas"]["ClassPerson"][];
+            /**
+             * Roll Call Count
+             * @description Entries not removed
+             */
+            roll_call_count: number;
+            /**
+             * Start Date
+             * Format: date
+             */
+            start_date: string;
+            status: components["schemas"]["ClassStatusOut"];
+            /**
+             * Tenant Id
+             * Format: uuid
+             */
+            tenant_id: string;
+        };
+        /** ClassPerson */
+        ClassPerson: {
+            /** Display Name */
+            display_name: string;
+            /** Email */
+            email: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+        };
         /**
          * ClassRangeOut
          * @description The exercise's own range: a fault here is the exercise's, not any Student's.
@@ -9815,6 +10057,17 @@ export interface components {
             /** State */
             state: string;
         };
+        /**
+         * ClassRole
+         * @description The caller's part in a class, as the API decides it.
+         * @enum {string}
+         */
+        ClassRole: "lead" | "assistant" | "observer" | "admin" | "student";
+        /**
+         * ClassStatusOut
+         * @enum {string}
+         */
+        ClassStatusOut: "open" | "cancelled";
         /** ClassStudentOut */
         ClassStudentOut: {
             /**
@@ -14957,6 +15210,71 @@ export interface components {
             /** Vcpu */
             vcpu: number;
         };
+        /**
+         * RollCallAddIn
+         * @description Emails to add, as a list, as pasted text (any mix of commas, semicolons, spaces and
+         *     new lines; "Name <email>" works), or both.
+         */
+        RollCallAddIn: {
+            /** Emails */
+            emails?: string[];
+            /**
+             * Text
+             * @default
+             */
+            text?: string;
+        };
+        /** RollCallAddOut */
+        RollCallAddOut: {
+            /** Added */
+            added: components["schemas"]["RollCallEntryOut"][];
+            /** Already On Roll Call */
+            already_on_roll_call: string[];
+            /**
+             * Invalid
+             * @description Pieces of the input that are not an email address
+             */
+            invalid: string[];
+            /** Refused */
+            refused: components["schemas"]["RollCallRefusal"][];
+        };
+        /** RollCallEntryOut */
+        RollCallEntryOut: {
+            /** Created At */
+            created_at?: string | null;
+            /** Display Name */
+            display_name: string | null;
+            /** Email */
+            email: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Onboarding Sent At */
+            onboarding_sent_at: string | null;
+            /** Reminded At */
+            reminded_at: string | null;
+            /** Removed At */
+            removed_at: string | null;
+            /** Signed In At */
+            signed_in_at: string | null;
+            status: components["schemas"]["RollCallStatusOut"];
+            /** User Id */
+            user_id: string | null;
+        };
+        /** RollCallRefusal */
+        RollCallRefusal: {
+            /** Email */
+            email: string;
+            /** Reason */
+            reason: string;
+        };
+        /**
+         * RollCallStatusOut
+         * @enum {string}
+         */
+        RollCallStatusOut: "invited" | "signed_in" | "ready" | "removed";
         /** RosterIn */
         RosterIn: {
             /**
@@ -18758,6 +19076,329 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MyClassesOut"];
+                };
+            };
+        };
+    };
+    listClasses: {
+        parameters: {
+            query?: {
+                include_cancelled?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClassOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    createClass: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClassIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClassOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    listMyClasses: {
+        parameters: {
+            query?: {
+                include_cancelled?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClassOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    getClass: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                class_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClassOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    updateClass: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                class_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClassIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClassOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancelClass: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                class_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    getClassRollCall: {
+        parameters: {
+            query?: {
+                include_removed?: boolean;
+            };
+            header?: never;
+            path: {
+                class_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RollCallEntryOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    addToClassRollCall: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                class_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RollCallAddIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RollCallAddOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    importClassRollCallCsv: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                class_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_importClassRollCallCsv"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RollCallAddOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    removeFromClassRollCall: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                class_id: string;
+                entry_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

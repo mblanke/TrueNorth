@@ -95,7 +95,10 @@ def instructor_email(db: Session, instructor_id: uuid.UUID | None) -> str | None
 
 def recipients(db: Session, evt: ScheduledEvent) -> list[tuple[str, bool]]:
     """(email, attending) for everyone a booking concerns: its Instructor, and the active
-    Students of its course. Each gets only their own invite, never the others' names."""
+    Students of its course. Each gets only their own invite, never the others' names.
+
+    TODO(#281): for a booking linked to a class, the attendees are its roll call
+    (``app.classes.service.class_roll_call_emails``), not the course's Students (ADR 0014)."""
     out: list[tuple[str, bool]] = []
     teacher = instructor_email(db, evt.instructor_id)
     if teacher:

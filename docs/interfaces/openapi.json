@@ -1534,6 +1534,20 @@
         "title": "BatchProvisionOut",
         "type": "object"
       },
+      "Body_importClassRollCallCsv": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_importClassRollCallCsv",
+        "type": "object"
+      },
       "Body_import_catalogue_golden_images_import_catalogue_post": {
         "properties": {
           "file": {
@@ -2635,6 +2649,71 @@
         "title": "ClassAttemptOut",
         "type": "object"
       },
+      "ClassIn": {
+        "properties": {
+          "assistant_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 50,
+            "title": "Assistant Ids",
+            "type": "array"
+          },
+          "course_id": {
+            "format": "uuid",
+            "title": "Course Id",
+            "type": "string"
+          },
+          "end_date": {
+            "format": "date",
+            "title": "End Date",
+            "type": "string"
+          },
+          "lead_instructor_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "An instructor or admin of the tenant. Default: the caller (an instructor)",
+            "title": "Lead Instructor Id"
+          },
+          "name": {
+            "description": "Name or serial, e.g. C201-26-03",
+            "maxLength": 120,
+            "minLength": 2,
+            "title": "Name",
+            "type": "string"
+          },
+          "observer_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 50,
+            "title": "Observer Ids",
+            "type": "array"
+          },
+          "start_date": {
+            "format": "date",
+            "title": "Start Date",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "course_id",
+          "start_date",
+          "end_date"
+        ],
+        "title": "ClassIn",
+        "type": "object"
+      },
       "ClassItemOut": {
         "properties": {
           "id": {
@@ -2813,6 +2892,145 @@
         "title": "ClassObjectiveStateOut",
         "type": "object"
       },
+      "ClassOut": {
+        "properties": {
+          "assistants": {
+            "items": {
+              "$ref": "#/components/schemas/ClassPerson"
+            },
+            "title": "Assistants",
+            "type": "array"
+          },
+          "can_edit": {
+            "description": "The caller is its lead or an admin: may change it and its roll call",
+            "title": "Can Edit",
+            "type": "boolean"
+          },
+          "course_id": {
+            "format": "uuid",
+            "title": "Course Id",
+            "type": "string"
+          },
+          "course_name": {
+            "title": "Course Name",
+            "type": "string"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "end_date": {
+            "format": "date",
+            "title": "End Date",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "lead_instructor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ClassPerson"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "my_role": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ClassRole"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "None once the caller has handed the class over"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "observers": {
+            "items": {
+              "$ref": "#/components/schemas/ClassPerson"
+            },
+            "title": "Observers",
+            "type": "array"
+          },
+          "roll_call_count": {
+            "description": "Entries not removed",
+            "title": "Roll Call Count",
+            "type": "integer"
+          },
+          "start_date": {
+            "format": "date",
+            "title": "Start Date",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ClassStatusOut"
+          },
+          "tenant_id": {
+            "format": "uuid",
+            "title": "Tenant Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "tenant_id",
+          "name",
+          "course_id",
+          "course_name",
+          "start_date",
+          "end_date",
+          "status",
+          "lead_instructor",
+          "assistants",
+          "observers",
+          "my_role",
+          "can_edit",
+          "roll_call_count"
+        ],
+        "title": "ClassOut",
+        "type": "object"
+      },
+      "ClassPerson": {
+        "properties": {
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "display_name",
+          "email"
+        ],
+        "title": "ClassPerson",
+        "type": "object"
+      },
       "ClassRangeOut": {
         "description": "The exercise's own range: a fault here is the exercise's, not any Student's.",
         "properties": {
@@ -2848,6 +3066,26 @@
         ],
         "title": "ClassRangeOut",
         "type": "object"
+      },
+      "ClassRole": {
+        "description": "The caller's part in a class, as the API decides it.",
+        "enum": [
+          "lead",
+          "assistant",
+          "observer",
+          "admin",
+          "student"
+        ],
+        "title": "ClassRole",
+        "type": "string"
+      },
+      "ClassStatusOut": {
+        "enum": [
+          "open",
+          "cancelled"
+        ],
+        "title": "ClassStatusOut",
+        "type": "string"
       },
       "ClassStudentOut": {
         "properties": {
@@ -15339,6 +15577,208 @@
         "title": "RoleSpecsOut",
         "type": "object"
       },
+      "RollCallAddIn": {
+        "description": "Emails to add, as a list, as pasted text (any mix of commas, semicolons, spaces and\nnew lines; \"Name <email>\" works), or both.",
+        "properties": {
+          "emails": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 500,
+            "title": "Emails",
+            "type": "array"
+          },
+          "text": {
+            "default": "",
+            "maxLength": 200000,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "title": "RollCallAddIn",
+        "type": "object"
+      },
+      "RollCallAddOut": {
+        "properties": {
+          "added": {
+            "items": {
+              "$ref": "#/components/schemas/RollCallEntryOut"
+            },
+            "title": "Added",
+            "type": "array"
+          },
+          "already_on_roll_call": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Already On Roll Call",
+            "type": "array"
+          },
+          "invalid": {
+            "description": "Pieces of the input that are not an email address",
+            "items": {
+              "type": "string"
+            },
+            "title": "Invalid",
+            "type": "array"
+          },
+          "refused": {
+            "items": {
+              "$ref": "#/components/schemas/RollCallRefusal"
+            },
+            "title": "Refused",
+            "type": "array"
+          }
+        },
+        "required": [
+          "added",
+          "already_on_roll_call",
+          "invalid",
+          "refused"
+        ],
+        "title": "RollCallAddOut",
+        "type": "object"
+      },
+      "RollCallEntryOut": {
+        "properties": {
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "onboarding_sent_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Onboarding Sent At"
+          },
+          "reminded_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reminded At"
+          },
+          "removed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Removed At"
+          },
+          "signed_in_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Signed In At"
+          },
+          "status": {
+            "$ref": "#/components/schemas/RollCallStatusOut"
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Id"
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "user_id",
+          "display_name",
+          "status",
+          "onboarding_sent_at",
+          "reminded_at",
+          "signed_in_at",
+          "removed_at"
+        ],
+        "title": "RollCallEntryOut",
+        "type": "object"
+      },
+      "RollCallRefusal": {
+        "properties": {
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email",
+          "reason"
+        ],
+        "title": "RollCallRefusal",
+        "type": "object"
+      },
+      "RollCallStatusOut": {
+        "enum": [
+          "invited",
+          "signed_in",
+          "ready",
+          "removed"
+        ],
+        "title": "RollCallStatusOut",
+        "type": "string"
+      },
       "RosterIn": {
         "properties": {
           "count": {
@@ -23068,7 +23508,7 @@
     },
     "/auth/me": {
       "get": {
-        "description": "Identity state for the current token. Always 200 while the token is valid.",
+        "description": "Identity state for the current token. Always 200 while the token is valid.\n\nAn identity with no account whose verified AD email is on a class's roll call is\nadmitted here, on its first sign-in, and answers ``registered`` (ADR 0014 \u00a71;\n``app/classes/onboarding.py`` holds the rules).",
         "operationId": "auth_me_auth_me_get",
         "responses": {
           "200": {
@@ -23227,6 +23667,533 @@
         "summary": "My Classes",
         "tags": [
           "class-setup"
+        ]
+      }
+    },
+    "/classes": {
+      "get": {
+        "description": "Admins: every class of their tenant. Anyone else: the classes they lead, assist or\nobserve, or are on the roll call of.",
+        "operationId": "listClasses",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "include_cancelled",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Cancelled",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ClassOut"
+                  },
+                  "title": "Response Listclasses",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Classes the caller may see",
+        "tags": [
+          "classes"
+        ]
+      },
+      "post": {
+        "description": "In the caller's own tenant, always. An instructor leads it unless they name another\ninstructor of the tenant.  **class:create**",
+        "operationId": "createClass",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClassIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClassOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create a class",
+        "tags": [
+          "classes"
+        ]
+      }
+    },
+    "/classes/mine": {
+      "get": {
+        "description": "The caller's own classes as lead, assistant instructor or observer.  **class:read**",
+        "operationId": "listMyClasses",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "include_cancelled",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Cancelled",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ClassOut"
+                  },
+                  "title": "Response Listmyclasses",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Classes the caller staffs",
+        "tags": [
+          "classes"
+        ]
+      }
+    },
+    "/classes/{class_id}": {
+      "delete": {
+        "description": "Its lead or an admin. A class is history (who was invited, who joined), so it is\ncancelled, not deleted (ADR 0010); it leaves the lists and no longer admits anyone.",
+        "operationId": "cancelClass",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "class_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Class Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Cancel a class",
+        "tags": [
+          "classes"
+        ]
+      },
+      "get": {
+        "operationId": "getClass",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "class_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Class Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClassOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "One class",
+        "tags": [
+          "classes"
+        ]
+      },
+      "put": {
+        "description": "Its lead or an admin. Naming another lead hands the class over.",
+        "operationId": "updateClass",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "class_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Class Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClassIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClassOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Change a class",
+        "tags": [
+          "classes"
+        ]
+      }
+    },
+    "/classes/{class_id}/roll-call": {
+      "get": {
+        "description": "Its lead, assistants, observers and admins. Not the Students on it.",
+        "operationId": "getClassRollCall",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "class_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Class Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_removed",
+            "required": false,
+            "schema": {
+              "default": true,
+              "title": "Include Removed",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RollCallEntryOut"
+                  },
+                  "title": "Response Getclassrollcall",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "A class's roll call",
+        "tags": [
+          "classes"
+        ]
+      },
+      "post": {
+        "description": "Its lead or an admin. A Student with no account yet is emailed to onboard.",
+        "operationId": "addToClassRollCall",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "class_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Class Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RollCallAddIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RollCallAddOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Add Students to a roll call by email or pasted list",
+        "tags": [
+          "classes"
+        ]
+      }
+    },
+    "/classes/{class_id}/roll-call/csv": {
+      "post": {
+        "description": "Its lead or an admin. An ``email`` column if the CSV has a header with one;\notherwise every cell that is an email address.",
+        "operationId": "importClassRollCallCsv",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "class_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Class Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_importClassRollCallCsv"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RollCallAddOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Add Students to a roll call from a CSV",
+        "tags": [
+          "classes"
+        ]
+      }
+    },
+    "/classes/{class_id}/roll-call/{entry_id}": {
+      "delete": {
+        "description": "Its lead or an admin. The entry is kept, marked removed; account and enrolment stay.",
+        "operationId": "removeFromClassRollCall",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "class_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Class Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "entry_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Entry Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Take a Student off a roll call",
+        "tags": [
+          "classes"
         ]
       }
     },

@@ -118,11 +118,20 @@ def _suggestions(db: Session, groups: list[str]) -> RegistrationSuggestions:
 
 @router.get("/auth/me", response_model=AuthMeOut)
 def auth_me(
+    request: Request,
     identity: TokenPayload = Depends(get_token_identity),
     db: Session = Depends(get_db),
 ) -> AuthMeOut:
-    """Identity state for the current token. Always 200 while the token is valid."""
+    """Identity state for the current token. Always 200 while the token is valid.
+
+    An identity with no account whose verified AD email is on a class's roll call is
+    admitted here, on its first sign-in, and answers ``registered`` (ADR 0014 §1;
+    ``app/classes/onboarding.py`` holds the rules)."""
     user = db.query(User).filter(User.keycloak_id == identity.sub).first()
+    if user is None:
+        from ..classes.onboarding import admit_from_roll_call
+
+        user = admit_from_roll_call(db, identity, client_ip(request))
     if user is not None:
         # MFA state: so the SPA can step up before a route refuses it. mfa_satisfied is
         # "this request would pass the MFA rule" (app/mfa_policy.py), exemptions included.
