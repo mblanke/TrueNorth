@@ -136,6 +136,12 @@ class Permission(str, Enum):
     CONTENT_REVIEW_READ = "content_review:read"
     CONTENT_REVIEW_OWN = "content_review:review_own"
     CONTENT_REVIEW_ADMIN = "content_review:admin"
+    # Classes and their roll call (ADR 0014). CLASS_CREATE: create a class in your own
+    # tenant, as its lead. CLASS_READ: the staff Classes page. What you then see and change
+    # is decided per class (app/classes/access.py): its lead (or an admin) changes it, its
+    # assistants and observers read it; a Student sees only a class they are on.
+    CLASS_CREATE = "class:create"
+    CLASS_READ = "class:read"
 
     # Tenant management
     TENANT_CREATE = "tenant:create"
@@ -205,6 +211,9 @@ ROLE_PERMISSIONS: dict[UserRole, set[Permission]] = {
         # The content clock: read all, review what they own (ADR 0014 assumptions).
         Permission.CONTENT_REVIEW_READ,
         Permission.CONTENT_REVIEW_OWN,
+        # Classes: the lead of their own classes; assistant or observer on others'.
+        Permission.CLASS_CREATE,
+        Permission.CLASS_READ,
         # Users
         Permission.USER_READ,
         # Trainee intake: instructors drain the approval queue for their cohort.
@@ -293,6 +302,7 @@ ROLE_PERMISSIONS: dict[UserRole, set[Permission]] = {
         Permission.EXERCISE_READ,
         Permission.AAR_READ,
         Permission.SCHEDULE_READ,
+        Permission.CLASS_READ,
         Permission.TELEMETRY_READ,
         Permission.WIKI_READ,
     },

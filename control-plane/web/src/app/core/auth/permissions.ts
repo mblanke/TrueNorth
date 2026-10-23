@@ -30,6 +30,7 @@ export type Permission =
   | 'course:author' | 'course:release'
   | 'schedule:read' | 'schedule:write' | 'schedule:admin'
   | 'content_review:read' | 'content_review:review_own' | 'content_review:admin'
+  | 'class:create' | 'class:read'
   | 'tenant:create' | 'tenant:read' | 'tenant:update'
   | 'audit:read' | 'telemetry:read' | 'telemetry:write' | 'stats:read' | 'aar:generate' | 'aar:read'
   | 'noise:read' | 'noise:control'
@@ -56,6 +57,7 @@ export const ALL_PERMISSIONS: readonly Permission[] = [
   'course:author', 'course:release',
   'schedule:read', 'schedule:write', 'schedule:admin',
   'content_review:read', 'content_review:review_own', 'content_review:admin',
+  'class:create', 'class:read',
   'tenant:create', 'tenant:read', 'tenant:update',
   'audit:read', 'telemetry:read', 'telemetry:write', 'stats:read', 'aar:generate', 'aar:read',
   'noise:read', 'noise:control',
@@ -75,6 +77,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     'detection:submit', 'objective:ack',
     'schedule:read', 'schedule:write',
     'content_review:read', 'content_review:review_own',
+    'class:create', 'class:read',
     'user:read',
     'registration:read', 'registration:approve',
     'infra:read', 'ai_config:read', 'integration:read',
@@ -100,7 +103,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
   ],
   observer: [
     'range:read', 'template:read', 'scenario:read', 'exercise:read', 'aar:read',
-    'schedule:read', 'telemetry:read', 'wiki:read',
+    'schedule:read', 'class:read', 'telemetry:read', 'wiki:read',
   ],
 };
 // mirror:end
@@ -168,6 +171,8 @@ export const PAGE_ACCESS = {
   schedule: { all: ['schedule:read'] },
   /** The calendar's Content view: the content clock (ADR 0014 §22-24). Never observers or Students. */
   contentCalendar: { all: ['content_review:read'] },
+  /** GET /classes/mine: the staff Classes page (ADR 0014). Creating one needs class:create. */
+  classes: { all: ['class:read'] },
   /** GET /maintenance-windows (schedule:read); changing them needs range:admin (admins). */
   maintenanceWindows: { all: ['schedule:read', 'range:admin'] },
   approvals: { all: ['registration:read'] },

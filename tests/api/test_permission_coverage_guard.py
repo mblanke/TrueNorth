@@ -60,6 +60,8 @@ SIGN_IN_ONLY: dict[str, str] = {
     "POST /onboarding/skip": "own: the caller's onboarding state",
     "POST /onboarding/complete": "own: the caller's onboarding state",
     "GET /schedule/mine": "own: the caller's own bookings (ADR 0004)",
+    "GET /classes": "in-body: app/classes/access.visible: classes the caller staffs or is on the roll call of (ADR 0014)",
+    "GET /classes/{class_id}": "in-body: app/classes/access.get_visible: 404 unless staff, on its roll call, or admin",
     "GET /courses/enrollments/mine": "own: the caller's own course enrolments (filtered on user_id)",
     "GET /schedule/feed-token": "own: the caller's calendar-feed token",
     "POST /schedule/feed-token": "own: rotates the caller's calendar-feed token",

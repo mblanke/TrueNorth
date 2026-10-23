@@ -20,7 +20,7 @@ import pytest
 import sqlalchemy as sa
 
 API = Path(__file__).resolve().parents[2] / "control-plane" / "api"
-PARENT, REVISION = "b62353ae80af", "c1465c4964a6"
+PARENT, REVISION = "6a5f8e732b95", "c1465c4964a6"
 TABLES = {"content_review_items", "content_review_edges", "content_review_themes", "content_review_cycles",
           "content_review_settings"}
 

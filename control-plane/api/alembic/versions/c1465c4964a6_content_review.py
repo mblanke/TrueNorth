@@ -1,7 +1,7 @@
 """content clock: review state, dependency edges, theme tags and review cycles
 
 Revision ID: c1465c4964a6
-Revises: b62353ae80af
+Revises: 6a5f8e732b95
 Create Date: 2026-10-22 18:00:00.000000
 
 ADR 0014 decisions 22-24, issue #286 (``app/content_review``):
@@ -28,7 +28,7 @@ from alembic import op
 from app.models import GUID
 
 revision: str = "c1465c4964a6"
-down_revision: str | None = "b62353ae80af"
+down_revision: str | None = "6a5f8e732b95"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

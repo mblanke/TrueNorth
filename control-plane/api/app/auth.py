@@ -47,6 +47,9 @@ class TokenPayload(BaseModel):
 
     sub: str
     email: str = ""
+    # Whether the IdP vouches for ``email``. Keycloak sets it for AD (LDAP) users with
+    # trustEmail; roll-call admission matches an email only when it is true (app/classes).
+    email_verified: bool = False
     preferred_username: str = ""
     name: str = ""
     given_name: str = ""

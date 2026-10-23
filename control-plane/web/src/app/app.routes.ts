@@ -335,6 +335,14 @@ export const routes: Routes = [
     title: 'Registration approvals - TrueNorth Range',
   },
   {
+    // ADR 0014: classes and their roll call, for the staff who lead, assist or observe them.
+    path: 'classes',
+    canActivate: [authGuard, onboardingGuard, pageGuard('classes')],
+    loadComponent: () =>
+      import('./features/classes/classes.component').then(m => m.ClassesComponent),
+    title: 'Classes - TrueNorth Range',
+  },
+  {
     // ADR 0013 §7: windows in which provision, reset and normal destroy are refused.
     path: 'maintenance-windows',
     canActivate: [authGuard, onboardingGuard, pageGuard('maintenanceWindows')],

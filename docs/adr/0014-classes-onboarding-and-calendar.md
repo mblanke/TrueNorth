@@ -29,6 +29,7 @@ Content (courses, modules, labs, scenarios, range templates, golden images) has 
    - The lead instructor adds Students to a class **roll call**.
    - A Student on a roll call signs in with AD and goes straight in, with no Request access and no waiting. Their AD email is matched to the roll-call entry.
    - They become a Student in the class's tenant and are enrolled on its course.
+   - Roll-call admission does not apply REGISTRATION_ALLOWED_GROUPS; the auth-zone check still applies.
 2. **Onboarding email.** A roll-call Student not yet in TrueNorth gets an email to onboard when they are added. They get **one reminder the day before** the class starts.
 3. **Acknowledgement form.** Everyone signs the rules of use before doing anything else: Students, instructors, admins and observers.
    - **When:** on first sign-in, whenever an admin publishes a new version, and **every year**.
