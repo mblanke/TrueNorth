@@ -117,7 +117,7 @@ interface Day {
             @for (s of staleShown(); track s.id) {
               <button type="button" class="stale-row" [style.--c]="colour(s)" (click)="select(s.id)">
                 <span class="row-title"><span class="dot"></span>{{ s.title }}</span>
-                <span class="reason">{{ s.stale_reasons[0]?.text }}</span>
+                <span class="reason">{{ s.stale_reasons?.[0]?.text }}</span>
               </button>
             } @empty {
               <p class="muted">Nothing is stale.</p>
@@ -133,9 +133,9 @@ interface Day {
               </div>
               <h2 class="sel-title">{{ sel.title }}</h2>
               <div class="clock-badge" [class]="'clock-badge ' + sel.clock.state">{{ clockText(sel) }}</div>
-              @if (sel.stale_reasons.length > 1) {
+              @if ((sel.stale_reasons?.length ?? 0) > 1) {
                 <ul class="reasons">
-                  @for (r of sel.stale_reasons.slice(1); track $index) { <li>{{ r.text }}</li> }
+                  @for (r of (sel.stale_reasons ?? []).slice(1); track $index) { <li>{{ r.text }}</li> }
                 </ul>
               }
               <dl class="facts">
@@ -146,8 +146,8 @@ interface Day {
                 <dt>Due</dt><dd>{{ sel.due_at | date: 'd MMM y' }}</dd>
                 <dt>Owner</dt><dd>{{ sel.owner_name ?? 'Nobody yet' }}</dd>
                 <dt>Reviewer</dt><dd>{{ sel.reviewer_name ?? 'Nobody' }}</dd>
-                <dt>Depends on</dt><dd>{{ list(sel.depends_on) }}</dd>
-                <dt>Used by</dt><dd>{{ list(sel.used_by) }}</dd>
+                <dt>Depends on</dt><dd>{{ list(sel.depends_on ?? []) }}</dd>
+                <dt>Used by</dt><dd>{{ list(sel.used_by ?? []) }}</dd>
               </dl>
 
               @if (assigning()) {
