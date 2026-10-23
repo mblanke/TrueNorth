@@ -88,13 +88,14 @@ def owner_for(db: Session, token: str) -> User | None:
 
 def render(db: Session, owner: User, now: datetime | None = None) -> str:
     """The owner's feed, from 30 days back to a year ahead: staff see their tenant's
-    bookings; a Student sees only the sessions of courses they are enrolled in."""
+    bookings; a Student sees only their own sessions (``service.student_sessions``: a
+    class session when on its roll call, otherwise their courses')."""
     now = now or datetime.now(UTC)
     scope = [ScheduledEvent.tenant_id == owner.tenant_id]
     if not user_has_permission(owner, Permission.SCHEDULE_READ):
-        from ..enrollment import active_course_ids
+        from .service import student_sessions
 
-        scope.append(ScheduledEvent.course_id.in_(active_course_ids(db, owner.id) or [None]))
+        scope.append(student_sessions(db, owner.id))
     events = (
         db.query(ScheduledEvent)
         .filter(

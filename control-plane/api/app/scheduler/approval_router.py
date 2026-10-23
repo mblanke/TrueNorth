@@ -29,6 +29,7 @@ from ..classes import sessions
 from ..db import get_db
 from ..rbac import Permission, require_permission
 from . import approval, service
+from .capacity import get_capacity_provider
 from .router import _announce, _changeable, _owned
 from .schemas import ApprovalItemOut, ApprovalQueueOut, EventOut, FitOut, ProposeIn, RejectIn, UtcDateTime, as_utc
 
@@ -52,8 +53,9 @@ def approval_queue(db: Session = Depends(get_db), user: CurrentUser = Depends(ge
     class_ids = {o["class_id"] for o in outs if o["class_id"]}
     names = sessions.class_names(db, {uuid.UUID(c) for c in class_ids}, events[0].tenant_id) if events else {}
     items = []
+    provider = get_capacity_provider(db)  # one supply and running-ranges read for the whole queue
     for evt, o in zip(events, outs, strict=True):
-        checked = approval.check(db, evt, evt.start_time, evt.end_time)
+        checked = approval.check(db, evt, evt.start_time, evt.end_time, provider=provider)
         name = names.get(uuid.UUID(o["class_id"])) if o["class_id"] else None
         items.append(ApprovalItemOut(event=EventOut(**o), class_name=name, fit=checked.out))
     return ApprovalQueueOut(items=items)

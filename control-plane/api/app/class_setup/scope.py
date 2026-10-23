@@ -157,7 +157,7 @@ def _live_runs_through_course(db: Session, user: CurrentUser, course_id: uuid.UU
         .filter(
             ScheduledEvent.tenant_id == tenant_uuid(user),
             ScheduledEvent.course_id == course_id,
-            ScheduledEvent.state.notin_((EventState.cancelled, EventState.rejected)),
+            ScheduledEvent.state.notin_((EventState.cancelled, EventState.rejected, EventState.pending_approval)),
         )
         .all()
     )

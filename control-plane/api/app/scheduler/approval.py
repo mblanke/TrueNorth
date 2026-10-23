@@ -44,9 +44,12 @@ class Checked:
     out: FitOut
 
 
-def check(db: Session, evt: ScheduledEvent, start: datetime, end: datetime, now: datetime | None = None) -> Checked:
-    """Would ``evt`` fit at [start, end), and if not, where next? From ``start`` on."""
-    provider = get_capacity_provider(db)
+def check(
+    db: Session, evt: ScheduledEvent, start: datetime, end: datetime, now: datetime | None = None, provider=None
+) -> Checked:
+    """Would ``evt`` fit at [start, end), and if not, where next? From ``start`` on. Pass
+    ``provider`` to share one capacity read across many checks (the queue)."""
+    provider = provider or get_capacity_provider(db)
     f = service.fit(db, provider, evt, start, end)
     if f.ok:
         nxt, until = (as_utc(start), as_utc(end)), as_utc(start)
@@ -115,6 +118,14 @@ def _admit(db: Session, evt: ScheduledEvent, start: datetime, end: datetime, wha
     return []
 
 
+def _resend(evt: ScheduledEvent) -> None:
+    """A session approved again after its invites were withdrawn (moved after approval)
+    was cancelled in calendars at its current SEQUENCE: the new REQUEST must be newer, or a
+    calendar keeps it cancelled (RFC 5546 §2.1.5). A first approval was never sent: 0 stays."""
+    if evt.sequence:
+        evt.sequence += 1
+
+
 def _require_pending(evt: ScheduledEvent) -> None:
     if evt.state != S.pending_approval:
         raise HTTPException(409, f"The booking is {evt.state.value}, not awaiting approval")
@@ -138,6 +149,7 @@ def approve(db: Session, user: CurrentUser, evt: ScheduledEvent) -> tuple[bool, 
     _class_open(db, evt)
     warnings = _admit(db, evt, evt.start_time, evt.end_time, "Cannot approve")
     lifecycle.transition(db, evt, S.scheduled)
+    _resend(evt)
     a.decided_by, a.decided_at, a.reason = service.user_uuid(user), _now(), None
     a.proposed_start = a.proposed_end = a.proposed_by = a.proposed_at = None
     service.audit(db, user, "approve", str(evt.id), "pending_approval -> scheduled")
@@ -193,6 +205,7 @@ def accept(db: Session, user: CurrentUser, evt: ScheduledEvent) -> list[str]:
     before = window_label(evt.start_time, evt.end_time)
     evt.start_time, evt.end_time, evt.reminded_at = start, end, None
     lifecycle.transition(db, evt, S.scheduled)
+    _resend(evt)
     a.decided_by, a.decided_at, a.reason = a.proposed_by, _now(), None
     a.proposed_start = a.proposed_end = a.proposed_by = a.proposed_at = None
     service.audit(
@@ -244,7 +257,7 @@ def withdraw_proposal(db: Session, evt: ScheduledEvent) -> bool:
     return True
 
 
-def queue(db: Session, user: CurrentUser, limit: int = 100) -> list[ScheduledEvent]:
+def queue(db: Session, user: CurrentUser, limit: int = 50) -> list[ScheduledEvent]:
     """The caller's tenant's sessions awaiting approval, soonest first."""
     from ..tenancy import tenant_uuid
 

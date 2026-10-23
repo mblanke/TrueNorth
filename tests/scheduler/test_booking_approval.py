@@ -723,3 +723,98 @@ def test_the_approval_row_is_tenant_pinned(db_session, client, world):
     assert row.tenant_id == world["a"].id
     link = db_session.query(ClassSession).filter_by(event_id=uuid.UUID(ev["id"])).one()
     assert link.tenant_id == world["a"].id
+
+
+# ── Adversarial review of #281 ─────────────────────────────────────────────
+
+
+def test_a_plain_booking_of_a_running_class_course_is_refused_to_its_instructors(client, world):
+    """Leaving class_id out must not skip the approver (and invite the whole enrolment)."""
+    course = str(world["course"].id)
+    act_as(world["lead"])
+    r = client.post("/schedule/events", json=_session(course_id=course, vcpu_total=5))
+    assert r.status_code == 422 and "C201-26-03" in r.json()["detail"]
+    # A draft holds nothing; scheduling it is refused the same way.
+    draft = client.post("/schedule/events", json=_session(course_id=course, vcpu_total=5, draft=True))
+    assert draft.status_code == 201
+    assert client.post(f"/schedule/events/{draft.json()['id']}/schedule").status_code == 422
+    # Outside the class's dates it is an ordinary booking of the course.
+    later = NINE + timedelta(days=30)
+    assert client.post("/schedule/events", json=_session(later, course_id=course, vcpu_total=5)).status_code == 201
+    # An approver may book it plainly.
+    act_as(world["admin"])
+    assert client.post("/schedule/events", json=_session(course_id=course, vcpu_total=5)).status_code == 201
+
+
+def test_cancelling_a_class_cancels_its_unstarted_sessions(client, db_session, world, outbox):
+    approved = _book_class(client, world, name="Approved")
+    pending = _book_class(client, world, start=NINE + timedelta(days=1), name="Pending")
+    act_as(world["admin"])
+    client.post(f"/schedule/events/{approved['id']}/approve")
+    outbox.clear()
+    act_as(world["lead"])
+    assert client.delete(f"/classes/{world['class']['id']}").status_code == 204
+    for ev in (approved, pending):
+        assert db_session.get(ScheduledEvent, uuid.UUID(ev["id"])).state == EventState.cancelled
+    # Only the approved one was ever sent: its invites are withdrawn.
+    assert outbox.invited("CANCEL") == {world["lead"].email, "ann@corp.test", "newbie@corp.test"}
+    assert len(outbox.sent) == 3
+    res = clock.tick(db_session, now=NINE - timedelta(hours=2))
+    assert res.reminders == [] and res.provisioning == 0
+
+
+def test_approving_again_after_a_move_sends_a_newer_sequence(client, db_session, world, outbox):
+    ev = _book_class(client, world)
+    act_as(world["admin"])
+    client.post(f"/schedule/events/{ev['id']}/approve")
+    act_as(world["lead"])
+    client.put(f"/schedule/events/{ev['id']}", json=_session(NINE + timedelta(hours=2), vcpu_total=40))
+    cancelled_at = db_session.get(ScheduledEvent, uuid.UUID(ev["id"])).sequence
+    assert cancelled_at >= 1
+    act_as(world["admin"])
+    assert client.post(f"/schedule/events/{ev['id']}/approve").status_code == 200
+    db_session.expire_all()
+    assert db_session.get(ScheduledEvent, uuid.UUID(ev["id"])).sequence > cancelled_at
+
+
+def test_a_pending_session_makes_nobody_a_participant(client, db_session, world):
+    from types import SimpleNamespace
+
+    from app import exercise_participants
+
+    ev = _book_class(client, world)
+    evt = db_session.get(ScheduledEvent, uuid.UUID(ev["id"]))
+    tpl = Template(id=uuid.uuid4(), name="t", yaml="id: t\n", tenant_id=world["a"].id)
+    db_session.add(tpl)
+    db_session.flush()
+    rng = Range(id=uuid.uuid4(), tenant_id=world["a"].id, name="r", template_id=tpl.id)
+    db_session.add(rng)
+    db_session.flush()
+    evt.range_id = rng.id
+    db_session.flush()
+    ex = SimpleNamespace(id=uuid.uuid4(), tenant_id=world["a"].id, range_id=rng.id)
+    assert exercise_participants._bookings(db_session, ex).all() == []
+    act_as(world["admin"])
+    assert client.post(f"/schedule/events/{ev['id']}/approve").status_code == 200
+    assert [tuple(r) for r in exercise_participants._bookings(db_session, ex).all()] == [(world["course"].id,)]
+
+
+def test_a_students_own_sessions_follow_the_roll_call(client, db_session, world):
+    from app.auth import CurrentUser
+    from app.scheduler import feed, ics, service
+
+    ev = _book_class(client, world)
+
+    def mine(u: User) -> list[str]:
+        who = CurrentUser(id=str(u.id), email=u.email, display_name="s", role=UserRole.student,
+                          tenant_id=str(world["a"].id), keycloak_id="kc")
+        return [str(e.id) for e in service.my_sessions(db_session, who)]
+
+    assert mine(world["on_roll"]) == []  # awaiting approval: nobody's yet
+    act_as(world["admin"])
+    client.post(f"/schedule/events/{ev['id']}/approve")
+    assert mine(world["on_roll"]) == [ev["id"]]
+    assert mine(world["enrolled_only"]) == []  # enrolled on the course, not on the roll call
+    uid = ics.booking_uid(uuid.UUID(ev["id"]))
+    assert uid in feed.render(db_session, world["on_roll"]).replace("\r\n ", "")
+    assert uid not in feed.render(db_session, world["enrolled_only"]).replace("\r\n ", "")

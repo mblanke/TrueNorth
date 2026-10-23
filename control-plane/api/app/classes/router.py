@@ -44,7 +44,7 @@ from ..models import AuditLog, Course, User
 from ..rbac import Permission, require_permission
 from ..scheduler import service as scheduler
 from ..tenancy import tenant_uuid
-from . import access, service
+from . import access, service, sessions
 from .models import Class, ClassStaff, ClassStatus, RollCallEntry, RollCallSettings, RollCallStatus
 from .schemas import (
     AdditionRejectIn,
@@ -314,16 +314,22 @@ def update_class(
 )
 def cancel_class(
     class_id: uuid.UUID,
+    background: BackgroundTasks,
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(_CHANGE),
 ):
     """Its lead or an admin. A class is history (who was invited, who joined), so it is
-    cancelled, not deleted (ADR 0010); it leaves the lists and no longer admits anyone."""
+    cancelled, not deleted (ADR 0010); it leaves the lists and no longer admits anyone. Its
+    sessions that have not started (drafts, awaiting approval, approved) are cancelled with
+    it, and the approved ones' invites are withdrawn; one under way is left to its
+    instructor."""
     cls = _editable(db, class_id, user)
     if cls.status != ClassStatus.cancelled.value:
         cls.status = ClassStatus.cancelled.value
         service.audit(db, user.id, cls, "class_cancel", cls.name)
+        cancels = scheduler.cancel_unstarted(db, user, sessions.session_ids(db, cls))
         db.commit()
+        background.add_task(scheduler.send_invites, cancels)
 
 
 # ── Roll call ──────────────────────────────────────────────────────────────

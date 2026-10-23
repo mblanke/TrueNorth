@@ -29,7 +29,16 @@ from ..auth import CurrentUser
 from ..enrollment import ensure_enrollment
 from ..models import AuditLog, Course, User, UserRole
 from . import sessions
-from .models import Class, ClassStaff, ClassStatus, RollCallEntry, RollCallSettings, RollCallStatus, StaffRole
+from .models import (
+    OFF_ROLL_CALL,
+    Class,
+    ClassStaff,
+    ClassStatus,
+    RollCallEntry,
+    RollCallSettings,
+    RollCallStatus,
+    StaffRole,
+)
 from .schemas import MAX_ROLL_CALL_BATCH, ClassIn, RollCallRefusal, has_control_chars
 
 logger = logging.getLogger("truenorth.api.classes")
@@ -42,8 +51,6 @@ _WRAP = "<>\"'()[]"
 MAX_CSV_BYTES = 1_000_000
 
 LEAD_ROLES = (UserRole.instructor, UserRole.admin)
-# Entries that are not (or not yet) on the roll call: no invites, no admission, no count.
-OFF_ROLL_CALL = (RollCallStatus.removed.value, RollCallStatus.pending.value)
 ROLES_FOR = {
     StaffRole.assistant: (UserRole.instructor, UserRole.admin),
     StaffRole.observer: (UserRole.observer, UserRole.instructor, UserRole.admin),

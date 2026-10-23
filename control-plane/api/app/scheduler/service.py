@@ -392,15 +392,25 @@ def audit(db: Session, user: CurrentUser, action: str, resource_id: str, detail:
     )
 
 
+def student_sessions(db: Session, user_id: uuid.UUID):
+    """A Student's own sessions (a filter): a class session when they are on its roll call
+    (ADR 0014: the roll call replaces enrolment), any other booking of a course they are
+    enrolled in."""
+    from ..classes import sessions
+
+    courses = active_course_ids(db, user_id)
+    plain = ScheduledEvent.course_id.in_(courses or [None]) & ScheduledEvent.id.notin_(sessions.all_session_ids())
+    return or_(plain, ScheduledEvent.id.in_(sessions.session_ids_on_roll_call(user_id)))
+
+
 def my_sessions(db: Session, user: CurrentUser) -> list[ScheduledEvent]:
     """Upcoming (and today's) sessions that are yours: ones you teach, and for a Student
-    the sessions of courses you are enrolled in. Drafts and cancellations are left out."""
+    their own (``student_sessions``). Drafts, sessions awaiting approval and cancellations
+    are left out."""
     me = user_uuid(user)
     mine = [ScheduledEvent.instructor_id == me]
     if user.role == UserRole.student and me:
-        courses = active_course_ids(db, me)
-        if courses:
-            mine.append(ScheduledEvent.course_id.in_(courses))
+        mine.append(student_sessions(db, me))
     return (
         db.query(ScheduledEvent)
         .filter(
@@ -654,6 +664,33 @@ def attendee_invites(db: Session, events: list[ScheduledEvent], emails: list[str
     from . import invites
 
     return [invites.build(evt, method, to, attending=True) for evt in events for to in emails]
+
+
+def cancel_unstarted(db: Session, user: CurrentUser, event_ids: list[uuid.UUID]) -> list:
+    """Cancel these bookings that have not started being built (draft, awaiting approval,
+    scheduled): a cancelled class's sessions. Returns the CANCEL invites for those already
+    sent, for the caller to send after commit. Sessions under way are left to their
+    instructor. Does not commit."""
+    from . import invites, lifecycle
+
+    if not event_ids:
+        return []
+    out: list = []
+    unstarted = (EventState.draft, EventState.pending_approval, EventState.scheduled)
+    # tenant-safe: ids of one class's sessions, all in the class's tenant (sessions.link).
+    for evt in db.query(ScheduledEvent).filter(ScheduledEvent.id.in_(event_ids), ScheduledEvent.state.in_(unstarted)):
+        before = evt.state
+        if not lifecycle.transition(db, evt, EventState.cancelled):
+            continue
+        evt.sequence = (evt.sequence or 0) + 1
+        detail = f"{before.value} -> cancelled: its class was cancelled"
+        if what := release_range(db, evt):
+            detail += f"; {what}"
+        audit(db, user, "transition", str(evt.id), detail)
+        if before not in lifecycle.UNSENT:
+            db.refresh(evt, ["state"])
+            out += invites.plan(db, evt, "CANCEL")
+    return out
 
 
 async def send_invites(items: list) -> None:

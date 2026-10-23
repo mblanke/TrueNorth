@@ -44,6 +44,7 @@ from .schemas import (
     PolicyOut,
     TimelineOut,
     UtcDateTime,
+    as_utc,
 )
 from .service import to_out as _to_out
 
@@ -215,6 +216,8 @@ def create_event(
     if cls is not None and not body.instructor_id:
         instructor_id = cls.lead_instructor_id  # the class's lead teaches it unless another is named
     course_id = _class_course(db, user, cls, body.course_id)
+    if cls is None and not body.draft:
+        _refuse_class_course(db, user, course_id, body.start_time, body.end_time)
     scenario_id = service.resolve_scenario(db, user, body.scenario_id)
     exercise_id, range_id = service.resolve_exercise(db, user, body.exercise_id, range_id)
     _check_bookable_exercise(db, user, exercise_id)
@@ -260,6 +263,24 @@ def create_event(
     if evt.state == EventState.scheduled:
         _announce(background, db, evt, "REQUEST")
     return service.out(db, evt, warnings, service.maintenance_warnings(db, evt))
+
+
+def _refuse_class_course(
+    db: Session, user: CurrentUser, course_id: uuid.UUID | None, start: datetime, end: datetime
+) -> None:
+    """A booking of a course while one of its open classes runs is, in substance, that
+    class's session (ADR 0014 §14: every class booking needs approval). Booked without the
+    class it would skip the approver and invite the course's whole enrolment instead of
+    the roll call: 422, book it as the class's session. Approvers (schedule:approve) may
+    still book it plainly; they would approve it anyway."""
+    if course_id is None or user_has_permission(user, Permission.SCHEDULE_APPROVE):
+        return
+    running = sessions.class_running_course(db, tenant_uuid(user), course_id, as_utc(start), as_utc(end))
+    if running is not None:
+        raise HTTPException(
+            422,
+            f"The class {running.name} runs this course then: book it as a session of that class (it needs approval)",
+        )
 
 
 def _class_course(db: Session, user: CurrentUser, cls, course_id: str | None) -> uuid.UUID | None:
@@ -427,6 +448,8 @@ def update_event(
     previous_state = evt.state
     previous_instructor, previous_course = evt.instructor_id, evt.course_id
     course_id = _class_course(db, user, cls, body.course_id)
+    if cls is None and evt.state != EventState.draft and (course_id != evt.course_id or "time" in held_change):
+        _refuse_class_course(db, user, course_id, body.start_time, body.end_time)
     if not _same_instant(evt.start_time, body.start_time):
         evt.reminded_at = None  # moved: remind again for the new time
     evt.name = body.name
@@ -501,6 +524,7 @@ def schedule_event(
             return service.out(db, evt)
         return _move(db, user, evt, EventState.pending_approval)
     if evt.state == EventState.draft:
+        _refuse_class_course(db, user, evt.course_id, evt.start_time, evt.end_time)
         service.resolve_range(db, user, str(evt.range_id) if evt.range_id else None)  # still buildable?
         need = Resources(evt.vcpu_total, evt.ram_mb_total, evt.disk_gb_total)
         warnings = _admit(db, evt, need, evt.range_id, evt.instructor_id, exclude_id=evt.id)

@@ -20,8 +20,10 @@ The scheduler is reached only through ``scheduler.service`` (ADR 0004 §1).
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 
 from fastapi import HTTPException
+from sqlalchemy import Select, select
 from sqlalchemy.orm import Session
 
 from ..auth import CurrentUser
@@ -29,7 +31,7 @@ from ..scheduler import service as scheduler
 from ..scheduler.capacity import Resources
 from ..scheduler.models import ScheduledEvent
 from . import access
-from .models import Class, ClassSession, ClassStatus
+from .models import OFF_ROLL_CALL, Class, ClassSession, ClassStatus, RollCallEntry
 
 
 def class_for_booking(db: Session, user: CurrentUser, class_id: str) -> Class:
@@ -71,6 +73,44 @@ def class_of(db: Session, evt: ScheduledEvent) -> Class | None:
         db.query(Class)
         .join(ClassSession, ClassSession.class_id == Class.id)
         .filter(ClassSession.event_id == evt.id, Class.tenant_id == evt.tenant_id)
+        .first()
+    )
+
+
+def all_session_ids() -> Select:
+    """Every booking that is some class's session (a subquery)."""
+    return select(ClassSession.event_id)
+
+
+def session_ids_on_roll_call(user_id: uuid.UUID) -> Select:
+    """The class sessions whose roll call ``user_id`` is on (a subquery): a Student's own
+    sessions, where the roll call replaces course enrolment (ADR 0014)."""
+    return (
+        select(ClassSession.event_id)
+        .join(RollCallEntry, RollCallEntry.class_id == ClassSession.class_id)
+        .where(
+            RollCallEntry.user_id == user_id,
+            RollCallEntry.tenant_id == ClassSession.tenant_id,
+            RollCallEntry.status.notin_(OFF_ROLL_CALL),
+        )
+    )
+
+
+def class_running_course(
+    db: Session, tenant_id: uuid.UUID, course_id: uuid.UUID, start: datetime, end: datetime
+) -> Class | None:
+    """An open class of the tenant on ``course_id`` whose dates meet [start, end): a booking
+    of that course then is, in substance, that class's session (ADR 0014 §14)."""
+    return (
+        db.query(Class)
+        .filter(
+            Class.tenant_id == tenant_id,
+            Class.course_id == course_id,
+            Class.status == ClassStatus.open.value,
+            Class.start_date <= end.date(),
+            Class.end_date >= start.date(),
+        )
+        .order_by(Class.start_date)
         .first()
     )
 
@@ -131,14 +171,18 @@ def _scaled(r: Resources, n: int) -> Resources:
 
 def room_for_seats(db: Session, cls: Class, seats: int) -> list[str]:
     """Why ``seats`` more Students would not fit the class's approved sessions (none: they
-    fit). Takes the scheduler's booking lock first when any seat costs something, so two
-    additions cannot both take the last room. The caller commits or rolls back."""
-    sessions = approved_sessions(db, cls)
+    fit). Takes the scheduler's booking lock before reading the sessions, so two additions
+    (or an addition and an approval) cannot both take the last room. The caller commits or
+    rolls back, which releases it."""
+    ids = session_ids(db, cls)
+    if not ids:
+        return []
+    scheduler.serialize_bookings(db)
+    sessions = scheduler.approved_upcoming(db, ids)
     needs = [(evt, _scaled(seat_demand(db, cls, evt), seats)) for evt in sessions]
     needs = [(evt, need) for evt, need in needs if need != Resources()]
     if not needs:
         return []
-    scheduler.serialize_bookings(db)
     reasons: list[str] = []
     for evt, need in needs:
         reasons += scheduler.room_for(db, evt, need)

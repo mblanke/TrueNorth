@@ -49,6 +49,10 @@ class RollCallStatus(str, enum.Enum):
     removed = "removed"  # taken off by the lead or an admin; kept for the record
 
 
+# Entries that are not (or not yet) on the roll call: no invites, no admission, no count.
+OFF_ROLL_CALL = (RollCallStatus.removed.value, RollCallStatus.pending.value)
+
+
 class Class(TimestampMixin, Base):
     __tablename__ = "classes"
     __table_args__ = (Index("ix_classes_tenant_start", "tenant_id", "start_date"),)

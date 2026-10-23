@@ -55,7 +55,7 @@ def _bookings(db: Session, ex: Exercise):
     return db.query(ScheduledEvent.course_id).filter(
         ScheduledEvent.tenant_id == ex.tenant_id,
         ScheduledEvent.course_id.isnot(None),
-        ScheduledEvent.state.notin_((EventState.cancelled, EventState.rejected)),
+        ScheduledEvent.state.notin_((EventState.cancelled, EventState.rejected, EventState.pending_approval)),
         or_(*links),
     )
 

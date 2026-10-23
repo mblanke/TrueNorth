@@ -174,7 +174,12 @@ Content (courses, modules, labs, scenarios, range templates, golden images) has 
    booking does, and under `block` it is 409 with the next free slot. Moving or resizing an
    approved session sends it back for approval. Additions after approval are checked
    against a per-seat demand seam (`sessions.seat_demand`) that is zero until #282 builds
-   per-Student ranges. Bookings with no class stay self-service.
+   per-Student ranges. Bookings with no class stay self-service, except that an
+   instructor may not book a course plainly while one of its open classes runs (422: book
+   it as the class's session); approvers may. Cancelling a class cancels its sessions that
+   have not started. A Student's own sessions (`/schedule/mine`, their feed) and invites
+   follow the roll call for class sessions; exercise and telemetry rosters still follow
+   course enrolment until #282.
 5. **Per-session ranges:**
    - individual or collective, with the course default and an instructor override;
    - kept up all week and torn down at the end;
