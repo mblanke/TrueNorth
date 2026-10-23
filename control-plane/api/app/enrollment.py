@@ -229,13 +229,17 @@ def seated_by(created_at, enrolled_at, when) -> bool:
     return since is not None and since <= when
 
 
-def active_students(db: Session, course_id: uuid.UUID) -> list[User]:
-    """Active Students enrolled in a course and still studying it."""
+def active_students(db: Session, course_id: uuid.UUID, *, tenant_id: uuid.UUID) -> list[User]:
+    """Active Students of ``tenant_id`` enrolled in a course and still studying it.
+
+    The tenant is required: a shared catalogue course (``tenant_id`` NULL) has Students
+    from every tenant, and a class is only ever one tenant's (#276)."""
     return (
         db.query(User)
         .join(Enrollment, Enrollment.user_id == User.id)
         .filter(
             Enrollment.course_id == course_id,
+            User.tenant_id == tenant_id,
             Enrollment.status.in_(ACTIVE_STATUSES),
             User.role == UserRole.student,
             User.is_active == True,  # noqa: E712
