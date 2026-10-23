@@ -428,12 +428,18 @@ def _body_limit(server: Directive, loc: Directive, http_default: str) -> str:
     return d.args[0] if d else http_default
 
 
+# Uploads with a deliberately smaller cap than 50M, and that cap.
+SMALL_UPLOADS = {"/api/classes/x1/roll-call/csv": "2M"}  # a list of addresses (ADR 0014)
+
+
 def test_every_upload_route_gets_the_upload_limit(edge, web):
     uploads = _upload_paths()
     assert len(uploads) >= 10
+    assert set(SMALL_UPLOADS) <= set(uploads)
     for uri in uploads:
-        assert _body_limit(edge, route(edge, uri), "1m") == "50M", f"edge caps {uri} below 50M"
-        assert _body_limit(web, route(web, uri), "1m") == "50M", f"web caps {uri} below 50M"
+        want = SMALL_UPLOADS.get(uri, "50M")
+        assert _body_limit(edge, route(edge, uri), "1m") == want, f"edge caps {uri} at other than {want}"
+        assert _body_limit(web, route(web, uri), "1m") == want, f"web caps {uri} at other than {want}"
 
 
 @pytest.mark.parametrize("uri", ["/api/courses", "/api/tickets/1", "/api/ranges/1/documents/2"])

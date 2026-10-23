@@ -129,6 +129,12 @@ class Permission(str, Enum):
     SCHEDULE_WRITE = "schedule:write"
     # Platform-wide scheduler policy (over-capacity block/warn). Admin only: no role lists it.
     SCHEDULE_ADMIN = "schedule:admin"
+    # Classes and their roll call (ADR 0014). CLASS_CREATE: create a class in your own
+    # tenant, as its lead. CLASS_READ: the staff Classes page. What you then see and change
+    # is decided per class (app/classes/access.py): its lead (or an admin) changes it, its
+    # assistants and observers read it; a Student sees only a class they are on.
+    CLASS_CREATE = "class:create"
+    CLASS_READ = "class:read"
 
     # Tenant management
     TENANT_CREATE = "tenant:create"
@@ -195,6 +201,9 @@ ROLE_PERMISSIONS: dict[UserRole, set[Permission]] = {
         # The calendar: instructors book sessions for their classes.
         Permission.SCHEDULE_READ,
         Permission.SCHEDULE_WRITE,
+        # Classes: the lead of their own classes; assistant or observer on others'.
+        Permission.CLASS_CREATE,
+        Permission.CLASS_READ,
         # Users
         Permission.USER_READ,
         # Trainee intake: instructors drain the approval queue for their cohort.
@@ -282,6 +291,7 @@ ROLE_PERMISSIONS: dict[UserRole, set[Permission]] = {
         Permission.EXERCISE_READ,
         Permission.AAR_READ,
         Permission.SCHEDULE_READ,
+        Permission.CLASS_READ,
         Permission.TELEMETRY_READ,
         Permission.WIKI_READ,
     },
