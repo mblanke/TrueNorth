@@ -74,6 +74,20 @@ describe('RulesOfUseComponent', () => {
     expect(agreeButton().disabled).toBeFalse();
   });
 
+  it('never strands anyone: text that renders blank still enables "I agree" once rendered', async () => {
+    setup(current({ version: { ...VERSION!, text: '<!-- nothing to read -->' } }));
+    await new Promise(resolve => setTimeout(resolve));
+    fixture.detectChanges();
+    expect(agreeButton().disabled).toBeFalse();
+  });
+
+  it('short text that needs no scrolling enables "I agree" once rendered', async () => {
+    setup(current({ version: { ...VERSION!, text: 'Be good.' } }));
+    await new Promise(resolve => setTimeout(resolve));
+    fixture.detectChanges();
+    expect(agreeButton().disabled).toBeFalse();
+  });
+
   it('signs the version shown and goes back where the user was going', () => {
     setup();
     component.scrolledToEnd.set(true);

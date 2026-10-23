@@ -9224,7 +9224,7 @@ export interface components {
         AcknowledgementDraftIn: {
             /**
              * Text
-             * @description Markdown
+             * @description Markdown, with some visible text
              */
             text: string;
         };

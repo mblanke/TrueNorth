@@ -586,7 +586,7 @@
       "AcknowledgementDraftIn": {
         "properties": {
           "text": {
-            "description": "Markdown",
+            "description": "Markdown, with some visible text",
             "maxLength": 100000,
             "minLength": 1,
             "title": "Text",

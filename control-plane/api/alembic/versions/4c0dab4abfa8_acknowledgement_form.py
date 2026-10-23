@@ -21,13 +21,58 @@ from collections.abc import Sequence
 
 import sqlalchemy as sa
 from alembic import op
-from app.acknowledgement.default_text import DEFAULT_TEXT
 from app.models import GUID
 
 revision: str = "4c0dab4abfa8"
 down_revision: str | None = "c1465c4964a6"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
+
+# A copy of app/acknowledgement/default_text.py as of this revision, so later edits to the
+# shipped text never change what this migration seeds.
+SEED_TEXT = """\
+# Rules of use
+
+TrueNorth Range is a training system. Before you use it, read these rules and agree to
+them. You will be asked again whenever they change, and once a year.
+
+## Use it for training only
+
+- Use your own account. Do not share your sign-in or let anyone else use your session.
+- Use the ranges, labs and tools only for the course, lab or exercise you are taking part in.
+- Attack only the systems your instructor has put in scope. Never point range tools at
+  anything outside the range.
+- Do not try to get around the system's access controls, or reach another person's range,
+  results or records.
+- Do not copy malware, tools, credentials or course material out of the range unless your
+  instructor tells you to.
+- Report anything that looks wrong (a range you should not be able to reach, data that is
+  not yours, a security problem) to your instructor or an administrator straight away.
+
+## You are monitored
+
+- What you do in TrueNorth is logged: sign-ins, the pages and records you open, the
+  actions you take and the traffic in your range.
+- These records are used to run and assess training, to keep the system secure and to
+  investigate misuse.
+
+## Sessions may be observed
+
+- Instructors, assistant instructors and observers may watch your sessions while they
+  happen, **including your live screens and consoles**, and may review them afterwards.
+- Assume that anything you do or type in a range can be seen.
+
+## Your records
+
+- Your results, attendance and this agreement are kept as part of your training record.
+- Your organisation's own policies on acceptable use of IT systems apply here as well.
+
+Breaking these rules may end your access and be reported to your chain of command or
+organisation.
+
+By selecting **I agree** you confirm that you have read and understood these rules and
+will follow them.
+"""
 
 
 def upgrade() -> None:
@@ -45,7 +90,7 @@ def upgrade() -> None:
             sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=True),
             sa.UniqueConstraint("version", name="uq_acknowledgement_versions_version"),
         )
-        op.bulk_insert(versions, [{"id": uuid.uuid4(), "version": None, "text": DEFAULT_TEXT}])
+        op.bulk_insert(versions, [{"id": uuid.uuid4(), "version": None, "text": SEED_TEXT}])
     if "acknowledgement_signatures" not in existing:
         op.create_table(
             "acknowledgement_signatures",

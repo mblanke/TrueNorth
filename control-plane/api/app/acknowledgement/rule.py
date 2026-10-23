@@ -26,12 +26,30 @@ Exempt, and why:
 
 Not exempt: LTI session hand-offs (a Student launched from Moodle signs on the same page,
 then goes on to what they launched) and every Keycloak sign-in, platform administrators
-included. An LTI launch checks this rule itself before it opens anything
-(``routers/integrations._resource_link_redirect``): a lab is neither provisioned nor given
-a lab access token (``X-Lab-Token``) until the Student has signed; any other launch goes to
-the form first, with the launched page as its return. Lab tokens, noise-agent tokens, the
-calendar feed and the LTI tool endpoints never resolve a user through
-``get_current_user``, so the per-request check does not apply to them.
+included. An LTI launch checks this rule itself before it writes or opens anything
+(``routers/integrations``): a resource-link launch records no launch, creates no cmi5
+registration or exercise link, provisions no lab and mints no lab access token until the
+user has signed, and goes to the form instead (returning to a quiz or course afterwards);
+a deep-linking launch shows "Sign the rules of use in TrueNorth first" instead of the
+content picker. Only the just-in-time account itself is created first, as roll-call
+admission creates one.
+
+Known exemptions (the per-request check never sees them; accepted, listed here so they
+are not forgotten):
+
+* **Lab access tokens issued earlier.** An ``X-Lab-Token`` minted before a new version was
+  published (or before a signature expired) keeps opening its one lab session until it
+  expires (at most the lab's own lifetime). New ones are minted only after signing.
+* **Open WebSockets.** The check runs at the handshake; a socket opened before a publish
+  stays open until its token expires (``ws_auth.close_expired``).
+* **The calendar feed** (``/schedule/feed/{token}.ics``): calendar clients cannot sign;
+  it serves only the token owner's own sessions, read-only.
+* Also outside it by design: noise-agent tokens (no user), cmi5 AU fetch and LRS calls
+  (per-registration credentials, issued by a gated launch) and the LTI tool endpoints.
+  tests/api/test_acknowledgement_279.py lists every such route and fails on a new one.
+
+Break-glass when the published text itself is the problem: docs/runbooks/break-glass.md
+("Rules of use") and scripts/acknowledgement_breakglass_inprocess.py.
 """
 
 from __future__ import annotations
@@ -97,7 +115,11 @@ def status(db: Session, user_id: uuid.UUID | str, tenant_id: uuid.UUID | str, at
         .first()
     )
     if latest is None:
-        ever = db.query(AcknowledgementSignature.id).filter(AcknowledgementSignature.user_id == uid).first()
+        ever = (
+            db.query(AcknowledgementSignature.id)
+            .filter(AcknowledgementSignature.user_id == uid, AcknowledgementSignature.tenant_id == tid)
+            .first()
+        )
         return Status(True, current, None, None, "new_version" if ever else "never_signed")
     signed_at = aware(latest[0])
     expires_at = signed_at + timedelta(days=VALID_DAYS)

@@ -183,8 +183,10 @@ export class RulesOfUseComponent implements OnInit {
 
   checkScrolled(): void {
     const el = this.scroller?.nativeElement;
-    // Nothing rendered yet measures 0: never count that as read.
-    if (!el || el.scrollHeight === 0 || !el.textContent?.trim()) return;
+    // Only once the text box has rendered. Then content with nothing to scroll (short, or
+    // even blank) counts as read: "I agree" must never stay disabled for want of a scroll
+    // bar, or everyone is stranded behind the form (the API also refuses blank versions).
+    if (!el) return;
     if (el.scrollTop + el.clientHeight >= el.scrollHeight - 8) {
       this.scrolledToEnd.set(true);
     }

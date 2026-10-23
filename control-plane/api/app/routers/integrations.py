@@ -736,7 +736,8 @@ async def lti_launch(
         return response
 
     if message_type == "LtiDeepLinkingRequest":
-        response = _deep_link_picker(db, platform, claims)
+        # The picker shows this tenant's content: not before the rules of use (ADR 0014 §3).
+        response = _sign_first_page() if _must_sign(db, user) else _deep_link_picker(db, platform, claims)
     else:
         response = _resource_link_redirect(db, platform, user, claims, bind_cookie=cookie_required)
     if cookie_required:  # this launch is spent; another tab's cookie is left alone
@@ -744,11 +745,48 @@ async def lti_launch(
     return response
 
 
+def _must_sign(db: Session, user: User) -> bool:
+    """Whether ``user`` must sign the rules of use first (app/acknowledgement/rule.py)."""
+    from ..acknowledgement import rule as acknowledgement_rule
+
+    return acknowledgement_rule.status(db, user.id, user.tenant_id).required
+
+
+def _sign_first_page() -> HTMLResponse:
+    """What a deep-linking launch shows someone who has not signed the rules of use."""
+    import html
+
+    href = html.escape(f"{WEB_BASE_URL}/rules-of-use")
+    return HTMLResponse(
+        "<!doctype html><html><head><meta charset='utf-8'><title>Rules of use</title></head><body>"
+        "<h1>Sign the rules of use in TrueNorth first</h1>"
+        "<p>Before you can choose TrueNorth content you need to read and agree to the rules of use.</p>"
+        f'<p><a href="{href}" target="_blank" rel="noopener noreferrer">Open TrueNorth</a>, '
+        "agree to them, then come back and try again.</p></body></html>",
+        status_code=403,
+    )
+
+
+# Launch kinds that provision, register or record something on the way to their page.
+_WRITING_LAUNCH_KINDS = frozenset({"lab", "cmi5", "exercise"})
+
+
 def _resource_link_redirect(db: Session, platform, user: User, claims: dict, *, bind_cookie: bool) -> RedirectResponse:
     """Send the browser to what was launched. A Student the launch created (no TrueNorth
     sign-in of their own) goes through the session hand-off first (lti_identity.session);
     anyone else lands on the page and signs in with Keycloak as usual."""
     kind, rid = lti13.parse_resource_target(claims)
+    # The rules of use come before anything a launch opens or writes (ADR 0014 §3, #279):
+    # no cmi5 registration, launch record, exercise link or lab until they are signed. The
+    # browser goes to the form; for a quiz or course it then returns to the launched page,
+    # otherwise the Student launches again from their course.
+    if _must_sign(db, user):
+        from urllib.parse import quote
+
+        path = "/rules-of-use"
+        if kind not in _WRITING_LAUNCH_KINDS or not rid:
+            path += f"?returnUrl={quote(_launch_path(db, platform, user, claims, kind, rid), safe='')}"
+        return _spa_redirect(db, platform, user, claims, path, bind_cookie=bind_cookie)
     if kind == "cmi5":
         # Checked before the launch is recorded: a refused launch leaves no line item that
         # a later result could be sent to (app/cmi5/ags.py).
@@ -761,23 +799,14 @@ def _resource_link_redirect(db: Session, platform, user: User, claims: dict, *, 
     bound = lti_links.is_bound(db, platform.id, str(claims.get("sub", "")), user)
     lti13.record_launch(db, platform, user.id, claims, kind, rid, grade_passback=bound)
 
-    # The rules of use come before anything a launch opens (ADR 0014 §3, #279). A lab is
-    # neither provisioned nor handed a token until they are signed: the Student signs on the
-    # SPA's form, then starts the lab again from their course. Any other launch goes to the
-    # form with the launched page as its return.
-    from urllib.parse import quote
-
-    from ..acknowledgement import rule as acknowledgement_rule
-
-    must_sign = acknowledgement_rule.status(db, user.id, user.tenant_id).required
     if kind == "lab" and rid:
-        if not must_sign:
-            return RedirectResponse(_launch_lab(db, user, rid), status_code=302)  # the lab page has its own token
-        path = "/rules-of-use"
-    else:
-        path = _launch_path(db, platform, user, claims, kind, rid)
-        if must_sign:
-            path = f"/rules-of-use?returnUrl={quote(path, safe='')}"
+        return RedirectResponse(_launch_lab(db, user, rid), status_code=302)  # the lab page has its own token
+    path = _launch_path(db, platform, user, claims, kind, rid)
+    return _spa_redirect(db, platform, user, claims, path, bind_cookie=bind_cookie)
+
+
+def _spa_redirect(db: Session, platform, user: User, claims: dict, path: str, *, bind_cookie: bool) -> RedirectResponse:
+    """To ``path`` in the SPA, through the session hand-off for an LTI-created Student."""
     # Only the account this very LMS account created: one matched by an asserted email
     # (another LMS account, or another site) must not get a session for it.
     own = user.keycloak_id == f"lti:{platform.id}:{claims.get('sub', '')}"

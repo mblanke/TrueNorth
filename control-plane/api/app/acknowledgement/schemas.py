@@ -5,7 +5,9 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from .visible import has_visible_text
 
 # Long enough for any rules of use; short enough that one request cannot fill the table.
 MAX_TEXT = 100_000
@@ -38,4 +40,12 @@ class AcknowledgementSignIn(BaseModel):
 
 
 class AcknowledgementDraftIn(BaseModel):
-    text: str = Field(..., min_length=1, max_length=MAX_TEXT, description="Markdown")
+    text: str = Field(..., min_length=1, max_length=MAX_TEXT, description="Markdown, with some visible text")
+
+    @field_validator("text")
+    @classmethod
+    def _visible(cls, value: str) -> str:
+        # A text that renders blank would lock everyone out behind an empty form (visible.py).
+        if not has_visible_text(value):
+            raise ValueError("the text shows nothing to read once rendered; write the rules of use")
+        return value

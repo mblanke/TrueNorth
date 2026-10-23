@@ -262,6 +262,63 @@ def _dependency_calls(route) -> set:
     return calls
 
 
+# Every route that does NOT run get_current_user, and so never meets the acknowledgement
+# check. A new one fails the test below until it is added here with a reason.
+NO_CURRENT_USER_ROUTES = {
+    # The two routes someone who must still sign has to reach (get_signed_in_user).
+    "GET /acknowledgement/current", "POST /acknowledgement/sign",
+    # Identity intake: before a users row exists; /auth/me carries the flag.
+    "GET /auth/me", "POST /registration", "GET /registration/mine", "DELETE /registration/mine",
+    "GET /registration/nations", "GET /registration/qualifications",
+    # Unauthenticated probes.
+    "GET /health", "GET /health/deep", "GET /health/live", "GET /health/ready", "GET /metrics",
+    # LTI tool endpoints: platform-signed messages. The launch checks the rules itself.
+    "GET /lti/jwks", "GET /lti/public-key.pem", "GET /lti/login", "POST /lti/login", "POST /lti/launch",
+    "POST /lti/session", "POST /lti/deeplink/finish",
+    # Moodle lab page: the session's own X-Lab-Token, minted only after the rules are signed.
+    "GET /lab-access/{session_id}", "GET /lab-access/{session_id}/credentials",
+    "POST /lab-access/{session_id}/console", "POST /lab-access/{session_id}/credentials/{credential_id}/reveal",
+    "POST /lab-access/{session_id}/end", "POST /lab-access/{session_id}/heartbeat",
+    "POST /lab-access/{session_id}/reset",
+    # cmi5 AU fetch and LRS: per-registration credentials, issued by a gated launch.
+    "POST /cmi5/fetch/{secret}", "GET /cmi5/lrs/{resource:path}", "POST /cmi5/lrs/{resource:path}",
+    "PUT /cmi5/lrs/{resource:path}", "DELETE /cmi5/lrs/{resource:path}",
+    # In-VM noise agents: per-node token, no user.
+    "GET /noise/agent/plan", "POST /noise/agent/report",
+    # Calendar clients: per-user feed token in the path (known exemption, rule.py).
+    "GET /schedule/feed/{token}.ics",
+}
+
+
+def test_every_route_without_the_acknowledgement_check_is_listed():
+    found = set()
+    for ctx in iter_route_contexts(fastapi_app.routes):
+        if not isinstance(ctx.original_route, APIRoute):
+            continue
+        if get_current_user not in _dependency_calls(ctx):
+            found |= {f"{m} {ctx.path}" for m in ctx.original_route.methods - {"HEAD", "OPTIONS"}}
+    assert found == NO_CURRENT_USER_ROUTES, (
+        f"new: {sorted(found - NO_CURRENT_USER_ROUTES)}; gone: {sorted(NO_CURRENT_USER_ROUTES - found)}")
+
+
+def test_the_allowlist_test_catches_a_new_route():
+    """A route that resolves its own identity (not get_signed_in_user) is still caught."""
+    from fastapi import APIRouter, Depends
+
+    probe = APIRouter()
+
+    @probe.get("/zz-probe")
+    def _probe(identity=Depends(get_token_identity)):
+        return {}
+
+    fastapi_app.include_router(probe)
+    try:
+        with pytest.raises(AssertionError, match="zz-probe"):
+            test_every_route_without_the_acknowledgement_check_is_listed()
+    finally:
+        fastapi_app.router.routes.pop()
+
+
 def test_only_the_signing_routes_skip_the_acknowledgement_check():
     skipping = set()
     for ctx in iter_route_contexts(fastapi_app.routes):
@@ -660,8 +717,12 @@ def launch(monkeypatch):
     from app.routers import integrations
 
     labs: list[str] = []
+    writes: list[str] = []
     monkeypatch.setattr(integrations.lti_links, "is_bound", lambda *a, **k: False)
-    monkeypatch.setattr(integrations.lti13, "record_launch", lambda *a, **k: None)
+    monkeypatch.setattr(integrations.lti13, "record_launch", lambda *a, **k: writes.append("launch_record"))
+    monkeypatch.setattr(integrations.cmi5_lti, "launch_target",
+                        lambda db, tid, user, rid: writes.append("cmi5_registration") or rid)
+    monkeypatch.setattr(integrations, "_link_exercise_learner", lambda *a, **k: writes.append("exercise_learner"))
     monkeypatch.setattr(integrations, "_launch_lab", lambda db, user, rid: labs.append(rid) or "https://tn.test/labs/1#token=t")
     platform = SimpleNamespace(id=uuid.uuid4(), tenant_id=DEV_TENANT)
 
@@ -671,6 +732,7 @@ def launch(monkeypatch):
         return r.headers["location"]
 
     _go.labs = labs
+    _go.writes = writes
     return _go
 
 
@@ -689,3 +751,148 @@ def test_any_other_launch_goes_to_the_rules_first_then_to_what_was_launched(real
     student = _user(db_session, UserRole.student)
     where = launch(db_session, student, "quiz", "q1")
     assert "/rules-of-use?returnUrl=%2Fquiz-player%3Fquiz%3Dq1%26lti%3D1" in where
+
+
+@pytest.mark.parametrize("kind,rid", [("cmi5", "rel:0"), ("exercise", str(uuid.uuid4())), ("lab", "c:lab-1")])
+def test_a_launch_writes_nothing_until_the_rules_are_signed(real_auth, db_session, launch, kind, rid):
+    _published(db_session)
+    student = _user(db_session, UserRole.student)
+    where = launch(db_session, student, kind, rid)
+    assert where.endswith("/rules-of-use") and launch.writes == [] and launch.labs == []
+
+
+def test_a_signed_cmi5_launch_registers_and_records(real_auth, db_session, launch, monkeypatch):
+    from app.routers import integrations
+
+    monkeypatch.setattr(integrations.cmi5_lti, "spa_path", lambda rid: "/au/releases/r?launch=0&lti=1")
+    v1 = _published(db_session)
+    student = _user(db_session, UserRole.student)
+    _signed_by(db_session, student, v1)
+    assert launch(db_session, student, "cmi5", "rel:0").endswith("/au/releases/r?launch=0&lti=1")
+    assert launch.writes == ["cmi5_registration", "launch_record"]
+
+
+@pytest.fixture
+def deep_link(monkeypatch, db_session):
+    from types import SimpleNamespace
+
+    from app.routers import integrations
+
+    platform = SimpleNamespace(id=uuid.uuid4(), tenant_id=DEV_TENANT, name="moodle")
+    picked: list[bool] = []
+
+    async def _validate(db, id_token, state):
+        return platform, {integrations.lti13.CLAIM_MESSAGE_TYPE: "LtiDeepLinkingRequest", "sub": "s"}
+
+    monkeypatch.setattr(integrations, "_state_cookie_required", lambda: False)
+    monkeypatch.setattr(integrations.lti13, "validate_launch", _validate)
+    monkeypatch.setattr(integrations, "_deep_link_picker",
+                        lambda db, p, c: picked.append(True) or integrations.HTMLResponse("picker"))
+
+    def _go(user):
+        import asyncio
+
+        monkeypatch.setattr(integrations, "_jit_user", lambda db, p, c: user)
+        return asyncio.run(integrations.lti_launch(request=None, id_token="t", state="s", db=db_session))
+
+    _go.picked = picked
+    return _go
+
+
+def test_deep_linking_waits_for_the_rules_of_use(real_auth, db_session, deep_link):
+    v1 = _published(db_session)
+    instructor = _user(db_session, UserRole.instructor)
+    r = deep_link(instructor)
+    assert r.status_code == 403 and deep_link.picked == []
+    assert b"Sign the rules of use in TrueNorth first" in r.body and b"/rules-of-use" in r.body
+    _signed_by(db_session, instructor, v1)
+    assert deep_link(instructor).body == b"picker" and deep_link.picked == [True]
+
+
+# ── A version that renders blank must never be publishable ───────────────
+
+
+@pytest.mark.parametrize("text", [" ", "\n\t", "<!-- nothing -->", "---", "***\n\n---", "![logo](/a.png)",
+                                  "<img src=x>", "#", "> ", "<div></div>", "| | |\n|-|-|"])
+def test_a_draft_with_no_visible_text_is_refused(real_auth, db_session, text):
+    _as(db_session.get(User, DEV_TENANT))
+    assert real_auth.post("/acknowledgement/versions", json={"text": text}).status_code == 422
+    draft = service.create_draft(db_session, DEV_TENANT, "# Fine")
+    assert real_auth.put(f"/acknowledgement/versions/{draft.id}", json={"text": text}).status_code == 422
+
+
+def test_a_blank_draft_already_stored_cannot_be_published(real_auth, db_session):
+    blank = AcknowledgementVersion(text="<!-- x -->")
+    db_session.add(blank)
+    db_session.flush()
+    _as(db_session.get(User, DEV_TENANT))
+    assert real_auth.post(f"/acknowledgement/versions/{blank.id}/publish").status_code == 422
+    assert rule.current_version(db_session) is None
+
+
+@pytest.mark.parametrize("text", ["a", "# Rules", "[Read this](/wiki/rules)", "Agree."])
+def test_any_visible_text_is_enough(text):
+    assert service.has_visible_text(text)
+
+
+# ── Break-glass script: sign or republish from the host ──────────────────
+
+
+def _breakglass():
+    import importlib.util
+
+    root = Path(__file__).resolve().parents[2]
+    spec = importlib.util.spec_from_file_location("ack_bg", root / "scripts/acknowledgement_breakglass_inprocess.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_breakglass_signs_for_a_stuck_user_and_audits_it(real_auth, db_session):
+    v1 = _published(db_session)
+    admin = _user(db_session, UserRole.admin, email="stuck.admin@example.test")
+    bg = _breakglass()
+    out = bg.sign(db_session, email="stuck.admin@example.test", reason="blank version", operator="root")
+    assert "signed version 1" in out
+    assert rule.status(db_session, admin.id, admin.tenant_id).required is False
+    note = db_session.query(AuditLog).filter_by(action="acknowledgement_breakglass").one()
+    assert json.loads(note.detail)["operator"] == "root" and json.loads(note.detail)["what"] == "sign"
+    sig = db_session.query(AcknowledgementSignature).filter_by(user_id=admin.id).one()
+    assert sig.version_id == v1.id and sig.user_agent == "inprocess breakglass (root)"
+
+
+def test_breakglass_publishes_the_shipped_text_over_a_bad_version(real_auth, db_session):
+    _published(db_session)
+    platform = db_session.get(User, DEV_TENANT)
+    bg = _breakglass()
+    out = bg.publish_default(db_session, email=platform.email, reason="v1 renders blank", operator="root")
+    assert "published version 2" in out
+    current = rule.current_version(db_session)
+    assert current.version == 2 and current.text == DEFAULT_TEXT
+    assert db_session.query(AuditLog).filter_by(action="acknowledgement_breakglass").count() == 1
+    with pytest.raises(SystemExit):
+        bg.publish_default(db_session, email="nobody@example.test", reason="x", operator="root")
+
+
+# ── Migration text and reason labels ─────────────────────────────────────
+
+
+def test_the_migration_seeds_its_own_copy_of_the_text():
+    text = (API / f"alembic/versions/{REVISION}_acknowledgement_form.py").read_text(encoding="utf-8")
+    assert "from app.acknowledgement" not in text  # later edits to the app's text never change an old migration
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("_ack_mig", API / f"alembic/versions/{REVISION}_acknowledgement_form.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    assert module.SEED_TEXT == DEFAULT_TEXT  # identical today
+
+
+def test_a_user_new_to_a_tenant_reads_as_never_signed_there(real_auth, db_session):
+    v1 = _published(db_session)
+    student = _user(db_session, UserRole.student)
+    _signed_by(db_session, student, v1)
+    other = real_tenant(db_session, "ack-label")
+    student.tenant_id = other.id
+    db_session.flush()
+    assert rule.status(db_session, student.id, other.id).reason == "never_signed"

@@ -29,6 +29,7 @@ from ..models import AuditLog, Tenant
 from . import rule
 from .default_text import DEFAULT_TEXT
 from .models import AcknowledgementSignature, AcknowledgementVersion
+from .visible import has_visible_text
 
 
 class AcknowledgementError(Exception):
@@ -106,7 +107,10 @@ def update_draft(db: Session, version_id: uuid.UUID, text: str) -> Acknowledgeme
 
 
 def publish(db: Session, version_id: uuid.UUID, actor_id) -> AcknowledgementVersion:
-    _get(db, version_id)
+    draft = _get(db, version_id)
+    if draft.published_at is None and not has_visible_text(draft.text):
+        # Never publish a text that renders blank: nobody could agree to it (visible.py).
+        raise AcknowledgementError(422, "This draft shows nothing to read once rendered; write the rules of use")
     latest = db.query(func.max(AcknowledgementVersion.version)).scalar() or 0
     try:
         with db.begin_nested():
