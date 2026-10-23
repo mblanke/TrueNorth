@@ -10,6 +10,7 @@ in **without ever turning MFA off**.
 | The only administrator is locked out | The same reset, run by whoever has SSH and sudo on the host |
 | Keycloak is down or the realm is broken | [In-process harness](#keycloak-unavailable) |
 | You need the Keycloak admin console | [Master realm admin](#the-master-realm-admin) |
+| Everyone is stuck on the Rules of use page | [Rules of use](#rules-of-use) |
 
 Every path is audited: Keycloak admin events (90 days, enabled by 60-keycloak) and a row
 in TrueNorth's `audit_logs`.
@@ -82,6 +83,33 @@ sudo docker compose -f compose.prod.yml --env-file /srv/truenorth/config/.env.pr
 
 The harness identity carries `tn_session=inprocess` (exempt from the MFA rule, which
 host root already outranks) and writes an `inprocess_session` audit row per user per run.
+
+## Rules of use
+
+Everyone signs the published rules of use before doing anything else (ADR 0014 §3), the
+platform administrator included. The API refuses texts that render blank, and "I agree"
+enables once the text has rendered, so this should not happen; if it does (a text nobody
+can agree to, or the platform administrator unable to reach the admin page), on the host:
+
+```bash
+cd /srv/truenorth/app/infra/platform/docker
+RUN="sudo docker compose -f compose.prod.yml --env-file /srv/truenorth/config/.env.production \
+  run --rm --no-deps -T -w /app -e PYTHONPATH=/app -v /srv/truenorth/app:/srcapp:ro --entrypoint python api"
+
+# Let one person through (e.g. the platform administrator, to fix the text in the UI):
+$RUN /srcapp/scripts/acknowledgement_breakglass_inprocess.py sign \
+  --as <their email> --reason "<why, ticket>" --operator "$USER"
+
+# Or supersede the bad version with the shipped default text (everyone signs it):
+$RUN /srcapp/scripts/acknowledgement_breakglass_inprocess.py publish-default \
+  --as <platform admin email> --reason "<why, ticket>" --operator "$USER"
+```
+
+Each writes an `acknowledgement_breakglass` audit row (operator, reason, version) beside
+the usual `acknowledgement_sign` / `acknowledgement_publish` row. A published version
+never changes; correct it afterwards by publishing a new one from Admin > Rules of use.
+The in-process harness above (`tn_session=inprocess`) is itself exempt from the rules of
+use, so scripted recovery work is never blocked by them.
 
 ## The master realm admin
 

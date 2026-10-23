@@ -187,8 +187,13 @@ or proposes another time that its instructor accepts or declines
 range or instructor held, no clock, no invites. Approving re-checks conflicts and capacity.
 _Not to be confused with_: registration approval (Request access), roll-call admission.
 
-**Acknowledgement** (planned, ADR 0014):
+**Acknowledgement** (ADR 0014 §3, #279):
 The rules of use everyone signs on first sign-in, whenever the version changes, and yearly.
+The platform administrator publishes numbered versions (a published version never changes;
+a correction is a new version). Until a user has signed the current version within 365
+days, every API route but `GET /auth/me`, `GET /acknowledgement/current` and
+`POST /acknowledgement/sign` answers 403 `acknowledgement_required`, after the MFA check.
+The rules are in `control-plane/api/app/acknowledgement/rule.py`; the page is **Rules of use**.
 
 **Stale** (content, ADR 0014):
 Content whose review is due by time (90–120 days) or that a new release or a known-exploited

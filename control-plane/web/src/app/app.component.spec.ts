@@ -144,7 +144,9 @@ describe('AppComponent', () => {
       '/ops-center/select', '/telemetry', '/schedule', '/calendar', '/classes', '/scoring', '/wiki', '/support',
       '/approvals', '/teams',
       // Maintenance windows (range:admin, ADR 0013 §7): admins only.
-      '/infrastructure', '/maintenance-windows', '/ai-orchestrator', '/integrations', '/users', '/admin'],
+      // Rules of use (ADR 0014 §3): admins export signatures; the platform admin publishes.
+      '/infrastructure', '/maintenance-windows', '/ai-orchestrator', '/integrations', '/users', '/admin/rules-of-use',
+      '/admin'],
   };
   for (const role of Object.keys(MENU) as UserRole[]) {
     it(`shows ${role} exactly the pages the role may open`, () => {

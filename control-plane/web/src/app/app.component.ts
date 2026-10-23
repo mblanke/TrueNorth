@@ -335,10 +335,12 @@ export class AppComponent implements OnDestroy {
 
   /** Pages that render without the navigation shell: sign-in, a student's lab (often
    *  opened from Moodle by someone with no TrueNorth session), the ARC² Course
-   *  Studio, which has its own chrome, and cmi5 modules (often launched by another LMS). */
+   *  Studio, which has its own chrome, cmi5 modules (often launched by another LMS), and the
+   *  rules of use, signed before anything else. */
   private isBare(url: string): boolean {
     const arc2 = url === '/arc2' || url.startsWith('/arc2/') || url.startsWith('/arc2?');
-    return url.startsWith('/login') || url.startsWith('/labs/') || url.startsWith('/au/') || arc2;
+    const rules = url === '/rules-of-use' || url.startsWith('/rules-of-use?');  // ADR 0014 §3, before anything
+    return url.startsWith('/login') || url.startsWith('/labs/') || url.startsWith('/au/') || arc2 || rules;
   }
   workspaceTitle = signal('Overview');
 
@@ -397,6 +399,7 @@ export class AppComponent implements OnDestroy {
         { label: 'AI Orchestrator', icon: 'memory',               route: '/ai-orchestrator', access: 'aiOrchestrator' },
         { label: 'Integrations',    icon: 'device_hub',           route: '/integrations', adminOnly: true },
         { label: 'Users',           icon: 'people',               route: '/users', adminOnly: true },
+        { label: 'Rules of use',    icon: 'gavel',                route: '/admin/rules-of-use', adminOnly: true },
         { label: 'Admin',           icon: 'admin_panel_settings', route: '/admin', adminOnly: true },
       ],
     },
