@@ -6,9 +6,10 @@ New tables go in their section, never into the shared ``app.models`` (ADR 0003).
   ADR's assumption: an admin of the platform tenant edits it and it applies to every
   tenant). A row is a draft until it is published; publishing gives it the next
   ``version`` number and freezes it. A correction is a new version.
-- ``acknowledgement_signatures``: who signed which version, when, from where. ``tenant_id``
-  is the signer's tenant when they signed, so an export by tenant does not move when a
-  user later changes tenant.
+- ``acknowledgement_signatures``: who signed which version, when, from where. ``tenant_id``,
+  ``email``, ``display_name`` and ``role`` are the signer's when they signed: the record
+  (and a tenant's export of it) does not change, or show someone's later details to their
+  old organisation, when they move tenant. A moved user signs again in the new tenant.
 
 Nothing here is deleted by the API (ADR 0010).
 """
@@ -56,5 +57,8 @@ class AcknowledgementSignature(Base):
         GUID(), ForeignKey("acknowledgement_versions.id"), nullable=False
     )
     signed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    email: Mapped[str] = mapped_column(String(255), nullable=False, default="", server_default="")
+    display_name: Mapped[str] = mapped_column(String(255), nullable=False, default="", server_default="")
+    role: Mapped[str] = mapped_column(String(32), nullable=False, default="", server_default="")
     ip_address: Mapped[str | None] = mapped_column(String(64), nullable=True)
     user_agent: Mapped[str | None] = mapped_column(String(255), nullable=True)

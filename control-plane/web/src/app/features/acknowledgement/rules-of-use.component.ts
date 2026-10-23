@@ -183,7 +183,8 @@ export class RulesOfUseComponent implements OnInit {
 
   checkScrolled(): void {
     const el = this.scroller?.nativeElement;
-    if (!el) return;
+    // Nothing rendered yet measures 0: never count that as read.
+    if (!el || el.scrollHeight === 0 || !el.textContent?.trim()) return;
     if (el.scrollTop + el.clientHeight >= el.scrollHeight - 8) {
       this.scrolledToEnd.set(true);
     }

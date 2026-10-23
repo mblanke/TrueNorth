@@ -143,7 +143,7 @@ def auth_me(
         # Then the rules of use (ADR 0014 §3): after admission (above) and MFA, as on every route.
         from ..acknowledgement import rule as acknowledgement_rule
 
-        ack = not auth.AUTH_DISABLED and acknowledgement_rule.required(db, user.id, identity)
+        ack = not auth.AUTH_DISABLED and acknowledgement_rule.required(db, user.id, user.tenant_id, identity)
         return AuthMeOut(status="registered", user=user, platform_admin=is_platform_admin(user, db),
                          mfa_required=required, mfa_satisfied=satisfied, acknowledgement_required=ack)
 

@@ -306,8 +306,9 @@ def test_an_lti_session_signs_like_anyone_and_then_goes_on(real_auth, db_session
 
 def test_lti_tool_and_lab_token_routes_do_not_resolve_a_user():
     """LTI launches, the session exchange and the Moodle lab page authenticate without
-    get_current_user, so a published version cannot break a launch (the Student signs on
-    the SPA's form when the launch hands them a session). /lti/links and /lti/grades are a
+    get_current_user, so a published version cannot strand a launch with a bare 403. The
+    launch itself checks the rules of use and sends the browser to the form first (tests
+    below); a lab is not provisioned, nor a lab token minted, until they are signed. /lti/links and /lti/grades are a
     signed-in user's own actions in the SPA and are gated like any other."""
     checked = 0
     for ctx in iter_route_contexts(fastapi_app.routes):
@@ -432,6 +433,7 @@ def test_a_published_version_never_changes(real_auth, db_session):
     assert real_auth.post(f"/acknowledgement/versions/{v1.id}/publish").status_code == 409
     db_session.refresh(v1)
     assert v1.text == "# Original" and v1.version == 1
+    assert db_session.query(AuditLog).filter_by(action="acknowledgement_publish").count() == 1
     # The correction is a new version, which everyone signs again.
     draft = real_auth.post("/acknowledgement/versions", json={"text": "# Corrected"}).json()
     assert real_auth.post(f"/acknowledgement/versions/{draft['id']}/publish").json()["version"] == 2
@@ -472,7 +474,8 @@ def _rows(r) -> list[dict]:
 
 def _signed_by(db, user: User, version: AcknowledgementVersion, ua: str | None = None) -> None:
     db.add(AcknowledgementSignature(user_id=user.id, tenant_id=user.tenant_id, version_id=version.id,
-                                    signed_at=rule.now(), ip_address="10.0.0.1", user_agent=ua))
+                                    signed_at=rule.now(), email=user.email, display_name=user.display_name,
+                                    role=user.role.value, ip_address="10.0.0.1", user_agent=ua))
     db.flush()
 
 
@@ -516,7 +519,7 @@ def test_export_defuses_spreadsheet_formulas(real_auth, db_session):
     _as(admin)
     row = next(r for r in _rows(real_auth.get("/acknowledgement/signatures/export")) if r["email"] == "evil@example.test")
     assert row["display_name"].startswith("'=") and row["user_agent"].startswith("'+")
-    for value in ("-1", "@x", "\tx", "\rx"):
+    for value in ("-1", "@x", "\tx", "\rx", "  =1+1", " @SUM(A1)"):
         assert service.csv_cell(value).startswith("'")
     assert service.csv_cell("plain") == "plain" and service.csv_cell(None) == ""
 
@@ -599,3 +602,90 @@ def test_migration_adds_the_tables_and_one_draft_and_downgrade_removes_them(tmp_
     _alembic(url, "upgrade", "head")
     assert set(sa.inspect(engine).get_table_names()) >= TABLES
     engine.dispose()
+
+
+def test_an_edit_racing_a_publish_cannot_change_the_published_text(real_auth, db_session):
+    """update_draft is one conditional UPDATE: once the draft is published, it matches nothing."""
+    admin = db_session.get(User, DEV_TENANT)
+    draft = service.create_draft(db_session, admin.id, "# As read")
+    service.publish(db_session, draft.id, admin.id)
+    with pytest.raises(service.AcknowledgementError) as caught:
+        service.update_draft(db_session, draft.id, "# Swapped after signing")
+    assert caught.value.status == 409
+    with pytest.raises(service.AcknowledgementError):
+        service.publish(db_session, draft.id, admin.id)  # the same draft twice: once only
+    db_session.refresh(draft)
+    assert draft.text == "# As read" and draft.version == 1
+    with pytest.raises(service.AcknowledgementError) as missing:
+        service.update_draft(db_session, uuid.uuid4(), "# x")
+    assert missing.value.status == 404
+
+
+def test_a_user_moved_to_another_tenant_signs_again_there(real_auth, db_session):
+    v1 = _published(db_session)
+    student = _user(db_session, UserRole.student, email="mover@example.test")
+    _as(student)
+    _sign(real_auth, v1)
+    other = real_tenant(db_session, "ack-new-home")
+    student.tenant_id = other.id
+    student.email = "mover@new.test"
+    db_session.flush()
+    assert _blocked(real_auth.get("/users/me"))
+    _sign(real_auth, v1)
+    sigs = db_session.query(AcknowledgementSignature).filter_by(user_id=student.id).all()
+    assert {(s.tenant_id, s.email) for s in sigs} == {(DEV_TENANT, "mover@example.test"), (other.id, "mover@new.test")}
+
+
+def test_the_old_tenant_export_shows_the_signer_as_they_were(real_auth, db_session):
+    v1 = _published(db_session)
+    other = real_tenant(db_session, "ack-old-home")
+    b_admin = _user(db_session, UserRole.admin, tenant=other.id)
+    mover = _user(db_session, UserRole.student, tenant=other.id, email="before@old.test")
+    _signed_by(db_session, b_admin, v1)
+    _signed_by(db_session, mover, v1)
+    mover.tenant_id, mover.email = DEV_TENANT, "after@new.test"
+    db_session.flush()
+    _as(b_admin)
+    emails = {row["email"] for row in _rows(real_auth.get("/acknowledgement/signatures/export"))}
+    assert "before@old.test" in emails and "after@new.test" not in emails
+
+
+# ── LTI launches open nothing before the rules of use are signed ─────────
+
+
+@pytest.fixture
+def launch(monkeypatch):
+    from types import SimpleNamespace
+
+    from app.routers import integrations
+
+    labs: list[str] = []
+    monkeypatch.setattr(integrations.lti_links, "is_bound", lambda *a, **k: False)
+    monkeypatch.setattr(integrations.lti13, "record_launch", lambda *a, **k: None)
+    monkeypatch.setattr(integrations, "_launch_lab", lambda db, user, rid: labs.append(rid) or "https://tn.test/labs/1#token=t")
+    platform = SimpleNamespace(id=uuid.uuid4(), tenant_id=DEV_TENANT)
+
+    def _go(db, user, kind, rid):
+        monkeypatch.setattr(integrations.lti13, "parse_resource_target", lambda claims: (kind, rid))
+        r = integrations._resource_link_redirect(db, platform, user, {"sub": "lms-1"}, bind_cookie=False)
+        return r.headers["location"]
+
+    _go.labs = labs
+    return _go
+
+
+def test_a_lab_launch_provisions_nothing_until_the_rules_are_signed(real_auth, db_session, launch):
+    v1 = _published(db_session)
+    student = _user(db_session, UserRole.student)
+    where = launch(db_session, student, "lab", f"{uuid.uuid4()}:lab-1")
+    assert where.endswith("/rules-of-use") and launch.labs == []  # no lab, no X-Lab-Token
+    _signed_by(db_session, student, v1)
+    where = launch(db_session, student, "lab", "c:lab-1")
+    assert "#token=" in where and launch.labs == ["c:lab-1"]
+
+
+def test_any_other_launch_goes_to_the_rules_first_then_to_what_was_launched(real_auth, db_session, launch):
+    _published(db_session)
+    student = _user(db_session, UserRole.student)
+    where = launch(db_session, student, "quiz", "q1")
+    assert "/rules-of-use?returnUrl=%2Fquiz-player%3Fquiz%3Dq1%26lti%3D1" in where

@@ -8,8 +8,8 @@ Classes 2 (ADR 0014 decision 3; issue #279), ``app/acknowledgement``:
 
 * ``acknowledgement_versions``: the rules-of-use text (Markdown), platform-wide. A draft
   until published; publishing numbers it and freezes it.
-* ``acknowledgement_signatures``: who signed which version, when, in which tenant, from
-  which address and browser.
+* ``acknowledgement_signatures``: who signed which version, when, in which tenant, as which
+  email, name and role, from which address and browser.
 
 Additive. One unpublished draft (the shipped default text) is added when the table is
 empty, so nobody is asked to sign until an administrator publishes a version. Downgrade
@@ -54,6 +54,9 @@ def upgrade() -> None:
             sa.Column("tenant_id", GUID(), sa.ForeignKey("tenants.id"), nullable=False),
             sa.Column("version_id", GUID(), sa.ForeignKey("acknowledgement_versions.id"), nullable=False),
             sa.Column("signed_at", sa.DateTime(timezone=True), nullable=False),
+            sa.Column("email", sa.String(255), nullable=False, server_default=""),
+            sa.Column("display_name", sa.String(255), nullable=False, server_default=""),
+            sa.Column("role", sa.String(32), nullable=False, server_default=""),
             sa.Column("ip_address", sa.String(64), nullable=True),
             sa.Column("user_agent", sa.String(255), nullable=True),
         )

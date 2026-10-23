@@ -761,9 +761,23 @@ def _resource_link_redirect(db: Session, platform, user: User, claims: dict, *, 
     bound = lti_links.is_bound(db, platform.id, str(claims.get("sub", "")), user)
     lti13.record_launch(db, platform, user.id, claims, kind, rid, grade_passback=bound)
 
+    # The rules of use come before anything a launch opens (ADR 0014 §3, #279). A lab is
+    # neither provisioned nor handed a token until they are signed: the Student signs on the
+    # SPA's form, then starts the lab again from their course. Any other launch goes to the
+    # form with the launched page as its return.
+    from urllib.parse import quote
+
+    from ..acknowledgement import rule as acknowledgement_rule
+
+    must_sign = acknowledgement_rule.status(db, user.id, user.tenant_id).required
     if kind == "lab" and rid:
-        return RedirectResponse(_launch_lab(db, user, rid), status_code=302)  # the lab page has its own token
-    path = _launch_path(db, platform, user, claims, kind, rid)
+        if not must_sign:
+            return RedirectResponse(_launch_lab(db, user, rid), status_code=302)  # the lab page has its own token
+        path = "/rules-of-use"
+    else:
+        path = _launch_path(db, platform, user, claims, kind, rid)
+        if must_sign:
+            path = f"/rules-of-use?returnUrl={quote(path, safe='')}"
     # Only the account this very LMS account created: one matched by an asserted email
     # (another LMS account, or another site) must not get a session for it.
     own = user.keycloak_id == f"lti:{platform.id}:{claims.get('sub', '')}"

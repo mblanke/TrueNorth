@@ -6,8 +6,9 @@ A user must sign when a version has been published and any of these is true:
 2. a newer version has been published since their last signature;
 3. their last signature of the current version is more than ``VALID_DAYS`` (365) days old.
 
-All three reduce to one test: there is no signature by this user of the **current**
-version made within the last 365 days. Before any version is published (a first
+All three reduce to one test: there is no signature by this user, in their current tenant,
+of the **current** version made within the last 365 days. (A user moved to another tenant
+signs again, so each organisation's export holds everyone it has.) Before any version is published (a first
 install), nobody must sign.
 
 Enforced on every request by ``auth.get_current_user``, after the account checks
@@ -25,9 +26,12 @@ Exempt, and why:
 
 Not exempt: LTI session hand-offs (a Student launched from Moodle signs on the same page,
 then goes on to what they launched) and every Keycloak sign-in, platform administrators
-included. Lab access tokens (``X-Lab-Token``), noise-agent tokens, the calendar feed and
-LTI tool endpoints never resolve a user through ``get_current_user``, so this rule does
-not apply to them.
+included. An LTI launch checks this rule itself before it opens anything
+(``routers/integrations._resource_link_redirect``): a lab is neither provisioned nor given
+a lab access token (``X-Lab-Token``) until the Student has signed; any other launch goes to
+the form first, with the launched page as its return. Lab tokens, noise-agent tokens, the
+calendar feed and the LTI tool endpoints never resolve a user through
+``get_current_user``, so the per-request check does not apply to them.
 """
 
 from __future__ import annotations
@@ -79,15 +83,16 @@ def current_version(db: Session) -> AcknowledgementVersion | None:
     )
 
 
-def status(db: Session, user_id: uuid.UUID | str, at: datetime | None = None) -> Status:
+def status(db: Session, user_id: uuid.UUID | str, tenant_id: uuid.UUID | str, at: datetime | None = None) -> Status:
     at = at or now()
-    uid = uuid.UUID(str(user_id))
+    uid, tid = uuid.UUID(str(user_id)), uuid.UUID(str(tenant_id))
     current = current_version(db)
     if current is None:
         return Status(False, None, None, None, "none_published")
     latest = (
         db.query(AcknowledgementSignature.signed_at)
-        .filter(AcknowledgementSignature.user_id == uid, AcknowledgementSignature.version_id == current.id)
+        .filter(AcknowledgementSignature.user_id == uid, AcknowledgementSignature.tenant_id == tid,
+                AcknowledgementSignature.version_id == current.id)
         .order_by(AcknowledgementSignature.signed_at.desc())
         .first()
     )
@@ -105,16 +110,16 @@ def is_exempt(identity: object) -> bool:
     return (getattr(identity, "tn_session", "") or "") in EXEMPT_SESSIONS
 
 
-def required(db: Session, user_id: uuid.UUID | str, identity: object) -> bool:
+def required(db: Session, user_id: uuid.UUID | str, tenant_id: uuid.UUID | str, identity: object) -> bool:
     """Whether this request's user must sign before going on (exemptions applied)."""
     if is_exempt(identity):
         return False
-    return status(db, user_id).required
+    return status(db, user_id, tenant_id).required
 
 
-def denial(db: Session, user_id: uuid.UUID | str, identity: object):
+def denial(db: Session, user_id: uuid.UUID | str, tenant_id: uuid.UUID | str, identity: object):
     """The 403 to raise, or None. FastAPI is imported lazily, as in mfa_policy."""
-    if not required(db, user_id, identity):
+    if not required(db, user_id, tenant_id, identity):
         return None
     from fastapi import HTTPException
 

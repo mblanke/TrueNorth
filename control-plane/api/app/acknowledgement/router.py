@@ -55,7 +55,7 @@ def _fail(exc: service.AcknowledgementError) -> HTTPException:
 @router.get("/current", response_model=AcknowledgementCurrentOut, operation_id="getCurrentAcknowledgement",
             summary="The rules of use the caller must sign, and whether they have")
 def get_current(db: Session = Depends(get_db), user: CurrentUser = Depends(get_signed_in_user)):
-    return _current_out(rule.status(db, user.id))
+    return _current_out(rule.status(db, user.id, user.tenant_id))
 
 
 @router.post("/sign", response_model=AcknowledgementCurrentOut, operation_id="signAcknowledgement",

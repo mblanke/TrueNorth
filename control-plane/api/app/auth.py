@@ -249,7 +249,7 @@ async def get_current_user(
         return user
     from .acknowledgement import rule as acknowledgement_rule
 
-    denial = acknowledgement_rule.denial(db, user.id, identity)
+    denial = acknowledgement_rule.denial(db, user.id, user.tenant_id, identity)
     if denial is not None:
         raise denial
     return user
