@@ -659,6 +659,23 @@ def approved_upcoming(db: Session, event_ids: list[uuid.UUID], now: datetime | N
     )
 
 
+def first_approved_start(db: Session, event_ids: list[uuid.UUID]) -> datetime | None:
+    """When the first of these bookings that an approver let through starts (UTC): approved
+    and still holding, or already over. One awaiting approval, rejected or cancelled never
+    counts. None when there is none (ADR 0014 §4: a class's seat-forfeit clock)."""
+    if not event_ids:
+        return None
+    # tenant-safe: ids of one class's sessions, all in the class's tenant (sessions.link).
+    first = (
+        db.query(ScheduledEvent.start_time)
+        .filter(ScheduledEvent.id.in_(event_ids), ScheduledEvent.state.in_((*HOLDING, EventState.completed)))
+        .order_by(ScheduledEvent.start_time)
+        .limit(1)
+        .scalar()
+    )
+    return as_utc(first) if first is not None else None
+
+
 def room_for(db: Session, evt: ScheduledEvent, extra: Resources) -> list[str]:
     """Why ``extra`` more demand on the already-held ``evt`` would not fit (none: it fits).
     The booking itself is counted at its current size, so this asks for the growth only.

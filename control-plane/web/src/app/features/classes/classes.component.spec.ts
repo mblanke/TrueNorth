@@ -7,7 +7,7 @@ import { AuthService } from '@core/services/auth.service';
 import { ClassRecord, ClassesApiService, RollCallEntry } from '@core/services/classes-api.service';
 import { NotificationService } from '@core/services/notification.service';
 import { OperatorRecordsApiService } from '@core/services/operator-records-api.service';
-import { ClassForm, ClassesComponent, addSummary, toClassBody } from './classes.component';
+import { ClassForm, ClassesComponent, addSummary, reinstateSummary, toClassBody } from './classes.component';
 
 const CLASS: ClassRecord = {
   id: 'c1', tenant_id: 't', name: 'C201-26-03', course_id: 'k1', course_name: 'SOC Analyst',
@@ -19,6 +19,8 @@ const ENTRIES: RollCallEntry[] = [
   { id: 'e1', email: 'joe@corp.test', user_id: null, display_name: null, status: 'invited' },
   { id: 'e2', email: 'ann@corp.test', user_id: 'u2', display_name: 'Ann', status: 'signed_in' },
   { id: 'e3', email: 'old@corp.test', user_id: null, display_name: null, status: 'removed' },
+  { id: 'e4', email: 'late@corp.test', user_id: null, display_name: null, status: 'forfeited',
+    forfeited_at: '2026-11-02T11:00:00Z' },
 ] as RollCallEntry[];
 
 describe('class form helpers', () => {
@@ -52,6 +54,15 @@ describe('class form helpers', () => {
     expect(s).toContain('i@corp.test (staff)');
     expect(s).toContain('x@');
   });
+
+  it('says what a reinstatement did', () => {
+    expect(reinstateSummary('a@corp.test', { entry_id: 'e', class_id: 'c', status: 'invited' }))
+      .toContain('has their seat back (invited)');
+    const pending = reinstateSummary('a@corp.test', {
+      entry_id: 'e', class_id: 'c', status: 'pending', pending_reason: "'Lab': not enough vCPU" });
+    expect(pending).toContain('an approver decides');
+    expect(pending).toContain('vCPU');
+  });
 });
 
 describe('ClassesComponent', () => {
@@ -61,12 +72,14 @@ describe('ClassesComponent', () => {
   let api: jasmine.SpyObj<ClassesApiService>;
 
   function setup(role: string, cls: ClassRecord = CLASS) {
-    api = jasmine.createSpyObj('ClassesApiService', ['mine', 'list', 'create', 'rollCall', 'addPasted', 'addCsv', 'remove']);
+    api = jasmine.createSpyObj('ClassesApiService',
+      ['mine', 'list', 'create', 'rollCall', 'addPasted', 'addCsv', 'remove', 'reinstate']);
     api.mine.and.returnValue(of([cls]));
     api.list.and.returnValue(of([cls]));
     api.rollCall.and.returnValue(of(ENTRIES));
     api.addPasted.and.returnValue(of({ added: [ENTRIES[0]], already_on_roll_call: [], invalid: [], refused: [] }));
     api.remove.and.returnValue(of(undefined));
+    api.reinstate.and.returnValue(of({ entry_id: 'e4', class_id: 'c1', status: 'invited' }));
     const records = jasmine.createSpyObj('OperatorRecordsApiService', ['listCourses', 'listUsers']);
     records.listCourses.and.returnValue(of({ items: [{ id: 'k1', name: 'SOC Analyst' }], total: 1, limit: 200, offset: 0 }));
     records.listUsers.and.returnValue(of([]));
@@ -98,7 +111,19 @@ describe('ClassesComponent', () => {
     expect(el.textContent).toContain('Invited');
     expect(el.textContent).toContain('Signed in');
     expect(el.textContent).toContain('Removed');
-    expect(buttons('Remove').filter(b => b.textContent?.trim() === 'Remove').length).toBe(2);
+    expect(el.textContent).toContain('Lost seat');
+    expect(buttons('Remove').filter(b => b.textContent?.trim() === 'Remove').length).toBe(3);
+  });
+
+  it('the lead reinstates a Student who lost their seat, in one click', () => {
+    setup('instructor');
+    component.open(CLASS);
+    fixture.detectChanges();
+    const reinstate = buttons('Reinstate');
+    expect(reinstate.length).toBe(1);  // only the forfeited entry
+    reinstate[0].click();
+    expect(api.reinstate).toHaveBeenCalledWith('c1', 'e4');
+    expect(api.rollCall).toHaveBeenCalledTimes(2);  // the roll call is read again
   });
 
   it('adds pasted emails and says what happened', () => {
@@ -115,7 +140,9 @@ describe('ClassesComponent', () => {
     component.open(component.classes()[0]);
     fixture.detectChanges();
     expect(el.textContent).not.toContain('Paste');
+    expect(el.textContent).toContain('Lost seat');
     expect(buttons('Remove').length).toBe(0);
+    expect(buttons('Reinstate').length).toBe(0);
     expect(buttons('New class').length).toBe(0);
   });
 

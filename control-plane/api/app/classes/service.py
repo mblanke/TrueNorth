@@ -298,6 +298,10 @@ def add_to_roll_call(db: Session, cls: Class, actor: CurrentUser, emails: list[s
     hidden: list[str] = []
     for email in emails:
         entry = db.query(RollCallEntry).filter(RollCallEntry.class_id == cls.id, RollCallEntry.email == email).first()
+        if entry is not None and entry.status == RollCallStatus.forfeited.value:
+            # Their seat went for not signing in in time (ADR 0014 §4): Reinstate decides that.
+            res.refused.append(RollCallRefusal(email=email, reason=FORFEITED_REFUSAL))
+            continue
         if entry is not None and entry.status != RollCallStatus.removed.value:
             res.already.append(email)
             continue
@@ -322,6 +326,7 @@ def add_to_roll_call(db: Session, cls: Class, actor: CurrentUser, emails: list[s
         entry.removed_at = None
         entry.user_id = None
         entry.signed_in_at = None
+        entry.forfeited_at = None  # a fresh addition: the forfeit rule applies to it afresh
         if no_room:
             entry.status = RollCallStatus.pending.value
             entry.pending_reason = "; ".join(no_room)[:1000]
@@ -364,6 +369,7 @@ def put_on_roll_call(db: Session, cls: Class, entry: RollCallEntry, account: Use
     entry.pending_reason = None
     entry.user_id = None
     entry.signed_in_at = None
+    entry.joined_at = _now()  # the seat-forfeit clock counts from here for a late addition
     if account is not None:
         entry.user_id = account.id
         ensure_enrollment(db, user_id=account.id, course_id=cls.course_id, tenant_id=cls.tenant_id)
@@ -424,6 +430,8 @@ def reject_addition(db: Session, cls: Class, entry: RollCallEntry, actor: Curren
     audit(db, actor.id, cls, "roll_call_addition_rejected", f"{entry.email}: {reason}"[:2000])
 
 
+FORFEITED_REFUSAL = "lost their seat for not signing in in time; reinstate them from the roll call instead"
+
 DAILY_LIMIT = (
     f"not emailed: the daily limit of {EMAILS_PER_INSTRUCTOR_PER_DAY} emails per instructor (onboarding and "
     "reminders together) is reached; they can still sign in, and are not reminded beyond the limit"
@@ -454,7 +462,8 @@ def remove_from_roll_call(db: Session, cls: Class, entry: RollCallEntry, actor: 
     §17). The entry stays, marked removed (ADR 0010). Their account and enrolment are
     untouched: they may be on the course for other reasons. Their seat in each approved
     session is freed; returns those sessions, whose invites they lose. Does not commit."""
-    was_on = entry.status != RollCallStatus.pending.value
+    # A pending addition never took a seat, and a forfeited Student's was freed already.
+    was_on = entry.status not in (RollCallStatus.pending.value, RollCallStatus.forfeited.value)
     entry.status = RollCallStatus.removed.value
     entry.removed_at = _now()
     audit(db, actor.id, cls, "roll_call_remove", entry.email)

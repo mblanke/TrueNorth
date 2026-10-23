@@ -127,11 +127,20 @@ def auth_me(
     An identity with no account whose verified AD email is on a class's roll call is
     admitted here, on its first sign-in, and answers ``registered`` (ADR 0014 §1;
     ``app/classes/onboarding.py`` holds the rules)."""
+    from ..classes import forfeit
+    from ..classes.onboarding import admit_from_roll_call, trusted_email
+
     user = db.query(User).filter(User.keycloak_id == identity.sub).first()
     if user is None:
-        from ..classes.onboarding import admit_from_roll_call
-
         user = admit_from_roll_call(db, identity, client_ip(request))
+    elif not identity.tn_session or identity.tn_session == "lti":
+        # An account that already exists authenticating counts as signing in for any roll
+        # call still waiting on it (ADR 0014 §4; app/classes/forfeit.py).
+        forfeit.note_sign_in(db, user)
+    # Seats lost for not signing in in time: no admission through them; say whom to ask.
+    lost = forfeit.forfeited_class_names(
+        db, email=trusted_email(identity), user_id=user.id if user else None, tenant_id=user.tenant_id if user else None
+    )
     if user is not None:
         # MFA state: so the SPA can step up before a route refuses it. mfa_satisfied is
         # "this request would pass the MFA rule" (app/mfa_policy.py), exemptions included.
@@ -145,19 +154,21 @@ def auth_me(
 
         ack = not auth.AUTH_DISABLED and acknowledgement_rule.required(db, user.id, user.tenant_id, identity)
         return AuthMeOut(status="registered", user=user, platform_admin=is_platform_admin(user, db),
-                         mfa_required=required, mfa_satisfied=satisfied, acknowledgement_required=ack)
+                         mfa_required=required, mfa_satisfied=satisfied, acknowledgement_required=ack,
+                         roll_call_forfeited=lost)
 
     groups = ident.normalise_groups(identity.groups)
     request_row = _latest_request(db, identity.sub)
     if request_row is not None and request_row.status == RegistrationStatus.pending:
-        return AuthMeOut(status="pending", request=request_row)
+        return AuthMeOut(status="pending", request=request_row, roll_call_forfeited=lost)
     if request_row is not None and request_row.status == RegistrationStatus.rejected:
-        return AuthMeOut(status="rejected", request=request_row)
+        return AuthMeOut(status="rejected", request=request_row, roll_call_forfeited=lost)
 
     return AuthMeOut(
         status="unregistered",
         prefill=RegistrationPrefill(**ident.claims_to_prefill(identity.model_dump())),
         suggestions=_suggestions(db, groups),
+        roll_call_forfeited=lost,
     )
 
 

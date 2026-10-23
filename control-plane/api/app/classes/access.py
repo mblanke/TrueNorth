@@ -2,7 +2,7 @@
 
 - Everything is tenant-scoped: another tenant's class is not found (404), whoever asks.
 - A class is visible only to its lead, its assistants and observers, the Students on its
-  roll call (not removed), and the admins of its tenant. Anyone else in the tenant: 404.
+  roll call (not removed, forfeited or awaiting an approver), and the admins of its tenant. Anyone else in the tenant: 404.
 - Only the lead or an admin changes the class or its roll call. Assistants and observers
   read the roll call. A Student on it sees the class, never the roll call (403).
 """
@@ -18,7 +18,7 @@ from sqlalchemy.orm import Query, Session
 from ..auth import CurrentUser
 from ..models import UserRole
 from ..tenancy import tenant_uuid
-from .models import Class, ClassStaff, RollCallEntry, RollCallStatus
+from .models import OFF_ROLL_CALL, Class, ClassStaff, RollCallEntry
 from .schemas import ClassRole
 
 LEAD_ROLES = (UserRole.instructor, UserRole.admin)
@@ -34,7 +34,7 @@ def visible(db: Session, user: CurrentUser) -> Query:
     uid = uuid.UUID(user.id)
     staffed = select(ClassStaff.class_id).where(ClassStaff.user_id == uid)
     on_roll_call = select(RollCallEntry.class_id).where(
-        RollCallEntry.user_id == uid, RollCallEntry.status != RollCallStatus.removed.value
+        RollCallEntry.user_id == uid, RollCallEntry.status.notin_(OFF_ROLL_CALL)
     )
     return q.filter(or_(Class.lead_instructor_id == uid, Class.id.in_(staffed), Class.id.in_(on_roll_call)))
 
@@ -80,7 +80,7 @@ def role_in(db: Session, cls: Class, user: CurrentUser) -> ClassRole | None:
         .filter(
             RollCallEntry.class_id == cls.id,
             RollCallEntry.user_id == uid,
-            RollCallEntry.status != RollCallStatus.removed.value,
+            RollCallEntry.status.notin_(OFF_ROLL_CALL),
         )
         .first()
     )

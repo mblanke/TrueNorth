@@ -1571,6 +1571,13 @@
               }
             ]
           },
+          "roll_call_forfeited": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Roll Call Forfeited",
+            "type": "array"
+          },
           "status": {
             "title": "Status",
             "type": "string"
@@ -16686,6 +16693,44 @@
         "title": "RegistrationSuggestions",
         "type": "object"
       },
+      "ReinstateOut": {
+        "description": "What reinstating a Student who lost their seat did (ADR 0014 \u00a74).",
+        "properties": {
+          "class_id": {
+            "format": "uuid",
+            "title": "Class Id",
+            "type": "string"
+          },
+          "entry_id": {
+            "format": "uuid",
+            "title": "Entry Id",
+            "type": "string"
+          },
+          "pending_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What did not fit, when it waits for an approver",
+            "title": "Pending Reason"
+          },
+          "status": {
+            "$ref": "#/components/schemas/RollCallStatusOut",
+            "description": "signed_in or invited when their seat was taken again; pending when it waits for an approver"
+          }
+        },
+        "required": [
+          "entry_id",
+          "class_id",
+          "status"
+        ],
+        "title": "ReinstateOut",
+        "type": "object"
+      },
       "RejectIn": {
         "properties": {
           "reason": {
@@ -16962,6 +17007,19 @@
             "title": "Email",
             "type": "string"
           },
+          "forfeited_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When they lost their seat for not signing in in time; kept after a reinstatement",
+            "title": "Forfeited At"
+          },
           "id": {
             "format": "uuid",
             "title": "Id",
@@ -17081,7 +17139,8 @@
           "signed_in",
           "ready",
           "removed",
-          "pending"
+          "pending",
+          "forfeited"
         ],
         "title": "RollCallStatusOut",
         "type": "string"
@@ -26074,6 +26133,65 @@
           }
         ],
         "summary": "Approve a roll-call addition that did not fit",
+        "tags": [
+          "classes"
+        ]
+      }
+    },
+    "/classes/{class_id}/roll-call/{entry_id}/reinstate": {
+      "post": {
+        "description": "Its lead or an admin (ADR 0014 \u00a74). Back to signed in if they have signed in since,\notherwise invited; their seat is taken again if it fits the approved sessions, otherwise\nit waits for an approver (ADR 0014 \u00a717). Never forfeited again. Audited.",
+        "operationId": "reinstateRollCallEntry",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "class_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Class Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "entry_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Entry Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReinstateOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Give a Student who lost their seat their seat back",
         "tags": [
           "classes"
         ]

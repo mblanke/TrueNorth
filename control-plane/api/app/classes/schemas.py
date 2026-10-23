@@ -35,6 +35,7 @@ class RollCallStatusOut(str, Enum):
     ready = "ready"
     removed = "removed"
     pending = "pending"  # added after approval with no room: waits for an approver (ADR 0014 §17)
+    forfeited = "forfeited"  # not signed in by 2 hours after the start: seat lost (ADR 0014 §4)
 
 
 class ClassRole(str, Enum):
@@ -112,6 +113,9 @@ class RollCallEntryOut(BaseModel):
     removed_at: datetime | None
     created_at: datetime | None = None
     pending_reason: str | None = Field(None, description="Why an addition waits for an approver, or was rejected")
+    forfeited_at: datetime | None = Field(
+        None, description="When they lost their seat for not signing in in time; kept after a reinstatement"
+    )
 
 
 class RollCallAddIn(BaseModel):
@@ -164,6 +168,17 @@ class AdditionDecisionOut(BaseModel):
     status: RollCallStatusOut
     emailed: bool = Field(False, description="An onboarding email went to them")
     not_emailed: str | None = Field(None, description="Why no onboarding email went, if one was due")
+
+
+class ReinstateOut(BaseModel):
+    """What reinstating a Student who lost their seat did (ADR 0014 §4)."""
+
+    entry_id: uuid.UUID
+    class_id: uuid.UUID
+    status: RollCallStatusOut = Field(
+        ..., description="signed_in or invited when their seat was taken again; pending when it waits for an approver"
+    )
+    pending_reason: str | None = Field(None, description="What did not fit, when it waits for an approver")
 
 
 class AdditionRejectIn(BaseModel):

@@ -47,10 +47,13 @@ class RollCallStatus(str, enum.Enum):
     # not linked, enrolled, emailed, invited or admitted.
     pending = "pending"
     removed = "removed"  # taken off by the lead or an admin; kept for the record
+    # Not signed in by 2 hours after the class's first approved session started (ADR 0014
+    # §4, ``forfeit.py``): off this roll call, seat freed, until the lead reinstates them.
+    forfeited = "forfeited"
 
 
 # Entries that are not (or not yet) on the roll call: no invites, no admission, no count.
-OFF_ROLL_CALL = (RollCallStatus.removed.value, RollCallStatus.pending.value)
+OFF_ROLL_CALL = (RollCallStatus.removed.value, RollCallStatus.pending.value, RollCallStatus.forfeited.value)
 
 
 class Class(TimestampMixin, Base):
@@ -106,6 +109,13 @@ class RollCallEntry(TimestampMixin, Base):
     removed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # Why an addition waits for an approver (status pending): what did not fit.
     pending_reason: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    # When the seat was forfeited (ADR 0014 §4). Kept after a reinstatement, which is how the
+    # clock knows never to forfeit that entry again; cleared only by a fresh addition.
+    forfeited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # When the entry was last put on the roll call (added, approved, reinstated). Someone added
+    # after the class started gets their own 2 hours from here. None (entries older than the
+    # rule): the class's first approved session is the only clock.
+    joined_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class RollCallSettings(TimestampMixin, Base):

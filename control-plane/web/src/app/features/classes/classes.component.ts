@@ -10,7 +10,7 @@ import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
 import { AuthService } from '@core/services/auth.service';
 import {
-  ClassIn, ClassRecord, ClassesApiService, RollCallAddResult, RollCallEntry, RollCallStatus,
+  ClassIn, ClassRecord, ClassesApiService, ReinstateResult, RollCallAddResult, RollCallEntry, RollCallStatus,
 } from '@core/services/classes-api.service';
 import { NotificationService } from '@core/services/notification.service';
 import {
@@ -32,8 +32,16 @@ export interface ClassForm {
 
 export const STATUS_LABEL: Record<RollCallStatus, string> = {
   invited: 'Invited', signed_in: 'Signed in', ready: 'Ready', removed: 'Removed',
-  pending: 'Awaiting approval',
+  pending: 'Awaiting approval', forfeited: 'Lost seat',
 };
+
+/** What a reinstatement did, in one line. */
+export function reinstateSummary(email: string, r: ReinstateResult): string {
+  if (r.status === 'pending') {
+    return `${email} is back, but the approved sessions have no room: an approver decides (${r.pending_reason ?? ''}).`;
+  }
+  return `${email} has their seat back (${STATUS_LABEL[r.status].toLowerCase()}).`;
+}
 
 /** The request body for a form, or why it cannot be sent yet. */
 export function toClassBody(f: ClassForm): ClassIn | string {
@@ -64,6 +72,9 @@ export function addSummary(r: RollCallAddResult): string {
  * sees every class of the organisation), creating one, and its roll call by paste or CSV.
  * A Student on a roll call who has no account yet is emailed to onboard, and goes straight
  * in on their first AD sign-in. The calendar is a later page.
+ *
+ * A Student not signed in by 2 hours after the class's first approved session started loses
+ * their seat (ADR 0014 §4): shown as "Lost seat", with Reinstate for the lead or an admin.
  */
 @Component({
   selector: 'tn-classes',
@@ -186,11 +197,19 @@ export function addSummary(r: RollCallAddResult): string {
               <thead><tr><th>Email</th><th>Name</th><th>Status</th><th></th></tr></thead>
               <tbody>
                 @for (e of rollCall(); track e.id) {
-                  <tr [class.removed]="e.status === 'removed'">
+                  <tr [class.removed]="e.status === 'removed'" [class.forfeited]="e.status === 'forfeited'">
                     <td>{{ e.email }}</td>
                     <td>{{ e.display_name ?? '' }}</td>
-                    <td><mat-chip [class]="'status-' + e.status">{{ label(e) }}</mat-chip></td>
                     <td>
+                      <mat-chip [class]="'status-' + e.status">{{ label(e) }}</mat-chip>
+                      @if (e.status === 'forfeited' && e.forfeited_at) {
+                        <span class="when">not signed in by {{ e.forfeited_at | date:'short' }}</span>
+                      }
+                    </td>
+                    <td>
+                      @if (c.can_edit && e.status === 'forfeited') {
+                        <button mat-button color="primary" (click)="reinstate(e)">Reinstate</button>
+                      }
                       @if (c.can_edit && e.status !== 'removed') {
                         <button mat-button color="warn" (click)="remove(e)">Remove</button>
                       }
@@ -213,6 +232,8 @@ export function addSummary(r: RollCallAddResult): string {
     .entries { width: 100%; border-collapse: collapse; margin-top: 16px; }
     .entries th, .entries td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--mat-sys-outline-variant); }
     .entries tr.removed td { opacity: 0.6; }
+    .entries tr.forfeited td { color: var(--mat-sys-error); }
+    .when { margin-left: 8px; font-size: 12px; }
     .error { color: var(--mat-sys-error); padding: 0 16px; }
   `],
 })
@@ -310,6 +331,19 @@ export class ClassesComponent implements OnInit {
     if (!c || !file) return;
     this.api.addCsv(c.id, file).subscribe({
       next: r => { input.value = ''; this.added(c, r); },
+      error: err => this.notify.error(apiError(err)),
+    });
+  }
+
+  reinstate(e: RollCallEntry): void {
+    const c = this.selected();
+    if (!c) return;
+    this.api.reinstate(c.id, e.id).subscribe({
+      next: r => {
+        this.notify.success(reinstateSummary(e.email, r));
+        this.open(c);
+        this.load();
+      },
       error: err => this.notify.error(apiError(err)),
     });
   }
