@@ -205,3 +205,75 @@ def test_a_booking_can_use_a_shared_course_but_not_another_tenants(client, db_se
             },
         )
     assert r.status_code == 404
+
+
+@pytest.fixture
+def shared_class(db_session, klass):
+    """A shared catalogue course with Students of this tenant (ann) and of another (zed)."""
+    shared = _course(db_session, tenant=None, name="Shared catalogue course")
+    zed = _user(db_session, "zed@other.test", tenant=OTHER_TENANT)
+    _enrol(db_session, klass["ann"], shared)
+    _enrol(db_session, zed, shared)
+    return {**klass, "shared": shared, "zed": zed}
+
+
+def _put(client, teacher: User, ev: dict, course: Course, start=SOON) -> None:
+    with signed_in(teacher):
+        r = client.put(
+            f"/schedule/events/{ev['id']}",
+            json={
+                "name": ev["name"],
+                "start_time": start.isoformat(),
+                "end_time": (start + timedelta(hours=2)).isoformat(),
+                "course_id": str(course.id),
+            },
+        )
+    assert r.status_code == 200, r.text
+
+
+def test_a_shared_course_invites_only_this_tenants_students(client, shared_class, outbox):
+    """#276: a booking on a shared catalogue course must not email another tenant's
+    Students enrolled on the same course: not the invite, the update, the withdrawal
+    when the booking leaves the course, nor the cancellation."""
+    t = shared_class
+    ev = _book(client, t["teacher"], t["shared"])
+    assert sorted((to, m) for to, m, _ in outbox) == [
+        ("ann@example.test", "REQUEST"),
+        ("teacher@example.test", "REQUEST"),
+    ]
+
+    outbox.clear()
+    _put(client, t["teacher"], ev, t["shared"], SOON + timedelta(hours=1))  # moved: an update
+    assert sorted((to, m) for to, m, _ in outbox) == [
+        ("ann@example.test", "REQUEST"),
+        ("teacher@example.test", "REQUEST"),
+    ]
+
+    outbox.clear()
+    _put(client, t["teacher"], ev, t["course"])  # off the shared course: its Students get a CANCEL
+    assert [to for to, _, _ in outbox if to == "zed@other.test"] == []
+
+    _put(client, t["teacher"], ev, t["shared"])  # back on it, then cancelled
+    outbox.clear()
+    with signed_in(t["teacher"]):
+        assert client.post(f"/schedule/events/{ev['id']}/cancel").status_code == 200
+    assert sorted((to, m) for to, m, _ in outbox) == [
+        ("ann@example.test", "CANCEL"),
+        ("teacher@example.test", "CANCEL"),
+    ]
+
+
+def test_a_shared_course_reminds_only_this_tenants_students(db_session, shared_class):
+    ev = ScheduledEvent(
+        name="Reminded",
+        state=EventState.scheduled,
+        tenant_id=uuid.UUID(DEV_TENANT),
+        course_id=shared_class["shared"].id,
+        instructor_id=shared_class["teacher"].id,
+        start_time=SOON,
+        end_time=SOON + timedelta(hours=2),
+    )
+    db_session.add(ev)
+    db_session.flush()
+    reminders = clock.tick(db_session, now=SOON - timedelta(hours=2)).reminders
+    assert sorted(r.to for r in reminders) == ["ann@example.test", "teacher@example.test"]

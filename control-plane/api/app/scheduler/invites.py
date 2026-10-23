@@ -7,8 +7,8 @@ mail clients show Accept and Decline.
   a higher ``SEQUENCE``, when it moves;
 - ``METHOD:CANCEL`` when it is cancelled, or to the old instructor when it changes hands.
 
-Recipients are the booking's Instructor. Students are not invited until bookings know
-their attendees (an open question in the ADR). Accept/Decline replies go to the
+Recipients are the booking's Instructor and the active Students of its course in the
+booking's tenant (a shared catalogue course has other tenants' Students, #276). Accept/Decline replies go to the
 organizer mailbox (``SCHEDULER_ORGANIZER_EMAIL``, else ``SMTP_FROM``) and are not read
 back. Sending happens after the response (FastAPI background task) and is best effort:
 a failure is logged, the booking is unaffected.
@@ -100,16 +100,17 @@ def recipients(db: Session, evt: ScheduledEvent) -> list[tuple[str, bool]]:
     teacher = instructor_email(db, evt.instructor_id)
     if teacher:
         out.append((teacher, False))
-    out += [(e, True) for e in student_emails(db, evt.course_id) if e != teacher]
+    out += [(e, True) for e in student_emails(db, evt.course_id, evt.tenant_id) if e != teacher]
     return out
 
 
-def student_emails(db: Session, course_id: uuid.UUID | None) -> list[str]:
+def student_emails(db: Session, course_id: uuid.UUID | None, tenant_id: uuid.UUID) -> list[str]:
+    """The booking's tenant's Students of the course; a shared course has others (#276)."""
     if not course_id:
         return []
     from ..enrollment import active_students
 
-    return sorted({u.email for u in active_students(db, course_id) if u.email})
+    return sorted({u.email for u in active_students(db, course_id, tenant_id=tenant_id) if u.email})
 
 
 def plan(
@@ -132,7 +133,7 @@ def plan(
         if old:
             gone.append((old, False))
     if previous_course and previous_course != evt.course_id:
-        gone += [(e, True) for e in student_emails(db, previous_course)]
+        gone += [(e, True) for e in student_emails(db, previous_course, evt.tenant_id)]
     out += [build(evt, "CANCEL", to, attending) for to, attending in gone if to not in current]
     return out
 
