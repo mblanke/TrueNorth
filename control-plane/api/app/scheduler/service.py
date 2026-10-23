@@ -814,7 +814,7 @@ def cancel_unstarted(db: Session, user: CurrentUser, event_ids: list[uuid.UUID])
         before = evt.state
         if not lifecycle.transition(db, evt, EventState.cancelled):
             continue
-        evt.sequence = (evt.sequence or 0) + 1
+        resequence(evt)
         detail = f"{before.value} -> cancelled: its class was cancelled"
         if what := release_range(db, evt):
             detail += f"; {what}"

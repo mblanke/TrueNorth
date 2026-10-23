@@ -242,8 +242,9 @@ def counting_account(db: Session, cls: Class, entry: RollCallEntry) -> User | No
       that has signed in (``service.has_signed_in``: no roster or admin-made row).
     - Not linked: the one account with the entry's address (ignoring case, in any tenant),
       when it is an active Student of the class's tenant made by a directory sign-in
-      (``source = ad``: Request access, roll-call admission, adoption). An address an LTI
-      platform asserted (``lti``) or an admin typed (``local``) is not proof of anything."""
+      (``source = ad``: Request access, roll-call admission, adoption), and whose address
+      is the entry's exactly, in ASCII. An address an LTI platform asserted (``lti``) or an
+      admin typed (``local``) is not proof of anything."""
     if entry.user_id is not None:
         # tenant-safe: the entry's own link, checked against the class's tenant below.
         u = db.get(User, entry.user_id)
@@ -254,6 +255,11 @@ def counting_account(db: Session, cls: Class, entry: RollCallEntry) -> User | No
         if len(rows) != 1 or rows[0].source != "ad":
             return None
         u = rows[0]
+        # Exactly the entry's address, in ASCII: lower() folds look-alikes such as the Kelvin
+        # sign (U+212A) onto ASCII letters, in PostgreSQL and Python alike, so "\u212aate@corp.test"
+        # would otherwise claim kate@corp.test's seat (admission has the same rule).
+        if not (u.email or "").isascii() or service.normalise_email(u.email) != entry.email:
+            return None
     if u.tenant_id != cls.tenant_id or not u.is_active or u.deleted_at is not None or u.role != UserRole.student:
         return None
     return u

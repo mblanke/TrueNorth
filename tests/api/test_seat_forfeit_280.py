@@ -964,3 +964,20 @@ def test_i8_notices_are_capped_per_class_per_day(client, db_session, world, monk
     assert len(res.forfeited) == 1 and res.mails == []  # still forfeited, not mailed
     assert len(res.invites) == 2  # the Students still get their CANCEL
 
+
+def test_r10_a_lookalike_address_never_claims_an_entry(client, db_session, world, monkeypatch):
+    """#298 re-review: PostgreSQL's lower() (and Python's) folds the Kelvin sign (U+212A) onto
+    "k". SQLite's lower() is ASCII-only, so the account lookup is stubbed to return what
+    PostgreSQL would; the Postgres lane runs the same case for real."""
+    act_as(world["lead"])
+    client.post(f"/classes/{world['class']['id']}/roll-call", json={"emails": ["kate@corp.test"]})
+    _book(client, world)
+    fake = _student(db_session, world["a"].id, "\u212aate@corp.test")
+    monkeypatch.setattr(class_service, "accounts_with_email", lambda db, email: [fake])
+    entry = _entry(db_session, "kate@corp.test")
+    assert forfeit.counting_account(db_session, _cls(db_session, world), entry) is None
+    assert forfeit.note_sign_in(db_session, fake) == 0
+    forfeit.tick(db_session, now=DUE + SECOND)
+    assert _entry(db_session, "kate@corp.test").status == "forfeited"
+    assert _entry(db_session, "kate@corp.test").user_id is None
+

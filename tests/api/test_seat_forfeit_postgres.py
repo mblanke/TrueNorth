@@ -20,6 +20,7 @@ from datetime import UTC, date, datetime, timedelta
 import pytest
 from app.auth import CurrentUser
 from app.classes import forfeit
+from app.classes import service as class_service
 from app.classes import sessions as class_sessions
 from app.classes.models import Class, ClassSession, RollCallEntry, RollCallSettings
 from app.models import AuditLog, Course, Tenant, User, UserRole
@@ -186,4 +187,23 @@ def test_the_clock_and_a_reinstatement_both_land_on_the_session(world, monkeypat
         assert evt.vcpu_total == 60 - 30 + 10
         assert evt.sequence == 2  # one raise each: the CANCELs and the REQUEST differ
         assert db.query(RollCallEntry).filter_by(email="dan@corp.test").one().status == "invited"
+
+
+def test_a_kelvin_sign_lookalike_never_claims_an_entry(world):
+    """lower() in PostgreSQL folds U+212A (Kelvin sign) onto "k": "\u212aate@corp.test" must
+    not sign in, link or keep the seat of kate@corp.test's roll-call entry."""
+    with Session(world["engine"]) as db:
+        cls = db.get(Class, world["class"])
+        db.add(RollCallEntry(class_id=cls.id, tenant_id=cls.tenant_id, email="kate@corp.test", status="invited",
+                             onboarding_sent_at=datetime.now(UTC) - timedelta(days=1)))
+        fake = User(id=uuid.uuid4(), email="\u212aate@corp.test", display_name="K", role=UserRole.student,
+                    tenant_id=cls.tenant_id, keycloak_id="kc-kelvin", source="ad")
+        db.add(fake)
+        db.commit()
+        assert [u.id for u in class_service.accounts_with_email(db, "kate@corp.test")] == [fake.id]  # it folds
+        assert forfeit.note_sign_in(db, fake) == 0
+        forfeit.tick(db, now=DUE)
+        kate = db.query(RollCallEntry).filter_by(email="kate@corp.test").one()
+        db.refresh(kate)
+        assert kate.status == "forfeited" and kate.user_id is None
 
