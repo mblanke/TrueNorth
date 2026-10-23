@@ -211,43 +211,56 @@ def is_pre_provisioned(u: User) -> bool:
     return u.source == "csv_import"
 
 
-# Without a domain allow-list (an admin set it empty) any domain may be added, in smaller
-# batches. Onboarding emails are capped per instructor per day either way.
+# An admin may set an empty allow-list: any domain, in smaller batches. Emails (onboarding
+# and the day-before reminder together) are capped per instructor per day either way.
 UNRESTRICTED_BATCH = 50
-ONBOARDING_EMAILS_PER_DAY = 100
+EMAILS_PER_INSTRUCTOR_PER_DAY = 100
+NO_DOMAINS = (
+    "No email domains are allowed for roll calls yet: an admin must set the allowed email "
+    "domains (Classes, roll-call domains)"
+)
 
 
 def allowed_domains(db: Session, tenant_id: uuid.UUID) -> tuple[list[str], str]:
-    """(domains, source). An admin's setting if there is one; otherwise the domains of the
-    tenant's active accounts. An empty list means any domain."""
+    """(domains, source). An admin's setting if there is one (an empty setting: any
+    domain). Otherwise the domains of the tenant's active directory (AD) accounts only: an
+    LTI, local or roster address (gmail.com) never widens it. No setting and no AD account:
+    nothing is allowed until an admin sets it."""
     # tenant-safe: keyed by the tenant id itself (the class's or the caller's).
     row = db.get(RollCallSettings, tenant_id)
     if row is not None:
         return sorted(row.email_domains or []), "setting"
     emails = (
         db.query(User.email)
-        .filter(User.tenant_id == tenant_id, User.is_active == True, User.deleted_at.is_(None))  # noqa: E712
+        .filter(
+            User.tenant_id == tenant_id, User.source == "ad", User.is_active == True,  # noqa: E712
+            User.deleted_at.is_(None),
+        )
         .all()
     )
     return sorted({e.rsplit("@", 1)[1].lower() for (e,) in emails if e and "@" in e}), "accounts"
 
 
-def _account_refusal(rows: list[User], cls: Class) -> tuple[User | None, str | None]:
-    """The account an email belongs to in the class's tenant, or why it may not be added."""
-    if any(u.tenant_id != cls.tenant_id for u in rows):
-        return None, "has a TrueNorth account outside this organisation; an administrator must resolve it"
-    if len(rows) > 1:
-        return None, "several accounts share this address in different letter case; an administrator must resolve it"
+def _account_for(rows: list[User], cls: Class) -> tuple[User | None, str | None, bool]:
+    """(account to link, refusal, hidden) for an address's accounts.
+
+    Only this tenant's own facts are ever told to the instructor. An address that names an
+    account in another tenant, or several case variants anywhere, is ``hidden``: it is added
+    exactly as an unknown address would be (invited, emailed, not linked, not enrolled), so
+    the roll call is no oracle for other tenants' accounts. Admission refuses it later
+    (onboarding.py), and an audit row lets a platform admin resolve it."""
+    if len(rows) > 1 or any(u.tenant_id != cls.tenant_id for u in rows):
+        return None, None, True
     if not rows:
-        return None, None
+        return None, None, False
     u = rows[0]
     if u.deleted_at is not None:
-        return None, "belongs to a deleted account"
+        return None, "belongs to a deleted account", False
     if not u.is_active:
-        return None, "belongs to a deactivated account"
+        return None, "belongs to a deactivated account", False
     if u.role != UserRole.student:
-        return None, f"belongs to a {u.role.value} account; a roll call holds Students only"
-    return u, None
+        return None, f"belongs to a {u.role.value} account; a roll call holds Students only", False
+    return u, None, False
 
 
 @dataclass
@@ -261,11 +274,14 @@ class AddResult:
 
 def add_to_roll_call(db: Session, cls: Class, actor: CurrentUser, emails: list[str]) -> AddResult:
     """Add ``emails`` (already normalised) to the roll call. Does not commit."""
-    domains, _ = allowed_domains(db, cls.tenant_id)
+    domains, source = allowed_domains(db, cls.tenant_id)
+    if not domains and source == "accounts":
+        raise HTTPException(422, NO_DOMAINS)
     cap = MAX_ROLL_CALL_BATCH if domains else UNRESTRICTED_BATCH
     if len(emails) > cap:
         raise HTTPException(422, f"At most {cap} emails at a time")
     res = AddResult(added=[], already=[], refused=[], to_onboard=[])
+    hidden: list[str] = []
     for email in emails:
         entry = db.query(RollCallEntry).filter(RollCallEntry.class_id == cls.id, RollCallEntry.email == email).first()
         if entry is not None and entry.status != RollCallStatus.removed.value:
@@ -275,10 +291,12 @@ def add_to_roll_call(db: Session, cls: Class, actor: CurrentUser, emails: list[s
         if domains and domain not in domains:
             res.refused.append(RollCallRefusal(email=email, reason=f"{domain} is not an email domain this organisation's roll calls accept"))
             continue
-        account, refusal = _account_refusal(accounts_with_email(db, email), cls)
+        account, refusal, is_hidden = _account_for(accounts_with_email(db, email), cls)
         if refusal:
             res.refused.append(RollCallRefusal(email=email, reason=refusal))
             continue
+        if is_hidden:
+            hidden.append(email)
         if entry is None:
             entry = RollCallEntry(class_id=cls.id, tenant_id=cls.tenant_id, email=email)
             db.add(entry)
@@ -296,28 +314,45 @@ def add_to_roll_call(db: Session, cls: Class, actor: CurrentUser, emails: list[s
         if entry.status == RollCallStatus.invited.value and entry.onboarding_sent_at is None:
             res.to_onboard.append(entry)
         res.added.append(entry)
-    budget = max(0, ONBOARDING_EMAILS_PER_DAY - onboarding_sent_today(db, actor))
+    budget = max(0, EMAILS_PER_INSTRUCTOR_PER_DAY - emails_sent_today(db, uuid.UUID(actor.id)))
     for entry in res.to_onboard[budget:]:
-        res.not_emailed.append(RollCallRefusal(
-            email=entry.email,
-            reason=f"daily limit of {ONBOARDING_EMAILS_PER_DAY} onboarding emails reached; they get the day-before reminder",
-        ))
+        res.not_emailed.append(RollCallRefusal(email=entry.email, reason=DAILY_LIMIT))
     res.to_onboard = res.to_onboard[:budget]
     db.flush()
     if res.added:
         audit(db, actor.id, cls, "roll_call_add", f"added {len(res.added)}: {', '.join(e.email for e in res.added)}"[:2000])
+    for email in hidden:
+        # For a platform admin (who reads every tenant's audit): this address names an account
+        # elsewhere, or several case variants; it was added unlinked and cannot be admitted.
+        audit(db, actor.id, cls, "roll_call_cross_tenant",
+              f"{email}: names an account in another tenant or several case variants; added unlinked, "
+              "admission will refuse it until an administrator resolves the accounts")
     return res
 
 
-def onboarding_sent_today(db: Session, actor: CurrentUser) -> int:
-    """Onboarding emails sent today (UTC) for entries this person added, in any class."""
-    start = datetime.combine(_now().date(), time.min, tzinfo=UTC)
-    return (
+DAILY_LIMIT = (
+    f"not emailed: the daily limit of {EMAILS_PER_INSTRUCTOR_PER_DAY} emails per instructor (onboarding and "
+    "reminders together) is reached; they can still sign in, and are not reminded beyond the limit"
+)
+
+
+def emails_sent_today(db: Session, added_by: uuid.UUID, now: datetime | None = None) -> int:
+    """Onboarding emails and day-before reminders sent today (UTC) for entries this person
+    added, in any class: the one budget both draw on."""
+    start = datetime.combine((now or _now()).date(), time.min, tzinfo=UTC)
+    onboarding = (
         db.query(func.count(RollCallEntry.id))
-        .filter(RollCallEntry.added_by == uuid.UUID(actor.id), RollCallEntry.onboarding_sent_at >= start)
+        .filter(RollCallEntry.added_by == added_by, RollCallEntry.onboarding_sent_at >= start)
         .scalar()
         or 0
     )
+    reminders = (
+        db.query(func.count(RollCallEntry.id))
+        .filter(RollCallEntry.added_by == added_by, RollCallEntry.reminded_at >= start)
+        .scalar()
+        or 0
+    )
+    return onboarding + reminders
 
 
 def remove_from_roll_call(db: Session, cls: Class, entry: RollCallEntry, actor: CurrentUser) -> None:

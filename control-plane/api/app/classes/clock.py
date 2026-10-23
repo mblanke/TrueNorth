@@ -49,8 +49,17 @@ def tick(db: Session, now: datetime | None = None) -> list[service.Mail]:
             .all()
         )
         sent = 0
+        held = 0
         for entry in due:
             if entry.onboarding_sent_at is not None and entry.onboarding_sent_at.date() == now.date():
+                continue
+            # Reminders draw on the same per-instructor daily budget as onboarding emails
+            # (whoever added the entry), so a roll call over the cap is not mailed by the clock
+            # instead. reminded_at counts once claimed, so the count stays exact as we go.
+            if entry.added_by is not None and (
+                service.emails_sent_today(db, entry.added_by, now) >= service.EMAILS_PER_INSTRUCTOR_PER_DAY
+            ):
+                held += 1
                 continue
             claimed = (
                 db.query(RollCallEntry)
@@ -60,8 +69,11 @@ def tick(db: Session, now: datetime | None = None) -> list[service.Mail]:
             if claimed == 1:
                 out.append(service.reminder_mail(cls, course_name, entry.email))
                 sent += 1
-        if sent:
-            service.audit(db, None, cls, "roll_call_reminder", f"reminded {sent} Student(s) who have not signed in")
+        if sent or held:
+            service.audit(
+                db, None, cls, "roll_call_reminder",
+                f"reminded {sent} Student(s) who have not signed in; {held} held by the daily email limit",
+            )
         db.commit()
     return out
 

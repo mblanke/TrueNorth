@@ -23878,7 +23878,7 @@
     },
     "/classes/roll-call-domains": {
       "get": {
-        "description": "The admin's setting, or else the domains of the organisation's own accounts. Empty:\nany domain, in smaller batches.  **class:create**",
+        "description": "The admin's setting (an empty setting: any domain, in smaller batches), or else the\ndomains of the organisation's own AD accounts. No setting and no AD account: nothing\nmay be added until an admin sets it.  **class:create**",
         "operationId": "getRollCallDomains",
         "responses": {
           "200": {

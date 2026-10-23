@@ -199,8 +199,9 @@ def get_roll_call_domains(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(_CHANGE),
 ) -> RollCallDomainsOut:
-    """The admin's setting, or else the domains of the organisation's own accounts. Empty:
-    any domain, in smaller batches.  **class:create**"""
+    """The admin's setting (an empty setting: any domain, in smaller batches), or else the
+    domains of the organisation's own AD accounts. No setting and no AD account: nothing
+    may be added until an admin sets it.  **class:create**"""
     domains, source = service.allowed_domains(db, tenant_uuid(user))
     return RollCallDomainsOut(email_domains=domains, source=source)
 

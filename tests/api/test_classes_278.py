@@ -326,15 +326,48 @@ def test_staff_and_disabled_accounts_are_refused(client, world, klass, db_sessio
     assert "deactivated" in reasons["gone@corp.test"]
 
 
-def test_an_address_another_tenant_uses_is_refused_and_not_emailed(client, world, klass, db_session, outbox):
-    """Review #294 item 6: never email "you will be enrolled" to another tenant's account."""
-    b_student = _student_row(db_session, world["b"].id, "B.Student@corp.test")
+def _comparable(r: dict) -> dict:
+    """An add response without what differs by the address itself."""
+    drop = {"id", "email", "created_at", "onboarding_sent_at"}
+    return {
+        "added": [{k: v for k, v in e.items() if k not in drop} for e in r["added"]],
+        "already": r["already_on_roll_call"], "invalid": r["invalid"], "refused": r["refused"],
+        "not_emailed": r["not_emailed"],
+    }
+
+
+@pytest.mark.parametrize("elsewhere", ["other_tenant", "other_tenant_disabled", "case_variants_here"])
+def test_n1_an_address_used_elsewhere_looks_exactly_like_an_unknown_one(
+    client, world, klass, db_session, outbox, elsewhere
+):
+    """Re-review N1: the roll call is no oracle for other tenants' accounts. The instructor
+    sees the same response, and the address gets the same email, as an unknown address; the
+    entry is not linked or enrolled, and a platform admin finds an audit row."""
+    if elsewhere == "other_tenant":
+        hidden = _student_row(db_session, world["b"].id, "Secret.Op@corp.test")
+    elif elsewhere == "other_tenant_disabled":
+        hidden = _student_row(db_session, world["b"].id, "secret.op@corp.test", active=False)
+    else:
+        hidden = _student_row(db_session, world["a"].id, "Secret.Op@corp.test", source="csv_import")
+        _student_row(db_session, world["a"].id, "SECRET.OP@corp.test", source="csv_import")
     act_as(world["lead"])
-    r = client.post(f"/classes/{klass['id']}/roll-call", json={"emails": ["b.student@corp.test"]}).json()
-    assert r["added"] == [] and "outside this organisation" in r["refused"][0]["reason"]
-    assert outbox.sent == []
-    assert db_session.query(RollCallEntry).filter_by(email="b.student@corp.test").count() == 0
-    assert db_session.query(Enrollment).filter_by(user_id=b_student.id).count() == 0
+    unknown = client.post(f"/classes/{klass['id']}/roll-call", json={"emails": ["nobody@corp.test"]}).json()
+    used = client.post(f"/classes/{klass['id']}/roll-call", json={"emails": ["secret.op@corp.test"]}).json()
+    assert _comparable(used) == _comparable(unknown)
+    assert used["added"][0]["status"] == "invited" and used["added"][0]["user_id"] is None
+    assert outbox.to() == ["nobody@corp.test", "secret.op@corp.test"]
+    assert [m["subject"] for m in outbox.sent][0] == [m["subject"] for m in outbox.sent][1]
+    assert db_session.query(Enrollment).filter_by(user_id=hidden.id).count() == 0
+    rows = db_session.query(AuditLog).filter_by(action="roll_call_cross_tenant", resource_id=klass["id"]).all()
+    assert len(rows) == 1 and "secret.op@corp.test" in rows[0].detail
+
+
+def test_n1_an_address_used_elsewhere_is_still_not_admitted(client, world, klass, sign_in, db_session, outbox):
+    other = _student_row(db_session, world["b"].id, "joe.bloggs@corp.test", source="csv_import")
+    _on_roll_call(client, world, klass, "joe.bloggs@corp.test")
+    assert sign_in(_identity())["status"] == "unregistered"
+    db_session.refresh(other)
+    assert other.keycloak_id.startswith("csv-import:") and other.tenant_id == world["b"].id
 
 
 def test_removing_marks_the_entry_and_keeps_it(client, world, klass, db_session, outbox):
@@ -709,16 +742,34 @@ def test_5_registration_allowed_groups_does_not_apply_to_the_roll_call(
     assert sign_in(_identity(groups=["Domain Users"]))["status"] == "registered"
 
 
-def test_6_domains_default_to_the_tenants_own_accounts(client, world, klass, db_session, outbox):
+def test_6_domains_default_to_the_tenants_own_ad_accounts(client, world, klass, db_session, outbox):
+    """Re-review N3: only directory (AD) accounts set the default; an LTI, local or roster
+    address (gmail.com) never widens it."""
     db_session.query(RollCallSettings).filter_by(tenant_id=world["a"].id).delete()
+    _student_row(db_session, world["a"].id, "someone@gmail.com", source="lti")
+    _student_row(db_session, world["a"].id, "roster@roster.test", source="csv_import")
+    _student_row(db_session, world["a"].id, "local@local.test", source="local")
+    _student_row(db_session, world["a"].id, "member@forces.test", source="ad")
     db_session.flush()
     act_as(world["lead"])
     got = client.get("/classes/roll-call-domains").json()
-    assert got == {"email_domains": ["example.test"], "source": "accounts"}
-    r = client.post(f"/classes/{klass['id']}/roll-call", json={"emails": ["x@evil.test", "y@example.test"]}).json()
-    assert [e["email"] for e in r["added"]] == ["y@example.test"]
-    assert "evil.test" in r["refused"][0]["reason"]
-    assert outbox.to() == ["y@example.test"]
+    assert got == {"email_domains": ["forces.test"], "source": "accounts"}
+    r = client.post(f"/classes/{klass['id']}/roll-call",
+                    json={"emails": ["victim@gmail.com", "x@sub.forces.test", "y@forces.test"]}).json()
+    assert [e["email"] for e in r["added"]] == ["y@forces.test"]
+    assert {x["email"] for x in r["refused"]} == {"victim@gmail.com", "x@sub.forces.test"}
+    assert outbox.to() == ["y@forces.test"]
+
+
+def test_6_no_setting_and_no_ad_account_refuses_every_add(client, world, klass, db_session, outbox):
+    db_session.query(RollCallSettings).filter_by(tenant_id=world["a"].id).delete()
+    _student_row(db_session, world["a"].id, "someone@gmail.com", source="lti")
+    db_session.flush()
+    act_as(world["lead"])
+    assert client.get("/classes/roll-call-domains").json() == {"email_domains": [], "source": "accounts"}
+    r = client.post(f"/classes/{klass['id']}/roll-call", json={"emails": ["victim@gmail.com"]})
+    assert r.status_code == 422 and "an admin must set the allowed email domains" in r.json()["detail"]
+    assert outbox.sent == []
 
 
 def test_6_only_an_admin_sets_the_domains_and_empty_means_any_in_small_batches(client, world, klass, db_session, outbox):
@@ -739,13 +790,43 @@ def test_6_only_an_admin_sets_the_domains_and_empty_means_any_in_small_batches(c
 
 
 def test_6_onboarding_emails_are_capped_per_instructor_per_day(client, world, klass, db_session, outbox, monkeypatch):
-    monkeypatch.setattr(service, "ONBOARDING_EMAILS_PER_DAY", 3)
+    monkeypatch.setattr(service, "EMAILS_PER_INSTRUCTOR_PER_DAY", 3)
     act_as(world["lead"])
     r = client.post(f"/classes/{klass['id']}/roll-call", json={"emails": [f"s{i}@corp.test" for i in range(5)]}).json()
     assert len(r["added"]) == 5 and len(outbox.sent) == 3
     assert len(r["not_emailed"]) == 2 and "daily limit" in r["not_emailed"][0]["reason"]
+    assert "they get the day-before reminder" not in r["not_emailed"][0]["reason"]
     again = client.post(f"/classes/{klass['id']}/roll-call", json={"emails": ["late@corp.test"]}).json()
     assert len(outbox.sent) == 3 and again["not_emailed"][0]["email"] == "late@corp.test"
+
+
+def test_n2_reminders_draw_on_the_same_daily_budget(client, world, db_session, outbox, monkeypatch):
+    """Re-review N2: the entries held back by the cap are not mailed by the clock instead."""
+    monkeypatch.setattr(service, "EMAILS_PER_INSTRUCTOR_PER_DAY", 2)
+    act_as(world["lead"])
+    tomorrow = TODAY + timedelta(days=1)
+    k = client.post("/classes", json=_body(world, name="SPAM-1", start_date=str(tomorrow), end_date=str(tomorrow),
+                                           assistant_ids=[], observer_ids=[])).json()
+    r = client.post(f"/classes/{k['id']}/roll-call", json={"emails": [f"u{i}@corp.test" for i in range(6)]}).json()
+    assert len(outbox.sent) == 2 and len(r["not_emailed"]) == 4
+    now = datetime.now(UTC)
+    assert clock.tick(db_session, now=now) == []  # budget spent today
+    assert clock.tick(db_session, now=now) == []
+    assert db_session.query(RollCallEntry).filter(RollCallEntry.reminded_at.isnot(None)).count() == 0
+    assert "held by the daily email limit" in (
+        db_session.query(AuditLog).filter_by(action="roll_call_reminder", resource_id=k["id"]).first().detail
+    )
+
+
+def test_n2_reminders_stop_at_the_budget(client, world, db_session, outbox, monkeypatch):
+    act_as(world["lead"])
+    start = TODAY + timedelta(days=7)
+    k = client.post("/classes", json=_body(world, name="R1", start_date=str(start), end_date=str(start),
+                                           assistant_ids=[], observer_ids=[])).json()
+    client.post(f"/classes/{k['id']}/roll-call", json={"emails": [f"r{i}@corp.test" for i in range(4)]})
+    monkeypatch.setattr(service, "EMAILS_PER_INSTRUCTOR_PER_DAY", 3)
+    eve = datetime.combine(start - timedelta(days=1), datetime.min.time(), tzinfo=UTC).replace(hour=9)
+    assert len(clock.tick(db_session, now=eve)) == 3
 
 
 @pytest.mark.parametrize("name", ["C201\r\nBcc: victim@corp.test", "C201\nX", "C201\x00", "C201 X"])
@@ -760,12 +841,15 @@ def test_6_the_subject_is_sanitised_anyway(world):
         assert "\r" not in mail.subject and "\n" not in mail.subject
 
 
-def test_7_two_case_variant_accounts_in_the_tenant_are_refused_on_add(client, world, klass, db_session, outbox):
-    _student_row(db_session, world["a"].id, "Dup@corp.test")
-    _student_row(db_session, world["a"].id, "dup@CORP.test")
+def test_7_case_variant_accounts_are_never_linked(client, world, klass, db_session, outbox):
+    """Two case variants: neither is linked or enrolled, deterministically (and, per N1, the
+    instructor is not told)."""
+    a1 = _student_row(db_session, world["a"].id, "Dup@corp.test")
+    a2 = _student_row(db_session, world["a"].id, "dup@CORP.test")
     act_as(world["lead"])
     r = client.post(f"/classes/{klass['id']}/roll-call", json={"emails": ["dup@corp.test"]}).json()
-    assert r["added"] == [] and "letter case" in r["refused"][0]["reason"]
+    assert r["refused"] == [] and r["added"][0]["user_id"] is None
+    assert db_session.query(Enrollment).filter(Enrollment.user_id.in_([a1.id, a2.id])).count() == 0
 
 
 def test_low_a_unicode_look_alike_email_does_not_match(client, world, klass, sign_in, db_session, outbox):

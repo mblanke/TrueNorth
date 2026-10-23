@@ -793,8 +793,9 @@ export interface paths {
         };
         /**
          * Email domains this organisation's roll calls accept
-         * @description The admin's setting, or else the domains of the organisation's own accounts. Empty:
-         *     any domain, in smaller batches.  **class:create**
+         * @description The admin's setting (an empty setting: any domain, in smaller batches), or else the
+         *     domains of the organisation's own AD accounts. No setting and no AD account: nothing
+         *     may be added until an admin sets it.  **class:create**
          */
         get: operations["getRollCallDomains"];
         /**
