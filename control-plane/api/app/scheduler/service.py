@@ -677,23 +677,51 @@ def resize(db: Session, evt: ScheduledEvent, delta: Resources, sign: int) -> Non
 
 
 def reassign_instructor(
-    db: Session, user: CurrentUser, event_ids: list[uuid.UUID], old: uuid.UUID, new: uuid.UUID
+    db: Session, user: CurrentUser, event_ids: list[uuid.UUID], keep: set[uuid.UUID], new: uuid.UUID
 ) -> list:
-    """Pass these bookings, where ``old`` teaches and that have not finished, to ``new`` (a
-    class handed to a new lead). Audited. Returns the invites: the new instructor's REQUEST
-    and the old one's CANCEL, for sessions already sent. Does not commit."""
-    from . import invites, lifecycle
+    """Pass these bookings that have not finished, and whose instructor is not in ``keep``
+    (a class's teachers), to ``new`` (its lead). Audited. Returns the invites, for sessions
+    already sent: the new instructor's REQUEST and the old one's CANCEL.
+
+    The new instructor must be free then (``conflicts``). When they are not, an approved
+    session that has not started goes back to awaiting approval: it stops holding anything,
+    its invites are withdrawn, and an approver decides again. One already under way stays
+    with them, and the clash is audited. Does not commit."""
+    from . import approval, invites, lifecycle
 
     if not event_ids:
         return []
     live = (EventState.draft, EventState.pending_approval, *HOLDING)
     out: list = []
     # tenant-safe: ids of one class's sessions, all in the class's tenant (sessions.link).
-    for evt in db.query(ScheduledEvent).filter(
-        ScheduledEvent.id.in_(event_ids), ScheduledEvent.instructor_id == old, ScheduledEvent.state.in_(live)
-    ):
+    rows = (
+        db.query(ScheduledEvent)
+        .filter(
+            ScheduledEvent.id.in_(event_ids),
+            ScheduledEvent.instructor_id.isnot(None),
+            ScheduledEvent.instructor_id.notin_(keep),
+            ScheduledEvent.state.in_(live),
+        )
+        .order_by(ScheduledEvent.start_time)
+        .all()
+    )
+    for evt in rows:
+        old = evt.instructor_id
         evt.instructor_id = new
-        audit(db, user, "update", str(evt.id), f"instructor {old} -> {new}: the class has a new lead")
+        db.flush()
+        audit(db, user, "update", str(evt.id), f"instructor {old} -> {new}: {old} no longer teaches the class")
+        clash = (
+            conflicts(db, start=evt.start_time, end=evt.end_time, range_id=None, instructor_id=new, exclude_id=evt.id)
+            if evt.state in HOLDING
+            else []
+        )
+        if clash and evt.state == EventState.scheduled and approval_of(db, evt.id) is not None:
+            resequence(evt)  # the CANCEL must be newer than the REQUEST they hold
+            out += invites.plan(db, evt, "CANCEL", previous_instructor=old)
+            approval.back_to_approval(db, user, evt, "; ".join(clash))
+            continue
+        if clash:
+            audit(db, user, "instructor_conflict", str(evt.id), "; ".join(clash))
         if evt.state not in lifecycle.UNSENT:
             resequence(evt)
             out += invites.plan(db, evt, "REQUEST", previous_instructor=old)

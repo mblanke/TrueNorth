@@ -160,14 +160,13 @@ def assert_class_teacher(db: Session, cls: Class, instructor_id: uuid.UUID | Non
         raise HTTPException(422, "A class session is taught by the class's lead or one of its assistant instructors")
 
 
-def hand_over(db: Session, cls: Class, actor: CurrentUser, old_lead: uuid.UUID) -> list:
-    """The class has a new lead: its sessions that ``old_lead`` taught and that have not
-    finished pass to the new lead, unless ``old_lead`` stays on as an assistant. The old lead
-    then holds no booking of the class, so no authority over it (app/class_setup/scope.py).
-    Returns the invites the change calls for. Does not commit."""
-    if old_lead == cls.lead_instructor_id or old_lead in teachers(db, cls):
-        return []
-    return scheduler.reassign_instructor(db, actor, session_ids(db, cls), old_lead, cls.lead_instructor_id)
+def realign_teachers(db: Session, cls: Class, actor: CurrentUser) -> list:
+    """After any change to a class: each of its unfinished sessions taught by someone who is
+    no longer one of its teachers (a lead handed over, an assistant taken off, in one step
+    or two) passes to the lead. Whoever left then holds no booking of the class, so no
+    authority over its course or teams (app/class_setup/scope.py), no invites and no
+    ``/schedule/mine`` entry. Returns the invites the change calls for. Does not commit."""
+    return scheduler.reassign_instructor(db, actor, session_ids(db, cls), teachers(db, cls), cls.lead_instructor_id)
 
 
 def assert_same_class(db: Session, evt: ScheduledEvent, class_id: str | None) -> None:

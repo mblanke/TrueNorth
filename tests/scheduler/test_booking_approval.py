@@ -1010,3 +1010,71 @@ def test_9_next_free_never_leaves_the_class_dates(client, db_session, world):
     act_as(world["lead"])
     body = client.get(f"/schedule/events/{ev['id']}/next-free").json()
     assert body["fits"] is False and body["next_free"] is None
+
+
+# ── Third review of PR #297: sessions follow the class's teachers ──────────
+
+
+def _taught(db, u) -> set:
+    from app.class_setup import scope
+
+    return scope.taught_course_ids(db, u)
+
+
+def test_r3_an_assistant_taken_off_loses_the_sessions_they_taught(client, db_session, world, outbox):
+    ev = _book_class(client, world, instructor_id=world["assistant"].id)
+    act_as(world["admin"])
+    assert client.post(f"/schedule/events/{ev['id']}/approve").status_code == 200
+    assert world["course"].id in _taught(db_session, world["assistant"])
+    outbox.clear()
+    act_as(world["lead"])
+    assert client.put(f"/classes/{world['class']['id']}", json=_class_body(world, assistant_ids=[])).status_code == 200
+    evt = db_session.get(ScheduledEvent, uuid.UUID(ev["id"]))
+    assert str(evt.instructor_id) == world["lead"].id and evt.state == EventState.scheduled
+    assert world["course"].id not in _taught(db_session, world["assistant"])
+    assert world["assistant"].email in outbox.invited("CANCEL") and world["lead"].email in outbox.invited("REQUEST")
+    act_as(world["assistant"])
+    assert ev["id"] not in [s["id"] for s in client.get("/schedule/mine").json()]
+
+
+def test_r3_an_old_lead_kept_as_assistant_then_taken_off_loses_them(client, db_session, world):
+    ev = _book_class(client, world)
+    act_as(world["admin"])
+    client.post(f"/schedule/events/{ev['id']}/approve")
+    act_as(world["lead"])
+    assert client.put(f"/classes/{world['class']['id']}", json=_class_body(
+        world, lead_instructor_id=world["other_instructor"].id,
+        assistant_ids=[world["assistant"].id, world["lead"].id])).status_code == 200
+    evt = db_session.get(ScheduledEvent, uuid.UUID(ev["id"]))
+    assert str(evt.instructor_id) == world["lead"].id  # still one of its teachers: keeps it
+    act_as(world["other_instructor"])
+    assert client.put(f"/classes/{world['class']['id']}", json=_class_body(
+        world, lead_instructor_id=world["other_instructor"].id)).status_code == 200
+    db_session.refresh(evt)
+    assert str(evt.instructor_id) == world["other_instructor"].id
+    assert world["course"].id not in _taught(db_session, world["lead"])
+
+
+def test_r3_a_handover_to_a_busy_lead_sends_the_session_back_for_approval(client, db_session, world, outbox):
+    ev = _book_class(client, world)
+    act_as(world["admin"])
+    assert client.post(f"/schedule/events/{ev['id']}/approve").status_code == 200
+    busy = ScheduledEvent(name="New lead busy", state=EventState.scheduled, tenant_id=world["a"].id,
+                          instructor_id=uuid.UUID(world["other_instructor"].id), start_time=NINE,
+                          end_time=NINE + timedelta(hours=3), vcpu_total=1)
+    db_session.add(busy)
+    db_session.flush()
+    sent_at = db_session.get(ScheduledEvent, uuid.UUID(ev["id"])).sequence
+    outbox.clear()
+    act_as(world["lead"])
+    r = client.put(f"/classes/{world['class']['id']}", json=_class_body(
+        world, lead_instructor_id=world["other_instructor"].id))
+    assert r.status_code == 200  # the class update itself is not refused
+    evt = db_session.get(ScheduledEvent, uuid.UUID(ev["id"]))
+    assert evt.state == EventState.pending_approval and str(evt.instructor_id) == world["other_instructor"].id
+    assert evt.sequence > sent_at
+    # Its invites are withdrawn (to the old lead and the roll call); nothing new is sent.
+    assert {world["lead"].email, "ann@corp.test", "newbie@corp.test"} <= outbox.invited("CANCEL")
+    assert outbox.invited("REQUEST") == set()
+    actions = _audit(db_session, ev["id"])
+    assert "approval_requested" in actions and actions.count("update") >= 1

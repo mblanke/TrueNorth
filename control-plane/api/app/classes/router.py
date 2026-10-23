@@ -334,8 +334,8 @@ def update_class(
     service.apply(db, cls, body, user)
     detail = cls.name if before == cls.lead_instructor_id else f"{cls.name}; lead {before} -> {cls.lead_instructor_id}"
     service.audit(db, user.id, cls, "class_update", detail)
-    # A handover moves the old lead's sessions to the new lead (ADR 0014 §8).
-    handed = sessions.hand_over(db, cls, user, before) if before != cls.lead_instructor_id else []
+    # Sessions follow the class (ADR 0014 §8): anyone no longer teaching it loses them to the lead.
+    handed = sessions.realign_teachers(db, cls, user)
     db.commit()
     background.add_task(scheduler.send_invites, handed)
     db.refresh(cls)
