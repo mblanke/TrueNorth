@@ -72,6 +72,7 @@ def claim(release_id: uuid.UUID, token: uuid.UUID, attempt: uuid.UUID, **changes
 
 def test_unclassified_outbox_persists_no_readable_grade(db_session, monkeypatch) -> None:
     monkeypatch.setenv("TN_CLASSIFICATION_LEVEL", "unclassified")
+    monkeypatch.setenv("TN_ENCLAVE_ID", "unclass")
     course_release = release(db_session)
     signing_private, _ = generate_signing_keypair()
     _, recipient_public = generate_recipient_keypair()
@@ -79,8 +80,8 @@ def test_unclassified_outbox_persists_no_readable_grade(db_session, monkeypatch)
     queued = queue_result(
         db_session,
         claim(course_release.id, uuid.uuid4(), uuid.uuid4()),
-        source_enclave="UNCLASS",
-        destination_enclave="SECRET",
+        source_enclave="unclass",
+        destination_enclave="secret",
         signing_private_key=signing_private,
         recipient_public_key=recipient_public,
     )
@@ -102,19 +103,39 @@ def test_unclassified_outbox_persists_no_readable_grade(db_session, monkeypatch)
 
 def test_subject_binding_is_refused_on_unclassified(db_session, monkeypatch) -> None:
     monkeypatch.setenv("TN_CLASSIFICATION_LEVEL", "unclassified")
+    monkeypatch.setenv("TN_ENCLAVE_ID", "unclass")
 
     with pytest.raises(ResultTransferError, match="Secret-side"):
         bind_subject(
             db_session,
             tenant_id=TENANT,
-            source_enclave="UNCLASS",
+            source_enclave="unclass",
             opaque_subject_id=uuid.uuid4(),
             user_id=USER,
         )
 
 
+def test_unclassified_outbox_refuses_a_forged_source_route(db_session, monkeypatch) -> None:
+    monkeypatch.setenv("TN_CLASSIFICATION_LEVEL", "unclassified")
+    monkeypatch.setenv("TN_ENCLAVE_ID", "unclass")
+    course_release = release(db_session)
+    signing_private, _ = generate_signing_keypair()
+    _, recipient_public = generate_recipient_keypair()
+
+    with pytest.raises(ResultTransferError, match="TN_ENCLAVE_ID"):
+        queue_result(
+            db_session,
+            claim(course_release.id, uuid.uuid4(), uuid.uuid4()),
+            source_enclave="different-unclass",
+            destination_enclave="secret",
+            signing_private_key=signing_private,
+            recipient_public_key=recipient_public,
+        )
+
+
 def test_secret_subject_and_release_checks_never_cross_tenants(db_session, monkeypatch) -> None:
     monkeypatch.setenv("TN_CLASSIFICATION_LEVEL", "secret")
+    monkeypatch.setenv("TN_ENCLAVE_ID", "secret")
     other_tenant, other_user = uuid.uuid4(), uuid.uuid4()
     db_session.add(Tenant(id=other_tenant, name="Other enclave tenant", slug=f"other-{other_tenant.hex[:8]}"))
     db_session.flush()
@@ -135,7 +156,7 @@ def test_secret_subject_and_release_checks_never_cross_tenants(db_session, monke
         bind_subject(
             db_session,
             tenant_id=TENANT,
-            source_enclave="UNCLASS",
+            source_enclave="unclass",
             opaque_subject_id=uuid.uuid4(),
             user_id=other_user,
         )
@@ -144,7 +165,7 @@ def test_secret_subject_and_release_checks_never_cross_tenants(db_session, monke
     bind_subject(
         db_session,
         tenant_id=TENANT,
-        source_enclave="UNCLASS",
+        source_enclave="unclass",
         opaque_subject_id=token,
         user_id=USER,
     )
@@ -152,8 +173,8 @@ def test_secret_subject_and_release_checks_never_cross_tenants(db_session, monke
     recipient_private, recipient_public = generate_recipient_keypair()
     package, _ = create_package(
         claim(other_release.id, token, uuid.uuid4()),
-        source_enclave="UNCLASS",
-        destination_enclave="SECRET",
+        source_enclave="unclass",
+        destination_enclave="secret",
         signing_private_key=signing_private,
         recipient_public_key=recipient_public,
     )
@@ -161,7 +182,7 @@ def test_secret_subject_and_release_checks_never_cross_tenants(db_session, monke
         package,
         trusted_signing_public_key=signing_public,
         recipient_private_key=recipient_private,
-        destination_enclave="SECRET",
+        destination_enclave="secret",
     )
 
     with pytest.raises(ResultTransferError, match="not approved"):
@@ -170,6 +191,7 @@ def test_secret_subject_and_release_checks_never_cross_tenants(db_session, monke
 
 def test_signed_secret_receipt_advances_only_matching_outbox_row(db_session, monkeypatch) -> None:
     monkeypatch.setenv("TN_CLASSIFICATION_LEVEL", "unclassified")
+    monkeypatch.setenv("TN_ENCLAVE_ID", "unclass")
     course_release = release(db_session)
     low_private, _ = generate_signing_keypair()
     high_private, high_public = generate_signing_keypair()
@@ -177,8 +199,8 @@ def test_signed_secret_receipt_advances_only_matching_outbox_row(db_session, mon
     queued = queue_result(
         db_session,
         claim(course_release.id, uuid.uuid4(), uuid.uuid4()),
-        source_enclave="UNCLASS",
-        destination_enclave="SECRET",
+        source_enclave="unclass",
+        destination_enclave="secret",
         signing_private_key=low_private,
         recipient_public_key=recipient_public,
     )
@@ -186,8 +208,8 @@ def test_signed_secret_receipt_advances_only_matching_outbox_row(db_session, mon
         ResultReceipt(
             package_id=queued.row.package_id,
             package_sha256=queued.row.package_sha256,
-            source_enclave="SECRET",
-            destination_enclave="UNCLASS",
+            source_enclave="secret",
+            destination_enclave="unclass",
             status="accepted",
             created_at=datetime.now(UTC),
         ),
@@ -198,8 +220,8 @@ def test_signed_secret_receipt_advances_only_matching_outbox_row(db_session, mon
         db_session,
         signed,
         trusted_signing_public_key=high_public,
-        source_enclave="SECRET",
-        destination_enclave="UNCLASS",
+        source_enclave="secret",
+        destination_enclave="unclass",
     )
 
     assert row.state == "acknowledged"
@@ -208,12 +230,13 @@ def test_signed_secret_receipt_advances_only_matching_outbox_row(db_session, mon
 
 def test_secret_import_maps_subject_and_is_idempotent(db_session, monkeypatch) -> None:
     monkeypatch.setenv("TN_CLASSIFICATION_LEVEL", "secret")
+    monkeypatch.setenv("TN_ENCLAVE_ID", "secret")
     course_release = release(db_session)
     token, attempt = uuid.uuid4(), uuid.uuid4()
     bind_subject(
         db_session,
         tenant_id=TENANT,
-        source_enclave="UNCLASS",
+        source_enclave="unclass",
         opaque_subject_id=token,
         user_id=USER,
     )
@@ -221,8 +244,8 @@ def test_secret_import_maps_subject_and_is_idempotent(db_session, monkeypatch) -
     recipient_private, recipient_public = generate_recipient_keypair()
     package, _ = create_package(
         claim(course_release.id, token, attempt),
-        source_enclave="UNCLASS",
-        destination_enclave="SECRET",
+        source_enclave="unclass",
+        destination_enclave="secret",
         signing_private_key=signing_private,
         recipient_public_key=recipient_public,
     )
@@ -230,7 +253,7 @@ def test_secret_import_maps_subject_and_is_idempotent(db_session, monkeypatch) -
         package,
         trusted_signing_public_key=signing_public,
         recipient_private_key=recipient_private,
-        destination_enclave="SECRET",
+        destination_enclave="secret",
     )
 
     imported, created = import_result(db_session, decrypted, package_sha256="f" * 64)
@@ -244,14 +267,39 @@ def test_secret_import_maps_subject_and_is_idempotent(db_session, monkeypatch) -
     assert imported.max_score == 100
 
 
+def test_secret_import_refuses_a_package_for_another_enclave(db_session, monkeypatch) -> None:
+    monkeypatch.setenv("TN_CLASSIFICATION_LEVEL", "secret")
+    monkeypatch.setenv("TN_ENCLAVE_ID", "secret-east")
+    signing_private, signing_public = generate_signing_keypair()
+    recipient_private, recipient_public = generate_recipient_keypair()
+    course_release = release(db_session)
+    package, _ = create_package(
+        claim(course_release.id, uuid.uuid4(), uuid.uuid4()),
+        source_enclave="unclass",
+        destination_enclave="secret-west",
+        signing_private_key=signing_private,
+        recipient_public_key=recipient_public,
+    )
+    decrypted = decrypt_package(
+        package,
+        trusted_signing_public_key=signing_public,
+        recipient_private_key=recipient_private,
+        destination_enclave="secret-west",
+    )
+
+    with pytest.raises(ResultTransferError, match="TN_ENCLAVE_ID"):
+        import_result(db_session, decrypted, package_sha256="9" * 64)
+
+
 def test_secret_import_requires_explicit_linear_correction(db_session, monkeypatch) -> None:
     monkeypatch.setenv("TN_CLASSIFICATION_LEVEL", "secret")
+    monkeypatch.setenv("TN_ENCLAVE_ID", "secret")
     course_release = release(db_session)
     token, attempt = uuid.uuid4(), uuid.uuid4()
     bind_subject(
         db_session,
         tenant_id=TENANT,
-        source_enclave="UNCLASS",
+        source_enclave="unclass",
         opaque_subject_id=token,
         user_id=USER,
     )
@@ -261,8 +309,8 @@ def test_secret_import_requires_explicit_linear_correction(db_session, monkeypat
     def decrypt(value: ResultClaim, package_id: uuid.UUID):
         package, _ = create_package(
             value,
-            source_enclave="UNCLASS",
-            destination_enclave="SECRET",
+            source_enclave="unclass",
+            destination_enclave="secret",
             signing_private_key=signing_private,
             recipient_public_key=recipient_public,
             package_id=package_id,
@@ -271,7 +319,7 @@ def test_secret_import_requires_explicit_linear_correction(db_session, monkeypat
             package,
             trusted_signing_public_key=signing_public,
             recipient_private_key=recipient_private,
-            destination_enclave="SECRET",
+            destination_enclave="secret",
         )
 
     first_id = uuid.uuid4()

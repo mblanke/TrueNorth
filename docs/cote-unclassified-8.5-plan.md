@@ -1,6 +1,6 @@
 # COTE unclassified-first gap-closure plan
 
-**Status:** Accepted delivery baseline; U1-Slice 1 foundation in progress
+**Status:** Accepted delivery baseline; U1-Slice 1 foundation and enclave-profile gates implemented
 **Target:** An evidence-backed 8.5/10 COTE fit for the Unclassified IOC, followed by
 repeatable promotion into Secret and higher enclaves
 **Planning source:** COTE PSOR Draft v1.0, especially HLMRs 1–7, IOC/FOC definitions,
@@ -17,7 +17,9 @@ integrated.
 The first code increment now implements the core of Epic 4: the signed and encrypted
 result envelope, exact grade-free public projection, bounded controlled-media files,
 Secret-only subject binding and authoritative imported-result ledger, linear corrections,
-replay receipts and signed grade-free acknowledgements. The focused suite is green. This is
+replay receipts and signed grade-free acknowledgements. Production now requires an explicit
+classification and stable enclave ID in API startup, Compose and installer preflight, and the
+configured ID is enforced on transfer routes. The focused suite is green. This is
 a foundation rather than the completed gate: quiz, practical exercise and class close-out
 producers do not yet call it; key custody and source trust enrollment are not installed;
 quarantine/malware scanning and operator UI are not built; and the present Unclassified

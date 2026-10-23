@@ -45,10 +45,17 @@ log, metric, trace or support bundle.
 
 ## Configuration boundary
 
-`TN_CLASSIFICATION_LEVEL` is `unclassified`, `secret` or `top_secret`. It defaults to
-`unclassified` so a missing value fails closed for high-side writes. Secret subject binding
-and grade import refuse to run on Unclassified; outbox creation and receipt application refuse
-to run on Secret. Production installation must set and protect this value explicitly.
+`TN_CLASSIFICATION_LEVEL` is `unclassified`, `secret` or `top_secret`.
+`TN_ENCLAVE_ID` is the stable lowercase route identity for one independent deployment. It is
+1–63 letters, digits or hyphens and must not be reused for another enclave. Both settings are
+required in production by API startup, Compose and installer preflight. Development and test
+default to `unclassified` and `development` so local tooling keeps working.
+
+The configured enclave ID is part of the security boundary: an Unclassified outbox refuses a
+source enclave that differs from `TN_ENCLAVE_ID`; Secret import refuses a package addressed to
+another enclave; and receipt application refuses a destination that differs from it. Secret
+subject binding and grade import refuse to run on Unclassified, while outbox creation and
+receipt application refuse to run on Secret.
 
 Key generation helpers exist for tests and controlled provisioning. Production keys must be
 created inside the approved custody boundary and supplied to a caller without logging them.
@@ -70,8 +77,9 @@ re-upgrade also pass. The full repository DoD passed on 2026-10-23 with 8,751 te
    opaque tokens.
 2. Connect quiz, practical exercise and class close-out producers in one transaction, then
    replace their readable Unclassified numeric persistence with pass/fail-only records.
-3. Add installer-managed enclave identity, hardware-backed key references, key rotation and
-   trusted-source enrollment.
+3. Add hardware-backed key references, key rotation and trusted-source enrollment. Installer-
+   managed enclave identity and classification are implemented; set unique values for every
+   deployment.
 4. Add quarantine state, package age/count policy, malware scanner integration, audit events,
    correction approval and operator UI/API with tenant and role tests.
 5. Run DLP tests across the Unclassified database, API, logs, traces, exports and backups.

@@ -37,6 +37,8 @@ The branch contains a complete, reviewable foundation for the result-transfer co
 - idempotent package import, tenant checks and non-forking linear corrections;
 - signed grade-free `truenorth.result-receipt.v1` acknowledgements with fixed safe rejection
   categories; and
+- explicit production `TN_ENCLAVE_ID` and `TN_CLASSIFICATION_LEVEL` gates in API startup,
+  Compose and installer preflight, with source/destination route enforcement; and
 - Alembic revision `4d8f7a1c2b90`, ADR, operator guide and adversarial tests.
 
 Files are under `control-plane/api/app/result_transfer/`, with focused tests under
@@ -94,22 +96,19 @@ Continue in this order:
    Unclassified database, API, logs, traces, support exports and backups.
 2. Design and implement Secret-issued opaque subject-token provisioning. Never use the TN
    `users.id` as the token. The person mapping must never be present on Unclassified.
-3. Add protected installer configuration for enclave ID and classification. A production
-   Secret install must explicitly declare its level; keep missing/malformed configuration
-   fail-closed.
-4. Put signing/decryption keys behind a key-provider adapter and trust store. Keep generated
+3. Put signing/decryption keys behind a key-provider adapter and trust store. Keep generated
    test keys and a controlled development provider; production must use the approved HSM/KMS
    boundary with rotation and overlapping verification keys.
-5. Add quarantine/import workflow: copied, scanned, verified, awaiting mapping/release,
+4. Add quarantine/import workflow: copied, scanned, verified, awaiting mapping/release,
    accepted/rejected. Enforce package age/count policy and audit every transition. The current
    media helper assumes an external malware check.
-6. Integrate one producer end to end, preferably quiz submission. Seal the numeric result in
+5. Integrate one producer end to end, preferably quiz submission. Seal the numeric result in
    the same transaction boundary, persist only pass/fail on Unclassified, commit Secret import
    idempotently by package ID, and return the signed receipt. Preserve normal Secret-mode
    grading behavior.
-7. Repeat for practical exercises and class close-out, then add staff UI/API for outbox,
+6. Repeat for practical exercises and class close-out, then add staff UI/API for outbox,
    quarantine, correction approval and receipts without displaying low-side grades.
-8. Demonstrate 100 synthetic results between two isolated TN databases, including duplicate
+7. Demonstrate 100 synthetic results between two isolated TN databases, including duplicate
    media, lost receipt, correction, reordering, wrong signer/recipient/destination, unknown
    subject/release and destination outage.
 

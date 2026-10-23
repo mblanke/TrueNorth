@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -14,6 +13,8 @@ from sqlalchemy.orm import Session
 
 from ..course_releases.models import CourseRelease
 from ..models import User
+from ..settings import UnsafeSettingsError, enclave_id
+from ..settings import classification_level as configured_classification_level
 from .contract import DecryptedResult, ResultClaim, ResultProjection, ResultTransferError, create_package
 from .media import encode_package
 from .models import ImportedResult, ResultSubjectBinding, ResultTransferOutbox
@@ -30,10 +31,17 @@ class QueuedResult:
 
 
 def classification_level() -> str:
-    value = os.getenv("TN_CLASSIFICATION_LEVEL", "unclassified").strip().lower()
-    if value not in {"unclassified", *SECRET_LEVELS}:
-        raise ResultTransferError("TN_CLASSIFICATION_LEVEL must be unclassified, secret or top_secret")
-    return value
+    try:
+        return configured_classification_level()
+    except UnsafeSettingsError as exc:
+        raise ResultTransferError(str(exc)) from exc
+
+
+def _enclave_id() -> str:
+    try:
+        return enclave_id()
+    except UnsafeSettingsError as exc:
+        raise ResultTransferError(str(exc)) from exc
 
 
 def _require_secret() -> None:
@@ -54,6 +62,8 @@ def queue_result(
     """Seal a numeric result before adding its grade-free Unclassified outbox row."""
     if classification_level() != "unclassified":
         raise ResultTransferError("the low-to-high result outbox is enabled only on Unclassified")
+    if source_enclave != _enclave_id():
+        raise ResultTransferError("source_enclave does not match this deployment's TN_ENCLAVE_ID")
     package, projection = create_package(
         claim,
         source_enclave=source_enclave,
@@ -129,6 +139,8 @@ def import_result(
 ) -> tuple[ImportedResult, bool]:
     """Record one verified result on Secret; return ``(record, created)``."""
     _require_secret()
+    if result.destination_enclave != _enclave_id():
+        raise ResultTransferError("result destination does not match this deployment's TN_ENCLAVE_ID")
     if len(package_sha256) != 64 or any(c not in "0123456789abcdef" for c in package_sha256):
         raise ResultTransferError("package_sha256 must be lowercase SHA-256 hex")
     claim = result.claim
@@ -236,6 +248,8 @@ def apply_receipt(
     """Verify a Secret receipt and advance exactly its matching low-side outbox row."""
     if classification_level() != "unclassified":
         raise ResultTransferError("result receipts are applied only to the Unclassified outbox")
+    if destination_enclave != _enclave_id():
+        raise ResultTransferError("receipt destination does not match this deployment's TN_ENCLAVE_ID")
     receipt = verify_receipt(
         value,
         trusted_signing_public_key=trusted_signing_public_key,
