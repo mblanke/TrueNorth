@@ -145,6 +145,86 @@ competency_auto_assessments = sa.Table(
     sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
 )
 
+content_review_cycles = sa.Table(
+    "content_review_cycles",
+    metadata,
+    sa.Column("id", GUID(), primary_key=True),
+    sa.Column("tenant_id", GUID()),
+    sa.Column("item_type", sa.String(32), nullable=False),
+    sa.Column("days", sa.Integer(), nullable=False),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+)
+
+content_review_edges = sa.Table(
+    "content_review_edges",
+    metadata,
+    sa.Column("id", GUID(), primary_key=True),
+    sa.Column("item_id", GUID(), nullable=False),
+    sa.Column("depends_on_id", GUID(), nullable=False),
+    sa.Column("derived", sa.Boolean(), nullable=False),
+)
+
+content_review_items = sa.Table(
+    "content_review_items",
+    metadata,
+    sa.Column("id", GUID(), primary_key=True),
+    sa.Column("tenant_id", GUID()),
+    sa.Column("item_type", sa.String(32), nullable=False),
+    sa.Column("item_id", sa.String(64), nullable=False),
+    sa.Column("title", sa.String(255), nullable=False),
+    sa.Column("owner_id", GUID()),
+    sa.Column("reviewer_id", GUID()),
+    sa.Column("theme_ids", sa.JSON(), nullable=False),
+    sa.Column("cycle_days", sa.Integer()),
+    sa.Column("last_reviewed_at", sa.DateTime(timezone=True)),
+    sa.Column("last_reviewed_by", GUID()),
+    sa.Column("due_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("stale", sa.Boolean(), nullable=False),
+    sa.Column("stale_reasons", sa.JSON(), nullable=False),
+    sa.Column("retired", sa.Boolean(), nullable=False),
+    sa.Column("retired_at", sa.DateTime(timezone=True)),
+    sa.Column("retired_by", GUID()),
+    sa.Column("missing", sa.Boolean(), nullable=False),
+    sa.Column("revision", sa.Integer(), nullable=False),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+)
+
+content_review_themes = sa.Table(
+    "content_review_themes",
+    metadata,
+    sa.Column("id", GUID(), primary_key=True),
+    sa.Column("tenant_id", GUID()),
+    sa.Column("name", sa.String(60), nullable=False),
+    sa.Column("colour", sa.String(7), nullable=False),
+    sa.Column("ordinal", sa.Integer(), nullable=False),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+)
+
+course_modules = sa.Table(
+    "course_modules",
+    metadata,
+    sa.Column("id", GUID(), primary_key=True),
+    sa.Column("course_id", GUID(), nullable=False),
+    sa.Column("ordinal", sa.Integer(), nullable=False),
+    sa.Column("title", sa.String(255), nullable=False),
+    sa.Column("description", sa.Text(), nullable=False),
+    sa.Column(
+        "content_type",
+        sa.Enum("scenario", "external_lti", "reading", "quiz", "video", name="modulecontenttype"),
+        nullable=False,
+    ),
+    sa.Column("content_ref", sa.Text(), nullable=False),
+    sa.Column("duration_minutes", sa.Integer(), nullable=False),
+    sa.Column("is_required", sa.Boolean(), nullable=False),
+    sa.Column("pass_threshold", sa.Integer(), nullable=False),
+    sa.Column("po_id", GUID()),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+)
+
 courses = sa.Table(
     "courses",
     metadata,
@@ -371,6 +451,21 @@ maintenance_windows = sa.Table(
     sa.Column("tags", sa.JSON(), nullable=False),
     sa.Column("created_by", GUID()),
     sa.Column("updated_by", GUID()),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+)
+
+module_content = sa.Table(
+    "module_content",
+    metadata,
+    sa.Column("id", GUID(), primary_key=True),
+    sa.Column("module_id", GUID(), nullable=False),
+    sa.Column("ordinal", sa.Integer(), nullable=False),
+    sa.Column("content_kind", sa.Enum("teach", "check", "assess", name="contentkind"), nullable=False),
+    sa.Column("lesson_id", GUID()),
+    sa.Column("quiz_id", GUID()),
+    sa.Column("scenario_id", GUID()),
+    sa.Column("external_ref", sa.Text(), nullable=False),
     sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
     sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
 )
@@ -622,6 +717,40 @@ scenarios = sa.Table(
     sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
 )
 
+scheduled_events = sa.Table(
+    "scheduled_events",
+    metadata,
+    sa.Column("id", GUID(), primary_key=True),
+    sa.Column("name", sa.String(255), nullable=False),
+    sa.Column("description", sa.Text()),
+    sa.Column(
+        "state",
+        sa.Enum("draft", "scheduled", "provisioning", "active", "completed", "cancelled", name="eventstate"),
+        nullable=False,
+    ),
+    sa.Column("tenant_id", GUID(), nullable=False),
+    sa.Column("range_id", GUID()),
+    sa.Column("template_id", GUID()),
+    sa.Column("instructor_id", GUID()),
+    sa.Column("created_by", GUID()),
+    sa.Column("course_id", GUID()),
+    sa.Column("scenario_id", GUID()),
+    sa.Column("exercise_id", GUID()),
+    sa.Column("auto_exercise", sa.Boolean(), nullable=False),
+    sa.Column("require_certified_range", sa.Boolean(), nullable=False),
+    sa.Column("start_time", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("end_time", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("auto_provisioned", sa.Boolean(), nullable=False),
+    sa.Column("reminded_at", sa.DateTime(timezone=True)),
+    sa.Column("sequence", sa.Integer(), nullable=False),
+    sa.Column("vm_count", sa.Integer(), nullable=False),
+    sa.Column("vcpu_total", sa.Integer(), nullable=False),
+    sa.Column("ram_mb_total", sa.Integer(), nullable=False),
+    sa.Column("disk_gb_total", sa.Integer(), nullable=False),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+)
+
 templates = sa.Table(
     "templates",
     metadata,
@@ -680,6 +809,11 @@ __all__ = [
     "competencies",
     "competency_assertions",
     "competency_auto_assessments",
+    "content_review_cycles",
+    "content_review_edges",
+    "content_review_items",
+    "content_review_themes",
+    "course_modules",
     "courses",
     "exercise_runs",
     "exercises",
@@ -692,6 +826,7 @@ __all__ = [
     "learning_recommendations",
     "maintenance_windows",
     "metadata",
+    "module_content",
     "network_reservations",
     "objectives",
     "range_certification_entries",
@@ -706,6 +841,7 @@ __all__ = [
     "ranges",
     "scenario_executions",
     "scenarios",
+    "scheduled_events",
     "templates",
     "users",
 ]

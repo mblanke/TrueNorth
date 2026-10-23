@@ -129,6 +129,13 @@ class Permission(str, Enum):
     SCHEDULE_WRITE = "schedule:write"
     # Platform-wide scheduler policy (over-capacity block/warn). Admin only: no role lists it.
     SCHEDULE_ADMIN = "schedule:admin"
+    # The content clock (ADR 0014 decisions 22-24): the Content view's review dates and stale
+    # flags. CONTENT_REVIEW_OWN marks reviewed, or assigns a reviewer to, only content the
+    # caller owns (app/content_review/service.py); CONTENT_REVIEW_ADMIN does anything to the
+    # tenant's content: retire, themes, cycles, owners. Observers and Students hold none.
+    CONTENT_REVIEW_READ = "content_review:read"
+    CONTENT_REVIEW_OWN = "content_review:review_own"
+    CONTENT_REVIEW_ADMIN = "content_review:admin"
 
     # Tenant management
     TENANT_CREATE = "tenant:create"
@@ -195,6 +202,9 @@ ROLE_PERMISSIONS: dict[UserRole, set[Permission]] = {
         # The calendar: instructors book sessions for their classes.
         Permission.SCHEDULE_READ,
         Permission.SCHEDULE_WRITE,
+        # The content clock: read all, review what they own (ADR 0014 assumptions).
+        Permission.CONTENT_REVIEW_READ,
+        Permission.CONTENT_REVIEW_OWN,
         # Users
         Permission.USER_READ,
         # Trainee intake: instructors drain the approval queue for their cohort.
@@ -251,6 +261,7 @@ ROLE_PERMISSIONS: dict[UserRole, set[Permission]] = {
         Permission.SCENARIO_READ,
         Permission.EXERCISE_READ,
         Permission.SCHEDULE_READ,
+        Permission.CONTENT_REVIEW_READ,
         Permission.STATS_READ,
         Permission.TELEMETRY_READ,
         Permission.TELEMETRY_WRITE,

@@ -292,6 +292,16 @@ export const routes: Routes = [
       import('./features/schedule/schedule.component').then(m => m.ScheduleComponent),
     title: 'Schedule - TrueNorth Range',
   },
+  // The calendar (ADR 0014 §21-24). Its Content view is the content clock (#286); the Events
+  // view is still /schedule until its redesign (#285).
+  { path: 'calendar', redirectTo: 'calendar/content', pathMatch: 'full' },
+  {
+    path: 'calendar/content',
+    canActivate: [authGuard, onboardingGuard, pageGuard('contentCalendar')],
+    loadComponent: () =>
+      import('./features/calendar/content-calendar.component').then(m => m.ContentCalendarComponent),
+    title: 'Calendar: Content - TrueNorth Range',
+  },
   {
     // aar:read: Students (their own exercises' reports, scoped by the API), observers
     // (read only), instructors and admins.

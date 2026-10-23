@@ -333,6 +333,7 @@ app.state.ws_manager = ws_manager
 # -- Routers (fine-grained RBAC via require_permission) --------------------
 from .class_setup.router import router as class_setup_router  # noqa: E402 (#200)
 from .cmi5.router import router as cmi5_router  # noqa: E402 (also registers the cmi5 tables)
+from .content_review.router import router as content_review_router  # noqa: E402 (ADR 0014 §22-24; + tables)
 from .golden_image_builds.router import router as golden_image_builds_router  # noqa: E402 (ADR 0013; + its table)
 from .live_class.router import router as live_class_router  # noqa: E402 (issue #199)
 from .maintenance_windows.router import emergency_router as emergency_teardown_router  # noqa: E402 (ADR 0013 §7)
@@ -425,6 +426,7 @@ app.include_router(scheduling_router)  # app/scheduler (ADR 0004)
 app.include_router(scheduling_feed_router)  # token-authenticated .ics feed
 app.include_router(scheduling_me_router)  # your own sessions and feed link
 app.include_router(maintenance_windows_router)  # app/maintenance_windows (ADR 0013 §7)
+app.include_router(content_review_router)  # the content clock, app/content_review (ADR 0014 §22-24)
 # LMS & Integration routers
 app.include_router(courses_router)
 app.include_router(course_releases_router)

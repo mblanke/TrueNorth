@@ -880,6 +880,25 @@
         "title": "ArchivedCertificationOut",
         "type": "object"
       },
+      "AssignReviewerIn": {
+        "properties": {
+          "reviewer_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "An admin or instructor of the item's tenant; null clears",
+            "title": "Reviewer Id"
+          }
+        },
+        "title": "AssignReviewerIn",
+        "type": "object"
+      },
       "AttachObjectives": {
         "properties": {
           "po_ids": {
@@ -3970,6 +3989,573 @@
         "title": "ConsoleOut",
         "type": "object"
       },
+      "ContentClockOut": {
+        "properties": {
+          "days": {
+            "description": "Whole days until the review is due (negative: overdue)",
+            "title": "Days",
+            "type": "integer"
+          },
+          "state": {
+            "description": "green: due in more than 14 days; amber: 14 or fewer; stale",
+            "enum": [
+              "green",
+              "amber",
+              "stale"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state",
+          "days"
+        ],
+        "title": "ContentClockOut",
+        "type": "object"
+      },
+      "ContentItemBrief": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "item_type": {
+            "enum": [
+              "course",
+              "module",
+              "lab",
+              "scenario",
+              "range_template",
+              "golden_template"
+            ],
+            "title": "Item Type",
+            "type": "string"
+          },
+          "retired": {
+            "title": "Retired",
+            "type": "boolean"
+          },
+          "stale": {
+            "title": "Stale",
+            "type": "boolean"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "item_type",
+          "title",
+          "stale",
+          "retired"
+        ],
+        "title": "ContentItemBrief",
+        "type": "object"
+      },
+      "ContentItemDetailOut": {
+        "properties": {
+          "can_admin": {
+            "description": "The caller may retire it and change its owner, themes and cycle",
+            "title": "Can Admin",
+            "type": "boolean"
+          },
+          "can_assign": {
+            "description": "The caller may assign its reviewer (admin or owner)",
+            "title": "Can Assign",
+            "type": "boolean"
+          },
+          "can_review": {
+            "description": "The caller may mark it reviewed (admin, owner or assigned reviewer)",
+            "title": "Can Review",
+            "type": "boolean"
+          },
+          "clock": {
+            "$ref": "#/components/schemas/ContentClockOut"
+          },
+          "cycle_days": {
+            "description": "The cycle in force (the item's own, else its type's)",
+            "title": "Cycle Days",
+            "type": "integer"
+          },
+          "cycle_override": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The item's own cycle, when it has one",
+            "title": "Cycle Override"
+          },
+          "depends_on": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ContentItemBrief"
+            },
+            "title": "Depends On",
+            "type": "array"
+          },
+          "due_at": {
+            "format": "date-time",
+            "title": "Due At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "item_id": {
+            "description": "The content's own id (course, template, golden template ...)",
+            "title": "Item Id",
+            "type": "string"
+          },
+          "item_type": {
+            "enum": [
+              "course",
+              "module",
+              "lab",
+              "scenario",
+              "range_template",
+              "golden_template"
+            ],
+            "title": "Item Type",
+            "type": "string"
+          },
+          "last_reviewed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Reviewed At"
+          },
+          "last_reviewed_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Reviewed By Name"
+          },
+          "owner_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Id"
+          },
+          "owner_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Name"
+          },
+          "retired": {
+            "title": "Retired",
+            "type": "boolean"
+          },
+          "retired_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retired At"
+          },
+          "reviewer_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewer Id"
+          },
+          "reviewer_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewer Name"
+          },
+          "shared": {
+            "description": "Shared catalogue content: every tenant reads it, a platform admin changes it",
+            "title": "Shared",
+            "type": "boolean"
+          },
+          "stale": {
+            "title": "Stale",
+            "type": "boolean"
+          },
+          "stale_reasons": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/StaleReasonOut"
+            },
+            "title": "Stale Reasons",
+            "type": "array"
+          },
+          "theme_ids": {
+            "default": [],
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Theme Ids",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "used_by": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ContentItemBrief"
+            },
+            "title": "Used By",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "item_type",
+          "item_id",
+          "title",
+          "shared",
+          "cycle_days",
+          "due_at",
+          "clock",
+          "stale",
+          "retired",
+          "can_review",
+          "can_assign",
+          "can_admin"
+        ],
+        "title": "ContentItemDetailOut",
+        "type": "object"
+      },
+      "ContentItemListOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ContentItemOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "theme_counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "description": "Items in the window per theme id, before the theme filter; 'none' counts untagged items",
+            "title": "Theme Counts",
+            "type": "object"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "theme_counts",
+          "total"
+        ],
+        "title": "ContentItemListOut",
+        "type": "object"
+      },
+      "ContentItemOut": {
+        "properties": {
+          "can_admin": {
+            "description": "The caller may retire it and change its owner, themes and cycle",
+            "title": "Can Admin",
+            "type": "boolean"
+          },
+          "can_assign": {
+            "description": "The caller may assign its reviewer (admin or owner)",
+            "title": "Can Assign",
+            "type": "boolean"
+          },
+          "can_review": {
+            "description": "The caller may mark it reviewed (admin, owner or assigned reviewer)",
+            "title": "Can Review",
+            "type": "boolean"
+          },
+          "clock": {
+            "$ref": "#/components/schemas/ContentClockOut"
+          },
+          "cycle_days": {
+            "description": "The cycle in force (the item's own, else its type's)",
+            "title": "Cycle Days",
+            "type": "integer"
+          },
+          "cycle_override": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The item's own cycle, when it has one",
+            "title": "Cycle Override"
+          },
+          "due_at": {
+            "format": "date-time",
+            "title": "Due At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "item_id": {
+            "description": "The content's own id (course, template, golden template ...)",
+            "title": "Item Id",
+            "type": "string"
+          },
+          "item_type": {
+            "enum": [
+              "course",
+              "module",
+              "lab",
+              "scenario",
+              "range_template",
+              "golden_template"
+            ],
+            "title": "Item Type",
+            "type": "string"
+          },
+          "last_reviewed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Reviewed At"
+          },
+          "last_reviewed_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Reviewed By Name"
+          },
+          "owner_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Id"
+          },
+          "owner_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Name"
+          },
+          "retired": {
+            "title": "Retired",
+            "type": "boolean"
+          },
+          "retired_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retired At"
+          },
+          "reviewer_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewer Id"
+          },
+          "reviewer_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewer Name"
+          },
+          "shared": {
+            "description": "Shared catalogue content: every tenant reads it, a platform admin changes it",
+            "title": "Shared",
+            "type": "boolean"
+          },
+          "stale": {
+            "title": "Stale",
+            "type": "boolean"
+          },
+          "stale_reasons": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/StaleReasonOut"
+            },
+            "title": "Stale Reasons",
+            "type": "array"
+          },
+          "theme_ids": {
+            "default": [],
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Theme Ids",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "item_type",
+          "item_id",
+          "title",
+          "shared",
+          "cycle_days",
+          "due_at",
+          "clock",
+          "stale",
+          "retired",
+          "can_review",
+          "can_assign",
+          "can_admin"
+        ],
+        "title": "ContentItemOut",
+        "type": "object"
+      },
+      "ContentItemUpdateIn": {
+        "description": "Admin only. Each field is changed only when it is sent.",
+        "properties": {
+          "clear_cycle": {
+            "default": false,
+            "description": "Go back to the content type's cycle",
+            "title": "Clear Cycle",
+            "type": "boolean"
+          },
+          "clear_owner": {
+            "default": false,
+            "title": "Clear Owner",
+            "type": "boolean"
+          },
+          "cycle_days": {
+            "anyOf": [
+              {
+                "maximum": 120.0,
+                "minimum": 90.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cycle Days"
+          },
+          "owner_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Id"
+          },
+          "theme_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Theme Ids"
+          }
+        },
+        "title": "ContentItemUpdateIn",
+        "type": "object"
+      },
       "CorpusSummary": {
         "properties": {
           "available": {
@@ -4889,6 +5475,63 @@
           "embedding_model"
         ],
         "title": "CurriculumOut",
+        "type": "object"
+      },
+      "CycleIn": {
+        "properties": {
+          "days": {
+            "maximum": 120.0,
+            "minimum": 90.0,
+            "title": "Days",
+            "type": "integer"
+          },
+          "platform_wide": {
+            "default": false,
+            "description": "The default for every tenant (platform administrator only)",
+            "title": "Platform Wide",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "days"
+        ],
+        "title": "CycleIn",
+        "type": "object"
+      },
+      "CycleOut": {
+        "properties": {
+          "days": {
+            "title": "Days",
+            "type": "integer"
+          },
+          "item_type": {
+            "enum": [
+              "course",
+              "module",
+              "lab",
+              "scenario",
+              "range_template",
+              "golden_template"
+            ],
+            "title": "Item Type",
+            "type": "string"
+          },
+          "source": {
+            "enum": [
+              "tenant",
+              "platform",
+              "default"
+            ],
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "item_type",
+          "days",
+          "source"
+        ],
+        "title": "CycleOut",
         "type": "object"
       },
       "DeliveredBy": {
@@ -10495,6 +11138,18 @@
         "title": "MaintenanceWindowOut",
         "type": "object"
       },
+      "MarkReviewedIn": {
+        "properties": {
+          "note": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Note",
+            "type": "string"
+          }
+        },
+        "title": "MarkReviewedIn",
+        "type": "object"
+      },
       "MeslEventPatch": {
         "properties": {
           "attack_technique": {
@@ -15287,6 +15942,21 @@
         "title": "ReportIn",
         "type": "object"
       },
+      "RetireIn": {
+        "properties": {
+          "reason": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "RetireIn",
+        "type": "object"
+      },
       "RevealedCredentialOut": {
         "properties": {
           "id": {
@@ -16802,6 +17472,52 @@
         "title": "StageView",
         "type": "object"
       },
+      "StaleReasonOut": {
+        "properties": {
+          "at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "At"
+          },
+          "kind": {
+            "enum": [
+              "time",
+              "release",
+              "vulnerability",
+              "upstream"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "origin_id": {
+            "description": "The review item the staleness started at (this item for its own reasons)",
+            "title": "Origin Id",
+            "type": "string"
+          },
+          "source": {
+            "default": "",
+            "title": "Source",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "text",
+          "origin_id"
+        ],
+        "title": "StaleReasonOut",
+        "type": "object"
+      },
       "StorageApplianceIn": {
         "properties": {
           "management_ip": {
@@ -17924,6 +18640,75 @@
           "created_at"
         ],
         "title": "TenantOut",
+        "type": "object"
+      },
+      "ThemeIn": {
+        "properties": {
+          "colour": {
+            "description": "#RRGGBB, the theme's dot",
+            "pattern": "^#[0-9A-Fa-f]{6}$",
+            "title": "Colour",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "ordinal": {
+            "default": 0,
+            "maximum": 1000.0,
+            "minimum": 0.0,
+            "title": "Ordinal",
+            "type": "integer"
+          },
+          "platform_wide": {
+            "default": false,
+            "description": "Every tenant's (platform administrator only)",
+            "title": "Platform Wide",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "colour"
+        ],
+        "title": "ThemeIn",
+        "type": "object"
+      },
+      "ThemeOut": {
+        "properties": {
+          "colour": {
+            "title": "Colour",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "ordinal": {
+            "title": "Ordinal",
+            "type": "integer"
+          },
+          "platform_wide": {
+            "title": "Platform Wide",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "colour",
+          "ordinal",
+          "platform_wide"
+        ],
+        "title": "ThemeOut",
         "type": "object"
       },
       "ThreatIndicatorOut": {
@@ -24762,6 +25547,703 @@
         "summary": "Get Skill Gaps",
         "tags": [
           "competency"
+        ]
+      }
+    },
+    "/content-review/cycles": {
+      "get": {
+        "operationId": "list_content_review_cycles",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CycleOut"
+                  },
+                  "title": "Response List Content Review Cycles",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "The review cycle per content type",
+        "tags": [
+          "content-review"
+        ]
+      }
+    },
+    "/content-review/cycles/{item_type}": {
+      "put": {
+        "operationId": "set_content_review_cycle",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_type",
+            "required": true,
+            "schema": {
+              "title": "Item Type",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CycleIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CycleOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Set a content type's review cycle (90 to 120 days)",
+        "tags": [
+          "content-review"
+        ]
+      }
+    },
+    "/content-review/items": {
+      "get": {
+        "description": "Each item on its review-due date, with its stale reasons and clock. ``theme_counts``\ncounts the window before the theme filter, for the theme chips.",
+        "operationId": "list_content_review_items",
+        "parameters": [
+          {
+            "description": "Window start (inclusive)",
+            "in": "query",
+            "name": "start",
+            "required": true,
+            "schema": {
+              "description": "Window start (inclusive)",
+              "format": "date-time",
+              "title": "Start",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Window end (exclusive)",
+            "in": "query",
+            "name": "end",
+            "required": true,
+            "schema": {
+              "description": "Window end (exclusive)",
+              "format": "date-time",
+              "title": "End",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only these themes (a theme id, or 'none' for untagged)",
+            "in": "query",
+            "name": "theme_id",
+            "required": false,
+            "schema": {
+              "default": [],
+              "description": "Only these themes (a theme id, or 'none' for untagged)",
+              "items": {
+                "type": "string"
+              },
+              "title": "Theme Id",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_retired",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Retired",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContentItemListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Content due for review in a date window",
+        "tags": [
+          "content-review"
+        ]
+      }
+    },
+    "/content-review/items/{item_id}": {
+      "get": {
+        "operationId": "get_content_review_item",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContentItemDetailOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "One content item: its clock, what it depends on and what uses it",
+        "tags": [
+          "content-review"
+        ]
+      },
+      "patch": {
+        "operationId": "update_content_review_item",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContentItemUpdateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContentItemDetailOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Set the item's owner, themes or own review cycle",
+        "tags": [
+          "content-review"
+        ]
+      }
+    },
+    "/content-review/items/{item_id}/retire": {
+      "post": {
+        "description": "Admins only (a platform administrator for shared content). The content itself is not\ndeleted. Audit-logged, with the reason.",
+        "operationId": "retire_content_item",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RetireIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContentItemDetailOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Retire the item: it leaves the Content view and the stale list",
+        "tags": [
+          "content-review"
+        ]
+      }
+    },
+    "/content-review/items/{item_id}/review": {
+      "post": {
+        "description": "Clears the item's own stale reasons (an overdue review, a release or vulnerability\nflag) and what they made stale downstream. Reasons it inherited stay until their source\nis reviewed. Audit-logged.",
+        "operationId": "mark_content_reviewed",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MarkReviewedIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContentItemDetailOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Mark reviewed: reset the item's clock",
+        "tags": [
+          "content-review"
+        ]
+      }
+    },
+    "/content-review/items/{item_id}/reviewer": {
+      "put": {
+        "description": "The reviewer is an admin or instructor of the item's tenant. Audit-logged.",
+        "operationId": "assign_content_reviewer",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssignReviewerIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContentItemDetailOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Assign (or clear) the item's reviewer",
+        "tags": [
+          "content-review"
+        ]
+      }
+    },
+    "/content-review/stale": {
+      "get": {
+        "description": "Stale, not retired, the longest-overdue first.",
+        "operationId": "list_stale_content",
+        "parameters": [
+          {
+            "description": "Only these themes (a theme id, or 'none')",
+            "in": "query",
+            "name": "theme_id",
+            "required": false,
+            "schema": {
+              "default": [],
+              "description": "Only these themes (a theme id, or 'none')",
+              "items": {
+                "type": "string"
+              },
+              "title": "Theme Id",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 200,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ContentItemOut"
+                  },
+                  "title": "Response List Stale Content",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Content that is stale now",
+        "tags": [
+          "content-review"
+        ]
+      }
+    },
+    "/content-review/themes": {
+      "get": {
+        "operationId": "list_content_themes",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ThemeOut"
+                  },
+                  "title": "Response List Content Themes",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Theme tags (the tenant's and the platform-wide ones)",
+        "tags": [
+          "content-review"
+        ]
+      },
+      "post": {
+        "operationId": "create_content_theme",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ThemeIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThemeOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Add a theme tag",
+        "tags": [
+          "content-review"
+        ]
+      }
+    },
+    "/content-review/themes/{theme_id}": {
+      "delete": {
+        "operationId": "delete_content_theme",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "theme_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Theme Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete a theme tag (it is removed from every item)",
+        "tags": [
+          "content-review"
+        ]
+      },
+      "put": {
+        "operationId": "update_content_theme",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "theme_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Theme Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ThemeIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThemeOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Rename or recolour a theme tag",
+        "tags": [
+          "content-review"
         ]
       }
     },

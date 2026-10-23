@@ -32,6 +32,11 @@ WORKER_TABLES = (
     "competencies",
     "competency_assertions",
     "competency_auto_assessments",
+    "content_review_cycles",  # ADR 0014 §22-24: the content clock's sync (worker/content_review_sync.py)
+    "content_review_edges",
+    "content_review_items",
+    "content_review_themes",
+    "course_modules",  # read by the content clock's sync, to find what each course depends on
     "courses",
     "exercise_runs",
     "exercises",
@@ -43,6 +48,7 @@ WORKER_TABLES = (
     "lab_sessions",
     "learning_recommendations",
     "maintenance_windows",
+    "module_content",  # read by the content clock's sync
     "network_reservations",
     "objectives",
     "range_credential_snapshots",
@@ -57,6 +63,7 @@ WORKER_TABLES = (
     "ranges",
     "scenario_executions",
     "scenarios",
+    "scheduled_events",  # read by the content clock's sync: a booked class uses its range template
     "templates",
     "users",
 )
@@ -88,6 +95,7 @@ def _type_src(t) -> str:
 
 def render() -> str:
     import app.audit_integrity  # noqa: F401 — audit_exports
+    import app.content_review  # noqa: F401 — the content clock (worker/content_review_sync.py)
     import app.golden_image_builds  # noqa: F401 — golden_image_builds (worker/template_pins.py)
     import app.greyspace.models  # noqa: F401
     import app.lab_sessions  # noqa: F401 — lab_sessions
@@ -99,6 +107,7 @@ def render() -> str:
     import app.range_leases  # noqa: F401
     import app.range_ops  # noqa: F401 — range_operations.window_bypass (worker/maintenance_windows.py)
     import app.scenario_runs  # noqa: F401
+    import app.scheduler.models  # noqa: F401 — scheduled_events
     from app import models
     from app.db import Base
 

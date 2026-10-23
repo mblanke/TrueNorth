@@ -74,7 +74,9 @@ app.conf.update(
     task_routes={**route_table(), "worker.tasks.*": {"queue": "default"}, "worker.audit_tasks.*": {"queue": "default"},
                  # vCenter work: worker-provision (-Q provision,destroy) has VSPHERE_* and egress.
                  "worker.template_tasks.*": {"queue": "destroy"},
-                 "worker.setup_reconcile.*": {"queue": "destroy"}},
+                 "worker.setup_reconcile.*": {"queue": "destroy"},
+                 # The content clock's sync: database only (ADR 0014 §22-24).
+                 "worker.content_review_sync.*": {"queue": "default"}},
     # Concurrency control
     task_track_started=True,
     task_acks_late=True,  # Don't ack until task completes
@@ -171,6 +173,13 @@ app.conf.beat_schedule = {
         "schedule": float(os.getenv("SETUP_RECONCILE_SECONDS", "300")),
         "options": {"expires": 300},
     },
+    # The content clock (ADR 0014 §22-24, worker/content_review_sync.py): a review row for all
+    # content, the dependency edges it already declares, due dates and stale flags. Hourly.
+    "content-review-sync": {
+        "task": "worker.content_review_sync.sync_content_review",
+        "schedule": crontab(minute=20),
+        "options": {"expires": 3600},
+    },
 }
 
 
@@ -209,6 +218,7 @@ from . import (
     audit_tasks,  # noqa: F401, E402
     chaos,  # noqa: F401, E402
     configure_tasks,  # noqa: F401, E402
+    content_review_sync,  # noqa: F401, E402
     credential_rotation,  # noqa: F401, E402
     exercise_run,  # noqa: F401, E402
     isolation_task,  # noqa: F401, E402

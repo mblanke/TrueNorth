@@ -372,6 +372,7 @@ export class AppComponent implements OnDestroy {
         { label: 'Ops Center', icon: 'radar', route: '/ops-center/select', access: 'opsCenter' },
         { label: 'Telemetry', icon: 'query_stats', route: '/telemetry', access: 'telemetry' },
         { label: 'Schedule', icon: 'event', route: '/schedule', access: 'schedule' },
+        { label: 'Calendar', icon: 'calendar_month', route: '/calendar', access: 'contentCalendar' },
       ],
     },
     {
