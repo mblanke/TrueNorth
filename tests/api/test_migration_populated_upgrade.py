@@ -79,7 +79,8 @@ EXPECTED_NEW_TABLES = {
 # sealed, not applied ("template password still valid until rebuilt").
 # c1465c4964a6 adds the eight default content-review themes (platform-wide) and its
 # seeded-once marker: reference data, checked below, not a backfill of anyone's rows.
-BACKFILLED_TABLES = {"xapi_legacy_identities", "range_credentials", "content_review_themes", "content_review_settings"}
+BACKFILLED_TABLES = {"xapi_legacy_identities", "range_credentials", "content_review_themes", "content_review_settings",
+                     "acknowledgement_versions"}
 
 # b0c1d2e3f4a5 builds its frozen list of tables from the *live* ORM, so until 2026-10-08 a
 # database taken to DEPLOYED_HEAD already had the columns the scheduler migrations after it
@@ -317,6 +318,11 @@ def test_a_populated_deployed_database_upgrades_to_head_without_loss():
             themes = conn.execute(sa.text("SELECT tenant_id FROM content_review_themes")).all()
             assert len(themes) == 8 and all(t[0] is None for t in themes)
             assert conn.execute(sa.text("SELECT themes_seeded FROM content_review_settings")).scalars().all() == [True]
+            # 4c0dab4abfa8: one draft of the shipped rules of use, unpublished, and no signature,
+            # so nobody is asked to sign until a platform administrator publishes (ADR 0014 §3).
+            drafts = conn.execute(sa.text("SELECT version, published_at FROM acknowledgement_versions")).all()
+            assert drafts == [(None, None)]
+            assert conn.execute(sa.text("SELECT count(*) FROM acknowledgement_signatures")).scalar() == 0
             # 5a1e9c3d7b20: each existing user's pre-switch xAPI identity, and nothing else.
             legacy = conn.execute(sa.text("SELECT user_id, legacy_mbox FROM xapi_legacy_identities")).all()
             assert [(str(u), m) for u, m in legacy] == [(str(user_id), "mailto:i@example.test")]
