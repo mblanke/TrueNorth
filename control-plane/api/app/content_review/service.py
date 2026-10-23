@@ -30,7 +30,14 @@ from ..models import AuditLog, User, UserRole
 from ..rbac import Permission, is_platform_admin, user_has_permission
 from ..tenancy import tenant_uuid
 from . import staleness
-from .models import ITEM_TYPES, ContentReviewCycle, ContentReviewEdge, ContentReviewItem, ContentReviewTheme
+from .models import (
+    ITEM_TYPES,
+    ContentReviewCycle,
+    ContentReviewEdge,
+    ContentReviewItem,
+    ContentReviewSettings,
+    ContentReviewTheme,
+)
 from .schemas import (
     ContentClockOut,
     ContentItemBrief,
@@ -165,14 +172,15 @@ def refresh_clock(row: ContentReviewItem, cycle_days: int, at: datetime) -> bool
 
 # ── the dependency graph ─────────────────────────────────────────────────────
 def lock_query(db: Session, ids: Iterable[str]):
-    """The review rows ``ids`` (not missing), locked FOR UPDATE in id order and re-read."""
+    """The review rows ``ids`` (not missing), locked FOR NO KEY UPDATE (a foreign key check, as when the sync inserts
+    an edge, does not block it) in id order, and re-read."""
     wanted = [uuid.UUID(str(i)) for i in ids]
     # tenant-safe: ``ids`` are an item the caller already reached through visible() (or the
     # feeds' own flag) and what depends on it; shared content's dependents in other tenants are
     # rewritten on purpose (their inherited reasons), never returned to the caller.
     return (db.query(ContentReviewItem)
             .filter(ContentReviewItem.id.in_(wanted), ContentReviewItem.missing.is_(False))
-            .order_by(ContentReviewItem.id).with_for_update().populate_existing())
+            .order_by(ContentReviewItem.id).with_for_update(key_share=True).populate_existing())
 
 
 def lock_rows(db: Session, ids: Iterable[str]) -> dict[str, ContentReviewItem]:
@@ -183,7 +191,7 @@ def load_graph(db: Session, key: str) -> tuple[staleness.Graph, dict[str, Conten
     """``key`` and everything downstream of it, over every edge.
 
     The edges are read unlocked; only the rows a change at ``key`` can rewrite (``key`` and
-    its dependents) are locked, FOR UPDATE in id order and re-read, so two reviews, or a review
+    its dependents) are locked, FOR NO KEY UPDATE in id order and re-read, so two reviews, or a review
     and a feed flag, never each write from their own snapshot. The worker's sync locks the rows
     it writes in the same order and keeps a row whose ``revision`` changed since it read it.
     Nothing of an unrelated item, or another tenant's, is read or locked."""
@@ -294,6 +302,7 @@ def retire(db: Session, user: CurrentUser, row: ContentReviewItem, reason: str) 
     require_admin(db, user, row)
     key = str(row.id)
     graph, rows = load_graph(db, key)  # locks and re-reads ``row`` too
+    require_admin(db, user, row)  # as it is now, locked
     if row.retired:
         raise HTTPException(409, "Already retired")
     rows[key] = row
@@ -346,15 +355,25 @@ DEFAULT_THEMES = (
 
 
 def seed_default_themes(db: Session) -> int:
-    """Add the default themes platform-wide when there are no themes at all (a fresh install
-    whose schema came from create_all). Never once any exist: an admin's edits and deletions
-    stand. Does not commit. Returns how many were added."""
-    if db.query(ContentReviewTheme.id).first() is not None:
+    """Add the default themes platform-wide, once (a fresh install whose schema came from
+    create_all; the migration adds them and sets the marker itself). The marker
+    (``content_review_settings.themes_seeded``) makes it once: an admin who later deletes them
+    all does not get them back, and an install that already has themes gets none added.
+    Does not commit. Returns how many were added."""
+    marker = db.get(ContentReviewSettings, 1)
+    if marker is not None and marker.themes_seeded:
         return 0
-    for i, (name, colour) in enumerate(DEFAULT_THEMES):
-        db.add(ContentReviewTheme(id=uuid.uuid4(), tenant_id=None, name=name, colour=colour, ordinal=i))
+    added = 0
+    if db.query(ContentReviewTheme.id).first() is None:
+        for i, (name, colour) in enumerate(DEFAULT_THEMES):
+            db.add(ContentReviewTheme(id=uuid.uuid4(), tenant_id=None, name=name, colour=colour, ordinal=i))
+        added = len(DEFAULT_THEMES)
+    if marker is None:
+        db.add(ContentReviewSettings(id=1, themes_seeded=True))
+    else:
+        marker.themes_seeded = True
     db.flush()
-    return len(DEFAULT_THEMES)
+    return added
 
 
 def visible_themes(db: Session, user: CurrentUser) -> list[ContentReviewTheme]:

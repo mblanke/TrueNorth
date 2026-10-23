@@ -372,7 +372,8 @@ class TestStaleness:
         from sqlalchemy.dialects import postgresql
 
         sql = str(service.lock_query(db_session, [str(uuid.uuid4())]).statement.compile(dialect=postgresql.dialect()))
-        assert "FOR UPDATE" in sql and "ORDER BY content_review_items.id" in sql
+        # NO KEY UPDATE: a foreign key check (the sync inserting an edge) does not block it.
+        assert "FOR NO KEY UPDATE" in sql and "ORDER BY content_review_items.id" in sql
 
     def test_flag_stale_refuses_an_unknown_item(self, db_session):
         with pytest.raises(KeyError):
@@ -486,6 +487,26 @@ class TestThemesAndCycles:
         db.flush()
         service.seed_default_themes(db)
         assert [t.name for t in db.query(ContentReviewTheme)] == ["Only this"]
+
+    def test_an_admin_who_deletes_every_default_theme_does_not_get_them_back(self, db_session):
+        """Seeded once, marked as done: an empty theme list is the admin's choice, not a fresh install."""
+        db = db_session
+        assert service.seed_default_themes(db) == 8
+        db.query(ContentReviewTheme).delete()
+        db.flush()
+        assert service.seed_default_themes(db) == 0
+        assert db.query(ContentReviewTheme).count() == 0
+
+    def test_a_failing_theme_seed_does_not_stop_the_other_seeds(self):
+        """It has its own try block in main._seed_dev_data."""
+        import inspect
+
+        from app import main
+
+        src = inspect.getsource(main._seed_dev_data)
+        seeds = src.index("seed_ai_backends(db)")
+        themes = src.index("seed_default_themes(db)")
+        assert src.count("try:") >= 2 and src.rfind("try:", 0, themes) > seeds
 
     def test_tenant_admin_manages_tenant_themes_not_platform_ones(self, client, world, monkeypatch):
         monkeypatch.delenv("PLATFORM_TENANT_ID", raising=False)

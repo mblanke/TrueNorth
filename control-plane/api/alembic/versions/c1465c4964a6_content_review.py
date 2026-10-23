@@ -12,10 +12,12 @@ ADR 0014 decisions 22-24, issue #286 (``app/content_review``):
 * ``content_review_edges``: what each item depends on, so staleness flows down;
 * ``content_review_themes``: theme tags with a colour. The eight themes ADR 0014 decision 22
   names are added platform-wide; admins edit or delete them;
-* ``content_review_cycles``: the review cycle per content type (90 to 120 days; none: 90).
+* ``content_review_cycles``: the review cycle per content type (90 to 120 days; none: 90);
+* ``content_review_settings``: one row; ``themes_seeded`` marks the default themes as added
+  once, so they are never added again.
 
 Additive. The worker's periodic sync fills the items and edges from the content that
-exists. Downgrade drops all four tables.
+exists. Downgrade drops all five tables.
 """
 
 import uuid
@@ -119,9 +121,19 @@ def upgrade() -> None:
         # NULLs are distinct in a unique index: one platform-wide row per type needs its own.
         op.create_index("uq_content_review_cycles_platform", "content_review_cycles", ["item_type"], unique=True,
                         postgresql_where=sa.text("tenant_id IS NULL"), sqlite_where=sa.text("tenant_id IS NULL"))
+    if "content_review_settings" not in existing:
+        settings = op.create_table(
+            "content_review_settings",
+            sa.Column("id", sa.Integer(), primary_key=True),
+            sa.Column("themes_seeded", sa.Boolean(), nullable=False, server_default=sa.false()),
+        )
+        # The themes are seeded (above, or by startup on a create_all schema): never again, so an
+        # admin who deletes them all keeps it that way (app/content_review/service.seed_default_themes).
+        op.bulk_insert(settings, [{"id": 1, "themes_seeded": True}])
 
 
 def downgrade() -> None:
+    op.drop_table("content_review_settings")
     op.drop_index("uq_content_review_cycles_platform", table_name="content_review_cycles")
     op.drop_index("ix_content_review_cycles_tenant_type", table_name="content_review_cycles")
     op.drop_table("content_review_cycles")

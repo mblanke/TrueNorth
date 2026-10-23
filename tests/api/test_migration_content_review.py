@@ -21,7 +21,8 @@ import sqlalchemy as sa
 
 API = Path(__file__).resolve().parents[2] / "control-plane" / "api"
 PARENT, REVISION = "b62353ae80af", "c1465c4964a6"
-TABLES = {"content_review_items", "content_review_edges", "content_review_themes", "content_review_cycles"}
+TABLES = {"content_review_items", "content_review_edges", "content_review_themes", "content_review_cycles",
+          "content_review_settings"}
 
 
 def _alembic(url: str, *args: str) -> None:
@@ -70,6 +71,8 @@ def test_upgrade_adds_the_tables_and_themes_and_downgrade_removes_them(tmp_path)
         assert [t[0] for t in themes] == ["Blue team", "Red team", "DFIR", "Network", "ICS / OT", "Cloud",
                                           "Malware", "Platform"]
         assert all(t[2] is None for t in themes) and themes[0][1] == "#3B5BDB"
+        # seeded once: the marker says so, so startup never adds them again
+        assert db.execute(sa.text("SELECT themes_seeded FROM content_review_settings WHERE id = 1")).scalar()
         assert db.execute(sa.text("SELECT count(*) FROM courses")).scalar() == 1
         assert db.execute(sa.text("SELECT count(*) FROM content_review_items")).scalar() == 0
 

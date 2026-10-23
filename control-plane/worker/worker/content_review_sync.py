@@ -26,7 +26,8 @@ Each run, under a Redis lock (redis_lock.py) so two never overlap:
    edges (content_review_runtime/staleness.py, generated from the API's ``app/content_review/staleness.py``).
 
 Everything is read unlocked and computed first. Only then are the review rows that change
-locked (FOR UPDATE, in id order: the order the API locks them in), and each is written only
+locked (FOR NO KEY UPDATE, which an edge insert's foreign key check does not block; in id order,
+the order the API locks them in), and each is written only
 if its ``revision`` is still the one read: a review that committed meanwhile wins, and the
 next run catches up. A lost Redis lock raises LockLostError, so the run rolls back whole.
 SQLAlchemy Core on
@@ -311,7 +312,7 @@ def sync(db, *, now: datetime | None = None, lost: threading.Event | None = None
     ``lost`` is set.
 
     Reads are unlocked; new rows and the edge difference are written in bulk; then the review
-    rows that change are locked (FOR UPDATE, in id order, the order the API locks them in) and
+    rows that change are locked (FOR NO KEY UPDATE, in id order, as the API locks them) and
     each is written only if its ``revision`` is still the one read: a review that committed
     meanwhile wins, and the next run catches up."""
     now = _utc(now) or datetime.now(UTC)
@@ -406,7 +407,7 @@ def sync(db, *, now: datetime | None = None, lost: threading.Event | None = None
             db.execute(items.update().where(items.c.id == row["id"]).values(**pending[row["id"]], updated_at=now))
     if write:
         locked = db.execute(sa.select(items.c.id, items.c.revision).where(items.c.id.in_(sorted(write)))
-                            .order_by(items.c.id).with_for_update()).all()
+                            .order_by(items.c.id).with_for_update(key_share=True)).all()
         for got in locked:
             rid = str(got.id)
             if got.revision != read_revision[rid]:

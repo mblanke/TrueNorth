@@ -26,7 +26,8 @@ from ..db import Base
 from ..models import GUID, TimestampMixin
 from .staleness import ITEM_TYPES
 
-__all__ = ["ITEM_TYPES", "ContentReviewCycle", "ContentReviewEdge", "ContentReviewItem", "ContentReviewTheme"]
+__all__ = ["ITEM_TYPES", "ContentReviewCycle", "ContentReviewEdge", "ContentReviewItem", "ContentReviewSettings",
+           "ContentReviewTheme"]
 
 
 class ContentReviewItem(TimestampMixin, Base):
@@ -107,3 +108,14 @@ class ContentReviewCycle(TimestampMixin, Base):
     tenant_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("tenants.id"), nullable=True)
     item_type: Mapped[str] = mapped_column(String(32), nullable=False)
     days: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
+class ContentReviewSettings(Base):
+    """One row (id 1) of platform-wide state. ``themes_seeded``: the default themes were added
+    once (by the migration, or at startup where the schema came from create_all); an admin
+    who then deletes them all does not get them back."""
+
+    __tablename__ = "content_review_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
+    themes_seeded: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=false())

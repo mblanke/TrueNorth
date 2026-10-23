@@ -156,7 +156,9 @@ def retire(body: RetireIn, item_id: uuid.UUID = Path(...), db: Session = Depends
            user: CurrentUser = Depends(_ADMIN)) -> ContentItemDetailOut:
     """Admins only (a platform administrator for shared content). The content itself is not
     deleted. Audit-logged, with the reason."""
-    row = service.get_visible(db, user, item_id, lock=True)
+    # Not locked here: retire locks the item with what depends on it, in one id-ordered
+    # statement (locking the item first, then the rest, deadlocked against the sync).
+    row = service.get_visible(db, user, item_id)
     service.retire(db, user, row, body.reason)
     db.commit()
     return _detail(db, user, item_id)

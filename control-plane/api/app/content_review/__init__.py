@@ -5,6 +5,12 @@ feeds, issue #287) flag content stale through ``service.flag_stale``; the rules 
 are in ``staleness`` (pure).
 """
 
-from .models import ContentReviewCycle, ContentReviewEdge, ContentReviewItem, ContentReviewTheme
+from .models import (
+    ContentReviewCycle,
+    ContentReviewEdge,
+    ContentReviewItem,
+    ContentReviewSettings,
+    ContentReviewTheme,
+)
 
-__all__ = ["ContentReviewCycle", "ContentReviewEdge", "ContentReviewItem", "ContentReviewTheme"]
+__all__ = ["ContentReviewCycle", "ContentReviewEdge", "ContentReviewItem", "ContentReviewSettings", "ContentReviewTheme"]
