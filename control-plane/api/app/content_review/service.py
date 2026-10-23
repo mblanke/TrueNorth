@@ -167,6 +167,9 @@ def refresh_clock(row: ContentReviewItem, cycle_days: int, at: datetime) -> bool
 def lock_query(db: Session, ids: Iterable[str]):
     """The review rows ``ids`` (not missing), locked FOR UPDATE in id order and re-read."""
     wanted = [uuid.UUID(str(i)) for i in ids]
+    # tenant-safe: ``ids`` are an item the caller already reached through visible() (or the
+    # feeds' own flag) and what depends on it; shared content's dependents in other tenants are
+    # rewritten on purpose (their inherited reasons), never returned to the caller.
     return (db.query(ContentReviewItem)
             .filter(ContentReviewItem.id.in_(wanted), ContentReviewItem.missing.is_(False))
             .order_by(ContentReviewItem.id).with_for_update().populate_existing())
