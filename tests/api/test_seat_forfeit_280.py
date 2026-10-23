@@ -735,3 +735,29 @@ def test_r7_with_no_active_lead_or_assistant_the_admins_are_told(client, db_sess
     _book(client, world)
     res = forfeit.tick(db_session, now=DUE + SECOND)
     assert {m.to for m in res.mails} == {world["admin"].email}
+
+
+def test_r8_a_remove_that_loses_a_lock_race_is_409_not_500(client, db_session, world, monkeypatch):
+    from sqlalchemy.exc import OperationalError
+
+    class DeadlockError(Exception):
+        sqlstate = "40P01"
+
+    def lose(*a, **k):
+        raise OperationalError("UPDATE class_roll_call", {}, DeadlockError())
+
+    monkeypatch.setattr(class_service, "remove_from_roll_call", lose)
+    entry = _entry(db_session, "newbie@corp.test")
+    act_as(world["lead"])
+    r = client.delete(f"/classes/{world['class']['id']}/roll-call/{entry.id}")
+    assert r.status_code == 409 and "try again" in r.json()["detail"]
+
+
+def test_r9_no_day_before_reminder_for_an_entry_whose_account_has_signed_in(db_session, world):
+    from app.classes import clock as reminder_clock
+
+    rosie = world["rosie"]
+    rosie.source = "ad"  # adopted through Request access; her entry still says invited
+    db_session.flush()
+    eve = datetime.combine(DAY.date() - timedelta(days=1), datetime.min.time(), tzinfo=UTC) + timedelta(hours=12)
+    assert {m.to for m in reminder_clock.tick(db_session, now=eve)} == {"newbie@corp.test"}

@@ -486,9 +486,10 @@ def remove_from_roll_call(
     if entry is None:
         raise HTTPException(404, "Roll-call entry not found")
     if entry.status != RollCallStatus.removed.value:
-        freed = service.remove_from_roll_call(db, cls, entry, user)
-        cancels = scheduler.attendee_invites(db, freed, [entry.email], "CANCEL")
-        db.commit()
+        with _lock_conflicts(db):
+            freed = service.remove_from_roll_call(db, cls, entry, user)
+            cancels = scheduler.attendee_invites(db, freed, [entry.email], "CANCEL")
+            db.commit()
         background.add_task(scheduler.send_invites, cancels)
 
 
