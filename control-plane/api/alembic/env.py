@@ -15,6 +15,7 @@ from app import (  # noqa: F401
     audit_integrity,
     classes,
     cmi5,
+    content_review,
     course_publishing,
     course_releases,
     detections,

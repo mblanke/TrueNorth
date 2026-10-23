@@ -1355,6 +1355,198 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/content-review/cycles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The review cycle per content type */
+        get: operations["list_content_review_cycles"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/content-review/cycles/{item_type}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Set a content type's review cycle (90 to 120 days) */
+        put: operations["set_content_review_cycle"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/content-review/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Content due for review in a date window
+         * @description Each item on its review-due date, with its stale reasons and clock. ``theme_counts``
+         *     counts the window before the theme filter, for the theme chips.
+         */
+        get: operations["list_content_review_items"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/content-review/items/{item_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One content item: its clock, what it depends on and what uses it */
+        get: operations["get_content_review_item"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Set the item's owner, themes or own review cycle */
+        patch: operations["update_content_review_item"];
+        trace?: never;
+    };
+    "/content-review/items/{item_id}/retire": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retire the item: it leaves the Content view and the stale list
+         * @description Admins only (a platform administrator for shared content). The content itself is not
+         *     deleted. Audit-logged, with the reason.
+         */
+        post: operations["retire_content_item"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/content-review/items/{item_id}/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark reviewed: reset the item's clock
+         * @description Clears the item's own stale reasons (an overdue review, a release or vulnerability
+         *     flag) and what they made stale downstream. Reasons it inherited stay until their source
+         *     is reviewed. Audit-logged.
+         */
+        post: operations["mark_content_reviewed"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/content-review/items/{item_id}/reviewer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Assign (or clear) the item's reviewer
+         * @description The reviewer is an admin or instructor of the item's tenant. Audit-logged.
+         */
+        put: operations["assign_content_reviewer"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/content-review/stale": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Content that is stale now
+         * @description Stale, not retired, the longest-overdue first.
+         */
+        get: operations["list_stale_content"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/content-review/themes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Theme tags (the tenant's and the platform-wide ones) */
+        get: operations["list_content_themes"];
+        put?: never;
+        /** Add a theme tag */
+        post: operations["create_content_theme"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/content-review/themes/{theme_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Rename or recolour a theme tag */
+        put: operations["update_content_theme"];
+        post?: never;
+        /** Delete a theme tag (it is removed from every item) */
+        delete: operations["delete_content_theme"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/course-publications/{publication_id}": {
         parameters: {
             query?: never;
@@ -9077,6 +9269,14 @@ export interface components {
             /** Verdict Label */
             verdict_label: string;
         };
+        /** AssignReviewerIn */
+        AssignReviewerIn: {
+            /**
+             * Reviewer Id
+             * @description An admin or instructor of the item's tenant; null clears
+             */
+            reviewer_id?: string | null;
+        };
         /** AttachObjectives */
         AttachObjectives: {
             /** Po Ids */
@@ -10592,6 +10792,254 @@ export interface components {
             /** Url */
             url: string;
         };
+        /** ContentClockOut */
+        ContentClockOut: {
+            /**
+             * Days
+             * @description Whole days until the review is due (negative: overdue)
+             */
+            days: number;
+            /**
+             * State
+             * @description green: due in more than 14 days; amber: 14 or fewer; stale
+             * @enum {string}
+             */
+            state: "green" | "amber" | "stale";
+        };
+        /** ContentItemBrief */
+        ContentItemBrief: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Item Type
+             * @enum {string}
+             */
+            item_type: "course" | "module" | "lab" | "scenario" | "range_template" | "golden_template";
+            /** Retired */
+            retired: boolean;
+            /** Stale */
+            stale: boolean;
+            /** Title */
+            title: string;
+        };
+        /** ContentItemDetailOut */
+        ContentItemDetailOut: {
+            /**
+             * Can Admin
+             * @description The caller may retire it and change its owner, themes and cycle
+             */
+            can_admin: boolean;
+            /**
+             * Can Assign
+             * @description The caller may assign its reviewer (admin or owner)
+             */
+            can_assign: boolean;
+            /**
+             * Can Review
+             * @description The caller may mark it reviewed (admin, owner or assigned reviewer)
+             */
+            can_review: boolean;
+            clock: components["schemas"]["ContentClockOut"];
+            /**
+             * Cycle Days
+             * @description The cycle in force (the item's own, else its type's)
+             */
+            cycle_days: number;
+            /**
+             * Cycle Override
+             * @description The item's own cycle, when it has one
+             */
+            cycle_override?: number | null;
+            /**
+             * Depends On
+             * @default []
+             */
+            depends_on?: components["schemas"]["ContentItemBrief"][];
+            /**
+             * Due At
+             * Format: date-time
+             */
+            due_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Item Id
+             * @description The content's own id (course, template, golden template ...)
+             */
+            item_id: string;
+            /**
+             * Item Type
+             * @enum {string}
+             */
+            item_type: "course" | "module" | "lab" | "scenario" | "range_template" | "golden_template";
+            /** Last Reviewed At */
+            last_reviewed_at?: string | null;
+            /** Last Reviewed By Name */
+            last_reviewed_by_name?: string | null;
+            /** Owner Id */
+            owner_id?: string | null;
+            /** Owner Name */
+            owner_name?: string | null;
+            /** Retired */
+            retired: boolean;
+            /** Retired At */
+            retired_at?: string | null;
+            /** Reviewer Id */
+            reviewer_id?: string | null;
+            /** Reviewer Name */
+            reviewer_name?: string | null;
+            /**
+             * Shared
+             * @description Shared catalogue content: every tenant reads it, a platform admin changes it
+             */
+            shared: boolean;
+            /** Stale */
+            stale: boolean;
+            /**
+             * Stale Reasons
+             * @default []
+             */
+            stale_reasons?: components["schemas"]["StaleReasonOut"][];
+            /**
+             * Theme Ids
+             * @default []
+             */
+            theme_ids?: string[];
+            /** Title */
+            title: string;
+            /**
+             * Used By
+             * @default []
+             */
+            used_by?: components["schemas"]["ContentItemBrief"][];
+        };
+        /** ContentItemListOut */
+        ContentItemListOut: {
+            /** Items */
+            items: components["schemas"]["ContentItemOut"][];
+            /**
+             * Theme Counts
+             * @description Items in the window per theme id, before the theme filter; 'none' counts untagged items
+             */
+            theme_counts: {
+                [key: string]: number;
+            };
+            /** Total */
+            total: number;
+        };
+        /** ContentItemOut */
+        ContentItemOut: {
+            /**
+             * Can Admin
+             * @description The caller may retire it and change its owner, themes and cycle
+             */
+            can_admin: boolean;
+            /**
+             * Can Assign
+             * @description The caller may assign its reviewer (admin or owner)
+             */
+            can_assign: boolean;
+            /**
+             * Can Review
+             * @description The caller may mark it reviewed (admin, owner or assigned reviewer)
+             */
+            can_review: boolean;
+            clock: components["schemas"]["ContentClockOut"];
+            /**
+             * Cycle Days
+             * @description The cycle in force (the item's own, else its type's)
+             */
+            cycle_days: number;
+            /**
+             * Cycle Override
+             * @description The item's own cycle, when it has one
+             */
+            cycle_override?: number | null;
+            /**
+             * Due At
+             * Format: date-time
+             */
+            due_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Item Id
+             * @description The content's own id (course, template, golden template ...)
+             */
+            item_id: string;
+            /**
+             * Item Type
+             * @enum {string}
+             */
+            item_type: "course" | "module" | "lab" | "scenario" | "range_template" | "golden_template";
+            /** Last Reviewed At */
+            last_reviewed_at?: string | null;
+            /** Last Reviewed By Name */
+            last_reviewed_by_name?: string | null;
+            /** Owner Id */
+            owner_id?: string | null;
+            /** Owner Name */
+            owner_name?: string | null;
+            /** Retired */
+            retired: boolean;
+            /** Retired At */
+            retired_at?: string | null;
+            /** Reviewer Id */
+            reviewer_id?: string | null;
+            /** Reviewer Name */
+            reviewer_name?: string | null;
+            /**
+             * Shared
+             * @description Shared catalogue content: every tenant reads it, a platform admin changes it
+             */
+            shared: boolean;
+            /** Stale */
+            stale: boolean;
+            /**
+             * Stale Reasons
+             * @default []
+             */
+            stale_reasons?: components["schemas"]["StaleReasonOut"][];
+            /**
+             * Theme Ids
+             * @default []
+             */
+            theme_ids?: string[];
+            /** Title */
+            title: string;
+        };
+        /**
+         * ContentItemUpdateIn
+         * @description Admin only. Each field is changed only when it is sent.
+         */
+        ContentItemUpdateIn: {
+            /**
+             * Clear Cycle
+             * @description Go back to the content type's cycle
+             * @default false
+             */
+            clear_cycle?: boolean;
+            /**
+             * Clear Owner
+             * @default false
+             */
+            clear_owner?: boolean;
+            /** Cycle Days */
+            cycle_days?: number | null;
+            /** Owner Id */
+            owner_id?: string | null;
+            /** Theme Ids */
+            theme_ids?: string[] | null;
+        };
         /** CorpusSummary */
         CorpusSummary: {
             /**
@@ -11002,6 +11450,32 @@ export interface components {
             name: string;
             /** Status */
             status: string;
+        };
+        /** CycleIn */
+        CycleIn: {
+            /** Days */
+            days: number;
+            /**
+             * Platform Wide
+             * @description The default for every tenant (platform administrator only)
+             * @default false
+             */
+            platform_wide?: boolean;
+        };
+        /** CycleOut */
+        CycleOut: {
+            /** Days */
+            days: number;
+            /**
+             * Item Type
+             * @enum {string}
+             */
+            item_type: "course" | "module" | "lab" | "scenario" | "range_template" | "golden_template";
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "tenant" | "platform" | "default";
         };
         /**
          * DeliveredBy
@@ -13296,6 +13770,14 @@ export interface components {
             /** Updated At */
             updated_at?: string | null;
         };
+        /** MarkReviewedIn */
+        MarkReviewedIn: {
+            /**
+             * Note
+             * @default
+             */
+            note?: string;
+        };
         /** MeslEventPatch */
         MeslEventPatch: {
             /** Attack Technique */
@@ -15216,6 +15698,11 @@ export interface components {
              */
             version?: string;
         };
+        /** RetireIn */
+        RetireIn: {
+            /** Reason */
+            reason: string;
+        };
         /** RevealedCredentialOut */
         RevealedCredentialOut: {
             /**
@@ -15933,6 +16420,28 @@ export interface components {
             /** Stop Reason */
             stop_reason?: unknown;
         };
+        /** StaleReasonOut */
+        StaleReasonOut: {
+            /** At */
+            at?: string | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "time" | "release" | "vulnerability" | "upstream";
+            /**
+             * Origin Id
+             * @description The review item the staleness started at (this item for its own reasons)
+             */
+            origin_id: string;
+            /**
+             * Source
+             * @default
+             */
+            source?: string;
+            /** Text */
+            text: string;
+        };
         /** StorageApplianceIn */
         StorageApplianceIn: {
             /** Management Ip */
@@ -16425,6 +16934,43 @@ export interface components {
             name: string;
             /** Slug */
             slug: string;
+        };
+        /** ThemeIn */
+        ThemeIn: {
+            /**
+             * Colour
+             * @description #RRGGBB, the theme's dot
+             */
+            colour: string;
+            /** Name */
+            name: string;
+            /**
+             * Ordinal
+             * @default 0
+             */
+            ordinal?: number;
+            /**
+             * Platform Wide
+             * @description Every tenant's (platform administrator only)
+             * @default false
+             */
+            platform_wide?: boolean;
+        };
+        /** ThemeOut */
+        ThemeOut: {
+            /** Colour */
+            colour: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Ordinal */
+            ordinal: number;
+            /** Platform Wide */
+            platform_wide: boolean;
         };
         /** ThreatIndicatorOut */
         ThreatIndicatorOut: {
@@ -20354,6 +20900,419 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["SkillGapOut"][];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_content_review_cycles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CycleOut"][];
+                };
+            };
+        };
+    };
+    set_content_review_cycle: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_type: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CycleIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CycleOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_content_review_items: {
+        parameters: {
+            query: {
+                /** @description Window start (inclusive) */
+                start: string;
+                /** @description Window end (exclusive) */
+                end: string;
+                /** @description Only these themes (a theme id, or 'none' for untagged) */
+                theme_id?: string[];
+                include_retired?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContentItemListOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_content_review_item: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContentItemDetailOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_content_review_item: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ContentItemUpdateIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContentItemDetailOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retire_content_item: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RetireIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContentItemDetailOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mark_content_reviewed: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MarkReviewedIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContentItemDetailOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    assign_content_reviewer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssignReviewerIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContentItemDetailOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_stale_content: {
+        parameters: {
+            query?: {
+                /** @description Only these themes (a theme id, or 'none') */
+                theme_id?: string[];
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContentItemOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_content_themes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThemeOut"][];
+                };
+            };
+        };
+    };
+    create_content_theme: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ThemeIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThemeOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_content_theme: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                theme_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ThemeIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThemeOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_content_theme: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                theme_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

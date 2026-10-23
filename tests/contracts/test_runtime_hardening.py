@@ -115,7 +115,9 @@ def test_beat_schedule_names_contracted_tasks_that_expire():
              "worker.audit_tasks.enforce_audit_retention": ("worker.audit_tasks.*", "default"),
              "worker.template_tasks.prune_template_copies": ("worker.template_tasks.*", "destroy"),
              # Finish long in-guest setups: vCenter work, so worker-provision (-Q provision,destroy).
-             "worker.setup_reconcile.reconcile_setups": ("worker.setup_reconcile.*", "destroy")}
+             "worker.setup_reconcile.reconcile_setups": ("worker.setup_reconcile.*", "destroy"),
+             # The content clock's hourly sync: database only (ADR 0014 §22-24).
+             "worker.content_review_sync.sync_content_review": ("worker.content_review_sync.*", "default")}
     assert {e["task"] for e in schedule.values()} == {
         "worker.tasks.health_check_ranges",
         "worker.tasks.check_range_drift",  # range certification S5

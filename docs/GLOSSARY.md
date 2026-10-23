@@ -179,9 +179,12 @@ blue on the calendar) or *collective* (one shared range for an **Exercise**; ora
 **Acknowledgement** (planned, ADR 0014):
 The rules of use everyone signs on first sign-in, whenever the version changes, and yearly.
 
-**Stale** (content, planned, ADR 0014):
+**Stale** (content, ADR 0014):
 Content whose review is due by time (90–120 days) or that a new release or a known-exploited
 vulnerability has flagged, directly or through a golden image or range template it depends on.
+The rules are in `control-plane/api/app/content_review/staleness.py`: an overdue review marks
+only the item itself; a release or vulnerability flag also marks everything downstream.
+**Mark reviewed** clears the item's own reasons and what they caused downstream.
 
 **Exercise**:
 One run of training on a range: an `assessment` (individual practical) or a `collective`

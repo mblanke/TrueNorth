@@ -29,6 +29,7 @@ export type Permission =
   | 'enrollment:manage_own' | 'team:manage_own'
   | 'course:author' | 'course:release'
   | 'schedule:read' | 'schedule:write' | 'schedule:admin'
+  | 'content_review:read' | 'content_review:review_own' | 'content_review:admin'
   | 'class:create' | 'class:read'
   | 'tenant:create' | 'tenant:read' | 'tenant:update'
   | 'audit:read' | 'telemetry:read' | 'telemetry:write' | 'stats:read' | 'aar:generate' | 'aar:read'
@@ -55,6 +56,7 @@ export const ALL_PERMISSIONS: readonly Permission[] = [
   'enrollment:manage_own', 'team:manage_own',
   'course:author', 'course:release',
   'schedule:read', 'schedule:write', 'schedule:admin',
+  'content_review:read', 'content_review:review_own', 'content_review:admin',
   'class:create', 'class:read',
   'tenant:create', 'tenant:read', 'tenant:update',
   'audit:read', 'telemetry:read', 'telemetry:write', 'stats:read', 'aar:generate', 'aar:read',
@@ -74,6 +76,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     'exercise:create', 'exercise:read', 'exercise:start', 'exercise:complete', 'exercise:pause',
     'detection:submit', 'objective:ack',
     'schedule:read', 'schedule:write',
+    'content_review:read', 'content_review:review_own',
     'class:create', 'class:read',
     'user:read',
     'registration:read', 'registration:approve',
@@ -90,7 +93,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     'range:create', 'range:read', 'range:update', 'range:delete', 'range:provision',
     'range:destroy', 'range:batch_provision', 'range:credentials_read', 'range:certification_read',
     'template:read', 'template:create', 'template:update',
-    'scenario:read', 'exercise:read', 'schedule:read', 'stats:read',
+    'scenario:read', 'exercise:read', 'schedule:read', 'content_review:read', 'stats:read',
     'telemetry:read', 'telemetry:write',
     'wiki:read', 'wiki:edit', 'ticket:create', 'ticket:work',
   ],
@@ -166,6 +169,8 @@ export const PAGE_ACCESS = {
   scoring: { all: ['aar:read'] },
   telemetry: { all: ['telemetry:read'] },
   schedule: { all: ['schedule:read'] },
+  /** The calendar's Content view: the content clock (ADR 0014 §22-24). Never observers or Students. */
+  contentCalendar: { all: ['content_review:read'] },
   /** GET /classes/mine: the staff Classes page (ADR 0014). Creating one needs class:create. */
   classes: { all: ['class:read'] },
   /** GET /maintenance-windows (schedule:read); changing them needs range:admin (admins). */
