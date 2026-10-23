@@ -19,16 +19,17 @@ Each run, under a Redis lock (redis_lock.py) so two never overlap:
    * course -> its modules, and course -> range template where a booking
      (``scheduled_events``, not cancelled) links the two.
 
-   An item depends only on content of its own tenant or the shared catalogue. The derived
-   edges are replaced each run.
+   An item depends only on content of its own tenant or the shared catalogue. Only the
+   difference from the derived edges already stored is written, in bulk.
 3. **Clock.** Each item's due date (last review, else when it was first tracked, plus its
    cycle) and its own overdue reason, then every inherited reason rebuilt over the new
-   edges (content_staleness.py, a copy of the API's ``app/content_review/staleness.py``).
+   edges (content_review_runtime/staleness.py, generated from the API's ``app/content_review/staleness.py``).
 
-The review rows are locked for the run (FOR UPDATE, in id order: the order the API's Mark
-reviewed locks them in), so a review waits for the sync or the sync for it. Belt and braces,
-a row is written only if nobody changed it since it was read (``revision``): a review that got
-in first wins, and the next run catches up. SQLAlchemy Core on
+Everything is read unlocked and computed first. Only then are the review rows that change
+locked (FOR UPDATE, in id order: the order the API locks them in), and each is written only
+if its ``revision`` is still the one read: a review that committed meanwhile wins, and the
+next run catches up. A lost Redis lock raises LockLostError, so the run rolls back whole.
+SQLAlchemy Core on
 the generated table mirror only (tables.py): no raw SQL in the worker (ADR 0003).
 """
 
@@ -45,8 +46,8 @@ from datetime import UTC, datetime
 import sqlalchemy as sa
 import yaml
 
-from . import content_staleness as st
 from .celery_app import app
+from .content_review_runtime import staleness as st
 from .redis_lock import RedisLock
 from .render import _DESIGNER_NON_VM_TYPES, _extract_nodes, _node_os, os_alias_candidates
 from .tables import (
@@ -95,8 +96,12 @@ def sync_content_review(self):
         if not lock.held:
             logger.info("[content-review] another sync holds the lock (or Redis is down); this one does nothing")
             return {"status": "skipped", "reason": "a sync is already running, or Redis is unavailable"}
-        with db_session() as db:
-            return sync(db, lost=lock.lost)
+        try:
+            with db_session() as db:  # LockLostError leaves it uncommitted: rolled back
+                return sync(db, lost=lock.lost)
+        except LockLostError as exc:
+            logger.error("[content-review] %s", exc)
+            return {"status": "lock_lost"}
 
 
 # ── reading the content ──────────────────────────────────────────────────────
@@ -291,83 +296,130 @@ def _auto_themes(themes: dict, tenant: str | None, tags: list[str]) -> list[str]
     return out
 
 
+class LockLostError(RuntimeError):
+    """The sync's Redis lock was lost: another sync may be running. Raised so the run's
+    transaction rolls back rather than committing half a run."""
+
+
+def _check(lost: threading.Event | None) -> None:
+    if lost is not None and lost.is_set():
+        raise LockLostError("the content review sync lost its lock; nothing of this run is kept")
+
+
 def sync(db, *, now: datetime | None = None, lost: threading.Event | None = None) -> dict:
-    """One run. ``lost``: the lock was lost; nothing more is written."""
+    """One run, in the caller's transaction. Raises LockLostError (nothing written is kept) once
+    ``lost`` is set.
+
+    Reads are unlocked; new rows and the edge difference are written in bulk; then the review
+    rows that change are locked (FOR UPDATE, in id order, the order the API locks them in) and
+    each is written only if its ``revision`` is still the one read: a review that committed
+    meanwhile wins, and the next run catches up."""
     now = _utc(now) or datetime.now(UTC)
     content = read_content(db)
     cycle = _cycles(db)
     themes = _themes_by_name(db)
-    # Locked (FOR UPDATE) in id order for the run, the order the API locks them in
-    # (app/content_review/service.load_graph): a review waits for the sync, or the sync for it.
-    existing = {(r.item_type, r.item_id): r for r in
-                db.execute(sa.select(items).order_by(items.c.id).with_for_update()).all()}
+    existing = {(r.item_type, r.item_id): r._asdict() for r in db.execute(sa.select(items)).all()}
     summary = {"status": "ok", "created": 0, "updated": 0, "missing": 0, "edges": 0, "skipped": 0}
+    _check(lost)
 
-    # 1. items
+    # 1. items: new ones inserted in bulk; changes to existing ones collected for step 3
+    new_rows = []
     for key, info in content.found.items():
         if key in existing:
             continue
         due = st.due_at(baseline=now, last_reviewed=None, cycle_days=cycle(info["tenant"], key[0]))
-        db.execute(items.insert().values(
+        new_rows.append(dict(
             id=str(uuid.uuid4()), tenant_id=info["tenant"], item_type=key[0], item_id=key[1], title=info["title"],
             owner_id=info["owner"], reviewer_id=None,
             theme_ids=_auto_themes(themes, info["tenant"], info["tags"]), cycle_days=None,
             last_reviewed_at=None, last_reviewed_by=None, due_at=due, stale=False, stale_reasons=[],
             retired=False, retired_at=None, retired_by=None, missing=False, revision=0,
             created_at=now, updated_at=now))
-        summary["created"] += 1
-    for key, row in sorted(existing.items(), key=lambda kv: str(kv[1].id)):
-        if lost is not None and lost.is_set():
-            return {**summary, "status": "lock_lost"}
-        info = content.found.get(key)
+    if new_rows:
+        db.execute(items.insert(), new_rows)
+    summary["created"] = len(new_rows)
+    pending: dict[str, dict] = {}  # row id -> column changes
+    live: dict[str, dict] = {}  # row id -> row as it will be, for the rows that are not missing
+    for key, row in existing.items():
+        rid, info = str(row["id"]), content.found.get(key)
         if info is None:
-            if row.missing or key[0] == "lab":  # labs have no record of their own yet
-                continue
-            values, counter = {"missing": True}, "missing"
-        elif row.title != info["title"] or _s(row.tenant_id) != info["tenant"] or row.missing:
-            values, counter = {"title": info["title"], "tenant_id": info["tenant"], "missing": False}, "updated"
-        else:
+            if key[0] == "lab" and not row["missing"]:  # labs have no record of their own yet: kept
+                live[rid] = row
+            elif not row["missing"]:
+                pending[rid] = {"missing": True}
+                summary["missing"] += 1
             continue
-        done = db.execute(items.update().where(items.c.id == row.id, items.c.revision == row.revision).values(
-            **values, revision=row.revision + 1, updated_at=now))
-        summary[counter if done.rowcount else "skipped"] += 1
+        if row["title"] != info["title"] or _s(row["tenant_id"]) != info["tenant"] or row["missing"]:
+            pending[rid] = {"title": info["title"], "tenant_id": info["tenant"], "missing": False}
+        live[rid] = {**row, **pending.get(rid, {})}
+    for row in new_rows:
+        live[row["id"]] = row
+    key_to_id = {(r["item_type"], r["item_id"]): rid for rid, r in live.items()}
 
-    # 2. edges, replaced
-    rows = {(r.item_type, r.item_id): r for r in db.execute(sa.select(items).where(items.c.missing.is_(False))).all()}
-    ids = {k: str(r.id) for k, r in rows.items()}
-    wanted = {(ids[a], ids[b]) for a, deps in content.depends.items() for b in deps if a in ids and b in ids}
-    db.execute(edges.delete().where(edges.c.derived.is_(True)))
-    manual = {(str(e.item_id), str(e.depends_on_id)) for e in
-              db.execute(sa.select(edges.c.item_id, edges.c.depends_on_id)).all()}
-    for item_id, dep_id in sorted(wanted - manual):
-        db.execute(edges.insert().values(id=str(uuid.uuid4()), item_id=item_id, depends_on_id=dep_id, derived=True))
+    # 2. edges: only the difference, in bulk
+    wanted = {(key_to_id[a], key_to_id[b]) for a, deps in content.depends.items() for b in deps
+              if a in key_to_id and b in key_to_id}
+    derived, manual = {}, set()
+    for e in db.execute(sa.select(edges.c.id, edges.c.item_id, edges.c.depends_on_id, edges.c.derived)).all():
+        pair = (str(e.item_id), str(e.depends_on_id))
+        if e.derived:
+            derived[pair] = str(e.id)
+        else:
+            manual.add(pair)
+    gone = [eid for pair, eid in derived.items() if pair not in wanted]
+    added = sorted(wanted - set(derived) - manual)
+    _check(lost)
+    if gone:
+        db.execute(edges.delete().where(edges.c.id.in_(gone)))
+    if added:
+        db.execute(edges.insert(), [{"id": str(uuid.uuid4()), "item_id": a, "depends_on_id": b, "derived": True}
+                                    for a, b in added])
     summary["edges"] = len(wanted)
 
     # 3. the clock: due dates, overdue reasons, then inherited reasons over the new edges
-    by_id = {str(r.id): r for r in rows.values()}
     depends: dict[str, set[str]] = {}
     for a, b in wanted | manual:
-        if a in by_id and b in by_id:
+        if a in live and b in live:
             depends.setdefault(a, set()).add(b)
-    names = {k: (st.ITEM_TYPES.get(r.item_type, r.item_type), r.title) for k, r in by_id.items()}
-    graph = st.Graph({k: _reasons(r.stale_reasons) for k, r in by_id.items()}, st.used_by(depends), names)
-    due: dict[str, datetime] = {}
-    changed: set[str] = set()
-    for k, r in by_id.items():
-        days = r.cycle_days or cycle(_s(r.tenant_id), r.item_type)
-        due[k] = st.due_at(baseline=_utc(r.created_at) or now, last_reviewed=_utc(r.last_reviewed_at),
-                           cycle_days=days)
-        if graph.set_overdue(k, st.overdue_text(due[k], now), at=now):
-            changed.add(k)
-    changed |= graph.repropagate(at=now)
-    for k, r in sorted(by_id.items()):
-        if lost is not None and lost.is_set():
-            return {**summary, "status": "lock_lost"}
+    names = {k: (st.ITEM_TYPES.get(r["item_type"], r["item_type"]), r["title"]) for k, r in live.items()}
+    graph = st.Graph({k: _reasons(r["stale_reasons"]) for k, r in live.items()}, st.used_by(depends), names,
+                     retired={k for k, r in live.items() if r["retired"]})
+    for k, r in live.items():
+        days = r["cycle_days"] or cycle(_s(r["tenant_id"]), r["item_type"])
+        due = st.due_at(baseline=_utc(r["created_at"]) or now, last_reviewed=_utc(r["last_reviewed_at"]),
+                        cycle_days=days)
+        graph.set_overdue(k, st.overdue_text(due, now), at=now)
+        if _utc(r["due_at"]) != due:
+            pending.setdefault(k, {})["due_at"] = due
+    graph.repropagate(at=now)
+    for k, r in live.items():
         reasons = graph.reasons.get(k, [])
-        if k not in changed and _utc(r.due_at) == due[k] and bool(r.stale) == bool(reasons):
-            continue
-        done = db.execute(items.update().where(items.c.id == r.id, items.c.revision == r.revision).values(
-            due_at=due[k], stale_reasons=reasons, stale=bool(reasons), revision=r.revision + 1, updated_at=now))
-        summary["updated" if done.rowcount else "skipped"] += 1
+        if _norm_reasons(reasons) != _norm_reasons(_reasons(r["stale_reasons"])) or bool(r["stale"]) != bool(reasons):
+            pending.setdefault(k, {}).update(stale_reasons=reasons, stale=bool(reasons))
+    _check(lost)
+
+    # 4. write what changed: lock those rows in id order, keep a row someone changed meanwhile
+    read_revision = {str(r["id"]): r["revision"] for r in existing.values()}
+    write = {k: v for k, v in pending.items() if k in read_revision}  # new rows already carry theirs
+    for row in new_rows:
+        if row["id"] in pending:
+            db.execute(items.update().where(items.c.id == row["id"]).values(**pending[row["id"]], updated_at=now))
+    if write:
+        locked = db.execute(sa.select(items.c.id, items.c.revision).where(items.c.id.in_(sorted(write)))
+                            .order_by(items.c.id).with_for_update()).all()
+        for got in locked:
+            rid = str(got.id)
+            if got.revision != read_revision[rid]:
+                summary["skipped"] += 1
+                continue
+            db.execute(items.update().where(items.c.id == got.id).values(
+                **write[rid], revision=got.revision + 1, updated_at=now))
+            if "missing" not in write[rid] or len(write[rid]) > 1:
+                summary["updated"] += 1
+    _check(lost)
     logger.info("[content-review] %s", summary)
     return summary
+
+
+def _norm_reasons(reasons: list) -> list:
+    return sorted(json.dumps(r, sort_keys=True, default=str) for r in reasons)

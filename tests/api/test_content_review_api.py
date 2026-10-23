@@ -229,6 +229,20 @@ class TestTenantIsolation:
         assert [u["title"] for u in got["used_by"]] == ["Medium Enterprise"]
         assert got["shared"] is True
 
+    def test_a_shared_items_people_from_another_tenant_are_not_shown(self, client, world):
+        db = world["db"]
+        theirs = _user(db, UserRole.instructor, world["other"])
+        world["golden"].reviewer_id = theirs.id
+        world["golden"].owner_id = theirs.id
+        db.commit()
+        with acting_as(db, UserRole.admin):
+            got = client.get(f"/content-review/items/{world['golden'].id}").json()
+        assert got["reviewer_id"] is None and got["reviewer_name"] is None
+        assert got["owner_id"] is None and got["owner_name"] is None
+        with acting_as(db, UserRole.admin, world["other"]):  # their own tenant sees them
+            got = client.get(f"/content-review/items/{world['golden'].id}").json()
+        assert got["reviewer_id"] == str(theirs.id)
+
     def test_depends_on_and_used_by(self, client, world):
         with acting_as(world["db"], UserRole.instructor):
             got = client.get(f"/content-review/items/{world['tpl'].id}").json()
@@ -315,6 +329,51 @@ class TestStaleness:
         assert sorted(r["origin"] for r in world["course"].stale_reasons) == sorted(
             [str(world["golden"].id), str(world["tpl"].id)])
 
+    def test_retiring_a_flagged_item_clears_what_it_caused(self, client, world):
+        db = world["db"]
+        service.flag_stale(db, world["tpl"], "KEV", "kev:1", kind="vulnerability")
+        db.commit()
+        db.refresh(world["course"])
+        assert world["course"].stale
+        with acting_as(db, UserRole.admin):
+            assert client.post(f"/content-review/items/{world['tpl'].id}/retire",
+                               json={"reason": "replaced"}).status_code == 200
+            course = client.get(f"/content-review/items/{world['course'].id}").json()
+        assert course["stale"] is False and course["stale_reasons"] == []
+        # and a later flag on it reaches nothing either
+        service.flag_stale(db, world["tpl"], "KEV", "kev:2", kind="vulnerability")
+        db.commit()
+        db.refresh(world["course"])
+        assert not world["course"].stale
+
+    def test_mark_reviewed_loads_and_locks_only_what_is_downstream(self, client, world, monkeypatch):
+        """Not every review row of every tenant: the item and what depends on it, in id order."""
+        db = world["db"]
+        locked: list[list[str]] = []
+        real = service.lock_rows
+        monkeypatch.setattr(service, "lock_rows", lambda d, ids: locked.append(sorted(ids)) or real(d, ids))
+        tpl, course, theirs = (str(world[k].id) for k in ("tpl", "course", "theirs"))
+        with acting_as(db, UserRole.admin):
+            db.expunge_all()  # nothing loaded before the request
+            assert client.post(f"/content-review/items/{tpl}/review", json={}).status_code == 200
+        assert locked == [sorted([tpl, course])]
+        loaded = {str(o.id) for o in db.identity_map.values() if isinstance(o, ContentReviewItem)}
+        assert theirs not in loaded  # another tenant's row is never read
+
+    def test_flag_stale_locks_only_what_is_downstream(self, world, monkeypatch):
+        db = world["db"]
+        locked: list[list[str]] = []
+        real = service.lock_rows
+        monkeypatch.setattr(service, "lock_rows", lambda d, ids: locked.append(sorted(ids)) or real(d, ids))
+        service.flag_stale(db, world["tpl"], "KEV", "kev:1", kind="vulnerability")
+        assert locked == [sorted([str(world["tpl"].id), str(world["course"].id)])]
+
+    def test_the_lock_is_a_row_lock_in_id_order_on_postgresql(self, db_session):
+        from sqlalchemy.dialects import postgresql
+
+        sql = str(service.lock_query(db_session, [str(uuid.uuid4())]).statement.compile(dialect=postgresql.dialect()))
+        assert "FOR UPDATE" in sql and "ORDER BY content_review_items.id" in sql
+
     def test_flag_stale_refuses_an_unknown_item(self, db_session):
         with pytest.raises(KeyError):
             service.flag_stale(db_session, uuid.uuid4(), "x", "y")
@@ -385,6 +444,19 @@ class TestWindow:
             untagged = _window(client, theme_id=["none"]).json()
             assert {i["title"] for i in untagged["items"]} == {"Ubuntu 24.04", "Medium Enterprise"}
 
+    def test_the_stale_list_filters_by_theme_before_its_limit(self, client, world):
+        db = world["db"]
+        blue = ContentReviewTheme(id=uuid.uuid4(), tenant_id=None, name="Blue team", colour="#3B5BDB")
+        db.add(blue)
+        for i in range(3):  # due earlier, untagged
+            _item(db, "module", f"Old {i}", DEV, due=NOW - timedelta(days=10 + i)).stale = True
+        tagged = _item(db, "module", "Blue one", DEV, due=NOW + timedelta(days=5), themes=[str(blue.id)])
+        tagged.stale = True
+        db.commit()
+        with acting_as(db, UserRole.admin):
+            got = client.get("/content-review/stale", params={"theme_id": str(blue.id), "limit": 1}).json()
+        assert [i["title"] for i in got] == ["Blue one"]
+
     def test_a_backwards_or_huge_window_is_refused(self, client, world):
         with acting_as(world["db"], UserRole.admin):
             assert _window(client, days_before=-5, days_after=-10).status_code == 422
@@ -393,6 +465,28 @@ class TestWindow:
 
 # ── themes and cycles (admin) ────────────────────────────────────────────────
 class TestThemesAndCycles:
+    def test_the_default_themes_are_seeded_once_when_the_schema_comes_from_create_all(self, db_session):
+        """DB_AUTO_CREATE builds the tables without the migration, so startup seeds them too."""
+        import inspect
+
+        from app import main
+
+        db = db_session
+        assert db.query(ContentReviewTheme).count() == 0
+        service.seed_default_themes(db)
+        service.seed_default_themes(db)
+        names = [t.name for t in db.query(ContentReviewTheme).order_by(ContentReviewTheme.ordinal)]
+        assert names == ["Blue team", "Red team", "DFIR", "Network", "ICS / OT", "Cloud", "Malware", "Platform"]
+        assert all(t.tenant_id is None for t in db.query(ContentReviewTheme))
+        assert "seed_default_themes" in inspect.getsource(main._seed_dev_data)
+
+    def test_seeding_leaves_an_admins_themes_alone(self, db_session):
+        db = db_session
+        db.add(ContentReviewTheme(id=uuid.uuid4(), tenant_id=None, name="Only this", colour="#000000"))
+        db.flush()
+        service.seed_default_themes(db)
+        assert [t.name for t in db.query(ContentReviewTheme)] == ["Only this"]
+
     def test_tenant_admin_manages_tenant_themes_not_platform_ones(self, client, world, monkeypatch):
         monkeypatch.delenv("PLATFORM_TENANT_ID", raising=False)
         with acting_as(world["db"], UserRole.admin):

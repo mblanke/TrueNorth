@@ -245,6 +245,12 @@ def _seed_dev_data(dev_account: bool = True) -> None:
         seed_auth_zones(db)
         seed_infrastructure(db)
         seed_ai_backends(db)
+        # The content clock's default themes, where the schema came from create_all
+        # (DB_AUTO_CREATE) rather than the migration that adds them (ADR 0014 §22).
+        from .content_review.service import seed_default_themes
+
+        seed_default_themes(db)
+        db.commit()
     except Exception as e:
         db.rollback()
         logger.warning("Seed failed (may already exist): %s", e)

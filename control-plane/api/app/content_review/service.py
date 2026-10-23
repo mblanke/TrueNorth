@@ -164,24 +164,36 @@ def refresh_clock(row: ContentReviewItem, cycle_days: int, at: datetime) -> bool
 
 
 # ── the dependency graph ─────────────────────────────────────────────────────
-def load_graph(db: Session) -> tuple[staleness.Graph, dict[str, ContentReviewItem]]:
-    """Every tracked item's reasons over every edge. Propagation crosses tenants only from
-    shared content down to a tenant's (edges are derived that way), so it loads them all.
+def lock_query(db: Session, ids: Iterable[str]):
+    """The review rows ``ids`` (not missing), locked FOR UPDATE in id order and re-read."""
+    wanted = [uuid.UUID(str(i)) for i in ids]
+    return (db.query(ContentReviewItem)
+            .filter(ContentReviewItem.id.in_(wanted), ContentReviewItem.missing.is_(False))
+            .order_by(ContentReviewItem.id).with_for_update().populate_existing())
 
-    The rows are locked (FOR UPDATE, in id order, re-read): two reviews, or a review and a
-    feed flag, each rewrite rows downstream, and must not each write from their own snapshot.
-    The worker's sync updates rows in the same id order, so neither deadlocks the other, and
-    it writes a row only if its ``revision`` is still the one it read."""
+
+def lock_rows(db: Session, ids: Iterable[str]) -> dict[str, ContentReviewItem]:
+    return {str(r.id): r for r in lock_query(db, ids).all()}
+
+
+def load_graph(db: Session, key: str) -> tuple[staleness.Graph, dict[str, ContentReviewItem]]:
+    """``key`` and everything downstream of it, over every edge.
+
+    The edges are read unlocked; only the rows a change at ``key`` can rewrite (``key`` and
+    its dependents) are locked, FOR UPDATE in id order and re-read, so two reviews, or a review
+    and a feed flag, never each write from their own snapshot. The worker's sync locks the rows
+    it writes in the same order and keeps a row whose ``revision`` changed since it read it.
+    Nothing of an unrelated item, or another tenant's, is read or locked."""
     db.flush()  # re-reading (populate_existing) would otherwise drop this session's own unflushed writes
-    q = (db.query(ContentReviewItem).filter(ContentReviewItem.missing.is_(False))
-         .order_by(ContentReviewItem.id).with_for_update().populate_existing())
-    rows = {str(r.id): r for r in q.all()}
     depends: dict[str, set[str]] = {}
-    for e in db.query(ContentReviewEdge).all():
-        depends.setdefault(str(e.item_id), set()).add(str(e.depends_on_id))
+    for item_id, dep_id in db.query(ContentReviewEdge.item_id, ContentReviewEdge.depends_on_id).all():
+        depends.setdefault(str(item_id), set()).add(str(dep_id))
+    used = staleness.used_by(depends)
+    reach = {key} | {k for k, _ in staleness.Graph({}, used, {}).dependents(key)}
+    rows = lock_rows(db, reach)
     names = {k: (ITEM_TYPES.get(r.item_type, r.item_type), r.title) for k, r in rows.items()}
-    graph = staleness.Graph({k: list(r.stale_reasons or []) for k, r in rows.items()}, staleness.used_by(depends),
-                            names)
+    graph = staleness.Graph({k: list(r.stale_reasons or []) for k, r in rows.items()}, used, names,
+                            retired={k for k, r in rows.items() if r.retired})
     return graph, rows
 
 
@@ -201,7 +213,7 @@ def flag_stale(db: Session, item: ContentReviewItem | uuid.UUID | str, reason: s
     0014 decision 25), and everything downstream of it. The hook for the feeds (issue
     #287); it does not commit. Returns the ids of the review items that changed."""
     key = str(item.id if isinstance(item, ContentReviewItem) else item)
-    graph, rows = load_graph(db)
+    graph, rows = load_graph(db, key)
     if key not in rows:
         raise KeyError(f"no content review item {key}")
     changed = graph.flag_stale(key, reason, source, kind=kind, at=at or now())
@@ -222,7 +234,7 @@ def describe(row: ContentReviewItem) -> str:
 def mark_reviewed(db: Session, user: CurrentUser, row: ContentReviewItem, note: str = "") -> set[str]:
     """Reset the clock: the item's own reasons go, and what it pushed downstream with them."""
     require_review(db, user, row)
-    graph, rows = load_graph(db)  # locks and re-reads ``row`` too
+    graph, rows = load_graph(db, str(row.id))  # locks and re-reads ``row`` too
     require_review(db, user, row)  # as it is now, locked
     if row.retired:
         raise HTTPException(409, "Retired content is not reviewed")
@@ -274,12 +286,20 @@ def _staff(db: Session, row: ContentReviewItem, person_id: uuid.UUID, user: Curr
 
 
 def retire(db: Session, user: CurrentUser, row: ContentReviewItem, reason: str) -> None:
+    """Admins only. What the item made stale downstream is cleared with it: a retired item is
+    no source, and it cannot be reviewed to clear it later."""
     require_admin(db, user, row)
+    key = str(row.id)
+    graph, rows = load_graph(db, key)  # locks and re-reads ``row`` too
     if row.retired:
         raise HTTPException(409, "Already retired")
+    rows[key] = row
+    changed = graph.mark_reviewed(key)
+    _write_back(graph, rows, changed - {key})
     row.retired, row.retired_at, row.retired_by = True, now(), _uid(user)
     row.revision = (row.revision or 0) + 1
-    audit(db, user, "content_review.retire", str(row.id), f"{describe(row)}; reason: {reason}")
+    audit(db, user, "content_review.retire", key,
+          f"{describe(row)}; reason: {reason}; {len(changed - {key})} downstream cleared")
 
 
 def update_item(db: Session, user: CurrentUser, row: ContentReviewItem, body: ContentItemUpdateIn) -> None:
@@ -308,6 +328,32 @@ def update_item(db: Session, user: CurrentUser, row: ContentReviewItem, body: Co
 
 
 # ── themes ───────────────────────────────────────────────────────────────────
+# ADR 0014 decision 22's themes and the approved mockup's colours (the dot). The migration
+# adds them; seed_default_themes adds them where the schema came from create_all instead.
+DEFAULT_THEMES = (
+    ("Blue team", "#3B5BDB"),
+    ("Red team", "#E03131"),
+    ("DFIR", "#7950F2"),
+    ("Network", "#12A594"),
+    ("ICS / OT", "#F59F00"),
+    ("Cloud", "#D6336C"),
+    ("Malware", "#2F9E44"),
+    ("Platform", "#6B7280"),
+)
+
+
+def seed_default_themes(db: Session) -> int:
+    """Add the default themes platform-wide when there are no themes at all (a fresh install
+    whose schema came from create_all). Never once any exist: an admin's edits and deletions
+    stand. Does not commit. Returns how many were added."""
+    if db.query(ContentReviewTheme.id).first() is not None:
+        return 0
+    for i, (name, colour) in enumerate(DEFAULT_THEMES):
+        db.add(ContentReviewTheme(id=uuid.uuid4(), tenant_id=None, name=name, colour=colour, ordinal=i))
+    db.flush()
+    return len(DEFAULT_THEMES)
+
+
 def visible_themes(db: Session, user: CurrentUser) -> list[ContentReviewTheme]:
     return (db.query(ContentReviewTheme)
             .filter(or_(ContentReviewTheme.tenant_id == tenant_uuid(user), ContentReviewTheme.tenant_id.is_(None)))
@@ -452,6 +498,9 @@ class Presenter:
             user_has_permission(self.user, Permission.CONTENT_REVIEW_OWN) and row.tenant_id is not None
             and row.tenant_id == tenant_uuid(self.user) and me is not None and row.owner_id == me)
 
+    def _person(self, person_id: uuid.UUID | None) -> uuid.UUID | None:
+        return person_id if person_id in self.names else None
+
     def item(self, row: ContentReviewItem) -> ContentItemOut:
         return ContentItemOut(**self._fields(row))
 
@@ -463,8 +512,9 @@ class Presenter:
         state, days = staleness.clock(_utc(row.due_at), self.at, stale=bool(reasons))
         return dict(
             id=row.id, item_type=row.item_type, item_id=row.item_id, title=row.title, shared=row.tenant_id is None,
-            owner_id=row.owner_id, owner_name=self.names.get(row.owner_id),
-            reviewer_id=row.reviewer_id, reviewer_name=self.names.get(row.reviewer_id),
+            # People of another tenant (a shared item's) are not shown: neither name nor id.
+            owner_id=self._person(row.owner_id), owner_name=self.names.get(row.owner_id),
+            reviewer_id=self._person(row.reviewer_id), reviewer_name=self.names.get(row.reviewer_id),
             theme_ids=[uuid.UUID(t) for t in (row.theme_ids or []) if _is_uuid(t)],
             cycle_days=self.cycles.for_row(row), cycle_override=row.cycle_days,
             last_reviewed_at=row.last_reviewed_at, last_reviewed_by_name=self.names.get(row.last_reviewed_by),

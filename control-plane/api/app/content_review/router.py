@@ -105,10 +105,11 @@ def stale_now(
     """Stale, not retired, the longest-overdue first."""
     rows = (service.visible(db, user)
             .filter(ContentReviewItem.stale.is_(True), ContentReviewItem.retired.is_(False))
-            .order_by(ContentReviewItem.due_at, ContentReviewItem.title).limit(limit).all())
+            .order_by(ContentReviewItem.due_at, ContentReviewItem.title).all())
     wanted = set(theme_id)
-    if wanted:
+    if wanted:  # theme ids live in a JSON list: filtered here, then limited
         rows = [r for r in rows if wanted & ({str(t) for t in (r.theme_ids or [])} or {"none"})]
+    rows = rows[:limit]
     present = service.Presenter(db, user, rows)
     return [present.item(r) for r in rows]
 

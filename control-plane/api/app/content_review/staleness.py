@@ -1,9 +1,9 @@
 """The content clock's rules (ADR 0014 decisions 23 and 24): pure, no database, no clock.
 
-The worker carries a byte-identical copy (``control-plane/worker/worker/content_staleness.py``)
-for its periodic sync, because it may not import the API (ADR 0002 §5).
-``tests/api/test_content_review_staleness.py`` fails when the two differ: change this file,
-then copy it.
+The worker carries a generated copy (``worker/content_review_runtime/staleness.py``) for its
+periodic sync, because it may not import the API (ADR 0002 §5). Change this file, then run
+``python scripts/export_content_staleness.py``; ``tests/contracts/test_content_staleness_copy.py``
+fails until you do.
 
 An item is identified by a key (the review row's id). Its stale reasons are a list of dicts:
 
@@ -25,6 +25,8 @@ Rules:
   flow down: each item has its own clock.
 * Mark reviewed clears the item's own reasons and the reasons it pushed downstream. Reasons
   the item inherited stay until their origin is reviewed.
+* A retired item is no source: retiring clears what it caused downstream, and it is never
+  pushed again.
 * Cycles in the edges are walked once (a visited set), so they neither loop nor add a
   second reason.
 """
@@ -114,10 +116,13 @@ class Graph:
     operation returns the keys whose reasons changed (what to write back)."""
 
     def __init__(self, reasons: Mapping[Key, list], used_by: Mapping[Key, Iterable[Key]],
-                 names: Mapping[Key, tuple[str, str]]):
+                 names: Mapping[Key, tuple[str, str]], *, retired: Iterable[Key] = ()):
         self.reasons: dict[Key, list[Reason]] = {k: [r for r in (v or []) if _valid(r)] for k, v in reasons.items()}
         self.used_by = {k: sorted(set(v)) for k, v in used_by.items()}
         self.names = names
+        # Retired items are no source: their flags reach nothing downstream (retiring one
+        # clears what it caused, and a rebuild must not bring it back).
+        self.retired = set(retired)
 
     # -- reading --
     def is_stale(self, item: Key) -> bool:
@@ -174,6 +179,8 @@ class Graph:
         if not any(r["origin"] == item and r["kind"] == kind and r.get("source") == source for r in mine):
             mine.append({"origin": item, "kind": kind, "text": reason, "source": source, "at": when})
             changed.add(item)
+        if item in self.retired:
+            return changed
         return changed | self._push(item, when)
 
     def set_overdue(self, item: Key, text: str | None, *, at: datetime | None = None) -> bool:
@@ -213,7 +220,8 @@ class Graph:
                     if r["kind"] == KIND_UPSTREAM}
         for key in list(self.reasons):
             self.reasons[key] = [r for r in self.reasons[key] if r["kind"] != KIND_UPSTREAM]
-        origins = sorted({r["origin"] for v in self.reasons.values() for r in v if r["kind"] in FLAG_KINDS})
+        origins = sorted({r["origin"] for v in self.reasons.values() for r in v
+                          if r["kind"] in FLAG_KINDS and r["origin"] not in self.retired})
         for origin in origins:
             self._push(origin, when, previous)
 

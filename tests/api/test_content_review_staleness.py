@@ -263,11 +263,17 @@ class TestRepropagate:
         assert not g.is_stale(COURSE)
 
 
-def test_worker_copy_is_identical():
-    """The worker cannot import the API (ADR 0002 §5), so it carries a copy for the sync."""
-    from pathlib import Path
+# ── retired items ─────────────────────────────────────────────────────────────
+class TestRetired:
+    def test_a_retired_item_is_no_source_when_reasons_are_rebuilt(self):
+        g = graph()
+        g.flag_stale(TPL, "KEV", "kev:1", kind="vulnerability", at=NOW)
+        assert g.is_stale(COURSE)
+        g2 = st.Graph(g.reasons, st.used_by(DEPENDS_ON), NAMES, retired={TPL})
+        g2.repropagate(at=NOW)
+        assert not g2.is_stale(COURSE) and not g2.is_stale(SCN)
 
-    root = Path(__file__).resolve().parents[2]
-    api = (root / "control-plane/api/app/content_review/staleness.py").read_text(encoding="utf-8")
-    worker = (root / "control-plane/worker/worker/content_staleness.py").read_text(encoding="utf-8")
-    assert worker == api, "copy control-plane/api/app/content_review/staleness.py to worker/content_staleness.py"
+    def test_flagging_a_retired_item_does_not_spread(self):
+        g = st.Graph({}, st.used_by(DEPENDS_ON), NAMES, retired={GOLDEN})
+        assert g.flag_stale(GOLDEN, "release", "feed:x", at=NOW) == {GOLDEN}
+        assert not g.is_stale(TPL)

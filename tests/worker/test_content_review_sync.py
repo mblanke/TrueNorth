@@ -239,6 +239,18 @@ class TestEdges:
         assert (("scenario", s), ("range_template", shared)) not in got
         assert (("scenario", other), ("range_template", shared)) in got
 
+    def test_unchanged_edges_are_left_alone(self, engine, chain):
+        """Only the difference is written: an edge that is still there keeps its row."""
+        run(engine)
+        with engine.connect() as conn:
+            before = {(str(e.item_id), str(e.depends_on_id)): str(e.id)
+                      for e in conn.execute(sa.select(tables.content_review_edges))}
+        run(engine)
+        with engine.connect() as conn:
+            after = {(str(e.item_id), str(e.depends_on_id)): str(e.id)
+                     for e in conn.execute(sa.select(tables.content_review_edges))}
+        assert after == before
+
     def test_edges_are_replaced_when_the_content_changes(self, engine, chain):
         run(engine)
         with engine.begin() as conn:
@@ -272,6 +284,19 @@ class TestClock:
         assert rows[("range_template", chain["template"])]["stale_reasons"][0]["text"] == \
             "Its golden template ubuntu-2404 is stale"
         assert rows[("golden_template", chain["win"])]["stale"] is False
+
+    def test_a_retired_item_makes_nothing_stale_downstream(self, engine, chain):
+        run(engine)
+        _flag(engine, ("range_template", chain["template"]))
+        run(engine)
+        assert review_rows(engine)[("course", chain["course"])]["stale"] is True
+        with engine.begin() as conn:  # retired (the API also clears downstream at once)
+            conn.execute(tables.content_review_items.update()
+                         .where(tables.content_review_items.c.item_type == "range_template").values(retired=True))
+        run(engine)
+        rows = review_rows(engine)
+        assert rows[("course", chain["course"])]["stale"] is False
+        assert rows[("scenario", chain["scenario"])]["stale"] is False
 
     def test_an_overdue_review_is_flagged_and_does_not_spread(self, engine, chain):
         run(engine)
@@ -352,6 +377,34 @@ class TestTask:
         out = sync_mod.sync_content_review.run()
         assert out["status"] == "skipped"
         assert review_rows(engine) == {}
+
+    def test_a_lost_lock_rolls_the_run_back(self, engine, chain, wired, monkeypatch):
+        """Another sync may be running once the lock is lost: write nothing, not half a run."""
+        real_graph, real_lock, locks = sync_mod.st.Graph.repropagate, sync_mod.sync_lock, []
+
+        def keep_the_lock(client=None):
+            locks.append(real_lock(client))
+            return locks[-1]
+
+        def compute_and_lose_the_lock(graph, **kw):
+            # By now the new rows and edges are written (uncommitted).
+            wired.data.clear()  # the key expired: the next renewal finds it gone
+            locks[0].renew()
+            return real_graph(graph, **kw)
+
+        monkeypatch.setattr(sync_mod, "sync_lock", keep_the_lock)
+        monkeypatch.setattr(sync_mod.st.Graph, "repropagate", compute_and_lose_the_lock)
+        out = sync_mod.sync_content_review.run()
+        assert out["status"] == "lock_lost"
+        assert review_rows(engine) == {}
+
+    def test_sync_raises_when_the_lock_is_lost(self, engine, chain):
+        import threading
+
+        lost = threading.Event()
+        lost.set()
+        with Session(engine) as db, pytest.raises(sync_mod.LockLostError):
+            sync_mod.sync(db, now=NOW, lost=lost)
 
     def test_no_redis_no_sync(self, engine, chain, wired):
         wired.down = True
