@@ -1,11 +1,20 @@
-import { Injectable, inject } from '@angular/core';
-import { HttpInterceptor, HttpRequest, HttpHandler, HttpEvent, HTTP_INTERCEPTORS } from '@angular/common/http';
+import { Injectable, Injector, inject } from '@angular/core';
+import {
+  HttpErrorResponse,
+  HttpInterceptor,
+  HttpRequest,
+  HttpHandler,
+  HttpEvent,
+  HTTP_INTERCEPTORS,
+} from '@angular/common/http';
 import { Router } from '@angular/router';
 import { Observable, catchError, from, switchMap, throwError } from 'rxjs';
 import Keycloak from 'keycloak-js';
 import { freshToken } from '../auth/keycloak-init';
 import { ltiSessionToken } from '../auth/lti-session';
 import { isMfaRequired, requestMfaStepUp } from '../auth/mfa-step-up';
+import { safeReturnUrl } from '../auth/return-url';
+import { AuthService } from '../services/auth.service';
 import { environment } from '@env/environment';
 
 function getCookie(name: string): string | null {
@@ -17,6 +26,8 @@ function getCookie(name: string): string | null {
 export class AuthInterceptor implements HttpInterceptor {
   private readonly keycloak = inject(Keycloak);
   private readonly router = inject(Router);
+  // AuthService itself uses HttpClient: fetched when needed, not at construction.
+  private readonly injector = inject(Injector);
 
   intercept(req: HttpRequest<unknown>, next: HttpHandler): Observable<HttpEvent<unknown>> {
     // CSRF: double-submit cookie. app/middleware.py sets `truenorth_csrf` and
@@ -53,10 +64,26 @@ export class AuthInterceptor implements HttpInterceptor {
       catchError((err: unknown) => {
         if (isMfaRequired(err)) {
           this.stepUp();
+        } else if (isAcknowledgementRequired(err)) {
+          this.toRulesOfUse();
         }
         return throwError(() => err);
       }),
     );
+  }
+
+  /**
+   * A new version of the rules of use was published (or a year passed) mid-session: the
+   * API refuses everything until it is signed. Go to the form, then back to this page.
+   */
+  private toRulesOfUse(): void {
+    this.injector.get(AuthService).setAcknowledgementRequired(true);
+    const here = this.router.url;
+    if (here.startsWith('/rules-of-use')) {
+      return;
+    }
+    const returnUrl = safeReturnUrl(here);
+    void this.router.navigate(['/rules-of-use'], returnUrl && returnUrl !== '/' ? { queryParams: { returnUrl } } : {});
   }
 
   /**
@@ -70,6 +97,17 @@ export class AuthInterceptor implements HttpInterceptor {
       void this.router.navigate(['/mfa-required']);
     }
   }
+}
+
+/** 403 `acknowledgement_required`: the rules of use must be signed first (ADR 0014 §3). */
+export function isAcknowledgementRequired(err: unknown): boolean {
+  if (!(err instanceof HttpErrorResponse) || err.status !== 403) {
+    return false;
+  }
+  const detail = (err.error as { detail?: unknown } | null)?.detail;
+  return (
+    typeof detail === 'object' && detail !== null && (detail as { code?: unknown }).code === 'acknowledgement_required'
+  );
 }
 
 export const authInterceptorProvider = {

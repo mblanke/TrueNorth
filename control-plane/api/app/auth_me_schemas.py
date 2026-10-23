@@ -17,6 +17,11 @@ class AuthMeOut(BaseModel):
     needs a second factor and whether this token shows one (app/mfa_policy.py). When
     required and not satisfied, every other route answers 403 ``mfa_required`` and the
     SPA re-authenticates asking for acr "mfa" (step-up).
+
+    ``acknowledgement_required`` (ADR 0014 decision 3, #279): this user must read and agree
+    to the rules of use (app/acknowledgement/rule.py). While true, every route but the
+    acknowledgement ones answers 403 ``acknowledgement_required``. The SPA deals with MFA
+    first, then this.
     """
 
     status: str  # registered | pending | rejected | unregistered
@@ -27,3 +32,4 @@ class AuthMeOut(BaseModel):
     suggestions: RegistrationSuggestions | None = None
     mfa_required: bool = False
     mfa_satisfied: bool = True
+    acknowledgement_required: bool = False
