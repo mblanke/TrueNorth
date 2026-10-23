@@ -25,6 +25,8 @@ interface Form {
   rangeId: string; instructorId: string; courseId: string; scenarioId: string; draft: boolean;
   /** A session of this class: it waits for an approver (ADR 0014 §14). */
   classId: string;
+  /** A class session's ranges (ADR 0014 §9): '' = the course's default. */
+  rangeMode: '' | 'individual' | 'collective';
 }
 
 const ROW = 46; // px per hour
@@ -113,6 +115,15 @@ const ROW = 46; // px per hour
                 @for (c of bookableClasses(); track c.id) { <option [value]="c.id">{{ c.name }}</option> }
               </select>
               @if (f.classId) { <small>Needs approval by an admin or range ops. Nothing is held and nobody is invited until then; the roll call is invited once it is approved.</small> }</label>
+            @if (f.classId) {
+              <label class="field"><span>Ranges</span>
+                <select class="input" [ngModel]="f.rangeMode" (ngModelChange)="patch({ rangeMode: $event })">
+                  <option value="">The course's default</option>
+                  <option value="individual">Individual: a range per Student, from this template</option>
+                  <option value="collective">Collective: one shared range (an exercise)</option>
+                </select>
+                <small>Ranges are built 30 minutes before the class's first session that needs them and kept until its last.@if (f.id && f.rangeMode) { Changing this on an approved session sends it back for approval.}</small></label>
+            }
           }
           <label class="field"><span>Course</span>
             <select class="input" [ngModel]="f.courseId" [disabled]="!!f.classId" (ngModelChange)="patch({ courseId: $event })">
@@ -622,7 +633,7 @@ export class ScheduleComponent implements OnInit, OnDestroy {
     this.check.set(null);
     this.form.set({
       name: '', templateId: '', date: isoDate(day), from: '09:00', to: '12:00', rangeId: '', courseId: '', scenarioId: '',
-      instructorId: this.role() === 'instructor' && me ? me.id : '', draft: false, classId: '',
+      instructorId: this.role() === 'instructor' && me ? me.id : '', draft: false, classId: '', rangeMode: '',
     });
   }
 
@@ -632,7 +643,7 @@ export class ScheduleComponent implements OnInit, OnDestroy {
     this.form.set({
       id: b.id, name: b.name, templateId: b.template_id ?? '', date: isoDate(s), from: hhmm(s), to: hhmm(e),
       rangeId: b.range_id ?? '', instructorId: b.instructor_id ?? '', courseId: b.course_id ?? '', scenarioId: b.scenario_id ?? '', draft: b.state === 'draft',
-      classId: b.class_id ?? '',
+      classId: b.class_id ?? '', rangeMode: (b.range_mode ?? '') as Form['rangeMode'],
     });
     this.selected.set(null);
     this.runCheck();
@@ -663,6 +674,7 @@ export class ScheduleComponent implements OnInit, OnDestroy {
       name: f.name, start_time: at(f.date, f.from).toISOString(), end_time: at(f.date, f.to).toISOString(),
       template_id: f.templateId || null, range_id: f.rangeId || null, instructor_id: this.formInstructor(f),
       course_id: f.courseId || null, scenario_id: f.scenarioId || null, draft, class_id: f.classId || null,
+      range_mode: f.classId && f.rangeMode ? f.rangeMode : null,
     };
     this.busy.set(true);
     const call = f.id ? this.scheduler.update(f.id, body) : this.scheduler.create(body);

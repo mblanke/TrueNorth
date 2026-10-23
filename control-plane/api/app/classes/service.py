@@ -327,8 +327,8 @@ def add_to_roll_call(db: Session, cls: Class, actor: CurrentUser, emails: list[s
             entry.pending_reason = "; ".join(no_room)[:1000]
             res.pending.append(entry)
             continue
-        res.sessions = sessions.take_seats(db, cls, 1)
         put_on_roll_call(db, cls, entry, account)
+        res.sessions = sessions.take_seats(db, cls, 1)  # sized from the roll call, with them on it
         if entry.status == RollCallStatus.invited.value and entry.onboarding_sent_at is None:
             res.to_onboard.append(entry)
         res.added.append(entry)
@@ -402,8 +402,8 @@ def approve_addition(db: Session, cls: Class, entry: RollCallEntry, actor: Curre
     if no_room:
         raise HTTPException(409, {"message": "It still does not fit the class's approved sessions",
                                   "reasons": no_room})
-    taken = sessions.take_seats(db, cls, 1)
     put_on_roll_call(db, cls, entry, account)
+    taken = sessions.take_seats(db, cls, 1)
     onboard = entry.status == RollCallStatus.invited.value and entry.onboarding_sent_at is None
     not_emailed = None
     # The onboarding email counts against the budget of whoever added them, as any addition's.
@@ -453,10 +453,15 @@ def remove_from_roll_call(db: Session, cls: Class, entry: RollCallEntry, actor: 
     """Take a Student off the roll call: always allowed, before or after approval (ADR 0014
     §17). The entry stays, marked removed (ADR 0010). Their account and enrolment are
     untouched: they may be on the course for other reasons. Their seat in each approved
-    session is freed; returns those sessions, whose invites they lose. Does not commit."""
+    session is freed; returns those sessions, whose invites they lose. Their own ranges are
+    torn down by the class's next range tick (``ranges``), and they leave the teams of
+    sessions that have not started. Does not commit."""
+    from . import teams
+
     was_on = entry.status != RollCallStatus.pending.value
     entry.status = RollCallStatus.removed.value
     entry.removed_at = _now()
+    teams.drop_member(db, cls, entry.user_id)
     audit(db, actor.id, cls, "roll_call_remove", entry.email)
     return sessions.free_seats(db, cls, 1) if was_on else []
 

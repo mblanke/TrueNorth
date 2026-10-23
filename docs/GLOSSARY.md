@@ -176,9 +176,22 @@ _Avoid_: roster (in the UI), attendees.
 **Class session** (ADR 0014):
 One calendar booking of a class (`ClassSession` links a `Class` to a `ScheduledEvent`,
 `app/classes/sessions.py`). Booked by the class's lead; it waits for **approval** and holds
-nothing until then. Its invites and reminders go to the roll call. It will be *individual*
-(every Student gets their own small range; blue on the calendar) or *collective* (one shared
-range for an **Exercise**; orange) (#282).
+nothing until then. Its invites and reminders go to the roll call, and so do its exercise and
+telemetry rosters. It is *individual* (every Student on the roll call gets their own small
+range from the session's template; blue on the calendar) or *collective* (one shared range
+for an **Exercise**, with balanced teams; orange): its **range mode**, the course's default
+unless the instructor picks the other when booking (#282).
+
+**Class range** (ADR 0014 §9-10, #282):
+A range a class owns (`ClassRange`, `app/classes/ranges.py`): a **seat** (one Student's own
+range, for individual sessions) or the class's **shared** range (for collective sessions).
+Built at the provisioning lead before the first session that needs it, kept across the
+class's sessions until the class's last day is over, and torn down then; earlier when the
+class is cancelled, when no session uses it any more, or (a seat) when its Student is taken
+off the roll call. A seat costs the template's size, so an individual session's size is
+that times its seats; capacity holds a class's ranges from its first session to its end.
+_Not to be confused with_: lab session (a self-serve range from a course release's lab
+profile, launched by the Student).
 
 **Approval** (of a class session, ADR 0014 §14-16):
 An admin or range ops (`schedule:approve`) approves a class session, rejects it with a reason,

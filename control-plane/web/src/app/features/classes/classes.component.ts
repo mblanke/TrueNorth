@@ -10,7 +10,8 @@ import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
 import { AuthService } from '@core/services/auth.service';
 import {
-  ClassIn, ClassRecord, ClassesApiService, RollCallAddResult, RollCallEntry, RollCallStatus,
+  ClassIn, ClassRange, ClassRangeStatus, ClassRanges, ClassRecord, ClassSessionMode, ClassesApiService, RangeMode,
+  RollCallAddResult, RollCallEntry, RollCallStatus, SessionTeams,
 } from '@core/services/classes-api.service';
 import { NotificationService } from '@core/services/notification.service';
 import {
@@ -34,6 +35,22 @@ export const STATUS_LABEL: Record<RollCallStatus, string> = {
   invited: 'Invited', signed_in: 'Signed in', ready: 'Ready', removed: 'Removed',
   pending: 'Awaiting approval',
 };
+
+/** A session's mode, in words (ADR 0014 §9). */
+export const MODE_LABEL: Record<RangeMode, string> = {
+  individual: 'Individual: a range per Student', collective: 'Collective: one shared range',
+};
+
+export const RANGE_STATUS_LABEL: Record<ClassRangeStatus, string> = {
+  pending: 'Not built yet', building: 'Building', ready: 'Ready', failed: 'Failed',
+  tearing_down: 'Tearing down', torn_down: 'Torn down',
+};
+
+/** Whose range a row is: the seat's Student, or the class's shared range. */
+export function rangeOwner(r: ClassRange): string {
+  if (r.kind === 'shared') return 'Shared (the whole class)';
+  return r.display_name || r.email || 'Your range';
+}
 
 /** The request body for a form, or why it cannot be sent yet. */
 export function toClassBody(f: ClassForm): ClassIn | string {
@@ -202,6 +219,86 @@ export function addSummary(r: RollCallAddResult): string {
           </mat-card-content>
         </mat-card>
       }
+
+      @if (selected(); as c) {
+        @if (classRanges(); as r) {
+          <mat-card class="ranges">
+            <mat-card-header>
+              <mat-card-title>Sessions and ranges</mat-card-title>
+              <mat-card-subtitle>Built 30 minutes before the first session that needs them and kept until the last.</mat-card-subtitle>
+            </mat-card-header>
+            <mat-card-content>
+              @if (r.failed) { <p class="error" role="alert">{{ r.failed }} range(s) failed to build.</p> }
+              <table class="entries sessions">
+                <thead><tr><th>Session</th><th>When</th><th>Ranges</th><th>State</th><th></th></tr></thead>
+                <tbody>
+                  @for (s of r.sessions; track s.event_id) {
+                    <tr>
+                      <td>{{ s.name }}</td>
+                      <td>{{ s.start_time | date:'EEE d MMM, HH:mm' }}</td>
+                      <td><mat-chip [class]="'mode-' + s.range_mode">{{ modeLabel(s) }}</mat-chip></td>
+                      <td>{{ s.state }}</td>
+                      <td>@if (s.range_mode === 'collective') {
+                        <button mat-button (click)="openTeams(c, s)"><mat-icon>diversity_3</mat-icon> Teams</button> }</td>
+                    </tr>
+                  } @empty { <tr><td colspan="5">No sessions booked yet.</td></tr> }
+                </tbody>
+              </table>
+              <table class="entries class-ranges">
+                <thead><tr><th>Range</th><th>Status</th><th>Detail</th><th></th></tr></thead>
+                <tbody>
+                  @for (x of r.ranges; track x.id) {
+                    <tr [class.removed]="x.status === 'torn_down'">
+                      <td>{{ owner(x) }}</td>
+                      <td><mat-chip [class]="'range-' + x.status">{{ statusLabel(x) }}</mat-chip></td>
+                      <td class="small">{{ x.error ?? x.teardown_reason ?? '' }}</td>
+                      <td>@if (c.can_edit && x.status === 'failed' && x.range_id) {
+                        <button mat-button (click)="retry(c, x)">Retry</button> }</td>
+                    </tr>
+                  } @empty { <tr><td colspan="4">No ranges yet: they are built at the first session that needs them.</td></tr> }
+                </tbody>
+              </table>
+            </mat-card-content>
+          </mat-card>
+        }
+        @if (teams(); as t) {
+          <mat-card class="teams">
+            <mat-card-header><mat-card-title>Teams: {{ teamsSession()?.name }}</mat-card-title></mat-card-header>
+            <mat-card-content>
+              @if (t.editable) {
+                <div class="add-row">
+                  <mat-form-field appearance="outline" class="count">
+                    <mat-label>Teams</mat-label>
+                    <input matInput type="number" min="2" max="26" [(ngModel)]="teamCount" />
+                  </mat-form-field>
+                  <button mat-flat-button color="primary" (click)="split(c)">Split the roll call evenly</button>
+                </div>
+              }
+              <div class="team-grid">
+                @for (team of t.teams; track team.id) {
+                  <div class="team">
+                    <h3>{{ team.name }} ({{ team.members.length }})</h3>
+                    @for (m of team.members; track m.user_id) {
+                      <div class="member">
+                        <span>{{ m.display_name }}</span>
+                        @if (t.editable) {
+                          <select class="input" [attr.aria-label]="'Move ' + m.display_name" [ngModel]="team.id"
+                            (ngModelChange)="move(c, m.user_id, $event)">
+                            @for (o of t.teams; track o.id) { <option [value]="o.id">{{ o.name }}</option> }
+                          </select>
+                        }
+                      </div>
+                    }
+                  </div>
+                } @empty { <p>No teams yet.</p> }
+              </div>
+              @if (t.unassigned.length) {
+                <p class="small">Not placed (no account yet): {{ unassignedList(t) }}</p>
+              }
+            </mat-card-content>
+          </mat-card>
+        }
+      }
     </div>
   `,
   styles: [`
@@ -214,6 +311,12 @@ export function addSummary(r: RollCallAddResult): string {
     .entries th, .entries td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--mat-sys-outline-variant); }
     .entries tr.removed td { opacity: 0.6; }
     .error { color: var(--mat-sys-error); padding: 0 16px; }
+    .ranges, .teams { margin-top: 16px; }
+    .small { font-size: 12px; opacity: 0.8; }
+    .count { width: 120px; }
+    .team-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
+    .team h3 { margin: 8px 0; font-size: 15px; }
+    .member { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 2px 0; }
   `],
 })
 export class ClassesComponent implements OnInit {
@@ -234,7 +337,11 @@ export class ClassesComponent implements OnInit {
   readonly instructors = computed(() => this.users().filter(u => u.role === 'instructor' || u.role === 'admin'));
   readonly observers = computed(() => this.users().filter(u => u.role !== 'student' && u.role !== 'range_ops'));
   readonly canCreate = computed(() => roleCan(this.auth.user()?.role, 'class:create'));
+  readonly classRanges = signal<ClassRanges | null>(null);
+  readonly teams = signal<SessionTeams | null>(null);
+  readonly teamsSession = signal<ClassSessionMode | null>(null);
   pasted = '';
+  teamCount = 2;
 
   ngOnInit(): void {
     this.load();
@@ -280,10 +387,57 @@ export class ClassesComponent implements OnInit {
   }
 
   open(c: ClassRecord): void {
+    if (this.selected()?.id !== c.id) { this.teams.set(null); this.teamsSession.set(null); }
     this.selected.set(c);
     this.lastAdd.set('');
     this.api.rollCall(c.id).subscribe({
       next: rows => this.rollCall.set(rows),
+      error: err => this.notify.error(apiError(err)),
+    });
+    this.loadRanges(c);
+  }
+
+  loadRanges(c: ClassRecord): void {
+    this.api.ranges(c.id).subscribe({
+      next: r => this.classRanges.set(r),
+      error: () => this.classRanges.set(null),
+    });
+  }
+
+  modeLabel(s: ClassSessionMode): string { return MODE_LABEL[s.range_mode]; }
+  statusLabel(r: ClassRange): string { return RANGE_STATUS_LABEL[r.status]; }
+  owner(r: ClassRange): string { return rangeOwner(r); }
+  unassignedList(t: SessionTeams): string { return t.unassigned.map(u => u.email).join(', '); }
+
+  retry(c: ClassRecord, r: ClassRange): void {
+    this.api.retryRange(c.id, r.id).subscribe({
+      next: () => { this.notify.success('Building the range again'); this.loadRanges(c); },
+      error: err => this.notify.error(apiError(err)),
+    });
+  }
+
+  openTeams(c: ClassRecord, s: ClassSessionMode): void {
+    this.teamsSession.set(s);
+    this.api.sessionTeams(c.id, s.event_id).subscribe({
+      next: t => this.teams.set(t),
+      error: err => this.notify.error(apiError(err)),
+    });
+  }
+
+  split(c: ClassRecord): void {
+    const s = this.teamsSession();
+    if (!s) return;
+    this.api.splitTeams(c.id, s.event_id, this.teamCount).subscribe({
+      next: t => this.teams.set(t),
+      error: err => this.notify.error(apiError(err)),
+    });
+  }
+
+  move(c: ClassRecord, userId: string, teamId: string): void {
+    const s = this.teamsSession();
+    if (!s) return;
+    this.api.moveTeamMember(c.id, s.event_id, userId, teamId).subscribe({
+      next: t => this.teams.set(t),
       error: err => this.notify.error(apiError(err)),
     });
   }
@@ -318,7 +472,7 @@ export class ClassesComponent implements OnInit {
     const c = this.selected();
     if (!c) return;
     this.api.remove(c.id, e.id).subscribe({
-      next: () => this.open(c),
+      next: () => { this.open(c); const s = this.teamsSession(); if (s) this.openTeams(c, s); },
       error: err => this.notify.error(apiError(err)),
     });
   }

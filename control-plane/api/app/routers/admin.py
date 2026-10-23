@@ -321,6 +321,9 @@ def delete_team(
         if students != len(set(member_ids)):
             raise HTTPException(403, "The team has staff on it; an administrator deletes it")
     db.query(TeamMembership).filter(TeamMembership.team_id == team_id).delete()
+    from ..classes import teams as class_teams
+
+    class_teams.unlink(db, team)  # a class session's team: its link goes first (#282)
     db.delete(team)
     _audit(db, user, "delete", "team", str(team_id),
            f"{team.name}; members removed: {', '.join(str(m) for m in member_ids) or 'none'}")

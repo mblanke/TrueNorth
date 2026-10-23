@@ -318,6 +318,24 @@ describe('ScheduleComponent', () => {
     const body = scheduler.create.calls.mostRecent().args[0];
     expect(body.class_id).toBe('cls1');
     expect(body.course_id).toBe('c204');
+    expect(body.range_mode).toBeNull();  // the course's default (ADR 0014 §9)
+  }));
+
+  it('books an individual class session: a range per Student (#282)', fakeAsync(() => {
+    classes.mine.and.returnValue(of([klass]));
+    scheduler.check.and.returnValue(of(fits(true)));
+    scheduler.create.and.callFake(body => of(booking({ id: 'new', name: body.name, state: 'pending_approval', class_id: 'cls1' } as any)));
+    as('instructor');
+    component.startBooking();
+    fixture.detectChanges();
+    expect(text()).not.toContain('a range per Student');  // no class picked: no mode
+    component.pickClass('cls1');
+    component.patch({ name: 'Lab 1', templateId: 'tpl-soc', rangeMode: 'individual' });
+    tick(400);
+    fixture.detectChanges();
+    expect(text()).toContain('Individual: a range per Student');
+    button('Ask for approval')!.click();
+    expect(scheduler.create.calls.mostRecent().args[0].range_mode).toBe('individual');
   }));
 
   it('shows the instructor a pending session and lets them accept a proposed time', () => {

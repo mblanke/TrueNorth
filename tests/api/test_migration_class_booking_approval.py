@@ -89,8 +89,8 @@ def test_upgrade_adds_the_approval_tables_and_downgrade_removes_them(tmp_path):
         assert db.execute(sa.text("SELECT status, pending_reason FROM class_roll_call")).one() == ("invited", None)
         assert db.execute(sa.text("SELECT state FROM scheduled_events")).scalar() == "scheduled"
 
-    # The ORM writes a pending class session onto the migrated schema.
-    from app.classes.models import ClassSession
+    # The ORM writes a pending class session onto the migrated schema. (``class_sessions`` in
+    # SQL: 57e2c4b65b98 adds a column the ORM now has.)
     from app.scheduler.models import BookingApproval
 
     pending = uuid.uuid4()
@@ -98,7 +98,9 @@ def test_upgrade_adds_the_approval_tables_and_downgrade_removes_them(tmp_path):
         db.add(ScheduledEvent(id=pending, name="Session 1", state=EventState.pending_approval, tenant_id=tenant,
                               start_time=start, end_time=start + timedelta(hours=3), course_id=course))
         db.flush()
-        db.add(ClassSession(class_id=cls, event_id=pending, tenant_id=tenant, created_by=lead))
+        db.execute(sa.text("INSERT INTO class_sessions (id, class_id, event_id, tenant_id, created_by) "
+                           "VALUES (:i, :c, :e, :t, :u)"),
+                   {"i": uuid.uuid4().hex, "c": cls.hex, "e": pending.hex, "t": tenant.hex, "u": lead.hex})
         db.add(BookingApproval(event_id=pending, tenant_id=tenant, requested_by=lead, requested_at=datetime.now(UTC)))
         db.commit()
 
