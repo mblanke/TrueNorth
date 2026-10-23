@@ -7,6 +7,7 @@ import { ApiService } from '@core/services/api.service';
 import { AuthService, CurrentUser } from '@core/services/auth.service';
 import { Booking, CapacityResult, SchedulerApiService, Timeline } from '@core/services/scheduler-api.service';
 import { MaintenanceWindowsApiService } from '@core/services/maintenance-windows-api.service';
+import { ClassesApiService, ClassRecord } from '@core/services/classes-api.service';
 import { ScheduleComponent } from './schedule.component';
 import { addDays, isoDate, weekStart } from './schedule.util';
 
@@ -42,6 +43,7 @@ describe('ScheduleComponent', () => {
   let scheduler: jasmine.SpyObj<SchedulerApiService>;
   let maintenance: jasmine.SpyObj<MaintenanceWindowsApiService>;
   let api: jasmine.SpyObj<ApiService>;
+  let classes: jasmine.SpyObj<ClassesApiService>;
   const user = signal<CurrentUser | null>(null);
 
   function as(role: CurrentUser['role'], id = 'me', bookings: Booking[] = []) {
@@ -57,7 +59,15 @@ describe('ScheduleComponent', () => {
 
   beforeEach(async () => {
     scheduler = jasmine.createSpyObj('SchedulerApiService',
-      ['list', 'create', 'update', 'schedule', 'cancel', 'check', 'timeline', 'getPolicy', 'setPolicy', 'feedStatus', 'issueFeed', 'revokeFeed', 'courses']);
+      ['list', 'create', 'update', 'schedule', 'cancel', 'check', 'timeline', 'getPolicy', 'setPolicy', 'feedStatus', 'issueFeed', 'revokeFeed', 'courses',
+        'approvals', 'approve', 'reject', 'propose', 'acceptProposal', 'declineProposal']);
+    scheduler.approvals.and.returnValue(of({ items: [] }));
+    scheduler.acceptProposal.and.returnValue(of(booking({})));
+    scheduler.declineProposal.and.returnValue(of(booking({})));
+    classes = jasmine.createSpyObj('ClassesApiService', ['mine', 'list', 'pendingAdditions', 'approveAddition', 'rejectAddition']);
+    classes.mine.and.returnValue(of([]));
+    classes.list.and.returnValue(of([]));
+    classes.pendingAdditions.and.returnValue(of([]));
     scheduler.timeline.and.returnValue(of(TIMELINE));
     scheduler.courses.and.returnValue(of({ items: [{ id: 'c204', name: 'C204 Security Monitoring' }], total: 1, limit: 200, offset: 0 } as any));
     scheduler.getPolicy.and.returnValue(of({ overcapacity: 'block', can_change: true }));
@@ -85,6 +95,7 @@ describe('ScheduleComponent', () => {
         { provide: SchedulerApiService, useValue: scheduler },
         { provide: MaintenanceWindowsApiService, useValue: maintenance },
         { provide: ApiService, useValue: api },
+        { provide: ClassesApiService, useValue: classes },
         { provide: AuthService, useValue: { user, canViewSchedule: signal(true) } },
         provideRouter([]),
       ],
@@ -280,5 +291,67 @@ describe('ScheduleComponent', () => {
     expect(text()).toContain('Regenerate link');
     button('Turn off')!.click();
     expect(scheduler.revokeFeed).toHaveBeenCalled();
+  });
+
+  // ── Class sessions and approval (ADR 0014 §14-16, #281) ─────────────
+  const klass = { id: 'cls1', name: 'C201-26-03', course_id: 'c204', status: 'open', can_edit: true, my_role: 'lead' } as ClassRecord;
+
+  it('books a class session for approval, with the class\'s course, before any capacity check', fakeAsync(() => {
+    classes.mine.and.returnValue(of([klass, { ...klass, id: 'cls2', name: 'Not mine', can_edit: false } as ClassRecord]));
+    scheduler.check.and.returnValue(of(fits(false)));
+    scheduler.create.and.callFake(body => of(booking({ id: 'new', name: body.name, state: 'pending_approval', class_id: 'cls1' } as any)));
+    as('instructor');
+    component.startBooking();
+    fixture.detectChanges();
+    const options = Array.from(fixture.nativeElement.querySelectorAll('option') as NodeListOf<HTMLOptionElement>).map(o => o.textContent);
+    expect(options).toContain('C201-26-03');
+    expect(options).not.toContain('Not mine');
+    component.pickClass('cls1');
+    component.patch({ name: 'Lab 1', templateId: 'tpl-soc' });
+    tick(400);
+    fixture.detectChanges();
+    expect(component.form()!.courseId).toBe('c204');
+    expect(text()).toContain('Needs approval by an admin or range ops');
+    const ask = button('Ask for approval')!;
+    expect(ask.disabled).toBeFalse();
+    ask.click();
+    const body = scheduler.create.calls.mostRecent().args[0];
+    expect(body.class_id).toBe('cls1');
+    expect(body.course_id).toBe('c204');
+  }));
+
+  it('shows the instructor a pending session and lets them accept a proposed time', () => {
+    const later = new Date(at(1, 13));
+    as('instructor', 'me', [booking({
+      id: 'p', name: 'Lab 1', state: 'pending_approval', instructor_id: 'me', class_id: 'cls1',
+      approval: { proposed_start_time: later.toISOString(), proposed_end_time: new Date(later.getTime() + 3 * 3_600_000).toISOString() },
+    } as any)]);
+    expect(fixture.nativeElement.querySelector('.ev.pending')).not.toBeNull();
+    component.select(component.bookings()[0]);
+    fixture.detectChanges();
+    expect(text()).toContain('Awaiting approval');
+    expect(text()).toContain('Proposed instead');
+    button('Accept')!.click();
+    expect(scheduler.acceptProposal).toHaveBeenCalledWith('p');
+    button('Decline')!.click();
+    expect(scheduler.declineProposal).toHaveBeenCalledWith('p');
+  });
+
+  it('shows a rejected session with its reason', () => {
+    as('instructor', 'me', [booking({ id: 'r', state: 'rejected', instructor_id: 'me', approval: { reason: 'Exercise week' } } as any)]);
+    component.select(component.bookings()[0]);
+    fixture.detectChanges();
+    expect(text()).toContain('Rejected: Exercise week');
+    expect(button('Move or resize')).toBeUndefined();
+  });
+
+  it('gives approvers the queue, and nobody else', () => {
+    as('instructor');
+    expect(fixture.nativeElement.querySelector('tn-approval-queue')).toBeNull();
+    as('admin');
+    expect(fixture.nativeElement.querySelector('tn-approval-queue')).not.toBeNull();
+    as('range_ops', 'ops');
+    expect(fixture.nativeElement.querySelector('tn-approval-queue')).not.toBeNull();
+    expect(scheduler.approvals).toHaveBeenCalled();
   });
 });

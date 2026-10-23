@@ -217,7 +217,7 @@ def read_content(db) -> Content:
                                   scheduled_events.c.instructor_id, scheduled_events.c.state)
                         .where(scheduled_events.c.course_id.is_not(None))
                         .order_by(scheduled_events.c.start_time)).all():
-        if str(e.state) in ("cancelled", "EventState.cancelled"):
+        if str(e.state).removeprefix("EventState.") in ("cancelled", "rejected"):
             continue
         if e.instructor_id is not None:
             owners[str(e.course_id)] = str(e.instructor_id)  # the latest wins

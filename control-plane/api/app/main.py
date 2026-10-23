@@ -420,6 +420,7 @@ from .routers import (
     transcript_router,
     wiki_router,
 )
+from .scheduler.approval_router import router as scheduling_approval_router  # noqa: E402
 from .scheduler.router import feed_router as scheduling_feed_router  # noqa: E402
 from .scheduler.router import me_router as scheduling_me_router  # noqa: E402
 from .scheduler.router import router as scheduling_router  # noqa: E402
@@ -450,6 +451,7 @@ app.include_router(ai_authoring_router)
 app.include_router(admin_router)
 app.include_router(proxmox_router)
 app.include_router(scheduling_router)  # app/scheduler (ADR 0004)
+app.include_router(scheduling_approval_router)  # class-session approval (ADR 0014 §14-16)
 app.include_router(scheduling_feed_router)  # token-authenticated .ics feed
 app.include_router(scheduling_me_router)  # your own sessions and feed link
 app.include_router(maintenance_windows_router)  # app/maintenance_windows (ADR 0013 §7)

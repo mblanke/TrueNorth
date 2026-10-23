@@ -47,6 +47,7 @@ def exercise_window(ex: Exercise, now: datetime | None = None) -> tuple[datetime
 
 def _bookings(db: Session, ex: Exercise):
     """Live (not cancelled) course bookings that tie this exercise, or its range, to a course."""
+    from .classes.sessions import all_session_ids
     from .scheduler.models import EventState, ScheduledEvent
 
     links = [ScheduledEvent.exercise_id == ex.id]
@@ -55,7 +56,9 @@ def _bookings(db: Session, ex: Exercise):
     return db.query(ScheduledEvent.course_id).filter(
         ScheduledEvent.tenant_id == ex.tenant_id,
         ScheduledEvent.course_id.isnot(None),
-        ScheduledEvent.state != EventState.cancelled,
+        ScheduledEvent.state.notin_((EventState.cancelled, EventState.rejected, EventState.pending_approval)),
+        # A class session counts once it is real: never as a draft (ADR 0014 §15).
+        or_(ScheduledEvent.state != EventState.draft, ScheduledEvent.id.notin_(all_session_ids())),
         or_(*links),
     )
 

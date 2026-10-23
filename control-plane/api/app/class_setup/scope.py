@@ -64,7 +64,7 @@ from ..rbac import Permission, user_has_permission
 from ..scheduler.models import EventState, ScheduledEvent
 from ..tenancy import get_owned, tenant_uuid
 
-OVER = (EventState.draft, EventState.cancelled, EventState.completed)
+OVER = (EventState.draft, EventState.pending_approval, EventState.rejected, EventState.cancelled, EventState.completed)
 FINISHED_EXERCISE = (ExerciseState.completed, ExerciseState.cancelled)
 LIVE_RUN = (ExerciseState.running, ExerciseState.paused)
 
@@ -157,7 +157,7 @@ def _live_runs_through_course(db: Session, user: CurrentUser, course_id: uuid.UU
         .filter(
             ScheduledEvent.tenant_id == tenant_uuid(user),
             ScheduledEvent.course_id == course_id,
-            ScheduledEvent.state != EventState.cancelled,
+            ScheduledEvent.state.notin_((EventState.cancelled, EventState.rejected, EventState.pending_approval)),
         )
         .all()
     )

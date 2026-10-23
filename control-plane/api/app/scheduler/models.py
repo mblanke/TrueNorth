@@ -15,9 +15,13 @@ from ..models import GUID, TimestampMixin
 
 class EventState(str, enum.Enum):
     """draft -> scheduled -> provisioning -> active -> completed; cancelled from any
-    state before completed. Transitions live in :mod:`.lifecycle`."""
+    state before completed. A class session (ADR 0014 §14) passes through
+    pending_approval on its way to scheduled, and an approver may reject it instead.
+    Transitions live in :mod:`.lifecycle`."""
 
     draft = "draft"
+    pending_approval = "pending_approval"  # a class session awaiting an approver: holds nothing
+    rejected = "rejected"  # an approver turned it down (BookingApproval.reason); final
     scheduled = "scheduled"
     provisioning = "provisioning"
     active = "active"
@@ -108,3 +112,28 @@ class FeedToken(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("users.id"), primary_key=True)
     token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class BookingApproval(TimestampMixin, Base):
+    """A booking that needs an approver (ADR 0014 §14-16): every class session has one.
+
+    Its row exists for as long as the booking does; the booking's state says where it is
+    (pending_approval, scheduled once approved, rejected). An approver's proposed time
+    waits here until the instructor accepts or declines it. Each decision is also in the
+    audit log, which keeps the history this row overwrites."""
+
+    __tablename__ = "scheduler_booking_approvals"
+    __table_args__ = (Index("ix_booking_approvals_tenant", "tenant_id"),)
+
+    event_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("scheduled_events.id"), primary_key=True)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("tenants.id"), nullable=False)
+    requested_by: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("users.id"), nullable=True)
+    requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    proposed_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    proposed_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    proposed_by: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("users.id"), nullable=True)
+    proposed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    decided_by: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("users.id"), nullable=True)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Why it was rejected; shown to the instructor.
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)

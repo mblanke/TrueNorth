@@ -174,11 +174,14 @@ What users need:
   | `schedule:read`: calendar, events, capacity, timeline | yes | yes | yes | yes | **no** |
   | `schedule:write`: create, edit, cancel, state changes | yes | yes | no | no | no |
   | `schedule:admin`: set the over-capacity policy | yes | no | no | no | no |
+  | `schedule:approve`: approve, reject or propose a time for class sessions (ADR 0014 §14) | yes | no | yes | no | no |
 
   A Student's own-sessions feed (slice 5) is authorised by its feed token. That token
   is issued only for that Student's own bookings, so it never grants `schedule:read`.
 - **Lifecycle:** `draft → scheduled → provisioning → active → completed`, with
-  `cancelled` reachable from any state before `completed`. A state change is a
+  `cancelled` reachable from any state before `completed`. A class session (ADR 0014 §14,
+  #281) passes through `pending_approval` (holds nothing) to `scheduled` when an approver
+  approves it, or ends `rejected`. A state change is a
   guarded update, so a retry can't move a booking twice.
   - Asking for the current state is a no-op, so retries are safe.
   - Only `draft` and `scheduled` bookings can be edited.

@@ -277,7 +277,7 @@ Permissions follow the pattern `resource:action`:
 | **Telemetry** | `telemetry:read` |
 | **Stats** | `stats:read` |
 | **AAR** | `aar:generate`, `aar:read` |
-| **Schedule** | `schedule:read`, `schedule:write`, `schedule:admin` (ADR 0004: Students hold none) |
+| **Schedule** | `schedule:read`, `schedule:write`, `schedule:admin`, `schedule:approve` (ADR 0004: Students hold none; ADR 0014 §14: admins and range ops approve class sessions) |
 
 ---
 
@@ -329,11 +329,12 @@ Complete role-to-permission mapping as defined in `rbac.py`:
 | `schedule:read` | X | X | | X | X |
 | `schedule:write` | X | X | | | |
 | `schedule:admin` | X (platform tenant only when `PLATFORM_TENANT_ID` is set) | | | | |
+| `schedule:approve` (ADR 0014 §14: approve, reject or propose a time for class sessions) | X | | | | X |
 
 **An instructor's own class (#200).** `enrollment:manage_own` and `team:manage_own` are
 scoped in `app/class_setup/scope.py` (rule (a)). An instructor *teaches* a course, or
 *runs* an exercise, only while their **own** booking of it is upcoming or running: it names
-them its `instructor_id`, it has not ended, and it is not `draft`, `cancelled` or
+them its `instructor_id`, it has not ended, and it is not `draft`, `pending_approval`, `rejected`, `cancelled` or
 `completed`. A past or completed booking grants nothing. While **another** booking of the
 same course or exercise is running (not theirs, including one with no instructor), every
 change is refused with 409. A booking of an exercise is one naming the exercise or its range

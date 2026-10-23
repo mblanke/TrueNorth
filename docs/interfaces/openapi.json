@@ -755,6 +755,64 @@
         "title": "ActivityReport",
         "type": "object"
       },
+      "AdditionDecisionOut": {
+        "description": "What an approver's decision on an addition did, without naming the Student.",
+        "properties": {
+          "class_id": {
+            "format": "uuid",
+            "title": "Class Id",
+            "type": "string"
+          },
+          "emailed": {
+            "default": false,
+            "description": "An onboarding email went to them",
+            "title": "Emailed",
+            "type": "boolean"
+          },
+          "entry_id": {
+            "format": "uuid",
+            "title": "Entry Id",
+            "type": "string"
+          },
+          "not_emailed": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why no onboarding email went, if one was due",
+            "title": "Not Emailed"
+          },
+          "status": {
+            "$ref": "#/components/schemas/RollCallStatusOut"
+          }
+        },
+        "required": [
+          "entry_id",
+          "class_id",
+          "status"
+        ],
+        "title": "AdditionDecisionOut",
+        "type": "object"
+      },
+      "AdditionRejectIn": {
+        "properties": {
+          "reason": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "AdditionRejectIn",
+        "type": "object"
+      },
       "AgentIn": {
         "properties": {
           "node": {
@@ -968,6 +1026,164 @@
           "title"
         ],
         "title": "ApplicantQualificationOut",
+        "type": "object"
+      },
+      "ApprovalItemOut": {
+        "description": "One class session awaiting approval, as the approver's queue shows it.",
+        "properties": {
+          "class_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Class Name"
+          },
+          "event": {
+            "$ref": "#/components/schemas/EventOut"
+          },
+          "fit": {
+            "$ref": "#/components/schemas/FitOut"
+          }
+        },
+        "required": [
+          "event",
+          "fit"
+        ],
+        "title": "ApprovalItemOut",
+        "type": "object"
+      },
+      "ApprovalOut": {
+        "description": "A class session's approval (ADR 0014 \u00a714-16). The booking's state says where it is.",
+        "properties": {
+          "decided_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided At"
+          },
+          "decided_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Who approved or rejected it",
+            "title": "Decided By"
+          },
+          "proposed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proposed At"
+          },
+          "proposed_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proposed By"
+          },
+          "proposed_end_time": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proposed End Time"
+          },
+          "proposed_start_time": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "An approver's proposed time, until accepted or declined",
+            "title": "Proposed Start Time"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why it was rejected",
+            "title": "Reason"
+          },
+          "requested_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requested At"
+          },
+          "requested_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requested By"
+          }
+        },
+        "title": "ApprovalOut",
+        "type": "object"
+      },
+      "ApprovalQueueOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ApprovalItemOut"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "ApprovalQueueOut",
         "type": "object"
       },
       "Arc2Status": {
@@ -6913,6 +7129,18 @@
       },
       "EventIn": {
         "properties": {
+          "class_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A session of this class (ADR 0014 \u00a714): it waits for an approver, holds nothing until approved, and its roll call attends. Set when the session is booked; it cannot change",
+            "title": "Class Id"
+          },
           "course_id": {
             "anyOf": [
               {
@@ -7079,6 +7307,27 @@
       },
       "EventOut": {
         "properties": {
+          "approval": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ApprovalOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "class_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Class Id"
+          },
           "course_id": {
             "anyOf": [
               {
@@ -8162,6 +8411,45 @@
           "active"
         ],
         "title": "FeedTokenStatus",
+        "type": "object"
+      },
+      "FitOut": {
+        "description": "Whether a booking fits where it is asked for, and the next slot where it would.",
+        "properties": {
+          "fits": {
+            "title": "Fits",
+            "type": "boolean"
+          },
+          "next_free": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SlotOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The first slot from the asked-for start that fits; none within the search horizon"
+          },
+          "reasons": {
+            "description": "Double bookings, then one per short resource",
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasons",
+            "type": "array"
+          },
+          "searched_until": {
+            "format": "date-time",
+            "title": "Searched Until",
+            "type": "string"
+          }
+        },
+        "required": [
+          "fits",
+          "searched_until"
+        ],
+        "title": "FitOut",
         "type": "object"
       },
       "FleetNodeCreateIn": {
@@ -14187,6 +14475,69 @@
         "title": "PaginatedResponse[ExternalActivityOut]",
         "type": "object"
       },
+      "PendingAdditionOut": {
+        "description": "A roll-call addition waiting for an approver (ADR 0014 \u00a717): only what a capacity\ndecision needs. Approvers (range ops among them) need not be on the class, so no Student\nis named here; the class's own people see who it is on its roll call.",
+        "properties": {
+          "class_id": {
+            "format": "uuid",
+            "title": "Class Id",
+            "type": "string"
+          },
+          "class_name": {
+            "title": "Class Name",
+            "type": "string"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "entry_id": {
+            "format": "uuid",
+            "title": "Entry Id",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "roll_call_count": {
+            "default": 0,
+            "description": "Students on the class's roll call now",
+            "title": "Roll Call Count",
+            "type": "integer"
+          },
+          "seats": {
+            "default": 1,
+            "description": "Seats the addition needs in each approved session",
+            "title": "Seats",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "entry_id",
+          "class_id",
+          "class_name",
+          "reason",
+          "created_at"
+        ],
+        "title": "PendingAdditionOut",
+        "type": "object"
+      },
       "PolicyIn": {
         "properties": {
           "overcapacity": {
@@ -14381,6 +14732,26 @@
           "recent_assessments"
         ],
         "title": "ProgressSummaryOut",
+        "type": "object"
+      },
+      "ProposeIn": {
+        "properties": {
+          "end_time": {
+            "format": "date-time",
+            "title": "End Time",
+            "type": "string"
+          },
+          "start_time": {
+            "format": "date-time",
+            "title": "Start Time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start_time",
+          "end_time"
+        ],
+        "title": "ProposeIn",
         "type": "object"
       },
       "PublishIn": {
@@ -16315,6 +16686,22 @@
         "title": "RegistrationSuggestions",
         "type": "object"
       },
+      "RejectIn": {
+        "properties": {
+          "reason": {
+            "description": "Shown to the instructor",
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "RejectIn",
+        "type": "object"
+      },
       "Reply": {
         "properties": {
           "action": {
@@ -16481,6 +16868,14 @@
             "title": "Not Emailed",
             "type": "array"
           },
+          "pending_approval": {
+            "description": "Not added yet: the class's approved sessions have no room for them, so an approver decides (ADR 0014 \u00a717). The reason says what does not fit",
+            "items": {
+              "$ref": "#/components/schemas/RollCallRefusal"
+            },
+            "title": "Pending Approval",
+            "type": "array"
+          },
           "refused": {
             "items": {
               "$ref": "#/components/schemas/RollCallRefusal"
@@ -16584,6 +16979,18 @@
             ],
             "title": "Onboarding Sent At"
           },
+          "pending_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why an addition waits for an approver, or was rejected",
+            "title": "Pending Reason"
+          },
           "reminded_at": {
             "anyOf": [
               {
@@ -16673,7 +17080,8 @@
           "invited",
           "signed_in",
           "ready",
-          "removed"
+          "removed",
+          "pending"
         ],
         "title": "RollCallStatusOut",
         "type": "string"
@@ -17928,6 +18336,26 @@
           "why"
         ],
         "title": "SkippedItemOut",
+        "type": "object"
+      },
+      "SlotOut": {
+        "properties": {
+          "end_time": {
+            "format": "date-time",
+            "title": "End Time",
+            "type": "string"
+          },
+          "start_time": {
+            "format": "date-time",
+            "title": "Start Time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start_time",
+          "end_time"
+        ],
+        "title": "SlotOut",
         "type": "object"
       },
       "SnapshotIn": {
@@ -25113,6 +25541,37 @@
         ]
       }
     },
+    "/classes/pending-additions": {
+      "get": {
+        "description": "Students added after their class's sessions were approved, for whom there was no room\n(ADR 0014 \u00a717), in the caller's tenant.  **schedule:approve**",
+        "operationId": "listPendingRollCallAdditions",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PendingAdditionOut"
+                  },
+                  "title": "Response Listpendingrollcalladditions",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Roll-call additions waiting for an approver",
+        "tags": [
+          "classes"
+        ]
+      }
+    },
     "/classes/roll-call-domains": {
       "get": {
         "description": "The admin's setting (an empty setting: any domain, in smaller batches), or else the\ndomains of the organisation's own AD accounts. No setting and no AD account: nothing\nmay be added until an admin sets it.  **class:create**",
@@ -25187,7 +25646,7 @@
     },
     "/classes/{class_id}": {
       "delete": {
-        "description": "Its lead or an admin. A class is history (who was invited, who joined), so it is\ncancelled, not deleted (ADR 0010); it leaves the lists and no longer admits anyone.",
+        "description": "Its lead or an admin. A class is history (who was invited, who joined), so it is\ncancelled, not deleted (ADR 0010); it leaves the lists and no longer admits anyone. Its\nsessions that have not started (drafts, awaiting approval, approved) are cancelled with\nit, and the approved ones' invites are withdrawn; one under way is left to its\ninstructor.",
         "operationId": "cancelClass",
         "parameters": [
           {
@@ -25511,7 +25970,7 @@
     },
     "/classes/{class_id}/roll-call/{entry_id}": {
       "delete": {
-        "description": "Its lead or an admin. The entry is kept, marked removed; account and enrolment stay.",
+        "description": "Its lead or an admin, at any time (ADR 0014 \u00a717). The entry is kept, marked removed;\naccount and enrolment stay. Their seat in the approved sessions is freed and those\nsessions' invites are withdrawn from them.",
         "operationId": "removeFromClassRollCall",
         "parameters": [
           {
@@ -25556,6 +26015,134 @@
           }
         ],
         "summary": "Take a Student off a roll call",
+        "tags": [
+          "classes"
+        ]
+      }
+    },
+    "/classes/{class_id}/roll-call/{entry_id}/approve": {
+      "post": {
+        "description": "It must fit the class's approved sessions now (409 with the reasons otherwise). The\nStudent then joins as any addition does: linked or emailed to onboard, and invited to\nthe approved sessions. Audited.  **schedule:approve**",
+        "operationId": "approveRollCallAddition",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "class_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Class Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "entry_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Entry Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdditionDecisionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Approve a roll-call addition that did not fit",
+        "tags": [
+          "classes"
+        ]
+      }
+    },
+    "/classes/{class_id}/roll-call/{entry_id}/reject": {
+      "post": {
+        "description": "It is removed, with the reason, which the class's lead sees. Audited.  **schedule:approve**",
+        "operationId": "rejectRollCallAddition",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "class_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Class Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "entry_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Entry Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdditionRejectIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdditionDecisionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Reject a roll-call addition that did not fit",
         "tags": [
           "classes"
         ]
@@ -44506,6 +45093,33 @@
         ]
       }
     },
+    "/schedule/approvals": {
+      "get": {
+        "description": "The caller's tenant's class sessions awaiting approval, soonest first, each with\nwhether it fits now and the next free slot when it does not (ADR 0014 \u00a716).",
+        "operationId": "approval_queue_schedule_approvals_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalQueueOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Class sessions awaiting approval",
+        "tags": [
+          "scheduling"
+        ]
+      }
+    },
     "/schedule/capacity": {
       "get": {
         "description": "Return current usable capacity minus all scheduled/active event reservations.",
@@ -44731,7 +45345,7 @@
         ]
       },
       "post": {
-        "description": "Book a session. Refused with 409 when its range or instructor is already booked\nthen. One that does not fit the cluster is refused with 409 (policy `block`) or\ncreated with warnings (policy `warn`). A draft holds nothing and is checked when it\nis scheduled. A booking that overlaps a maintenance window is made, with\n`maintenance_warnings`: the clock does not build its range while a window covers it.",
+        "description": "Book a session. Refused with 409 when its range or instructor is already booked\nthen. One that does not fit the cluster is refused with 409 (policy `block`) or\ncreated with warnings (policy `warn`). A draft holds nothing and is checked when it\nis scheduled. A booking that overlaps a maintenance window is made, with\n`maintenance_warnings`: the clock does not build its range while a window covers it.\n\nA session of a class (`class_id`, ADR 0014 \u00a714) is booked `pending_approval` instead:\nonly the class's lead or an admin books it, its course is the class's, it is not checked\nand holds nothing until an approver (`schedule:approve`) approves it, and nobody is\ninvited until then. Bookings with no class stay self-service.",
         "operationId": "create_event_schedule_events_post",
         "requestBody": {
           "content": {
@@ -44862,7 +45476,7 @@
         ]
       },
       "put": {
-        "description": "Reschedule or resize a draft or scheduled booking (409 once it is being built).",
+        "description": "Reschedule or resize a draft, pending or scheduled booking (409 once it is being built).\n\nA class session awaiting approval is changed without any check (it holds nothing); an\nopen proposal for it lapses when its time changes. An approved class session that moves\nor changes size, range or instructor goes back to awaiting approval (ADR 0014 \u00a714): it\nstops holding anything and its invites are withdrawn until it is approved again.",
         "operationId": "update_event_schedule_events__event_id__put",
         "parameters": [
           {
@@ -44966,6 +45580,54 @@
         ]
       }
     },
+    "/schedule/events/{event_id}/approve": {
+      "post": {
+        "description": "pending_approval -> scheduled, checked again now under the booking lock. 409 with\n``{message, reasons, next_free}`` when it is double-booked or (policy ``block``) does not\nfit. Only now are the invites sent: to its instructor and its class's roll call.",
+        "operationId": "approve_event_schedule_events__event_id__approve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event_id",
+            "required": true,
+            "schema": {
+              "title": "Event Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Approve a class session",
+        "tags": [
+          "scheduling"
+        ]
+      }
+    },
     "/schedule/events/{event_id}/cancel": {
       "post": {
         "description": "Any state before completed -> cancelled. The row stays as history.",
@@ -45062,9 +45724,288 @@
         ]
       }
     },
+    "/schedule/events/{event_id}/next-free": {
+      "get": {
+        "description": "Whether the booking fits where it is, and the first slot of its length, on a\n15-minute grid from ``after``, where it would: no double booking and room for its\ndemand, its build lead and teardown grace included. Searches 14 days\n(``SCHEDULER_NEXT_FREE_DAYS``).",
+        "operationId": "next_free_schedule_events__event_id__next_free_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event_id",
+            "required": true,
+            "schema": {
+              "title": "Event Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Search from here (default: the booking's own start)",
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Search from here (default: the booking's own start)",
+              "title": "After"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FitOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Does a booking fit; the next free slot",
+        "tags": [
+          "scheduling"
+        ]
+      }
+    },
+    "/schedule/events/{event_id}/proposal/accept": {
+      "post": {
+        "description": "The session's instructor (or an admin) takes the approver's time. Checked again under\nthe booking lock (409 with the next free slot when it no longer fits); it then moves and\nis approved, and its invites go out.",
+        "operationId": "accept_proposal_schedule_events__event_id__proposal_accept_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event_id",
+            "required": true,
+            "schema": {
+              "title": "Event Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Accept the proposed time",
+        "tags": [
+          "scheduling"
+        ]
+      }
+    },
+    "/schedule/events/{event_id}/proposal/decline": {
+      "post": {
+        "description": "The session stays pending at its own time, for the approver to decide.",
+        "operationId": "decline_proposal_schedule_events__event_id__proposal_decline_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event_id",
+            "required": true,
+            "schema": {
+              "title": "Event Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Decline the proposed time",
+        "tags": [
+          "scheduling"
+        ]
+      }
+    },
+    "/schedule/events/{event_id}/propose": {
+      "post": {
+        "description": "The time must fit now (409 with the next free slot otherwise). The session stays\npending, holding nothing, until its instructor accepts or declines.",
+        "operationId": "propose_time_schedule_events__event_id__propose_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event_id",
+            "required": true,
+            "schema": {
+              "title": "Event Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProposeIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Propose another time for a class session",
+        "tags": [
+          "scheduling"
+        ]
+      }
+    },
+    "/schedule/events/{event_id}/reject": {
+      "post": {
+        "description": "pending_approval -> rejected, with a reason the instructor sees. Nothing was sent, so\nnothing is withdrawn.",
+        "operationId": "reject_event_schedule_events__event_id__reject_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event_id",
+            "required": true,
+            "schema": {
+              "title": "Event Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RejectIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Reject a class session",
+        "tags": [
+          "scheduling"
+        ]
+      }
+    },
     "/schedule/events/{event_id}/schedule": {
       "post": {
-        "description": "draft -> scheduled, checked for conflicts and capacity exactly as a new booking.",
+        "description": "draft -> scheduled, checked for conflicts and capacity exactly as a new booking. A\nclass session's draft goes to pending_approval instead, unchecked; one already pending\nstays so (only an approver schedules it).",
         "operationId": "schedule_event_schedule_events__event_id__schedule_post",
         "parameters": [
           {

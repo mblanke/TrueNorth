@@ -17,6 +17,7 @@ from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from ..auth import CurrentUser, get_current_user
+from ..classes import sessions
 from ..db import get_db
 from ..models import Exercise, ExerciseState
 from ..rbac import (
@@ -27,7 +28,7 @@ from ..rbac import (
     user_has_permission,
 )
 from ..tenancy import get_owned, tenant_uuid
-from . import calendar_backends, clock, feed, invites, lifecycle, service
+from . import approval, calendar_backends, clock, feed, invites, lifecycle, service
 from .capacity import PROVISION_LEAD, TEARDOWN_GRACE, Resources, available, get_capacity_provider
 from .models import EventState, ScheduledEvent
 from .schemas import (
@@ -43,6 +44,7 @@ from .schemas import (
     PolicyOut,
     TimelineOut,
     UtcDateTime,
+    as_utc,
 )
 from .service import to_out as _to_out
 
@@ -184,7 +186,7 @@ def list_events(
         q = q.filter(ScheduledEvent.start_time < end)
     total = q.count()
     events = q.offset(offset).limit(limit).all()
-    return {"items": [_to_out(e) for e in events], "total": total}
+    return {"items": service.outs(db, events), "total": total}
 
 
 @router.post(
@@ -200,12 +202,24 @@ def create_event(
     then. One that does not fit the cluster is refused with 409 (policy `block`) or
     created with warnings (policy `warn`). A draft holds nothing and is checked when it
     is scheduled. A booking that overlaps a maintenance window is made, with
-    `maintenance_warnings`: the clock does not build its range while a window covers it."""
+    `maintenance_warnings`: the clock does not build its range while a window covers it.
+
+    A session of a class (`class_id`, ADR 0014 §14) is booked `pending_approval` instead:
+    only the class's lead or an admin books it, its course is the class's, it is not checked
+    and holds nothing until an approver (`schedule:approve`) approves it, and nobody is
+    invited until then. Bookings with no class stay self-service."""
     _check_times(body)
     service.serialize_bookings(db)
+    cls = sessions.class_for_booking(db, user, body.class_id) if body.class_id else None
     range_id = service.resolve_range(db, user, body.range_id)
     instructor_id = service.resolve_instructor(db, user, body.instructor_id)
-    course_id = service.resolve_course(db, user, body.course_id)
+    if cls is not None and not body.instructor_id:
+        instructor_id = cls.lead_instructor_id  # the class's lead teaches it unless another is named
+    if cls is not None:
+        sessions.assert_class_teacher(db, cls, instructor_id)
+    course_id = _class_course(db, user, cls, body.course_id)
+    if cls is None and not body.draft:
+        _refuse_class_course(db, user, course_id, body.start_time, body.end_time)
     scenario_id = service.resolve_scenario(db, user, body.scenario_id)
     exercise_id, range_id = service.resolve_exercise(db, user, body.exercise_id, range_id)
     _check_bookable_exercise(db, user, exercise_id)
@@ -213,12 +227,15 @@ def create_event(
         service.resolve_range(db, user, str(range_id))  # an exercise's range must still be buildable
     typed = Resources(body.vcpu_total, body.ram_mb_total, body.disk_gb_total)
     demand = service.demand_for(db, user, body.template_id, typed, body.vm_count)
-    warnings = [] if body.draft else _admit(db, body, demand.resources, range_id, instructor_id)
+    # Nothing is checked or held for a class session until an approver acts (ADR 0014 §15).
+    warnings = [] if body.draft or cls else _admit(db, body, demand.resources, range_id, instructor_id)
+    approved = EventState.pending_approval if cls else EventState.scheduled
+    state = EventState.draft if body.draft else approved
 
     evt = ScheduledEvent(
         name=body.name,
         description=body.description,
-        state=EventState.draft if body.draft else EventState.scheduled,
+        state=state,
         tenant_id=tenant_uuid(user),
         range_id=range_id,
         template_id=uuid.UUID(body.template_id) if body.template_id else None,
@@ -238,12 +255,45 @@ def create_event(
     db.add(evt)
     db.flush()
     service.audit(db, user, "create", str(evt.id), evt.state.value)
+    if cls is not None:
+        sessions.link(db, cls, evt, user)
+        approval.request(db, user, evt)
+        service.audit(db, user, "approval_requested", str(evt.id), f"a session of class {cls.name} ({cls.id})")
     _audit_warnings(db, user, evt, warnings)
     db.commit()
     db.refresh(evt)
     if evt.state == EventState.scheduled:
         _announce(background, db, evt, "REQUEST")
-    return _to_out(evt, warnings, service.maintenance_warnings(db, evt))
+    return service.out(db, evt, warnings, service.maintenance_warnings(db, evt))
+
+
+def _refuse_class_course(
+    db: Session, user: CurrentUser, course_id: uuid.UUID | None, start: datetime, end: datetime
+) -> None:
+    """A booking of a course while one of its open classes runs is, in substance, that
+    class's session (ADR 0014 §14: every class booking needs approval). Booked without the
+    class it would skip the approver and invite the course's whole enrolment instead of
+    the roll call: 422, book it as the class's session. Approvers (schedule:approve) may
+    still book it plainly; they would approve it anyway."""
+    if course_id is None or user_has_permission(user, Permission.SCHEDULE_APPROVE):
+        return
+    # Class dates are calendar days, compared in UTC: there is no site or tenant time zone yet.
+    running = sessions.class_running_course(db, tenant_uuid(user), course_id, as_utc(start), as_utc(end))
+    if running is not None:
+        # The class is not named: the caller may not be on it, and a class is visible only
+        # to its own people (ADR 0014 §5).
+        raise HTTPException(
+            422, "This course has an open class then; book its sessions from the class (they need approval)"
+        )
+
+
+def _class_course(db: Session, user: CurrentUser, cls, course_id: str | None) -> uuid.UUID | None:
+    """A class session's course is its class's; naming another is 422."""
+    if cls is None:
+        return service.resolve_course(db, user, course_id)
+    if course_id and str(course_id) != str(cls.course_id):
+        raise HTTPException(422, "A class session's course is its class's course")
+    return cls.course_id
 
 
 def _announce(
@@ -345,8 +395,16 @@ def _changeable(db: Session, event_id: str, user: CurrentUser) -> ScheduledEvent
     else, because a booking is what gives an instructor authority over their class
     (app/class_setup/scope.py) and cancelling, completing or rescheduling it would hand that
     class to whoever books next. A booking with no instructor, or your own, stays yours to
-    change."""
+    change.
+
+    A class session follows its class, not its instructor (ADR 0014 §8): its lead or an
+    admin of its tenant changes it (and schedule:admin), nobody else, not even an
+    instructor it names who is no longer the lead."""
     evt = _owned(db, event_id, user)
+    if sessions.class_of(db, evt) is not None:
+        if not (sessions.edits_class_of(db, evt, user) or user_has_permission(user, Permission.SCHEDULE_ADMIN)):
+            raise HTTPException(403, "Only the class's lead instructor or an admin changes its sessions")
+        return evt
     if (
         evt.instructor_id is not None
         and evt.instructor_id != service.user_uuid(user)
@@ -359,7 +417,7 @@ def _changeable(db: Session, event_id: str, user: CurrentUser) -> ScheduledEvent
 @router.get("/events/{event_id}", response_model=EventOut, summary="Get a scheduled event")
 def get_event(event_id: str, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)):
     evt = _owned(db, event_id, user)
-    return _to_out(evt, maintenance=service.maintenance_warnings(db, evt))
+    return service.out(db, evt, maintenance=service.maintenance_warnings(db, evt))
 
 
 @router.put("/events/{event_id}", response_model=EventOut, summary="Update a scheduled event", dependencies=_WRITE)
@@ -370,30 +428,45 @@ def update_event(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ):
-    """Reschedule or resize a draft or scheduled booking (409 once it is being built)."""
+    """Reschedule or resize a draft, pending or scheduled booking (409 once it is being built).
+
+    A class session awaiting approval is changed without any check (it holds nothing); an
+    open proposal for it lapses when its time changes. An approved class session that moves
+    or changes size, range or instructor goes back to awaiting approval (ADR 0014 §14): it
+    stops holding anything and its invites are withdrawn until it is approved again."""
     _check_times(body)
     service.serialize_bookings(db)
     evt = _changeable(db, event_id, user)
     lifecycle.lock_editable(db, evt)
+    sessions.assert_same_class(db, evt, body.class_id)
+    cls = sessions.class_of(db, evt)
     range_id = service.resolve_range(db, user, body.range_id)
     scenario_id = service.resolve_scenario(db, user, body.scenario_id)
     exercise_id, range_id = service.resolve_exercise(db, user, body.exercise_id, range_id)
     instructor_id = (
         service.resolve_instructor(db, user, body.instructor_id) if body.instructor_id else evt.instructor_id
     )
-    _check_handover(user, evt, instructor_id)
+    if cls is not None:
+        # Its lead or an admin (``_changeable``) picks among the class's own teachers.
+        if instructor_id != evt.instructor_id:
+            sessions.assert_class_teacher(db, cls, instructor_id)
+    else:
+        _check_handover(user, evt, instructor_id)
     if exercise_id != evt.exercise_id:
         _check_bookable_exercise(db, user, exercise_id)
     typed = Resources(body.vcpu_total, body.ram_mb_total, body.disk_gb_total)
     demand = service.demand_for(db, user, body.template_id, typed, body.vm_count)
-    warnings = (
-        []
-        if evt.state == EventState.draft
-        else _admit(db, body, demand.resources, range_id, instructor_id, exclude_id=evt.id)
-    )
+    template_id = uuid.UUID(body.template_id) if body.template_id else None
+    held_change = _held_change(evt, body, demand, range_id, template_id, instructor_id)
+    reapprove = cls is not None and evt.state == EventState.scheduled and bool(held_change)
+    unchecked = evt.state in (EventState.draft, EventState.pending_approval) or reapprove
+    warnings = [] if unchecked else _admit(db, body, demand.resources, range_id, instructor_id, exclude_id=evt.id)
 
+    previous_state = evt.state
     previous_instructor, previous_course = evt.instructor_id, evt.course_id
-    course_id = service.resolve_course(db, user, body.course_id)
+    course_id = _class_course(db, user, cls, body.course_id)
+    if cls is None and evt.state != EventState.draft and (course_id != evt.course_id or "time" in held_change):
+        _refuse_class_course(db, user, course_id, body.start_time, body.end_time)
     if not _same_instant(evt.start_time, body.start_time):
         evt.reminded_at = None  # moved: remind again for the new time
     evt.name = body.name
@@ -405,27 +478,49 @@ def update_event(
     evt.ram_mb_total = demand.resources.ram_mb
     evt.disk_gb_total = demand.resources.disk_gb
     evt.range_id = range_id
-    evt.template_id = uuid.UUID(body.template_id) if body.template_id else None
+    evt.template_id = template_id
     evt.instructor_id = instructor_id
     evt.course_id = course_id
     evt.scenario_id = scenario_id
     evt.exercise_id = exercise_id
     if "require_certified_range" in body.model_fields_set:  # a form that does not send it keeps it
         evt.require_certified_range = body.require_certified_range
-    if evt.state != EventState.draft:  # a draft was never sent to a calendar
+    if evt.state not in lifecycle.UNSENT:  # a draft or a pending session was never sent to a calendar
         evt.sequence = (evt.sequence or 0) + 1  # calendars replace their copy
     detail = (
         f"instructor {previous_instructor or 'none'} -> {instructor_id or 'none'}"
         if previous_instructor != instructor_id
         else ""
     )
+    if evt.state == EventState.pending_approval and held_change and approval.withdraw_proposal(db, evt):
+        detail = "; ".join(filter(None, [detail, "the proposed time lapsed"]))
     service.audit(db, user, "update", str(evt.id), detail)
+    if reapprove:
+        approval.back_to_approval(db, user, evt, ", ".join(held_change))
     _audit_warnings(db, user, evt, warnings)
     db.commit()
     db.refresh(evt)
     if evt.state == EventState.scheduled:  # an updated invite: same UID, higher SEQUENCE
         _announce(background, db, evt, "REQUEST", previous_instructor, previous_course)
-    return _to_out(evt, warnings, service.maintenance_warnings(db, evt))
+    elif reapprove and previous_state == EventState.scheduled:  # not confirmed any more
+        _announce(background, db, evt, "CANCEL", previous_instructor, previous_course)
+    return service.out(db, evt, warnings, service.maintenance_warnings(db, evt))
+
+
+def _held_change(evt: ScheduledEvent, body: EventIn, demand, range_id, template_id, instructor_id) -> list[str]:
+    """What an edit changes that a booking holds: its time, size, range or instructor."""
+    out = []
+    if not (_same_instant(evt.start_time, body.start_time) and _same_instant(evt.end_time, body.end_time)):
+        out.append("time")
+    if (evt.vcpu_total, evt.ram_mb_total, evt.disk_gb_total) != (
+        demand.resources.vcpu, demand.resources.ram_mb, demand.resources.disk_gb
+    ) or evt.template_id != template_id:
+        out.append("size")
+    if evt.range_id != range_id:
+        out.append("range")
+    if evt.instructor_id != instructor_id:
+        out.append("instructor")
+    return out
 
 
 @router.post("/events/{event_id}/schedule", response_model=EventOut, summary="Schedule a draft", dependencies=_WRITE)
@@ -435,11 +530,18 @@ def schedule_event(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ):
-    """draft -> scheduled, checked for conflicts and capacity exactly as a new booking."""
+    """draft -> scheduled, checked for conflicts and capacity exactly as a new booking. A
+    class session's draft goes to pending_approval instead, unchecked; one already pending
+    stays so (only an approver schedules it)."""
     service.serialize_bookings(db)
     evt = _changeable(db, event_id, user)
     warnings: list[str] = []
+    if service.needs_approval(db, evt):
+        if evt.state in (EventState.pending_approval, EventState.scheduled):
+            return service.out(db, evt)
+        return _move(db, user, evt, EventState.pending_approval)
     if evt.state == EventState.draft:
+        _refuse_class_course(db, user, evt.course_id, evt.start_time, evt.end_time)
         service.resolve_range(db, user, str(evt.range_id) if evt.range_id else None)  # still buildable?
         need = Resources(evt.vcpu_total, evt.ram_mb_total, evt.disk_gb_total)
         warnings = _admit(db, evt, need, evt.range_id, evt.instructor_id, exclude_id=evt.id)
@@ -514,10 +616,10 @@ def _move(
         # invited to is called off. Drafts were never sent.
         if to == EventState.scheduled:
             _announce(background, db, evt, "REQUEST")
-        elif to == EventState.cancelled and before != EventState.draft.value:
+        elif to == EventState.cancelled and before not in {s.value for s in lifecycle.UNSENT}:
             _announce(background, db, evt, "CANCEL")
-    holding = evt.state in (EventState.draft, EventState.scheduled)
-    return _to_out(evt, warnings, service.maintenance_warnings(db, evt) if holding else None)
+    holding = evt.state in lifecycle.EDITABLE
+    return service.out(db, evt, warnings, service.maintenance_warnings(db, evt) if holding else None)
 
 
 @router.post(

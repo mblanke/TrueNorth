@@ -158,23 +158,34 @@ _Avoid_: repo server, proxy (alone).
 
 **Class** (ADR 0014):
 One running of a course for a named group, e.g. "C201-26-03", in one tenant. It has a lead
-instructor, assistant instructors, observers, a **roll call**, dates and (planned) its
-**class sessions** (`Class` in `control-plane/api/app/classes/models.py`). Only its lead or an
-admin changes it; it is cancelled, never deleted. Until sessions are built, its bookings are
-not linked to it (see **Teaches**).
+instructor, assistant instructors, observers, a **roll call**, dates and its **class
+sessions** (`Class` in `control-plane/api/app/classes/models.py`). Only its lead or an admin
+changes it; it is cancelled, never deleted. A booking made without naming the class is not
+linked to it (see **Teaches**).
 _Not to be confused with_: course (the content a class teaches), cohort (free text on the
 registration form, with no link to a class).
 
 **Roll call** (ADR 0014):
 The Students on a class, by email (`RollCallEntry`, `app/classes/models.py`; statuses invited,
-signed_in, ready, removed). Being on it is approval to join: a roll-call Student's first AD
+signed_in, ready, removed, and pending: added after the sessions were approved with no room
+left, waiting for an approver). Being on it is approval to join: a roll-call Student's first AD
 sign-in with a verified email admits them (`app/classes/onboarding.py`). A class is visible
 only to its roll call, instructors, observers and admins.
 _Avoid_: roster (in the UI), attendees.
 
-**Class session** (planned, ADR 0014):
-One calendar booking of a class. It is *individual* (every Student gets their own small range;
-blue on the calendar) or *collective* (one shared range for an **Exercise**; orange).
+**Class session** (ADR 0014):
+One calendar booking of a class (`ClassSession` links a `Class` to a `ScheduledEvent`,
+`app/classes/sessions.py`). Booked by the class's lead; it waits for **approval** and holds
+nothing until then. Its invites and reminders go to the roll call. It will be *individual*
+(every Student gets their own small range; blue on the calendar) or *collective* (one shared
+range for an **Exercise**; orange) (#282).
+
+**Approval** (of a class session, ADR 0014 §14-16):
+An admin or range ops (`schedule:approve`) approves a class session, rejects it with a reason,
+or proposes another time that its instructor accepts or declines
+(`app/scheduler/approval.py`). The booking is `pending_approval` until then: no capacity,
+range or instructor held, no clock, no invites. Approving re-checks conflicts and capacity.
+_Not to be confused with_: registration approval (Request access), roll-call admission.
 
 **Acknowledgement** (ADR 0014 §3, #279):
 The rules of use everyone signs on first sign-in, whenever the version changes, and yearly.
@@ -214,7 +225,8 @@ _Not to be confused with_: range template.
 **Booking**:
 A scheduled, capacity-reserving slot on the calendar for a class, with its instructor,
 course and range or template (`ScheduledEvent` in
-`control-plane/api/app/scheduler/models.py`). ADR 0004, 0006.
+`control-plane/api/app/scheduler/models.py`). ADR 0004, 0006. A plain booking is
+self-service; a **class session** needs **approval** first (ADR 0014 §14).
 _Avoid_: reservation, event (in user-facing text).
 _Not to be confused with_: lab session, which is launched on demand.
 

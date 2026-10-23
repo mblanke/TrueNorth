@@ -55,6 +55,7 @@ def _takes_part(db: Session, user: CurrentUser, rng: Range) -> bool:
     later exercise there. Now a booking counts only while it overlaps an active exercise's
     window: started_at to completed_at, or to now while it runs. (Detection submission,
     ``exercise_participants.roster_courses``, does not apply a time window yet.)"""
+    from .classes.sessions import all_session_ids
     from .scheduler.models import EventState, ScheduledEvent
 
     exercises = db.query(Exercise.id, Exercise.started_at, Exercise.completed_at).filter(
@@ -68,7 +69,9 @@ def _takes_part(db: Session, user: CurrentUser, rng: Range) -> bool:
     bookings = db.query(ScheduledEvent.course_id).filter(
         ScheduledEvent.tenant_id == rng.tenant_id,
         ScheduledEvent.course_id.isnot(None),
-        ScheduledEvent.state != EventState.cancelled,
+        ScheduledEvent.state.notin_((EventState.cancelled, EventState.rejected, EventState.pending_approval)),
+        # A class session counts once it is real: never as a draft (ADR 0014 §15).
+        or_(ScheduledEvent.state != EventState.draft, ScheduledEvent.id.notin_(all_session_ids())),
         or_(ScheduledEvent.exercise_id.in_([eid for eid, _, _ in exercises]), ScheduledEvent.range_id == rng.id),
     )
     if bookings.first() is None:

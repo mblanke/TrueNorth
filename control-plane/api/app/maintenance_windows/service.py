@@ -213,6 +213,29 @@ def booking_warnings(
     ]
 
 
+def booking_spans(
+    db: Session,
+    *,
+    tenant_id: uuid.UUID,
+    range_id: uuid.UUID | None,
+    template_id: uuid.UUID | None,
+    start: datetime,
+    end: datetime,
+) -> list[tuple[datetime, datetime]]:
+    """The spans of the windows over [start, end) that would hold a booking's range (the
+    scheduler's next free slot steps around them)."""
+    start, end = utc(start), utc(end)
+    if range_id is not None:
+        # tenant-safe: a booking's range, resolved in the caller's tenant (scheduler.service.resolve_range).
+        rng = db.get(Range, range_id)
+        template_id = rng.template_id if rng is not None else template_id
+    hit = _covering(
+        _candidates(db, tenant_id, start, end),
+        tenant_id=tenant_id, range_id=range_id, tags=_range_tags_loader(db, template_id),
+    )
+    return [(utc(w.starts_at), utc(w.ends_at)) for w in hit]
+
+
 def provision_blocked(
     db: Session, *, tenant_id: uuid.UUID, range_id: uuid.UUID | None, at: datetime | None = None
 ) -> MaintenanceWindow | None:

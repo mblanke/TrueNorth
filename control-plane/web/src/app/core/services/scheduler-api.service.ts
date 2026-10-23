@@ -16,6 +16,8 @@ export type FeedIssued = S['FeedTokenIssued'];
 export type FeedStatus = S['FeedTokenStatus'];
 export type MySession = S['MySessionOut'];
 export type CourseOption = S['CourseListOut'];
+export type ApprovalItem = S['ApprovalItemOut'];
+export type Fit = S['FitOut'];
 
 /**
  * The scheduler's HTTP contract (docs/adr/0004-scheduler-module.md), typed from the
@@ -44,6 +46,33 @@ export class SchedulerApiService {
   }
   cancel(id: string): Observable<Booking> {
     return this.http.post<Booking>(`${this.base}/events/${id}/cancel`, {});
+  }
+
+  // ── Class-session approval (ADR 0014 §14-16) ─────────────
+  /** The tenant's class sessions awaiting approval, with fit and next free slot (schedule:approve). */
+  approvals(): Observable<S['ApprovalQueueOut']> {
+    return this.http.get<S['ApprovalQueueOut']>(`${this.base}/approvals`);
+  }
+  approve(id: string): Observable<Booking> {
+    return this.http.post<Booking>(`${this.base}/events/${id}/approve`, {});
+  }
+  reject(id: string, reason: string): Observable<Booking> {
+    return this.http.post<Booking>(`${this.base}/events/${id}/reject`, { reason });
+  }
+  propose(id: string, start: Date, end: Date): Observable<Booking> {
+    return this.http.post<Booking>(`${this.base}/events/${id}/propose`, {
+      start_time: start.toISOString(), end_time: end.toISOString(),
+    });
+  }
+  /** The session's instructor takes the proposed time: re-checked, moved and approved. */
+  acceptProposal(id: string): Observable<Booking> {
+    return this.http.post<Booking>(`${this.base}/events/${id}/proposal/accept`, {});
+  }
+  declineProposal(id: string): Observable<Booking> {
+    return this.http.post<Booking>(`${this.base}/events/${id}/proposal/decline`, {});
+  }
+  nextFree(id: string): Observable<Fit> {
+    return this.http.get<Fit>(`${this.base}/events/${id}/next-free`);
   }
 
   /** Your own upcoming sessions: ones you teach, or for a Student, your courses'. */

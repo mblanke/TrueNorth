@@ -41,10 +41,29 @@ class EventIn(BaseModel):
         None, description="Run this scenario: a pending exercise is created when the range is built"
     )
     exercise_id: str | None = Field(None, description="Use this existing exercise (and its range) instead")
+    class_id: str | None = Field(
+        None,
+        description="A session of this class (ADR 0014 §14): it waits for an approver, holds nothing until "
+        "approved, and its roll call attends. Set when the session is booked; it cannot change",
+    )
     draft: bool = Field(False, description="Create as a draft: holds nothing and is not checked until scheduled")
     require_certified_range: bool = Field(
         False, description="Require a certified range (ADR 0013 §6). Stored; not enforced until isolation "
                            "evidence (range certification S4) exists")
+
+
+class ApprovalOut(BaseModel):
+    """A class session's approval (ADR 0014 §14-16). The booking's state says where it is."""
+
+    requested_by: str | None = None
+    requested_at: datetime | None = None
+    proposed_start_time: datetime | None = Field(None, description="An approver's proposed time, until accepted or declined")
+    proposed_end_time: datetime | None = None
+    proposed_by: str | None = None
+    proposed_at: datetime | None = None
+    decided_by: str | None = Field(None, description="Who approved or rejected it")
+    decided_at: datetime | None = None
+    reason: str | None = Field(None, description="Why it was rejected")
 
 
 class EventOut(BaseModel):
@@ -74,6 +93,9 @@ class EventOut(BaseModel):
     # Maintenance windows its build-to-end span overlaps (ADR 0013 §7): the booking stands,
     # but the clock does not build its range while a window covers it.
     maintenance_warnings: list[str] = []
+    # A class session (ADR 0014 §14): its class, and its approval.
+    class_id: str | None = None
+    approval: ApprovalOut | None = None
 
     class Config:
         from_attributes = True
@@ -168,3 +190,39 @@ class MySessionOut(BaseModel):
     state: str
     start_time: datetime
     end_time: datetime
+
+
+class SlotOut(BaseModel):
+    start_time: datetime
+    end_time: datetime
+
+
+class FitOut(BaseModel):
+    """Whether a booking fits where it is asked for, and the next slot where it would."""
+
+    fits: bool
+    reasons: list[str] = Field(default_factory=list, description="Double bookings, then one per short resource")
+    next_free: SlotOut | None = Field(None, description="The first slot from the asked-for start that fits; none "
+                                                       "within the search horizon")
+    searched_until: datetime
+
+
+class ApprovalItemOut(BaseModel):
+    """One class session awaiting approval, as the approver's queue shows it."""
+
+    event: EventOut
+    class_name: str | None = None
+    fit: FitOut
+
+
+class ApprovalQueueOut(BaseModel):
+    items: list[ApprovalItemOut]
+
+
+class RejectIn(BaseModel):
+    reason: str = Field(..., min_length=1, max_length=1000, description="Shown to the instructor")
+
+
+class ProposeIn(BaseModel):
+    start_time: UtcDateTime
+    end_time: UtcDateTime

@@ -13,7 +13,15 @@ GET    /classes/{id}/roll-call                       its lead, assistants, obser
 POST   /classes/{id}/roll-call                       its lead or an admin: emails or pasted text
 POST   /classes/{id}/roll-call/csv                   its lead or an admin: a CSV upload
 DELETE /classes/{id}/roll-call/{entry_id}            its lead or an admin: marks it removed
+GET    /classes/pending-additions                    schedule:approve: additions that did not fit
+POST   /classes/{id}/roll-call/{entry_id}/approve    schedule:approve: puts it on the roll call
+POST   /classes/{id}/roll-call/{entry_id}/reject     schedule:approve: removes it, with a reason
 ===================================================  ==========================================
+
+After a class's sessions are approved (ADR 0014 §17), taking a Student off is always
+allowed; adding one is automatic while the approved sessions have room for one more seat,
+and otherwise waits for an approver (status ``pending``). Students joining or leaving then
+get, or lose, the approved sessions' calendar invites.
 
 Another tenant's class, or one the caller has no part in, is not found (404). Visibility
 and roles are decided in ``access``; the roll-call rules in ``service``.
@@ -23,30 +31,36 @@ from __future__ import annotations
 
 import logging
 import uuid
+from contextlib import contextmanager
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, UploadFile
 from fastapi.responses import Response
 from sqlalchemy import func
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.orm import Session
 
 from ..auth import CurrentUser, get_current_user
 from ..db import get_db
 from ..models import AuditLog, Course, User
 from ..rbac import Permission, require_permission
+from ..scheduler import service as scheduler
 from ..tenancy import tenant_uuid
-from . import access, service
+from . import access, service, sessions
 from .models import Class, ClassStaff, ClassStatus, RollCallEntry, RollCallSettings, RollCallStatus
 from .schemas import (
+    AdditionDecisionOut,
+    AdditionRejectIn,
     ClassIn,
     ClassOut,
     ClassPerson,
     ClassRole,
+    PendingAdditionOut,
     RollCallAddIn,
     RollCallAddOut,
     RollCallDomainsIn,
     RollCallDomainsOut,
     RollCallEntryOut,
+    RollCallRefusal,
 )
 
 logger = logging.getLogger("truenorth.api.classes.router")
@@ -57,6 +71,7 @@ router = APIRouter(prefix="/classes", tags=["classes"])
 # an instructor or admin, who hold class:create; assistants and observers hold class:read.
 _CHANGE = require_permission(Permission.CLASS_CREATE)
 _STAFF_READ = require_permission(Permission.CLASS_READ)
+_APPROVE = require_permission(Permission.SCHEDULE_APPROVE)
 
 
 def _person(u: User | None, *, with_email: bool) -> ClassPerson | None:
@@ -85,7 +100,7 @@ def _outs(db: Session, classes: list[Class], user: CurrentUser) -> list[ClassOut
     )
     counts = dict(
         db.query(RollCallEntry.class_id, func.count(RollCallEntry.id))
-        .filter(RollCallEntry.class_id.in_(ids), RollCallEntry.status != RollCallStatus.removed.value)
+        .filter(RollCallEntry.class_id.in_(ids), RollCallEntry.status.notin_(service.OFF_ROLL_CALL))
         .group_by(RollCallEntry.class_id)
         .all()
     )
@@ -122,6 +137,7 @@ def _entry_out(e: RollCallEntry, names: dict[uuid.UUID, str]) -> RollCallEntryOu
         id=e.id, email=e.email, user_id=e.user_id, display_name=names.get(e.user_id) if e.user_id else None,
         status=e.status, onboarding_sent_at=e.onboarding_sent_at, reminded_at=e.reminded_at,
         signed_in_at=e.signed_in_at, removed_at=e.removed_at, created_at=e.created_at,
+        pending_reason=e.pending_reason,
     )
 
 
@@ -131,6 +147,24 @@ def _names(db: Session, entries: list[RollCallEntry], tenant_id: uuid.UUID) -> d
         return {}
     rows = db.query(User.id, User.display_name).filter(User.id.in_(ids), User.tenant_id == tenant_id).all()
     return {uid: name for uid, name in rows}
+
+
+# PostgreSQL: deadlock_detected, serialization_failure, lock_not_available.
+_RETRYABLE = {"40P01", "40001", "55P03"}
+
+
+@contextmanager
+def _lock_conflicts(db: Session):
+    """A roll-call change that lost a lock race (a deadlock or serialization failure on
+    PostgreSQL) is 409, try again, never a 500."""
+    try:
+        yield
+    except DBAPIError as exc:
+        code = getattr(exc.orig, "sqlstate", None) or getattr(exc.orig, "pgcode", None)
+        if code not in _RETRYABLE:
+            raise
+        db.rollback()
+        raise HTTPException(409, "The roll call or the class's sessions changed at the same moment; try again") from None
 
 
 def _editable(db: Session, class_id: uuid.UUID, user: CurrentUser) -> Class:
@@ -230,6 +264,50 @@ def set_roll_call_domains(
     return RollCallDomainsOut(email_domains=body.email_domains, source="setting")
 
 
+@router.get(
+    "/pending-additions", response_model=list[PendingAdditionOut], operation_id="listPendingRollCallAdditions",
+    summary="Roll-call additions waiting for an approver",
+)
+def list_pending_additions(
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(_APPROVE),
+) -> list[PendingAdditionOut]:
+    """Students added after their class's sessions were approved, for whom there was no room
+    (ADR 0014 §17), in the caller's tenant.  **schedule:approve**"""
+    tid = tenant_uuid(user)
+    rows = (
+        db.query(RollCallEntry, Class)
+        .join(Class, Class.id == RollCallEntry.class_id)
+        .filter(
+            RollCallEntry.tenant_id == tid,
+            Class.tenant_id == tid,
+            RollCallEntry.status == RollCallStatus.pending.value,
+            Class.status == ClassStatus.open.value,
+        )
+        .order_by(RollCallEntry.created_at)
+        .limit(500)
+        .all()
+    )
+    counts = {}
+    if rows:
+        counts = dict(
+            db.query(RollCallEntry.class_id, func.count(RollCallEntry.id))
+            .filter(
+                RollCallEntry.class_id.in_({c.id for _, c in rows}),
+                RollCallEntry.status.notin_(service.OFF_ROLL_CALL),
+            )
+            .group_by(RollCallEntry.class_id)
+            .all()
+        )
+    return [
+        PendingAdditionOut(
+            entry_id=e.id, class_id=c.id, class_name=c.name, seats=1, roll_call_count=counts.get(c.id, 0),
+            reason=e.pending_reason, created_at=e.created_at,
+        )
+        for e, c in rows
+    ]
+
+
 @router.get("/{class_id}", response_model=ClassOut, operation_id="getClass", summary="One class")
 def get_class(
     class_id: uuid.UUID,
@@ -244,6 +322,7 @@ def get_class(
 def update_class(
     class_id: uuid.UUID,
     body: ClassIn,
+    background: BackgroundTasks,
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(_CHANGE),
 ) -> ClassOut:
@@ -255,7 +334,10 @@ def update_class(
     service.apply(db, cls, body, user)
     detail = cls.name if before == cls.lead_instructor_id else f"{cls.name}; lead {before} -> {cls.lead_instructor_id}"
     service.audit(db, user.id, cls, "class_update", detail)
+    # Sessions follow the class (ADR 0014 §8): anyone no longer teaching it loses them to the lead.
+    handed = sessions.realign_teachers(db, cls, user)
     db.commit()
+    background.add_task(scheduler.send_invites, handed)
     db.refresh(cls)
     # None when the caller just handed their class to another lead.
     return _out(db, cls, user)
@@ -267,16 +349,22 @@ def update_class(
 )
 def cancel_class(
     class_id: uuid.UUID,
+    background: BackgroundTasks,
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(_CHANGE),
 ):
     """Its lead or an admin. A class is history (who was invited, who joined), so it is
-    cancelled, not deleted (ADR 0010); it leaves the lists and no longer admits anyone."""
+    cancelled, not deleted (ADR 0010); it leaves the lists and no longer admits anyone. Its
+    sessions that have not started (drafts, awaiting approval, approved) are cancelled with
+    it, and the approved ones' invites are withdrawn; one under way is left to its
+    instructor."""
     cls = _editable(db, class_id, user)
     if cls.status != ClassStatus.cancelled.value:
         cls.status = ClassStatus.cancelled.value
         service.audit(db, user.id, cls, "class_cancel", cls.name)
+        cancels = scheduler.cancel_unstarted(db, user, sessions.session_ids(db, cls))
         db.commit()
+        background.add_task(scheduler.send_invites, cancels)
 
 
 # ── Roll call ──────────────────────────────────────────────────────────────
@@ -309,7 +397,8 @@ def _add(
     if cls.status != ClassStatus.open.value:
         raise HTTPException(409, "A cancelled class's roll call cannot change")
     try:
-        res = service.add_to_roll_call(db, cls, user, emails)
+        with _lock_conflicts(db):
+            res = service.add_to_roll_call(db, cls, user, emails)
         # tenant-safe: the class's own course.
         course = db.get(Course, cls.course_id)
         now = service._now()
@@ -317,16 +406,20 @@ def _add(
         for entry in res.to_onboard:
             entry.onboarding_sent_at = now
             mails.append(service.onboarding_mail(cls, course.name if course else "the course", entry.email))
+        # The approved sessions' invites, for the Students who just joined (ADR 0014 §17).
+        invites = scheduler.attendee_invites(db, res.sessions, [e.email for e in res.added], "REQUEST")
         db.commit()
     except IntegrityError:
         # Someone else added the same address to this roll call at the same moment.
         db.rollback()
         raise HTTPException(409, "The roll call changed while this was being added; reload and try again") from None
     background.add_task(service.send, mails)
+    background.add_task(scheduler.send_invites, invites)
     names = _names(db, res.added, cls.tenant_id)
     return RollCallAddOut(
         added=[_entry_out(e, names) for e in res.added], already_on_roll_call=res.already,
         invalid=invalid, refused=res.refused, not_emailed=res.not_emailed,
+        pending_approval=[RollCallRefusal(email=e.email, reason=e.pending_reason or "") for e in res.pending],
     )
 
 
@@ -372,10 +465,13 @@ async def import_roll_call_csv(
 def remove_from_roll_call(
     class_id: uuid.UUID,
     entry_id: uuid.UUID,
+    background: BackgroundTasks,
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(_CHANGE),
 ):
-    """Its lead or an admin. The entry is kept, marked removed; account and enrolment stay."""
+    """Its lead or an admin, at any time (ADR 0014 §17). The entry is kept, marked removed;
+    account and enrolment stay. Their seat in the approved sessions is freed and those
+    sessions' invites are withdrawn from them."""
     cls = _editable(db, class_id, user)
     entry = (
         db.query(RollCallEntry)
@@ -385,6 +481,79 @@ def remove_from_roll_call(
     if entry is None:
         raise HTTPException(404, "Roll-call entry not found")
     if entry.status != RollCallStatus.removed.value:
-        service.remove_from_roll_call(db, cls, entry, user)
+        freed = service.remove_from_roll_call(db, cls, entry, user)
+        cancels = scheduler.attendee_invites(db, freed, [entry.email], "CANCEL")
         db.commit()
+        background.add_task(scheduler.send_invites, cancels)
+
+
+# ── Additions waiting for an approver (ADR 0014 §17) ─────────────────────────
+
+
+def _pending_entry(
+    db: Session, class_id: uuid.UUID, entry_id: uuid.UUID, user: CurrentUser
+) -> tuple[Class, RollCallEntry]:
+    """For approvers, who need not be on the class: any class of their own tenant."""
+    tid = tenant_uuid(user)
+    cls = db.query(Class).filter(Class.id == class_id, Class.tenant_id == tid).first()
+    entry = None
+    if cls is not None:
+        entry = (
+            db.query(RollCallEntry)
+            .filter(RollCallEntry.id == entry_id, RollCallEntry.class_id == cls.id, RollCallEntry.tenant_id == tid)
+            .first()
+        )
+    if cls is None or entry is None:
+        raise HTTPException(404, "Roll-call entry not found")
+    return cls, entry
+
+
+@router.post(
+    "/{class_id}/roll-call/{entry_id}/approve", response_model=AdditionDecisionOut,
+    operation_id="approveRollCallAddition", summary="Approve a roll-call addition that did not fit",
+)
+def approve_roll_call_addition(
+    class_id: uuid.UUID,
+    entry_id: uuid.UUID,
+    background: BackgroundTasks,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(_APPROVE),
+) -> AdditionDecisionOut:
+    """It must fit the class's approved sessions now (409 with the reasons otherwise). The
+    Student then joins as any addition does: linked or emailed to onboard, and invited to
+    the approved sessions. Audited.  **schedule:approve**"""
+    cls, entry = _pending_entry(db, class_id, entry_id, user)
+    with _lock_conflicts(db):
+        decision = service.approve_addition(db, cls, entry, user)
+    mails = []
+    if decision.onboard:
+        # tenant-safe: the class's own course.
+        course = db.get(Course, cls.course_id)
+        entry.onboarding_sent_at = service._now()
+        mails.append(service.onboarding_mail(cls, course.name if course else "the course", entry.email))
+    invites = scheduler.attendee_invites(db, decision.sessions, [entry.email], "REQUEST")
+    db.commit()
+    background.add_task(service.send, mails)
+    background.add_task(scheduler.send_invites, invites)
+    return AdditionDecisionOut(
+        entry_id=entry.id, class_id=cls.id, status=entry.status, emailed=bool(mails), not_emailed=decision.not_emailed
+    )
+
+
+@router.post(
+    "/{class_id}/roll-call/{entry_id}/reject", response_model=AdditionDecisionOut,
+    operation_id="rejectRollCallAddition", summary="Reject a roll-call addition that did not fit",
+)
+def reject_roll_call_addition(
+    class_id: uuid.UUID,
+    entry_id: uuid.UUID,
+    body: AdditionRejectIn,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(_APPROVE),
+) -> AdditionDecisionOut:
+    """It is removed, with the reason, which the class's lead sees. Audited.  **schedule:approve**"""
+    cls, entry = _pending_entry(db, class_id, entry_id, user)
+    service.reject_addition(db, cls, entry, user, body.reason)
+    db.commit()
+    return AdditionDecisionOut(entry_id=entry.id, class_id=cls.id, status=entry.status)
 

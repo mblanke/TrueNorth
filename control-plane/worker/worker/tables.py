@@ -725,7 +725,17 @@ scheduled_events = sa.Table(
     sa.Column("description", sa.Text()),
     sa.Column(
         "state",
-        sa.Enum("draft", "scheduled", "provisioning", "active", "completed", "cancelled", name="eventstate"),
+        sa.Enum(
+            "draft",
+            "pending_approval",
+            "rejected",
+            "scheduled",
+            "provisioning",
+            "active",
+            "completed",
+            "cancelled",
+            name="eventstate",
+        ),
         nullable=False,
     ),
     sa.Column("tenant_id", GUID(), nullable=False),

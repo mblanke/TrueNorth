@@ -34,6 +34,7 @@ class RollCallStatusOut(str, Enum):
     signed_in = "signed_in"
     ready = "ready"
     removed = "removed"
+    pending = "pending"  # added after approval with no room: waits for an approver (ADR 0014 §17)
 
 
 class ClassRole(str, Enum):
@@ -110,6 +111,7 @@ class RollCallEntryOut(BaseModel):
     signed_in_at: datetime | None
     removed_at: datetime | None
     created_at: datetime | None = None
+    pending_reason: str | None = Field(None, description="Why an addition waits for an approver, or was rejected")
 
 
 class RollCallAddIn(BaseModel):
@@ -133,6 +135,39 @@ class RollCallAddOut(BaseModel):
     not_emailed: list[RollCallRefusal] = Field(
         default_factory=list, description="Added, but the onboarding email was not sent (and why)"
     )
+    pending_approval: list[RollCallRefusal] = Field(
+        default_factory=list,
+        description="Not added yet: the class's approved sessions have no room for them, so an approver "
+        "decides (ADR 0014 §17). The reason says what does not fit",
+    )
+
+
+class PendingAdditionOut(BaseModel):
+    """A roll-call addition waiting for an approver (ADR 0014 §17): only what a capacity
+    decision needs. Approvers (range ops among them) need not be on the class, so no Student
+    is named here; the class's own people see who it is on its roll call."""
+
+    entry_id: uuid.UUID
+    class_id: uuid.UUID
+    class_name: str
+    seats: int = Field(1, description="Seats the addition needs in each approved session")
+    roll_call_count: int = Field(0, description="Students on the class's roll call now")
+    reason: str | None
+    created_at: datetime | None
+
+
+class AdditionDecisionOut(BaseModel):
+    """What an approver's decision on an addition did, without naming the Student."""
+
+    entry_id: uuid.UUID
+    class_id: uuid.UUID
+    status: RollCallStatusOut
+    emailed: bool = Field(False, description="An onboarding email went to them")
+    not_emailed: str | None = Field(None, description="Why no onboarding email went, if one was due")
+
+
+class AdditionRejectIn(BaseModel):
+    reason: str = Field(..., min_length=1, max_length=1000)
 
 
 class RollCallDomainsIn(BaseModel):

@@ -28,7 +28,7 @@ export type Permission =
   | 'learning_record:read' | 'learning_record:write'
   | 'enrollment:manage_own' | 'team:manage_own'
   | 'course:author' | 'course:release'
-  | 'schedule:read' | 'schedule:write' | 'schedule:admin'
+  | 'schedule:read' | 'schedule:write' | 'schedule:admin' | 'schedule:approve'
   | 'content_review:read' | 'content_review:review_own' | 'content_review:admin'
   | 'class:create' | 'class:read'
   | 'tenant:create' | 'tenant:read' | 'tenant:update'
@@ -55,7 +55,7 @@ export const ALL_PERMISSIONS: readonly Permission[] = [
   'learning_record:read', 'learning_record:write',
   'enrollment:manage_own', 'team:manage_own',
   'course:author', 'course:release',
-  'schedule:read', 'schedule:write', 'schedule:admin',
+  'schedule:read', 'schedule:write', 'schedule:admin', 'schedule:approve',
   'content_review:read', 'content_review:review_own', 'content_review:admin',
   'class:create', 'class:read',
   'tenant:create', 'tenant:read', 'tenant:update',
@@ -93,7 +93,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     'range:create', 'range:read', 'range:update', 'range:delete', 'range:provision',
     'range:destroy', 'range:batch_provision', 'range:credentials_read', 'range:certification_read',
     'template:read', 'template:create', 'template:update',
-    'scenario:read', 'exercise:read', 'schedule:read', 'content_review:read', 'stats:read',
+    'scenario:read', 'exercise:read', 'schedule:read', 'schedule:approve', 'content_review:read', 'stats:read',
     'telemetry:read', 'telemetry:write',
     'wiki:read', 'wiki:edit', 'ticket:create', 'ticket:work',
   ],

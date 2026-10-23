@@ -32,6 +32,7 @@ export interface ClassForm {
 
 export const STATUS_LABEL: Record<RollCallStatus, string> = {
   invited: 'Invited', signed_in: 'Signed in', ready: 'Ready', removed: 'Removed',
+  pending: 'Awaiting approval',
 };
 
 /** The request body for a form, or why it cannot be sent yet. */
@@ -53,6 +54,8 @@ export function addSummary(r: RollCallAddResult): string {
   if (r.refused.length) parts.push(`refused: ${r.refused.map(x => `${x.email} (${x.reason})`).join(', ')}`);
   if (r.invalid.length) parts.push(`not email addresses: ${r.invalid.join(', ')}`);
   if (r.not_emailed?.length) parts.push(`not emailed: ${r.not_emailed.map(x => `${x.email} (${x.reason})`).join(', ')}`);
+  // Added after the sessions were approved, with no room left: an approver decides (ADR 0014 §17).
+  if (r.pending_approval?.length) parts.push(`awaiting approval (no room in the approved sessions): ${r.pending_approval.map(x => x.email).join(', ')}`);
   return parts.join('; ') + '.';
 }
 

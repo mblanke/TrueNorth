@@ -17,10 +17,14 @@ import {
   localizeUtcWindows, peakLoad, previewConflicts, sameDay, slotLoads, weekStart, windowsOverlapping,
 } from './schedule.util';
 import { MaintenanceWindow, MaintenanceWindowsApiService } from '@core/services/maintenance-windows-api.service';
+import { ClassRecord, ClassesApiService } from '@core/services/classes-api.service';
+import { ApprovalQueueComponent, approvalError } from './approval-queue.component';
 
 interface Form {
   id?: string; name: string; templateId: string; date: string; from: string; to: string;
   rangeId: string; instructorId: string; courseId: string; scenarioId: string; draft: boolean;
+  /** A session of this class: it waits for an approver (ADR 0014 §14). */
+  classId: string;
 }
 
 const ROW = 46; // px per hour
@@ -32,7 +36,7 @@ const ROW = 46; // px per hour
 @Component({
   selector: 'tn-schedule',
   standalone: true,
-  imports: [FormsModule, MatSnackBarModule, NgTemplateOutlet, RouterLink, MaintenanceBannerComponent],
+  imports: [FormsModule, MatSnackBarModule, NgTemplateOutlet, RouterLink, MaintenanceBannerComponent, ApprovalQueueComponent],
   template: `
   <tn-maintenance-banner />
   @if (isRangeOps()) {
@@ -51,6 +55,7 @@ const ROW = 46; // px per hour
           }</tbody></table></div></section>
       <section class="panel"><h2>Bookings</h2><ng-container *ngTemplateOutlet="grid" /></section>
     </div><div class="stack">
+      <tn-approval-queue (changed)="load()" />
       <section class="panel"><h2>Scheduler clock · next builds and teardowns</h2>
         @for (q of clockQueue(); track q.key) {
           <div class="row"><div><strong>{{ q.title }}</strong><p class="small muted">{{ q.when }}{{ q.note ? ' · ' + q.note : '' }}</p></div>
@@ -101,12 +106,20 @@ const ROW = 46; // px per hour
               @for (sc of scenarios(); track sc.id) { <option [value]="sc.id">{{ sc.name }}</option> }
             </select>
             <small>An exercise is created on the range when it is built; you start it.</small></label>
-          <label class="field"><span>Class</span>
-            <select class="input" [ngModel]="f.courseId" (ngModelChange)="patch({ courseId: $event })">
+          @if (bookableClasses().length || f.classId) {
+            <label class="field"><span>Session of a class</span>
+              <select class="input" [ngModel]="f.classId" [disabled]="!!f.id" (ngModelChange)="pickClass($event)">
+                <option value="">None: a self-service booking</option>
+                @for (c of bookableClasses(); track c.id) { <option [value]="c.id">{{ c.name }}</option> }
+              </select>
+              @if (f.classId) { <small>Needs approval by an admin or range ops. Nothing is held and nobody is invited until then; the roll call is invited once it is approved.</small> }</label>
+          }
+          <label class="field"><span>Course</span>
+            <select class="input" [ngModel]="f.courseId" [disabled]="!!f.classId" (ngModelChange)="patch({ courseId: $event })">
               <option value="">No class</option>
               @for (c of courses(); track c.id) { <option [value]="c.id">{{ c.name }}</option> }
             </select>
-            <small>Its enrolled Students get the session in their calendar, an invite and a reminder.</small></label>
+            <small>{{ f.classId ? 'The class’s course.' : 'Its enrolled Students get the session in their calendar, an invite and a reminder.' }}</small></label>
           <div class="two"><label class="field"><span>Range</span>
               <select class="input" [ngModel]="f.rangeId" (ngModelChange)="patch({ rangeId: $event })">
                 <option value="">None yet</option>
@@ -135,7 +148,7 @@ const ROW = 46; // px per hour
             <div class="note ok"><strong>Fits.</strong> {{ f.rangeId ? 'The range builds at ' + formBuildAt() : 'A range is created from the template and built at ' + formBuildAt() }}; it is torn down at {{ formTeardownAt() }}.</div>
           }
           <div class="actions">
-            <button class="action primary" [disabled]="!canSubmit() || busy()" (click)="submit(false)">{{ overButWarn() ? 'Book anyway' : (f.id ? 'Save changes' : 'Book it') }}</button>
+            <button class="action primary" [disabled]="!canSubmit() || busy()" (click)="submit(false)">{{ f.classId && !f.id ? 'Ask for approval' : overButWarn() ? 'Book anyway' : (f.id ? 'Save changes' : 'Book it') }}</button>
             @if (!f.id) { <button class="action" [disabled]="!f.name || !f.templateId || busy()" (click)="submit(true)">Save as draft</button> }
             <button class="action" (click)="form.set(null)">Cancel</button>
           </div>
@@ -147,6 +160,7 @@ const ROW = 46; // px per hour
           @if (dayCommitted(); as c) { <ng-container *ngTemplateOutlet="meters; context: { $implicit: c, need: false }" /> }
           <p class="small muted">Peak 09:00–16:00, build and teardown time included.</p></section>
       }
+      @if (isApprover()) { <tn-approval-queue (changed)="load()" /> }
       @if (isAdmin()) {
         <section class="panel"><h2>Over-capacity policy</h2>
           <p class="small muted">For the whole platform: every tenant books against the same cluster. Changes are logged.
@@ -195,10 +209,11 @@ const ROW = 46; // px per hour
           @for (e of col.items; track e.key) {
             @if (e.booking; as b) {
               <button type="button" class="ev" [class.mine]="isMine(b)" [class.draft]="b.state === 'draft'" [class.sel]="selected()?.id === b.id"
+                      [class.pending]="b.state === 'pending_approval'" [class.rejected]="b.state === 'rejected'"
                       [class.live]="live(b)"
                       [style.top.px]="e.top" [style.height.px]="e.height" [style.left]="e.left" [style.width]="e.width" (click)="select(b)">
                 @if (live(b)) { <span class="live-tag"><i class="dot" aria-hidden="true"></i>Live</span> }
-                <strong>{{ b.name }}</strong><span>{{ hhmm(b.start_time) }}–{{ hhmm(b.end_time) }}{{ b.template_id ? ' · ' + templateName(b.template_id) : '' }}{{ b.state === 'draft' ? ' · draft' : '' }}</span>
+                <strong>{{ b.name }}</strong><span>{{ hhmm(b.start_time) }}–{{ hhmm(b.end_time) }}{{ b.template_id ? ' · ' + templateName(b.template_id) : '' }}{{ stateNote(b) }}</span>
                 @if (b.instructor_id) { <span class="ghost"><br>{{ personName(b.instructor_id) }}</span> }
               </button>
             } @else {
@@ -213,7 +228,7 @@ const ROW = 46; // px per hour
   <!-- ── Booking detail ───────────────────────────────────── -->
   <ng-template #detail let-b>
     <section class="panel"><span class="eyebrow">{{ dayLabel(toDate(b.start_time)) }}</span><h2 class="title">{{ b.name }}</h2>
-      <div class="chips"><span class="chip" [class.ok]="b.state !== 'draft'" [class.neutral]="b.state === 'draft'">{{ stateLabel(b.state) }}</span>
+      <div class="chips"><span class="chip" [class.ok]="isLive(b)" [class.neutral]="!isLive(b)">{{ stateLabel(b.state) }}</span>
         @if (b.template_id) { <span class="chip neutral">{{ templateName(b.template_id) }}</span> }</div>
       <dl class="kv"><dt>When</dt><dd>{{ hhmm(b.start_time) }}–{{ hhmm(b.end_time) }}</dd>
         <dt>Instructor</dt><dd>{{ b.instructor_id ? personName(b.instructor_id) : 'Nobody yet' }}</dd>
@@ -223,18 +238,33 @@ const ROW = 46; // px per hour
         @else if (b.scenario_id) { <dt>Scenario</dt><dd>{{ scenarioName(b.scenario_id) }} · its exercise is created when the range is built</dd> }
         <dt>Size</dt><dd>{{ b.vm_count }} VMs · {{ b.vcpu_total }} vCPU · {{ gb(b.ram_mb_total) }} GB · {{ disk(b.disk_gb_total) }}</dd>
         @if (b.state !== 'draft' && (b.range_id || b.template_id)) { <dt>Range builds</dt><dd>{{ buildAt(b) }}{{ b.range_id ? '' : ' (created from the template)' }} · torn down {{ teardownAt(b) }}</dd> }
-        @if (b.state !== 'draft' && b.instructor_id) { <dt>Reminder</dt><dd>Emailed to the instructor 24 h before</dd> }</dl>
+        @if (isLive(b) && b.instructor_id) { <dt>Reminder</dt><dd>Emailed to the instructor 24 h before</dd> }</dl>
+      @if (b.state === 'pending_approval') {
+        <div class="note" role="note"><strong>Awaiting approval</strong> by an admin or range ops. Nothing is held and nobody is invited until then.
+          @if (b.approval?.proposed_start_time; as ps) {
+            <br>Proposed instead: <strong>{{ longWhenOf(ps, b.approval!.proposed_end_time!) }}</strong>.
+            @if (canEdit(b)) {
+              <div class="actions"><button class="action primary" [disabled]="busy()" (click)="acceptProposal(b)">Accept</button>
+                <button class="action" [disabled]="busy()" (click)="declineProposal(b)">Decline</button></div>
+            }
+          }
+        </div>
+      }
+      @if (b.state === 'rejected') {
+        <div class="note" role="note"><strong>Rejected</strong>{{ b.approval?.reason ? ': ' + b.approval!.reason : '' }}</div>
+      }
       @if (actionError(); as err) { <div class="note"><strong>Can’t do that</strong><br>{{ err }}</div> }
       @if (canEdit(b)) {
         <div class="actions">
           @if (b.state === 'draft') { <button class="action primary" [disabled]="busy()" (click)="scheduleDraft(b)">Schedule it</button> }
-          @if (b.state === 'draft' || b.state === 'scheduled') { <button class="action" (click)="startEditing(b)">Move or resize</button> }
-          @if (isLive(b) || b.state === 'draft') {
+          @if (b.state === 'draft' || b.state === 'scheduled' || b.state === 'pending_approval') { <button class="action" (click)="startEditing(b)">Move or resize</button> }
+          @if (isLive(b) || b.state === 'draft' || b.state === 'pending_approval') {
             @if (confirmCancel() === b.id) { <button class="action primary" [disabled]="busy()" (click)="cancel(b)">Yes, cancel it</button> }
             @else { <button class="action" (click)="confirmCancel.set(b.id)">Cancel booking</button> }
           }
         </div>
         @if (confirmCancel() === b.id) { <p class="small muted">The range is torn down if the scheduler built it, and the invite is withdrawn.</p> }
+        @if (b.class_id && b.state === 'scheduled') { <p class="small muted">Moving or resizing an approved class session sends it back for approval.</p> }
       }
     </section>
   </ng-template>
@@ -319,6 +349,8 @@ const ROW = 46; // px per hour
     .ev strong { display:block; font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .ev.mine { background:var(--tn-soft); border-color:var(--tn-accent); } .ev.draft { border-style:dashed; background:var(--tn-bg); color:var(--tn-muted); }
     .ev.sel { box-shadow:0 0 0 3px var(--tn-accent); } .ev .ghost { color:var(--tn-muted); }
+    .ev.pending { border:2px dashed var(--tn-accent); background:var(--tn-surface); }
+    .ev.rejected { border-style:dotted; background:var(--tn-bg); color:var(--tn-muted); text-decoration:line-through; }
     .ev.live { border-color:var(--tn-ok); border-left-width:4px; }
     .live-tag { display:inline-flex; align-items:center; gap:5px; color:var(--tn-ok); font-weight:600; }
     .ev .live-tag { font-size:10px; text-transform:uppercase; letter-spacing:.6px; }
@@ -350,6 +382,7 @@ export class ScheduleComponent implements OnInit, OnDestroy {
   private readonly api = inject(ApiService);
   private readonly auth = inject(AuthService);
   private readonly snack = inject(MatSnackBar);
+  private readonly classesApi = inject(ClassesApiService);
 
   readonly row = ROW;
   readonly heatHours = Array.from({ length: 10 }, (_, i) => 8 + i);
@@ -366,6 +399,8 @@ export class ScheduleComponent implements OnInit, OnDestroy {
   readonly people = signal<User[]>([]);
   readonly courses = signal<CourseOption[]>([]);
   readonly scenarios = signal<ScenarioSummary[]>([]);
+  /** Classes whose sessions the caller books: those they lead (an admin: every open class). */
+  readonly classes = signal<ClassRecord[]>([]);
   readonly policy = signal<OvercapacityPolicy>('block');
   readonly canChangePolicy = signal(false);
   readonly selected = signal<Booking | null>(null);
@@ -393,6 +428,9 @@ export class ScheduleComponent implements OnInit, OnDestroy {
   readonly isRangeOps = computed(() => this.role() === 'range_ops');
   readonly isObserver = computed(() => this.role() === 'observer');
   readonly canBook = computed(() => this.role() === 'admin' || this.role() === 'instructor');
+  /** schedule:approve: class sessions wait for an admin or range ops (ADR 0014 §14). */
+  readonly isApprover = computed(() => this.role() === 'admin' || this.role() === 'range_ops');
+  readonly bookableClasses = computed(() => this.classes().filter(c => c.can_edit && c.status === 'open'));
 
   // ── Derived ────────────────────────────────────────────
   readonly lead = computed(() => this.timeline()?.lead_minutes ?? 30);
@@ -499,6 +537,7 @@ export class ScheduleComponent implements OnInit, OnDestroy {
   readonly canSubmit = computed(() => {
     const f = this.form(); if (!f || !f.name || !f.templateId || !f.date || !f.from || !f.to) return false;
     if (at(f.date, f.to) <= at(f.date, f.from) || this.formConflicts().length) return false;
+    if (f.classId) return true;  // checked when an approver acts, not now (ADR 0014 §15)
     const c = this.check();
     return !!c && (c.fits || this.policy() === 'warn');
   });
@@ -526,6 +565,8 @@ export class ScheduleComponent implements OnInit, OnDestroy {
     if (this.canBook()) {
       this.api.listUsers().subscribe({ next: u => this.people.set(u), error: () => {} });
       this.scheduler.courses().subscribe({ next: c => this.courses.set(c.items), error: () => {} });
+      const classes = this.isAdmin() ? this.classesApi.list() : this.classesApi.mine();
+      classes.subscribe({ next: c => this.classes.set(c ?? []), error: () => {} });
       this.api.listScenarios(200).subscribe({ next: sc => this.scenarios.set(sc), error: () => {} });
       this.maintenance.list().subscribe({ next: w => this.maintenanceWindows.set(w.items), error: () => {} });
     }
@@ -581,7 +622,7 @@ export class ScheduleComponent implements OnInit, OnDestroy {
     this.check.set(null);
     this.form.set({
       name: '', templateId: '', date: isoDate(day), from: '09:00', to: '12:00', rangeId: '', courseId: '', scenarioId: '',
-      instructorId: this.role() === 'instructor' && me ? me.id : '', draft: false,
+      instructorId: this.role() === 'instructor' && me ? me.id : '', draft: false, classId: '',
     });
   }
 
@@ -591,6 +632,7 @@ export class ScheduleComponent implements OnInit, OnDestroy {
     this.form.set({
       id: b.id, name: b.name, templateId: b.template_id ?? '', date: isoDate(s), from: hhmm(s), to: hhmm(e),
       rangeId: b.range_id ?? '', instructorId: b.instructor_id ?? '', courseId: b.course_id ?? '', scenarioId: b.scenario_id ?? '', draft: b.state === 'draft',
+      classId: b.class_id ?? '',
     });
     this.selected.set(null);
     this.runCheck();
@@ -620,7 +662,7 @@ export class ScheduleComponent implements OnInit, OnDestroy {
     const body: BookingIn = {
       name: f.name, start_time: at(f.date, f.from).toISOString(), end_time: at(f.date, f.to).toISOString(),
       template_id: f.templateId || null, range_id: f.rangeId || null, instructor_id: this.formInstructor(f),
-      course_id: f.courseId || null, scenario_id: f.scenarioId || null, draft,
+      course_id: f.courseId || null, scenario_id: f.scenarioId || null, draft, class_id: f.classId || null,
     };
     this.busy.set(true);
     const call = f.id ? this.scheduler.update(f.id, body) : this.scheduler.create(body);
@@ -631,7 +673,8 @@ export class ScheduleComponent implements OnInit, OnDestroy {
         this.check.set(null);
         const warn = (b.warnings?.length ? ` Over capacity: ${b.warnings.join('; ')}` : '')
           + (b.maintenance_warnings?.length ? ` Maintenance: ${b.maintenance_warnings.join('; ')}` : '');
-        this.snack.open(`${draft ? 'Draft saved' : f.id ? 'Booking updated' : 'Booked'}: ${b.name}.${warn}`, 'OK', { duration: warn ? 8000 : 3000 });
+        const done = draft ? 'Draft saved' : b.state === 'pending_approval' ? 'Sent for approval' : f.id ? 'Booking updated' : 'Booked';
+        this.snack.open(`${done}: ${b.name}.${warn}`, 'OK', { duration: warn ? 8000 : 3000 });
         this.load();
       },
       error: (e: HttpErrorResponse) => { this.busy.set(false); this.submitError.set(this.detail(e)); },
@@ -640,6 +683,20 @@ export class ScheduleComponent implements OnInit, OnDestroy {
 
   scheduleDraft(b: Booking): void {
     this.act(this.scheduler.schedule(b.id), `Scheduled: ${b.name}`);
+  }
+
+  /** Pick the class a session is for: its course is the class's. */
+  pickClass(classId: string): void {
+    const c = this.classes().find(x => x.id === classId);
+    this.patch({ classId, courseId: c ? c.course_id : this.form()?.courseId ?? '' });
+  }
+
+  acceptProposal(b: Booking): void {
+    this.act(this.scheduler.acceptProposal(b.id), `Approved at the proposed time: ${b.name}`);
+  }
+
+  declineProposal(b: Booking): void {
+    this.act(this.scheduler.declineProposal(b.id), `Kept your time; still awaiting approval: ${b.name}`);
   }
 
   cancel(b: Booking): void {
@@ -724,7 +781,14 @@ export class ScheduleComponent implements OnInit, OnDestroy {
     if (id && id === this.me()?.id) return this.me()!.display_name;
     return this.people().find(u => u.id === id)?.display_name ?? 'Instructor';
   }
-  stateLabel(s: string): string { return s.charAt(0).toUpperCase() + s.slice(1); }
+  stateLabel(s: string): string {
+    if (s === 'pending_approval') return 'Awaiting approval';
+    return s.charAt(0).toUpperCase() + s.slice(1);
+  }
+  stateNote(b: Booking): string {
+    return b.state === 'draft' ? ' · draft' : b.state === 'pending_approval' ? ' · awaiting approval' : b.state === 'rejected' ? ' · rejected' : '';
+  }
+  longWhenOf(start: string, end: string): string { return `${this.dayLabel(new Date(start))}, ${this.hhmm(start)}–${this.hhmm(end)}`; }
   buildAt(b: Booking): string { return hhmm(new Date(new Date(b.start_time).getTime() - this.lead() * 60_000)); }
   teardownAt(b: Booking): string { return hhmm(new Date(new Date(b.end_time).getTime() + this.grace() * 60_000)); }
   formBuildAt(): string { const f = this.form()!; return hhmm(new Date(at(f.date, f.from).getTime() - this.lead() * 60_000)); }
@@ -752,7 +816,6 @@ export class ScheduleComponent implements OnInit, OnDestroy {
   }
 
   private detail(e: HttpErrorResponse): string {
-    const d = e.error?.detail;
-    return typeof d === 'string' ? localizeUtcWindows(d) : e.status === 0 ? 'The server could not be reached.' : `Request failed (${e.status}).`;
+    return approvalError(e);
   }
 }
