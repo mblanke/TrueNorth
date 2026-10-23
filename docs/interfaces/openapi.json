@@ -25157,7 +25157,7 @@
     },
     "/classes/{class_id}": {
       "delete": {
-        "description": "Its lead or an admin. A class is history (who was invited, who joined), so it is\ncancelled, not deleted (ADR 0010); it leaves the lists and no longer admits anyone.",
+        "description": "Its lead or an admin. A class is history (who was invited, who joined), so it is\ncancelled, not deleted (ADR 0010); it leaves the lists and no longer admits anyone. Its\nsessions that have not started (drafts, awaiting approval, approved) are cancelled with\nit, and the approved ones' invites are withdrawn; one under way is left to its\ninstructor.",
         "operationId": "cancelClass",
         "parameters": [
           {

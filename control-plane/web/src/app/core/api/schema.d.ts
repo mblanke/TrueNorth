@@ -849,7 +849,10 @@ export interface paths {
         /**
          * Cancel a class
          * @description Its lead or an admin. A class is history (who was invited, who joined), so it is
-         *     cancelled, not deleted (ADR 0010); it leaves the lists and no longer admits anyone.
+         *     cancelled, not deleted (ADR 0010); it leaves the lists and no longer admits anyone. Its
+         *     sessions that have not started (drafts, awaiting approval, approved) are cancelled with
+         *     it, and the approved ones' invites are withdrawn; one under way is left to its
+         *     instructor.
          */
         delete: operations["cancelClass"];
         options?: never;
