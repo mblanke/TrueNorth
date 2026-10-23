@@ -7,6 +7,7 @@ import { authInterceptorProvider } from './auth.interceptor';
 import { clearLtiSession, storeLtiSession } from '../auth/lti-session';
 import { Router } from '@angular/router';
 import { STEP_UP_KEY, resetStepUpForTests } from '../auth/mfa-step-up';
+import { AuthService } from '../services/auth.service';
 
 /** Resolve pending microtasks (the interceptor awaits the adapter's token refresh). */
 const settle = () => new Promise<void>(resolve => setTimeout(resolve));
@@ -16,7 +17,8 @@ describe('AuthInterceptor', () => {
   let http: HttpClient;
   let backend: HttpTestingController;
   let keycloak: { authenticated: boolean; token?: string; updateToken: jasmine.Spy; login: jasmine.Spy };
-  let router: { navigate: jasmine.Spy };
+  let router: { navigate: jasmine.Spy; url: string };
+  let auth: { setAcknowledgementRequired: jasmine.Spy };
 
   function setup(authDisabled: boolean): void {
     (environment as { authDisabled: boolean }).authDisabled = authDisabled;
@@ -26,7 +28,8 @@ describe('AuthInterceptor', () => {
       updateToken: jasmine.createSpy('updateToken').and.resolveTo(false),
       login: jasmine.createSpy('login').and.resolveTo(undefined),
     };
-    router = { navigate: jasmine.createSpy('navigate').and.resolveTo(true) };
+    router = { navigate: jasmine.createSpy('navigate').and.resolveTo(true), url: '/scoring?exercise=ex1' };
+    auth = { setAcknowledgementRequired: jasmine.createSpy('setAcknowledgementRequired') };
     TestBed.configureTestingModule({
       providers: [
         provideHttpClient(withInterceptorsFromDi()),
@@ -34,6 +37,7 @@ describe('AuthInterceptor', () => {
         authInterceptorProvider,
         { provide: Keycloak, useValue: keycloak },
         { provide: Router, useValue: router },
+        { provide: AuthService, useValue: auth },
       ],
     });
     http = TestBed.inject(HttpClient);
@@ -120,6 +124,31 @@ describe('AuthInterceptor', () => {
         await settle();
         backend.expectOne('/api/ranges').flush({ detail: 'Permission denied' }, { status: 403, statusText: 'Forbidden' });
         expect(keycloak.login).not.toHaveBeenCalled();
+        expect(router.navigate).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('rules of use (403 acknowledgement_required)', () => {
+      const refusal = {
+        detail: { code: 'acknowledgement_required', state: 'acknowledgement_required', message: 'x', next: '/x' },
+      };
+
+      it('sends the user to the form and back to where they were', async () => {
+        http.get('/api/ranges').subscribe({ error: () => undefined });
+        await settle();
+        backend.expectOne('/api/ranges').flush(refusal, { status: 403, statusText: 'Forbidden' });
+        expect(auth.setAcknowledgementRequired).toHaveBeenCalledWith(true);
+        expect(router.navigate).toHaveBeenCalledWith(['/rules-of-use'], {
+          queryParams: { returnUrl: '/scoring?exercise=ex1' },
+        });
+        expect(keycloak.login).not.toHaveBeenCalled();
+      });
+
+      it('stays put when already on the form', async () => {
+        router.url = '/rules-of-use?returnUrl=%2Fdashboard';
+        http.get('/api/ranges').subscribe({ error: () => undefined });
+        await settle();
+        backend.expectOne('/api/ranges').flush(refusal, { status: 403, statusText: 'Forbidden' });
         expect(router.navigate).not.toHaveBeenCalled();
       });
     });

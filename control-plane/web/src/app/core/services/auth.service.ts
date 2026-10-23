@@ -58,6 +58,8 @@ export interface AuthMe {
   /** v1.2.0: this role needs a second factor / this token shows one (app/mfa_policy.py). */
   mfa_required?: boolean;
   mfa_satisfied?: boolean;
+  /** ADR 0014 §3: must read and agree to the rules of use before anything else. */
+  acknowledgement_required?: boolean;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -77,6 +79,12 @@ export class AuthService {
   readonly mfaBlocked = this.mfaBlockedSignal.asReadonly();
 
   readonly isAuthenticated = computed(() => this.userSignal() !== null);
+  /**
+   * The rules of use must be signed first (ADR 0014 §3; /auth/me, or a 403
+   * `acknowledgement_required` from any call). authGuard sends the user to /rules-of-use.
+   */
+  private acknowledgementSignal = signal(false);
+  readonly acknowledgementRequired = this.acknowledgementSignal.asReadonly();
   readonly isAdmin = computed(() => this.userSignal()?.role === 'admin');
   /** The platform administrator (an admin of the operator's tenant), as /auth/me reports it.
    *  False until /auth/me has answered; the API checks every platform-wide call anyway. */
@@ -198,6 +206,7 @@ export class AuthService {
       }
       this.meSignal.set(me);
       this.stateSignal.set(me.status);
+      this.acknowledgementSignal.set(me.status === 'registered' && me.acknowledgement_required === true);
       if (me.status === 'registered' && me.user) {
         this.userSignal.set({
           sub: lti ? String(me.user['keycloak_id'] ?? '') : (this.keycloak.subject ?? ''),
@@ -227,6 +236,12 @@ export class AuthService {
     this.ready$.next(true);
   }
 
+  /** Set from a 403 `acknowledgement_required` (a version published mid-session), or cleared
+   *  once the user has signed. The API decides either way; this only routes. */
+  setAcknowledgementRequired(required: boolean): void {
+    this.acknowledgementSignal.set(required);
+  }
+
   login(redirectUri?: string): void {
     if (environment.authDisabled) {
       return;
@@ -238,6 +253,7 @@ export class AuthService {
     this.userSignal.set(null);
     this.stateSignal.set(null);
     this.meSignal.set(null);
+    this.acknowledgementSignal.set(false);
     this.bootstrapped = false;
     const lti = this.ltiSignal();
     clearLtiSession();

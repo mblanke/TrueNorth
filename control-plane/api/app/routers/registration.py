@@ -140,8 +140,12 @@ def auth_me(
         # rule, so /auth/me must not send the SPA to a step-up no route asks for.
         required = not auth.AUTH_DISABLED and mfa_policy.mfa_required_for(user.role)
         satisfied = not required or mfa_policy.mfa_denial_reason(identity, user.role, user.email) is None
+        # Then the rules of use (ADR 0014 §3): after admission (above) and MFA, as on every route.
+        from ..acknowledgement import rule as acknowledgement_rule
+
+        ack = not auth.AUTH_DISABLED and acknowledgement_rule.required(db, user.id, identity)
         return AuthMeOut(status="registered", user=user, platform_admin=is_platform_admin(user, db),
-                         mfa_required=required, mfa_satisfied=satisfied)
+                         mfa_required=required, mfa_satisfied=satisfied, acknowledgement_required=ack)
 
     groups = ident.normalise_groups(identity.groups)
     request_row = _latest_request(db, identity.sub)

@@ -3,7 +3,7 @@ import { computed, signal } from '@angular/core';
 import { ActivatedRouteSnapshot, Router, RouterStateSnapshot, UrlTree, provideRouter } from '@angular/router';
 import { Observable, firstValueFrom } from 'rxjs';
 import { AuthService, AuthState, UserRole } from '../services/auth.service';
-import { adminGuard, authGuard, demoGuard, pageGuard } from './auth.guard';
+import { adminGuard, authGuard, demoGuard, pageGuard, rulesOfUseGuard } from './auth.guard';
 import { PAGE_ACCESS, PageKey, roleHasAccess } from '../auth/permissions';
 import { environment } from '@env/environment';
 
@@ -23,12 +23,18 @@ class FakeAuthService {
   }
   private readonly blocked = signal(false);
   readonly mfaBlocked = this.blocked.asReadonly();
+  private readonly ack = signal(false);
+  readonly acknowledgementRequired = this.ack.asReadonly();
 
-  next: { role: UserRole | null; state: AuthState | null; mfaBlocked?: boolean } = { role: null, state: null };
+  next: { role: UserRole | null; state: AuthState | null; mfaBlocked?: boolean; acknowledgement?: boolean } = {
+    role: null,
+    state: null,
+  };
   readonly bootstrap = jasmine.createSpy('bootstrap').and.callFake(async () => {
     this.role.set(this.next.role);
     this.state.set(this.next.state);
     this.blocked.set(!!this.next.mfaBlocked);
+    this.ack.set(!!this.next.acknowledgement);
     return null;
   });
 }
@@ -66,6 +72,18 @@ describe('auth guards', () => {
 
     it('sends an account still lacking MFA after a step-up to /mfa-required', async () => {
       auth.next = { role: null, state: null, mfaBlocked: true };
+      expect(path(await run(authGuard))).toBe('/mfa-required');
+    });
+
+    it('sends a user who must sign the rules of use there first, keeping where they were going', async () => {
+      auth.next = { role: 'student', state: 'registered', acknowledgement: true };
+      expect(path(await run(authGuard, '/scoring?exercise=ex1'))).toBe(
+        '/rules-of-use?returnUrl=%2Fscoring%3Fexercise%3Dex1',
+      );
+    });
+
+    it('asks for MFA before the rules of use', async () => {
+      auth.next = { role: null, state: null, mfaBlocked: true, acknowledgement: true };
       expect(path(await run(authGuard))).toBe('/mfa-required');
     });
 
@@ -186,6 +204,22 @@ describe('auth guards', () => {
       const result = TestBed.runInInjectionContext(() =>
         demoGuard({} as ActivatedRouteSnapshot, {} as RouterStateSnapshot)) as boolean | UrlTree;
       expect(result).toBeTrue();
+    });
+  });
+
+  describe('rulesOfUseGuard', () => {
+    it('admits anyone signed in, whether or not they must sign', async () => {
+      auth.next = { role: 'student', state: 'registered', acknowledgement: true };
+      expect(await run(rulesOfUseGuard)).toBeTrue();
+      auth.next = { role: 'admin', state: 'registered', acknowledgement: false };
+      expect(await run(rulesOfUseGuard)).toBeTrue();
+    });
+
+    it('sends someone without an account where authGuard would', async () => {
+      auth.next = { role: null, state: 'unregistered' };
+      expect(path(await run(rulesOfUseGuard))).toBe('/register');
+      auth.next = { role: null, state: null };
+      expect(path(await run(rulesOfUseGuard))).toBe('/login');
     });
   });
 });

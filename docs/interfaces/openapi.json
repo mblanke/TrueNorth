@@ -525,6 +525,175 @@
         "title": "AcceptIn",
         "type": "object"
       },
+      "AcknowledgementCurrentOut": {
+        "description": "What the caller must sign, if anything (app/acknowledgement/rule.py).",
+        "properties": {
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When that signature stops counting (365 days)",
+            "title": "Expires At"
+          },
+          "reason": {
+            "description": "none_published | never_signed | new_version | expired | signed",
+            "title": "Reason",
+            "type": "string"
+          },
+          "required": {
+            "description": "The caller must sign it before doing anything else",
+            "title": "Required",
+            "type": "boolean"
+          },
+          "signed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The caller's latest signature of this version",
+            "title": "Signed At"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AcknowledgementVersionOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The current published version; None before the first"
+          }
+        },
+        "required": [
+          "required",
+          "reason"
+        ],
+        "title": "AcknowledgementCurrentOut",
+        "type": "object"
+      },
+      "AcknowledgementDraftIn": {
+        "properties": {
+          "text": {
+            "description": "Markdown",
+            "maxLength": 100000,
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "title": "AcknowledgementDraftIn",
+        "type": "object"
+      },
+      "AcknowledgementSignIn": {
+        "properties": {
+          "version_id": {
+            "description": "The version the caller read; must be the current one",
+            "format": "uuid",
+            "title": "Version Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version_id"
+        ],
+        "title": "AcknowledgementSignIn",
+        "type": "object"
+      },
+      "AcknowledgementVersionOut": {
+        "properties": {
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At"
+          },
+          "published_by": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published By"
+          },
+          "text": {
+            "description": "Markdown",
+            "title": "Text",
+            "type": "string"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "None while a draft; 1, 2, 3... once published",
+            "title": "Version"
+          }
+        },
+        "required": [
+          "id",
+          "text"
+        ],
+        "title": "AcknowledgementVersionOut",
+        "type": "object"
+      },
       "ActivityReport": {
         "description": "One executed action, echoing the planned fields and their signature verbatim.",
         "properties": {
@@ -1144,8 +1313,13 @@
         "type": "object"
       },
       "AuthMeOut": {
-        "description": "Identity state for the SPA \u2014 always 200 on a valid token.\n\nA discriminated union on ``status`` so the client never has to interpret an\nerror response to decide where to send someone.\n\n``mfa_required`` / ``mfa_satisfied`` (v1.2.0): whether this registered user's role\nneeds a second factor and whether this token shows one (app/mfa_policy.py). When\nrequired and not satisfied, every other route answers 403 ``mfa_required`` and the\nSPA re-authenticates asking for acr \"mfa\" (step-up).",
+        "description": "Identity state for the SPA \u2014 always 200 on a valid token.\n\nA discriminated union on ``status`` so the client never has to interpret an\nerror response to decide where to send someone.\n\n``mfa_required`` / ``mfa_satisfied`` (v1.2.0): whether this registered user's role\nneeds a second factor and whether this token shows one (app/mfa_policy.py). When\nrequired and not satisfied, every other route answers 403 ``mfa_required`` and the\nSPA re-authenticates asking for acr \"mfa\" (step-up).\n\n``acknowledgement_required`` (ADR 0014 decision 3, #279): this user must read and agree\nto the rules of use (app/acknowledgement/rule.py). While true, every route but the\nacknowledgement ones answers 403 ``acknowledgement_required``. The SPA deals with MFA\nfirst, then this.",
         "properties": {
+          "acknowledgement_required": {
+            "default": false,
+            "title": "Acknowledgement Required",
+            "type": "boolean"
+          },
           "mfa_required": {
             "default": false,
             "title": "Mfa Required",
@@ -22311,6 +22485,284 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/acknowledgement/current": {
+      "get": {
+        "operationId": "getCurrentAcknowledgement",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcknowledgementCurrentOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "The rules of use the caller must sign, and whether they have",
+        "tags": [
+          "acknowledgement"
+        ]
+      }
+    },
+    "/acknowledgement/sign": {
+      "post": {
+        "operationId": "signAcknowledgement",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AcknowledgementSignIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcknowledgementCurrentOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Agree to the current rules of use",
+        "tags": [
+          "acknowledgement"
+        ]
+      }
+    },
+    "/acknowledgement/signatures/export": {
+      "get": {
+        "operationId": "exportAcknowledgementSignatures",
+        "responses": {
+          "200": {
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Signatures as CSV: the caller's organisation, or every one for the platform administrator",
+        "tags": [
+          "acknowledgement"
+        ]
+      }
+    },
+    "/acknowledgement/versions": {
+      "get": {
+        "operationId": "listAcknowledgementVersions",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AcknowledgementVersionOut"
+                  },
+                  "title": "Response Listacknowledgementversions",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Every draft and published version",
+        "tags": [
+          "acknowledgement"
+        ]
+      },
+      "post": {
+        "operationId": "createAcknowledgementDraft",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AcknowledgementDraftIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcknowledgementVersionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Start a new draft",
+        "tags": [
+          "acknowledgement"
+        ]
+      }
+    },
+    "/acknowledgement/versions/{version_id}": {
+      "put": {
+        "operationId": "updateAcknowledgementDraft",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Version Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AcknowledgementDraftIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcknowledgementVersionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Change a draft (a published version never changes)",
+        "tags": [
+          "acknowledgement"
+        ]
+      }
+    },
+    "/acknowledgement/versions/{version_id}/publish": {
+      "post": {
+        "operationId": "publishAcknowledgementVersion",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Version Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcknowledgementVersionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Publish a draft as the next version: everyone signs it before going on",
+        "tags": [
+          "acknowledgement"
+        ]
+      }
+    },
     "/ad-sync/config": {
       "get": {
         "description": "Return current AD/LDAP configuration.  **Role: admin**\n\nDeliberately admin-only: this describes the directory topology (server,\nbase DN, search bases) and was previously readable by anyone at all.",

@@ -4,6 +4,109 @@
  */
 
 export interface paths {
+    "/acknowledgement/current": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The rules of use the caller must sign, and whether they have */
+        get: operations["getCurrentAcknowledgement"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/acknowledgement/sign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Agree to the current rules of use */
+        post: operations["signAcknowledgement"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/acknowledgement/signatures/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Signatures as CSV: the caller's organisation, or every one for the platform administrator */
+        get: operations["exportAcknowledgementSignatures"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/acknowledgement/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every draft and published version */
+        get: operations["listAcknowledgementVersions"];
+        put?: never;
+        /** Start a new draft */
+        post: operations["createAcknowledgementDraft"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/acknowledgement/versions/{version_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Change a draft (a published version never changes) */
+        put: operations["updateAcknowledgementDraft"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/acknowledgement/versions/{version_id}/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Publish a draft as the next version: everyone signs it before going on */
+        post: operations["publishAcknowledgementVersion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/ad-sync/config": {
         parameters: {
             query?: never;
@@ -9090,6 +9193,77 @@ export interface components {
             notes?: string;
         };
         /**
+         * AcknowledgementCurrentOut
+         * @description What the caller must sign, if anything (app/acknowledgement/rule.py).
+         */
+        AcknowledgementCurrentOut: {
+            /**
+             * Expires At
+             * @description When that signature stops counting (365 days)
+             */
+            expires_at?: string | null;
+            /**
+             * Reason
+             * @description none_published | never_signed | new_version | expired | signed
+             */
+            reason: string;
+            /**
+             * Required
+             * @description The caller must sign it before doing anything else
+             */
+            required: boolean;
+            /**
+             * Signed At
+             * @description The caller's latest signature of this version
+             */
+            signed_at?: string | null;
+            /** @description The current published version; None before the first */
+            version?: components["schemas"]["AcknowledgementVersionOut"] | null;
+        };
+        /** AcknowledgementDraftIn */
+        AcknowledgementDraftIn: {
+            /**
+             * Text
+             * @description Markdown
+             */
+            text: string;
+        };
+        /** AcknowledgementSignIn */
+        AcknowledgementSignIn: {
+            /**
+             * Version Id
+             * Format: uuid
+             * @description The version the caller read; must be the current one
+             */
+            version_id: string;
+        };
+        /** AcknowledgementVersionOut */
+        AcknowledgementVersionOut: {
+            /** Created At */
+            created_at?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Published At */
+            published_at?: string | null;
+            /** Published By */
+            published_by?: string | null;
+            /**
+             * Text
+             * @description Markdown
+             */
+            text: string;
+            /** Updated At */
+            updated_at?: string | null;
+            /**
+             * Version
+             * @description None while a draft; 1, 2, 3... once published
+             */
+            version?: number | null;
+        };
+        /**
          * ActivityReport
          * @description One executed action, echoing the planned fields and their signature verbatim.
          */
@@ -9404,8 +9578,18 @@ export interface components {
          *     needs a second factor and whether this token shows one (app/mfa_policy.py). When
          *     required and not satisfied, every other route answers 403 ``mfa_required`` and the
          *     SPA re-authenticates asking for acr "mfa" (step-up).
+         *
+         *     ``acknowledgement_required`` (ADR 0014 decision 3, #279): this user must read and agree
+         *     to the rules of use (app/acknowledgement/rule.py). While true, every route but the
+         *     acknowledgement ones answers 403 ``acknowledgement_required``. The SPA deals with MFA
+         *     first, then this.
          */
         AuthMeOut: {
+            /**
+             * Acknowledgement Required
+             * @default false
+             */
+            acknowledgement_required?: boolean;
             /**
              * Mfa Required
              * @default false
@@ -18287,6 +18471,198 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    getCurrentAcknowledgement: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcknowledgementCurrentOut"];
+                };
+            };
+        };
+    };
+    signAcknowledgement: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AcknowledgementSignIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcknowledgementCurrentOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    exportAcknowledgementSignatures: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
+                };
+            };
+        };
+    };
+    listAcknowledgementVersions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcknowledgementVersionOut"][];
+                };
+            };
+        };
+    };
+    createAcknowledgementDraft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AcknowledgementDraftIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcknowledgementVersionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    updateAcknowledgementDraft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AcknowledgementDraftIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcknowledgementVersionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    publishAcknowledgementVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcknowledgementVersionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     ad_sync_config_ad_sync_config_get: {
         parameters: {
             query?: never;

@@ -34,24 +34,44 @@ export const authGuard: CanActivateFn = (_route, state): Observable<boolean | Ur
 
   return resolved<boolean | UrlTree>(() => {
     if (auth.isAuthenticated()) {
+      // Signed in (roll-call admission and MFA already done): the rules of use come
+      // before anything else (ADR 0014 §3). The API refuses every other call meanwhile.
+      if (auth.acknowledgementRequired()) {
+        return router.createUrlTree(['/rules-of-use'], returnUrl ? { queryParams: { returnUrl } } : {});
+      }
       return true;
     }
-    // The role needs a second factor and a step-up did not supply one (v1.2.0).
-    if (auth.mfaBlocked()) {
-      return router.createUrlTree(['/mfa-required']);
-    }
-    // Authenticated with AD but no account yet: send them to the right place
-    // rather than to a login page they have already passed.
-    switch (auth.authState()) {
-      case 'unregistered':
-        return router.createUrlTree(['/register']);
-      case 'pending':
-      case 'rejected':
-        return router.createUrlTree(['/registration-pending']);
-      default:
-        return router.createUrlTree(['/login'], returnUrl ? { queryParams: { returnUrl } } : {});
-    }
+    return notSignedIn(auth, router, returnUrl);
   });
+};
+
+/** Where someone without a usable session goes: step-up help, registration, or sign-in. */
+function notSignedIn(auth: AuthService, router: Router, returnUrl: string | null): UrlTree {
+  // The role needs a second factor and a step-up did not supply one (v1.2.0).
+  if (auth.mfaBlocked()) {
+    return router.createUrlTree(['/mfa-required']);
+  }
+  // Authenticated with AD but no account yet: send them to the right place
+  // rather than to a login page they have already passed.
+  switch (auth.authState()) {
+    case 'unregistered':
+      return router.createUrlTree(['/register']);
+    case 'pending':
+    case 'rejected':
+      return router.createUrlTree(['/registration-pending']);
+    default:
+      return router.createUrlTree(['/login'], returnUrl ? { queryParams: { returnUrl } } : {});
+  }
+}
+
+/**
+ * The rules-of-use page: anyone signed in, whether or not they must sign (after signing
+ * they can still read what they agreed to). Everyone else goes where authGuard sends them.
+ */
+export const rulesOfUseGuard: CanActivateFn = (): Observable<boolean | UrlTree> => {
+  const auth = inject(AuthService);
+  const router = inject(Router);
+  return resolved<boolean | UrlTree>(() => (auth.isAuthenticated() ? true : notSignedIn(auth, router, null)));
 };
 
 /**

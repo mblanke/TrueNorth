@@ -9,6 +9,7 @@ import {
   pendingGuard,
   scheduleGuard,
   registrationGuard,
+  rulesOfUseGuard,
 } from './core/guards/auth.guard';
 
 export const routes: Routes = [
@@ -32,6 +33,15 @@ export const routes: Routes = [
     loadComponent: () =>
       import('./features/register/mfa-required.component').then(m => m.MfaRequiredComponent),
     title: 'Multi-factor sign-in required - TrueNorth Range',
+  },
+  {
+    // ADR 0014 §3: signed in, before anything else. Its own guard, not authGuard, which
+    // sends here. Full page (app.component isBare).
+    path: 'rules-of-use',
+    canActivate: [rulesOfUseGuard],
+    loadComponent: () =>
+      import('./features/acknowledgement/rules-of-use.component').then(m => m.RulesOfUseComponent),
+    title: 'Rules of use - TrueNorth Range',
   },
   {
     path: 'registration-pending',
@@ -349,6 +359,14 @@ export const routes: Routes = [
     loadComponent: () =>
       import('./features/maintenance-windows/maintenance-windows.component').then(m => m.MaintenanceWindowsComponent),
     title: 'Maintenance windows - TrueNorth Range',
+  },
+  {
+    // Before 'admin'. Platform administrator: drafts and publishing; any admin: the export.
+    path: 'admin/rules-of-use',
+    canActivate: [authGuard, onboardingGuard, adminGuard],
+    loadComponent: () =>
+      import('./features/acknowledgement/rules-of-use-admin.component').then(m => m.RulesOfUseAdminComponent),
+    title: 'Rules of use - TrueNorth Range',
   },
   {
     path: 'admin',

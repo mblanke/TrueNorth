@@ -7,7 +7,13 @@ Two dependencies, deliberately separate:
                         registering has — by definition — no user row yet.
 
 ``get_current_user``    resolves that identity to a ``users`` row, and refuses
-                        anyone who does not have one.
+                        anyone who does not have one, then anyone who must still
+                        sign the rules of use (app/acknowledgement/rule.py).
+
+``get_signed_in_user`` is ``get_current_user`` without the last check, for the
+acknowledgement endpoints alone (read the text, sign it): someone who must sign has to
+reach them. It still refuses no row, disabled and MFA-less exactly as above.
+tests/api/test_acknowledgement_279.py fails if any other route depends on it.
 
 That second refusal is load-bearing. Access is gated by *having a row at all*,
 so a pending registrant is rejected by every route that depends on
@@ -176,12 +182,15 @@ def _unregistered_error(db: Session, identity: TokenPayload) -> HTTPException:
     )
 
 
-async def get_current_user(
+async def get_signed_in_user(
     request: Request,
     identity: Annotated[TokenPayload, Depends(get_token_identity)],
     db: Session = Depends(get_db),
 ) -> CurrentUser:
-    """Resolve the token to its users row; refuse unknown, disabled, and MFA-less privileged users."""
+    """Resolve the token to its users row; refuse unknown, disabled, and MFA-less privileged users.
+
+    Does NOT check the acknowledgement: only the acknowledgement endpoints depend on this.
+    Every other route depends on ``get_current_user``."""
     if AUTH_DISABLED:
         # Dev mode: return a default admin user
         return CurrentUser(
@@ -223,6 +232,27 @@ async def get_current_user(
         tenant_id=str(user.tenant_id),
         keycloak_id=str(user.keycloak_id),
     )
+
+
+async def get_current_user(
+    request: Request,
+    identity: Annotated[TokenPayload, Depends(get_token_identity)],
+    db: Session = Depends(get_db),
+) -> CurrentUser:
+    """``get_signed_in_user``, then refuse anyone who must still sign the rules of use.
+
+    Order: the account checks (no row, disabled, MFA) first, so each still reads as itself;
+    then the acknowledgement (403 ``acknowledgement_required``, app/acknowledgement/rule.py).
+    Under AUTH_DISABLED (dev, e2e and CI lanes) no rule applies, as for MFA."""
+    user = await get_signed_in_user(request, identity, db)
+    if AUTH_DISABLED:
+        return user
+    from .acknowledgement import rule as acknowledgement_rule
+
+    denial = acknowledgement_rule.denial(db, user.id, identity)
+    if denial is not None:
+        raise denial
+    return user
 
 
 def client_ip(request: Request) -> str | None:

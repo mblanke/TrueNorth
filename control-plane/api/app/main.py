@@ -263,6 +263,16 @@ def _seed_dev_data(dev_account: bool = True) -> None:
     except Exception as e:
         db.rollback()
         logger.warning("Content review theme seed failed: %s", e)
+    # The draft rules of use, unpublished, likewise (ADR 0014 §3): nobody signs until an
+    # administrator publishes a version. Only when there is no version at all.
+    try:
+        from .acknowledgement.service import seed_default_draft
+
+        seed_default_draft(db)
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        logger.warning("Acknowledgement draft seed failed: %s", e)
     finally:
         db.close()
 
@@ -346,6 +356,7 @@ ws_manager = WebSocketManager(redis_url=os.getenv("REDIS_URL"))
 app.state.ws_manager = ws_manager
 
 # -- Routers (fine-grained RBAC via require_permission) --------------------
+from .acknowledgement.router import router as acknowledgement_router  # noqa: E402 (ADR 0014 §3; + its tables)
 from .class_setup.router import router as class_setup_router  # noqa: E402 (#200)
 from .classes.router import router as classes_router  # noqa: E402 (ADR 0014, + its tables)
 from .cmi5.router import router as cmi5_router  # noqa: E402 (also registers the cmi5 tables)
@@ -449,6 +460,7 @@ app.include_router(course_releases_router)
 app.include_router(course_publications_router)
 app.include_router(class_setup_router)  # an instructor's own class (#200)
 app.include_router(classes_router)  # app/classes: Class records and roll call (ADR 0014)
+app.include_router(acknowledgement_router)  # app/acknowledgement: the rules of use (ADR 0014 §3)
 app.include_router(cmi5_router)  # app/cmi5 (docs/cmi5.md)
 app.include_router(lab_sessions_router)
 app.include_router(learning_paths_router)
