@@ -79,6 +79,14 @@ history. Subject credential import now selects the exact active enrolled signer 
 package before signature verification. Private signing/decryption keys still require the
 future HSM/KMS provider and must not be placed in this registry.
 
+The platform-operator API exposes `GET` and `POST /result-transfer/trust-keys` plus
+`POST /result-transfer/trust-keys/{id}/retire`. Only the platform administrator may use any
+of them; a tenant administrator is refused because these anchors affect every tenant. Create
+accepts `purpose`, `remote_enclave`, base64 `public_key` and optional `not_before`/`not_after`.
+Exact enrollment retries are idempotent. Enroll and retire write audit entries containing only
+the route, purpose and public key ID—not key material. Retirement is idempotent and never
+deletes history.
+
 ## Subject provisioning foundation
 
 Secret can now issue a `truenorth.subject-provisioning.v1` credential while retaining the
@@ -136,7 +144,7 @@ skips.
    `queue_quiz_attempt` seam in the same transaction. Repeat for practical exercises and class
    close-out.
 3. Put private signing/decryption operations behind hardware-backed key references and add
-   authenticated operator enrollment for the implemented public-key trust registry. Installer-
+   the operator screen and formal ceremony for the implemented trust-registry API. Installer-
    managed enclave identity and classification are implemented; set unique values for every
    deployment.
 4. Add quarantine state, package age/count policy, malware scanner integration, audit events,

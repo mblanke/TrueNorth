@@ -414,6 +414,7 @@ from .routers import (
     quizzes_router,
     ranges_router,
     registration_router,
+    result_transfer_router,
     scenario_executions_router,
     scenarios_router,
     software_catalogue_router,
@@ -434,6 +435,7 @@ from .scheduler.router import router as scheduling_router  # noqa: E402
 # caller needs to register, is awaiting approval, or is a full user.
 app.include_router(registration_router)
 app.include_router(onboarding_router)
+app.include_router(result_transfer_router)
 
 # Core routers
 app.include_router(ranges_router)

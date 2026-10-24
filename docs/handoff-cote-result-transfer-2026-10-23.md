@@ -84,7 +84,14 @@ rotation keys can overlap and retirement is retained. Classification rules allow
 subject/receipt/recipient public keys on Unclassified and Unclassified result-signing public
 keys on Secret or Top Secret. Subject credential import can now resolve the exact active
 enrolled signer from the signed package. This stores no private material and is not a substitute
-for the still-missing HSM/KMS private-key provider or authenticated operator enrollment UI/API.
+for the still-missing HSM/KMS private-key provider or operator web screen/key ceremony.
+
+The operator API is now present at `/result-transfer/trust-keys`: bounded list, idempotent
+enroll, and non-destructive retire. All three operations require the platform administrator,
+not an arbitrary tenant admin; enroll/retire are audited without recording key material. The
+OpenAPI contract is regenerated and focused tests cover permitted use, non-platform roles, a
+foreign-tenant admin, wrong classification direction, idempotency and missing records. A web
+screen and external ceremony/runbook are still open.
 
 ## Verification evidence
 
@@ -140,8 +147,8 @@ Continue in this order:
    Keycloak account first, assign the signed credential to its returned UUID, and deliver a
    one-time login through an approved separate channel. Add revocation and recovery. Never
    use the TN `users.id` as the opaque token or copy the person mapping to Unclassified.
-3. Put signing/decryption keys behind a key-provider adapter and expose authenticated operator
-   enrollment for the implemented public-key trust store. Keep generated test keys and a
+3. Put signing/decryption keys behind a key-provider adapter and add the operator web screen
+   and formal ceremony for the implemented trust-store API. Keep generated test keys and a
    controlled development provider; production must use the approved HSM/KMS boundary.
 4. Add quarantine/import workflow: copied, scanned, verified, awaiting mapping/release,
    accepted/rejected. Enforce package age/count policy and audit every transition. The current

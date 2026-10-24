@@ -550,7 +550,8 @@ progress, competencies, xAPI and LTI while preserving normal Secret behaviour.
 Purpose- and enclave-bound public-key trust enrollment, overlapping validity windows, exact
 key-ID resolution and retirement are implemented. Subject credential import uses the enrolled
 Secret signer. The registry intentionally stores no private keys; HSM/KMS-backed signing and
-decryption plus authenticated operator enrollment remain open.
+decryption remains open. Platform-admin-only list, enroll and retire endpoints are implemented
+and audited; the web screen and formal key ceremony/runbook remain open.
 
 ### U1-Slice 2 — complete one class from booking to close-out
 
