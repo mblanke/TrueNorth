@@ -97,6 +97,14 @@ Unclassified-only and ignores the credential's provisioning expiry after success
 assignment. Revision `7ab3c5e9f421` makes the local-user link unique so a producer can never
 select between multiple subject tokens. Revocation remains future work.
 
+`queue_quiz_attempt` is the first producer seam. Given a completed attempt, it requires the
+pseudonymous learner's tenant-scoped enrollment and immutable pinned course release, resolves
+the opaque token, and queues the encrypted numeric result with a grade-free projection in the
+same database transaction. It is deliberately not called by the live quiz route yet: that
+route still persists readable answers and scores in quiz, progress and competency records and
+emits numeric xAPI/LTI data. Wiring only the outbox before replacing those paths would create
+transfer evidence without meeting the Unclassified data rule.
+
 ## Verification
 
 Focused checks cover public-field leakage, tampering, wrong signer, wrong recipient, wrong
@@ -113,8 +121,10 @@ skips.
 1. Add a Keycloak adapter that creates an identity-free account, passes its returned UUID to
    `assign_account`, and delivers a one-time login through an approved separate channel. Add
    revocation and recovery without importing a real identity or exposing the subject token.
-2. Connect quiz, practical exercise and class close-out producers in one transaction, then
-   replace their readable Unclassified numeric persistence with pass/fail-only records.
+2. Replace the live quiz route's readable Unclassified attempt, progress, competency, xAPI,
+   response and LTI score paths with a pass/fail-only projection, then call the implemented
+   `queue_quiz_attempt` seam in the same transaction. Repeat for practical exercises and class
+   close-out.
 3. Add hardware-backed key references, key rotation and trusted-source enrollment. Installer-
    managed enclave identity and classification are implemented; set unique values for every
    deployment.

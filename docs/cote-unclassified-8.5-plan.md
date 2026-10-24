@@ -542,6 +542,11 @@ this slice is the Keycloak/one-time-login adapter, producer integration, real ke
 trust enrollment, import quarantine, operator workflows and proof that no legacy
 Unclassified learning table, response, log or export retains a readable numeric grade.
 
+The quiz producer seam now builds an encrypted result from a completed pseudonymous attempt
+and its pinned immutable course release, but is not wired to the live route. Route wiring is
+blocked on removing its readable Unclassified answers/scores from persistence, responses,
+progress, competencies, xAPI and LTI while preserving normal Secret behaviour.
+
 ### U1-Slice 2 — complete one class from booking to close-out
 
 Rebase the per-session-range work onto the accepted baseline; add immutable participation,

@@ -71,6 +71,13 @@ round-trip. A tenant-scoped Unclassified resolver now returns the assigned opaqu
 local learner, and migration `7ab3c5e9f421` enforces one token per local user. This is the
 prerequisite a scoring producer needs; it does not itself remove any legacy score storage.
 
+The first quiz producer seam is also implemented but intentionally not wired to the live
+route. It accepts only a completed attempt belonging to the learner and tenant, requires that
+learner's immutable pinned course release, resolves the assigned opaque subject, and queues
+the encrypted result in the caller's transaction. Before wiring it, change the Unclassified
+quiz response, attempts, module progress, competency assessment, xAPI and LTI paths so they do
+not retain or transmit readable scores or answers. Secret-mode grading must remain unchanged.
+
 ## Verification evidence
 
 The full repository gate passed at commit `4aa98741`:
