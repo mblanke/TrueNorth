@@ -18,6 +18,7 @@ from ..settings import classification_level as configured_classification_level
 from .contract import DecryptedResult, ResultClaim, ResultProjection, ResultTransferError, create_package
 from .media import encode_package
 from .models import ImportedResult, ResultSubjectBinding, ResultTransferOutbox
+from .provisioning import create_subject_credential
 from .receipt import verify_receipt
 
 SECRET_LEVELS = frozenset({"secret", "top_secret"})
@@ -129,6 +130,37 @@ def bind_subject(
     db.add(binding)
     db.flush()
     return binding
+
+
+def issue_subject_credential(
+    db: Session,
+    *,
+    tenant_id: uuid.UUID,
+    user_id: uuid.UUID,
+    destination_enclave: str,
+    signing_private_key: str,
+) -> tuple[dict, ResultSubjectBinding]:
+    """On Secret, mint a random token and retain its person mapping locally."""
+    _require_secret()
+    source_enclave = _enclave_id()
+    if destination_enclave == source_enclave:
+        raise ResultTransferError("subject credential destination must be another enclave")
+    token = uuid.uuid4()
+    binding = bind_subject(
+        db,
+        tenant_id=tenant_id,
+        source_enclave=destination_enclave,
+        opaque_subject_id=token,
+        user_id=user_id,
+    )
+    package = create_subject_credential(
+        opaque_subject_id=token,
+        tenant_id=tenant_id,
+        source_enclave=source_enclave,
+        destination_enclave=destination_enclave,
+        signing_private_key=signing_private_key,
+    )
+    return package, binding
 
 
 def import_result(

@@ -50,6 +50,12 @@ fails on any new direct learner-identity, submitted-answer or readable-result co
 operator/remediation guide is `docs/unclassified-data-inventory.md`. Reductions pass without
 editing the baseline; additions require explicit security review.
 
+The next in-progress increment adds the strict signed
+`truenorth.subject-provisioning.v1` contract. Secret mints a random subject token and keeps
+the person mapping in the same transaction; the credential sent to Unclassified contains no
+name, email, service number, rank, unit or grade. This does not yet create the pseudonymous
+Keycloak/TN account or deliver its one-time login credential.
+
 ## Verification evidence
 
 The full repository gate passed on this content:

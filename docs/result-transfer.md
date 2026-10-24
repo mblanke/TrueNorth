@@ -61,6 +61,18 @@ Key generation helpers exist for tests and controlled provisioning. Production k
 created inside the approved custody boundary and supplied to a caller without logging them.
 Key IDs are the first 16 hexadecimal characters of the SHA-256 public-key digest.
 
+## Subject provisioning foundation
+
+Secret can now issue a `truenorth.subject-provisioning.v1` credential while retaining the
+token-to-person binding locally. The signed credential contains only its random credential
+ID, route, validity window, tenant ID and random subject token. Its strict allow-list rejects
+added identity fields, tampering, an untrusted signer, a wrong destination, expiry and a
+future issue time. Lifetimes are capped at 90 days.
+
+This establishes the cross-enclave contract only. Unclassified account creation, one-time
+credential delivery, Keycloak provisioning, revocation media and assignment to a verified
+pseudonymous local account remain required before a learner can use it.
+
 ## Verification
 
 Focused checks cover public-field leakage, tampering, wrong signer, wrong recipient, wrong

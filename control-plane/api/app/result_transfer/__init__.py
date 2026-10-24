@@ -19,6 +19,7 @@ from .media import (
     export_package,
     load_package,
 )
+from .provisioning import SubjectCredential, create_subject_credential, verify_subject_credential
 from .receipt import ResultReceipt, create_receipt, verify_receipt
 
 __all__ = [
@@ -28,11 +29,13 @@ __all__ = [
     "ResultProjection",
     "ResultReceipt",
     "ResultTransferError",
+    "SubjectCredential",
     "FileConsumptionLedger",
     "consume_package",
     "encode_package",
     "create_package",
     "create_receipt",
+    "create_subject_credential",
     "decrypt_package",
     "export_package",
     "generate_recipient_keypair",
@@ -40,4 +43,5 @@ __all__ = [
     "load_package",
     "verify_package",
     "verify_receipt",
+    "verify_subject_credential",
 ]

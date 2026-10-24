@@ -15,8 +15,15 @@ from app.result_transfer.contract import (
     generate_recipient_keypair,
     generate_signing_keypair,
 )
+from app.result_transfer.provisioning import verify_subject_credential
 from app.result_transfer.receipt import ResultReceipt, create_receipt
-from app.result_transfer.service import apply_receipt, bind_subject, import_result, queue_result
+from app.result_transfer.service import (
+    apply_receipt,
+    bind_subject,
+    import_result,
+    issue_subject_credential,
+    queue_result,
+)
 
 TENANT = uuid.UUID("00000000-0000-0000-0000-000000000001")
 USER = TENANT
@@ -113,6 +120,31 @@ def test_subject_binding_is_refused_on_unclassified(db_session, monkeypatch) -> 
             opaque_subject_id=uuid.uuid4(),
             user_id=USER,
         )
+
+
+def test_secret_issues_random_subject_credential_and_keeps_mapping(db_session, monkeypatch) -> None:
+    monkeypatch.setenv("TN_CLASSIFICATION_LEVEL", "secret")
+    monkeypatch.setenv("TN_ENCLAVE_ID", "secret")
+    signing_private, signing_public = generate_signing_keypair()
+
+    package, binding = issue_subject_credential(
+        db_session,
+        tenant_id=TENANT,
+        user_id=USER,
+        destination_enclave="unclass",
+        signing_private_key=signing_private,
+    )
+
+    assert binding.user_id == USER
+    assert package["subject"]["opaque_subject_id"] == str(binding.opaque_subject_id)
+    assert package["destination_enclave"] == "unclass"
+    verified = verify_subject_credential(
+        package,
+        trusted_signing_public_key=signing_public,
+        source_enclave="secret",
+        destination_enclave="unclass",
+    )
+    assert verified.opaque_subject_id == binding.opaque_subject_id
 
 
 def test_unclassified_outbox_refuses_a_forged_source_route(db_session, monkeypatch) -> None:
