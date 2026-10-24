@@ -129,8 +129,8 @@ Focused checks cover public-field leakage, tampering, wrong signer, wrong recipi
 destination, malformed score/evidence, timezone handling, media limits, symlinks, overwrite,
 filename mismatch, replay, subject rebinding, idempotent import, linear correction, receipt
 tampering and migration structure. A fresh SQLite migration, downgrade to the prior head and
-re-upgrade also pass. The full repository DoD passed on 2026-10-24 with 8,776 tests passing and
-164 skipped at commit `4aa98741`. A PostgreSQL migration run remains required because this
+re-upgrade also pass. The full repository DoD passed on 2026-10-24 with 8,786 tests passing and
+164 skipped at commit `ce9b65d2`. A PostgreSQL migration run remains required because this
 host has no configured `TEST_POSTGRES_ADMIN_URL` and the PostgreSQL-only cases were among the
 skips.
 

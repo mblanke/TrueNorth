@@ -95,10 +95,10 @@ screen and external ceremony/runbook are still open.
 
 ## Verification evidence
 
-The full repository gate passed at commit `4aa98741`:
+The full repository gate passed at commit `ce9b65d2`:
 
 ```text
-8776 passed, 164 skipped, 58 warnings in 441.64s
+8786 passed, 164 skipped, 59 warnings in 441.44s
 DoD PASS
 ```
 
