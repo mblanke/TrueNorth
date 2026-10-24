@@ -91,17 +91,22 @@ is Unclassified-only, tenant- and destination-scoped, expiry-checked and single-
 Migration `6fa2b4d8e310` links the inbox row to that local user and records assignment time. The
 chain has passed fresh upgrade, full downgrade and re-upgrade on SQLite.
 
+After assignment, `subject_token_for_user` resolves the tenant-scoped local learner back to
+the stable opaque token a scoring producer must place in a result package. It is
+Unclassified-only and ignores the credential's provisioning expiry after successful
+assignment. Revision `7ab3c5e9f421` makes the local-user link unique so a producer can never
+select between multiple subject tokens. Revocation remains future work.
+
 ## Verification
 
 Focused checks cover public-field leakage, tampering, wrong signer, wrong recipient, wrong
 destination, malformed score/evidence, timezone handling, media limits, symlinks, overwrite,
 filename mismatch, replay, subject rebinding, idempotent import, linear correction, receipt
 tampering and migration structure. A fresh SQLite migration, downgrade to the prior head and
-re-upgrade also pass. The full repository DoD passed on 2026-10-24 with 8,773 tests passing and
-164 skipped at commit `99698719`; the account-assignment increment has focused and SQLite
-migration evidence but still needs its post-change full gate. A PostgreSQL migration run
-remains required because this host has no configured `TEST_POSTGRES_ADMIN_URL` and the
-PostgreSQL-only cases were among the skips.
+re-upgrade also pass. The full repository DoD passed on 2026-10-24 with 8,776 tests passing and
+164 skipped at commit `4aa98741`. A PostgreSQL migration run remains required because this
+host has no configured `TEST_POSTGRES_ADMIN_URL` and the PostgreSQL-only cases were among the
+skips.
 
 ## Required next work
 

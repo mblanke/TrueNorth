@@ -68,6 +68,7 @@ class ProvisionedSubjectCredential(Base):
         UniqueConstraint(
             "tenant_id", "source_enclave", "opaque_subject_id", name="uq_provisioned_subject_source_token"
         ),
+        UniqueConstraint("user_id", name="uq_provisioned_subject_user"),
         Index("ix_provisioned_subject_tenant_state", "tenant_id", "state"),
     )
 

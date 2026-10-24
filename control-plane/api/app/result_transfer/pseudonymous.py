@@ -103,3 +103,36 @@ def assign_account(
     credential.assigned_at = current
     db.flush()
     return credential, user
+
+
+def subject_token_for_user(
+    db: Session,
+    *,
+    tenant_id: uuid.UUID,
+    user_id: uuid.UUID,
+) -> uuid.UUID:
+    """Resolve an assigned local learner to the opaque token used in result packages.
+
+    Credential expiry limits initial account assignment. Once assigned, the stable token
+    remains usable for that learner's training results until an explicit revocation workflow
+    is introduced.
+    """
+    try:
+        if classification_level() != "unclassified":
+            raise ResultTransferError("pseudonymous subject tokens are readable only on Unclassified")
+        local_enclave = enclave_id()
+    except UnsafeSettingsError as exc:
+        raise ResultTransferError(str(exc)) from exc
+    credential = (
+        db.query(ProvisionedSubjectCredential)
+        .filter_by(
+            tenant_id=tenant_id,
+            destination_enclave=local_enclave,
+            user_id=user_id,
+            state="assigned",
+        )
+        .one_or_none()
+    )
+    if credential is None:
+        raise ResultTransferError("assigned subject credential was not found for this learner")
+    return credential.opaque_subject_id

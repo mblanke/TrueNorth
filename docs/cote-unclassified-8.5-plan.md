@@ -35,7 +35,8 @@ Secret-issued opaque subject credentials and the Unclassified verified credentia
 also implemented. Credentials are signed, route- and tenant-bound, expire within 90 days and
 contain no person identity or grade. An available credential can now be assigned once to an
 identity-free TN Student using an externally created Keycloak UUID. Keycloak account creation,
-one-time login delivery, revocation and recovery are the next identity slice.
+one-time login delivery, revocation and recovery are the next identity slice. Assigned local
+learners can be resolved to exactly one opaque result token without exposing a person mapping.
 
 ## 1. Outcome and boundary
 

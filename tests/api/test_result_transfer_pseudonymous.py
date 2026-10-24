@@ -5,7 +5,7 @@ import uuid
 import pytest
 from app.models import UserRole
 from app.result_transfer.contract import ResultTransferError, generate_signing_keypair
-from app.result_transfer.pseudonymous import assign_account
+from app.result_transfer.pseudonymous import assign_account, subject_token_for_user
 from app.result_transfer.service import import_subject_credential, issue_subject_credential
 
 TENANT = uuid.UUID("00000000-0000-0000-0000-000000000001")
@@ -98,3 +98,20 @@ def test_assignment_refuses_subject_token_reuse_and_foreign_tenant(db_session, m
             tenant_id=uuid.uuid4(),
             keycloak_subject=str(uuid.uuid4()),
         )
+
+
+def test_assigned_token_resolves_only_for_local_tenant_and_unclassified(db_session, monkeypatch) -> None:
+    available = _available(db_session, monkeypatch)
+    _, user = assign_account(
+        db_session,
+        credential_id=available.credential_id,
+        tenant_id=TENANT,
+        keycloak_subject=str(uuid.uuid4()),
+    )
+
+    assert subject_token_for_user(db_session, tenant_id=TENANT, user_id=user.id) == available.opaque_subject_id
+    with pytest.raises(ResultTransferError, match="not found"):
+        subject_token_for_user(db_session, tenant_id=uuid.uuid4(), user_id=user.id)
+    monkeypatch.setenv("TN_CLASSIFICATION_LEVEL", "secret")
+    with pytest.raises(ResultTransferError, match="only on Unclassified"):
+        subject_token_for_user(db_session, tenant_id=TENANT, user_id=user.id)

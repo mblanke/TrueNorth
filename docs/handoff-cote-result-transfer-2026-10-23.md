@@ -67,14 +67,16 @@ then records the link and assignment time. It refuses Secret execution, a foreig
 destination, expiry, reuse, and any real identity attributes. It does **not** create the
 Keycloak account or deliver a password; the next slice is that adapter and approved one-time
 credential channel. Migration `6fa2b4d8e310` passed the full SQLite downgrade/re-upgrade
-round-trip.
+round-trip. A tenant-scoped Unclassified resolver now returns the assigned opaque token for a
+local learner, and migration `7ab3c5e9f421` enforces one token per local user. This is the
+prerequisite a scoring producer needs; it does not itself remove any legacy score storage.
 
 ## Verification evidence
 
-The last full repository gate passed at commit `99698719`:
+The full repository gate passed at commit `4aa98741`:
 
 ```text
-8773 passed, 164 skipped, 58 warnings in 439.83s
+8776 passed, 164 skipped, 58 warnings in 441.64s
 DoD PASS
 ```
 
