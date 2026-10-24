@@ -60,6 +60,29 @@ class ResultSubjectBinding(Base):
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class ProvisionedSubjectCredential(Base):
+    """Unclassified inbox entry containing no person mapping or authentication secret."""
+
+    __tablename__ = "provisioned_subject_credentials"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "source_enclave", "opaque_subject_id", name="uq_provisioned_subject_source_token"
+        ),
+        Index("ix_provisioned_subject_tenant_state", "tenant_id", "state"),
+    )
+
+    credential_id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("tenants.id"), nullable=False)
+    opaque_subject_id: Mapped[uuid.UUID] = mapped_column(GUID(), nullable=False)
+    source_enclave: Mapped[str] = mapped_column(String(100), nullable=False)
+    destination_enclave: Mapped[str] = mapped_column(String(100), nullable=False)
+    credential_json: Mapped[str] = mapped_column(Text, nullable=False)
+    credential_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    state: Mapped[str] = mapped_column(String(20), nullable=False, default="available")
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    imported_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
 class ImportedResult(Base):
     """Secret authoritative grade with source and correction provenance."""
 

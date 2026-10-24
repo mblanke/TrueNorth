@@ -58,6 +58,13 @@ the person mapping in the same transaction; the credential sent to Unclassified 
 name, email, service number, rank, unit or grade. This does not yet create the pseudonymous
 Keycloak/TN account or deliver its one-time login credential.
 
+The Unclassified receiving side now persists verified credentials in
+`provisioned_subject_credentials`. Import is idempotent by credential ID and digest, requires
+the trusted Secret source, local Unclassified destination, unexpired validity and an active
+local tenant, and leaves the credential `available` without a user mapping. Migration
+`5e9a1c3d7f20` passed SQLite upgrade/downgrade/re-upgrade. Next, design the pseudonymous
+Keycloak account adapter and one-time credential delivery without importing a real identity.
+
 ## Verification evidence
 
 The full repository gate passed on this content:

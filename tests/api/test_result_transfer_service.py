@@ -21,6 +21,7 @@ from app.result_transfer.service import (
     apply_receipt,
     bind_subject,
     import_result,
+    import_subject_credential,
     issue_subject_credential,
     queue_result,
 )
@@ -145,6 +146,34 @@ def test_secret_issues_random_subject_credential_and_keeps_mapping(db_session, m
         destination_enclave="unclass",
     )
     assert verified.opaque_subject_id == binding.opaque_subject_id
+
+
+def test_unclassified_imports_subject_credential_idempotently(db_session, monkeypatch) -> None:
+    monkeypatch.setenv("TN_CLASSIFICATION_LEVEL", "secret")
+    monkeypatch.setenv("TN_ENCLAVE_ID", "secret")
+    signing_private, signing_public = generate_signing_keypair()
+    package, binding = issue_subject_credential(
+        db_session,
+        tenant_id=TENANT,
+        user_id=USER,
+        destination_enclave="unclass",
+        signing_private_key=signing_private,
+    )
+    monkeypatch.setenv("TN_CLASSIFICATION_LEVEL", "unclassified")
+    monkeypatch.setenv("TN_ENCLAVE_ID", "unclass")
+
+    imported, created = import_subject_credential(
+        db_session, package, trusted_signing_public_key=signing_public, source_enclave="secret"
+    )
+    duplicate, created_again = import_subject_credential(
+        db_session, package, trusted_signing_public_key=signing_public, source_enclave="secret"
+    )
+
+    assert created is True and created_again is False
+    assert duplicate.credential_id == imported.credential_id
+    assert imported.opaque_subject_id == binding.opaque_subject_id
+    assert imported.state == "available"
+    assert not any(field in imported.credential_json for field in ("email", "display_name", "grade", "score"))
 
 
 def test_unclassified_outbox_refuses_a_forged_source_route(db_session, monkeypatch) -> None:

@@ -30,6 +30,11 @@ registration, roll call, quizzes, progress, exercises, Moodle results, acknowled
 collaboration. New direct identity/result columns fail tests unless explicitly reviewed. The
 inventory is intentionally evidence of the remaining gap, not a compliance claim.
 
+Secret-issued opaque subject credentials and the Unclassified verified credential inbox are
+also implemented. Credentials are signed, route- and tenant-bound, expire within 90 days and
+contain no person identity or grade. They remain unassigned on Unclassified; pseudonymous
+Keycloak account creation and one-time login delivery are the next identity slice.
+
 ## 1. Outcome and boundary
 
 This plan closes the product, infrastructure, content and evidence gaps needed for TN to

@@ -12,13 +12,13 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from ..course_releases.models import CourseRelease
-from ..models import User
+from ..models import Tenant, User
 from ..settings import UnsafeSettingsError, enclave_id
 from ..settings import classification_level as configured_classification_level
 from .contract import DecryptedResult, ResultClaim, ResultProjection, ResultTransferError, create_package
 from .media import encode_package
-from .models import ImportedResult, ResultSubjectBinding, ResultTransferOutbox
-from .provisioning import create_subject_credential
+from .models import ImportedResult, ProvisionedSubjectCredential, ResultSubjectBinding, ResultTransferOutbox
+from .provisioning import create_subject_credential, verify_subject_credential
 from .receipt import verify_receipt
 
 SECRET_LEVELS = frozenset({"secret", "top_secret"})
@@ -161,6 +161,57 @@ def issue_subject_credential(
         signing_private_key=signing_private_key,
     )
     return package, binding
+
+
+def import_subject_credential(
+    db: Session,
+    value: dict,
+    *,
+    trusted_signing_public_key: str,
+    source_enclave: str,
+) -> tuple[ProvisionedSubjectCredential, bool]:
+    """On Unclassified, verify and retain an opaque unassigned subject credential."""
+    if classification_level() != "unclassified":
+        raise ResultTransferError("subject credentials are imported only on Unclassified")
+    credential = verify_subject_credential(
+        value,
+        trusted_signing_public_key=trusted_signing_public_key,
+        source_enclave=source_enclave,
+        destination_enclave=_enclave_id(),
+    )
+    content = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    digest = hashlib.sha256(content.encode()).hexdigest()
+    existing = (
+        db.query(ProvisionedSubjectCredential)
+        .filter_by(
+            credential_id=credential.credential_id,
+            tenant_id=credential.tenant_id,
+            source_enclave=credential.source_enclave,
+            destination_enclave=credential.destination_enclave,
+        )
+        .one_or_none()
+    )
+    if existing:
+        if existing.credential_sha256 != digest:
+            raise ResultTransferError("credential_id was already imported with different content")
+        return existing, False
+    tenant = db.query(Tenant.id).filter(Tenant.id == credential.tenant_id, Tenant.is_active.is_(True)).first()
+    if tenant is None:
+        raise ResultTransferError("subject credential tenant is not active on this deployment")
+    row = ProvisionedSubjectCredential(
+        credential_id=credential.credential_id,
+        tenant_id=credential.tenant_id,
+        opaque_subject_id=credential.opaque_subject_id,
+        source_enclave=credential.source_enclave,
+        destination_enclave=credential.destination_enclave,
+        credential_json=content,
+        credential_sha256=digest,
+        state="available",
+        expires_at=credential.expires_at,
+    )
+    db.add(row)
+    db.flush()
+    return row, True
 
 
 def import_result(

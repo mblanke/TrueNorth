@@ -79,6 +79,12 @@ This establishes the cross-enclave contract only. Unclassified account creation,
 credential delivery, Keycloak provisioning, revocation media and assignment to a verified
 pseudonymous local account remain required before a learner can use it.
 
+Unclassified now has an idempotent credential inbox. It verifies the trusted Secret signer,
+expected source and local destination, validity window and active local tenant, then stores
+canonical signed content, its digest and the opaque token in `available` state. It stores no
+person mapping, login secret or user ID. Migration `5e9a1c3d7f20` creates the inbox and has
+passed fresh upgrade, downgrade to `4d8f7a1c2b90`, and re-upgrade on SQLite.
+
 ## Verification
 
 Focused checks cover public-field leakage, tampering, wrong signer, wrong recipient, wrong
