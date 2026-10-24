@@ -1,6 +1,7 @@
 # COTE unclassified-first gap-closure plan
 
-**Status:** Accepted delivery baseline; U1-Slice 1 foundation and enclave-profile gates implemented
+**Status:** Accepted delivery baseline; U1-Slice 1 foundation, enclave-profile gates and
+pseudonymous TN account assignment implemented
 **Target:** An evidence-backed 8.5/10 COTE fit for the Unclassified IOC, followed by
 repeatable promotion into Secret and higher enclaves
 **Planning source:** COTE PSOR Draft v1.0, especially HLMRs 1–7, IOC/FOC definitions,
@@ -32,8 +33,9 @@ inventory is intentionally evidence of the remaining gap, not a compliance claim
 
 Secret-issued opaque subject credentials and the Unclassified verified credential inbox are
 also implemented. Credentials are signed, route- and tenant-bound, expire within 90 days and
-contain no person identity or grade. They remain unassigned on Unclassified; pseudonymous
-Keycloak account creation and one-time login delivery are the next identity slice.
+contain no person identity or grade. An available credential can now be assigned once to an
+identity-free TN Student using an externally created Keycloak UUID. Keycloak account creation,
+one-time login delivery, revocation and recovery are the next identity slice.
 
 ## 1. Outcome and boundary
 
@@ -533,8 +535,10 @@ Implement and verify the Epic 4 contract before connecting any scoring producer:
 6. adversarial privacy, tamper, wrong-key, wrong-route, duplicate and migration tests.
 
 The cryptographic, media and persistence foundation is implemented on
-`codex/cote-result-transfer`. Remaining work for this slice is producer integration, real key
-custody and trust enrollment, import quarantine, operator workflows and proof that no legacy
+`codex/cote-result-transfer`, together with signed subject credentials, a verified
+Unclassified inbox and single-use identity-free TN account assignment. Remaining work for
+this slice is the Keycloak/one-time-login adapter, producer integration, real key custody and
+trust enrollment, import quarantine, operator workflows and proof that no legacy
 Unclassified learning table, response, log or export retains a readable numeric grade.
 
 ### U1-Slice 2 — complete one class from booking to close-out

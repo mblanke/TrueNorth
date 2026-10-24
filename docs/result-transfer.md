@@ -17,7 +17,9 @@ administrator screen or an accredited cross-domain solution.
 - `app/result_transfer/service.py`: classification guards, outbox creation, immutable subject
   binding, idempotent import, linear correction and receipt application.
 - `app/result_transfer/receipt.py`: signed grade-free Secret acknowledgement or safe rejection.
-- Alembic revision `4d8f7a1c2b90` and focused adversarial tests.
+- `app/result_transfer/pseudonymous.py`: single-use assignment of a verified credential to
+  an identity-free local Student after an external identity provider creates its account.
+- Alembic revisions through `6fa2b4d8e310` and focused adversarial tests.
 
 ## Intended controlled-media run
 
@@ -75,15 +77,19 @@ ID, route, validity window, tenant ID and random subject token. Its strict allow
 added identity fields, tampering, an untrusted signer, a wrong destination, expiry and a
 future issue time. Lifetimes are capped at 90 days.
 
-This establishes the cross-enclave contract only. Unclassified account creation, one-time
-credential delivery, Keycloak provisioning, revocation media and assignment to a verified
-pseudonymous local account remain required before a learner can use it.
-
 Unclassified now has an idempotent credential inbox. It verifies the trusted Secret signer,
 expected source and local destination, validity window and active local tenant, then stores
 canonical signed content, its digest and the opaque token in `available` state. It stores no
-person mapping, login secret or user ID. Migration `5e9a1c3d7f20` creates the inbox and has
-passed fresh upgrade, downgrade to `4d8f7a1c2b90`, and re-upgrade on SQLite.
+person mapping or login secret.
+
+`assign_account` can then consume one available credential and create the TN half of an
+identity-free local Student. The caller supplies the UUID returned after creating the matching
+pseudonymous Keycloak account; TN generates a separate random local ID, synthetic
+`@subjects.invalid` email and learner alias, and refuses real identity attributes. Assignment
+is Unclassified-only, tenant- and destination-scoped, expiry-checked and single-use. It does
+**not** create a Keycloak account or password and therefore is not yet a login workflow.
+Migration `6fa2b4d8e310` links the inbox row to that local user and records assignment time. The
+chain has passed fresh upgrade, full downgrade and re-upgrade on SQLite.
 
 ## Verification
 
@@ -91,14 +97,17 @@ Focused checks cover public-field leakage, tampering, wrong signer, wrong recipi
 destination, malformed score/evidence, timezone handling, media limits, symlinks, overwrite,
 filename mismatch, replay, subject rebinding, idempotent import, linear correction, receipt
 tampering and migration structure. A fresh SQLite migration, downgrade to the prior head and
-re-upgrade also pass. The full repository DoD passed on 2026-10-23 with 8,751 tests passing and
-164 skipped. A PostgreSQL migration run remains required because this host has no configured
-`TEST_POSTGRES_ADMIN_URL` and the PostgreSQL-only cases were among the skips.
+re-upgrade also pass. The full repository DoD passed on 2026-10-24 with 8,773 tests passing and
+164 skipped at commit `99698719`; the account-assignment increment has focused and SQLite
+migration evidence but still needs its post-change full gate. A PostgreSQL migration run
+remains required because this host has no configured `TEST_POSTGRES_ADMIN_URL` and the
+PostgreSQL-only cases were among the skips.
 
 ## Required next work
 
-1. Add an approved subject-token issuance/provisioning workflow; never reuse TN user IDs as
-   opaque tokens.
+1. Add a Keycloak adapter that creates an identity-free account, passes its returned UUID to
+   `assign_account`, and delivers a one-time login through an approved separate channel. Add
+   revocation and recovery without importing a real identity or exposing the subject token.
 2. Connect quiz, practical exercise and class close-out producers in one transaction, then
    replace their readable Unclassified numeric persistence with pass/fail-only records.
 3. Add hardware-backed key references, key rotation and trusted-source enrollment. Installer-

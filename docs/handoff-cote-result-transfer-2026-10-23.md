@@ -52,25 +52,29 @@ fails on any new direct learner-identity, submitted-answer or readable-result co
 operator/remediation guide is `docs/unclassified-data-inventory.md`. Reductions pass without
 editing the baseline; additions require explicit security review.
 
-The next in-progress increment adds the strict signed
+The next increment adds the strict signed
 `truenorth.subject-provisioning.v1` contract. Secret mints a random subject token and keeps
 the person mapping in the same transaction; the credential sent to Unclassified contains no
-name, email, service number, rank, unit or grade. This does not yet create the pseudonymous
-Keycloak/TN account or deliver its one-time login credential.
+name, email, service number, rank, unit or grade.
 
 The Unclassified receiving side now persists verified credentials in
 `provisioned_subject_credentials`. Import is idempotent by credential ID and digest, requires
 the trusted Secret source, local Unclassified destination, unexpired validity and an active
-local tenant, and leaves the credential `available` without a user mapping. Migration
-`5e9a1c3d7f20` passed SQLite upgrade/downgrade/re-upgrade. Next, design the pseudonymous
-Keycloak account adapter and one-time credential delivery without importing a real identity.
+local tenant, and leaves the credential `available` without a user mapping. The newest slice
+can assign that credential once to a new identity-free TN Student using a Keycloak UUID
+supplied by the caller. It creates a separate random TN ID, synthetic email and learner alias,
+then records the link and assignment time. It refuses Secret execution, a foreign tenant or
+destination, expiry, reuse, and any real identity attributes. It does **not** create the
+Keycloak account or deliver a password; the next slice is that adapter and approved one-time
+credential channel. Migration `6fa2b4d8e310` passed the full SQLite downgrade/re-upgrade
+round-trip.
 
 ## Verification evidence
 
-The full repository gate passed on this content:
+The last full repository gate passed at commit `99698719`:
 
 ```text
-8751 passed, 164 skipped, 58 warnings in 448.37s
+8773 passed, 164 skipped, 58 warnings in 439.83s
 DoD PASS
 ```
 
@@ -115,8 +119,10 @@ Continue in this order:
 1. Use the completed schema inventory to remove each database finding. Add the still-missing
    behavior tests for API responses, xAPI/LRS, LTI, logs, traces, object/search stores,
    support exports and backups.
-2. Design and implement Secret-issued opaque subject-token provisioning. Never use the TN
-   `users.id` as the token. The person mapping must never be present on Unclassified.
+2. Complete pseudonymous login provisioning: use an adapter to create the identity-free
+   Keycloak account first, assign the signed credential to its returned UUID, and deliver a
+   one-time login through an approved separate channel. Add revocation and recovery. Never
+   use the TN `users.id` as the opaque token or copy the person mapping to Unclassified.
 3. Put signing/decryption keys behind a key-provider adapter and trust store. Keep generated
    test keys and a controlled development provider; production must use the approved HSM/KMS
    boundary with rotation and overlapping verification keys.
