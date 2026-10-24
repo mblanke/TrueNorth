@@ -44,6 +44,12 @@ The branch contains a complete, reviewable foundation for the result-transfer co
 Files are under `control-plane/api/app/result_transfer/`, with focused tests under
 `tests/api/test_result_transfer_*.py`.
 
+The second increment adds `scripts/unclassified_data_inventory.py` and
+`docs/security/unclassified-data-baseline.json`. It currently reports 43 schema findings and
+fails on any new direct learner-identity, submitted-answer or readable-result column. The
+operator/remediation guide is `docs/unclassified-data-inventory.md`. Reductions pass without
+editing the baseline; additions require explicit security review.
+
 ## Verification evidence
 
 The full repository gate passed on this content:
@@ -91,9 +97,9 @@ exercise or class-close-out producer calls it yet.
 
 Continue in this order:
 
-1. Inventory every Unclassified identity and numeric-grade write/read/export path. Add DLP
-   behavior tests that fail on a name, email, service number, raw score or max score in the
-   Unclassified database, API, logs, traces, support exports and backups.
+1. Use the completed schema inventory to remove each database finding. Add the still-missing
+   behavior tests for API responses, xAPI/LRS, LTI, logs, traces, object/search stores,
+   support exports and backups.
 2. Design and implement Secret-issued opaque subject-token provisioning. Never use the TN
    `users.id` as the token. The person mapping must never be present on Unclassified.
 3. Put signing/decryption keys behind a key-provider adapter and trust store. Keep generated

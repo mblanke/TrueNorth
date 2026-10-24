@@ -25,6 +25,11 @@ producers do not yet call it; key custody and source trust enrollment are not in
 quarantine/malware scanning and operator UI are not built; and the present Unclassified
 application still has legacy readable score fields in its existing learning tables.
 
+A schema inventory now ratchets 43 known Unclassified remediation findings across identity,
+registration, roll call, quizzes, progress, exercises, Moodle results, acknowledgements and
+collaboration. New direct identity/result columns fail tests unless explicitly reviewed. The
+inventory is intentionally evidence of the remaining gap, not a compliance claim.
+
 ## 1. Outcome and boundary
 
 This plan closes the product, infrastructure, content and evidence gaps needed for TN to
