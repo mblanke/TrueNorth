@@ -13,7 +13,9 @@
 Build the COTE gap-closure programme Unclassified first. TrueNorth is installed independently
 in each enclave. Secret holds names, the token-to-person mapping and authoritative numeric
 grades. Unclassified retains a random opaque subject token and pass/fail. Numeric results move
-low-to-high through an approved path. Do not claim the app has reached 8.5/10 until the plan's
+low-to-high through an approved path. A data diode is the leading transport assumption as of
+2026-10-24, still TBC; keep the package contract transport-neutral until its actual interface
+and accreditation constraints are confirmed. Do not claim the app has reached 8.5/10 until the plan's
 measured gates pass. GRIMM TinyTown, automotive benches and other physical systems eventually
 sit behind a generic physical-training-asset provider; no public GRIMM control API has been
 established.

@@ -99,6 +99,12 @@ TN will not open a general network connection from Unclassified to Secret. It wi
 a transport-neutral result package that an approved one-way gateway or controlled-media
 process can carry.
 
+**Current transport assumption (2026-10-24):** a data diode is the leading candidate for
+Unclassified-to-Secret delivery, subject to confirmation. The package contract remains
+transport-neutral until the selected diode's ingress/egress interface, atomic file-delivery
+semantics, size/rate limits, health signals, replay behaviour and accreditation constraints
+are known. No reverse network channel is assumed.
+
 ```mermaid
 flowchart LR
     A[Unclassified assessment evidence] --> B[Deterministic scorer]

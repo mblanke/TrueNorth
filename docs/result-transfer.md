@@ -40,6 +40,12 @@ administrator screen or an accredited cross-domain solution.
 8. Secret creates a signed `ResultReceipt`. Unclassified applies it with `apply_receipt`, which
    accepts it only when signer, reverse route, package ID and digest match the outbox row.
 
+A data diode is the leading low-to-high transport candidate, still TBC. A future adapter may
+copy the existing canonical `.tnresult.json` files into a diode staging directory only after
+the vendor interface is confirmed. It must use atomic publication, bounded queues and retained
+digests. The core package/import contract does not require a network connection or a receipt
+return path. Receipts may use a separately approved reverse mechanism or controlled media.
+
 Never print a decrypted claim, key, learner mapping or numeric result in an operator command,
 log, metric, trace or support bundle.
 
