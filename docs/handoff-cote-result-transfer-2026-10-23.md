@@ -78,6 +78,14 @@ the encrypted result in the caller's transaction. Before wiring it, change the U
 quiz response, attempts, module progress, competency assessment, xAPI and LTI paths so they do
 not retain or transmit readable scores or answers. Secret-mode grading must remain unchanged.
 
+A public-key trust registry is now implemented in `app/result_transfer/trust.py` with migration
+`8bc4d6fa0532`. Entries are bound to remote enclave, purpose, key ID and validity window;
+rotation keys can overlap and retirement is retained. Classification rules allow only Secret
+subject/receipt/recipient public keys on Unclassified and Unclassified result-signing public
+keys on Secret or Top Secret. Subject credential import can now resolve the exact active
+enrolled signer from the signed package. This stores no private material and is not a substitute
+for the still-missing HSM/KMS private-key provider or authenticated operator enrollment UI/API.
+
 ## Verification evidence
 
 The full repository gate passed at commit `4aa98741`:
@@ -132,9 +140,9 @@ Continue in this order:
    Keycloak account first, assign the signed credential to its returned UUID, and deliver a
    one-time login through an approved separate channel. Add revocation and recovery. Never
    use the TN `users.id` as the opaque token or copy the person mapping to Unclassified.
-3. Put signing/decryption keys behind a key-provider adapter and trust store. Keep generated
-   test keys and a controlled development provider; production must use the approved HSM/KMS
-   boundary with rotation and overlapping verification keys.
+3. Put signing/decryption keys behind a key-provider adapter and expose authenticated operator
+   enrollment for the implemented public-key trust store. Keep generated test keys and a
+   controlled development provider; production must use the approved HSM/KMS boundary.
 4. Add quarantine/import workflow: copied, scanned, verified, awaiting mapping/release,
    accepted/rejected. Enforce package age/count policy and audit every transition. The current
    media helper assumes an external malware check.

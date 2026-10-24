@@ -547,6 +547,11 @@ and its pinned immutable course release, but is not wired to the live route. Rou
 blocked on removing its readable Unclassified answers/scores from persistence, responses,
 progress, competencies, xAPI and LTI while preserving normal Secret behaviour.
 
+Purpose- and enclave-bound public-key trust enrollment, overlapping validity windows, exact
+key-ID resolution and retirement are implemented. Subject credential import uses the enrolled
+Secret signer. The registry intentionally stores no private keys; HSM/KMS-backed signing and
+decryption plus authenticated operator enrollment remain open.
+
 ### U1-Slice 2 — complete one class from booking to close-out
 
 Rebase the per-session-range work onto the accepted baseline; add immutable participation,

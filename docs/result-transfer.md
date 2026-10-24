@@ -19,7 +19,9 @@ administrator screen or an accredited cross-domain solution.
 - `app/result_transfer/receipt.py`: signed grade-free Secret acknowledgement or safe rejection.
 - `app/result_transfer/pseudonymous.py`: single-use assignment of a verified credential to
   an identity-free local Student after an external identity provider creates its account.
-- Alembic revisions through `6fa2b4d8e310` and focused adversarial tests.
+- `app/result_transfer/trust.py`: purpose- and route-bound public-key enrollment, validity,
+  rotation overlap, exact key-ID resolution and retirement; it never stores private keys.
+- Alembic revisions through `8bc4d6fa0532` and focused adversarial tests.
 
 ## Intended controlled-media run
 
@@ -68,6 +70,14 @@ receipt application refuse to run on Secret.
 Key generation helpers exist for tests and controlled provisioning. Production keys must be
 created inside the approved custody boundary and supplied to a caller without logging them.
 Key IDs are the first 16 hexadecimal characters of the SHA-256 public-key digest.
+
+The trust registry stores public keys only. On Unclassified it permits remote Secret subject
+signers, receipt signers and result-recipient encryption keys. On Secret or Top Secret it
+permits remote Unclassified result signers. Every entry is bound to a purpose, remote enclave,
+key ID and validity window, so overlapping rotation keys can coexist and retirement preserves
+history. Subject credential import now selects the exact active enrolled signer named by the
+package before signature verification. Private signing/decryption keys still require the
+future HSM/KMS provider and must not be placed in this registry.
 
 ## Subject provisioning foundation
 
@@ -125,7 +135,8 @@ skips.
    response and LTI score paths with a pass/fail-only projection, then call the implemented
    `queue_quiz_attempt` seam in the same transaction. Repeat for practical exercises and class
    close-out.
-3. Add hardware-backed key references, key rotation and trusted-source enrollment. Installer-
+3. Put private signing/decryption operations behind hardware-backed key references and add
+   authenticated operator enrollment for the implemented public-key trust registry. Installer-
    managed enclave identity and classification are implemented; set unique values for every
    deployment.
 4. Add quarantine state, package age/count policy, malware scanner integration, audit events,

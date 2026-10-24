@@ -117,3 +117,24 @@ class ImportedResult(Base):
     )
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     imported_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class ResultTransferTrustKey(Base):
+    """Purpose-bound public key enrolled for one remote enclave; never private material."""
+
+    __tablename__ = "result_transfer_trust_keys"
+    __table_args__ = (
+        UniqueConstraint("purpose", "remote_enclave", "key_id", name="uq_result_trust_purpose_route_key"),
+        Index("ix_result_trust_route_active", "remote_enclave", "purpose", "active"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
+    purpose: Mapped[str] = mapped_column(String(32), nullable=False)
+    remote_enclave: Mapped[str] = mapped_column(String(100), nullable=False)
+    key_id: Mapped[str] = mapped_column(String(16), nullable=False)
+    public_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    not_before: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    not_after: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    retired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

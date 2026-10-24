@@ -20,6 +20,7 @@ from .media import encode_package
 from .models import ImportedResult, ProvisionedSubjectCredential, ResultSubjectBinding, ResultTransferOutbox
 from .provisioning import create_subject_credential, verify_subject_credential
 from .receipt import verify_receipt
+from .trust import resolve_signed_package_key
 
 SECRET_LEVELS = frozenset({"secret", "top_secret"})
 
@@ -212,6 +213,27 @@ def import_subject_credential(
     db.add(row)
     db.flush()
     return row, True
+
+
+def import_subject_credential_from_trust(
+    db: Session,
+    value: dict,
+    *,
+    source_enclave: str,
+) -> tuple[ProvisionedSubjectCredential, bool]:
+    """Import a credential only with the exact active signer enrolled for its source."""
+    trusted_key = resolve_signed_package_key(
+        db,
+        value,
+        purpose="subject-signing",
+        remote_enclave=source_enclave,
+    )
+    return import_subject_credential(
+        db,
+        value,
+        trusted_signing_public_key=trusted_key,
+        source_enclave=source_enclave,
+    )
 
 
 def import_result(
