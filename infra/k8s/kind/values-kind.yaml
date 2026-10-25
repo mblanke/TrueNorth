@@ -12,6 +12,8 @@ images:
 version: v0.0.0-kind
 
 config:
+  enclaveId: tn-kind
+  classificationLevel: unclassified
   database: {host: postgres}
   redis: {host: redis}
   # MinIO is not deployed in the smoke test: readiness does not depend on it, and the

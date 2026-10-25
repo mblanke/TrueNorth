@@ -351,6 +351,8 @@ def test_beat_is_a_single_recreated_replica(docs):
 def test_production_environment_is_carried(docs):
     cm = next(d for d in docs if d["kind"] == "ConfigMap" and d["metadata"]["name"].endswith("-config"))["data"]
     assert cm["TN_ENV"] == "production"
+    assert cm["TN_ENCLAVE_ID"] == "tn-kind"
+    assert cm["TN_CLASSIFICATION_LEVEL"] == "unclassified"
     assert cm["LOG_FORMAT"] == "json"
     for key in ("TN_VERSION", "TRUSTED_PROXY_CIDRS", "KEYCLOAK_AUDIENCE", "SCHEDULER_FEED_BASE_URL", "OPENSEARCH_URL"):
         assert cm.get(key), key
@@ -364,6 +366,19 @@ def test_production_environment_is_carried(docs):
         env = {e["name"]: e.get("value", "") for e in c["env"]}
         assert env["DATABASE_URL"].startswith("postgresql+psycopg://"), component
         assert {"configMapRef": {"name": "tn-truenorth-range-config"}} in c["envFrom"], component
+
+
+@needs_helm
+@pytest.mark.parametrize(
+    ("key", "value", "message"),
+    [
+        ("config.enclaveId", "", "config.enclaveId is required"),
+        ("config.classificationLevel", "", "config.classificationLevel is required"),
+        ("config.classificationLevel", "protected_b", "must be unclassified, secret or top_secret"),
+    ],
+)
+def test_enclave_profile_is_explicit_and_valid(key, value, message):
+    assert message in render_error("--set-string", f"{key}={value}")
 
 
 @needs_helm
