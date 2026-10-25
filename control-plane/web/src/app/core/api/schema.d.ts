@@ -7461,6 +7461,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/result-transfer/trust-keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Trust Keys
+         * @description List public trust anchors for the whole deployment. Platform administrator only.
+         */
+        get: operations["list_trust_keys_result_transfer_trust_keys_get"];
+        put?: never;
+        /**
+         * Create Trust Key
+         * @description Enroll public material only; exact retries return the existing trust anchor.
+         */
+        post: operations["create_trust_key_result_transfer_trust_keys_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/result-transfer/trust-keys/{trust_key_id}/retire": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retire Trust Key Route
+         * @description Retire a trust anchor without erasing its audit history.
+         */
+        post: operations["retire_trust_key_route_result_transfer_trust_keys__trust_key_id__retire_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/scenarios": {
         parameters: {
             query?: never;
@@ -18216,6 +18260,54 @@ export interface components {
              * Format: uuid
              */
             user_id: string;
+        };
+        /** TrustKeyCreate */
+        TrustKeyCreate: {
+            /** Not After */
+            not_after?: string | null;
+            /** Not Before */
+            not_before?: string | null;
+            /** Public Key */
+            public_key: string;
+            /**
+             * Purpose
+             * @enum {string}
+             */
+            purpose: "result-signing" | "subject-signing" | "receipt-signing" | "result-recipient";
+            /** Remote Enclave */
+            remote_enclave: string;
+        };
+        /** TrustKeyOut */
+        TrustKeyOut: {
+            /** Active */
+            active: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Key Id */
+            key_id: string;
+            /** Not After */
+            not_after: string | null;
+            /**
+             * Not Before
+             * Format: date-time
+             */
+            not_before: string;
+            /** Public Key */
+            public_key: string;
+            /** Purpose */
+            purpose: string;
+            /** Remote Enclave */
+            remote_enclave: string;
+            /** Retired At */
+            retired_at: string | null;
         };
         /** UrlIngestIn */
         UrlIngestIn: {
@@ -32399,6 +32491,102 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RegistrationRequestOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_trust_keys_result_transfer_trust_keys_get: {
+        parameters: {
+            query?: {
+                offset?: number;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrustKeyOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_trust_key_result_transfer_trust_keys_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TrustKeyCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrustKeyOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retire_trust_key_route_result_transfer_trust_keys__trust_key_id__retire_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                trust_key_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrustKeyOut"];
                 };
             };
             /** @description Validation Error */
