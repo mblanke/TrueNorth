@@ -21304,6 +21304,139 @@
         "title": "TranscriptOut",
         "type": "object"
       },
+      "TrustKeyCreate": {
+        "properties": {
+          "not_after": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Not After"
+          },
+          "not_before": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Not Before"
+          },
+          "public_key": {
+            "maxLength": 44,
+            "minLength": 44,
+            "title": "Public Key",
+            "type": "string"
+          },
+          "purpose": {
+            "enum": [
+              "result-signing",
+              "subject-signing",
+              "receipt-signing",
+              "result-recipient"
+            ],
+            "title": "Purpose",
+            "type": "string"
+          },
+          "remote_enclave": {
+            "pattern": "^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$",
+            "title": "Remote Enclave",
+            "type": "string"
+          }
+        },
+        "required": [
+          "purpose",
+          "remote_enclave",
+          "public_key"
+        ],
+        "title": "TrustKeyCreate",
+        "type": "object"
+      },
+      "TrustKeyOut": {
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "key_id": {
+            "title": "Key Id",
+            "type": "string"
+          },
+          "not_after": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Not After"
+          },
+          "not_before": {
+            "format": "date-time",
+            "title": "Not Before",
+            "type": "string"
+          },
+          "public_key": {
+            "title": "Public Key",
+            "type": "string"
+          },
+          "purpose": {
+            "title": "Purpose",
+            "type": "string"
+          },
+          "remote_enclave": {
+            "title": "Remote Enclave",
+            "type": "string"
+          },
+          "retired_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retired At"
+          }
+        },
+        "required": [
+          "id",
+          "purpose",
+          "remote_enclave",
+          "key_id",
+          "public_key",
+          "active",
+          "not_before",
+          "not_after",
+          "created_at",
+          "retired_at"
+        ],
+        "title": "TrustKeyOut",
+        "type": "object"
+      },
       "UrlIngestIn": {
         "properties": {
           "urls": {
@@ -44764,6 +44897,166 @@
         "summary": "Reject Request",
         "tags": [
           "registration"
+        ]
+      }
+    },
+    "/result-transfer/trust-keys": {
+      "get": {
+        "description": "List public trust anchors for the whole deployment. Platform administrator only.",
+        "operationId": "list_trust_keys_result_transfer_trust_keys_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TrustKeyOut"
+                  },
+                  "title": "Response List Trust Keys Result Transfer Trust Keys Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Trust Keys",
+        "tags": [
+          "result-transfer"
+        ]
+      },
+      "post": {
+        "description": "Enroll public material only; exact retries return the existing trust anchor.",
+        "operationId": "create_trust_key_result_transfer_trust_keys_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TrustKeyCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrustKeyOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Trust Key",
+        "tags": [
+          "result-transfer"
+        ]
+      }
+    },
+    "/result-transfer/trust-keys/{trust_key_id}/retire": {
+      "post": {
+        "description": "Retire a trust anchor without erasing its audit history.",
+        "operationId": "retire_trust_key_route_result_transfer_trust_keys__trust_key_id__retire_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "trust_key_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Trust Key Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrustKeyOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Retire Trust Key Route",
+        "tags": [
+          "result-transfer"
         ]
       }
     },

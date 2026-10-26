@@ -119,6 +119,10 @@ tn_root_ca_file: "{{ tn_files_dir }}/corp-root-ca.cer"
 
 # The service hostname the platform is reached on.
 tn_domain_fqdn: tn-mgmt01.corp.tnrange.lab
+# Stable identity and data classification of this independent deployment. Change these per
+# enclave; never copy a classified deployment's keys, database or secrets with the values.
+tn_enclave_id: unclass-training
+tn_classification_level: unclassified # unclassified | secret | top_secret
 
 # ── LTI 1.3 ───────────────────────────────────────────────────────────
 # The public URLs learning platforms are given: the API as browsers reach it (the edge

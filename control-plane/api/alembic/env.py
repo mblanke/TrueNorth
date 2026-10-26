@@ -35,6 +35,7 @@ from app import (  # noqa: F401
     range_inventory,
     range_leases,
     range_ops,
+    result_transfer,
     scenario_runs,
     xapi_identity,
 )

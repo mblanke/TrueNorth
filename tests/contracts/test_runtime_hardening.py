@@ -300,6 +300,13 @@ def test_provisioner_backend_is_required(name):
     assert re.fullmatch(r"\$\{PROVISIONER_BACKEND:\?[^}]+\}", value), f"{name}: no silent default ({value})"
 
 
+@pytest.mark.parametrize("name", ["api", "worker-provision", "worker-scenario", "worker-telemetry", "beat"])
+def test_enclave_profile_is_required(name):
+    env = _env(SERVICES[name])
+    for key in ("TN_ENCLAVE_ID", "TN_CLASSIFICATION_LEVEL"):
+        assert re.fullmatch(rf"\$\{{{key}:\?[^}}]+\}}", env[key]), f"{name}: {key} must have no default"
+
+
 def test_vcenter_tls_is_verified_unless_the_operator_says_otherwise():
     assert _env(SERVICES["worker-provision"])["VSPHERE_VERIFY_SSL"] == "${VSPHERE_VERIFY_SSL:-true}"
     tmpl = (INSTALL / "roles/tn_config/templates/env.production.j2").read_text()

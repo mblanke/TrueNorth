@@ -44,6 +44,8 @@ worker pings, `helm test`).
 
 3. **Required settings** (`my-values.yaml`): `ingress.host`, `config.database.host`,
    `config.redis.host`, `config.minio.endpoint`, `opensearch.url` (https),
+   `config.enclaveId` (the deployment's stable identity), `config.classificationLevel`
+   (`unclassified`, `secret` or `top_secret`),
    `config.keycloak.url`, `.audience` and `.issuer` (the realm's public issuer, e.g.
    `https://<host>/auth/realms/truenorth`), `aiOrchestrator.env.OPENAI_BASE_URL` (no
    default), and `config.trustedProxyCidrs` (the ingress

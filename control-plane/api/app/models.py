@@ -1810,7 +1810,7 @@ class QuizAttempt(TimestampMixin, Base):
 
     quiz: Mapped[Quiz] = relationship(back_populates="attempts")
 
-
 # Per-section tables live in their own packages; import them here so every
 # ``Base.metadata`` user (Alembic, create_all, the worker table export) sees them.
+from .result_transfer import models as _result_transfer_models  # noqa: E402,F401
 from .scheduler import models as _scheduler_models  # noqa: E402,F401

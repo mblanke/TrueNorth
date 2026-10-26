@@ -40,6 +40,7 @@ from .qsp import router as qsp_router
 from .quizzes import router as quizzes_router
 from .ranges import router as ranges_router
 from .registration import router as registration_router
+from .result_transfer import router as result_transfer_router
 from .scenario_executions import router as scenario_executions_router
 from .scenarios import router as scenarios_router
 from .software_catalogue import router as software_catalogue_router
@@ -51,6 +52,7 @@ from .wiki import router as wiki_router
 
 __all__ = [
     "registration_router",
+    "result_transfer_router",
     "onboarding_router",
     "ranges_router",
     "exercises_router",

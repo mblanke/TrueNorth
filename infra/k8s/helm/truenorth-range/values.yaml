@@ -413,6 +413,10 @@ serviceAccount:
 config:
   # app/settings.py refuses to start in production on unsafe settings.
   tnEnv: production
+  # Stable identity and data classification for this deployment. Both are required;
+  # classificationLevel must be unclassified, secret or top_secret.
+  enclaveId: ""
+  classificationLevel: ""
   logFormat: json
   logLevel: INFO
   database:

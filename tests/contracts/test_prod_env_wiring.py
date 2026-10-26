@@ -38,7 +38,7 @@ def test_compose_passes_the_production_settings():
     s = _services()
     api = _env(s["api"])
     assert api["TN_ENV"] == "${TN_ENV:-production}"
-    for key in ("TN_VERSION", "AI_SERVICE_TOKEN", "TRUSTED_PROXY_CIDRS", "METRICS_SCRAPE_TOKEN",
+    for key in ("TN_VERSION", "TN_ENCLAVE_ID", "TN_CLASSIFICATION_LEVEL", "AI_SERVICE_TOKEN", "TRUSTED_PROXY_CIDRS", "METRICS_SCRAPE_TOKEN",
                 "SCHEDULER_FEED_BASE_URL", "KEYCLOAK_AUDIENCE", "CSRF_SECRET"):
         assert key in api, key
     for name in ("worker-provision", "worker-scenario", "worker-telemetry", "ai-orchestrator"):
@@ -64,6 +64,8 @@ def test_installer_generates_and_renders_them():
     assert "head -c 48 /dev/urandom" in (INSTALL / "roles/tn_config/tasks/secrets.yml").read_text()
     env = (INSTALL / "roles/tn_config/templates/env.production.j2").read_text()
     for line in ("TN_ENV=production", "TN_VERSION={{ tn_deployed_version }}",
+                 "TN_ENCLAVE_ID={{ tn_enclave_id }}",
+                 "TN_CLASSIFICATION_LEVEL={{ tn_classification_level }}",
                  "KEYCLOAK_AUDIENCE={{ tn_keycloak_api_client }}",
                  "AI_SERVICE_TOKEN={{ tn_secrets['ai_service_token'] }}",
                  "METRICS_SCRAPE_TOKEN={{ tn_secrets['metrics_scrape_token'] }}",
@@ -71,6 +73,16 @@ def test_installer_generates_and_renders_them():
                  "SCHEDULER_FEED_BASE_URL=https://{{ tn_domain_fqdn }}",
                  "CSRF_SECRET={{ tn_secrets['csrf_secret'] }}"):
         assert line in env, line
+
+
+def test_installer_declares_and_preflights_the_enclave_profile():
+    defaults = yaml.safe_load((INSTALL / "inventory/group_vars/all/main.yml").read_text())
+    assert defaults["tn_enclave_id"] == "unclass-training"
+    assert defaults["tn_classification_level"] == "unclassified"
+    preflight = (INSTALL / "roles/tn_preflight/tasks/main.yml").read_text()
+    assert "Preflight — enclave identity and classification are explicit" in preflight
+    assert "tn_enclave_id is match" in preflight
+    assert "tn_classification_level in ['unclassified', 'secret', 'top_secret']" in preflight
 
 
 def test_keycloak_puts_the_api_in_the_audience():

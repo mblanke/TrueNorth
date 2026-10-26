@@ -13,10 +13,13 @@ Read at call time, not import time, so tests can change the environment.
 from __future__ import annotations
 
 import os
+import re
 import uuid
 from urllib.parse import urlsplit
 
 ENVIRONMENTS = ("development", "test", "production")
+CLASSIFICATION_LEVELS = ("unclassified", "secret", "top_secret")
+ENCLAVE_ID_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
 MIN_SECRET_LENGTH = 32  # the same floor app/secretbox.py applies to TN_SECRETS_KEY
 
 # Passwords that ship in examples, compose files and the code's own defaults.
@@ -62,6 +65,37 @@ def is_production() -> bool:
 def app_version() -> str:
     """The running build, set by the release pipeline (TN_VERSION). ``dev`` when unset."""
     return os.getenv("TN_VERSION", "").strip() or "dev"
+
+
+def classification_level() -> str:
+    """Return this deployment's data classification, refusing ambiguous production."""
+    raw = os.getenv("TN_CLASSIFICATION_LEVEL")
+    if raw is None or not raw.strip():
+        if is_production():
+            raise UnsafeSettingsError(["TN_CLASSIFICATION_LEVEL is not set"])
+        return "unclassified"
+    value = raw.strip().lower()
+    if value not in CLASSIFICATION_LEVELS:
+        raise UnsafeSettingsError(
+            [f"TN_CLASSIFICATION_LEVEL={value!r} is not one of {', '.join(CLASSIFICATION_LEVELS)}"]
+        )
+    return value
+
+
+def enclave_id() -> str:
+    """Return the stable, route-bound identifier for this independent deployment."""
+    raw = os.getenv("TN_ENCLAVE_ID")
+    if raw is None or not raw.strip():
+        if is_production():
+            raise UnsafeSettingsError(["TN_ENCLAVE_ID is not set"])
+        return "development"
+    value = raw.strip()
+    if not ENCLAVE_ID_RE.fullmatch(value):
+        raise UnsafeSettingsError(
+            ["TN_ENCLAVE_ID must be 1-63 lowercase letters, digits or hyphens, "
+             "starting and ending with a letter or digit"]
+        )
+    return value
 
 
 def _truthy(value: str) -> bool:
@@ -112,6 +146,22 @@ def production_problems() -> list[str]:
     """Every reason production must not start with the current environment. Empty = fine."""
     problems: list[str] = []
     env = os.getenv
+
+    classification = env("TN_CLASSIFICATION_LEVEL", "").strip().lower()
+    if not classification:
+        problems.append("TN_CLASSIFICATION_LEVEL is not set")
+    elif classification not in CLASSIFICATION_LEVELS:
+        problems.append(
+            f"TN_CLASSIFICATION_LEVEL={classification!r} is not one of {', '.join(CLASSIFICATION_LEVELS)}"
+        )
+    enclave = env("TN_ENCLAVE_ID", "").strip()
+    if not enclave:
+        problems.append("TN_ENCLAVE_ID is not set")
+    elif not ENCLAVE_ID_RE.fullmatch(enclave):
+        problems.append(
+            "TN_ENCLAVE_ID must be 1-63 lowercase letters, digits or hyphens, "
+            "starting and ending with a letter or digit"
+        )
 
     if _truthy(env("AUTH_DISABLED", "false")):
         problems.append("AUTH_DISABLED=true turns off authentication")
