@@ -379,7 +379,7 @@ BASH_WRITES = [
     "find . -delete", "find . -exec rm {} ;", "awk '{print > \"f\"}' x", "awk 'BEGIN{system(\"rm f\")}'",
     "PATH=/evil ls", "export PATH=/evil", "eval 'rm f'", "exec 3>f", "touch f", "mkdir d", "ln -s a b",
     "chmod +x f", "curl -o f http://x", "wget http://x", "npm install", "npm ci", "npx prettier --write .",
-    "ruff check --fix .", "ruff format .", "npm run build", "python scripts/other.py", "ng test --karma-config=evil.js", "pytest --junitxml=f",
+    "ruff check --fix .", "ruff format .", "npm run build", "python scripts/other.py", "ng test --karma-config=evil.js", "npm test -- --karma-config=evil.js", "pytest --junitxml=f",
     "pytest -p evil", "sort -o f x", "uniq a b", "rg --pre ./x foo", "sudo ls", "PY=./evil bash scripts/dod.sh",
     "sed -n \"$X\" f", "for f in a; do cp $f b; done", "if true; then rm f; fi", "{ rm f; }", "(rm f)",
     "f() { rm x; }; f",

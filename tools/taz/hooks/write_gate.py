@@ -907,6 +907,8 @@ def _check_npm(words, ctx):
         if a.startswith(("--prefix", "--userconfig", "--globalconfig", "--cache", "--script-shell",
                          "--node-options", "--workspace", "-w", "--ignore-scripts=false")):
             raise DeniedError("bash", f"npm option `{a}` is not allowed")
+        if any(a == d or a.startswith(d + "=") for d in _NG_DENY):  # forwarded to ng after `--`
+            raise DeniedError("bash", f"`npm ... {a}` writes files or loads config from a path")
     if not args:
         raise DeniedError("bash", "bare `npm`")
     if args[0] in ("--version", "-v", "ls", "list"):
