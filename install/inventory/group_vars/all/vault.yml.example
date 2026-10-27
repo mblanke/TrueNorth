@@ -107,13 +107,22 @@ vault_opensearch_dashboards_password: "" # generated on target if empty
 # MEANS ALERTS GO NOWHERE: the null receiver (install/README.md "Alerting").
 vault_alertmanager_webhook_url: ""
 
+# ── Email (SMTP; install/README.md "Email (SMTP)") ─────────────────────
+# The password of tn_smtp_username (main.yml) at tn_smtp_host. Empty with an empty
+# tn_smtp_username: a relay that takes mail from this host without authentication.
+# Preflight refuses one without the other. Rendered into the env file as SMTP_PASSWORD
+# (single-quoted, so it may not contain a ' or a line break); the API never returns it.
+vault_smtp_password: ""
+
 # ── Alert email (only with tn_alert_email_enabled) ────────────────────
-# The SMTP account Alertmanager signs in to at tn_alert_smtp_host. Preflight refuses
-# CHANGE_ME while alert email is on; set both, or empty both for a relay that accepts
-# unauthenticated mail from this host. The password reaches only a 0600 file Alertmanager
-# reads (smtp_auth_password_file), never its config or the environment.
-vault_alert_smtp_username: "CHANGE_ME"
-vault_alert_smtp_password: "CHANGE_ME"
+# By default Alertmanager signs in with the app's account above (tn_smtp_username /
+# vault_smtp_password; group_vars/all/main.yml). Uncomment both only for a different
+# account. Preflight refuses CHANGE_ME while alert email is on; set both, or empty both
+# for a relay that accepts unauthenticated mail from this host. The password reaches only
+# a 0600 file Alertmanager reads (smtp_auth_password_file), never its config or the
+# environment.
+# vault_alert_smtp_username: "CHANGE_ME"
+# vault_alert_smtp_password: "CHANGE_ME"
 
 # ── Moodle (only with tn_moodle_enabled) ──────────────────────────────
 # 32+ characters of A-Z a-z 0-9 . _ - ; generated on target if empty.

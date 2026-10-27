@@ -375,6 +375,7 @@ from .classes.router import router as classes_router  # noqa: E402 (ADR 0014, + 
 from .cmi5.router import router as cmi5_router  # noqa: E402 (also registers the cmi5 tables)
 from .content_feeds.router import router as content_feeds_router  # noqa: E402 (ADR 0014 §25; + tables)
 from .content_review.router import router as content_review_router  # noqa: E402 (ADR 0014 §22-24; + tables)
+from .email_status.router import router as email_status_router  # noqa: E402 (#306)
 from .golden_image_builds.router import router as golden_image_builds_router  # noqa: E402 (ADR 0013; + its table)
 from .live_class.router import router as live_class_router  # noqa: E402 (issue #199)
 from .maintenance_windows.router import emergency_router as emergency_teardown_router  # noqa: E402 (ADR 0013 §7)
@@ -482,6 +483,7 @@ app.include_router(class_closeout_router)  # app/classes: attendance and close-o
 app.include_router(class_ranges_router)  # app/classes: ranges, modes and teams (#282); before /{class_id}
 app.include_router(classes_router)  # app/classes: Class records and roll call (ADR 0014)
 app.include_router(acknowledgement_router)  # app/acknowledgement: the rules of use (ADR 0014 §3)
+app.include_router(email_status_router)  # GET /email/status, POST /email/test (app/email_status, #306)
 app.include_router(cmi5_router)  # app/cmi5 (docs/cmi5.md)
 app.include_router(lab_sessions_router)
 app.include_router(learning_paths_router)

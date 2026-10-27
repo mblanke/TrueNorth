@@ -157,6 +157,8 @@ async def test_the_smtp_channel_attaches_a_calendar_part(monkeypatch):
     from app.notifications.smtp import SMTPChannel
 
     monkeypatch.setenv("SMTP_HOST", "smtp.example.test")
+    # A sender is part of "configured" (#306): the relay would refuse a message without one.
+    monkeypatch.setenv("SMTP_FROM", "truenorth@example.test")
     captured = {}
 
     async def fake_send(msg, **kw):

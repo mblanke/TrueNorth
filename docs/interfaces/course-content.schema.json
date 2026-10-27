@@ -34,6 +34,10 @@
     "provenance": {"const": "unsourced"},
     "status": {"enum": ["draft", "proposed"]},
     "is_published": {"const": false},
+    "readiness": {
+      "description": "Optional; absent means draft. How far the course has been proven: draft (authored, not yet checked), technically_proven (scripts/check_course.py passed and Claude validated it: complete modules, an instructor pack, labs bound to a real range, quizzes checked against the content; awaiting SME review), sme_signed (SME/Standards signed it off). Readiness never publishes anything: a course reaches Students only through a course release and publication, whatever this says.",
+      "enum": ["draft", "technically_proven", "sme_signed"]
+    },
     "qsp_code": {
       "description": "A qualification in the ingested spine. QSP-TODO belongs to the catalogue row only.",
       "type": "string",
@@ -94,6 +98,7 @@
         "topics": {"$ref": "#/definitions/texts"},
         "practice": {"$ref": "#/definitions/texts"},
         "lab": {"type": "string"},
+        "lab_range": {"$ref": "#/definitions/lab_range"},
         "minutes_breakdown": {
           "description": "Planned Student minutes by kind of work (contact, reading, practice, range_lab, quiz, ...); the parts sum to duration_minutes.",
           "allOf": [{"$ref": "#/definitions/minutes"}, {"propertyNames": {"pattern": "^[a-z][a-z_]*$"}}]
@@ -135,6 +140,29 @@
           "else": {"required": ["lab"], "properties": {"lab": {"$ref": "#/definitions/text"}}}
         }
       ]
+    },
+    "lab_range": {
+      "description": "Optional. The range the module's lab runs on: a template id under content/ranges/<id>/template.yaml, optionally a scenario id under content/scenarios/<id>/, and the ordered steps a Student follows. Each step names the template nodes (by node id) it acts on. scripts/check_course.py resolves all of these.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["template", "steps"],
+      "properties": {
+        "template": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$"},
+        "scenario": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$"},
+        "steps": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["hosts", "action"],
+            "properties": {
+              "hosts": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$"}},
+              "action": {"$ref": "#/definitions/text"}
+            }
+          }
+        }
+      }
     },
     "quiz": {
       "type": "object",
