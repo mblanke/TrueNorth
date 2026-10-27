@@ -1,7 +1,7 @@
 """lab session idle warning, disk and booking
 
 Revision ID: 3e8b1c7a9d42
-Revises: 0fdeb8975b40
+Revises: 648ef1fe0b6c
 Create Date: 2026-10-27 12:00:00.000000
 
 Self-serve labs close after the idle limit (ADR 0014 §18, #288; ``LAB_IDLE_LIMIT_MINUTES``,
@@ -18,7 +18,7 @@ from alembic import op
 from app.models import GUID
 
 revision: str = "3e8b1c7a9d42"
-down_revision: str | None = "0fdeb8975b40"
+down_revision: str | None = "648ef1fe0b6c"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
