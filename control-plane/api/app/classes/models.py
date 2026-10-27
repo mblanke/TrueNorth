@@ -327,6 +327,9 @@ class ClassResult(TimestampMixin, Base):
     sessions_excused: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     decided_by: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("users.id"), nullable=True)
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # What this result did to the Student's enrolment (``completed``, ``failed`` or None:
+    # nothing, e.g. one already completed some other way). A later close-out undoes only this.
+    enrolment_change: Mapped[str | None] = mapped_column(String(16), nullable=True)
 
 
 class ClassCloseout(TimestampMixin, Base):

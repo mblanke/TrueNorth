@@ -76,6 +76,7 @@ def upgrade() -> None:
             sa.Column("sessions_excused", sa.Integer(), nullable=False, server_default="0"),
             sa.Column("decided_by", GUID(), sa.ForeignKey("users.id"), nullable=True),
             sa.Column("decided_at", sa.DateTime(timezone=True), nullable=True),
+            sa.Column("enrolment_change", sa.String(16), nullable=True),
             *_stamps(),
             sa.UniqueConstraint("class_id", "entry_id", name="uq_class_results_entry"),
         )

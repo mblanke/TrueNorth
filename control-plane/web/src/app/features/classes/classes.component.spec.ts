@@ -1,6 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
-import { HttpErrorResponse } from '@angular/common/http';
+import { HttpErrorResponse, provideHttpClient } from '@angular/common/http';
+import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { of, throwError } from 'rxjs';
@@ -130,6 +131,7 @@ describe('ClassesComponent', () => {
     TestBed.configureTestingModule({
       imports: [ClassesComponent, NoopAnimationsModule],
       providers: [
+        provideHttpClient(), provideHttpClientTesting(),
         { provide: ClassesApiService, useValue: api },
         { provide: OperatorRecordsApiService, useValue: records },
         { provide: NotificationService, useValue: notify },
@@ -237,6 +239,21 @@ describe('ClassesComponent', () => {
     expect(api.splitTeams).toHaveBeenCalledWith('c1', 'ev2', 3);
     component.move(CLASS, 'u2', 'tB');
     expect(api.moveTeamMember).toHaveBeenCalledWith('c1', 'ev2', 'u2', 'tB');
+  });
+
+  it('a Student sees their own classes and opens their range there, never the roll call', () => {
+    const mine = { ...CLASS, my_role: 'student', can_edit: false } as ClassRecord;
+    setup('student', mine);
+    expect(api.list).toHaveBeenCalled();
+    expect(api.mine).not.toHaveBeenCalled();
+    expect(buttons('Roll call').length).toBe(0);
+    buttons('Your range')[0].click();
+    fixture.detectChanges();
+    expect(api.rollCall).not.toHaveBeenCalled();
+    expect(el.textContent).toContain('that is how your attendance is recorded');
+    // The ready seat gets the credentials panel (opening it is the attendance evidence); the failed one does not.
+    expect(el.querySelectorAll('.my-range tn-range-credentials').length).toBe(1);
+    expect(el.querySelector('tn-class-closeout')).toBeNull();
   });
 
   it('an admin sees every class and may create one; a refusal is shown', () => {

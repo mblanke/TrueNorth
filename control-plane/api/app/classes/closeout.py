@@ -19,16 +19,21 @@ score, no detection count. ``class_results`` has no numeric column at all, and t
 enrolment a close-out completes keeps no score or letter grade there (``apply_result``).
 
 **Closing.** The lead or an admin sets pass, fail or incomplete for every Student on the
-roll call, each with an optional comment. In one transaction:
+roll call, each with an optional comment. Refused (409) while a session is provisioning or
+under way: its ranges would be torn down under the Students and it would be missing from the
+record. In one transaction, under a lock on the class row:
 
 1. attendance is recorded for any ended session the clock has not reached;
 2. each result is stored and goes to the Student's enrolment on the class's course through
    the existing completion path (``complete_enrollment``): ``pass`` completes it, ``fail``
-   marks it failed, ``incomplete`` leaves it open. Qualifications follow, since the QSP
-   spine reads enrolment and module progress (``qsp_progress``);
-3. the class becomes ``closed``: read-only. Its sessions that have not started are
-   cancelled, and its ranges are torn down by the clock as for any class no longer open
-   (``ranges._why_done``: ``class_closed``);
+   marks it failed, ``incomplete`` leaves it open. An enrolment completed some other way is
+   never failed, reopened or re-graded; a later close-out undoes only what this class did
+   (``class_results.enrolment_change``). Qualifications follow, since the QSP spine reads
+   enrolment and module progress (``qsp_progress``);
+3. the class becomes ``closed``: read-only. Its sessions still to come are cancelled, and its
+   ranges are torn down by the clock as for any class no longer open (``ranges._why_done``:
+   ``class_closed``). A closed class's views and export read what was recorded, never a
+   fresh judgement;
 4. every step is audited.
 
 **Reopening** needs an admin, with a reason, and is audited. Results stay as they were
@@ -53,6 +58,7 @@ from sqlalchemy.orm import Session
 from ..enrollment import complete_enrollment
 from ..models import Course, CourseModule, Enrollment, EnrollmentStatus, ModuleProgress, User, UserRole
 from ..scheduler import service as scheduler
+from ..scheduler.models import EventState, ScheduledEvent
 from . import attendance, service, sessions
 from .models import (
     OFF_ROLL_CALL,
@@ -74,6 +80,10 @@ _FORMULA_START = ("=", "+", "-", "@", "\t", "\r", "\n")
 
 def _now() -> datetime:
     return datetime.now(UTC)
+
+
+def _aware(t: datetime) -> datetime:
+    return t if t.tzinfo else t.replace(tzinfo=UTC)
 
 
 def numbers_allowed() -> bool:
@@ -178,8 +188,10 @@ def prefill(db: Session, cls: Class, now: datetime | None = None) -> tuple[list,
     held = attendance.held_sessions(db, cls, ended_by=now)
     entries = students(db, cls)
     recorded = attendance.records(db, cls)
-    computed = {cs.id: attendance.evaluate(db, cls, evt, attendance.expected(entries, evt)) for cs, evt in held
-                if any((cs.id, e.id) not in recorded for e in entries)}
+    # A closed class shows what was recorded when it closed, never a fresh judgement.
+    computed = {} if cls.status != ClassStatus.open.value else {
+        cs.id: attendance.evaluate(db, cls, evt, attendance.expected(entries, evt)) for cs, evt in held
+        if any((cs.id, e.id) not in recorded for e in entries)}
     uids = {e.user_id for e in entries if e.user_id}
     names = dict(db.query(User.id, User.display_name).filter(User.id.in_(uids), User.tenant_id == cls.tenant_id)) \
         if uids else {}
@@ -224,11 +236,17 @@ class Decision:
     comment: str | None = None
 
 
-def apply_result(db: Session, cls: Class, entry: RollCallEntry, outcome: str, before: str | None, now: datetime) -> str:
+def apply_result(db: Session, cls: Class, entry: RollCallEntry, outcome: str, made: str | None,
+                 now: datetime) -> tuple[str | None, str]:
     """Take one result to the Student's enrolment on the class's course, through the
-    existing completion path. Returns what happened, for the audit. Does not commit."""
+    existing completion path. ``made``: what this class's previous close-out did to it
+    (``completed``, ``failed`` or None). Returns (what this close-out did, for the next one;
+    a line for the audit). Does not commit.
+
+    A close-out only ever undoes its own work: an enrolment completed some other way
+    (self-paced, Moodle, an earlier course run) is never failed, reopened or re-graded."""
     if entry.user_id is None:
-        return "no account: kept on the class only"
+        return None, "no account: kept on the class only"
     enrolment = (
         db.query(Enrollment)
         .filter(Enrollment.user_id == entry.user_id, Enrollment.course_id == cls.course_id,
@@ -236,38 +254,54 @@ def apply_result(db: Session, cls: Class, entry: RollCallEntry, outcome: str, be
         .first()
     )
     if enrolment is None:
-        return "not enrolled: kept on the class only"
+        return None, "not enrolled: kept on the class only"
+    was = enrolment.status.value if enrolment.status else "none"
+    completed_elsewhere = enrolment.status == EnrollmentStatus.completed and made != "completed"
     if outcome == ResultOutcome.passed.value:
+        if enrolment.status == EnrollmentStatus.completed:
+            return made, f"enrolment already completed: kept as it was (was {was})"
         complete_enrollment(db, enrolment)
-        what = "enrolment completed"
-    elif outcome == ResultOutcome.failed.value:
+        if not numbers_allowed():
+            # Unclassified: pass/fail only, never a numeric grade (ADR 0015's DLP rule).
+            enrolment.final_grade = None
+            enrolment.final_score = 0
+            enrolment.max_score = 0
+        db.flush()
+        return "completed", f"enrolment completed (was {was})"
+    if outcome == ResultOutcome.failed.value:
+        if completed_elsewhere:
+            return None, f"enrolment completed elsewhere: kept (was {was})"
         enrolment.status = EnrollmentStatus.failed
         enrolment.completed_at = now
-        what = "enrolment failed"
-    else:
-        # Incomplete leaves it open; one this class's earlier close-out completed or failed
-        # is opened again.
-        if before in (ResultOutcome.passed.value, ResultOutcome.failed.value) and enrolment.status in (
-                EnrollmentStatus.completed, EnrollmentStatus.failed):
-            enrolment.status = EnrollmentStatus.in_progress
-            enrolment.completed_at = None
-            return "enrolment reopened"
-        return "enrolment left open"
-    if not numbers_allowed():
-        # Unclassified: pass/fail only, never a numeric grade (ADR 0015's DLP rule).
-        enrolment.final_grade = None
-        enrolment.final_score = 0
-        enrolment.max_score = 0
-    db.flush()
-    return what
+        db.flush()
+        return "failed", f"enrolment failed (was {was})"
+    # Incomplete leaves it open; one this class's earlier close-out completed or failed is
+    # opened again.
+    if made in ("completed", "failed") and enrolment.status in (EnrollmentStatus.completed, EnrollmentStatus.failed):
+        enrolment.status = EnrollmentStatus.in_progress
+        enrolment.completed_at = None
+        db.flush()
+        return None, f"enrolment reopened (was {was})"
+    return None, f"enrolment left as it was ({was})"
 
 
 def close(db: Session, cls: Class, decisions: list[Decision], actor, now: datetime | None = None) -> list:
     """Close the class with a result for every Student on its roll call. Returns the CANCEL
     invites of the sessions it cancelled, to send after commit. Does not commit."""
     now = now or _now()
+    # One close at a time: the class row is locked (PostgreSQL) and its status read again.
+    db.query(Class.id).filter(Class.id == cls.id, Class.tenant_id == cls.tenant_id).with_for_update().first()
+    db.refresh(cls)
     if cls.status != ClassStatus.open.value:
         raise HTTPException(409, f"The class is {cls.status}; only an open class is closed")
+    # Not while a session runs, or its ranges are being built for it: closing would tear them
+    # down under the Students and leave the session out of the record.
+    running = [evt.name for _, evt in attendance.held_sessions(db, cls)
+               if evt.state in (EventState.provisioning, EventState.active)
+               or (evt.state == EventState.scheduled and _aware(evt.start_time) <= now < _aware(evt.end_time))]
+    if running:
+        raise HTTPException(409, f"A session is under way or about to start ({', '.join(running)}); "
+                                 "close the class after it ends")
     entries = {e.id: e for e in students(db, cls)}
     given = {d.entry_id: d for d in decisions}
     if len(given) != len(decisions):
@@ -285,7 +319,7 @@ def close(db: Session, cls: Class, decisions: list[Decision], actor, now: dateti
     for entry_id, d in given.items():
         entry, st = entries[entry_id], by_entry[entry_id]
         row = st.result
-        before = row.outcome if row else None
+        made = row.enrolment_change if row else None
         if row is None:
             row = ClassResult(tenant_id=cls.tenant_id, class_id=cls.id, entry_id=entry.id)
             db.add(row)
@@ -295,7 +329,7 @@ def close(db: Session, cls: Class, decisions: list[Decision], actor, now: dateti
         row.comment = d.comment
         row.sessions_held, row.sessions_present, row.sessions_excused = st.held, st.present, st.excused
         row.decided_by, row.decided_at = actor_id, now
-        what = apply_result(db, cls, entry, d.outcome, before, now)
+        row.enrolment_change, what = apply_result(db, cls, entry, d.outcome, made, now)
         service.audit(db, actor.id, cls, "class_result",
                       f"{entry.email}: {d.outcome} (suggested {st.suggested}; attended {st.present + st.excused}"
                       f"/{st.held}); {what}"[:2000])
@@ -304,7 +338,12 @@ def close(db: Session, cls: Class, decisions: list[Decision], actor, now: dateti
     mark = db.get(ClassCloseout, cls.id) or ClassCloseout(class_id=cls.id, tenant_id=cls.tenant_id, closed_at=now)
     mark.closed_at, mark.closed_by = now, actor_id
     db.add(mark)
-    cancels = scheduler.cancel_unstarted(db, actor, sessions.session_ids(db, cls))
+    # Sessions still to come are cancelled. Ended ones stay as they are, even one the clock
+    # never moved on from scheduled: the record keeps every session that was held.
+    to_come = [eid for (eid,) in db.query(ScheduledEvent.id).filter(
+        ScheduledEvent.id.in_(sessions.session_ids(db, cls)), ScheduledEvent.tenant_id == cls.tenant_id,
+        ScheduledEvent.start_time > now)]
+    cancels = scheduler.cancel_unstarted(db, actor, to_come)
     tally = {o.value: sum(1 for d in decisions if d.outcome == o.value) for o in ResultOutcome}
     service.audit(db, actor.id, cls, "class_close",
                   f"{cls.name}: " + ", ".join(f"{n} {o}" for o, n in tally.items()))

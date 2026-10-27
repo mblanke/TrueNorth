@@ -571,3 +571,119 @@ def test_the_export_defuses_formula_cells(client, secret, graded, db_session):
     for ch in ("=", "+", "-", "@", "\t", "\r"):
         assert closeout.csv_cell(f"{ch}x").startswith("'")
     assert closeout.csv_cell(" =x") == "' =x" and closeout.csv_cell("plain") == "plain"
+
+
+# ── Review follow-ups ────────────────────────────────────────────────────────
+
+
+def test_a_close_out_never_undoes_an_enrolment_it_did_not_make(client, unclassified, graded, db_session):
+    """Completed some other way (self-paced, Moodle): a fail or an incomplete leaves it, and a
+    pass does not re-grade it. Only this class's own completion is ever reopened."""
+    w, db = graded, db_session
+    done_at = NOW - timedelta(days=30)
+    for name in ("ann", "bob"):
+        e = db.query(Enrollment).filter_by(user_id=w["students"][name].id).one()
+        e.status, e.completed_at, e.final_grade, e.final_score, e.max_score = (
+            EnrollmentStatus.completed, done_at, "B", 85, 100)
+    db.commit()
+    act_as(w["lead"])
+    r = client.post(_url(w, "/close"), json={"results": [
+        {"entry_id": str(w["entries"]["ann"].id), "outcome": "fail"},
+        {"entry_id": str(w["entries"]["bob"].id), "outcome": "pass"},
+        {"entry_id": str(w["entries"]["cat"].id), "outcome": "pass"},
+    ]})
+    assert r.status_code == 200, r.text
+    db.expire_all()
+    for name in ("ann", "bob"):
+        e = db.query(Enrollment).filter_by(user_id=w["students"][name].id).one()
+        assert (e.status, e.final_grade, e.final_score) == (EnrollmentStatus.completed, "B", 85), name
+    assert any("completed elsewhere: kept (was completed)" in a.detail
+               for a in db.query(AuditLog).filter_by(action="class_result"))
+    # Reopen and close everyone as incomplete: cat's enrolment, which this class completed, is
+    # reopened; ann's and bob's, completed elsewhere, are still left alone.
+    act_as(w["admin"])
+    assert client.post(_url(w, "/reopen"), json={"reason": "recount"}).status_code == 200
+    act_as(w["lead"])
+    assert client.post(_url(w, "/close"), json={"results": [
+        {"entry_id": str(w["entries"][n].id), "outcome": "incomplete"} for n in ("ann", "bob", "cat")]}
+    ).status_code == 200
+    db.expire_all()
+    got = {n: db.query(Enrollment).filter_by(user_id=w["students"][n].id).one().status for n in ("ann", "bob", "cat")}
+    assert got == {"ann": EnrollmentStatus.completed, "bob": EnrollmentStatus.completed,
+                   "cat": EnrollmentStatus.in_progress}
+
+
+@pytest.mark.parametrize("state, start", [
+    (EventState.active, NOW - timedelta(hours=1)),
+    (EventState.provisioning, NOW + timedelta(minutes=20)),  # its ranges are being built
+    (EventState.scheduled, NOW - timedelta(minutes=30)),  # under way; the clock has not moved it yet
+])
+def test_no_close_while_a_session_runs(client, secret, graded, db_session, state, start):
+    w = graded
+    _session(db_session, w, "Today", start, state=state)
+    db_session.commit()
+    act_as(w["lead"])
+    r = client.post(_url(w, "/close"), json={"results": [
+        {"entry_id": str(w["entries"][n].id), "outcome": "pass"} for n in ("ann", "bob", "cat")]})
+    assert r.status_code == 409 and "Today" in r.json()["detail"]
+    assert db_session.get(Class, w["cls"].id).status == "open"
+
+
+def test_a_held_session_the_clock_left_scheduled_stays_on_the_record(client, secret, graded, db_session):
+    w, db = graded, db_session
+    w["s2"][1].state = EventState.scheduled  # held back (a maintenance window), but it is over
+    db.commit()
+    act_as(w["lead"])
+    assert client.post(_url(w, "/close"), json={"results": [
+        {"entry_id": str(w["entries"][n].id), "outcome": "pass"} for n in ("ann", "bob", "cat")]}).status_code == 200
+    db.expire_all()
+    assert db.get(ScheduledEvent, w["s2"][1].id).state == EventState.scheduled  # not cancelled
+    assert client.get(_url(w, "/closeout")).json()["sessions_held"] == 2
+
+
+def test_an_open_before_a_session_starts_does_not_silence_one_during_it(db_session, w):
+    db = db_session
+    seat, ann = w["seats"]["ann"], w["students"]["ann"]
+    start = NOW + timedelta(minutes=5)
+    _session(db, w, "Soon", start, state=EventState.scheduled)
+    db.commit()
+    seen = {"class_seat_id": "x"}
+    assert attendance.note_range_open(db, ann.id, seat, seen, now=start - timedelta(minutes=4))
+    db.flush()
+    assert not attendance.note_range_open(db, ann.id, seat, seen, now=start - timedelta(minutes=1))
+    # Four minutes into the session: within ten minutes of the last open, but a session began since.
+    assert attendance.note_range_open(db, ann.id, seat, seen, now=start + timedelta(minutes=4))
+    db.flush()
+    assert not attendance.note_range_open(db, ann.id, seat, seen, now=start + timedelta(minutes=6))
+    assert not attendance.note_range_open(db, ann.id, seat, None)  # not a class range: nothing
+
+
+def test_a_reinstated_student_still_owes_the_sessions_in_between(db_session, w):
+    db = db_session
+    cat = w["entries"]["cat"]
+    cat.created_at = D1 - timedelta(days=1)
+    cat.forfeited_at = D1 + timedelta(hours=2)
+    cat.joined_at = NOW - timedelta(hours=1)  # reinstated today
+    dan = _student(db, w["a"].id, "dan")
+    late = RollCallEntry(class_id=w["cls"].id, tenant_id=w["a"].id, email=dan.email, user_id=dan.id,
+                         status="signed_in", joined_at=NOW - timedelta(hours=1))
+    db.add(late)
+    db.commit()
+    attendance.record_class(db, w["cls"], NOW)
+    rows = {(r.session_id, r.entry_id): r.status for r in db.query(ClassAttendance)}
+    assert rows[(w["s1"][0].id, cat.id)] == rows[(w["s2"][0].id, cat.id)] == "absent"
+    assert (w["s1"][0].id, late.id) not in rows  # a genuinely late addition owes nothing
+
+
+def test_a_pending_addition_on_a_closed_class_is_not_decided(db_session, w):
+    from app.classes import service as class_service
+    from fastapi import HTTPException
+
+    db = db_session
+    pending = RollCallEntry(class_id=w["cls"].id, tenant_id=w["a"].id, email="late@corp.test", status="pending")
+    db.add(pending)
+    w["cls"].status = "closed"
+    db.flush()
+    with pytest.raises(HTTPException) as refused:
+        class_service.reject_addition(db, w["cls"], pending, w["admin"], "no room")
+    assert refused.value.status_code == 409

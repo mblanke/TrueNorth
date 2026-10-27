@@ -8,10 +8,12 @@ is audited and the clock never overwrites it.
 **The signal: an audit row of the Student opening their own class range.** What counts:
 
 - ``class_range_open``: written when a Student loads their class range's credential panel
-  (``GET /ranges/{id}/credentials``, which every range page a Student opens calls) and the
-  range is theirs through the class (``ranges.student_participation``: their own seat, or
-  the class's shared range while a collective session is under way). At most one row per
-  Student and range every ``OPEN_EVERY`` (``note_range_open``);
+  (``GET /ranges/{id}/credentials``: "Show accounts" on the Classes page's "Your range", or
+  on an exercise's range) and the range is theirs through the class
+  (``ranges.student_participation``: their own seat, or the class's shared range while a
+  collective session is under way). At most one row per Student and range every
+  ``OPEN_EVERY``, except that a session starting in between always gets its own
+  (``note_range_open``);
 - ``range_credential_reveal``: a Student revealing one of that range's passwords (ADR 0013
   §3), which was already audited.
 
@@ -32,6 +34,11 @@ Why this and not another signal:
 
 Evidence only counts on the Student's own seat or the class's shared ranges (and the
 session's own booked range), never another Student's seat or another class's range.
+
+Known limits: evidence is matched to a seat's *current* range, so opens of a seat that was
+rebuilt during the session (a failed build retried) count only if the clock recorded the
+session before the rebuild; and only Student accounts write ``class_range_open``, so a
+staff account on a roll call counts only through a password reveal.
 
 **When.** ``tick`` (the API's class clock, every ``CLASS_ATTENDANCE_TICK_SECONDS``) records
 attendance for every approved session of an open class that ended in the last
@@ -109,7 +116,7 @@ def note_range_open(db: Session, user_id: uuid.UUID, rng, participation: dict | 
         return False
     now = now or _now()
     recent = (
-        db.query(AuditLog.id)
+        db.query(AuditLog.timestamp)
         .filter(
             AuditLog.resource_type == "range",
             AuditLog.resource_id == str(rng.id),
@@ -118,14 +125,37 @@ def note_range_open(db: Session, user_id: uuid.UUID, rng, participation: dict | 
             AuditLog.action == RANGE_OPEN,
             AuditLog.timestamp >= now - OPEN_EVERY,
         )
+        .order_by(AuditLog.timestamp.desc())
         .first()
     )
-    if recent is not None:
+    if recent is not None and not _session_started_since(db, rng, recent[0], now):
         return False
     detail = ", ".join(f"{k}={v}" for k, v in sorted(participation.items()))
     db.add(AuditLog(user_id=user_id, tenant_id=rng.tenant_id, action=RANGE_OPEN, resource_type="range",
                     resource_id=str(rng.id), detail=detail[:2000], timestamp=now))
     return True
+
+
+def _session_started_since(db: Session, rng, since: datetime, now: datetime) -> bool:
+    """Whether a session of a class owning ``rng`` started after ``since``: an open before a
+    session's start is no evidence for it, so it never silences one after."""
+    class_ids = [cid for (cid,) in db.query(ClassRange.class_id).filter(
+        ClassRange.range_id == rng.id, ClassRange.tenant_id == rng.tenant_id)]
+    if not class_ids:
+        return False
+    return (
+        db.query(ScheduledEvent.id)
+        .join(ClassSession, ClassSession.event_id == ScheduledEvent.id)
+        .filter(
+            ClassSession.class_id.in_(class_ids),
+            ClassSession.tenant_id == rng.tenant_id,
+            ScheduledEvent.state.in_(HELD),
+            ScheduledEvent.start_time > since,
+            ScheduledEvent.start_time <= now,
+        )
+        .first()
+        is not None
+    )
 
 
 # ── Reading the evidence ─────────────────────────────────────────────────────
@@ -159,7 +189,9 @@ def expected(entries: list[RollCallEntry], evt: ScheduledEvent) -> list[RollCall
     for e in entries:
         if e.status in NOT_EXPECTED:
             continue
-        since = e.joined_at or e.created_at
+        # A Student who lost their seat and was reinstated still owes the sessions in between
+        # (reinstating resets joined_at): count them from when they were first added.
+        since = e.created_at if e.forfeited_at is not None else (e.joined_at or e.created_at)
         if since is not None and _aware(since) >= end:
             continue
         out.append(e)
@@ -329,9 +361,20 @@ def correct(db: Session, cls: Class, cs: ClassSession, evt: ScheduledEvent, entr
     )
     before = f"{row.status} ({row.source})" if row else "not recorded"
     if row is None:
-        row = ClassAttendance(tenant_id=cls.tenant_id, class_id=cls.id, session_id=cs.id, entry_id=entry.id,
-                              user_id=entry.user_id)
-        db.add(row)
+        try:
+            with db.begin_nested():
+                row = ClassAttendance(tenant_id=cls.tenant_id, class_id=cls.id, session_id=cs.id, entry_id=entry.id,
+                                      user_id=entry.user_id, status=status, source=AttendanceSource.instructor.value)
+                db.add(row)
+        except IntegrityError:
+            # The clock recorded it at the same moment: correct its row instead.
+            row = (
+                db.query(ClassAttendance)
+                .filter(ClassAttendance.session_id == cs.id, ClassAttendance.entry_id == entry.id,
+                        ClassAttendance.tenant_id == cls.tenant_id)
+                .one()
+            )
+            before = f"{row.status} ({row.source})"
     row.status = status
     row.source = AttendanceSource.instructor.value
     row.note = note

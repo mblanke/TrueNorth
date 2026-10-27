@@ -224,7 +224,11 @@ Content (courses, modules, labs, scenarios, range templates, golden images) has 
    results land) and detections credited in the class's exercises, suggests incomplete below
    80% attendance, fail below the 70% pass mark, else pass; the lead sets each result with a
    comment. Pass completes the enrolment through `complete_enrollment`, fail marks it failed,
-   incomplete leaves it open. On Unclassified nothing numeric is shown, exported or kept on the
+   incomplete leaves it open; a close-out never fails, reopens or re-grades an enrolment
+   completed some other way, and undoes only its own. Closing is refused while a session is
+   provisioning or under way. Students reach their range (and so their attendance) from the
+   Classes page, which now lists a Student's own classes with a "Your range" panel; the full
+   "My classes" page is still slice 7. On Unclassified nothing numeric is shown, exported or kept on the
    enrolment. A closed class (`classes.status = closed`) is read-only, its unstarted sessions are
    cancelled and its ranges torn down by the clock (`class_closed`); an admin reopens it with a
    reason. CSV export defuses formula cells.
