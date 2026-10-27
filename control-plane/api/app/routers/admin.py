@@ -200,6 +200,15 @@ def update_user(
     update_data = body.model_dump(exclude_none=True)
     if "role" in update_data:
         update_data["role"] = UserRole(update_data["role"])
+    disables = update_data.get("is_active") is False
+    demotes = "role" in update_data and update_data["role"] != UserRole.admin
+    if target.is_active and target.deleted_at is None and (disables or demotes):
+        # The same locked check as DELETE and the AD status sync: never the last active admin.
+        from ..ad_status_sync.service import is_last_admin
+
+        if is_last_admin(db, target):
+            raise HTTPException(409, "This is the tenant's last active administrator; make someone else an "
+                                     "administrator first")
     if update_data.get("is_active") and not target.is_active:
         # Re-enabled: the 90-day clock for a local account starts again (app/ad_status_sync).
         from ..ad_status_sync.last_seen import touch

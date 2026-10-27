@@ -651,6 +651,23 @@ def test_deleting_the_last_admin_is_refused(client, db_session, world):
     assert r.status_code == 204, r.text
 
 
+@pytest.mark.parametrize("change", [{"is_active": False}, {"role": "instructor"}, {"role": "student"}])
+def test_patching_away_the_last_admin_is_refused(client, db_session, world, change):
+    """PATCH /users has the same locked last-admin guard: neither disabling nor demoting the
+    tenant's last active admin; with a second admin, both are allowed."""
+    act_as(world["admin"])
+    row = world["admin_row"]
+    r = client.patch(f"/users/{row.id}", params=change)
+    assert r.status_code == 409 and "last active administrator" in r.text, r.text
+    db_session.refresh(row)
+    assert row.is_active and row.role == UserRole.admin
+    r = client.patch(f"/users/{row.id}", params={"display_name": "Still the admin", "role": "admin"})
+    assert r.status_code == 200, r.text  # other edits, and keeping the role, are fine
+    real_user(db_session, UserRole.admin, world["a"].id)
+    r = client.patch(f"/users/{row.id}", params=change)
+    assert r.status_code == 200, r.text
+
+
 def test_a_tenant_over_its_limit_is_held(client, db_session, world, kc, monkeypatch):
     monkeypatch.setenv("AD_STATUS_SYNC_MAX_FLOOR", "1")
     monkeypatch.setenv("AD_STATUS_SYNC_MAX_FRACTION", "0.1")
