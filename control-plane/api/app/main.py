@@ -154,6 +154,12 @@ async def lifespan(app: FastAPI):
     from .classes import forfeit as class_forfeit
 
     seat_forfeit = asyncio.create_task(class_forfeit.run_forever()) if _env_flag("SCHEDULER_CLOCK_ENABLED") else None
+    # Attendance of each class session, recorded after it ends (ADR 0014 §12).
+    from .classes import attendance as class_attendance
+
+    attendance_clock = (
+        asyncio.create_task(class_attendance.run_forever()) if _env_flag("SCHEDULER_CLOCK_ENABLED") else None
+    )
 
     # WebSocket heartbeat (no Redis): drops dead sockets and closes those whose token has
     # expired (app/ws_auth.py). Nothing started it before, so a socket outlived its user.
@@ -162,7 +168,8 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    for sweep in (range_resend, lab_sweep, exercise_clock, clock_task, class_reminders, seat_forfeit, results_pull,
+    for sweep in (range_resend, lab_sweep, exercise_clock, clock_task, class_reminders, seat_forfeit, attendance_clock,
+                  results_pull,
                   cmi5_ags, infra_discovery_task, cert_retention):
         if sweep is not None:
             sweep.cancel()
@@ -362,10 +369,12 @@ app.state.ws_manager = ws_manager
 # -- Routers (fine-grained RBAC via require_permission) --------------------
 from .acknowledgement.router import router as acknowledgement_router  # noqa: E402 (ADR 0014 §3; + its tables)
 from .class_setup.router import router as class_setup_router  # noqa: E402 (#200)
+from .classes.closeout_router import router as class_closeout_router  # noqa: E402 (#283)
 from .classes.range_router import router as class_ranges_router  # noqa: E402 (#282)
 from .classes.router import router as classes_router  # noqa: E402 (ADR 0014, + its tables)
 from .cmi5.router import router as cmi5_router  # noqa: E402 (also registers the cmi5 tables)
 from .content_review.router import router as content_review_router  # noqa: E402 (ADR 0014 §22-24; + tables)
+from .email_status.router import router as email_status_router  # noqa: E402 (#306)
 from .golden_image_builds.router import router as golden_image_builds_router  # noqa: E402 (ADR 0013; + its table)
 from .live_class.router import router as live_class_router  # noqa: E402 (issue #199)
 from .maintenance_windows.router import emergency_router as emergency_teardown_router  # noqa: E402 (ADR 0013 §7)
@@ -468,9 +477,11 @@ app.include_router(courses_router)
 app.include_router(course_releases_router)
 app.include_router(course_publications_router)
 app.include_router(class_setup_router)  # an instructor's own class (#200)
+app.include_router(class_closeout_router)  # app/classes: attendance and close-out (#283)
 app.include_router(class_ranges_router)  # app/classes: ranges, modes and teams (#282); before /{class_id}
 app.include_router(classes_router)  # app/classes: Class records and roll call (ADR 0014)
 app.include_router(acknowledgement_router)  # app/acknowledgement: the rules of use (ADR 0014 §3)
+app.include_router(email_status_router)  # GET /email/status, POST /email/test (app/email_status, #306)
 app.include_router(cmi5_router)  # app/cmi5 (docs/cmi5.md)
 app.include_router(lab_sessions_router)
 app.include_router(learning_paths_router)

@@ -104,12 +104,18 @@ all:
           tn_arc2_mode: subscription_with_local_fallback
           tn_arc2_local_url: https://atlas.tail8d54ec.ts.net:4443
           tn_arc2_local_model: atl-coder
+          # Email (install/README.md "Email (SMTP)"). OFF until the relay is chosen: the
+          # app logs its mail instead of sending it and admins see a banner. To turn on,
+          # uncomment these, put vault_smtp_password in the vault if the relay wants a
+          # sign-in, and re-run 30-config and 50-stack-up.
+          # tn_smtp_host: <the SMTP relay>
+          # tn_smtp_port: 587                 (tn_smtp_security: starttls | tls | none)
+          # tn_smtp_username: <the relay account, or leave unset for none>
+          # tn_smtp_from_address: <an address the relay lets this host send as>
           # Alerts by email (install/README.md "Alerting"). OFF until the SMTP details are
-          # known: alerts go nowhere and 99-validate warns so. To turn on, set this true,
-          # uncomment the three below, put vault_alert_smtp_username /
-          # vault_alert_smtp_password in the vault (preflight refuses CHANGE_ME), then:
+          # known: alerts go nowhere and 99-validate warns so. They use the tn_smtp_*
+          # relay above. To turn on, set the relay above, set this true and the recipient
+          # below, then:
           # ansible-playbook -i inventory/staging.yml playbooks/alert-test.yml
           tn_alert_email_enabled: false
           # tn_alert_email_to: <the operator's inbox>
-          # tn_alert_email_from: <an address the relay lets this host send as>
-          # tn_alert_smtp_host: <the SMTP relay>   (tn_alert_smtp_port: 587, STARTTLS)

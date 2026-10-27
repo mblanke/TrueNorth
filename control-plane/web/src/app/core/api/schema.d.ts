@@ -989,6 +989,95 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/classes/{class_id}/attendance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A class's attendance, per session and Student
+         * @description The approved sessions that have started, and each Student's attendance at them: as
+         *     the clock recorded it after the session, or as the lead or an admin set it.
+         *     **class:read**, then its staff only.
+         */
+        get: operations["getClassAttendance"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/classes/{class_id}/attendance/{session_id}/{entry_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set a Student's attendance at a class session
+         * @description Its lead or an admin, once the session has started, while the class is open. The
+         *     clock never overwrites it. Audited (``class_attendance_correct``), with what it was.
+         *     **class:create**
+         */
+        put: operations["correctClassAttendance"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/classes/{class_id}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Close a class with a result for every Student
+         * @description Its lead or an admin. Pass, fail or incomplete for every Student on the roll call
+         *     (422 when one is missing). Results go to each Student's enrolment on the course; the
+         *     class becomes read-only, its unstarted sessions are cancelled and its ranges torn down.
+         *     Audited.  **class:create**
+         */
+        post: operations["closeClass"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/classes/{class_id}/closeout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A class's pre-filled results
+         * @description Each Student's attendance, course standing and suggested outcome, and the result set
+         *     at the last close-out. Pass/fail only on an Unclassified deployment.  **class:read**,
+         *     then its staff only.
+         */
+        get: operations["getClassCloseout"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/classes/{class_id}/ranges": {
         parameters: {
             query?: never;
@@ -1025,6 +1114,49 @@ export interface paths {
          * @description Its lead or an admin. Only a range whose build failed (409 otherwise). Audited.
          */
         post: operations["retryClassRange"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/classes/{class_id}/reopen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reopen a closed class
+         * @description An admin of the class's tenant only, with a reason. Results stay until the next
+         *     close-out. Audited (``class_reopen``).  **class:create**, then admin
+         */
+        post: operations["reopenClass"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/classes/{class_id}/results.csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A class's attendance and results as CSV
+         * @description One row per Student: each session's attendance, the suggestion and the result. Cells a
+         *     spreadsheet would run as a formula are defused. Never a numeric grade.  **class:read**,
+         *     then its staff only.
+         */
+        get: operations["exportClassResults"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2801,6 +2933,45 @@ export interface paths {
         head?: never;
         /** Update Ou */
         patch: operations["update_ou_directory_ous__ou_id__patch"];
+        trace?: never;
+    };
+    "/email/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Whether the API sends email; the relay for the platform administrator only */
+        get: operations["getEmailStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/email/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send one test message to the platform administrator's own address
+         * @description The recipient is always the caller's own address: the body takes no recipient, so
+         *     this cannot be used to mail anyone else. Refused while email is not configured (409),
+         *     and more than once a minute per administrator (429). Every message sent is audited.
+         */
+        post: operations["sendTestEmail"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/exercise-forge/generate": {
@@ -10013,6 +10184,104 @@ export interface components {
                 [key: string]: number[];
             };
         };
+        /** AttendanceCellOut */
+        AttendanceCellOut: {
+            /** Corrected At */
+            corrected_at?: string | null;
+            /**
+             * Evidence At
+             * @description When the Student first opened their range in the session
+             */
+            evidence_at?: string | null;
+            /** Note */
+            note?: string | null;
+            /**
+             * Session Id
+             * Format: uuid
+             */
+            session_id: string;
+            source?: components["schemas"]["AttendanceSourceOut"] | null;
+            /** @description None: not recorded yet (the session is under way, or the clock has not reached it) */
+            status?: components["schemas"]["AttendanceStatusOut"] | null;
+        };
+        /** AttendanceCorrectIn */
+        AttendanceCorrectIn: {
+            /** Note */
+            note?: string | null;
+            status: components["schemas"]["AttendanceStatusOut"];
+        };
+        /** AttendanceGridOut */
+        AttendanceGridOut: {
+            /** Can Edit */
+            can_edit: boolean;
+            /**
+             * Class Id
+             * Format: uuid
+             */
+            class_id: string;
+            /** Class Status */
+            class_status: string;
+            /** Sessions */
+            sessions: components["schemas"]["AttendanceSessionOut"][];
+            /** Students */
+            students: components["schemas"]["AttendanceRowOut"][];
+        };
+        /** AttendanceRowOut */
+        AttendanceRowOut: {
+            /** Cells */
+            cells: components["schemas"]["AttendanceCellOut"][];
+            /** Display Name */
+            display_name?: string | null;
+            /** Email */
+            email: string;
+            /**
+             * Entry Id
+             * Format: uuid
+             */
+            entry_id: string;
+            /** Roll Call Status */
+            roll_call_status: string;
+        };
+        /** AttendanceSessionOut */
+        AttendanceSessionOut: {
+            /**
+             * End Time
+             * Format: date-time
+             */
+            end_time: string;
+            /**
+             * Ended
+             * @description Over: the clock records it (or has)
+             */
+            ended: boolean;
+            /**
+             * Event Id
+             * Format: uuid
+             */
+            event_id: string;
+            /** Name */
+            name: string;
+            /**
+             * Session Id
+             * Format: uuid
+             */
+            session_id: string;
+            /**
+             * Start Time
+             * Format: date-time
+             */
+            start_time: string;
+        };
+        /**
+         * AttendanceSourceOut
+         * @enum {string}
+         */
+        AttendanceSourceOut: "auto" | "instructor";
+        /**
+         * AttendanceStatusOut
+         * @enum {string}
+         */
+        AttendanceStatusOut: "present" | "absent" | "excused";
         /**
          * AttentionOut
          * @description Something an instructor may want to look at. Only what the data says today:
@@ -10885,7 +11154,7 @@ export interface components {
             assistants: components["schemas"]["ClassPerson"][];
             /**
              * Can Edit
-             * @description The caller is its lead or an admin: may change it and its roll call
+             * @description The caller is its lead or an admin and the class is open: may change it and its roll call
              */
             can_edit: boolean;
             /**
@@ -11071,7 +11340,7 @@ export interface components {
          * ClassStatusOut
          * @enum {string}
          */
-        ClassStatusOut: "open" | "cancelled";
+        ClassStatusOut: "open" | "cancelled" | "closed";
         /** ClassStudentOut */
         ClassStudentOut: {
             /**
@@ -11211,6 +11480,32 @@ export interface components {
              * @description Target node for the new VM
              */
             target_node: string;
+        };
+        /** CloseIn */
+        CloseIn: {
+            /** Results */
+            results?: components["schemas"]["ResultIn"][];
+        };
+        /** CloseoutOut */
+        CloseoutOut: {
+            /**
+             * Class Id
+             * Format: uuid
+             */
+            class_id: string;
+            /** Class Status */
+            class_status: string;
+            /** Closed At */
+            closed_at?: string | null;
+            /**
+             * Numbers Shown
+             * @description False on an Unclassified deployment: pass/fail only
+             */
+            numbers_shown: boolean;
+            /** Sessions Held */
+            sessions_held: number;
+            /** Students */
+            students: components["schemas"]["StandingOut"][];
         };
         /** Cmi5AuOut */
         Cmi5AuOut: {
@@ -12569,6 +12864,76 @@ export interface components {
             maps_to_critical_event?: string | null;
             /** Title */
             title: string;
+        };
+        /**
+         * EmailRelayOut
+         * @description The relay as configured. Shown to the platform administrator only.
+         */
+        EmailRelayOut: {
+            /** From Address */
+            from_address: string;
+            /** Host */
+            host: string;
+            /** Port */
+            port: number;
+            /**
+             * Security
+             * @description starttls | tls | none
+             */
+            security: string;
+            /**
+             * Signs In
+             * @description Whether a username and password are set (the password is never shown)
+             */
+            signs_in: boolean;
+            /**
+             * Username
+             * @description The account the API signs in as; empty: no sign-in
+             * @default
+             */
+            username?: string;
+        };
+        /**
+         * EmailStatusOut
+         * @description Whether the API sends email (roll-call onboarding, reminders, seat-forfeit notices,
+         *     calendar invites). Every signed-in user may ask; only the platform administrator sees
+         *     the relay.
+         */
+        EmailStatusOut: {
+            /**
+             * Can Send Test
+             * @description Whether the caller may POST /email/test
+             * @default false
+             */
+            can_send_test?: boolean;
+            /**
+             * Configured
+             * @description False: mail is only logged, nobody is emailed
+             */
+            configured: boolean;
+            /**
+             * Docs
+             * @description Where the installer's settings are described
+             * @default install/README.md, "Email (SMTP)"
+             */
+            docs?: string;
+            /** @description Platform administrator only */
+            relay?: components["schemas"]["EmailRelayOut"] | null;
+        };
+        /**
+         * EmailTestOut
+         * @description The outcome of a test message to the caller's own address.
+         */
+        EmailTestOut: {
+            /** Detail */
+            detail: string;
+            /**
+             * Sent
+             * @description The relay accepted it (delivery is proven only in the inbox)
+             */
+            sent: boolean;
+            /** To */
+            to: string;
         };
         /**
          * EmergencyTeardownIn
@@ -16597,6 +16962,11 @@ export interface components {
              */
             reason: string;
         };
+        /** ReopenIn */
+        ReopenIn: {
+            /** Reason */
+            reason: string;
+        };
         /** Reply */
         Reply: {
             /** Action */
@@ -16614,6 +16984,22 @@ export interface components {
              */
             version?: string;
         };
+        /** ResultIn */
+        ResultIn: {
+            /** Comment */
+            comment?: string | null;
+            /**
+             * Entry Id
+             * Format: uuid
+             */
+            entry_id: string;
+            outcome: components["schemas"]["ResultOutcomeOut"];
+        };
+        /**
+         * ResultOutcomeOut
+         * @enum {string}
+         */
+        ResultOutcomeOut: "pass" | "fail" | "incomplete";
         /** RetireIn */
         RetireIn: {
             /** Reason */
@@ -17429,6 +17815,48 @@ export interface components {
             source?: string;
             /** Text */
             text: string;
+        };
+        /** StandingOut */
+        StandingOut: {
+            /** Absent */
+            absent: number;
+            /** Comment */
+            comment?: string | null;
+            /**
+             * Course Passed
+             * @description Every graded module at or above its own pass threshold, unattempted ones failing; None: no graded result yet, or the course has no graded module
+             */
+            course_passed?: boolean | null;
+            /**
+             * Course Percent
+             * @description Never on an Unclassified deployment
+             */
+            course_percent?: number | null;
+            /** Decided At */
+            decided_at?: string | null;
+            /**
+             * Detections Credited
+             * @description Never on an Unclassified deployment
+             */
+            detections_credited?: number | null;
+            /** Display Name */
+            display_name?: string | null;
+            /** Email */
+            email: string;
+            /**
+             * Entry Id
+             * Format: uuid
+             */
+            entry_id: string;
+            /** Excused */
+            excused: number;
+            /** @description The result set at the last close-out */
+            outcome?: components["schemas"]["ResultOutcomeOut"] | null;
+            /** Present */
+            present: number;
+            /** Sessions Held */
+            sessions_held: number;
+            suggested: components["schemas"]["ResultOutcomeOut"];
         };
         /** StorageApplianceIn */
         StorageApplianceIn: {
@@ -21256,6 +21684,140 @@ export interface operations {
             };
         };
     };
+    getClassAttendance: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                class_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttendanceGridOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    correctClassAttendance: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                class_id: string;
+                session_id: string;
+                entry_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AttendanceCorrectIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttendanceCellOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    closeClass: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                class_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CloseIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CloseoutOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    getClassCloseout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                class_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CloseoutOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     getClassRanges: {
         parameters: {
             query?: never;
@@ -21306,6 +21868,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ClassRangeRowOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reopenClass: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                class_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReopenIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CloseoutOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    exportClassResults: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                class_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
                 };
             };
             /** @description Validation Error */
@@ -24763,6 +25391,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    getEmailStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmailStatusOut"];
+                };
+            };
+        };
+    };
+    sendTestEmail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmailTestOut"];
                 };
             };
         };
