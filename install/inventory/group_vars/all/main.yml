@@ -298,6 +298,17 @@ tn_infra_discovery_seconds: 300
 # (archived; a range's current record is never purged) are deleted this many months after
 # they were opened, each with an audit row; export them first. 0 keeps them forever.
 tn_range_cert_retention_months: 12
+# Release, end-of-life and vulnerability feeds for the content clock (ADR 0014 decision 25).
+# Off on a fresh install. online: worker-provision pulls endoflife.date, CISA KEV and the
+# NVD CVE API once a day (GET only; no site data is sent), through tn_feeds_http_proxy when
+# set (optional; else the worker's HTTPS_PROXY, else direct). bundle (air-gapped): a platform admin imports signed feed bundles on the Content
+# view, verified against tn_feeds_bundle_public_key (scripts/build_feed_bundle.py makes the
+# key pair and the bundles). install/README.md "Content feeds".
+tn_feeds_mode: "off"
+tn_feeds_http_proxy: ""
+tn_feeds_bundle_public_key: ""
+tn_feeds_nvd_api_key: "{{ vault_feeds_nvd_api_key | default('') }}"
+tn_feeds_nvd_min_cvss: 9.0
 # Empty: clone the inventory VM templates (tmpl-*). Set once a Content Library exists.
 tn_vsphere_content_library: ""
 tn_vsphere_concurrency: 4

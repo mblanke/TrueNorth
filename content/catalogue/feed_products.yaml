@@ -1,0 +1,171 @@
+# What each golden template is built from, as the release and vulnerability feeds name it
+# (ADR 0014 decision 25, issue #287). Keyed by the golden template's catalogue id
+# (vm_iso_catalogue.csv template_id). The content clock's sync flags a golden template
+# stale when a feed entry names one of its products, and the flag flows down to the range
+# templates, scenarios, modules and courses that use it.
+#
+# Per product:
+#   name     what the Content view says ("Ubuntu 24.04 reached EOL 2029-05-31")
+#   eol      endoflife.date product and release cycle (https://endoflife.date/<product>)
+#   release  the point release the template's ISO is; a newer one in the same cycle is a
+#            release flag. Update it when the template is rebuilt from a newer ISO.
+#   cpe      NVD CPE match string (part:vendor:product[:version]); CVEs for it at or above
+#            TN_FEEDS_NVD_MIN_CVSS are vulnerability flags
+#   kev      CISA KEV entries: {vendor, product} or {vendor, products: [...]}. A product is
+#            KEV's own name for it (case and spacing do not matter) or a prefix ending in
+#            "*" ("Windows *": every "Windows <component>" entry). KEV names products
+#            loosely (Windows, Win32k, "Windows CNG Key Isolation Service"), so list every
+#            name it uses. A KEV flag reads "may affect": KEV names a product family, not
+#            the template's exact build.
+#
+# Checked against the live feeds on 2026-10-27 (tests/worker/content_feeds_fixtures/
+# *_live.json): every KEV name matches at least one KEV entry and every eol cycle exists.
+# A name or cycle that stops matching is shown on the Feeds panel as a warning after the
+# next pull. Only these public names leave the site (in the feed GET requests). A template
+# not listed here gets no feed flags; its review clock still runs.
+
+kev_lists:
+  linux: &kev_linux {vendor: Linux, product: Kernel}
+  # Windows itself and the components KEV lists separately.
+  windows: &kev_windows
+    vendor: Microsoft
+    products:
+      - Windows
+      - "Windows *"
+      - Win32k
+      - Ancillary Function Driver (afd.sys)
+      - ATM Font Driver
+      - Client-Server Run-time Subsystem (CSRSS)
+      - DirectX
+      - DirectX Graphics Kernel (DXGKRNL)
+      - DWM Core Library
+      - Enhanced Cryptographic Provider
+      - Graphics Component
+      - Graphics Device Interface (GDI)
+      - HTTP Protocol Stack
+      - HTTP.sys
+      - Input Method Editor (IME) Japanese
+      - MSHTML
+      - Remote Desktop Services
+      - SMBv1
+      - SMBv1 server
+      - SMBv3
+      - Streaming Service
+      - Streaming Service Proxy
+      - Task Scheduler
+      - Update Notification Manager
+      - WinVerifyTrust function
+  # Server roles the server templates carry (domain controllers, IIS).
+  windows_server_roles: &kev_windows_server_roles
+    vendor: Microsoft
+    products:
+      - Active Directory
+      - Internet Information Services (IIS)
+      - Internet Key Exchange (IKE) Service Extensions
+      - Kerberos Key Distribution Center (KDC)
+      - Netlogon
+  sql_server: &kev_sql_server {vendor: Microsoft, product: SQL Server}
+
+golden_templates:
+  ubuntu-lts:
+    - name: Ubuntu 24.04
+      eol: {product: ubuntu, cycle: "24.04"}
+      release: "24.04.5"
+      cpe: "cpe:2.3:o:canonical:ubuntu_linux:24.04"
+      kev: [*kev_linux]
+  remnux:
+    - name: Ubuntu 24.04 (REMnux base)
+      eol: {product: ubuntu, cycle: "24.04"}
+      cpe: "cpe:2.3:o:canonical:ubuntu_linux:24.04"
+      kev: [*kev_linux]
+  sift:
+    - name: Ubuntu 24.04 (SIFT base)
+      eol: {product: ubuntu, cycle: "24.04"}
+      cpe: "cpe:2.3:o:canonical:ubuntu_linux:24.04"
+      kev: [*kev_linux]
+  greyspace-host:
+    - name: Ubuntu 24.04 (Greyspace host)
+      eol: {product: ubuntu, cycle: "24.04"}
+      cpe: "cpe:2.3:o:canonical:ubuntu_linux:24.04"
+      kev: [*kev_linux]
+  debian13:
+    - name: Debian 13
+      eol: {product: debian, cycle: "13"}
+      release: "13.6"
+      cpe: "cpe:2.3:o:debian:debian_linux:13.0"
+      kev: [*kev_linux]
+  rocky:
+    - name: Rocky Linux 10
+      eol: {product: rocky-linux, cycle: "10"}
+      release: "10.2"
+      kev: [*kev_linux]
+  win10-22h2:
+    - name: Windows 10 22H2
+      eol: {product: windows, cycle: "10-22h2"}
+      cpe: "cpe:2.3:o:microsoft:windows_10_22h2"
+      kev: [*kev_windows]
+  win11-24h2:
+    - name: Windows 11 24H2
+      eol: {product: windows, cycle: "11-24h2-e"}
+      cpe: "cpe:2.3:o:microsoft:windows_11_24h2"
+      kev: [*kev_windows]
+  srv2016:
+    - name: Windows Server 2016
+      eol: {product: windows-server, cycle: "2016"}
+      cpe: "cpe:2.3:o:microsoft:windows_server_2016"
+      kev: [*kev_windows, *kev_windows_server_roles]
+  srv2019:
+    - name: Windows Server 2019
+      eol: {product: windows-server, cycle: "2019"}
+      cpe: "cpe:2.3:o:microsoft:windows_server_2019"
+      kev: [*kev_windows, *kev_windows_server_roles]
+  srv2022:
+    - name: Windows Server 2022
+      eol: {product: windows-server, cycle: "2022"}
+      cpe: "cpe:2.3:o:microsoft:windows_server_2022"
+      kev: [*kev_windows, *kev_windows_server_roles]
+  srv2025:
+    - name: Windows Server 2025
+      eol: {product: windows-server, cycle: "2025"}
+      cpe: "cpe:2.3:o:microsoft:windows_server_2025"
+      kev: [*kev_windows, *kev_windows_server_roles]
+  srv2022-exchange2019:
+    - name: Windows Server 2022
+      eol: {product: windows-server, cycle: "2022"}
+      cpe: "cpe:2.3:o:microsoft:windows_server_2022"
+      kev: [*kev_windows, *kev_windows_server_roles]
+    - name: Exchange Server 2019
+      eol: {product: msexchange, cycle: "2019"}
+      cpe: "cpe:2.3:a:microsoft:exchange_server:2019"
+      kev: [{vendor: Microsoft, products: [Exchange Server, Exchange]}]
+  srv2022-sharepoint2019:
+    - name: Windows Server 2022
+      eol: {product: windows-server, cycle: "2022"}
+      cpe: "cpe:2.3:o:microsoft:windows_server_2022"
+      kev: [*kev_windows, *kev_windows_server_roles]
+    - name: SharePoint Server 2019
+      eol: {product: sharepoint, cycle: "2019"}
+      cpe: "cpe:2.3:a:microsoft:sharepoint_server:2019"
+      kev: [{vendor: Microsoft, products: [SharePoint, SharePoint Server, "SharePoint *",
+                                           ".NET Framework, SharePoint, Visual Studio"]}]
+    - name: SQL Server 2022
+      kev: [*kev_sql_server]
+  srv2022-sharepointse:
+    - name: Windows Server 2022
+      eol: {product: windows-server, cycle: "2022"}
+      cpe: "cpe:2.3:o:microsoft:windows_server_2022"
+      kev: [*kev_windows, *kev_windows_server_roles]
+    - name: SharePoint Server Subscription Edition
+      kev: [{vendor: Microsoft, products: [SharePoint, SharePoint Server, "SharePoint *",
+                                           ".NET Framework, SharePoint, Visual Studio"]}]
+    - name: SQL Server 2022
+      kev: [*kev_sql_server]
+  srv2022-mecm:
+    - name: Windows Server 2022
+      eol: {product: windows-server, cycle: "2022"}
+      cpe: "cpe:2.3:o:microsoft:windows_server_2022"
+      kev: [*kev_windows, *kev_windows_server_roles]
+    - name: Configuration Manager
+      kev: [{vendor: Microsoft, product: Configuration Manager}]
+    - name: SQL Server 2022
+      kev: [*kev_sql_server]

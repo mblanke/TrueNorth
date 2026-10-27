@@ -55,6 +55,10 @@ vault_template_linux_password: ""
 # Empty: SharePoint stays staged and the role is reported "staged (no product key)".
 vault_sharepoint_product_key: ""
 
+# Optional NVD API key for the content feeds' daily pull (tn_feeds_mode: online). Without
+# one the pull keeps to NVD's public rate limit. Worker only, sent as a header, never logged.
+vault_feeds_nvd_api_key: ""
+
 # ── Keycloak admin (bootstrap only; not an end-user account) ───────────
 # The master-realm admin. Only the installer uses it; the API has its own
 # least-privilege service account (truenorth-api-admin).

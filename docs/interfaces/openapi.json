@@ -2697,6 +2697,21 @@
         "title": "Body_import_competency_crosswalk_qsp_import_competency_crosswalk_post",
         "type": "object"
       },
+      "Body_import_content_feed_bundle": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "description": "The signed feed bundle (JSON)",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_import_content_feed_bundle",
+        "type": "object"
+      },
       "Body_import_course_content_courses_import_course_content_post": {
         "properties": {
           "file": {
@@ -9475,6 +9490,46 @@
         "title": "ExternalPlatformUpdate",
         "type": "object"
       },
+      "FeedImportOut": {
+        "properties": {
+          "entries": {
+            "title": "Entries",
+            "type": "integer"
+          },
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "key_id": {
+            "title": "Key Id",
+            "type": "string"
+          },
+          "new": {
+            "title": "New",
+            "type": "integer"
+          },
+          "removed": {
+            "description": "Entries of the previous bundle this one no longer has",
+            "title": "Removed",
+            "type": "integer"
+          },
+          "updated": {
+            "title": "Updated",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "entries",
+          "new",
+          "updated",
+          "removed",
+          "generated_at",
+          "key_id"
+        ],
+        "title": "FeedImportOut",
+        "type": "object"
+      },
       "FeedPullOut": {
         "description": "What a pull did. ``rejections`` lists at most the first 50 rejected rows.",
         "properties": {
@@ -9537,6 +9592,153 @@
           "reason"
         ],
         "title": "FeedRejectionOut",
+        "type": "object"
+      },
+      "FeedSourceOut": {
+        "properties": {
+          "entries": {
+            "default": 0,
+            "description": "Entries the last pull or import brought",
+            "title": "Entries",
+            "type": "integer"
+          },
+          "generated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Bundle: when it was made",
+            "title": "Generated At"
+          },
+          "key_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Bundle: the key that signed it",
+            "title": "Key Id"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "last_attempt_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Attempt At"
+          },
+          "last_error": {
+            "default": "",
+            "title": "Last Error",
+            "type": "string"
+          },
+          "last_success_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Success At"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "label"
+        ],
+        "title": "FeedSourceOut",
+        "type": "object"
+      },
+      "FeedStatusOut": {
+        "properties": {
+          "bundle_key_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The configured bundle public key's id",
+            "title": "Bundle Key Id"
+          },
+          "bundle_key_problem": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why bundles cannot be imported, when they cannot",
+            "title": "Bundle Key Problem"
+          },
+          "can_import": {
+            "description": "The caller may import a signed feed bundle now",
+            "title": "Can Import",
+            "type": "boolean"
+          },
+          "entries": {
+            "description": "Feed entries stored",
+            "title": "Entries",
+            "type": "integer"
+          },
+          "flagged_items": {
+            "description": "Content the caller can see that a feed has flagged",
+            "title": "Flagged Items",
+            "type": "integer"
+          },
+          "mode": {
+            "description": "off (the default), online (the daily pull) or bundle (air-gapped imports)",
+            "enum": [
+              "off",
+              "online",
+              "bundle"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/FeedSourceOut"
+            },
+            "title": "Sources",
+            "type": "array"
+          }
+        },
+        "required": [
+          "mode",
+          "can_import",
+          "sources",
+          "entries",
+          "flagged_items"
+        ],
+        "title": "FeedStatusOut",
         "type": "object"
       },
       "FeedTokenIssued": {
@@ -30396,6 +30598,79 @@
         "summary": "Get Skill Gaps",
         "tags": [
           "competency"
+        ]
+      }
+    },
+    "/content-feeds/bundle": {
+      "post": {
+        "description": "Verified against the site's configured public key before anything is stored; an\nunsigned or mismatched bundle is refused (422) and the refusal is recorded. Entries\nbecome stale flags at the content clock's next sync (hourly). Audit-logged. A plain\n``def``: parsing and storing up to 100,000 entries runs in the threadpool, not on the\nevent loop.",
+        "operationId": "import_content_feed_bundle",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_import_content_feed_bundle"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeedImportOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Import a signed feed bundle (air-gapped sites)",
+        "tags": [
+          "content-feeds"
+        ]
+      }
+    },
+    "/content-feeds/status": {
+      "get": {
+        "operationId": "get_content_feeds_status",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeedStatusOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "The release and vulnerability feeds: mode, last pull or import, errors",
+        "tags": [
+          "content-feeds"
         ]
       }
     },

@@ -76,7 +76,10 @@ app.conf.update(
                  "worker.template_tasks.*": {"queue": "destroy"},
                  "worker.setup_reconcile.*": {"queue": "destroy"},
                  # The content clock's sync: database only (ADR 0014 §22-24).
-                 "worker.content_review_sync.*": {"queue": "default"}},
+                 "worker.content_review_sync.*": {"queue": "default"},
+                 # The content feeds' daily pull: the internet (endoflife.date, CISA, NVD), so
+                 # worker-provision, the only worker on tn-egress (ADR 0014 §25).
+                 "worker.content_feeds.*": {"queue": "destroy"}},
     # Concurrency control
     task_track_started=True,
     task_acks_late=True,  # Don't ack until task completes
@@ -180,6 +183,13 @@ app.conf.beat_schedule = {
         "schedule": crontab(minute=20),
         "options": {"expires": 3600},
     },
+    # The content feeds (ADR 0014 §25, worker/content_feeds/pull.py): release, end-of-life and
+    # vulnerability data, read-only, daily. Does nothing unless TN_FEEDS_MODE=online.
+    "content-feeds-pull-daily": {
+        "task": "worker.content_feeds.pull_content_feeds",
+        "schedule": crontab(hour=4, minute=10),
+        "options": {"expires": 6 * 3600},
+    },
 }
 
 
@@ -232,3 +242,4 @@ from . import (
     telemetry_tasks,  # noqa: F401, E402
     template_tasks,  # noqa: F401, E402
 )
+from .content_feeds import pull as content_feeds_pull  # noqa: F401, E402

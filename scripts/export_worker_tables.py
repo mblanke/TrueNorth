@@ -32,6 +32,10 @@ WORKER_TABLES = (
     "competencies",
     "competency_assertions",
     "competency_auto_assessments",
+    "content_feed_entries",  # ADR 0014 §25: the feeds' pull stores them; the content clock's sync reads them
+    "content_feed_flags",
+    "content_feed_settings",
+    "content_feed_sources",
     "content_review_cycles",  # ADR 0014 §22-24: the content clock's sync (worker/content_review_sync.py)
     "content_review_edges",
     "content_review_items",
@@ -95,6 +99,7 @@ def _type_src(t) -> str:
 
 def render() -> str:
     import app.audit_integrity  # noqa: F401 — audit_exports
+    import app.content_feeds  # noqa: F401 — the feeds (worker/content_feeds)
     import app.content_review  # noqa: F401 — the content clock (worker/content_review_sync.py)
     import app.golden_image_builds  # noqa: F401 — golden_image_builds (worker/template_pins.py)
     import app.greyspace.models  # noqa: F401
