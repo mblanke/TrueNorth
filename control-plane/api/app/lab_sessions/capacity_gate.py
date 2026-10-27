@@ -1,28 +1,33 @@
 """Self-serve labs use only the capacity left after approved classes (ADR 0014 §18, #288).
 
-A lab started through **Start lab** has no booking. Before its machines are built it asks
-the scheduler's capacity provider (``scheduler.capacity``, ADR 0006) what is committed at
-every 15-minute slice from now to the lab's maximum lifetime: approved bookings over their
-held windows, approved classes over their whole span (``classes.holds``, judged at peak as
-#299 does), and every range running now (other labs included). A booking awaiting approval
-holds nothing (``scheduler.lifecycle.HOLDING``), so it never refuses a lab. If the lab does
-not fit in every slice, it is refused with "Labs are busy, next free at HH:MM" in the site's
-time zone (``SITE_TIMEZONE``, an IANA name; UTC by default).
+**A booked class's own labs.** A Student on the roster of an approved booking of the lab's
+course that holds now (a class session: its roll call; another booking: an assigned
+enrolment, as Live Class #199 counts it), with no range or template of its own (its demand
+was sized for its Students' labs), draws on that booking's hold (``own_booking``): it is
+not gated, and the booking counts its range (``holdings.drawing_on``), never twice. Labs
+beyond what the booking holds are self-serve.
 
-The check and the lab's range are written in one transaction under the scheduler's booking
-lock (``scheduler.service.serialize_bookings``), so two Students starting the last slot at
-once, in any tenants, and a booking being approved at that moment, are decided one after
-the other. Capacity is site-wide: the message carries a time only, never what holds it.
+**A self-serve lab** (``fits``) must fit in every 15-minute slice from now to its maximum
+lifetime, after approved bookings over their held windows, approved classes over their whole
+span (``classes.holds``, judged at peak as #299 does) and every range running now (labs until
+their maximum lifetime; a lab being reset at its size). A booking awaiting approval holds
+nothing. When it does not fit the Student sees "Labs are busy, next free at HH:MM" in the
+site's time zone (``SITE_TIMEZONE``, IANA, UTC by default). The message carries a time only.
 
-The next free time is a forecast: running labs are counted until they would close if
-unused (their idle or maximum expiry, whichever is first); everything else as admission
-counts it. A Student who keeps working keeps their lab, so the forecast can be early.
+**Locks.** The decision is taken under the scheduler's booking lock (``lock``), which a
+launch takes before any row lock, the order the classes section uses (roll-call changes);
+the lab's range is written in the same transaction. The next free time is a forecast and is
+never computed under the lock: a refused launch rolls back first (``explain``), and a queued
+lab's page reads it outside the sweep (``queued_message``), at most every
+``FORECAST_SECONDS`` per lab. A queued lab refused in the last ``FORECAST_SECONDS`` is not
+re-decided either.
 """
 
 from __future__ import annotations
 
 import logging
 import os
+import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -31,12 +36,26 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from sqlalchemy.orm import Session
 
 from ..scheduler import service as scheduler
-from ..scheduler.capacity import ClusterCapacity, Committed, Resources, available
-from .models import ENDING, RUNS_RESOURCES, LabSession
+from ..scheduler.capacity import (
+    PROVISION_LEAD,
+    TEARDOWN_GRACE,
+    CapacityProvider,
+    ClusterCapacity,
+    Committed,
+    Resources,
+    available,
+)
+from ..scheduler.lifecycle import HOLDING
+from ..scheduler.models import ScheduledEvent
+from . import holdings
+from .models import LabSession
 
 logger = logging.getLogger(__name__)
 SLOT = timedelta(minutes=15)
 BUSY = "Labs are busy"
+FORECAST_SECONDS = 30
+_refused: dict[uuid.UUID, datetime] = {}  # queued lab -> when it was last refused (this process)
+_forecasts: dict[uuid.UUID, tuple[datetime, str]] = {}  # queued lab -> (when, message)
 
 
 def demand(profile: dict[str, Any]) -> Resources:
@@ -52,31 +71,107 @@ def lifetime(profile: dict[str, Any]) -> timedelta:
     return timedelta(minutes=profile["lifetime"]["max_minutes"])
 
 
-def refusal(db: Session, need: Resources, length: timedelta, now: datetime) -> str | None:
-    """Why a lab needing ``need`` for ``length`` from ``now`` cannot start, or None.
-
-    Takes the scheduler's booking lock first; the caller writes the lab's range in the same
-    transaction, so the next check (a lab or a booking) counts it."""
+def lock(db: Session) -> None:
+    """The scheduler's booking lock, for this transaction. Taken before the Student's and the
+    tenant's rows, as the classes section takes it before writing roll-call rows."""
     scheduler.serialize_bookings(db)
+
+
+# ── the decision (under the lock) ─────────────────────────────────────
+
+
+def own_booking(
+    db: Session, session: LabSession, course_id: uuid.UUID, need: Resources, now: datetime
+) -> ScheduledEvent | None:
+    """The approved booking holding now whose hold this Student's lab draws on, or None."""
+    from sqlalchemy import and_, or_
+
+    from ..classes import sessions as class_sessions
+    from ..enrollment import rostered_course_ids
+
+    plain = and_(
+        ScheduledEvent.id.notin_(class_sessions.all_session_ids()),
+        ScheduledEvent.course_id.in_(rostered_course_ids(db, session.user_id) or [None]),
+    )
+    rows = (
+        db.query(ScheduledEvent)
+        .filter(
+            ScheduledEvent.tenant_id == session.tenant_id,
+            ScheduledEvent.course_id == course_id,
+            ScheduledEvent.state.in_(HOLDING),
+            ScheduledEvent.range_id.is_(None),
+            ScheduledEvent.template_id.is_(None),
+            ScheduledEvent.start_time <= now + PROVISION_LEAD,
+            ScheduledEvent.end_time > now - TEARDOWN_GRACE,
+            or_(plain, ScheduledEvent.id.in_(class_sessions.session_ids_on_roll_call(session.user_id))),
+        )
+        .order_by(ScheduledEvent.start_time)
+        .all()
+    )
+    for evt in rows:
+        if _utc(evt.end_time) + TEARDOWN_GRACE <= now:
+            continue
+        vcpu, ram, disk = holdings.drawn(db, evt.id, exclude=session.id)
+        if (vcpu + need.vcpu <= (evt.vcpu_total or 0) and ram + need.ram_mb <= (evt.ram_mb_total or 0)
+                and disk + need.disk_gb <= (evt.disk_gb_total or 0)):
+            return evt
+    return None
+
+
+def fits(db: Session, need: Resources, length: timedelta, now: datetime) -> bool:
+    """Whether a self-serve lab needing ``need`` for ``length`` from ``now`` fits. Call under
+    ``lock``; the caller writes the lab's range in the same transaction."""
     provider = scheduler.get_capacity_provider(db)
-    supply = provider.supply()
-    if _fits(need, supply, provider.committed_many(db, _slices(now, now + length))):
-        return None
+    return _fits(need, provider.supply(), provider.committed_many(db, _slices(now, now + length)))
+
+
+def recently_refused(session_id: uuid.UUID, now: datetime) -> bool:
+    at = _refused.get(session_id)
+    return at is not None and now - at < timedelta(seconds=FORECAST_SECONDS)
+
+
+def note_refused(session_id: uuid.UUID, now: datetime) -> None:
+    if len(_refused) > 10000:
+        _refused.clear()
+    _refused[session_id] = now
+
+
+# ── the message (outside the lock) ────────────────────────────────────
+
+
+def explain(db: Session, need: Resources, length: timedelta, now: datetime) -> str:
+    """"Labs are busy, next free at HH:MM". Call with no lock held (after the refused
+    launch rolled back)."""
     return busy_message(next_free(db, need, length, now), now)
 
 
-def next_free(db: Session, need: Resources, length: timedelta, now: datetime) -> datetime | None:
+def queued_message(db: Session, session: LabSession, need: Resources, length: timedelta, now: datetime) -> str:
+    """The message for a lab waiting in the queue for capacity, at most every
+    ``FORECAST_SECONDS`` per lab (its page polls every few seconds)."""
+    hit = _forecasts.get(session.id)
+    if hit is not None and now - hit[0] < timedelta(seconds=FORECAST_SECONDS):
+        return hit[1]
+    message = explain(db, need, length, now)
+    if len(_forecasts) > 10000:
+        _forecasts.clear()
+    _forecasts[session.id] = (now, message)
+    return message
+
+
+def next_free(
+    db: Session, need: Resources, length: timedelta, now: datetime, provider: CapacityProvider | None = None
+) -> datetime | None:
     """The first 15-minute mark after ``now`` from which a lab fits for ``length``, within the
-    scheduler's search horizon (``SCHEDULER_NEXT_FREE_DAYS``), or None."""
-    provider = ClusterCapacity(db, ends=_lab_ends(db, now))
+    scheduler's search horizon (``SCHEDULER_NEXT_FREE_DAYS``), or None. Running labs count
+    until they would close if unused: a forecast."""
+    provider = provider or ClusterCapacity(db, ends=holdings.ends(db, now, forecast=True))
     supply = provider.supply()
     first = _ceil(now + timedelta(seconds=1))
     span = int(length / SLOT) + (length % SLOT > timedelta(0))
     slices = _slices(first, first + timedelta(days=scheduler.NEXT_FREE_DAYS) + length)
-    ok = [_fits(need, supply, [c]) for c in provider.committed_many(db, slices)]
     run = 0
-    for i, fit in enumerate(ok):
-        run = run + 1 if fit else 0
+    for i, c in enumerate(provider.committed_many(db, slices)):
+        run = run + 1 if _fits(need, supply, [c]) else 0
         if run >= span:
             return slices[i - span + 1][0]
     return None
@@ -112,22 +207,6 @@ def _fits(need: Resources, supply: Resources, committed: Sequence[Committed]) ->
         if need.vcpu > free.vcpu or need.ram_mb > free.ram_mb or need.disk_gb > free.disk_gb:
             return False
     return True
-
-
-def _lab_ends(db: Session, now: datetime) -> dict:
-    """Running labs' ranges -> when each closes if nobody uses it (a forecast only)."""
-    out = {}
-    rows = db.query(LabSession.range_id, LabSession.state, LabSession.idle_expires_at, LabSession.max_expires_at)
-    for range_id, state, idle, latest in rows.filter(
-        LabSession.state.in_(RUNS_RESOURCES), LabSession.range_id.isnot(None)
-    ):
-        if state in ENDING:
-            out[range_id] = now  # being torn down
-            continue
-        ends = [_utc(t) for t in (idle, latest) if t is not None]
-        if ends:
-            out[range_id] = min(ends)
-    return out
 
 
 def _slices(start: datetime, end: datetime) -> list[tuple[datetime, datetime]]:

@@ -25,9 +25,10 @@ describe('LabPageComponent', () => {
 
   function setUp(fragment: string | null, authenticated: boolean, state = 'provisioning'): void {
     try { sessionStorage.removeItem('tn-lab-token:s1'); } catch { /* storage may be unavailable */ }
-    api = jasmine.createSpyObj('CourseStudioApiService', ['lab', 'labAction', 'labConsole']);
+    api = jasmine.createSpyObj('CourseStudioApiService', ['lab', 'labAction', 'labHeartbeat', 'labConsole']);
     api.lab.and.returnValue(of(lab(state)));
     api.labAction.and.returnValue(of(lab('active')));
+    api.labHeartbeat.and.returnValue(of(lab('active')));
     api.labConsole.and.returnValue(of({ node: 'host', kind: 'mock', url: 'mock://console/vm', expires_in: 60 }));
     router = jasmine.createSpyObj('Router', ['navigate']);
     router.navigate.and.returnValue(Promise.resolve(true));
@@ -100,13 +101,25 @@ describe('LabPageComponent', () => {
 
   it('reloads the lab when a heartbeat is refused, so an ended lab does not show as running', fakeAsync(() => {
     setUp('token=abc', false, 'active');
-    api.labAction.and.returnValue(throwError(() => ({ status: 403 })));
+    api.labHeartbeat.and.returnValue(throwError(() => ({ status: 403 })));
     api.lab.and.returnValue(of(lab('expired')));
     api.lab.calls.reset();
     tick(60000);
     fixture.detectChanges();
     expect(api.lab).toHaveBeenCalledWith('s1', 'abc');
     expect(fixture.componentInstance.session()?.state).toBe('expired');
+    fixture.destroy();
+  }));
+
+  it('reports the Student active only after real use of the page, so a forgotten tab lets the lab close', fakeAsync(() => {
+    setUp('token=abc', false, 'active');
+    tick(60000);
+    expect(api.labHeartbeat).toHaveBeenCalledWith('s1', false, 'abc');
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'a' }));
+    tick(60000);
+    expect(api.labHeartbeat.calls.mostRecent().args).toEqual(['s1', true, 'abc']);
+    tick(60000);
+    expect(api.labHeartbeat.calls.mostRecent().args).toEqual(['s1', false, 'abc']);
     fixture.destroy();
   }));
 

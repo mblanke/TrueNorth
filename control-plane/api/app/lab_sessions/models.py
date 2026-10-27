@@ -62,6 +62,10 @@ class LabSession(Base):
     baseline_snapshot_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), nullable=True)
     vcpu: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     ram_mb: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    disk_gb: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    # The booking whose hold this lab draws on: a booked class's own Student's lab (ADR 0014
+    # §18). None: a self-serve lab, admitted on the capacity left after approved classes.
+    booking_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), nullable=True, index=True)
     error: Mapped[str] = mapped_column(Text, nullable=False, default="")
     probes: Mapped[str] = mapped_column(Text, nullable=False, default="[]")  # last readiness probe results (JSON)
     evidence: Mapped[str] = mapped_column(Text, nullable=False, default="[]")  # submitted evidence (JSON list)

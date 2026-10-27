@@ -13757,6 +13757,15 @@ export interface components {
             /** Version */
             version: string;
         };
+        /** HeartbeatIn */
+        HeartbeatIn: {
+            /**
+             * Active
+             * @description The Student interacted with the lab page (input, focus, console) since the last beat. Only that keeps the lab open (ADR 0014 §18); an open tab nobody uses does not.
+             * @default false
+             */
+            active?: boolean;
+        };
         /** HypervisorConnectionIn */
         HypervisorConnectionIn: {
             /** Api Token */
@@ -27028,7 +27037,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["HeartbeatIn"] | null;
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -27371,7 +27384,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["HeartbeatIn"] | null;
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

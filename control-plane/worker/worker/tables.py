@@ -398,6 +398,8 @@ lab_sessions = sa.Table(
     sa.Column("baseline_snapshot_id", GUID()),
     sa.Column("vcpu", sa.Integer(), nullable=False),
     sa.Column("ram_mb", sa.Integer(), nullable=False),
+    sa.Column("disk_gb", sa.Integer(), nullable=False),
+    sa.Column("booking_id", GUID()),
     sa.Column("error", sa.Text(), nullable=False),
     sa.Column("probes", sa.Text(), nullable=False),
     sa.Column("evidence", sa.Text(), nullable=False),

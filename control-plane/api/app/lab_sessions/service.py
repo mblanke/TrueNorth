@@ -71,6 +71,7 @@ HOLDERS = "lab_lease_holders"  # db.info: session id -> this run's lease token
 MAX_EVIDENCE_BYTES = 64 * 1024
 MAX_EVIDENCE_ITEMS = 200
 LEASE_SECONDS = 120
+CLASS_RANGE = "this lab's range belongs to a class; it is left to the class"
 
 
 class LabRefusedError(ValueError):
@@ -81,7 +82,18 @@ class LabRefusedError(ValueError):
 
 class LabsBusyError(LabRefusedError):
     """Start lab refused: approved classes and running ranges hold the capacity (ADR 0014
-    §18). The message is "Labs are busy, next free at HH:MM" and names nothing else."""
+    §18). Raised under the site-wide lock with no forecast; the caller rolls back, then asks
+    ``capacity_gate.explain`` for "Labs are busy, next free at HH:MM" (``message``)."""
+
+    def __init__(self, need: Any, length: timedelta):
+        super().__init__("Labs are busy")
+        self.need, self.length = need, length
+
+    def message(self, db: Session) -> str:
+        """The Student's message. Call after the refused launch rolled back (no lock held)."""
+        from . import capacity_gate
+
+        return capacity_gate.explain(db, self.need, self.length, _now())
 
 
 def _now() -> datetime:
@@ -461,6 +473,11 @@ def launch(
         raise LabRefusedError("release not found", 404)
     if release.state not in (ACCEPTED, SUPERSEDED):
         raise LabRefusedError("this release has not been accepted")
+    # The site-wide booking lock first, as the classes section takes it before writing rows
+    # that reference the Student (a roll-call change): the reverse order deadlocks.
+    from . import capacity_gate
+
+    capacity_gate.lock(db)
     # One launch per student at a time: their own row is the lock.
     db.query(User).filter(User.id == user_id).with_for_update().one_or_none()
     key = (
@@ -495,6 +512,7 @@ def launch(
         backend=backend(),
         vcpu=sum(n["vcpu"] for n in profile["nodes"]),
         ram_mb=sum(n["ram_mb"] for n in profile["nodes"]),
+        disk_gb=sum(n["disk_gb"] for n in profile["nodes"]),
         # Held by this launch until flush_outbox() has sent its tasks: a sweep must not
         # send them a second time in between.
         lease_until=now + timedelta(seconds=LEASE_SECONDS),
@@ -533,6 +551,9 @@ def _start(
         if held := _window_holds(db, session):  # ADR 0013 §7: no new build; it starts after the window
             session.error = held
             return
+        from . import capacity_gate
+
+        capacity_gate.lock(db)  # before the tenant's row, the order launch and the classes section use
         # One quota decision per tenant at a time (CR1-12): without this lock two launches
         # by different students each counted the labs running before either was written,
         # and together went past the tenant's limits. The student's own row, which launch
@@ -546,13 +567,7 @@ def _start(
         if problem:
             session.error = problem
             return
-        from . import capacity_gate
-
-        busy = capacity_gate.refusal(db, capacity_gate.demand(profile), capacity_gate.lifetime(profile), _now())
-        if busy:
-            if refuse_busy:
-                raise LabsBusyError(busy)
-            session.error = busy
+        if _capacity_refused(db, session, profile, refuse_busy):
             return
         networks = _lease_networks(db, session, profile)
         if networks is None:
@@ -593,6 +608,34 @@ def _start(
     # Its own generated logins (ADR 0013 §3), handed to the Student; never the template password.
     range_credentials.on_lab_range(db, rng)
     _send(db, session, "provision_range", str(rng.id))
+
+
+def _capacity_refused(db: Session, session: LabSession, profile: dict[str, Any], refuse_busy: bool) -> bool:
+    """ADR 0014 §18, under the booking lock: a booked class's own Student draws on its
+    booking's hold; anyone else's lab needs room left after approved classes. A launch with
+    no room is refused (LabsBusyError); a queued lab keeps waiting, re-decided at most every
+    ``capacity_gate.FORECAST_SECONDS``."""
+    from . import capacity_gate
+
+    now = _now()
+    need, length = capacity_gate.demand(profile), capacity_gate.lifetime(profile)
+    if not refuse_busy and capacity_gate.recently_refused(session.id, now):
+        session.error = capacity_gate.BUSY
+        return True
+    # tenant-safe: the session's own release, set at launch from its tenant's course.
+    course_id = db.get(CourseRelease, session.release_id).course_id
+    booking = capacity_gate.own_booking(db, session, course_id, need, now)
+    if booking is not None:
+        session.booking_id = booking.id
+        return False
+    session.booking_id = None
+    if capacity_gate.fits(db, need, length, now):
+        return False
+    if refuse_busy:
+        raise LabsBusyError(need, length)
+    capacity_gate.note_refused(session.id, now)
+    session.error = capacity_gate.BUSY
+    return True
 
 
 # ── advance ───────────────────────────────────────────────────────────
@@ -657,11 +700,13 @@ def _advance_running(db: Session, session: LabSession, now: datetime) -> None:
         if session.idle_warned_at is None and idle_end < latest and now >= idle_end - warn:
             _warn_idle(db, session, idle_end)
         return
+    if session.error == CLASS_RANGE:  # found before: left to the class, not checked again
+        return
     from ..classes import ranges as class_ranges
 
     if class_ranges.is_class_range(db, session.range_id):  # never ours to destroy (ADR 0014 §10)
-        session.error = "this lab's range belongs to a class; it is left to the class"
-        logger.error("lab session %s points at class range %s; not torn down", session.id, session.range_id)
+        session.error = CLASS_RANGE
+        logger.warning("lab session %s points at class range %s; left to the class", session.id, session.range_id)
         return
     end(db, session, reason="expired" if now >= latest else "idle")
 

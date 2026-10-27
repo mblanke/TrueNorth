@@ -807,7 +807,8 @@ def _resource_link_redirect(
         try:
             return RedirectResponse(_launch_lab(db, user, rid), status_code=302)  # the lab page has its own token
         except LabsBusyError as exc:  # no capacity left after approved classes (ADR 0014 §18)
-            return _labs_busy_page(str(exc))
+            db.rollback()  # lets the site-wide lock go before the forecast is computed
+            return _labs_busy_page(exc.message(db))
     path = _launch_path(db, platform, user, claims, kind, rid)
     return _spa_redirect(db, platform, user, claims, path, bind_cookie=bind_cookie)
 
@@ -960,7 +961,7 @@ def _labs_busy_page(message: str) -> HTMLResponse:
         "<meta name='viewport' content='width=device-width, initial-scale=1'><title>Labs are busy</title></head>"
         "<body style='font-family:system-ui,sans-serif;max-width:40rem;margin:3rem auto;padding:0 1rem'>"
         f"<h1>{html.escape(message)}</h1>"
-        "<p>Classes are using the lab machines. Start the lab again from your course then.</p></body></html>",
+        "<p>The lab machines are all in use. Start the lab again from your course then.</p></body></html>",
         status_code=409,
         headers={"Cache-Control": "no-store"},
     )

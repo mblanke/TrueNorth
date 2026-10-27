@@ -14,6 +14,7 @@ The concurrent last-slot start is in test_lab_capacity_gate_postgres.py.
 
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -140,9 +141,9 @@ class TestGate:
     def test_a_lab_is_refused_while_an_approved_class_holds_the_capacity(self, lab, db_session, worker):  # noqa: F811
         _, rid, _ = lab
         _class(db_session, state=EventState.scheduled)
-        with pytest.raises(service.LabsBusyError, match=r"^Labs are busy, next free at \d\d:\d\d"):
+        with pytest.raises(service.LabsBusyError) as refused:
             _try_launch(db_session, student(db_session), rid)
-        db_session.rollback()
+        assert re.match(r"^Labs are busy, next free at \d\d:\d\d", refused.value.message(db_session))
         assert db_session.query(LabSession).count() == 0
         assert not [c for c in worker.calls if c[0] == "provision_range"]
 
@@ -176,15 +177,18 @@ class TestGate:
             _try_launch(db_session, student(db_session), rid)
 
     def test_a_queued_lab_keeps_waiting_with_the_message(self, lab, db_session, monkeypatch):  # noqa: F811
-        """A lab already in the queue (behind a quota) is not refused; it waits, and says why."""
-        _, rid, _ = lab
+        """A lab already in the queue (behind a quota) is not refused; it waits, and its page
+        says when labs are next free."""
+        client, rid, _ = lab
         monkeypatch.setenv("LAB_MAX_SESSIONS_PER_TENANT", "0")
         session, _ = _try_launch(db_session, student(db_session), rid)
         assert session.state == "queued"
         monkeypatch.setenv("LAB_MAX_SESSIONS_PER_TENANT", "1000")
         _booking(db_session, vcpu=10)
         act(db_session, service.advance, session)
-        assert session.state == "queued" and session.error.startswith("Labs are busy, next free at")
+        assert session.state == "queued" and session.error == capacity_gate.BUSY
+        shown = client.get(f"/lab-sessions/{session.id}").json()
+        assert shown["state"] == "queued" and shown["error"].startswith("Labs are busy, next free at")
 
 
 # ── the next free time ───────────────────────────────────────────────
@@ -207,9 +211,10 @@ class TestNextFree:
         db_session.commit()
         with pytest.raises(service.LabsBusyError) as refused:
             _try_launch(db_session, student(db_session), rid)
-        assert str(refused.value) == f"Labs are busy, next free at {_ceil15(closes):%H:%M}" or (
+        message = refused.value.message(db_session)
+        assert message == f"Labs are busy, next free at {_ceil15(closes):%H:%M}" or (
             # just before midnight UTC the next free time is tomorrow
-            str(refused.value).startswith(f"Labs are busy, next free at {_ceil15(closes):%H:%M} on ")
+            message.startswith(f"Labs are busy, next free at {_ceil15(closes):%H:%M} on ")
         )
 
     def test_the_time_is_the_sites_local_time(self, monkeypatch):
@@ -259,9 +264,10 @@ class TestNoLeak:
         try:
             integrations._launch_lab(db_session, s, f"{course_id}:mod_006")
         except service.LabsBusyError as exc:
-            resp = integrations._labs_busy_page(str(exc))
+            resp = integrations._labs_busy_page(exc.message(db_session))
         assert resp is not None and resp.status_code == 409
         body = resp.body.decode()
+        assert "The lab machines are all in use" in body
         assert "Labs are busy, next free at" in body
         for secret in (SECRET_CLASS, "NIGHTJAR", SECRET_COURSE, "Other Org"):
             assert secret not in body
@@ -375,3 +381,207 @@ class TestClassRangesAreNeverClosed:
         act(db_session, service.advance, session)
         assert session.state == "ready" and "belongs to a class" in session.error
         assert db_session.get(Range, session.range_id).state == RangeState.ready
+
+
+# ── review of e7516c50 ───────────────────────────────────────────────
+
+
+class TestResetHoldsItsRoom:
+    """B1: a rebuild reset destroyed the lab's range (its room looked free) and rebuilt it
+    without the gate: another Student's launch took the room in between, then the rebuild
+    over-committed the site."""
+
+    def test_a_student_launching_during_anothers_reset_is_refused(
+        self, lab, db_session, worker, monkeypatch  # noqa: F811
+    ):
+        from app.capacity import service as cap
+
+        _, rid, _ = lab
+        monkeypatch.setenv("CLUSTER_TOTAL_VCPU", "3")  # one 2-vCPU lab fits, not two
+        monkeypatch.setenv("PROVISIONER_BACKEND", "vsphere_api")
+        monkeypatch.setenv("LAB_PORT_GROUPS", "pg-lab-01,pg-lab-02")
+        profile = service._profile
+        monkeypatch.setattr(service, "_profile", lambda db, s: {**profile(db, s), "reset": {"mode": "rebuild"}})
+        worker.hold = True
+        a, _ = _try_launch(db_session, student(db_session), rid)
+        for _ in range(8):
+            worker.run()
+            act(db_session, service.advance, a)
+            if a.state == "ready":
+                break
+        assert a.state == "ready", a.state
+        act(db_session, service.reset, a)  # its range goes down; the rebuild follows
+        worker.run()  # the old range is destroyed: the gap
+        with pytest.raises(service.LabsBusyError):
+            _try_launch(db_session, student(db_session), rid)
+        for _ in range(4):
+            act(db_session, service.advance, a)
+            worker.run()
+        assert sum(r.vcpu for r in cap.running_ranges(db_session)) <= 3
+
+
+def _enrolled(db, course_id) -> User:
+    from app.enrollment import ensure_enrollment
+
+    s = student(db)
+    ensure_enrollment(db, user_id=s.id, course_id=course_id, tenant_id=s.tenant_id)
+    db.commit()
+    return s
+
+
+def _lab_booking(db, course_id, *, seats=4, per=2, tenant=None) -> ScheduledEvent:
+    """An approved booking of the lab's course running now, sized for ``seats`` labs of
+    ``per`` vCPU, with no range or template of its own."""
+    now = datetime.now(UTC)
+    evt = ScheduledEvent(name="C304 serial 3", tenant_id=tenant or uuid.UUID(int=1), state=EventState.active,
+                         start_time=now - timedelta(minutes=5), end_time=now + timedelta(hours=3),
+                         course_id=course_id, vcpu_total=seats * per, ram_mb_total=seats * 2048,
+                         disk_gb_total=seats * 20)
+    db.add(evt)
+    db.commit()
+    return evt
+
+
+class TestABookedClassesOwnLabs:
+    """B2: a booked class's Students were refused by their own booking's hold. Their labs draw
+    on it (ADR 0014 §18; Live Class #199 ties a lab to a class the same way)."""
+
+    def test_all_four_students_get_in_and_a_fifth_outside_the_roster_is_refused(
+        self, lab, db_session, monkeypatch  # noqa: F811
+    ):
+        _, rid, course_id = lab
+        monkeypatch.setenv("CLUSTER_TOTAL_VCPU", "9")  # the booking's 8, and 1 to spare: no lab
+        evt = _lab_booking(db_session, course_id)
+        for _ in range(4):
+            session, _ = _try_launch(db_session, _enrolled(db_session, course_id), rid)
+            assert session.state == "provisioning" and session.booking_id == evt.id
+        with pytest.raises(service.LabsBusyError):
+            _try_launch(db_session, student(db_session), rid)  # not on the roster
+        with pytest.raises(service.LabsBusyError):
+            _try_launch(db_session, _enrolled(db_session, course_id), rid)  # beyond the booked seats
+
+    def test_the_bookings_labs_are_counted_once(self, lab, db_session):  # noqa: F811
+        from app.scheduler.capacity import ClusterCapacity
+
+        _, rid, course_id = lab
+        _lab_booking(db_session, course_id)
+        for _ in range(4):
+            _try_launch(db_session, _enrolled(db_session, course_id), rid)
+        now = datetime.now(UTC)
+        (c,) = ClusterCapacity(db_session).committed_many(db_session, [(now, now + timedelta(minutes=15))])
+        assert c.resources.vcpu == 8  # the booking's hold; its four labs inside it
+
+    def test_room_left_beside_a_booking_still_serves_self_serve_labs(self, lab, db_session):  # noqa: F811
+        _, rid, course_id = lab
+        _lab_booking(db_session, course_id)  # 8 of 10
+        session, _ = _try_launch(db_session, student(db_session), rid)
+        assert session.state == "provisioning" and session.booking_id is None
+
+    def test_a_class_sessions_roll_call_is_its_roster(self, lab, db_session, monkeypatch):  # noqa: F811
+        _, rid, course_id = lab
+        monkeypatch.setenv("CLUSTER_TOTAL_VCPU", "9")
+        evt = _lab_booking(db_session, course_id, seats=1)
+        s = student(db_session)  # not enrolled: the roll call decides
+        today = datetime.now(UTC).date()
+        cls = Class(tenant_id=s.tenant_id, name="C304-26-03", course_id=course_id, start_date=today,
+                    end_date=today, lead_instructor_id=uuid.UUID(int=1))
+        db_session.add(cls)
+        db_session.flush()
+        db_session.add(ClassSession(class_id=cls.id, event_id=evt.id, tenant_id=s.tenant_id, range_mode="collective"))
+        db_session.add(RollCallEntry(class_id=cls.id, tenant_id=s.tenant_id, email=s.email, user_id=s.id,
+                                     status="signed_in"))
+        db_session.commit()
+        session, _ = _try_launch(db_session, s, rid)
+        assert session.booking_id == evt.id
+
+    def test_another_tenants_booking_is_never_drawn_on(self, lab, db_session, monkeypatch):  # noqa: F811
+        _, rid, course_id = lab
+        monkeypatch.setenv("CLUSTER_TOTAL_VCPU", "9")
+        _other_tenant(db_session)
+        _lab_booking(db_session, course_id, tenant=OTHER)
+        with pytest.raises(service.LabsBusyError):
+            _try_launch(db_session, _enrolled(db_session, course_id), rid)
+
+
+class TestTheForecastIsNeverUnderTheLock:
+    """N2: the next free time is computed after the refused launch rolled back, and a queued
+    lab's page reads it at most every 30 seconds."""
+
+    def test_a_refused_launch_computes_no_forecast(self, lab, db_session, monkeypatch):  # noqa: F811
+        _, rid, _ = lab
+        _booking(db_session, vcpu=10)
+
+        def under_the_lock(*a, **k):
+            raise AssertionError("next_free ran inside the launch")
+
+        monkeypatch.setattr(capacity_gate, "next_free", under_the_lock)
+        with pytest.raises(service.LabsBusyError):
+            _try_launch(db_session, student(db_session), rid)
+
+    def test_a_queued_labs_page_polls_reuse_the_forecast(self, lab, db_session, monkeypatch):  # noqa: F811
+        client, rid, _ = lab
+        monkeypatch.setenv("LAB_MAX_SESSIONS_PER_TENANT", "0")
+        session, _ = _try_launch(db_session, student(db_session), rid)
+        monkeypatch.setenv("LAB_MAX_SESSIONS_PER_TENANT", "1000")
+        _booking(db_session, vcpu=10)
+        calls = []
+        real = capacity_gate.next_free
+        monkeypatch.setattr(capacity_gate, "next_free", lambda *a, **k: calls.append(1) or real(*a, **k))
+        decided = []
+        fits = capacity_gate.fits
+        monkeypatch.setattr(capacity_gate, "fits", lambda *a, **k: decided.append(1) or fits(*a, **k))
+        for _ in range(5):
+            assert client.get(f"/lab-sessions/{session.id}").json()["error"].startswith("Labs are busy, next")
+        assert len(calls) == 1 and len(decided) == 1
+
+
+class TestIdleMeansNoStudentActivity:
+    """A forgotten open tab must not keep a lab open: only a beat that reports use does."""
+
+    def test_only_a_heartbeat_reporting_use_keeps_the_lab_open(self, lab, db_session):  # noqa: F811
+        client, rid, _ = lab
+        session, _ = _try_launch(db_session, student(db_session), rid)
+        until(db_session, session, "ready")
+        before = session.idle_expires_at
+        for body in (None, {"active": False}):
+            r = client.post(f"/lab-sessions/{session.id}/heartbeat", json=body)
+            assert r.status_code == 200, r.text
+            db_session.refresh(session)
+            assert session.idle_expires_at == before and session.state == "ready"
+        r = client.post(f"/lab-sessions/{session.id}/heartbeat", json={"active": True})
+        assert r.status_code == 200, r.text
+        db_session.refresh(session)
+        assert session.state == "active" and session.idle_expires_at > before
+
+
+class TestApprovalCountsLabsOnlyUntilTheyEnd:
+    def test_a_running_lab_does_not_hold_next_weeks_capacity(self, lab, db_session):  # noqa: F811
+        from app.scheduler.capacity import ClusterCapacity
+
+        _, rid, _ = lab
+        session, _ = _try_launch(db_session, student(db_session), rid)
+        until(db_session, session, "ready")
+        now = datetime.now(UTC)
+        week = now + timedelta(days=7)
+        today, later = ClusterCapacity(db_session).committed_many(
+            db_session, [(now, now + timedelta(hours=1)), (week, week + timedelta(hours=1))]
+        )
+        assert today.resources.vcpu == 2 and later.resources.vcpu == 0
+
+
+class TestTheClassRangeBackstopIsQuiet:
+    def test_it_is_found_once_and_not_checked_every_minute(
+        self, long_lab, db_session, worker, monkeypatch  # noqa: F811
+    ):
+        from app.classes import ranges as class_ranges
+
+        session, _ = _try_launch(db_session, student(db_session), long_lab)
+        until(db_session, session, "ready")
+        TestClassRangesAreNeverClosed()._class_range(db_session, session.range_id)
+        checks = []
+        real = class_ranges.is_class_range
+        monkeypatch.setattr(class_ranges, "is_class_range", lambda db, r: checks.append(r) or real(db, r))
+        _at(monkeypatch, datetime.now(UTC) + timedelta(hours=5))
+        for _ in range(3):
+            act(db_session, service.advance, session)
+        assert len(checks) == 1 and session.error == service.CLASS_RANGE

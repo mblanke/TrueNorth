@@ -65,10 +65,17 @@ export class CourseStudioApiService {
       ? this.http.get<LabSession>(`${this.base}/lab-access/${id}`, { headers: this.labHeaders(token) })
       : this.http.get<LabSession>(`${this.base}/lab-sessions/${id}`);
   }
-  labAction(id: string, action: 'heartbeat' | 'reset' | 'end', token?: string): Observable<LabSession> {
+  labAction(id: string, action: 'reset' | 'end', token?: string): Observable<LabSession> {
     return token
       ? this.http.post<LabSession>(`${this.base}/lab-access/${id}/${action}`, {}, { headers: this.labHeaders(token) })
       : this.http.post<LabSession>(`${this.base}/lab-sessions/${id}/${action}`, {});
+  }
+  /** The lab page's heartbeat: `active` when the Student used the page since the last one. */
+  labHeartbeat(id: string, active: boolean, token?: string): Observable<LabSession> {
+    const body: S['HeartbeatIn'] = { active };
+    return token
+      ? this.http.post<LabSession>(`${this.base}/lab-access/${id}/heartbeat`, body, { headers: this.labHeaders(token) })
+      : this.http.post<LabSession>(`${this.base}/lab-sessions/${id}/heartbeat`, body);
   }
   labConsole(id: string, token?: string): Observable<LabConsole> {
     return token

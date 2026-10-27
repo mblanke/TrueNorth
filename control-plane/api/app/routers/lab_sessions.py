@@ -22,7 +22,7 @@ from sqlalchemy.orm import Session
 
 from ..auth import CurrentUser, get_current_user
 from ..db import get_db
-from ..lab_sessions import service, tokens
+from ..lab_sessions import capacity_gate, service, tokens
 from ..lab_sessions.models import LabSession
 from ..range_credentials import service as cred_service
 from ..range_credentials.router import RangeCredentialOut, RevealedCredentialOut, account_out
@@ -35,6 +35,14 @@ router = APIRouter(tags=["lab-sessions"])
 class LaunchIn(BaseModel):
     course_id: uuid.UUID
     activity_id: str = Field(pattern=r"^mod_[0-9]{3}$")
+
+
+class HeartbeatIn(BaseModel):
+    active: bool = Field(
+        False,
+        description="The Student interacted with the lab page (input, focus, console) since the last beat. "
+        "Only that keeps the lab open (ADR 0014 §18); an open tab nobody uses does not.",
+    )
 
 
 class EvidenceIn(BaseModel):
@@ -91,6 +99,28 @@ def _out(s: LabSession, token: str | None = None) -> LabSessionOut:
 
 def _refused(exc: service.LabRefusedError) -> HTTPException:
     return HTTPException(exc.status, str(exc))
+
+
+def _shown(db: Session, s: LabSession) -> LabSessionOut:
+    """``_out``, with when labs are next free for a lab queued for capacity (read here, after
+    the operation committed: never under the site-wide lock; at most every 30 s per lab)."""
+    out = _out(s)
+    if s.state == service.QUEUED and s.error == capacity_gate.BUSY:
+        try:
+            profile = service._profile(db, s)
+            out.error = capacity_gate.queued_message(
+                db, s, capacity_gate.demand(profile), capacity_gate.lifetime(profile), service._now()
+            )
+        except service.LabRefusedError:
+            pass
+    return out
+
+
+def _beat(db: Session, s: LabSession, body: HeartbeatIn | None) -> LabSessionOut:
+    """A heartbeat: activity keeps the lab open (touch); a beat with none only reads it."""
+    if body is not None and body.active:
+        return _shown(db, _do(db, service.touch, s))
+    return _shown(db, _do(db, service.advance, s, busy_ok=True))
 
 
 def _uuid(value: str) -> uuid.UUID:
@@ -184,6 +214,10 @@ def launch_lab_session(
                 release_id=release.id,
                 activity_id=body.activity_id,
             )
+    except service.LabsBusyError as exc:
+        db.info.pop(service.OUTBOX, None)
+        db.rollback()  # lets the site-wide lock go before the forecast is computed
+        raise HTTPException(exc.status, exc.message(db)) from exc
     except service.LabRefusedError as exc:
         db.info.pop(service.OUTBOX, None)
         raise _refused(exc) from exc
@@ -208,15 +242,18 @@ def get_lab_session(
     session_id: uuid.UUID, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)
 ) -> LabSessionOut:
     s = _session_for(db, user, session_id, staff_permission=Permission.LEARNING_RECORD_READ)
-    return _out(_do(db, service.advance, s, busy_ok=True))
+    return _shown(db, _do(db, service.advance, s, busy_ok=True))
 
 
 @router.post("/lab-sessions/{session_id}/heartbeat", response_model=LabSessionOut)
 def heartbeat_lab_session(
-    session_id: uuid.UUID, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)
+    session_id: uuid.UUID,
+    body: HeartbeatIn | None = None,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
 ) -> LabSessionOut:
     s = _session_for(db, user, session_id, staff_permission=Permission.LEARNING_RECORD_WRITE, act=True)
-    return _out(_do(db, service.touch, s))
+    return _beat(db, s, body)
 
 
 @router.post("/lab-sessions/{session_id}/reset", response_model=LabSessionOut)
@@ -342,16 +379,19 @@ def reconcile_lab_sessions(
 def get_lab_by_token(
     session_id: uuid.UUID, x_lab_token: str | None = Header(None), db: Session = Depends(get_db)
 ) -> LabSessionOut:
-    return _out(_do(db, service.advance, _token_session(db, session_id, x_lab_token, act=False), busy_ok=True))
+    return _shown(db, _do(db, service.advance, _token_session(db, session_id, x_lab_token, act=False), busy_ok=True))
 
 
 @router.post("/lab-access/{session_id}/heartbeat", response_model=LabSessionOut)
 def heartbeat_lab_by_token(
-    session_id: uuid.UUID, x_lab_token: str | None = Header(None), db: Session = Depends(get_db)
+    session_id: uuid.UUID,
+    body: HeartbeatIn | None = None,
+    x_lab_token: str | None = Header(None),
+    db: Session = Depends(get_db),
 ) -> LabSessionOut:
     # Not an action on an ended lab (touch does nothing then): the answer tells the page the
     # lab ended. A 410 here left the page saying "running" (it polls only while waiting).
-    return _out(_do(db, service.touch, _token_session(db, session_id, x_lab_token, act=False)))
+    return _beat(db, _token_session(db, session_id, x_lab_token, act=False), body)
 
 
 @router.post("/lab-access/{session_id}/reset", response_model=LabSessionOut)

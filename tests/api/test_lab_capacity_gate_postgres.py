@@ -95,3 +95,62 @@ def test_on_postgres_two_tenants_starting_the_last_slot_at_once_get_one_lab(
         states = [x.state for x in s.query(LabSession).all()]
     assert states == ["provisioning"], f"one lab fits: {states}"
     assert len(busy) == 1 and busy[0].startswith("Labs are busy")
+
+
+def test_on_postgres_a_launch_and_a_roll_call_addition_do_not_deadlock(
+    postgres_engine, pg_lab, monkeypatch  # noqa: F811
+):
+    """N1 (review of e7516c50): a launch locked the Student's row, then waited for the
+    booking lock; a roll-call addition held the booking lock (``room_for_seats``), then
+    needed a key-share lock on the same Student's row for its foreign key. Each waited on
+    the other. A launch now takes the booking lock first, the classes section's order."""
+    import datetime as dt
+    import time
+
+    from app.classes.models import Class
+    from app.scheduler import service as scheduler
+    from sqlalchemy import text
+
+    monkeypatch.setattr(service, "_dispatch", lambda task, *a: "task-1")
+    user_id = _student(postgres_engine, DEV)
+    with Session(postgres_engine) as s:
+        course = Course(name="c", tenant_id=DEV)
+        s.add(course)
+        s.flush()
+        cls = Class(tenant_id=DEV, name="k", course_id=course.id, start_date=dt.date.today(),
+                    end_date=dt.date.today(), lead_instructor_id=DEV)
+        s.add(cls)
+        s.commit()
+        class_id = cls.id
+    errors: list[str] = []
+    addition = Session(postgres_engine)
+    scheduler.serialize_bookings(addition)  # the instructor's addition holds the booking lock
+
+    def launch():
+        try:
+            with Session(postgres_engine) as db:
+                with db.begin_nested():
+                    service.launch(db, tenant_id=DEV, user_id=user_id, release_id=pg_lab, activity_id="mod_006")
+                db.commit()
+        except BaseException as exc:  # noqa: BLE001 — reported below
+            errors.append(f"launch: {exc!r}")
+
+    t = threading.Thread(target=launch)
+    t.start()
+    time.sleep(1.0)  # the launch is now waiting
+    try:
+        addition.execute(
+            text("INSERT INTO class_roll_call (id, class_id, tenant_id, email, user_id, status, created_at, updated_at)"
+                 " VALUES (:i, :c, :t, 'x@x.test', :u, 'invited', now(), now())"),
+            {"i": uuid.uuid4(), "c": class_id, "t": DEV, "u": user_id},
+        )
+        addition.commit()
+    except BaseException as exc:  # noqa: BLE001 — reported below
+        errors.append(f"roll call: {exc!r}")
+        addition.rollback()
+    finally:
+        addition.close()
+    t.join(30)
+    assert not errors, errors
+    with Session(postgres_engine) as s:
+        assert s.query(LabSession).filter(LabSession.user_id == user_id).count() == 1

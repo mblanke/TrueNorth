@@ -218,25 +218,41 @@ Content (courses, modules, labs, scenarios, range templates, golden images) has 
     - online pull plus signed bundle import.
 11. **Self-serve lab capacity gate.**
 
-   As built (#288): before a lab session's machines are built, `app/lab_sessions/capacity_gate.py`
-   asks the scheduler's capacity provider what is committed in every 15-minute slice from now
-   to the lab's maximum lifetime (its profile's `max_minutes`): approved bookings over their
-   held windows, approved classes over their whole span (`classes.holds`), and every range
-   running now, other labs included. A booking awaiting approval holds nothing. A launch that
-   does not fit is refused (409, and on the Moodle Start lab page) with "Labs are busy, next
-   free at HH:MM" in the site's time zone (`SITE_TIMEZONE`, IANA, default UTC; the date is
-   added when it is not today). The message carries a time only, never who holds the
-   capacity. A lab already queued behind a quota keeps waiting with the same message. The
-   check and the lab's range are written under the scheduler's booking lock, so two Students
-   of any tenants taking the last slot, or an approval at that moment, are decided in turn.
-   The next free time is a forecast: running labs are counted until they would close if
-   unused. A rebuild (reset) of a running lab is not re-checked.
+   As built (#288):
+   - **A booked class's own labs.** A Student on the roster of an approved booking of the
+     lab's course that holds now (a class session: its roll call; another booking: an
+     assigned enrolment), with no range or template of its own, launches a lab that draws on
+     that booking's hold (`lab_sessions.booking_id`): not gated, and counted through the
+     booking, never twice. Labs beyond what the booking holds are self-serve.
+   - **Self-serve labs.** Before a lab's machines are built, `app/lab_sessions/capacity_gate.py`
+     asks the scheduler's capacity provider what is committed in every 15-minute slice from
+     now to the lab's maximum lifetime: approved bookings over their held windows, approved
+     classes over their whole span (`classes.holds`), every range running now. A booking
+     awaiting approval holds nothing. A launch that does not fit is refused (409, and on the
+     Moodle Start lab page) with "Labs are busy, next free at HH:MM" in the site's time zone
+     (`SITE_TIMEZONE`, IANA, default UTC; the date is added when it is not today). The
+     message carries a time only. A lab queued behind a quota keeps waiting and its page shows
+     the same message.
+   - **What labs hold** (`app/lab_sessions/holdings.py`). A running lab is counted until its
+     maximum lifetime, not forever, so a site full of labs today does not block next week's
+     class. A lab being reset holds its size while its range is down for the rebuild.
+   - **Locks.** The decision is taken under the scheduler's booking lock, which a launch takes
+     before the Student's and the tenant's rows (the classes section's order); the lab's range
+     is written in the same transaction. The next free time is a forecast (running labs until
+     they would close unused) and is never computed under the lock: a refused launch rolls
+     back first, and a queued lab's page reads it at most every 30 seconds per lab.
 
-   An idle lab closes after `LAB_IDLE_LIMIT_MINUTES` (default 240) without Student activity
-   (the lab page's heartbeat, opening a console); a profile's shorter idle time still
-   applies. The Student gets one in-app notification `LAB_IDLE_WARNING_MINUTES` (default
-   15) before, and the session records `end_reason = idle` (`expired` stays the maximum
-   lifetime). Only lab sessions are closed by this rule; a lab session that points at a
-   class's range is never torn down by it.
+   An idle lab closes after `LAB_IDLE_LIMIT_MINUTES` (default 240) with no Student activity:
+   a lab page heartbeat that reports input, focus or a console opened since the last one, or
+   a console ticket. An open tab nobody uses does not count. A profile's shorter idle time
+   still applies. The Student gets one in-app notification `LAB_IDLE_WARNING_MINUTES`
+   (default 15) before, and the session records `end_reason = idle` (`expired` stays the
+   maximum lifetime). Only lab sessions are closed by this rule; a lab session found pointing
+   at a class's range is left to the class, logged once and not checked again.
+
+   Known limits: the idle warning is in-app only (a Student who only uses Moodle does not see
+   it); labs ignore the scheduler's `warn` over-capacity policy; a class's own lab is not
+   gated for the part of its lifetime after the booking ends; resources in one 15-minute
+   slice are summed even when they do not overlap inside it, which errs toward refusal.
 12. **Unit readiness page** (observer).
 13. **AD status sync,** plus the 90-day disable for local accounts.

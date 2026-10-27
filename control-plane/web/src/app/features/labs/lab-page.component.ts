@@ -41,6 +41,12 @@ const TOKEN_KEY = (id: string) => `tn-lab-token:${id}`;
 @Component({
   selector: 'tn-lab-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  // Real use of the page (ADR 0014 §18): only this keeps an idle lab from closing.
+  host: {
+    '(window:keydown)': 'markActive()',
+    '(window:pointerdown)': 'markActive()',
+    '(window:focus)': 'markActive()',
+  },
   imports: [DatePipe, MatButtonModule, MatCardModule, MatIconModule, MatProgressBarModule, RangeCredentialsComponent],
   template: `
     <div class="lab">
@@ -115,6 +121,7 @@ export class LabPageComponent implements OnInit {
   readonly waiting = computed(() => WAITING.has(this.session()?.state ?? ''));
   readonly usable = computed(() => USABLE.has(this.session()?.state ?? ''));
   private id = '';
+  private interacted = false;
   private token: string | undefined;
   /** For the credentials panel: this session, and its LTI token when it came with one. */
   sessionId = '';
@@ -149,12 +156,21 @@ export class LabPageComponent implements OnInit {
     interval(60000).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
       if (this.usable()) {
         // On an error (the lab ended, the enrollment closed) reload, so the page says so.
-        this.api.labAction(this.id, 'heartbeat', this.token).subscribe({
+        // Says whether the Student used the page since the last beat; an open tab nobody
+        // uses does not keep the lab open.
+        const active = this.interacted;
+        this.interacted = false;
+        this.api.labHeartbeat(this.id, active, this.token).subscribe({
           next: s => this.session.set(s),
           error: () => this.refresh(),
         });
       }
     });
+  }
+
+  /** Input, focus or a console opened since the last heartbeat. */
+  markActive(): void {
+    this.interacted = true;
   }
 
   text(state: string, endReason = ''): string {
@@ -187,6 +203,7 @@ export class LabPageComponent implements OnInit {
   }
 
   openConsole(): void {
+    this.markActive();
     this.api.labConsole(this.id, this.token).subscribe({
       next: c => this.console.set(c),
       error: err => this.notify.error(err?.error?.detail ?? 'Could not open the console'),
