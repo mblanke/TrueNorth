@@ -458,6 +458,19 @@ config:
   # worker/provisioners registry key: vsphere_api or mock. proxmox_api and hyperv are
   # experimental: refused unless extraEnv sets EXPERIMENTAL_PROVISIONERS: "true".
   provisionerBackend: vsphere_api
+  # Email (install/README.md "Email (SMTP)"; app/notifications/smtp.py): the relay for
+  # roll-call onboarding emails, reminders, seat-forfeit notices and calendar invites.
+  # Empty host: email is off (only logged; admins see a banner). The password is
+  # secrets.smtpPassword. The installer's tn_smtp_* render the same SMTP_* variables.
+  smtp:
+    host: ""
+    port: 587
+    # starttls | tls (implicit TLS, usually 465) | none
+    security: starttls
+    # Empty: no sign-in. Set with secrets.smtpPassword, or neither.
+    username: ""
+    # Required with host, e.g. truenorth@corp.example.
+    fromAddress: ""
   # Any other non-secret variable for the api, workers and beat (VSPHERE_*, LRS_URL,
   # LMS_BACKEND, LDAP_*, REGISTRATION_*, ...), as in compose.prod.yml.
   extraEnv: {}
@@ -472,7 +485,7 @@ secrets:
   #   DATABASE_PASSWORD REDIS_PASSWORD MINIO_ACCESS_KEY MINIO_SECRET_KEY CSRF_SECRET
   #   TN_SECRETS_KEY AI_SERVICE_TOKEN METRICS_SCRAPE_TOKEN OPENSEARCH_USER OPENSEARCH_PASS
   # optional: KEYCLOAK_ADMIN_CLIENT_SECRET KEYCLOAK_CLIENT_SECRET OPENAI_API_KEY
-  #   ANTHROPIC_API_KEY; FLOWER_BASIC_AUTH when flower.enabled.
+  #   ANTHROPIC_API_KEY SMTP_PASSWORD; FLOWER_BASIC_AUTH when flower.enabled.
   existingSecret: ""
   databasePassword: ""
   redisPassword: ""
@@ -498,7 +511,9 @@ secrets:
   anthropicApiKey: ""
   # user:password, when flower.enabled.
   flowerBasicAuth: ""
-  # Any other secret variable (VSPHERE_PASSWORD, LRS_AUTH, SMTP_PASSWORD, ...).
+  # The password of config.smtp.username (SMTP_PASSWORD); empty for a relay without sign-in.
+  smtpPassword: ""
+  # Any other secret variable (VSPHERE_PASSWORD, LRS_AUTH, ...).
   extraEnv: {}
 
 # ---------------------------------------------------------------------------

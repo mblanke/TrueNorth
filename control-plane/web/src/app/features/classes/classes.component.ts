@@ -15,6 +15,7 @@ import {
   ReinstateResult, RollCallAddResult, RollCallEntry, RollCallStatus, SessionTeams,
 } from '@core/services/classes-api.service';
 import { NotificationService } from '@core/services/notification.service';
+import { EmailStatusService } from '@core/services/email-status.service';
 import {
   CourseSummary, DirectoryUser, OperatorRecordsApiService,
 } from '@core/services/operator-records-api.service';
@@ -223,6 +224,13 @@ export function addSummary(r: RollCallAddResult): string {
           </mat-card-header>
           <mat-card-content>
             @if (c.can_edit) {
+              @if (email.notConfigured()) {
+                <p class="email-off" role="alert">
+                  <mat-icon>mail_lock</mat-icon>
+                  <span>Email is not configured on this server: no email will be sent to the Students you add.
+                    Tell them to sign in to TrueNorth themselves.</span>
+                </p>
+              }
               <mat-form-field appearance="outline" class="paste">
                 <mat-label>Paste Students' email addresses</mat-label>
                 <textarea matInput rows="4" [(ngModel)]="pasted"
@@ -363,6 +371,10 @@ export function addSummary(r: RollCallAddResult): string {
     .entries tr.forfeited td { color: var(--mat-sys-error); }
     .when { margin-left: 8px; font-size: 12px; }
     .error { color: var(--mat-sys-error); padding: 0 16px; }
+    .email-off {
+      display: flex; align-items: center; gap: 8px; margin: 0 0 12px; padding: 8px 12px; border-radius: 8px;
+      background: var(--mat-sys-error-container); color: var(--mat-sys-on-error-container);
+    }
     .ranges, .teams { margin-top: 16px; }
     .small { font-size: 12px; opacity: 0.8; }
     .count { width: 120px; }
@@ -378,6 +390,8 @@ export class ClassesComponent implements OnInit {
   private readonly records = inject(OperatorRecordsApiService);
   private readonly notify = inject(NotificationService);
   readonly auth = inject(AuthService);
+  /** Whether added Students will be emailed (#306): the roll call warns when they will not. */
+  readonly email = inject(EmailStatusService);
   /** `?class=<id>` opens that class's roll call (the calendar's Roll call link, #285). */
   private readonly route = inject(ActivatedRoute, { optional: true });
 
@@ -403,6 +417,7 @@ export class ClassesComponent implements OnInit {
 
   ngOnInit(): void {
     this.load();
+    this.email.load();
   }
 
   load(): void {

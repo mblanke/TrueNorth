@@ -517,3 +517,39 @@ def test_stop_gate_ignores_prose_repos_without_dod_and_bad_input(repo, tmp_path)
     (repo / "scripts/dod.sh").unlink()
     assert run_stop(tmp_path, repo).returncode == 0
     assert run_stop(tmp_path, repo, raw="not json").returncode == 0
+
+
+# ── course cards (tools/taz/courses) ──────────────────────────────────────
+
+
+def _course_card(repo: Path) -> dict:
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("make_card", ROOT / "tools/taz/courses/make_card.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod.card_for("content/courses/c103-intro-to-networking.yaml", repo_root=str(repo))
+
+
+def test_a_course_card_admits_its_course_and_pack_and_nothing_else(repo, tmp_path):
+    card = _course_card(repo)
+    t = transcript(tmp_path, said(CLAUDE))
+    for rel in ("content/courses/c103-intro-to-networking.yaml", "content/courses/instructor/c103-intro-to-networking.yaml"):
+        assert run_gate(tmp_path, write(repo / rel, t, repo), card=card)[0] == "allow", rel
+    for rel in ("content/courses/c104-intro-to-programming-python.yaml", "control-plane/api/app/main.py",
+                "content/ranges/small-enterprise/template.yaml"):
+        assert run_gate(tmp_path, write(repo / rel, t, repo), card=card)[0] == "deny", rel
+
+
+@pytest.mark.parametrize("rel", ["scripts/check_course.py", "tools/taz/courses/AGENTS-courses.md",
+                                 "tools/taz/courses/queue.txt", "docs/interfaces/course-content.schema.json",
+                                 "docs/interfaces/course-instructor-pack.schema.json"])
+def test_the_course_oracle_and_kit_are_protected_even_from_a_card_that_allows_everything(repo, tmp_path, rel):
+    t = transcript(tmp_path, said(CLAUDE))
+    decision, reason = run_gate(tmp_path, write(repo / rel, t, repo, "Edit"), card=card_for(repo, allowed_paths=["**"]))
+    assert decision == "deny" and "ring protected" in reason
+
+
+def test_the_course_oracle_may_be_run(repo, tmp_path):
+    cmd = ".venv/bin/python scripts/check_course.py --base origin/main content/courses/c103-intro-to-networking.yaml"
+    assert run_gate(tmp_path, bash(cmd, repo))[0] == "allow"

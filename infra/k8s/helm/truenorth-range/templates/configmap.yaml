@@ -65,6 +65,43 @@ data:
   XAPI_ACCOUNT_HOMEPAGE: {{ $origin | quote }}
   XAPI_IRI_BASE: {{ printf "%s/xapi" $origin | quote }}
   PROVISIONER_BACKEND: {{ .Values.config.provisionerBackend | quote }}
+  # Email (app/notifications/smtp.py; install/README.md "Email (SMTP)"). Empty host: off.
+  # The password is SMTP_PASSWORD in secret.yaml (secrets.smtpPassword). A release that
+  # set SMTP_* through config.extraEnv (the chart's advice before config.smtp) keeps them:
+  # nothing is rendered here then, and mixing the two is refused.
+  {{- $smtp := .Values.config.smtp | default dict }}
+  {{- $legacy := list }}
+  {{- range $k, $_ := .Values.config.extraEnv }}{{ if hasPrefix "SMTP_" $k }}{{ $legacy = append $legacy $k }}{{ end }}{{ end }}
+  {{- $secretExtra := .Values.secrets.extraEnv | default dict }}
+  {{- if $smtp.host }}
+  {{- if $legacy }}
+  {{- fail (printf "config.smtp.host is set and config.extraEnv also sets %s: move them to config.smtp" (join ", " $legacy)) }}
+  {{- end }}
+  {{- if not (has ($smtp.security | default "starttls") (list "starttls" "tls" "none")) }}
+  {{- fail "config.smtp.security must be starttls, tls or none" }}
+  {{- end }}
+  {{- $port := int ($smtp.port | default 587) }}
+  {{- if or (lt $port 1) (gt $port 65535) }}
+  {{- fail "config.smtp.port must be from 1 to 65535" }}
+  {{- end }}
+  {{- if not (regexMatch "^[^@\\s<>\"'(),;:]+@[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$" ($smtp.fromAddress | default "" | toString)) }}
+  {{- fail "config.smtp.fromAddress is required with config.smtp.host: a plain address such as truenorth@corp.example" }}
+  {{- end }}
+  {{- $hasPassword := or $.Values.secrets.smtpPassword (hasKey $secretExtra "SMTP_PASSWORD") }}
+  {{- if and (not $.Values.secrets.existingSecret) (ne (empty $smtp.username) (not $hasPassword)) }}
+  {{- fail "set both config.smtp.username and secrets.smtpPassword, or neither for a relay without sign-in" }}
+  {{- end }}
+  {{- if and $smtp.username (eq ($smtp.security | default "starttls") "none") }}
+  {{- fail "config.smtp.security none would send the password in clear: use starttls or tls with a sign-in" }}
+  {{- end }}
+  SMTP_HOST: {{ $smtp.host | toString | quote }}
+  SMTP_PORT: {{ $port | toString | quote }}
+  SMTP_SECURITY: {{ $smtp.security | default "starttls" | quote }}
+  SMTP_USER: {{ $smtp.username | default "" | quote }}
+  SMTP_FROM: {{ $smtp.fromAddress | quote }}
+  {{- else if not $legacy }}
+  SMTP_HOST: ""
+  {{- end }}
   # The api reads the scenario engine from here (app/engine_bridge.py); an init
   # container copies it out of the scenario-engine image (deployment-api.yaml).
   SCENARIO_ENGINE_DIR: /opt/scenario-engine
