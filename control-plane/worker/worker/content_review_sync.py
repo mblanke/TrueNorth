@@ -24,6 +24,8 @@ Each run, under a Redis lock (redis_lock.py) so two never overlap:
 3. **Clock.** Each item's due date (last review, else when it was first tracked, plus its
    cycle) and its own overdue reason, then every inherited reason rebuilt over the new
    edges (content_review_runtime/staleness.py, generated from the API's ``app/content_review/staleness.py``).
+4. **Feeds.** Before that rebuild, new release and vulnerability feed entries flag the
+   golden templates they name (ADR 0014 decision 25; ``content_feeds/``), each once.
 
 Everything is read unlocked and computed first. Only then are the review rows that change
 locked (FOR NO KEY UPDATE, which an edge insert's foreign key check does not block; in id order,
@@ -48,6 +50,7 @@ import sqlalchemy as sa
 import yaml
 
 from .celery_app import app
+from .content_feeds import apply as feeds
 from .content_review_runtime import staleness as st
 from .redis_lock import RedisLock
 from .render import _DESIGNER_NON_VM_TYPES, _extract_nodes, _node_os, os_alias_candidates
@@ -307,20 +310,25 @@ def _check(lost: threading.Event | None) -> None:
         raise LockLostError("the content review sync lost its lock; nothing of this run is kept")
 
 
-def sync(db, *, now: datetime | None = None, lost: threading.Event | None = None) -> dict:
+def sync(db, *, now: datetime | None = None, lost: threading.Event | None = None, feed_products=None) -> dict:
     """One run, in the caller's transaction. Raises LockLostError (nothing written is kept) once
     ``lost`` is set.
 
     Reads are unlocked; new rows and the edge difference are written in bulk; then the review
     rows that change are locked (FOR NO KEY UPDATE, in id order, as the API locks them) and
     each is written only if its ``revision`` is still the one read: a review that committed
-    meanwhile wins, and the next run catches up."""
+    meanwhile wins, and the next run catches up.
+
+    Release and vulnerability feed entries (ADR 0014 decision 25) flag the golden templates
+    they name (``content_feeds/apply.py``) before the inherited reasons are rebuilt; each
+    flag is recorded only once its row is written. ``feed_products``: the product map
+    (tests); by default ``content/catalogue/feed_products.yaml``."""
     now = _utc(now) or datetime.now(UTC)
     content = read_content(db)
     cycle = _cycles(db)
     themes = _themes_by_name(db)
     existing = {(r.item_type, r.item_id): r._asdict() for r in db.execute(sa.select(items)).all()}
-    summary = {"status": "ok", "created": 0, "updated": 0, "missing": 0, "edges": 0, "skipped": 0}
+    summary = {"status": "ok", "created": 0, "updated": 0, "missing": 0, "edges": 0, "skipped": 0, "feed_flags": 0}
     _check(lost)
 
     # 1. items: new ones inserted in bulk; changes to existing ones collected for step 3
@@ -392,6 +400,9 @@ def sync(db, *, now: datetime | None = None, lost: threading.Event | None = None
         graph.set_overdue(k, st.overdue_text(due, now), at=now)
         if _utc(r["due_at"]) != due:
             pending.setdefault(k, {})["due_at"] = due
+    feed_flags = feeds.flags(db, live, now, products=feed_products)
+    for f in feed_flags:
+        graph.flag_stale(f.item, f.text, f.entry_key, kind=f.kind, at=now)
     graph.repropagate(at=now)
     for k, r in live.items():
         reasons = graph.reasons.get(k, [])
@@ -405,6 +416,7 @@ def sync(db, *, now: datetime | None = None, lost: threading.Event | None = None
     for row in new_rows:
         if row["id"] in pending:
             db.execute(items.update().where(items.c.id == row["id"]).values(**pending[row["id"]], updated_at=now))
+    skipped: set[str] = set()
     if write:
         locked = db.execute(sa.select(items.c.id, items.c.revision).where(items.c.id.in_(sorted(write)))
                             .order_by(items.c.id).with_for_update(key_share=True)).all()
@@ -412,11 +424,15 @@ def sync(db, *, now: datetime | None = None, lost: threading.Event | None = None
             rid = str(got.id)
             if got.revision != read_revision[rid]:
                 summary["skipped"] += 1
+                skipped.add(rid)
                 continue
             db.execute(items.update().where(items.c.id == got.id).values(
                 **write[rid], revision=got.revision + 1, updated_at=now))
             if "missing" not in write[rid] or len(write[rid]) > 1:
                 summary["updated"] += 1
+        skipped |= set(write) - {str(got.id) for got in locked}
+    # A feed flag counts as raised once its row carries it; a skipped row is flagged next run.
+    summary["feed_flags"] = feeds.record(db, [f for f in feed_flags if f.item not in skipped], now)
     _check(lost)
     logger.info("[content-review] %s", summary)
     return summary

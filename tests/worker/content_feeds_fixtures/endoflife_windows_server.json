@@ -1,0 +1,8 @@
+[
+  {"cycle": "2025", "releaseDate": "2024-11-01", "eol": "2034-10-10", "latest": "10.0.26100", "lts": true,
+   "support": "2029-10-09", "extendedSupport": false},
+  {"cycle": "2022", "releaseDate": "2021-08-18", "eol": "2031-10-14", "latest": "10.0.20348", "lts": true,
+   "support": "2026-10-13", "extendedSupport": false},
+  {"cycle": "2012-r2", "releaseDate": "2013-10-18", "eol": true, "latest": "6.3.9600", "lts": true,
+   "support": "2018-10-09", "extendedSupport": "2026-10-13"}
+]

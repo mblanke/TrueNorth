@@ -1,0 +1,95 @@
+# What each golden template is built from, as the release and vulnerability feeds name it
+# (ADR 0014 decision 25, issue #287). Keyed by the golden template's catalogue id
+# (vm_iso_catalogue.csv template_id). The content clock's sync flags a golden template
+# stale when a feed entry names one of its products, and the flag flows down to the range
+# templates, scenarios, modules and courses that use it.
+#
+# Per product:
+#   name     what the Content view says ("Ubuntu 24.04 reached EOL 2029-05-31")
+#   eol      endoflife.date product and release cycle (https://endoflife.date/<product>)
+#   release  the point release the template's ISO is; a newer one in the same cycle is a
+#            release flag. Update it when the template is rebuilt from a newer ISO.
+#   cpe      NVD CPE match string (part:vendor:product[:version]); CVEs published for it
+#            at or above TN_FEEDS_NVD_MIN_CVSS are vulnerability flags
+#   kev      CISA KEV vendorProject / product pairs; a KEV entry added for one is a
+#            vulnerability flag
+#
+# Only these public names leave the site (in the feed GET requests). A template not listed
+# here gets no feed flags; its review clock still runs.
+golden_templates:
+  ubuntu-lts:
+    - name: Ubuntu 24.04
+      eol: {product: ubuntu, cycle: "24.04"}
+      release: "24.04.5"
+      cpe: "cpe:2.3:o:canonical:ubuntu_linux:24.04"
+      kev: [{vendor: Linux, product: Kernel}]
+  remnux:
+    - name: Ubuntu 24.04 (REMnux base)
+      eol: {product: ubuntu, cycle: "24.04"}
+      cpe: "cpe:2.3:o:canonical:ubuntu_linux:24.04"
+  sift:
+    - name: Ubuntu 24.04 (SIFT base)
+      eol: {product: ubuntu, cycle: "24.04"}
+      cpe: "cpe:2.3:o:canonical:ubuntu_linux:24.04"
+  greyspace-host:
+    - name: Ubuntu 24.04 (Greyspace host)
+      eol: {product: ubuntu, cycle: "24.04"}
+      cpe: "cpe:2.3:o:canonical:ubuntu_linux:24.04"
+  debian13:
+    - name: Debian 13
+      eol: {product: debian, cycle: "13"}
+      release: "13.6"
+      cpe: "cpe:2.3:o:debian:debian_linux:13.0"
+      kev: [{vendor: Linux, product: Kernel}]
+  rocky:
+    - name: Rocky Linux 10
+      eol: {product: rocky-linux, cycle: "10"}
+      release: "10.2"
+      kev: [{vendor: Linux, product: Kernel}]
+  win10-22h2:
+    - name: Windows 10 22H2
+      eol: {product: windows, cycle: "10-22h2"}
+      cpe: "cpe:2.3:o:microsoft:windows_10_22h2"
+      kev: [{vendor: Microsoft, product: Windows}]
+  win11-24h2:
+    - name: Windows 11 24H2
+      eol: {product: windows, cycle: "11-24h2-e"}
+      cpe: "cpe:2.3:o:microsoft:windows_11_24h2"
+      kev: [{vendor: Microsoft, product: Windows}]
+  srv2016:
+    - name: Windows Server 2016
+      eol: {product: windows-server, cycle: "2016"}
+      cpe: "cpe:2.3:o:microsoft:windows_server_2016"
+      kev: [{vendor: Microsoft, product: Windows}, {vendor: Microsoft, product: Windows Server}]
+  srv2019:
+    - name: Windows Server 2019
+      eol: {product: windows-server, cycle: "2019"}
+      cpe: "cpe:2.3:o:microsoft:windows_server_2019"
+      kev: [{vendor: Microsoft, product: Windows}, {vendor: Microsoft, product: Windows Server}]
+  srv2022:
+    - name: Windows Server 2022
+      eol: {product: windows-server, cycle: "2022"}
+      cpe: "cpe:2.3:o:microsoft:windows_server_2022"
+      kev: [{vendor: Microsoft, product: Windows}, {vendor: Microsoft, product: Windows Server}]
+  srv2025:
+    - name: Windows Server 2025
+      eol: {product: windows-server, cycle: "2025"}
+      cpe: "cpe:2.3:o:microsoft:windows_server_2025"
+      kev: [{vendor: Microsoft, product: Windows}, {vendor: Microsoft, product: Windows Server}]
+  srv2022-exchange2019:
+    - name: Windows Server 2022
+      eol: {product: windows-server, cycle: "2022"}
+      cpe: "cpe:2.3:o:microsoft:windows_server_2022"
+      kev: [{vendor: Microsoft, product: Windows}, {vendor: Microsoft, product: Windows Server}]
+    - name: Exchange Server 2019
+      eol: {product: msexchange, cycle: "2019"}
+      cpe: "cpe:2.3:a:microsoft:exchange_server:2019"
+      kev: [{vendor: Microsoft, product: Exchange Server}]
+  srv2022-sharepoint2019:
+    - name: Windows Server 2022
+      eol: {product: windows-server, cycle: "2022"}
+      cpe: "cpe:2.3:o:microsoft:windows_server_2022"
+      kev: [{vendor: Microsoft, product: Windows}, {vendor: Microsoft, product: Windows Server}]
+    - name: SharePoint Server 2019
+      cpe: "cpe:2.3:a:microsoft:sharepoint_server:2019"
+      kev: [{vendor: Microsoft, product: SharePoint}]

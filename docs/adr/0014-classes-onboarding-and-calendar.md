@@ -2,7 +2,7 @@
 
 - **Status:** accepted 2026-10-22 (owner decisions, grilling session). **Amends ADR 0004** (see "What this changes in ADR 0004").
 - **Date:** 2026-10-22
-- **Code:** sliced into GitHub issues, one PR each, listed under "Delivery". Slices that touch auth, tenancy or provisioning get an adversarial review. Built so far: Class and roll call (#278, `app/classes/`), the content clock (#286, `app/content_review/`), booking approval (#281: `app/scheduler/approval.py`, `app/classes/sessions.py`), per-session ranges and teams (#282: `app/classes/ranges.py`, `app/classes/teams.py`).
+- **Code:** sliced into GitHub issues, one PR each, listed under "Delivery". Slices that touch auth, tenancy or provisioning get an adversarial review. Built so far: Class and roll call (#278, `app/classes/`), the content clock (#286, `app/content_review/`), booking approval (#281: `app/scheduler/approval.py`, `app/classes/sessions.py`), per-session ranges and teams (#282: `app/classes/ranges.py`, `app/classes/teams.py`), the feeds (#287: `app/content_feeds/`, `worker/content_feeds/`, `worker/feed_backends/`; product map `content/catalogue/feed_products.yaml`).
 - **Design reference:** the calendar mockups "TrueNorth Calendars" (Events and Content views, week and month), approved by the owner on 2026-10-22.
 
 ## Context

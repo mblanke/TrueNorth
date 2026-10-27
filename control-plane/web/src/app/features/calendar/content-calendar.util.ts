@@ -83,6 +83,33 @@ export function kindLabel(itemType: string): string {
   return KINDS[itemType] ?? itemType;
 }
 
+type Reason = NonNullable<ContentItem['stale_reasons']>[number];
+
+const REASON_ICONS: Record<string, string> = {
+  time: 'schedule',
+  release: 'new_releases',
+  vulnerability: 'gpp_maybe',
+  upstream: 'subdirectory_arrow_right',
+};
+
+/** The Material icon for a stale reason's kind. */
+export function reasonIcon(kind: string): string {
+  return REASON_ICONS[kind] ?? 'info';
+}
+
+/**
+ * Which feed raised a reason (ADR 0014 decision 25): "endoflife.date", "CISA KEV" or "NVD",
+ * from its source key; null for a reason no feed raised.
+ */
+export function feedOf(reason: Pick<Reason, 'kind' | 'source'>): string | null {
+  if (reason.kind !== 'release' && reason.kind !== 'vulnerability') return null;
+  const source = reason.source ?? '';
+  if (source.startsWith('eol:') || source.startsWith('release:')) return 'endoflife.date';
+  if (source.startsWith('kev:')) return 'CISA KEV';
+  if (source.startsWith('nvd:')) return 'NVD';
+  return null;
+}
+
 /** "None", the titles, or the first three and how many more. */
 export function listText(items: readonly ContentItemBrief[]): string {
   if (!items.length) return 'None';

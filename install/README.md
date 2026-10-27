@@ -1042,6 +1042,35 @@ every launch answers 503. With `tn_cmi5_enabled` (the default):
 
 `tn_cmi5_enabled: false` renders no credential: launches answer 503 (fail closed).
 
+## Content feeds
+
+Release, end-of-life and vulnerability data make content due for review on the calendar's
+Content view (ADR 0014 decision 25). A feed entry that names something a golden template
+is built from (`content/catalogue/feed_products.yaml`) flags it stale, e.g. "Ubuntu 20.04
+reached EOL 2025-05-31" or "CVE-… in CISA KEV", and the flag flows down to the range
+templates, scenarios, modules and courses that use it. Each flag is raised once; Mark
+reviewed clears it. **Off on a fresh install.**
+
+| Variable | Default | Effect |
+|---|---|---|
+| `tn_feeds_mode` | `off` | `off`; `online`: worker-provision pulls endoflife.date, CISA KEV and the NVD CVE API once a day (04:10 UTC); `bundle`: air-gapped, a platform admin imports signed feed bundles |
+| `tn_feeds_http_proxy` | `""` | The site's HTTP proxy for the daily pull (TN-MGMT01 or the depot); empty: direct. A proxy the environment sets is never used |
+| `tn_feeds_bundle_public_key` | `""` | `bundle` mode: the Ed25519 public key (base64) bundles must be signed with. Without it none is accepted |
+| `tn_feeds_nvd_api_key` | `vault_feeds_nvd_api_key` | Optional; raises NVD's rate limit. Worker only, never logged |
+| `tn_feeds_nvd_min_cvss` | `9.0` | NVD CVEs below this CVSS base score are not flagged |
+
+- **What leaves the site:** GET requests naming the product map's public products (e.g.
+  `ubuntu.json`, a CPE string). No tenant data, no content names.
+- **Air-gapped:** on a connected machine, `python scripts/build_feed_bundle.py --new-key
+  <file>` once (it prints the public key for `tn_feeds_bundle_public_key`), then
+  `--key <file> --out feeds.json --since <the last bundle's date>` per bundle (it writes
+  nothing if a feed could not be read). The Content view's Feeds panel imports it; an
+  unsigned bundle, one signed by another key, one changed after signing, or one older than
+  the last import is refused and recorded.
+- **Status:** the Feeds panel (admins) shows each source's last pull or import and error.
+  Vulnerabilities published before a template was first tracked are not flagged, so
+  turning feeds on does not flag years of history at once.
+
 ## Range credentials
 
 Range templates declare their machines' accounts (ADR 0012); TrueNorth sets them at deploy.

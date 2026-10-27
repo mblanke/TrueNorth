@@ -251,6 +251,24 @@ def _calendar_factory(key, mp):
         calendar_backends.reset_calendar_backend()
 
 
+def _content_feeds_abc():
+    from worker.feed_backends import BaseFeedSource
+
+    return BaseFeedSource
+
+
+def _content_feeds_registry():
+    from worker import feed_backends
+
+    return feed_backends._REGISTRY
+
+
+def _content_feeds_factory(key, mp):
+    from worker.feed_backends import get_feed_source
+
+    return get_feed_source(key)
+
+
 def _threat_intel_abc():
     from app.threat_intel_backends import BaseFeedBackend
 
@@ -283,6 +301,8 @@ SEAMS: dict[str, Seam] = {
         Seam("console", _console_abc, _console_registry, _console_factory, "mock", ValueError),
         Seam("threat_intel", _threat_intel_abc, _threat_intel_registry, _threat_intel_factory, "null", ValueError),
         Seam("calendar", _calendar_abc, _calendar_registry, _calendar_factory, "null", ValueError),
+        Seam("content_feeds", _content_feeds_abc, _content_feeds_registry, _content_feeds_factory, "null",
+             ValueError),
     )
 }
 
@@ -580,3 +600,15 @@ def test_null_calendar(monkeypatch):
     assert _run(backend.health_check()) is True
     assert _run(backend.publish(event)) is None
     assert _run(backend.cancel(event)) is None
+
+
+def test_null_content_feeds(monkeypatch):
+    from datetime import UTC, datetime
+
+    from worker.feed_backends import FeedProduct, FeedResult
+
+    source = _build(SEAMS["content_feeds"], SEAMS["content_feeds"].null_key, monkeypatch)
+    product = FeedProduct(name="Ubuntu 24.04", eol_product="ubuntu", eol_cycle="24.04")
+    result = source.fetch(None, [product], since=None, now=datetime(2026, 10, 27, tzinfo=UTC))
+    assert isinstance(result, FeedResult) and result.entries == [] and result.errors == []
+    assert source.health_check() is True

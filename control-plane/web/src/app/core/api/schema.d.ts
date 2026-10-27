@@ -1662,6 +1662,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/content-feeds/bundle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import a signed feed bundle (air-gapped sites)
+         * @description Verified against the site's configured public key before anything is stored; an
+         *     unsigned or mismatched bundle is refused (422) and the refusal is recorded. Entries
+         *     become stale flags at the content clock's next sync (hourly). Audit-logged. A plain
+         *     ``def``: parsing and storing up to 100,000 entries runs in the threadpool, not on the
+         *     event loop.
+         */
+        post: operations["import_content_feed_bundle"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/content-feeds/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The release and vulnerability feeds: mode, last pull or import, errors */
+        get: operations["get_content_feeds_status"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/content-review/cycles": {
         parameters: {
             query?: never;
@@ -10275,6 +10316,14 @@ export interface components {
             /** Taxonomy */
             taxonomy: string;
         };
+        /** Body_import_content_feed_bundle */
+        Body_import_content_feed_bundle: {
+            /**
+             * File
+             * @description The signed feed bundle (JSON)
+             */
+            file: string;
+        };
         /** Body_import_course_content_courses_import_course_content_post */
         Body_import_course_content_courses_import_course_content_post: {
             /** File */
@@ -13106,6 +13155,22 @@ export interface components {
             /** Name */
             name?: string;
         };
+        /** FeedImportOut */
+        FeedImportOut: {
+            /** Entries */
+            entries: number;
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at: string;
+            /** Key Id */
+            key_id: string;
+            /** New */
+            new: number;
+            /** Updated */
+            updated: number;
+        };
         /**
          * FeedPullOut
          * @description What a pull did. ``rejections`` lists at most the first 50 rejected rows.
@@ -13131,6 +13196,74 @@ export interface components {
             reason: string;
             /** Row */
             row: number;
+        };
+        /** FeedSourceOut */
+        FeedSourceOut: {
+            /**
+             * Entries
+             * @description Entries the last pull or import brought
+             * @default 0
+             */
+            entries?: number;
+            /**
+             * Generated At
+             * @description Bundle: when it was made
+             */
+            generated_at?: string | null;
+            /**
+             * Key Id
+             * @description Bundle: the key that signed it
+             */
+            key_id?: string | null;
+            /** Label */
+            label: string;
+            /** Last Attempt At */
+            last_attempt_at?: string | null;
+            /**
+             * Last Error
+             * @default
+             */
+            last_error?: string;
+            /** Last Success At */
+            last_success_at?: string | null;
+            /** Source */
+            source: string;
+        };
+        /** FeedStatusOut */
+        FeedStatusOut: {
+            /**
+             * Bundle Key Id
+             * @description The configured bundle public key's id
+             */
+            bundle_key_id?: string | null;
+            /**
+             * Bundle Key Problem
+             * @description Why bundles cannot be imported, when they cannot
+             */
+            bundle_key_problem?: string | null;
+            /**
+             * Can Import
+             * @description The caller may import a signed feed bundle now
+             */
+            can_import: boolean;
+            /**
+             * Entries
+             * @description Feed entries stored
+             */
+            entries: number;
+            /**
+             * Flagged Items
+             * @description Content the caller can see that a feed has flagged
+             */
+            flagged_items: number;
+            /**
+             * Mode
+             * @description off (the default), online (the daily pull) or bundle (air-gapped imports)
+             * @enum {string}
+             */
+            mode: "off" | "online" | "bundle";
+            /** Sources */
+            sources: components["schemas"]["FeedSourceOut"][];
         };
         /**
          * FeedTokenIssued
@@ -22511,6 +22644,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_content_feed_bundle: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_import_content_feed_bundle"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeedImportOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_content_feeds_status: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeedStatusOut"];
                 };
             };
         };

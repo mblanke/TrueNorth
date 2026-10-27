@@ -598,6 +598,9 @@ services:
       # Archived Range Certification Records older than this are purged; 0 keeps them
       # (app/range_certification/retention.py; installer: tn_range_cert_retention_months).
       RANGE_CERT_RETENTION_MONTHS: ${RANGE_CERT_RETENTION_MONTHS:-12}
+      # The feeds status and the signed feed bundle import (app/content_feeds, ADR 0014 §25).
+      TN_FEEDS_MODE: ${TN_FEEDS_MODE:-off}
+      TN_FEEDS_BUNDLE_PUBLIC_KEY: ${TN_FEEDS_BUNDLE_PUBLIC_KEY:-}
     volumes:
       # Matches SCENARIO_ENGINE_DIR above. The engine is not part of the api
       # build context, so without this mount it is simply absent at runtime.
@@ -784,6 +787,12 @@ services:
       VSPHERE_ROLE_SETUP_TIMEOUT: ${VSPHERE_ROLE_SETUP_TIMEOUT:-7200}
       VSPHERE_SETUP_BUILD_WAIT: ${VSPHERE_SETUP_BUILD_WAIT:-0}
       TN_SHAREPOINT_PRODUCT_KEY: ${TN_SHAREPOINT_PRODUCT_KEY:-}
+      # The content feeds' daily pull (worker/content_feeds, ADR 0014 §25): it runs on
+      # worker-provision (tn-egress) and only when TN_FEEDS_MODE=online. The NVD key is optional.
+      TN_FEEDS_MODE: ${TN_FEEDS_MODE:-off}
+      TN_FEEDS_HTTP_PROXY: ${TN_FEEDS_HTTP_PROXY:-}
+      TN_FEEDS_NVD_API_KEY: ${TN_FEEDS_NVD_API_KEY:-}
+      TN_FEEDS_NVD_MIN_CVSS: ${TN_FEEDS_NVD_MIN_CVSS:-9.0}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       LOG_FORMAT: ${LOG_FORMAT:-json} # worker/celery_app.py: JSON lines
     volumes:

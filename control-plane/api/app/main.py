@@ -365,6 +365,7 @@ from .class_setup.router import router as class_setup_router  # noqa: E402 (#200
 from .classes.range_router import router as class_ranges_router  # noqa: E402 (#282)
 from .classes.router import router as classes_router  # noqa: E402 (ADR 0014, + its tables)
 from .cmi5.router import router as cmi5_router  # noqa: E402 (also registers the cmi5 tables)
+from .content_feeds.router import router as content_feeds_router  # noqa: E402 (ADR 0014 §25; + tables)
 from .content_review.router import router as content_review_router  # noqa: E402 (ADR 0014 §22-24; + tables)
 from .golden_image_builds.router import router as golden_image_builds_router  # noqa: E402 (ADR 0013; + its table)
 from .live_class.router import router as live_class_router  # noqa: E402 (issue #199)
@@ -463,6 +464,7 @@ app.include_router(scheduling_feed_router)  # token-authenticated .ics feed
 app.include_router(scheduling_me_router)  # your own sessions and feed link
 app.include_router(maintenance_windows_router)  # app/maintenance_windows (ADR 0013 §7)
 app.include_router(content_review_router)  # the content clock, app/content_review (ADR 0014 §22-24)
+app.include_router(content_feeds_router)  # release and vulnerability feeds, app/content_feeds (ADR 0014 §25)
 # LMS & Integration routers
 app.include_router(courses_router)
 app.include_router(course_releases_router)

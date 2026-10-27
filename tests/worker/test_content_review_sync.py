@@ -21,7 +21,7 @@ NOW = datetime(2026, 10, 22, 12, 0, tzinfo=UTC)
 TENANT, OTHER = str(uuid.uuid4()), str(uuid.uuid4())
 TABLES = ("golden_images", "templates", "scenarios", "courses", "course_modules", "module_content",
           "scheduled_events", "content_review_items", "content_review_edges", "content_review_themes",
-          "content_review_cycles")
+          "content_review_cycles", "content_feed_entries", "content_feed_flags", "content_feed_sources")
 
 
 @pytest.fixture
