@@ -302,9 +302,17 @@ export const routes: Routes = [
       import('./features/schedule/schedule.component').then(m => m.ScheduleComponent),
     title: 'Schedule - TrueNorth Range',
   },
-  // The calendar (ADR 0014 §21-24). Its Content view is the content clock (#286); the Events
-  // view is still /schedule until its redesign (#285).
-  { path: 'calendar', redirectTo: 'calendar/content', pathMatch: 'full' },
+  // The calendar (ADR 0014 §21-24): the Events view (#285) for every role on staff that reads
+  // the schedule (observers read-only), and the Content view, the content clock (#286). Booking
+  // a session stays on /schedule above, the booking workbench the Events view links to.
+  { path: 'calendar', redirectTo: 'calendar/events', pathMatch: 'full' },
+  {
+    path: 'calendar/events',
+    canActivate: [authGuard, onboardingGuard, pageGuard('schedule')],
+    loadComponent: () =>
+      import('./features/calendar/events-calendar.component').then(m => m.EventsCalendarComponent),
+    title: 'Calendar: Events - TrueNorth Range',
+  },
   {
     path: 'calendar/content',
     canActivate: [authGuard, onboardingGuard, pageGuard('contentCalendar')],

@@ -2,7 +2,7 @@
 
 - **Status:** accepted 2026-10-22 (owner decisions, grilling session). **Amends ADR 0004** (see "What this changes in ADR 0004").
 - **Date:** 2026-10-22
-- **Code:** sliced into GitHub issues, one PR each, listed under "Delivery". Slices that touch auth, tenancy or provisioning get an adversarial review. Built so far: Class and roll call (#278, `app/classes/`), the content clock (#286, `app/content_review/`), booking approval (#281: `app/scheduler/approval.py`, `app/classes/sessions.py`), per-session ranges and teams (#282: `app/classes/ranges.py`, `app/classes/teams.py`).
+- **Code:** sliced into GitHub issues, one PR each, listed under "Delivery". Slices that touch auth, tenancy or provisioning get an adversarial review. Built so far: Class and roll call (#278, `app/classes/`), the content clock (#286, `app/content_review/`), booking approval (#281: `app/scheduler/approval.py`, `app/classes/sessions.py`), per-session ranges and teams (#282: `app/classes/ranges.py`, `app/classes/teams.py`), attendance and close-out (#283: `app/classes/attendance.py`, `app/classes/closeout.py`).
 - **Design reference:** the calendar mockups "TrueNorth Calendars" (Events and Content views, week and month), approved by the owner on 2026-10-22.
 
 ## Context
@@ -75,6 +75,7 @@ Content (courses, modules, labs, scenarios, range templates, golden images) has 
     - Results are pre-filled from scores and attendance. The lead sets pass, fail or incomplete for each Student, with a comment.
     - Results go to the Student's record and qualification.
     - A closed class is read-only and exportable. Reopening needs an admin and is audited.
+    - Free-text comments on results and notes on attendance stay allowed on every deployment, Unclassified included: an explicit exception to `docs/cote-unclassified-8.5-plan.md` §2.2, approved by the owner (2026-10-27, PR #303). Scores and grades stay pass/fail only on Unclassified.
 
 ### Booking approval and capacity
 
@@ -210,6 +211,31 @@ Content (courses, modules, labs, scenarios, range templates, golden images) has 
    roll call. A Student reads only their own seat's credentials (or the shared range's
    during a collective session); observers none.
 6. **Attendance and close-out.**
+
+   As built (#283): attendance is `class_attendance`, one row per (session, roll-call entry),
+   recorded by the API's class clock after each approved session ends (guarded insert under
+   the unique key, so replicas and re-runs record each Student once, and an instructor's row
+   is never overwritten). The evidence is an audit row of the Student opening their own class
+   range during the session, from its start to its end (exclusive): `class_range_open`,
+   written when a Student loads that range's credentials (at most every 10 minutes), or
+   `range_credential_reveal`. That one request proves both a signed-in session and the range
+   opened; class ranges have no console, and a reveal alone misses later days of a week-long
+   class. The lead or an admin sets present, absent or excused (audited). Close-out
+   (`class_results`, `class_closeouts`) pre-fills attendance, course module progress (where quiz
+   results land) and detections credited in the class's exercises, suggests incomplete with no
+   session held, below 80% attendance or with graded course work not yet done, fail when a
+   graded module (every one counts, unattempted as 0) is below its own `pass_threshold`,
+   else pass; the lead sets each result with a comment, for everyone on the roll call and
+   everyone who lost their seat (forfeited). Pass completes the enrolment through
+   `complete_enrollment` (on Unclassified the status alone, no number written), fail marks it failed,
+   incomplete leaves it open; a close-out never fails, reopens or re-grades an enrolment
+   completed some other way, and undoes only its own. Closing is refused while a session is
+   provisioning or under way. Students reach their range (and so their attendance) through
+   **Join** on My classes (slice 7, #284), which opens the credentials panel; the Classes page
+   is staff only (`class:read`). On Unclassified nothing numeric is shown, exported or kept on the
+   enrolment. A closed class (`classes.status = closed`) is read-only, its unstarted sessions are
+   cancelled and its ranges torn down by the clock (`class_closed`); an admin reopens it with a
+   reason. CSV export defuses formula cells.
 7. **My classes** (Student).
 
    As built (#284): `/my-classes`, from the menu and the dashboard, for roles holding the new
@@ -221,13 +247,18 @@ Content (courses, modules, labs, scenarios, range templates, golden images) has 
    page can say to ask the lead to reinstate them), for the week or month asked for (at most
    45 days). Per class: course, the lead's name (no email), dates, sessions (approved or over),
    onboarding, rules of use, seat, and the Student's range for the current or next session
-   (not built, building, ready, failed; never why). `join_range_id` is set only where
+   (not built, building, ready, paused, failed; never why). *Paused* is My classes' own word
+   for a built range whose machines are stopping, stopped or starting (`ranges.status`, which
+   staff see, still says ready); Join waits while it is paused. `join_range_id` is set only where
    `/ranges/{id}/credentials` would answer (`ranges.student_participation`): their own seat,
    ready (a deleted range never); or the shared range, ready, while a collective session
    booking it is under way, which wins over a day-long lab around it. A session's range not
    created yet reads "not built"; a session with no range is skipped. Join opens the
-   shared credentials panel; that endpoint still decides on every call. A console for class
-   ranges has no Student endpoint yet (lab sessions only).
+   shared credentials panel; that endpoint still decides on every call, and listing the
+   accounts there is the Student's attendance evidence (#283). The page asks again every
+   minute. A console for class ranges has no Student endpoint yet (lab sessions only; #313).
+   Known limits: an instructor on someone else's roll call reaches My classes only by its URL;
+   Join follows the current or next session's range, not every range the Student could open.
 8. **Events view:** week and month, colours, the approval queue, following the mockups.
 9. **Content clock:** review dates, theme tags, dependency edges, and the Content view.
 10. **Feeds:**

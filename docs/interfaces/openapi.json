@@ -1422,6 +1422,244 @@
         "title": "AttemptSubmitIn",
         "type": "object"
       },
+      "AttendanceCellOut": {
+        "properties": {
+          "corrected_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Corrected At"
+          },
+          "evidence_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the Student first opened their range in the session",
+            "title": "Evidence At"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "session_id": {
+            "format": "uuid",
+            "title": "Session Id",
+            "type": "string"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AttendanceSourceOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AttendanceStatusOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "None: not recorded yet (the session is under way, or the clock has not reached it)"
+          }
+        },
+        "required": [
+          "session_id"
+        ],
+        "title": "AttendanceCellOut",
+        "type": "object"
+      },
+      "AttendanceCorrectIn": {
+        "properties": {
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "status": {
+            "$ref": "#/components/schemas/AttendanceStatusOut"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "AttendanceCorrectIn",
+        "type": "object"
+      },
+      "AttendanceGridOut": {
+        "properties": {
+          "can_edit": {
+            "title": "Can Edit",
+            "type": "boolean"
+          },
+          "class_id": {
+            "format": "uuid",
+            "title": "Class Id",
+            "type": "string"
+          },
+          "class_status": {
+            "title": "Class Status",
+            "type": "string"
+          },
+          "sessions": {
+            "items": {
+              "$ref": "#/components/schemas/AttendanceSessionOut"
+            },
+            "title": "Sessions",
+            "type": "array"
+          },
+          "students": {
+            "items": {
+              "$ref": "#/components/schemas/AttendanceRowOut"
+            },
+            "title": "Students",
+            "type": "array"
+          }
+        },
+        "required": [
+          "class_id",
+          "class_status",
+          "can_edit",
+          "sessions",
+          "students"
+        ],
+        "title": "AttendanceGridOut",
+        "type": "object"
+      },
+      "AttendanceRowOut": {
+        "properties": {
+          "cells": {
+            "items": {
+              "$ref": "#/components/schemas/AttendanceCellOut"
+            },
+            "title": "Cells",
+            "type": "array"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "entry_id": {
+            "format": "uuid",
+            "title": "Entry Id",
+            "type": "string"
+          },
+          "roll_call_status": {
+            "title": "Roll Call Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "entry_id",
+          "email",
+          "roll_call_status",
+          "cells"
+        ],
+        "title": "AttendanceRowOut",
+        "type": "object"
+      },
+      "AttendanceSessionOut": {
+        "properties": {
+          "end_time": {
+            "format": "date-time",
+            "title": "End Time",
+            "type": "string"
+          },
+          "ended": {
+            "description": "Over: the clock records it (or has)",
+            "title": "Ended",
+            "type": "boolean"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "session_id": {
+            "format": "uuid",
+            "title": "Session Id",
+            "type": "string"
+          },
+          "start_time": {
+            "format": "date-time",
+            "title": "Start Time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_id",
+          "event_id",
+          "name",
+          "start_time",
+          "end_time",
+          "ended"
+        ],
+        "title": "AttendanceSessionOut",
+        "type": "object"
+      },
+      "AttendanceSourceOut": {
+        "enum": [
+          "auto",
+          "instructor"
+        ],
+        "title": "AttendanceSourceOut",
+        "type": "string"
+      },
+      "AttendanceStatusOut": {
+        "enum": [
+          "present",
+          "absent",
+          "excused"
+        ],
+        "title": "AttendanceStatusOut",
+        "type": "string"
+      },
       "AttendingClassOut": {
         "properties": {
           "course_name": {
@@ -3553,7 +3791,7 @@
             "type": "array"
           },
           "can_edit": {
-            "description": "The caller is its lead or an admin: may change it and its roll call",
+            "description": "The caller is its lead or an admin and the class is open: may change it and its roll call",
             "title": "Can Edit",
             "type": "boolean"
           },
@@ -3978,7 +4216,8 @@
       "ClassStatusOut": {
         "enum": [
           "open",
-          "cancelled"
+          "cancelled",
+          "closed"
         ],
         "title": "ClassStatusOut",
         "type": "string"
@@ -4252,6 +4491,70 @@
           "new_name"
         ],
         "title": "CloneRequest",
+        "type": "object"
+      },
+      "CloseIn": {
+        "properties": {
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/ResultIn"
+            },
+            "maxItems": 1000,
+            "title": "Results",
+            "type": "array"
+          }
+        },
+        "title": "CloseIn",
+        "type": "object"
+      },
+      "CloseoutOut": {
+        "properties": {
+          "class_id": {
+            "format": "uuid",
+            "title": "Class Id",
+            "type": "string"
+          },
+          "class_status": {
+            "title": "Class Status",
+            "type": "string"
+          },
+          "closed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed At"
+          },
+          "numbers_shown": {
+            "description": "False on an Unclassified deployment: pass/fail only",
+            "title": "Numbers Shown",
+            "type": "boolean"
+          },
+          "sessions_held": {
+            "title": "Sessions Held",
+            "type": "integer"
+          },
+          "students": {
+            "items": {
+              "$ref": "#/components/schemas/StandingOut"
+            },
+            "title": "Students",
+            "type": "array"
+          }
+        },
+        "required": [
+          "class_id",
+          "class_status",
+          "numbers_shown",
+          "sessions_held",
+          "students"
+        ],
+        "title": "CloseoutOut",
         "type": "object"
       },
       "Cmi5AuOut": {
@@ -17292,6 +17595,21 @@
         "title": "RejectIn",
         "type": "object"
       },
+      "ReopenIn": {
+        "properties": {
+          "reason": {
+            "maxLength": 500,
+            "minLength": 3,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "ReopenIn",
+        "type": "object"
+      },
       "Reply": {
         "properties": {
           "action": {
@@ -17337,6 +17655,45 @@
         },
         "title": "ReportIn",
         "type": "object"
+      },
+      "ResultIn": {
+        "properties": {
+          "comment": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment"
+          },
+          "entry_id": {
+            "format": "uuid",
+            "title": "Entry Id",
+            "type": "string"
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/ResultOutcomeOut"
+          }
+        },
+        "required": [
+          "entry_id",
+          "outcome"
+        ],
+        "title": "ResultIn",
+        "type": "object"
+      },
+      "ResultOutcomeOut": {
+        "enum": [
+          "pass",
+          "fail",
+          "incomplete"
+        ],
+        "title": "ResultOutcomeOut",
+        "type": "string"
       },
       "RetireIn": {
         "properties": {
@@ -19312,6 +19669,130 @@
           "origin_id"
         ],
         "title": "StaleReasonOut",
+        "type": "object"
+      },
+      "StandingOut": {
+        "properties": {
+          "absent": {
+            "title": "Absent",
+            "type": "integer"
+          },
+          "comment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment"
+          },
+          "course_passed": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Every graded module at or above its own pass threshold, unattempted ones failing; None: no graded result yet, or the course has no graded module",
+            "title": "Course Passed"
+          },
+          "course_percent": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Never on an Unclassified deployment",
+            "title": "Course Percent"
+          },
+          "decided_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided At"
+          },
+          "detections_credited": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Never on an Unclassified deployment",
+            "title": "Detections Credited"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "entry_id": {
+            "format": "uuid",
+            "title": "Entry Id",
+            "type": "string"
+          },
+          "excused": {
+            "title": "Excused",
+            "type": "integer"
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResultOutcomeOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The result set at the last close-out"
+          },
+          "present": {
+            "title": "Present",
+            "type": "integer"
+          },
+          "sessions_held": {
+            "title": "Sessions Held",
+            "type": "integer"
+          },
+          "suggested": {
+            "$ref": "#/components/schemas/ResultOutcomeOut"
+          }
+        },
+        "required": [
+          "entry_id",
+          "email",
+          "sessions_held",
+          "present",
+          "excused",
+          "absent",
+          "suggested"
+        ],
+        "title": "StandingOut",
         "type": "object"
       },
       "StorageApplianceIn": {
@@ -26847,6 +27328,242 @@
         ]
       }
     },
+    "/classes/{class_id}/attendance": {
+      "get": {
+        "description": "The approved sessions that have started, and each Student's attendance at them: as\nthe clock recorded it after the session, or as the lead or an admin set it.\n**class:read**, then its staff only.",
+        "operationId": "getClassAttendance",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "class_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Class Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttendanceGridOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "A class's attendance, per session and Student",
+        "tags": [
+          "classes"
+        ]
+      }
+    },
+    "/classes/{class_id}/attendance/{session_id}/{entry_id}": {
+      "put": {
+        "description": "Its lead or an admin, once the session has started, while the class is open. The\nclock never overwrites it. Audited (``class_attendance_correct``), with what it was.\n**class:create**",
+        "operationId": "correctClassAttendance",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "class_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Class Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "entry_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Entry Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AttendanceCorrectIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttendanceCellOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Set a Student's attendance at a class session",
+        "tags": [
+          "classes"
+        ]
+      }
+    },
+    "/classes/{class_id}/close": {
+      "post": {
+        "description": "Its lead or an admin. Pass, fail or incomplete for every Student on the roll call\n(422 when one is missing). Results go to each Student's enrolment on the course; the\nclass becomes read-only, its unstarted sessions are cancelled and its ranges torn down.\nAudited.  **class:create**",
+        "operationId": "closeClass",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "class_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Class Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CloseIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CloseoutOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Close a class with a result for every Student",
+        "tags": [
+          "classes"
+        ]
+      }
+    },
+    "/classes/{class_id}/closeout": {
+      "get": {
+        "description": "Each Student's attendance, course standing and suggested outcome, and the result set\nat the last close-out. Pass/fail only on an Unclassified deployment.  **class:read**,\nthen its staff only.",
+        "operationId": "getClassCloseout",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "class_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Class Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CloseoutOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "A class's pre-filled results",
+        "tags": [
+          "classes"
+        ]
+      }
+    },
     "/classes/{class_id}/ranges": {
       "get": {
         "description": "Its lead, assistants, observers and admins see every seat, with the Student and why a\nbuild failed. A Student on its roll call sees their own seat and the shared ranges only.\nNo credentials here.",
@@ -26950,6 +27667,114 @@
           }
         ],
         "summary": "Build a class range whose build failed again",
+        "tags": [
+          "classes"
+        ]
+      }
+    },
+    "/classes/{class_id}/reopen": {
+      "post": {
+        "description": "An admin of the class's tenant only, with a reason. Results stay until the next\nclose-out. Audited (``class_reopen``).  **class:create**, then admin",
+        "operationId": "reopenClass",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "class_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Class Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReopenIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CloseoutOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Reopen a closed class",
+        "tags": [
+          "classes"
+        ]
+      }
+    },
+    "/classes/{class_id}/results.csv": {
+      "get": {
+        "description": "One row per Student: each session's attendance, the suggestion and the result. Cells a\nspreadsheet would run as a formula are defused. Never a numeric grade.  **class:read**,\nthen its staff only.",
+        "operationId": "exportClassResults",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "class_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Class Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "A class's attendance and results as CSV",
         "tags": [
           "classes"
         ]

@@ -5,6 +5,7 @@ import { of } from 'rxjs';
 import { AppComponent } from './app.component';
 import { AuthService, UserRole } from './core/services/auth.service';
 import { fakeAuth } from './core/auth/fake-auth';
+import { PAGE_ACCESS, roleHasAccess } from './core/auth/permissions';
 import { NotificationsApiService } from '@core/services/notifications-api.service';
 
 describe('AppComponent', () => {
@@ -148,13 +149,14 @@ describe('AppComponent', () => {
    * shown is one the route guard admits; everything else is absent.
    */
   const MENU: Record<UserRole, string[]> = {
-    // My classes (class:attend, ADR 0014 §20): Students. Admins hold it too but use Classes.
+    // My classes (class:attend, ADR 0014 §20): Students. Not /classes: that page is staff only;
+    // Students reach their range through My classes' Join.
     student: ['/dashboard', '/learning', '/my-classes', '/exercises', '/scoring', '/wiki', '/support'],
+    // The calendar's Events view (schedule:read, #285): observers too, read-only.
     observer: ['/dashboard', '/learning', '/exercises', '/ops-center/select', '/telemetry', '/schedule',
-      '/classes', '/scoring', '/wiki'],
+      '/calendar', '/classes', '/scoring', '/wiki'],
     range_ops: ['/dashboard', '/learning', '/authoring', '/exercises', '/ops-center/select', '/telemetry',
       '/schedule', '/calendar', '/wiki', '/support', '/infrastructure', '/ai-orchestrator'],
-    // The calendar's Content view (content_review:read): staff, never observers or Students.
     // Student progress (learning_record:read) and Teams (user:read): instructors and admins.
     instructor: ['/dashboard', '/learning', '/learning/admin/progress', '/authoring', '/exercises',
       '/ops-center/select', '/telemetry', '/schedule', '/calendar', '/classes', '/scoring', '/wiki', '/support',
@@ -175,6 +177,29 @@ describe('AppComponent', () => {
       expect(menu()).toEqual(MENU[role]);
     });
   }
+
+  /**
+   * #283 (attendance) and #284 (My classes) together: Classes is staff only again
+   * (class:read), My classes is class:attend, and Students reach their range through My
+   * classes' Join. With #283's old `classes: { any: [..., 'detection:submit'] }` stand-in,
+   * `notWith: 'classes'` hid My classes from every Student.
+   */
+  it('gives a Student My classes and not Classes, with both PRs\' permissions applied', () => {
+    expect(PAGE_ACCESS.classes).toEqual({ all: ['class:read'] });
+    expect(PAGE_ACCESS.myClasses).toEqual({ all: ['class:attend'] });
+    expect(roleHasAccess('student', PAGE_ACCESS.classes)).toBeFalse();
+    expect(roleHasAccess('student', PAGE_ACCESS.myClasses)).toBeTrue();
+    auth.role.set('student');
+    fixture.detectChanges();
+    expect(menu()).toContain('/my-classes');
+    expect(menu()).not.toContain('/classes');
+    for (const staff of ['admin', 'instructor', 'observer'] as const) {
+      auth.role.set(staff);
+      fixture.detectChanges();
+      expect(menu()).withContext(staff).toContain('/classes');
+      expect(menu()).withContext(staff).not.toContain('/my-classes');
+    }
+  });
 
   it('drops a section whose entries are all hidden', () => {
     auth.role.set('student');

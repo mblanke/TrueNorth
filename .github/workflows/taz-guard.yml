@@ -1,0 +1,53 @@
+name: taz-guard
+
+# Layer 5 of the TAZ plan: a TAZ pull request must stay inside its task card.
+# scripts/taz_guard.py documents the checks; tools/taz/README.md the whole model.
+#
+# Runs only for PRs from a fork whose name contains "taz" (truenorth-taz/TrueNorth), or
+# from a branch named taz/*. Other PRs skip the job, which a required check treats as
+# passing.
+#
+# pull_request_target, on purpose: with plain pull_request a fork PR runs the workflow
+# and the guard script FROM THE PR, so a PR could edit both and pass itself. Here the
+# workflow and scripts/taz_guard.py come from the base branch, and the PR head is
+# fetched as git objects only. NEVER check out, install or run anything from the PR head
+# in this workflow: pull_request_target runs with the base repository's token.
+on:
+  pull_request_target:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+
+concurrency:
+  group: taz-guard-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  taz-guard:
+    if: >-
+      (github.event.pull_request.head.repo.fork &&
+       contains(github.event.pull_request.head.repo.full_name, 'taz')) ||
+      startsWith(github.event.pull_request.head.ref, 'taz/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          fetch-depth: 0
+      # Data only: the PR head and the upstream taz-base/* branches the cards name.
+      # Fetched from this repository (refs/pull/N/head), never from the fork.
+      - name: Fetch PR head and taz-base refs
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          git fetch --no-tags origin \
+            "+refs/pull/${PR_NUMBER}/head:refs/taz/head" \
+            "+refs/heads/taz-base/*:refs/taz-base/*"
+      - name: Check the diff against the task card
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 scripts/taz_guard.py --event "$GITHUB_EVENT_PATH" --head refs/taz/head

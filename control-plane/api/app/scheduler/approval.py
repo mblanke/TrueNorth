@@ -175,7 +175,7 @@ def _class_open(db: Session, evt: ScheduledEvent) -> None:
 
     cls = sessions.class_of(db, evt)
     if cls is not None and cls.status != "open":
-        raise HTTPException(409, "The class is cancelled; cancel or reject its sessions instead")
+        raise HTTPException(409, f"The class is {cls.status}; its sessions are not approved or moved")
 
 
 def approve(db: Session, user: CurrentUser, evt: ScheduledEvent) -> tuple[bool, list[str]]:

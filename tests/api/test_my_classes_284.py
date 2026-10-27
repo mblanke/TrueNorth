@@ -433,3 +433,21 @@ def test_a_running_seat_is_ready(client, world, db_session):
     db.commit()
     c = _only(_get(client, world["ann"]).json())
     assert c["range_status"] == "ready" and c["join_range_id"] == str(row.range_id)
+
+
+def test_join_records_attendance(client, world, db_session):
+    """Join opens the credentials panel; listing the accounts is the attendance evidence
+    (#283, ``classes.attendance.note_range_open``), so the Classes page need not do it."""
+    from app.classes.attendance import RANGE_OPEN
+    from app.models import AuditLog
+
+    db = db_session
+    _session(db, world["cls"], world["tpl"], NOW - timedelta(minutes=20), state=EventState.active)
+    row = _range(db, world["cls"], world["tpl"], world["ann_entry"])
+    db.commit()
+    join = _only(_get(client, world["ann"]).json())["join_range_id"]
+    assert join == str(row.range_id)
+    assert client.get(f"/ranges/{join}/credentials").status_code == 200
+    opened = db.query(AuditLog).filter(AuditLog.action == RANGE_OPEN, AuditLog.resource_id == join,
+                                       AuditLog.user_id == uuid.UUID(world["ann"].id)).count()
+    assert opened == 1
