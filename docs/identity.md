@@ -260,12 +260,16 @@ client is not configured.
   next night**: that night's run is the first applied one, and it deactivates the accounts
   the last dry-run night also found, for the same reason (below). Nobody is deactivated the
   moment the setting changes.
-- **Confirmed by the night before**: an account is deactivated only when a good run
-  covering its tenant (dry, held or applied) that **finished 12 to 36 hours before this one**
-  found the same account **for the same reason**. A dry "run now" followed by a real one
-  confirms nothing (too close), a finding from months ago confirms nothing (too old), and a
-  user missing from one page of Keycloak's answer one night keeps their account. A "run now"
-  can apply what last night found. The panel counts the rest as "found once".
+- **Confirmed by an earlier run**: an account is deactivated only when a good run covering
+  its tenant (dry, held or applied) that **finished 12 to 36 hours before this one** found the
+  same account **for the same reason**. That earlier run is usually the previous night's,
+  but **a manual "run now" counts too**, dry or not: an administrator's run of their tenant
+  12-36 hours before tonight confirms tonight's findings, and a "run now" can apply what last
+  night found. A dry "run now" followed by a real one minutes later confirms nothing (too
+  close), a finding from months ago confirms nothing (too old), and a user missing from one
+  page of Keycloak's answer one night keeps their account. The panel counts the rest as
+  "found once". Each finding is saved as soon as it is made, so one account's failed
+  deactivation never loses another's.
 - **Held, per tenant and rule family**: the AD rules (`ad_disabled`, `ad_removed`) are judged
   against the tenant's AD accounts, the 90-day rule against its local accounts under that
   rule, so neither dilutes the other (nor do roster rows, LTI Students or subjects). A family

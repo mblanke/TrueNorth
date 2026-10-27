@@ -37,8 +37,10 @@ An administrator re-enables the account in Users.
 - *Dry run* (``AD_STATUS_SYNC_DRY_RUN``, on by default): record, change nothing.
 - *Confirmed*: an account is deactivated only when a good run covering its tenant (dry, held
   or applied) that finished ``SIGHTING_MIN``-``SIGHTING_MAX`` (12-36 h) before this one found
-  the same account for the same reason: in practice, the previous night. A dry "run now" then
-  a real one cannot confirm each other, a months-old finding confirms nothing, and a user
+  the same account for the same reason. That run may be the previous night's or an
+  administrator's "run now" (dry or not) of that tenant: a manual run 12-36 h earlier confirms
+  a nightly one, and the other way round. A dry "run now" then a real one minutes later
+  cannot confirm each other, a months-old finding confirms nothing, and a user
   missing from one page of Keycloak's answer does not lose their account. So turning dry run
   off acts on the next night, using the dry-run nights' findings.
 - *Held*: per tenant and rule family. The AD rules (``ad_disabled``, ``ad_removed``) are
@@ -305,20 +307,30 @@ def earlier_sightings(db: Session, run: AdStatusSyncRun, tenant_ids: set[str]) -
     return out
 
 
+def active_admins_query(db: Session, tenant_id: uuid.UUID):
+    """The tenant's active admin rows, locked ``FOR UPDATE`` (PostgreSQL) in id order, so every
+    caller takes the locks in the same order and two of them cannot deadlock."""
+    return (
+        db.query(User.id)
+        .filter(User.tenant_id == tenant_id, User.role == UserRole.admin, User.is_active == True,  # noqa: E712
+                User.deleted_at.is_(None))
+        .order_by(User.id)
+        .with_for_update()
+    )
+
+
+def lock_active_admins(db: Session, tenant_id: uuid.UUID) -> set[uuid.UUID]:
+    """Lock the tenant's active admin rows until this transaction ends; their ids."""
+    return {uid for (uid,) in active_admins_query(db, tenant_id).all()}
+
+
 def is_last_admin(db: Session, u: User) -> bool:
-    """``u`` is the only active admin of its tenant. Locks the tenant's active admin rows first
-    (``FOR UPDATE``; PostgreSQL), so two transactions deactivating two admins at once cannot
-    both see the other still active: the second waits, then counts again without the first."""
+    """``u`` is the only active admin of its tenant. Locks the tenant's active admin rows first,
+    so two transactions deactivating two admins at once cannot both see the other still active:
+    the second waits, then counts again without the first."""
     if u.role != UserRole.admin:
         return False
-    admins = (
-        db.query(User.id)
-        .filter(User.tenant_id == u.tenant_id, User.role == UserRole.admin, User.is_active == True,  # noqa: E712
-                User.deleted_at.is_(None))
-        .with_for_update()
-        .all()
-    )
-    return not any(uid != u.id for (uid,) in admins)
+    return not (lock_active_admins(db, u.tenant_id) - {u.id})
 
 
 # ── Applying ───────────────────────────────────────────────────────────────
@@ -473,27 +485,36 @@ def execute(db: Session, run: AdStatusSyncRun, reader: DirectoryReader, *, overr
         mine[key] = mine.get(key, 0) + 1
         counts["total"][key] = counts["total"].get(key, 0) + 1
 
+    # Every finding is committed as soon as it is decided: a failure on one account rolls back
+    # that account's savepoint only, never another account's finding (tomorrow night's
+    # confirmation), and a commit also releases is_last_admin's row lock at once.
     for d in p.decisions:
         uid, tid = d.user.id, str(d.user.tenant_id)
         if run.dry_run or (tid, FAMILY_OF[d.reason]) in held:
             _result(db, run, d.user, d.reason, False, 0, now)
+            db.commit()
             continue
         if (uid, d.reason) not in confirmed.get(tid, set()):
             _result(db, run, d.user, d.reason, False, 0, now)  # not confirmed; tomorrow night may
             bump(tid, "awaiting_confirmation")
+            db.commit()
             continue
         if is_last_admin(db, d.user):
             _result(db, run, d.user, d.reason, False, 0, now)
             bump(tid, "kept_last_admin")
+            db.commit()
             continue
         try:
-            won, invites, left = deactivate(db, run, d.user, d.reason, now)
-            db.commit()
+            with db.begin_nested():  # this account only
+                won, invites, left = deactivate(db, run, d.user, d.reason, now)
         except Exception:  # noqa: BLE001 -- the next account, and the next run, go on
-            db.rollback()
             logger.exception("AD status sync %s: deactivating user %s failed", run.id, uid)
             bump(tid, "errors")
+            # Still a finding: tomorrow night's run can confirm it and try again.
+            _result(db, run, d.user, d.reason, False, 0, now)
+            db.commit()
             continue
+        db.commit()
         if won:  # only now: a commit that failed sends no CANCEL and no notice
             applied[tid] += 1
             out.invites += invites

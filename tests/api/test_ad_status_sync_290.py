@@ -654,7 +654,7 @@ def test_deleting_the_last_admin_is_refused(client, db_session, world):
 def test_a_roster_import_never_demotes_the_last_admin(client, db_session, world):
     """The CSV roster import skips (and reports) a row that would demote the tenant's last
     active admin; the other rows go on. Two admins demoted in one file: the second is refused,
-    because the first row's change counts (flushed before the locked check)."""
+    because the first row's change counts (against the admins locked before the loop)."""
     act_as(world["admin"])
     second = db_session.get(User, uuid.UUID(real_user(db_session, UserRole.admin, world["a"].id).id))
     first = world["admin_row"]
@@ -669,6 +669,37 @@ def test_a_roster_import_never_demotes_the_last_admin(client, db_session, world)
         db_session.refresh(u)
     assert (first.role, second.role) == (UserRole.student, UserRole.admin)  # one admin left
     assert db_session.query(User).filter(User.email == "newbie@corp.test").count() == 1
+
+
+def test_the_admin_lock_is_taken_in_id_order(db_session, world):
+    """Round 3, item 3: every caller locks the tenant's admin rows in the same (id) order, so
+    two of them cannot deadlock. Checked on the SQL PostgreSQL would run."""
+    from sqlalchemy.dialects import postgresql
+
+    sql = str(service.active_admins_query(db_session, world["a"].id).statement.compile(dialect=postgresql.dialect()))
+    assert "ORDER BY users.id" in sql and sql.rstrip().endswith("FOR UPDATE")
+
+
+def test_a_roster_import_locks_the_admins_once_before_writing(client, db_session, world, monkeypatch):
+    """Round 3, item 3: the import takes the admin lock once, before the row loop writes
+    anything, not per row after flushing its writes."""
+    from app.ad_status_sync import service as sync_service
+
+    calls: list[bool] = []
+    real = sync_service.lock_active_admins
+
+    def spy(db, tenant_id):
+        calls.append(bool(db.new or db.dirty))  # anything written yet?
+        return real(db, tenant_id)
+
+    monkeypatch.setattr(sync_service, "lock_active_admins", spy)
+    act_as(world["admin"])
+    second = real_user(db_session, UserRole.admin, world["a"].id)
+    csv = f"email,role\nnew1@corp.test,student\n{world['admin_row'].email},student\n{second.email},student\n".encode()
+    r = client.post("/users/import-csv", files={"file": ("roster.csv", csv, "text/csv")})
+    assert r.status_code == 200, r.text
+    assert calls == [False]  # once, before any write
+    assert [e["email"] for e in r.json()["errors"]] == [second.email]
 
 
 @pytest.mark.parametrize("change", [{"is_active": False}, {"role": "instructor"}, {"role": "student"}])
