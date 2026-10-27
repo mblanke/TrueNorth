@@ -373,3 +373,51 @@ def test_a_module_that_becomes_theory_loses_its_lab_reference(seeded):
     assert all("lab" not in (r or "") for r in refs)
     meta = json.loads(module.content_ref)
     assert meta["activity"] == "theory" and meta["practice"]
+
+
+# -- readiness, lab ranges and instructor packs -------------------------------------
+
+
+def _with_readiness_and_range(readiness: str) -> str:
+    doc = _doc()
+    doc["readiness"] = readiness
+    doc["modules"][0]["lab_range"] = {
+        "template": "small-enterprise",
+        "steps": [{"hosts": ["jump-box"], "action": "Log on to jump-box."}],
+    }
+    return yaml.safe_dump(doc, sort_keys=False, allow_unicode=True)
+
+
+def test_a_course_without_readiness_is_a_draft():
+    assert parse_course_content(_text())["readiness"] == "draft"
+
+
+def test_an_unknown_readiness_is_refused():
+    with pytest.raises(ValueError, match="readiness 'published'"):
+        parse_course_content(_with_readiness_and_range("published"))
+
+
+@pytest.mark.parametrize("readiness", ["technically_proven", "sme_signed"])
+def test_readiness_is_stored_and_never_publishes(seeded, readiness):
+    """Technically proven (or even signed) content still reaches Students only through a
+    course release; the import leaves the course and its quizzes unpublished."""
+    import_course_content(seeded, _with_readiness_and_range(readiness))
+    course = seeded.query(Course).filter(Course.name.like("C304%")).one()
+    assert json.loads(course.course_meta)["content_readiness"] == readiness
+    assert course.is_published is False
+    assert seeded.query(Quiz).filter(Quiz.is_published.is_(True)).count() == 0
+    module = seeded.query(CourseModule).filter_by(course_id=course.id, ordinal=1).one()
+    assert json.loads(module.content_ref)["lab_range"]["template"] == "small-enterprise"
+
+
+def test_an_instructor_pack_is_never_ingested_as_course_content():
+    pack = {"course_code": "C304", "audience": "staff_only", "overview": "Answer keys live here."}
+    with pytest.raises(ValueError, match="staff-only instructor pack"):
+        parse_course_content(yaml.safe_dump(pack))
+
+
+def test_the_content_loader_does_not_reach_instructor_packs():
+    """scripts/load_content.py posts content/courses/*.yaml only; packs sit one level down."""
+    loader = (ROOT / "scripts/load_content.py").read_text(encoding="utf-8")
+    assert '(CONTENT / "courses").glob("*.yaml")' in loader
+    assert not any(p.parent.name == "instructor" for p in COURSE_FILES)

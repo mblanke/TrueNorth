@@ -672,6 +672,21 @@ course production with a local-model fallback, and the cleanup of unsupported su
   a stalled publication, re-checks both systems and audit-logs each change. Nothing is
   deleted; a second run changes nothing. Runbook: `docs/content-library.md`.
 
+### App email (SMTP) (#306)
+- Installer: `tn_smtp_host` / `_port` (587) / `_security` (`starttls` | `tls` | `none`) /
+  `_username` / `_from_address` and `vault_smtp_password` render the API's `SMTP_*` (env
+  file, `compose.prod.yml` api, Helm `config.smtp` + `secrets.smtpPassword`). Before this
+  nothing set them: roll-call onboarding emails, reminders, seat-forfeit notices and
+  calendar invites were only logged. Optional: empty host means email is off. Preflight
+  checks port, mode, sender and the credential pair when a host is set. Alert email
+  (`tn_alert_*`, `vault_alert_smtp_*`) defaults to the same relay, still overridable.
+- API: `GET /email/status` (configured or not for everyone; the relay for the platform
+  administrator; never the password) and `POST /email/test` (platform administrator, own
+  address only, once a minute, audited). The channel now speaks implicit TLS
+  (`SMTP_SECURITY=tls`); `SMTP_USE_TLS` still works when `SMTP_SECURITY` is unset.
+- Web: a persistent admin banner while email is off, a warning where Students are added to
+  a roll call, and an Email card with "Send test email" on Administration → System Health.
+
 ### Alert delivery by email
 - Installer: `tn_alert_email_enabled` (default off; staging off until its SMTP details are known) renders an
   Alertmanager email receiver from `tn_alert_email_to` / `_from`, `tn_alert_smtp_host` /

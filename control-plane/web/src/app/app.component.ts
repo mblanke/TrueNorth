@@ -11,6 +11,7 @@ import {
 import { MatSidenavModule } from '@angular/material/sidenav';
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { NotificationBellComponent } from './shared/notification-bell.component';
+import { EmailBannerComponent } from './shared/email-banner.component';
 import { MatListModule } from '@angular/material/list';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
@@ -58,6 +59,7 @@ interface NavSection {
     MatTooltipModule,
     MatExpansionModule,
     NotificationBellComponent,
+    EmailBannerComponent,
 ],
   template: `
     @if (isBareRoute()) {
@@ -140,6 +142,7 @@ interface NavSection {
           </mat-toolbar>
 
           <main class="app-content" #content>
+            <tn-email-banner />
             @if (lostSeats().length && !seatNoticeDismissed()) {
               <div class="seat-notice" role="alert">
                 <mat-icon>event_busy</mat-icon>

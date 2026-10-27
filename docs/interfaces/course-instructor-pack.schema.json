@@ -1,0 +1,74 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://truenorth.local/schemas/course-instructor-pack.schema.json",
+  "title": "TrueNorth course instructor pack (content/courses/instructor/<course file stem>.yaml)",
+  "description": "Staff-only material for one authored course: timings, answer-key notes, lab setup and common faults. It lives in a sibling file, never in the course YAML, because the course YAML is what Students see. scripts/load_content.py loads only content/courses/*.yaml, and app.course_content_ingest refuses any document with audience staff_only, so a pack can never be imported as learner content (the same split as the instructor part of a course release bundle). scripts/check_course.py checks that the pack exists and is complete.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["course_code", "audience", "overview", "timings", "answer_key_notes", "lab_setup", "common_faults"],
+  "properties": {
+    "course_code": {"type": "string", "pattern": "^((RMC )?C[0-9]{3}|ARC2-[A-Z0-9]{2,8})$"},
+    "audience": {"const": "staff_only"},
+    "overview": {"$ref": "#/definitions/text"},
+    "timings": {
+      "description": "One entry per module of the course, by ordinal.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["module", "minutes", "plan"],
+        "properties": {
+          "module": {"type": "integer", "minimum": 1},
+          "minutes": {"type": "integer", "minimum": 1},
+          "plan": {"$ref": "#/definitions/text"}
+        }
+      }
+    },
+    "answer_key_notes": {
+      "description": "One entry per module: why each keyed answer is right and what the distractors test.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["module", "notes"],
+        "properties": {
+          "module": {"type": "integer", "minimum": 1},
+          "notes": {"$ref": "#/definitions/text"}
+        }
+      }
+    },
+    "lab_setup": {
+      "description": "One entry per module: what the instructor prepares on the range before the lab.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["module", "setup"],
+        "properties": {
+          "module": {"type": "integer", "minimum": 1},
+          "setup": {"$ref": "#/definitions/text"}
+        }
+      }
+    },
+    "common_faults": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["fault", "remedy"],
+        "properties": {
+          "module": {"type": "integer", "minimum": 1},
+          "fault": {"$ref": "#/definitions/text"},
+          "remedy": {"$ref": "#/definitions/text"}
+        }
+      }
+    }
+  },
+  "definitions": {
+    "text": {"type": "string", "minLength": 1, "pattern": "\\S"}
+  }
+}
