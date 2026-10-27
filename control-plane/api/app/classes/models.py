@@ -16,6 +16,11 @@ New tables go in their section, never into the shared ``app.models`` (ADR 0003).
   the first session that needs them to the last (ADR 0014 §10).
 - ``class_session_teams``: a collective session's balanced teams (ADR 0014 §11), which are
   ordinary ``teams`` rows.
+- ``class_attendance``: who was present at each session (ADR 0014 §12; ``attendance.py``):
+  computed after the session ends, corrected by the lead or an admin.
+- ``class_closeouts``: when a class was last closed and by whom, and its last reopening.
+- ``class_results``: each Student's close-out result (ADR 0014 §13; ``closeout.py``): pass,
+  fail or incomplete with a comment. Never a numeric grade.
 
 Nothing here is ever deleted by the API (ADR 0010): a class is cancelled, a roll-call
 entry is removed (``status = removed``), so who was invited and who signed in stays on
@@ -38,6 +43,10 @@ from ..models import GUID, TimestampMixin
 class ClassStatus(str, enum.Enum):
     open = "open"
     cancelled = "cancelled"
+    # Closed out by its lead or an admin (ADR 0014 §13, ``closeout.py``): read-only, results
+    # set; its ranges are torn down by the clock as for any class that is no longer open.
+    # Only an admin reopens it.
+    closed = "closed"
 
 
 class StaffRole(str, enum.Enum):
@@ -244,3 +253,93 @@ class ClassSessionTeam(TimestampMixin, Base):
     session_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("class_sessions.id"), nullable=False)
     team_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("teams.id"), nullable=False)
     position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+
+class AttendanceStatus(str, enum.Enum):
+    present = "present"
+    absent = "absent"
+    excused = "excused"
+
+
+class AttendanceSource(str, enum.Enum):
+    auto = "auto"  # computed by the clock from the evidence (``attendance.py``)
+    instructor = "instructor"  # set by the lead or an admin; the clock never overwrites it
+
+
+class ClassAttendance(TimestampMixin, Base):
+    """One Student's attendance at one class session (ADR 0014 §12; ``attendance.py``).
+
+    Keyed by roll-call entry, not account: a Student who never signed in has no account and
+    is still absent. One row per (session, entry): the clock inserts it once, guarded by the
+    unique constraint, and never overwrites one an instructor set."""
+
+    __tablename__ = "class_attendance"
+    __table_args__ = (
+        UniqueConstraint("session_id", "entry_id", name="uq_class_attendance_entry"),
+        Index("ix_class_attendance_class", "class_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("tenants.id"), nullable=False)
+    class_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("classes.id"), nullable=False)
+    session_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("class_sessions.id"), nullable=False)
+    entry_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("class_roll_call.id"), nullable=False)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("users.id"), nullable=True)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    source: Mapped[str] = mapped_column(String(16), nullable=False, default=AttendanceSource.auto.value)
+    # The first evidence the Student opened their range during the session (auto rows).
+    evidence_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Why the instructor set it (instructor rows).
+    note: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    corrected_by: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("users.id"), nullable=True)
+    corrected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class ResultOutcome(str, enum.Enum):
+    passed = "pass"
+    failed = "fail"
+    incomplete = "incomplete"
+
+
+class ClassResult(TimestampMixin, Base):
+    """A Student's result for a class, set by the lead at close-out (ADR 0014 §13).
+
+    Pass, fail or incomplete and a comment, plus the attendance it was decided on. No score
+    or grade column: an Unclassified deployment keeps pass/fail only (the Unclassified data
+    inventory, ``result_transfer/dlp.py``), and the numbers stay where they are recorded."""
+
+    __tablename__ = "class_results"
+    __table_args__ = (
+        UniqueConstraint("class_id", "entry_id", name="uq_class_results_entry"),
+        Index("ix_class_results_user", "user_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("tenants.id"), nullable=False)
+    class_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("classes.id"), nullable=False)
+    entry_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("class_roll_call.id"), nullable=False)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("users.id"), nullable=True)
+    outcome: Mapped[str] = mapped_column(String(16), nullable=False)
+    suggested_outcome: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    comment: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    sessions_held: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    sessions_present: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    sessions_excused: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    decided_by: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("users.id"), nullable=True)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class ClassCloseout(TimestampMixin, Base):
+    """When a class was last closed, and by whom; its last reopening (ADR 0014 §13). One row
+    per class, kept when an admin reopens it (the audit log has every close and reopen). Its
+    own table, so the ``classes`` row the earlier slices' migrations know stays as it was."""
+
+    __tablename__ = "class_closeouts"
+
+    class_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("classes.id"), primary_key=True)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("tenants.id"), nullable=False)
+    closed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    closed_by: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("users.id"), nullable=True)
+    reopened_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    reopened_by: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("users.id"), nullable=True)
+    reopen_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)

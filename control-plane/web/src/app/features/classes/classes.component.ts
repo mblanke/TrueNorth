@@ -19,6 +19,7 @@ import {
 } from '@core/services/operator-records-api.service';
 import { roleCan } from '@core/auth/permissions';
 import { EmptyStateComponent } from '../../shared/components/empty-state/empty-state.component';
+import { ClassCloseoutComponent } from './class-closeout.component';
 import { apiError } from '../ranges/range-capabilities';
 
 export interface ClassForm {
@@ -97,7 +98,7 @@ export function addSummary(r: RollCallAddResult): string {
   selector: 'tn-classes',
   imports: [
     DatePipe, FormsModule, MatButtonModule, MatCardModule, MatChipsModule, MatFormFieldModule,
-    MatIconModule, MatInputModule, MatSelectModule, EmptyStateComponent,
+    MatIconModule, MatInputModule, MatSelectModule, EmptyStateComponent, ClassCloseoutComponent,
   ],
   template: `
     <div class="page-container">
@@ -176,6 +177,7 @@ export function addSummary(r: RollCallAddResult): string {
               <mat-card-title>{{ c.name }}</mat-card-title>
               <mat-card-subtitle>
                 {{ c.course_name }} · {{ c.start_date | date:'mediumDate' }} – {{ c.end_date | date:'mediumDate' }}
+                @if (c.status !== 'open') { · <strong>{{ c.status === 'closed' ? 'Closed' : 'Cancelled' }}</strong> }
               </mat-card-subtitle>
             </mat-card-header>
             <mat-card-content>
@@ -240,6 +242,9 @@ export function addSummary(r: RollCallAddResult): string {
       }
 
       @if (selected(); as c) {
+        @if (c.my_role && c.my_role !== 'student') {
+          <tn-class-closeout [classRecord]="c" (changed)="refresh(c)" />
+        }
         @if (classRanges(); as r) {
           <mat-card class="ranges">
             <mat-card-header>
@@ -373,6 +378,19 @@ export class ClassesComponent implements OnInit {
     source.subscribe({
       next: rows => { this.classes.set(rows); this.loading.set(false); },
       error: err => { this.loading.set(false); this.notify.error(apiError(err)); },
+    });
+  }
+
+  /** After a close or a reopen: the list, and the selected class as the API now sees it. */
+  refresh(c: ClassRecord): void {
+    const source = this.auth.isAdmin() ? this.api.list() : this.api.mine();
+    source.subscribe({
+      next: rows => {
+        this.classes.set(rows);
+        const now = rows.find(r => r.id === c.id);
+        if (now) this.open(now);
+      },
+      error: err => this.notify.error(apiError(err)),
     });
   }
 

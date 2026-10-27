@@ -2,7 +2,7 @@
 
 - **Status:** accepted 2026-10-22 (owner decisions, grilling session). **Amends ADR 0004** (see "What this changes in ADR 0004").
 - **Date:** 2026-10-22
-- **Code:** sliced into GitHub issues, one PR each, listed under "Delivery". Slices that touch auth, tenancy or provisioning get an adversarial review. Built so far: Class and roll call (#278, `app/classes/`), the content clock (#286, `app/content_review/`), booking approval (#281: `app/scheduler/approval.py`, `app/classes/sessions.py`), per-session ranges and teams (#282: `app/classes/ranges.py`, `app/classes/teams.py`).
+- **Code:** sliced into GitHub issues, one PR each, listed under "Delivery". Slices that touch auth, tenancy or provisioning get an adversarial review. Built so far: Class and roll call (#278, `app/classes/`), the content clock (#286, `app/content_review/`), booking approval (#281: `app/scheduler/approval.py`, `app/classes/sessions.py`), per-session ranges and teams (#282: `app/classes/ranges.py`, `app/classes/teams.py`), attendance and close-out (#283: `app/classes/attendance.py`, `app/classes/closeout.py`).
 - **Design reference:** the calendar mockups "TrueNorth Calendars" (Events and Content views, week and month), approved by the owner on 2026-10-22.
 
 ## Context
@@ -210,6 +210,24 @@ Content (courses, modules, labs, scenarios, range templates, golden images) has 
    roll call. A Student reads only their own seat's credentials (or the shared range's
    during a collective session); observers none.
 6. **Attendance and close-out.**
+
+   As built (#283): attendance is `class_attendance`, one row per (session, roll-call entry),
+   recorded by the API's class clock after each approved session ends (guarded insert under
+   the unique key, so replicas and re-runs record each Student once, and an instructor's row
+   is never overwritten). The evidence is an audit row of the Student opening their own class
+   range during the session, from its start to its end (exclusive): `class_range_open`,
+   written when a Student loads that range's credentials (at most every 10 minutes), or
+   `range_credential_reveal`. That one request proves both a signed-in session and the range
+   opened; class ranges have no console, and a reveal alone misses later days of a week-long
+   class. The lead or an admin sets present, absent or excused (audited). Close-out
+   (`class_results`, `class_closeouts`) pre-fills attendance, course module progress (where quiz
+   results land) and detections credited in the class's exercises, suggests incomplete below
+   80% attendance, fail below the 70% pass mark, else pass; the lead sets each result with a
+   comment. Pass completes the enrolment through `complete_enrollment`, fail marks it failed,
+   incomplete leaves it open. On Unclassified nothing numeric is shown, exported or kept on the
+   enrolment. A closed class (`classes.status = closed`) is read-only, its unstarted sessions are
+   cancelled and its ranges torn down by the clock (`class_closed`); an admin reopens it with a
+   reason. CSV export defuses formula cells.
 7. **My classes** (Student).
 8. **Events view:** week and month, colours, the approval queue, following the mockups.
 9. **Content clock:** review dates, theme tags, dependency edges, and the Content view.

@@ -24,6 +24,7 @@ password are ``Cache-Control: no-store``.
 
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import datetime
 from typing import Literal
@@ -37,6 +38,8 @@ from ..db import get_db
 from ..rbac import Permission, require_permission
 from . import service
 from .models import RangeCredential
+
+logger = logging.getLogger("truenorth.range_credentials.router")
 
 router = APIRouter(prefix="/ranges", tags=["ranges"])
 
@@ -106,6 +109,19 @@ def account_out(r: RangeCredential, pending: set[str]) -> RangeCredentialOut:
         notes=r.notes or "")
 
 
+def _note_class_range_open(db: Session, user: CurrentUser, rng) -> None:
+    """A Student opening their class range is their attendance evidence (ADR 0014 §12,
+    ``classes.attendance``). Never stands in the way of the read itself."""
+    from ..classes import attendance
+
+    try:
+        if attendance.note_range_open(db, uuid.UUID(str(user.id)), rng, service.participation(db, user, rng)):
+            db.commit()
+    except Exception:  # noqa: BLE001
+        db.rollback()
+        logger.warning("could not record a class range open for range %s", rng.id, exc_info=True)
+
+
 @router.get(
     "/{range_id}/credentials",
     response_model=RangeCredentialsOut,
@@ -130,6 +146,8 @@ def get_range_credentials(
     """
     scope = service.access_scope(user)
     rng = service.readable_range(db, range_id, user, scope)
+    if scope == service.STUDENT:
+        _note_class_range_open(db, user, rng)
     rows = service.visible_accounts(db, rng, scope)
     pending = service.setup_pending_machines(rng) if scope == service.ALL else set()
     return RangeCredentialsOut(range_id=rng.id, scope=scope, accounts=[account_out(r, pending) for r in rows])

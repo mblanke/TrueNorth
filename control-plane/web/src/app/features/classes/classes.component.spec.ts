@@ -108,7 +108,10 @@ describe('ClassesComponent', () => {
 
   function setup(role: string, cls: ClassRecord = CLASS) {
     api = jasmine.createSpyObj('ClassesApiService', ['mine', 'list', 'create', 'rollCall', 'addPasted', 'addCsv', 'remove',
-      'reinstate', 'ranges', 'retryRange', 'sessionTeams', 'splitTeams', 'moveTeamMember']);
+      'reinstate', 'ranges', 'retryRange', 'sessionTeams', 'splitTeams', 'moveTeamMember', 'attendance', 'closeout']);
+    api.attendance.and.returnValue(of({ class_id: 'c1', class_status: 'open', can_edit: true, sessions: [], students: [] }));
+    api.closeout.and.returnValue(of({ class_id: 'c1', class_status: 'open', numbers_shown: false, sessions_held: 0,
+      students: [] }));
     api.ranges.and.returnValue(of(RANGES));
     api.retryRange.and.returnValue(of(RANGES.ranges[1]));
     api.sessionTeams.and.returnValue(of(TEAMS));
