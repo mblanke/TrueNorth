@@ -50,6 +50,7 @@ describe('my classes helpers', () => {
     expect(rangeLabel('building')).toBe('Range building');
     expect(rangeLabel('ready')).toBe('Range ready');
     expect(rangeLabel('failed')).toBe('Range failed');
+    expect(rangeLabel('paused')).toBe('Range paused');
     expect(rangeLabel(null)).toBe('No range');
   });
 
@@ -140,6 +141,14 @@ describe('MyClassesComponent', () => {
     make(page([BUILDING]));
     expect(join('c3').disabled).toBeTrue();
     expect(card('c3').querySelector('.hint')?.textContent).toContain('being built');
+  });
+
+  it('a powered-off range is paused, and Join waits', () => {
+    make(page([{ ...BASE, range_status: 'paused', join_range_id: null }]));
+    const chips = Array.from(card('c1').querySelectorAll('.status .chip')).map(e => e.textContent?.trim());
+    expect(chips).toContain('Range paused');
+    expect(join('c1').disabled).toBeTrue();
+    expect(card('c1').querySelector('.hint')?.textContent).toContain('powered off');
   });
 
   it('a lost seat says so, names whom to ask, and offers no Join', () => {

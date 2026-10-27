@@ -38,7 +38,7 @@ from sqlalchemy.orm import Session
 from ..acknowledgement import rule as acknowledgement
 from ..auth import CurrentUser
 from ..db import get_db
-from ..models import Course, Range, User
+from ..models import Course, Range, RangeState, User
 from ..rbac import Permission, require_permission
 from ..scheduler.lifecycle import HOLDING
 from ..scheduler.models import EventState, ScheduledEvent
@@ -90,6 +90,11 @@ _STATUS = {
     "tearing_down": AttendingRangeStatus.not_built,
     "torn_down": AttendingRangeStatus.not_built,
 }
+
+
+# Built but powered off, or powering back on: ``ranges.status`` calls these ready (staff see
+# the range's own state); a Student cannot use it yet, so Join waits.
+PAUSED = (RangeState.stopping, RangeState.stopped, RangeState.starting)
 
 
 def _now() -> datetime:
@@ -279,7 +284,11 @@ def _status(evt: ScheduledEvent, mode: str, rows: list[ClassRange], rngs: dict) 
     row = _row_for(evt, mode, rows)
     if row is None:
         return AttendingRangeStatus.not_built
-    return _STATUS[ranges.status(row, rngs.get(row.range_id) if row.range_id else None)]
+    rng = rngs.get(row.range_id) if row.range_id else None
+    status = _STATUS[ranges.status(row, rng)]
+    if status == AttendingRangeStatus.ready and rng is not None and rng.state in PAUSED:
+        return AttendingRangeStatus.paused
+    return status
 
 
 def _may_join(evt: ScheduledEvent, row: ClassRange | None, rngs: dict, now: datetime) -> bool:

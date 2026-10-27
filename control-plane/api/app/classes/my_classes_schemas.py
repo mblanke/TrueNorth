@@ -25,6 +25,7 @@ class AttendingRangeStatus(str, Enum):
     not_built = "not_built"  # not built yet, or no longer standing
     building = "building"
     ready = "ready"
+    paused = "paused"  # built, but its machines are powered off (stopping, stopped) or coming back on
     failed = "failed"
 
 

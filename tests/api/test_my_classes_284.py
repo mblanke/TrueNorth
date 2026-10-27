@@ -409,3 +409,27 @@ def test_a_last_session_running_past_the_end_date_keeps_the_class(client, world,
     body = _get(client, world["ann"]).json()
     c = next(c for c in body["classes"] if c["name"] == "ENDED-YESTERDAY")
     assert c["join_range_id"] == str(seat.range_id)
+
+
+@pytest.mark.parametrize("state", [RangeState.stopping, RangeState.stopped, RangeState.starting])
+def test_a_powered_off_seat_is_paused_and_join_waits(client, world, db_session, state):
+    db = db_session
+    _session(db, world["cls"], world["tpl"], NOW + timedelta(hours=2))
+    _range(db, world["cls"], world["tpl"], world["ann_entry"], state=state)
+    db.commit()
+    c = _only(_get(client, world["ann"]).json())
+    assert c["range_status"] == "paused" and c["sessions"][0]["range_status"] == "paused"
+    assert c["join_range_id"] is None
+    # Staff still see the class range as ready (ranges.status is unchanged).
+    act_as(world["lead"])
+    staff = client.get(f"/classes/{world['cls'].id}/ranges").json()
+    assert {r["status"] for r in staff["ranges"]} == {"ready"}
+
+
+def test_a_running_seat_is_ready(client, world, db_session):
+    db = db_session
+    _session(db, world["cls"], world["tpl"], NOW + timedelta(hours=2))
+    row = _range(db, world["cls"], world["tpl"], world["ann_entry"], state=RangeState.running)
+    db.commit()
+    c = _only(_get(client, world["ann"]).json())
+    assert c["range_status"] == "ready" and c["join_range_id"] == str(row.range_id)

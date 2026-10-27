@@ -30,7 +30,8 @@ export function windowOf(anchor: Date, view: CalendarView): { start: Date; end: 
 export const REFRESH_MS = 60_000;
 
 const RANGE_LABEL: Record<MyRangeStatus, string> = {
-  not_built: 'Range not built', building: 'Range building', ready: 'Range ready', failed: 'Range failed',
+  not_built: 'Range not built', building: 'Range building', ready: 'Range ready', paused: 'Range paused',
+  failed: 'Range failed',
 };
 
 export function rangeLabel(status: MyRangeStatus | null | undefined): string {
@@ -43,6 +44,7 @@ export function joinHint(c: MyClass): string {
   if (c.seat === 'forfeited') return 'Join opens again once your instructor reinstates you.';
   switch (c.range_status) {
     case 'building': return 'Your range is being built.';
+    case 'paused': return 'Your range is powered off. It opens when your instructor starts it.';
     case 'not_built': return 'Your range is built shortly before your session.';
     case 'failed': return 'Your range could not be built. Your instructor can rebuild it.';
     case 'ready': return 'The shared range opens when the session starts.';
@@ -125,7 +127,7 @@ export function forfeitMessage(c: MyClass): string {
                   {{ c.seat === 'forfeited' ? 'Lost seat' : 'Seat ready' }}</span>
                 @if (c.seat !== 'forfeited') {
                   <span role="listitem" class="chip" [class.ok]="c.range_status === 'ready'"
-                        [class.bad]="c.range_status === 'failed'" [class.busy]="c.range_status === 'building'">
+                        [class.bad]="c.range_status === 'failed'" [class.busy]="c.range_status === 'building' || c.range_status === 'paused'">
                     {{ range(c.range_status) }}</span>
                 }
               </div>

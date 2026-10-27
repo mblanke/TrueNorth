@@ -10116,7 +10116,7 @@ export interface components {
          * AttendingRangeStatus
          * @enum {string}
          */
-        AttendingRangeStatus: "not_built" | "building" | "ready" | "failed";
+        AttendingRangeStatus: "not_built" | "building" | "ready" | "paused" | "failed";
         /**
          * AttendingSeatStatus
          * @enum {string}
