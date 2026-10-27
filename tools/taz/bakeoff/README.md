@@ -55,9 +55,9 @@ uv pip install --python /data/bakeoff/venv/bin/python -r /data/bakeoff/kit/requi
 A **separate `CLAUDE_CONFIG_DIR`** (`/data/bakeoff/claude-config`) holds the session's
 settings. Never point it at `~/.claude`; the runner refuses that. In it:
 
-- `settings.json` registers the write-gate hook (`model-write-gate.py`) as a `PreToolUse`
-  hook, as on the foreman.
-- The hook's `gate-policy.json` allowlists the bakeoff models for writes (ring 1). The hook
+- `settings.json` registers the write gate (`tools/taz/hooks/write_gate.py`, installed as in
+  `tools/taz/README.md`) as a `PreToolUse` hook, as on the foreman.
+- The deployed `policy.json` allowlists the bakeoff models for writes (ring 1). The hook
   reads the **served** model from the transcript, so list the names vLLM reports
   (e.g. `MiniMax-M2`, `GLM-4.6`, `Qwen3-Coder-Next`), not only the LiteLLM aliases. A
   read-only model left off the list shows up as gate denials and a FAIL, which is the
@@ -132,7 +132,7 @@ for GitHub or upstream history (`history_peeks`).
   and the clone has no remote.
 - **Work dirs outside `/tmp`**: on `/data`, owned by the bakeoff user, mode 700.
 - **Separate `CLAUDE_CONFIG_DIR`** with the write-gate hook on and the bakeoff models
-  allowlisted in its `gate-policy.json`, as above. The owner's own `~/.claude` (memory,
+  allowlisted in its `policy.json`, as above. The owner's own `~/.claude` (memory,
   plans, sessions) is never visible to the model.
 - The runner does not sandbox the network. A model could still fetch the fix from GitHub
   with an explicit URL. Such commands are flagged in `history_peeks`; a run with one should
