@@ -771,7 +771,9 @@ def _sign_first_page() -> HTMLResponse:
 _WRITING_LAUNCH_KINDS = frozenset({"lab", "cmi5", "exercise"})
 
 
-def _resource_link_redirect(db: Session, platform, user: User, claims: dict, *, bind_cookie: bool) -> RedirectResponse:
+def _resource_link_redirect(
+    db: Session, platform, user: User, claims: dict, *, bind_cookie: bool
+) -> RedirectResponse | HTMLResponse:
     """Send the browser to what was launched. A Student the launch created (no TrueNorth
     sign-in of their own) goes through the session hand-off first (lti_identity.session);
     anyone else lands on the page and signs in with Keycloak as usual."""
@@ -800,7 +802,12 @@ def _resource_link_redirect(db: Session, platform, user: User, claims: dict, *, 
     lti13.record_launch(db, platform, user.id, claims, kind, rid, grade_passback=bound)
 
     if kind == "lab" and rid:
-        return RedirectResponse(_launch_lab(db, user, rid), status_code=302)  # the lab page has its own token
+        from ..lab_sessions.service import LabsBusyError
+
+        try:
+            return RedirectResponse(_launch_lab(db, user, rid), status_code=302)  # the lab page has its own token
+        except LabsBusyError as exc:  # no capacity left after approved classes (ADR 0014 §18)
+            return _labs_busy_page(str(exc))
     path = _launch_path(db, platform, user, claims, kind, rid)
     return _spa_redirect(db, platform, user, claims, path, bind_cookie=bind_cookie)
 
@@ -911,7 +918,8 @@ def lti_session_exchange(body: LtiSessionIn, request: Request, db: Session = Dep
 def _launch_lab(db: Session, user: User, rid: str) -> str:
     """A Moodle "Start lab" link: start or resume this student's lab and send the browser to
     the lab page with the session's own access token (in the fragment, so it never reaches
-    a server log or a Referer header)."""
+    a server log or a Referer header). LabsBusyError when no lab capacity is left after
+    approved classes (ADR 0014 §18): the caller shows the Student when the next is free."""
     import uuid as _uuid
 
     from ..lab_sessions import service as labs
@@ -931,12 +939,31 @@ def _launch_lab(db: Session, user: User, rid: str) -> str:
             session, _ = labs.launch(
                 db, tenant_id=user.tenant_id, user_id=user.id, release_id=release.id, activity_id=activity_id
             )
+    except labs.LabsBusyError:
+        db.info.pop(labs.OUTBOX, None)
+        raise
     except labs.LabRefusedError as exc:
         raise HTTPException(exc.status, str(exc)) from exc
     db.commit()
     labs.flush_outbox(db)
     token = lab_tokens.mint(db, session.id, user.id, session.max_expires_at)
     return f"{WEB_BASE_URL}/labs/{session.id}?lti=1#token={token}"
+
+
+def _labs_busy_page(message: str) -> HTMLResponse:
+    """What Start lab shows when the site has no lab capacity left: the time only (it never
+    says whose classes hold it)."""
+    import html
+
+    return HTMLResponse(
+        "<!doctype html><html><head><meta charset='utf-8'>"
+        "<meta name='viewport' content='width=device-width, initial-scale=1'><title>Labs are busy</title></head>"
+        "<body style='font-family:system-ui,sans-serif;max-width:40rem;margin:3rem auto;padding:0 1rem'>"
+        f"<h1>{html.escape(message)}</h1>"
+        "<p>Classes are using the lab machines. Start the lab again from your course then.</p></body></html>",
+        status_code=409,
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 # The tool key also signs the LtiDeepLinkingResponse and AGS client assertions; this

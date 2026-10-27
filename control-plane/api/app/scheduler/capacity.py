@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import os
 import uuid
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Protocol
@@ -83,7 +84,10 @@ class CapacityProvider(Protocol):
 class ClusterCapacity:
     """Supply and running ranges from ``app/capacity``, bookings from the scheduler."""
 
-    def __init__(self, db: Session) -> None:
+    def __init__(self, db: Session, *, ends: Mapping[uuid.UUID, datetime] | None = None) -> None:
+        """``ends``: running ranges known to end by then (a self-serve lab's expiry). They hold
+        capacity only until it; every other running range holds it from now on. Only a
+        forecast (``lab_sessions.capacity_gate.next_free``) passes it, never an admission."""
         from .. import capacity
 
         self._capacity = capacity
@@ -91,6 +95,7 @@ class ClusterCapacity:
         self._supply = Resources(cluster.vcpu, cluster.ram_mb, cluster.disk_gb)
         self.supply_source = cluster.source
         self._running = capacity.running_ranges(db)
+        self._ends = {k: _utc(v) for k, v in (ends or {}).items()}
 
     def supply(self) -> Resources:
         return self._supply
@@ -166,6 +171,8 @@ class ClusterCapacity:
         if t1 > datetime.now(UTC):  # running ranges hold capacity from now on, not in the past
             for r in self._running:
                 if r.range_id in covered or r.range_id in (skip or ()):
+                    continue
+                if r.range_id in self._ends and self._ends[r.range_id] <= t0:
                     continue
                 vcpu, ram, disk, ranges = vcpu + r.vcpu, ram + r.ram_mb, disk + r.disk_gb, ranges + 1
         return Committed(Resources(vcpu, ram, disk), len(now), ranges)

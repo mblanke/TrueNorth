@@ -79,6 +79,11 @@ class LabRefusedError(ValueError):
         self.status = status
 
 
+class LabsBusyError(LabRefusedError):
+    """Start lab refused: approved classes and running ranges hold the capacity (ADR 0014
+    §18). The message is "Labs are busy, next free at HH:MM" and names nothing else."""
+
+
 def _now() -> datetime:
     return datetime.now(UTC)
 
@@ -95,6 +100,12 @@ def _int_env(name: str, default: int) -> int:
         return int(os.getenv(name, str(default)))
     except ValueError:
         return default
+
+
+def idle_minutes(profile: dict[str, Any]) -> int:
+    """Minutes without the Student before a lab closes: the profile's own, at most the
+    platform's limit (``LAB_IDLE_LIMIT_MINUTES``, default 4 hours; ADR 0014 §18)."""
+    return min(profile["lifetime"]["idle_minutes"], max(1, _int_env("LAB_IDLE_LIMIT_MINUTES", 240)))
 
 
 def backend() -> str:
@@ -500,16 +511,23 @@ def launch(
         return existing, False
     db.info.setdefault(HOLDERS, {})[session.id] = session.lease_holder
     _hold(db, session)
-    _start(db, session, profile)
+    _start(db, session, profile, refuse_busy=True)
     db.flush()
     return session, True
 
 
 def _start(
-    db: Session, session: LabSession, profile: dict[str, Any], *, networks: dict[str, str] | None = None
+    db: Session,
+    session: LabSession,
+    profile: dict[str, Any],
+    *,
+    networks: dict[str, str] | None = None,
+    refuse_busy: bool = False,
 ) -> None:
     """queued -> provisioning when there is room (a rebuild passes the networks it keeps and
-    keeps its lifetime); stays queued, with why, otherwise."""
+    keeps its lifetime); stays queued, with why, otherwise. With no site capacity left after
+    approved classes, a launch (``refuse_busy``) is refused (LabsBusyError); a lab already
+    waiting in the queue keeps waiting, with the same message."""
     rebuild = networks is not None
     if not rebuild:
         if held := _window_holds(db, session):  # ADR 0013 §7: no new build; it starts after the window
@@ -527,6 +545,14 @@ def _start(
         problem = _quota_problem(db, session)
         if problem:
             session.error = problem
+            return
+        from . import capacity_gate
+
+        busy = capacity_gate.refusal(db, capacity_gate.demand(profile), capacity_gate.lifetime(profile), _now())
+        if busy:
+            if refuse_busy:
+                raise LabsBusyError(busy)
+            session.error = busy
             return
         networks = _lease_networks(db, session, profile)
         if networks is None:
@@ -560,7 +586,7 @@ def _start(
     if not rebuild:
         lifetime = profile["lifetime"]
         session.max_expires_at = now + timedelta(minutes=lifetime["max_minutes"])
-        session.idle_expires_at = now + timedelta(minutes=lifetime["idle_minutes"])
+        session.idle_expires_at = min(now + timedelta(minutes=idle_minutes(profile)), session.max_expires_at)
     db.flush()
     from ..range_credentials import service as range_credentials
 
@@ -614,12 +640,49 @@ def advance(db: Session, session: LabSession) -> LabSession:
     elif state == RESETTING:
         _advance_resetting(db, session, rng, now)
     elif state in (READY, ACTIVE):
-        if now >= _aware(session.max_expires_at) or now >= _aware(session.idle_expires_at):
-            end(db, session, reason="expired")
+        _advance_running(db, session, now)
     elif state in ENDING:
         _advance_cleaning(db, session, rng, now)
     db.flush()
     return session
+
+
+def _advance_running(db: Session, session: LabSession, now: datetime) -> None:
+    """A ready or active lab: closed at its maximum lifetime, or after the idle limit with no
+    Student activity (heartbeat, console), recorded as ``idle``. The Student is told in
+    TrueNorth (an in-app notification) once, ``LAB_IDLE_WARNING_MINUTES`` before an idle close."""
+    latest, idle_end = _aware(session.max_expires_at), _aware(session.idle_expires_at)
+    if now < latest and now < idle_end:
+        warn = timedelta(minutes=_int_env("LAB_IDLE_WARNING_MINUTES", 15))
+        if session.idle_warned_at is None and idle_end < latest and now >= idle_end - warn:
+            _warn_idle(db, session, idle_end)
+        return
+    from ..classes import ranges as class_ranges
+
+    if class_ranges.is_class_range(db, session.range_id):  # never ours to destroy (ADR 0014 §10)
+        session.error = "this lab's range belongs to a class; it is left to the class"
+        logger.error("lab session %s points at class range %s; not torn down", session.id, session.range_id)
+        return
+    end(db, session, reason="expired" if now >= latest else "idle")
+
+
+def _warn_idle(db: Session, session: LabSession, idle_end: datetime) -> None:
+    from ..notifications.inbox import notify
+    from . import capacity_gate
+
+    at = idle_end.astimezone(capacity_gate.site_timezone())
+    notify(
+        db,
+        tenant_id=session.tenant_id,
+        user_ids=[session.user_id],
+        actor_id=None,
+        title="Your lab closes soon",
+        message=f"Your lab has not been used and closes at {at:%H:%M}. Open it to keep it running; "
+        "work you submitted is kept either way.",
+        link=f"/labs/{session.id}",
+        kind="warning",
+    )
+    session.idle_warned_at = _now()
 
 
 def _advance_provisioning(db: Session, session: LabSession, rng: Range | None, now: datetime) -> None:
@@ -774,9 +837,10 @@ def touch(db: Session, session: LabSession) -> LabSession:
     if session.state not in (READY, ACTIVE):
         return session
     now = _now()
-    idle = timedelta(minutes=_profile(db, session)["lifetime"]["idle_minutes"])
+    idle = timedelta(minutes=idle_minutes(_profile(db, session)))
     session.last_seen_at = now
     session.idle_expires_at = min(now + idle, _aware(session.max_expires_at))
+    session.idle_warned_at = None
     _set_state(session, ACTIVE)
     db.flush()
     return session
@@ -843,7 +907,7 @@ def end(db: Session, session: LabSession, *, reason: str = "completed") -> LabSe
         _release_networks(db, session)
         _set_state(session, DESTROYED)
     else:
-        _set_state(session, EXPIRED if reason == "expired" else COMPLETED)
+        _set_state(session, EXPIRED if reason in ("expired", "idle") else COMPLETED)
         if rng.state not in (RangeState.destroyed, RangeState.destroying):
             rng.state = RangeState.destroying
             _send(db, session, "destroy_range", str(rng.id))

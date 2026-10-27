@@ -56,6 +56,22 @@ describe('LabPageComponent', () => {
     expect(fixture.nativeElement.textContent).toContain('Building your lab');
   });
 
+  it('says when a lab was closed for not being used', () => {
+    setUp('token=abc', false, 'destroyed');
+    api.lab.and.returnValue(of({ ...lab('destroyed'), end_reason: 'idle' }));
+    fixture.componentInstance.refresh();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('closed because it was not used');
+  });
+
+  it('shows why a queued lab waits, e.g. when labs are busy', () => {
+    setUp('token=abc', false, 'queued');
+    api.lab.and.returnValue(of({ ...lab('queued'), error: 'Labs are busy, next free at 14:30' }));
+    fixture.componentInstance.refresh();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('Labs are busy, next free at 14:30');
+  });
+
   it('sends someone with neither token nor session to sign in', fakeAsync(() => {
     setUp(null, false);
     tick();

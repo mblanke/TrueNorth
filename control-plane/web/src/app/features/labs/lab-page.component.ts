@@ -30,6 +30,7 @@ const STATE_TEXT: Record<string, string> = {
 };
 const WAITING = new Set(['queued', 'provisioning', 'baselining', 'resetting', 'cleaning', 'reconcile_required']);
 const USABLE = new Set(['ready', 'active']);
+const ENDED_STATES = new Set(['expired', 'cleaning', 'reconcile_required', 'destroyed']);
 const TOKEN_KEY = (id: string) => `tn-lab-token:${id}`;
 
 /**
@@ -46,7 +47,7 @@ const TOKEN_KEY = (id: string) => `tn-lab-token:${id}`;
       <mat-card class="panel">
         <h1>Lab</h1>
         @if (session(); as s) {
-          <p class="state" [class.bad]="s.state === 'failed'">{{ text(s.state) }}</p>
+          <p class="state" [class.bad]="s.state === 'failed'">{{ text(s.state, s.end_reason) }}</p>
           @if (waiting()) {
             <mat-progress-bar mode="indeterminate" />
           }
@@ -156,7 +157,11 @@ export class LabPageComponent implements OnInit {
     });
   }
 
-  text(state: string): string {
+  text(state: string, endReason = ''): string {
+    // An idle close (ADR 0014 §18) is recorded as such; the lab ended, not the Student.
+    if (endReason === 'idle' && ENDED_STATES.has(state)) {
+      return 'This lab was closed because it was not used for a while. Your submitted work is kept.';
+    }
     return STATE_TEXT[state] ?? state;
   }
 

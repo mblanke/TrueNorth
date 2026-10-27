@@ -74,6 +74,8 @@ class LabSession(Base):
     ready_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     idle_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # When the Student was told the lab closes soon for want of use (cleared by activity).
+    idle_warned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     max_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     end_reason: Mapped[str] = mapped_column(String(32), nullable=False, default="")
