@@ -138,8 +138,9 @@ export interface paths {
         put?: never;
         /**
          * Run the AD status sync now, for this tenant
-         * @description **Role: admin.** Looks at the caller's tenant only; audited. A dry run (the default while
-         *     ``AD_STATUS_SYNC_DRY_RUN`` is on) records who would be deactivated and changes nothing.
+         * @description **Role: admin.** Looks at the caller's tenant only; audited. A dry run records who would be
+         *     deactivated and changes nothing. While ``AD_STATUS_SYNC_DRY_RUN`` is on every run is dry:
+         *     asking for ``dry_run: false`` is 409, ``override_limit`` or not.
          */
         post: operations["runAdStatusSync"];
         delete?: never;
@@ -9778,8 +9779,6 @@ export interface components {
             dry_run: boolean;
             /** Enabled */
             enabled: boolean;
-            /** Group Prefix */
-            group_prefix: string;
             /** Keycloak Configured */
             keycloak_configured: boolean;
             /** Last Break Glass Use */
@@ -9797,7 +9796,7 @@ export interface components {
         AdStatusSyncResultOut: {
             /**
              * Applied
-             * @description False in a dry run, a held run, or when someone else deactivated it first
+             * @description False in a dry run, a held tenant, a first sighting (confirmed by the next run), the last admin, or when someone else deactivated it first
              */
             applied: boolean;
             /** Display Name */
@@ -9806,7 +9805,7 @@ export interface components {
             email: string;
             /**
              * Reason
-             * @description ad_disabled | ad_removed | ad_no_tn_group | local_unused
+             * @description ad_disabled | ad_removed | local_unused
              */
             reason: string;
             /** Reason Text */
@@ -9865,7 +9864,7 @@ export interface components {
             started_at: string;
             /**
              * Status
-             * @description running | completed | held | failed | interrupted
+             * @description running | completed | held (this tenant) | failed | interrupted
              */
             status: string;
             /**

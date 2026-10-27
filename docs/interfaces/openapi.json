@@ -773,10 +773,6 @@
             "title": "Enabled",
             "type": "boolean"
           },
-          "group_prefix": {
-            "title": "Group Prefix",
-            "type": "string"
-          },
           "keycloak_configured": {
             "title": "Keycloak Configured",
             "type": "boolean"
@@ -821,7 +817,6 @@
           "keycloak_configured",
           "dry_run",
           "nightly_hour_utc",
-          "group_prefix",
           "break_glass_usernames"
         ],
         "title": "AdStatusSyncOverviewOut",
@@ -830,7 +825,7 @@
       "AdStatusSyncResultOut": {
         "properties": {
           "applied": {
-            "description": "False in a dry run, a held run, or when someone else deactivated it first",
+            "description": "False in a dry run, a held tenant, a first sighting (confirmed by the next run), the last admin, or when someone else deactivated it first",
             "title": "Applied",
             "type": "boolean"
           },
@@ -843,7 +838,7 @@
             "type": "string"
           },
           "reason": {
-            "description": "ad_disabled | ad_removed | ad_no_tn_group | local_unused",
+            "description": "ad_disabled | ad_removed | local_unused",
             "title": "Reason",
             "type": "string"
           },
@@ -953,7 +948,7 @@
             "type": "string"
           },
           "status": {
-            "description": "running | completed | held | failed | interrupted",
+            "description": "running | completed | held (this tenant) | failed | interrupted",
             "title": "Status",
             "type": "string"
           },
@@ -24079,7 +24074,7 @@
     },
     "/ad-status-sync/runs": {
       "post": {
-        "description": "**Role: admin.** Looks at the caller's tenant only; audited. A dry run (the default while\n``AD_STATUS_SYNC_DRY_RUN`` is on) records who would be deactivated and changes nothing.",
+        "description": "**Role: admin.** Looks at the caller's tenant only; audited. A dry run records who would be\ndeactivated and changes nothing. While ``AD_STATUS_SYNC_DRY_RUN`` is on every run is dry:\nasking for ``dry_run: false`` is 409, ``override_limit`` or not.",
         "operationId": "runAdStatusSync",
         "requestBody": {
           "content": {

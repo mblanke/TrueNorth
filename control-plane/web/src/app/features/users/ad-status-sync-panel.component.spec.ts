@@ -20,7 +20,7 @@ describe('AdStatusSyncPanelComponent', () => {
     }],
   };
   const overview: AdStatusSyncOverview = {
-    enabled: true, keycloak_configured: true, dry_run: true, nightly_hour_utc: 2, group_prefix: 'TN-',
+    enabled: true, keycloak_configured: true, dry_run: true, nightly_hour_utc: 2,
     break_glass_usernames: ['breakglass@tn.local'], last_break_glass_use: null, latest: run, runs: [run],
   };
 

@@ -62,9 +62,14 @@ def _out(db: Session, run: AdStatusSyncRun, tid: uuid.UUID, with_results: bool) 
             for r, u in rows
         ]
     counts = ((run.counts or {}).get("by_tenant") or {}).get(str(tid), {})
+    error = run.error
+    if status == "completed" and counts.get("held"):
+        # Held per tenant: this tenant's own numbers only, never another tenant's.
+        status = "held"
+        error = service.held_message(int(counts.get("held_would_deactivate", 0)), int(counts.get("held_eligible", 0)))
     return AdStatusSyncRunOut(
         id=run.id, trigger=run.trigger, dry_run=run.dry_run, status=status, started_at=started,
-        finished_at=_aware(run.finished_at), error=run.error,
+        finished_at=_aware(run.finished_at), error=error,
         counts={k: int(v) for k, v in counts.items()}, results=results,
     )
 
@@ -89,7 +94,7 @@ def overview(db: Session = Depends(get_db), user: CurrentUser = Depends(ADMIN)) 
     return AdStatusSyncOverviewOut(
         enabled=os.getenv("AD_STATUS_SYNC_ENABLED", "true").strip().lower() not in ("0", "false", "no", "off"),
         keycloak_configured=directory.configured(), dry_run=cfg.dry_run, nightly_hour_utc=cfg.hour_utc,
-        group_prefix=cfg.group_prefix, break_glass_usernames=sorted(last_seen.break_glass_usernames()),
+        break_glass_usernames=sorted(last_seen.break_glass_usernames()),
         last_break_glass_use=_aware(last_bg),
         latest=_out(db, runs[0], tid, True) if runs else None,
         runs=[_out(db, r, tid, False) for r in runs],
@@ -120,8 +125,9 @@ def run_now(
     user: CurrentUser = Depends(ADMIN),
     reader: directory.DirectoryReader = Depends(directory_reader),
 ) -> AdStatusSyncRunOut:
-    """**Role: admin.** Looks at the caller's tenant only; audited. A dry run (the default while
-    ``AD_STATUS_SYNC_DRY_RUN`` is on) records who would be deactivated and changes nothing."""
+    """**Role: admin.** Looks at the caller's tenant only; audited. A dry run records who would be
+    deactivated and changes nothing. While ``AD_STATUS_SYNC_DRY_RUN`` is on every run is dry:
+    asking for ``dry_run: false`` is 409, ``override_limit`` or not."""
     from ..classes import service as classes
     from ..scheduler import service as scheduler
 
@@ -129,6 +135,9 @@ def run_now(
     if not reader.ready():
         raise HTTPException(503, "Keycloak's Admin API is not configured (KEYCLOAK_ADMIN_CLIENT_ID and its secret)")
     tid = tenant_uuid(user)
+    if service.settings().dry_run and body.dry_run is False:
+        raise HTTPException(409, "AD_STATUS_SYNC_DRY_RUN is on: runs record and change nothing. Turn the setting "
+                                 "off (installer tn_ad_status_sync_dry_run) to let a run deactivate accounts.")
     dry = service.settings().dry_run if body.dry_run is None else body.dry_run
     outcome = service.run_now(db, reader, tenant_id=tid, actor_id=uuid.UUID(user.id), dry_run=dry,
                               override_limit=body.override_limit)

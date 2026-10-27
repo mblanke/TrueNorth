@@ -56,7 +56,7 @@ class AdStatusSyncResult(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("users.id"), nullable=False)
     # No copy of the address or name (docs/security/unclassified-data-baseline.json): the panel
     # reads them from the account, which deactivating never deletes.
-    # ad_disabled | ad_removed | ad_no_tn_group | local_unused
+    # ad_disabled | ad_removed | local_unused
     reason: Mapped[str] = mapped_column(String(32), nullable=False)
     applied: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     seats_freed: Mapped[int] = mapped_column(default=0, nullable=False)

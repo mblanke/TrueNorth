@@ -27,8 +27,9 @@ import {
         <mat-card-title>Directory status check</mat-card-title>
         <mat-card-subtitle>
           Nightly at {{ pad(view()?.nightly_hour_utc ?? 2) }}:00 UTC. Deactivates accounts whose AD account is
-          disabled, gone or in no {{ view()?.group_prefix ?? 'TN-' }}* group, and local accounts unused for 90 days.
-          TrueNorth never changes AD, and nothing is deleted.
+          disabled or gone, and local accounts unused for 90 days, once two runs in a row have found them.
+          Never this tenant's last admin or the break-glass account. TrueNorth never changes AD, and nothing is
+          deleted.
         </mat-card-subtitle>
       </mat-card-header>
       <mat-card-content>
@@ -103,7 +104,7 @@ import {
                 [matTooltip]="runTip()">
           <mat-icon>sync</mat-icon> Run now
         </button>
-        @if (view()?.latest?.status === 'held') {
+        @if (view()?.latest?.status === 'held' && !view()?.dry_run) {
           <button mat-raised-button color="warn" (click)="run(undefined, true)" [disabled]="busy()"
                   matTooltip="This run would deactivate more accounts than the safety limit allows">
             <mat-icon>warning</mat-icon> Run now, over the limit
@@ -137,11 +138,16 @@ export class AdStatusSyncPanelComponent implements OnInit {
     deactivated: 'deactivated',
     ad_disabled: 'AD account disabled',
     ad_removed: 'AD account gone',
-    ad_no_tn_group: 'in no TN-* group',
     local_unused: 'local, unused 90 days',
     break_glass_kept: 'break-glass kept',
     not_a_keycloak_account: 'not a Keycloak account (roster, LTI)',
     local_not_checked_no_break_glass: 'local, not checked (no break-glass set)',
+    eligible: 'could be deactivated',
+    awaiting_confirmation: 'found once (the next run confirms)',
+    kept_last_admin: 'kept: last admin',
+    held: 'held (over the limit)',
+    held_would_deactivate: 'would have been deactivated',
+    held_eligible: 'could be deactivated (held)',
     errors: 'errors',
   };
 

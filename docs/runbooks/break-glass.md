@@ -117,8 +117,9 @@ use, so scripted recovery work is never blocked by them.
 The nightly AD status sync (docs/identity.md "AD status sync") disables TrueNorth accounts
 whose local Keycloak account was not used for 90 days. The **break-glass** account, the
 local account named by `AD_STATUS_SYNC_BREAK_GLASS` (the installer sets it to
-`tn_bootstrap_admin_upn`), is never disabled, so it always works when the directory does
-not. Every use of it raises the critical alert `BreakGlassAccountUsed` and writes a
+`tn_bootstrap_admin_upn` with AD and `tn_keycloak_local_admin: true`), is never disabled, so
+it always works when the directory does not. Without one (no AD, or the local administrator
+turned off) the 90-day rule does not run at all and nothing alerts. Every use of it raises the critical alert `BreakGlassAccountUsed` and writes a
 `break_glass_sign_in` audit row: when it fires and nobody planned it, treat it as an
 incident (docs/runbooks/incident.md) and reset its password with the playbook above.
 

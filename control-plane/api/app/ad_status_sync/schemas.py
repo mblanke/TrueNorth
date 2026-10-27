@@ -12,9 +12,10 @@ class AdStatusSyncResultOut(BaseModel):
     user_id: uuid.UUID
     email: str
     display_name: str
-    reason: str = Field(description="ad_disabled | ad_removed | ad_no_tn_group | local_unused")
+    reason: str = Field(description="ad_disabled | ad_removed | local_unused")
     reason_text: str
-    applied: bool = Field(description="False in a dry run, a held run, or when someone else deactivated it first")
+    applied: bool = Field(description="False in a dry run, a held tenant, a first sighting (confirmed by the next run), "
+                                      "the last admin, or when someone else deactivated it first")
     seats_freed: int
 
 
@@ -22,7 +23,7 @@ class AdStatusSyncRunOut(BaseModel):
     id: uuid.UUID
     trigger: str = Field(description="nightly | manual")
     dry_run: bool
-    status: str = Field(description="running | completed | held | failed | interrupted")
+    status: str = Field(description="running | completed | held (this tenant) | failed | interrupted")
     started_at: datetime
     finished_at: datetime | None = None
     error: str | None = None
@@ -35,7 +36,6 @@ class AdStatusSyncOverviewOut(BaseModel):
     keycloak_configured: bool
     dry_run: bool = Field(description="AD_STATUS_SYNC_DRY_RUN: runs record and change nothing")
     nightly_hour_utc: int
-    group_prefix: str
     break_glass_usernames: list[str]
     last_break_glass_use: datetime | None = None
     latest: AdStatusSyncRunOut | None = None

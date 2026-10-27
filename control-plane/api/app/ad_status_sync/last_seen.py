@@ -41,10 +41,12 @@ _written: dict[str, datetime] = {}  # user id -> when this process last wrote it
 
 
 def break_glass_usernames() -> set[str]:
-    """``AD_STATUS_SYNC_BREAK_GLASS`` (comma-separated Keycloak usernames), else the bootstrap
-    administrator's UPN (``TN_BOOTSTRAP_ADMIN_UPN``), which install/roles/tn_keycloak creates
-    as the local account that keeps working without the directory. Lower case."""
-    raw = os.getenv("AD_STATUS_SYNC_BREAK_GLASS") or os.getenv("TN_BOOTSTRAP_ADMIN_UPN") or ""
+    """``AD_STATUS_SYNC_BREAK_GLASS`` (comma-separated Keycloak usernames), lower case. The
+    installer sets it to the bootstrap administrator's UPN only where that is a local recovery
+    account beside AD (``tn_ldap_enabled`` and ``tn_keycloak_local_admin``); otherwise it is
+    empty: no break-glass, no 90-day rule, no alert. No fallback: guessing would alert on an
+    ordinary administrator's every sign-in."""
+    raw = os.getenv("AD_STATUS_SYNC_BREAK_GLASS") or ""
     return {n.strip().lower() for n in raw.split(",") if n.strip()}
 
 

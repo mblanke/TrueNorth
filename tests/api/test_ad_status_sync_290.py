@@ -4,16 +4,20 @@ The rules under test (app/ad_status_sync):
 
 - TrueNorth only reads the directory, through Keycloak's Admin API: GET requests and the
   client-credentials token, never a write (asserted on the HTTP transport).
-- An AD account that is disabled, gone, or in no TN-* group any more: the TrueNorth account
-  is deactivated (``is_active`` false). One still enabled and in a TN-* group is untouched.
+- An AD account that is disabled, or a known AD account that is gone: the TrueNorth account
+  is deactivated (``is_active`` false). One still enabled is untouched, TN-* groups or not
+  (roll-call Students have none).
 - Deactivating frees their roll-call seats (``remove_from_roll_call``: seat freed, CANCEL),
   emails the class's instructors, writes an audit row, and deletes nothing.
 - A local Keycloak account unused for 90 days is deactivated; break-glass never is.
-- A dry run records and changes nothing. A run over the limit is held.
+- A dry run records and changes nothing. Per tenant: an account is deactivated only when two
+  runs in a row found it; a tenant over its limit is held while others go on; never the last
+  admin.
 - Any number of replicas: one nightly run per night; each account deactivated once.
 - Administrators only, their own tenant only.
 
 Time travel: ``service.run_nightly(db, reader, now=...)``, as the class clocks are tested.
+``_apply`` runs twice, as a deactivation needs two sightings.
 """
 
 from __future__ import annotations
@@ -48,6 +52,7 @@ from app.scheduler.models import ScheduledEvent
 DAY = (datetime.now(UTC) + timedelta(days=40)).replace(hour=0, minute=0, second=0, microsecond=0)
 NINE = DAY + timedelta(hours=9)
 NIGHT = datetime.now(UTC).replace(hour=3, minute=0, second=0, microsecond=0)
+PREV_NIGHT = NIGHT - timedelta(days=1)
 BREAK_GLASS = "breakglass@tn.local"
 
 
@@ -68,33 +73,27 @@ class Outbox:
 
 
 class FakeDirectory(DirectoryReader):
-    """Keycloak's view: users by Keycloak id; who is in a TN-* group."""
+    """Keycloak's view: users by Keycloak id."""
 
     def __init__(self):
         self.users: dict[str, DirectoryUser] = {}
-        self.in_group: set[str] = set()
         self.fail = False
         self.calls = 0
 
-    def ad(self, u: User, *, enabled=True, in_group=True, kc_id=None) -> None:
+    def ad(self, u: User, *, enabled=True, kc_id=None, username=None) -> None:
         kid = kc_id or u.keycloak_id
-        self.users[kid] = DirectoryUser(id=kid, username=u.email.split("@")[0], email=u.email, enabled=enabled,
-                                        federated=True)
-        if in_group:
-            self.in_group.add(kid)
-        else:
-            self.in_group.discard(kid)
+        self.users[kid] = DirectoryUser(id=kid, username=(username or u.email.split("@")[0]).lower(), email=u.email,
+                                        enabled=enabled, federated=True)
 
     def local(self, u: User, username: str | None = None) -> None:
         self.users[u.keycloak_id] = DirectoryUser(id=u.keycloak_id, username=(username or u.email).lower(),
                                                   email=u.email, enabled=True, federated=False)
 
-    def snapshot(self, group_prefix: str) -> DirectorySnapshot:
+    def snapshot(self) -> DirectorySnapshot:
         self.calls += 1
         if self.fail:
             raise DirectoryUnavailableError("Keycloak could not be read: ConnectError")
-        return DirectorySnapshot(users=dict(self.users), in_tn_group=set(self.in_group),
-                                 groups_found=["TN-Students", "TN-Instructors"])
+        return DirectorySnapshot(users=dict(self.users))
 
 
 @pytest.fixture
@@ -107,17 +106,25 @@ def outbox():
 @pytest.fixture
 def kc(monkeypatch):
     d = FakeDirectory()
+    # The local recovery account beside AD (tn_keycloak_local_admin): it makes BREAK_GLASS a
+    # break-glass account at all (a name that is not a local Keycloak user is none).
+    d.users["kc-breakglass"] = DirectoryUser(id="kc-breakglass", username=BREAK_GLASS, email=BREAK_GLASS,
+                                             enabled=True, federated=False)
     fastapi_app.dependency_overrides[sync_router.directory_reader] = lambda: d
     monkeypatch.setenv("AD_STATUS_SYNC_DRY_RUN", "false")
     monkeypatch.setenv("AD_STATUS_SYNC_BREAK_GLASS", BREAK_GLASS)
-    monkeypatch.setenv("AD_STATUS_SYNC_MAX_FLOOR", "10")
+    monkeypatch.delenv("AD_STATUS_SYNC_MAX_FLOOR", raising=False)
+    monkeypatch.delenv("AD_STATUS_SYNC_MAX_FRACTION", raising=False)
     yield d
     fastapi_app.dependency_overrides.pop(sync_router.directory_reader, None)
 
 
-def _person(db, tenant_id, email, role=UserRole.student, source="ad", created=None) -> User:
+def _person(db, tenant_id, email, role=UserRole.student, source="ad", created=None, guid=None) -> User:
+    """``guid``: whether the directory's claims gave it an AD objectGUID (default: source ad)."""
+    if guid is None:
+        guid = source == "ad"
     u = User(id=uuid.uuid4(), keycloak_id=f"kc-{uuid.uuid4()}", email=email, display_name=email.split("@")[0],
-             role=role, tenant_id=tenant_id, source=source)
+             role=role, tenant_id=tenant_id, source=source, ad_object_guid=str(uuid.uuid4()) if guid else None)
     if created is not None:
         u.created_at = created
     db.add(u)
@@ -151,7 +158,7 @@ def world(db_session, client, monkeypatch, outbox, kc):
         "bob": _person(db, a.id, "bob@corp.test"),
         "b_kim": _person(db, b.id, "kim@corp.test"),
     }
-    # Staff and Students all exist in the directory, enabled, in a TN-* group.
+    # Staff and Students all exist in the directory, enabled.
     for key in ("lead", "assistant", "admin", "observer", "b_admin"):
         w[key + "_row"] = db.get(User, uuid.UUID(w[key].id))
         kc.ad(w[key + "_row"])
@@ -204,12 +211,18 @@ def _run_now(client, w, who="admin", **body) -> dict:
     return r.json()
 
 
+def _apply(client, w, who="admin", **body) -> dict:
+    """Two runs: the first finds, the second (finding the same) deactivates."""
+    _run_now(client, w, who, **body)
+    return _run_now(client, w, who, **body)
+
+
 # ── The AD rules ───────────────────────────────────────────────────────────
 
 
 def test_an_ad_disabled_account_is_deactivated(client, db_session, world, kc):
     kc.ad(world["ann"], enabled=False)
-    run = _run_now(client, world)
+    run = _apply(client, world)
     assert run["status"] == "completed" and run["dry_run"] is False
     assert not _active(db_session, world["ann"])
     assert [(r["email"], r["reason"], r["applied"]) for r in run["results"]] == [
@@ -217,16 +230,21 @@ def test_an_ad_disabled_account_is_deactivated(client, db_session, world, kc):
     assert run["counts"]["deactivated"] == 1 and run["counts"]["ad_disabled"] == 1
 
 
-def test_an_account_removed_from_every_tn_group_is_deactivated(client, db_session, world, kc):
-    kc.ad(world["bob"], in_group=False)
-    run = _run_now(client, world)
-    assert not _active(db_session, world["bob"])
-    assert [(r["email"], r["reason"]) for r in run["results"]] == [("bob@corp.test", "ad_no_tn_group")]
+def test_a_roll_call_student_in_no_tn_group_is_not_deactivated(client, db_session, world, kc):
+    """B1: roll-call admission gives no TN-* group (classes/onboarding.py). Enabled in AD is
+    enough; group membership is not even read (the reader asks for no /groups)."""
+    ann = world["ann"]
+    assert _entry(db_session, "ann@corp.test").status == "signed_in"
+    kc.ad(ann, enabled=True)  # federated, enabled, member of nothing
+    run = _apply(client, world)
+    assert _active(db_session, ann) and run["results"] == []
+    assert _entry(db_session, "ann@corp.test").status == "signed_in"
+    assert "ad_no_tn_group" not in service.REASONS
 
 
-def test_an_ad_account_gone_from_the_directory_is_deactivated(client, db_session, world, kc):
+def test_a_known_ad_account_gone_from_the_directory_is_deactivated(client, db_session, world, kc):
     del kc.users[world["ann"].keycloak_id]
-    run = _run_now(client, world)
+    run = _apply(client, world)
     assert not _active(db_session, world["ann"])
     assert [r["reason"] for r in run["results"]] == ["ad_removed"]
 
@@ -235,12 +253,23 @@ def test_a_rebuilt_realm_matches_the_same_ad_account_by_address(client, db_sessi
     """A new Keycloak id for the same directory account is not "gone"."""
     del kc.users[world["ann"].keycloak_id]
     kc.ad(world["ann"], kc_id="kc-rebuilt-ann")
-    run = _run_now(client, world)
+    run = _apply(client, world)
     assert _active(db_session, world["ann"]) and run["results"] == []
 
 
+def test_a_rebuilt_realm_on_a_no_ad_install_removes_nobody(client, db_session, world, kc):
+    """Registration marks every account ``source = ad`` (routers/registration.py), local ones
+    included. Without an AD objectGUID, a lost Keycloak id is not "AD account gone"."""
+    local = _person(db_session, world["a"].id, "local@tn.local", source="ad", guid=False)
+    kc.users["kc-rebuilt"] = DirectoryUser(id="kc-rebuilt", username="local@tn.local", email="local@tn.local",
+                                           enabled=True, federated=False)
+    run = _apply(client, world)
+    assert _active(db_session, local) and run["results"] == []
+    assert run["counts"]["not_a_keycloak_account"] == 1
+
+
 def test_accounts_still_active_in_ad_are_untouched(client, db_session, world, kc, outbox):
-    run = _run_now(client, world)
+    run = _apply(client, world)
     assert run["status"] == "completed" and run["results"] == []
     for key in ("ann", "bob", "b_kim", "lead_row", "admin_row"):
         assert _active(db_session, world[key])
@@ -252,7 +281,7 @@ def test_roster_rows_and_lti_students_are_not_keycloak_accounts(client, db_sessi
     """Not in Keycloak and not made from the directory: left alone."""
     roster = _person(db_session, world["a"].id, "rosie@corp.test", source="csv_import")
     lti = _person(db_session, world["a"].id, "lti@corp.test", source="lti")
-    run = _run_now(client, world)
+    run = _apply(client, world)
     assert _active(db_session, roster) and _active(db_session, lti)
     assert run["counts"]["not_a_keycloak_account"] == 2 and run["results"] == []
 
@@ -263,7 +292,7 @@ def test_roster_rows_and_lti_students_are_not_keycloak_accounts(client, db_sessi
 def test_seats_are_freed_and_the_instructors_told(client, db_session, world, kc, outbox):
     seq = _event(db_session, world).sequence
     kc.ad(world["ann"], enabled=False)
-    run = _run_now(client, world)
+    run = _apply(client, world)
     assert run["results"][0]["seats_freed"] == 1
     assert _entry(db_session, "ann@corp.test").status == "removed"
     assert _entry(db_session, "bob@corp.test").status == "signed_in"
@@ -283,25 +312,27 @@ def test_records_are_kept(client, db_session, world, kc):
                             resource_id="x", detail="her earlier work"))
     db_session.flush()
     kc.ad(ann, enabled=False)
-    _run_now(client, world)
+    _apply(client, world)
     db_session.refresh(ann)
     assert ann.deleted_at is None and not ann.is_active  # the row stays, only inactive
     assert db_session.query(Enrollment).filter(Enrollment.user_id == ann.id).count() == 1
     assert _entry(db_session, "ann@corp.test").removed_at is not None  # the entry stays, marked removed
     assert db_session.query(AuditLog).filter(AuditLog.user_id == ann.id, AuditLog.action == "exercise_submit").count() == 1
-    assert db_session.query(AdStatusSyncResult).filter(AdStatusSyncResult.user_id == ann.id).one().applied
+    assert db_session.query(AdStatusSyncResult).filter(AdStatusSyncResult.user_id == ann.id,
+                                                       AdStatusSyncResult.applied == True).count() == 1  # noqa: E712
 
 
 def test_audit_rows(client, db_session, world, kc):
     kc.ad(world["ann"], enabled=False)
-    run = _run_now(client, world)
+    run = _apply(client, world)
     rows = db_session.query(AuditLog).filter(AuditLog.action == "ad_status_deactivate").all()
     assert [(r.resource_id, r.tenant_id, str(r.user_id)) for r in rows] == [
         (str(world["ann"].id), world["a"].id, world["admin"].id)]
     assert "AD account is disabled" in rows[0].detail and "C201-26-03" in rows[0].detail
     runs = db_session.query(AuditLog).filter(AuditLog.action == "ad_status_sync_run").all()
-    assert [(r.resource_id, str(r.user_id), r.tenant_id) for r in runs] == [
-        (run["id"], world["admin"].id, world["a"].id)]
+    assert len(runs) == 2  # one per run, both by the admin who ran it, in their tenant
+    assert {(str(r.user_id), r.tenant_id) for r in runs} == {(world["admin"].id, world["a"].id)}
+    assert run["id"] in {r.resource_id for r in runs}
 
 
 # ── Local accounts and break-glass ─────────────────────────────────────────
@@ -328,7 +359,7 @@ def test_a_local_account_unused_for_90_days_is_disabled(client, db_session, worl
     stale = _local(db_session, world, kc, "old@tn.local", created_days_ago=300, seen_days_ago=91)
     fresh = _local(db_session, world, kc, "new@tn.local", created_days_ago=300, seen_days_ago=89)
     never = _local(db_session, world, kc, "never@tn.local", created_days_ago=120)
-    run = _run_now(client, world)
+    run = _apply(client, world)
     assert not _active(db_session, stale) and not _active(db_session, never)
     assert _active(db_session, fresh)
     assert sorted((r["email"], r["reason"]) for r in run["results"]) == [
@@ -338,14 +369,14 @@ def test_a_local_account_unused_for_90_days_is_disabled(client, db_session, worl
 def test_time_before_the_first_run_does_not_count(client, db_session, world, kc):
     """No last-use record yet: counted from the first sync run, so nobody goes on the first night."""
     old = _local(db_session, world, kc, "old@tn.local", created_days_ago=400)
-    run = _run_now(client, world)
+    run = _apply(client, world)
     assert _active(db_session, old) and run["results"] == []
 
 
 def test_break_glass_is_never_disabled(client, db_session, world, kc):
     _first_run_long_ago(db_session)
     bg = _local(db_session, world, kc, BREAK_GLASS, created_days_ago=1000, seen_days_ago=900, username=BREAK_GLASS)
-    run = _run_now(client, world)
+    run = _apply(client, world)
     assert _active(db_session, bg)
     assert run["counts"]["break_glass_kept"] == 1 and run["results"] == []
     # Nor by a nightly run, nor when it is also in no group (local accounts are not AD's to judge).
@@ -359,7 +390,7 @@ def test_break_glass_under_a_new_keycloak_id_is_not_removed(client, db_session, 
     bg = _person(db_session, world["a"].id, BREAK_GLASS, role=UserRole.admin, source="ad")
     kc.users["kc-new-id"] = DirectoryUser(id="kc-new-id", username=BREAK_GLASS, email=BREAK_GLASS, enabled=True,
                                           federated=False)
-    run = _run_now(client, world)
+    run = _apply(client, world)
     assert _active(db_session, bg) and run["results"] == [] and run["counts"]["break_glass_kept"] == 1
 
 
@@ -368,7 +399,7 @@ def test_without_a_break_glass_account_local_accounts_are_not_checked(client, db
     monkeypatch.delenv("TN_BOOTSTRAP_ADMIN_UPN", raising=False)
     _first_run_long_ago(db_session)
     stale = _local(db_session, world, kc, "old@tn.local", created_days_ago=300, seen_days_ago=200)
-    run = _run_now(client, world)
+    run = _apply(client, world)
     assert _active(db_session, stale)
     assert run["counts"]["local_not_checked_no_break_glass"] == 1
 
@@ -377,14 +408,27 @@ def test_a_directory_account_named_like_break_glass_follows_ad(client, db_sessio
     """Break-glass is the LOCAL account of that name; an AD account is judged by AD."""
     u = _person(db_session, world["a"].id, BREAK_GLASS)
     kc.ad(u, enabled=False)
-    _run_now(client, world)
+    _apply(client, world)
     assert not _active(db_session, u)
+
+
+def test_a_break_glass_name_that_is_only_an_ad_account_turns_the_90_day_rule_off(client, db_session, world, kc):
+    """The local administrator turned off (tn_keycloak_local_admin false) leaves the variable
+    naming an AD account: there is no break-glass, so local accounts are not checked."""
+    _first_run_long_ago(db_session)
+    del kc.users["kc-breakglass"]  # no local account of that name any more
+    ad_admin = _person(db_session, world["a"].id, BREAK_GLASS, role=UserRole.admin)
+    kc.ad(ad_admin, username=BREAK_GLASS)
+    stale = _local(db_session, world, kc, "old@tn.local", created_days_ago=300, seen_days_ago=200)
+    run = _apply(client, world)
+    assert _active(db_session, stale) and _active(db_session, ad_admin)
+    assert run["counts"]["local_not_checked_no_break_glass"] == 1
 
 
 def test_re_enabling_restarts_the_90_days(client, db_session, world, kc):
     _first_run_long_ago(db_session)
     stale = _local(db_session, world, kc, "old@tn.local", created_days_ago=300, seen_days_ago=120)
-    _run_now(client, world)
+    _apply(client, world)
     assert not _active(db_session, stale)
     act_as(world["admin"])
     r = client.patch(f"/users/{stale.id}", params={"is_active": True})
@@ -429,7 +473,7 @@ def test_a_dry_run_changes_nothing(client, db_session, world, kc, outbox, monkey
     monkeypatch.setenv("AD_STATUS_SYNC_DRY_RUN", "true")
     kc.ad(world["ann"], enabled=False)
     seq = _event(db_session, world).sequence
-    run = _run_now(client, world)
+    run = _apply(client, world)
     assert run["dry_run"] is True and run["status"] == "completed"
     assert [(r["email"], r["applied"]) for r in run["results"]] == [("ann@corp.test", False)]
     assert _active(db_session, world["ann"])
@@ -439,19 +483,54 @@ def test_a_dry_run_changes_nothing(client, db_session, world, kc, outbox, monkey
     assert db_session.query(AuditLog).filter(AuditLog.action == "ad_status_deactivate").count() == 0
 
 
+@pytest.mark.parametrize("override", [False, True])
+def test_while_dry_run_is_set_the_api_refuses_a_real_run(client, db_session, world, kc, monkeypatch, override):
+    """SHOULD 1: AD_STATUS_SYNC_DRY_RUN is the switch; no request turns it off, override or not."""
+    monkeypatch.setenv("AD_STATUS_SYNC_DRY_RUN", "true")
+    kc.ad(world["ann"], enabled=False)
+    act_as(world["admin"])
+    for _ in range(2):
+        r = client.post("/ad-status-sync/runs", json={"dry_run": False, "override_limit": override})
+        assert r.status_code == 409 and "AD_STATUS_SYNC_DRY_RUN" in r.text
+    assert _active(db_session, world["ann"])
+    assert db_session.query(AdStatusSyncRun).count() == 0
+
+
 def test_run_now_may_ask_for_a_dry_run_whatever_the_setting(client, db_session, world, kc):
     kc.ad(world["ann"], enabled=False)
-    run = _run_now(client, world, dry_run=True)
+    run = _apply(client, world, dry_run=True)
     assert run["dry_run"] is True and _active(db_session, world["ann"])
 
 
-def test_a_run_over_the_limit_is_held(client, db_session, world, kc, monkeypatch):
+def test_found_once_is_not_enough(client, db_session, world, kc):
+    """SHOULD 5: the first sighting is recorded and waits; the next run confirms it."""
+    kc.ad(world["ann"], enabled=False)
+    first = _run_now(client, world)
+    assert _active(db_session, world["ann"])
+    assert [(r["email"], r["applied"]) for r in first["results"]] == [("ann@corp.test", False)]
+    assert first["counts"]["awaiting_confirmation"] == 1
+    second = _run_now(client, world)
+    assert not _active(db_session, world["ann"]) and second["counts"]["deactivated"] == 1
+
+
+def test_a_user_missing_from_one_answer_keeps_their_account(client, db_session, world, kc):
+    """A page Keycloak skipped once: gone in one run, back in the next, never deactivated."""
+    ann = kc.users.pop(world["ann"].keycloak_id)
+    _run_now(client, world)
+    kc.users[ann.id] = ann
+    _run_now(client, world)
+    del kc.users[ann.id]
+    run = _run_now(client, world)  # gone again, but the run before found her: a first sighting again
+    assert _active(db_session, world["ann"]) and run["counts"]["awaiting_confirmation"] == 1
+
+
+def test_a_tenant_over_its_limit_is_held(client, db_session, world, kc, monkeypatch):
     monkeypatch.setenv("AD_STATUS_SYNC_MAX_FLOOR", "1")
     monkeypatch.setenv("AD_STATUS_SYNC_MAX_FRACTION", "0.1")
     kc.ad(world["ann"], enabled=False)
     kc.ad(world["bob"], enabled=False)
-    run = _run_now(client, world)
-    assert run["status"] == "held" and "nothing was changed" in run["error"]
+    run = _apply(client, world)
+    assert run["status"] == "held" and "nothing was changed in this tenant" in run["error"]
     assert _active(db_session, world["ann"]) and _active(db_session, world["bob"])
     assert all(not r["applied"] for r in run["results"])
     run = _run_now(client, world, override_limit=True)
@@ -459,19 +538,75 @@ def test_a_run_over_the_limit_is_held(client, db_session, world, kc, monkeypatch
     assert not _active(db_session, world["ann"]) and not _active(db_session, world["bob"])
 
 
+def test_lti_and_roster_padding_does_not_dilute_the_limit(client, db_session, world, kc, monkeypatch):
+    """B2: the denominator is accounts a rule could deactivate. Fifty LTI Students (and roster
+    rows) must not turn 2 of 6 directory accounts into 2 of 66."""
+    monkeypatch.setenv("AD_STATUS_SYNC_MAX_FLOOR", "1")
+    for i in range(50):
+        _person(db_session, world["a"].id, f"lti{i}@lms.test", source="lti")
+    for i in range(10):
+        _person(db_session, world["a"].id, f"roster{i}@corp.test", source="csv_import")
+    kc.ad(world["ann"], enabled=False)
+    kc.ad(world["bob"], enabled=False)
+    run = _apply(client, world)
+    assert run["status"] == "held"
+    assert run["counts"]["held_eligible"] == 6 and run["counts"]["examined"] == 66
+    assert _active(db_session, world["ann"]) and _active(db_session, world["bob"])
+
+
+def test_one_tenant_held_while_another_applies(client, db_session, world, kc, monkeypatch):
+    """B2 + SHOULD 7: held per tenant; each tenant's message shows its own numbers only."""
+    monkeypatch.setenv("AD_STATUS_SYNC_MAX_FLOOR", "1")
+    monkeypatch.setenv("AD_STATUS_SYNC_MAX_FRACTION", "0.1")
+    kc.ad(world["ann"], enabled=False)
+    kc.ad(world["bob"], enabled=False)
+    kc.ad(world["b_kim"], enabled=False)
+    service.run_nightly(db_session, kc, now=PREV_NIGHT)
+    service.run_nightly(db_session, kc, now=NIGHT)
+    assert _active(db_session, world["ann"]) and _active(db_session, world["bob"])  # tenant a: held
+    assert not _active(db_session, world["b_kim"])  # tenant b: 1 of 2, applied
+    act_as(world["admin"])
+    a_view = client.get("/ad-status-sync").json()["latest"]
+    assert a_view["status"] == "held" and "would deactivate 2 of the 6 accounts" in a_view["error"]
+    act_as(world["b_admin"])
+    b_view = client.get("/ad-status-sync").json()["latest"]
+    assert b_view["status"] == "completed" and b_view["error"] is None
+    assert b_view["counts"]["deactivated"] == 1 and "held" not in b_view["counts"]
+
+
+def test_a_small_tenant_cannot_lose_its_last_admin(client, db_session, world, kc):
+    """B2: never the tenant's last active admin, whatever the directory says."""
+    c = real_tenant(db_session, "adsync-c")
+    c_admin = _person(db_session, c.id, "chief@corp.test", role=UserRole.admin)
+    c_student = _person(db_session, c.id, "cara@corp.test")
+    kc.ad(c_admin, enabled=False)
+    kc.ad(c_student, enabled=False)
+    service.run_nightly(db_session, kc, now=PREV_NIGHT)
+    out = service.run_nightly(db_session, kc, now=NIGHT)
+    assert _active(db_session, c_admin) and not _active(db_session, c_student)
+    assert out.run.counts["by_tenant"][str(c.id)]["kept_last_admin"] == 1
+
+
+def test_a_small_tenant_cannot_be_emptied(client, db_session, world, kc):
+    """B2: the default floor is 3. A five-account tenant whose four Students all look disabled
+    is held, not emptied (a floor of 10 would have let all four go)."""
+    c = real_tenant(db_session, "adsync-small")
+    kc.ad(_person(db_session, c.id, "boss@corp.test", role=UserRole.admin))
+    students = [_person(db_session, c.id, f"s{i}@corp.test") for i in range(4)]
+    for s in students:
+        kc.ad(s, enabled=False)
+    service.run_nightly(db_session, kc, now=PREV_NIGHT)
+    out = service.run_nightly(db_session, kc, now=NIGHT)
+    assert all(_active(db_session, s) for s in students)
+    assert out.run.counts["by_tenant"][str(c.id)]["held"] == 1
+
+
 def test_keycloak_unreachable_fails_the_run_and_changes_nothing(client, db_session, world, kc):
     kc.ad(world["ann"], enabled=False)
+    _run_now(client, world)
     kc.fail = True
     run = _run_now(client, world)
     assert run["status"] == "failed" and "Keycloak" in run["error"]
-    assert _active(db_session, world["ann"])
-
-
-def test_no_tn_groups_in_keycloak_fails_the_run(client, db_session, world, kc, monkeypatch):
-    """A group mapper that brings nothing must not read as everyone leaving the TN-* groups."""
-    monkeypatch.setattr(FakeDirectory, "snapshot", lambda self, prefix: DirectorySnapshot(users=dict(self.users)))
-    run = _run_now(client, world)
-    assert run["status"] == "failed" and "no group named TN-*" in run["error"]
     assert _active(db_session, world["ann"])
 
 
@@ -494,8 +629,8 @@ def test_one_nightly_run_per_night_whatever_the_replicas(db_session, world, kc):
 
 def test_a_replica_with_a_stale_view_deactivates_nothing_twice(db_session, world, kc, outbox):
     kc.ad(world["ann"], enabled=False)
-    snap = kc.snapshot("TN-")
-    stale_plan = service.plan(db_session, snap, NIGHT, None)  # replica B read before A applied
+    service.run_nightly(db_session, kc, now=PREV_NIGHT)  # the first sighting
+    stale_plan = service.plan(db_session, kc.snapshot(), NIGHT, None)  # replica B read before A applied
     service.run_nightly(db_session, kc, now=NIGHT)  # replica A
     seq = _event(db_session, world).sequence
     b = service.claim(db_session, "manual:b", "manual", tenant_id=None, actor_id=None, dry_run=False, now=NIGHT)
@@ -511,6 +646,7 @@ def test_a_replica_with_a_stale_view_deactivates_nothing_twice(db_session, world
 def test_a_nightly_run_covers_every_tenant(db_session, world, kc):
     kc.ad(world["ann"], enabled=False)
     kc.ad(world["b_kim"], enabled=False)
+    service.run_nightly(db_session, kc, now=PREV_NIGHT)
     out = service.run_nightly(db_session, kc, now=NIGHT)
     assert not _active(db_session, world["ann"]) and not _active(db_session, world["b_kim"])
     assert out.run.counts["by_tenant"][str(world["b"].id)]["deactivated"] == 1
@@ -529,8 +665,9 @@ def test_only_admins(client, world, who):
 def test_run_now_is_the_callers_tenant_only(client, db_session, world, kc):
     kc.ad(world["ann"], enabled=False)
     kc.ad(world["b_kim"], enabled=False)
-    run = _run_now(client, world, who="b_admin")
+    run = _apply(client, world, who="b_admin")
     assert [r["email"] for r in run["results"]] == ["kim@corp.test"]
+    assert not _active(db_session, world["b_kim"])
     assert _active(db_session, world["ann"])  # tenant a's account untouched
     # Tenant a's admin does not see tenant b's manual run.
     act_as(world["admin"])
@@ -541,6 +678,7 @@ def test_run_now_is_the_callers_tenant_only(client, db_session, world, kc):
 def test_a_nightly_run_shows_each_tenant_only_its_own_accounts(client, db_session, world, kc):
     kc.ad(world["ann"], enabled=False)
     kc.ad(world["b_kim"], enabled=False)
+    service.run_nightly(db_session, kc, now=PREV_NIGHT)
     service.run_nightly(db_session, kc, now=NIGHT)
     act_as(world["b_admin"])
     body = client.get("/ad-status-sync").json()
@@ -560,8 +698,6 @@ def test_the_keycloak_reader_never_writes():
          "federationLink": "ldap-1" if i < 600 else None}
         for i in range(601)  # two pages of users
     ]
-    groups = [{"id": "g1", "name": "TN-Students"}, {"id": "g2", "name": "TN-Instructors"},
-              {"id": "g3", "name": "Other-TN-Thing"}]
 
     def handler(req: httpx.Request) -> httpx.Response:
         seen.append(req)
@@ -571,27 +707,19 @@ def test_the_keycloak_reader_never_writes():
         first, mx = int(req.url.params.get("first", 0)), int(req.url.params.get("max", 100))
         if path.endswith("/users"):
             return httpx.Response(200, json=users[first:first + mx])
-        if path.endswith("/groups"):
-            return httpx.Response(200, json=groups if first == 0 else [])
-        if path.endswith("/g1/members"):
-            return httpx.Response(200, json=[{"id": "u1"}, {"id": "u2"}] if first == 0 else [])
-        if path.endswith("/g2/members"):
-            return httpx.Response(200, json=[{"id": "u5"}] if first == 0 else [])
-        if path.endswith("/g3/members"):
-            return httpx.Response(200, json=[{"id": "u9"}])
         return httpx.Response(404)
 
     reader = KeycloakDirectoryReader(
         client=httpx.Client(transport=httpx.MockTransport(handler)),
         cfg={"base": "http://kc/auth", "realm": "truenorth", "client_id": "api", "client_secret": "s"},
     )
-    snap = reader.snapshot("TN-")
+    snap = reader.snapshot()
     assert len(snap.users) == 601 and snap.users["u3"].enabled is False
     assert snap.users["u1"].federated and not snap.users["u600"].federated
-    assert snap.in_tn_group == {"u1", "u2", "u5"} and sorted(snap.groups_found) == ["TN-Instructors", "TN-Students"]
+    assert [u.id for u in snap.by_email("U5@corp.test")] == ["u5"]  # one index, any case
     writes = [(r.method, r.url.path) for r in seen if r.method != "GET"]
     assert writes == [("POST", "/auth/realms/truenorth/protocol/openid-connect/token")]
-    assert all("/admin/realms/truenorth/" in r.url.path for r in seen if r.method == "GET")
+    assert all(r.url.path == "/auth/admin/realms/truenorth/users" for r in seen if r.method == "GET")  # no /groups
 
 
 def test_the_keycloak_reader_stops_on_any_error():
@@ -605,7 +733,7 @@ def test_the_keycloak_reader_stops_on_any_error():
         cfg={"base": "http://kc/auth", "realm": "truenorth", "client_id": "api", "client_secret": "s"},
     )
     with pytest.raises(DirectoryUnavailableError):
-        reader.snapshot("TN-")
+        reader.snapshot()
 
 
 def test_a_run_through_the_api_sends_no_keycloak_write(client, db_session, world, kc):
@@ -623,10 +751,6 @@ def test_a_run_through_the_api_sends_no_keycloak_write(client, db_session, world
             rows = [{"id": u.id, "username": u.username, "email": u.email, "enabled": u.id != world["ann"].keycloak_id,
                      "federationLink": "ldap"} for u in by_id.values()]
             return httpx.Response(200, json=rows[first:first + 500])
-        if p.endswith("/groups"):
-            return httpx.Response(200, json=[{"id": "g", "name": "TN-Students"}] if first == 0 else [])
-        if p.endswith("/members"):
-            return httpx.Response(200, json=[{"id": i} for i in kc.in_group] if first == 0 else [])
         return httpx.Response(404)
 
     reader = KeycloakDirectoryReader(
@@ -634,7 +758,7 @@ def test_a_run_through_the_api_sends_no_keycloak_write(client, db_session, world
         cfg={"base": "http://kc/auth", "realm": "truenorth", "client_id": "api", "client_secret": "s"},
     )
     fastapi_app.dependency_overrides[sync_router.directory_reader] = lambda: reader
-    run = _run_now(client, world)
+    run = _apply(client, world)
     assert [r["email"] for r in run["results"]] == ["ann@corp.test"]
     assert {r.method for r in seen} == {"GET", "POST"}
-    assert [r.url.path for r in seen if r.method == "POST"] == ["/auth/realms/truenorth/protocol/openid-connect/token"]
+    assert {r.url.path for r in seen if r.method == "POST"} == {"/auth/realms/truenorth/protocol/openid-connect/token"}
