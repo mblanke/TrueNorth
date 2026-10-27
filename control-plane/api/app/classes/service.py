@@ -423,6 +423,16 @@ def approve_addition(db: Session, cls: Class, entry: RollCallEntry, actor: Curre
     if no_room:
         raise HTTPException(409, {"message": "It still does not fit the class's approved sessions",
                                   "reasons": no_room})
+    # Claim it by the status it was read with, as reinstate does: a removal (or a rejection)
+    # that landed meanwhile is never undone by putting the Student back.
+    claimed = (
+        db.query(RollCallEntry)
+        .filter(RollCallEntry.id == entry.id, RollCallEntry.status == RollCallStatus.pending.value)
+        .update({RollCallEntry.status: RollCallStatus.invited.value}, synchronize_session=False)
+    )
+    if claimed != 1:
+        raise HTTPException(409, "This addition changed at the same moment (removed or rejected); reload")
+    db.refresh(entry)
     put_on_roll_call(db, cls, entry, account)
     taken = sessions.take_seats(db, cls, 1)
     onboard = entry.status == RollCallStatus.invited.value and entry.onboarding_sent_at is None

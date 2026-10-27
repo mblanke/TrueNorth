@@ -396,7 +396,27 @@ def _reseat(db: Session, cls: Class, seats: int, sign: int) -> list[ScheduledEve
     Students on the roll call now, under the booking lock, so no addition, removal or
     forfeit can leave it drifting from the roll call. Any other session moves by its seat
     cost (nothing, for a collective one). Its SEQUENCE goes up: a Student who left and came
-    back may hold an older CANCEL of it."""
+    back may hold an older CANCEL of it.
+
+    **Lock order.** Two orders meet here:
+
+    - remove and forfeit write the roll-call row first (a guarded status update), then
+      take the booking lock (``serialize_bookings``, here);
+    - add, reinstate and approve-an-addition take the booking lock first
+      (``room_for_seats``), then write the row.
+
+    These cannot deadlock on the same entry, because the status guards keep their rows apart:
+    - remove and forfeit only update an entry that is *on* the roll call: invited, signed in,
+      or ready (forfeit: invited only);
+    - add writes a *new* or *removed* entry;
+    - reinstate writes a *forfeited* one, and approve writes a *pending* one, each claimed by
+      that status.
+
+    A transaction that holds the row lock of an entry in one state never waits on the
+    booking lock held by a transaction that needs that same row in the other state: the
+    second finds the status changed and refuses (409) or skips. Every path also takes the
+    booking lock at most once, and nothing waits on it while it holds another roll-call
+    row it locked."""
     db.flush()  # the roll-call change itself, before it is counted
     sessions = approved_sessions(db, cls)
     if any(mode_of(db, e) == RangeMode.individual for e in sessions):

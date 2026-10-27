@@ -1091,6 +1091,72 @@ def test_r9_the_teardown_pass_pages_past_its_page_size(client, db_session, world
     assert len(_destroy_ops(db_session, rows)) == 3
 
 
+def test_a_bookings_one_after_another_in_the_class_span_count_at_their_peak(client, db_session, world):
+    """Re-review of 34a095ff: checking up to the class's end must compare against the peak
+    over that span, not the sum of everything in it. Tue 50 and Wed 50 never run at once:
+    with the class's 12 the peak is 62 of 100, so the class is approved, grows, and an
+    approver lets a waiting addition in once there is room at the peak."""
+    assert _plain(client, world, TUE, 3, 50).status_code == 201
+    assert _plain(client, world, TUE + timedelta(days=1), 3, 50).status_code == 201
+    ev = _approve(client, world, _book(client, world, mode="individual", name="Mon"))
+    act_as(world["lead"])
+    r = client.post(f"/classes/{world['cid']}/roll-call", json={"emails": ["dan@corp.test"]})
+    assert [e["email"] for e in r.json()["added"]] == ["dan@corp.test"]  # 66 at the peak: automatic
+    assert _evt(db_session, ev).vcpu_total == 16
+    thu = _plain(client, world, TUE + timedelta(days=2), 3, 82)  # Thu: 82 + 16 = 98, a seat more is 102
+    assert thu.status_code == 201
+    act_as(world["lead"])
+    r = client.post(f"/classes/{world['cid']}/roll-call", json={"emails": ["fay@corp.test"]})
+    assert r.json()["added"] == [] and len(r.json()["pending_approval"]) == 1  # the peak is Thursday now
+    act_as(world["admin"])
+    assert client.post(f"/schedule/events/{thu.json()['id']}/cancel").status_code == 200
+    fay = db_session.query(RollCallEntry).filter_by(email="fay@corp.test").one()
+    r = client.post(f"/classes/{world['cid']}/roll-call/{fay.id}/approve")
+    assert r.status_code == 200, r.text  # 70 at the peak
+    assert _evt(db_session, ev).vcpu_total == 20
+
+
+def test_approving_an_addition_never_undoes_a_removal_made_meanwhile(client, db_session, world):
+    """The approver read the addition as pending; the lead took it off at the same moment.
+    The approval claims the entry by its status, so it is 409, not a Student put back."""
+    from app.classes import service as class_service
+    from fastapi import HTTPException
+
+    _approve(client, world, _book(client, world, mode="individual"))
+    db_session.add(ScheduledEvent(name="big", state=EventState.scheduled, tenant_id=world["b"].id, start_time=MON,
+                                  end_time=MON + timedelta(hours=3), vcpu_total=86))
+    db_session.commit()
+    act_as(world["lead"])
+    client.post(f"/classes/{world['cid']}/roll-call", json={"emails": ["dan@corp.test"]})
+    entry = db_session.query(RollCallEntry).filter_by(email="dan@corp.test").one()
+    assert entry.status == "pending"
+    db_session.query(ScheduledEvent).filter(ScheduledEvent.name == "big").delete()  # room now
+    db_session.query(RollCallEntry).filter(RollCallEntry.id == entry.id).update(
+        {RollCallEntry.status: "removed"}, synchronize_session=False)  # the lead's removal, unseen
+    with pytest.raises(HTTPException) as exc:
+        class_service.approve_addition(db_session, _cls(db_session, world), entry, world["admin"])
+    assert exc.value.status_code == 409
+    db_session.expire_all()
+    assert db_session.get(RollCallEntry, entry.id).status == "removed"
+
+
+def test_the_next_free_slot_agrees_with_approval_over_the_class_span(client, db_session, world):
+    """When a class session does not fit, the slot the approver is offered is one that would
+    then be approved: screened over the same span (to the class's end) at its peak."""
+    _plain(client, world, MON - timedelta(hours=1), 5, 95)  # Monday 08:00-13:00 is full
+    _plain(client, world, TUE, 3, 50)  # then 50 on Tuesday and 50 on Wednesday: never at once
+    _plain(client, world, TUE + timedelta(days=1), 3, 50)
+    ev = _book(client, world, mode="individual", name="Mon")
+    act_as(world["admin"])
+    r = client.post(f"/schedule/events/{ev['id']}/approve")
+    assert r.status_code == 409
+    nxt = r.json()["detail"]["next_free"]
+    assert nxt is not None
+    r = client.post(f"/schedule/events/{ev['id']}/propose", json={"start_time": nxt["start_time"],
+                                                                  "end_time": nxt["end_time"]})
+    assert r.status_code == 200, r.text
+
+
 def test_r8_a_forfeit_leaves_the_teams_the_rosters_and_the_size(client, db_session, world, dispatched):
     """#280's forfeit clock: the Student leaves the teams of sessions not started, the
     exercise rosters, and the individual session's size is taken again from the roll call."""

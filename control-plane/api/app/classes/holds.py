@@ -64,8 +64,6 @@ def kind_of(mode: str) -> str:
 
 def holds(db: Session, start: datetime, end: datetime) -> list[Hold]:
     """Every class hold that meets [start, end). Cluster-wide, like the bookings it replaces."""
-    from .sessions import active_seats
-
     start, end = _aware(start), _aware(end)
     since = (start - TEARDOWN_GRACE - timedelta(days=1)).date()
     # tenant-safe: the capacity view is cluster-wide; it returns totals only, never rows.
@@ -82,31 +80,68 @@ def holds(db: Session, start: datetime, end: datetime) -> list[Hold]:
         )
         .all()
     )
+    if not rows:
+        return []
+    # Everything else in four queries per call, whatever the number of classes: their ranges,
+    # their seats, and the templates' sizes.
+    class_ids = {cls.id for _, _, cls in rows}
+    ranges = db.query(ClassRange.class_id, ClassRange.kind, ClassRange.template_id, ClassRange.range_id,
+                      ClassRange.torn_down_at).filter(ClassRange.class_id.in_(class_ids),
+                                                      ClassRange.range_id.isnot(None)).all()
+    owned = {(cid, rid) for cid, _, _, rid, _ in ranges}
+    live: dict[tuple, set[uuid.UUID]] = {}
+    for cid, kind, tid, rid, gone in ranges:
+        if gone is None:
+            live.setdefault((cid, kind, tid), set()).add(rid)
     groups: dict[tuple, list] = {}
     classes: dict[uuid.UUID, Class] = {}
     for evt, link, cls in rows:
-        if not _uses_class_ranges(db, cls, link, evt):
-            continue
+        own = link.range_mode == RangeMode.individual.value or evt.range_id is None or (cls.id, evt.range_id) in owned
+        if not own:
+            continue  # a collective session on a range of its own (fixed, or an exercise's)
         classes[cls.id] = cls
         groups.setdefault((cls.id, kind_of(link.range_mode), evt.template_id), []).append(evt)
+    if not groups:
+        return []
+    seats = _seats_by_class(db, classes)
+    sizes = _template_sizes(db, {tid for _, _, tid in groups})
     out: list[Hold] = []
-    sizes: dict[uuid.UUID, Resources | None] = {}
     for key, events in groups.items():
         cls_id, kind, template_id = key
         cls = classes[cls_id]
         approved = [e for e in events if e.state in HOLDING]
         first = min(_aware(e.start_time) for e in (approved or events)) - PROVISION_LEAD
         last = max([last_day_end(cls.end_date), *(_aware(e.end_time) for e in events)]) + TEARDOWN_GRACE
-        if not (first < end and last > start):
+        one = sizes.get(template_id)
+        if one is None or not (first < end and last > start):
             continue
-        if template_id not in sizes:
-            sizes[template_id] = _template_size(db, template_id)
-        one = sizes[template_id]
-        if one is None:
-            continue
-        n = active_seats(db, cls) if kind == ClassRangeKind.seat.value else 1
+        n = seats.get(cls_id, 0) if kind == ClassRangeKind.seat.value else 1
         out.append(Hold(key, first, last, Resources(one.vcpu * n, one.ram_mb * n, one.disk_gb * n),
-                        _live_ranges(db, cls, kind, template_id), {e.id for e in events}))
+                        live.get(key, set()), {e.id for e in events}))
+    return out
+
+
+def _seats_by_class(db: Session, classes: dict[uuid.UUID, Class]) -> dict[uuid.UUID, int]:
+    """Students on each class's roll call now (``sessions.active_seats``), in one query."""
+    from sqlalchemy import func
+
+    from .models import OFF_ROLL_CALL, RollCallEntry
+
+    rows = (
+        db.query(RollCallEntry.class_id, RollCallEntry.tenant_id, func.count(RollCallEntry.id))
+        .filter(RollCallEntry.class_id.in_(list(classes)), RollCallEntry.status.notin_(OFF_ROLL_CALL))
+        .group_by(RollCallEntry.class_id, RollCallEntry.tenant_id)
+        .all()
+    )
+    return {cid: n for cid, tid, n in rows if classes[cid].tenant_id == tid}
+
+
+def _template_sizes(db: Session, template_ids: set[uuid.UUID]) -> dict[uuid.UUID, Resources]:
+    out = {}
+    for tid, yaml in db.query(Template.id, Template.yaml).filter(Template.id.in_(template_ids)):
+        d = template_demand(yaml) if yaml else None
+        if d is not None:
+            out[tid] = Resources(d.vcpu, d.ram_mb, d.disk_gb)
     return out
 
 
@@ -144,19 +179,3 @@ def _uses_class_ranges(db: Session, cls: Class, link: ClassSession, evt: Schedul
         .first()
         is not None
     )
-
-
-def _template_size(db: Session, template_id: uuid.UUID) -> Resources | None:
-    yaml = db.query(Template.yaml).filter(Template.id == template_id).scalar()
-    d = template_demand(yaml) if yaml else None
-    return Resources(d.vcpu, d.ram_mb, d.disk_gb) if d else None
-
-
-def _live_ranges(db: Session, cls: Class, kind: str, template_id: uuid.UUID) -> set[uuid.UUID]:
-    return {
-        rid
-        for (rid,) in db.query(ClassRange.range_id).filter(
-            ClassRange.class_id == cls.id, ClassRange.tenant_id == cls.tenant_id, ClassRange.kind == kind,
-            ClassRange.template_id == template_id, ClassRange.range_id.isnot(None), ClassRange.torn_down_at.is_(None),
-        )
-    }

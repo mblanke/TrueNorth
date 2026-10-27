@@ -101,13 +101,48 @@ def assess(
     end: datetime,
     need: Resources,
     exclude_id: uuid.UUID | None = None,
+    *,
+    peak: bool = False,
 ) -> Assessment:
-    """Would a booking for [start, end) fit? Counts its provisioning lead and teardown grace."""
+    """Would a booking for [start, end) fit? Counts its provisioning lead and teardown grace.
+
+    ``peak`` (a span up to a class's end, which may run for days): compare against the most
+    committed at any 15-minute slice of it, not everything in it added up. Bookings on
+    different days of the week never run at once."""
     held_start, held_end = held_window(start, end)
     supply = provider.supply()
-    committed = provider.committed(db, held_start, held_end, exclude_id)
+    if peak:
+        committed = peak_committed(db, provider, held_start, held_end, exclude_id)
+    else:
+        committed = provider.committed(db, held_start, held_end, exclude_id)
     free = available(supply, committed.resources)
     return Assessment(supply, committed, free, shortfalls(need, free, held_start, held_end))
+
+
+def _slices(start: datetime, end: datetime) -> list[tuple[datetime, datetime]]:
+    start, end = as_utc(start), as_utc(end)
+    out, t = [], start
+    while t < end:
+        out.append((t, min(t + SLOT_STEP, end)))
+        t += SLOT_STEP
+    return out
+
+
+def _max(rows: list[Committed]) -> Committed:
+    if not rows:
+        return Committed(Resources(), 0, 0)
+    return Committed(
+        Resources(max(c.resources.vcpu for c in rows), max(c.resources.ram_mb for c in rows),
+                  max(c.resources.disk_gb for c in rows)),
+        max(c.events for c in rows), max(c.ranges for c in rows),
+    )
+
+
+def peak_committed(
+    db: Session, provider: CapacityProvider, start: datetime, end: datetime, exclude_id: uuid.UUID | None = None
+) -> Committed:
+    """The most committed, resource by resource, at any 15-minute slice of [start, end)."""
+    return _max(provider.committed_many(db, _slices(start, end), exclude_id))
 
 
 def enforce(db: Session, assessment: Assessment) -> list[str]:
@@ -151,7 +186,9 @@ def fit(db: Session, provider: CapacityProvider, evt: ScheduledEvent, start: dat
     clash = conflicts(
         db, start=start, end=end, range_id=evt.range_id, instructor_id=evt.instructor_id, exclude_id=evt.id
     )
-    return Fit(clash, assess(db, provider, start, until_class_end(db, evt, end), need_of(evt), exclude_id=evt.id))
+    span_end = until_class_end(db, evt, end)
+    extended = as_utc(span_end) > as_utc(end)
+    return Fit(clash, assess(db, provider, start, span_end, need_of(evt), exclude_id=evt.id, peak=extended))
 
 
 def until_class_end(db: Session, evt: ScheduledEvent, end: datetime) -> datetime:
@@ -202,7 +239,7 @@ def next_free_slot(
         t += SLOT_STEP
     need = need_of(evt)
     supply = provider.supply()
-    committed = provider.committed_many(db, [held_window(c, c + length) for c in candidates], evt.id)
+    committed = _screen(db, provider, evt, candidates, length)
     blocked = _blocked_spans(db, evt, first, horizon + length)
     windows = maintenance_spans(db, evt, first - PROVISION_LEAD, horizon + length)
     for c, com in zip(candidates, committed, strict=True):
@@ -215,6 +252,28 @@ def next_free_slot(
         if fit(db, provider, evt, c, c + length).ok:
             return (c, c + length), horizon
     return None, horizon
+
+
+def _screen(
+    db: Session, provider: CapacityProvider, evt: ScheduledEvent, candidates: list[datetime], length: timedelta
+) -> list[Committed]:
+    """What each candidate start would see committed, as ``fit`` would judge it: over its held
+    window; for a class session that uses its class's ranges, over the span to the class's
+    end at its peak (``assess(peak=True)``), read once as 15-minute slices."""
+    from ..classes import holds
+
+    last = holds.class_end(db, evt)
+    if last is None or not candidates:
+        return provider.committed_many(db, [held_window(c, c + length) for c in candidates], evt.id)
+    last = as_utc(last)
+    lo = candidates[0] - PROVISION_LEAD
+    slices = _slices(lo, max(last, candidates[-1] + length) + TEARDOWN_GRACE)
+    per = provider.committed_many(db, slices, evt.id)
+    out = []
+    for c in candidates:
+        a, z = held_window(c, max(c + length, last))
+        out.append(_max([com for (s0, s1), com in zip(slices, per, strict=True) if s0 < z and s1 > a]))
+    return out
 
 
 def maintenance_spans(db: Session, evt: ScheduledEvent, start: datetime, end: datetime) -> list[tuple[datetime, datetime]]:
@@ -722,7 +781,8 @@ def room_for(db: Session, evt: ScheduledEvent, extra: Resources) -> list[str]:
     if extra == Resources():
         return []
     end = until_class_end(db, evt, as_utc(evt.end_time))
-    a = assess(db, get_capacity_provider(db), max(as_utc(evt.start_time), datetime.now(UTC)), end, extra)
+    a = assess(db, get_capacity_provider(db), max(as_utc(evt.start_time), datetime.now(UTC)), end, extra,
+               peak=end > as_utc(evt.end_time))
     return [f"'{evt.name}': {r}" for r in a.reasons]
 
 
