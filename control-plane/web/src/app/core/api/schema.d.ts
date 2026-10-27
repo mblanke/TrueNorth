@@ -17715,7 +17715,7 @@ export interface components {
             comment?: string | null;
             /**
              * Course Passed
-             * @description Graded course work at or above the pass mark; None: none
+             * @description Every graded module at or above its own pass threshold, unattempted ones failing; None: no graded result yet, or the course has no graded module
              */
             course_passed?: boolean | null;
             /**

@@ -52,7 +52,7 @@ describe('close-out helpers', () => {
     const s = CLOSEOUT.students[0];
     expect(courseStanding(s, true)).toBe('Passed (90%)');
     expect(courseStanding({ ...s, course_percent: null }, false)).toBe('Passed');
-    expect(courseStanding({ ...s, course_passed: null }, true)).toBe('No graded work');
+    expect(courseStanding({ ...s, course_passed: null }, true)).toBe('No graded result yet');
   });
 });
 

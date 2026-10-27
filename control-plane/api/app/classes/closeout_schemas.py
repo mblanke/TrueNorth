@@ -90,7 +90,9 @@ class StandingOut(BaseModel):
     present: int
     excused: int
     absent: int
-    course_passed: bool | None = Field(None, description="Graded course work at or above the pass mark; None: none")
+    course_passed: bool | None = Field(None, description=(
+        "Every graded module at or above its own pass threshold, unattempted ones failing; "
+        "None: no graded result yet, or the course has no graded module"))
     course_percent: float | None = Field(None, description="Never on an Unclassified deployment")
     detections_credited: int | None = Field(None, description="Never on an Unclassified deployment")
     suggested: ResultOutcomeOut

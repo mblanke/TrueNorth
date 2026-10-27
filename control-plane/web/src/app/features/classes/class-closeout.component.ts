@@ -46,7 +46,7 @@ export function toResults(drafts: Record<string, ResultDraft>): ResultIn[] {
 
 /** How a Student stands on their course work: a number only where the deployment allows it. */
 export function courseStanding(s: Standing, numbers: boolean): string {
-  if (s.course_passed === null || s.course_passed === undefined) return 'No graded work';
+  if (s.course_passed === null || s.course_passed === undefined) return 'No graded result yet';
   const verdict = s.course_passed ? 'Passed' : 'Below the mark';
   return numbers && s.course_percent !== null && s.course_percent !== undefined
     ? `${verdict} (${s.course_percent}%)` : verdict;
