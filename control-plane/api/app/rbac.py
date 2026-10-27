@@ -146,6 +146,10 @@ class Permission(str, Enum):
     # assistants and observers read it; a Student sees only a class they are on.
     CLASS_CREATE = "class:create"
     CLASS_READ = "class:read"
+    # The unit readiness page (ADR 0014 decision 7, app/classes/readiness.py): every class of
+    # the caller's own tenant, its enrolment, attendance, results and qualifications earned.
+    # Read-only. Observers (the commander), instructors and admins; never Students.
+    READINESS_READ = "readiness:read"
 
     # Tenant management
     TENANT_CREATE = "tenant:create"
@@ -218,6 +222,7 @@ ROLE_PERMISSIONS: dict[UserRole, set[Permission]] = {
         # Classes: the lead of their own classes; assistant or observer on others'.
         Permission.CLASS_CREATE,
         Permission.CLASS_READ,
+        Permission.READINESS_READ,
         # Users
         Permission.USER_READ,
         # Trainee intake: instructors drain the approval queue for their cohort.
@@ -309,6 +314,8 @@ ROLE_PERMISSIONS: dict[UserRole, set[Permission]] = {
         Permission.AAR_READ,
         Permission.SCHEDULE_READ,
         Permission.CLASS_READ,
+        # The unit readiness page: commander = observer + this page (ADR 0014 decision 7).
+        Permission.READINESS_READ,
         Permission.TELEMETRY_READ,
         Permission.WIKI_READ,
     },

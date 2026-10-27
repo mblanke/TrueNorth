@@ -7505,6 +7505,69 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/readiness": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The unit readiness page: classes, enrolment, attendance, results and qualifications
+         * @description The caller's own tenant only. Pass, fail or incomplete with the instructor's comment;
+         *     never a score.  **readiness:read**
+         */
+        get: operations["getUnitReadiness"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/readiness/export.csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The unit readiness page as CSV
+         * @description One row per Student per class; cells a spreadsheet would run as a formula are
+         *     defused. Audited (``readiness_export``).  **readiness:read**
+         */
+        get: operations["exportUnitReadinessCsv"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/readiness/export.pdf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The unit readiness page as PDF
+         * @description Rendered with the AAR's PDF machinery (fpdf2). Audited (``readiness_export``).
+         *     **readiness:read**
+         */
+        get: operations["exportUnitReadinessPdf"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/registration": {
         parameters: {
             query?: never;
@@ -16621,6 +16684,165 @@ export interface components {
             /** Name */
             name?: string;
         };
+        /** ReadinessClassOut */
+        ReadinessClassOut: {
+            /** Awaiting Result */
+            awaiting_result: number;
+            /**
+             * Class Id
+             * Format: uuid
+             */
+            class_id: string;
+            /** Closed At */
+            closed_at?: string | null;
+            /**
+             * Course Id
+             * Format: uuid
+             */
+            course_id: string;
+            /** Course Name */
+            course_name: string;
+            /**
+             * End Date
+             * Format: date
+             */
+            end_date: string;
+            /**
+             * Enrolled
+             * @description Students on the roll call shown (forfeited seats included)
+             */
+            enrolled: number;
+            /** Failed */
+            failed: number;
+            /** Incomplete */
+            incomplete: number;
+            /** Name */
+            name: string;
+            /** Passed */
+            passed: number;
+            /**
+             * Qualification
+             * @description The NQual the course delivers, if any
+             */
+            qualification?: string | null;
+            /**
+             * Sessions Held
+             * @description Approved sessions that have ended
+             */
+            sessions_held: number;
+            /**
+             * Start Date
+             * Format: date
+             */
+            start_date: string;
+            /** Status */
+            status: string;
+            /** Students */
+            students: components["schemas"]["ReadinessStudentOut"][];
+        };
+        /** ReadinessQualificationOut */
+        ReadinessQualificationOut: {
+            /**
+             * Code
+             * @description The NQual granted
+             */
+            code: string;
+            /**
+             * Earned
+             * @description Passes, in the classes shown, on courses that deliver it
+             */
+            earned: number;
+            /**
+             * Qualification Id
+             * Format: uuid
+             */
+            qualification_id: string;
+            /** Title */
+            title: string;
+        };
+        /** ReadinessStudentOut */
+        ReadinessStudentOut: {
+            /** Absent */
+            absent: number;
+            /**
+             * Comment
+             * @description The instructor's comment on the result
+             */
+            comment?: string | null;
+            /** Decided At */
+            decided_at?: string | null;
+            /**
+             * Display Name
+             * @description None: on the roll call, never signed in
+             */
+            display_name?: string | null;
+            /** Email */
+            email: string;
+            /**
+             * Enrolment Status
+             * @description Their enrolment on the class's course, if any
+             */
+            enrolment_status?: string | null;
+            /**
+             * Entry Id
+             * Format: uuid
+             */
+            entry_id: string;
+            /** Excused */
+            excused: number;
+            /** @description The close-out result; None: not decided yet */
+            outcome?: components["schemas"]["ResultOutcomeOut"] | null;
+            /**
+             * Present
+             * @description Sessions recorded present
+             */
+            present: number;
+            /**
+             * Qualification Earned
+             * @description The course's qualification (NQual), when the result is a pass
+             */
+            qualification_earned?: string | null;
+            /** Roll Call Status */
+            roll_call_status: string;
+            /**
+             * Unit
+             * @description The Student's unit (users.unit); None when unknown
+             */
+            unit?: string | null;
+        };
+        /** ReadinessSummaryOut */
+        ReadinessSummaryOut: {
+            /** Absent */
+            absent: number;
+            /** Awaiting Result */
+            awaiting_result: number;
+            /** Classes */
+            classes: number;
+            /**
+             * Enrolments
+             * @description Places on the classes shown: one per Student per class
+             */
+            enrolments: number;
+            /** Excused */
+            excused: number;
+            /** Failed */
+            failed: number;
+            /** Incomplete */
+            incomplete: number;
+            /** Passed */
+            passed: number;
+            /** Present */
+            present: number;
+            /** Qualifications Earned */
+            qualifications_earned: number;
+            /** Sessions Held */
+            sessions_held: number;
+            /**
+             * Students
+             * @description Different people
+             */
+            students: number;
+        };
         /**
          * RegistrationApproveIn
          * @description The approval decision. Role and tenant are assigned HERE, not inferred.
@@ -18932,6 +19154,34 @@ export interface components {
              * @description On the roll call with no account yet: placed once they sign in
              */
             email: string;
+        };
+        /** UnitReadinessOut */
+        UnitReadinessOut: {
+            /** Classes */
+            classes: components["schemas"]["ReadinessClassOut"][];
+            /**
+             * Date From
+             * Format: date
+             */
+            date_from: string;
+            /**
+             * Date To
+             * Format: date
+             */
+            date_to: string;
+            /** Qualifications */
+            qualifications: components["schemas"]["ReadinessQualificationOut"][];
+            summary: components["schemas"]["ReadinessSummaryOut"];
+            /**
+             * Unit
+             * @description The unit filter applied; None: every unit
+             */
+            unit?: string | null;
+            /**
+             * Units
+             * @description The units of the Students on the classes in the date range
+             */
+            units: string[];
         };
         /** UrlIngestIn */
         UrlIngestIn: {
@@ -33270,6 +33520,114 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    getUnitReadiness: {
+        parameters: {
+            query?: {
+                /** @description Classes ending on or after this day (default: a year ago) */
+                date_from?: string | null;
+                /** @description Classes starting on or before this day (default: 90 days ahead) */
+                date_to?: string | null;
+                /** @description Only Students of this unit (case and spaces ignored) */
+                unit?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnitReadinessOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    exportUnitReadinessCsv: {
+        parameters: {
+            query?: {
+                /** @description Classes ending on or after this day (default: a year ago) */
+                date_from?: string | null;
+                /** @description Classes starting on or before this day (default: 90 days ahead) */
+                date_to?: string | null;
+                /** @description Only Students of this unit (case and spaces ignored) */
+                unit?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    exportUnitReadinessPdf: {
+        parameters: {
+            query?: {
+                /** @description Classes ending on or after this day (default: a year ago) */
+                date_from?: string | null;
+                /** @description Classes starting on or before this day (default: 90 days ahead) */
+                date_to?: string | null;
+                /** @description Only Students of this unit (case and spaces ignored) */
+                unit?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/pdf": string;
                 };
             };
             /** @description Validation Error */
