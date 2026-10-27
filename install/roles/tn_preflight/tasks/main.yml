@@ -130,8 +130,8 @@
 # missing; never prints a credential.
 - name: Preflight — alert email is complete
   vars:
-    _user: "{{ vault_alert_smtp_username | default('') | string | trim }}"
-    _pass: "{{ vault_alert_smtp_password | default('') | string | trim }}"
+    _user: "{{ tn_alert_smtp_username | default('') | string | trim }}"
+    _pass: "{{ tn_alert_smtp_password | default('') | string | trim }}"
     _missing: >-
       {{ ([] if tn_alert_email_to | default('') | string | trim | length > 0 else ['tn_alert_email_to'])
          + ([] if tn_alert_email_from | default('') | string | trim | length > 0 else ['tn_alert_email_from'])
@@ -146,12 +146,57 @@
       tn_alert_email_enabled is true, but alert email cannot be sent.
       {% if _missing | length > 0 %}Not set in the inventory: {{ _missing | join(', ') }}.{% endif %}
       {% if _user is search('CHANGE_ME') or _pass is search('CHANGE_ME') %}vault_alert_smtp_username /
-      vault_alert_smtp_password still read CHANGE_ME (ansible-vault edit inventory/group_vars/all/vault.yml).{% endif %}
+      vault_alert_smtp_password still read CHANGE_ME (ansible-vault edit inventory/group_vars/all/vault.yml;
+      remove both to use the app's tn_smtp_username / vault_smtp_password).{% endif %}
       {% if (_user | length > 0) != (_pass | length > 0) %}Set both vault_alert_smtp_username and
-      vault_alert_smtp_password, or empty both for a relay without authentication.{% endif %}
+      vault_alert_smtp_password (without them: tn_smtp_username and vault_smtp_password),
+      or empty both for a relay without authentication.{% endif %}
       Or set tn_alert_email_enabled: false (alerts are then NOT delivered; install/README.md "Alerting").
     quiet: true
   when: tn_alert_email_enabled | default(false) | bool
+
+# App email (tn_smtp_*; install/README.md "Email (SMTP)"). Optional: an empty tn_smtp_host
+# passes (nothing is sent; admins see a banner). With a host, what the app needs to send
+# must be sound, so a typo fails here and not silently at the first roll call. Never prints
+# the password.
+- name: Preflight — app email (SMTP) settings are usable
+  vars:
+    _host: "{{ tn_smtp_host | default('') | string | trim }}"
+    _port: "{{ tn_smtp_port | default('') | string | trim }}"
+    _security: "{{ tn_smtp_security | default('starttls') | string | trim }}"
+    _from: "{{ tn_smtp_from_address | default('') | string | trim }}"
+    _user: "{{ tn_smtp_username | default('') | string | trim }}"
+    _pass: "{{ vault_smtp_password | default('') | string }}"
+    _problems: >-
+      {{ ([] if _host is match('^[A-Za-z0-9._\\[\\]:-]+$') else ['tn_smtp_host must be a host name or address (no spaces, no scheme)'])
+         + ([] if _port is match('^[0-9]{1,5}$') and (_port | int) >= 1 and (_port | int) <= 65535
+            else ['tn_smtp_port must be a number from 1 to 65535'])
+         + ([] if _security in ['starttls', 'tls', 'none'] else ['tn_smtp_security must be starttls, tls or none'])
+         + ([] if _from is match('^[^@\\s<>"\'(),;:]+@[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$')
+            else ['tn_smtp_from_address must be a plain address such as truenorth@corp.example'])
+         + ([] if (_user | length > 0) == (_pass | length > 0)
+            else ['set both tn_smtp_username and vault_smtp_password, or neither for a relay without sign-in'])
+         + ([] if not (_security == 'none' and _user | length > 0)
+            else ['tn_smtp_security none would send the password in clear: use starttls or tls with a sign-in'])
+         + ([] if _pass is not search("['\n\r]") else ['vault_smtp_password may not contain a single quote or a line break'])
+         + ([] if _pass is not search('CHANGE_ME') else ['vault_smtp_password still reads CHANGE_ME']) }}
+  ansible.builtin.assert:
+    that: _problems | length == 0
+    fail_msg: >-
+      tn_smtp_host is set, but the app could not send email: {{ _problems | join('; ') }}.
+      Fix it in the inventory (password: ansible-vault edit inventory/group_vars/all/vault.yml),
+      or empty tn_smtp_host to install without email (install/README.md "Email (SMTP)").
+    success_msg: "app email: {{ _host }}:{{ _port }} ({{ _security }}) from {{ _from }}"
+    quiet: true
+  when: tn_smtp_host | default('') | string | trim | length > 0
+
+- name: Preflight — app email is off (nothing will be emailed)
+  ansible.builtin.debug:
+    msg: >-
+      tn_smtp_host is empty: roll-call onboarding emails, reminders, seat-forfeit notices
+      and calendar invites are NOT sent (only logged), and admins see a banner saying so.
+      Set tn_smtp_* to turn email on (install/README.md "Email (SMTP)").
+  when: tn_smtp_host | default('') | string | trim | length == 0
 
 # Supported: vsphere_api (ADR 0009) and mock. proxmox_api and hyperv are experimental and
 # the API and workers refuse them unless EXPERIMENTAL_PROVISIONERS is true; the Terraform

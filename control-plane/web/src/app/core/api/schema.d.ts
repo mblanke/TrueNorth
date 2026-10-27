@@ -2935,6 +2935,45 @@ export interface paths {
         patch: operations["update_ou_directory_ous__ou_id__patch"];
         trace?: never;
     };
+    "/email/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Whether the API sends email; the relay for the platform administrator only */
+        get: operations["getEmailStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/email/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send one test message to the platform administrator's own address
+         * @description The recipient is always the caller's own address: the body takes no recipient, so
+         *     this cannot be used to mail anyone else. Refused while email is not configured (409),
+         *     and more than once a minute per administrator (429). Every message sent is audited.
+         */
+        post: operations["sendTestEmail"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/exercise-forge/generate": {
         parameters: {
             query?: never;
@@ -12825,6 +12864,76 @@ export interface components {
             maps_to_critical_event?: string | null;
             /** Title */
             title: string;
+        };
+        /**
+         * EmailRelayOut
+         * @description The relay as configured. Shown to the platform administrator only.
+         */
+        EmailRelayOut: {
+            /** From Address */
+            from_address: string;
+            /** Host */
+            host: string;
+            /** Port */
+            port: number;
+            /**
+             * Security
+             * @description starttls | tls | none
+             */
+            security: string;
+            /**
+             * Signs In
+             * @description Whether a username and password are set (the password is never shown)
+             */
+            signs_in: boolean;
+            /**
+             * Username
+             * @description The account the API signs in as; empty: no sign-in
+             * @default
+             */
+            username?: string;
+        };
+        /**
+         * EmailStatusOut
+         * @description Whether the API sends email (roll-call onboarding, reminders, seat-forfeit notices,
+         *     calendar invites). Every signed-in user may ask; only the platform administrator sees
+         *     the relay.
+         */
+        EmailStatusOut: {
+            /**
+             * Can Send Test
+             * @description Whether the caller may POST /email/test
+             * @default false
+             */
+            can_send_test?: boolean;
+            /**
+             * Configured
+             * @description False: mail is only logged, nobody is emailed
+             */
+            configured: boolean;
+            /**
+             * Docs
+             * @description Where the installer's settings are described
+             * @default install/README.md, "Email (SMTP)"
+             */
+            docs?: string;
+            /** @description Platform administrator only */
+            relay?: components["schemas"]["EmailRelayOut"] | null;
+        };
+        /**
+         * EmailTestOut
+         * @description The outcome of a test message to the caller's own address.
+         */
+        EmailTestOut: {
+            /** Detail */
+            detail: string;
+            /**
+             * Sent
+             * @description The relay accepted it (delivery is proven only in the inbox)
+             */
+            sent: boolean;
+            /** To */
+            to: string;
         };
         /**
          * EmergencyTeardownIn
@@ -25282,6 +25391,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    getEmailStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmailStatusOut"];
+                };
+            };
+        };
+    };
+    sendTestEmail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmailTestOut"];
                 };
             };
         };

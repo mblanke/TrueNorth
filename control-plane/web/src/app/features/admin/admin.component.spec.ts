@@ -5,6 +5,8 @@ import { ApiService } from '@core/services/api.service';
 import { NotificationService } from '@core/services/notification.service';
 import { HealthResponse, Tenant } from '@core/models';
 import { AdminComponent } from './admin.component';
+import { EmailStatusService } from '@core/services/email-status.service';
+import { signal } from '@angular/core';
 
 describe('AdminComponent', () => {
   let fixture: ComponentFixture<AdminComponent>;
@@ -29,6 +31,8 @@ describe('AdminComponent', () => {
       providers: [
         { provide: ApiService, useValue: api },
         { provide: NotificationService, useValue: notify },
+        // The card's own spec covers it (email-settings-card.component.spec.ts).
+        { provide: EmailStatusService, useValue: { load: () => undefined, status: signal(null) } },
       ],
     }).compileComponents();
 
