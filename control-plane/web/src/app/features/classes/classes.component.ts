@@ -1,6 +1,7 @@
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { ActivatedRoute } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatChipsModule } from '@angular/material/chips';
@@ -345,6 +346,8 @@ export class ClassesComponent implements OnInit {
   private readonly records = inject(OperatorRecordsApiService);
   private readonly notify = inject(NotificationService);
   readonly auth = inject(AuthService);
+  /** `?class=<id>` opens that class's roll call (the calendar's Roll call link, #285). */
+  private readonly route = inject(ActivatedRoute, { optional: true });
 
   readonly classes = signal<ClassRecord[]>([]);
   readonly loading = signal(true);
@@ -371,7 +374,13 @@ export class ClassesComponent implements OnInit {
   load(): void {
     const source = this.auth.isAdmin() ? this.api.list() : this.api.mine();
     source.subscribe({
-      next: rows => { this.classes.set(rows); this.loading.set(false); },
+      next: rows => {
+        this.classes.set(rows);
+        this.loading.set(false);
+        const wanted = this.route?.snapshot.queryParamMap.get('class');
+        const hit = wanted && !this.selected() ? rows.find(c => c.id === wanted) : undefined;
+        if (hit) this.open(hit);
+      },
       error: err => { this.loading.set(false); this.notify.error(apiError(err)); },
     });
   }

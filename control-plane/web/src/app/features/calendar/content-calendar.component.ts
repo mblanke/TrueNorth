@@ -32,8 +32,8 @@ interface Day {
  * The calendar's Content view (ADR 0014 decisions 22-24, issue #286): all content on its
  * review-due date, coloured by theme, STALE items outlined in red with a clock; the
  * "Stale now" list; the selected item's clock, cycle, last review, what it depends on and
- * what uses it, and Mark reviewed / Assign reviewer / Retire. The Events tab is the
- * existing schedule for now (its redesign is #285).
+ * what uses it, and Mark reviewed / Assign reviewer / Retire. Its Events tab is
+ * /calendar/events (#285).
  */
 @Component({
   selector: 'tn-content-calendar',
@@ -50,7 +50,7 @@ interface Day {
         </div>
         <div class="controls">
           <nav class="segmented" aria-label="Calendar views">
-            <a routerLink="/schedule">Events</a>
+            <a routerLink="/calendar/events">Events</a>
             <span class="on" aria-current="page">Content</span>
           </nav>
           <div class="pager">
