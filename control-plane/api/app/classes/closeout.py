@@ -199,12 +199,18 @@ def _course(db: Session, cls: Class, user_ids: set[uuid.UUID]) -> dict[uuid.UUID
             done = p is not None and p.status == ModuleProgressStatus.completed
             if done and not p.max_score:
                 continue  # nothing to grade: completion is its verdict
-            got, of = (p.score or 0, p.max_score) if done else (0, (p.max_score if p and p.max_score else 100))
+            # Attempted: a graded try is on record. A failed quiz attempt leaves the module
+            # in_progress with its best score (routers/quizzes.py), and that score counts.
+            tried = p is not None and bool(p.max_score) and (
+                (p.attempts or 0) > 0
+                or p.status in (ModuleProgressStatus.in_progress, ModuleProgressStatus.completed))
+            got, of = (p.score or 0, p.max_score) if tried else (0, (p.max_score if p and p.max_score else 100))
             graded += 1
-            attempted += 1 if done else 0
+            attempted += 1 if tried else 0
             score += got
             top += of
-            passed += 1 if done and got >= of * (m.pass_threshold if m.pass_threshold is not None else 70) / 100 else 0
+            threshold = m.pass_threshold if m.pass_threshold is not None else 70
+            passed += 1 if done and got >= of * threshold / 100 else 0
         if not graded:
             out[uid] = CourseWork(NONE_GRADED)
         elif not attempted:

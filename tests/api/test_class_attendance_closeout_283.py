@@ -966,3 +966,72 @@ def test_l5_a_student_who_lost_their_seat_gets_a_result(client, secret, db_sessi
     assert r.status_code == 422 and "cat@corp.test" in r.json()["detail"]
     _close(client, w, {"ann": "pass", "bob": "pass", "cat": "incomplete"})
     assert db.query(ClassResult).filter_by(entry_id=w["entries"]["cat"].id).one().outcome == "incomplete"
+
+
+# ── Third review (PR #303 at ffcdb03b) ───────────────────────────────────────
+
+
+def _try(db, w, name: str, module_id, score: int, attempts: int = 1,
+         status=ModuleProgressStatus.in_progress) -> None:
+    """A quiz attempt as routers/quizzes.py records it: best score, attempts, and in_progress
+    until the module's pass threshold is reached."""
+    enrolment = db.query(Enrollment).filter_by(user_id=w["students"][name].id, course_id=w["course"].id).one()
+    row = db.query(ModuleProgress).filter_by(enrollment_id=enrolment.id, module_id=module_id).one_or_none()
+    if row is None:
+        row = ModuleProgress(enrollment_id=enrolment.id, module_id=module_id)
+        db.add(row)
+    row.status, row.score, row.max_score, row.attempts = status, score, 100, attempts
+    db.flush()
+
+
+def test_failed_quiz_attempts_are_work_that_fails(client, secret, db_session, w):
+    """Every module tried and below its mark (in_progress at 50): fail, at 50%, not incomplete."""
+    db = db_session
+    quiz = CourseModule(id=uuid.uuid4(), course_id=w["course"].id, title="Quiz", ordinal=2,
+                        content_type=ModuleContentType.quiz)
+    db.add(quiz)
+    _attend_all(db, w)
+    _try(db, w, "ann", w["module"].id, 50, attempts=3)
+    _try(db, w, "ann", quiz.id, 50, attempts=2)
+    db.commit()
+    ann = _standing(w, _closeout(client, w), "ann")
+    assert (ann["course_percent"], ann["course_passed"], ann["suggested"]) == (50.0, False, "fail")
+
+
+def test_a_failed_module_counts_its_score_beside_a_passed_one(client, secret, db_session, w):
+    db = db_session
+    quiz = CourseModule(id=uuid.uuid4(), course_id=w["course"].id, title="Quiz", ordinal=2,
+                        content_type=ModuleContentType.quiz)
+    db.add(quiz)
+    _attend_all(db, w)
+    _try(db, w, "ann", w["module"].id, 90, status=ModuleProgressStatus.completed)
+    _try(db, w, "ann", quiz.id, 65)  # below 70: still in_progress, its score kept
+    db.commit()
+    ann = _standing(w, _closeout(client, w), "ann")
+    assert (ann["course_percent"], ann["course_passed"], ann["suggested"]) == (77.5, False, "fail")
+
+
+def test_the_open_dedupe_uses_the_databases_clock(db_session, w):
+    """M5: a replica whose clock runs an hour fast still sees the open the database just stamped."""
+    db = db_session
+    seat, ann = w["seats"]["ann"], w["students"]["ann"]
+    _evidence(db, w, "ann", seat, attendance.db_now(db) - timedelta(minutes=2))
+    with patch.object(attendance, "_now", return_value=NOW + timedelta(hours=1)):
+        assert not attendance.note_range_open(db, ann.id, seat, {"class_seat_id": "x"})
+
+
+def test_a_close_that_loses_a_lock_race_is_409(client, secret, graded):
+    from sqlalchemy.exc import DBAPIError
+
+    w = graded
+
+    class DeadlockError(Exception):
+        sqlstate = "40P01"
+
+    def lose(*_a, **_k):
+        raise DBAPIError("UPDATE ...", {}, DeadlockError())
+
+    act_as(w["lead"])
+    with patch("app.classes.closeout.close", side_effect=lose):
+        r = client.post(_url(w, "/close"), json={"results": []})
+    assert r.status_code == 409 and "try again" in r.json()["detail"]

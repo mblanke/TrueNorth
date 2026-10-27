@@ -46,6 +46,7 @@ from .closeout_schemas import (
     StandingOut,
 )
 from .models import Class, ClassSession, RollCallEntry
+from .router import _lock_conflicts
 
 router = APIRouter(prefix="/classes", tags=["classes"])
 
@@ -203,8 +204,10 @@ def close_class(
     Audited.  **class:create**"""
     cls = _editable(db, class_id, user)
     decisions = [closeout.Decision(r.entry_id, r.outcome.value, r.comment) for r in body.results]
-    cancels = closeout.close(db, cls, decisions, user)
-    db.commit()
+    # A deadlock or serialization failure against the clock or an approver is 409, try again.
+    with _lock_conflicts(db):
+        cancels = closeout.close(db, cls, decisions, user)
+        db.commit()
     background.add_task(scheduler.send_invites, cancels)
     db.refresh(cls)
     return get_closeout(class_id, db, user)

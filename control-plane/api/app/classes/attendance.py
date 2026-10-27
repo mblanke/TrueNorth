@@ -103,6 +103,15 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
+def db_now(db: Session) -> datetime:
+    """The database server's time (``func.now()``), as an aware UTC datetime: what
+    ``audit_logs.timestamp`` is stamped with, so comparisons against it use the same clock."""
+    value = db.query(func.now()).scalar()
+    if isinstance(value, str):  # SQLite's CURRENT_TIMESTAMP, unparsed
+        value = datetime.fromisoformat(value)
+    return _aware(value).astimezone(UTC)
+
+
 def _aware(t: datetime) -> datetime:
     return t if t.tzinfo else t.replace(tzinfo=UTC)
 
@@ -116,11 +125,12 @@ def note_range_open(db: Session, user_id: uuid.UUID, rng, participation: dict | 
     class they are on is booked on (a collective session run on an exercise's own range,
     which ``participation`` reports as the exercise). At most once per range every
     ``OPEN_EVERY``, unless a session started in between. Returns whether a row was added.
-    The row takes the database's clock (``audit_logs.timestamp`` server default), so replicas
-    with drifting clocks agree. Does not commit."""
+    The row takes the database's clock (``audit_logs.timestamp`` server default), and so do
+    the dedupe window and the session checks (``now`` defaults to the database's time), so
+    replicas with drifting clocks agree. Does not commit."""
     if not participation:
         return False
-    now = now or _now()
+    now = now or db_now(db)
     if not ({"class_seat_id", "class_id"} & set(participation)):
         booked = _booked_class(db, user_id, rng, now) if "exercise_id" in participation else None
         if booked is None:
