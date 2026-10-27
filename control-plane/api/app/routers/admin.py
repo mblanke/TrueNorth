@@ -594,6 +594,21 @@ async def import_roster_csv(
             errors.append({"line": line_no, "email": email, "error": "email is in use by another account — not modified"})
             continue
 
+        # Never the tenant's last active admin: a row may not demote them (moving them to another
+        # tenant cannot happen here: rows of other tenants are skipped above, and every row lands
+        # in the caller's tenant). The same locked check as PATCH/DELETE /users and the AD status
+        # sync. Flushed first, so an earlier row of this file that demoted another admin counts.
+        if (existing is not None and existing.role == UserRole.admin and role != UserRole.admin
+                and existing.is_active and existing.deleted_at is None):
+            from ..ad_status_sync.service import is_last_admin
+
+            db.flush()
+            if is_last_admin(db, existing):
+                skipped += 1
+                errors.append({"line": line_no, "email": email,
+                               "error": "the tenant's last active administrator — role not changed"})
+                continue
+
         fields = {
             "display_name": (row.get("display_name") or "").strip() or email.split("@")[0],
             "first_name": (row.get("first_name") or "").strip() or None,

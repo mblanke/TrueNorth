@@ -651,6 +651,26 @@ def test_deleting_the_last_admin_is_refused(client, db_session, world):
     assert r.status_code == 204, r.text
 
 
+def test_a_roster_import_never_demotes_the_last_admin(client, db_session, world):
+    """The CSV roster import skips (and reports) a row that would demote the tenant's last
+    active admin; the other rows go on. Two admins demoted in one file: the second is refused,
+    because the first row's change counts (flushed before the locked check)."""
+    act_as(world["admin"])
+    second = db_session.get(User, uuid.UUID(real_user(db_session, UserRole.admin, world["a"].id).id))
+    first = world["admin_row"]
+    csv = (f"email,role\n{first.email},student\nnewbie@corp.test,student\n{second.email},instructor\n").encode()
+    r = client.post("/users/import-csv", files={"file": ("roster.csv", csv, "text/csv")})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["created"] == 1 and body["updated"] == 1 and body["skipped"] == 1
+    assert [(e["line"], e["email"]) for e in body["errors"]] == [(4, second.email)]
+    assert "last active administrator" in body["errors"][0]["error"]
+    for u in (first, second):
+        db_session.refresh(u)
+    assert (first.role, second.role) == (UserRole.student, UserRole.admin)  # one admin left
+    assert db_session.query(User).filter(User.email == "newbie@corp.test").count() == 1
+
+
 @pytest.mark.parametrize("change", [{"is_active": False}, {"role": "instructor"}, {"role": "student"}])
 def test_patching_away_the_last_admin_is_refused(client, db_session, world, change):
     """PATCH /users has the same locked last-admin guard: neither disabling nor demoting the
