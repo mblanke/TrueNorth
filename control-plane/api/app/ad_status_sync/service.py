@@ -225,8 +225,7 @@ class Outcome:
 
 def _result(db: Session, run: AdStatusSyncRun, u: User, reason: str, applied: bool, seats: int, now: datetime):
     db.add(AdStatusSyncResult(
-        run_id=run.id, tenant_id=u.tenant_id, user_id=u.id, email=u.email[:320],
-        display_name=(u.display_name or u.email)[:255], reason=reason, applied=applied, seats_freed=seats,
+        run_id=run.id, tenant_id=u.tenant_id, user_id=u.id, reason=reason, applied=applied, seats_freed=seats,
         created_at=now,
     ))
 

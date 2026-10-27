@@ -54,8 +54,6 @@ def upgrade() -> None:
             sa.Column("run_id", GUID(), sa.ForeignKey("ad_status_sync_runs.id"), nullable=False),
             sa.Column("tenant_id", GUID(), sa.ForeignKey("tenants.id"), nullable=False),
             sa.Column("user_id", GUID(), sa.ForeignKey("users.id"), nullable=False),
-            sa.Column("email", sa.String(320), nullable=False),
-            sa.Column("display_name", sa.String(255), nullable=False),
             sa.Column("reason", sa.String(32), nullable=False),
             sa.Column("applied", sa.Boolean(), nullable=False),
             sa.Column("seats_freed", sa.Integer(), nullable=False),

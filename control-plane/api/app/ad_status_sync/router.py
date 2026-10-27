@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from ..auth import CurrentUser, require_role
 from ..db import get_db
-from ..models import AuditLog, UserRole
+from ..models import AuditLog, User, UserRole
 from ..tenancy import tenant_uuid
 from . import directory, last_seen, service
 from .models import AdStatusSyncResult, AdStatusSyncRun
@@ -49,16 +49,17 @@ def _out(db: Session, run: AdStatusSyncRun, tid: uuid.UUID, with_results: bool) 
     results = []
     if with_results:
         rows = (
-            db.query(AdStatusSyncResult)
-            .filter(AdStatusSyncResult.run_id == run.id, AdStatusSyncResult.tenant_id == tid)
-            .order_by(AdStatusSyncResult.email)
+            db.query(AdStatusSyncResult, User)
+            .join(User, User.id == AdStatusSyncResult.user_id)
+            .filter(AdStatusSyncResult.run_id == run.id, AdStatusSyncResult.tenant_id == tid, User.tenant_id == tid)
+            .order_by(User.email)
             .all()
         )
         results = [
-            AdStatusSyncResultOut(user_id=r.user_id, email=r.email, display_name=r.display_name, reason=r.reason,
-                                  reason_text=service.REASONS.get(r.reason, r.reason), applied=r.applied,
-                                  seats_freed=r.seats_freed)
-            for r in rows
+            AdStatusSyncResultOut(user_id=r.user_id, email=u.email, display_name=u.display_name or u.email,
+                                  reason=r.reason, reason_text=service.REASONS.get(r.reason, r.reason),
+                                  applied=r.applied, seats_freed=r.seats_freed)
+            for r, u in rows
         ]
     counts = ((run.counts or {}).get("by_tenant") or {}).get(str(tid), {})
     return AdStatusSyncRunOut(

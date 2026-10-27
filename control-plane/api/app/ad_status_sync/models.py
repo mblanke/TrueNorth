@@ -54,9 +54,8 @@ class AdStatusSyncResult(Base):
     run_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("ad_status_sync_runs.id"), nullable=False)
     tenant_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("tenants.id"), nullable=False)
     user_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("users.id"), nullable=False)
-    # The account's address and name when the run saw it: the record does not change later.
-    email: Mapped[str] = mapped_column(String(320), nullable=False)
-    display_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    # No copy of the address or name (docs/security/unclassified-data-baseline.json): the panel
+    # reads them from the account, which deactivating never deletes.
     # ad_disabled | ad_removed | ad_no_tn_group | local_unused
     reason: Mapped[str] = mapped_column(String(32), nullable=False)
     applied: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
