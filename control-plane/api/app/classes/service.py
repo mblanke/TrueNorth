@@ -217,8 +217,18 @@ def accounts_with_email(db: Session, email: str) -> list[User]:
 
 
 def is_pre_provisioned(u: User) -> bool:
-    """A roster row (CSV import) that no directory identity has claimed yet."""
+    """A roster row (CSV import) that no directory identity has claimed yet: the only kind
+    roll-call admission adopts."""
     return u.source == "csv_import"
+
+
+def has_signed_in(u: User) -> bool:
+    """Whether an account counts as having signed in, for its roll-call entries. Not a CSV
+    roster row, and not an account an admin made (``local``) that no directory identity has
+    claimed: registration adopts both kinds by email (``routers/registration._approve_one``)
+    and makes them ``ad`` when it does. A ``local`` account that signs in under its own
+    identity is signed in on that authentication (``forfeit.note_sign_in``)."""
+    return u.source not in ("csv_import", "local")
 
 
 # An admin may set an empty allow-list: any domain, in smaller batches. Emails (onboarding
@@ -298,6 +308,10 @@ def add_to_roll_call(db: Session, cls: Class, actor: CurrentUser, emails: list[s
     hidden: list[str] = []
     for email in emails:
         entry = db.query(RollCallEntry).filter(RollCallEntry.class_id == cls.id, RollCallEntry.email == email).first()
+        if entry is not None and entry.status == RollCallStatus.forfeited.value:
+            # Their seat went for not signing in in time (ADR 0014 §4): Reinstate decides that.
+            res.refused.append(RollCallRefusal(email=email, reason=FORFEITED_REFUSAL))
+            continue
         if entry is not None and entry.status != RollCallStatus.removed.value:
             res.already.append(email)
             continue
@@ -322,6 +336,7 @@ def add_to_roll_call(db: Session, cls: Class, actor: CurrentUser, emails: list[s
         entry.removed_at = None
         entry.user_id = None
         entry.signed_in_at = None
+        entry.forfeited_at = None  # a fresh addition: the forfeit rule applies to it afresh
         if no_room:
             entry.status = RollCallStatus.pending.value
             entry.pending_reason = "; ".join(no_room)[:1000]
@@ -364,12 +379,23 @@ def put_on_roll_call(db: Session, cls: Class, entry: RollCallEntry, account: Use
     entry.pending_reason = None
     entry.user_id = None
     entry.signed_in_at = None
+    entry.joined_at = _now()  # the seat-forfeit clock counts from here for a late addition
     if account is not None:
         entry.user_id = account.id
         ensure_enrollment(db, user_id=account.id, course_id=cls.course_id, tenant_id=cls.tenant_id)
-        if not is_pre_provisioned(account):
+        if has_signed_in(account):
             entry.status = RollCallStatus.signed_in.value
             entry.signed_in_at = _now()
+
+
+def assert_domain_allowed(db: Session, cls: Class, email: str) -> None:
+    """422 unless the roll call may take ``email`` now: the tenant's allow-list as it stands."""
+    domains, source = allowed_domains(db, cls.tenant_id)
+    if not domains and source == "accounts":
+        raise HTTPException(422, NO_DOMAINS)
+    domain = email.rsplit("@", 1)[1]
+    if domains and domain not in domains:
+        raise HTTPException(422, f"{domain} is not an email domain this organisation's roll calls accept")
 
 
 @dataclass
@@ -389,12 +415,7 @@ def approve_addition(db: Session, cls: Class, entry: RollCallEntry, actor: Curre
     if cls.status != ClassStatus.open.value:
         raise HTTPException(409, "The class is cancelled; its roll call cannot change")
     # The allow-list may have changed since it was added: the same rule as adding it now.
-    domains, source = allowed_domains(db, cls.tenant_id)
-    if not domains and source == "accounts":
-        raise HTTPException(422, NO_DOMAINS)
-    domain = entry.email.rsplit("@", 1)[1]
-    if domains and domain not in domains:
-        raise HTTPException(422, f"{domain} is not an email domain this organisation's roll calls accept")
+    assert_domain_allowed(db, cls, entry.email)
     account, refusal, _hidden = _account_for(accounts_with_email(db, entry.email), cls)
     if refusal:
         raise HTTPException(422, f"{entry.email} {refusal}")
@@ -423,6 +444,8 @@ def reject_addition(db: Session, cls: Class, entry: RollCallEntry, actor: Curren
     entry.pending_reason = f"rejected: {reason}"[:1000]
     audit(db, actor.id, cls, "roll_call_addition_rejected", f"{entry.email}: {reason}"[:2000])
 
+
+FORFEITED_REFUSAL = "lost their seat for not signing in in time; reinstate them from the roll call instead"
 
 DAILY_LIMIT = (
     f"not emailed: the daily limit of {EMAILS_PER_INSTRUCTOR_PER_DAY} emails per instructor (onboarding and "
@@ -455,12 +478,25 @@ def remove_from_roll_call(db: Session, cls: Class, entry: RollCallEntry, actor: 
     untouched: they may be on the course for other reasons. Their seat in each approved
     session is freed; returns those sessions, whose invites they lose. Their own ranges are
     torn down by the class's next range tick (``ranges``), and they leave the teams of
-    sessions that have not started. Does not commit."""
+    sessions that have not started. Does not commit.
+
+    Guarded on the status it was read with: if the forfeit clock, a reinstatement or an
+    approver changed it meanwhile, 409 rather than free (or keep) a seat twice."""
     from . import teams
 
-    was_on = entry.status != RollCallStatus.pending.value
-    entry.status = RollCallStatus.removed.value
-    entry.removed_at = _now()
+    before = entry.status
+    # A pending addition never took a seat, and a forfeited Student's was freed already.
+    was_on = before not in (RollCallStatus.pending.value, RollCallStatus.forfeited.value)
+    now = _now()
+    claimed = (
+        db.query(RollCallEntry)
+        .filter(RollCallEntry.id == entry.id, RollCallEntry.status == before)
+        .update({RollCallEntry.status: RollCallStatus.removed.value, RollCallEntry.removed_at: now},
+                synchronize_session=False)
+    )
+    if claimed != 1:
+        raise HTTPException(409, "This Student's place on the roll call changed at the same moment; reload and try again")
+    db.refresh(entry)
     teams.drop_member(db, cls, entry.user_id)
     audit(db, actor.id, cls, "roll_call_remove", entry.email)
     return sessions.free_seats(db, cls, 1) if was_on else []

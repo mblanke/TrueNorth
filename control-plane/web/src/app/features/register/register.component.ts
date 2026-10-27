@@ -76,6 +76,15 @@ interface RegistrationForm {
           @if (loading()) {
             <div class="centred"><mat-spinner diameter="36" /></div>
           } @else {
+            @if (forfeited().length) {
+              <div class="notice notice--error" role="alert">
+                <mat-icon>event_busy</mat-icon>
+                <div>
+                  You lost your seat on {{ forfeited().join(', ') }}: you had not signed in by 2 hours
+                  after the class started. Ask your instructor to reinstate you.
+                </div>
+              </div>
+            }
             @if (!suggestions()?.may_register) {
               <div class="notice notice--error">
                 <mat-icon>block</mat-icon>
@@ -276,6 +285,8 @@ export class RegisterComponent implements OnInit {
   submitting = signal(false);
   prefill = signal<RegistrationPrefill | null>(null);
   suggestions = signal<RegistrationSuggestions | null>(null);
+  /** Classes whose seat this person lost (ADR 0014 §4): only their instructor can reinstate them. */
+  forfeited = signal<string[]>([]);
   nations = signal<Nation[]>([]);
   qualifications = signal<Qualification[]>([]);
 
@@ -295,6 +306,7 @@ export class RegisterComponent implements OnInit {
     const me = await this.auth.bootstrap(true);
     this.prefill.set(me?.prefill ?? null);
     this.suggestions.set(me?.suggestions ?? null);
+    this.forfeited.set(me?.roll_call_forfeited ?? []);
 
     // Reference data is best-effort: an empty nation list should not stop
     // someone registering.

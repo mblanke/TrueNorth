@@ -23,6 +23,8 @@ API = Path(__file__).resolve().parents[2] / "control-plane" / "api"
 
 GOOD = {
     "TN_ENV": "production",
+    "TN_ENCLAVE_ID": "unclass-training",
+    "TN_CLASSIFICATION_LEVEL": "unclassified",
     "AUTH_DISABLED": "false",
     "AUTH_BACKEND": "keycloak_oidc",
     "KEYCLOAK_AUDIENCE": "truenorth-api",
@@ -39,7 +41,7 @@ GOOD = {
 }
 NAMES = (
     *GOOD, "SEED_DEV_DATA", "DB_AUTO_CREATE", "DOCS_ENABLED", "OIDC_AUDIENCE", "REDIS_PASSWORD", "TN_VERSION", "DOMAIN",
-    "CMI5_WEB_BASE_URL", "CMI5_API_BASE_URL",
+    "CMI5_WEB_BASE_URL", "CMI5_API_BASE_URL", "TN_ENCLAVE_ID", "TN_CLASSIFICATION_LEVEL",
     "TN_MFA_ROLES", "TN_MFA_AMR_VALUES", "TN_MFA_ACR_VALUES", "TN_MFA_DEMO_EXEMPT", "TN_TEST_HOST",
 )
 
@@ -67,7 +69,7 @@ def test_an_empty_production_environment_names_every_problem(monkeypatch):
         settings.check_startup()
     text = str(exc.value)
     for name in ("AUTH_DISABLED", "KEYCLOAK_AUDIENCE", "CSRF_SECRET", "TN_SECRETS_KEY", "DATABASE_URL", "REDIS_URL",
-                 "MINIO_ACCESS_KEY"):
+                 "MINIO_ACCESS_KEY", "TN_ENCLAVE_ID", "TN_CLASSIFICATION_LEVEL"):
         assert name in text, name
     assert len(exc.value.problems) >= 7
 
@@ -76,6 +78,10 @@ def test_an_empty_production_environment_names_every_problem(monkeypatch):
     ("name", "value", "needle"),
     [
         ("AUTH_DISABLED", "true", "AUTH_DISABLED"),
+        ("TN_ENCLAVE_ID", "", "TN_ENCLAVE_ID"),
+        ("TN_ENCLAVE_ID", "SECRET East", "TN_ENCLAVE_ID"),
+        ("TN_CLASSIFICATION_LEVEL", "", "TN_CLASSIFICATION_LEVEL"),
+        ("TN_CLASSIFICATION_LEVEL", "protected_b", "TN_CLASSIFICATION_LEVEL"),
         ("AUTH_BACKEND", "disabled", "AUTH_BACKEND"),
         ("KEYCLOAK_AUDIENCE", "", "KEYCLOAK_AUDIENCE"),
         ("KEYCLOAK_ISSUER", "", "KEYCLOAK_ISSUER"),  # security sweep (low): iss must be checked
@@ -162,6 +168,20 @@ def test_development_and_test_need_nothing(monkeypatch):
         monkeypatch.setenv("TN_ENV", env)
         monkeypatch.setenv("AUTH_DISABLED", "true")
         assert settings.check_startup() in ("development", "test")
+
+
+def test_nonproduction_enclave_profile_has_safe_defaults_and_rejects_invalid_values(monkeypatch):
+    monkeypatch.setenv("TN_ENV", "test")
+    monkeypatch.delenv("TN_ENCLAVE_ID", raising=False)
+    monkeypatch.delenv("TN_CLASSIFICATION_LEVEL", raising=False)
+    assert settings.enclave_id() == "development"
+    assert settings.classification_level() == "unclassified"
+    monkeypatch.setenv("TN_ENCLAVE_ID", "Secret East")
+    with pytest.raises(settings.UnsafeSettingsError, match="TN_ENCLAVE_ID"):
+        settings.enclave_id()
+    monkeypatch.setenv("TN_CLASSIFICATION_LEVEL", "protected_b")
+    with pytest.raises(settings.UnsafeSettingsError, match="TN_CLASSIFICATION_LEVEL"):
+        settings.classification_level()
 
 
 def test_an_unknown_environment_is_an_error(monkeypatch):

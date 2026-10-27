@@ -32,12 +32,12 @@ jobs:
       - name: Lint and render the chart
         run: |
           set -euo pipefail
-          helm lint infra/k8s/helm/truenorth-range
           args=(-f infra/k8s/kind/values-kind.yaml --set-string secrets.minioAccessKey=tn-ci)
           for key in databasePassword redisPassword minioSecretKey csrfSecret secretsKey \
                      aiServiceToken metricsScrapeToken keycloakMfaAdminPassword keycloakAdminClientSecret; do
             args+=(--set-string "secrets.$key=$(openssl rand -hex 24)")
           done
+          helm lint infra/k8s/helm/truenorth-range "${args[@]}"
           helm template tn infra/k8s/helm/truenorth-range -n truenorth "${args[@]}" > /dev/null
 
       # BuildKit's own registry config: it does not read the daemon's mirror.

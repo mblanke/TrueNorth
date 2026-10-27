@@ -1,7 +1,7 @@
 """class session ranges: individual or collective sessions, class ranges, session teams
 
 Revision ID: 57e2c4b65b98
-Revises: 5e6d8a033133
+Revises: 8bc4d6fa0532
 Create Date: 2026-10-23 18:00:00.000000
 
 Classes 5 (ADR 0014 §9-11; issue #282):
@@ -26,7 +26,7 @@ from alembic import op
 from app.models import GUID
 
 revision: str = "57e2c4b65b98"
-down_revision: str | None = "5e6d8a033133"
+down_revision: str | None = "8bc4d6fa0532"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

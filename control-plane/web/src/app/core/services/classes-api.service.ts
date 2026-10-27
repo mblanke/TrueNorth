@@ -21,6 +21,7 @@ export type ClassSessionMode = S['ClassSessionModeOut'];
 export type RangeMode = S['RangeModeOut'];
 export type CourseRangeMode = S['CourseRangeModeOut'];
 export type SessionTeams = S['SessionTeamsOut'];
+export type ReinstateResult = S['ReinstateOut'];
 
 /**
  * Classes and their roll call (ADR 0014). The API decides who sees and changes what:
@@ -74,6 +75,14 @@ export class ClassesApiService {
   }
   rejectAddition(id: string, entryId: string, reason: string): Observable<AdditionDecision> {
     return this.http.post<AdditionDecision>(`${this.base}/${id}/roll-call/${entryId}/reject`, { reason });
+  }
+  /**
+   * Gives a Student who lost their seat (not signed in by 2 hours after the class started)
+   * their seat back: the class's lead or an admin. When the approved sessions have no room
+   * it waits for an approver (status `pending`).
+   */
+  reinstate(id: string, entryId: string): Observable<ReinstateResult> {
+    return this.http.post<ReinstateResult>(`${this.base}/${id}/roll-call/${entryId}/reinstate`, {});
   }
   /** Marks the entry removed; it stays on record. */
   remove(id: string, entryId: string): Observable<void> {

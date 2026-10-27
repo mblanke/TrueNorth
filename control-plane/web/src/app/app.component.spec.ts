@@ -26,6 +26,24 @@ describe('AppComponent', () => {
     component = fixture.componentInstance;
   });
 
+  // ── A seat lost on a class (ADR 0014 §4) ────────────────────────
+  it('tells a signed-in Student which class seat they lost, until dismissed', () => {
+    auth.role.set('student');
+    auth.me.set({ roll_call_forfeited: ['C201-26-03'] });
+    fixture.detectChanges();
+    const el: HTMLElement = fixture.nativeElement;
+    expect(el.querySelector('.seat-notice')?.textContent).toContain('You lost your seat on C201-26-03');
+    expect(el.querySelector('.seat-notice')?.textContent).toContain('Ask your instructor');
+    (el.querySelector('.seat-notice button') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    expect(el.querySelector('.seat-notice')).toBeNull();
+  });
+
+  it('shows no seat notice when nothing was lost', () => {
+    fixture.detectChanges();
+    expect((fixture.nativeElement as HTMLElement).querySelector('.seat-notice')).toBeNull();
+  });
+
   // ── Creation ─────────────────────────────────────────────────────
   it('should create the app', () => {
     expect(component).toBeTruthy();

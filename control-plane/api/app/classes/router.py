@@ -16,12 +16,16 @@ DELETE /classes/{id}/roll-call/{entry_id}            its lead or an admin: marks
 GET    /classes/pending-additions                    schedule:approve: additions that did not fit
 POST   /classes/{id}/roll-call/{entry_id}/approve    schedule:approve: puts it on the roll call
 POST   /classes/{id}/roll-call/{entry_id}/reject     schedule:approve: removes it, with a reason
+POST   /classes/{id}/roll-call/{entry_id}/reinstate  its lead or an admin: a seat lost to the forfeit rule
 ===================================================  ==========================================
 
 After a class's sessions are approved (ADR 0014 §17), taking a Student off is always
 allowed; adding one is automatic while the approved sessions have room for one more seat,
 and otherwise waits for an approver (status ``pending``). Students joining or leaving then
 get, or lose, the approved sessions' calendar invites.
+
+A Student not signed in by 2 hours after the class's first approved session started loses
+their seat (``forfeited``, ADR 0014 §4, ``forfeit.py``); the lead or an admin reinstates them.
 
 Another tenant's class, or one the caller has no part in, is not found (404). Visibility
 and roles are decided in ``access``; the roll-call rules in ``service``.
@@ -45,7 +49,7 @@ from ..models import AuditLog, Course, User
 from ..rbac import Permission, require_permission
 from ..scheduler import service as scheduler
 from ..tenancy import tenant_uuid
-from . import access, service, sessions
+from . import access, forfeit, service, sessions
 from .models import Class, ClassStaff, ClassStatus, RollCallEntry, RollCallSettings, RollCallStatus
 from .schemas import (
     AdditionDecisionOut,
@@ -55,6 +59,7 @@ from .schemas import (
     ClassPerson,
     ClassRole,
     PendingAdditionOut,
+    ReinstateOut,
     RollCallAddIn,
     RollCallAddOut,
     RollCallDomainsIn,
@@ -107,7 +112,7 @@ def _outs(db: Session, classes: list[Class], user: CurrentUser) -> list[ClassOut
     on_roll_call = {
         cid for (cid,) in db.query(RollCallEntry.class_id).filter(
             RollCallEntry.class_id.in_(ids), RollCallEntry.user_id == uid,
-            RollCallEntry.status != RollCallStatus.removed.value,
+            RollCallEntry.status.notin_(service.OFF_ROLL_CALL),
         )
     }
     out = []
@@ -132,12 +137,16 @@ def _out(db: Session, cls: Class, user: CurrentUser) -> ClassOut:
     return _outs(db, [cls], user)[0]
 
 
-def _entry_out(e: RollCallEntry, names: dict[uuid.UUID, str]) -> RollCallEntryOut:
+def _entry_out(e: RollCallEntry, names: dict[uuid.UUID, str], windows: list | None = None) -> RollCallEntryOut:
+    # The deadline they missed, for a forfeited entry (as the rule computes it from the
+    # class's approved sessions now).
+    missed = forfeit.deadline(windows, e) if windows and e.status == RollCallStatus.forfeited.value else None
     return RollCallEntryOut(
+        forfeit_deadline=missed,
         id=e.id, email=e.email, user_id=e.user_id, display_name=names.get(e.user_id) if e.user_id else None,
         status=e.status, onboarding_sent_at=e.onboarding_sent_at, reminded_at=e.reminded_at,
         signed_in_at=e.signed_in_at, removed_at=e.removed_at, created_at=e.created_at,
-        pending_reason=e.pending_reason,
+        pending_reason=e.pending_reason, forfeited_at=e.forfeited_at,
     )
 
 
@@ -388,7 +397,8 @@ def get_roll_call(
         q = q.filter(RollCallEntry.status != RollCallStatus.removed.value)
     entries = q.order_by(RollCallEntry.email).all()
     names = _names(db, entries, cls.tenant_id)
-    return [_entry_out(e, names) for e in entries]
+    windows = forfeit.class_windows(db, cls) if any(e.status == RollCallStatus.forfeited.value for e in entries) else []
+    return [_entry_out(e, names, windows) for e in entries]
 
 
 def _add(
@@ -481,10 +491,41 @@ def remove_from_roll_call(
     if entry is None:
         raise HTTPException(404, "Roll-call entry not found")
     if entry.status != RollCallStatus.removed.value:
-        freed = service.remove_from_roll_call(db, cls, entry, user)
-        cancels = scheduler.attendee_invites(db, freed, [entry.email], "CANCEL")
-        db.commit()
+        with _lock_conflicts(db):
+            freed = service.remove_from_roll_call(db, cls, entry, user)
+            cancels = scheduler.attendee_invites(db, freed, [entry.email], "CANCEL")
+            db.commit()
         background.add_task(scheduler.send_invites, cancels)
+
+
+@router.post(
+    "/{class_id}/roll-call/{entry_id}/reinstate", response_model=ReinstateOut,
+    operation_id="reinstateRollCallEntry", summary="Give a Student who lost their seat their seat back",
+)
+def reinstate_roll_call_entry(
+    class_id: uuid.UUID,
+    entry_id: uuid.UUID,
+    background: BackgroundTasks,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(_CHANGE),
+) -> ReinstateOut:
+    """Its lead or an admin (ADR 0014 §4). Back to signed in if they have signed in since,
+    otherwise invited; their seat is taken again if it fits the approved sessions, otherwise
+    it waits for an approver (ADR 0014 §17). Never forfeited again. Audited."""
+    cls = _editable(db, class_id, user)
+    entry = (
+        db.query(RollCallEntry)
+        .filter(RollCallEntry.id == entry_id, RollCallEntry.class_id == cls.id, RollCallEntry.tenant_id == cls.tenant_id)
+        .first()
+    )
+    if entry is None:
+        raise HTTPException(404, "Roll-call entry not found")
+    with _lock_conflicts(db):
+        done = forfeit.reinstate(db, cls, entry, user)
+        invites = scheduler.attendee_invites(db, done.sessions, [entry.email], "REQUEST")
+        db.commit()
+    background.add_task(scheduler.send_invites, invites)
+    return ReinstateOut(entry_id=entry.id, class_id=cls.id, status=entry.status, pending_reason=entry.pending_reason)
 
 
 # ── Additions waiting for an approver (ADR 0014 §17) ─────────────────────────

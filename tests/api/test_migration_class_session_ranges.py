@@ -23,7 +23,7 @@ import pytest
 import sqlalchemy as sa
 
 API = Path(__file__).resolve().parents[2] / "control-plane" / "api"
-PARENT, REVISION = "5e6d8a033133", "57e2c4b65b98"
+PARENT, REVISION = "8bc4d6fa0532", "57e2c4b65b98"
 TABLES = {"class_course_range_modes", "class_ranges", "class_session_teams"}
 
 

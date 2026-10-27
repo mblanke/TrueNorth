@@ -188,6 +188,10 @@ MINIO_ACCESS_KEY=drillminio
 MINIO_SECRET_KEY=$(s minio_secret_key)
 REDIS_PASSWORD=$(s redis_password)
 TN_SECRETS_KEY=$(s secrets_key)
+# Explicit throwaway deployment identity required by compose.prod.yml. The drill is
+# intentionally an isolated unclassified environment, never a production enclave.
+TN_ENCLAVE_ID=${DRILL_PROJECT}
+TN_CLASSIFICATION_LEVEL=unclassified
 # Unused by postgres/minio; set only so compose does not warn about them.
 FLOWER_USER=x
 FLOWER_PASSWORD=x

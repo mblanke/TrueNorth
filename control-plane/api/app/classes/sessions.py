@@ -457,7 +457,9 @@ def roll_call_user_ids(db: Session, event_ids: list[uuid.UUID], as_of: datetime 
             ClassSession.event_id.in_(event_ids),
             RollCallEntry.tenant_id == ClassSession.tenant_id,
             RollCallEntry.user_id.isnot(None),
-            RollCallEntry.status != RollCallStatus.pending.value,
+            # Off the roll call (pending, forfeited) never counts; a removed entry counts
+            # ``as_of`` a moment before it was removed (below).
+            RollCallEntry.status.notin_([s for s in OFF_ROLL_CALL if s != RollCallStatus.removed.value]),
         )
     )
     out: set[uuid.UUID] = set()

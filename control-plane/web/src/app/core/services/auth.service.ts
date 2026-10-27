@@ -60,6 +60,8 @@ export interface AuthMe {
   mfa_satisfied?: boolean;
   /** ADR 0014 §3: must read and agree to the rules of use before anything else. */
   acknowledgement_required?: boolean;
+  /** ADR 0014 §4: classes whose seat this person lost for not signing in in time. */
+  roll_call_forfeited?: string[];
 }
 
 @Injectable({ providedIn: 'root' })

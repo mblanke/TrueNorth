@@ -150,6 +150,10 @@ async def lifespan(app: FastAPI):
     from .classes import clock as class_clock
 
     class_reminders = asyncio.create_task(class_clock.run_forever()) if _env_flag("SCHEDULER_CLOCK_ENABLED") else None
+    # Seats of roll-call Students not signed in by 2 hours after the start (ADR 0014 §4).
+    from .classes import forfeit as class_forfeit
+
+    seat_forfeit = asyncio.create_task(class_forfeit.run_forever()) if _env_flag("SCHEDULER_CLOCK_ENABLED") else None
 
     # WebSocket heartbeat (no Redis): drops dead sockets and closes those whose token has
     # expired (app/ws_auth.py). Nothing started it before, so a socket outlived its user.
@@ -158,8 +162,8 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    for sweep in (range_resend, lab_sweep, exercise_clock, clock_task, class_reminders, results_pull, cmi5_ags,
-                  infra_discovery_task, cert_retention):
+    for sweep in (range_resend, lab_sweep, exercise_clock, clock_task, class_reminders, seat_forfeit, results_pull,
+                  cmi5_ags, infra_discovery_task, cert_retention):
         if sweep is not None:
             sweep.cancel()
 
@@ -411,6 +415,7 @@ from .routers import (
     quizzes_router,
     ranges_router,
     registration_router,
+    result_transfer_router,
     scenario_executions_router,
     scenarios_router,
     software_catalogue_router,
@@ -431,6 +436,7 @@ from .scheduler.router import router as scheduling_router  # noqa: E402
 # caller needs to register, is awaiting approval, or is a full user.
 app.include_router(registration_router)
 app.include_router(onboarding_router)
+app.include_router(result_transfer_router)
 
 # Core routers
 app.include_router(ranges_router)

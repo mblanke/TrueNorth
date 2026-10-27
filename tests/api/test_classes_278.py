@@ -73,6 +73,13 @@ def _course(db, tenant_id, name="SOC Analyst"):
     return c
 
 
+def _signed_in_before(db, who) -> None:
+    """Make a test account one a directory identity has signed in with (#280: an admin-made
+    ``local`` account that nobody has claimed has not signed in)."""
+    db.get(User, uuid.UUID(who.id)).source = "ad"
+    db.flush()
+
+
 def _student_row(db, tenant_id, email, *, source="ad", role=UserRole.student, active=True) -> User:
     u = User(
         id=uuid.uuid4(), keycloak_id=f"{'csv-import:' if source == 'csv_import' else 'kc-'}{uuid.uuid4()}",
@@ -305,6 +312,7 @@ def test_csv_upload_reads_the_email_column(client, world, klass, outbox):
 
 def test_an_existing_student_is_linked_and_enrolled_at_once(client, world, klass, outbox, db_session):
     """#272: a cohort is enrolled on the class's course in one action, with no approval queue."""
+    _signed_in_before(db_session, world["student"])
     act_as(world["lead"])
     r = client.post(f"/classes/{klass['id']}/roll-call", json={"emails": [world["student"].email.upper()]})
     entry = r.json()["added"][0]
@@ -313,6 +321,16 @@ def test_an_existing_student_is_linked_and_enrolled_at_once(client, world, klass
     enrolled = db_session.query(Enrollment).filter_by(user_id=uuid.UUID(world["student"].id),
                                                        course_id=world["course"].id).one()
     assert enrolled.tenant_id == world["a"].id
+
+
+def test_an_admin_made_account_that_never_signed_in_is_linked_but_invited(client, world, klass, outbox,
+                                                                          db_session):
+    """#280 review: a ``local`` account no directory identity has claimed has not signed in."""
+    local = _student_row(db_session, world["a"].id, "made@corp.test", source="local")
+    act_as(world["lead"])
+    entry = client.post(f"/classes/{klass['id']}/roll-call", json={"emails": ["made@corp.test"]}).json()["added"][0]
+    assert entry["status"] == "invited" and entry["user_id"] == str(local.id) and entry["signed_in_at"] is None
+    assert db_session.query(Enrollment).filter_by(user_id=local.id, course_id=world["course"].id).count() == 1
 
 
 def test_staff_and_disabled_accounts_are_refused(client, world, klass, db_session, outbox):
@@ -550,6 +568,7 @@ def test_the_idp_email_verified_claim_is_read(world):
 
 
 def test_one_reminder_the_day_before_to_those_not_signed_in(client, world, klass, db_session, outbox):
+    _signed_in_before(db_session, world["student"])
     _on_roll_call(client, world, klass, "joe@corp.test", world["student"].email)
     start = date.fromisoformat(klass["start_date"])
     eve = datetime.combine(start - timedelta(days=1), datetime.min.time(), tzinfo=UTC).replace(hour=9)

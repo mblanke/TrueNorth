@@ -478,6 +478,8 @@ services:
       # missing or unsafe setting (CSRF_SECRET, KEYCLOAK_AUDIENCE, default passwords...).
       TN_ENV: ${TN_ENV:-production}
       TN_VERSION: ${TN_VERSION:-}
+      TN_ENCLAVE_ID: ${TN_ENCLAVE_ID:?set TN_ENCLAVE_ID to this deployment's stable enclave identity}
+      TN_CLASSIFICATION_LEVEL: ${TN_CLASSIFICATION_LEVEL:?set TN_CLASSIFICATION_LEVEL explicitly}
       # Bearer token for the AI orchestrator (api, workers and the orchestrator share it).
       AI_SERVICE_TOKEN: ${AI_SERVICE_TOKEN:-}
       # Peers whose X-Forwarded-For is believed (app/client_address.py): nginx, on the
@@ -674,6 +676,8 @@ services:
       TN_SECRETS_KEY: ${TN_SECRETS_KEY:?set TN_SECRETS_KEY (see .env.production.example)}
       TN_ENV: ${TN_ENV:-production}
       TN_VERSION: ${TN_VERSION:-}
+      TN_ENCLAVE_ID: ${TN_ENCLAVE_ID:?set TN_ENCLAVE_ID to this deployment's stable enclave identity}
+      TN_CLASSIFICATION_LEVEL: ${TN_CLASSIFICATION_LEVEL:?set TN_CLASSIFICATION_LEVEL explicitly}
       # The workers call the AI orchestrator too (worker/ai_client.py).
       AI_SERVICE_TOKEN: ${AI_SERVICE_TOKEN:-}
       # TLS + basic auth (the security plugin); the CA is mounted below. The lab

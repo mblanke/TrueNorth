@@ -1089,3 +1089,36 @@ def test_r9_the_teardown_pass_pages_past_its_page_size(client, db_session, world
     client.delete(f"/classes/{world['cid']}")
     clock.tick(db_session, now=MON)
     assert len(_destroy_ops(db_session, rows)) == 3
+
+
+def test_r8_a_forfeit_leaves_the_teams_the_rosters_and_the_size(client, db_session, world, dispatched):
+    """#280's forfeit clock: the Student leaves the teams of sessions not started, the
+    exercise rosters, and the individual session's size is taken again from the roll call."""
+    from app.classes import forfeit
+
+    w = world
+    roster_row = _student(db_session, w["a"].id, "ros@corp.test")
+    roster_row.source = "csv_import"  # a roster row nobody has signed in as: linked, still invited
+    db_session.commit()
+    act_as(w["lead"])
+    client.post(f"/classes/{w['cid']}/roll-call", json={"emails": ["ros@corp.test"]})
+    ros = db_session.query(RollCallEntry).filter_by(email="ros@corp.test").one()
+    assert ros.status == "invited" and ros.user_id == roster_row.id
+    mon = _approve(client, w, _book(client, w, mode="individual", name="Mon"))
+    tue = _approve(client, w, _book(client, w, start=TUE, mode="collective", template="shared_tpl", name="Tue"))
+    assert _evt(db_session, mon).vcpu_total == 16  # four seats
+    act_as(w["lead"])
+    url = f"/classes/{w['cid']}/sessions/{tue['id']}/teams"
+    placed = [m["user_id"] for t in client.post(url, json={"team_count": 2}).json()["teams"] for m in t["members"]]
+    assert str(roster_row.id) in placed
+    forfeit.tick(db_session, now=MON + forfeit.FORFEIT_AFTER + timedelta(seconds=1))
+    db_session.expire_all()
+    assert db_session.get(RollCallEntry, ros.id).status == "forfeited"
+    assert (_evt(db_session, mon).vcpu_total, _evt(db_session, mon).vm_count) == (12, 6)  # three seats
+    placed = [m["user_id"] for t in client.get(url).json()["teams"] for m in t["members"]]
+    assert str(roster_row.id) not in placed and len(placed) == 3
+    rostered = class_sessions.roll_call_user_ids(db_session, [uuid.UUID(tue["id"])])
+    assert roster_row.id not in rostered and w["students"]["ann"].id in rostered
+    # As of a moment after the forfeit: still not on it (forfeited is off the roll call).
+    later = class_sessions.roll_call_user_ids(db_session, [uuid.UUID(tue["id"])], as_of=TUE)
+    assert roster_row.id not in later

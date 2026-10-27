@@ -59,6 +59,12 @@ def test_the_drill_runs_the_backup_against_an_archive_it_cannot_read():
     assert "the permission case is not exercised" in drill  # fails on Linux if it is not
 
 
+def test_the_drill_declares_its_throwaway_enclave_profile():
+    drill = (BACKUP / "drill.sh").read_text()
+    assert "TN_ENCLAVE_ID=${DRILL_PROJECT}" in drill
+    assert "TN_CLASSIFICATION_LEVEL=unclassified" in drill
+
+
 # ── docker: the real helpers, an archive owned by 10001 with 0750 ──────────────────
 def _docker_ok() -> bool:
     if not shutil.which("docker") or subprocess.run(["docker", "info"], capture_output=True).returncode != 0:

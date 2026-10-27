@@ -14,7 +14,8 @@ from datetime import UTC, date, datetime, time, timedelta
 
 from fastapi import HTTPException
 from sqlalchemy import case, func, or_, text
-from sqlalchemy.orm import Session
+from sqlalchemy import inspect as sa_inspect
+from sqlalchemy.orm import Session, object_session
 
 from .. import exercise_lifecycle, range_lifecycle
 from ..auth import CurrentUser
@@ -687,6 +688,33 @@ def approved_upcoming(db: Session, event_ids: list[uuid.UUID], now: datetime | N
     )
 
 
+@dataclass(frozen=True)
+class ApprovedWindow:
+    """An approved booking's times, and when an approver let it through (None: no approval
+    row, or no decision time recorded)."""
+
+    start: datetime
+    end: datetime
+    approved_at: datetime | None
+
+
+def approved_windows(db: Session, event_ids: list[uuid.UUID]) -> list[ApprovedWindow]:
+    """These bookings that an approver let through, earliest first: approved and still
+    holding, or already over. Those awaiting approval, rejected or cancelled never count
+    (ADR 0014 §4: a class's seat-forfeit clock)."""
+    if not event_ids:
+        return []
+    # tenant-safe: ids of one class's sessions, all in the class's tenant (sessions.link).
+    rows = (
+        db.query(ScheduledEvent.start_time, ScheduledEvent.end_time, BookingApproval.decided_at)
+        .outerjoin(BookingApproval, BookingApproval.event_id == ScheduledEvent.id)
+        .filter(ScheduledEvent.id.in_(event_ids), ScheduledEvent.state.in_((*HOLDING, EventState.completed)))
+        .order_by(ScheduledEvent.start_time, ScheduledEvent.id)
+        .all()
+    )
+    return [ApprovedWindow(as_utc(s), as_utc(e), as_utc(d) if d is not None else None) for s, e, d in rows]
+
+
 def room_for(db: Session, evt: ScheduledEvent, extra: Resources) -> list[str]:
     """Why ``extra`` more demand on the already-held ``evt`` would not fit (none: it fits).
     The booking itself is counted at its current size, so this asks for the growth only.
@@ -698,20 +726,19 @@ def room_for(db: Session, evt: ScheduledEvent, extra: Resources) -> list[str]:
     return [f"'{evt.name}': {r}" for r in a.reasons]
 
 
-def _floored(col, d: int):
-    """``greatest(0, col + d)`` in SQL, on PostgreSQL and SQLite alike."""
-    total = func.coalesce(col, 0) + d
+def _floored(column, change: int):
+    """``column + change``, never below zero, computed by the database."""
+    total = func.coalesce(column, 0) + change
     return case((total < 0, 0), else_=total)
 
 
 def resize(db: Session, evt: ScheduledEvent, delta: Resources, sign: int, vms: int = 0) -> None:
     """Grow (sign 1) or shrink (sign -1) a held booking's demand, never below zero. Does not commit.
 
-    SQL-side increments, not a read-modify-write in Python: two roll-call changes at once
-    (seat taken, seat freed, forfeit) each add their own delta and neither is lost."""
+    An increment in SQL, not a read-modify-write: the forfeit clock (on every replica) and a
+    roll-call change can resize the same session at once, and each change must land."""
     if delta == Resources() and not vms:
         return
-    db.flush()  # anything pending on the row goes out first; the attributes are re-read after
     # tenant-safe: a booking the caller already loaded tenant-scoped (a class's own session).
     db.query(ScheduledEvent).filter(ScheduledEvent.id == evt.id).update(
         {
@@ -722,12 +749,13 @@ def resize(db: Session, evt: ScheduledEvent, delta: Resources, sign: int, vms: i
         },
         synchronize_session=False,
     )
-    db.expire(evt, ["vcpu_total", "ram_mb_total", "disk_gb_total", "vm_count"])
+    db.refresh(evt, ["vcpu_total", "ram_mb_total", "disk_gb_total", "vm_count"])
 
 
 def set_size(db: Session, evt: ScheduledEvent, size: Resources, vms: int) -> None:
-    """Set a booking's demand outright (a class session sized from its roll call when it is
-    approved). Does not commit."""
+    """Set a booking's demand outright: an individual class session sized from its roll call.
+    Callers hold ``serialize_bookings``, so the roll call they counted cannot change before
+    they commit. Does not commit."""
     evt.vcpu_total, evt.ram_mb_total, evt.disk_gb_total, evt.vm_count = size.vcpu, size.ram_mb, size.disk_gb, vms
 
 
@@ -810,19 +838,18 @@ def resequence(evt: ScheduledEvent) -> None:
     """Raise iCalendar SEQUENCE before a per-attendee REQUEST or CANCEL: a Student taken off
     and put back must get a REQUEST newer than their CANCEL (RFC 5546 §2.1.5). Does not commit.
 
-    ``sequence + 1`` in SQL: concurrent roll-call changes each raise it."""
-    from sqlalchemy.orm import object_session
-
+    An increment in SQL for a stored booking, so two transactions raising it at once (the
+    forfeit clock and a roll-call change) give two numbers, never the same one twice."""
     db = object_session(evt)
-    if db is None:  # a detached copy (never stored): nothing to race with
+    state = sa_inspect(evt)
+    if db is None or state.transient or state.pending:
         evt.sequence = (evt.sequence or 0) + 1
         return
-    db.flush()
     # tenant-safe: a booking the caller already loaded tenant-scoped.
     db.query(ScheduledEvent).filter(ScheduledEvent.id == evt.id).update(
         {ScheduledEvent.sequence: func.coalesce(ScheduledEvent.sequence, 0) + 1}, synchronize_session=False
     )
-    db.expire(evt, ["sequence"])
+    db.refresh(evt, ["sequence"])
 
 
 def attendee_invites(db: Session, events: list[ScheduledEvent], emails: list[str], method: str) -> list:
@@ -849,7 +876,7 @@ def cancel_unstarted(db: Session, user: CurrentUser, event_ids: list[uuid.UUID])
         before = evt.state
         if not lifecycle.transition(db, evt, EventState.cancelled):
             continue
-        evt.sequence = (evt.sequence or 0) + 1
+        resequence(evt)
         detail = f"{before.value} -> cancelled: its class was cancelled"
         if what := release_range(db, evt):
             detail += f"; {what}"
