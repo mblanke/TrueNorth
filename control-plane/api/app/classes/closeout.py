@@ -1,22 +1,25 @@
 """Close-out: results, closing, reopening and the export (ADR 0014 §13; issue #283).
 
-**Pre-fill.** For each Student on the roll call the lead sees:
+**Pre-fill.** For each Student on the roll call (and each who lost their seat) the lead sees:
 
 - *attendance*: sessions held, present, excused and absent (``attendance.py``);
 - *the course*: their enrolment's module progress, which is where quiz results land
-  (``routers/quizzes.py`` writes them into ``module_progress``), counted as
-  ``enrollment.complete_enrollment`` counts it: graded modules only. Passed when that is at
-  least ``PASS_PCT``;
+  (``routers/quizzes.py`` writes them into ``module_progress``), over every graded module of
+  the course (required quiz, scenario or LTI modules), one not attempted counting as 0.
+  Passed when every graded module reached its own ``pass_threshold`` (``_course``);
 - *the exercises*: detections credited to them in the exercises of the class's sessions
   (ADR 0005: Students earn exercise credit only by submitting detections);
-- a *suggested* outcome: ``incomplete`` below ``ATTENDANCE_MIN`` of the sessions held
-  (present or excused), else ``fail`` when the graded course work is below the pass mark,
-  else ``pass``. The lead decides; the suggestion is kept beside the decision.
+- a *suggested* outcome: ``incomplete`` when no session was held, below ``ATTENDANCE_MIN``
+  of the sessions held (present or excused), or when the course has graded modules and the
+  Student has no graded result yet; else ``fail`` when the graded work fell short; else
+  ``pass``. The lead decides; the suggestion is kept beside the decision.
 
 **Unclassified (DLP).** On an Unclassified deployment (``settings.classification_level``,
 and whenever it cannot be read) the pre-fill carries pass/fail only: no percentage, no
-score, no detection count. ``class_results`` has no numeric column at all, and the
-enrolment a close-out completes keeps no score or letter grade there (``apply_result``).
+score, no detection count. ``class_results`` has no numeric column at all, and a close-out
+writes no score or letter grade to the enrolment, not even transiently (``apply_result``
+sets the status itself instead of calling ``complete_enrollment``). Free-text comments and
+notes stay allowed: an owner-approved exception (ADR 0014 decision 13).
 
 **Closing.** The lead or an admin sets pass, fail or incomplete for every Student on the
 roll call, each with an optional comment. Refused (409) while a session is provisioning or
@@ -53,15 +56,25 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
 from fastapi import HTTPException
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from ..enrollment import complete_enrollment
-from ..models import Course, CourseModule, Enrollment, EnrollmentStatus, ModuleProgress, User, UserRole
+from ..models import (
+    Course,
+    CourseModule,
+    Enrollment,
+    EnrollmentStatus,
+    ModuleContentType,
+    ModuleProgress,
+    ModuleProgressStatus,
+    User,
+    UserRole,
+)
 from ..scheduler import service as scheduler
 from ..scheduler.models import EventState, ScheduledEvent
 from . import attendance, service, sessions
 from .models import (
-    OFF_ROLL_CALL,
     AttendanceStatus,
     Class,
     ClassCloseout,
@@ -71,7 +84,9 @@ from .models import (
     RollCallEntry,
 )
 
-PASS_PCT = 70  # the default module pass threshold (CourseModule.pass_threshold)
+# Module content that carries a score (ModuleProgress.score / max_score); readings and videos
+# are completed, not graded.
+GRADED_TYPES = (ModuleContentType.quiz, ModuleContentType.scenario, ModuleContentType.external_lti)
 ATTENDANCE_MIN = 0.8  # of the sessions held, present or excused, for a pass to be suggested
 
 # A spreadsheet runs a cell that starts with one of these as a formula (CSV injection).
@@ -126,28 +141,77 @@ class Standing:
 
 
 def students(db: Session, cls: Class) -> list[RollCallEntry]:
-    """Who gets a result: everyone on the roll call now."""
-    return [e for e in attendance.roll_call(db, cls) if e.status not in OFF_ROLL_CALL]
+    """Who gets a result: everyone on the roll call now, and everyone who lost their seat
+    (forfeited). A forfeited Student was expected and did not come: the class's record, and
+    the unit's readiness page, must say so (as absent, suggested incomplete) rather than leave
+    them out. Removed entries (taken off on purpose) and additions still waiting for an
+    approver were never on it, and get none."""
+    return [e for e in attendance.roll_call(db, cls) if e.status not in attendance.NOT_EXPECTED]
 
 
-def _course(db: Session, cls: Class, user_ids: set[uuid.UUID]) -> dict[uuid.UUID, tuple[float | None, int]]:
-    """(graded percentage or None, modules) per Student on the class's course."""
+@dataclass(frozen=True)
+class CourseWork:
+    """One Student's graded course work. ``state``: ``none_graded`` (the course has no
+    graded module), ``no_work`` (it has, and they have no graded result yet), ``passed`` or
+    ``failed``. ``percent``: over every graded module, unattempted ones as 0."""
+
+    state: str
+    percent: float | None = None
+
+
+NONE_GRADED, NO_WORK, PASSED, FAILED = "none_graded", "no_work", "passed", "failed"
+
+
+def _course(db: Session, cls: Class, user_ids: set[uuid.UUID]) -> dict[uuid.UUID, CourseWork]:
+    """Each Student's standing on the class's course.
+
+    The graded modules are the course's required modules whose content is scored (a quiz, a
+    scenario or an external LTI tool), less any the Student completed with nothing to grade
+    (``max_score`` 0: completion was its verdict, as in ``qsp_progress``). Every one of them
+    counts: one not attempted is 0 of 100. Passed means every graded module reached its own
+    ``pass_threshold``, as the QSP spine judges a module."""
+    modules = (
+        db.query(CourseModule)
+        .filter(CourseModule.course_id == cls.course_id, CourseModule.is_required.is_(True),
+                CourseModule.content_type.in_(GRADED_TYPES))
+        .all()
+    )
     if not user_ids:
         return {}
-    module_ids = {mid for (mid,) in db.query(CourseModule.id).filter(CourseModule.course_id == cls.course_id)}
+    if not modules:
+        return {uid: CourseWork(NONE_GRADED) for uid in user_ids}
     enrolments = {
         e.id: e.user_id for e in db.query(Enrollment).filter(
-            Enrollment.course_id == cls.course_id, Enrollment.user_id.in_(user_ids))
+            Enrollment.course_id == cls.course_id, Enrollment.user_id.in_(user_ids),
+            Enrollment.tenant_id == cls.tenant_id)
     }
-    sums: dict[uuid.UUID, list[int]] = {}
-    if enrolments and module_ids:
+    progress: dict[tuple[uuid.UUID, uuid.UUID], ModuleProgress] = {}
+    if enrolments:
         for p in db.query(ModuleProgress).filter(
-                ModuleProgress.enrollment_id.in_(enrolments), ModuleProgress.module_id.in_(module_ids)):
-            if p.max_score:
-                acc = sums.setdefault(enrolments[p.enrollment_id], [0, 0])
-                acc[0] += p.score or 0
-                acc[1] += p.max_score
-    return {uid: ((100 * s / m) if m else None, len(module_ids)) for uid, (s, m) in sums.items()}
+                ModuleProgress.enrollment_id.in_(enrolments), ModuleProgress.module_id.in_([m.id for m in modules])):
+            progress[(enrolments[p.enrollment_id], p.module_id)] = p
+    out: dict[uuid.UUID, CourseWork] = {}
+    for uid in user_ids:
+        score = top = 0
+        graded = attempted = passed = 0
+        for m in modules:
+            p = progress.get((uid, m.id))
+            done = p is not None and p.status == ModuleProgressStatus.completed
+            if done and not p.max_score:
+                continue  # nothing to grade: completion is its verdict
+            got, of = (p.score or 0, p.max_score) if done else (0, (p.max_score if p and p.max_score else 100))
+            graded += 1
+            attempted += 1 if done else 0
+            score += got
+            top += of
+            passed += 1 if done and got >= of * (m.pass_threshold if m.pass_threshold is not None else 70) / 100 else 0
+        if not graded:
+            out[uid] = CourseWork(NONE_GRADED)
+        elif not attempted:
+            out[uid] = CourseWork(NO_WORK, 0.0)
+        else:
+            out[uid] = CourseWork(PASSED if passed == graded else FAILED, 100 * score / top if top else None)
+    return out
 
 
 def _detections(db: Session, cls: Class, user_ids: set[uuid.UUID]) -> dict[uuid.UUID, int]:
@@ -173,10 +237,12 @@ def _detections(db: Session, cls: Class, user_ids: set[uuid.UUID]) -> dict[uuid.
     return dict(rows)
 
 
-def suggest(held: int, present: int, excused: int, course_passed: bool | None) -> str:
-    if held and (present + excused) / held < ATTENDANCE_MIN:
+def suggest(held: int, present: int, excused: int, work: str) -> str:
+    """Incomplete with no session held, below ``ATTENDANCE_MIN``, or with graded course work
+    not done yet; fail when it was done and fell short; else pass. Only a suggestion."""
+    if not held or (present + excused) / held < ATTENDANCE_MIN or work == NO_WORK:
         return ResultOutcome.incomplete.value
-    if course_passed is False:
+    if work == FAILED:
         return ResultOutcome.failed.value
     return ResultOutcome.passed.value
 
@@ -196,6 +262,10 @@ def prefill(db: Session, cls: Class, now: datetime | None = None) -> tuple[list,
     names = dict(db.query(User.id, User.display_name).filter(User.id.in_(uids), User.tenant_id == cls.tenant_id)) \
         if uids else {}
     course = _course(db, cls, uids)
+    graded_course = db.query(CourseModule.id).filter(
+        CourseModule.course_id == cls.course_id, CourseModule.is_required.is_(True),
+        CourseModule.content_type.in_(GRADED_TYPES)).first() is not None
+    course_default = CourseWork(NO_WORK, 0.0) if graded_course else CourseWork(NONE_GRADED)
     dets = _detections(db, cls, uids)
     results = {r.entry_id: r for r in db.query(ClassResult).filter(
         ClassResult.class_id == cls.id, ClassResult.tenant_id == cls.tenant_id)}
@@ -216,12 +286,14 @@ def prefill(db: Session, cls: Class, now: datetime | None = None) -> tuple[list,
                 st.excused += 1
             else:
                 st.absent += 1
-        pct, _ = course.get(e.user_id, (None, 0)) if e.user_id else (None, 0)
-        st.course_passed = None if pct is None else pct >= PASS_PCT
+        work = course.get(e.user_id) if e.user_id else None
+        if work is None:  # no account: no course work at all
+            work = course_default
+        st.course_passed = {PASSED: True, FAILED: False}.get(work.state)
         if numbers:
-            st.percent = None if pct is None else round(pct, 1)
+            st.percent = None if work.percent is None else round(work.percent, 1)
             st.detections = dets.get(e.user_id, 0) if e.user_id else 0
-        st.suggested = suggest(st.held, st.present, st.excused, st.course_passed)
+        st.suggested = suggest(st.held, st.present, st.excused, work.state)
         out.append(st)
     return held, out
 
@@ -256,33 +328,52 @@ def apply_result(db: Session, cls: Class, entry: RollCallEntry, outcome: str, ma
     if enrolment is None:
         return None, "not enrolled: kept on the class only"
     was = enrolment.status.value if enrolment.status else "none"
-    completed_elsewhere = enrolment.status == EnrollmentStatus.completed and made != "completed"
+    # This class's own work, still as it left it. Anything else (completed or failed some
+    # other way, or changed since) is never undone or re-graded by a close-out.
+    ours = (made, enrolment.status) in (("completed", EnrollmentStatus.completed),
+                                        ("failed", EnrollmentStatus.failed))
     if outcome == ResultOutcome.passed.value:
         if enrolment.status == EnrollmentStatus.completed:
-            return made, f"enrolment already completed: kept as it was (was {was})"
-        complete_enrollment(db, enrolment)
-        if not numbers_allowed():
-            # Unclassified: pass/fail only, never a numeric grade (ADR 0015's DLP rule).
-            enrolment.final_grade = None
-            enrolment.final_score = 0
-            enrolment.max_score = 0
+            if ours:
+                return "completed", f"enrolment already completed by this class: kept (was {was})"
+            return None, f"enrolment completed elsewhere: kept (was {was})"
+        if numbers_allowed():
+            complete_enrollment(db, enrolment)
+        else:
+            # Unclassified: pass/fail only. complete_enrollment computes and stores a score and
+            # a letter grade, so it is not called: no number reaches the database at all.
+            enrolment.status = EnrollmentStatus.completed
+            enrolment.completed_at = now
+            _clear_grade(enrolment)
         db.flush()
         return "completed", f"enrolment completed (was {was})"
     if outcome == ResultOutcome.failed.value:
-        if completed_elsewhere:
+        if enrolment.status == EnrollmentStatus.failed:
+            if ours:
+                return "failed", f"enrolment already failed by this class: kept (was {was})"
+            return None, f"enrolment failed elsewhere: kept (was {was})"
+        if enrolment.status == EnrollmentStatus.completed and not ours:
             return None, f"enrolment completed elsewhere: kept (was {was})"
+        if ours:  # this class's own completion: its grade goes with it
+            _clear_grade(enrolment)
         enrolment.status = EnrollmentStatus.failed
         enrolment.completed_at = now
         db.flush()
         return "failed", f"enrolment failed (was {was})"
-    # Incomplete leaves it open; one this class's earlier close-out completed or failed is
-    # opened again.
-    if made in ("completed", "failed") and enrolment.status in (EnrollmentStatus.completed, EnrollmentStatus.failed):
+    # Incomplete leaves it open; this class's own completion or failure is undone.
+    if ours:
         enrolment.status = EnrollmentStatus.in_progress
         enrolment.completed_at = None
+        _clear_grade(enrolment)
         db.flush()
         return None, f"enrolment reopened (was {was})"
     return None, f"enrolment left as it was ({was})"
+
+
+def _clear_grade(enrolment: Enrollment) -> None:
+    enrolment.final_grade = None
+    enrolment.final_score = 0
+    enrolment.max_score = 0
 
 
 def close(db: Session, cls: Class, decisions: list[Decision], actor, now: datetime | None = None) -> list:
@@ -294,6 +385,13 @@ def close(db: Session, cls: Class, decisions: list[Decision], actor, now: dateti
     db.refresh(cls)
     if cls.status != ClassStatus.open.value:
         raise HTTPException(409, f"The class is {cls.status}; only an open class is closed")
+    # Its sessions are locked too, before they are checked and cancelled: the scheduler's
+    # clock or an approver cannot move one on in between.
+    session_ids = sessions.session_ids(db, cls)
+    if session_ids:
+        db.query(ScheduledEvent.id).filter(
+            ScheduledEvent.id.in_(session_ids), ScheduledEvent.tenant_id == cls.tenant_id
+        ).order_by(ScheduledEvent.id).with_for_update().all()
     # Not while a session runs, or its ranges are being built for it: closing would tear them
     # down under the Students and leave the session out of the record.
     running = [evt.name for _, evt in attendance.held_sessions(db, cls)
@@ -338,11 +436,13 @@ def close(db: Session, cls: Class, decisions: list[Decision], actor, now: dateti
     mark = db.get(ClassCloseout, cls.id) or ClassCloseout(class_id=cls.id, tenant_id=cls.tenant_id, closed_at=now)
     mark.closed_at, mark.closed_by = now, actor_id
     db.add(mark)
-    # Sessions still to come are cancelled. Ended ones stay as they are, even one the clock
-    # never moved on from scheduled: the record keeps every session that was held.
+    # Sessions still to come are cancelled, and so are drafts and sessions still awaiting an
+    # approver whatever their time (never held). Approved sessions that ended stay as they are,
+    # even one the clock never moved on from scheduled: the record keeps every session held.
     to_come = [eid for (eid,) in db.query(ScheduledEvent.id).filter(
-        ScheduledEvent.id.in_(sessions.session_ids(db, cls)), ScheduledEvent.tenant_id == cls.tenant_id,
-        ScheduledEvent.start_time > now)]
+        ScheduledEvent.id.in_(session_ids), ScheduledEvent.tenant_id == cls.tenant_id,
+        or_(ScheduledEvent.start_time > now,
+            ScheduledEvent.state.in_((EventState.draft, EventState.pending_approval))))]
     cancels = scheduler.cancel_unstarted(db, actor, to_come)
     tally = {o.value: sum(1 for d in decisions if d.outcome == o.value) for o in ResultOutcome}
     service.audit(db, actor.id, cls, "class_close",

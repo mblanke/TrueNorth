@@ -109,13 +109,14 @@ def account_out(r: RangeCredential, pending: set[str]) -> RangeCredentialOut:
         notes=r.notes or "")
 
 
-def _note_class_range_open(db: Session, user: CurrentUser, rng) -> None:
+def _note_class_range_open(db: Session, user: CurrentUser, rng, participation: dict | None) -> None:
     """A Student opening their class range is their attendance evidence (ADR 0014 §12,
-    ``classes.attendance``). Never stands in the way of the read itself."""
+    ``classes.attendance``). ``participation``: how ``readable_range`` found they take part.
+    Never stands in the way of the read itself."""
     from ..classes import attendance
 
     try:
-        if attendance.note_range_open(db, uuid.UUID(str(user.id)), rng, service.participation(db, user, rng)):
+        if attendance.note_range_open(db, uuid.UUID(str(user.id)), rng, participation):
             db.commit()
     except Exception:  # noqa: BLE001
         db.rollback()
@@ -145,9 +146,10 @@ def get_range_credentials(
     and gets 404 for any other; an observer gets 403.
     """
     scope = service.access_scope(user)
-    rng = service.readable_range(db, range_id, user, scope)
+    found: dict = {}
+    rng = service.readable_range(db, range_id, user, scope, found)
     if scope == service.STUDENT:
-        _note_class_range_open(db, user, rng)
+        _note_class_range_open(db, user, rng, found.get("participation"))
     rows = service.visible_accounts(db, rng, scope)
     pending = service.setup_pending_machines(rng) if scope == service.ALL else set()
     return RangeCredentialsOut(range_id=rng.id, scope=scope, accounts=[account_out(r, pending) for r in rows])
@@ -173,9 +175,10 @@ def reveal_range_credential(
     Every call writes an audit row (``range_credential_reveal``: who, the range, machine and
     username, the scope, and the Student's exercise or lab session), never the password."""
     scope = service.access_scope(user)
-    rng = service.readable_range(db, range_id, user, scope)
+    found: dict = {}
+    rng = service.readable_range(db, range_id, user, scope, found)
     row = service.account(db, rng, credential_id, scope)
-    context = (service.participation(db, user, rng) or {}) if scope == service.STUDENT else {}
+    context = (found.get("participation") or {}) if scope == service.STUDENT else {}
     password = service.reveal(db, rng, row, scope, user, "range", context)
     db.commit()
     response.headers["Cache-Control"] = "no-store"

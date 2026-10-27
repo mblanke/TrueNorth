@@ -648,14 +648,25 @@ def test_an_open_before_a_session_starts_does_not_silence_one_during_it(db_sessi
     _session(db, w, "Soon", start, state=EventState.scheduled)
     db.commit()
     seen = {"class_seat_id": "x"}
-    assert attendance.note_range_open(db, ann.id, seat, seen, now=start - timedelta(minutes=4))
-    db.flush()
+    _evidence(db, w, "ann", seat, start - timedelta(minutes=4))  # opened before the start
     assert not attendance.note_range_open(db, ann.id, seat, seen, now=start - timedelta(minutes=1))
     # Four minutes into the session: within ten minutes of the last open, but a session began since.
     assert attendance.note_range_open(db, ann.id, seat, seen, now=start + timedelta(minutes=4))
-    db.flush()
+    _evidence(db, w, "ann", seat, start + timedelta(minutes=4))  # that open, as recorded
     assert not attendance.note_range_open(db, ann.id, seat, seen, now=start + timedelta(minutes=6))
     assert not attendance.note_range_open(db, ann.id, seat, None)  # not a class range: nothing
+
+
+def test_the_open_row_takes_the_databases_clock(db_session, w):
+    """M5: the row is stamped by the database (server default), never by the replica's clock."""
+    db = db_session
+    seat, ann = w["seats"]["ann"], w["students"]["ann"]
+    skewed = NOW - timedelta(days=3)  # a replica whose clock is days behind
+    assert attendance.note_range_open(db, ann.id, seat, {"class_seat_id": "x"}, now=skewed)
+    db.flush()
+    row = db.query(AuditLog).filter_by(action=attendance.RANGE_OPEN, resource_id=str(seat.id)).one()
+    db.refresh(row)
+    assert abs(attendance._aware(row.timestamp) - NOW) < timedelta(minutes=5)
 
 
 def test_a_reinstated_student_still_owes_the_sessions_in_between(db_session, w):
@@ -687,3 +698,271 @@ def test_a_pending_addition_on_a_closed_class_is_not_decided(db_session, w):
     with pytest.raises(HTTPException) as refused:
         class_service.reject_addition(db, w["cls"], pending, w["admin"], "no room")
     assert refused.value.status_code == 409
+
+
+# ── Second review (PR #303) ──────────────────────────────────────────────────
+
+
+def _attend_all(db, w, names=("ann", "bob", "cat")) -> None:
+    for key in ("s1", "s2"):
+        _, evt = w[key]
+        for name in names:
+            _evidence(db, w, name, w["seats"][name], evt.start_time + timedelta(minutes=10))
+
+
+def _closeout(client, w) -> dict:
+    act_as(w["lead"])
+    r = client.get(_url(w, "/closeout"))
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+def test_b1_no_graded_work_is_incomplete_not_pass(client, secret, db_session, w):
+    """B1: a Student who came every day but has done none of the graded work."""
+    _attend_all(db_session, w)
+    db_session.commit()
+    ann = _standing(w, _closeout(client, w), "ann")
+    assert (ann["present"], ann["course_passed"], ann["suggested"]) == (2, None, "incomplete")
+    assert ann["course_percent"] == 0.0
+
+
+def test_b1_every_graded_module_counts_unattempted_as_zero(client, secret, db_session, w):
+    db = db_session
+    db.add(CourseModule(id=uuid.uuid4(), course_id=w["course"].id, title="Final quiz", ordinal=2,
+                        content_type=ModuleContentType.quiz))
+    db.add(CourseModule(id=uuid.uuid4(), course_id=w["course"].id, title="Reading", ordinal=3,
+                        content_type=ModuleContentType.reading))  # not graded: never counts
+    _attend_all(db, w)
+    _progress(db, w, "ann", 90)  # the first module only
+    db.commit()
+    ann = _standing(w, _closeout(client, w), "ann")
+    assert (ann["course_percent"], ann["course_passed"], ann["suggested"]) == (45.0, False, "fail")
+
+
+def test_b1_each_module_is_judged_on_its_own_pass_threshold(client, secret, db_session, w):
+    db = db_session
+    w["module"].pass_threshold = 95
+    _attend_all(db, w)
+    _progress(db, w, "ann", 90)
+    _progress(db, w, "bob", 96)
+    db.commit()
+    body = _closeout(client, w)
+    assert (_standing(w, body, "ann")["course_passed"], _standing(w, body, "ann")["suggested"]) == (False, "fail")
+    assert (_standing(w, body, "bob")["course_passed"], _standing(w, body, "bob")["suggested"]) == (True, "pass")
+
+
+def test_b1_nothing_held_is_incomplete(client, secret, db_session, w):
+    db = db_session
+    for key in ("s1", "s2"):
+        w[key][1].state = EventState.cancelled
+    _progress(db, w, "ann", 100)
+    db.commit()
+    ann = _standing(w, _closeout(client, w), "ann")
+    assert (ann["sessions_held"], ann["suggested"]) == (0, "incomplete")
+
+
+def test_b1_a_course_with_no_graded_module_is_judged_on_attendance(client, secret, db_session, w):
+    db = db_session
+    w["module"].content_type = ModuleContentType.reading
+    _attend_all(db, w)
+    db.commit()
+    ann = _standing(w, _closeout(client, w), "ann")
+    assert (ann["course_passed"], ann["suggested"]) == (None, "pass")
+
+
+def _pending_session(db, w, start, proposed: bool = False):
+    from app.scheduler.models import BookingApproval
+
+    cs, evt = _session(db, w, "Pending", start, state=EventState.pending_approval)
+    db.add(BookingApproval(event_id=evt.id, tenant_id=w["a"].id, requested_by=uuid.UUID(w["lead"].id),
+                           requested_at=NOW, proposed_start=(start + timedelta(days=1)) if proposed else None,
+                           proposed_end=(start + timedelta(days=1, hours=3)) if proposed else None,
+                           proposed_by=uuid.UUID(w["admin"].id) if proposed else None))
+    db.flush()
+    return cs, evt
+
+
+def test_b3_a_closed_class_sessions_do_not_change_through_the_scheduler(client, db_session, w):
+    db = db_session
+    _, ended = w["s1"]
+    _, future = _session(db, w, "Friday", NOW + timedelta(days=2), state=EventState.scheduled)
+    _, pending = _pending_session(db, w, NOW + timedelta(days=3), proposed=True)
+    w["cls"].status = "closed"
+    db.commit()
+    body = {"name": "Moved", "start_time": (NOW + timedelta(days=5)).isoformat(),
+            "end_time": (NOW + timedelta(days=5, hours=2)).isoformat(), "template_id": str(w["tpl"].id)}
+    for who in (w["lead"], w["admin"]):
+        act_as(who)
+        assert client.put(f"/schedule/events/{future.id}", json=body).status_code == 409
+        for verb in ("schedule", "activate", "complete", "cancel"):
+            r = client.post(f"/schedule/events/{future.id}/{verb}")
+            assert r.status_code == 409 and "closed" in r.json()["detail"], (verb, r.text)
+        assert client.post(f"/schedule/events/{ended.id}/cancel").status_code == 409
+        assert client.delete(f"/schedule/events/{future.id}").status_code == 409
+        assert client.post(f"/schedule/events/{pending.id}/proposal/accept").status_code == 409
+    act_as(w["admin"])
+    assert client.post(f"/schedule/events/{pending.id}/approve").status_code == 409
+    db.expire_all()
+    assert db.get(ScheduledEvent, future.id).state == EventState.scheduled
+    assert db.get(ScheduledEvent, pending.id).state == EventState.pending_approval
+
+
+def test_b3_a_cancelled_class_session_under_way_can_still_be_wound_down(client, db_session, w):
+    db = db_session
+    _, live = _session(db, w, "Live", NOW - timedelta(hours=1), state=EventState.active)
+    w["cls"].status = "cancelled"
+    db.commit()
+    act_as(w["lead"])
+    assert client.post(f"/schedule/events/{live.id}/activate").status_code == 409
+    assert client.post(f"/schedule/events/{live.id}/cancel").status_code == 200
+
+
+def test_b3_closing_cancels_past_drafts_and_pending_sessions(client, secret, db_session, w):
+    db = db_session
+    _, draft = _session(db, w, "Old draft", D1 - timedelta(days=1), state=EventState.draft)
+    _, pending = _pending_session(db, w, D1 - timedelta(hours=6))
+    db.commit()
+    act_as(w["lead"])
+    r = client.post(_url(w, "/close"), json={"results": [
+        {"entry_id": str(w["entries"][n].id), "outcome": "incomplete"} for n in ("ann", "bob", "cat")]})
+    assert r.status_code == 200, r.text
+    db.expire_all()
+    assert db.get(ScheduledEvent, draft.id).state == EventState.cancelled
+    assert db.get(ScheduledEvent, pending.id).state == EventState.cancelled
+    assert db.get(ScheduledEvent, w["s1"][1].id).state == EventState.completed  # held: kept
+
+
+def _close(client, w, outcomes: dict) -> None:
+    act_as(w["lead"])
+    r = client.post(_url(w, "/close"), json={"results": [
+        {"entry_id": str(w["entries"][n].id), "outcome": o} for n, o in outcomes.items()]})
+    assert r.status_code == 200, r.text
+
+
+def _reopen(client, w) -> None:
+    act_as(w["admin"])
+    assert client.post(_url(w, "/reopen"), json={"reason": "recount"}).status_code == 200
+
+
+def _enrolment(db, w, name) -> Enrollment:
+    db.expire_all()
+    return db.query(Enrollment).filter_by(user_id=w["students"][name].id).one()
+
+
+def test_m1_undoing_its_own_completion_clears_the_grade(client, secret, graded, db_session):
+    w = graded
+    _close(client, w, {"ann": "pass", "bob": "incomplete", "cat": "incomplete"})
+    assert _enrolment(db_session, w, "ann").final_grade == "A"
+    _reopen(client, w)
+    _close(client, w, {"ann": "incomplete", "bob": "incomplete", "cat": "incomplete"})
+    e = _enrolment(db_session, w, "ann")
+    assert (e.status, e.final_grade, e.final_score, e.max_score) == (EnrollmentStatus.in_progress, None, 0, 0)
+    # A fail of this class's own completion also takes the grade away.
+    _reopen(client, w)
+    _close(client, w, {"ann": "pass", "bob": "incomplete", "cat": "incomplete"})
+    _reopen(client, w)
+    _close(client, w, {"ann": "fail", "bob": "incomplete", "cat": "incomplete"})
+    e = _enrolment(db_session, w, "ann")
+    assert (e.status, e.final_grade, e.final_score) == (EnrollmentStatus.failed, None, 0)
+
+
+def test_m2_only_undo_what_is_still_as_this_class_left_it(client, secret, graded, db_session):
+    w, db = graded, db_session
+    _close(client, w, {"ann": "incomplete", "bob": "fail", "cat": "incomplete"})
+    # Bob then completes the course some other way (Moodle).
+    e = _enrolment(db, w, "bob")
+    e.status, e.final_grade = EnrollmentStatus.completed, "B"
+    db.commit()
+    _reopen(client, w)
+    _close(client, w, {"ann": "incomplete", "bob": "incomplete", "cat": "incomplete"})
+    e = _enrolment(db, w, "bob")
+    assert (e.status, e.final_grade) == (EnrollmentStatus.completed, "B")  # not ours any more: kept
+    row = db.query(ClassResult).filter_by(entry_id=w["entries"]["bob"].id).one()
+    assert row.enrolment_change is None  # and never claimed as ours again
+    # The label carries forward while it is still ours.
+    _reopen(client, w)
+    _close(client, w, {"ann": "pass", "bob": "incomplete", "cat": "incomplete"})
+    _reopen(client, w)
+    _close(client, w, {"ann": "pass", "bob": "incomplete", "cat": "incomplete"})
+    db.expire_all()
+    assert db.query(ClassResult).filter_by(entry_id=w["entries"]["ann"].id).one().enrolment_change == "completed"
+
+
+def test_m3_unclassified_never_writes_a_number_to_the_enrolment(client, unclassified, graded, db_session):
+    w = graded
+
+    def no_numbers(*_a, **_k):
+        raise AssertionError("complete_enrollment writes a score and a grade")
+
+    with patch("app.classes.closeout.complete_enrollment", side_effect=no_numbers):
+        _close(client, w, {"ann": "pass", "bob": "incomplete", "cat": "incomplete"})
+    e = _enrolment(db_session, w, "ann")
+    assert (e.status, e.final_grade, e.final_score, e.max_score) == (EnrollmentStatus.completed, None, 0, 0)
+    assert e.completed_at is not None
+
+
+def test_m4_a_collective_session_on_an_exercises_own_range_records_attendance(client, db_session, w):
+    db = db_session
+    rng = Range(id=uuid.uuid4(), name="exercise range", template_id=w["tpl"].id, tenant_id=w["a"].id,
+                state=RangeState.ready)
+    sc = Scenario(id=uuid.uuid4(), name="Ransomware", yaml="id: s\n", tenant_id=w["a"].id)
+    db.add_all([rng, sc])
+    db.flush()
+    ex = Exercise(id=uuid.uuid4(), name="Friday", scenario_id=sc.id, range_id=rng.id, tenant_id=w["a"].id,
+                  state=ExerciseState.running, started_at=NOW - timedelta(hours=1))
+    db.add(ex)
+    db.flush()
+    cs, evt = _session(db, w, "Exercise", NOW - timedelta(hours=1), state=EventState.active)
+    evt.range_id, evt.exercise_id, evt.template_id, cs.range_mode = rng.id, ex.id, None, "collective"
+    evt.course_id = w["course"].id
+    db.commit()
+    act_as(_as(w["students"]["ann"]))
+    assert client.get(f"/ranges/{rng.id}/credentials").status_code == 200
+    rows = db.query(AuditLog).filter_by(action=attendance.RANGE_OPEN, resource_id=str(rng.id)).all()
+    assert len(rows) == 1 and f"class_id={w['cls'].id}" in rows[0].detail
+    attendance.tick(db, now=evt.end_time + timedelta(minutes=1))
+    got = db.query(ClassAttendance).filter_by(session_id=cs.id, entry_id=w["entries"]["ann"].id).one()
+    assert got.status == "present"
+
+
+def test_l2_participation_is_worked_out_once_per_read(client, db_session, w):
+    from app.range_credentials import service as cred_service
+
+    _session(db_session, w, "Live", NOW - timedelta(hours=1), state=EventState.active)
+    db_session.commit()
+    calls = []
+    real = cred_service.participation
+
+    def counted(*a, **k):
+        calls.append(1)
+        return real(*a, **k)
+
+    act_as(_as(w["students"]["ann"]))
+    with patch.object(cred_service, "participation", side_effect=counted):
+        assert client.get(f"/ranges/{w['seats']['ann'].id}/credentials").status_code == 200
+    assert len(calls) == 1
+
+
+def test_l3_an_enrolment_in_another_tenant_is_not_this_class_work(client, secret, db_session, w):
+    db = db_session
+    _attend_all(db, w)
+    _progress(db, w, "ann", 100)
+    _enrolment(db, w, "ann").tenant_id = w["b"].id
+    db.commit()
+    ann = _standing(w, _closeout(client, w), "ann")
+    assert (ann["course_passed"], ann["suggested"]) == (None, "incomplete")
+
+
+def test_l5_a_student_who_lost_their_seat_gets_a_result(client, secret, db_session, w):
+    db = db_session
+    w["entries"]["cat"].status = "forfeited"
+    w["entries"]["cat"].forfeited_at = D1 + timedelta(hours=2)
+    db.commit()
+    body = _closeout(client, w)
+    assert _standing(w, body, "cat")["suggested"] == "incomplete"
+    act_as(w["lead"])
+    r = client.post(_url(w, "/close"), json={"results": [
+        {"entry_id": str(w["entries"][n].id), "outcome": "pass"} for n in ("ann", "bob")]})
+    assert r.status_code == 422 and "cat@corp.test" in r.json()["detail"]
+    _close(client, w, {"ann": "pass", "bob": "pass", "cat": "incomplete"})
+    assert db.query(ClassResult).filter_by(entry_id=w["entries"]["cat"].id).one().outcome == "incomplete"

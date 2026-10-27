@@ -7,13 +7,14 @@ is audited and the clock never overwrites it.
 
 **The signal: an audit row of the Student opening their own class range.** What counts:
 
-- ``class_range_open``: written when a Student loads their class range's credential panel
-  (``GET /ranges/{id}/credentials``: "Show accounts" on the Classes page's "Your range", or
-  on an exercise's range) and the range is theirs through the class
-  (``ranges.student_participation``: their own seat, or the class's shared range while a
-  collective session is under way). At most one row per Student and range every
-  ``OPEN_EVERY``, except that a session starting in between always gets its own
-  (``note_range_open``);
+- ``class_range_open``: written when a Student lists a range's accounts
+  (``GET /ranges/{id}/credentials``: "Show accounts" under "Your range" on the Classes page,
+  or on an exercise's page) and the range is theirs through a class: their own seat or the
+  class's shared range (``ranges.student_participation``), or the range a session of their
+  class is booked on while it is under way (a collective session on an exercise's own
+  range). At most one row per Student and range every ``OPEN_EVERY``, except that a session
+  starting in between always gets its own (``note_range_open``). The row's time is the
+  database's;
 - ``range_credential_reveal``: a Student revealing one of that range's passwords (ADR 0013
   §3), which was already audited.
 
@@ -70,6 +71,7 @@ from ..models import AuditLog
 from ..scheduler.models import EventState, ScheduledEvent
 from . import service
 from .models import (
+    OFF_ROLL_CALL,
     AttendanceSource,
     AttendanceStatus,
     Class,
@@ -109,12 +111,21 @@ def _aware(t: datetime) -> datetime:
 
 
 def note_range_open(db: Session, user_id: uuid.UUID, rng, participation: dict | None, now: datetime | None = None) -> bool:
-    """Record that a Student opened a range they take part in through a class (their own
-    seat, or its shared range during a collective session), at most once per range every
-    ``OPEN_EVERY``. Returns whether a row was added. Does not commit."""
-    if not participation or not ({"class_seat_id", "class_id"} & set(participation)):
+    """Record that a Student opened a range they take part in through a class: their own
+    seat, its shared range during a collective session, or the range a held session of a
+    class they are on is booked on (a collective session run on an exercise's own range,
+    which ``participation`` reports as the exercise). At most once per range every
+    ``OPEN_EVERY``, unless a session started in between. Returns whether a row was added.
+    The row takes the database's clock (``audit_logs.timestamp`` server default), so replicas
+    with drifting clocks agree. Does not commit."""
+    if not participation:
         return False
     now = now or _now()
+    if not ({"class_seat_id", "class_id"} & set(participation)):
+        booked = _booked_class(db, user_id, rng, now) if "exercise_id" in participation else None
+        if booked is None:
+            return False
+        participation = {**participation, "class_id": str(booked)}
     recent = (
         db.query(AuditLog.timestamp)
         .filter(
@@ -132,15 +143,44 @@ def note_range_open(db: Session, user_id: uuid.UUID, rng, participation: dict | 
         return False
     detail = ", ".join(f"{k}={v}" for k, v in sorted(participation.items()))
     db.add(AuditLog(user_id=user_id, tenant_id=rng.tenant_id, action=RANGE_OPEN, resource_type="range",
-                    resource_id=str(rng.id), detail=detail[:2000], timestamp=now))
+                    resource_id=str(rng.id), detail=detail[:2000]))
     return True
 
 
+def _booked_class(db: Session, user_id: uuid.UUID, rng, now: datetime) -> uuid.UUID | None:
+    """The open class whose held session is booked on ``rng`` and under way now, with
+    ``user_id`` on its roll call; None when there is none."""
+    row = (
+        db.query(ClassSession.class_id)
+        .join(ScheduledEvent, ScheduledEvent.id == ClassSession.event_id)
+        .join(Class, Class.id == ClassSession.class_id)
+        .join(RollCallEntry, RollCallEntry.class_id == ClassSession.class_id)
+        .filter(
+            ScheduledEvent.range_id == rng.id,
+            ScheduledEvent.tenant_id == rng.tenant_id,
+            ScheduledEvent.state.in_(HELD),
+            ScheduledEvent.start_time <= now,
+            ScheduledEvent.end_time > now,
+            ClassSession.tenant_id == rng.tenant_id,
+            Class.tenant_id == rng.tenant_id,
+            Class.status == ClassStatus.open.value,
+            RollCallEntry.tenant_id == rng.tenant_id,
+            RollCallEntry.user_id == user_id,
+            RollCallEntry.status.notin_(OFF_ROLL_CALL),
+        )
+        .first()
+    )
+    return row[0] if row else None
+
+
 def _session_started_since(db: Session, rng, since: datetime, now: datetime) -> bool:
-    """Whether a session of a class owning ``rng`` started after ``since``: an open before a
-    session's start is no evidence for it, so it never silences one after."""
-    class_ids = [cid for (cid,) in db.query(ClassRange.class_id).filter(
-        ClassRange.range_id == rng.id, ClassRange.tenant_id == rng.tenant_id)]
+    """Whether a session of a class owning ``rng`` (or booked on it) started after ``since``:
+    an open before a session's start is no evidence for it, so it never silences one after."""
+    class_ids = {cid for (cid,) in db.query(ClassRange.class_id).filter(
+        ClassRange.range_id == rng.id, ClassRange.tenant_id == rng.tenant_id)}
+    class_ids |= {cid for (cid,) in db.query(ClassSession.class_id).join(
+        ScheduledEvent, ScheduledEvent.id == ClassSession.event_id).filter(
+        ScheduledEvent.range_id == rng.id, ScheduledEvent.tenant_id == rng.tenant_id)}
     if not class_ids:
         return False
     return (

@@ -75,6 +75,7 @@ Content (courses, modules, labs, scenarios, range templates, golden images) has 
     - Results are pre-filled from scores and attendance. The lead sets pass, fail or incomplete for each Student, with a comment.
     - Results go to the Student's record and qualification.
     - A closed class is read-only and exportable. Reopening needs an admin and is audited.
+    - Free-text comments on results and notes on attendance stay allowed on every deployment, Unclassified included: an explicit exception to `docs/cote-unclassified-8.5-plan.md` §2.2, approved by the owner (2026-10-27, PR #303). Scores and grades stay pass/fail only on Unclassified.
 
 ### Booking approval and capacity
 
@@ -221,9 +222,12 @@ Content (courses, modules, labs, scenarios, range templates, golden images) has 
    opened; class ranges have no console, and a reveal alone misses later days of a week-long
    class. The lead or an admin sets present, absent or excused (audited). Close-out
    (`class_results`, `class_closeouts`) pre-fills attendance, course module progress (where quiz
-   results land) and detections credited in the class's exercises, suggests incomplete below
-   80% attendance, fail below the 70% pass mark, else pass; the lead sets each result with a
-   comment. Pass completes the enrolment through `complete_enrollment`, fail marks it failed,
+   results land) and detections credited in the class's exercises, suggests incomplete with no
+   session held, below 80% attendance or with graded course work not yet done, fail when a
+   graded module (every one counts, unattempted as 0) is below its own `pass_threshold`,
+   else pass; the lead sets each result with a comment, for everyone on the roll call and
+   everyone who lost their seat (forfeited). Pass completes the enrolment through
+   `complete_enrollment` (on Unclassified the status alone, no number written), fail marks it failed,
    incomplete leaves it open; a close-out never fails, reopens or re-grades an enrolment
    completed some other way, and undoes only its own. Closing is refused while a session is
    provisioning or under way. Students reach their range (and so their attendance) from the
