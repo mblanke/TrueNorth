@@ -37,9 +37,9 @@ output for "no objection". PreToolUse fires before any permission-mode check, so
 holds under --dangerously-skip-permissions. Any input the gate cannot understand is
 refused (fail closed).
 
-Configuration: `--policy PATH` or $TAZ_GATE_POLICY, else policy.json beside this file,
-else the built-in defaults. A policy file that exists but cannot be read refuses every
-call. $TAZ_CARD names the task card (JSON); $TAZ_GATE_LOG overrides the policy's
+Configuration: `--policy PATH` or $TAZ_GATE_POLICY, else policy.json beside this file.
+A policy that is missing everywhere, or exists but cannot be read, refuses every call;
+the built-in defaults are only the floor that the file is merged over. $TAZ_CARD names the task card (JSON); $TAZ_GATE_LOG overrides the policy's
 `log_path`.
 """
 
@@ -128,9 +128,9 @@ def load_policy(path: str | None, explicit: bool) -> dict:
         with open(path, encoding="utf-8") as fh:
             data = json.load(fh)
     except FileNotFoundError:
-        if explicit:
-            raise GateError(f"policy file {path} not found") from None
-        return policy
+        # No policy at all is a broken install, not "use the defaults": the built-in
+        # defaults are a floor, weaker than the shipped policy.json. Fail closed.
+        raise GateError(f"policy file {path} not found") from None
     except Exception as exc:  # any failure to read is a deny
         raise GateError(f"policy file {path} unreadable: {exc}") from None
     if not isinstance(data, dict):

@@ -326,6 +326,10 @@ def check(repo: Path, base: str, head: str, card: dict, policy: dict) -> Report:
         p = c.path
         if c.new_mode in ("120000", "160000") or (c.status == "T"):
             rep.fail("mode", f"`{p}`: symlinks, submodules and type changes are not allowed")
+        elif c.old_mode == "000000" and c.new_mode not in ("100644", "000000"):
+            rep.fail("mode", f"`{p}` is added with mode {c.new_mode}: new files must be 100644")
+        elif "000000" not in (c.old_mode, c.new_mode) and c.old_mode != c.new_mode:
+            rep.fail("mode", f"`{p}` changes mode {c.old_mode} -> {c.new_mode}")
         if matches_any(p, lockfiles, ignore_case=True):
             rep.fail("lockfile", f"`{p}` is a lockfile")
             continue

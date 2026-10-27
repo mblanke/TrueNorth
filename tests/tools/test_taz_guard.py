@@ -189,6 +189,24 @@ def test_lockfile_changed(repo):
     assert "lockfile" in failed(rep)
 
 
+def test_executable_bit_set_on_an_allowed_file(repo):
+    p = repo / "control-plane/web/src/app/features/x/x.component.ts"
+    p.chmod(0o755)
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "chmod")
+    rep = run(repo)
+    assert failed(rep) == {"mode"} and any("100644 -> 100755" in m for _, m in rep.failures)
+
+
+def test_new_executable_file_in_allowed_paths(repo):
+    p = repo / "control-plane/web/src/app/features/x/run.sh"
+    p.write_text("echo hi\n")
+    p.chmod(0o755)
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "exec")
+    assert failed(run(repo)) == {"mode"}
+
+
 def test_symlink_added(repo):
     (repo / "control-plane/web/src/app/features/x/link.ts").symlink_to("/etc/passwd")
     _git(repo, "add", "-A")

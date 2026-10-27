@@ -264,6 +264,7 @@ def test_ring5_refuses_the_cards_oracle_test(repo, tmp_path):
     "control-plane/worker/worker/provisioners/vsphere.py",
     "control-plane/api/app/result_transfer/service.py", "control-plane/api/app/classes/onboarding.py",
     "scripts/dod.sh", ".git/config", "src/.git/config",
+    ".npmrc", "control-plane/web/.npmrc", "control-plane/web/.yarnrc.yml", ".pnpmfile.cjs",
 ])
 def test_ring5_refuses_protected_paths_even_for_claude_and_even_when_the_card_allows_them(repo, tmp_path, target):
     t = transcript(tmp_path, said(CLAUDE, str(repo / target)))
@@ -331,6 +332,22 @@ def test_relative_and_root_exempt_entries_are_ignored(repo, tmp_path):
                                  '{"tool_name": "Bash", "tool_input": {"command": 7}}'])
 def test_malformed_input_is_refused(tmp_path, raw):
     assert run_gate(tmp_path, None, raw=raw)[0] == "deny"
+
+
+def test_no_policy_file_anywhere_is_refused(repo, tmp_path):
+    """The built-in defaults are weaker than policy.json; a gate installed without its
+    policy (no --policy, no $TAZ_GATE_POLICY, nothing beside the script) must not fall
+    back to them."""
+    lone = tmp_path / "lone"
+    lone.mkdir()
+    (lone / "write_gate.py").write_text(GATE.read_text())
+    t = transcript(tmp_path, said(CLAUDE))
+    e = {"PATH": os.environ["PATH"], "HOME": str(tmp_path / "home")}
+    for payload in (write(repo / "src/app.py", t, repo, "Edit"), bash("ls", repo)):
+        r = subprocess.run([sys.executable, str(lone / "write_gate.py")], input=json.dumps(payload),
+                           capture_output=True, text=True, env=e, timeout=30)
+        out = json.loads(r.stdout)["hookSpecificOutput"]
+        assert out["permissionDecision"] == "deny" and "not found" in out["permissionDecisionReason"]
 
 
 def test_a_broken_policy_file_is_refused(repo, tmp_path):

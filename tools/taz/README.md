@@ -84,7 +84,7 @@ Environment and configuration:
 
 | Name | Effect |
 |---|---|
-| `--policy PATH` / `TAZ_GATE_POLICY` | Policy file. If neither is set, the gate uses `policy.json` beside the script, or the built-in defaults when that file is missing. A named policy that is missing or broken refuses every call. |
+| `--policy PATH` / `TAZ_GATE_POLICY` | Policy file. If neither is set, the gate uses `policy.json` beside the script. If no policy file is found, or the one found is broken, every call is refused. |
 | `TAZ_CARD` | Task card JSON. Rings 4 and 5 use its paths. A card that is set but broken refuses every call. |
 | `TAZ_GATE_LOG` / policy `log_path` | Optional JSON-lines decision log. |
 | `TAZ_STOP_STATE` | Where the Stop hook keeps its remind-once state. The default is `~/.claude/hooks/.dod-stop-state`. |
@@ -171,6 +171,8 @@ Known limits. Each of these is closed by another layer, not by ring 6.
   files bypasses all six rings. Do not configure any.
 - **`npx ng`** may download a package if `node_modules` is missing. Run `npm ci` in the
   runner before the session, not in it.
+- **Hardlinks are not resolved by realpath**, so rings 4 and 5 judge a hardlink by its own
+  path. Ring 6 refuses `ln` and every other way to create one, so the model cannot make one.
 
 ## The Stop hook
 
