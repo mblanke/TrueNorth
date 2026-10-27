@@ -361,6 +361,15 @@ export const routes: Routes = [
     title: 'Classes - TrueNorth Range',
   },
   {
+    // ADR 0014 decision 7 (#289): commander = observer + the unit readiness page. Read-only,
+    // the caller's own organisation; observers, instructors and admins (readiness:read).
+    path: 'readiness',
+    canActivate: [authGuard, onboardingGuard, pageGuard('readiness')],
+    loadComponent: () =>
+      import('./features/readiness/unit-readiness.component').then(m => m.UnitReadinessComponent),
+    title: 'Unit readiness - TrueNorth Range',
+  },
+  {
     // ADR 0013 §7: windows in which provision, reset and normal destroy are refused.
     path: 'maintenance-windows',
     canActivate: [authGuard, onboardingGuard, pageGuard('maintenanceWindows')],

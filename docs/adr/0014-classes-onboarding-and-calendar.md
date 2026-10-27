@@ -244,4 +244,14 @@ Content (courses, modules, labs, scenarios, range templates, golden images) has 
     - online pull plus signed bundle import.
 11. **Self-serve lab capacity gate.**
 12. **Unit readiness page** (observer).
+
+    As built (#289): `GET /readiness` (and `/readiness/export.csv`, `/readiness/export.pdf`),
+    `app/classes/readiness.py`, page `/readiness`. A new permission, `readiness:read`, for
+    observers, instructors and admins; never Students or range ops. Always the caller's own
+    tenant. Classes overlapping the date range (cancelled ones left out), each Student's
+    roll-call and enrolment status, recorded attendance (`class_attendance`), close-out result
+    and comment (`class_results`), and the course's qualification (its NQual) on a pass. There
+    is no unit record: the unit is `users.unit`, filled by the directory sync and registration,
+    matched ignoring case and spaces; a Student who never signed in has none. Reads only; an
+    export writes one audit row (`readiness_export`). The PDF uses the AAR's fpdf2 machinery.
 13. **AD status sync,** plus the 90-day disable for local accounts.

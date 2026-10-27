@@ -150,17 +150,20 @@ describe('AppComponent', () => {
     // Classes (ADR 0014): a Student's own classes and their range (attendance, #283).
     student: ['/dashboard', '/learning', '/exercises', '/classes', '/scoring', '/wiki', '/support'],
     // The calendar's Events view (schedule:read, #285): observers too, read-only.
+    // Unit readiness (readiness:read, #289): commander = observer + this page (ADR 0014 decision 7).
     observer: ['/dashboard', '/learning', '/exercises', '/ops-center/select', '/telemetry', '/schedule',
-      '/calendar', '/classes', '/scoring', '/wiki'],
+      '/calendar', '/classes', '/scoring', '/readiness', '/wiki'],
     range_ops: ['/dashboard', '/learning', '/authoring', '/exercises', '/ops-center/select', '/telemetry',
       '/schedule', '/calendar', '/wiki', '/support', '/infrastructure', '/ai-orchestrator'],
     // Student progress (learning_record:read) and Teams (user:read): instructors and admins.
     instructor: ['/dashboard', '/learning', '/learning/admin/progress', '/authoring', '/exercises',
-      '/ops-center/select', '/telemetry', '/schedule', '/calendar', '/classes', '/scoring', '/wiki', '/support',
+      '/ops-center/select', '/telemetry', '/schedule', '/calendar', '/classes', '/scoring', '/readiness', '/wiki',
+      '/support',
       '/approvals', '/teams',
       '/infrastructure', '/ai-orchestrator'],
     admin: ['/dashboard', '/learning', '/learning/admin/progress', '/authoring', '/exercises',
-      '/ops-center/select', '/telemetry', '/schedule', '/calendar', '/classes', '/scoring', '/wiki', '/support',
+      '/ops-center/select', '/telemetry', '/schedule', '/calendar', '/classes', '/scoring', '/readiness', '/wiki',
+      '/support',
       '/approvals', '/teams',
       // Maintenance windows (range:admin, ADR 0013 §7): admins only.
       // Rules of use (ADR 0014 §3): admins export signatures; the platform admin publishes.
@@ -182,6 +185,19 @@ describe('AppComponent', () => {
       .map(h => h.textContent!.trim());
     expect(headings).not.toContain('Create');
     expect(headings).not.toContain('Admin');
+  });
+
+  it('gives observers the unit readiness page and never Students or range ops (#289)', () => {
+    for (const role of ['observer', 'instructor', 'admin'] as UserRole[]) {
+      auth.role.set(role);
+      fixture.detectChanges();
+      expect(menu()).withContext(role).toContain('/readiness');
+    }
+    for (const role of ['student', 'range_ops'] as UserRole[]) {
+      auth.role.set(role);
+      fixture.detectChanges();
+      expect(menu()).withContext(role).not.toContain('/readiness');
+    }
   });
 
   it('has an approvals entry for instructors and a telemetry entry for roles with telemetry:read', () => {
