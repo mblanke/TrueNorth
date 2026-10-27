@@ -10,6 +10,7 @@ const TITLES: Record<string, string> = {
   'ops-center': 'Ops Center',
   'topology-3d': 'Exercises',
   schedule: 'Schedule',
+  'my-classes': 'My classes',
   scoring: 'Review',
   telemetry: 'Telemetry',
   wiki: 'Wiki',

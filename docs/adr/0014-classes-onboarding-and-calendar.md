@@ -211,6 +211,20 @@ Content (courses, modules, labs, scenarios, range templates, golden images) has 
    during a collective session); observers none.
 6. **Attendance and close-out.**
 7. **My classes** (Student).
+
+   As built (#284): `/my-classes`, from the menu and the dashboard, for roles holding the new
+   permission `class:attend` (Students; admins hold every permission but use Classes, so the
+   menu hides it from anyone who may open Classes). One Student-scoped read,
+   `GET /classes/attending` (`app/classes/my_classes.py`): the caller's own roll-call entries
+   in their own tenant, including a seat they lost (which `/classes` no longer shows, so the
+   page can say to ask the lead to reinstate them), for the week or month asked for (at most
+   45 days). Per class: course, the lead's name (no email), dates, sessions (approved or over),
+   onboarding, rules of use, seat, and the Student's range for the current or next session
+   (not built, building, ready, failed; never why). `join_range_id` is set only where
+   `/ranges/{id}/credentials` would answer (`ranges.student_participation`): their own seat,
+   ready; or the shared range, ready, while a collective session is under way. Join opens the
+   shared credentials panel; that endpoint still decides on every call. A console for class
+   ranges has no Student endpoint yet (lab sessions only).
 8. **Events view:** week and month, colours, the approval queue, following the mockups.
 9. **Content clock:** review dates, theme tags, dependency edges, and the Content view.
 10. **Feeds:**

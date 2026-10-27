@@ -62,7 +62,8 @@ describe('AppComponent', () => {
     fixture.detectChanges();
     const el: HTMLElement = fixture.nativeElement;
     const navItems = el.querySelectorAll('mat-nav-list a[mat-list-item]');
-    const allItems = component.navSections.flatMap(s => s.items);
+    // An admin sees every entry except My classes, whose staff counterpart is Classes (notWith).
+    const allItems = component.navSections.flatMap(s => s.items).filter(n => !n.notWith);
     expect(navItems.length).toBe(allItems.length);
   });
 
@@ -89,7 +90,7 @@ describe('AppComponent', () => {
     fixture.detectChanges();
     const el: HTMLElement = fixture.nativeElement;
     const icons = el.querySelectorAll('mat-nav-list mat-icon');
-    const totalItems = component.navSections.reduce((sum, s) => sum + s.items.length, 0);
+    const totalItems = component.navSections.reduce((sum, s) => sum + s.items.filter(n => !n.notWith).length, 0);
     expect(icons.length).toBeGreaterThanOrEqual(totalItems);
   });
 
@@ -147,7 +148,8 @@ describe('AppComponent', () => {
    * shown is one the route guard admits; everything else is absent.
    */
   const MENU: Record<UserRole, string[]> = {
-    student: ['/dashboard', '/learning', '/exercises', '/scoring', '/wiki', '/support'],
+    // My classes (class:attend, ADR 0014 §20): Students. Admins hold it too but use Classes.
+    student: ['/dashboard', '/learning', '/my-classes', '/exercises', '/scoring', '/wiki', '/support'],
     observer: ['/dashboard', '/learning', '/exercises', '/ops-center/select', '/telemetry', '/schedule',
       '/classes', '/scoring', '/wiki'],
     range_ops: ['/dashboard', '/learning', '/authoring', '/exercises', '/ops-center/select', '/telemetry',

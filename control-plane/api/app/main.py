@@ -362,6 +362,7 @@ app.state.ws_manager = ws_manager
 # -- Routers (fine-grained RBAC via require_permission) --------------------
 from .acknowledgement.router import router as acknowledgement_router  # noqa: E402 (ADR 0014 §3; + its tables)
 from .class_setup.router import router as class_setup_router  # noqa: E402 (#200)
+from .classes.my_classes import router as my_classes_router  # noqa: E402 (#284)
 from .classes.range_router import router as class_ranges_router  # noqa: E402 (#282)
 from .classes.router import router as classes_router  # noqa: E402 (ADR 0014, + its tables)
 from .cmi5.router import router as cmi5_router  # noqa: E402 (also registers the cmi5 tables)
@@ -468,6 +469,7 @@ app.include_router(courses_router)
 app.include_router(course_releases_router)
 app.include_router(course_publications_router)
 app.include_router(class_setup_router)  # an instructor's own class (#200)
+app.include_router(my_classes_router)  # app/classes: a Student's My classes (#284); before /{class_id}
 app.include_router(class_ranges_router)  # app/classes: ranges, modes and teams (#282); before /{class_id}
 app.include_router(classes_router)  # app/classes: Class records and roll call (ADR 0014)
 app.include_router(acknowledgement_router)  # app/acknowledgement: the rules of use (ADR 0014 §3)

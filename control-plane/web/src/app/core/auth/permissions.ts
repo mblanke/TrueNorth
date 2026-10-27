@@ -30,7 +30,7 @@ export type Permission =
   | 'course:author' | 'course:release'
   | 'schedule:read' | 'schedule:write' | 'schedule:admin' | 'schedule:approve'
   | 'content_review:read' | 'content_review:review_own' | 'content_review:admin'
-  | 'class:create' | 'class:read'
+  | 'class:create' | 'class:read' | 'class:attend'
   | 'tenant:create' | 'tenant:read' | 'tenant:update'
   | 'audit:read' | 'telemetry:read' | 'telemetry:write' | 'stats:read' | 'aar:generate' | 'aar:read'
   | 'noise:read' | 'noise:control'
@@ -57,7 +57,7 @@ export const ALL_PERMISSIONS: readonly Permission[] = [
   'course:author', 'course:release',
   'schedule:read', 'schedule:write', 'schedule:admin', 'schedule:approve',
   'content_review:read', 'content_review:review_own', 'content_review:admin',
-  'class:create', 'class:read',
+  'class:create', 'class:read', 'class:attend',
   'tenant:create', 'tenant:read', 'tenant:update',
   'audit:read', 'telemetry:read', 'telemetry:write', 'stats:read', 'aar:generate', 'aar:read',
   'noise:read', 'noise:control',
@@ -99,7 +99,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
   ],
   student: [
     'range:read', 'template:read', 'scenario:read', 'exercise:read', 'detection:submit',
-    'aar:read', 'wiki:read', 'ticket:create',
+    'aar:read', 'class:attend', 'wiki:read', 'ticket:create',
   ],
   observer: [
     'range:read', 'template:read', 'scenario:read', 'exercise:read', 'aar:read',
@@ -173,6 +173,8 @@ export const PAGE_ACCESS = {
   contentCalendar: { all: ['content_review:read'] },
   /** GET /classes/mine: the staff Classes page (ADR 0014). Creating one needs class:create. */
   classes: { all: ['class:read'] },
+  /** GET /classes/attending: a Student's own classes, their status and Join (ADR 0014 §20). */
+  myClasses: { all: ['class:attend'] },
   /** GET /maintenance-windows (schedule:read); changing them needs range:admin (admins). */
   maintenanceWindows: { all: ['schedule:read', 'range:admin'] },
   approvals: { all: ['registration:read'] },

@@ -22,6 +22,10 @@ export type RangeMode = S['RangeModeOut'];
 export type CourseRangeMode = S['CourseRangeModeOut'];
 export type SessionTeams = S['SessionTeamsOut'];
 export type ReinstateResult = S['ReinstateOut'];
+export type MyClasses = S['AttendingClassesOut'];
+export type MyClass = S['AttendingClassOut'];
+export type MyClassSession = S['AttendingSessionOut'];
+export type MyRangeStatus = S['AttendingRangeStatus'];
 
 /**
  * Classes and their roll call (ADR 0014). The API decides who sees and changes what:
@@ -37,6 +41,14 @@ export class ClassesApiService {
   mine(includeCancelled = false): Observable<ClassRecord[]> {
     const params = new HttpParams().set('include_cancelled', includeCancelled);
     return this.http.get<ClassRecord[]>(`${this.base}/mine`, { params });
+  }
+  /**
+   * My classes (a Student, class:attend; ADR 0014 §20): their own classes running between
+   * `start` and `end`, with their seat, onboarding, range and Join. At most 45 days.
+   */
+  attending(start: Date, end: Date): Observable<MyClasses> {
+    const params = new HttpParams().set('start', start.toISOString()).set('end', end.toISOString());
+    return this.http.get<MyClasses>(`${this.base}/attending`, { params });
   }
   /** Everything the caller may see: for an admin, every class of their organisation. */
   list(includeCancelled = false): Observable<ClassRecord[]> {

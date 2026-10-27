@@ -345,6 +345,14 @@ export const routes: Routes = [
     title: 'Registration approvals - TrueNorth Range',
   },
   {
+    // ADR 0014 §20 (#284): a Student's own classes, their status and Join (class:attend).
+    path: 'my-classes',
+    canActivate: [authGuard, onboardingGuard, pageGuard('myClasses')],
+    loadComponent: () =>
+      import('./features/classes/my-classes.component').then(m => m.MyClassesComponent),
+    title: 'My classes - TrueNorth Range',
+  },
+  {
     // ADR 0014: classes and their roll call, for the staff who lead, assist or observe them.
     path: 'classes',
     canActivate: [authGuard, onboardingGuard, pageGuard('classes')],

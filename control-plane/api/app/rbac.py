@@ -144,8 +144,11 @@ class Permission(str, Enum):
     # tenant, as its lead. CLASS_READ: the staff Classes page. What you then see and change
     # is decided per class (app/classes/access.py): its lead (or an admin) changes it, its
     # assistants and observers read it; a Student sees only a class they are on.
+    # CLASS_ATTEND: take part in classes as a Student, the "My classes" page (ADR 0014 §20,
+    # app/classes/my_classes.py): only the caller's own roll-call entries, never anyone else's.
     CLASS_CREATE = "class:create"
     CLASS_READ = "class:read"
+    CLASS_ATTEND = "class:attend"
 
     # Tenant management
     TENANT_CREATE = "tenant:create"
@@ -297,6 +300,7 @@ ROLE_PERMISSIONS: dict[UserRole, set[Permission]] = {
         Permission.EXERCISE_READ,
         Permission.DETECTION_SUBMIT,
         Permission.AAR_READ,
+        Permission.CLASS_ATTEND,
         Permission.WIKI_READ,
         Permission.TICKET_CREATE,
     },

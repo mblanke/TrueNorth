@@ -87,6 +87,10 @@ interface DeploymentProfile {
         <div class="workspace-support">
           <!-- Each link only for a role the route's guard admits (PAGE_ACCESS, mirrored
                from rbac.py); a Student was shown Authoring and bounced back here. -->
+          @if (auth.canOpen('myClasses') && !auth.canOpen('classes')) {
+            <!-- ADR 0014 §20: a Student's classes, their status and Join -->
+            <a routerLink="/my-classes" class="my-classes-link"><strong>My classes</strong><span>Your sessions this week, your seat and range, and Join.</span><mat-icon>arrow_forward</mat-icon></a>
+          }
           @if (auth.can('exercise:create')) {
             <a routerLink="/exercises"><strong>Prepare an exercise</strong><span>Bring the scenario, range, and training run together.</span><mat-icon>arrow_forward</mat-icon></a>
           } @else {

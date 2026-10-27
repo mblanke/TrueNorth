@@ -1422,6 +1422,240 @@
         "title": "AttemptSubmitIn",
         "type": "object"
       },
+      "AttendingClassOut": {
+        "properties": {
+          "course_name": {
+            "title": "Course Name",
+            "type": "string"
+          },
+          "end_date": {
+            "format": "date",
+            "title": "End Date",
+            "type": "string"
+          },
+          "forfeit_deadline": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the seat was lost: the sign-in deadline missed",
+            "title": "Forfeit Deadline"
+          },
+          "forfeited_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Forfeited At"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "join_range_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Set only when you may open the range now: your own seat, ready; or the class's shared range, ready, during a collective session. Its credentials are at /ranges/{range_id}/credentials",
+            "title": "Join Range Id"
+          },
+          "lead_instructor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The lead instructor's name (never an email)",
+            "title": "Lead Instructor"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "next_session_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The current or next session",
+            "title": "Next Session Id"
+          },
+          "onboarded": {
+            "description": "You have signed in and taken your place on the roll call",
+            "title": "Onboarded",
+            "type": "boolean"
+          },
+          "range_status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AttendingRangeStatus"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Your range for the current or next session; None: no session to come uses a range"
+          },
+          "seat": {
+            "$ref": "#/components/schemas/AttendingSeatStatus"
+          },
+          "sessions": {
+            "description": "Its sessions in the window asked for, earliest first",
+            "items": {
+              "$ref": "#/components/schemas/AttendingSessionOut"
+            },
+            "title": "Sessions",
+            "type": "array"
+          },
+          "start_date": {
+            "format": "date",
+            "title": "Start Date",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "course_name",
+          "start_date",
+          "end_date",
+          "onboarded",
+          "seat",
+          "sessions"
+        ],
+        "title": "AttendingClassOut",
+        "type": "object"
+      },
+      "AttendingClassesOut": {
+        "properties": {
+          "acknowledgement_signed": {
+            "description": "You have signed the current rules of use",
+            "title": "Acknowledgement Signed",
+            "type": "boolean"
+          },
+          "classes": {
+            "items": {
+              "$ref": "#/components/schemas/AttendingClassOut"
+            },
+            "title": "Classes",
+            "type": "array"
+          },
+          "window_end": {
+            "format": "date-time",
+            "title": "Window End",
+            "type": "string"
+          },
+          "window_start": {
+            "format": "date-time",
+            "title": "Window Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "acknowledgement_signed",
+          "window_start",
+          "window_end",
+          "classes"
+        ],
+        "title": "AttendingClassesOut",
+        "type": "object"
+      },
+      "AttendingRangeStatus": {
+        "enum": [
+          "not_built",
+          "building",
+          "ready",
+          "failed"
+        ],
+        "title": "AttendingRangeStatus",
+        "type": "string"
+      },
+      "AttendingSeatStatus": {
+        "enum": [
+          "ready",
+          "forfeited"
+        ],
+        "title": "AttendingSeatStatus",
+        "type": "string"
+      },
+      "AttendingSessionOut": {
+        "properties": {
+          "end_time": {
+            "format": "date-time",
+            "title": "End Time",
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "live": {
+            "description": "Under way now",
+            "title": "Live",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "range_mode": {
+            "$ref": "#/components/schemas/RangeModeOut",
+            "description": "individual: your own range; collective: one shared range"
+          },
+          "range_status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AttendingRangeStatus"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Your range for this session; None: no range"
+          },
+          "start_time": {
+            "format": "date-time",
+            "title": "Start Time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "event_id",
+          "name",
+          "start_time",
+          "end_time",
+          "range_mode",
+          "live"
+        ],
+        "title": "AttendingSessionOut",
+        "type": "object"
+      },
       "AttentionOut": {
         "description": "Something an instructor may want to look at. Only what the data says today:\n\n- ``lab_fault``: the Student's lab is failed, expired or being cleaned up (not their doing)\n- ``lab_wait``: their lab is queued, building or resetting\n- ``learning``: ``learning_signal_misses`` or more judged misses on one objective, no credit\n- ``not_seen``: no detection and no lab heartbeat for ``not_seen_minutes`` (neutral)",
         "properties": {
@@ -26123,6 +26357,83 @@
           }
         ],
         "summary": "Create a class",
+        "tags": [
+          "classes"
+        ]
+      }
+    },
+    "/classes/attending": {
+      "get": {
+        "description": "The classes whose roll call the caller is on (or lost their seat on) and that run in\nthe window, with their sessions in it, the caller's seat and onboarding, and the caller's\nown range for the current or next session.  **class:attend**",
+        "operationId": "listAttendingClasses",
+        "parameters": [
+          {
+            "description": "The window's start (default: now)",
+            "in": "query",
+            "name": "start",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The window's start (default: now)",
+              "title": "Start"
+            }
+          },
+          {
+            "description": "The window's end (default: a week after start; at most 45 days)",
+            "in": "query",
+            "name": "end",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The window's end (default: a week after start; at most 45 days)",
+              "title": "End"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttendingClassesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "My classes: the caller's own classes as a Student, their status and Join",
         "tags": [
           "classes"
         ]

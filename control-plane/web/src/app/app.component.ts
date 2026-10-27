@@ -33,6 +33,8 @@ interface NavItem {
   /** Shown only to roles that may open the page: the key the route's pageGuard checks
    *  (PAGE_ACCESS in core/auth/permissions.ts, mirrored from rbac.py). */
   access?: PageKey;
+  /** Hidden from roles that may open this page instead: staff use Classes, not My classes. */
+  notWith?: PageKey;
   /** Shown only to admins (the route has adminGuard). */
   adminOnly?: boolean;
 }
@@ -376,6 +378,8 @@ export class AppComponent implements OnDestroy {
       name: 'Learn',
       items: [
         { label: 'Learning',         icon: 'school',        route: '/learning' },
+        // ADR 0014 §20: a Student's own classes, status and Join (class:attend).
+        { label: 'My classes',       icon: 'event_available', route: '/my-classes', access: 'myClasses', notWith: 'classes' },
         { label: 'Student progress', icon: 'fact_check',    route: '/learning/admin/progress', access: 'learnerProgress' },
       ],
     },
@@ -433,7 +437,8 @@ export class AppComponent implements OnDestroy {
       .map(section => ({
         ...section,
         items: section.items.filter(item =>
-          (!item.access || this.auth.canOpen(item.access)) && (!item.adminOnly || this.auth.isAdmin())),
+          (!item.access || this.auth.canOpen(item.access)) && (!item.notWith || !this.auth.canOpen(item.notWith))
+          && (!item.adminOnly || this.auth.isAdmin())),
       }))
       .filter(section => section.items.length > 0),
   );
