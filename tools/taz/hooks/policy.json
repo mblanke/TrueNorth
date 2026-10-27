@@ -26,6 +26,10 @@
     ".claude/**",
     ".agents/**",
     "tools/taz/hooks/**",
+    "tools/taz/courses/**",
+    "scripts/check_course.py",
+    "docs/interfaces/course-content.schema.json",
+    "docs/interfaces/course-instructor-pack.schema.json",
     "scripts/taz_guard.py",
     "scripts/dod.sh",
     "scripts/ruff-gate.sh",
@@ -87,7 +91,7 @@
   ],
   "bash": {
     "extra_readonly_commands": [],
-    "allowed_scripts": ["scripts/dod.sh", "scripts/export_openapi.py"],
+    "allowed_scripts": ["scripts/dod.sh", "scripts/export_openapi.py", "scripts/check_course.py"],
     "npm_scripts": ["test", "gen:api"],
     "safe_env": ["CHROME_BIN", "DOD_WEB", "CI", "NO_COLOR", "FORCE_COLOR", "TZ", "LANG",
                  "LC_ALL", "COLUMNS", "PYTHONDONTWRITEBYTECODE"]

@@ -145,6 +145,9 @@ def load_curriculum(api: Api, rep: Report) -> None:
         "/courses/import-programme", {"file": CONTENT / "catalogue/cyber_operator_programme.csv"}
     )
     rep.line(s, "programme catalogue", d)
+    # Not recursive on purpose: content/courses/instructor/ holds the staff-only instructor
+    # packs (answer-key notes, lab setup), which never become learner-visible course
+    # content. The ingest also refuses a document marked `audience: staff_only`.
     courses = sorted((CONTENT / "courses").glob("*.yaml"))
     bad = []
     for fp in courses:
