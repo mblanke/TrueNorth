@@ -1,0 +1,383 @@
+# TAZ model bakeoff: replays of tickets already merged on mblanke/TrueNorth.
+#
+# Each task gives a model the repository at base_commit (main just before the fix was
+# merged; for these merge commits it is the merge's first parent) and a problem
+# statement. The model never sees fix_commit: the runner strips every ref but the base
+# before the session, and fetches fix_commit only afterwards, to apply the oracle.
+#
+# Fields
+#   id               stable task name
+#   kind             backend | ui | test | docs | feature  (the bakeoff mix)
+#   source_pr        the merged PR this task replays
+#   base_commit      parent of the fix; the model starts here
+#   fix_commit       the merged fix; oracle files are read from it at scoring time
+#   difficulty       easy | medium | hard
+#   time_budget_min  wall-clock limit for the model session
+#   prompt           the problem, written from the issue and PR description. Never the
+#                    solution: tests/tools/test_taz_bakeoff.py checks that no line of the
+#                    oracle files or of the fix diff appears in it.
+#   allowed_paths    globs (** crosses directories) the diff may touch; anything else is a
+#                    scope violation and fails the run
+#   excluded_fix_paths  globs for parts of the merged PR that are deliberately not part of
+#                    this task (the PR did more than this replay asks for)
+#   oracle_tests     files taken from fix_commit and written over the model's tree before
+#                    oracle_cmd runs. Empty for the test-only task, where the model's own
+#                    test is what gets judged.
+#   oracle_cmd       shell commands run from the repo root; every one must exit 0.
+#                    {python} is the bakeoff venv's interpreter, {kit} this directory.
+#   setup_cmd        optional; run once before the model session (e.g. npm ci), so the
+#                    model and the oracle both have dependencies.
+tasks:
+  - id: invite-tenant-scope
+    kind: backend
+    source_pr: 291
+    base_commit: b9092a27dddfbaa6c228344f0bbf0a72399b143c
+    fix_commit: e7de920c3f9ba42362dc1e1f2dbbc9d981812eb6
+    difficulty: hard
+    time_budget_min: 45
+    prompt: |
+      Scheduler: booking invites and reminders can reach other tenants' Students (issue #276).
+
+      A booking can name a shared catalogue course (a course whose tenant_id is NULL). Students
+      from every tenant can be enrolled on such a course. When an instructor in tenant A books a
+      session on a shared course, the calendar invite (REQUEST, and the update when the time
+      moves), the withdrawal CANCEL sent when the booking leaves a course, and the 24-hour clock
+      reminder are sent to every active Student on that course, including Students of tenant B.
+      Those messages carry the booking's name and time, so this is a cross-tenant leak.
+      `/mine` and the calendar feed already filter by tenant; the invite and reminder recipients
+      do not.
+
+      Fix it at the source so that every invite, update, cancel and reminder for a booking goes
+      only to Students of the booking's own tenant (plus the instructor, as today). A Student of
+      the booking's tenant must keep receiving everything they received before. Do not change
+      any endpoint or response schema. Start from the scheduler's invite code
+      (control-plane/api/app/scheduler/) and follow how it finds a course's active Students.
+
+      Add a test under tests/scheduler/ that reproduces the leak with two tenants on one shared
+      course, and run the scheduler tests.
+    allowed_paths:
+      - control-plane/api/app/enrollment.py
+      - control-plane/api/app/scheduler/**
+      - tests/scheduler/**
+    excluded_fix_paths: []
+    oracle_tests:
+      - tests/scheduler/test_scheduler_students.py
+    oracle_cmd:
+      - "{python} -P -m pytest -q -p no:cacheprovider tests/scheduler/test_scheduler_students.py"
+      - "{python} -P -m pytest -q -p no:cacheprovider tests/scheduler"
+
+  - id: rc-release-order
+    kind: backend
+    source_pr: 225
+    base_commit: 296bd228c35b7471a3816653214f4f5b0dbfd43e
+    fix_commit: d67e5aff37ee2b87f58b7b4793edb900e549cfd4
+    difficulty: medium
+    time_budget_min: 40
+    prompt: |
+      Installer refuses an upgrade from v1.2.0-rc9 to v1.2.0-rc12 as a downgrade.
+
+      On the work install, upgrading v1.2.0-rc9 -> v1.2.0-rc12 stopped in the
+      install/roles/tn_app_source task "App source — refuse an older release" with
+      "This host runs v1.2.0-rc9; v1.2.0-rc12 is older." The assert compares release tags with
+      Ansible's `version` test in semver mode. SemVer 2.0 compares a non-numeric prerelease
+      identifier as an ASCII string, so rc12 sorts before rc9 and every upgrade from rc<=9 to
+      rc>=10 is refused. The commit-ancestry guard in the same role is already correct.
+
+      Required behaviour:
+      - Release tags have the shape vX.Y.Z[-prerelease][+build] (the leading v is optional).
+        The X.Y.Z core compares numerically; a final release sorts after all of its
+        prereleases; build metadata is ignored.
+      - When two prerelease identifiers are the same letters followed by digits (rc9 / rc12,
+        beta2 / beta10) the digits compare as numbers. Every other prerelease shape keeps
+        ordinary SemVer 2.0 precedence.
+      - A malformed tag raises ValueError instead of being ordered silently.
+      - Upgrades and reinstalls of the same release pass the assert; a real downgrade
+        (e.g. rc12 -> rc11, 1.2.0 -> 1.2.0-rc12) is still refused unless tn_allow_downgrade is
+        set; a first install (no recorded release) passes.
+
+      Interface the rest of the installer and its tests rely on:
+      - Put the comparison in an Ansible filter plugin for this role at
+        install/roles/tn_app_source/filter_plugins/tn_release.py, as a pure-Python function
+        `tn_release_cmp(a, b)` returning -1, 0 or 1, exported by the usual
+        `FilterModule().filters()` as the filter `tn_release_cmp`. No Ansible import.
+      - Keep the assert task's name. Its `that:` must be a single Jinja expression that uses
+        only built-in Jinja filters plus `bool` and `tn_release_cmp` (no `version` test, no
+        regex_replace), over tn_release_version, tn_app_prev_state and tn_allow_downgrade.
+
+      Add tests for the ordering and for the role's real assert expression, and run them.
+    allowed_paths:
+      - install/roles/tn_app_source/**
+      - tests/contracts/test_installer_release_order.py
+      - docs/runbooks/upgrade.md
+    excluded_fix_paths: []
+    oracle_tests:
+      - tests/contracts/test_installer_release_order.py
+    oracle_cmd:
+      - "{python} -P -m pytest -q -p no:cacheprovider tests/contracts/test_installer_release_order.py"
+
+  - id: metrics-histogram
+    kind: backend
+    source_pr: 154
+    base_commit: 23b64944bb69a298052dfa5850935a4c7e1d724e
+    fix_commit: aaddf9b5cc6d7cca9ec32a2d3ed8d510dd975d7b
+    difficulty: medium
+    time_budget_min: 40
+    prompt: |
+      ApiHighLatencyP95 fires constantly although the API is fast.
+
+      On staging the ApiHighLatencyP95 alert has fired since 2026-10-10 at a constant 7.75 s,
+      while real request latency is about 15 ms. The API exports its own Prometheus metrics from
+      the hand-rolled classes in control-plane/api/app/metrics.py (no prometheus_client).
+      The exported http_request_duration_seconds_bucket series are not cumulative-monotonic
+      (for example 1, 2, ... 9 across the buckets and +Inf = 1), so histogram_quantile
+      interpolates into the 5-10 s bucket.
+
+      Make the exported histogram valid Prometheus: per series, bucket counts are cumulative
+      and never decrease as `le` grows, `+Inf` equals `_count`, and one 15 ms observation shows
+      up as 0 in the buckets below 0.025 and 1 from 0.025 upwards. Keep the class names and
+      their existing public attributes (Histogram, Histogram.DEFAULT_BUCKETS, collect(), the
+      module-level metric objects and PrometheusMiddleware).
+
+      Two related faults found while diagnosing it, fix them too:
+      - Health probes (/health, /health/live, /health/ready, /health/deep) are scraped every
+        few seconds and drown the real traffic; they must not appear in any request metric.
+      - http_requests_in_flight goes negative: when a handler raises, the gauge is
+        decremented twice. After any number of failing requests it must return to the level it
+        had before them.
+
+      Add tests that would have caught each fault and run them.
+    allowed_paths:
+      - control-plane/api/app/metrics.py
+      - tests/api/test_metrics_histogram.py
+      - infra/platform/docker/monitoring/prometheus/**
+      - docs/operations.md
+      - CHANGELOG.md
+    excluded_fix_paths: []
+    oracle_tests:
+      - tests/api/test_metrics_histogram.py
+    oracle_cmd:
+      - "{python} -P -m pytest -q -p no:cacheprovider tests/api/test_metrics_histogram.py"
+      - "{python} -P -m pytest -q -p no:cacheprovider tests/api -k 'metric or prometheus'"
+
+  - id: ticket-triage-order
+    kind: ui
+    source_pr: 215
+    base_commit: 986919dbf25edd35ac6ca31758f116ecd1000bc8
+    fix_commit: 3c9bd459e0fb7a50a6f7c4ecfce6348c8600c289
+    difficulty: easy
+    time_budget_min: 35
+    prompt: |
+      Support: staff cannot see the most urgent unowned tickets first (issue #201).
+
+      In the Angular app, the Support ticket list (control-plane/web/src/app/features/tickets/,
+      TicketListComponent) shows tickets in the order the API returns them, which is most
+      recently updated first. A critical ticket that nobody owns sits wherever its update time
+      puts it, so staff triaging the queue miss it.
+
+      Required behaviour:
+      - For staff (anyone who gets the staff tabs, e.g. range_ops, instructor, admin), on every
+        tab except "Resolved & closed", order the rows by priority (critical, high, medium,
+        low; an unknown priority last), and within the same priority put unassigned tickets
+        before assigned ones. Otherwise keep the API's order (stable).
+      - A Student's own ticket list keeps exactly the order the API gives.
+      - No API change; do the ordering in the web app.
+
+      Add Karma specs for both cases and run the tickets specs headless.
+    allowed_paths:
+      - control-plane/web/src/app/features/tickets/**
+    excluded_fix_paths:
+      - control-plane/api/**
+      - control-plane/web/src/app/app.component.ts
+      - control-plane/web/src/app/features/exercise-detail/**
+      - control-plane/web/src/app/features/schedule/**
+      - control-plane/web/src/app/features/scoring/**
+      - control-plane/web/src/app/features/training/**
+      - control-plane/web/src/app/shared/**
+      - control-plane/web/src/app/workspace-title*
+      - tests/**
+    oracle_tests:
+      - control-plane/web/src/app/features/tickets/ticket-list.component.spec.ts
+    setup_cmd: "cd control-plane/web && npm ci --no-audit --no-fund"
+    oracle_cmd:
+      - "cd control-plane/web && npx ng test --watch=false --browsers=ChromeHeadless --include=src/app/features/tickets/**/*.spec.ts"
+
+  - id: schedule-live-session
+    kind: ui
+    source_pr: 215
+    base_commit: 986919dbf25edd35ac6ca31758f116ecd1000bc8
+    fix_commit: 3c9bd459e0fb7a50a6f7c4ecfce6348c8600c289
+    difficulty: medium
+    time_budget_min: 45
+    prompt: |
+      Schedule: a session already under way reads as "Your next session" (issue #201).
+
+      On the Schedule page (control-plane/web/src/app/features/schedule/, ScheduleComponent) an
+      instructor whose session started a minute ago sees it in the hero panel as "Your next
+      session ... The range builds at HH:30; you'll get a reminder the day before." The reminder
+      refers to a day that has already passed, and nothing on the week grid shows that the
+      session is running.
+
+      Required behaviour:
+      - A booking is "live" when its state is one of the holding states (scheduled,
+        provisioning, active), it has started, and it has not yet ended (start <= now < end).
+        Drafts and cancelled bookings are never live. Expose this as a pure function
+        `isLive(booking, now = new Date())` exported from schedule.util.ts so it can be tested
+        without the component.
+      - When the instructor's next session is live, the hero panel (`.hero`) says "Live now"
+        instead of "Your next session", does not mention the build time or the reminder, and
+        says the session runs until its end time, formatted HH:MM in local time (e.g.
+        "Running until 14:05.").
+      - On the week grid, a live booking's event button (`.ev`) gets the CSS class `live` and a
+        visible "Live" tag. Respect prefers-reduced-motion if you animate anything.
+      - Sessions that have not started yet render exactly as before.
+
+      Add Karma specs (util and component) and run the schedule specs headless.
+    allowed_paths:
+      - control-plane/web/src/app/features/schedule/**
+    excluded_fix_paths:
+      - control-plane/api/**
+      - control-plane/web/src/app/app.component.ts
+      - control-plane/web/src/app/features/exercise-detail/**
+      - control-plane/web/src/app/features/scoring/**
+      - control-plane/web/src/app/features/tickets/**
+      - control-plane/web/src/app/features/training/**
+      - control-plane/web/src/app/shared/**
+      - control-plane/web/src/app/workspace-title*
+      - tests/**
+    oracle_tests:
+      - control-plane/web/src/app/features/schedule/schedule.component.spec.ts
+      - control-plane/web/src/app/features/schedule/schedule.util.spec.ts
+    setup_cmd: "cd control-plane/web && npm ci --no-audit --no-fund"
+    oracle_cmd:
+      - "cd control-plane/web && npx ng test --watch=false --browsers=ChromeHeadless --include=src/app/features/schedule/**/*.spec.ts"
+
+  - id: noise-tamper-flake
+    kind: test
+    source_pr: 158
+    base_commit: a6df99f6973a40f419536a9b1ffd5afcb751ca69
+    fix_commit: c571da3c5f2e1f1d66919447a77263edfe4965fc
+    difficulty: medium
+    time_budget_min: 35
+    prompt: |
+      Flaky test: tests/api/test_noise.py::TestAgentChannel::test_a_stolen_token_cannot_forge_ground_truth
+
+      One parametrized case of this test fails intermittently (seen in two agents' gate runs):
+      a report that the test has "forged" is accepted by the API instead of rejected. Nothing
+      else fails, and re-running usually passes.
+
+      Find out why. Hints from the triage: the noise plan an agent receives is generated
+      deterministically from the time window it is requested in, so what the agent is told to
+      do depends on the wall clock. Decide whether the defect is in the API or in the test, with
+      evidence, and fix it where it is. If it is a test defect, the test must keep checking all
+      the tamper cases it checks today (target, persona, kind, timestamp, signature), each must
+      be guaranteed to actually change the signed record whatever the clock says, and a tamper
+      that leaves the record unchanged must fail the test loudly rather than pass or skip.
+
+      This is a test-only ticket: do not change application code. Run the noise tests, and if
+      you can, run the failing case with the clock pinned to a window where it used to fail.
+    allowed_paths:
+      - tests/api/test_noise.py
+    excluded_fix_paths: []
+    # Test-only: the model's own test is judged, so no file is written over it. The oracle
+    # pins the noise router's clock to 2026-10-15T03:00Z, a window where the first planned
+    # ws01 action is admin_scan (the case that used to pass the forgery), and checks that the
+    # five tamper cases still exist.
+    oracle_tests: []
+    oracle_cmd:
+      - "{python} -P -m pytest -q -p no:cacheprovider tests/api/test_noise.py"
+      - "PYTHONPATH={kit}/oracles {python} -P -m pytest -q -p no:cacheprovider -p pin_noise_clock tests/api/test_noise.py -k forge"
+      - "{python} {kit}/oracles/check_noise_cases.py {python}"
+
+  - id: docs-claims-reconcile
+    kind: docs
+    source_pr: 157
+    base_commit: 92f645d20e0f847aa9852ae4bb99433bdcf0a454
+    fix_commit: a6ee5de90007cb8d8a41e4797aa7dcb56e80ff95
+    difficulty: medium
+    time_budget_min: 45
+    prompt: |
+      Docs over-promise: the user guide and the security compliance mapping describe things
+      the code does not have (R0-B audit, "docs that over-promise").
+
+      1. docs/user-guide.md describes UI features that do not exist in
+         control-plane/web/src/app or in the API (docs/interfaces/openapi.json). The audit
+         found, among others: team exercises, team scoring and leaderboards (planned for R2);
+         global keyboard shortcuts and a command palette; "Team Standings" and "Score Summary"
+         dashboard widgets; per-role dashboards; WebSocket live updates; a batch-provision
+         screen; telemetry export. Check each feature the guide names against the code. Remove
+         or correct what does not exist, and list the absent features instead in a new
+         top-level section of the guide headed exactly `## Not in v1.2.0`. Outside that
+         section the guide must name only features the code has.
+      2. docs/security.md's "Compliance Mapping" table claims controls without evidence.
+         Give each control row a status (Implemented / Partial / Not implemented, or say it is
+         being built) and an Evidence column that cites the repository files that implement
+         it, as backticked repo-relative paths (e.g. `control-plane/api/app/...`). Every cited
+         path must exist in this checkout. Do not claim Vault, KMS, TDE or LUKS unless the
+         repository actually configures them.
+
+      Verify every feature and path against the source; do not guess. Keep the rest of each
+      document intact. Do not change code.
+    allowed_paths:
+      - docs/**
+      - SKILLS/20-repo-map.md
+      - CHANGELOG.md
+    excluded_fix_paths: []
+    oracle_tests:
+      - tests/contracts/test_docs_claims.py
+    oracle_cmd:
+      - "{python} -P -m pytest -q -p no:cacheprovider tests/contracts/test_docs_claims.py"
+
+  - id: arc2-status-endpoint
+    kind: feature
+    source_pr: 123
+    base_commit: 6456539d776cd556af40bb50de1d59b72c677ca9
+    fix_commit: 7fc248245f54a3a9a78f3ffb5bb74d34ef7348b1
+    difficulty: medium
+    time_budget_min: 60
+    prompt: |
+      ARC² Course Studio looks broken when it is simply switched off (API and contract slice).
+
+      On staging the Authoring hub shows the ARC² Course Studio tab, but ARC2_STUDIO_ENABLED is
+      unset by default, so every /api/arc2/* call answers 404 and the page says "Couldn't load
+      projects", which looks like a fault. The web app needs a way to ask whether the Studio is
+      on before it shows it. This ticket is the API and contract slice only; the web UI that
+      uses it is a separate ticket.
+
+      Add `GET /arc2/status`:
+      - It answers whether or not the Studio is enabled. Every existing /arc2/runs... route keeps
+        its current behaviour: 404 while the Studio is off, course:author when it is on.
+      - Any signed-in account may call it (Students and Observers included). It returns the
+        feature flag and nothing else: no runs, no paths, no runner activity.
+      - Response body: `{"enabled": true, "reason": null}` when on, and when off
+        `{"enabled": false, "reason": "ARC² Course Studio is not enabled on this server."}`.
+        Treat unset, empty, "false" and "0" as off, as the existing flag check does.
+      - operationId `get_arc2_status`, with a named response schema `Arc2Status` that lives
+        beside the other ARC² Studio schemas (not in app/schemas.py; ADR 0003).
+      - The permission-coverage guard (tests/api/test_permission_coverage_guard.py) must know
+        about the new sign-in-only route; registering it there is part of this ticket.
+
+      Follow the API contract rules in CLAUDE.md: regenerate docs/interfaces/openapi.json with
+      scripts/export_openapi.py and the generated Angular types
+      (control-plane/web/src/app/core/api/schema.d.ts, `npm run gen:api` in control-plane/web),
+      and commit both. Add API tests for off, on, and a Student/Observer reading the status but
+      still refused /arc2/runs, and run them together with the OpenAPI drift check.
+    allowed_paths:
+      - control-plane/api/app/**
+      - tests/api/test_arc2_studio.py
+      - tests/api/test_permission_coverage_guard.py
+      - docs/interfaces/openapi.json
+      - control-plane/web/src/app/core/api/schema.d.ts
+      - docs/arc2-course-studio.md
+    excluded_fix_paths:
+      - control-plane/web/src/app/app.routes.ts
+      - control-plane/web/src/app/core/arc2/**
+      - control-plane/web/src/app/core/services/**
+      - control-plane/web/src/app/features/**
+      - control-plane/web/src/app/shared/**
+    oracle_tests:
+      - tests/api/test_arc2_studio.py
+      - tests/api/test_permission_coverage_guard.py
+    oracle_cmd:
+      - "{python} -P -m pytest -q -p no:cacheprovider tests/api/test_arc2_studio.py tests/api/test_permission_coverage_guard.py"
+      - "{python} scripts/export_openapi.py --check"
+      - "grep -q get_arc2_status control-plane/web/src/app/core/api/schema.d.ts"
