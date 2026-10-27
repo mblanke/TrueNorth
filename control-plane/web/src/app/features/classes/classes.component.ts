@@ -21,7 +21,6 @@ import {
 } from '@core/services/operator-records-api.service';
 import { roleCan } from '@core/auth/permissions';
 import { EmptyStateComponent } from '../../shared/components/empty-state/empty-state.component';
-import { RangeCredentialsComponent } from '../../shared/components/range-credentials/range-credentials.component';
 import { ClassCloseoutComponent } from './class-closeout.component';
 import { apiError } from '../ranges/range-capabilities';
 
@@ -102,7 +101,6 @@ export function addSummary(r: RollCallAddResult): string {
   imports: [
     DatePipe, FormsModule, MatButtonModule, MatCardModule, MatChipsModule, MatFormFieldModule,
     MatIconModule, MatInputModule, MatSelectModule, EmptyStateComponent, ClassCloseoutComponent,
-    RangeCredentialsComponent,
   ],
   template: `
     <div class="page-container">
@@ -189,32 +187,11 @@ export function addSummary(r: RollCallAddResult): string {
                 · On the roll call: {{ c.roll_call_count }}</p>
             </mat-card-content>
             <mat-card-actions>
-              @if (c.my_role === 'student') {
-                <button mat-button (click)="open(c)"><mat-icon>computer</mat-icon> Your range</button>
-              } @else {
-                <button mat-button (click)="open(c)"><mat-icon>fact_check</mat-icon> Roll call</button>
-              }
+              <button mat-button (click)="open(c)"><mat-icon>fact_check</mat-icon> Roll call</button>
             </mat-card-actions>
           </mat-card>
         }
       </div>
-
-      @if (selected(); as c) {
-        @if (c.my_role === 'student') {
-          <mat-card class="my-range">
-            <mat-card-header>
-              <mat-card-title>Your range: {{ c.name }}</mat-card-title>
-              <mat-card-subtitle>Open your accounts during each session: that is how your attendance is recorded.</mat-card-subtitle>
-            </mat-card-header>
-            <mat-card-content>
-              @for (x of myRanges(); track x.id) {
-                <h3 class="range-title">{{ owner(x) }} · {{ statusLabel(x) }}</h3>
-                @if (x.status === 'ready' && x.range_id) { <tn-range-credentials [rangeId]="x.range_id" /> }
-              } @empty { <p>Your range is built 30 minutes before your first session.</p> }
-            </mat-card-content>
-          </mat-card>
-        }
-      }
 
       @if (selected(); as c) {
         @if (c.my_role !== 'student') {
@@ -380,8 +357,6 @@ export function addSummary(r: RollCallAddResult): string {
     .count { width: 120px; }
     .team-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
     .team h3 { margin: 8px 0; font-size: 15px; }
-    .my-range { margin-top: 16px; }
-    .range-title { font-size: 15px; margin: 12px 0 4px; }
     .member { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 2px 0; }
   `],
 })
@@ -408,8 +383,6 @@ export class ClassesComponent implements OnInit {
   readonly observers = computed(() => this.users().filter(u => u.role !== 'student' && u.role !== 'range_ops'));
   readonly canCreate = computed(() => roleCan(this.auth.user()?.role, 'class:create'));
   readonly classRanges = signal<ClassRanges | null>(null);
-  /** A Student's own seat and the class's shared ranges, as the API hands them out. */
-  readonly myRanges = computed(() => (this.classRanges()?.ranges ?? []).filter(r => r.status !== 'torn_down'));
   readonly teams = signal<SessionTeams | null>(null);
   readonly teamsSession = signal<ClassSessionMode | null>(null);
   pasted = '';
@@ -434,10 +407,9 @@ export class ClassesComponent implements OnInit {
   }
 
   /** Admins: every class of the organisation. Staff: those they lead, assist or observe.
-   *  Students: the classes whose roll call they are on. */
+   *  Students use My classes (ADR 0014 §20); this page is staff only. */
   private source() {
-    if (this.auth.isAdmin()) return this.api.list();
-    return roleCan(this.auth.user()?.role, 'class:read') ? this.api.mine() : this.api.list();
+    return this.auth.isAdmin() ? this.api.list() : this.api.mine();
   }
 
   /** After a close or a reopen: the list, and the selected class as the API now sees it. */

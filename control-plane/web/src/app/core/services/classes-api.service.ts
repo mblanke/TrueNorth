@@ -29,6 +29,19 @@ export type Closeout = S['CloseoutOut'];
 export type Standing = S['StandingOut'];
 export type ResultOutcome = S['ResultOutcomeOut'];
 export type ResultIn = S['ResultIn'];
+export type MyClasses = S['AttendingClassesOut'];
+export type MyClass = S['AttendingClassOut'];
+export type MyClassSession = S['AttendingSessionOut'];
+export type MyRangeStatus = S['AttendingRangeStatus'];
+
+/** `d` as local ISO 8601 with its UTC offset, e.g. 2026-11-02T00:00:00-05:00. */
+export function localIso(d: Date): string {
+  const pad = (n: number) => String(Math.trunc(Math.abs(n))).padStart(2, '0');
+  const off = -d.getTimezoneOffset();
+  const sign = off >= 0 ? '+' : '-';
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:`
+    + `${pad(d.getMinutes())}:${pad(d.getSeconds())}${sign}${pad(off / 60)}:${pad(off % 60)}`;
+}
 
 /**
  * Classes and their roll call (ADR 0014). The API decides who sees and changes what:
@@ -44,6 +57,15 @@ export class ClassesApiService {
   mine(includeCancelled = false): Observable<ClassRecord[]> {
     const params = new HttpParams().set('include_cancelled', includeCancelled);
     return this.http.get<ClassRecord[]>(`${this.base}/mine`, { params });
+  }
+  /**
+   * My classes (a Student, class:attend; ADR 0014 §20): their own classes running between
+   * `start` and `end`, with their seat, onboarding, range and Join. At most 45 days.
+   */
+  attending(start: Date, end: Date): Observable<MyClasses> {
+    // Local times with their offset: the API reads class dates (calendar days) in it.
+    const q = `start=${encodeURIComponent(localIso(start))}&end=${encodeURIComponent(localIso(end))}`;
+    return this.http.get<MyClasses>(`${this.base}/attending?${q}`);
   }
   /** Everything the caller may see: for an admin, every class of their organisation. */
   list(includeCancelled = false): Observable<ClassRecord[]> {

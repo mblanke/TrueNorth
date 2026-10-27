@@ -5,6 +5,7 @@ import { of } from 'rxjs';
 import { AppComponent } from './app.component';
 import { AuthService, UserRole } from './core/services/auth.service';
 import { fakeAuth } from './core/auth/fake-auth';
+import { PAGE_ACCESS, roleHasAccess } from './core/auth/permissions';
 import { NotificationsApiService } from '@core/services/notifications-api.service';
 import { EmailStatusService } from '@core/services/email-status.service';
 import { signal } from '@angular/core';
@@ -78,7 +79,8 @@ describe('AppComponent', () => {
     fixture.detectChanges();
     const el: HTMLElement = fixture.nativeElement;
     const navItems = el.querySelectorAll('mat-nav-list a[mat-list-item]');
-    const allItems = component.navSections.flatMap(s => s.items);
+    // An admin sees every entry except My classes, whose staff counterpart is Classes (notWith).
+    const allItems = component.navSections.flatMap(s => s.items).filter(n => !n.notWith);
     expect(navItems.length).toBe(allItems.length);
   });
 
@@ -105,7 +107,7 @@ describe('AppComponent', () => {
     fixture.detectChanges();
     const el: HTMLElement = fixture.nativeElement;
     const icons = el.querySelectorAll('mat-nav-list mat-icon');
-    const totalItems = component.navSections.reduce((sum, s) => sum + s.items.length, 0);
+    const totalItems = component.navSections.reduce((sum, s) => sum + s.items.filter(n => !n.notWith).length, 0);
     expect(icons.length).toBeGreaterThanOrEqual(totalItems);
   });
 
@@ -163,8 +165,9 @@ describe('AppComponent', () => {
    * shown is one the route guard admits; everything else is absent.
    */
   const MENU: Record<UserRole, string[]> = {
-    // Classes (ADR 0014): a Student's own classes and their range (attendance, #283).
-    student: ['/dashboard', '/learning', '/exercises', '/classes', '/scoring', '/wiki', '/support'],
+    // My classes (class:attend, ADR 0014 §20): Students. Not /classes: that page is staff only;
+    // Students reach their range through My classes' Join.
+    student: ['/dashboard', '/learning', '/my-classes', '/exercises', '/scoring', '/wiki', '/support'],
     // The calendar's Events view (schedule:read, #285): observers too, read-only.
     observer: ['/dashboard', '/learning', '/exercises', '/ops-center/select', '/telemetry', '/schedule',
       '/calendar', '/classes', '/scoring', '/wiki'],
@@ -190,6 +193,29 @@ describe('AppComponent', () => {
       expect(menu()).toEqual(MENU[role]);
     });
   }
+
+  /**
+   * #283 (attendance) and #284 (My classes) together: Classes is staff only again
+   * (class:read), My classes is class:attend, and Students reach their range through My
+   * classes' Join. With #283's old `classes: { any: [..., 'detection:submit'] }` stand-in,
+   * `notWith: 'classes'` hid My classes from every Student.
+   */
+  it('gives a Student My classes and not Classes, with both PRs\' permissions applied', () => {
+    expect(PAGE_ACCESS.classes).toEqual({ all: ['class:read'] });
+    expect(PAGE_ACCESS.myClasses).toEqual({ all: ['class:attend'] });
+    expect(roleHasAccess('student', PAGE_ACCESS.classes)).toBeFalse();
+    expect(roleHasAccess('student', PAGE_ACCESS.myClasses)).toBeTrue();
+    auth.role.set('student');
+    fixture.detectChanges();
+    expect(menu()).toContain('/my-classes');
+    expect(menu()).not.toContain('/classes');
+    for (const staff of ['admin', 'instructor', 'observer'] as const) {
+      auth.role.set(staff);
+      fixture.detectChanges();
+      expect(menu()).withContext(staff).toContain('/classes');
+      expect(menu()).withContext(staff).not.toContain('/my-classes');
+    }
+  });
 
   it('drops a section whose entries are all hidden', () => {
     auth.role.set('student');

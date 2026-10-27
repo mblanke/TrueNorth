@@ -929,6 +929,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/classes/attending": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * My classes: the caller's own classes as a Student, their status and Join
+         * @description The classes whose roll call the caller is on (or lost their seat on) and that run in
+         *     the window, with their sessions in it, the caller's seat and onboarding, and the caller's
+         *     own range for the current or next session.  **class:attend**
+         */
+        get: operations["listAttendingClasses"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/classes/course-range-modes/{course_id}": {
         parameters: {
             query?: never;
@@ -10458,6 +10480,122 @@ export interface components {
          * @enum {string}
          */
         AttendanceStatusOut: "present" | "absent" | "excused";
+        /** AttendingClassOut */
+        AttendingClassOut: {
+            /** Course Name */
+            course_name: string;
+            /**
+             * End Date
+             * Format: date
+             */
+            end_date: string;
+            /**
+             * Forfeit Deadline
+             * @description When the seat was lost: the sign-in deadline missed
+             */
+            forfeit_deadline?: string | null;
+            /** Forfeited At */
+            forfeited_at?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Join Range Id
+             * @description Set only when you may open the range now: your own seat, ready; or the class's shared range, ready, during a collective session. Its credentials are at /ranges/{range_id}/credentials
+             */
+            join_range_id?: string | null;
+            /**
+             * Lead Instructor
+             * @description The lead instructor's name (never an email)
+             */
+            lead_instructor?: string | null;
+            /** Name */
+            name: string;
+            /**
+             * Next Session Id
+             * @description The current or next session
+             */
+            next_session_id?: string | null;
+            /**
+             * Onboarded
+             * @description You have signed in and taken your place on the roll call
+             */
+            onboarded: boolean;
+            /** @description Your range for the current or next session; None: no session to come uses a range */
+            range_status?: components["schemas"]["AttendingRangeStatus"] | null;
+            seat: components["schemas"]["AttendingSeatStatus"];
+            /**
+             * Sessions
+             * @description Its sessions in the window asked for, earliest first
+             */
+            sessions: components["schemas"]["AttendingSessionOut"][];
+            /**
+             * Start Date
+             * Format: date
+             */
+            start_date: string;
+        };
+        /** AttendingClassesOut */
+        AttendingClassesOut: {
+            /**
+             * Acknowledgement Signed
+             * @description You have signed the current rules of use
+             */
+            acknowledgement_signed: boolean;
+            /** Classes */
+            classes: components["schemas"]["AttendingClassOut"][];
+            /**
+             * Window End
+             * Format: date-time
+             */
+            window_end: string;
+            /**
+             * Window Start
+             * Format: date-time
+             */
+            window_start: string;
+        };
+        /**
+         * AttendingRangeStatus
+         * @enum {string}
+         */
+        AttendingRangeStatus: "not_built" | "building" | "ready" | "paused" | "failed";
+        /**
+         * AttendingSeatStatus
+         * @enum {string}
+         */
+        AttendingSeatStatus: "ready" | "forfeited";
+        /** AttendingSessionOut */
+        AttendingSessionOut: {
+            /**
+             * End Time
+             * Format: date-time
+             */
+            end_time: string;
+            /**
+             * Event Id
+             * Format: uuid
+             */
+            event_id: string;
+            /**
+             * Live
+             * @description Under way now
+             */
+            live: boolean;
+            /** Name */
+            name: string;
+            /** @description individual: your own range; collective: one shared range */
+            range_mode: components["schemas"]["RangeModeOut"];
+            /** @description Your range for this session; None: no range */
+            range_status?: components["schemas"]["AttendingRangeStatus"] | null;
+            /**
+             * Start Time
+             * Format: date-time
+             */
+            start_time: string;
+        };
         /**
          * AttentionOut
          * @description Something an instructor may want to look at. Only what the data says today:
@@ -21666,6 +21804,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ClassOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    listAttendingClasses: {
+        parameters: {
+            query?: {
+                /** @description The window's start (default: now). Send it with the viewer's UTC offset: class dates are calendar days, read in that offset */
+                start?: string | null;
+                /** @description The window's end, exclusive (default: a week after start; at most 45 days) */
+                end?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttendingClassesOut"];
                 };
             };
             /** @description Validation Error */

@@ -230,13 +230,39 @@ Content (courses, modules, labs, scenarios, range templates, golden images) has 
    `complete_enrollment` (on Unclassified the status alone, no number written), fail marks it failed,
    incomplete leaves it open; a close-out never fails, reopens or re-grades an enrolment
    completed some other way, and undoes only its own. Closing is refused while a session is
-   provisioning or under way. Students reach their range (and so their attendance) from the
-   Classes page, which now lists a Student's own classes with a "Your range" panel; the full
-   "My classes" page is still slice 7. On Unclassified nothing numeric is shown, exported or kept on the
+   provisioning or under way. Students reach their range (and so their attendance) through
+   **Join** on My classes (slice 7, #284), which opens the credentials panel; the Classes page
+   is staff only (`class:read`). On Unclassified nothing numeric is shown, exported or kept on the
    enrolment. A closed class (`classes.status = closed`) is read-only, its unstarted sessions are
    cancelled and its ranges torn down by the clock (`class_closed`); an admin reopens it with a
    reason. CSV export defuses formula cells.
 7. **My classes** (Student).
+
+   As built (#284): `/my-classes`, from the menu and the dashboard, for roles holding the new
+   permission `class:attend` (Students; instructors hold it too, because granting the Student
+   role needs every Student permission, and admins hold everything; both use Classes, so the
+   menu and dashboard hide My classes from anyone who may open Classes). One Student-scoped read,
+   `GET /classes/attending` (`app/classes/my_classes.py`): the caller's own roll-call entries
+   in their own tenant, including a seat they lost (which `/classes` no longer shows, so the
+   page can say to ask the lead to reinstate them), for the week or month asked for (at most
+   45 days). Per class: course, the lead's name (no email), dates, sessions (approved or over),
+   onboarding, rules of use, seat, and the Student's range for the current or next session
+   (not built, building, ready, paused, failed; never why). *Paused* is My classes' own word
+   for a built range whose machines are stopping, stopped or starting (`ranges.status`, which
+   staff see, still says ready); Join waits while it is paused. `join_range_id` is set only where
+   `/ranges/{id}/credentials` would answer (`ranges.student_participation`): their own seat,
+   ready (a deleted range never); or the shared range, ready, while a collective session
+   booking it is under way, which wins over a day-long lab around it. A session's range not
+   created yet reads "not built"; a session with no range is skipped; a collective session on
+   a range the class does not own (an exercise's) reports that range's state, with no Join.
+   Join opens the shared credentials panel and fetches the accounts at once, again on every
+   press and again when a later session becomes the current one while the panel is open:
+   that read is the Student's attendance evidence (#283), and the endpoint still decides on
+   every call. The page asks again every minute. The window's times carry the viewer's UTC
+   offset, so class dates are read in their calendar days; its end is exclusive. The read
+   takes a fixed number of queries whatever the number of classes. A console for class ranges has no Student endpoint yet (lab sessions only; #313).
+   Known limits: an instructor on someone else's roll call reaches My classes only by its URL;
+   Join follows the current or next session's range, not every range the Student could open.
 8. **Events view:** week and month, colours, the approval queue, following the mockups.
 9. **Content clock:** review dates, theme tags, dependency edges, and the Content view.
 10. **Feeds:**
