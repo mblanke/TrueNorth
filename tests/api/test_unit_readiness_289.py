@@ -365,3 +365,55 @@ def test_query_count_does_not_grow_with_students(db_session, w):
     assert big == small, (small, big)
     report = readiness.build(db_session, w["a"].id, TODAY - timedelta(days=60), TODAY + timedelta(days=30), None)
     assert report.summary.enrolments == 5 + 240
+
+
+# ── Review findings ──────────────────────────────────────────────────────────
+
+
+def test_pdf_survives_a_comment_taller_than_a_page(db_session, w):
+    from app.classes import readiness, readiness_pdf
+
+    tall = "\n".join(f"- item {i}" for i in range(80))
+    db_session.query(ClassResult).filter_by(entry_id=w["e_ann"].id).update({"comment": tall})
+    db_session.flush()
+    report = readiness.build(db_session, w["a"].id, TODAY - timedelta(days=60), TODAY + timedelta(days=30), None)
+    assert readiness_pdf.render(report, compress=False).startswith(b"%PDF")
+
+
+def test_a_qualification_is_earned_only_when_it_reached_the_record(client, db_session, w):
+    """A pass on a closed class whose enrolment it completed. Not for someone with no
+    account (close-out kept the result on the class only), nor while the class is reopened."""
+    inv = db_session.query(RollCallEntry).filter_by(class_id=w["closed"].id, email="nobody@corp.test").one()
+    db_session.query(ClassResult).filter_by(entry_id=inv.id).update({"outcome": "pass"})
+    db_session.commit()
+    body = _get(client, w["observer"]).json()
+    rows = {s["email"]: s for s in body["classes"][0]["students"]}
+    assert rows["nobody@corp.test"]["outcome"] == "pass"
+    assert rows["nobody@corp.test"]["qualification_earned"] is None
+    assert rows[w["ann"].email]["qualification_earned"] == "ALJQ"
+    assert body["summary"]["qualifications_earned"] == 1
+    db_session.query(Class).filter_by(id=w["closed"].id).update({"status": "open"})  # an admin reopened it
+    db_session.commit()
+    body = _get(client, w["observer"]).json()
+    assert all(s["qualification_earned"] is None for c in body["classes"] for s in c["students"])
+    assert body["summary"]["qualifications_earned"] == 0 and body["qualifications"] == []
+
+
+def test_people_are_counted_once_by_roll_call_email(client, db_session, w):
+    """Someone on one roll call before they had an account and on another after is one person."""
+    later = _class(db_session, w["a"].id, w["plain"], w["instructor"], "LX-26-08", TODAY + timedelta(days=10),
+                   TODAY + timedelta(days=12))
+    _seat(db_session, later, None, email=w["cat"].email.lower(), status="invited")
+    db_session.commit()
+    assert _get(client, w["observer"]).json()["summary"]["students"] == 4
+
+
+def test_another_tenants_qualification_is_never_named(client, db_session, w):
+    """Defence in depth: a course pointing at another tenant's qualification shows none."""
+    other = Qualification(id=uuid.uuid4(), qsp_code=f"RB{uuid.uuid4().hex[:6]}", nqual="BSECRET", title="B only",
+                          tenant_id=w["b"].id)
+    db_session.add(other)
+    db_session.flush()
+    db_session.query(Course).filter_by(id=w["course"].id).update({"qualification_id": other.id})
+    db_session.commit()
+    assert "BSECRET" not in str(_get(client, w["observer"]).json())

@@ -9,8 +9,10 @@ For one tenant (the caller's, never another) and a date range, every class that 
 - *result*: pass, fail or incomplete with the instructor's comment, as set at close-out
   (``class_results``, ``closeout.py``). Never a score or grade;
 - *qualification earned*: the course's QSP qualification (``Course.qualification_id``, its
-  NQual) when the result is a pass, as close-out sends results "to the Student's record and
-  qualification" (ADR 0014 §13).
+  NQual) when the result reached the Student's record: a pass on a closed class whose
+  enrolment is completed (close-out sends results "to the Student's record and
+  qualification", ADR 0014 §13). A pass for someone with no account or enrolment, or on a
+  class an admin reopened, earns nothing here.
 
 **Unit.** TrueNorth has no unit record: a Student's unit is ``users.unit``, the free-text
 field the directory sync and registration fill (rank, unit, callsign). It is the closest real
@@ -23,7 +25,8 @@ unfiltered.
 
 **Scale.** A fixed number of queries, whatever the number of classes and Students: one each
 for the classes, the roll call (with names and units), attendance counts, sessions held,
-results, enrolments, close-out times, qualifications and the unit list. Tested in
+results, enrolments, close-out times, qualifications and the unit list. Each filters by class,
+so no parameter list grows with the number of Students. Tested in
 ``tests/api/test_unit_readiness_289.py``.
 """
 
@@ -33,10 +36,10 @@ import uuid
 from collections import defaultdict
 from datetime import UTC, date, datetime, timedelta
 
-from sqlalchemy import and_, func
+from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session
 
-from ..models import AuditLog, Course, Enrollment, Qualification, User
+from ..models import AuditLog, Course, Enrollment, EnrollmentStatus, Qualification, User
 from ..scheduler.models import ScheduledEvent
 from .attendance import HELD, NOT_EXPECTED
 from .closeout import csv_cell
@@ -118,7 +121,10 @@ def build(db: Session, tenant_id: uuid.UUID, date_from: date, date_to: date, uni
     want = unit_key(unit) or None
     classes = (
         db.query(Class, Course.name, Course.qualification_id)
-        .join(Course, Course.id == Class.course_id)
+        # The class's course is its tenant's own or a shared one (``service.course_for``);
+        # checked again here, so another tenant's course is never named.
+        .outerjoin(Course, and_(Course.id == Class.course_id,
+                                or_(Course.tenant_id == tenant_id, Course.tenant_id.is_(None))))
         .filter(Class.tenant_id == tenant_id, Class.status != ClassStatus.cancelled.value,
                 Class.start_date <= date_to, Class.end_date >= date_from)
         .order_by(Class.start_date, Class.name, Class.id)
@@ -169,17 +175,24 @@ def build(db: Session, tenant_id: uuid.UUID, date_from: date, date_to: date, uni
         closed = dict(db.query(ClassCloseout.class_id, ClassCloseout.closed_at).filter(
             ClassCloseout.class_id.in_(class_ids), ClassCloseout.tenant_id == tenant_id))
 
-    user_ids = {e.user_id for rows in roll.values() for e, _, _ in rows if e.user_id}
-    course_ids = {c.course_id for c, _, _ in classes}
+    # Each Student's enrolment on their class's course, reached through the roll call (by
+    # class, again: no parameter per Student).
     enrolments: dict[tuple[uuid.UUID, uuid.UUID], str] = {}
-    if user_ids:
-        for uid, course_id, status in db.query(Enrollment.user_id, Enrollment.course_id, Enrollment.status).filter(
-                Enrollment.user_id.in_(user_ids), Enrollment.course_id.in_(course_ids),
-                Enrollment.tenant_id == tenant_id):
+    if any_entry:
+        for uid, course_id, status in (
+            db.query(Enrollment.user_id, Enrollment.course_id, Enrollment.status)
+            .join(RollCallEntry, RollCallEntry.user_id == Enrollment.user_id)
+            .join(Class, and_(Class.id == RollCallEntry.class_id, Class.course_id == Enrollment.course_id))
+            .filter(RollCallEntry.class_id.in_(class_ids), RollCallEntry.tenant_id == tenant_id,
+                    Class.tenant_id == tenant_id, Enrollment.tenant_id == tenant_id)
+            .distinct()
+        ):
             enrolments[(uid, course_id)] = getattr(status, "value", status)
 
     qual_ids = {q for _, _, q in classes if q}
-    quals = {q.id: q for q in db.query(Qualification).filter(Qualification.id.in_(qual_ids))} if qual_ids else {}
+    quals = {q.id: q for q in db.query(Qualification).filter(
+        Qualification.id.in_(qual_ids),
+        or_(Qualification.tenant_id == tenant_id, Qualification.tenant_id.is_(None)))} if qual_ids else {}
 
     out_classes: list[ReadinessClassOut] = []
     earned: dict[uuid.UUID, int] = defaultdict(int)
@@ -193,26 +206,31 @@ def build(db: Session, tenant_id: uuid.UUID, date_from: date, date_to: date, uni
         for e, name, entry_unit in rows:
             c = counts.get(e.id, {})
             r = results.get(e.id)
-            passed = r is not None and r.outcome == ResultOutcome.passed.value
-            if passed and qual is not None:
+            enrolment = enrolments.get((e.user_id, cls.course_id)) if e.user_id else None
+            # Earned only when it reached the Student's record: a pass on a class that is
+            # closed (a reopened one is being decided again), whose enrolment is completed.
+            # A pass for someone with no account or no enrolment stays on the class only.
+            earns = (qual is not None and cls.status == ClassStatus.closed.value and r is not None
+                     and r.outcome == ResultOutcome.passed.value and enrolment == EnrollmentStatus.completed.value)
+            if earns:
                 earned[qual.id] += 1
-            people.add(str(e.user_id) if e.user_id else e.email)
+            people.add(e.email.strip().lower())  # the roll call matches people by email
             students.append(ReadinessStudentOut(
                 entry_id=e.id, email=e.email, display_name=name if e.user_id else None,
                 unit=((entry_unit or "").strip() or None) if e.user_id else None, roll_call_status=e.status,
-                enrolment_status=enrolments.get((e.user_id, cls.course_id)) if e.user_id else None,
+                enrolment_status=enrolment,
                 present=c.get(AttendanceStatus.present.value, 0), excused=c.get(AttendanceStatus.excused.value, 0),
                 absent=c.get(AttendanceStatus.absent.value, 0),
                 outcome=r.outcome if r else None, comment=r.comment if r else None,
                 decided_at=r.decided_at if r else None,
-                qualification_earned=qual.nqual if passed and qual is not None else None,
+                qualification_earned=qual.nqual if earns else None,
             ))
         students.sort(key=lambda s: ((s.display_name or s.email).lower(), s.email))
         tally = defaultdict(int)
         for s in students:
             tally[s.outcome.value if s.outcome else None] += 1
         out_classes.append(ReadinessClassOut(
-            class_id=cls.id, name=cls.name, course_id=cls.course_id, course_name=course_name,
+            class_id=cls.id, name=cls.name, course_id=cls.course_id, course_name=course_name or "",
             qualification=qual.nqual if qual else None, start_date=cls.start_date, end_date=cls.end_date,
             status=cls.status, closed_at=closed.get(cls.id) if cls.status == ClassStatus.closed.value else None,
             sessions_held=held.get(cls.id, 0), enrolled=len(students),

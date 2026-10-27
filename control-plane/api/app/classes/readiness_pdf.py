@@ -11,8 +11,17 @@ from fpdf import FPDF
 from ..aar_html import pdf_text as _s
 from .readiness_schemas import UnitReadinessOut
 
+_COMMENT_MAX = 400  # characters in a table cell: a row taller than a page cannot be drawn
+
 _COLUMNS = ("Student", "Unit", "Enrolment", "Present", "Excused", "Absent", "Result", "Comment", "Qualification")
 _WIDTHS = (46, 34, 24, 16, 16, 16, 20, 74, 24)
+
+
+def _cell(text: str | None) -> str:
+    """A comment on one line, cut short: fpdf2 refuses a table row taller than a page, and a
+    comment may hold up to 1000 characters and many line breaks. The CSV has it whole."""
+    flat = " ".join((text or "").split())
+    return flat if len(flat) <= _COMMENT_MAX else flat[: _COMMENT_MAX - 3] + "..."
 
 
 def render(report: UnitReadinessOut, *, compress: bool = True) -> bytes:
@@ -49,7 +58,7 @@ def render(report: UnitReadinessOut, *, compress: bool = True) -> bytes:
             for st in c.students:
                 table.row([_s(v) for v in (
                     st.display_name or st.email, st.unit or "", st.enrolment_status or "", st.present, st.excused,
-                    st.absent, st.outcome.value if st.outcome else "-", st.comment or "",
+                    st.absent, st.outcome.value if st.outcome else "-", _cell(st.comment),
                     st.qualification_earned or "")])
     buf = BytesIO()
     pdf.output(buf)
