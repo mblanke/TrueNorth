@@ -275,10 +275,14 @@ Content (courses, modules, labs, scenarios, range templates, golden images) has 
      the lab's course holds now (a session with no range or template of its own) launches a
      lab that draws on that session's hold (`lab_sessions.booking_id`): not gated, counted
      through the session never twice (the session counts as the larger of its hold and what
-     its labs hold), and ended with the session (its maximum lifetime is cut to the session's
-     end plus the teardown grace; the lab page says so). Course enrolment never draws (a
-     Moodle launch enrols); a booking with no class has no drawing. Labs beyond the session's
-     size are self-serve, and a Student taken off the roll call stops drawing at once.
+     its labs hold), and ended with the class: the live session (else one starting within the
+     provisioning lead; never one that has ended) and the sessions of the class that follow it
+     back to back, plus the teardown grace; the lab moves to the next of them when one ends,
+     and an edited session end moves its labs' end (never past the lab's own). The lab page
+     says so. Course enrolment never draws (a Moodle launch enrols); a booking with no class
+     has no drawing. Labs beyond the session's size are self-serve, and a Student taken off
+     the roll call stops drawing at once. **Only a collective session with no template and no
+     range can be drawn on, so a lab class must be booked that way.**
    - **Self-serve labs.** Before a lab's machines are built, `app/lab_sessions/capacity_gate.py`
      asks the scheduler's capacity provider what is committed in every 15-minute slice from
      now to the lab's maximum lifetime: approved bookings over their held windows, approved
@@ -301,15 +305,24 @@ Content (courses, modules, labs, scenarios, range templates, golden images) has 
    a lab page heartbeat sent while the page is visible or after input, focus or a console
    opened since the last one, or a console ticket. A hidden tab nobody uses does not count.
    Console input goes straight to the hypervisor, so before an idle close the sweep asks the
-   console backend (`console_backends`, `open_connections`; on vSphere the VMs'
-   `runtime.numMksConnections`) for open console connections: any is activity and restarts
-   the idle clock; no answer keeps the lab and asks again after
-   `LAB_CONSOLE_RECHECK_MINUTES` (default 15). A profile's shorter idle time
+   console adapters for open console connections (`app/lab_sessions/consoles.py`,
+   `BaseConsoleBackend.console_reader`; on vSphere the VMs' `runtime.numMksConnections`). It
+   asks before taking any lock, for all idle-due labs in one batch: one login per vCenter
+   (10 s connection timeout), one PropertyCollector read, at most 30 s per vCenter and
+   `LAB_CONSOLE_BATCH_SECONDS` (30) in all, so a vCenter that does not answer holds up no
+   other lab. Any connection is activity and restarts the idle clock; unknown (no answer in
+   time, or a console-capable family with no adapter) keeps the lab and asks again after
+   `LAB_CONSOLE_RECHECK_MINUTES` (15); a family with no console concept (Proxmox, Hyper-V)
+   closes idle labs on heartbeats alone. **An open console tab, including a staff vSphere
+   client or VMRC console on one of the lab's VMs, keeps the lab alive until its maximum
+   lifetime.** No lab runs longer than `LAB_MAX_LIFETIME_MINUTES` (7 days), whatever its
+   profile says. A profile's shorter idle time
    still applies. The Student gets one in-app notification `LAB_IDLE_WARNING_MINUTES`
    (default 15) before, and the session records `end_reason = idle` (`expired` stays the
    maximum lifetime). Only lab sessions are closed by this rule; a lab session found pointing
-   at a class's range is ended without a teardown (`failed`, `end_reason = class_range`, its
-   networks kept for an operator), logged once, so the Student can launch again.
+   at a class's range is ended without a teardown (`failed`, `end_reason = class_range`),
+   its lab networks released (the port groups are logged), logged once, so the Student can
+   launch again.
 
    Known limits: the idle warning is in-app only (a Student who only uses Moodle does not see
    it); labs ignore the scheduler's `warn` over-capacity policy; resources in one 15-minute

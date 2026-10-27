@@ -3,11 +3,25 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Callable, Hashable
+from dataclasses import dataclass, field
 from typing import Any, ClassVar
 
 
 class ConsoleError(Exception):
     """The console could not be opened; the message is safe to show the student."""
+
+
+@dataclass
+class ConsoleTarget:
+    """One lab whose consoles the sweep asks about: ``key`` comes back in the answer."""
+
+    key: Hashable
+    rng: Any  # the lab's Range
+    vms: list[dict[str, Any]] = field(default_factory=list)  # its provisioner output's VMs
+
+
+ConsoleReader = Callable[[], dict[Hashable, int | None]]
 
 
 class BaseConsoleBackend(ABC):
@@ -21,9 +35,13 @@ class BaseConsoleBackend(ABC):
         (and ``db`` a session): a backend reaches the hypervisor that range was built on,
         and opens only a VM that is that range's."""
 
-    def open_connections(self, vms: list[dict[str, Any]], *, db=None, rng=None) -> int | None:
-        """How many console connections are open now on these VMs of ``rng`` (entries of its
-        provisioner output). The lab sweep asks before an idle close (ADR 0014 §18): console
-        input reaches the hypervisor, never TrueNorth. None: this backend cannot tell, or the
-        hypervisor did not answer; the caller then treats the lab as in use (fail safe)."""
-        return None
+    def console_reader(self, db, targets: list[ConsoleTarget]) -> ConsoleReader:
+        """How many console connections are open now on each target's VMs, in one batch (the
+        lab sweep asks before idle closes, ADR 0014 §18: console input reaches the hypervisor,
+        never TrueNorth). Two phases: this call reads what it needs from ``db`` (logins,
+        ownership) in the caller's thread; the reader it returns touches no database, talks to
+        the hypervisor, and may be run on another thread under a deadline. The reader answers
+        ``{key: count}``; None for a target means unknown (no answer, or this backend cannot
+        tell), which the caller treats as in use."""
+        keys = [t.key for t in targets]
+        return lambda: dict.fromkeys(keys)

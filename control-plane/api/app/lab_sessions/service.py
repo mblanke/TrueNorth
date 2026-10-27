@@ -72,6 +72,7 @@ MAX_EVIDENCE_BYTES = 64 * 1024
 MAX_EVIDENCE_ITEMS = 200
 LEASE_SECONDS = 120
 CLASS_RANGE = "this lab's range belongs to a class; it is left to the class"
+NOT_ASKED = object()  # advance outside the sweep: consoles were not asked, no idle close
 
 
 class LabRefusedError(ValueError):
@@ -642,16 +643,13 @@ def _start(
     session.error = ""
     session.provisioning_at = now
     if not rebuild:
-        lifetime = profile["lifetime"]
-        session.max_expires_at = now + timedelta(minutes=lifetime["max_minutes"])
-        if session.booking_id is not None:  # a class's own lab ends with the session it draws on
-            from ..scheduler.models import ScheduledEvent
-            from . import capacity_gate
+        from . import capacity_gate
 
-            # tenant-safe: the booking own_booking chose in the session's tenant, just now.
-            evt = db.get(ScheduledEvent, session.booking_id)
-            if evt is not None:
-                session.max_expires_at = min(session.max_expires_at, capacity_gate.drawing_end(evt))
+        # The lab's own end (its profile, at most LAB_MAX_LIFETIME_MINUTES); a class's own lab
+        # ends with the class sessions it draws on, if they end first (_follow_class).
+        session.latest_end_at = now + capacity_gate.lifetime(profile)
+        session.max_expires_at = session.latest_end_at
+        _follow_class(db, session, now)
         session.idle_expires_at = min(now + timedelta(minutes=idle_minutes(profile)), session.max_expires_at)
     db.flush()
     from ..range_credentials import service as range_credentials
@@ -708,9 +706,12 @@ def _step_timeout() -> timedelta:
     return timedelta(seconds=_int_env("LAB_STEP_TIMEOUT", 3600))
 
 
-def advance(db: Session, session: LabSession) -> LabSession:
+def advance(db: Session, session: LabSession, *, consoles: Any = NOT_ASKED) -> LabSession:
     """One step forward from whatever the session is waiting on. Callers hold its lease
-    (claim) and send the queued tasks after commit (flush_outbox)."""
+    (claim) and send the queued tasks after commit (flush_outbox). ``consoles``: the open
+    console connections the sweep read for an idle-due lab before taking any lock
+    (``consoles.ask``; None: unknown). Outside the sweep it is not asked, and an idle lab is
+    left for the sweep to close."""
     now = _now()
     # tenant-safe: the session's own range, created by this module in its tenant.
     rng = db.get(Range, session.range_id) if session.range_id else None
@@ -734,14 +735,38 @@ def advance(db: Session, session: LabSession) -> LabSession:
     elif state == RESETTING:
         _advance_resetting(db, session, rng, now)
     elif state in (READY, ACTIVE):
-        _advance_running(db, session, now)
+        _follow_class(db, session, now)
+        _advance_running(db, session, now, consoles)
     elif state in ENDING:
         _advance_cleaning(db, session, rng, now)
     db.flush()
     return session
 
 
-def _advance_running(db: Session, session: LabSession, now: datetime) -> None:
+def _follow_class(db: Session, session: LabSession, now: datetime) -> None:
+    """A class's own lab follows its class: it moves to the class's next contiguous session
+    when the one it draws on ends, and ends with the last contiguous session (re-read every
+    step, so an edited session end extends or shortens it, never past the lab's own end)."""
+    if session.booking_id is None or session.latest_end_at is None:
+        return
+    from ..scheduler.lifecycle import HOLDING
+    from ..scheduler.models import ScheduledEvent
+    from . import capacity_gate
+
+    # tenant-safe: the booking own_booking chose in the session's tenant.
+    evt = db.get(ScheduledEvent, session.booking_id)
+    if evt is None or evt.state not in HOLDING:
+        return  # called off: it draws on nothing now (holdings); its end stays as it was
+    if _aware(evt.end_time) <= now:
+        nxt = capacity_gate.next_in_chain(db, evt, now)
+        if nxt is not None:
+            session.booking_id, evt = nxt.id, nxt
+    session.max_expires_at = min(_aware(session.latest_end_at), capacity_gate.drawing_end(db, evt))
+    if session.idle_expires_at is not None:
+        session.idle_expires_at = min(_aware(session.idle_expires_at), session.max_expires_at)
+
+
+def _advance_running(db: Session, session: LabSession, now: datetime, consoles: Any = NOT_ASKED) -> None:
     """A ready or active lab: closed at its maximum lifetime, or after the idle limit with no
     Student activity (heartbeat, console), recorded as ``idle``. The Student is told in
     TrueNorth (an in-app notification) once, ``LAB_IDLE_WARNING_MINUTES`` before an idle close."""
@@ -757,34 +782,27 @@ def _advance_running(db: Session, session: LabSession, now: datetime) -> None:
         # Ended without a teardown: the range is the class's. Terminal, so the Student's next
         # launch is not blocked; its networks stay reserved for an operator (machines may be
         # on them), as for any lab that could not be shut down cleanly.
-        logger.warning("lab session %s points at class range %s; ended, range left to the class",
-                       session.id, session.range_id)
+        port_groups = sorted(_session_networks(db, session).values())
+        logger.warning("lab session %s points at class range %s; ended, range left to the class; "
+                       "its lab networks %s are released", session.id, session.range_id, port_groups)
+        _release_networks(db, session)
         session.error = CLASS_RANGE
         session.end_reason = "class_range"
         session.ended_at = now
         _set_state(session, FAILED)
         return
-    if now < latest and not _console_idle(db, session, now):
+    if now < latest and not _console_idle(db, session, now, consoles):
         return
     end(db, session, reason="expired" if now >= latest else "idle")
 
 
-def _console_idle(db: Session, session: LabSession, now: datetime) -> bool:
-    """Before an idle close: is anyone on the lab's consoles? Console input goes straight to
-    the hypervisor (WebMKS), never through the lab page, so the console backend is asked how
-    many console connections the lab's VMs have open. Any: that is the Student working, and
-    the idle clock restarts. Unknown (no answer, a backend that cannot tell): not idle; asked
-    again after ``LAB_CONSOLE_RECHECK_MINUTES``. The lab still ends at its maximum lifetime."""
-    from ..console_backends import get_console_backend
-
-    open_now: int | None
-    try:
-        # tenant-safe: the session's own range, created by this module in its tenant.
-        rng = db.get(Range, session.range_id) if session.range_id else None
-        open_now = get_console_backend(session.backend).open_connections(_vms(rng), db=db, rng=rng)
-    except Exception:  # noqa: BLE001 — not knowing is never a reason to close a lab
-        logger.warning("lab session %s: could not read console connections", session.id, exc_info=True)
-        open_now = None
+def _console_idle(db: Session, session: LabSession, now: datetime, open_now: Any) -> bool:
+    """Before an idle close: was anyone on the lab's consoles when the sweep asked
+    (``consoles.ask``)? Any connection: the Student is working, and the idle clock restarts.
+    Unknown (None): not idle; asked again after ``LAB_CONSOLE_RECHECK_MINUTES``, never past
+    the lab's maximum lifetime. Not asked (outside the sweep): left for the sweep."""
+    if open_now is NOT_ASKED:
+        return False
     latest = _aware(session.max_expires_at)
     if open_now is None:
         recheck = timedelta(minutes=max(1, _int_env("LAB_CONSOLE_RECHECK_MINUTES", 15)))
@@ -1097,6 +1115,16 @@ def run_locked(db: Session, session: LabSession, fn, *args: Any, busy_ok: bool =
 def sweep(db: Session) -> int:
     """Advance every session that holds resources, oldest first; returns how many changed
     state. Each session is advanced under its own lease and its own transaction."""
+    from . import consoles
+
+    # Before any lock: which idle-due labs have a console open, in one batch with a deadline
+    # (a vCenter that does not answer must not hold up the other labs' advance).
+    try:
+        answers = consoles.ask(db, consoles.idle_due(db, _now()))
+    except Exception:  # noqa: BLE001 — unknown for all: no idle close this pass
+        logger.exception("console check failed")
+        answers = {}
+    db.commit()  # end the read transaction before the per-lab ones
     changed = 0
     for session in (
         db.query(LabSession)
@@ -1107,7 +1135,7 @@ def sweep(db: Session) -> int:
     ):
         before = session.state
         try:
-            run_locked(db, session, advance, busy_ok=True)
+            run_locked(db, session, advance, busy_ok=True, consoles=answers.get(session.id, NOT_ASKED))
         except Exception:  # noqa: BLE001 — one bad session must not stop the sweep
             logger.exception("lab session %s could not advance", session.id)
             continue

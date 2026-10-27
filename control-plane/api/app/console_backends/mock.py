@@ -3,18 +3,31 @@
 from __future__ import annotations
 
 import secrets
+import time
 from typing import Any, ClassVar
 
-from .base import BaseConsoleBackend
+from .base import BaseConsoleBackend, ConsoleReader, ConsoleTarget
 
 
 class MockConsole(BaseConsoleBackend):
     kind: ClassVar[str] = "mock"
-    #: What ``open_connections`` answers: mock VMs have no consoles. Tests set it.
+    #: What the console reader answers for every lab: mock VMs have no consoles. Tests set
+    #: it, and ``delay`` (seconds) to play a hypervisor that is slow to answer.
     connections: ClassVar[int | None] = 0
+    delay: ClassVar[float] = 0.0
+    logins: ClassVar[int] = 0
 
-    def open_connections(self, vms: list[dict[str, Any]], *, db=None, rng=None) -> int | None:
-        return type(self).connections
+    def console_reader(self, db, targets: list[ConsoleTarget]) -> ConsoleReader:
+        cls = type(self)
+        keys = [t.key for t in targets]
+
+        def read() -> dict:
+            cls.logins += 1
+            if cls.delay:
+                time.sleep(cls.delay)
+            return dict.fromkeys(keys, cls.connections)
+
+        return read
 
     def open(self, vm: dict[str, Any], *, db=None, rng=None) -> dict[str, Any]:
         return {

@@ -294,10 +294,10 @@ class TestIdle:
     def test_an_idle_lab_closes_at_four_hours_and_not_before(self, long_lab, db_session, monkeypatch):
         session, _, t0 = self._active(db_session, long_lab, monkeypatch)
         _at(monkeypatch, t0 + timedelta(hours=4) - timedelta(minutes=1))
-        act(db_session, service.advance, session)
+        service.sweep(db_session)  # the sweep asks the consoles first
         assert session.state == "active"
         _at(monkeypatch, t0 + timedelta(hours=4))
-        act(db_session, service.advance, session)
+        service.sweep(db_session)  # the sweep asks the consoles first
         assert session.state in ("expired", "cleaning", "destroyed") and session.end_reason == "idle"
 
     def test_activity_keeps_it_open(self, long_lab, db_session, monkeypatch):
@@ -305,21 +305,21 @@ class TestIdle:
         _at(monkeypatch, t0 + timedelta(hours=3))
         act(db_session, service.touch, session)  # the lab page's heartbeat
         _at(monkeypatch, t0 + timedelta(hours=6))
-        act(db_session, service.advance, session)
+        service.sweep(db_session)  # the sweep asks the consoles first
         assert session.state == "active"
 
     def test_the_idle_limit_is_a_setting(self, long_lab, db_session, monkeypatch):
         monkeypatch.setenv("LAB_IDLE_LIMIT_MINUTES", "30")
         session, _, t0 = self._active(db_session, long_lab, monkeypatch)
         _at(monkeypatch, t0 + timedelta(minutes=31))
-        act(db_session, service.advance, session)
+        service.sweep(db_session)  # the sweep asks the consoles first
         assert session.end_reason == "idle"
 
     def test_a_shorter_idle_time_in_the_profile_still_applies(self, lab, db_session, monkeypatch):  # noqa: F811
         _, rid, _ = lab  # the kit's profile closes after 60 idle minutes
         session, _, t0 = self._active(db_session, rid, monkeypatch)
         _at(monkeypatch, t0 + timedelta(minutes=61))
-        act(db_session, service.advance, session)
+        service.sweep(db_session)  # the sweep asks the consoles first
         assert session.end_reason == "idle"
 
     def test_the_student_is_warned_once_before_it_closes(self, long_lab, db_session, monkeypatch):
@@ -329,12 +329,12 @@ class TestIdle:
             return db_session.query(UserNotification).filter(UserNotification.user_id == s.id).all()
 
         _at(monkeypatch, t0 + timedelta(hours=3, minutes=40))
-        act(db_session, service.advance, session)
+        service.sweep(db_session)  # the sweep asks the consoles first
         assert warnings() == []
         _at(monkeypatch, t0 + timedelta(hours=3, minutes=46))
-        act(db_session, service.advance, session)
+        service.sweep(db_session)  # the sweep asks the consoles first
         _at(monkeypatch, t0 + timedelta(hours=3, minutes=50))
-        act(db_session, service.advance, session)
+        service.sweep(db_session)  # the sweep asks the consoles first
         (note,) = warnings()
         assert note.title == "Your lab closes soon" and note.tenant_id == s.tenant_id
         assert session.state == "active"
@@ -346,7 +346,7 @@ class TestIdle:
         for h in range(1, 13):
             _at(monkeypatch, t0 + timedelta(hours=h))
             act(db_session, service.touch, session)
-            act(db_session, service.advance, session)
+            service.sweep(db_session)  # the sweep asks the consoles first
         assert session.end_reason == "expired"
 
 
@@ -688,7 +688,7 @@ class TestConsoleUseIsActivity:
 
         monkeypatch.setattr(MockConsole, "connections", 1)
         session, t0 = self._idle(db_session, long_lab, monkeypatch)
-        act(db_session, service.advance, session)
+        service.sweep(db_session)  # the sweep asks the consoles first
         assert session.state == "active"
         assert session.idle_expires_at.replace(tzinfo=UTC) >= t0 + timedelta(hours=8)
 
@@ -697,7 +697,7 @@ class TestConsoleUseIsActivity:
 
         monkeypatch.setattr(MockConsole, "connections", 0)
         session, _ = self._idle(db_session, long_lab, monkeypatch)
-        act(db_session, service.advance, session)
+        service.sweep(db_session)  # the sweep asks the consoles first
         assert session.end_reason == "idle"
 
     def test_not_knowing_keeps_it(self, long_lab, db_session, monkeypatch):
@@ -705,18 +705,18 @@ class TestConsoleUseIsActivity:
 
         monkeypatch.setattr(MockConsole, "connections", None)
         session, _ = self._idle(db_session, long_lab, monkeypatch)
-        act(db_session, service.advance, session)
+        service.sweep(db_session)  # the sweep asks the consoles first
         assert session.state == "active" and session.end_reason == ""
 
     def test_a_backend_that_fails_keeps_it(self, long_lab, db_session, monkeypatch):
         from app.console_backends.mock import MockConsole
 
-        def broken(self, vms, *, db=None, rng=None):
+        def broken(self, db, targets):
             raise RuntimeError("vCenter is down")
 
-        monkeypatch.setattr(MockConsole, "open_connections", broken)
+        monkeypatch.setattr(MockConsole, "console_reader", broken)
         session, _ = self._idle(db_session, long_lab, monkeypatch)
-        act(db_session, service.advance, session)
+        service.sweep(db_session)  # the sweep asks the consoles first
         assert session.state == "active"
 
     def test_the_maximum_lifetime_still_ends_it(self, long_lab, db_session, monkeypatch):
@@ -725,5 +725,232 @@ class TestConsoleUseIsActivity:
         monkeypatch.setattr(MockConsole, "connections", 1)
         session, t0 = self._idle(db_session, long_lab, monkeypatch)
         _at(monkeypatch, t0 + timedelta(hours=13))
-        act(db_session, service.advance, session)
+        service.sweep(db_session)  # the sweep asks the consoles first
         assert session.end_reason == "expired"
+
+
+# ── round 3 (a0771453) ───────────────────────────────────────────────
+
+
+@pytest.fixture
+def mock_console(monkeypatch):
+    from app.console_backends.mock import MockConsole
+
+    monkeypatch.setattr(MockConsole, "connections", 0)
+    monkeypatch.setattr(MockConsole, "delay", 0.0)
+    monkeypatch.setattr(MockConsole, "logins", 0)
+    return MockConsole
+
+
+class TestTheConsoleCheckNeverStallsTheSweep:
+    """B1: the console check ran a vCenter login, with no timeout, inside each lab's locked
+    advance. Now the sweep asks before any lock, in one batch, under a deadline."""
+
+    def test_a_slow_backend_does_not_delay_the_other_labs(
+        self, long_lab, db_session, worker, mock_console, monkeypatch  # noqa: F811
+    ):
+        import time
+
+        monkeypatch.setenv("LAB_CONSOLE_BATCH_SECONDS", "0.3")
+        mock_console.delay = 3.0  # a vCenter that does not answer
+        idle, _ = TestConsoleUseIsActivity()._idle(db_session, long_lab, monkeypatch)
+        worker.hold = True
+        other, _ = _try_launch(db_session, student(db_session), long_lab)
+        worker.run()  # built: the sweep has a step to take for it
+        started = time.monotonic()
+        service.sweep(db_session)
+        assert time.monotonic() - started < 2.0
+        assert other.state != "provisioning"  # advanced
+        assert idle.state == "active" and idle.end_reason == ""  # unknown: kept
+
+    def test_the_batch_asks_each_backend_once(self, long_lab, db_session, mock_console, monkeypatch):
+        mock_console.connections = 0
+        labs = [TestConsoleUseIsActivity()._idle(db_session, long_lab, monkeypatch)[0] for _ in range(1)]
+        s2, _ = _try_launch(db_session, student(db_session), long_lab)
+        until(db_session, s2, "ready")
+        s2.idle_expires_at = labs[0].idle_expires_at
+        db_session.commit()
+        service.sweep(db_session)
+        assert mock_console.logins == 1
+
+    def test_no_console_lock_is_held_while_asking(self, long_lab, db_session, mock_console, monkeypatch):
+        """The reader runs before the per-lab leases: none is held while it reads."""
+        seen = []
+
+        def reader(self, db, targets):
+            def read():
+                seen.extend(db_session.query(LabSession.lease_holder).filter(LabSession.lease_holder.isnot(None)).all())
+                return {t.key: 0 for t in targets}
+
+            return read
+
+        monkeypatch.setattr(type(mock_console()), "console_reader", reader)
+        TestConsoleUseIsActivity()._idle(db_session, long_lab, monkeypatch)
+        service.sweep(db_session)
+        assert seen == []
+
+
+class TestTheVsphereConsoleBatch:
+    """One login per vCenter, with a connection timeout; one PropertyCollector read; a
+    vCenter that does not answer in time is unknown and does not hold the others up."""
+
+    def _fakes(self, monkeypatch, slow_host=None):
+        import time
+        from types import SimpleNamespace
+
+        from app import hypervisor_binding
+        from app.console_backends import vsphere_webmks as m
+
+        logins = []
+
+        class Spec(SimpleNamespace):
+            pass
+
+        def smart_connect(**kw):
+            logins.append(kw)
+            if kw["host"] == slow_host:
+                time.sleep(3)
+
+            def retrieve(specs, options):
+                objs = [SimpleNamespace(obj=o.obj, propSet=[
+                    SimpleNamespace(name="name", val=o.obj._moId),
+                    SimpleNamespace(name="config.annotation", val="tn"),
+                    SimpleNamespace(name="runtime.numMksConnections", val=1 if o.obj._moId == "vm-busy" else 0),
+                ]) for o in specs[0].objectSet]
+                return SimpleNamespace(objects=objs, token=None)
+
+            pc = SimpleNamespace(RetrievePropertiesEx=retrieve, ContinueRetrievePropertiesEx=None)
+            return SimpleNamespace(_stub=None, RetrieveContent=lambda: SimpleNamespace(propertyCollector=pc))
+
+        monkeypatch.setattr(m, "SmartConnect", smart_connect)
+        monkeypatch.setattr(m, "Disconnect", lambda si: None)
+        monkeypatch.setattr(m, "vim", SimpleNamespace(VirtualMachine=lambda moid, stub: SimpleNamespace(_moId=moid)))
+        monkeypatch.setattr(m, "vmodl", SimpleNamespace(query=SimpleNamespace(PropertyCollector=SimpleNamespace(
+            FilterSpec=Spec, ObjectSpec=Spec, PropertySpec=Spec, RetrieveOptions=Spec))))
+        monkeypatch.setattr(hypervisor_binding, "resolve", lambda db, rng, t: {
+            "url": f"https://{rng.host}", "username": "u", "password": "p", "verify_ssl": True})
+        monkeypatch.setattr(hypervisor_binding, "owns", lambda *a: True)
+        return m, logins
+
+    def _target(self, key, host, *vm_ids):
+        from types import SimpleNamespace
+
+        from app.console_backends import ConsoleTarget
+
+        return ConsoleTarget(key, SimpleNamespace(id=uuid.uuid4(), host=host),
+                             [{"vm_id": v, "name": v} for v in vm_ids])
+
+    def test_one_login_per_vcenter_with_a_timeout(self, monkeypatch):
+        m, logins = self._fakes(monkeypatch)
+        targets = [self._target("a", "vc1", "vm-1", "vm-busy"), self._target("b", "vc1", "vm-2"),
+                   self._target("c", "vc2", "vm-3")]
+        assert m.VsphereWebMKSConsole().console_reader(object(), targets)() == {"a": 1, "b": 0, "c": 0}
+        assert sorted(kw["host"] for kw in logins) == ["vc1", "vc2"]
+        assert all(kw["httpConnectionTimeout"] == m.CONNECT_TIMEOUT for kw in logins)
+
+    def test_a_vcenter_that_does_not_answer_in_time_is_unknown(self, monkeypatch):
+        import time
+
+        m, _ = self._fakes(monkeypatch, slow_host="vc-slow")
+        monkeypatch.setattr(m, "VCENTER_SECONDS", 0.3)
+        targets = [self._target("fast", "vc1", "vm-busy"), self._target("slow", "vc-slow", "vm-9")]
+        started = time.monotonic()
+        answer = m.VsphereWebMKSConsole().console_reader(object(), targets)()
+        assert time.monotonic() - started < 2.0
+        assert answer == {"fast": 1, "slow": None}
+
+
+class TestWhoCanTellAboutConsoles:
+    def test_a_backend_with_no_console_concept_closes_on_heartbeats_alone(self, long_lab, db_session, monkeypatch):
+        session, _ = TestConsoleUseIsActivity()._idle(db_session, long_lab, monkeypatch)
+        session.backend = "proxmox_api"  # no console adapter, not a console family
+        db_session.commit()
+        service.sweep(db_session)
+        assert session.end_reason == "idle"
+
+    def test_a_vsphere_lab_with_no_adapter_is_unknown_and_kept(self, long_lab, db_session, monkeypatch):
+        from app import console_backends
+
+        session, _ = TestConsoleUseIsActivity()._idle(db_session, long_lab, monkeypatch)
+        session.backend = "vsphere_api"
+        db_session.commit()
+        monkeypatch.delitem(console_backends._REGISTRY, "vsphere_api")
+        service.sweep(db_session)
+        assert session.state == "active" and session.end_reason == ""
+
+    def test_unknown_is_still_bounded_by_the_maximum_lifetime(self, long_lab, db_session, mock_console,
+                                                             monkeypatch):
+        mock_console.connections = None
+        session, t0 = TestConsoleUseIsActivity()._idle(db_session, long_lab, monkeypatch)
+        _at(monkeypatch, t0 + timedelta(hours=13))
+        service.sweep(db_session)
+        assert session.end_reason == "expired"
+
+    def test_the_platform_caps_a_profiles_lifetime(self, long_lab, db_session, monkeypatch):
+        monkeypatch.setenv("LAB_MAX_LIFETIME_MINUTES", "60")  # the profile asks for 12 hours
+        session, _ = _try_launch(db_session, student(db_session), long_lab)
+        assert session.max_expires_at - session.provisioning_at <= timedelta(minutes=60, seconds=1)
+
+
+class TestAClassLabFollowsItsClass:
+    def test_back_to_back_sessions_keep_the_lab_to_the_last_one(self, lab, db_session, monkeypatch):  # noqa: F811
+        """Round 3: the lab ended with the first of two back-to-back sessions of its class."""
+        _, rid, course_id = lab
+        now = datetime.now(UTC)
+        a_end = now + timedelta(minutes=10)
+        evt_a, cls = _lab_class(db_session, course_id, end=a_end)
+        evt_b = ScheduledEvent(name="C304 serial 3 pm", tenant_id=cls.tenant_id, state=EventState.scheduled,
+                               start_time=a_end + timedelta(minutes=5), end_time=a_end + timedelta(hours=3),
+                               course_id=course_id, vcpu_total=8, ram_mb_total=8192, disk_gb_total=80)
+        db_session.add(evt_b)
+        db_session.flush()
+        db_session.add(ClassSession(class_id=cls.id, event_id=evt_b.id, tenant_id=cls.tenant_id,
+                                    range_mode="collective"))
+        db_session.commit()
+        s, _ = _try_launch(db_session, _on_roll_call(db_session, cls), rid)
+        assert s.booking_id == evt_a.id
+        assert s.max_expires_at.replace(tzinfo=UTC) == min(
+            s.latest_end_at.replace(tzinfo=UTC), evt_b.end_time.replace(tzinfo=UTC) + TEARDOWN_GRACE)
+        until(db_session, s, "ready")
+        _at(monkeypatch, a_end + timedelta(minutes=6))  # A has ended: the lab moves to B
+        act(db_session, service.advance, s)
+        assert s.booking_id == evt_b.id and s.state in ("ready", "active")
+
+    def test_editing_the_sessions_end_moves_the_labs_end(self, long_lab, db_session):
+        """Round 3: an extended session left its labs on the old end; a shortened one too."""
+        course_id = db_session.get(service.CourseRelease, long_lab).course_id
+        now = datetime.now(UTC)
+        evt, cls = _lab_class(db_session, course_id, end=now + timedelta(minutes=30))
+        s, _ = _try_launch(db_session, _on_roll_call(db_session, cls), long_lab)
+        until(db_session, s, "ready")
+        evt.end_time = now + timedelta(hours=4)
+        db_session.commit()
+        act(db_session, service.advance, s)
+        assert s.max_expires_at.replace(tzinfo=UTC) == evt.end_time.replace(tzinfo=UTC) + TEARDOWN_GRACE
+        evt.end_time = now + timedelta(hours=1)
+        db_session.commit()
+        act(db_session, service.advance, s)
+        assert s.max_expires_at.replace(tzinfo=UTC) == evt.end_time.replace(tzinfo=UTC) + TEARDOWN_GRACE
+
+    def test_a_session_that_has_ended_is_never_drawn_on(self, lab, db_session):  # noqa: F811
+        _, rid, course_id = lab
+        now = datetime.now(UTC)
+        evt, cls = _lab_class(db_session, course_id, end=now - timedelta(minutes=1))
+        s, _ = _try_launch(db_session, _on_roll_call(db_session, cls), rid)
+        assert s.booking_id is None
+
+
+class TestTheBackstopReleasesTheLabsNetworks:
+    def test_its_port_groups_go_back_to_the_pool(self, long_lab, db_session, worker, monkeypatch):  # noqa: F811
+        from app.lab_sessions.models import LabNetworkLease
+
+        monkeypatch.setenv("PROVISIONER_BACKEND", "vsphere_api")
+        monkeypatch.setenv("LAB_PORT_GROUPS", "pg-lab-01,pg-lab-02")
+        session, _ = _try_launch(db_session, student(db_session), long_lab)
+        until(db_session, session, "ready")
+        assert db_session.query(LabNetworkLease).filter(LabNetworkLease.session_id == session.id).count() == 1
+        TestClassRangesAreNeverClosed()._class_range(db_session, session.range_id)
+        _at(monkeypatch, datetime.now(UTC) + timedelta(hours=13))
+        service.sweep(db_session)
+        assert session.end_reason == "class_range"
+        assert db_session.query(LabNetworkLease).filter(LabNetworkLease.session_id == session.id).count() == 0

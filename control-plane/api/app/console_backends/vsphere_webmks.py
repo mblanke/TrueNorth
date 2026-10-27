@@ -15,56 +15,68 @@ which on a tenant's range named a VM on another vCenter.
 
 from __future__ import annotations
 
+import logging
+import os
+from concurrent.futures import ThreadPoolExecutor, wait
 from typing import Any, ClassVar
 from urllib.parse import urlparse
 
 from .. import hypervisor_binding
-from .base import BaseConsoleBackend, ConsoleError
+from .base import BaseConsoleBackend, ConsoleError, ConsoleReader, ConsoleTarget
 
 try:  # pyVmomi is optional outside vSphere deployments
     from pyVim.connect import Disconnect, SmartConnect
-    from pyVmomi import vim
+    from pyVmomi import vim, vmodl
 except ImportError:  # pragma: no cover - exercised only without pyvmomi installed
-    SmartConnect = Disconnect = vim = None
+    SmartConnect = Disconnect = vim = vmodl = None
+
+logger = logging.getLogger(__name__)
+# A vCenter that does not answer must not hold up the lab sweep (#311 round 3).
+CONNECT_TIMEOUT = 10  # seconds, per HTTP connection
+VCENTER_SECONDS = float(os.getenv("LAB_CONSOLE_VCENTER_SECONDS", "30"))  # a whole vCenter's answer
 
 
 class VsphereWebMKSConsole(BaseConsoleBackend):
     kind: ClassVar[str] = "vsphere_api"
     hypervisor_type: ClassVar[str] = "vsphere"  # hypervisor_connections.hypervisor_type
 
-    def open_connections(self, vms: list[dict[str, Any]], *, db=None, rng=None) -> int | None:
-        """Sum of ``VirtualMachine.runtime.numMksConnections`` over the range's own VMs, on the
-        range's own vCenter. None on any failure, or when a VM cannot be read (fail safe)."""
-        if SmartConnect is None or db is None or rng is None:
-            return None
-        ids = [str(vm.get("vm_id") or "") for vm in vms]
-        if not ids or not all(ids):
-            return None
-        try:
-            target = hypervisor_binding.resolve(db, rng, self.hypervisor_type)
-            url = urlparse(target["url"])
-            si = SmartConnect(
-                host=url.hostname,
-                port=url.port or 443,
-                user=target["username"],
-                pwd=target["password"],
-                disableSslCertValidation=not target["verify_ssl"],
-            )
-        except Exception:  # noqa: BLE001 — unknown, never "no consoles"
-            return None
-        try:
-            total = 0
-            for vm, vm_id in zip(vms, ids, strict=True):
-                machine = vim.VirtualMachine(vm_id, si._stub)
-                if not hypervisor_binding.owns(str(rng.id), str(vm.get("name") or ""), str(machine.name or ""),
-                                               getattr(machine.config, "annotation", None)):
-                    return None
-                total += int(getattr(machine.runtime, "numMksConnections", 0) or 0)
-            return total
-        except Exception:  # noqa: BLE001
-            return None
-        finally:
-            Disconnect(si)
+    def console_reader(self, db, targets: list[ConsoleTarget]) -> ConsoleReader:
+        """Open WebMKS/VMRC connections (``runtime.numMksConnections``) on every target's VMs:
+        one login per vCenter (each range's own, ``hypervisor_binding.resolve``, read here from
+        ``db``), one PropertyCollector read of all its VMs, ``CONNECT_TIMEOUT`` per connection
+        and ``VCENTER_SECONDS`` per vCenter, vCenters in parallel. A target is None (unknown)
+        when its vCenter did not answer in time, a VM was missing, or a VM is not its range's."""
+        keys = [t.key for t in targets]
+        if SmartConnect is None:
+            return lambda: dict.fromkeys(keys)
+        groups: dict[tuple, tuple[dict, list[ConsoleTarget]]] = {}
+        for t in targets:
+            ids = [str(vm.get("vm_id") or "") for vm in t.vms]
+            if not ids or not all(ids):
+                continue  # unknown
+            try:
+                login = hypervisor_binding.resolve(db, t.rng, self.hypervisor_type)
+            except Exception:  # noqa: BLE001 — unknown, never "no consoles"
+                continue
+            key = (login["url"], login["username"])
+            groups.setdefault(key, (login, []))[1].append(t)
+
+        def read() -> dict:
+            out: dict = dict.fromkeys(keys)
+            if not groups:
+                return out
+            pool = ThreadPoolExecutor(max_workers=min(8, len(groups)), thread_name_prefix="tn-console")
+            futures = [pool.submit(_one_vcenter, login, ts) for login, ts in groups.values()]
+            done, late = wait(futures, timeout=VCENTER_SECONDS)
+            for f in done:
+                if f.exception() is None:
+                    out.update(f.result())
+            if late:
+                logger.warning("console check: %d vCenter(s) did not answer in %ss", len(late), VCENTER_SECONDS)
+            pool.shutdown(wait=False, cancel_futures=True)
+            return out
+
+        return read
 
     def open(self, vm: dict[str, Any], *, db=None, rng=None) -> dict[str, Any]:
         if SmartConnect is None:
@@ -106,3 +118,46 @@ class VsphereWebMKSConsole(BaseConsoleBackend):
             Disconnect(si)
         host = ticket.host or url.hostname
         return {"kind": "webmks", "url": f"wss://{host}:{ticket.port or 443}/ticket/{ticket.ticket}", "expires_in": 60}
+
+
+def _one_vcenter(login: dict, targets: list[ConsoleTarget]) -> dict:
+    """One vCenter's answer for its targets: one login, one PropertyCollector read."""
+    url = urlparse(login["url"])
+    si = SmartConnect(
+        host=url.hostname,
+        port=url.port or 443,
+        user=login["username"],
+        pwd=login["password"],
+        disableSslCertValidation=not login["verify_ssl"],
+        httpConnectionTimeout=CONNECT_TIMEOUT,
+    )
+    try:
+        pc = si.RetrieveContent().propertyCollector
+        moids = sorted({str(vm["vm_id"]) for t in targets for vm in t.vms})
+        spec = vmodl.query.PropertyCollector.FilterSpec(
+            objectSet=[vmodl.query.PropertyCollector.ObjectSpec(obj=vim.VirtualMachine(m, si._stub)) for m in moids],
+            propSet=[vmodl.query.PropertyCollector.PropertySpec(
+                type=vim.VirtualMachine, pathSet=["name", "config.annotation", "runtime.numMksConnections"])],
+            reportMissingObjectsInResults=True,
+        )
+        props: dict[str, dict] = {}
+        result = pc.RetrievePropertiesEx([spec], vmodl.query.PropertyCollector.RetrieveOptions())
+        while result is not None:
+            for obj in result.objects or []:
+                props[str(obj.obj._moId)] = {p.name: p.val for p in obj.propSet or []}
+            token = getattr(result, "token", None)
+            result = pc.ContinueRetrievePropertiesEx(token) if token else None
+    finally:
+        Disconnect(si)
+    out: dict = {}
+    for t in targets:
+        total: int | None = 0
+        for vm in t.vms:
+            p = props.get(str(vm["vm_id"]))
+            if p is None or not hypervisor_binding.owns(str(t.rng.id), str(vm.get("name") or ""),
+                                                        str(p.get("name") or ""), p.get("config.annotation")):
+                total = None  # missing, or not this range's VM: unknown
+                break
+            total += int(p.get("runtime.numMksConnections") or 0)
+        out[t.key] = total
+    return out

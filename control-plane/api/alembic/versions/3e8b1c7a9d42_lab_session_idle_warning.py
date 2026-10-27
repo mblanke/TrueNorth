@@ -8,7 +8,8 @@ Self-serve labs close after the idle limit (ADR 0014 §18, #288; ``LAB_IDLE_LIMI
 4 hours by default). ``idle_warned_at`` records that the Student was told the lab closes
 soon, so the sweep tells them once; activity clears it. ``disk_gb`` is the lab's disk, held
 through a reset as its vCPU and RAM are. ``booking_id`` names the booking whose hold a booked
-class's own Student's lab draws on (None: a self-serve lab). Additive, no data.
+class's own Student's lab draws on (None: a self-serve lab); ``latest_end_at`` is the lab's
+own end, which a class's own lab's ``max_expires_at`` is capped below. Additive, no data.
 """
 
 from collections.abc import Sequence
@@ -29,6 +30,8 @@ def upgrade() -> None:
         op.add_column("lab_sessions", sa.Column("idle_warned_at", sa.DateTime(timezone=True), nullable=True))
     if "disk_gb" not in cols:
         op.add_column("lab_sessions", sa.Column("disk_gb", sa.Integer(), nullable=False, server_default="0"))
+    if "latest_end_at" not in cols:
+        op.add_column("lab_sessions", sa.Column("latest_end_at", sa.DateTime(timezone=True), nullable=True))
     if "booking_id" not in cols:
         op.add_column("lab_sessions", sa.Column("booking_id", GUID(), nullable=True))
         op.create_index("ix_lab_sessions_booking_id", "lab_sessions", ["booking_id"])
@@ -37,5 +40,6 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.drop_index("ix_lab_sessions_booking_id", table_name="lab_sessions")
     op.drop_column("lab_sessions", "booking_id")
+    op.drop_column("lab_sessions", "latest_end_at")
     op.drop_column("lab_sessions", "disk_gb")
     op.drop_column("lab_sessions", "idle_warned_at")

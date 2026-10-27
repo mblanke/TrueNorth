@@ -81,6 +81,9 @@ class LabSession(Base):
     # When the Student was told the lab closes soon for want of use (cleared by activity).
     idle_warned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     max_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # The lab's own end (profile, platform ceiling); max_expires_at is it, or earlier for a
+    # class's own lab that ends with its class (ADR 0014 §18).
+    latest_end_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     end_reason: Mapped[str] = mapped_column(String(32), nullable=False, default="")
     reconciled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

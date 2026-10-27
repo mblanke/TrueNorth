@@ -412,6 +412,7 @@ lab_sessions = sa.Table(
     sa.Column("idle_expires_at", sa.DateTime(timezone=True)),
     sa.Column("idle_warned_at", sa.DateTime(timezone=True)),
     sa.Column("max_expires_at", sa.DateTime(timezone=True)),
+    sa.Column("latest_end_at", sa.DateTime(timezone=True)),
     sa.Column("ended_at", sa.DateTime(timezone=True)),
     sa.Column("end_reason", sa.String(32), nullable=False),
     sa.Column("reconciled_at", sa.DateTime(timezone=True)),

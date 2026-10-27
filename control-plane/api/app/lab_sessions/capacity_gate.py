@@ -68,8 +68,13 @@ def demand(profile: dict[str, Any]) -> Resources:
 
 
 def lifetime(profile: dict[str, Any]) -> timedelta:
-    """How long a lab of this profile may run: the span it must fit."""
-    return timedelta(minutes=profile["lifetime"]["max_minutes"])
+    """How long a lab of this profile may run, the span it must fit: the profile's maximum,
+    at most the platform's ``LAB_MAX_LIFETIME_MINUTES`` (7 days by default)."""
+    try:
+        ceiling = int(os.getenv("LAB_MAX_LIFETIME_MINUTES", "10080"))
+    except ValueError:
+        ceiling = 10080
+    return timedelta(minutes=min(profile["lifetime"]["max_minutes"], max(15, ceiling)))
 
 
 def lock(db: Session) -> None:
@@ -96,16 +101,15 @@ def own_booking(
             ScheduledEvent.state.in_(HOLDING),
             ScheduledEvent.range_id.is_(None),
             ScheduledEvent.template_id.is_(None),
+            # Live now, else starting within the provisioning lead; never one that has ended.
             ScheduledEvent.start_time <= now + PROVISION_LEAD,
-            ScheduledEvent.end_time > now - TEARDOWN_GRACE,
+            ScheduledEvent.end_time > now,
             ScheduledEvent.id.in_(class_sessions.session_ids_on_roll_call(session.user_id)),
         )
         .order_by(ScheduledEvent.start_time)
         .all()
     )
     for evt in rows:
-        if _utc(evt.end_time) + TEARDOWN_GRACE <= now:
-            continue
         vcpu, ram, disk = holdings.drawn(db, evt.id, exclude=session.id)
         if (vcpu + need.vcpu <= (evt.vcpu_total or 0) and ram + need.ram_mb <= (evt.ram_mb_total or 0)
                 and disk + need.disk_gb <= (evt.disk_gb_total or 0)):
@@ -113,9 +117,51 @@ def own_booking(
     return None
 
 
-def drawing_end(evt: ScheduledEvent) -> datetime:
-    """When a lab drawing on ``evt`` ends at the latest: with the session it draws on."""
-    return _utc(evt.end_time) + TEARDOWN_GRACE
+def _chain(db: Session, evt: ScheduledEvent) -> list[ScheduledEvent]:
+    """``evt`` and the drawable sessions of its class that follow it back to back (each
+    starting no later than the teardown grace after the previous one ends), in order."""
+    from ..classes.models import ClassSession
+
+    link = db.query(ClassSession).filter(ClassSession.event_id == evt.id).first()
+    if link is None:
+        return [evt]
+    later = (
+        db.query(ScheduledEvent)
+        .join(ClassSession, ClassSession.event_id == ScheduledEvent.id)
+        .filter(
+            ClassSession.class_id == link.class_id,
+            ClassSession.tenant_id == evt.tenant_id,
+            ScheduledEvent.tenant_id == evt.tenant_id,
+            ScheduledEvent.id != evt.id,
+            ScheduledEvent.state.in_(HOLDING),
+            ScheduledEvent.range_id.is_(None),
+            ScheduledEvent.template_id.is_(None),
+            ScheduledEvent.start_time >= evt.start_time,
+        )
+        .order_by(ScheduledEvent.start_time)
+        .all()
+    )
+    out, end = [evt], _utc(evt.end_time)
+    for e in later:
+        if _utc(e.start_time) > end + TEARDOWN_GRACE:
+            break
+        out.append(e)
+        end = max(end, _utc(e.end_time))
+    return out
+
+
+def drawing_end(db: Session, evt: ScheduledEvent) -> datetime:
+    """When a lab drawing on ``evt`` ends at the latest: with the last session of its class
+    that runs back to back from it, plus the teardown grace."""
+    return max(_utc(e.end_time) for e in _chain(db, evt)) + TEARDOWN_GRACE
+
+
+def next_in_chain(db: Session, evt: ScheduledEvent, now: datetime) -> ScheduledEvent | None:
+    """The back-to-back session of ``evt``'s class a lab moves to when ``evt`` has ended."""
+    for e in _chain(db, evt)[1:]:
+        if _utc(e.end_time) > now:
+            return e
+    return None
 
 
 def fits(db: Session, need: Resources, length: timedelta, now: datetime) -> bool:
