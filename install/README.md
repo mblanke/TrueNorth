@@ -97,8 +97,9 @@ ansible-vault encrypt inventory/group_vars/all/vault.yml
 #    can drain. Pin the release to install (docs/release.md): tn_release_version: v1.2.3.
 #    The AI endpoint (tn_ai_base_url) has no default (no AI server yet: tn_ai_enabled:
 #    false, "AI (optional)"). The backup escrow is REQUIRED
-#    ("Backups"). Turn on alert email (tn_alert_email_enabled) or alerts go nowhere
-#    ("Alerting").
+#    ("Backups"). Set the SMTP relay (tn_smtp_*) or no onboarding email, reminder or
+#    invite is sent ("Email (SMTP)"). Turn on alert email (tn_alert_email_enabled) or
+#    alerts go nowhere ("Alerting").
 $EDITOR inventory/group_vars/all/main.yml        # or inventory/hosts.yml host vars
 
 # 3. TLS: drop truenorth.crt / truenorth.key into files/tls/
@@ -631,6 +632,61 @@ Docker's apt repository. Without a mirror of it, set `tn_install_docker: false` 
 preinstall Docker with the store enabled ("Prerequisites"). `50-stack-up` copies the tarballs, `docker
 load`s the ones that changed, and runs the same digest check instead of pulling.
 
+## Email (SMTP)
+
+The API emails people: a Student added to a roll call who has no account yet gets an
+onboarding email, instructors and Students get class reminders, a Student who forfeits a
+seat is told, and booked sessions go out as calendar invites. All of it goes through one
+SMTP relay, set once with `tn_smtp_*`. **Email is optional.** With `tn_smtp_host` empty
+(the default) nothing is sent: each message is only logged, preflight says so, every admin
+sees a persistent *"Email is not configured"* banner, and the Classes page warns, when
+Students are added, that they will not be emailed (tell them to sign in themselves).
+
+Any relay works: an internal Exchange or Postfix, the site's smarthost, a hosted service.
+Set, in `inventory/group_vars/all/main.yml` (or the host's inventory) and the vault:
+
+| Variable | Default | Note |
+|---|---|---|
+| `tn_smtp_host` | *(empty: email off)* | The relay's name or address, no scheme. |
+| `tn_smtp_port` | `587` | `587` submission with `starttls`; `465` with `tls`; `25` with `starttls` or `none`. |
+| `tn_smtp_security` | `starttls` | `starttls`: connect, then STARTTLS (refused if the relay does not offer it). `tls`: implicit TLS from the first byte. `none`: no encryption, for an internal relay only and never with a sign-in. |
+| `tn_smtp_username` | *(empty: no sign-in)* | The relay account. Empty for a relay that accepts mail from this host by address. |
+| `vault_smtp_password` | *(empty)* in `vault.yml.example` | Its password. Both or neither. |
+| `tn_smtp_from_address` | *(empty; required with a host)* | The sender on every message, e.g. `truenorth@corp.example`. The relay must let this host send as it. |
+
+Then run `00-preflight`, `30-config` and `50-stack-up` (or the whole `site.yml`). With a
+host set, preflight refuses a port outside 1–65535, a security mode other than the three
+above, a sender that is not a plain address (`name@domain`, no display name), a username
+without a password or the reverse, a sign-in with `none` (the password would cross the
+wire in clear), a `CHANGE_ME`, and a password containing a `'` or a line break (the env
+file single-quotes it). It never prints the password.
+
+`30-config` renders them into the env file as `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURITY`,
+`SMTP_USER`, `SMTP_PASSWORD` and `SMTP_FROM`, which `compose.prod.yml` passes to the `api`
+service (its class and scheduler clocks send the mail). The Helm chart takes the same
+settings as `config.smtp.{host,port,security,username,fromAddress}` and
+`secrets.smtpPassword`, and at render time refuses an unknown mode, a port outside
+1–65535, a sender that is not a plain address, a credential without its pair and a
+sign-in with `none`. A release that set `SMTP_*` through `config.extraEnv` /
+`secrets.extraEnv` keeps working; mixing that with `config.smtp` is refused.
+
+**Alert email uses the same relay.** `tn_alert_smtp_host`, `tn_alert_smtp_port`,
+`tn_alert_email_from`, `tn_alert_smtp_require_tls` (`true` unless `tn_smtp_security` is
+`none`) and the alert credentials default to the values above, so turning on alert email
+needs only `tn_alert_email_enabled: true` and `tn_alert_email_to` ("Alerting"). Set any of
+them, or both `vault_alert_smtp_username` and `vault_alert_smtp_password` in the vault, to
+send alerts through a different relay or account. Alertmanager speaks implicit TLS only on
+port 465: with `tn_smtp_security: tls` on another port, set `tn_alert_smtp_port` (or the
+whole alert relay) explicitly.
+
+**Check it in the app.** `GET /api/email/status` answers whether email is configured to
+every signed-in user (nothing else); the platform administrator also sees the relay, port,
+security mode, sender and account name. No one is ever shown the password. On **Admin →
+System Health**, the platform administrator can **Send test email**: one message to their
+own address, at most once a minute, recorded in the audit log (`email.test`) with the
+outcome. A message the relay accepted can still be filtered; delivery is proven when it is
+in the inbox.
+
 ## Alerting
 
 Prometheus evaluates the rules in `monitoring/prometheus/alerts.yml` and sends what fires
@@ -647,11 +703,11 @@ Set, in the inventory and the vault, then run `00-preflight`, `30-config` and
 |---|---|---|
 | `tn_alert_email_enabled` | `false` (staging too, until its SMTP details are set) | Off: the null receiver (or the webhook, below). |
 | `tn_alert_email_to` | *(empty — required when on)* | One address, or several separated by commas. |
-| `tn_alert_email_from` | *(empty — required when on)* | An address the relay lets this host send as. |
-| `tn_alert_smtp_host` | *(empty — required when on)* | The SMTP relay, reached over `tn-egress`. |
-| `tn_alert_smtp_port` | `587` | `465` is implicit TLS (Alertmanager detects it). |
-| `tn_alert_smtp_require_tls` | `true` | STARTTLS required; `false` only for a relay on a trusted network. |
-| `vault_alert_smtp_username` / `vault_alert_smtp_password` | `CHANGE_ME` in `vault.yml.example` | Both set, or both empty for a relay that accepts unauthenticated mail from this host. |
+| `tn_alert_email_from` | `tn_smtp_from_address` | An address the relay lets this host send as. |
+| `tn_alert_smtp_host` | `tn_smtp_host` | The SMTP relay, reached over `tn-egress`. |
+| `tn_alert_smtp_port` | `tn_smtp_port` (`587`) | `465` is implicit TLS (Alertmanager detects it). |
+| `tn_alert_smtp_require_tls` | `true` unless `tn_smtp_security` is `none` | STARTTLS required; `false` only for a relay on a trusted network. |
+| `vault_alert_smtp_username` / `vault_alert_smtp_password` | `tn_smtp_username` / `vault_smtp_password` | Override in the vault for another account. Both set, or both empty for a relay that accepts unauthenticated mail from this host. |
 
 Preflight refuses an empty recipient, sender or relay, a `CHANGE_ME` in either credential,
 or one credential without the other; it ignores them while alert email is off.
@@ -1088,6 +1144,7 @@ actually change:
 | `tn_image_source` | `release` | `build` only for a lab ("Images") |
 | `tn_release_version` | *(empty — required in release mode)* | The release tag to install, e.g. `v1.2.3` |
 | `tn_release_dir` / `tn_image_archive_dir` | *(empty)* | Air-gapped: the release files, and `docker save` tarballs |
+| `tn_smtp_host` | *(empty: email off)* | The app's relay, with `tn_smtp_port` (`587`), `tn_smtp_security` (`starttls`), `tn_smtp_username`, `tn_smtp_from_address` and `vault_smtp_password` ("Email (SMTP)"). Off: onboarding emails, reminders and invites are not sent. |
 | `tn_alert_email_enabled` | `false` (staging too, until its SMTP details are set) | Alerts by email; with `tn_alert_email_to`, `tn_alert_email_from`, `tn_alert_smtp_host`, `tn_alert_smtp_port` (`587`), `tn_alert_smtp_require_tls` (`true`) and `vault_alert_smtp_username` / `vault_alert_smtp_password` ("Alerting"). Off: alerts go nowhere. |
 | `vault_alertmanager_webhook_url` | *(empty)* | A webhook receiver, alone or beside email ("Alerting"). |
 | `tn_bootstrap_admin_upn` | *(empty — required)* | The named AD account that admits everyone else. |

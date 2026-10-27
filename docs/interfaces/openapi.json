@@ -7265,6 +7265,111 @@
         "title": "EOOut",
         "type": "object"
       },
+      "EmailRelayOut": {
+        "description": "The relay as configured. Shown to the platform administrator only.",
+        "properties": {
+          "from_address": {
+            "title": "From Address",
+            "type": "string"
+          },
+          "host": {
+            "title": "Host",
+            "type": "string"
+          },
+          "port": {
+            "title": "Port",
+            "type": "integer"
+          },
+          "security": {
+            "description": "starttls | tls | none",
+            "title": "Security",
+            "type": "string"
+          },
+          "signs_in": {
+            "description": "Whether a username and password are set (the password is never shown)",
+            "title": "Signs In",
+            "type": "boolean"
+          },
+          "username": {
+            "default": "",
+            "description": "The account the API signs in as; empty: no sign-in",
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "host",
+          "port",
+          "security",
+          "from_address",
+          "signs_in"
+        ],
+        "title": "EmailRelayOut",
+        "type": "object"
+      },
+      "EmailStatusOut": {
+        "description": "Whether the API sends email (roll-call onboarding, reminders, seat-forfeit notices,\ncalendar invites). Every signed-in user may ask; only the platform administrator sees\nthe relay.",
+        "properties": {
+          "can_send_test": {
+            "default": false,
+            "description": "Whether the caller may POST /email/test",
+            "title": "Can Send Test",
+            "type": "boolean"
+          },
+          "configured": {
+            "description": "False: mail is only logged, nobody is emailed",
+            "title": "Configured",
+            "type": "boolean"
+          },
+          "docs": {
+            "default": "install/README.md, \"Email (SMTP)\"",
+            "description": "Where the installer's settings are described",
+            "title": "Docs",
+            "type": "string"
+          },
+          "relay": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EmailRelayOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Platform administrator only"
+          }
+        },
+        "required": [
+          "configured"
+        ],
+        "title": "EmailStatusOut",
+        "type": "object"
+      },
+      "EmailTestOut": {
+        "description": "The outcome of a test message to the caller's own address.",
+        "properties": {
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "sent": {
+            "description": "The relay accepted it (delivery is proven only in the inbox)",
+            "title": "Sent",
+            "type": "boolean"
+          },
+          "to": {
+            "title": "To",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sent",
+          "to",
+          "detail"
+        ],
+        "title": "EmailTestOut",
+        "type": "object"
+      },
       "EmergencyTeardownIn": {
         "description": "A deliberate act: the caller repeats the range's id and says why.",
         "properties": {
@@ -32499,6 +32604,59 @@
         "summary": "Update Ou",
         "tags": [
           "Directory"
+        ]
+      }
+    },
+    "/email/status": {
+      "get": {
+        "operationId": "getEmailStatus",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmailStatusOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Whether the API sends email; the relay for the platform administrator only",
+        "tags": [
+          "email"
+        ]
+      }
+    },
+    "/email/test": {
+      "post": {
+        "description": "The recipient is always the caller's own address: the body takes no recipient, so\nthis cannot be used to mail anyone else. Refused while email is not configured (409),\nand more than once a minute per administrator (429). Every message sent is audited.",
+        "operationId": "sendTestEmail",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmailTestOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Send one test message to the platform administrator's own address",
+        "tags": [
+          "email"
         ]
       }
     },

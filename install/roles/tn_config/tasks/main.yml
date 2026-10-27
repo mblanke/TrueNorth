@@ -80,8 +80,8 @@
       - tn_alert_email_to | default('') | string | trim | length > 0
       - tn_alert_email_from | default('') | string | trim | length > 0
       - tn_alert_smtp_host | default('') | string | trim | length > 0
-      - vault_alert_smtp_username | default('') | string is not search('CHANGE_ME')
-      - vault_alert_smtp_password | default('') | string is not search('CHANGE_ME')
+      - tn_alert_smtp_username | default('') | string is not search('CHANGE_ME')
+      - tn_alert_smtp_password | default('') | string is not search('CHANGE_ME')
     fail_msg: >-
       tn_alert_email_enabled is true but its settings are incomplete or still CHANGE_ME:
       run playbooks/00-preflight.yml, which names what is missing (install/README.md "Alerting").
@@ -100,7 +100,7 @@
   become: true
   ansible.builtin.copy:
     dest: "{{ tn_config_dir }}/alertmanager/smtp_password"
-    content: "{{ vault_alert_smtp_password | string | trim }}"
+    content: "{{ tn_alert_smtp_password | string | trim }}"
     owner: "65534"
     group: "65534"
     mode: "0600"
@@ -108,7 +108,7 @@
   notify: Restart Alertmanager
   when:
     - tn_alert_email_enabled | default(false) | bool
-    - vault_alert_smtp_username | default('') | string | trim | length > 0
+    - tn_alert_smtp_username | default('') | string | trim | length > 0
 
 - name: Config — Alertmanager email receiver
   become: true
@@ -130,7 +130,7 @@
   loop: >-
     {{ (['alertmanager.email.yml'] if not tn_alert_email_enabled | default(false) | bool else [])
        + (['smtp_password'] if not (tn_alert_email_enabled | default(false) | bool
-                                    and vault_alert_smtp_username | default('') | string | trim | length > 0)
+                                    and tn_alert_smtp_username | default('') | string | trim | length > 0)
           else []) }}
 
 - name: Config — ALERTS GO NOWHERE

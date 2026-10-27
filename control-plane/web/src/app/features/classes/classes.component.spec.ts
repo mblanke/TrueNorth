@@ -1,7 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { HttpErrorResponse } from '@angular/common/http';
-import { signal } from '@angular/core';
+import { WritableSignal, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { of, throwError } from 'rxjs';
 import { AuthService } from '@core/services/auth.service';
@@ -10,6 +10,7 @@ import {
 } from '@core/services/classes-api.service';
 import { NotificationService } from '@core/services/notification.service';
 import { OperatorRecordsApiService } from '@core/services/operator-records-api.service';
+import { EmailStatusService } from '@core/services/email-status.service';
 import { ClassForm, ClassesComponent, addSummary, rangeOwner, reinstateSummary, toClassBody } from './classes.component';
 
 const CLASS: ClassRecord = {
@@ -105,8 +106,9 @@ describe('ClassesComponent', () => {
   let component: ClassesComponent;
   let el: HTMLElement;
   let api: jasmine.SpyObj<ClassesApiService>;
+  let email: { load: jasmine.Spy; notConfigured: WritableSignal<boolean> };
 
-  function setup(role: string, cls: ClassRecord = CLASS) {
+  function setup(role: string, cls: ClassRecord = CLASS, emailOff = false) {
     api = jasmine.createSpyObj('ClassesApiService', ['mine', 'list', 'create', 'rollCall', 'addPasted', 'addCsv', 'remove',
       'reinstate', 'ranges', 'retryRange', 'sessionTeams', 'splitTeams', 'moveTeamMember']);
     api.ranges.and.returnValue(of(RANGES));
@@ -124,12 +126,14 @@ describe('ClassesComponent', () => {
     records.listCourses.and.returnValue(of({ items: [{ id: 'k1', name: 'SOC Analyst' }], total: 1, limit: 200, offset: 0 }));
     records.listUsers.and.returnValue(of([]));
     const notify = jasmine.createSpyObj('NotificationService', ['success', 'error', 'info']);
+    email = { load: jasmine.createSpy('load'), notConfigured: signal(emailOff) };
     TestBed.configureTestingModule({
       imports: [ClassesComponent, NoopAnimationsModule],
       providers: [
         { provide: ClassesApiService, useValue: api },
         { provide: OperatorRecordsApiService, useValue: records },
         { provide: NotificationService, useValue: notify },
+        { provide: EmailStatusService, useValue: email },
         { provide: AuthService, useValue: { user: signal({ role }), isAdmin: signal(role === 'admin') } },
       ],
     });
@@ -170,6 +174,37 @@ describe('ClassesComponent', () => {
     reinstate[0].click();
     expect(api.reinstate).toHaveBeenCalledWith('c1', 'e4');
     expect(api.rollCall).toHaveBeenCalledTimes(2);  // the roll call is read again
+  });
+
+  // ── Email not configured (#306) ─────────────────────────────────
+  it('warns, where Students are added, that no email will be sent while email is off', () => {
+    setup('instructor', CLASS, true);
+    expect(email.load).toHaveBeenCalled();
+    component.open(CLASS);
+    fixture.detectChanges();
+    const warning = el.querySelector('.email-off');
+    expect(warning?.textContent).toContain('Email is not configured');
+    expect(warning?.textContent).toContain('no email will be sent to the Students you add');
+    expect(warning?.getAttribute('role')).toBe('alert');
+    // Beside the add controls: in the roll-call card, before the paste box.
+    const card = el.querySelector('.roll-call')!;
+    expect(card.contains(warning)).toBeTrue();
+    expect(warning!.compareDocumentPosition(card.querySelector('textarea')!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('gives no warning when email is configured', () => {
+    setup('instructor');
+    component.open(CLASS);
+    fixture.detectChanges();
+    expect(el.querySelector('.email-off')).toBeNull();
+    expect(el.textContent).toContain('Paste');
+  });
+
+  it('gives no add warning to someone who cannot add', () => {
+    setup('observer', { ...CLASS, my_role: 'observer', can_edit: false } as ClassRecord, true);
+    component.open(component.classes()[0]);
+    fixture.detectChanges();
+    expect(el.querySelector('.email-off')).toBeNull();
   });
 
   it('adds pasted emails and says what happened', () => {
