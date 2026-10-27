@@ -27,6 +27,7 @@ MAX_ROLL_CALL_BATCH = 500
 class ClassStatusOut(str, Enum):
     open = "open"
     cancelled = "cancelled"
+    closed = "closed"  # closed out (ADR 0014 §13): read-only until an admin reopens it
 
 
 class RollCallStatusOut(str, Enum):
@@ -96,7 +97,7 @@ class ClassOut(BaseModel):
     assistants: list[ClassPerson]
     observers: list[ClassPerson]
     my_role: ClassRole | None = Field(..., description="None once the caller has handed the class over")
-    can_edit: bool = Field(..., description="The caller is its lead or an admin: may change it and its roll call")
+    can_edit: bool = Field(..., description="The caller is its lead or an admin and the class is open: may change it and its roll call")
     roll_call_count: int = Field(..., description="Entries not removed")
     created_at: datetime | None = None
 

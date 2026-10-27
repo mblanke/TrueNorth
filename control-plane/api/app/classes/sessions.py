@@ -75,7 +75,7 @@ def class_for_booking(db: Session, user: CurrentUser, class_id: str) -> Class:
     if role not in access.EDITORS:
         raise HTTPException(403, "Only the class's lead instructor or an admin books its sessions")
     if cls.status != ClassStatus.open.value:
-        raise HTTPException(409, "The class is cancelled; it takes no new sessions")
+        raise HTTPException(409, f"The class is {cls.status}; it takes no new sessions")
     return cls
 
 

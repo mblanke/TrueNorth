@@ -668,7 +668,8 @@ def participation(db: Session, user: CurrentUser, rng: Range) -> dict[str, str] 
     return {"exercise_id": str(ex.id)} if ex is not None else None
 
 
-def readable_range(db: Session, range_id: uuid.UUID, user: CurrentUser, scope: str) -> Range:
+def readable_range(db: Session, range_id: uuid.UUID, user: CurrentUser, scope: str,
+                   found: dict | None = None) -> Range:
     """The caller's range, or 404: another tenant's, a deleted one, a Student's lab to staff
     without infrastructure rights (as routers/ranges.py), one a Student does not take part in.
     A Student's own lab session's range is theirs (``participation``)."""
@@ -692,8 +693,11 @@ def readable_range(db: Session, range_id: uuid.UUID, user: CurrentUser, scope: s
             if rng.id in lab_range_ids(db, [rng.id]):
                 raise HTTPException(404, "Range not found")
         return rng
-    if not takes_part(db, user, rng):
+    part = participation(db, user, rng)
+    if part is None:
         raise HTTPException(404, "Range not found")
+    if found is not None:
+        found["participation"] = part  # how the Student takes part, for the caller to reuse
     return rng
 
 

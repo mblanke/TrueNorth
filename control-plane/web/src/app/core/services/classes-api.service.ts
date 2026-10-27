@@ -22,6 +22,13 @@ export type RangeMode = S['RangeModeOut'];
 export type CourseRangeMode = S['CourseRangeModeOut'];
 export type SessionTeams = S['SessionTeamsOut'];
 export type ReinstateResult = S['ReinstateOut'];
+export type AttendanceGrid = S['AttendanceGridOut'];
+export type AttendanceCell = S['AttendanceCellOut'];
+export type AttendanceStatus = S['AttendanceStatusOut'];
+export type Closeout = S['CloseoutOut'];
+export type Standing = S['StandingOut'];
+export type ResultOutcome = S['ResultOutcomeOut'];
+export type ResultIn = S['ResultIn'];
 
 /**
  * Classes and their roll call (ADR 0014). The API decides who sees and changes what:
@@ -113,5 +120,32 @@ export class ClassesApiService {
   }
   moveTeamMember(id: string, eventId: string, userId: string, teamId: string): Observable<SessionTeams> {
     return this.http.put<SessionTeams>(`${this.base}/${id}/sessions/${eventId}/teams/members/${userId}`, { team_id: teamId });
+  }
+
+  // ── Attendance and close-out (ADR 0014 §12-13; #283) ──
+  /** Each started session's attendance, per Student on the roll call (its staff). */
+  attendance(id: string): Observable<AttendanceGrid> {
+    return this.http.get<AttendanceGrid>(`${this.base}/${id}/attendance`);
+  }
+  /** The lead or an admin sets one Student's attendance at one session; audited. */
+  setAttendance(id: string, sessionId: string, entryId: string, status: AttendanceStatus,
+                note: string | null = null): Observable<AttendanceCell> {
+    return this.http.put<AttendanceCell>(`${this.base}/${id}/attendance/${sessionId}/${entryId}`, { status, note });
+  }
+  /** The pre-filled results: attendance, course standing, a suggestion; pass/fail only on Unclassified. */
+  closeout(id: string): Observable<Closeout> {
+    return this.http.get<Closeout>(`${this.base}/${id}/closeout`);
+  }
+  /** Close the class with a result for every Student on its roll call. */
+  close(id: string, results: ResultIn[]): Observable<Closeout> {
+    return this.http.post<Closeout>(`${this.base}/${id}/close`, { results });
+  }
+  /** An admin reopens a closed class, with a reason; audited. */
+  reopen(id: string, reason: string): Observable<Closeout> {
+    return this.http.post<Closeout>(`${this.base}/${id}/reopen`, { reason });
+  }
+  /** The attendance and results as CSV text (formula cells defused by the API). */
+  exportResults(id: string): Observable<string> {
+    return this.http.get(`${this.base}/${id}/results.csv`, { responseType: 'text' });
   }
 }
