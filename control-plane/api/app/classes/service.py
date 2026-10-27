@@ -484,7 +484,7 @@ def emails_sent_today(db: Session, added_by: uuid.UUID, now: datetime | None = N
     return onboarding + reminders
 
 
-def remove_from_roll_call(db: Session, cls: Class, entry: RollCallEntry, actor: CurrentUser) -> list:
+def remove_from_roll_call(db: Session, cls: Class, entry: RollCallEntry, actor: CurrentUser | None) -> list:
     """Take a Student off the roll call: always allowed, before or after approval (ADR 0014
     §17). The entry stays, marked removed (ADR 0010). Their account and enrolment are
     untouched: they may be on the course for other reasons. Their seat in each approved
@@ -493,7 +493,8 @@ def remove_from_roll_call(db: Session, cls: Class, entry: RollCallEntry, actor: 
     sessions that have not started. Does not commit.
 
     Guarded on the status it was read with: if the forfeit clock, a reinstatement or an
-    approver changed it meanwhile, 409 rather than free (or keep) a seat twice."""
+    approver changed it meanwhile, 409 rather than free (or keep) a seat twice. ``actor`` None:
+    the system (the AD status sync deactivating the account, app/ad_status_sync)."""
     from . import teams
 
     before = entry.status
@@ -510,7 +511,7 @@ def remove_from_roll_call(db: Session, cls: Class, entry: RollCallEntry, actor: 
         raise HTTPException(409, "This Student's place on the roll call changed at the same moment; reload and try again")
     db.refresh(entry)
     teams.drop_member(db, cls, entry.user_id)
-    audit(db, actor.id, cls, "roll_call_remove", entry.email)
+    audit(db, actor.id if actor else None, cls, "roll_call_remove", entry.email)
     return sessions.free_seats(db, cls, 1) if was_on else []
 
 

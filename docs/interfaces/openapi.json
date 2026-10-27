@@ -755,6 +755,232 @@
         "title": "ActivityReport",
         "type": "object"
       },
+      "AdStatusSyncOverviewOut": {
+        "properties": {
+          "break_glass_usernames": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Break Glass Usernames",
+            "type": "array"
+          },
+          "break_glass_warning": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Set when the configured break-glass name is no local Keycloak user (90-day rule off)",
+            "title": "Break Glass Warning"
+          },
+          "dry_run": {
+            "description": "AD_STATUS_SYNC_DRY_RUN: runs record and change nothing",
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "keycloak_configured": {
+            "title": "Keycloak Configured",
+            "type": "boolean"
+          },
+          "last_break_glass_use": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Break Glass Use"
+          },
+          "latest": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AdStatusSyncRunOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "nightly_hour_utc": {
+            "title": "Nightly Hour Utc",
+            "type": "integer"
+          },
+          "runs": {
+            "description": "Recent runs, newest first, without results",
+            "items": {
+              "$ref": "#/components/schemas/AdStatusSyncRunOut"
+            },
+            "title": "Runs",
+            "type": "array"
+          }
+        },
+        "required": [
+          "enabled",
+          "keycloak_configured",
+          "dry_run",
+          "nightly_hour_utc",
+          "break_glass_usernames"
+        ],
+        "title": "AdStatusSyncOverviewOut",
+        "type": "object"
+      },
+      "AdStatusSyncResultOut": {
+        "properties": {
+          "applied": {
+            "description": "False in a dry run, a held tenant, a first sighting (confirmed by the next run), the last admin, or when someone else deactivated it first",
+            "title": "Applied",
+            "type": "boolean"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "reason": {
+            "description": "ad_disabled | ad_removed | local_unused",
+            "title": "Reason",
+            "type": "string"
+          },
+          "reason_text": {
+            "title": "Reason Text",
+            "type": "string"
+          },
+          "seats_freed": {
+            "title": "Seats Freed",
+            "type": "integer"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "email",
+          "display_name",
+          "reason",
+          "reason_text",
+          "applied",
+          "seats_freed"
+        ],
+        "title": "AdStatusSyncResultOut",
+        "type": "object"
+      },
+      "AdStatusSyncRunIn": {
+        "properties": {
+          "dry_run": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Omitted: the AD_STATUS_SYNC_DRY_RUN setting",
+            "title": "Dry Run"
+          },
+          "override_limit": {
+            "default": false,
+            "description": "Apply even when over AD_STATUS_SYNC_MAX_FRACTION",
+            "title": "Override Limit",
+            "type": "boolean"
+          }
+        },
+        "title": "AdStatusSyncRunIn",
+        "type": "object"
+      },
+      "AdStatusSyncRunOut": {
+        "properties": {
+          "counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "description": "This tenant's counts only",
+            "title": "Counts",
+            "type": "object"
+          },
+          "dry_run": {
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "results": {
+            "description": "This tenant's accounts only",
+            "items": {
+              "$ref": "#/components/schemas/AdStatusSyncResultOut"
+            },
+            "title": "Results",
+            "type": "array"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "status": {
+            "description": "running | completed | held (this tenant) | failed | interrupted",
+            "title": "Status",
+            "type": "string"
+          },
+          "trigger": {
+            "description": "nightly | manual",
+            "title": "Trigger",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "trigger",
+          "dry_run",
+          "status",
+          "started_at",
+          "counts"
+        ],
+        "title": "AdStatusSyncRunOut",
+        "type": "object"
+      },
       "AdditionDecisionOut": {
         "description": "What an approver's decision on an addition did, without naming the Student.",
         "properties": {
@@ -24414,6 +24640,136 @@
         "summary": "Publish a draft as the next version: everyone signs it before going on",
         "tags": [
           "acknowledgement"
+        ]
+      }
+    },
+    "/ad-status-sync": {
+      "get": {
+        "description": "**Role: admin.** The caller's tenant's view of the nightly and manual runs.",
+        "operationId": "getAdStatusSync",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdStatusSyncOverviewOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "AD status sync: settings, last runs and the accounts they deactivated",
+        "tags": [
+          "AD Sync"
+        ]
+      }
+    },
+    "/ad-status-sync/runs": {
+      "post": {
+        "description": "**Role: admin.** Looks at the caller's tenant only; audited. A dry run records who would be\ndeactivated and changes nothing. While ``AD_STATUS_SYNC_DRY_RUN`` is on every run is dry:\nasking for ``dry_run: false`` is 409, ``override_limit`` or not.",
+        "operationId": "runAdStatusSync",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/AdStatusSyncRunIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdStatusSyncRunOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Run the AD status sync now, for this tenant",
+        "tags": [
+          "AD Sync"
+        ]
+      }
+    },
+    "/ad-status-sync/runs/{run_id}": {
+      "get": {
+        "description": "**Role: admin.** 404 for another tenant's manual run.",
+        "operationId": "getAdStatusSyncRun",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdStatusSyncRunOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "One AD status sync run, with this tenant's accounts",
+        "tags": [
+          "AD Sync"
         ]
       }
     },
@@ -51859,7 +52215,7 @@
     },
     "/users/{user_id}": {
       "delete": {
-        "description": "Delete (deactivate) a user.  **Permission: user:delete**",
+        "description": "Delete (deactivate) a user.  **Permission: user:delete**\n\n409 for the tenant's last active admin: nobody would be left to re-enable anyone. The check\nlocks the tenant's admin rows (app/ad_status_sync ``is_last_admin``), so two deletions at\nonce, or one beside the nightly AD status sync, cannot both pass.",
         "operationId": "delete_user_users__user_id__delete",
         "parameters": [
           {

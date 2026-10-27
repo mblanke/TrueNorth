@@ -13,6 +13,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 # Imported to register their tables on Base.metadata.
 from app import (  # noqa: F401
     acknowledgement,
+    ad_status_sync,
     audit_integrity,
     classes,
     cmi5,

@@ -11,6 +11,7 @@ in **without ever turning MFA off**.
 | Keycloak is down or the realm is broken | [In-process harness](#keycloak-unavailable) |
 | You need the Keycloak admin console | [Master realm admin](#the-master-realm-admin) |
 | Everyone is stuck on the Rules of use page | [Rules of use](#rules-of-use) |
+| A local account was disabled after 90 days unused | [The 90-day rule](#the-90-day-rule-and-the-break-glass-account) |
 
 Every path is audited: Keycloak admin events (90 days, enabled by 60-keycloak) and a row
 in TrueNorth's `audit_logs`.
@@ -110,6 +111,21 @@ the usual `acknowledgement_sign` / `acknowledgement_publish` row. A published ve
 never changes; correct it afterwards by publishing a new one from Admin > Rules of use.
 The in-process harness above (`tn_session=inprocess`) is itself exempt from the rules of
 use, so scripted recovery work is never blocked by them.
+
+## The 90-day rule and the break-glass account
+
+The nightly AD status sync (docs/identity.md "AD status sync") disables TrueNorth accounts
+whose local Keycloak account was not used for 90 days. The **break-glass** account, the
+local account named by `AD_STATUS_SYNC_BREAK_GLASS` (the installer sets it to
+`tn_bootstrap_admin_upn` with AD and `tn_keycloak_local_admin: true`), is never disabled, so
+it always works when the directory does not. Without one (no AD, or the local administrator
+turned off) the 90-day rule does not run at all and nothing alerts. Every use of it raises the critical alert `BreakGlassAccountUsed` and writes a
+`break_glass_sign_in` audit row: when it fires and nobody planned it, treat it as an
+incident (docs/runbooks/incident.md) and reset its password with the playbook above.
+
+Someone else's local account disabled by the rule: an administrator re-enables it in Users
+(the 90 days start again). The sync never touches Keycloak, so the Keycloak account itself
+was never disabled.
 
 ## The master realm admin
 

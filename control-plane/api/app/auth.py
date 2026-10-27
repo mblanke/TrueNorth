@@ -223,6 +223,10 @@ async def get_signed_in_user(
         raise denial
     if mfa_policy.uses_demo_exemption(identity, user.role, user.email):
         mfa_policy.audit_demo_exemption(db, user)
+    # Last use, for the 90-day rule on local accounts; break-glass use is announced (#290).
+    from .ad_status_sync import last_seen
+
+    last_seen.note(db, user, identity)
 
     return CurrentUser(
         id=str(user.id),
