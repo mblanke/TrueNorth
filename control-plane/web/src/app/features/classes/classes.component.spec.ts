@@ -290,21 +290,6 @@ describe('ClassesComponent', () => {
     expect(api.moveTeamMember).toHaveBeenCalledWith('c1', 'ev2', 'u2', 'tB');
   });
 
-  it('a Student sees their own classes and opens their range there, never the roll call', () => {
-    const mine = { ...CLASS, my_role: 'student', can_edit: false } as ClassRecord;
-    setup('student', mine);
-    expect(api.list).toHaveBeenCalled();
-    expect(api.mine).not.toHaveBeenCalled();
-    expect(buttons('Roll call').length).toBe(0);
-    buttons('Your range')[0].click();
-    fixture.detectChanges();
-    expect(api.rollCall).not.toHaveBeenCalled();
-    expect(el.textContent).toContain('that is how your attendance is recorded');
-    // The ready seat gets the credentials panel (opening it is the attendance evidence); the failed one does not.
-    expect(el.querySelectorAll('.my-range tn-range-credentials').length).toBe(1);
-    expect(el.querySelector('tn-class-closeout')).toBeNull();
-  });
-
   it('an admin sees every class and may create one; a refusal is shown', () => {
     setup('admin');
     expect(api.list).toHaveBeenCalled();

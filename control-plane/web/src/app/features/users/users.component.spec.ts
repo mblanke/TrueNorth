@@ -26,12 +26,13 @@ describe('UsersComponent', () => {
     api.deleteUser.and.returnValue(of(undefined));
 
     const directory = jasmine.createSpyObj('DirectoryApiService', [
-      'nations', 'coalitions', 'ouTree', 'securityGroups', 'adSyncStatus', 'authZones',
+      'nations', 'coalitions', 'ouTree', 'securityGroups', 'adSyncStatus', 'authZones', 'adStatusSync',
     ]);
     for (const m of ['nations', 'coalitions', 'ouTree', 'securityGroups', 'authZones']) {
       directory[m].and.returnValue(of([]));
     }
     directory.adSyncStatus.and.returnValue(throwError(() => new Error('not configured')));
+    directory.adStatusSync.and.returnValue(throwError(() => new Error('not configured')));
     // The Approvals tab is the default-rendered panel's sibling; keep it off the network.
     const registration = jasmine.createSpyObj('RegistrationApiService', ['listRequests']);
     registration.listRequests.and.returnValue(of([]));

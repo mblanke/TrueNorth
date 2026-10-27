@@ -107,6 +107,68 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/ad-status-sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * AD status sync: settings, last runs and the accounts they deactivated
+         * @description **Role: admin.** The caller's tenant's view of the nightly and manual runs.
+         */
+        get: operations["getAdStatusSync"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ad-status-sync/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run the AD status sync now, for this tenant
+         * @description **Role: admin.** Looks at the caller's tenant only; audited. A dry run records who would be
+         *     deactivated and changes nothing. While ``AD_STATUS_SYNC_DRY_RUN`` is on every run is dry:
+         *     asking for ``dry_run: false`` is 409, ``override_limit`` or not.
+         */
+        post: operations["runAdStatusSync"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ad-status-sync/runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One AD status sync run, with this tenant's accounts
+         * @description **Role: admin.** 404 for another tenant's manual run.
+         */
+        get: operations["getAdStatusSyncRun"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/ad-sync/config": {
         parameters: {
             query?: never;
@@ -861,6 +923,28 @@ export interface paths {
          *     instructor of the tenant.  **class:create**
          */
         post: operations["createClass"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/classes/attending": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * My classes: the caller's own classes as a Student, their status and Join
+         * @description The classes whose roll call the caller is on (or lost their seat on) and that run in
+         *     the window, with their sessions in it, the caller's seat and onboarding, and the caller's
+         *     own range for the current or next session.  **class:attend**
+         */
+        get: operations["listAttendingClasses"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -9310,6 +9394,10 @@ export interface paths {
         /**
          * Delete User
          * @description Delete (deactivate) a user.  **Permission: user:delete**
+         *
+         *     409 for the tenant's last active admin: nobody would be left to re-enable anyone. The check
+         *     locks the tenant's admin rows (app/ad_status_sync ``is_last_admin``), so two deletions at
+         *     once, or one beside the nightly AD status sync, cannot both pass.
          */
         delete: operations["delete_user_users__user_id__delete"];
         options?: never;
@@ -9877,6 +9965,116 @@ export interface components {
              */
             target?: string;
         };
+        /** AdStatusSyncOverviewOut */
+        AdStatusSyncOverviewOut: {
+            /** Break Glass Usernames */
+            break_glass_usernames: string[];
+            /**
+             * Break Glass Warning
+             * @description Set when the configured break-glass name is no local Keycloak user (90-day rule off)
+             */
+            break_glass_warning?: string | null;
+            /**
+             * Dry Run
+             * @description AD_STATUS_SYNC_DRY_RUN: runs record and change nothing
+             */
+            dry_run: boolean;
+            /** Enabled */
+            enabled: boolean;
+            /** Keycloak Configured */
+            keycloak_configured: boolean;
+            /** Last Break Glass Use */
+            last_break_glass_use?: string | null;
+            latest?: components["schemas"]["AdStatusSyncRunOut"] | null;
+            /** Nightly Hour Utc */
+            nightly_hour_utc: number;
+            /**
+             * Runs
+             * @description Recent runs, newest first, without results
+             */
+            runs?: components["schemas"]["AdStatusSyncRunOut"][];
+        };
+        /** AdStatusSyncResultOut */
+        AdStatusSyncResultOut: {
+            /**
+             * Applied
+             * @description False in a dry run, a held tenant, a first sighting (confirmed by the next run), the last admin, or when someone else deactivated it first
+             */
+            applied: boolean;
+            /** Display Name */
+            display_name: string;
+            /** Email */
+            email: string;
+            /**
+             * Reason
+             * @description ad_disabled | ad_removed | local_unused
+             */
+            reason: string;
+            /** Reason Text */
+            reason_text: string;
+            /** Seats Freed */
+            seats_freed: number;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
+        /** AdStatusSyncRunIn */
+        AdStatusSyncRunIn: {
+            /**
+             * Dry Run
+             * @description Omitted: the AD_STATUS_SYNC_DRY_RUN setting
+             */
+            dry_run?: boolean | null;
+            /**
+             * Override Limit
+             * @description Apply even when over AD_STATUS_SYNC_MAX_FRACTION
+             * @default false
+             */
+            override_limit?: boolean;
+        };
+        /** AdStatusSyncRunOut */
+        AdStatusSyncRunOut: {
+            /**
+             * Counts
+             * @description This tenant's counts only
+             */
+            counts: {
+                [key: string]: number;
+            };
+            /** Dry Run */
+            dry_run: boolean;
+            /** Error */
+            error?: string | null;
+            /** Finished At */
+            finished_at?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Results
+             * @description This tenant's accounts only
+             */
+            results?: components["schemas"]["AdStatusSyncResultOut"][];
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            /**
+             * Status
+             * @description running | completed | held (this tenant) | failed | interrupted
+             */
+            status: string;
+            /**
+             * Trigger
+             * @description nightly | manual
+             */
+            trigger: string;
+        };
         /**
          * AdditionDecisionOut
          * @description What an approver's decision on an addition did, without naming the Student.
@@ -10282,6 +10480,122 @@ export interface components {
          * @enum {string}
          */
         AttendanceStatusOut: "present" | "absent" | "excused";
+        /** AttendingClassOut */
+        AttendingClassOut: {
+            /** Course Name */
+            course_name: string;
+            /**
+             * End Date
+             * Format: date
+             */
+            end_date: string;
+            /**
+             * Forfeit Deadline
+             * @description When the seat was lost: the sign-in deadline missed
+             */
+            forfeit_deadline?: string | null;
+            /** Forfeited At */
+            forfeited_at?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Join Range Id
+             * @description Set only when you may open the range now: your own seat, ready; or the class's shared range, ready, during a collective session. Its credentials are at /ranges/{range_id}/credentials
+             */
+            join_range_id?: string | null;
+            /**
+             * Lead Instructor
+             * @description The lead instructor's name (never an email)
+             */
+            lead_instructor?: string | null;
+            /** Name */
+            name: string;
+            /**
+             * Next Session Id
+             * @description The current or next session
+             */
+            next_session_id?: string | null;
+            /**
+             * Onboarded
+             * @description You have signed in and taken your place on the roll call
+             */
+            onboarded: boolean;
+            /** @description Your range for the current or next session; None: no session to come uses a range */
+            range_status?: components["schemas"]["AttendingRangeStatus"] | null;
+            seat: components["schemas"]["AttendingSeatStatus"];
+            /**
+             * Sessions
+             * @description Its sessions in the window asked for, earliest first
+             */
+            sessions: components["schemas"]["AttendingSessionOut"][];
+            /**
+             * Start Date
+             * Format: date
+             */
+            start_date: string;
+        };
+        /** AttendingClassesOut */
+        AttendingClassesOut: {
+            /**
+             * Acknowledgement Signed
+             * @description You have signed the current rules of use
+             */
+            acknowledgement_signed: boolean;
+            /** Classes */
+            classes: components["schemas"]["AttendingClassOut"][];
+            /**
+             * Window End
+             * Format: date-time
+             */
+            window_end: string;
+            /**
+             * Window Start
+             * Format: date-time
+             */
+            window_start: string;
+        };
+        /**
+         * AttendingRangeStatus
+         * @enum {string}
+         */
+        AttendingRangeStatus: "not_built" | "building" | "ready" | "paused" | "failed";
+        /**
+         * AttendingSeatStatus
+         * @enum {string}
+         */
+        AttendingSeatStatus: "ready" | "forfeited";
+        /** AttendingSessionOut */
+        AttendingSessionOut: {
+            /**
+             * End Time
+             * Format: date-time
+             */
+            end_time: string;
+            /**
+             * Event Id
+             * Format: uuid
+             */
+            event_id: string;
+            /**
+             * Live
+             * @description Under way now
+             */
+            live: boolean;
+            /** Name */
+            name: string;
+            /** @description individual: your own range; collective: one shared range */
+            range_mode: components["schemas"]["RangeModeOut"];
+            /** @description Your range for this session; None: no range */
+            range_status?: components["schemas"]["AttendingRangeStatus"] | null;
+            /**
+             * Start Time
+             * Format: date-time
+             */
+            start_time: string;
+        };
         /**
          * AttentionOut
          * @description Something an instructor may want to look at. Only what the data says today:
@@ -19979,6 +20293,90 @@ export interface operations {
             };
         };
     };
+    getAdStatusSync: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdStatusSyncOverviewOut"];
+                };
+            };
+        };
+    };
+    runAdStatusSync: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["AdStatusSyncRunIn"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdStatusSyncRunOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    getAdStatusSyncRun: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdStatusSyncRunOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     ad_sync_config_ad_sync_config_get: {
         parameters: {
             query?: never;
@@ -21421,6 +21819,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ClassOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    listAttendingClasses: {
+        parameters: {
+            query?: {
+                /** @description The window's start (default: now). Send it with the viewer's UTC offset: class dates are calendar days, read in that offset */
+                start?: string | null;
+                /** @description The window's end, exclusive (default: a week after start; at most 45 days) */
+                end?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttendingClassesOut"];
                 };
             };
             /** @description Validation Error */
