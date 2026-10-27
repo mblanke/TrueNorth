@@ -3490,6 +3490,180 @@
         "title": "ClassRangeOut",
         "type": "object"
       },
+      "ClassRangeRowOut": {
+        "properties": {
+          "builds": {
+            "default": 0,
+            "title": "Builds",
+            "type": "integer"
+          },
+          "built_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Built At"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The seat's Student; staff only",
+            "title": "Email"
+          },
+          "entry_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The seat's roll-call entry",
+            "title": "Entry Id"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why its build failed or waits; staff only",
+            "title": "Error"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "description": "seat: one Student's range (individual sessions); shared: the class's one",
+            "title": "Kind",
+            "type": "string"
+          },
+          "range_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Range Id"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ClassRangeStatus"
+          },
+          "teardown_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Teardown Reason"
+          },
+          "template_id": {
+            "format": "uuid",
+            "title": "Template Id",
+            "type": "string"
+          },
+          "torn_down_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Torn Down At"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "template_id",
+          "range_id",
+          "status"
+        ],
+        "title": "ClassRangeRowOut",
+        "type": "object"
+      },
+      "ClassRangeStatus": {
+        "enum": [
+          "pending",
+          "building",
+          "ready",
+          "failed",
+          "tearing_down",
+          "torn_down"
+        ],
+        "title": "ClassRangeStatus",
+        "type": "string"
+      },
+      "ClassRangesOut": {
+        "description": "A class's sessions with their mode, and its ranges with their status. Staff see every\nseat; a Student only their own seat and the shared ranges.",
+        "properties": {
+          "failed": {
+            "default": 0,
+            "description": "Ranges whose build failed or could not be started",
+            "title": "Failed",
+            "type": "integer"
+          },
+          "ranges": {
+            "items": {
+              "$ref": "#/components/schemas/ClassRangeRowOut"
+            },
+            "title": "Ranges",
+            "type": "array"
+          },
+          "sessions": {
+            "items": {
+              "$ref": "#/components/schemas/ClassSessionModeOut"
+            },
+            "title": "Sessions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "sessions",
+          "ranges"
+        ],
+        "title": "ClassRangesOut",
+        "type": "object"
+      },
       "ClassRole": {
         "description": "The caller's part in a class, as the API decides it.",
         "enum": [
@@ -3501,6 +3675,70 @@
         ],
         "title": "ClassRole",
         "type": "string"
+      },
+      "ClassSessionModeOut": {
+        "properties": {
+          "end_time": {
+            "format": "date-time",
+            "title": "End Time",
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "range_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Range Id"
+          },
+          "range_mode": {
+            "$ref": "#/components/schemas/RangeModeOut"
+          },
+          "start_time": {
+            "format": "date-time",
+            "title": "Start Time",
+            "type": "string"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          },
+          "template_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Template Id"
+          }
+        },
+        "required": [
+          "event_id",
+          "name",
+          "state",
+          "start_time",
+          "end_time",
+          "range_mode"
+        ],
+        "title": "ClassSessionModeOut",
+        "type": "object"
       },
       "ClassStatusOut": {
         "enum": [
@@ -5759,6 +5997,42 @@
         "title": "CoursePublicationOut",
         "type": "object"
       },
+      "CourseRangeModeIn": {
+        "properties": {
+          "mode": {
+            "$ref": "#/components/schemas/RangeModeOut"
+          }
+        },
+        "required": [
+          "mode"
+        ],
+        "title": "CourseRangeModeIn",
+        "type": "object"
+      },
+      "CourseRangeModeOut": {
+        "properties": {
+          "course_id": {
+            "format": "uuid",
+            "title": "Course Id",
+            "type": "string"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/RangeModeOut"
+          },
+          "source": {
+            "description": "'setting' (set for this organisation) or 'default' (collective)",
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "course_id",
+          "mode",
+          "source"
+        ],
+        "title": "CourseRangeModeOut",
+        "type": "object"
+      },
       "CourseReleaseOut": {
         "properties": {
           "accepted_at": {
@@ -7235,6 +7509,22 @@
             ],
             "title": "Range Id"
           },
+          "range_mode": {
+            "anyOf": [
+              {
+                "enum": [
+                  "individual",
+                  "collective"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A class session only (ADR 0014 \u00a79): individual builds a range per Student on the roll call from template_id; collective is one shared range. Default: the course's default. Changing it on an approved session sends it back for approval",
+            "title": "Range Mode"
+          },
           "require_certified_range": {
             "default": false,
             "description": "Require a certified range (ADR 0013 \u00a76). Stored; not enforced until isolation evidence (range certification S4) exists",
@@ -7434,6 +7724,18 @@
               }
             ],
             "title": "Range Id"
+          },
+          "range_mode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A class session's mode: individual or collective",
+            "title": "Range Mode"
           },
           "require_certified_range": {
             "default": false,
@@ -15731,6 +16033,14 @@
         "title": "RangeListOut",
         "type": "object"
       },
+      "RangeModeOut": {
+        "enum": [
+          "individual",
+          "collective"
+        ],
+        "title": "RangeModeOut",
+        "type": "string"
+      },
       "RangeOperationOut": {
         "properties": {
           "action": {
@@ -18190,6 +18500,88 @@
         "title": "SecurityGroupUpdate",
         "type": "object"
       },
+      "SessionTeamMember": {
+        "properties": {
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "display_name"
+        ],
+        "title": "SessionTeamMember",
+        "type": "object"
+      },
+      "SessionTeamOut": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "members": {
+            "items": {
+              "$ref": "#/components/schemas/SessionTeamMember"
+            },
+            "title": "Members",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "members"
+        ],
+        "title": "SessionTeamOut",
+        "type": "object"
+      },
+      "SessionTeamsOut": {
+        "properties": {
+          "editable": {
+            "description": "The caller may change them now (lead or admin, before the start)",
+            "title": "Editable",
+            "type": "boolean"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "teams": {
+            "items": {
+              "$ref": "#/components/schemas/SessionTeamOut"
+            },
+            "title": "Teams",
+            "type": "array"
+          },
+          "unassigned": {
+            "items": {
+              "$ref": "#/components/schemas/UnassignedOut"
+            },
+            "title": "Unassigned",
+            "type": "array"
+          }
+        },
+        "required": [
+          "event_id",
+          "editable",
+          "teams",
+          "unassigned"
+        ],
+        "title": "SessionTeamsOut",
+        "type": "object"
+      },
       "SharedCommandIn": {
         "properties": {
           "command": {
@@ -19382,6 +19774,35 @@
           "role"
         ],
         "title": "TeamMemberOut",
+        "type": "object"
+      },
+      "TeamMoveIn": {
+        "properties": {
+          "team_id": {
+            "format": "uuid",
+            "title": "Team Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "team_id"
+        ],
+        "title": "TeamMoveIn",
+        "type": "object"
+      },
+      "TeamSplitIn": {
+        "properties": {
+          "team_count": {
+            "maximum": 26.0,
+            "minimum": 2.0,
+            "title": "Team Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "team_count"
+        ],
+        "title": "TeamSplitIn",
         "type": "object"
       },
       "TeamUpdate": {
@@ -21435,6 +21856,20 @@
           "retired_at"
         ],
         "title": "TrustKeyOut",
+        "type": "object"
+      },
+      "UnassignedOut": {
+        "properties": {
+          "email": {
+            "description": "On the roll call with no account yet: placed once they sign in",
+            "title": "Email",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email"
+        ],
+        "title": "UnassignedOut",
         "type": "object"
       },
       "UrlIngestIn": {
@@ -25693,6 +26128,112 @@
         ]
       }
     },
+    "/classes/course-range-modes/{course_id}": {
+      "get": {
+        "description": "The caller's organisation's default for this course: individual (a range per Student)\nor collective (one shared range). Collective until set.  **class:create**",
+        "operationId": "getCourseRangeMode",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "course_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Course Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CourseRangeModeOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "A course's default range mode for class sessions",
+        "tags": [
+          "classes"
+        ]
+      },
+      "put": {
+        "description": "For the caller's organisation only; sessions already booked keep their mode. Audited.\n**course:author**",
+        "operationId": "setCourseRangeMode",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "course_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Course Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CourseRangeModeIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CourseRangeModeOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Set a course's default range mode for class sessions",
+        "tags": [
+          "classes"
+        ]
+      }
+    },
     "/classes/mine": {
       "get": {
         "description": "The caller's own classes as lead, assistant instructor or observer.  **class:read**",
@@ -25989,6 +26530,114 @@
           }
         ],
         "summary": "Change a class",
+        "tags": [
+          "classes"
+        ]
+      }
+    },
+    "/classes/{class_id}/ranges": {
+      "get": {
+        "description": "Its lead, assistants, observers and admins see every seat, with the Student and why a\nbuild failed. A Student on its roll call sees their own seat and the shared ranges only.\nNo credentials here.",
+        "operationId": "getClassRanges",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "class_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Class Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClassRangesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "A class's sessions (with their mode) and its ranges (with their status)",
+        "tags": [
+          "classes"
+        ]
+      }
+    },
+    "/classes/{class_id}/ranges/{class_range_id}/retry": {
+      "post": {
+        "description": "Its lead or an admin. Only a range whose build failed (409 otherwise). Audited.",
+        "operationId": "retryClassRange",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "class_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Class Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "class_range_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Class Range Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClassRangeRowOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Build a class range whose build failed again",
         "tags": [
           "classes"
         ]
@@ -26407,6 +27056,211 @@
           }
         ],
         "summary": "Reject a roll-call addition that did not fit",
+        "tags": [
+          "classes"
+        ]
+      }
+    },
+    "/classes/{class_id}/sessions/{event_id}/teams": {
+      "get": {
+        "description": "Its lead, assistants, observers and admins.  **class:read**",
+        "operationId": "getClassSessionTeams",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "class_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Class Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "event_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Event Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionTeamsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "A collective session's teams",
+        "tags": [
+          "classes"
+        ]
+      },
+      "post": {
+        "description": "Its lead or an admin, before the session starts (409 after, or for an individual\nsession). Sizes differ by at most one; splitting again places everyone again. Audited.",
+        "operationId": "splitClassSessionTeams",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "class_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Class Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "event_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Event Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TeamSplitIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionTeamsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Split the roll call into balanced teams for a collective session",
+        "tags": [
+          "classes"
+        ]
+      }
+    },
+    "/classes/{class_id}/sessions/{event_id}/teams/members/{user_id}": {
+      "put": {
+        "description": "Its lead or an admin, before the session starts. Only a Student on the roll call (422).\nAudited.",
+        "operationId": "moveClassSessionTeamMember",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "class_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Class Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "event_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Event Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TeamMoveIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionTeamsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Move a Student to another of a session's teams",
         "tags": [
           "classes"
         ]

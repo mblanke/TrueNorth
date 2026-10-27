@@ -13,6 +13,11 @@ Once a minute it moves bookings along their lifecycle as time passes:
    (``destroy_range``) if this booking built it, inside a maintenance window too;
 4. reminder lead reached: the instructor is emailed once.
 
+A class's ranges are its own (ADR 0014 §10; ``classes/ranges.py``): step 00 builds them at the
+lead before the first session that needs them, keeps them across its sessions and tears them
+down after the last. Step 0 leaves class sessions to it; a collective session is pointed at
+its class's shared range there, and steps 1-3 then treat it as an already-built range.
+
 A class session awaiting approval (``pending_approval``, ADR 0014 §15) is never touched by
 steps 0-4: nothing is built, activated or reminded until an approver approves it. One whose
 session ends before anyone decides is cancelled (step 3c), so it leaves the approver's queue.
@@ -67,6 +72,8 @@ class TickResult:
     deferred_by_window: int = 0
     built_after_window: int = 0
     approvals_lapsed: int = 0
+    class_ranges_built: int = 0
+    class_ranges_torn_down: int = 0
     reminders: list[Reminder] = field(default_factory=list)
 
     def summary(self) -> dict:
@@ -79,6 +86,8 @@ class TickResult:
             "deferred_by_window": self.deferred_by_window,
             "built_after_window": self.built_after_window,
             "approvals_lapsed": self.approvals_lapsed,
+            "class_ranges_built": self.class_ranges_built,
+            "class_ranges_torn_down": self.class_ranges_torn_down,
             "reminders": len(self.reminders),
         }
 
@@ -88,9 +97,21 @@ def tick(db: Session, now: datetime | None = None) -> TickResult:
     now = now or datetime.now(UTC)
     res = TickResult()
 
+    # 00. Class ranges: built at the lead, kept all week, torn down when the class ends.
+    try:
+        from ..classes import ranges as class_ranges
+
+        done = class_ranges.tick(db, now)
+        res.class_ranges_built, res.class_ranges_torn_down = done["built"], done["torn_down"]
+    except Exception:  # noqa: BLE001 — never holds up the bookings' own steps
+        db.rollback()
+        logger.exception("Class ranges step failed; retrying next tick")
+
     # 0. A booking with a template but no range: create its range now, so step 1 builds
     #    it in this same tick (decided 2026-10-06). The range is claimed onto the
     #    booking with a guarded update; a replica that loses discards its range.
+    from ..classes.sessions import all_session_ids, on_exercise
+
     for evt in _due(
         db,
         ScheduledEvent.state == S.scheduled,
@@ -98,6 +119,7 @@ def tick(db: Session, now: datetime | None = None) -> TickResult:
         ScheduledEvent.template_id.isnot(None),
         ScheduledEvent.start_time <= now + PROVISION_LEAD,
         ScheduledEvent.end_time > now,
+        ScheduledEvent.id.notin_(all_session_ids()),  # a class's ranges are its own (step 00)
     ):
         rng = range_lifecycle.create_for_booking(
             db, tenant_id=evt.tenant_id, template_id=evt.template_id, name=f"{evt.name} ({evt.start_time:%Y-%m-%d})"
@@ -139,6 +161,7 @@ def tick(db: Session, now: datetime | None = None) -> TickResult:
                 )
                 evt.exercise_id, evt.auto_exercise = ex.id, True
                 what += f"; exercise {ex.id} created (pending)"
+                on_exercise(db, evt)  # a collective class session's teams join it
             service.audit_system(db, evt, "transition", f"scheduled -> provisioning; {what}")
             db.commit()
             res.provisioning += 1

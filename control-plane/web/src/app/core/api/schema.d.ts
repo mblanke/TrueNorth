@@ -867,6 +867,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/classes/course-range-modes/{course_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A course's default range mode for class sessions
+         * @description The caller's organisation's default for this course: individual (a range per Student)
+         *     or collective (one shared range). Collective until set.  **class:create**
+         */
+        get: operations["getCourseRangeMode"];
+        /**
+         * Set a course's default range mode for class sessions
+         * @description For the caller's organisation only; sessions already booked keep their mode. Audited.
+         *     **course:author**
+         */
+        put: operations["setCourseRangeMode"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/classes/mine": {
         parameters: {
             query?: never;
@@ -958,6 +984,48 @@ export interface paths {
          *     instructor.
          */
         delete: operations["cancelClass"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/classes/{class_id}/ranges": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A class's sessions (with their mode) and its ranges (with their status)
+         * @description Its lead, assistants, observers and admins see every seat, with the Student and why a
+         *     build failed. A Student on its roll call sees their own seat and the shared ranges only.
+         *     No credentials here.
+         */
+        get: operations["getClassRanges"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/classes/{class_id}/ranges/{class_range_id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Build a class range whose build failed again
+         * @description Its lead or an admin. Only a range whose build failed (409 otherwise). Audited.
+         */
+        post: operations["retryClassRange"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1088,6 +1156,52 @@ export interface paths {
          * @description It is removed, with the reason, which the class's lead sees. Audited.  **schedule:approve**
          */
         post: operations["rejectRollCallAddition"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/classes/{class_id}/sessions/{event_id}/teams": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A collective session's teams
+         * @description Its lead, assistants, observers and admins.  **class:read**
+         */
+        get: operations["getClassSessionTeams"];
+        put?: never;
+        /**
+         * Split the roll call into balanced teams for a collective session
+         * @description Its lead or an admin, before the session starts (409 after, or for an individual
+         *     session). Sizes differ by at most one; splitting again places everyone again. Audited.
+         */
+        post: operations["splitClassSessionTeams"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/classes/{class_id}/sessions/{event_id}/teams/members/{user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Move a Student to another of a session's teams
+         * @description Its lead or an admin, before the session starts. Only a Student on the roll call (422).
+         *     Audited.
+         */
+        put: operations["moveClassSessionTeamMember"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -10849,12 +10963,110 @@ export interface components {
             /** State */
             state: string;
         };
+        /** ClassRangeRowOut */
+        ClassRangeRowOut: {
+            /**
+             * Builds
+             * @default 0
+             */
+            builds?: number;
+            /** Built At */
+            built_at?: string | null;
+            /** Display Name */
+            display_name?: string | null;
+            /**
+             * Email
+             * @description The seat's Student; staff only
+             */
+            email?: string | null;
+            /**
+             * Entry Id
+             * @description The seat's roll-call entry
+             */
+            entry_id?: string | null;
+            /**
+             * Error
+             * @description Why its build failed or waits; staff only
+             */
+            error?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kind
+             * @description seat: one Student's range (individual sessions); shared: the class's one
+             */
+            kind: string;
+            /** Range Id */
+            range_id: string | null;
+            status: components["schemas"]["ClassRangeStatus"];
+            /** Teardown Reason */
+            teardown_reason?: string | null;
+            /**
+             * Template Id
+             * Format: uuid
+             */
+            template_id: string;
+            /** Torn Down At */
+            torn_down_at?: string | null;
+        };
+        /**
+         * ClassRangeStatus
+         * @enum {string}
+         */
+        ClassRangeStatus: "pending" | "building" | "ready" | "failed" | "tearing_down" | "torn_down";
+        /**
+         * ClassRangesOut
+         * @description A class's sessions with their mode, and its ranges with their status. Staff see every
+         *     seat; a Student only their own seat and the shared ranges.
+         */
+        ClassRangesOut: {
+            /**
+             * Failed
+             * @description Ranges whose build failed or could not be started
+             * @default 0
+             */
+            failed?: number;
+            /** Ranges */
+            ranges: components["schemas"]["ClassRangeRowOut"][];
+            /** Sessions */
+            sessions: components["schemas"]["ClassSessionModeOut"][];
+        };
         /**
          * ClassRole
          * @description The caller's part in a class, as the API decides it.
          * @enum {string}
          */
         ClassRole: "lead" | "assistant" | "observer" | "admin" | "student";
+        /** ClassSessionModeOut */
+        ClassSessionModeOut: {
+            /**
+             * End Time
+             * Format: date-time
+             */
+            end_time: string;
+            /**
+             * Event Id
+             * Format: uuid
+             */
+            event_id: string;
+            /** Name */
+            name: string;
+            /** Range Id */
+            range_id?: string | null;
+            range_mode: components["schemas"]["RangeModeOut"];
+            /**
+             * Start Time
+             * Format: date-time
+             */
+            start_time: string;
+            /** State */
+            state: string;
+            /** Template Id */
+            template_id?: string | null;
+        };
         /**
          * ClassStatusOut
          * @enum {string}
@@ -11869,6 +12081,24 @@ export interface components {
             /** State */
             state: string;
         };
+        /** CourseRangeModeIn */
+        CourseRangeModeIn: {
+            mode: components["schemas"]["RangeModeOut"];
+        };
+        /** CourseRangeModeOut */
+        CourseRangeModeOut: {
+            /**
+             * Course Id
+             * Format: uuid
+             */
+            course_id: string;
+            mode: components["schemas"]["RangeModeOut"];
+            /**
+             * Source
+             * @description 'setting' (set for this organisation) or 'default' (collective)
+             */
+            source: string;
+        };
         /** CourseReleaseOut */
         CourseReleaseOut: {
             /** Accepted At */
@@ -12461,6 +12691,11 @@ export interface components {
             /** Range Id */
             range_id?: string | null;
             /**
+             * Range Mode
+             * @description A class session only (ADR 0014 §9): individual builds a range per Student on the roll call from template_id; collective is one shared range. Default: the course's default. Changing it on an approved session sends it back for approval
+             */
+            range_mode?: ("individual" | "collective") | null;
+            /**
              * Require Certified Range
              * @description Require a certified range (ADR 0013 §6). Stored; not enforced until isolation evidence (range certification S4) exists
              * @default false
@@ -12539,6 +12774,11 @@ export interface components {
             ram_mb_total: number;
             /** Range Id */
             range_id: string | null;
+            /**
+             * Range Mode
+             * @description A class session's mode: individual or collective
+             */
+            range_mode?: string | null;
             /**
              * Require Certified Range
              * @default false
@@ -16014,6 +16254,11 @@ export interface components {
              */
             updated_at: string;
         };
+        /**
+         * RangeModeOut
+         * @enum {string}
+         */
+        RangeModeOut: "individual" | "collective";
         /** RangeOperationOut */
         RangeOperationOut: {
             /** Action */
@@ -16904,6 +17149,45 @@ export interface components {
             /** Slug */
             slug?: string;
         };
+        /** SessionTeamMember */
+        SessionTeamMember: {
+            /** Display Name */
+            display_name: string;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
+        /** SessionTeamOut */
+        SessionTeamOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Members */
+            members: components["schemas"]["SessionTeamMember"][];
+            /** Name */
+            name: string;
+        };
+        /** SessionTeamsOut */
+        SessionTeamsOut: {
+            /**
+             * Editable
+             * @description The caller may change them now (lead or admin, before the start)
+             */
+            editable: boolean;
+            /**
+             * Event Id
+             * Format: uuid
+             */
+            event_id: string;
+            /** Teams */
+            teams: components["schemas"]["SessionTeamOut"][];
+            /** Unassigned */
+            unassigned: components["schemas"]["UnassignedOut"][];
+        };
         /** SharedCommandIn */
         SharedCommandIn: {
             /** Command */
@@ -17443,6 +17727,19 @@ export interface components {
              * Format: uuid
              */
             user_id: string;
+        };
+        /** TeamMoveIn */
+        TeamMoveIn: {
+            /**
+             * Team Id
+             * Format: uuid
+             */
+            team_id: string;
+        };
+        /** TeamSplitIn */
+        TeamSplitIn: {
+            /** Team Count */
+            team_count: number;
         };
         /** TeamUpdate */
         TeamUpdate: {
@@ -18308,6 +18605,14 @@ export interface components {
             remote_enclave: string;
             /** Retired At */
             retired_at: string | null;
+        };
+        /** UnassignedOut */
+        UnassignedOut: {
+            /**
+             * Email
+             * @description On the roll call with no account yet: placed once they sign in
+             */
+            email: string;
         };
         /** UrlIngestIn */
         UrlIngestIn: {
@@ -20686,6 +20991,72 @@ export interface operations {
             };
         };
     };
+    getCourseRangeMode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                course_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CourseRangeModeOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    setCourseRangeMode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                course_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CourseRangeModeIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CourseRangeModeOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     listMyClasses: {
         parameters: {
             query?: {
@@ -20873,6 +21244,69 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    getClassRanges: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                class_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClassRangesOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retryClassRange: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                class_id: string;
+                class_range_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClassRangeRowOut"];
+                };
             };
             /** @description Validation Error */
             422: {
@@ -21105,6 +21539,111 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdditionDecisionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    getClassSessionTeams: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                class_id: string;
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionTeamsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    splitClassSessionTeams: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                class_id: string;
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TeamSplitIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionTeamsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    moveClassSessionTeamMember: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                class_id: string;
+                event_id: string;
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TeamMoveIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionTeamsOut"];
                 };
             };
             /** @description Validation Error */

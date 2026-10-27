@@ -5,10 +5,12 @@ import { signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { of, throwError } from 'rxjs';
 import { AuthService } from '@core/services/auth.service';
-import { ClassRecord, ClassesApiService, RollCallEntry } from '@core/services/classes-api.service';
+import {
+  ClassRanges, ClassRecord, ClassesApiService, RollCallEntry, SessionTeams,
+} from '@core/services/classes-api.service';
 import { NotificationService } from '@core/services/notification.service';
 import { OperatorRecordsApiService } from '@core/services/operator-records-api.service';
-import { ClassForm, ClassesComponent, addSummary, reinstateSummary, toClassBody } from './classes.component';
+import { ClassForm, ClassesComponent, addSummary, rangeOwner, reinstateSummary, toClassBody } from './classes.component';
 
 const CLASS: ClassRecord = {
   id: 'c1', tenant_id: 't', name: 'C201-26-03', course_id: 'k1', course_name: 'SOC Analyst',
@@ -23,6 +25,38 @@ const ENTRIES: RollCallEntry[] = [
   { id: 'e4', email: 'late@corp.test', user_id: null, display_name: null, status: 'forfeited',
     forfeited_at: '2026-11-02T11:07:00Z', forfeit_deadline: '2026-11-02T11:00:00Z' },
 ] as RollCallEntry[];
+
+const RANGES: ClassRanges = {
+  sessions: [
+    { event_id: 'ev1', name: 'Mon lab', state: 'scheduled', start_time: '2026-11-02T09:00:00Z',
+      end_time: '2026-11-02T12:00:00Z', range_mode: 'individual', template_id: 't1', range_id: null },
+    { event_id: 'ev2', name: 'Fri exercise', state: 'scheduled', start_time: '2026-11-06T09:00:00Z',
+      end_time: '2026-11-06T12:00:00Z', range_mode: 'collective', template_id: 't2', range_id: null },
+  ],
+  ranges: [
+    { id: 'r1', kind: 'seat', template_id: 't1', entry_id: 'e2', email: 'ann@corp.test', display_name: 'Ann',
+      range_id: 'g1', status: 'ready', error: null, builds: 1 },
+    { id: 'r2', kind: 'seat', template_id: 't1', entry_id: 'e1', email: 'joe@corp.test', display_name: null,
+      range_id: 'g2', status: 'failed', error: 'clone failed', builds: 1 },
+  ],
+  failed: 1,
+} as ClassRanges;
+const TEAMS: SessionTeams = {
+  event_id: 'ev2', editable: true,
+  teams: [
+    { id: 'tA', name: 'Team 1', members: [{ user_id: 'u2', display_name: 'Ann' }] },
+    { id: 'tB', name: 'Team 2', members: [] },
+  ],
+  unassigned: [{ email: 'joe@corp.test' }],
+};
+
+describe('class range helpers', () => {
+  it('names whose range a row is', () => {
+    expect(rangeOwner(RANGES.ranges[0])).toBe('Ann');
+    expect(rangeOwner(RANGES.ranges[1])).toBe('joe@corp.test');
+    expect(rangeOwner({ ...RANGES.ranges[0], kind: 'shared' })).toContain('Shared');
+  });
+});
 
 describe('class form helpers', () => {
   const form: ClassForm = {
@@ -73,8 +107,13 @@ describe('ClassesComponent', () => {
   let api: jasmine.SpyObj<ClassesApiService>;
 
   function setup(role: string, cls: ClassRecord = CLASS) {
-    api = jasmine.createSpyObj('ClassesApiService',
-      ['mine', 'list', 'create', 'rollCall', 'addPasted', 'addCsv', 'remove', 'reinstate']);
+    api = jasmine.createSpyObj('ClassesApiService', ['mine', 'list', 'create', 'rollCall', 'addPasted', 'addCsv', 'remove',
+      'reinstate', 'ranges', 'retryRange', 'sessionTeams', 'splitTeams', 'moveTeamMember']);
+    api.ranges.and.returnValue(of(RANGES));
+    api.retryRange.and.returnValue(of(RANGES.ranges[1]));
+    api.sessionTeams.and.returnValue(of(TEAMS));
+    api.splitTeams.and.returnValue(of(TEAMS));
+    api.moveTeamMember.and.returnValue(of(TEAMS));
     api.mine.and.returnValue(of([cls]));
     api.list.and.returnValue(of([cls]));
     api.rollCall.and.returnValue(of(ENTRIES));
@@ -151,6 +190,50 @@ describe('ClassesComponent', () => {
     expect(buttons('Remove').length).toBe(0);
     expect(buttons('Reinstate').length).toBe(0);
     expect(buttons('New class').length).toBe(0);
+  });
+
+  it('shows the mode of each session and the status of each range; the lead retries a failed one', () => {
+    setup('instructor');
+    component.open(CLASS);
+    fixture.detectChanges();
+    expect(el.textContent).toContain('Individual: a range per Student');
+    expect(el.textContent).toContain('Collective: one shared range');
+    expect(el.textContent).toContain('1 range(s) failed to build');
+    expect(el.textContent).toContain('clone failed');
+    const retry = buttons('Retry');
+    expect(retry.length).toBe(1);
+    retry[0].click();
+    expect(api.retryRange).toHaveBeenCalledWith('c1', 'r2');
+  });
+
+  it('an observer sees the ranges but cannot retry or change teams', () => {
+    setup('observer', { ...CLASS, my_role: 'observer', can_edit: false } as ClassRecord);
+    api.sessionTeams.and.returnValue(of({ ...TEAMS, editable: false }));
+    component.open(component.classes()[0]);
+    fixture.detectChanges();
+    expect(el.textContent).toContain('Ready');
+    expect(buttons('Retry').length).toBe(0);
+    buttons('Teams')[0].click();
+    fixture.detectChanges();
+    expect(el.textContent).toContain('Team 1');
+    expect(buttons('Split').length).toBe(0);
+    expect(el.querySelectorAll('.member select').length).toBe(0);
+  });
+
+  it('splits a collective session into teams and moves a Student', () => {
+    setup('instructor');
+    component.open(CLASS);
+    fixture.detectChanges();
+    expect(buttons('Teams').length).toBe(1);  // the collective session only
+    buttons('Teams')[0].click();
+    fixture.detectChanges();
+    expect(api.sessionTeams).toHaveBeenCalledWith('c1', 'ev2');
+    expect(el.textContent).toContain('Not placed (no account yet): joe@corp.test');
+    component.teamCount = 3;
+    buttons('Split')[0].click();
+    expect(api.splitTeams).toHaveBeenCalledWith('c1', 'ev2', 3);
+    component.move(CLASS, 'u2', 'tB');
+    expect(api.moveTeamMember).toHaveBeenCalledWith('c1', 'ev2', 'u2', 'tB');
   });
 
   it('an admin sees every class and may create one; a refusal is shown', () => {

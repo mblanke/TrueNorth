@@ -2,7 +2,7 @@
 
 - **Status:** accepted 2026-10-22 (owner decisions, grilling session). **Amends ADR 0004** (see "What this changes in ADR 0004").
 - **Date:** 2026-10-22
-- **Code:** sliced into GitHub issues, one PR each, listed under "Delivery". Slices that touch auth, tenancy or provisioning get an adversarial review. Built so far: Class and roll call (#278, `app/classes/`), the content clock (#286, `app/content_review/`), booking approval (#281: `app/scheduler/approval.py`, `app/classes/sessions.py`).
+- **Code:** sliced into GitHub issues, one PR each, listed under "Delivery". Slices that touch auth, tenancy or provisioning get an adversarial review. Built so far: Class and roll call (#278, `app/classes/`), the content clock (#286, `app/content_review/`), booking approval (#281: `app/scheduler/approval.py`, `app/classes/sessions.py`), per-session ranges and teams (#282: `app/classes/ranges.py`, `app/classes/teams.py`).
 - **Design reference:** the calendar mockups "TrueNorth Calendars" (Events and Content views, week and month), approved by the owner on 2026-10-22.
 
 ## Context
@@ -178,12 +178,37 @@ Content (courses, modules, labs, scenarios, range templates, golden images) has 
    instructor may not book a course plainly while one of its open classes runs (422: book
    it as the class's session); approvers may. Cancelling a class cancels its sessions that
    have not started. A Student's own sessions (`/schedule/mine`, their feed) and invites
-   follow the roll call for class sessions; exercise and telemetry rosters still follow
-   course enrolment until #282.
+   follow the roll call for class sessions; exercise and telemetry rosters followed course
+   enrolment until #282, and follow the roll call since.
 5. **Per-session ranges:**
    - individual or collective, with the course default and an instructor override;
    - kept up all week and torn down at the end;
    - balanced teams.
+
+   As built (#282): the mode is on `class_sessions.range_mode`, set at booking (the tenant's
+   default for the course in `class_course_range_modes`, else collective); changing it is a
+   change of size. An individual session needs a range template and names no range; a seat
+   costs the template's size (`sessions.seat_demand`), approval sizes the session from the
+   roll call then, and an addition that fits grows it with no re-approval (an unchanged edit
+   afterwards asks for the size it holds, so it does not re-pend either). A class's ranges
+   (`class_ranges`, `app/classes/ranges.py`) are built by a step of the scheduler's clock at
+   the provisioning lead before the first session that needs them, through the scheduler's
+   own path (`range_lifecycle`, range operations, the worker's tasks), one operation per seat
+   so a failed seat holds up nobody and is reported on the class. They are kept until the
+   class's last day is over (drafts and day-by-day booking do not wipe the Students' work),
+   and capacity holds them as one span per class, kind and template, from the first
+   approved session's lead to the class's end (`app/classes/holds.py`): sessions inside it,
+   and the ranges it builds, are counted once, and approving a session checks up to the
+   class's end. Only the class's end is lease expiry (the `booking_ended` teardown a
+   maintenance window never blocks); a Student taken off the roll call, a class cancelled
+   or closed, or no session left that uses a range is a normal destroy a window defers.
+   An individual session's size is recomputed from the roll call (seat size times
+   Students) under the booking lock on every roll-call change. A collective session books its class's shared
+   range. Its teams are ordinary `teams` rows linked in `class_session_teams`, split evenly
+   from the roll call and moved by the lead before the start; the `/teams` endpoints treat
+   them as the class's. Exercise, AAR and telemetry rosters of class sessions follow the
+   roll call. A Student reads only their own seat's credentials (or the shared range's
+   during a collective session); observers none.
 6. **Attendance and close-out.**
 7. **My classes** (Student).
 8. **Events view:** week and month, colours, the approval queue, following the mockups.

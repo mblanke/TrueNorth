@@ -224,8 +224,12 @@ def forfeit_due(db: Session, cls: Class, now: datetime) -> Forfeited | None:
     won = [(e, when) for e, when in due if _claim(db, e, now)]
     if not won:
         return None
+    from . import teams
+
     for e, _ in won:
         db.refresh(e)
+        teams.drop_member(db, cls, e.user_id)  # off the teams of sessions not started yet (#282)
+    # Sized again from the roll call, under the booking lock (sessions._reseat takes it).
     freed = sessions.free_seats(db, cls, len(won))
     service.audit(
         db, None, cls, "roll_call_forfeit",
@@ -507,8 +511,8 @@ def reinstate(db: Session, cls: Class, entry: RollCallEntry, actor: CurrentUser)
         entry.added_by = entry.added_by or uuid.UUID(actor.id)
         service.audit(db, actor.id, cls, "roll_call_reinstate_pending", f"{entry.email}: {entry.pending_reason}"[:2000])
         return Reinstated(entry, [])
-    taken = sessions.take_seats(db, cls, 1)
     service.put_on_roll_call(db, cls, entry, account)
+    taken = sessions.take_seats(db, cls, 1)  # sized from the roll call, with them back on it
     service.audit(db, actor.id, cls, "roll_call_reinstate", f"{entry.email} -> {entry.status}")
     return Reinstated(entry, taken)
 

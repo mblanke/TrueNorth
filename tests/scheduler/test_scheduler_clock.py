@@ -248,6 +248,7 @@ def test_only_admins_can_run_the_clock_by_hand(client, role, code):
         assert set(r.json()) == {
             "ranges_created", "provisioning", "activated", "completed", "torn_down",
             "deferred_by_window", "built_after_window", "approvals_lapsed", "reminders",
+            "class_ranges_built", "class_ranges_torn_down",
         }
 
 

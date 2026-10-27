@@ -7,12 +7,15 @@ its ranges, including other Students' labs and ranges nobody had put them on. No
   tenant's ranges as ``routers/ranges._readable_range`` does: a Student's lab only with
   infrastructure rights (``infra:read``);
 - everyone else (Students) reads only
-    * the range of their own lab session (current, or one it was rebuilt away from), and
+    * the range of their own lab session (current, or one it was rebuilt away from),
+    * their own seat's range in a class, or their class's shared range while its collective
+      session is on (ADR 0014; #282), and
     * the range of an exercise running or paused on it that they take part in. There is
       no Student-to-exercise table; the roster that exists is a calendar booking's course:
       when a booking ties the exercise or its range to a course, and its time overlaps the
       exercise's (started to completed, or to now while it runs), only Students actively
-      enrolled in that course by assignment qualify (not a self-enrolment). A range booked only at other times (last month's
+      enrolled in that course by assignment qualify (not a self-enrolment); for a class
+      session, the Students on its class's roll call instead. A range booked only at other times (last month's
       class, next week's) has a roster with no seat now. An exercise with no booking at
       all stays readable by the tenant's Students here. Detection submission is stricter
       since 2026-10-09 (app/exercise_participants.py, ADR 0005): no roster, no Student
@@ -86,10 +89,26 @@ def _takes_part(db: Session, user: CurrentUser, rng: Range) -> bool:
                 or_(ScheduledEvent.exercise_id == eid, ScheduledEvent.range_id == rng.id),
                 ScheduledEvent.start_time <= end,
                 ScheduledEvent.end_time >= start,
+                ScheduledEvent.id.notin_(all_session_ids()),  # a class session's roster is its roll call
             )
         }
     # Assigned enrolments only: self-enrolling on a shared course is no seat in its class.
-    return bool(courses & set(rostered_course_ids(db, uuid.UUID(user.id))))
+    me = uuid.UUID(user.id)
+    if courses & set(rostered_course_ids(db, me)):
+        return True
+    from .exercise_participants import class_roster
+
+    runs = db.query(Exercise).filter(
+        Exercise.id.in_([eid for eid, _, _ in exercises]), Exercise.tenant_id == rng.tenant_id).all()
+    return any(me in class_roster(db, ex) for ex in runs)
+
+
+def _own_class_range(db: Session, user: CurrentUser, rng: Range) -> bool:
+    """Their own seat of a class, or their class's shared range during its collective session
+    (ADR 0014; app/classes/ranges.py)."""
+    from .classes.ranges import student_participation
+
+    return student_participation(db, uuid.UUID(user.id), rng) is not None
 
 
 def readable_telemetry_range(db: Session, range_id: uuid.UUID, user: CurrentUser) -> Range:
@@ -102,6 +121,6 @@ def readable_telemetry_range(db: Session, range_id: uuid.UUID, user: CurrentUser
 
         if rng.id not in lab_range_ids(db, [rng.id]):
             return rng
-    elif _own_lab(db, uuid.UUID(user.id), rng.id) or _takes_part(db, user, rng):
+    elif _own_lab(db, uuid.UUID(user.id), rng.id) or _own_class_range(db, user, rng) or _takes_part(db, user, rng):
         return rng
     raise HTTPException(404, "Range not found")

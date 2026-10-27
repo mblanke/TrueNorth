@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import AfterValidator, BaseModel, Field
 
@@ -45,6 +45,12 @@ class EventIn(BaseModel):
         None,
         description="A session of this class (ADR 0014 §14): it waits for an approver, holds nothing until "
         "approved, and its roll call attends. Set when the session is booked; it cannot change",
+    )
+    range_mode: Literal["individual", "collective"] | None = Field(
+        None,
+        description="A class session only (ADR 0014 §9): individual builds a range per Student on the roll call "
+        "from template_id; collective is one shared range. Default: the course's default. Changing it on an "
+        "approved session sends it back for approval",
     )
     draft: bool = Field(False, description="Create as a draft: holds nothing and is not checked until scheduled")
     require_certified_range: bool = Field(
@@ -95,6 +101,7 @@ class EventOut(BaseModel):
     maintenance_warnings: list[str] = []
     # A class session (ADR 0014 §14): its class, and its approval.
     class_id: str | None = None
+    range_mode: str | None = Field(None, description="A class session's mode: individual or collective")
     approval: ApprovalOut | None = None
 
     class Config:

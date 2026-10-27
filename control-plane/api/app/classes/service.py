@@ -342,8 +342,8 @@ def add_to_roll_call(db: Session, cls: Class, actor: CurrentUser, emails: list[s
             entry.pending_reason = "; ".join(no_room)[:1000]
             res.pending.append(entry)
             continue
-        res.sessions = sessions.take_seats(db, cls, 1)
         put_on_roll_call(db, cls, entry, account)
+        res.sessions = sessions.take_seats(db, cls, 1)  # sized from the roll call, with them on it
         if entry.status == RollCallStatus.invited.value and entry.onboarding_sent_at is None:
             res.to_onboard.append(entry)
         res.added.append(entry)
@@ -423,8 +423,18 @@ def approve_addition(db: Session, cls: Class, entry: RollCallEntry, actor: Curre
     if no_room:
         raise HTTPException(409, {"message": "It still does not fit the class's approved sessions",
                                   "reasons": no_room})
-    taken = sessions.take_seats(db, cls, 1)
+    # Claim it by the status it was read with, as reinstate does: a removal (or a rejection)
+    # that landed meanwhile is never undone by putting the Student back.
+    claimed = (
+        db.query(RollCallEntry)
+        .filter(RollCallEntry.id == entry.id, RollCallEntry.status == RollCallStatus.pending.value)
+        .update({RollCallEntry.status: RollCallStatus.invited.value}, synchronize_session=False)
+    )
+    if claimed != 1:
+        raise HTTPException(409, "This addition changed at the same moment (removed or rejected); reload")
+    db.refresh(entry)
     put_on_roll_call(db, cls, entry, account)
+    taken = sessions.take_seats(db, cls, 1)
     onboard = entry.status == RollCallStatus.invited.value and entry.onboarding_sent_at is None
     not_emailed = None
     # The onboarding email counts against the budget of whoever added them, as any addition's.
@@ -476,10 +486,14 @@ def remove_from_roll_call(db: Session, cls: Class, entry: RollCallEntry, actor: 
     """Take a Student off the roll call: always allowed, before or after approval (ADR 0014
     §17). The entry stays, marked removed (ADR 0010). Their account and enrolment are
     untouched: they may be on the course for other reasons. Their seat in each approved
-    session is freed; returns those sessions, whose invites they lose. Does not commit.
+    session is freed; returns those sessions, whose invites they lose. Their own ranges are
+    torn down by the class's next range tick (``ranges``), and they leave the teams of
+    sessions that have not started. Does not commit.
 
     Guarded on the status it was read with: if the forfeit clock, a reinstatement or an
     approver changed it meanwhile, 409 rather than free (or keep) a seat twice."""
+    from . import teams
+
     before = entry.status
     # A pending addition never took a seat, and a forfeited Student's was freed already.
     was_on = before not in (RollCallStatus.pending.value, RollCallStatus.forfeited.value)
@@ -493,6 +507,7 @@ def remove_from_roll_call(db: Session, cls: Class, entry: RollCallEntry, actor: 
     if claimed != 1:
         raise HTTPException(409, "This Student's place on the roll call changed at the same moment; reload and try again")
     db.refresh(entry)
+    teams.drop_member(db, cls, entry.user_id)
     audit(db, actor.id, cls, "roll_call_remove", entry.email)
     return sessions.free_seats(db, cls, 1) if was_on else []
 

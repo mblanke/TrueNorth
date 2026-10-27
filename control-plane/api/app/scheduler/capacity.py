@@ -8,6 +8,9 @@ with the scheduler's own bookings:
 - committed = bookings holding the window, plus every running range that no booking of
   it covers in that window (a range started without a booking, or kept up between two
   sessions), from now on;
+- a class's ranges are held as one span per class, kind and template, from its first
+  approved session's lead to the class's end (``classes.holds``): the sessions inside it and
+  the ranges it builds are counted once, through it;
 - ``supply_source`` says whether totals were discovered or fell back to env values.
 """
 
@@ -93,11 +96,11 @@ class ClusterCapacity:
         return self._supply
 
     def committed(self, db: Session, start: datetime, end: datetime, exclude_id: uuid.UUID | None = None) -> Committed:
-        held = self._bookings(db, start, end, exclude_id)
-        return self._sum(held, _utc(start), _utc(end), self._excluded_range(db, exclude_id))
+        held, skip = self._held(db, start, end, exclude_id)
+        return self._sum(held, _utc(start), _utc(end), skip)
 
     def committed_series(self, db: Session, start: datetime, end: datetime, step: timedelta) -> list[Committed]:
-        held = self._bookings(db, start, end)
+        held, _ = self._held(db, start, end)
         out: list[Committed] = []
         t = _utc(start)
         while t < _utc(end):
@@ -110,14 +113,34 @@ class ClusterCapacity:
     ) -> list[Committed]:
         if not windows:
             return []
-        held = self._bookings(db, min(a for a, _ in windows), max(z for _, z in windows), exclude_id)
-        skip = self._excluded_range(db, exclude_id)
+        held, skip = self._held(db, min(a for a, _ in windows), max(z for _, z in windows), exclude_id)
         return [self._sum(held, _utc(a), _utc(z), skip) for a, z in windows]
 
     # -- internals ------------------------------------------------------------
     @staticmethod
-    def _bookings(db: Session, start: datetime, end: datetime, exclude_id: uuid.UUID | None = None):
-        """Holding bookings whose held window [start - lead, end + grace] meets [start, end)."""
+    def _held(
+        db: Session, start: datetime, end: datetime, exclude_id: uuid.UUID | None = None
+    ) -> tuple[list[tuple[datetime, datetime, Resources, set[uuid.UUID]]], set[uuid.UUID]]:
+        """(what holds capacity in [start, end), the ranges of the booking being re-checked).
+
+        Each item is (from, to, size, ranges it already counts): a holding booking over its
+        held window [start - lead, end + grace], or a class's hold over its span
+        (``classes.holds``), which stands in for the class sessions inside it. A booking
+        re-checked (``exclude_id``) is left out, with its class's hold: its own demand is
+        what is asked."""
+        from ..classes import holds as class_holds
+
+        excluded = db.get(ScheduledEvent, exclude_id) if exclude_id else None  # tenant-safe: loaded by get_owned
+        key = class_holds.hold_key(db, excluded) if excluded is not None else None
+        out = []
+        absorbed: set[uuid.UUID] = set()
+        skip: set[uuid.UUID] = {excluded.range_id} - {None} if excluded is not None else set()
+        for h in class_holds.holds(db, start - TEARDOWN_GRACE, end + PROVISION_LEAD):
+            absorbed |= h.events
+            if h.key == key:
+                skip |= h.ranges
+                continue
+            out.append((h.start, h.end, h.resources, h.ranges))
         q = db.query(ScheduledEvent).filter(
             ScheduledEvent.state.in_(COMMITTING_STATES),
             ScheduledEvent.start_time < end + PROVISION_LEAD,
@@ -125,27 +148,24 @@ class ClusterCapacity:
         )
         if exclude_id:
             q = q.filter(ScheduledEvent.id != exclude_id)
-        return [(_utc(e.start_time) - PROVISION_LEAD, _utc(e.end_time) + TEARDOWN_GRACE, e) for e in q.all()]
+        for e in q.all():
+            if e.id in absorbed:
+                continue
+            need = Resources(e.vcpu_total or 0, e.ram_mb_total or 0, e.disk_gb_total or 0)
+            out.append((_utc(e.start_time) - PROVISION_LEAD, _utc(e.end_time) + TEARDOWN_GRACE, need,
+                        {e.range_id} - {None}))
+        return out, skip
 
-    @staticmethod
-    def _excluded_range(db: Session, exclude_id: uuid.UUID | None) -> uuid.UUID | None:
-        """The range of the booking being re-checked: its own demand is what is asked."""
-        if not exclude_id:
-            return None
-        # tenant-safe: exclude_id is the id of a booking the router already loaded with get_owned.
-        evt = db.get(ScheduledEvent, exclude_id)
-        return evt.range_id if evt else None
-
-    def _sum(self, held, t0: datetime, t1: datetime, skip_range: uuid.UUID | None = None) -> Committed:
-        now = [e for a, z, e in held if a < t1 and z > t0]
-        covered = {e.range_id for e in now if e.range_id}
-        vcpu = sum(e.vcpu_total for e in now)
-        ram = sum(e.ram_mb_total for e in now)
-        disk = sum(e.disk_gb_total for e in now)
+    def _sum(self, held, t0: datetime, t1: datetime, skip: set[uuid.UUID] | None = None) -> Committed:
+        now = [(need, uses) for a, z, need, uses in held if a < t1 and z > t0]
+        covered = set().union(*(uses for _, uses in now)) if now else set()
+        vcpu = sum(n.vcpu for n, _ in now)
+        ram = sum(n.ram_mb for n, _ in now)
+        disk = sum(n.disk_gb for n, _ in now)
         ranges = 0
         if t1 > datetime.now(UTC):  # running ranges hold capacity from now on, not in the past
             for r in self._running:
-                if r.range_id in covered or r.range_id == skip_range:
+                if r.range_id in covered or r.range_id in (skip or ()):
                     continue
                 vcpu, ram, disk, ranges = vcpu + r.vcpu, ram + r.ram_mb, disk + r.disk_gb, ranges + 1
         return Committed(Resources(vcpu, ram, disk), len(now), ranges)

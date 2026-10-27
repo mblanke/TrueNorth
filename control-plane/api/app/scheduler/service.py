@@ -101,13 +101,48 @@ def assess(
     end: datetime,
     need: Resources,
     exclude_id: uuid.UUID | None = None,
+    *,
+    peak: bool = False,
 ) -> Assessment:
-    """Would a booking for [start, end) fit? Counts its provisioning lead and teardown grace."""
+    """Would a booking for [start, end) fit? Counts its provisioning lead and teardown grace.
+
+    ``peak`` (a span up to a class's end, which may run for days): compare against the most
+    committed at any 15-minute slice of it, not everything in it added up. Bookings on
+    different days of the week never run at once."""
     held_start, held_end = held_window(start, end)
     supply = provider.supply()
-    committed = provider.committed(db, held_start, held_end, exclude_id)
+    if peak:
+        committed = peak_committed(db, provider, held_start, held_end, exclude_id)
+    else:
+        committed = provider.committed(db, held_start, held_end, exclude_id)
     free = available(supply, committed.resources)
     return Assessment(supply, committed, free, shortfalls(need, free, held_start, held_end))
+
+
+def _slices(start: datetime, end: datetime) -> list[tuple[datetime, datetime]]:
+    start, end = as_utc(start), as_utc(end)
+    out, t = [], start
+    while t < end:
+        out.append((t, min(t + SLOT_STEP, end)))
+        t += SLOT_STEP
+    return out
+
+
+def _max(rows: list[Committed]) -> Committed:
+    if not rows:
+        return Committed(Resources(), 0, 0)
+    return Committed(
+        Resources(max(c.resources.vcpu for c in rows), max(c.resources.ram_mb for c in rows),
+                  max(c.resources.disk_gb for c in rows)),
+        max(c.events for c in rows), max(c.ranges for c in rows),
+    )
+
+
+def peak_committed(
+    db: Session, provider: CapacityProvider, start: datetime, end: datetime, exclude_id: uuid.UUID | None = None
+) -> Committed:
+    """The most committed, resource by resource, at any 15-minute slice of [start, end)."""
+    return _max(provider.committed_many(db, _slices(start, end), exclude_id))
 
 
 def enforce(db: Session, assessment: Assessment) -> list[str]:
@@ -151,7 +186,18 @@ def fit(db: Session, provider: CapacityProvider, evt: ScheduledEvent, start: dat
     clash = conflicts(
         db, start=start, end=end, range_id=evt.range_id, instructor_id=evt.instructor_id, exclude_id=evt.id
     )
-    return Fit(clash, assess(db, provider, start, end, need_of(evt), exclude_id=evt.id))
+    span_end = until_class_end(db, evt, end)
+    extended = as_utc(span_end) > as_utc(end)
+    return Fit(clash, assess(db, provider, start, span_end, need_of(evt), exclude_id=evt.id, peak=extended))
+
+
+def until_class_end(db: Session, evt: ScheduledEvent, end: datetime) -> datetime:
+    """How long a booking holds what it needs: to its end, or, for a class session that uses
+    its class's ranges, to the class's end (they stay up between sessions; ``classes.holds``)."""
+    from ..classes import holds
+
+    last = holds.class_end(db, evt)
+    return max(as_utc(end), last) if last is not None else end
 
 
 def _ceil(t: datetime, step: timedelta) -> datetime:
@@ -193,7 +239,7 @@ def next_free_slot(
         t += SLOT_STEP
     need = need_of(evt)
     supply = provider.supply()
-    committed = provider.committed_many(db, [held_window(c, c + length) for c in candidates], evt.id)
+    committed = _screen(db, provider, evt, candidates, length)
     blocked = _blocked_spans(db, evt, first, horizon + length)
     windows = maintenance_spans(db, evt, first - PROVISION_LEAD, horizon + length)
     for c, com in zip(candidates, committed, strict=True):
@@ -206,6 +252,28 @@ def next_free_slot(
         if fit(db, provider, evt, c, c + length).ok:
             return (c, c + length), horizon
     return None, horizon
+
+
+def _screen(
+    db: Session, provider: CapacityProvider, evt: ScheduledEvent, candidates: list[datetime], length: timedelta
+) -> list[Committed]:
+    """What each candidate start would see committed, as ``fit`` would judge it: over its held
+    window; for a class session that uses its class's ranges, over the span to the class's
+    end at its peak (``assess(peak=True)``), read once as 15-minute slices."""
+    from ..classes import holds
+
+    last = holds.class_end(db, evt)
+    if last is None or not candidates:
+        return provider.committed_many(db, [held_window(c, c + length) for c in candidates], evt.id)
+    last = as_utc(last)
+    lo = candidates[0] - PROVISION_LEAD
+    slices = _slices(lo, max(last, candidates[-1] + length) + TEARDOWN_GRACE)
+    per = provider.committed_many(db, slices, evt.id)
+    out = []
+    for c in candidates:
+        a, z = held_window(c, max(c + length, last))
+        out.append(_max([com for (s0, s1), com in zip(slices, per, strict=True) if s0 < z and s1 > a]))
+    return out
 
 
 def maintenance_spans(db: Session, evt: ScheduledEvent, start: datetime, end: datetime) -> list[tuple[datetime, datetime]]:
@@ -319,10 +387,13 @@ def resolve_exercise(
     return ex.id, ex.range_id
 
 
-def resolve_range(db: Session, user: CurrentUser, range_id: str | None) -> uuid.UUID | None:
+def resolve_range(
+    db: Session, user: CurrentUser, range_id: str | None, keep: uuid.UUID | None = None
+) -> uuid.UUID | None:
     """A booked range must be the caller's tenant's (404 otherwise, as for any range),
     must still be buildable (a destroyed range cannot be provisioned again), and must not
-    be a lab session's (only its session drives it)."""
+    be a lab session's (only its session drives it) or a class's (only its class does;
+    ``keep``: the one a class session already uses)."""
     if not range_id:
         return None
     rng = get_owned(db, Range, range_id, user, not_found="Range not found")
@@ -331,7 +402,16 @@ def resolve_range(db: Session, user: CurrentUser, range_id: str | None) -> uuid.
     if range_lifecycle.is_lab_range(db, rng.id):
         # The clock would build and tear it down under a student's session.
         raise HTTPException(409, "This range belongs to a student's lab session; book another range")
+    if rng.id != keep and class_owns_range(db, rng.id):
+        # A class builds, keeps and tears down its own ranges (classes/ranges.py).
+        raise HTTPException(409, "This range belongs to a class's Students; book a session of that class instead")
     return rng.id
+
+
+def class_owns_range(db: Session, range_id: uuid.UUID) -> bool:
+    from ..classes import ranges as class_ranges
+
+    return class_ranges.is_class_range(db, range_id)
 
 
 def conflicts(
@@ -457,6 +537,11 @@ def release_range(db: Session, evt: ScheduledEvent) -> str | None:
     """
     if not (evt.auto_provisioned and evt.range_id):
         return None
+    if class_owns_range(db, evt.range_id):
+        # A class's range outlives its sessions (ADR 0014 §10): the class tears it down after
+        # its end, or when it is cancelled (classes/ranges.py).
+        evt.auto_provisioned = False
+        return "range kept by its class until the class ends"
     # Another live booking of the same range (the next class in a series) takes the range
     # over instead: ranges cannot be built again once destroyed.
     heir = (
@@ -557,14 +642,14 @@ def outs(db: Session, events: list[ScheduledEvent]) -> list[dict]:
 
     # tenant-safe: rows keyed by bookings the caller already loaded tenant-scoped.
     approvals = {a.event_id: a for a in db.query(BookingApproval).filter(BookingApproval.event_id.in_(ids))}
-    classes = sessions.class_ids_for(db, ids)
-    return [to_out(e, approval=approvals.get(e.id), class_id=classes.get(e.id)) for e in events]
+    links = sessions.links_for(db, ids)
+    return [to_out(e, approval=approvals.get(e.id), link=links.get(e.id)) for e in events]
 
 
 def out(db: Session, e: ScheduledEvent, warnings: list[str] | None = None, maintenance: list[str] | None = None) -> dict:
     from ..classes import sessions
 
-    return to_out(e, warnings, maintenance, approval=approval_of(db, e.id), class_id=sessions.class_ids_for(db, [e.id]).get(e.id))
+    return to_out(e, warnings, maintenance, approval=approval_of(db, e.id), link=sessions.links_for(db, [e.id]).get(e.id))
 
 
 def to_out(
@@ -573,8 +658,9 @@ def to_out(
     maintenance: list[str] | None = None,
     *,
     approval: BookingApproval | None = None,
-    class_id: uuid.UUID | None = None,
+    link: tuple[uuid.UUID, str] | None = None,
 ) -> dict:
+    class_id, range_mode = link or (None, None)
     return EventOut(
         id=str(e.id),
         name=e.name,
@@ -600,6 +686,7 @@ def to_out(
         warnings=warnings or [],
         maintenance_warnings=maintenance or [],
         class_id=str(class_id) if class_id else None,
+        range_mode=range_mode,
         approval=_approval_out(approval),
     ).model_dump()
 
@@ -693,7 +780,9 @@ def room_for(db: Session, evt: ScheduledEvent, extra: Resources) -> list[str]:
     The caller holds ``serialize_bookings``."""
     if extra == Resources():
         return []
-    a = assess(db, get_capacity_provider(db), as_utc(evt.start_time), as_utc(evt.end_time), extra)
+    end = until_class_end(db, evt, as_utc(evt.end_time))
+    a = assess(db, get_capacity_provider(db), max(as_utc(evt.start_time), datetime.now(UTC)), end, extra,
+               peak=end > as_utc(evt.end_time))
     return [f"'{evt.name}': {r}" for r in a.reasons]
 
 
@@ -703,22 +792,54 @@ def _floored(column, change: int):
     return case((total < 0, 0), else_=total)
 
 
-def resize(db: Session, evt: ScheduledEvent, delta: Resources, sign: int) -> None:
+def resize(db: Session, evt: ScheduledEvent, delta: Resources, sign: int, vms: int = 0) -> None:
     """Grow (sign 1) or shrink (sign -1) a held booking's demand, never below zero. Does not commit.
 
     An increment in SQL, not a read-modify-write: the forfeit clock (on every replica) and a
     roll-call change can resize the same session at once, and each change must land."""
-    if delta == Resources():
+    if delta == Resources() and not vms:
         return
+    # tenant-safe: a booking the caller already loaded tenant-scoped (a class's own session).
     db.query(ScheduledEvent).filter(ScheduledEvent.id == evt.id).update(
         {
             ScheduledEvent.vcpu_total: _floored(ScheduledEvent.vcpu_total, sign * delta.vcpu),
             ScheduledEvent.ram_mb_total: _floored(ScheduledEvent.ram_mb_total, sign * delta.ram_mb),
             ScheduledEvent.disk_gb_total: _floored(ScheduledEvent.disk_gb_total, sign * delta.disk_gb),
+            ScheduledEvent.vm_count: _floored(ScheduledEvent.vm_count, sign * vms),
         },
         synchronize_session=False,
     )
-    db.refresh(evt, ["vcpu_total", "ram_mb_total", "disk_gb_total"])
+    db.refresh(evt, ["vcpu_total", "ram_mb_total", "disk_gb_total", "vm_count"])
+
+
+def set_size(db: Session, evt: ScheduledEvent, size: Resources, vms: int) -> None:
+    """Set a booking's demand outright: an individual class session sized from its roll call.
+    Callers hold ``serialize_bookings``, so the roll call they counted cannot change before
+    they commit. Does not commit."""
+    evt.vcpu_total, evt.ram_mb_total, evt.disk_gb_total, evt.vm_count = size.vcpu, size.ram_mb, size.disk_gb, vms
+
+
+def holding_sessions(db: Session, event_ids, *, now: datetime, lead: bool) -> list[ScheduledEvent]:
+    """Of ``event_ids`` (a subquery of class sessions), the approved ones that have not ended
+    and, with ``lead``, whose provisioning lead has been reached: whose ranges must be up."""
+    # tenant-safe: the class clock's system-wide pass; each session is handled in its own tenant.
+    q = db.query(ScheduledEvent).filter(
+        ScheduledEvent.id.in_(event_ids), ScheduledEvent.state.in_(HOLDING), ScheduledEvent.end_time > now
+    )
+    if lead:
+        q = q.filter(ScheduledEvent.start_time <= now + PROVISION_LEAD)
+    return q.order_by(ScheduledEvent.start_time).limit(500).all()
+
+
+def attach_range(db: Session, event_id: uuid.UUID, range_id: uuid.UUID) -> bool:
+    """Point a collective class session that has no range yet at its class's shared range.
+    A guarded update: an edit or another replica that set one first wins. Does not commit."""
+    # tenant-safe: a class session's booking and its class's own range, both the class's tenant's.
+    return (
+        db.query(ScheduledEvent)
+        .filter(ScheduledEvent.id == event_id, ScheduledEvent.range_id.is_(None), ScheduledEvent.state.in_(HOLDING))
+        .update({ScheduledEvent.range_id: range_id}, synchronize_session=False)
+    ) == 1
 
 
 def reassign_instructor(
@@ -784,6 +905,7 @@ def resequence(evt: ScheduledEvent) -> None:
     if db is None or state.transient or state.pending:
         evt.sequence = (evt.sequence or 0) + 1
         return
+    # tenant-safe: a booking the caller already loaded tenant-scoped.
     db.query(ScheduledEvent).filter(ScheduledEvent.id == evt.id).update(
         {ScheduledEvent.sequence: func.coalesce(ScheduledEvent.sequence, 0) + 1}, synchronize_session=False
     )

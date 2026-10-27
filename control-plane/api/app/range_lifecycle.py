@@ -131,6 +131,25 @@ def provision_for_booking(
     return True, "provisioning dispatched" if task else "provisioning accepted; broker unavailable, will be re-sent"
 
 
+def discard_unbuilt(db: Session, range_id: uuid.UUID) -> tuple[bool, str]:
+    """Retire a range a booking (or class) created whose build never started: it has no VMs
+    and no networks, so there is nothing to tear down (``created -> destroyed``). A range
+    whose build has started goes through ``destroy_for_booking``. Does not commit."""
+    # tenant-safe: a range the caller created itself in its booking's (or class's) tenant.
+    rng = db.get(Range, range_id)
+    if rng is None or rng.deleted_at is not None or rng.state == RangeState.destroyed:
+        return True, "range no longer exists"
+    if rng.state != RangeState.created:
+        return False, f"range is {rng.state.value}; its build started, so it is torn down instead"
+    moved = (
+        db.query(Range)
+        .filter(Range.id == rng.id, Range.state == RangeState.created)
+        .update({Range.state: RangeState.destroyed}, synchronize_session=False)
+    )
+    db.expire(rng, ["state"])
+    return (True, "never built: retired") if moved == 1 else (False, "its build started meanwhile; will retry")
+
+
 def destroy_for_booking(db: Session, range_id: uuid.UUID, window_bypass: str | None = None) -> tuple[bool, str]:
     """Take down a range a booking built. Returns (settled, what happened).
 

@@ -14,6 +14,13 @@ export type RollCallAddResult = S['RollCallAddOut'];
 export type RollCallStatus = S['RollCallStatusOut'];
 export type PendingAddition = S['PendingAdditionOut'];
 export type AdditionDecision = S['AdditionDecisionOut'];
+export type ClassRanges = S['ClassRangesOut'];
+export type ClassRange = S['ClassRangeRowOut'];
+export type ClassRangeStatus = S['ClassRangeStatus'];
+export type ClassSessionMode = S['ClassSessionModeOut'];
+export type RangeMode = S['RangeModeOut'];
+export type CourseRangeMode = S['CourseRangeModeOut'];
+export type SessionTeams = S['SessionTeamsOut'];
 export type ReinstateResult = S['ReinstateOut'];
 
 /**
@@ -80,5 +87,31 @@ export class ClassesApiService {
   /** Marks the entry removed; it stays on record. */
   remove(id: string, entryId: string): Observable<void> {
     return this.http.delete<void>(`${this.base}/${id}/roll-call/${entryId}`);
+  }
+
+  // ── Ranges, session modes and teams (ADR 0014 §9-11; #282) ──
+  /** Its sessions with their mode, and its ranges with their status. No credentials. */
+  ranges(id: string): Observable<ClassRanges> {
+    return this.http.get<ClassRanges>(`${this.base}/${id}/ranges`);
+  }
+  /** Build a range whose build failed again (its lead or an admin). */
+  retryRange(id: string, classRangeId: string): Observable<ClassRange> {
+    return this.http.post<ClassRange>(`${this.base}/${id}/ranges/${classRangeId}/retry`, {});
+  }
+  courseRangeMode(courseId: string): Observable<CourseRangeMode> {
+    return this.http.get<CourseRangeMode>(`${this.base}/course-range-modes/${courseId}`);
+  }
+  setCourseRangeMode(courseId: string, mode: RangeMode): Observable<CourseRangeMode> {
+    return this.http.put<CourseRangeMode>(`${this.base}/course-range-modes/${courseId}`, { mode });
+  }
+  sessionTeams(id: string, eventId: string): Observable<SessionTeams> {
+    return this.http.get<SessionTeams>(`${this.base}/${id}/sessions/${eventId}/teams`);
+  }
+  /** Balanced teams from the roll call; splitting again places everyone again. */
+  splitTeams(id: string, eventId: string, teamCount: number): Observable<SessionTeams> {
+    return this.http.post<SessionTeams>(`${this.base}/${id}/sessions/${eventId}/teams`, { team_count: teamCount });
+  }
+  moveTeamMember(id: string, eventId: string, userId: string, teamId: string): Observable<SessionTeams> {
+    return this.http.put<SessionTeams>(`${this.base}/${id}/sessions/${eventId}/teams/members/${userId}`, { team_id: teamId });
   }
 }
