@@ -12,6 +12,10 @@ type S = components['schemas'];
 /** One QSP qualification (GET /qsp/qualifications). */
 export type Qualification = S['QualificationOut'];
 
+/** The AD status sync panel (GET /ad-status-sync) and one run (#290). */
+export type AdStatusSyncOverview = S['AdStatusSyncOverviewOut'];
+export type AdStatusSyncRun = S['AdStatusSyncRunOut'];
+
 /**
  * Directory reference data and administration: nations, coalitions, OUs, security
  * groups, auth zones, AD sync and the QSP qualification catalogue.
@@ -62,6 +66,17 @@ export class DirectoryApiService {
   }
   triggerAdSync(): Observable<{ message?: string } & Record<string, unknown>> {
     return this.http.post<{ message?: string } & Record<string, unknown>>(`${this.base}/ad-sync/trigger`, {});
+  }
+
+  /** Nightly AD status sync: settings, recent runs, the latest run's accounts (admin, own tenant). */
+  adStatusSync(): Observable<AdStatusSyncOverview> {
+    return this.http.get<AdStatusSyncOverview>(`${this.base}/ad-status-sync`);
+  }
+  /** Run it now for this tenant; omit dryRun to follow the server's AD_STATUS_SYNC_DRY_RUN. */
+  runAdStatusSync(dryRun?: boolean, overrideLimit = false): Observable<AdStatusSyncRun> {
+    const body: S['AdStatusSyncRunIn'] = { override_limit: overrideLimit };
+    if (dryRun !== undefined) body.dry_run = dryRun;
+    return this.http.post<AdStatusSyncRun>(`${this.base}/ad-status-sync/runs`, body);
   }
 
   qualifications(): Observable<Qualification[]> {

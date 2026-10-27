@@ -107,6 +107,68 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/ad-status-sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * AD status sync: settings, last runs and the accounts they deactivated
+         * @description **Role: admin.** The caller's tenant's view of the nightly and manual runs.
+         */
+        get: operations["getAdStatusSync"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ad-status-sync/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run the AD status sync now, for this tenant
+         * @description **Role: admin.** Looks at the caller's tenant only; audited. A dry run records who would be
+         *     deactivated and changes nothing. While ``AD_STATUS_SYNC_DRY_RUN`` is on every run is dry:
+         *     asking for ``dry_run: false`` is 409, ``override_limit`` or not.
+         */
+        post: operations["runAdStatusSync"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ad-status-sync/runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One AD status sync run, with this tenant's accounts
+         * @description **Role: admin.** 404 for another tenant's manual run.
+         */
+        get: operations["getAdStatusSyncRun"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/ad-sync/config": {
         parameters: {
             query?: never;
@@ -9351,6 +9413,10 @@ export interface paths {
         /**
          * Delete User
          * @description Delete (deactivate) a user.  **Permission: user:delete**
+         *
+         *     409 for the tenant's last active admin: nobody would be left to re-enable anyone. The check
+         *     locks the tenant's admin rows (app/ad_status_sync ``is_last_admin``), so two deletions at
+         *     once, or one beside the nightly AD status sync, cannot both pass.
          */
         delete: operations["delete_user_users__user_id__delete"];
         options?: never;
@@ -9917,6 +9983,116 @@ export interface components {
              * @default
              */
             target?: string;
+        };
+        /** AdStatusSyncOverviewOut */
+        AdStatusSyncOverviewOut: {
+            /** Break Glass Usernames */
+            break_glass_usernames: string[];
+            /**
+             * Break Glass Warning
+             * @description Set when the configured break-glass name is no local Keycloak user (90-day rule off)
+             */
+            break_glass_warning?: string | null;
+            /**
+             * Dry Run
+             * @description AD_STATUS_SYNC_DRY_RUN: runs record and change nothing
+             */
+            dry_run: boolean;
+            /** Enabled */
+            enabled: boolean;
+            /** Keycloak Configured */
+            keycloak_configured: boolean;
+            /** Last Break Glass Use */
+            last_break_glass_use?: string | null;
+            latest?: components["schemas"]["AdStatusSyncRunOut"] | null;
+            /** Nightly Hour Utc */
+            nightly_hour_utc: number;
+            /**
+             * Runs
+             * @description Recent runs, newest first, without results
+             */
+            runs?: components["schemas"]["AdStatusSyncRunOut"][];
+        };
+        /** AdStatusSyncResultOut */
+        AdStatusSyncResultOut: {
+            /**
+             * Applied
+             * @description False in a dry run, a held tenant, a first sighting (confirmed by the next run), the last admin, or when someone else deactivated it first
+             */
+            applied: boolean;
+            /** Display Name */
+            display_name: string;
+            /** Email */
+            email: string;
+            /**
+             * Reason
+             * @description ad_disabled | ad_removed | local_unused
+             */
+            reason: string;
+            /** Reason Text */
+            reason_text: string;
+            /** Seats Freed */
+            seats_freed: number;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
+        /** AdStatusSyncRunIn */
+        AdStatusSyncRunIn: {
+            /**
+             * Dry Run
+             * @description Omitted: the AD_STATUS_SYNC_DRY_RUN setting
+             */
+            dry_run?: boolean | null;
+            /**
+             * Override Limit
+             * @description Apply even when over AD_STATUS_SYNC_MAX_FRACTION
+             * @default false
+             */
+            override_limit?: boolean;
+        };
+        /** AdStatusSyncRunOut */
+        AdStatusSyncRunOut: {
+            /**
+             * Counts
+             * @description This tenant's counts only
+             */
+            counts: {
+                [key: string]: number;
+            };
+            /** Dry Run */
+            dry_run: boolean;
+            /** Error */
+            error?: string | null;
+            /** Finished At */
+            finished_at?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Results
+             * @description This tenant's accounts only
+             */
+            results?: components["schemas"]["AdStatusSyncResultOut"][];
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            /**
+             * Status
+             * @description running | completed | held (this tenant) | failed | interrupted
+             */
+            status: string;
+            /**
+             * Trigger
+             * @description nightly | manual
+             */
+            trigger: string;
         };
         /**
          * AdditionDecisionOut
@@ -20089,6 +20265,90 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AcknowledgementVersionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    getAdStatusSync: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdStatusSyncOverviewOut"];
+                };
+            };
+        };
+    };
+    runAdStatusSync: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["AdStatusSyncRunIn"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdStatusSyncRunOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    getAdStatusSyncRun: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdStatusSyncRunOut"];
                 };
             };
             /** @description Validation Error */

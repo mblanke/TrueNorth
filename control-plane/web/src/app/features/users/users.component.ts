@@ -22,6 +22,7 @@ import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatDividerModule } from '@angular/material/divider';
 import { EmptyStateComponent } from '../../shared/components/empty-state/empty-state.component';
 import { ApprovalsPanelComponent } from './approvals-panel.component';
+import { AdStatusSyncPanelComponent } from './ad-status-sync-panel.component';
 
 // Wire types are the contract's (core/models). OUTree is the OU tree node; AuthZone a policy.
 type OUTree = OrganizationalUnit;
@@ -34,7 +35,7 @@ type AuthZone = AuthZonePolicy;
     MatIconModule, MatTableModule, MatChipsModule, MatFormFieldModule,
     MatInputModule, MatSelectModule, MatTooltipModule, MatExpansionModule,
     MatBadgeModule, MatSnackBarModule, MatDividerModule, EmptyStateComponent,
-    ApprovalsPanelComponent,
+    ApprovalsPanelComponent, AdStatusSyncPanelComponent,
   ],
   template: `
     <div class="page-container">
@@ -537,9 +538,10 @@ type AuthZone = AuthZonePolicy;
                 </mat-card-actions>
               </mat-card>
             }
+            <tn-ad-status-sync-panel />
           </div>
         </mat-tab>
-    
+
         <!-- ===== Auth Zones Tab ===== -->
         <mat-tab label="Auth Zones">
           <div class="tab-content">

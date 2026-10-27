@@ -255,6 +255,7 @@ OpenSearch's `_cluster/health`, the Moodle node's container health (only with
 | `BackupIncomplete` | warning | the last backup kept the data but exited 3 (no escrow), 5 (telemetry snapshot failed) or 6 |
 | `AuditArchiveTampered` | critical | `truenorth_backup_audit_verified` is 0: the last backup found that the signed audit export archive does not verify (signature, hash, chain or recorded export). A security event: docs/runbooks/backup-restore.md |
 | `BackupStale` | critical | no good backup for more than 26 h (seeded at install, so a cron that never runs alerts too) |
+| `BreakGlassAccountUsed` | critical | the local break-glass account signed in to TrueNorth within the last hour (`truenorth_break_glass_sign_ins_total`; ADR 0014 §6). Check it was planned: docs/runbooks/break-glass.md |
 
 There is no WebSocket-connection alert: the API's `active_websocket_connections` gauge is
 not maintained, and each of the API's uvicorn workers keeps its own registry, so a scrape
