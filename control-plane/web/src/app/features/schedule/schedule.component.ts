@@ -71,7 +71,8 @@ const ROW = 46; // px per hour
     <!-- ── Everyone else on staff: the calendar ─────────────── -->
     <div class="pagehead"><div><span class="eyebrow">Schedule</span><h1>{{ isObserver() ? 'Range schedule' : 'This week' }}</h1>
       <p class="muted">{{ liveCount() }} session{{ liveCount() === 1 ? '' : 's' }} booked{{ busiest() ? ' · busiest ' + busiest() : '' }}. Times are in your time zone ({{ tz }}).</p></div>
-      @if (canBook() && !nextSession()) { <button class="action primary" (click)="startBooking()">Book a session</button> }</div>
+      <div class="actions"><a class="action" routerLink="/calendar/events">Open the calendar</a>
+        @if (canBook() && !nextSession()) { <button class="action primary" (click)="startBooking()">Book a session</button> }</div></div>
     @if (nextSession(); as n) {
       <section class="panel hero" [class.live]="live(n)">
         @if (live(n)) {

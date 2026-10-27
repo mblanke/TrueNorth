@@ -4,6 +4,7 @@ import { HttpErrorResponse, provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
+import { ActivatedRoute, convertToParamMap } from '@angular/router';
 import { of, throwError } from 'rxjs';
 import { AuthService } from '@core/services/auth.service';
 import {
@@ -107,7 +108,7 @@ describe('ClassesComponent', () => {
   let el: HTMLElement;
   let api: jasmine.SpyObj<ClassesApiService>;
 
-  function setup(role: string, cls: ClassRecord = CLASS) {
+  function setup(role: string, cls: ClassRecord = CLASS, query: Record<string, string> = {}) {
     api = jasmine.createSpyObj('ClassesApiService', ['mine', 'list', 'create', 'rollCall', 'addPasted', 'addCsv', 'remove',
       'reinstate', 'ranges', 'retryRange', 'sessionTeams', 'splitTeams', 'moveTeamMember', 'attendance', 'closeout']);
     api.attendance.and.returnValue(of({ class_id: 'c1', class_status: 'open', can_edit: true, sessions: [], students: [] }));
@@ -136,6 +137,7 @@ describe('ClassesComponent', () => {
         { provide: OperatorRecordsApiService, useValue: records },
         { provide: NotificationService, useValue: notify },
         { provide: AuthService, useValue: { user: signal({ role }), isAdmin: signal(role === 'admin') } },
+        { provide: ActivatedRoute, useValue: { snapshot: { queryParamMap: convertToParamMap(query) } } },
       ],
     });
     fixture = TestBed.createComponent(ClassesComponent);
@@ -158,6 +160,18 @@ describe('ClassesComponent', () => {
     expect(el.textContent).toContain('Removed');
     expect(el.textContent).toContain('Lost seat');
     expect(buttons('Remove').filter(b => b.textContent?.trim() === 'Remove').length).toBe(3);
+  });
+
+  it('opens the roll call of the class named in ?class= (the calendar\'s Roll call link)', () => {
+    setup('instructor', CLASS, { class: 'c1' });
+    expect(api.rollCall).toHaveBeenCalledWith('c1');
+    expect(component.selected()?.id).toBe('c1');
+  });
+
+  it('ignores ?class= for a class the caller cannot see', () => {
+    setup('instructor', CLASS, { class: 'other' });
+    expect(api.rollCall).not.toHaveBeenCalled();
+    expect(component.selected()).toBeNull();
   });
 
   it('the lead reinstates a Student who lost their seat, in one click', () => {
