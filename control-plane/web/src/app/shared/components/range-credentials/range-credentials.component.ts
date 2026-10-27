@@ -164,6 +164,12 @@ export class RangeCredentialsComponent {
   /** ...or a Student's own lab session's (the lab page), with its token after an LTI launch. */
   readonly labSessionId = input<string>();
   readonly labToken = input<string>();
+  /**
+   * Fetch the accounts now, and again whenever this value changes (My classes' Join: a
+   * Student listing their class range's accounts is their attendance, ADR 0014 §12). Unset:
+   * the person presses "Show accounts".
+   */
+  readonly autoLoad = input<string | null>(null);
 
   readonly mask = MASK;
   readonly source = computed<CredentialSource | null>(() => {
@@ -193,6 +199,12 @@ export class RangeCredentialsComponent {
     effect(() => {
       this.source();
       untracked(() => this.reset());
+    });
+    // A new key (another Join, or the next session): forget the cached accounts and ask again.
+    effect(() => {
+      const key = this.autoLoad();
+      this.source();
+      if (key) untracked(() => { this.reset(); this.load(); });
     });
   }
 

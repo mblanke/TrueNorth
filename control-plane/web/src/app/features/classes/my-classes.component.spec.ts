@@ -4,7 +4,7 @@ import { provideRouter } from '@angular/router';
 import { of } from 'rxjs';
 import { fakeAuth } from '@core/auth/fake-auth';
 import { AuthService } from '@core/services/auth.service';
-import { ClassesApiService, MyClass, MyClasses } from '@core/services/classes-api.service';
+import { ClassesApiService, MyClass, MyClasses, localIso } from '@core/services/classes-api.service';
 import { NotificationService } from '@core/services/notification.service';
 import { RangeCredentialsApiService } from '@core/services/range-credentials-api.service';
 import { addDays } from '../calendar/content-calendar.util';
@@ -36,6 +36,13 @@ function page(classes: MyClass[], signed = true): MyClasses {
 }
 
 describe('my classes helpers', () => {
+  it('sends local midnights with their offset, so class dates are read in the viewer\'s days', () => {
+    const d = new Date(2026, 10, 2);
+    const iso = localIso(d);
+    expect(iso).toMatch(/^2026-11-02T00:00:00[+-]\d\d:\d\d$/);
+    expect(new Date(iso).getTime()).toBe(d.getTime());
+  });
+
   it('a week window runs Monday to Monday; a month window covers the month', () => {
     const wk = windowOf(new Date(2026, 9, 28), 'week');  // a Wednesday
     expect(wk.start).toEqual(new Date(2026, 9, 26));
@@ -83,6 +90,7 @@ describe('MyClassesComponent', () => {
     api = jasmine.createSpyObj<ClassesApiService>('ClassesApiService', ['attending']);
     api.attending.and.returnValue(of(data));
     creds = jasmine.createSpyObj<RangeCredentialsApiService>('RangeCredentialsApiService', ['list', 'reveal']);
+    creds.list.and.returnValue(of({ range_id: 'rng-1', scope: 'student', accounts: [] }));
     TestBed.configureTestingModule({
       imports: [MyClassesComponent, NoopAnimationsModule],
       providers: [
@@ -136,6 +144,30 @@ describe('MyClassesComponent', () => {
     expect(card('c1').querySelector('tn-range-credentials')).not.toBeNull();
     expect(card('c1').textContent).toContain('Your range');
   });
+
+  it('Join fetches the accounts at once (the attendance evidence), and again for a later session', fakeAsync(() => {
+    make(page([BASE]));
+    expect(creds.list).not.toHaveBeenCalled();
+    join('c1').click();
+    fixture.detectChanges();
+    expect(creds.list).toHaveBeenCalledTimes(1);
+    expect(creds.list.calls.mostRecent().args[0]).toEqual({ kind: 'range', rangeId: 'rng-1' });
+    expect(card('c1').textContent).toContain('that is how your attendance is recorded');
+    // The page stays open; the refresh brings the afternoon's session: the accounts are read again.
+    api.attending.and.returnValue(of(page([{ ...BASE, next_session_id: 'ev2' }])));
+    tick(REFRESH_MS);
+    fixture.detectChanges();
+    expect(creds.list).toHaveBeenCalledTimes(2);
+    // A refresh with nothing new asks nothing; pressing Join again does.
+    tick(REFRESH_MS);
+    fixture.detectChanges();
+    expect(creds.list).toHaveBeenCalledTimes(2);
+    join('c1').click();
+    fixture.detectChanges();
+    expect(creds.list).toHaveBeenCalledTimes(3);
+    fixture.destroy();
+    discardPeriodicTasks();
+  }));
 
   it('Join is disabled, with the reason, when the range is not ready', () => {
     make(page([BUILDING]));

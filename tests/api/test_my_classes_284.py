@@ -2,7 +2,8 @@
 
 ``GET /classes/attending`` (app/classes/my_classes.py). The rules under test:
 
-- **class:attend**: Students hold it; observers, instructors and range ops do not (403).
+- **class:attend**: Students hold it; observers and range ops do not (403). Instructors hold
+  it so they may grant the Student role (``grant_refusal``), and see only their own entries.
 - Only the caller's own roll-call entries, in their own tenant: never another tenant's class
   (even with the same user id on a roll call there), never a class they were removed from
   or whose addition awaits an approver.
@@ -10,18 +11,21 @@
   sessions in the window (approved or over; never drafts, pending, rejected or cancelled).
 - Seat: ready, or forfeited with the deadline missed; a forfeited seat shows no range and
   no Join.
-- Range for the current or next session: not built, building, ready or failed. Never
-  another Student's seat, never why a build failed.
+- Range for the current or next session: not built, building, ready, paused (powered off)
+  or failed; a collective session on a range the class does not own reports that range's
+  state. Never another Student's seat, never why a build failed.
 - Join (``join_range_id``) only when the credentials endpoint hands them over: their own
   seat ready, or the shared range ready during a collective session under way. The
   credentials endpoint agrees on every case here.
-- The window: default a week, at most 45 days, end after start.
+- The window: default a week, at most 45 days, end after start; its end is exclusive.
+- Join opening the accounts is the attendance evidence (#283).
+- A fixed number of queries, whatever the number of classes.
 """
 
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
 from _shared import act_as, real_tenant, real_user
@@ -30,6 +34,7 @@ from app.auth import CurrentUser
 from app.classes.models import Class, ClassRange, ClassSession, RollCallEntry
 from app.models import Course, Range, RangeState, Template, User, UserRole
 from app.scheduler.models import EventState, ScheduledEvent
+from sqlalchemy import event
 
 NOW = datetime.now(UTC).replace(microsecond=0)
 URL = "/classes/attending"
@@ -451,3 +456,97 @@ def test_join_records_attendance(client, world, db_session):
     opened = db.query(AuditLog).filter(AuditLog.action == RANGE_OPEN, AuditLog.resource_id == join,
                                        AuditLog.user_id == uuid.UUID(world["ann"].id)).count()
     assert opened == 1
+
+
+
+# ── Review of #307 (df4898fe) ───────────────────────────────────────────────
+
+
+def _count_queries(client, db, who) -> int:
+    bind = db.get_bind()
+    n = [0]
+
+    def count(*_a, **_k):
+        n[0] += 1
+
+    event.listen(bind, "before_cursor_execute", count)
+    try:
+        r = _get(client, who)
+    finally:
+        event.remove(bind, "before_cursor_execute", count)
+    assert r.status_code == 200, r.text
+    return n[0]
+
+
+def _fill(db, world, n: int, start: int = 0):
+    for i in range(start, start + n):
+        c = _class(db, world["a"].id, world["course"], world["lead"], name=f"K{i:02d}")
+        e = _entry(db, c, world["ann"], status="forfeited" if i % 3 == 2 else "signed_in")
+        _session(db, c, world["tpl"], NOW + timedelta(hours=2 + i))
+        _session(db, c, world["shared_tpl"], NOW + timedelta(days=1, hours=i), mode="collective")
+        _range(db, c, world["tpl"], e)
+        _range(db, c, world["shared_tpl"])
+    db.commit()
+
+
+def test_the_query_count_does_not_grow_with_the_classes(client, world, db_session):
+    db = db_session
+    _fill(db, world, 3)
+    few = _count_queries(client, db, world["ann"])
+    _fill(db, world, 12, start=3)
+    many = _count_queries(client, db, world["ann"])
+    assert len(_get(client, world["ann"]).json()["classes"]) == 16  # the fixture's class too
+    assert many == few, (few, many)
+    assert many <= 15
+
+
+def test_the_windows_end_is_exclusive(client, world, db_session):
+    """A Monday-to-Monday week in EST, as the page sends it (local midnights with their
+    offset): [Mon 05:00Z, next Mon 05:00Z). A class that starts on the next Monday is not in
+    it; one that ends on the Sunday is."""
+    db = db_session
+    est = timezone(timedelta(hours=-5))
+    lo = datetime(2026, 11, 2, tzinfo=est)
+    hi = lo + timedelta(days=7)
+    nxt = _class(db, world["a"].id, world["course"], world["lead"], name="NEXT-WEEK")
+    nxt.start_date, nxt.end_date = hi.date(), (hi + timedelta(days=4)).date()
+    _entry(db, nxt, world["ann"])
+    this = _class(db, world["a"].id, world["course"], world["lead"], name="THIS-WEEK")
+    this.start_date, this.end_date = (hi - timedelta(days=3)).date(), (hi - timedelta(days=1)).date()
+    _entry(db, this, world["ann"])
+    db.commit()
+    names = [c["name"] for c in _get(client, world["ann"], start=lo.isoformat(), end=hi.isoformat()).json()["classes"]]
+    assert "THIS-WEEK" in names and "NEXT-WEEK" not in names
+
+
+@pytest.mark.parametrize(("state", "want"), [
+    (RangeState.running, "ready"), (RangeState.provisioning, "building"), (RangeState.stopped, "paused"),
+    (RangeState.failed, "failed"),
+])
+def test_a_collective_session_on_a_range_the_class_does_not_own_reports_its_state(
+    client, world, db_session, state, want
+):
+    """An exercise's own range: its real state, not "not built". Join is not offered here (the
+    class's credentials rule does not cover it; the exercise view does)."""
+    db = db_session
+    rng = Range(name="exercise range", template_id=world["shared_tpl"].id, tenant_id=world["a"].id, state=state)
+    db.add(rng)
+    db.flush()
+    _session(db, world["cls"], world["shared_tpl"], NOW - timedelta(minutes=10), mode="collective",
+             state=EventState.active, range_id=rng.id)
+    db.commit()
+    c = _only(_get(client, world["ann"]).json())
+    assert c["range_status"] == want and c["sessions"][0]["range_status"] == want
+    assert c["join_range_id"] is None
+
+
+def test_another_tenants_range_booked_on_a_session_is_never_read(client, world, db_session):
+    db = db_session
+    rng = Range(name="b range", template_id=world["b_tpl"].id, tenant_id=world["b"].id, state=RangeState.running)
+    db.add(rng)
+    db.flush()
+    _session(db, world["cls"], world["shared_tpl"], NOW - timedelta(minutes=10), mode="collective",
+             state=EventState.active, range_id=rng.id)
+    db.commit()
+    c = _only(_get(client, world["ann"]).json())
+    assert c["range_status"] == "not_built" and c["join_range_id"] is None

@@ -157,11 +157,11 @@ export function forfeitMessage(c: MyClass): string {
               </button>
               @if (!c.join_range_id) { <span class="hint">{{ hint(c) }}</span> }
             </mat-card-actions>
-            @if (joined() === c.id && c.join_range_id) {
+            @if (joined()?.id === c.id && c.join_range_id) {
               <section class="my-range" [attr.aria-label]="'Your range: ' + c.name">
                 <h3>Your range: {{ c.name }}</h3>
-                <p class="muted">Open your accounts during each session.</p>
-                <tn-range-credentials [rangeId]="c.join_range_id" />
+                <p class="muted">Open your accounts during each session: that is how your attendance is recorded.</p>
+                <tn-range-credentials [rangeId]="c.join_range_id" [autoLoad]="joinKey(c)" />
               </section>
             }
           </mat-card>
@@ -210,8 +210,10 @@ export class MyClassesComponent implements OnInit {
   readonly data = signal<MyClasses | null>(null);
   readonly loading = signal(true);
   readonly loadError = signal('');
-  /** The class whose Join was pressed: its range's accounts are shown under it. */
-  readonly joined = signal<string | null>(null);
+  /** The class whose Join was pressed (and how many times): its range's accounts are shown
+   *  under it, fetched on every press. */
+  readonly joined = signal<{ id: string; press: number } | null>(null);
+  private presses = 0;
   readonly title = computed(() => heading(this.anchor(), this.view()));
 
   readonly range = rangeLabel;
@@ -240,8 +242,19 @@ export class MyClassesComponent implements OnInit {
     this.load();
   }
 
+  /**
+   * Join fetches the accounts at once (GET /ranges/{id}/credentials): that read is the
+   * attendance evidence (#283). Every press asks again, and so does a later session while the
+   * panel stays open (the key follows the current or next session as the page refreshes), so
+   * a Student never sees the morning's accounts without being counted this afternoon.
+   */
   join(c: MyClass): void {
-    if (c.join_range_id) this.joined.set(c.id);
+    if (c.join_range_id) this.joined.set({ id: c.id, press: ++this.presses });
+  }
+
+  joinKey(c: MyClass): string | null {
+    const j = this.joined();
+    return j && j.id === c.id ? `${c.next_session_id ?? 'none'}#${j.press}` : null;
   }
 
   private load(quiet = false): void {

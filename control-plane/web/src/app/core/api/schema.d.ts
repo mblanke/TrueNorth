@@ -21451,9 +21451,9 @@ export interface operations {
     listAttendingClasses: {
         parameters: {
             query?: {
-                /** @description The window's start (default: now) */
+                /** @description The window's start (default: now). Send it with the viewer's UTC offset: class dates are calendar days, read in that offset */
                 start?: string | null;
-                /** @description The window's end (default: a week after start; at most 45 days) */
+                /** @description The window's end, exclusive (default: a week after start; at most 45 days) */
                 end?: string | null;
             };
             header?: never;

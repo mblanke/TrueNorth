@@ -253,10 +253,14 @@ Content (courses, modules, labs, scenarios, range templates, golden images) has 
    `/ranges/{id}/credentials` would answer (`ranges.student_participation`): their own seat,
    ready (a deleted range never); or the shared range, ready, while a collective session
    booking it is under way, which wins over a day-long lab around it. A session's range not
-   created yet reads "not built"; a session with no range is skipped. Join opens the
-   shared credentials panel; that endpoint still decides on every call, and listing the
-   accounts there is the Student's attendance evidence (#283). The page asks again every
-   minute. A console for class ranges has no Student endpoint yet (lab sessions only; #313).
+   created yet reads "not built"; a session with no range is skipped; a collective session on
+   a range the class does not own (an exercise's) reports that range's state, with no Join.
+   Join opens the shared credentials panel and fetches the accounts at once, again on every
+   press and again when a later session becomes the current one while the panel is open:
+   that read is the Student's attendance evidence (#283), and the endpoint still decides on
+   every call. The page asks again every minute. The window's times carry the viewer's UTC
+   offset, so class dates are read in their calendar days; its end is exclusive. The read
+   takes a fixed number of queries whatever the number of classes. A console for class ranges has no Student endpoint yet (lab sessions only; #313).
    Known limits: an instructor on someone else's roll call reaches My classes only by its URL;
    Join follows the current or next session's range, not every range the Student could open.
 8. **Events view:** week and month, colours, the approval queue, following the mockups.

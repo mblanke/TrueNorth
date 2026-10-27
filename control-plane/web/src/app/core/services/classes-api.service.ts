@@ -34,6 +34,15 @@ export type MyClass = S['AttendingClassOut'];
 export type MyClassSession = S['AttendingSessionOut'];
 export type MyRangeStatus = S['AttendingRangeStatus'];
 
+/** `d` as local ISO 8601 with its UTC offset, e.g. 2026-11-02T00:00:00-05:00. */
+export function localIso(d: Date): string {
+  const pad = (n: number) => String(Math.trunc(Math.abs(n))).padStart(2, '0');
+  const off = -d.getTimezoneOffset();
+  const sign = off >= 0 ? '+' : '-';
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:`
+    + `${pad(d.getMinutes())}:${pad(d.getSeconds())}${sign}${pad(off / 60)}:${pad(off % 60)}`;
+}
+
 /**
  * Classes and their roll call (ADR 0014). The API decides who sees and changes what:
  * a class's lead or an admin changes it and its roll call; its assistants and observers
@@ -54,8 +63,9 @@ export class ClassesApiService {
    * `start` and `end`, with their seat, onboarding, range and Join. At most 45 days.
    */
   attending(start: Date, end: Date): Observable<MyClasses> {
-    const params = new HttpParams().set('start', start.toISOString()).set('end', end.toISOString());
-    return this.http.get<MyClasses>(`${this.base}/attending`, { params });
+    // Local times with their offset: the API reads class dates (calendar days) in it.
+    const q = `start=${encodeURIComponent(localIso(start))}&end=${encodeURIComponent(localIso(end))}`;
+    return this.http.get<MyClasses>(`${this.base}/attending?${q}`);
   }
   /** Everything the caller may see: for an admin, every class of their organisation. */
   list(includeCancelled = false): Observable<ClassRecord[]> {

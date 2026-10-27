@@ -26850,7 +26850,7 @@
         "operationId": "listAttendingClasses",
         "parameters": [
           {
-            "description": "The window's start (default: now)",
+            "description": "The window's start (default: now). Send it with the viewer's UTC offset: class dates are calendar days, read in that offset",
             "in": "query",
             "name": "start",
             "required": false,
@@ -26864,12 +26864,12 @@
                   "type": "null"
                 }
               ],
-              "description": "The window's start (default: now)",
+              "description": "The window's start (default: now). Send it with the viewer's UTC offset: class dates are calendar days, read in that offset",
               "title": "Start"
             }
           },
           {
-            "description": "The window's end (default: a week after start; at most 45 days)",
+            "description": "The window's end, exclusive (default: a week after start; at most 45 days)",
             "in": "query",
             "name": "end",
             "required": false,
@@ -26883,7 +26883,7 @@
                   "type": "null"
                 }
               ],
-              "description": "The window's end (default: a week after start; at most 45 days)",
+              "description": "The window's end, exclusive (default: a week after start; at most 45 days)",
               "title": "End"
             }
           }
