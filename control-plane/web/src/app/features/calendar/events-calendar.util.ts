@@ -7,7 +7,9 @@
  */
 import type { Booking, Timeline } from '@core/services/scheduler-api.service';
 import type { MaintenanceWindow } from '@core/services/maintenance-windows-api.service';
-import { addDays, hourOf, layoutLanes, sameDay } from '../schedule/schedule.util';
+import type { UserRole } from '@core/services/auth.service';
+import { roleCan } from '@core/auth/permissions';
+import { Level, addDays, at, hourOf, layoutLanes, level, sameDay } from '../schedule/schedule.util';
 
 /** A class session with a range per Student, or an exercise on one shared range (ADR 0014 §9). */
 export type EventKind = 'class' | 'exercise';
@@ -75,11 +77,19 @@ function overlapsDay(start: Date, end: Date, day: Date): boolean {
   return start < addDays(from, 1) && end > from;
 }
 
-/** The grid's hours: 08:00-17:00, widened to whole hours to fit any booking shown in `days`. */
-export function hourWindow(bookings: readonly Booking[], days: readonly Date[]): { lo: number; hi: number } {
+/**
+ * The grid's hours: 08:00-17:00, widened to whole hours to fit any booking or maintenance
+ * window shown in `days`.
+ */
+export function hourWindow(
+  bookings: readonly Booking[], days: readonly Date[], windows: readonly MaintenanceWindow[] = [],
+): { lo: number; hi: number } {
   let lo = DAY_START, hi = DAY_END;
-  for (const b of bookings) {
-    const s = new Date(b.start_time), e = new Date(b.end_time);
+  const spans = [
+    ...bookings.map(b => [new Date(b.start_time), new Date(b.end_time)]),
+    ...windows.map(w => [new Date(w.starts_at), new Date(w.ends_at)]),
+  ];
+  for (const [s, e] of spans) {
     for (const d of days) {
       if (!overlapsDay(s, e, d)) continue;
       lo = Math.min(lo, Math.max(0, Math.floor(hourOf(s, d))));
@@ -145,6 +155,37 @@ export function inMaintenance(windows: readonly MaintenanceWindow[], day: Date):
   return windows.filter(w => overlapsDay(new Date(w.starts_at), new Date(w.ends_at), day));
 }
 
+/** The windows overlapping [from, to): the period on screen. */
+export function windowsInPeriod(windows: readonly MaintenanceWindow[], from: Date, to: Date): MaintenanceWindow[] {
+  return windows.filter(w => new Date(w.starts_at) < to && new Date(w.ends_at) > from);
+}
+
+/**
+ * Move: the booking starts at the new day and time and keeps its length, so a multi-day
+ * booking or one across midnight moves whole.
+ */
+export function movedTimes(b: Pick<Booking, 'start_time' | 'end_time'>, date: string, from: string): { start: Date; end: Date } {
+  const start = at(date, from);
+  const length = new Date(b.end_time).getTime() - new Date(b.start_time).getTime();
+  return { start, end: new Date(start.getTime() + length) };
+}
+
+/**
+ * Whether the caller may change (move, accept a proposal for) a booking, as the server's
+ * `_changeable` decides (scheduler/router.py): a class session by its class's lead or an
+ * admin; a booking with no instructor by anyone who books; otherwise its instructor or an
+ * admin. `leadOf` gives a class's lead, when the caller can see the class.
+ */
+export function mayChange(
+  b: Pick<Booking, 'class_id' | 'instructor_id'>, role: UserRole | null | undefined, me: string | null | undefined,
+  leadOf: (classId: string) => string | undefined,
+): boolean {
+  if (!roleCan(role, 'schedule:write')) return false;
+  if (role === 'admin') return true;
+  if (b.class_id) return !!me && leadOf(b.class_id) === me;
+  return !b.instructor_id || b.instructor_id === me;
+}
+
 /** The month cell's chips: bookings running on the day, earliest first. */
 export function chipsFor(bookings: readonly Booking[], day: Date): Booking[] {
   return bookings
@@ -184,6 +225,11 @@ export function dayLoad(t: Timeline | null, bookings: readonly Booking[], day: D
     withPending = Math.max(withPending, frac(v, r, d));
   }
   return { load, withPending };
+}
+
+/** The bar's colour, from the uncapped committed load: over capacity is high. */
+export function loadLevel(l: DayLoad): Level {
+  return level(l.load);
 }
 
 /** Bar widths (percent of the track) for the committed load and the pending extra. */

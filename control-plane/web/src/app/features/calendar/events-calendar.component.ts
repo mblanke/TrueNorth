@@ -15,21 +15,25 @@ import { NotificationService } from '@core/services/notification.service';
 import { PAGE_ACCESS, roleCan, roleHasAccess } from '@core/auth/permissions';
 import type { User } from '@core/models';
 import { ApprovalQueueComponent, approvalError, whenLabel } from '../schedule/approval-queue.component';
-import { HOLDING_STATES, at, gb, hhmm, isoDate } from '../schedule/schedule.util';
+import { HOLDING_STATES, gb, hhmm, isoDate } from '../schedule/schedule.util';
 import { CalendarView, addDays, dayKey, gridDays, heading, shift } from './content-calendar.util';
 import {
   ALL_ON, Band, Block, EventKind, Filters, HOUR_PX, KIND_STYLE, blockClasses, chipsFor, dayBlocks, dayLoad, hourWindow,
-  inMaintenance, isPending, kindOf, laneStyle, legendCounts, loadBar, loadText, maintenanceBands, visibleBookings,
+  inMaintenance, isPending, kindOf, laneStyle, legendCounts, loadBar, loadLevel, loadText, maintenanceBands, mayChange,
+  movedTimes, visibleBookings, windowsInPeriod,
 } from './events-calendar.util';
 
 interface WeekDay { key: string; date: Date; label: string; today: boolean; blocks: Block[]; bands: Band[];
-  used: number; extra: number; loadText: string }
+  used: number; extra: number; level: string; loadText: string }
 interface MonthDay { key: string; date: Date; label: string; inPeriod: boolean; today: boolean; chips: Booking[];
-  maintenance: MaintenanceWindow[]; used: number; extra: number }
-interface Move { date: string; from: string; to: string }
+  maintenance: MaintenanceWindow[]; used: number; extra: number; level: string; loadText: string }
+/** Move: a new start; the booking keeps its length (multi-day and overnight ones move whole). */
+interface Move { date: string; from: string }
 
 /** Chips a month cell shows before "+N more". */
 const MONTH_CHIPS = 3;
+/** The most the list endpoints return in one call. */
+const LIST_LIMIT = 200;
 
 /**
  * The calendar's Events view (ADR 0014 decision 21, issue #285): classes in blue (a range
@@ -74,6 +78,9 @@ const MONTH_CHIPS = 3;
       </header>
 
       @if (loadError()) { <p class="error" role="alert">{{ loadError() }}</p> }
+      @if (truncated(); as t) {
+        <p class="warn" role="status">Showing {{ t.shown }} of {{ t.total }} bookings in this period: switch to Week to see the rest.</p>
+      }
 
       <div class="layout">
         <section class="grid-card" [attr.aria-label]="view() === 'week' ? 'Bookings this week' : 'Bookings this month'">
@@ -83,11 +90,15 @@ const MONTH_CHIPS = 3;
               @for (d of week(); track d.key) {
                 <div class="head" [class.today]="d.today">
                   <div class="dname"><span>{{ d.label }}</span></div>
-                  <div class="cap" [attr.aria-label]="'Load ' + d.loadText" [title]="'Load ' + d.loadText">
-                    <i class="used" [class]="'used ' + lvl(d.used)" [style.width.%]="d.used"></i>
-                    @if (d.extra) { <i class="extra" [style.left.%]="d.used" [style.width.%]="d.extra"></i> }
-                  </div>
-                  <div class="captext">{{ d.loadText }}</div>
+                  @if (timelineError()) {
+                    <div class="captext">Load unavailable</div>
+                  } @else {
+                    <div class="cap" role="img" [attr.aria-label]="'Load ' + d.loadText" [title]="'Load ' + d.loadText">
+                      <i [class]="'used ' + d.level" [style.width.%]="d.used"></i>
+                      @if (d.extra) { <i class="extra" [style.left.%]="d.used" [style.width.%]="d.extra"></i> }
+                    </div>
+                    <div class="captext" aria-hidden="true">{{ d.loadText }}</div>
+                  }
                 </div>
               }
               <div class="times" [style.height.px]="gridHeight()">
@@ -104,6 +115,7 @@ const MONTH_CHIPS = 3;
                     @let b = e.booking;
                     @let pos = lane(e);
                     <button type="button" [class]="classes(b)" [class.selected]="b.id === selectedId()"
+                            [attr.aria-pressed]="b.id === selectedId()"
                             [style.--c]="colour(b)" [style.top.px]="e.top" [style.height.px]="e.height"
                             [style.left]="pos.left" [style.width]="pos.width" (click)="select(b)"
                             [attr.aria-label]="ariaLabel(b)">
@@ -122,15 +134,17 @@ const MONTH_CHIPS = 3;
                      [title]="d.maintenance.length ? 'Maintenance: ' + d.maintenance[0].reason : ''">
                   <div class="cell-head">
                     <span class="num" [class.today]="d.today">{{ d.label }}</span>
-                    @if (d.used || d.extra) {
+                    @if (!timelineError() && (d.used || d.extra)) {
                       <span class="mini-cap" aria-hidden="true">
-                        <i class="used" [class]="'used ' + lvl(d.used)" [style.width.%]="d.used"></i>
+                        <i [class]="'used ' + d.level" [style.width.%]="d.used"></i>
                         @if (d.extra) { <i class="extra" [style.left.%]="d.used" [style.width.%]="d.extra"></i> }
                       </span>
                     }
+                    <span class="sr-only">{{ timelineError() ? 'Load unavailable' : 'Load ' + d.loadText }}@for (m of d.maintenance; track m.id) {<span>. Maintenance: {{ m.reason }}</span>}</span>
                   </div>
                   @for (b of d.chips.slice(0, monthChips); track b.id) {
                     <button type="button" [class]="'chip ' + classes(b)" [class.selected]="b.id === selectedId()"
+                            [attr.aria-pressed]="b.id === selectedId()"
                             [style.--c]="colour(b)" (click)="select(b)" [attr.aria-label]="ariaLabel(b)">
                       <mat-icon class="kind-icon" aria-hidden="true">{{ icon(b) }}</mat-icon>
                       <span class="t">{{ hhmmOf(b.start_time) }} {{ b.name }}</span>
@@ -219,9 +233,9 @@ const MONTH_CHIPS = 3;
               @if (moving(); as m) {
                 <div class="move" role="group" aria-label="Move booking">
                   <label><span>Day</span><input type="date" [ngModel]="m.date" (ngModelChange)="patchMove({ date: $event })"></label>
-                  <label><span>From</span><input type="time" step="900" [ngModel]="m.from" (ngModelChange)="patchMove({ from: $event })"></label>
-                  <label><span>To</span><input type="time" step="900" [ngModel]="m.to" (ngModelChange)="patchMove({ to: $event })"></label>
+                  <label><span>Starts</span><input type="time" step="900" [ngModel]="m.from" (ngModelChange)="patchMove({ from: $event })"></label>
                 </div>
+                @if (movedEnd(b); as end) { <p class="muted move-end">Ends {{ end }}, the same length as now.</p> }
                 @if (b.class_id && b.state === 'scheduled') {
                   <p class="muted">Moving an approved class session sends it back for approval.</p>
                 }
@@ -344,11 +358,14 @@ const MONTH_CHIPS = 3;
     .facts dd { margin: 0; }
     .note { margin: 0; font-size: 13px; border-radius: 10px; padding: 8px 12px; background: #FFFAEB; color: #93370D; }
     .links, .actions { display: flex; gap: 8px; flex-wrap: wrap; }
-    .move { display: grid; grid-template-columns: 1.3fr 1fr 1fr; gap: 8px; }
+    .move { display: grid; grid-template-columns: 1.3fr 1fr; gap: 8px; }
     .move label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--mat-sys-on-surface-variant); }
     .move input { font: inherit; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--mat-sys-outline-variant);
       background: var(--mat-sys-surface); color: var(--mat-sys-on-surface); min-width: 0; }
     .muted { color: var(--mat-sys-on-surface-variant); font-size: 13px; margin: 0; }
+    .warn { margin: 0; font-size: 13px; border-radius: 10px; padding: 8px 12px; background: #FFFAEB; color: #93370D; }
+    .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+    .cell-head { position: relative; }
     .error { color: var(--mat-sys-error); font-size: 13px; margin: 0; }
   `],
 })
@@ -370,6 +387,12 @@ export class EventsCalendarComponent implements OnInit {
   readonly anchor = signal(new Date());
   readonly bookings = signal<Booking[]>([]);
   readonly timeline = signal<Timeline | null>(null);
+  /** The timeline could not be read: say so rather than show 0%. */
+  readonly timelineError = signal(false);
+  /** The period has more bookings than the list returned. */
+  readonly truncated = signal<{ shown: number; total: number } | null>(null);
+  /** Only the latest load may land. */
+  private loadSeq = 0;
   readonly windows = signal<MaintenanceWindow[]>([]);
   readonly classList = signal<ClassRecord[]>([]);
   readonly people = signal<User[]>([]);
@@ -391,12 +414,18 @@ export class EventsCalendarComponent implements OnInit {
 
   readonly title = computed(() => heading(this.anchor(), this.view()));
   readonly shown = computed(() => visibleBookings(this.bookings(), this.filters()));
-  readonly shownWindows = computed(() => (this.filters().maintenance ? this.windows() : []));
-  readonly counts = computed(() => legendCounts(this.bookings(), this.windows()));
+  /** The windows overlapping the period on screen. */
+  private readonly periodWindows = computed(() => {
+    const days = this.days();
+    return windowsInPeriod(this.windows(), days[0], addDays(days[days.length - 1], 1));
+  });
+  readonly shownWindows = computed(() => (this.filters().maintenance ? this.periodWindows() : []));
+  readonly counts = computed(() => legendCounts(this.bookings(), this.periodWindows()));
   readonly selected = computed(() => this.bookings().find(b => b.id === this.selectedId()) ?? null);
 
   private readonly days = computed(() => gridDays(this.anchor(), this.view()));
-  private readonly span = computed(() => hourWindow(this.shown(), this.view() === 'week' ? this.days() : []));
+  private readonly span = computed(() =>
+    hourWindow(this.shown(), this.view() === 'week' ? this.days() : [], this.shownWindows()));
   readonly hours = computed(() => {
     const { lo, hi } = this.span();
     return Array.from({ length: hi - lo }, (_, i) => lo + i);
@@ -410,6 +439,7 @@ export class EventsCalendarComponent implements OnInit {
       const l = dayLoad(this.timeline(), this.bookings(), d);
       const bar = loadBar(l);
       return {
+        level: loadLevel(l),
         key: dayKey(d), date: d, today: dayKey(d) === todayKey,
         label: `${this.weekdays[(d.getDay() + 6) % 7]} ${d.getDate()}`,
         blocks: dayBlocks(this.shown(), d, lo, hi),
@@ -423,8 +453,10 @@ export class EventsCalendarComponent implements OnInit {
     const anchor = this.anchor();
     const todayKey = dayKey(new Date());
     return this.days().map(d => {
-      const bar = loadBar(dayLoad(this.timeline(), this.bookings(), d));
+      const l = dayLoad(this.timeline(), this.bookings(), d);
+      const bar = loadBar(l);
       return {
+        level: loadLevel(l), loadText: loadText(l),
         key: dayKey(d), date: d, today: dayKey(d) === todayKey,
         label: d.getDate() === 1 ? `${d.getDate()} ${d.toLocaleString('en-GB', { month: 'short' })}` : String(d.getDate()),
         inPeriod: d.getMonth() === anchor.getMonth(),
@@ -437,7 +469,6 @@ export class EventsCalendarComponent implements OnInit {
 
   ngOnInit(): void {
     this.load();
-    this.maintenance.list(true).subscribe({ next: w => this.windows.set(w.items), error: () => {} });
     if (this.canSeeClasses()) {
       const classes = this.auth.isAdmin() ? this.classesApi.list() : this.classesApi.mine();
       classes.subscribe({ next: c => this.classList.set(c ?? []), error: () => {} });
@@ -469,19 +500,33 @@ export class EventsCalendarComponent implements OnInit {
     this.filters.set({ ...this.filters(), [k]: !this.filters()[k] });
   }
 
+  /**
+   * The period's bookings (the API filters by the window), its capacity timeline and the
+   * maintenance windows. Past windows are asked for only when the whole period is past: the
+   * list is soonest first and capped, so asking for history would crowd out upcoming ones.
+   * A load that a later one has overtaken is dropped.
+   */
   load(): void {
+    const seq = ++this.loadSeq;
     const days = this.days();
     const from = days[0], to = addDays(days[days.length - 1], 1);
     const week = this.view() === 'week';
     forkJoin({
-      list: this.scheduler.list(from, to, 200).pipe(catchError((e: HttpErrorResponse) => {
-        this.loadError.set(approvalError(e));
-        return of(null);
-      })),
+      list: this.scheduler.list(from, to, LIST_LIMIT).pipe(catchError((e: HttpErrorResponse) => of(approvalError(e)))),
       tl: this.scheduler.timeline(from, days.length, week ? 15 : 60).pipe(catchError(() => of(null))),
-    }).subscribe(({ list, tl }) => {
-      if (list) { this.bookings.set(list.items); this.loadError.set(''); }
+      mw: this.maintenance.list(to.getTime() <= Date.now(), LIST_LIMIT).pipe(catchError(() => of(null))),
+    }).subscribe(({ list, tl, mw }) => {
+      if (seq !== this.loadSeq) return;
+      if (typeof list === 'string') {
+        this.loadError.set(list);
+      } else {
+        this.bookings.set(list.items);
+        this.loadError.set('');
+        this.truncated.set(list.total > list.items.length ? { shown: list.items.length, total: list.total } : null);
+      }
       this.timeline.set(tl);
+      this.timelineError.set(tl === null);
+      if (mw) this.windows.set(mw.items);
     });
   }
 
@@ -492,19 +537,19 @@ export class EventsCalendarComponent implements OnInit {
     this.actionError.set('');
   }
 
+  /** As the server's `_changeable`: a class session by its lead or an admin. */
   canEdit(b: Booking): boolean {
-    const me = this.auth.user()?.id;
-    if (this.role() === 'admin') return true;
-    return this.role() === 'instructor' && !!me && (b.instructor_id === me || b.created_by === me);
+    return mayChange(b, this.role(), this.auth.user()?.id,
+      id => this.classList().find(c => c.id === id)?.lead_instructor?.id);
   }
   canMove(b: Booking): boolean {
     return this.canEdit(b) && ['draft', 'scheduled', 'pending_approval'].includes(b.state);
   }
 
   startMove(b: Booking): void {
-    const s = new Date(b.start_time), e = new Date(b.end_time);
+    const s = new Date(b.start_time);
     this.actionError.set('');
-    this.moving.set({ date: isoDate(s), from: hhmm(s), to: hhmm(e) });
+    this.moving.set({ date: isoDate(s), from: hhmm(s) });
   }
   patchMove(p: Partial<Move>): void {
     const m = this.moving();
@@ -512,16 +557,26 @@ export class EventsCalendarComponent implements OnInit {
   }
   moveValid(): boolean {
     const m = this.moving();
-    return !!m && !!m.date && !!m.from && !!m.to && at(m.date, m.to) > at(m.date, m.from);
+    return !!m && !!m.date && !!m.from && !isNaN(movedTimes({ start_time: '', end_time: '' }, m.date, m.from).start.getTime());
+  }
+  /** Where the moved booking ends: "Thu 7 Mar 17:00". */
+  movedEnd(b: Booking): string {
+    const m = this.moving();
+    if (!m || !this.moveValid()) return '';
+    const end = movedTimes(b, m.date, m.from).end;
+    return `${end.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })} ${hhmm(end)}`;
   }
 
   /** Same booking, new times: everything else is sent as it is so the move changes nothing else. */
   saveMove(b: Booking): void {
     const m = this.moving();
     if (!m || !this.moveValid()) return;
+    const { start, end } = movedTimes(b, m.date, m.from);
     const body: BookingIn = {
-      name: b.name, description: b.description, start_time: at(m.date, m.from).toISOString(),
-      end_time: at(m.date, m.to).toISOString(), template_id: b.template_id, range_id: b.range_id,
+      name: b.name, description: b.description, start_time: start.toISOString(), end_time: end.toISOString(),
+      // The size as booked: the server sizes a booking sent without them as 0.
+      vm_count: b.vm_count, vcpu_total: b.vcpu_total, ram_mb_total: b.ram_mb_total, disk_gb_total: b.disk_gb_total,
+      template_id: b.template_id, range_id: b.range_id,
       instructor_id: b.instructor_id ?? null, course_id: b.course_id ?? null, scenario_id: b.scenario_id ?? null,
       exercise_id: b.exercise_id ?? null, class_id: b.class_id ?? null,
       range_mode: (b.class_id && b.range_mode ? b.range_mode : null) as BookingIn['range_mode'],
@@ -563,7 +618,6 @@ export class EventsCalendarComponent implements OnInit {
   classes(b: Booking): string { return blockClasses(b); }
   pending(b: Booking): boolean { return isPending(b); }
   lane(e: Block): { left: string; width: string } { return laneStyle(e.lane, e.lanes); }
-  lvl(pct: number): string { return pct <= 0 ? 'none' : pct < 60 ? 'ok' : pct <= 100 ? 'mid' : 'high'; }
   pad(h: number): string { return String(h).padStart(2, '0'); }
   hhmmOf(iso: string): string { return hhmm(new Date(iso)); }
   gbOf(mb: number): string { return gb(mb); }

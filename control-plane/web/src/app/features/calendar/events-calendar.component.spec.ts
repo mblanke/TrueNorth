@@ -3,7 +3,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { HttpErrorResponse } from '@angular/common/http';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { provideRouter } from '@angular/router';
-import { of, throwError } from 'rxjs';
+import { Subject, of, throwError } from 'rxjs';
 import { ApiService } from '@core/services/api.service';
 import { AuthService, CurrentUser } from '@core/services/auth.service';
 import { ApprovalItem, Booking, SchedulerApiService, Timeline } from '@core/services/scheduler-api.service';
@@ -15,6 +15,10 @@ import { EventsCalendarComponent } from './events-calendar.component';
 import { HOUR_PX } from './events-calendar.util';
 
 const MONDAY = weekStart(new Date());
+const isoDay = (day: number) => {
+  const d = addDays(MONDAY, day);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
 const at = (day: number, h: number, m = 0) => {
   const d = addDays(MONDAY, day);
   d.setHours(h, m, 0, 0);
@@ -66,6 +70,7 @@ describe('EventsCalendarComponent', () => {
   let scheduler: jasmine.SpyObj<SchedulerApiService>;
   let classes: jasmine.SpyObj<ClassesApiService>;
   let notify: jasmine.SpyObj<NotificationService>;
+  let maintenance: jasmine.SpyObj<MaintenanceWindowsApiService>;
   const user = signal<CurrentUser | null>(null);
 
   function as(role: CurrentUser['role'], bookings: Booking[] = [CLASS_SESSION, EXERCISE, PENDING, GONE]) {
@@ -102,11 +107,15 @@ describe('EventsCalendarComponent', () => {
     scheduler.update.and.callFake((_id, body) => of({ ...CLASS_SESSION, start_time: body.start_time, end_time: body.end_time }));
     scheduler.acceptProposal.and.returnValue(of({ ...PENDING, state: 'scheduled' }));
     scheduler.declineProposal.and.returnValue(of(PENDING));
-    const maintenance = jasmine.createSpyObj('MaintenanceWindowsApiService', ['list']);
+    maintenance = jasmine.createSpyObj('MaintenanceWindowsApiService', ['list']);
     maintenance.list.and.returnValue(of({ items: [WINDOW], total: 1 }));
     classes = jasmine.createSpyObj('ClassesApiService', ['mine', 'list', 'pendingAdditions']);
-    classes.mine.and.returnValue(of([{ id: 'c1', name: 'C201-26-03' }] as any));
-    classes.list.and.returnValue(of([{ id: 'c1', name: 'C201-26-03' }] as any));
+    const CLASSES = [
+      { id: 'c1', name: 'C201-26-03', lead_instructor: { id: 'me', display_name: 'Me' } },
+      { id: 'c2', name: 'C202-26-04', lead_instructor: { id: 'me', display_name: 'Me' } },
+    ];
+    classes.mine.and.returnValue(of(CLASSES as any));
+    classes.list.and.returnValue(of(CLASSES as any));
     classes.pendingAdditions.and.returnValue(of([]));
     const api = jasmine.createSpyObj('ApiService', ['listUsers']);
     api.listUsers.and.returnValue(of([{ id: 'chen', display_name: 'Lt Sam Chen', role: 'instructor' }] as any));
@@ -247,7 +256,8 @@ describe('EventsCalendarComponent', () => {
       block('Friday exercise').click();
       fixture.detectChanges();
       expect(link('Live Class')?.getAttribute('href')).toBe('/ops-center/x1');
-      expect(button('Move')).toBeUndefined(); // someone else's
+      // Lt Chen is named on it, but a class session follows its class: its lead (me) moves it.
+      expect(button('Move')).toBeTruthy();
       expect(el.textContent).toContain('Lt Sam Chen');
     });
 
@@ -255,13 +265,13 @@ describe('EventsCalendarComponent', () => {
       as('instructor');
       component.select(CLASS_SESSION);
       component.startMove(CLASS_SESSION);
-      component.patchMove({ from: '13:00', to: '15:00' });
+      component.patchMove({ from: '13:00' });
       fixture.detectChanges();
       button('Save')!.click();
       const [id, body] = scheduler.update.calls.mostRecent().args;
       expect(id).toBe('cls');
       expect(new Date(body.start_time).getHours()).toBe(13);
-      expect(new Date(body.end_time).getHours()).toBe(15);
+      expect(new Date(body.end_time).getHours()).toBe(16); // same three hours
       expect(body.class_id).toBe('c1');
       expect(body.range_mode).toBe('individual');
       expect(body.template_id).toBe('tpl');
@@ -287,6 +297,135 @@ describe('EventsCalendarComponent', () => {
       expect(el.textContent).toContain('Proposed instead');
       button('Accept')!.click();
       expect(scheduler.acceptProposal).toHaveBeenCalledWith('pend');
+    });
+  });
+
+  describe('review fixes', () => {
+    it('H1: a move keeps the booking\'s size, even one sized by typed totals', () => {
+      const typed = booking({ id: 'typed', template_id: null, instructor_id: 'me', vm_count: 7, vcpu_total: 21,
+        ram_mb_total: 30720, disk_gb_total: 500 });
+      as('instructor', [typed]);
+      component.select(typed);
+      component.startMove(typed);
+      component.saveMove(typed);
+      const body = scheduler.update.calls.mostRecent().args[1];
+      expect(body.template_id).toBeNull();
+      expect([body.vm_count, body.vcpu_total, body.ram_mb_total, body.disk_gb_total]).toEqual([7, 21, 30720, 500]);
+    });
+
+    it('H2: moving a multi-day booking keeps its length and shows the new end', () => {
+      const long = booking({ id: 'long', name: 'Long', instructor_id: 'me', start_time: at(0, 9), end_time: at(2, 17) });
+      as('instructor', [long]);
+      component.select(long);
+      component.startMove(long);
+      component.patchMove({ date: isoDay(1) });
+      fixture.detectChanges();
+      expect(el.querySelector('.move-end')?.textContent).toContain('17:00');
+      component.saveMove(long);
+      const body = scheduler.update.calls.mostRecent().args[1];
+      expect(body.start_time).toBe(at(1, 9));
+      expect(body.end_time).toBe(at(3, 17));
+    });
+
+    it('H2: a booking across midnight moves whole', () => {
+      const late = booking({ id: 'late', name: 'Night', instructor_id: 'me', start_time: at(0, 22), end_time: at(1, 2) });
+      as('instructor', [late]);
+      component.select(late);
+      component.startMove(late);
+      component.patchMove({ date: isoDay(2), from: '21:00' });
+      component.saveMove(late);
+      const body = scheduler.update.calls.mostRecent().args[1];
+      expect(body.start_time).toBe(at(2, 21));
+      expect(body.end_time).toBe(at(3, 1));
+    });
+
+    it('M1: a maintenance window outside 08:00-17:00 is still drawn', () => {
+      maintenance.list.and.returnValue(of({ items: [{ ...WINDOW, starts_at: at(2, 20), ends_at: at(2, 23) }], total: 1 }));
+      as('instructor');
+      const band = el.querySelector('.maint') as HTMLElement;
+      expect(band).toBeTruthy();
+      expect(band.style.height).toBe(`${3 * HOUR_PX}px`);
+    });
+
+    it('M2: a failed timeline reads "Load unavailable", not 0%', () => {
+      scheduler.timeline.and.returnValue(throwError(() => new HttpErrorResponse({ status: 500 })));
+      as('instructor');
+      const head = el.querySelector('.week .head')!;
+      expect(head.textContent).toContain('Load unavailable');
+      expect(head.querySelector('.cap')).toBeNull();
+      expect(head.textContent).not.toContain('0%');
+    });
+
+    it('L1: an instructor named on a class session they do not lead cannot move it', () => {
+      const s = booking({ id: 'other', name: 'Not mine', class_id: 'c9', range_mode: 'individual', instructor_id: 'me' });
+      as('instructor', [s]);
+      block('Not mine').click();
+      fixture.detectChanges();
+      expect(button('Move')).toBeUndefined();
+    });
+
+    it('L1: any instructor moves a booking with no instructor', () => {
+      const s = booking({ id: 'free', name: 'Unassigned', instructor_id: null, created_by: 'someone' });
+      as('instructor', [s]);
+      block('Unassigned').click();
+      fixture.detectChanges();
+      expect(button('Move')).toBeTruthy();
+    });
+
+    it('L2: over capacity colours the bar high', () => {
+      const tl = timeline();
+      tl.buckets = [{ time: at(0, 9), vcpu_committed: 140, ram_mb_committed: 0, disk_gb_committed: 0, event_count: 1 }];
+      scheduler.timeline.and.returnValue(of(tl));
+      as('instructor');
+      expect(el.querySelector('.week .head .used')?.classList).toContain('high');
+    });
+
+    it('L3: says so when the period has more bookings than were returned', () => {
+      scheduler.list.and.returnValue(of({ items: [CLASS_SESSION], total: 250 }));
+      user.set({ sub: 'me', id: 'me', email: 'me@x', display_name: 'i', role: 'instructor' } as CurrentUser);
+      fixture = TestBed.createComponent(EventsCalendarComponent);
+      fixture.detectChanges();
+      expect(fixture.nativeElement.textContent).toContain('Showing 1 of 250 bookings');
+    });
+
+    it('L3: maintenance is reloaded on navigation and only the period\'s windows are counted', () => {
+      const far = { ...WINDOW, id: 'far', starts_at: at(60, 9), ends_at: at(60, 10) };
+      maintenance.list.and.returnValue(of({ items: [WINDOW, far], total: 2 }));
+      as('instructor');
+      expect(maintenance.list).toHaveBeenCalledWith(false, 200);
+      const legend = Array.from(el.querySelectorAll('.legend button')).find(b => b.textContent?.includes('Maintenance'))!;
+      expect(legend.textContent).toContain('1');
+      const calls = maintenance.list.calls.count();
+      component.move(-1);
+      expect(maintenance.list.calls.count()).toBe(calls + 1);
+      expect(maintenance.list.calls.mostRecent().args[0]).toBeTrue(); // a past week needs past windows
+    });
+
+    it('L5: a slow earlier load cannot overwrite a later one', () => {
+      as('instructor');
+      const first = new Subject<any>(), second = new Subject<any>();
+      scheduler.list.and.returnValues(first, second);
+      component.move(1);
+      component.move(-1);
+      second.next({ items: [EXERCISE], total: 1 }); second.complete();
+      first.next({ items: [CLASS_SESSION, PENDING], total: 2 }); first.complete();
+      expect(component.bookings().map(b => b.id)).toEqual(['ex']);
+    });
+
+    it('L6: load, maintenance and selection are announced', () => {
+      as('instructor');
+      const cap = el.querySelector('.week .head .cap')!;
+      expect(cap.getAttribute('role')).toBe('img');
+      expect(cap.getAttribute('aria-label')).toContain('Load');
+      block('C201 Lab 1').click();
+      fixture.detectChanges();
+      expect(block('C201 Lab 1').getAttribute('aria-pressed')).toBe('true');
+      expect(block('Friday exercise').getAttribute('aria-pressed')).toBe('false');
+      component.setView('month');
+      fixture.detectChanges();
+      const sr = Array.from(el.querySelectorAll('.month .cell .sr-only')).map(e => e.textContent).join(' ');
+      expect(sr).toContain('Maintenance: vSphere patching');
+      expect(sr).toContain('Load');
     });
   });
 

@@ -2,7 +2,8 @@ import type { Booking, Timeline } from '@core/services/scheduler-api.service';
 import type { MaintenanceWindow } from '@core/services/maintenance-windows-api.service';
 import {
   ALL_ON, HOUR_PX, KIND_STYLE, MIN_BLOCK_PX, blockClasses, chipsFor, dayBlocks, dayLoad, hourWindow, inMaintenance,
-  kindOf, laneStyle, legendCounts, loadBar, loadText, maintenanceBands, toPx, visibleBookings,
+  kindOf, laneStyle, legendCounts, loadBar, loadLevel, loadText, maintenanceBands, mayChange, movedTimes, toPx,
+  visibleBookings, windowsInPeriod,
 } from './events-calendar.util';
 
 const DAY = new Date(2030, 2, 4); // Monday 4 March 2030, local
@@ -85,6 +86,12 @@ describe('events-calendar.util', () => {
       expect(hourWindow([booking({ start_time: at(6, 30), end_time: at(18, 15) })], [DAY])).toEqual({ lo: 6, hi: 19 });
     });
 
+    it('widens to fit a maintenance window outside the working day (review M1)', () => {
+      expect(hourWindow([], [DAY], [win({ starts_at: at(20), ends_at: at(23) })])).toEqual({ lo: 8, hi: 23 });
+      const [band] = maintenanceBands([win({ starts_at: at(20), ends_at: at(23) })], DAY, 8, 23);
+      expect(band.height).toBe(3 * HOUR_PX);
+    });
+
     it('ignores bookings on days not shown', () => {
       const tomorrow = new Date(2030, 2, 5);
       expect(hourWindow([booking({ start_time: at(5, 0, tomorrow), end_time: at(20, 0, tomorrow) })], [DAY]))
@@ -144,6 +151,50 @@ describe('events-calendar.util', () => {
     });
   });
 
+  describe('moving a booking (review H2): new start, same length', () => {
+    it('keeps a multi-day booking whole: Mon 09:00 to Wed 17:00 moved to Tue ends Thu 17:00', () => {
+      const b = booking({ start_time: at(9), end_time: at(17, 0, new Date(2030, 2, 6)) });
+      const { start, end } = movedTimes(b, '2030-03-05', '09:00');
+      expect(start.getTime()).toBe(new Date(2030, 2, 5, 9).getTime());
+      expect(end.getTime()).toBe(new Date(2030, 2, 7, 17).getTime());
+    });
+
+    it('carries a booking across midnight', () => {
+      const b = booking({ start_time: at(22), end_time: at(2, 0, new Date(2030, 2, 5)) });
+      const { start, end } = movedTimes(b, '2030-03-08', '23:00');
+      expect(start.getTime()).toBe(new Date(2030, 2, 8, 23).getTime());
+      expect(end.getTime()).toBe(new Date(2030, 2, 9, 3).getTime());
+    });
+  });
+
+  describe('who may change a booking (review L1, mirrors the server\'s _changeable)', () => {
+    const lead = (id: string) => (id === 'c1' ? 'lead' : undefined);
+    it('a class session: its lead or an admin, not the instructor it names', () => {
+      const s = booking({ class_id: 'c1', instructor_id: 'named' });
+      expect(mayChange(s, 'instructor', 'lead', lead)).toBeTrue();
+      expect(mayChange(s, 'instructor', 'named', lead)).toBeFalse();
+      expect(mayChange(s, 'admin', 'anyone', lead)).toBeTrue();
+    });
+    it('no instructor: any instructor; otherwise the instructor it names or an admin', () => {
+      expect(mayChange(booking({ instructor_id: null }), 'instructor', 'x', lead)).toBeTrue();
+      expect(mayChange(booking({ instructor_id: 'me' }), 'instructor', 'me', lead)).toBeTrue();
+      expect(mayChange(booking({ instructor_id: 'me', created_by: 'x' }), 'instructor', 'x', lead)).toBeFalse();
+      expect(mayChange(booking({ instructor_id: 'me' }), 'admin', 'x', lead)).toBeTrue();
+    });
+    it('never range ops or observers (no schedule:write)', () => {
+      expect(mayChange(booking({ instructor_id: null }), 'range_ops', 'x', lead)).toBeFalse();
+      expect(mayChange(booking({ instructor_id: null }), 'observer', 'x', lead)).toBeFalse();
+    });
+  });
+
+  describe('maintenance in the period (review L3)', () => {
+    it('keeps only the windows overlapping the shown days', () => {
+      const inside = win({ id: 'in', starts_at: at(13), ends_at: at(15) });
+      const before = win({ id: 'old', starts_at: at(1, 0, new Date(2030, 1, 1)), ends_at: at(2, 0, new Date(2030, 1, 1)) });
+      expect(windowsInPeriod([inside, before], DAY, new Date(2030, 2, 11)).map(w => w.id)).toEqual(['in']);
+    });
+  });
+
   describe('month chips', () => {
     it('lists the day\'s bookings earliest first', () => {
       const chips = chipsFor([
@@ -186,6 +237,13 @@ describe('events-calendar.util', () => {
 
     it('is nothing without a timeline', () => {
       expect(dayLoad(null, [booking({ state: 'pending_approval' })], DAY)).toEqual({ load: 0, withPending: 0 });
+    });
+
+    it('colours by the uncapped load, so over capacity shows as high (review L2)', () => {
+      expect(loadLevel({ load: 1.4, withPending: 1.4 })).toBe('high');
+      expect(loadLevel({ load: 0.7, withPending: 1.2 })).toBe('mid');
+      expect(loadLevel({ load: 0.3, withPending: 0.3 })).toBe('ok');
+      expect(loadLevel({ load: 0, withPending: 0 })).toBe('none');
     });
 
     it('draws the pending extra after the committed part, capped at the track', () => {
