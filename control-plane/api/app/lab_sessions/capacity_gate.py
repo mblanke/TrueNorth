@@ -117,7 +117,7 @@ def own_booking(
     return None
 
 
-def _chain(db: Session, evt: ScheduledEvent) -> list[ScheduledEvent]:
+def class_chain(db: Session, evt: ScheduledEvent) -> list[ScheduledEvent]:
     """``evt`` and the drawable sessions of its class that follow it back to back (each
     starting no later than the teardown grace after the previous one ends), in order."""
     from ..classes.models import ClassSession
@@ -150,15 +150,15 @@ def _chain(db: Session, evt: ScheduledEvent) -> list[ScheduledEvent]:
     return out
 
 
-def drawing_end(db: Session, evt: ScheduledEvent) -> datetime:
-    """When a lab drawing on ``evt`` ends at the latest: with the last session of its class
-    that runs back to back from it, plus the teardown grace."""
-    return max(_utc(e.end_time) for e in _chain(db, evt)) + TEARDOWN_GRACE
+def chain_end(chain: list[ScheduledEvent]) -> datetime:
+    """When a lab drawing on the first session of ``chain`` (``class_chain``) ends at the
+    latest: with the last session of its class that runs back to back, plus the grace."""
+    return max(_utc(e.end_time) for e in chain) + TEARDOWN_GRACE
 
 
-def next_in_chain(db: Session, evt: ScheduledEvent, now: datetime) -> ScheduledEvent | None:
-    """The back-to-back session of ``evt``'s class a lab moves to when ``evt`` has ended."""
-    for e in _chain(db, evt)[1:]:
+def next_live(chain: list[ScheduledEvent], now: datetime) -> ScheduledEvent | None:
+    """The back-to-back session a lab moves to when the first of ``chain`` has ended."""
+    for e in chain[1:]:
         if _utc(e.end_time) > now:
             return e
     return None

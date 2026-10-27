@@ -308,9 +308,11 @@ Content (courses, modules, labs, scenarios, range templates, golden images) has 
    console adapters for open console connections (`app/lab_sessions/consoles.py`,
    `BaseConsoleBackend.console_reader`; on vSphere the VMs' `runtime.numMksConnections`). It
    asks before taking any lock, for all idle-due labs in one batch: one login per vCenter
-   (10 s connection timeout), one PropertyCollector read, at most 30 s per vCenter and
-   `LAB_CONSOLE_BATCH_SECONDS` (30) in all, so a vCenter that does not answer holds up no
-   other lab. Any connection is activity and restarts the idle clock; unknown (no answer in
+   with an explicit API version (no version probe) and a 10 s connection timeout, one
+   PropertyCollector read, on daemon threads that get plain data only, at most two thirds of
+   `LAB_CONSOLE_BATCH_SECONDS` (30) per vCenter so healthy vCenters' answers are kept when
+   one is slow, and no new check on a vCenter whose last one has not come back (its labs are
+   unknown meanwhile), so a vCenter that does not answer holds up no other lab. Any connection is activity and restarts the idle clock; unknown (no answer in
    time, or a console-capable family with no adapter) keeps the lab and asks again after
    `LAB_CONSOLE_RECHECK_MINUTES` (15); a family with no console concept (Proxmox, Hyper-V)
    closes idle labs on heartbeats alone. **An open console tab, including a staff vSphere
@@ -321,8 +323,9 @@ Content (courses, modules, labs, scenarios, range templates, golden images) has 
    (default 15) before, and the session records `end_reason = idle` (`expired` stays the
    maximum lifetime). Only lab sessions are closed by this rule; a lab session found pointing
    at a class's range is ended without a teardown (`failed`, `end_reason = class_range`),
-   its lab networks released (the port groups are logged), logged once, so the Student can
-   launch again.
+   logged once, so the Student can launch again. Its lab networks stay leased (the class
+   range's machines are on them; releasing them would hand live networks to another lab);
+   the port groups are logged for an operator to clear.
 
    Known limits: the idle warning is in-app only (a Student who only uses Moodle does not see
    it); labs ignore the scheduler's `warn` over-capacity policy; resources in one 15-minute

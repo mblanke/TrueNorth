@@ -14,6 +14,7 @@ The concurrent last-slot start is in test_lab_capacity_gate_postgres.py.
 
 from __future__ import annotations
 
+import json
 import re
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -822,7 +823,8 @@ class TestTheVsphereConsoleBatch:
             pc = SimpleNamespace(RetrievePropertiesEx=retrieve, ContinueRetrievePropertiesEx=None)
             return SimpleNamespace(_stub=None, RetrieveContent=lambda: SimpleNamespace(propertyCollector=pc))
 
-        monkeypatch.setattr(m, "SmartConnect", smart_connect)
+        monkeypatch.setattr(m, "Connect", smart_connect)
+        monkeypatch.setattr(m, "_IN_FLIGHT", set())
         monkeypatch.setattr(m, "Disconnect", lambda si: None)
         monkeypatch.setattr(m, "vim", SimpleNamespace(VirtualMachine=lambda moid, stub: SimpleNamespace(_moId=moid)))
         monkeypatch.setattr(m, "vmodl", SimpleNamespace(query=SimpleNamespace(PropertyCollector=SimpleNamespace(
@@ -837,8 +839,9 @@ class TestTheVsphereConsoleBatch:
 
         from app.console_backends import ConsoleTarget
 
-        return ConsoleTarget(key, SimpleNamespace(id=uuid.uuid4(), host=host),
-                             [{"vm_id": v, "name": v} for v in vm_ids])
+        rid = uuid.uuid4()
+        return ConsoleTarget(key, str(rid), [{"vm_id": v, "name": v} for v in vm_ids],
+                             rng=SimpleNamespace(id=rid, host=host))
 
     def test_one_login_per_vcenter_with_a_timeout(self, monkeypatch):
         m, logins = self._fakes(monkeypatch)
@@ -847,6 +850,7 @@ class TestTheVsphereConsoleBatch:
         assert m.VsphereWebMKSConsole().console_reader(object(), targets)() == {"a": 1, "b": 0, "c": 0}
         assert sorted(kw["host"] for kw in logins) == ["vc1", "vc2"]
         assert all(kw["httpConnectionTimeout"] == m.CONNECT_TIMEOUT for kw in logins)
+        assert all(kw["version"] == m.API_VERSION for kw in logins)  # no version probe
 
     def test_a_vcenter_that_does_not_answer_in_time_is_unknown(self, monkeypatch):
         import time
@@ -940,8 +944,10 @@ class TestAClassLabFollowsItsClass:
         assert s.booking_id is None
 
 
-class TestTheBackstopReleasesTheLabsNetworks:
-    def test_its_port_groups_go_back_to_the_pool(self, long_lab, db_session, worker, monkeypatch):  # noqa: F811
+class TestTheBackstopKeepsTheLabsNetworks:
+    """Round 4, B2: releasing them handed the class range's live port groups to the next lab."""
+
+    def test_its_port_groups_stay_leased_for_an_operator(self, long_lab, db_session, worker, monkeypatch):  # noqa: F811
         from app.lab_sessions.models import LabNetworkLease
 
         monkeypatch.setenv("PROVISIONER_BACKEND", "vsphere_api")
@@ -953,4 +959,131 @@ class TestTheBackstopReleasesTheLabsNetworks:
         _at(monkeypatch, datetime.now(UTC) + timedelta(hours=13))
         service.sweep(db_session)
         assert session.end_reason == "class_range"
-        assert db_session.query(LabNetworkLease).filter(LabNetworkLease.session_id == session.id).count() == 0
+        assert db_session.query(LabNetworkLease).filter(LabNetworkLease.session_id == session.id).count() == 1
+
+    def test_another_student_never_gets_the_class_ranges_port_group(
+        self, lab, db_session, worker, monkeypatch  # noqa: F811
+    ):
+        """The reviewer's repro: with one port group, the next lab must wait, not take it."""
+        _, rid, _ = lab
+        monkeypatch.setenv("PROVISIONER_BACKEND", "vsphere_api")
+        monkeypatch.setenv("LAB_PORT_GROUPS", "pg-lab-01")
+        monkeypatch.setenv("CLUSTER_TOTAL_VCPU", "1000")
+        a, _ = _try_launch(db_session, student(db_session), rid)
+        until(db_session, a, "ready")
+        pg_a = set(service._session_networks(db_session, a).values())
+        TestClassRangesAreNeverClosed()._class_range(db_session, a.range_id)
+        _at(monkeypatch, datetime.now(UTC) + timedelta(days=8))
+        act(db_session, service.advance, a)
+        assert a.end_reason == "class_range"
+        monkeypatch.setattr(service, "_now", lambda: datetime.now(UTC))
+        b, _ = _try_launch(db_session, student(db_session), rid)
+        assert not pg_a & set(service._session_networks(db_session, b).values())
+        assert b.state == "queued"
+
+
+# ── round 4 (b743bfea) ───────────────────────────────────────────────
+
+
+class TestConsoleThreadsGetPlainDataOnly:
+    """Round 4, B1: an abandoned vCenter thread read ``t.rng.id`` after the sweep committed,
+    a lazy load: SQL on the sweep's Session from another thread."""
+
+    def test_no_sql_is_issued_from_a_console_thread(self, long_lab, db_session, monkeypatch):
+        import threading
+        import time
+        from types import SimpleNamespace
+        from unittest import mock
+
+        from app.console_backends import vsphere_webmks as vw
+        from sqlalchemy import event
+
+        s = student(db_session)
+        session, _ = _try_launch(db_session, s, long_lab)
+        until(db_session, session, "ready")
+        rng = db_session.get(Range, session.range_id)
+        rng.provisioner_output = json.dumps({"vms": [{"vm_id": "vm-1", "name": f"{str(rng.id)[:8]}-ws"}]})
+        session.backend = "vsphere_api"
+        db_session.commit()
+        t0 = datetime.now(UTC)
+        _at(monkeypatch, t0)
+        act(db_session, service.touch, session)
+        _at(monkeypatch, t0 + timedelta(hours=4, minutes=1))
+        monkeypatch.setenv("VSPHERE_URL", "https://vc.example")
+        monkeypatch.setenv("LAB_CONSOLE_BATCH_SECONDS", "0.3")
+        monkeypatch.setattr(vw, "VCENTER_SECONDS", 5)
+        monkeypatch.setattr(vw, "_IN_FLIGHT", set())
+        obj = SimpleNamespace(obj=SimpleNamespace(_moId="vm-1"), propSet=[
+            SimpleNamespace(name="name", val=f"{str(rng.id)[:8]}-ws"),
+            SimpleNamespace(name="runtime.numMksConnections", val=1)])
+        si = mock.MagicMock()
+        si.RetrieveContent.return_value.propertyCollector.RetrievePropertiesEx.return_value = SimpleNamespace(
+            objects=[obj], token=None)
+        monkeypatch.setattr(vw, "Connect", lambda **kw: (time.sleep(1.0), si)[1])  # answers after the deadline
+        monkeypatch.setattr(vw, "Disconnect", lambda si: None)
+        monkeypatch.setattr(vw, "vmodl", mock.MagicMock())
+        monkeypatch.setattr(vw, "vim", mock.MagicMock())
+        seen = []
+        eng = db_session.get_bind()
+
+        def listener(*a):
+            seen.append(threading.current_thread().name)
+
+        event.listen(eng, "before_cursor_execute", listener)
+        try:
+            service.sweep(db_session)
+            time.sleep(2.0)  # the abandoned thread finishes
+        finally:
+            event.remove(eng, "before_cursor_execute", listener)
+        assert [n for n in seen if n.startswith("tn-")] == []
+
+
+class TestOneHungVcenter:
+    """Round 4, S1: threads piled up on a hung vCenter, and it disabled idle-close everywhere."""
+
+    def test_two_sweeps_start_at_most_one_thread_on_a_hung_vcenter(self, monkeypatch):
+        import threading
+        import time
+
+        m, logins = TestTheVsphereConsoleBatch()._fakes(monkeypatch, slow_host="vc-slow")
+        monkeypatch.setattr(m, "VCENTER_SECONDS", 0.2)
+        target = TestTheVsphereConsoleBatch()._target("slow", "vc-slow", "vm-9")
+        first = m.VsphereWebMKSConsole().console_reader(object(), [target])()
+        second = m.VsphereWebMKSConsole().console_reader(object(), [target])()
+        assert first == second == {"slow": None}
+        assert len(logins) == 1  # the second check did not start another thread
+        assert all(t.daemon for t in threading.enumerate() if t.name == "tn-console")
+        time.sleep(3.2)  # the hung login comes back: the vCenter is asked again next time
+        m.VsphereWebMKSConsole().console_reader(object(), [target])
+        assert not m._IN_FLIGHT
+
+    def test_a_healthy_vcenters_answer_survives_anothers_timeout_in_the_sweep(
+        self, long_lab, db_session, mock_console, monkeypatch
+    ):
+        """The per-vCenter limit is shorter than the batch's: healthy answers come back."""
+        from app.console_backends import vsphere_webmks as m
+
+        monkeypatch.delenv("LAB_CONSOLE_VCENTER_SECONDS", raising=False)
+        monkeypatch.setenv("LAB_CONSOLE_BATCH_SECONDS", "30")
+        monkeypatch.setattr(m, "VCENTER_SECONDS", None)
+        assert m.vcenter_seconds() < 30
+        mock_console.connections = 1
+        session, _ = TestConsoleUseIsActivity()._idle(db_session, long_lab, monkeypatch)
+        service.sweep(db_session)
+        assert session.state == "active" and session.end_reason == ""
+
+
+class TestARemovedStudentsLabIsNotExtended:
+    def test_taken_off_the_roll_call_the_lab_keeps_its_end_or_ends_sooner(self, long_lab, db_session):
+        course_id = db_session.get(service.CourseRelease, long_lab).course_id
+        now = datetime.now(UTC)
+        evt, cls = _lab_class(db_session, course_id, end=now + timedelta(minutes=30))
+        s = _on_roll_call(db_session, cls)
+        lab_session, _ = _try_launch(db_session, s, long_lab)
+        until(db_session, lab_session, "ready")
+        before = lab_session.max_expires_at
+        db_session.query(RollCallEntry).filter(RollCallEntry.user_id == s.id).update({"status": "removed"})
+        evt.end_time = now + timedelta(hours=4)  # the class runs on: the removed Student's lab does not
+        db_session.commit()
+        act(db_session, service.advance, lab_session)
+        assert lab_session.max_expires_at == before

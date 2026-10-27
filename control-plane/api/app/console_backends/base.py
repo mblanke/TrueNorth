@@ -14,11 +14,14 @@ class ConsoleError(Exception):
 
 @dataclass
 class ConsoleTarget:
-    """One lab whose consoles the sweep asks about: ``key`` comes back in the answer."""
+    """One lab whose consoles the sweep asks about: ``key`` comes back in the answer.
+    ``range_id`` and ``vms`` are plain copies, all a reader's threads may use; ``rng`` (the
+    lab's Range) is for ``console_reader`` on the caller's thread only, never for a thread."""
 
     key: Hashable
-    rng: Any  # the lab's Range
-    vms: list[dict[str, Any]] = field(default_factory=list)  # its provisioner output's VMs
+    range_id: str
+    vms: list[dict[str, Any]] = field(default_factory=list)  # its provisioner output's VMs (plain)
+    rng: Any = None
 
 
 ConsoleReader = Callable[[], dict[Hashable, int | None]]

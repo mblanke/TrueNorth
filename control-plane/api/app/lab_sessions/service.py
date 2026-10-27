@@ -757,11 +757,17 @@ def _follow_class(db: Session, session: LabSession, now: datetime) -> None:
     evt = db.get(ScheduledEvent, session.booking_id)
     if evt is None or evt.state not in HOLDING:
         return  # called off: it draws on nothing now (holdings); its end stays as it was
-    if _aware(evt.end_time) <= now:
-        nxt = capacity_gate.next_in_chain(db, evt, now)
-        if nxt is not None:
-            session.booking_id, evt = nxt.id, nxt
-    session.max_expires_at = min(_aware(session.latest_end_at), capacity_gate.drawing_end(db, evt))
+    from . import holdings
+
+    chain = capacity_gate.class_chain(db, evt)
+    if not holdings.is_drawing(db, session.id):
+        # Not drawing (taken off the roll call, or not running yet): its end may only come
+        # earlier with the class, never later, and it does not move to the next session.
+        session.max_expires_at = min(_aware(session.max_expires_at), capacity_gate.chain_end(chain))
+    else:
+        if _aware(evt.end_time) <= now and (nxt := capacity_gate.next_live(chain, now)) is not None:
+            session.booking_id = nxt.id
+        session.max_expires_at = min(_aware(session.latest_end_at), capacity_gate.chain_end(chain))
     if session.idle_expires_at is not None:
         session.idle_expires_at = min(_aware(session.idle_expires_at), session.max_expires_at)
 
@@ -780,12 +786,13 @@ def _advance_running(db: Session, session: LabSession, now: datetime, consoles: 
 
     if class_ranges.is_class_range(db, session.range_id):  # never ours to destroy (ADR 0014 §10)
         # Ended without a teardown: the range is the class's. Terminal, so the Student's next
-        # launch is not blocked; its networks stay reserved for an operator (machines may be
-        # on them), as for any lab that could not be shut down cleanly.
+        # launch is not blocked. Its lab networks stay leased: the class range's machines are
+        # on them, and returning them would hand live networks to another Student's lab. An
+        # operator clears them (the port groups are logged), as for any lab that could not
+        # be shut down cleanly.
         port_groups = sorted(_session_networks(db, session).values())
-        logger.warning("lab session %s points at class range %s; ended, range left to the class; "
-                       "its lab networks %s are released", session.id, session.range_id, port_groups)
-        _release_networks(db, session)
+        logger.warning("lab session %s points at class range %s; ended, range left to the class; its lab "
+                       "networks %s stay leased for an operator", session.id, session.range_id, port_groups)
         session.error = CLASS_RANGE
         session.end_reason = "class_range"
         session.ended_at = now

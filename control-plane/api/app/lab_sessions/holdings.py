@@ -109,6 +109,11 @@ def drawing_on(db: Session, event_ids: Iterable[uuid.UUID]) -> dict[uuid.UUID, t
     return out
 
 
+def is_drawing(db: Session, session_id: uuid.UUID) -> bool:
+    """Whether this lab draws on its booking's hold now (live, Student on the roll call)."""
+    return db.query(_drawing(db).filter(LabSession.id == session_id).exists()).scalar()
+
+
 def drawn(db: Session, booking_id: uuid.UUID, exclude: uuid.UUID | None = None) -> tuple[int, int, int]:
     """What the labs drawing on a booking hold now: (vCPU, RAM MB, disk GB)."""
     q = _drawing(db).filter(LabSession.booking_id == booking_id)

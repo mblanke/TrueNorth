@@ -21,8 +21,10 @@ from __future__ import annotations
 import json
 import logging
 import os
+import queue
+import threading
+import time
 import uuid
-from concurrent.futures import ThreadPoolExecutor, wait
 from datetime import datetime
 
 from sqlalchemy.orm import Session
@@ -67,10 +69,15 @@ def ask(db: Session, sessions: list[LabSession]) -> dict[uuid.UUID, int | None]:
             out[s.id] = None
             continue
         try:
-            vms = list(json.loads(rng.provisioner_output or "{}").get("vms") or [])
+            vms = [
+                {"vm_id": str(vm.get("vm_id") or ""), "name": str(vm.get("name") or "")}
+                for vm in json.loads(rng.provisioner_output or "{}").get("vms") or []
+                if isinstance(vm, dict)
+            ]
         except ValueError:
             vms = []
-        by_backend.setdefault(s.backend, []).append(ConsoleTarget(s.id, rng, vms))
+        # Plain copies for the readers' threads; the Range itself only for preparing them here.
+        by_backend.setdefault(s.backend, []).append(ConsoleTarget(s.id, str(rng.id), vms, rng=rng))
     readers = []
     for backend, targets in by_backend.items():
         adapter = console_backend_for(backend)
@@ -85,15 +92,23 @@ def ask(db: Session, sessions: list[LabSession]) -> dict[uuid.UUID, int | None]:
             logger.warning("console check: %s could not prepare", backend, exc_info=True)
     if not readers:
         return out
-    pool = ThreadPoolExecutor(max_workers=len(readers), thread_name_prefix="tn-lab-console")
-    futures = {pool.submit(read): backend for backend, read in readers}
-    done, late = wait(futures, timeout=_batch_seconds())
-    for f in done:
-        if f.exception() is None:
-            out.update({k: v for k, v in f.result().items() if k in out})
-        else:
-            logger.warning("console check: %s failed: %s", futures[f], f.exception())
-    for f in late:
-        logger.warning("console check: %s did not answer in %ss; its labs are kept", futures[f], _batch_seconds())
-    pool.shutdown(wait=False, cancel_futures=True)
+    answers: queue.Queue = queue.Queue()
+
+    def run(backend: str, read) -> None:
+        try:
+            answers.put((backend, read()))
+        except Exception as exc:  # noqa: BLE001 — unknown for its labs
+            logger.warning("console check: %s failed: %s", backend, exc)
+            answers.put((backend, {}))
+
+    for backend, read in readers:  # daemon threads: a hung one never blocks shutdown
+        threading.Thread(target=run, args=(backend, read), name="tn-lab-console", daemon=True).start()
+    deadline = time.monotonic() + _batch_seconds()
+    for _ in readers:
+        try:
+            backend, answer = answers.get(timeout=max(0.0, deadline - time.monotonic()))
+        except queue.Empty:
+            logger.warning("console check: a backend did not answer in %ss; its labs are kept", _batch_seconds())
+            break
+        out.update({k: v for k, v in answer.items() if k in out})
     return out
