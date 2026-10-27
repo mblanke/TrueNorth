@@ -369,8 +369,8 @@ app.state.ws_manager = ws_manager
 # -- Routers (fine-grained RBAC via require_permission) --------------------
 from .acknowledgement.router import router as acknowledgement_router  # noqa: E402 (ADR 0014 §3; + its tables)
 from .class_setup.router import router as class_setup_router  # noqa: E402 (#200)
-from .classes.my_classes import router as my_classes_router  # noqa: E402 (#284)
 from .classes.closeout_router import router as class_closeout_router  # noqa: E402 (#283)
+from .classes.my_classes import router as my_classes_router  # noqa: E402 (#284)
 from .classes.range_router import router as class_ranges_router  # noqa: E402 (#282)
 from .classes.router import router as classes_router  # noqa: E402 (ADR 0014, + its tables)
 from .cmi5.router import router as cmi5_router  # noqa: E402 (also registers the cmi5 tables)
