@@ -69,6 +69,7 @@ router = APIRouter(prefix="/classes", tags=["classes"])
 # The page's week or month, with room for a month view's six-week grid.
 MAX_WINDOW = timedelta(days=45)
 DEFAULT_WINDOW = timedelta(days=7)
+SLACK = timedelta(days=1)
 
 # Entries that are the caller's classes: on the roll call, or forfeited (to be reinstated).
 MINE = (RollCallStatus.invited.value, RollCallStatus.signed_in.value, RollCallStatus.ready.value,
@@ -118,6 +119,9 @@ def list_attending_classes(
     tid, uid = tenant_uuid(user), uuid.UUID(user.id)
     ack = acknowledgement.status(db, uid, tid)
 
+    # A day's slack each side: class dates are local calendar days and the window is UTC, and
+    # a last session may run past the end date (``ranges._ends``). A class found only through
+    # the slack is kept only when it has a session in the window.
     rows = (
         db.query(RollCallEntry, Class)
         .join(Class, Class.id == RollCallEntry.class_id)
@@ -127,20 +131,28 @@ def list_attending_classes(
             Class.tenant_id == tid,
             RollCallEntry.status.in_(MINE),
             Class.status == ClassStatus.open.value,
-            Class.start_date <= hi.date(),
-            Class.end_date >= lo.date(),
+            Class.start_date <= (hi + SLACK).date(),
+            Class.end_date >= (lo - SLACK).date(),
         )
         .order_by(Class.start_date, Class.name)
         .limit(100)
         .all()
     )
-    out = [_class_out(db, cls, entry, lo, hi, now) for entry, cls in rows]
+    out = []
+    for entry, cls in rows:
+        c = _class_out(db, cls, entry, lo, hi, now)
+        in_dates = cls.start_date <= hi.date() and cls.end_date >= lo.date()
+        if in_dates or c.sessions:
+            out.append(c)
     return AttendingClassesOut(acknowledgement_signed=not ack.required, window_start=lo, window_end=hi, classes=out)
 
 
-def _class_out(db: Session, cls: Class, entry: RollCallEntry, lo: datetime, hi: datetime, now: datetime) -> AttendingClassOut:
-    # tenant-safe: the class's own course and lead, in the class's tenant.
+def _class_out(
+    db: Session, cls: Class, entry: RollCallEntry, lo: datetime, hi: datetime, now: datetime
+) -> AttendingClassOut:
+    # A shared catalogue course may belong to another tenant (CourseRangeMode): only its name.
     course = db.query(Course.name).filter(Course.id == cls.course_id).scalar() or ""
+    # tenant-safe: the class's own lead, in the class's tenant.
     lead = (
         db.query(User.display_name)
         .filter(User.id == cls.lead_instructor_id, User.tenant_id == cls.tenant_id)
@@ -160,31 +172,47 @@ def _class_out(db: Session, cls: Class, entry: RollCallEntry, lo: datetime, hi: 
         .all()
     )
     forfeited = entry.status == RollCallStatus.forfeited.value
-    seat_rows = {} if forfeited else _seat_rows(db, cls, entry)
-    rngs = _ranges(db, cls, seat_rows)
+    rows = [] if forfeited else _seat_rows(db, cls, entry)
+    rngs = _ranges(db, cls, rows)
 
     sessions_out: list[AttendingSessionOut] = []
-    upcoming: list[tuple[ScheduledEvent, str]] = []
+    live_now: list[tuple[ScheduledEvent, str]] = []
+    to_come: list[tuple[ScheduledEvent, str]] = []
     for evt, mode in events:
         s, e = as_utc(evt.start_time), as_utc(evt.end_time)
         live = evt.state in UNDER_WAY and s <= now < e
-        status = None if forfeited else _status(_row_for(evt, mode, seat_rows), rngs)
+        status = None if forfeited else _status(evt, mode, rows, rngs)
         if s < hi and e > lo:
             sessions_out.append(AttendingSessionOut(
                 event_id=evt.id, name=evt.name, start_time=s, end_time=e, range_mode=mode, live=live,
                 range_status=status,
             ))
         if e > now and evt.state in HOLDING:
-            upcoming.append((evt, mode))
+            (live_now if live else to_come).append((evt, mode))
 
-    nxt = upcoming[0] if upcoming else None
-    range_status = join = None
-    if nxt is not None and not forfeited:
-        evt, mode = nxt
-        row = _row_for(evt, mode, seat_rows)
-        range_status = _status(row, rngs)
-        if range_status == AttendingRangeStatus.ready and _may_join(evt, mode, row, now):
-            join = row.range_id
+    # The session the page is about: one under way whose range opens now (an exercise inside a
+    # day-long lab wins), else the first under way or to come that uses a range.
+    range_status = join = target = None
+    if not forfeited:
+        # A collective session under way first: its shared range opens only now.
+        live_now.sort(key=lambda em: em[1] != RangeMode.collective.value)
+        for evt, mode in live_now:
+            row = _row_for(evt, mode, rows)
+            if _status(evt, mode, rows, rngs) == AttendingRangeStatus.ready and _may_join(evt, row, rngs, now):
+                target, range_status, join = evt, AttendingRangeStatus.ready, row.range_id
+                break
+        if target is None:
+            for evt, mode in live_now + to_come:
+                status = _status(evt, mode, rows, rngs)
+                if status is None:
+                    continue  # a session with no range (a lecture): look further
+                row = _row_for(evt, mode, rows)
+                target, range_status = evt, status
+                if status == AttendingRangeStatus.ready and _may_join(evt, row, rngs, now):
+                    join = row.range_id
+                break
+    if target is None and (live_now or to_come):
+        target = (live_now + to_come)[0][0]
     windows = forfeit.class_windows(db, cls) if forfeited else None
     return AttendingClassOut(
         id=cls.id, name=cls.name, course_name=course, lead_instructor=lead, start_date=cls.start_date,
@@ -192,16 +220,16 @@ def _class_out(db: Session, cls: Class, entry: RollCallEntry, lo: datetime, hi: 
         seat=AttendingSeatStatus.forfeited if forfeited else AttendingSeatStatus.ready,
         forfeit_deadline=forfeit.deadline(windows, entry) if windows else None,
         forfeited_at=entry.forfeited_at if forfeited else None,
-        sessions=sessions_out, range_status=range_status, next_session_id=nxt[0].id if nxt else None,
+        sessions=sessions_out, range_status=range_status, next_session_id=target.id if target else None,
         join_range_id=join,
     )
 
 
-def _seat_rows(db: Session, cls: Class, entry: RollCallEntry) -> dict[tuple[str, uuid.UUID], ClassRange]:
-    """The caller's own seats and the class's shared ranges, by (kind, template), standing
-    ones only. Never another Student's seat."""
+def _seat_rows(db: Session, cls: Class, entry: RollCallEntry) -> list[ClassRange]:
+    """The caller's own seats and the class's shared ranges, standing ones only. Never
+    another Student's seat."""
     # tenant-safe: the class's own ranges, in its tenant.
-    rows = (
+    return (
         db.query(ClassRange)
         .filter(
             ClassRange.class_id == cls.id,
@@ -212,39 +240,53 @@ def _seat_rows(db: Session, cls: Class, entry: RollCallEntry) -> dict[tuple[str,
         )
         .all()
     )
-    return {(r.kind, r.template_id): r for r in rows}
 
 
-def _ranges(db: Session, cls: Class, rows: dict) -> dict[uuid.UUID, Range]:
-    ids = [r.range_id for r in rows.values() if r.range_id]
+def _ranges(db: Session, cls: Class, rows: list[ClassRange]) -> dict[uuid.UUID, Range]:
+    """The rows' ranges that still exist (a deleted range opens nothing: ``readable_range``)."""
+    ids = [r.range_id for r in rows if r.range_id]
     if not ids:
         return {}
     # tenant-safe: the class's own ranges.
-    return {r.id: r for r in db.query(Range).filter(Range.id.in_(ids), Range.tenant_id == cls.tenant_id)}
+    return {
+        r.id: r
+        for r in db.query(Range).filter(Range.id.in_(ids), Range.tenant_id == cls.tenant_id, Range.deleted_at.is_(None))
+    }
 
 
-def _row_for(evt: ScheduledEvent, mode: str, rows: dict) -> ClassRange | None:
-    """The caller's range for a session: their own seat (individual) or the class's shared
-    range (collective), from the session's template."""
-    if evt.template_id is None:
+def _row_for(evt: ScheduledEvent, mode: str, rows: list[ClassRange]) -> ClassRange | None:
+    """The caller's range for a session: their own seat from its template (individual), or
+    the class's shared range it books, else the one built from its template (collective)."""
+    if mode == RangeMode.individual.value:
+        return next((r for r in rows if r.kind == ClassRangeKind.seat.value and r.template_id == evt.template_id),
+                    None) if evt.template_id else None
+    shared = [r for r in rows if r.kind == ClassRangeKind.shared.value]
+    if evt.range_id is not None:
+        # The range it books, the class's own (or none: a range that is not the class's is not handed out here).
+        return next((r for r in shared if r.range_id == evt.range_id), None)
+    return next((r for r in shared if r.template_id == evt.template_id), None) if evt.template_id else None
+
+
+def _uses_range(evt: ScheduledEvent, mode: str) -> bool:
+    return evt.template_id is not None or (mode == RangeMode.collective.value and evt.range_id is not None)
+
+
+def _status(evt: ScheduledEvent, mode: str, rows: list[ClassRange], rngs: dict) -> AttendingRangeStatus | None:
+    """None: the session uses no range. A range not created yet (before the provisioning
+    lead), torn down or deleted: not built."""
+    if not _uses_range(evt, mode):
         return None
-    kind = ClassRangeKind.seat if mode == RangeMode.individual.value else ClassRangeKind.shared
-    row = rows.get((kind.value, evt.template_id))
-    if row is not None and kind == ClassRangeKind.shared and evt.range_id is not None and row.range_id != evt.range_id:
-        return None  # the session books a range that is not the class's: not handed out here
-    return row
-
-
-def _status(row: ClassRange | None, rngs: dict) -> AttendingRangeStatus | None:
+    row = _row_for(evt, mode, rows)
     if row is None:
-        return None
+        return AttendingRangeStatus.not_built
     return _STATUS[ranges.status(row, rngs.get(row.range_id) if row.range_id else None)]
 
 
-def _may_join(evt: ScheduledEvent, mode: str, row: ClassRange | None, now: datetime) -> bool:
-    """As ``ranges.student_participation`` decides it: an own seat whenever it stands; the
-    shared range only while a collective session on it is under way."""
-    if row is None or row.range_id is None:
+def _may_join(evt: ScheduledEvent, row: ClassRange | None, rngs: dict, now: datetime) -> bool:
+    """As ``ranges.student_participation`` and ``readable_range`` decide it: an own seat whose
+    range exists, whenever it stands; the shared range only while a session booking it is
+    under way."""
+    if row is None or row.range_id is None or row.range_id not in rngs:
         return False
     if row.kind == ClassRangeKind.seat.value:
         return True

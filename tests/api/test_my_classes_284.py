@@ -128,9 +128,18 @@ def _only(body) -> dict:
 # ── Who may ask ─────────────────────────────────────────────────────────────
 
 
-@pytest.mark.parametrize("role", ["observer", "range_ops", "lead"])
-def test_only_students_hold_class_attend(client, world, role):
+@pytest.mark.parametrize("role", ["observer", "range_ops"])
+def test_observers_and_range_ops_do_not_hold_class_attend(client, world, role):
     assert _get(client, world[role]).status_code == 403
+
+
+def test_an_instructor_holds_it_to_grant_the_student_role_and_sees_only_their_own_entries(client, world):
+    # grant_refusal: an instructor approving a Student must hold every Student permission.
+    from app.rbac import grant_refusal
+
+    assert grant_refusal(world["lead"], UserRole.student) is None
+    r = _get(client, world["lead"])
+    assert r.status_code == 200 and r.json()["classes"] == []  # they lead it; they are not on its roll call
 
 
 def test_a_student_sees_their_class_with_the_leads_name_and_no_email(client, world):
@@ -183,8 +192,11 @@ def test_another_students_seat_is_never_shown(client, world, db_session):
     _session(db, world["cls"], world["tpl"], NOW + timedelta(hours=2))
     _range(db, world["cls"], world["tpl"], world["bob_entry"], state=RangeState.ready)
     db.commit()
-    c = _only(_get(client, world["ann"]).json())
-    assert c["range_status"] is None and c["join_range_id"] is None  # Ann has no seat yet; Bob's is not hers
+    r = _get(client, world["ann"])
+    c = _only(r.json())
+    # Ann's seat is not built yet; Bob's ready one is not hers.
+    assert c["range_status"] == "not_built" and c["join_range_id"] is None
+    assert str(world["bob_entry"].id) not in r.text
 
 
 # ── Sessions and the window ─────────────────────────────────────────────────
@@ -330,3 +342,70 @@ def test_acknowledgement_status(client, world, db_session):
     db.commit()
     # A new version: not signed yet. (In the app the sign-in gate sends them to sign first.)
     assert _get(client, world["ann"]).json()["acknowledgement_signed"] is False
+
+
+# ── Edge cases from review: Join agrees with the credentials endpoint ───────
+
+
+def test_a_deleted_range_is_not_offered(client, world, db_session):
+    db = db_session
+    _session(db, world["cls"], world["tpl"], NOW + timedelta(hours=2))
+    row = _range(db, world["cls"], world["tpl"], world["ann_entry"])
+    db.get(Range, row.range_id).deleted_at = NOW
+    db.commit()
+    c = _only(_get(client, world["ann"]).json())
+    assert c["range_status"] == "not_built" and c["join_range_id"] is None
+    act_as(world["ann"])
+    assert client.get(f"/ranges/{row.range_id}/credentials").status_code == 404
+
+
+def test_an_exercise_under_way_inside_a_day_long_lab_opens_the_shared_range(client, world, db_session):
+    db = db_session
+    cls = world["cls"]
+    _session(db, cls, world["tpl"], NOW - timedelta(hours=4), hours=8, state=EventState.active, name="All-day lab")
+    _range(db, cls, world["tpl"], world["ann_entry"])
+    shared = _range(db, cls, world["shared_tpl"])
+    ex = _session(db, cls, world["shared_tpl"], NOW - timedelta(minutes=30), hours=1, mode="collective",
+                  state=EventState.active, name="Exercise", range_id=shared.range_id)
+    db.commit()
+    c = _only(_get(client, world["ann"]).json())
+    assert c["next_session_id"] == str(ex.id) and c["join_range_id"] == str(shared.range_id)
+    act_as(world["ann"])
+    assert client.get(f"/ranges/{shared.range_id}/credentials").status_code == 200
+
+
+def test_a_collective_session_is_matched_by_the_range_it_books(client, world, db_session):
+    db = db_session
+    cls = world["cls"]
+    shared = _range(db, cls, world["shared_tpl"])
+    # The session's template changed after its shared range was built: it still books that range.
+    _session(db, cls, world["tpl"], NOW - timedelta(minutes=10), mode="collective", state=EventState.active,
+             range_id=shared.range_id)
+    db.commit()
+    c = _only(_get(client, world["ann"]).json())
+    assert c["join_range_id"] == str(shared.range_id)
+
+
+def test_a_session_with_no_range_is_skipped_for_the_next_that_has_one(client, world, db_session):
+    db = db_session
+    cls = world["cls"]
+    lecture = _session(db, cls, world["tpl"], NOW + timedelta(hours=1), name="Lecture")
+    lecture.template_id = None
+    lab = _session(db, cls, world["tpl"], NOW + timedelta(days=1), name="Lab")
+    seat = _range(db, cls, world["tpl"], world["ann_entry"])
+    db.commit()
+    c = _only(_get(client, world["ann"]).json())
+    assert c["sessions"][0]["range_status"] is None  # the lecture uses no range
+    assert c["next_session_id"] == str(lab.id) and c["join_range_id"] == str(seat.range_id)
+
+
+def test_a_last_session_running_past_the_end_date_keeps_the_class(client, world, db_session):
+    db = db_session
+    late = _class(db, world["a"].id, world["course"], world["lead"], name="ENDED-YESTERDAY", days=(-3, -1))
+    entry = _entry(db, late, world["ann"])
+    _session(db, late, world["tpl"], NOW - timedelta(hours=1), hours=30, state=EventState.active, name="Overrun")
+    seat = _range(db, late, world["tpl"], entry)
+    db.commit()
+    body = _get(client, world["ann"]).json()
+    c = next(c for c in body["classes"] if c["name"] == "ENDED-YESTERDAY")
+    assert c["join_range_id"] == str(seat.range_id)

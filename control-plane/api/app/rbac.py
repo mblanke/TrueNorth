@@ -221,6 +221,9 @@ ROLE_PERMISSIONS: dict[UserRole, set[Permission]] = {
         # Classes: the lead of their own classes; assistant or observer on others'.
         Permission.CLASS_CREATE,
         Permission.CLASS_READ,
+        # Held so an instructor may still grant the Student role (grant_refusal: never a role
+        # with permissions the granter lacks). The menu shows them Classes, not My classes.
+        Permission.CLASS_ATTEND,
         # Users
         Permission.USER_READ,
         # Trainee intake: instructors drain the approval queue for their cohort.

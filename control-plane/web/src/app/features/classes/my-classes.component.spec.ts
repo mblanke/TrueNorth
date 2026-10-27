@@ -1,4 +1,4 @@
-import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { ComponentFixture, TestBed, discardPeriodicTasks, fakeAsync, tick } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { provideRouter } from '@angular/router';
 import { of } from 'rxjs';
@@ -8,7 +8,7 @@ import { ClassesApiService, MyClass, MyClasses } from '@core/services/classes-ap
 import { NotificationService } from '@core/services/notification.service';
 import { RangeCredentialsApiService } from '@core/services/range-credentials-api.service';
 import { addDays } from '../calendar/content-calendar.util';
-import { MyClassesComponent, forfeitMessage, joinHint, rangeLabel, windowOf } from './my-classes.component';
+import { MyClassesComponent, REFRESH_MS, forfeitMessage, joinHint, rangeLabel, windowOf } from './my-classes.component';
 
 const BASE: MyClass = {
   id: 'c1', name: 'C201-26-03', course_name: 'SOC Analyst', lead_instructor: 'Lee Lead',
@@ -177,6 +177,17 @@ describe('MyClassesComponent', () => {
     (el().querySelector('button.today') as HTMLButtonElement).click();
     expect(api.attending.calls.mostRecent().args[0]).toEqual(first);
   });
+
+  it('asks again every minute, so Join goes live without a reload', fakeAsync(() => {
+    make(page([BUILDING]));
+    expect(join('c3').disabled).toBeTrue();
+    api.attending.and.returnValue(of(page([{ ...BUILDING, range_status: 'ready', join_range_id: 'rng-3' }])));
+    tick(REFRESH_MS);
+    fixture.detectChanges();
+    expect(join('c3').disabled).toBeFalse();
+    fixture.destroy();
+    discardPeriodicTasks();
+  }));
 
   it('shows the empty state when there is nothing in the window', () => {
     make(page([]));

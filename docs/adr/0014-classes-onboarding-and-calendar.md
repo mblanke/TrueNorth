@@ -213,8 +213,9 @@ Content (courses, modules, labs, scenarios, range templates, golden images) has 
 7. **My classes** (Student).
 
    As built (#284): `/my-classes`, from the menu and the dashboard, for roles holding the new
-   permission `class:attend` (Students; admins hold every permission but use Classes, so the
-   menu hides it from anyone who may open Classes). One Student-scoped read,
+   permission `class:attend` (Students; instructors hold it too, because granting the Student
+   role needs every Student permission, and admins hold everything; both use Classes, so the
+   menu and dashboard hide My classes from anyone who may open Classes). One Student-scoped read,
    `GET /classes/attending` (`app/classes/my_classes.py`): the caller's own roll-call entries
    in their own tenant, including a seat they lost (which `/classes` no longer shows, so the
    page can say to ask the lead to reinstate them), for the week or month asked for (at most
@@ -222,7 +223,9 @@ Content (courses, modules, labs, scenarios, range templates, golden images) has 
    onboarding, rules of use, seat, and the Student's range for the current or next session
    (not built, building, ready, failed; never why). `join_range_id` is set only where
    `/ranges/{id}/credentials` would answer (`ranges.student_participation`): their own seat,
-   ready; or the shared range, ready, while a collective session is under way. Join opens the
+   ready (a deleted range never); or the shared range, ready, while a collective session
+   booking it is under way, which wins over a day-long lab around it. A session's range not
+   created yet reads "not built"; a session with no range is skipped. Join opens the
    shared credentials panel; that endpoint still decides on every call. A console for class
    ranges has no Student endpoint yet (lab sessions only).
 8. **Events view:** week and month, colours, the approval queue, following the mockups.

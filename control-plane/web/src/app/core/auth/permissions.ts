@@ -77,7 +77,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     'detection:submit', 'objective:ack',
     'schedule:read', 'schedule:write',
     'content_review:read', 'content_review:review_own',
-    'class:create', 'class:read',
+    'class:create', 'class:read', 'class:attend',
     'user:read',
     'registration:read', 'registration:approve',
     'infra:read', 'ai_config:read', 'integration:read',
@@ -173,7 +173,9 @@ export const PAGE_ACCESS = {
   contentCalendar: { all: ['content_review:read'] },
   /** GET /classes/mine: the staff Classes page (ADR 0014). Creating one needs class:create. */
   classes: { all: ['class:read'] },
-  /** GET /classes/attending: a Student's own classes, their status and Join (ADR 0014 §20). */
+  /** GET /classes/attending: a Student's own classes, their status and Join (ADR 0014 §20).
+   *  Instructors and admins hold class:attend too (to grant the Student role), so the menu
+   *  and the dashboard show it only to roles that cannot open `classes` (NavItem.notWith). */
   myClasses: { all: ['class:attend'] },
   /** GET /maintenance-windows (schedule:read); changing them needs range:admin (admins). */
   maintenanceWindows: { all: ['schedule:read', 'range:admin'] },

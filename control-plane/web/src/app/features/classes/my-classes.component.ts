@@ -1,6 +1,8 @@
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { interval } from 'rxjs';
 import { MatButtonModule } from '@angular/material/button';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatCardModule } from '@angular/material/card';
@@ -23,6 +25,9 @@ export function windowOf(anchor: Date, view: CalendarView): { start: Date; end: 
     end: new Date(anchor.getFullYear(), anchor.getMonth() + 1, 1),
   };
 }
+
+/** How often the page asks again while open. */
+export const REFRESH_MS = 60_000;
 
 const RANGE_LABEL: Record<MyRangeStatus, string> = {
   not_built: 'Range not built', building: 'Range building', ready: 'Range ready', failed: 'Range failed',
@@ -211,6 +216,11 @@ export class MyClassesComponent implements OnInit {
   readonly hint = joinHint;
   readonly forfeit = forfeitMessage;
 
+  constructor() {
+    // Ranges come up and sessions start while the page is open: Join follows within a minute.
+    interval(REFRESH_MS).pipe(takeUntilDestroyed()).subscribe(() => this.load(true));
+  }
+
   ngOnInit(): void {
     this.load();
   }
@@ -232,14 +242,17 @@ export class MyClassesComponent implements OnInit {
     if (c.join_range_id) this.joined.set(c.id);
   }
 
-  private load(): void {
+  private load(quiet = false): void {
     const { start, end } = windowOf(this.anchor(), this.view());
-    this.loading.set(true);
-    this.loadError.set('');
+    if (!quiet) {
+      this.loading.set(true);
+      this.loadError.set('');
+    }
     this.api.attending(start, end).subscribe({
       next: d => { this.data.set(d); this.loading.set(false); },
       error: err => {
         this.loading.set(false);
+        if (quiet) return;  // a background refresh keeps what is shown
         this.loadError.set(apiError(err));
         this.notify.error(apiError(err));
       },
