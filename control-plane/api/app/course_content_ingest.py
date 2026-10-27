@@ -60,6 +60,9 @@ from .scheduler import service as scheduler
 _OPTION_PREFIX_LEN = 3  # "A) "
 # What a module asks of its students: teaching, practice on supplied material, or a live range.
 ACTIVITIES = frozenset({"theory", "practical", "range"})
+# How far a course has been proven (docs/interfaces/course-content.schema.json). Stored for
+# staff; it never publishes anything: Students see a course only through a release.
+READINESS = ("draft", "technically_proven", "sme_signed")
 
 
 def _option_text(raw: str) -> str:
@@ -124,9 +127,16 @@ def _prerequisite_codes(raw, course_code: str) -> list[str]:
 def parse_course_content(yaml_text: str) -> dict:
     """Parse an authored course file into a normalized dict. Pure (no DB)."""
     doc = safe_yaml.load(yaml_text) or {}
+    if isinstance(doc, dict) and doc.get("audience") == "staff_only":
+        # content/courses/instructor/*.yaml: answer-key notes and lab setup are staff-only
+        # and never become learner-visible course content.
+        raise ValueError("this is a staff-only instructor pack, not a course file")
     course_code = str(doc.get("course_code") or "").strip()
     if not course_code:
         raise ValueError("course file has no course_code")
+    readiness = str(doc.get("readiness") or "draft").strip()
+    if readiness not in READINESS:
+        raise ValueError(f"course {course_code}: readiness {readiness!r} is not one of {list(READINESS)}")
 
     modules = []
     for raw in doc.get("modules") or []:
@@ -166,6 +176,7 @@ def parse_course_content(yaml_text: str) -> dict:
                 "practice": [str(p).strip() for p in raw.get("practice") or [] if str(p).strip()],
                 "minutes_breakdown": dict(raw.get("minutes_breakdown") or {}),
                 "refs": list(raw.get("refs") or []),
+                "lab_range": dict(raw.get("lab_range") or {}),
                 "po": _po_ref(raw.get("po")),
                 "quiz_title": (raw.get("quiz") or {}).get("title") or "",
                 "quiz_pass": int((raw.get("quiz") or {}).get("pass_threshold") or 70),
@@ -181,6 +192,7 @@ def parse_course_content(yaml_text: str) -> dict:
         "duration_hours": int(doc.get("duration_hours") or 0),
         "provenance": str(doc.get("provenance") or "unsourced").lower(),
         "status": str(doc.get("status") or "draft").lower(),
+        "readiness": readiness,
         "source": doc.get("source") or {},
         "qsp_code": (str(doc.get("qsp_code")).strip() if doc.get("qsp_code") else None),
         "prerequisites": _prerequisite_codes(doc.get("prerequisites"), course_code),
@@ -492,6 +504,7 @@ def import_course_content(
     meta = json.loads(course.course_meta or "{}")
     meta["content_provenance"] = doc["provenance"]
     meta["content_status"] = doc["status"]
+    meta["content_readiness"] = doc["readiness"]
     meta["content_source"] = doc["source"]
     # Always written, so deleting the key from the file clears the declaration.
     meta["prerequisites"] = doc["prerequisites"]
@@ -532,6 +545,7 @@ def import_course_content(
                 "practice": m["practice"],
                 "minutes_breakdown": m["minutes_breakdown"],
                 "refs": m["refs"],
+                "lab_range": m["lab_range"],
             }
         )
         db.flush()

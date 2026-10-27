@@ -13,8 +13,38 @@ card, fork isolation, write-time hooks, self-check, CI guard, review and track r
 | `hooks/policy.json` | default policy for both hooks and for `taz-guard` | 3 and 5 |
 | `../../scripts/taz_guard.py` + `../../.github/workflows/taz-guard.yml` | CI check of a TAZ PR against its card | 5, CI |
 | `bakeoff/` | model bakeoff replay kit (P2) | |
+| `courses/` | course run kit: TAZ drafts the 37 unheld courses, Claude validates each | |
 
-Tests: `tests/tools/test_taz_hooks.py` and `tests/tools/test_taz_guard.py`.
+Tests: `tests/tools/test_taz_hooks.py`, `tests/tools/test_taz_guard.py` and
+`tests/tools/test_check_course.py`.
+
+## Courses
+
+TAZ brings the 37 unheld course files in `content/courses/` up to the "technically proven"
+bar: complete modules, a staff-only instructor pack, a `lab_range` on every module that
+names a real range template (and optionally a scenario) with steps on hosts that exist in
+it, and quizzes checked against the content. Seven courses stay held for cleared authors
+and are never queued: C302, C305, C306, RMC C202, RMC C205, RMC C207 and RMC C211.
+
+| Path | What it is |
+|---|---|
+| `courses/AGENTS-courses.md` | the rules the coder model follows for one course |
+| `courses/queue.txt` | the 37 course files in run order, each with a suggested range template |
+| `courses/FOREMAN.md` | the runbook for the Claude foreman session on TAZ |
+| `courses/make_card.py` | prints the task card for one course: that file and its instructor pack only |
+| `../../scripts/check_course.py` | the oracle; exit 0 only when every check passes |
+
+The flow: the foreman clones main, gives the coder a card scoped to one course, and runs
+`scripts/check_course.py` itself. A pass goes to Claude as a Remote Control message whose
+first line is `TAZ course patch: <file>`, followed by `git format-patch` output; three
+failed attempts send `TAZ course blocked: <file>` with the checker output. TAZ never
+pushes. Claude applies the patch, re-checks and reviews it, sets
+`readiness: technically_proven` and opens the PR. `readiness` never publishes anything:
+a course reaches Students only after SME/Standards sign-off (`sme_signed`) and a course
+release. The instructor pack lives in `content/courses/instructor/<file>`, which the
+content loader does not read and the course ingest refuses (`audience: staff_only`).
+`policy.json` protects the checker, the course schemas and this kit, and lets the coder
+run the checker. It does not protect `content/courses/**`, so a course card can allow it.
 
 ## The task card
 
