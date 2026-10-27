@@ -260,6 +260,12 @@ describe('ScheduleComponent', () => {
     expect(text()).toContain('platform operator');
   });
 
+  it('links to the calendar\'s Events view (#285)', () => {
+    as('instructor');
+    const link = fixture.nativeElement.querySelector('a[href="/calendar/events"]') as HTMLAnchorElement;
+    expect(link?.textContent).toContain('Open the calendar');
+  });
+
   it('is read-only for observers', () => {
     as('observer', 'obs', [booking({ id: 'a' })]);
     expect(button('Book a session')).toBeUndefined();

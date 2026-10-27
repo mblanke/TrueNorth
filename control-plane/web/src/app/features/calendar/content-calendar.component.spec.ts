@@ -83,10 +83,10 @@ describe('ContentCalendarComponent', () => {
   const button = (text: string) =>
     Array.from(el.querySelectorAll('button')).find(b => b.textContent?.trim().startsWith(text)) as HTMLButtonElement;
 
-  it('has the Events | Content switch, Events linking to the schedule', () => {
+  it('has the Events | Content switch, Events linking to the Events view', () => {
     const events = el.querySelector('nav.segmented a') as HTMLAnchorElement;
     expect(events.textContent).toContain('Events');
-    expect(events.getAttribute('href')).toBe('/schedule');
+    expect(events.getAttribute('href')).toBe('/calendar/events');
     expect(el.querySelector('nav.segmented [aria-current="page"]')?.textContent).toContain('Content');
   });
 
