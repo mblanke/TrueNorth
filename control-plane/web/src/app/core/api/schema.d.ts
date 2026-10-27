@@ -9201,6 +9201,10 @@ export interface paths {
         /**
          * Delete User
          * @description Delete (deactivate) a user.  **Permission: user:delete**
+         *
+         *     409 for the tenant's last active admin: nobody would be left to re-enable anyone. The check
+         *     locks the tenant's admin rows (app/ad_status_sync ``is_last_admin``), so two deletions at
+         *     once, or one beside the nightly AD status sync, cannot both pass.
          */
         delete: operations["delete_user_users__user_id__delete"];
         options?: never;
@@ -9772,6 +9776,11 @@ export interface components {
         AdStatusSyncOverviewOut: {
             /** Break Glass Usernames */
             break_glass_usernames: string[];
+            /**
+             * Break Glass Warning
+             * @description Set when the configured break-glass name is no local Keycloak user (90-day rule off)
+             */
+            break_glass_warning?: string | null;
             /**
              * Dry Run
              * @description AD_STATUS_SYNC_DRY_RUN: runs record and change nothing

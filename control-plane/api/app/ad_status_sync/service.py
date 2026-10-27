@@ -17,8 +17,9 @@ against Keycloak's view of the directory (``directory``):
 
 TN-* group membership is not a rule: roll-call Students are admitted without any TN-* group
 (classes/onboarding.py), and ADR 0014 section 6 names only a disabled or removed AD account.
-Accounts Keycloak does not know and that are not known AD accounts (CSV roster rows, LTI
-Students, result-transfer subjects, an admin's unclaimed row) are left alone.
+Result-transfer subjects (``source = subject``) are excluded from every rule and from every
+count of eligible accounts. Accounts Keycloak does not know and that are not known AD
+accounts (CSV roster rows, LTI Students, an admin's unclaimed row) are left alone.
 
 **Deactivating** is the existing user-deactivation path (``users.is_active = false``, as
 ``DELETE /admin/users/{id}`` does), claimed with a guarded update (``is_active = true``) so
@@ -34,16 +35,20 @@ An administrator re-enables the account in Users.
 **Safety**, each checked per tenant:
 
 - *Dry run* (``AD_STATUS_SYNC_DRY_RUN``, on by default): record, change nothing.
-- *Seen twice*: an account is deactivated only when the previous good run that covered its
-  tenant (dry, held or applied) also found it. A user missing from one page of Keycloak's
-  answer, or a directory blip, does not cost anyone their account.
-- *Held*: a tenant where the run would deactivate more than
-  max(``AD_STATUS_SYNC_MAX_FLOOR`` (3), ``AD_STATUS_SYNC_MAX_FRACTION`` (0.25) of *eligible*)
-  accounts changes nothing this run; other tenants go on. *Eligible* counts only accounts a
-  rule could deactivate (AD accounts, known AD accounts Keycloak lost, local accounts under
-  the 90-day rule), never roster rows or LTI Students, which would dilute it. "Run now" with
-  ``override_limit`` applies a held tenant after an administrator has checked.
-- *Last administrator*: never the tenant's last active admin.
+- *Confirmed*: an account is deactivated only when a good run covering its tenant (dry, held
+  or applied) that finished ``SIGHTING_MIN``-``SIGHTING_MAX`` (12-36 h) before this one found
+  the same account for the same reason: in practice, the previous night. A dry "run now" then
+  a real one cannot confirm each other, a months-old finding confirms nothing, and a user
+  missing from one page of Keycloak's answer does not lose their account. So turning dry run
+  off acts on the next night, using the dry-run nights' findings.
+- *Held*: per tenant and rule family. The AD rules (``ad_disabled``, ``ad_removed``) are
+  judged against the tenant's AD accounts, the 90-day rule against its local accounts under
+  that rule, so neither dilutes the other (nor do roster rows or LTI Students). A family
+  that would deactivate more than max(``AD_STATUS_SYNC_MAX_FLOOR`` (3),
+  ``AD_STATUS_SYNC_MAX_FRACTION`` (0.25) of its accounts) changes nothing this run; other
+  families and tenants go on. "Run now" with ``override_limit`` releases the caller's tenant.
+- *Last administrator*: never the tenant's last active admin (``is_last_admin`` locks the
+  tenant's admin rows first, so two deactivations at once cannot both pass).
 """
 
 from __future__ import annotations
@@ -70,12 +75,19 @@ logger = logging.getLogger("truenorth.api.ad_status_sync")
 
 UNUSED_AFTER = timedelta(days=90)  # ADR 0014 decision 6
 AD_SOURCES = ("ad", "ad_sync")  # routers/ad_sync.AD_SOURCES: made from a directory identity
+SUBJECT_SOURCE = "subject"  # result_transfer/pseudonymous.SUBJECT_SOURCE: never judged here
+# A finding is confirmed only by the same finding from a run that finished this long before.
+SIGHTING_MIN = timedelta(hours=12)
+SIGHTING_MAX = timedelta(hours=36)
 
 REASONS = {
     "ad_disabled": "their AD account is disabled",
     "ad_removed": "their AD account no longer exists",
     "local_unused": "their local account was not used for 90 days",
 }
+# Rule families, each held against its own accounts only.
+FAMILIES = {"ad": ("ad_disabled", "ad_removed"), "local": ("local_unused",)}
+FAMILY_OF = {r: f for f, rs in FAMILIES.items() for r in rs}
 
 
 def _flag(name: str, default: bool) -> bool:
@@ -173,6 +185,12 @@ def effective_break_glass(snap: DirectorySnapshot) -> set[str]:
     return last_seen.break_glass_usernames() & local
 
 
+def configured_break_glass_missing(snap: DirectorySnapshot) -> bool:
+    """A break-glass name is configured but none is a local Keycloak user: the 90-day rule is off,
+    and the panel says so rather than switching it off silently."""
+    return bool(last_seen.break_glass_usernames()) and not effective_break_glass(snap)
+
+
 def plan(db: Session, snap: DirectorySnapshot, now: datetime, tenant_id: uuid.UUID | None) -> Plan:
     out = Plan()
     floor = counting_from(db)
@@ -193,6 +211,11 @@ def _decide(out: Plan, u: User, snap: DirectorySnapshot, now: datetime, floor: d
             break_glass: set[str], seen: datetime | None) -> None:
     t = u.tenant_id
     out.count(t, "examined")
+    if u.source == SUBJECT_SOURCE:
+        # A result-transfer subject (result_transfer/pseudonymous.py) is a pseudonymous record
+        # holder, not a sign-in: no rule applies and it is not eligible.
+        out.count(t, "result_transfer_subject")
+        return
 
     def decide(reason: str) -> None:
         out.decisions.append(Decision(u, reason))
@@ -209,14 +232,14 @@ def _decide(out: Plan, u: User, snap: DirectorySnapshot, now: datetime, floor: d
         return
     if ku is None:
         if u.ad_object_guid:  # a known AD account Keycloak no longer has
-            out.count(t, "eligible")
+            out.count(t, "eligible_ad")
             decide("ad_removed")
         else:  # roster row, LTI Student, a local account after a realm rebuild: not ours to judge
             out.count(t, "not_a_keycloak_account")
         return
     if ku.federated:
         out.count(t, "ad_accounts")
-        out.count(t, "eligible")
+        out.count(t, "eligible_ad")
         if not ku.enabled:
             decide("ad_disabled")
         return
@@ -229,65 +252,73 @@ def _decide(out: Plan, u: User, snap: DirectorySnapshot, now: datetime, floor: d
     if not break_glass:
         out.count(t, "local_not_checked_no_break_glass")
         return
-    out.count(t, "eligible")
+    out.count(t, "eligible_local")
     if now - last_use(u, seen, floor) >= UNUSED_AFTER:
         decide("local_unused")
 
 
-def held_tenants(cfg: Settings, p: Plan) -> dict[str, tuple[int, int]]:
-    """Tenant -> (would deactivate, eligible), for each tenant over its limit."""
+def held_families(cfg: Settings, p: Plan) -> dict[tuple[str, str], tuple[int, int]]:
+    """(tenant, family) -> (would deactivate, eligible), for each rule family over its limit in
+    a tenant. Each family is judged against its own accounts only: AD rules against AD accounts,
+    the 90-day rule against local accounts, so neither dilutes the other."""
     out = {}
     for tid, c in p.counts.items():
-        n = sum(c.get(r, 0) for r in REASONS)
-        eligible = c.get("eligible", 0)
-        if n > max(cfg.max_floor, math.floor(cfg.max_fraction * eligible)):
-            out[tid] = (n, eligible)
+        for family, reasons in FAMILIES.items():
+            n = sum(c.get(r, 0) for r in reasons)
+            eligible = c.get(f"eligible_{family}", 0)
+            if n and n > max(cfg.max_floor, math.floor(cfg.max_fraction * eligible)):
+                out[(tid, family)] = (n, eligible)
     return out
 
 
-def held_message(would: int, eligible: int) -> str:
-    """For one tenant, from its own counts only."""
-    return (f"would deactivate {would} of the {eligible} accounts here that could be deactivated, over the "
-            "limit (AD_STATUS_SYNC_MAX_FRACTION, AD_STATUS_SYNC_MAX_FLOOR): nothing was changed in this tenant. "
+def held_message(family: str, would: int, eligible: int) -> str:
+    """For one tenant and rule family, from that tenant's own counts only."""
+    what = {"ad": "AD accounts", "local": "local accounts under the 90-day rule"}[family]
+    return (f"would deactivate {would} of the {eligible} {what} here, over the limit "
+            "(AD_STATUS_SYNC_MAX_FRACTION, AD_STATUS_SYNC_MAX_FLOOR): none of them was changed in this tenant. "
             "Check the directory, then run now with the limit overridden.")
 
 
-def seen_last_time(db: Session, run: AdStatusSyncRun, tenant_ids: set[str]) -> dict[str, set[uuid.UUID]]:
-    """Per tenant, the accounts the previous good run that covered it (dry, held or applied) found."""
-    out: dict[str, set[uuid.UUID]] = {}
+def earlier_sightings(db: Session, run: AdStatusSyncRun, tenant_ids: set[str]) -> dict[str, set[tuple]]:
+    """Per tenant, the (account, reason) pairs that confirm this run's findings: found by a good
+    run (dry, held or applied) covering that tenant that finished between ``SIGHTING_MIN`` and
+    ``SIGHTING_MAX`` before this one started. Not a moment ago (a dry "run now" then a real one
+    must not confirm each other), not months ago, and for the same reason."""
+    start = _aware(run.started_at)
+    out: dict[str, set[tuple]] = {}
     for tid in tenant_ids:
         t = uuid.UUID(tid)
-        prev = (
-            db.query(AdStatusSyncRun)
+        rows = (
+            db.query(AdStatusSyncResult.user_id, AdStatusSyncResult.reason)
+            .join(AdStatusSyncRun, AdStatusSyncRun.id == AdStatusSyncResult.run_id)
             .filter(
+                AdStatusSyncResult.tenant_id == t,
                 AdStatusSyncRun.id != run.id,
                 AdStatusSyncRun.status == "completed",
-                AdStatusSyncRun.started_at <= run.started_at,
+                AdStatusSyncRun.finished_at >= start - SIGHTING_MAX,
+                AdStatusSyncRun.finished_at <= start - SIGHTING_MIN,
                 or_(AdStatusSyncRun.tenant_id.is_(None), AdStatusSyncRun.tenant_id == t),
             )
-            .order_by(AdStatusSyncRun.started_at.desc())
-            .first()
-        )
-        rows = [] if prev is None else (
-            db.query(AdStatusSyncResult.user_id)
-            .filter(AdStatusSyncResult.run_id == prev.id, AdStatusSyncResult.tenant_id == t)
             .all()
         )
-        out[tid] = {uid for (uid,) in rows}
+        out[tid] = {(uid, reason) for uid, reason in rows}
     return out
 
 
 def is_last_admin(db: Session, u: User) -> bool:
-    """``u`` is the only active admin of its tenant."""
+    """``u`` is the only active admin of its tenant. Locks the tenant's active admin rows first
+    (``FOR UPDATE``; PostgreSQL), so two transactions deactivating two admins at once cannot
+    both see the other still active: the second waits, then counts again without the first."""
     if u.role != UserRole.admin:
         return False
-    others = (
-        db.query(func.count(User.id))
+    admins = (
+        db.query(User.id)
         .filter(User.tenant_id == u.tenant_id, User.role == UserRole.admin, User.is_active == True,  # noqa: E712
-                User.deleted_at.is_(None), User.id != u.id)
-        .scalar()
+                User.deleted_at.is_(None))
+        .with_for_update()
+        .all()
     )
-    return not others
+    return not any(uid != u.id for (uid,) in admins)
 
 
 # ── Applying ───────────────────────────────────────────────────────────────
@@ -413,6 +444,7 @@ def execute(db: Session, run: AdStatusSyncRun, reader: DirectoryReader, *, overr
 
     ``override_limit`` releases a held tenant; only "run now" passes it, for its own tenant."""
     now = now or datetime.now(UTC)
+    wall = datetime.now(UTC)  # finished_at is ``now`` plus the time the run took
     cfg = settings()
     out = Outcome(run=run)
     try:
@@ -426,11 +458,13 @@ def execute(db: Session, run: AdStatusSyncRun, reader: DirectoryReader, *, overr
 
     p = plan(db, snap, now, run.tenant_id)
     counts = p.plain_counts()
-    held = {} if override_limit else held_tenants(cfg, p)
-    for tid, (would, eligible) in held.items():
-        counts["by_tenant"][tid].update({"held": 1, "held_would_deactivate": would, "held_eligible": eligible})
-    confirmed = {} if run.dry_run else seen_last_time(
-        db, run, {str(d.user.tenant_id) for d in p.decisions} - set(held))
+    held = {} if override_limit else held_families(cfg, p)
+    for (tid, family), (would, eligible) in held.items():
+        counts["by_tenant"][tid].update({f"held_{family}": 1, f"held_{family}_would_deactivate": would,
+                                         f"held_{family}_eligible": eligible})
+    if configured_break_glass_missing(snap):
+        counts["break_glass_not_found"] = 1
+    confirmed = {} if run.dry_run else earlier_sightings(db, run, {str(d.user.tenant_id) for d in p.decisions})
     notices: dict = {}
     applied: dict[str, int] = defaultdict(int)
 
@@ -441,11 +475,11 @@ def execute(db: Session, run: AdStatusSyncRun, reader: DirectoryReader, *, overr
 
     for d in p.decisions:
         uid, tid = d.user.id, str(d.user.tenant_id)
-        if run.dry_run or tid in held:
+        if run.dry_run or (tid, FAMILY_OF[d.reason]) in held:
             _result(db, run, d.user, d.reason, False, 0, now)
             continue
-        if uid not in confirmed.get(tid, set()):
-            _result(db, run, d.user, d.reason, False, 0, now)  # found once; the next run confirms
+        if (uid, d.reason) not in confirmed.get(tid, set()):
+            _result(db, run, d.user, d.reason, False, 0, now)  # not confirmed; tomorrow night may
             bump(tid, "awaiting_confirmation")
             continue
         if is_last_admin(db, d.user):
@@ -471,7 +505,7 @@ def execute(db: Session, run: AdStatusSyncRun, reader: DirectoryReader, *, overr
     out.mails = notice_mails(db, notices)
     run.status = "completed"
     run.counts = counts
-    run.finished_at = datetime.now(UTC)
+    run.finished_at = now + (datetime.now(UTC) - wall)
     _audit_run(db, run)
     db.commit()
     logger.info("AD status sync %s %s (dry run %s): %s", run.id, run.status, run.dry_run, counts["total"])

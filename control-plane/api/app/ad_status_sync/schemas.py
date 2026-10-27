@@ -38,6 +38,8 @@ class AdStatusSyncOverviewOut(BaseModel):
     nightly_hour_utc: int
     break_glass_usernames: list[str]
     last_break_glass_use: datetime | None = None
+    break_glass_warning: str | None = Field(
+        default=None, description="Set when the configured break-glass name is no local Keycloak user (90-day rule off)")
     latest: AdStatusSyncRunOut | None = None
     runs: list[AdStatusSyncRunOut] = Field(default_factory=list, description="Recent runs, newest first, without results")
 

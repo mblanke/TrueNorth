@@ -242,6 +242,8 @@ tn_bootstrap_admin_upn: ""
 # AD and tn_keycloak_local_admin, local accounts unused for 90 days (never the break-glass
 # account, the local tn_bootstrap_admin_upn). Dry run records and changes nothing: leave it on until a
 # few nights' results on Users > AD Sync look right, then set false and re-run 30-config.
+# The next night is then the first applied one: it deactivates what the last dry-run night
+# also found, for the same reason.
 tn_ad_status_sync_dry_run: true
 
 # ── vSphere ───────────────────────────────────────────────────────────

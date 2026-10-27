@@ -27,7 +27,7 @@ import {
         <mat-card-title>Directory status check</mat-card-title>
         <mat-card-subtitle>
           Nightly at {{ pad(view()?.nightly_hour_utc ?? 2) }}:00 UTC. Deactivates accounts whose AD account is
-          disabled or gone, and local accounts unused for 90 days, once two runs in a row have found them.
+          disabled or gone, and local accounts unused for 90 days, once the night before found them too.
           Never this tenant's last admin or the break-glass account. TrueNorth never changes AD, and nothing is
           deleted.
         </mat-card-subtitle>
@@ -44,6 +44,9 @@ import {
             }
             @if (!v.enabled) {
               <span class="warn">The nightly check is turned off (AD_STATUS_SYNC_ENABLED).</span>
+            }
+            @if (v.break_glass_warning) {
+              <span class="warn" role="alert">{{ v.break_glass_warning }}</span>
             }
             <span>
               <strong>Break-glass:</strong>
@@ -142,12 +145,17 @@ export class AdStatusSyncPanelComponent implements OnInit {
     break_glass_kept: 'break-glass kept',
     not_a_keycloak_account: 'not a Keycloak account (roster, LTI)',
     local_not_checked_no_break_glass: 'local, not checked (no break-glass set)',
-    eligible: 'could be deactivated',
-    awaiting_confirmation: 'found once (the next run confirms)',
+    eligible_ad: 'AD accounts a rule could deactivate',
+    eligible_local: 'local accounts under the 90-day rule',
+    result_transfer_subject: 'result-transfer subjects (never judged)',
+    awaiting_confirmation: 'found once (confirmed if found again tomorrow night)',
     kept_last_admin: 'kept: last admin',
-    held: 'held (over the limit)',
-    held_would_deactivate: 'would have been deactivated',
-    held_eligible: 'could be deactivated (held)',
+    held_ad: 'AD rules held (over the limit)',
+    held_ad_would_deactivate: 'AD accounts that would have been deactivated',
+    held_ad_eligible: 'AD accounts (held)',
+    held_local: '90-day rule held (over the limit)',
+    held_local_would_deactivate: 'local accounts that would have been deactivated',
+    held_local_eligible: 'local accounts (held)',
     errors: 'errors',
   };
 

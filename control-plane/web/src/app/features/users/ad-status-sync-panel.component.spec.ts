@@ -55,6 +55,17 @@ describe('AdStatusSyncPanelComponent', () => {
     expect(directory.adStatusSync).toHaveBeenCalledTimes(3); // reloaded after each run
   });
 
+  it('warns when the break-glass account is not found', () => {
+    const text = () => (fixture.nativeElement as HTMLElement).textContent ?? '';
+    expect(text()).not.toContain('Break-glass account not found');
+    directory.adStatusSync.and.returnValue(of({
+      ...overview, break_glass_warning: 'Break-glass account not found: the 90-day rule for local accounts is off',
+    }));
+    fixture.componentInstance.load();
+    fixture.detectChanges();
+    expect(text()).toContain('Break-glass account not found');
+  });
+
   it('says so when the panel cannot load', () => {
     directory.adStatusSync.and.returnValue(throwError(() => new Error('403')));
     fixture.componentInstance.load();

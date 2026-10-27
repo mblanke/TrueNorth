@@ -209,9 +209,10 @@ write: the tests assert on the HTTP transport.
 
 Never: anyone still enabled in AD (TN-* groups or not: roll-call Students are admitted
 without one, `classes/onboarding.py`); the **break-glass** account (below); the tenant's
-last active admin; accounts Keycloak does not know that are not known AD accounts (CSV
-roster rows, LTI Students, result-transfer subjects, and local accounts after a realm
-rebuild: registration marks every account `source = ad`, so `source` proves nothing).
+last active admin; result-transfer subjects (`source = subject`, never judged by any rule
+nor counted as eligible); accounts Keycloak does not know that are not known AD accounts
+(CSV roster rows, LTI Students, and local accounts after a realm rebuild: registration marks
+every account `source = ad`, so `source` proves nothing).
 
 **What deactivating does.** In one transaction per account: the guarded update (so any
 number of replicas, or a "run now" overlapping the night's run, deactivate it once); each
@@ -242,7 +243,9 @@ is announced instead, at most once an hour per API process: the Prometheus alert
 `BreakGlassAccountUsed` (critical; `truenorth_break_glass_sign_ins_total`), a
 `break_glass_sign_in` audit row and a WARNING log. **With no break-glass account the 90-day
 rule does not run** (so not on an install without AD): disabling local accounts without
-knowing which one is the recovery account could lock everyone out.
+knowing which one is the recovery account could lock everyone out. When a name is
+configured but no local Keycloak user has it, the panel says so ("Break-glass account not
+found ... the 90-day rule for local accounts is off") rather than switching off silently.
 
 **When and where.** Every API replica ticks (`AD_STATUS_SYNC_TICK_SECONDS`, 300); from
 `AD_STATUS_SYNC_HOUR_UTC` (2) the night's run is claimed by inserting the unique slot
@@ -253,17 +256,26 @@ client is not configured.
 **Safety**, per tenant:
 - `AD_STATUS_SYNC_DRY_RUN` (default **true**; installer `tn_ad_status_sync_dry_run`): runs
   record who they would deactivate and change nothing, and the API refuses (409) a request
-  for a real run. Turn it off once a few nights look right.
-- **Seen twice**: an account is deactivated only when the previous good run covering its
-  tenant (dry, held or applied) found it too. A user missing from one page of Keycloak's
-  answer costs nobody their account; the panel counts the rest as "found once".
-- **Held**: a tenant where the run would deactivate more than
-  max(`AD_STATUS_SYNC_MAX_FLOOR` (3), `AD_STATUS_SYNC_MAX_FRACTION` (0.25) x *eligible*)
-  accounts changes nothing that run; other tenants go on. *Eligible* is the accounts a rule
-  could deactivate (AD accounts, known AD accounts Keycloak lost, local accounts under the
-  90-day rule), never roster rows or LTI Students. The held message shows that tenant's
-  numbers only. "Run now, over the limit" releases it for the caller's tenant.
-- **Last admin**: never the tenant's last active admin.
+  for a real run. Turn it off once a few nights look right. **Turning it off acts on the
+  next night**: that night's run is the first applied one, and it deactivates the accounts
+  the last dry-run night also found, for the same reason (below). Nobody is deactivated the
+  moment the setting changes.
+- **Confirmed by the night before**: an account is deactivated only when a good run
+  covering its tenant (dry, held or applied) that **finished 12 to 36 hours before this one**
+  found the same account **for the same reason**. A dry "run now" followed by a real one
+  confirms nothing (too close), a finding from months ago confirms nothing (too old), and a
+  user missing from one page of Keycloak's answer one night keeps their account. A "run now"
+  can apply what last night found. The panel counts the rest as "found once".
+- **Held, per tenant and rule family**: the AD rules (`ad_disabled`, `ad_removed`) are judged
+  against the tenant's AD accounts, the 90-day rule against its local accounts under that
+  rule, so neither dilutes the other (nor do roster rows, LTI Students or subjects). A family
+  that would deactivate more than max(`AD_STATUS_SYNC_MAX_FLOOR` (3),
+  `AD_STATUS_SYNC_MAX_FRACTION` (0.25) x its accounts) changes nothing that run; other
+  families and tenants go on. The held message shows that tenant's numbers only. "Run now,
+  over the limit" releases the caller's tenant.
+- **Last admin**: never the tenant's last active admin. The check locks the tenant's active
+  admin rows (`SELECT ... FOR UPDATE`) and counts inside the same transaction, so two
+  deactivations at once cannot both pass; `DELETE /users/{id}` has the same guard (409).
 - Keycloak unreadable: the run **fails** and changes nothing.
 
 **The panel.** Users > AD Sync (`GET /ad-status-sync`, admin): the mode, the break-glass

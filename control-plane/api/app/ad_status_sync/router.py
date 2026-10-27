@@ -63,15 +63,34 @@ def _out(db: Session, run: AdStatusSyncRun, tid: uuid.UUID, with_results: bool) 
         ]
     counts = ((run.counts or {}).get("by_tenant") or {}).get(str(tid), {})
     error = run.error
-    if status == "completed" and counts.get("held"):
-        # Held per tenant: this tenant's own numbers only, never another tenant's.
+    held = [f for f in service.FAMILIES if counts.get(f"held_{f}")]
+    if status == "completed" and held:
+        # Held per tenant and rule family: this tenant's own numbers only, never another's.
         status = "held"
-        error = service.held_message(int(counts.get("held_would_deactivate", 0)), int(counts.get("held_eligible", 0)))
+        error = " ".join(
+            service.held_message(f, int(counts.get(f"held_{f}_would_deactivate", 0)),
+                                 int(counts.get(f"held_{f}_eligible", 0)))
+            for f in held
+        )
     return AdStatusSyncRunOut(
         id=run.id, trigger=run.trigger, dry_run=run.dry_run, status=status, started_at=started,
         finished_at=_aware(run.finished_at), error=error,
         counts={k: int(v) for k, v in counts.items()}, results=results,
     )
+
+
+def _break_glass_warning(runs: list[AdStatusSyncRun]) -> str | None:
+    """From the latest run that read Keycloak: a configured break-glass name that is no local
+    Keycloak user switches the 90-day rule off. Say so instead of doing it silently."""
+    for r in runs:
+        if r.status == "failed" or r.status == "running":
+            continue
+        if (r.counts or {}).get("break_glass_not_found"):
+            return ("Break-glass account not found: no local Keycloak account is named "
+                    f"{', '.join(sorted(last_seen.break_glass_usernames()))}. The 90-day rule for local accounts "
+                    "is off until it exists (tn_bootstrap_admin_upn, tn_keycloak_local_admin).")
+        return None
+    return None
 
 
 @router.get("", response_model=AdStatusSyncOverviewOut, operation_id="getAdStatusSync",
@@ -96,6 +115,7 @@ def overview(db: Session = Depends(get_db), user: CurrentUser = Depends(ADMIN)) 
         keycloak_configured=directory.configured(), dry_run=cfg.dry_run, nightly_hour_utc=cfg.hour_utc,
         break_glass_usernames=sorted(last_seen.break_glass_usernames()),
         last_break_glass_use=_aware(last_bg),
+        break_glass_warning=_break_glass_warning(runs),
         latest=_out(db, runs[0], tid, True) if runs else None,
         runs=[_out(db, r, tid, False) for r in runs],
     )

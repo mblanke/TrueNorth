@@ -764,6 +764,18 @@
             "title": "Break Glass Usernames",
             "type": "array"
           },
+          "break_glass_warning": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Set when the configured break-glass name is no local Keycloak user (90-day rule off)",
+            "title": "Break Glass Warning"
+          },
           "dry_run": {
             "description": "AD_STATUS_SYNC_DRY_RUN: runs record and change nothing",
             "title": "Dry Run",
@@ -51220,7 +51232,7 @@
     },
     "/users/{user_id}": {
       "delete": {
-        "description": "Delete (deactivate) a user.  **Permission: user:delete**",
+        "description": "Delete (deactivate) a user.  **Permission: user:delete**\n\n409 for the tenant's last active admin: nobody would be left to re-enable anyone. The check\nlocks the tenant's admin rows (app/ad_status_sync ``is_last_admin``), so two deletions at\nonce, or one beside the nightly AD status sync, cannot both pass.",
         "operationId": "delete_user_users__user_id__delete",
         "parameters": [
           {

@@ -10,14 +10,16 @@ The rules under test (app/ad_status_sync):
 - Deactivating frees their roll-call seats (``remove_from_roll_call``: seat freed, CANCEL),
   emails the class's instructors, writes an audit row, and deletes nothing.
 - A local Keycloak account unused for 90 days is deactivated; break-glass never is.
-- A dry run records and changes nothing. Per tenant: an account is deactivated only when two
-  runs in a row found it; a tenant over its limit is held while others go on; never the last
-  admin.
+- A dry run records and changes nothing. Per tenant: an account is deactivated only when a
+  run 12-36 h earlier (the night before) found it for the same reason; a rule family over its
+  limit (AD rules against AD accounts, the 90-day rule against local ones) is held while
+  others go on; never the last admin. Result-transfer subjects are never judged.
 - Any number of replicas: one nightly run per night; each account deactivated once.
 - Administrators only, their own tenant only.
 
 Time travel: ``service.run_nightly(db, reader, now=...)``, as the class clocks are tested.
-``_apply`` runs twice, as a deactivation needs two sightings.
+``_apply`` runs the night before (``run_nightly`` 24 h ago), then "run now", as a deactivation
+needs a finding from the night before.
 """
 
 from __future__ import annotations
@@ -113,6 +115,7 @@ def kc(monkeypatch):
     fastapi_app.dependency_overrides[sync_router.directory_reader] = lambda: d
     monkeypatch.setenv("AD_STATUS_SYNC_DRY_RUN", "false")
     monkeypatch.setenv("AD_STATUS_SYNC_BREAK_GLASS", BREAK_GLASS)
+    monkeypatch.setenv("AD_STATUS_SYNC_HOUR_UTC", "0")  # time travel: any hour is the nightly hour
     monkeypatch.delenv("AD_STATUS_SYNC_MAX_FLOOR", raising=False)
     monkeypatch.delenv("AD_STATUS_SYNC_MAX_FRACTION", raising=False)
     yield d
@@ -148,7 +151,7 @@ def world(db_session, client, monkeypatch, outbox, kc):
     db.flush()
     db.add(RollCallSettings(tenant_id=a.id, email_domains=["corp.test"]))
     w = {
-        "a": a, "b": b, "course": course,
+        "db": db, "kc": kc, "a": a, "b": b, "course": course,
         "lead": real_user(db, UserRole.instructor, a.id),
         "assistant": real_user(db, UserRole.instructor, a.id),
         "admin": real_user(db, UserRole.admin, a.id),
@@ -211,9 +214,9 @@ def _run_now(client, w, who="admin", **body) -> dict:
     return r.json()
 
 
-def _apply(client, w, who="admin", **body) -> dict:
-    """Two runs: the first finds, the second (finding the same) deactivates."""
-    _run_now(client, w, who, **body)
+def _apply(client, w, who="admin", reader=None, **body) -> dict:
+    """Last night's run finds; "run now" (finding the same, for the same reason) deactivates."""
+    service.run_nightly(w["db"], reader or w["kc"], now=datetime.now(UTC) - timedelta(hours=24))
     return _run_now(client, w, who, **body)
 
 
@@ -330,9 +333,10 @@ def test_audit_rows(client, db_session, world, kc):
         (str(world["ann"].id), world["a"].id, world["admin"].id)]
     assert "AD account is disabled" in rows[0].detail and "C201-26-03" in rows[0].detail
     runs = db_session.query(AuditLog).filter(AuditLog.action == "ad_status_sync_run").all()
-    assert len(runs) == 2  # one per run, both by the admin who ran it, in their tenant
-    assert {(str(r.user_id), r.tenant_id) for r in runs} == {(world["admin"].id, world["a"].id)}
-    assert run["id"] in {r.resource_id for r in runs}
+    # One per run: last night's (the system, every tenant) and the admin's "run now" in their tenant.
+    manual = [(r.resource_id, str(r.user_id), r.tenant_id) for r in runs if r.user_id is not None]
+    nightly = [(r.user_id, r.tenant_id) for r in runs if r.user_id is None]
+    assert manual == [(run["id"], world["admin"].id, world["a"].id)] and nightly == [(None, None)]
 
 
 # ── Local accounts and break-glass ─────────────────────────────────────────
@@ -503,25 +507,148 @@ def test_run_now_may_ask_for_a_dry_run_whatever_the_setting(client, db_session, 
 
 
 def test_found_once_is_not_enough(client, db_session, world, kc):
-    """SHOULD 5: the first sighting is recorded and waits; the next run confirms it."""
+    """A finding waits for the same finding from the night before. Two runs a moment apart
+    confirm nothing; last night's finding does."""
     kc.ad(world["ann"], enabled=False)
     first = _run_now(client, world)
-    assert _active(db_session, world["ann"])
     assert [(r["email"], r["applied"]) for r in first["results"]] == [("ann@corp.test", False)]
     assert first["counts"]["awaiting_confirmation"] == 1
-    second = _run_now(client, world)
-    assert not _active(db_session, world["ann"]) and second["counts"]["deactivated"] == 1
+    second = _run_now(client, world)  # a moment later: not a confirmation
+    assert _active(db_session, world["ann"]) and second["counts"]["awaiting_confirmation"] == 1
+    service.run_nightly(db_session, kc, now=datetime.now(UTC) - timedelta(hours=24))
+    third = _run_now(client, world)
+    assert not _active(db_session, world["ann"]) and third["counts"]["deactivated"] == 1
 
 
-def test_a_user_missing_from_one_answer_keeps_their_account(client, db_session, world, kc):
-    """A page Keycloak skipped once: gone in one run, back in the next, never deactivated."""
+def test_a_dry_run_now_then_a_real_one_do_not_confirm_each_other(client, db_session, world, kc):
+    """Round 2, blocker 2: two clicks must not be enough."""
+    kc.ad(world["ann"], enabled=False)
+    _run_now(client, world, dry_run=True)
+    _run_now(client, world)
+    assert _active(db_session, world["ann"])
+
+
+def test_a_months_old_finding_for_another_reason_confirms_nothing(db_session, world, kc):
+    """Round 2, blocker 2: found disabled 120 days ago, re-enabled, now missing once: a single
+    sighting of the new condition, not a confirmed one."""
+    kc.ad(world["ann"], enabled=False)
+    service.run_nightly(db_session, kc, now=NIGHT - timedelta(days=120))
+    kc.ad(world["ann"], enabled=True)
+    del kc.users[world["ann"].keycloak_id]
+    out = service.run_nightly(db_session, kc, now=NIGHT)
+    assert _active(db_session, world["ann"])
+    assert out.run.counts["by_tenant"][str(world["a"].id)]["awaiting_confirmation"] == 1
+
+
+def test_a_finding_from_the_night_before_with_another_reason_confirms_nothing(db_session, world, kc):
+    kc.ad(world["ann"], enabled=False)
+    service.run_nightly(db_session, kc, now=PREV_NIGHT)  # ad_disabled
+    del kc.users[world["ann"].keycloak_id]
+    service.run_nightly(db_session, kc, now=NIGHT)  # ad_removed: a different finding
+    assert _active(db_session, world["ann"])
+
+
+@pytest.mark.parametrize("hours, confirms", [(11, False), (13, True), (35, True), (37, False)])
+def test_only_a_finding_12_to_36_hours_old_confirms(db_session, world, kc, hours, confirms):
+    kc.ad(world["ann"], enabled=False)
+    service.run_nightly(db_session, kc, now=NIGHT - timedelta(hours=hours))
+    service.run_now(db_session, kc, tenant_id=world["a"].id, actor_id=uuid.UUID(world["admin"].id), dry_run=False,
+                    override_limit=False, now=NIGHT)
+    assert _active(db_session, world["ann"]) is not confirms
+
+
+def test_a_user_missing_from_one_answer_keeps_their_account(db_session, world, kc):
+    """A page Keycloak skipped one night: gone, back the next night, gone again: never two
+    nights in a row, never deactivated."""
     ann = kc.users.pop(world["ann"].keycloak_id)
-    _run_now(client, world)
+    service.run_nightly(db_session, kc, now=NIGHT - timedelta(days=2))
     kc.users[ann.id] = ann
-    _run_now(client, world)
+    service.run_nightly(db_session, kc, now=PREV_NIGHT)
     del kc.users[ann.id]
-    run = _run_now(client, world)  # gone again, but the run before found her: a first sighting again
-    assert _active(db_session, world["ann"]) and run["counts"]["awaiting_confirmation"] == 1
+    out = service.run_nightly(db_session, kc, now=NIGHT)
+    assert _active(db_session, world["ann"])
+    assert out.run.counts["by_tenant"][str(world["a"].id)]["awaiting_confirmation"] == 1
+
+
+def test_local_accounts_do_not_dilute_the_ad_hold(db_session, world, kc):
+    """Round 2, blocker 1: a federation outage reads every AD account of a tenant disabled. Its
+    30 active local accounts must not make 10 of 40 look like a quarter."""
+    c = real_tenant(db_session, "adv-dilute")
+    staff = [_person(db_session, c.id, f"admin{i}@corp.test", role=UserRole.admin) for i in range(2)]
+    staff += [_person(db_session, c.id, f"inst{i}@corp.test", role=UserRole.instructor) for i in range(8)]
+    for u in staff:
+        kc.ad(u, enabled=False)
+    for i in range(30):
+        s = _person(db_session, c.id, f"local{i}@tn.local", source="local", guid=False)
+        kc.local(s)
+        db_session.add(UserLastSeen(user_id=s.id, last_seen_at=NIGHT - timedelta(days=1)))
+    service.run_nightly(db_session, kc, now=PREV_NIGHT)
+    out = service.run_nightly(db_session, kc, now=NIGHT)
+    counts = out.run.counts["by_tenant"][str(c.id)]
+    assert counts["held_ad"] == 1 and counts["held_ad_eligible"] == 10 and counts["eligible_local"] == 30
+    assert all(_active(db_session, u) for u in staff)
+
+
+def test_result_transfer_subjects_are_never_judged(db_session, world, kc):
+    """Round 2, should-fix 4: subjects (source subject) count for no rule and pad nothing."""
+    from app.result_transfer.pseudonymous import SUBJECT_SOURCE
+
+    assert service.SUBJECT_SOURCE == SUBJECT_SOURCE
+    c = real_tenant(db_session, "adv-subjects")
+    staff = [_person(db_session, c.id, f"inst{i}@corp.test", role=UserRole.instructor) for i in range(10)]
+    for u in staff:
+        kc.ad(u, enabled=False)
+    subjects = []
+    for i in range(30):
+        s = _person(db_session, c.id, f"subject-{i}@subjects.invalid", source=SUBJECT_SOURCE, guid=False,
+                    created=NIGHT - timedelta(days=400))
+        kc.local(s)  # even with a Keycloak user, and long unused
+        subjects.append(s)
+    _first_run_long_ago(db_session)
+    service.run_nightly(db_session, kc, now=PREV_NIGHT)
+    out = service.run_nightly(db_session, kc, now=NIGHT)
+    counts = out.run.counts["by_tenant"][str(c.id)]
+    assert counts["result_transfer_subject"] == 30 and "eligible_local" not in counts
+    assert counts["held_ad"] == 1
+    assert all(_active(db_session, s) for s in subjects + staff)
+
+
+def test_many_small_tenants_are_each_held(db_session, world, kc):
+    """Ten four-account tenants that all read disabled: each is held (4 > 3), none emptied."""
+    victims = []
+    for t in range(10):
+        c = real_tenant(db_session, f"adv-tiny{t}")
+        kc.ad(_person(db_session, c.id, f"a{t}@corp.test", role=UserRole.admin), enabled=False)
+        for i in range(3):
+            s = _person(db_session, c.id, f"s{t}-{i}@corp.test")
+            kc.ad(s, enabled=False)
+            victims.append(s)
+    service.run_nightly(db_session, kc, now=PREV_NIGHT)
+    service.run_nightly(db_session, kc, now=NIGHT)
+    assert all(_active(db_session, s) for s in victims)
+
+
+def test_the_panel_warns_when_break_glass_is_not_found(client, db_session, world, kc):
+    """Round 2, should-fix 5: a configured name that is no local Keycloak user turns the 90-day
+    rule off, and the panel says so."""
+    act_as(world["admin"])
+    _run_now(client, world)
+    assert client.get("/ad-status-sync").json()["break_glass_warning"] is None
+    del kc.users["kc-breakglass"]
+    _run_now(client, world)
+    warning = client.get("/ad-status-sync").json()["break_glass_warning"]
+    assert "not found" in warning and BREAK_GLASS in warning and "90-day rule" in warning
+
+
+def test_deleting_the_last_admin_is_refused(client, db_session, world):
+    """Round 2, should-fix 3: the manual path has the same last-admin guard."""
+    act_as(world["admin"])
+    r = client.delete(f"/users/{world['admin'].id}")
+    assert r.status_code == 409 and "last active administrator" in r.text
+    assert _active(db_session, world["admin_row"])
+    second = real_user(db_session, UserRole.admin, world["a"].id)
+    r = client.delete(f"/users/{second.id}")
+    assert r.status_code == 204, r.text
 
 
 def test_a_tenant_over_its_limit_is_held(client, db_session, world, kc, monkeypatch):
@@ -530,7 +657,7 @@ def test_a_tenant_over_its_limit_is_held(client, db_session, world, kc, monkeypa
     kc.ad(world["ann"], enabled=False)
     kc.ad(world["bob"], enabled=False)
     run = _apply(client, world)
-    assert run["status"] == "held" and "nothing was changed in this tenant" in run["error"]
+    assert run["status"] == "held" and "none of them was changed in this tenant" in run["error"]
     assert _active(db_session, world["ann"]) and _active(db_session, world["bob"])
     assert all(not r["applied"] for r in run["results"])
     run = _run_now(client, world, override_limit=True)
@@ -550,7 +677,7 @@ def test_lti_and_roster_padding_does_not_dilute_the_limit(client, db_session, wo
     kc.ad(world["bob"], enabled=False)
     run = _apply(client, world)
     assert run["status"] == "held"
-    assert run["counts"]["held_eligible"] == 6 and run["counts"]["examined"] == 66
+    assert run["counts"]["held_ad_eligible"] == 6 and run["counts"]["examined"] == 66
     assert _active(db_session, world["ann"]) and _active(db_session, world["bob"])
 
 
@@ -567,11 +694,11 @@ def test_one_tenant_held_while_another_applies(client, db_session, world, kc, mo
     assert not _active(db_session, world["b_kim"])  # tenant b: 1 of 2, applied
     act_as(world["admin"])
     a_view = client.get("/ad-status-sync").json()["latest"]
-    assert a_view["status"] == "held" and "would deactivate 2 of the 6 accounts" in a_view["error"]
+    assert a_view["status"] == "held" and "would deactivate 2 of the 6 AD accounts" in a_view["error"]
     act_as(world["b_admin"])
     b_view = client.get("/ad-status-sync").json()["latest"]
     assert b_view["status"] == "completed" and b_view["error"] is None
-    assert b_view["counts"]["deactivated"] == 1 and "held" not in b_view["counts"]
+    assert b_view["counts"]["deactivated"] == 1 and "held_ad" not in b_view["counts"]
 
 
 def test_a_small_tenant_cannot_lose_its_last_admin(client, db_session, world, kc):
@@ -598,7 +725,7 @@ def test_a_small_tenant_cannot_be_emptied(client, db_session, world, kc):
     service.run_nightly(db_session, kc, now=PREV_NIGHT)
     out = service.run_nightly(db_session, kc, now=NIGHT)
     assert all(_active(db_session, s) for s in students)
-    assert out.run.counts["by_tenant"][str(c.id)]["held"] == 1
+    assert out.run.counts["by_tenant"][str(c.id)]["held_ad"] == 1
 
 
 def test_keycloak_unreachable_fails_the_run_and_changes_nothing(client, db_session, world, kc):
@@ -613,7 +740,8 @@ def test_keycloak_unreachable_fails_the_run_and_changes_nothing(client, db_sessi
 # ── Replicas ───────────────────────────────────────────────────────────────
 
 
-def test_one_nightly_run_per_night_whatever_the_replicas(db_session, world, kc):
+def test_one_nightly_run_per_night_whatever_the_replicas(db_session, world, kc, monkeypatch):
+    monkeypatch.setenv("AD_STATUS_SYNC_HOUR_UTC", "2")
     kc.ad(world["ann"], enabled=False)
     assert service.run_nightly(db_session, kc, now=NIGHT.replace(hour=1)) is None  # before the hour
     first = service.run_nightly(db_session, kc, now=NIGHT)
@@ -758,7 +886,7 @@ def test_a_run_through_the_api_sends_no_keycloak_write(client, db_session, world
         cfg={"base": "http://kc/auth", "realm": "truenorth", "client_id": "api", "client_secret": "s"},
     )
     fastapi_app.dependency_overrides[sync_router.directory_reader] = lambda: reader
-    run = _apply(client, world)
+    run = _apply(client, world, reader=reader)
     assert [r["email"] for r in run["results"]] == ["ann@corp.test"]
     assert {r.method for r in seen} == {"GET", "POST"}
     assert {r.url.path for r in seen if r.method == "POST"} == {"/auth/realms/truenorth/protocol/openid-connect/token"}

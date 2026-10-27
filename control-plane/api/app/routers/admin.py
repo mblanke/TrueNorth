@@ -220,8 +220,17 @@ def delete_user(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_permission(Permission.USER_DELETE)),
 ):
-    """Delete (deactivate) a user.  **Permission: user:delete**"""
+    """Delete (deactivate) a user.  **Permission: user:delete**
+
+    409 for the tenant's last active admin: nobody would be left to re-enable anyone. The check
+    locks the tenant's admin rows (app/ad_status_sync ``is_last_admin``), so two deletions at
+    once, or one beside the nightly AD status sync, cannot both pass."""
+    from ..ad_status_sync.service import is_last_admin
+
     target = get_owned(db, User, user_id, user, not_found="User not found")
+    if target.is_active and is_last_admin(db, target):
+        raise HTTPException(409, "This is the tenant's last active administrator; make someone else an "
+                                 "administrator first")
     target.is_active = False
     db.commit()
     _audit(db, user, "delete", "user", str(user_id))
