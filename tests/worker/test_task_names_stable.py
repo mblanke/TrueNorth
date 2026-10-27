@@ -68,6 +68,7 @@ ADDED_SINCE_SPLIT = {
     "worker.setup_reconcile.reconcile_setups",  # worker/setup_reconcile.py (beat, ADR 0012: finish long setups)
     "worker.tasks.check_range_isolation",  # worker/isolation_task.py (ADR 0013 §4: re-probe a ready range)
     "worker.content_review_sync.sync_content_review",  # worker/content_review_sync.py (beat, ADR 0014 §22-24)
+    "worker.content_feeds.pull_content_feeds",  # worker/content_feeds/pull.py (beat, ADR 0014 §25)
 }
 
 

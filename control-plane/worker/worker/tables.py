@@ -145,6 +145,50 @@ competency_auto_assessments = sa.Table(
     sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
 )
 
+content_feed_entries = sa.Table(
+    "content_feed_entries",
+    metadata,
+    sa.Column("id", GUID(), primary_key=True),
+    sa.Column("entry_key", sa.String(200), nullable=False, unique=True),
+    sa.Column("source", sa.String(32), nullable=False),
+    sa.Column("kind", sa.String(16), nullable=False),
+    sa.Column("products", sa.JSON(), nullable=False),
+    sa.Column("at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("title", sa.String(500), nullable=False),
+    sa.Column("data", sa.JSON(), nullable=False),
+    sa.Column("origin", sa.String(16), nullable=False),
+    sa.Column("first_seen_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+)
+
+content_feed_flags = sa.Table(
+    "content_feed_flags",
+    metadata,
+    sa.Column("id", GUID(), primary_key=True),
+    sa.Column("item_id", GUID(), nullable=False),
+    sa.Column("entry_key", sa.String(200), nullable=False),
+    sa.Column("raised_at", sa.DateTime(timezone=True), nullable=False),
+)
+
+content_feed_settings = sa.Table(
+    "content_feed_settings",
+    metadata,
+    sa.Column("id", sa.Integer(), primary_key=True),
+    sa.Column("enabled_at", sa.DateTime(timezone=True)),
+)
+
+content_feed_sources = sa.Table(
+    "content_feed_sources",
+    metadata,
+    sa.Column("source", sa.String(32), primary_key=True),
+    sa.Column("last_attempt_at", sa.DateTime(timezone=True)),
+    sa.Column("last_success_at", sa.DateTime(timezone=True)),
+    sa.Column("last_error", sa.Text(), nullable=False),
+    sa.Column("entries", sa.Integer(), nullable=False),
+    sa.Column("cursor", sa.String(64), nullable=False),
+    sa.Column("detail", sa.JSON(), nullable=False),
+)
+
 content_review_cycles = sa.Table(
     "content_review_cycles",
     metadata,
@@ -823,6 +867,10 @@ __all__ = [
     "competencies",
     "competency_assertions",
     "competency_auto_assessments",
+    "content_feed_entries",
+    "content_feed_flags",
+    "content_feed_settings",
+    "content_feed_sources",
     "content_review_cycles",
     "content_review_edges",
     "content_review_items",

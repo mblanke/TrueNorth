@@ -9,15 +9,17 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
 import { ApiService } from '@core/services/api.service';
+import { AuthService } from '@core/services/auth.service';
 import {
   ContentItem, ContentItemDetail, ContentReviewApiService, ContentTheme,
 } from '@core/services/content-review-api.service';
 import { NotificationService } from '@core/services/notification.service';
 import type { User } from '@core/models';
 import { apiError } from '../ranges/range-capabilities';
+import { ContentFeedsPanelComponent } from './content-feeds-panel.component';
 import {
-  CalendarView, NO_THEME_COLOUR, addDays, clockText, dayKey, gridDays, heading, kindLabel, listText, shift,
-  themeOf,
+  CalendarView, NO_THEME_COLOUR, addDays, clockText, dayKey, feedOf, gridDays, heading, kindLabel, listText,
+  reasonIcon, shift, themeOf,
 } from './content-calendar.util';
 
 interface Day {
@@ -33,13 +35,14 @@ interface Day {
  * review-due date, coloured by theme, STALE items outlined in red with a clock; the
  * "Stale now" list; the selected item's clock, cycle, last review, what it depends on and
  * what uses it, and Mark reviewed / Assign reviewer / Retire. Its Events tab is
- * /calendar/events (#285).
+ * /calendar/events (#285). Every stale reason is listed with what raised it, a release or
+ * vulnerability feed included (#287); admins also get the Feeds panel.
  */
 @Component({
   selector: 'tn-content-calendar',
   imports: [
     DatePipe, FormsModule, RouterLink, MatButtonModule, MatButtonToggleModule, MatFormFieldModule, MatIconModule,
-    MatInputModule, MatSelectModule,
+    MatInputModule, MatSelectModule, ContentFeedsPanelComponent,
   ],
   template: `
     <div class="page-container content-cal">
@@ -133,9 +136,15 @@ interface Day {
               </div>
               <h2 class="sel-title">{{ sel.title }}</h2>
               <div class="clock-badge" [class]="'clock-badge ' + sel.clock.state">{{ clockText(sel) }}</div>
-              @if ((sel.stale_reasons?.length ?? 0) > 1) {
-                <ul class="reasons">
-                  @for (r of (sel.stale_reasons ?? []).slice(1); track $index) { <li>{{ r.text }}</li> }
+              @if (sel.stale_reasons?.length) {
+                <ul class="reasons" aria-label="Why it is stale">
+                  @for (r of sel.stale_reasons ?? []; track $index) {
+                    <li>
+                      <mat-icon aria-hidden="true">{{ reasonIcon(r.kind) }}</mat-icon>
+                      <span>{{ r.text }}</span>
+                      @if (feedOf(r); as feed) { <span class="feed">{{ feed }}</span> }
+                    </li>
+                  }
                 </ul>
               }
               <dl class="facts">
@@ -189,6 +198,8 @@ interface Day {
               <p class="muted">Select an item to see its review clock.</p>
             }
           </section>
+
+          @if (isAdmin()) { <tn-content-feeds-panel /> }
         </aside>
       </div>
     </div>
@@ -262,7 +273,12 @@ interface Day {
     .clock-badge.green { background: #ECFDF3; color: #067647; }
     .clock-badge.amber { background: #FFFAEB; color: #B54708; }
     .clock-badge.stale { background: #FEF3F2; color: #B42318; }
-    .reasons { margin: 0; padding-left: 18px; font-size: 12px; color: #B42318; }
+    .reasons { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px;
+      font-size: 12px; color: #B42318; }
+    .reasons li { display: flex; align-items: flex-start; gap: 6px; }
+    .reasons mat-icon { font-size: 16px; width: 16px; height: 16px; flex: none; }
+    .reasons .feed { flex: none; margin-left: auto; padding: 1px 8px; border-radius: 8px; font-weight: 600;
+      background: var(--mat-sys-surface-container-high); color: var(--mat-sys-on-surface-variant); }
     .facts { display: grid; grid-template-columns: 92px 1fr; row-gap: 8px; column-gap: 12px; font-size: 13px; margin: 0; }
     .facts dt { color: var(--mat-sys-on-surface-variant); }
     .facts dd { margin: 0; }
@@ -277,12 +293,16 @@ export class ContentCalendarComponent implements OnInit {
   private readonly api = inject(ContentReviewApiService);
   private readonly core = inject(ApiService);
   private readonly notify = inject(NotificationService);
+  private readonly auth = inject(AuthService);
 
   readonly weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
   readonly noTheme = NO_THEME_COLOUR;
   readonly clockText = clockText;
   readonly kind = kindLabel;
   readonly list = listText;
+  readonly reasonIcon = reasonIcon;
+  readonly feedOf = feedOf;
+  readonly isAdmin = computed(() => this.auth.isAdmin());
 
   readonly view = signal<CalendarView>('month');
   readonly anchor = signal(new Date());

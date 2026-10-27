@@ -1,0 +1,16 @@
+golden_templates:
+  ubuntu-lts:
+    - name: Ubuntu 24.04
+      eol: {product: ubuntu, cycle: "24.04"}
+      release: "24.04.5"
+      cpe: "cpe:2.3:o:canonical:ubuntu_linux:24.04"
+  ubuntu-old:
+    - name: Ubuntu 20.04
+      eol: {product: ubuntu, cycle: "20.04"}
+  srv2022-exchange2019:
+    - name: Windows Server 2022
+      eol: {product: windows-server, cycle: "2022"}
+      cpe: "cpe:2.3:o:microsoft:windows_server_2022"
+      kev: [{vendor: Microsoft, product: Windows}]
+    - name: Exchange Server 2019
+      kev: [{vendor: Microsoft, product: Exchange Server}]

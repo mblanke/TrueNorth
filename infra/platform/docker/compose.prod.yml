@@ -26,6 +26,131 @@ x-hardened: &hardened
   cap_drop: [ALL]
   security_opt: ["no-new-privileges:true"]
 
+# The workers' (and beat's) shared environment. worker-provision adds the feeds' NVD key
+# to it (ADR 0014 §25): only the worker that pulls the feeds holds it.
+x-worker-env: &worker-env
+  DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@pgbouncer:5432/${POSTGRES_DB}
+  REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+  # Unseals the hypervisor login the API stored (worker/secretbox.py). Same value as the api.
+  TN_SECRETS_KEY: ${TN_SECRETS_KEY:?set TN_SECRETS_KEY (see .env.production.example)}
+  TN_ENV: ${TN_ENV:-production}
+  TN_VERSION: ${TN_VERSION:-}
+  TN_ENCLAVE_ID: ${TN_ENCLAVE_ID:?set TN_ENCLAVE_ID to this deployment's stable enclave identity}
+  TN_CLASSIFICATION_LEVEL: ${TN_CLASSIFICATION_LEVEL:?set TN_CLASSIFICATION_LEVEL explicitly}
+  # The workers call the AI orchestrator too (worker/ai_client.py).
+  AI_SERVICE_TOKEN: ${AI_SERVICE_TOKEN:-}
+  # TLS + basic auth (the security plugin); the CA is mounted below. The lab
+  # override (OPENSEARCH_DISABLE_SECURITY=true) sets an http URL and an empty user.
+  OPENSEARCH_URL: ${OPENSEARCH_URL:-https://opensearch:9200}
+  OPENSEARCH_USER: ${OPENSEARCH_USER-admin}
+  OPENSEARCH_PASS: ${OPENSEARCH_PASS:-}
+  OPENSEARCH_VERIFY_SSL: ${OPENSEARCH_VERIFY_SSL:-/etc/truenorth/opensearch-ca.pem}
+  # See the api service: "proxmox" is not a registry key. vSphere is "vsphere_api".
+  PROVISIONER_BACKEND: ${PROVISIONER_BACKEND:?set PROVISIONER_BACKEND explicitly (vsphere_api; mock only for a lab)}
+  EXPERIMENTAL_PROVISIONERS: ${EXPERIMENTAL_PROVISIONERS:-false}
+  CELERY_WORKER: "true"
+  # Every task without its own limits (worker/celery_app.py). Hard must stay below the
+  # broker's visibility timeout (3600 s); the worker refuses to start otherwise.
+  CELERY_TASK_SOFT_TIME_LIMIT: ${CELERY_TASK_SOFT_TIME_LIMIT:-1800}
+  CELERY_TASK_TIME_LIMIT: ${CELERY_TASK_TIME_LIMIT:-1900}
+  PROXMOX_API_URL: ${PROXMOX_API_URL:-}
+  PROXMOX_TOKEN: ${PROXMOX_TOKEN:-}
+  # vsphere_api.py reads these at MODULE IMPORT, so they must be present in the
+  # worker environment at start. A hypervisor_connections row written later
+  # cannot override the module-level constants.
+  VSPHERE_URL: ${VSPHERE_URL:-}
+  VSPHERE_USERNAME: ${VSPHERE_USERNAME:-}
+  VSPHERE_PASSWORD: ${VSPHERE_PASSWORD:-}
+  VSPHERE_DATACENTER: ${VSPHERE_DATACENTER:-}
+  VSPHERE_CLUSTER: ${VSPHERE_CLUSTER:-}
+  VSPHERE_DATASTORE: ${VSPHERE_DATASTORE:-}
+  VSPHERE_NETWORK: ${VSPHERE_NETWORK:-}
+  # Verify vCenter's certificate unless the operator says otherwise (the installer
+  # renders tn_vsphere_verify_ssl from the inventory).
+  VSPHERE_VERIFY_SSL: ${VSPHERE_VERIFY_SSL:-true}
+  # Range isolation (vsphere_api.py): per-range port groups on reserved VLANs. The
+  # fallbacks are the provisioner's own defaults; an empty value would override them.
+  VSPHERE_CONTENT_LIBRARY: ${VSPHERE_CONTENT_LIBRARY:-}
+  VSPHERE_MGMT_NETWORK: ${VSPHERE_MGMT_NETWORK:-dPG-TN-MGMT}
+  VSPHERE_RANGE_SWITCH_MODE: ${VSPHERE_RANGE_SWITCH_MODE:-vds}
+  VSPHERE_RANGE_DVS: ${VSPHERE_RANGE_DVS:-vDS-10G}
+  VSPHERE_VLAN_POOL: ${VSPHERE_VLAN_POOL:-100-199}
+  # Never handed to a range (the site's own VLANs); template subnets may not overlap
+  # these site networks (range certification S1). Empty: none.
+  VSPHERE_RESERVED_VLANS: ${VSPHERE_RESERVED_VLANS:-}
+  TN_RANGE_RESERVED_CIDRS: ${TN_RANGE_RESERVED_CIDRS:-}
+  # Isolation evidence per zone (range certification S4; worker/range_isolation.py).
+  # warn until the network team signs off the isolation model (#238).
+  RANGE_ISOLATION_CHECK: ${RANGE_ISOLATION_CHECK:-warn}
+  TN_RANGE_ISOLATION_PROBE_TARGETS: ${TN_RANGE_ISOLATION_PROBE_TARGETS:-}
+  TN_RANGE_ISOLATION_EXCEPTIONS: ${TN_RANGE_ISOLATION_EXCEPTIONS:-10.30.32.10:8081,10.30.32.10:3142}
+  TN_RANGE_ISOLATION_CLOSED_PORTS: ${TN_RANGE_ISOLATION_CLOSED_PORTS:-22,80,443,8080}
+  TN_RANGE_ISOLATION_EXTERNAL_NAME: ${TN_RANGE_ISOLATION_EXTERNAL_NAME:-example.com}
+  VSPHERE_ALLOCATION_DOMAIN: ${VSPHERE_ALLOCATION_DOMAIN:-vsphere}
+  VSPHERE_PLACEMENT: ${VSPHERE_PLACEMENT:-spread}
+  VSPHERE_RESOURCE_POOL: ${VSPHERE_RESOURCE_POOL:-}
+  VSPHERE_EXCLUDE_HOSTS: ${VSPHERE_EXCLUDE_HOSTS:-}
+  VSPHERE_RANGE_UPLINK_NETWORK: ${VSPHERE_RANGE_UPLINK_NETWORK:-}
+  VSPHERE_RANGE_UPLINK_POOL: ${VSPHERE_RANGE_UPLINK_POOL:-}
+  VSPHERE_RANGE_UPLINK_GATEWAY: ${VSPHERE_RANGE_UPLINK_GATEWAY:-}
+  VSPHERE_RANGE_UPLINK_PREFIX: ${VSPHERE_RANGE_UPLINK_PREFIX:-24}
+  VSPHERE_RANGE_VSWITCH: ${VSPHERE_RANGE_VSWITCH:-vSwitch1}
+  VSPHERE_RANGE_FOLDER: ${VSPHERE_RANGE_FOLDER:-TrueNorth/Ranges}
+  VSPHERE_MAX_VCPU_PER_THREAD: ${VSPHERE_MAX_VCPU_PER_THREAD:-4}
+  VSPHERE_CONCURRENCY: ${VSPHERE_CONCURRENCY:-4}
+  VSPHERE_TOOLS_TIMEOUT: ${VSPHERE_TOOLS_TIMEOUT:-120}
+  # Readiness: each Linux/Windows VM must show its planned IPs in VMware Tools within this.
+  VSPHERE_GUEST_IP_TIMEOUT: ${VSPHERE_GUEST_IP_TIMEOUT:-600}
+  VSPHERE_GUEST_IP_CHECK: ${VSPHERE_GUEST_IP_CHECK:-require}
+  # #255: a Windows VM's Sysprep check left running fails this long after its window ends;
+  # a Sysprep success may end up to SKEW s "before" power-on (vCenter/worker clock skew).
+  VSPHERE_CUSTOMIZATION_GRACE: ${VSPHERE_CUSTOMIZATION_GRACE:-900}
+  VSPHERE_CUSTOMIZATION_SKEW: ${VSPHERE_CUSTOMIZATION_SKEW:-300}
+  # ADR 0013: ranges clone only promoted golden-image builds; true/a list = transition only.
+  TN_TEMPLATE_ALLOW_UNPROMOTED: ${TN_TEMPLATE_ALLOW_UNPROMOTED:-false}
+  # Range NIC MACs: TrueNorth's slice of VMware's manual range (empty: 00:50:56:3c:00:00-00:50:56:3f:ff:ff).
+  VSPHERE_MAC_POOL: ${VSPHERE_MAC_POOL:-}
+  VSPHERE_SNAPSHOT_TIMEOUT: ${VSPHERE_SNAPSHOT_TIMEOUT:-1800}
+  VSPHERE_PROVISION_BUDGET: ${VSPHERE_PROVISION_BUDGET:-3300}
+  VSPHERE_NOISE_NETWORK: ${VSPHERE_NOISE_NETWORK:-TN-Noise-Mgmt}
+  LAB_PORT_GROUPS: ${LAB_PORT_GROUPS:-}
+  # Deploy-time software from TN-DEPOT01 (install/lab/README.md). Empty feed/proxy
+  # fall back to Nexus on TN_DEPOT_URL; the apt/dnf proxy should be set explicitly.
+  TN_DEPOT_URL: ${TN_DEPOT_URL:-}
+  TN_DEPOT_CHOCO_FEED: ${TN_DEPOT_CHOCO_FEED:-}
+  TN_DEPOT_APT_PROXY: ${TN_DEPOT_APT_PROXY:-}
+  TN_DEPOT_PORTS: ${TN_DEPOT_PORTS:-8081,3142}
+  TN_SOFTWARE_INSTALL_TIMEOUT: ${TN_SOFTWARE_INSTALL_TIMEOUT:-1800}
+  # The golden templates' build passwords, used ONLY by the template-login check: one
+  # login attempt per built VM that must fail (provisioners/vsphere_credcheck.py, ADR
+  # 0013 §3). No VM is ever given them. Unset: the check records "inconclusive". Never logged.
+  TN_TEMPLATE_WINDOWS_ADMIN_PASSWORD: ${TN_TEMPLATE_WINDOWS_ADMIN_PASSWORD:-}
+  TN_TEMPLATE_LINUX_USER: ${TN_TEMPLATE_LINUX_USER:-ubuntu}
+  TN_TEMPLATE_LINUX_PASSWORD: ${TN_TEMPLATE_LINUX_PASSWORD:-}
+  # enforce (default): a VM whose template password still logs in is not ready. warn: a warning.
+  RANGE_TEMPLATE_LOGIN_CHECK: ${RANGE_TEMPLATE_LOGIN_CHECK:-enforce}
+  # Per VM, its Windows Server roles (features, reboots, forest promotion).
+  VSPHERE_ROLE_TIMEOUT: ${VSPHERE_ROLE_TIMEOUT:-1800}
+  # Security Onion so-setup per range (vmware-site-runbook.md 7.2): the template's build
+  # login (guest operations + sudo) and how long to wait for a healthy node.
+  VSPHERE_SO_INSTALL_USER: ${VSPHERE_SO_INSTALL_USER:-}
+  VSPHERE_SO_INSTALL_PASSWORD: ${VSPHERE_SO_INSTALL_PASSWORD:-}
+  VSPHERE_SO_SETUP_TIMEOUT: ${VSPHERE_SO_SETUP_TIMEOUT:-7200}
+  # Exchange 2019 / SharePoint (SE, 2019) / MECM role images finished at deploy (runbook 7.3). The build
+  # starts the setup, waits at most VSPHERE_SETUP_BUILD_WAIT and leaves it running; the
+  # reconcile beat task finishes it within VSPHERE_ROLE_SETUP_TIMEOUT. SharePoint's product
+  # key (empty: left staged). Never logged.
+  VSPHERE_ROLE_SETUP_TIMEOUT: ${VSPHERE_ROLE_SETUP_TIMEOUT:-7200}
+  VSPHERE_SETUP_BUILD_WAIT: ${VSPHERE_SETUP_BUILD_WAIT:-0}
+  TN_SHAREPOINT_PRODUCT_KEY: ${TN_SHAREPOINT_PRODUCT_KEY:-}
+  # The content feeds' daily pull (worker/content_feeds, ADR 0014 §25): it runs on
+  # worker-provision (tn-egress) and only when TN_FEEDS_MODE=online. The NVD key goes to worker-provision only.
+  TN_FEEDS_MODE: ${TN_FEEDS_MODE:-off}
+  TN_FEEDS_HTTP_PROXY: ${TN_FEEDS_HTTP_PROXY:-}
+  TN_FEEDS_NVD_MIN_CVSS: ${TN_FEEDS_NVD_MIN_CVSS:-9.0}
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+  LOG_FORMAT: ${LOG_FORMAT:-json} # worker/celery_app.py: JSON lines
+
 services:
   # ================================================================
   #  DATA STORES
@@ -612,6 +737,9 @@ services:
       # Archived Range Certification Records older than this are purged; 0 keeps them
       # (app/range_certification/retention.py; installer: tn_range_cert_retention_months).
       RANGE_CERT_RETENTION_MONTHS: ${RANGE_CERT_RETENTION_MONTHS:-12}
+      # The feeds status and the signed feed bundle import (app/content_feeds, ADR 0014 §25).
+      TN_FEEDS_MODE: ${TN_FEEDS_MODE:-off}
+      TN_FEEDS_BUNDLE_PUBLIC_KEY: ${TN_FEEDS_BUNDLE_PUBLIC_KEY:-}
     volumes:
       # Matches SCENARIO_ENGINE_DIR above. The engine is not part of the api
       # build context, so without this mount it is simply absent at runtime.
@@ -683,123 +811,10 @@ services:
         -n provision@%h
         --max-tasks-per-child=1000
         --without-heartbeat
-    environment: &worker-env
-      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@pgbouncer:5432/${POSTGRES_DB}
-      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
-      # Unseals the hypervisor login the API stored (worker/secretbox.py). Same value as the api.
-      TN_SECRETS_KEY: ${TN_SECRETS_KEY:?set TN_SECRETS_KEY (see .env.production.example)}
-      TN_ENV: ${TN_ENV:-production}
-      TN_VERSION: ${TN_VERSION:-}
-      TN_ENCLAVE_ID: ${TN_ENCLAVE_ID:?set TN_ENCLAVE_ID to this deployment's stable enclave identity}
-      TN_CLASSIFICATION_LEVEL: ${TN_CLASSIFICATION_LEVEL:?set TN_CLASSIFICATION_LEVEL explicitly}
-      # The workers call the AI orchestrator too (worker/ai_client.py).
-      AI_SERVICE_TOKEN: ${AI_SERVICE_TOKEN:-}
-      # TLS + basic auth (the security plugin); the CA is mounted below. The lab
-      # override (OPENSEARCH_DISABLE_SECURITY=true) sets an http URL and an empty user.
-      OPENSEARCH_URL: ${OPENSEARCH_URL:-https://opensearch:9200}
-      OPENSEARCH_USER: ${OPENSEARCH_USER-admin}
-      OPENSEARCH_PASS: ${OPENSEARCH_PASS:-}
-      OPENSEARCH_VERIFY_SSL: ${OPENSEARCH_VERIFY_SSL:-/etc/truenorth/opensearch-ca.pem}
-      # See the api service: "proxmox" is not a registry key. vSphere is "vsphere_api".
-      PROVISIONER_BACKEND: ${PROVISIONER_BACKEND:?set PROVISIONER_BACKEND explicitly (vsphere_api; mock only for a lab)}
-      EXPERIMENTAL_PROVISIONERS: ${EXPERIMENTAL_PROVISIONERS:-false}
-      CELERY_WORKER: "true"
-      # Every task without its own limits (worker/celery_app.py). Hard must stay below the
-      # broker's visibility timeout (3600 s); the worker refuses to start otherwise.
-      CELERY_TASK_SOFT_TIME_LIMIT: ${CELERY_TASK_SOFT_TIME_LIMIT:-1800}
-      CELERY_TASK_TIME_LIMIT: ${CELERY_TASK_TIME_LIMIT:-1900}
-      PROXMOX_API_URL: ${PROXMOX_API_URL:-}
-      PROXMOX_TOKEN: ${PROXMOX_TOKEN:-}
-      # vsphere_api.py reads these at MODULE IMPORT, so they must be present in the
-      # worker environment at start. A hypervisor_connections row written later
-      # cannot override the module-level constants.
-      VSPHERE_URL: ${VSPHERE_URL:-}
-      VSPHERE_USERNAME: ${VSPHERE_USERNAME:-}
-      VSPHERE_PASSWORD: ${VSPHERE_PASSWORD:-}
-      VSPHERE_DATACENTER: ${VSPHERE_DATACENTER:-}
-      VSPHERE_CLUSTER: ${VSPHERE_CLUSTER:-}
-      VSPHERE_DATASTORE: ${VSPHERE_DATASTORE:-}
-      VSPHERE_NETWORK: ${VSPHERE_NETWORK:-}
-      # Verify vCenter's certificate unless the operator says otherwise (the installer
-      # renders tn_vsphere_verify_ssl from the inventory).
-      VSPHERE_VERIFY_SSL: ${VSPHERE_VERIFY_SSL:-true}
-      # Range isolation (vsphere_api.py): per-range port groups on reserved VLANs. The
-      # fallbacks are the provisioner's own defaults; an empty value would override them.
-      VSPHERE_CONTENT_LIBRARY: ${VSPHERE_CONTENT_LIBRARY:-}
-      VSPHERE_MGMT_NETWORK: ${VSPHERE_MGMT_NETWORK:-dPG-TN-MGMT}
-      VSPHERE_RANGE_SWITCH_MODE: ${VSPHERE_RANGE_SWITCH_MODE:-vds}
-      VSPHERE_RANGE_DVS: ${VSPHERE_RANGE_DVS:-vDS-10G}
-      VSPHERE_VLAN_POOL: ${VSPHERE_VLAN_POOL:-100-199}
-      # Never handed to a range (the site's own VLANs); template subnets may not overlap
-      # these site networks (range certification S1). Empty: none.
-      VSPHERE_RESERVED_VLANS: ${VSPHERE_RESERVED_VLANS:-}
-      TN_RANGE_RESERVED_CIDRS: ${TN_RANGE_RESERVED_CIDRS:-}
-      # Isolation evidence per zone (range certification S4; worker/range_isolation.py).
-      # warn until the network team signs off the isolation model (#238).
-      RANGE_ISOLATION_CHECK: ${RANGE_ISOLATION_CHECK:-warn}
-      TN_RANGE_ISOLATION_PROBE_TARGETS: ${TN_RANGE_ISOLATION_PROBE_TARGETS:-}
-      TN_RANGE_ISOLATION_EXCEPTIONS: ${TN_RANGE_ISOLATION_EXCEPTIONS:-10.30.32.10:8081,10.30.32.10:3142}
-      TN_RANGE_ISOLATION_CLOSED_PORTS: ${TN_RANGE_ISOLATION_CLOSED_PORTS:-22,80,443,8080}
-      TN_RANGE_ISOLATION_EXTERNAL_NAME: ${TN_RANGE_ISOLATION_EXTERNAL_NAME:-example.com}
-      VSPHERE_ALLOCATION_DOMAIN: ${VSPHERE_ALLOCATION_DOMAIN:-vsphere}
-      VSPHERE_PLACEMENT: ${VSPHERE_PLACEMENT:-spread}
-      VSPHERE_RESOURCE_POOL: ${VSPHERE_RESOURCE_POOL:-}
-      VSPHERE_EXCLUDE_HOSTS: ${VSPHERE_EXCLUDE_HOSTS:-}
-      VSPHERE_RANGE_UPLINK_NETWORK: ${VSPHERE_RANGE_UPLINK_NETWORK:-}
-      VSPHERE_RANGE_UPLINK_POOL: ${VSPHERE_RANGE_UPLINK_POOL:-}
-      VSPHERE_RANGE_UPLINK_GATEWAY: ${VSPHERE_RANGE_UPLINK_GATEWAY:-}
-      VSPHERE_RANGE_UPLINK_PREFIX: ${VSPHERE_RANGE_UPLINK_PREFIX:-24}
-      VSPHERE_RANGE_VSWITCH: ${VSPHERE_RANGE_VSWITCH:-vSwitch1}
-      VSPHERE_RANGE_FOLDER: ${VSPHERE_RANGE_FOLDER:-TrueNorth/Ranges}
-      VSPHERE_MAX_VCPU_PER_THREAD: ${VSPHERE_MAX_VCPU_PER_THREAD:-4}
-      VSPHERE_CONCURRENCY: ${VSPHERE_CONCURRENCY:-4}
-      VSPHERE_TOOLS_TIMEOUT: ${VSPHERE_TOOLS_TIMEOUT:-120}
-      # Readiness: each Linux/Windows VM must show its planned IPs in VMware Tools within this.
-      VSPHERE_GUEST_IP_TIMEOUT: ${VSPHERE_GUEST_IP_TIMEOUT:-600}
-      VSPHERE_GUEST_IP_CHECK: ${VSPHERE_GUEST_IP_CHECK:-require}
-      # #255: a Windows VM's Sysprep check left running fails this long after its window ends;
-      # a Sysprep success may end up to SKEW s "before" power-on (vCenter/worker clock skew).
-      VSPHERE_CUSTOMIZATION_GRACE: ${VSPHERE_CUSTOMIZATION_GRACE:-900}
-      VSPHERE_CUSTOMIZATION_SKEW: ${VSPHERE_CUSTOMIZATION_SKEW:-300}
-      # ADR 0013: ranges clone only promoted golden-image builds; true/a list = transition only.
-      TN_TEMPLATE_ALLOW_UNPROMOTED: ${TN_TEMPLATE_ALLOW_UNPROMOTED:-false}
-      # Range NIC MACs: TrueNorth's slice of VMware's manual range (empty: 00:50:56:3c:00:00-00:50:56:3f:ff:ff).
-      VSPHERE_MAC_POOL: ${VSPHERE_MAC_POOL:-}
-      VSPHERE_SNAPSHOT_TIMEOUT: ${VSPHERE_SNAPSHOT_TIMEOUT:-1800}
-      VSPHERE_PROVISION_BUDGET: ${VSPHERE_PROVISION_BUDGET:-3300}
-      VSPHERE_NOISE_NETWORK: ${VSPHERE_NOISE_NETWORK:-TN-Noise-Mgmt}
-      LAB_PORT_GROUPS: ${LAB_PORT_GROUPS:-}
-      # Deploy-time software from TN-DEPOT01 (install/lab/README.md). Empty feed/proxy
-      # fall back to Nexus on TN_DEPOT_URL; the apt/dnf proxy should be set explicitly.
-      TN_DEPOT_URL: ${TN_DEPOT_URL:-}
-      TN_DEPOT_CHOCO_FEED: ${TN_DEPOT_CHOCO_FEED:-}
-      TN_DEPOT_APT_PROXY: ${TN_DEPOT_APT_PROXY:-}
-      TN_DEPOT_PORTS: ${TN_DEPOT_PORTS:-8081,3142}
-      TN_SOFTWARE_INSTALL_TIMEOUT: ${TN_SOFTWARE_INSTALL_TIMEOUT:-1800}
-      # The golden templates' build passwords, used ONLY by the template-login check: one
-      # login attempt per built VM that must fail (provisioners/vsphere_credcheck.py, ADR
-      # 0013 §3). No VM is ever given them. Unset: the check records "inconclusive". Never logged.
-      TN_TEMPLATE_WINDOWS_ADMIN_PASSWORD: ${TN_TEMPLATE_WINDOWS_ADMIN_PASSWORD:-}
-      TN_TEMPLATE_LINUX_USER: ${TN_TEMPLATE_LINUX_USER:-ubuntu}
-      TN_TEMPLATE_LINUX_PASSWORD: ${TN_TEMPLATE_LINUX_PASSWORD:-}
-      # enforce (default): a VM whose template password still logs in is not ready. warn: a warning.
-      RANGE_TEMPLATE_LOGIN_CHECK: ${RANGE_TEMPLATE_LOGIN_CHECK:-enforce}
-      # Per VM, its Windows Server roles (features, reboots, forest promotion).
-      VSPHERE_ROLE_TIMEOUT: ${VSPHERE_ROLE_TIMEOUT:-1800}
-      # Security Onion so-setup per range (vmware-site-runbook.md 7.2): the template's build
-      # login (guest operations + sudo) and how long to wait for a healthy node.
-      VSPHERE_SO_INSTALL_USER: ${VSPHERE_SO_INSTALL_USER:-}
-      VSPHERE_SO_INSTALL_PASSWORD: ${VSPHERE_SO_INSTALL_PASSWORD:-}
-      VSPHERE_SO_SETUP_TIMEOUT: ${VSPHERE_SO_SETUP_TIMEOUT:-7200}
-      # Exchange 2019 / SharePoint (SE, 2019) / MECM role images finished at deploy (runbook 7.3). The build
-      # starts the setup, waits at most VSPHERE_SETUP_BUILD_WAIT and leaves it running; the
-      # reconcile beat task finishes it within VSPHERE_ROLE_SETUP_TIMEOUT. SharePoint's product
-      # key (empty: left staged). Never logged.
-      VSPHERE_ROLE_SETUP_TIMEOUT: ${VSPHERE_ROLE_SETUP_TIMEOUT:-7200}
-      VSPHERE_SETUP_BUILD_WAIT: ${VSPHERE_SETUP_BUILD_WAIT:-0}
-      TN_SHAREPOINT_PRODUCT_KEY: ${TN_SHAREPOINT_PRODUCT_KEY:-}
-      LOG_LEVEL: ${LOG_LEVEL:-info}
-      LOG_FORMAT: ${LOG_FORMAT:-json} # worker/celery_app.py: JSON lines
+    environment:
+      <<: *worker-env
+      # Optional NVD API key for the daily feed pull (worker/content_feeds); never logged.
+      TN_FEEDS_NVD_API_KEY: ${TN_FEEDS_NVD_API_KEY:-}
     volumes:
       # The software catalogue (software_catalogue.py) is in the image at /app/content.
       - ${OPENSEARCH_CERTS_DIR:-./opensearch/certs}/ca.pem:/etc/truenorth/opensearch-ca.pem:ro
