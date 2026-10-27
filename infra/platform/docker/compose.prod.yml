@@ -489,6 +489,16 @@ services:
       METRICS_SCRAPE_TOKEN: ${METRICS_SCRAPE_TOKEN:-}
       # Public origin of the calendar-feed URLs (app/scheduler/feed.py).
       SCHEDULER_FEED_BASE_URL: ${SCHEDULER_FEED_BASE_URL:-https://${DOMAIN}}
+      # The relay for roll-call onboarding emails, reminders, seat-forfeit notices and
+      # calendar invites, which the api's class and scheduler clocks send
+      # (app/notifications/smtp.py; installer tn_smtp_*). Empty SMTP_HOST: email is off,
+      # the mail is only logged and admins see a banner (GET /email/status).
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURITY: ${SMTP_SECURITY:-starttls}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
       # TLS + basic auth (the security plugin); the CA is mounted below. The lab
       # override (OPENSEARCH_DISABLE_SECURITY=true) sets an http URL and an empty user.
       OPENSEARCH_URL: ${OPENSEARCH_URL:-https://opensearch:9200}

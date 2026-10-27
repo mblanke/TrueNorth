@@ -6,11 +6,14 @@ import { AppComponent } from './app.component';
 import { AuthService, UserRole } from './core/services/auth.service';
 import { fakeAuth } from './core/auth/fake-auth';
 import { NotificationsApiService } from '@core/services/notifications-api.service';
+import { EmailStatusService } from '@core/services/email-status.service';
+import { signal } from '@angular/core';
 
 describe('AppComponent', () => {
   let component: AppComponent;
   let fixture: ComponentFixture<AppComponent>;
   let auth: ReturnType<typeof fakeAuth>;
+  const emailOff = signal(false);
 
   beforeEach(async () => {
     auth = fakeAuth('admin');
@@ -19,11 +22,24 @@ describe('AppComponent', () => {
       providers: [
         { provide: AuthService, useValue: auth },
         { provide: NotificationsApiService, useValue: { unreadCount: () => of({ unread: 0 }), list: () => of([]) } },
+        // The banner's own spec covers it (shared/email-banner.component.spec.ts).
+        { provide: EmailStatusService, useValue: { load: () => undefined, notConfigured: emailOff } },
       ],
     }).compileComponents();
 
     fixture = TestBed.createComponent(AppComponent);
     component = fixture.componentInstance;
+  });
+
+  // ── Email not configured (#306) ──────────────────────────────────
+  it('shows admins the email banner above every page while email is off', () => {
+    emailOff.set(true);
+    fixture.detectChanges();
+    const el: HTMLElement = fixture.nativeElement;
+    expect(el.querySelector('main .email-banner')?.textContent).toContain('Email is not configured');
+    emailOff.set(false);
+    fixture.detectChanges();
+    expect(el.querySelector('.email-banner')).toBeNull();
   });
 
   // ── A seat lost on a class (ADR 0014 §4) ────────────────────────

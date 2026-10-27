@@ -43,8 +43,8 @@ ON = {
     "tn_alert_smtp_require_tls": True,
     "tn_domain_fqdn": "tn-staging.corp.tnrange.lab",
     "tn_config_dir": "/srv/truenorth/config",
-    "vault_alert_smtp_username": USERNAME,
-    "vault_alert_smtp_password": PASSWORD,
+    "tn_alert_smtp_username": USERNAME,
+    "tn_alert_smtp_password": PASSWORD,
     "vault_alertmanager_webhook_url": "",
 }
 OFF = {**ON, "tn_alert_email_enabled": False}
@@ -119,16 +119,24 @@ def _mount_source(env: dict[str, str]) -> Path:
 def test_alert_email_is_off_by_default_and_on_staging_until_smtp_is_known():
     gv = _yaml(INSTALL / "inventory/group_vars/all/main.yml")
     assert gv["tn_alert_email_enabled"] is False
-    assert gv["tn_alert_smtp_port"] == 587 and gv["tn_alert_smtp_require_tls"] is True
-    assert gv["tn_alert_email_to"] == gv["tn_alert_email_from"] == gv["tn_alert_smtp_host"] == ""
+    assert gv["tn_alert_email_to"] == ""
+    # The relay, sender and credentials default to the app's tn_smtp_* (#306; their
+    # rendering is tests/contracts/test_installer_smtp.py), which default to empty.
+    assert gv["tn_alert_smtp_host"] == "{{ tn_smtp_host }}" and gv["tn_smtp_host"] == ""
+    assert gv["tn_alert_email_from"] == "{{ tn_smtp_from_address }}" and gv["tn_smtp_from_address"] == ""
+    assert gv["tn_alert_smtp_port"] == "{{ tn_smtp_port }}" and gv["tn_smtp_port"] == 587
+    assert "tn_smtp_security" in gv["tn_alert_smtp_require_tls"] and gv["tn_smtp_security"] == "starttls"
     staging = _yaml(INSTALL / "inventory/staging.yml")["all"]["children"]["platform"]["hosts"]["tn-staging"]
     # Off on staging until the owner has SMTP details; a one-line flip, the rest pre-written.
     assert staging["tn_alert_email_enabled"] is False
     text = (INSTALL / "inventory/staging.yml").read_text()
-    for name in ("tn_alert_email_to", "tn_alert_email_from", "tn_alert_smtp_host"):
+    for name in ("tn_alert_email_to", "tn_smtp_host", "tn_smtp_from_address"):
         assert f"# {name}:" in text
+    # The alert credentials are an override now: commented out, so the defaults apply.
     vault = _yaml(INSTALL / "inventory/group_vars/all/vault.yml.example")
-    assert vault["vault_alert_smtp_username"] == vault["vault_alert_smtp_password"] == "CHANGE_ME"
+    assert "vault_alert_smtp_username" not in vault and "vault_alert_smtp_password" not in vault
+    assert "vault_alert_smtp_username" in gv["tn_alert_smtp_username"]
+    assert "tn_smtp_username" in gv["tn_alert_smtp_username"]
 
 
 # ── Off: the null receiver, and a warning ─────────────────────────────
@@ -171,7 +179,7 @@ def test_off_removes_the_email_files():
     assert rm["ansible.builtin.file"]["state"] == "absent"
     assert _expr(rm["loop"], **OFF) == ["alertmanager.email.yml", "smtp_password"]
     assert _expr(rm["loop"], **ON) == []
-    assert _expr(rm["loop"], **{**ON, "vault_alert_smtp_username": "", "vault_alert_smtp_password": ""}) == [
+    assert _expr(rm["loop"], **{**ON, "tn_alert_smtp_username": "", "tn_alert_smtp_password": ""}) == [
         "smtp_password"
     ]
 
@@ -221,7 +229,7 @@ def test_on_keeps_the_password_out_of_the_config():
     assert g["smtp_auth_password_file"] == "/etc/alertmanager/secrets/smtp_password"
     assert "smtp_auth_password" not in g and "smtp_auth_secret" not in g
     # No credentials: no auth at all (an unauthenticated relay), and still no password.
-    bare = _email(vault_alert_smtp_username="", vault_alert_smtp_password="")["global"]
+    bare = _email(tn_alert_smtp_username="", tn_alert_smtp_password="")["global"]
     assert not any(k.startswith("smtp_auth") for k in bare)
 
 
@@ -239,7 +247,7 @@ def test_the_password_file_is_0600_and_nothing_is_logged():
     copy = pw["ansible.builtin.copy"]
     assert copy["dest"] == "{{ tn_config_dir }}/alertmanager/smtp_password"
     assert copy["mode"] == "0600" and copy["owner"] == copy["group"] == "65534"
-    assert "vault_alert_smtp_password" in copy["content"]
+    assert "tn_alert_smtp_password" in copy["content"]
     assert pw["no_log"] is True
     cfg = _task(tasks, "Config — Alertmanager email receiver")
     assert cfg["no_log"] is True and cfg["ansible.builtin.template"]["mode"] == "0400"
@@ -251,14 +259,16 @@ def test_the_password_file_is_0600_and_nothing_is_logged():
     users = [
         p
         for p in [*INSTALL.rglob("*.yml"), *INSTALL.rglob("*.j2")]
-        if "vault_alert_smtp_password" in _code(p.read_text())
+        if "tn_alert_smtp_password" in _code(p.read_text())
     ]
     assert sorted(p.relative_to(INSTALL).as_posix() for p in users) == [
+        "inventory/group_vars/all/main.yml",  # its definition: the vault's, else the app's (#306)
         "roles/tn_config/tasks/main.yml",
         "roles/tn_preflight/tasks/main.yml",
     ]
-    assert "vault_alert_smtp_password" not in TEMPLATE.read_text()
-    assert "vault_alert_smtp_password" not in (CONFIG_ROLE / "templates/env.production.j2").read_text()
+    for name in ("tn_alert_smtp_password", "vault_alert_smtp_password"):
+        assert name not in TEMPLATE.read_text()
+        assert name not in (CONFIG_ROLE / "templates/env.production.j2").read_text()
 
 
 # ── Preflight ─────────────────────────────────────────────────────────
@@ -281,16 +291,16 @@ def _complete(**ctx) -> tuple[bool, str]:
     ("case", "over", "ok", "named"),
     [
         ("complete", {}, True, None),
-        ("unauthenticated relay", {"vault_alert_smtp_username": "", "vault_alert_smtp_password": ""}, True, None),
-        ("placeholder username", {"vault_alert_smtp_username": "CHANGE_ME"}, False, "CHANGE_ME"),
-        ("placeholder password", {"vault_alert_smtp_password": "CHANGE_ME"}, False, "CHANGE_ME"),
+        ("unauthenticated relay", {"tn_alert_smtp_username": "", "tn_alert_smtp_password": ""}, True, None),
+        ("placeholder username", {"tn_alert_smtp_username": "CHANGE_ME"}, False, "CHANGE_ME"),
+        ("placeholder password", {"tn_alert_smtp_password": "CHANGE_ME"}, False, "CHANGE_ME"),
         (
             "both placeholders (the vault template)",
-            {"vault_alert_smtp_username": "CHANGE_ME", "vault_alert_smtp_password": "CHANGE_ME"},
+            {"tn_alert_smtp_username": "CHANGE_ME", "tn_alert_smtp_password": "CHANGE_ME"},
             False,
             "CHANGE_ME",
         ),
-        ("username without password", {"vault_alert_smtp_password": ""}, False, "Set both"),
+        ("username without password", {"tn_alert_smtp_password": ""}, False, "Set both"),
         ("no recipient", {"tn_alert_email_to": ""}, False, "tn_alert_email_to"),
         ("no sender", {"tn_alert_email_from": " "}, False, "tn_alert_email_from"),
         ("no relay", {"tn_alert_smtp_host": ""}, False, "tn_alert_smtp_host"),
@@ -313,10 +323,10 @@ def test_30_config_rechecks_before_rendering():
         return all(_expr(c, **{**ON, **over}) for c in task["ansible.builtin.assert"]["that"])
 
     assert holds()
-    assert holds(vault_alert_smtp_username="", vault_alert_smtp_password="")
+    assert holds(tn_alert_smtp_username="", tn_alert_smtp_password="")
     assert not holds(tn_alert_smtp_host="")
     assert not holds(tn_alert_email_to=" ")
-    assert not holds(vault_alert_smtp_password="CHANGE_ME")
+    assert not holds(tn_alert_smtp_password="CHANGE_ME")
     names = [t.get("name") for t in _tasks(CONFIG_ROLE / "tasks/main.yml")]
     assert names.index("Config — alert email settings are usable") < names.index("Config — Alertmanager email receiver")
 
@@ -388,7 +398,7 @@ def _amtool_check(directory: Path, *names: str) -> subprocess.CompletedProcess:
 def test_amtool_accepts_the_rendered_and_shipped_configs(tmp_path):
     variants = {
         "email.yml": {},
-        "email-noauth.yml": {"vault_alert_smtp_username": "", "vault_alert_smtp_password": ""},
+        "email-noauth.yml": {"tn_alert_smtp_username": "", "tn_alert_smtp_password": ""},
         "email-webhook.yml": {"vault_alertmanager_webhook_url": "https://hook.example.org/x"},
         "email-465.yml": {"tn_alert_smtp_port": 465, "tn_alert_smtp_require_tls": False},
     }

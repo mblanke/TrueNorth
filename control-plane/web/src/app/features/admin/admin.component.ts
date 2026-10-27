@@ -16,6 +16,7 @@ import { NotificationService } from '@core/services/notification.service';
 import { Tenant, HealthResponse } from '@core/models';
 import { EmptyStateComponent } from '../../shared/components/empty-state/empty-state.component';
 import { EnterStaggerDirective, HoverLiftDirective } from '../../shared/motion';
+import { EmailSettingsCardComponent } from './email-settings-card.component';
 
 interface AuditEntry {
   id: string;
@@ -33,7 +34,7 @@ interface AuditEntry {
     CommonModule, FormsModule, MatCardModule, MatButtonModule,
     MatIconModule, MatFormFieldModule, MatInputModule, MatTableModule,
     MatTabsModule, MatChipsModule, MatTooltipModule,
-    EmptyStateComponent, EnterStaggerDirective, HoverLiftDirective,
+    EmptyStateComponent, EnterStaggerDirective, HoverLiftDirective, EmailSettingsCardComponent,
   ],
   template: `
     <div class="page-container">
@@ -77,6 +78,7 @@ interface AuditEntry {
                 </mat-card>
               </div>
             }
+            <tn-email-settings-card />
           </div>
         </mat-tab>
 

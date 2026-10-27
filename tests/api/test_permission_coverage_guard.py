@@ -151,6 +151,10 @@ SIGN_IN_ONLY: dict[str, str] = {
     # Server feature flag only (enabled + a fixed reason); the web app hides the ARC²
     # menu for everyone when it is off. Every run route still needs course:author.
     "GET /arc2/status": "catalogue: whether ARC² Course Studio is enabled on this server",
+    # Whether the server sends email, a boolean (#306): the admin banner and the Classes
+    # roll-call warning read it. The relay is added in-body for the platform administrator
+    # only (rbac.is_platform_admin); the password never. POST /email/test needs that role.
+    "GET /email/status": "catalogue: whether email is configured on this server",
     "GET /courses/{course_id}": "catalogue: a course and its module list",
     "GET /courses/{course_id}/outline": "catalogue: what a course teaches",
     "GET /learning-paths": "catalogue: learning paths Students browse",
