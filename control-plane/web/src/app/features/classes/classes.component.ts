@@ -1,6 +1,7 @@
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { ActivatedRoute } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatChipsModule } from '@angular/material/chips';
@@ -19,6 +20,8 @@ import {
 } from '@core/services/operator-records-api.service';
 import { roleCan } from '@core/auth/permissions';
 import { EmptyStateComponent } from '../../shared/components/empty-state/empty-state.component';
+import { RangeCredentialsComponent } from '../../shared/components/range-credentials/range-credentials.component';
+import { ClassCloseoutComponent } from './class-closeout.component';
 import { apiError } from '../ranges/range-capabilities';
 
 export interface ClassForm {
@@ -97,7 +100,8 @@ export function addSummary(r: RollCallAddResult): string {
   selector: 'tn-classes',
   imports: [
     DatePipe, FormsModule, MatButtonModule, MatCardModule, MatChipsModule, MatFormFieldModule,
-    MatIconModule, MatInputModule, MatSelectModule, EmptyStateComponent,
+    MatIconModule, MatInputModule, MatSelectModule, EmptyStateComponent, ClassCloseoutComponent,
+    RangeCredentialsComponent,
   ],
   template: `
     <div class="page-container">
@@ -176,6 +180,7 @@ export function addSummary(r: RollCallAddResult): string {
               <mat-card-title>{{ c.name }}</mat-card-title>
               <mat-card-subtitle>
                 {{ c.course_name }} · {{ c.start_date | date:'mediumDate' }} – {{ c.end_date | date:'mediumDate' }}
+                @if (c.status !== 'open') { · <strong>{{ c.status === 'closed' ? 'Closed' : 'Cancelled' }}</strong> }
               </mat-card-subtitle>
             </mat-card-header>
             <mat-card-content>
@@ -183,13 +188,35 @@ export function addSummary(r: RollCallAddResult): string {
                 · On the roll call: {{ c.roll_call_count }}</p>
             </mat-card-content>
             <mat-card-actions>
-              <button mat-button (click)="open(c)"><mat-icon>fact_check</mat-icon> Roll call</button>
+              @if (c.my_role === 'student') {
+                <button mat-button (click)="open(c)"><mat-icon>computer</mat-icon> Your range</button>
+              } @else {
+                <button mat-button (click)="open(c)"><mat-icon>fact_check</mat-icon> Roll call</button>
+              }
             </mat-card-actions>
           </mat-card>
         }
       </div>
 
       @if (selected(); as c) {
+        @if (c.my_role === 'student') {
+          <mat-card class="my-range">
+            <mat-card-header>
+              <mat-card-title>Your range: {{ c.name }}</mat-card-title>
+              <mat-card-subtitle>Open your accounts during each session: that is how your attendance is recorded.</mat-card-subtitle>
+            </mat-card-header>
+            <mat-card-content>
+              @for (x of myRanges(); track x.id) {
+                <h3 class="range-title">{{ owner(x) }} · {{ statusLabel(x) }}</h3>
+                @if (x.status === 'ready' && x.range_id) { <tn-range-credentials [rangeId]="x.range_id" /> }
+              } @empty { <p>Your range is built 30 minutes before your first session.</p> }
+            </mat-card-content>
+          </mat-card>
+        }
+      }
+
+      @if (selected(); as c) {
+        @if (c.my_role !== 'student') {
         <mat-card class="roll-call">
           <mat-card-header>
             <mat-card-title>Roll call: {{ c.name }}</mat-card-title>
@@ -237,9 +264,13 @@ export function addSummary(r: RollCallAddResult): string {
             </table>
           </mat-card-content>
         </mat-card>
+        }
       }
 
       @if (selected(); as c) {
+        @if (c.my_role && c.my_role !== 'student') {
+          <tn-class-closeout [classRecord]="c" (changed)="refresh(c)" />
+        }
         @if (classRanges(); as r) {
           <mat-card class="ranges">
             <mat-card-header>
@@ -337,6 +368,8 @@ export function addSummary(r: RollCallAddResult): string {
     .count { width: 120px; }
     .team-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
     .team h3 { margin: 8px 0; font-size: 15px; }
+    .my-range { margin-top: 16px; }
+    .range-title { font-size: 15px; margin: 12px 0 4px; }
     .member { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 2px 0; }
   `],
 })
@@ -345,6 +378,8 @@ export class ClassesComponent implements OnInit {
   private readonly records = inject(OperatorRecordsApiService);
   private readonly notify = inject(NotificationService);
   readonly auth = inject(AuthService);
+  /** `?class=<id>` opens that class's roll call (the calendar's Roll call link, #285). */
+  private readonly route = inject(ActivatedRoute, { optional: true });
 
   readonly classes = signal<ClassRecord[]>([]);
   readonly loading = signal(true);
@@ -359,6 +394,8 @@ export class ClassesComponent implements OnInit {
   readonly observers = computed(() => this.users().filter(u => u.role !== 'student' && u.role !== 'range_ops'));
   readonly canCreate = computed(() => roleCan(this.auth.user()?.role, 'class:create'));
   readonly classRanges = signal<ClassRanges | null>(null);
+  /** A Student's own seat and the class's shared ranges, as the API hands them out. */
+  readonly myRanges = computed(() => (this.classRanges()?.ranges ?? []).filter(r => r.status !== 'torn_down'));
   readonly teams = signal<SessionTeams | null>(null);
   readonly teamsSession = signal<ClassSessionMode | null>(null);
   pasted = '';
@@ -369,10 +406,34 @@ export class ClassesComponent implements OnInit {
   }
 
   load(): void {
-    const source = this.auth.isAdmin() ? this.api.list() : this.api.mine();
-    source.subscribe({
-      next: rows => { this.classes.set(rows); this.loading.set(false); },
+    this.source().subscribe({
+      next: rows => {
+        this.classes.set(rows);
+        this.loading.set(false);
+        const wanted = this.route?.snapshot.queryParamMap.get('class');
+        const hit = wanted && !this.selected() ? rows.find(c => c.id === wanted) : undefined;
+        if (hit) this.open(hit);
+      },
       error: err => { this.loading.set(false); this.notify.error(apiError(err)); },
+    });
+  }
+
+  /** Admins: every class of the organisation. Staff: those they lead, assist or observe.
+   *  Students: the classes whose roll call they are on. */
+  private source() {
+    if (this.auth.isAdmin()) return this.api.list();
+    return roleCan(this.auth.user()?.role, 'class:read') ? this.api.mine() : this.api.list();
+  }
+
+  /** After a close or a reopen: the list, and the selected class as the API now sees it. */
+  refresh(c: ClassRecord): void {
+    this.source().subscribe({
+      next: rows => {
+        this.classes.set(rows);
+        const now = rows.find(r => r.id === c.id);
+        if (now) this.open(now);
+      },
+      error: err => this.notify.error(apiError(err)),
     });
   }
 
@@ -411,10 +472,12 @@ export class ClassesComponent implements OnInit {
     if (this.selected()?.id !== c.id) { this.teams.set(null); this.teamsSession.set(null); }
     this.selected.set(c);
     this.lastAdd.set('');
-    this.api.rollCall(c.id).subscribe({
-      next: rows => this.rollCall.set(rows),
-      error: err => this.notify.error(apiError(err)),
-    });
+    if (c.my_role !== 'student') {  // a Student never sees the roll call (the API answers 403)
+      this.api.rollCall(c.id).subscribe({
+        next: rows => this.rollCall.set(rows),
+        error: err => this.notify.error(apiError(err)),
+      });
+    }
     this.loadRanges(c);
   }
 

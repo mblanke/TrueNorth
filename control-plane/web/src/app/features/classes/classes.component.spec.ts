@@ -1,8 +1,10 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
-import { HttpErrorResponse } from '@angular/common/http';
+import { HttpErrorResponse, provideHttpClient } from '@angular/common/http';
+import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
+import { ActivatedRoute, convertToParamMap } from '@angular/router';
 import { of, throwError } from 'rxjs';
 import { AuthService } from '@core/services/auth.service';
 import {
@@ -106,9 +108,12 @@ describe('ClassesComponent', () => {
   let el: HTMLElement;
   let api: jasmine.SpyObj<ClassesApiService>;
 
-  function setup(role: string, cls: ClassRecord = CLASS) {
+  function setup(role: string, cls: ClassRecord = CLASS, query: Record<string, string> = {}) {
     api = jasmine.createSpyObj('ClassesApiService', ['mine', 'list', 'create', 'rollCall', 'addPasted', 'addCsv', 'remove',
-      'reinstate', 'ranges', 'retryRange', 'sessionTeams', 'splitTeams', 'moveTeamMember']);
+      'reinstate', 'ranges', 'retryRange', 'sessionTeams', 'splitTeams', 'moveTeamMember', 'attendance', 'closeout']);
+    api.attendance.and.returnValue(of({ class_id: 'c1', class_status: 'open', can_edit: true, sessions: [], students: [] }));
+    api.closeout.and.returnValue(of({ class_id: 'c1', class_status: 'open', numbers_shown: false, sessions_held: 0,
+      students: [] }));
     api.ranges.and.returnValue(of(RANGES));
     api.retryRange.and.returnValue(of(RANGES.ranges[1]));
     api.sessionTeams.and.returnValue(of(TEAMS));
@@ -127,10 +132,12 @@ describe('ClassesComponent', () => {
     TestBed.configureTestingModule({
       imports: [ClassesComponent, NoopAnimationsModule],
       providers: [
+        provideHttpClient(), provideHttpClientTesting(),
         { provide: ClassesApiService, useValue: api },
         { provide: OperatorRecordsApiService, useValue: records },
         { provide: NotificationService, useValue: notify },
         { provide: AuthService, useValue: { user: signal({ role }), isAdmin: signal(role === 'admin') } },
+        { provide: ActivatedRoute, useValue: { snapshot: { queryParamMap: convertToParamMap(query) } } },
       ],
     });
     fixture = TestBed.createComponent(ClassesComponent);
@@ -153,6 +160,18 @@ describe('ClassesComponent', () => {
     expect(el.textContent).toContain('Removed');
     expect(el.textContent).toContain('Lost seat');
     expect(buttons('Remove').filter(b => b.textContent?.trim() === 'Remove').length).toBe(3);
+  });
+
+  it('opens the roll call of the class named in ?class= (the calendar\'s Roll call link)', () => {
+    setup('instructor', CLASS, { class: 'c1' });
+    expect(api.rollCall).toHaveBeenCalledWith('c1');
+    expect(component.selected()?.id).toBe('c1');
+  });
+
+  it('ignores ?class= for a class the caller cannot see', () => {
+    setup('instructor', CLASS, { class: 'other' });
+    expect(api.rollCall).not.toHaveBeenCalled();
+    expect(component.selected()).toBeNull();
   });
 
   it('the lead reinstates a Student who lost their seat, in one click', () => {
@@ -234,6 +253,21 @@ describe('ClassesComponent', () => {
     expect(api.splitTeams).toHaveBeenCalledWith('c1', 'ev2', 3);
     component.move(CLASS, 'u2', 'tB');
     expect(api.moveTeamMember).toHaveBeenCalledWith('c1', 'ev2', 'u2', 'tB');
+  });
+
+  it('a Student sees their own classes and opens their range there, never the roll call', () => {
+    const mine = { ...CLASS, my_role: 'student', can_edit: false } as ClassRecord;
+    setup('student', mine);
+    expect(api.list).toHaveBeenCalled();
+    expect(api.mine).not.toHaveBeenCalled();
+    expect(buttons('Roll call').length).toBe(0);
+    buttons('Your range')[0].click();
+    fixture.detectChanges();
+    expect(api.rollCall).not.toHaveBeenCalled();
+    expect(el.textContent).toContain('that is how your attendance is recorded');
+    // The ready seat gets the credentials panel (opening it is the attendance evidence); the failed one does not.
+    expect(el.querySelectorAll('.my-range tn-range-credentials').length).toBe(1);
+    expect(el.querySelector('tn-class-closeout')).toBeNull();
   });
 
   it('an admin sees every class and may create one; a refusal is shown', () => {

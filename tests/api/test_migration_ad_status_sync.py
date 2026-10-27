@@ -16,7 +16,7 @@ import pytest
 import sqlalchemy as sa
 
 API = Path(__file__).resolve().parents[2] / "control-plane" / "api"
-PARENT, REVISION = "57e2c4b65b98", "648ef1fe0b6c"
+PARENT, REVISION = "0fdeb8975b40", "648ef1fe0b6c"
 TABLES = {"ad_status_sync_runs", "ad_status_sync_results", "user_last_seen"}
 
 

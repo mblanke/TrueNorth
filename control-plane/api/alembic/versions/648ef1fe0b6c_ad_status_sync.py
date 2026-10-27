@@ -1,7 +1,7 @@
 """AD status sync: its runs, the accounts they deactivated, and when accounts were last seen
 
 Revision ID: 648ef1fe0b6c
-Revises: 57e2c4b65b98
+Revises: 0fdeb8975b40
 Create Date: 2026-10-27 12:00:00.000000
 
 Identity 13 (ADR 0014 decision 6; issue #290):
@@ -24,7 +24,7 @@ from alembic import op
 from app.models import GUID
 
 revision: str = "648ef1fe0b6c"
-down_revision: str | None = "57e2c4b65b98"
+down_revision: str | None = "0fdeb8975b40"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

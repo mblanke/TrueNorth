@@ -449,6 +449,8 @@ def reject_addition(db: Session, cls: Class, entry: RollCallEntry, actor: Curren
     """An approver turns a pending addition down: it is removed, with the reason. Does not commit."""
     if entry.status != RollCallStatus.pending.value:
         raise HTTPException(409, f"This addition is {entry.status}, not waiting for approval")
+    if cls.status == ClassStatus.closed.value:
+        raise HTTPException(409, "A closed class is read-only; an admin reopens it first")
     entry.status = RollCallStatus.removed.value
     entry.removed_at = _now()
     entry.pending_reason = f"rejected: {reason}"[:1000]

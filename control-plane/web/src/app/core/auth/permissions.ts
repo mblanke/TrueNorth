@@ -171,8 +171,10 @@ export const PAGE_ACCESS = {
   schedule: { all: ['schedule:read'] },
   /** The calendar's Content view: the content clock (ADR 0014 §22-24). Never observers or Students. */
   contentCalendar: { all: ['content_review:read'] },
-  /** GET /classes/mine: the staff Classes page (ADR 0014). Creating one needs class:create. */
-  classes: { all: ['class:read'] },
+  /** The Classes page (ADR 0014): staff through GET /classes/mine (class:read; creating one needs
+   *  class:create); Students through GET /classes, their own classes and their range there
+   *  (ADR 0014 §12: opening it is their attendance). detection:submit stands for "a Student". */
+  classes: { any: ['class:read', 'detection:submit'] },
   /** GET /maintenance-windows (schedule:read); changing them needs range:admin (admins). */
   maintenanceWindows: { all: ['schedule:read', 'range:admin'] },
   approvals: { all: ['registration:read'] },
