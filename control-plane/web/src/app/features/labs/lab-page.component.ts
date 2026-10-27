@@ -80,7 +80,12 @@ const TOKEN_KEY = (id: string) => `tn-lab-token:${id}`;
               </p>
             }
             <p class="muted">
-              Ends {{ s.max_expires_at | date: 'shortTime' }} at the latest; closes after inactivity
+              @if (s.ends_with_class) {
+                Ends with your class at {{ s.max_expires_at | date: 'shortTime' }};
+              } @else {
+                Ends {{ s.max_expires_at | date: 'shortTime' }} at the latest;
+              }
+              closes after inactivity
               ({{ s.idle_expires_at | date: 'shortTime' }}). Your submitted work is kept when it ends.
             </p>
             <!-- This lab's own logins (ADR 0013 §3): new after every reset; each reveal is recorded. -->
@@ -158,7 +163,8 @@ export class LabPageComponent implements OnInit {
         // On an error (the lab ended, the enrollment closed) reload, so the page says so.
         // Says whether the Student used the page since the last beat; an open tab nobody
         // uses does not keep the lab open.
-        const active = this.interacted;
+        // A page the Student is looking at counts too; a hidden tab does not.
+        const active = this.interacted || document.visibilityState === 'visible';
         this.interacted = false;
         this.api.labHeartbeat(this.id, active, this.token).subscribe({
           next: s => this.session.set(s),

@@ -73,6 +73,8 @@ class LabSessionOut(BaseModel):
     max_expires_at: datetime | None
     ended_at: datetime | None
     end_reason: str
+    ends_with_class: bool = Field(
+        False, description="The lab draws on the Student's class session and ends with it (max_expires_at).")
     access_token: str | None = None
 
 
@@ -93,6 +95,7 @@ def _out(s: LabSession, token: str | None = None) -> LabSessionOut:
         max_expires_at=s.max_expires_at,
         ended_at=s.ended_at,
         end_reason=s.end_reason,
+        ends_with_class=s.booking_id is not None,
         access_token=token,
     )
 
@@ -204,15 +207,9 @@ def launch_lab_session(
     staff = user_has_permission(user, Permission.LEARNING_RECORD_WRITE)
     try:
         with db.begin_nested():
-            release = service.release_for_student(
-                db, tenant_id=tenant_uuid(user), user_id=_uuid(user.id), course_id=body.course_id, auto_enroll=staff
-            )
-            session, _ = service.launch(
-                db,
-                tenant_id=tenant_uuid(user),
-                user_id=_uuid(user.id),
-                release_id=release.id,
-                activity_id=body.activity_id,
+            session, _ = service.launch_for_course(
+                db, tenant_id=tenant_uuid(user), user_id=_uuid(user.id), course_id=body.course_id,
+                activity_id=body.activity_id, auto_enroll=staff,
             )
     except service.LabsBusyError as exc:
         db.info.pop(service.OUTBOX, None)

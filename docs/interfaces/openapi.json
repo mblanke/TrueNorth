@@ -11701,6 +11701,12 @@
             ],
             "title": "Ended At"
           },
+          "ends_with_class": {
+            "default": false,
+            "description": "The lab draws on the Student's class session and ends with it (max_expires_at).",
+            "title": "Ends With Class",
+            "type": "boolean"
+          },
           "error": {
             "title": "Error",
             "type": "string"

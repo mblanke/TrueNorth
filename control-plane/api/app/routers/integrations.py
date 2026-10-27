@@ -934,11 +934,9 @@ def _launch_lab(db: Session, user: User, rid: str) -> str:
     try:
         with db.begin_nested():
             # Moodle course membership is the control on this path, so the launch enrols.
-            release = labs.release_for_student(
-                db, tenant_id=user.tenant_id, user_id=user.id, course_id=course_id, auto_enroll=True
-            )
-            session, _ = labs.launch(
-                db, tenant_id=user.tenant_id, user_id=user.id, release_id=release.id, activity_id=activity_id
+            session, _ = labs.launch_for_course(
+                db, tenant_id=user.tenant_id, user_id=user.id, course_id=course_id, activity_id=activity_id,
+                auto_enroll=True,
             )
     except labs.LabsBusyError:
         db.info.pop(labs.OUTBOX, None)

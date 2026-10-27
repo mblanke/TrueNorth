@@ -14605,6 +14605,12 @@ export interface components {
             end_reason: string;
             /** Ended At */
             ended_at: string | null;
+            /**
+             * Ends With Class
+             * @description The lab draws on the Student's class session and ends with it (max_expires_at).
+             * @default false
+             */
+            ends_with_class?: boolean;
             /** Error */
             error: string;
             /** Evidence Count */

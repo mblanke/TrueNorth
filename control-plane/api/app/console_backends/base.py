@@ -20,3 +20,10 @@ class BaseConsoleBackend(ABC):
         single-use or short-lived, never a standing credential. ``rng`` is the VM's range
         (and ``db`` a session): a backend reaches the hypervisor that range was built on,
         and opens only a VM that is that range's."""
+
+    def open_connections(self, vms: list[dict[str, Any]], *, db=None, rng=None) -> int | None:
+        """How many console connections are open now on these VMs of ``rng`` (entries of its
+        provisioner output). The lab sweep asks before an idle close (ADR 0014 §18): console
+        input reaches the hypervisor, never TrueNorth. None: this backend cannot tell, or the
+        hypervisor did not answer; the caller then treats the lab as in use (fail safe)."""
+        return None

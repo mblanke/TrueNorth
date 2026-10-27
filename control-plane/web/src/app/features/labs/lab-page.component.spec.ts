@@ -111,8 +111,25 @@ describe('LabPageComponent', () => {
     fixture.destroy();
   }));
 
+  it('says when a class lab ends with the class', () => {
+    setUp('token=abc', false, 'active');
+    api.lab.and.returnValue(of({ ...lab('active'), ends_with_class: true, max_expires_at: '2026-10-27T17:15:00Z' }));
+    fixture.componentInstance.refresh();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('Ends with your class at');
+  });
+
+  it('counts a visible page as use', fakeAsync(() => {
+    setUp('token=abc', false, 'active');
+    spyOnProperty(document, 'visibilityState').and.returnValue('visible');
+    tick(60000);
+    expect(api.labHeartbeat).toHaveBeenCalledWith('s1', true, 'abc');
+    fixture.destroy();
+  }));
+
   it('reports the Student active only after real use of the page, so a forgotten tab lets the lab close', fakeAsync(() => {
     setUp('token=abc', false, 'active');
+    spyOnProperty(document, 'visibilityState').and.returnValue('hidden');
     tick(60000);
     expect(api.labHeartbeat).toHaveBeenCalledWith('s1', false, 'abc');
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'a' }));

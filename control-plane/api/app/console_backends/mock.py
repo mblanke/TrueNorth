@@ -10,6 +10,11 @@ from .base import BaseConsoleBackend
 
 class MockConsole(BaseConsoleBackend):
     kind: ClassVar[str] = "mock"
+    #: What ``open_connections`` answers: mock VMs have no consoles. Tests set it.
+    connections: ClassVar[int | None] = 0
+
+    def open_connections(self, vms: list[dict[str, Any]], *, db=None, rng=None) -> int | None:
+        return type(self).connections
 
     def open(self, vm: dict[str, Any], *, db=None, rng=None) -> dict[str, Any]:
         return {

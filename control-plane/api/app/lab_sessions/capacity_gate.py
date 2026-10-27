@@ -1,11 +1,12 @@
 """Self-serve labs use only the capacity left after approved classes (ADR 0014 §18, #288).
 
-**A booked class's own labs.** A Student on the roster of an approved booking of the lab's
-course that holds now (a class session: its roll call; another booking: an assigned
-enrolment, as Live Class #199 counts it), with no range or template of its own (its demand
-was sized for its Students' labs), draws on that booking's hold (``own_booking``): it is
-not gated, and the booking counts its range (``holdings.drawing_on``), never twice. Labs
-beyond what the booking holds are self-serve.
+**A class's own labs.** A Student on the roll call of a class whose approved session of the
+lab's course holds now, with no range or template of its own (its demand was sized for its
+Students' labs), draws on that session's hold (``own_booking``): it is not gated, the
+booking counts its range (``holdings.drawing_on``) never twice, and the lab ends with the
+session (its maximum lifetime is cut to the session's end plus the teardown grace). Course
+enrolment never draws (a Moodle launch enrols); a booking with no class has no drawing.
+Labs beyond what the session holds, and a Student taken off the roll call, are self-serve.
 
 **A self-serve lab** (``fits``) must fit in every 15-minute slice from now to its maximum
 lifetime, after approved bookings over their held windows, approved classes over their whole
@@ -83,16 +84,10 @@ def lock(db: Session) -> None:
 def own_booking(
     db: Session, session: LabSession, course_id: uuid.UUID, need: Resources, now: datetime
 ) -> ScheduledEvent | None:
-    """The approved booking holding now whose hold this Student's lab draws on, or None."""
-    from sqlalchemy import and_, or_
-
+    """The approved class session holding now whose hold this Student's lab draws on: one
+    whose class's roll call the Student is on. None: the lab is self-serve."""
     from ..classes import sessions as class_sessions
-    from ..enrollment import rostered_course_ids
 
-    plain = and_(
-        ScheduledEvent.id.notin_(class_sessions.all_session_ids()),
-        ScheduledEvent.course_id.in_(rostered_course_ids(db, session.user_id) or [None]),
-    )
     rows = (
         db.query(ScheduledEvent)
         .filter(
@@ -103,7 +98,7 @@ def own_booking(
             ScheduledEvent.template_id.is_(None),
             ScheduledEvent.start_time <= now + PROVISION_LEAD,
             ScheduledEvent.end_time > now - TEARDOWN_GRACE,
-            or_(plain, ScheduledEvent.id.in_(class_sessions.session_ids_on_roll_call(session.user_id))),
+            ScheduledEvent.id.in_(class_sessions.session_ids_on_roll_call(session.user_id)),
         )
         .order_by(ScheduledEvent.start_time)
         .all()
@@ -116,6 +111,11 @@ def own_booking(
                 and disk + need.disk_gb <= (evt.disk_gb_total or 0)):
             return evt
     return None
+
+
+def drawing_end(evt: ScheduledEvent) -> datetime:
+    """When a lab drawing on ``evt`` ends at the latest: with the session it draws on."""
+    return _utc(evt.end_time) + TEARDOWN_GRACE
 
 
 def fits(db: Session, need: Resources, length: timedelta, now: datetime) -> bool:

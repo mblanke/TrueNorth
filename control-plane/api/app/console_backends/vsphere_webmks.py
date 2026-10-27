@@ -32,6 +32,40 @@ class VsphereWebMKSConsole(BaseConsoleBackend):
     kind: ClassVar[str] = "vsphere_api"
     hypervisor_type: ClassVar[str] = "vsphere"  # hypervisor_connections.hypervisor_type
 
+    def open_connections(self, vms: list[dict[str, Any]], *, db=None, rng=None) -> int | None:
+        """Sum of ``VirtualMachine.runtime.numMksConnections`` over the range's own VMs, on the
+        range's own vCenter. None on any failure, or when a VM cannot be read (fail safe)."""
+        if SmartConnect is None or db is None or rng is None:
+            return None
+        ids = [str(vm.get("vm_id") or "") for vm in vms]
+        if not ids or not all(ids):
+            return None
+        try:
+            target = hypervisor_binding.resolve(db, rng, self.hypervisor_type)
+            url = urlparse(target["url"])
+            si = SmartConnect(
+                host=url.hostname,
+                port=url.port or 443,
+                user=target["username"],
+                pwd=target["password"],
+                disableSslCertValidation=not target["verify_ssl"],
+            )
+        except Exception:  # noqa: BLE001 — unknown, never "no consoles"
+            return None
+        try:
+            total = 0
+            for vm, vm_id in zip(vms, ids, strict=True):
+                machine = vim.VirtualMachine(vm_id, si._stub)
+                if not hypervisor_binding.owns(str(rng.id), str(vm.get("name") or ""), str(machine.name or ""),
+                                               getattr(machine.config, "annotation", None)):
+                    return None
+                total += int(getattr(machine.runtime, "numMksConnections", 0) or 0)
+            return total
+        except Exception:  # noqa: BLE001
+            return None
+        finally:
+            Disconnect(si)
+
     def open(self, vm: dict[str, Any], *, db=None, rng=None) -> dict[str, Any]:
         if SmartConnect is None:
             raise ConsoleError("the vSphere console needs pyvmomi on the API")

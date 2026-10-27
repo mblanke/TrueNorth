@@ -147,7 +147,7 @@ class ClusterCapacity:
         absorbed: set[uuid.UUID] = set()
         skip: set[uuid.UUID] = {excluded.range_id} - {None} if excluded is not None else set()
         if excluded is not None:  # its Students' labs are part of the demand being asked
-            skip |= holdings.drawing_on(db, [excluded.id]).get(excluded.id, set())
+            skip |= holdings.drawing_on(db, [excluded.id]).get(excluded.id, (set(), None))[0]
         for h in class_holds.holds(db, start - TEARDOWN_GRACE, end + PROVISION_LEAD):
             absorbed |= h.events
             if h.key == key:
@@ -162,12 +162,15 @@ class ClusterCapacity:
         if exclude_id:
             q = q.filter(ScheduledEvent.id != exclude_id)
         events = [e for e in q.all() if e.id not in absorbed]
-        # A booked class's own Students' labs draw on its hold: counted through it, not again.
+        # A class session's own Students' labs draw on its hold: counted through it, not again,
+        # and the booking counts as the larger of its hold and what they hold (a session
+        # shrunk under its running labs does not hide them).
         labs = holdings.drawing_on(db, [e.id for e in events])
         for e in events:
-            need = Resources(e.vcpu_total or 0, e.ram_mb_total or 0, e.disk_gb_total or 0)
+            ranges, (vcpu, ram, disk) = labs.get(e.id, (set(), (0, 0, 0)))
+            need = Resources(max(e.vcpu_total or 0, vcpu), max(e.ram_mb_total or 0, ram), max(e.disk_gb_total or 0, disk))
             out.append((_utc(e.start_time) - PROVISION_LEAD, _utc(e.end_time) + TEARDOWN_GRACE, need,
-                        ({e.range_id} - {None}) | labs.get(e.id, set())))
+                        ({e.range_id} - {None}) | ranges))
         return out, skip
 
     def _sum(self, held, t0: datetime, t1: datetime, skip: set[uuid.UUID] | None = None) -> Committed:

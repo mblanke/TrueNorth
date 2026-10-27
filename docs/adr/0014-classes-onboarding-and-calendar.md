@@ -245,11 +245,14 @@ Content (courses, modules, labs, scenarios, range templates, golden images) has 
 11. **Self-serve lab capacity gate.**
 
    As built (#288):
-   - **A booked class's own labs.** A Student on the roster of an approved booking of the
-     lab's course that holds now (a class session: its roll call; another booking: an
-     assigned enrolment), with no range or template of its own, launches a lab that draws on
-     that booking's hold (`lab_sessions.booking_id`): not gated, and counted through the
-     booking, never twice. Labs beyond what the booking holds are self-serve.
+   - **A class's own labs.** A Student on the roll call of a class whose approved session of
+     the lab's course holds now (a session with no range or template of its own) launches a
+     lab that draws on that session's hold (`lab_sessions.booking_id`): not gated, counted
+     through the session never twice (the session counts as the larger of its hold and what
+     its labs hold), and ended with the session (its maximum lifetime is cut to the session's
+     end plus the teardown grace; the lab page says so). Course enrolment never draws (a
+     Moodle launch enrols); a booking with no class has no drawing. Labs beyond the session's
+     size are self-serve, and a Student taken off the roll call stops drawing at once.
    - **Self-serve labs.** Before a lab's machines are built, `app/lab_sessions/capacity_gate.py`
      asks the scheduler's capacity provider what is committed in every 15-minute slice from
      now to the lab's maximum lifetime: approved bookings over their held windows, approved
@@ -269,16 +272,21 @@ Content (courses, modules, labs, scenarios, range templates, golden images) has 
      back first, and a queued lab's page reads it at most every 30 seconds per lab.
 
    An idle lab closes after `LAB_IDLE_LIMIT_MINUTES` (default 240) with no Student activity:
-   a lab page heartbeat that reports input, focus or a console opened since the last one, or
-   a console ticket. An open tab nobody uses does not count. A profile's shorter idle time
+   a lab page heartbeat sent while the page is visible or after input, focus or a console
+   opened since the last one, or a console ticket. A hidden tab nobody uses does not count.
+   Console input goes straight to the hypervisor, so before an idle close the sweep asks the
+   console backend (`console_backends`, `open_connections`; on vSphere the VMs'
+   `runtime.numMksConnections`) for open console connections: any is activity and restarts
+   the idle clock; no answer keeps the lab and asks again after
+   `LAB_CONSOLE_RECHECK_MINUTES` (default 15). A profile's shorter idle time
    still applies. The Student gets one in-app notification `LAB_IDLE_WARNING_MINUTES`
    (default 15) before, and the session records `end_reason = idle` (`expired` stays the
    maximum lifetime). Only lab sessions are closed by this rule; a lab session found pointing
-   at a class's range is left to the class, logged once and not checked again.
+   at a class's range is ended without a teardown (`failed`, `end_reason = class_range`, its
+   networks kept for an operator), logged once, so the Student can launch again.
 
    Known limits: the idle warning is in-app only (a Student who only uses Moodle does not see
-   it); labs ignore the scheduler's `warn` over-capacity policy; a class's own lab is not
-   gated for the part of its lifetime after the booking ends; resources in one 15-minute
+   it); labs ignore the scheduler's `warn` over-capacity policy; resources in one 15-minute
    slice are summed even when they do not overlap inside it, which errs toward refusal.
 12. **Unit readiness page** (observer).
 13. **AD status sync,** plus the 90-day disable for local accounts.
