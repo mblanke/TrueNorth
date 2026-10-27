@@ -318,3 +318,20 @@ groups:
         annotations:
           summary: "No successful backup for more than 26 hours"
           description: "The newest good backup is {{ $value | humanizeDuration }} old. Check the truenorth-backup cron job and logs/backup.log."
+
+  # ══════════════════════════════════════════════════════════════
+  # IDENTITY ALERTS
+  # ══════════════════════════════════════════════════════════════
+  # ADR 0014 §6 (#290): the local break-glass account is never disabled by the AD status
+  # sync, so its use is announced instead. The API counts its authenticated use (at most
+  # once an hour per API process; app/ad_status_sync/last_seen.py).
+  - name: identity
+    rules:
+      - alert: BreakGlassAccountUsed
+        expr: increase(truenorth_break_glass_sign_ins_total[1h]) > 0
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: "The break-glass account was used"
+          description: "The local recovery account signed in to TrueNorth within the last hour. Check it was planned: Admin > Audit log (break_glass_sign_in) and docs/runbooks/break-glass.md."

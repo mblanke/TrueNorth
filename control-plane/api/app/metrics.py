@@ -213,6 +213,14 @@ celery_tasks_total = Counter(
     ("task", "status"),
 )
 
+# The local break-glass account's use (app/ad_status_sync/last_seen.py; alert
+# BreakGlassAccountUsed). Started at 0, so its first use is an increase Prometheus can see.
+break_glass_sign_ins_total = Counter(
+    "truenorth_break_glass_sign_ins_total",
+    "Authenticated uses of the local break-glass account (at most one an hour per process)",
+)
+break_glass_sign_ins_total.inc(amount=0)
+
 # ── Metrics router ───────────────────────────────────────────────────────────
 
 _ALL_METRICS: list[Any] = [
@@ -222,6 +230,7 @@ _ALL_METRICS: list[Any] = [
     active_websocket_connections,
     range_provisioning_total,
     celery_tasks_total,
+    break_glass_sign_ins_total,
 ]
 
 router = APIRouter(tags=["monitoring"])

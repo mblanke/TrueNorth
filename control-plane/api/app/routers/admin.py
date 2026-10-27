@@ -200,6 +200,11 @@ def update_user(
     update_data = body.model_dump(exclude_none=True)
     if "role" in update_data:
         update_data["role"] = UserRole(update_data["role"])
+    if update_data.get("is_active") and not target.is_active:
+        # Re-enabled: the 90-day clock for a local account starts again (app/ad_status_sync).
+        from ..ad_status_sync.last_seen import touch
+
+        touch(db, target.id)
     for key, val in update_data.items():
         setattr(target, key, val)
     db.commit()

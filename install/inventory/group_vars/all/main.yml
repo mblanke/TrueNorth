@@ -238,6 +238,11 @@ tn_default_progression: DP1
 # The named AD account that becomes the first admin. Without this nobody can
 # drain the approval queue and the install completes into a dead end.
 tn_bootstrap_admin_upn: ""
+# Nightly AD status sync (ADR 0014 §6): deactivates accounts AD disabled or removed, or that
+# left every TN-* group, and local accounts unused for 90 days (never the break-glass account,
+# the local tn_bootstrap_admin_upn). Dry run records and changes nothing: leave it on until a
+# few nights' results on Users > AD Sync look right, then set false and re-run 30-config.
+tn_ad_status_sync_dry_run: true
 
 # ── vSphere ───────────────────────────────────────────────────────────
 # NOTE: vsphere_api, NOT "vsphere" — the registry keys in

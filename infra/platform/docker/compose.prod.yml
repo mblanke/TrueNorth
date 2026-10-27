@@ -507,6 +507,10 @@ services:
       KEYCLOAK_ADMIN_CLIENT_ID: ${KEYCLOAK_ADMIN_CLIENT_ID:-}
       KEYCLOAK_ADMIN_CLIENT_SECRET: ${KEYCLOAK_ADMIN_CLIENT_SECRET:-}
       LDAP_BIND_DN: ${LDAP_BIND_DN:-}
+      # Nightly AD status sync (app/ad_status_sync, ADR 0014 §6): dry run until turned off;
+      # the break-glass account is never disabled (its use raises BreakGlassAccountUsed).
+      AD_STATUS_SYNC_DRY_RUN: ${AD_STATUS_SYNC_DRY_RUN:-true}
+      AD_STATUS_SYNC_BREAK_GLASS: ${AD_STATUS_SYNC_BREAK_GLASS:-}
       # Public URLs LTI 1.3 platforms are given (tool launch) and sent back to.
       LTI_TOOL_BASE_URL: ${LTI_TOOL_BASE_URL:-https://${DOMAIN}/api}
       LTI_WEB_BASE_URL: ${LTI_WEB_BASE_URL:-https://${DOMAIN}}
