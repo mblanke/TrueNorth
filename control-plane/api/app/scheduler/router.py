@@ -404,7 +404,7 @@ def _owned(db: Session, event_id: str, user: CurrentUser) -> ScheduledEvent:
     return get_owned(db, ScheduledEvent, lifecycle.event_id(event_id), user, not_found="Event not found")
 
 
-def _changeable(db: Session, event_id: str, user: CurrentUser) -> ScheduledEvent:
+def _changeable(db: Session, event_id: str, user: CurrentUser, *, winding_down: bool = False) -> ScheduledEvent:
     """A booking the caller may edit or move through its lifecycle (#200). Another
     instructor's booking is theirs: an administrator (schedule:admin) changes it, nobody
     else, because a booking is what gives an instructor authority over their class
@@ -414,9 +414,17 @@ def _changeable(db: Session, event_id: str, user: CurrentUser) -> ScheduledEvent
 
     A class session follows its class, not its instructor (ADR 0014 §8): its lead or an
     admin of its tenant changes it (and schedule:admin), nobody else, not even an
-    instructor it names who is no longer the lead."""
+    instructor it names who is no longer the lead.
+
+    A closed class's sessions are its record (ADR 0014 §13): nothing changes them (409) until
+    an admin reopens it. A cancelled class's are not changed either, except that one may
+    still be wound down (``winding_down``: cancelled or completed), since cancelling a class
+    leaves a session under way to its instructor."""
     evt = _owned(db, event_id, user)
-    if sessions.class_of(db, evt) is not None:
+    cls = sessions.class_of(db, evt)
+    if cls is not None and cls.status != "open" and not (winding_down and cls.status == "cancelled"):
+        raise HTTPException(409, f"The class is {cls.status}; its sessions do not change")
+    if cls is not None:
         if not (sessions.edits_class_of(db, evt, user) or user_has_permission(user, Permission.SCHEDULE_ADMIN)):
             raise HTTPException(403, "Only the class's lead instructor or an admin changes its sessions")
         return evt
@@ -609,7 +617,7 @@ def activate_event(event_id: str, db: Session = Depends(get_db), user: CurrentUs
 )
 def complete_event(event_id: str, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)):
     """active -> completed."""
-    return _move(db, user, _changeable(db, event_id, user), EventState.completed)
+    return _move(db, user, _changeable(db, event_id, user, winding_down=True), EventState.completed)
 
 
 @router.post("/events/{event_id}/cancel", response_model=EventOut, summary="Cancel an event", dependencies=_WRITE)
@@ -620,7 +628,8 @@ def cancel_event(
     user: CurrentUser = Depends(get_current_user),
 ):
     """Any state before completed -> cancelled. The row stays as history."""
-    return _move(db, user, _changeable(db, event_id, user), EventState.cancelled, background=background)
+    return _move(db, user, _changeable(db, event_id, user, winding_down=True), EventState.cancelled,
+                 background=background)
 
 
 @router.delete(
@@ -634,7 +643,7 @@ def delete_event(
 ):
     """Same as POST .../cancel. Events are no longer hard-deleted: a cancelled booking
     is history, like a completed one."""
-    _move(db, user, _changeable(db, event_id, user), EventState.cancelled, background=background)
+    _move(db, user, _changeable(db, event_id, user, winding_down=True), EventState.cancelled, background=background)
 
 
 def _move(

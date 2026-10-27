@@ -127,7 +127,8 @@ def _outs(db: Session, classes: list[Class], user: CurrentUser) -> list[ClassOut
             status=c.status, lead_instructor=_person(leads.get(c.lead_instructor_id), with_email=with_email),
             assistants=[_person(u, with_email=with_email) for s, u in staff if s.role == "assistant"],
             observers=[_person(u, with_email=with_email) for s, u in staff if s.role == "observer"],
-            my_role=role, can_edit=role in access.EDITORS, roll_call_count=counts.get(c.id, 0),
+            my_role=role, can_edit=role in access.EDITORS and c.status == ClassStatus.open.value,
+            roll_call_count=counts.get(c.id, 0),
             created_at=c.created_at,
         ))
     return out
@@ -194,8 +195,8 @@ def list_classes(
     """Admins: every class of their tenant. Anyone else: the classes they lead, assist or
     observe, or are on the roll call of."""
     q = access.visible(db, user)
-    if not include_cancelled:
-        q = q.filter(Class.status == ClassStatus.open.value)
+    if not include_cancelled:  # closed classes stay listed: read-only, with their results
+        q = q.filter(Class.status != ClassStatus.cancelled.value)
     rows = q.order_by(Class.start_date.desc(), Class.name).limit(500).all()
     return _outs(db, rows, user)
 
@@ -210,8 +211,8 @@ def list_my_classes(
 ) -> list[ClassOut]:
     """The caller's own classes as lead, assistant instructor or observer.  **class:read**"""
     q = access.staffed_by(db, user)
-    if not include_cancelled:
-        q = q.filter(Class.status == ClassStatus.open.value)
+    if not include_cancelled:  # closed classes stay listed: read-only, with their results
+        q = q.filter(Class.status != ClassStatus.cancelled.value)
     rows = q.order_by(Class.start_date.desc(), Class.name).limit(500).all()
     return _outs(db, rows, user)
 
@@ -338,7 +339,7 @@ def update_class(
     """Its lead or an admin. Naming another lead hands the class over."""
     cls = _editable(db, class_id, user)
     if cls.status != ClassStatus.open.value:
-        raise HTTPException(409, "A cancelled class cannot be changed")
+        raise HTTPException(409, f"A {cls.status} class cannot be changed")
     before = cls.lead_instructor_id
     service.apply(db, cls, body, user)
     detail = cls.name if before == cls.lead_instructor_id else f"{cls.name}; lead {before} -> {cls.lead_instructor_id}"
@@ -368,6 +369,8 @@ def cancel_class(
     it, and the approved ones' invites are withdrawn; one under way is left to its
     instructor."""
     cls = _editable(db, class_id, user)
+    if cls.status == ClassStatus.closed.value:
+        raise HTTPException(409, "A closed class is read-only; an admin reopens it first")
     if cls.status != ClassStatus.cancelled.value:
         cls.status = ClassStatus.cancelled.value
         service.audit(db, user.id, cls, "class_cancel", cls.name)
@@ -405,7 +408,7 @@ def _add(
     db: Session, cls: Class, user: CurrentUser, emails: list[str], invalid: list[str], background: BackgroundTasks
 ) -> RollCallAddOut:
     if cls.status != ClassStatus.open.value:
-        raise HTTPException(409, "A cancelled class's roll call cannot change")
+        raise HTTPException(409, f"A {cls.status} class's roll call cannot change")
     try:
         with _lock_conflicts(db):
             res = service.add_to_roll_call(db, cls, user, emails)
@@ -490,6 +493,8 @@ def remove_from_roll_call(
     )
     if entry is None:
         raise HTTPException(404, "Roll-call entry not found")
+    if cls.status == ClassStatus.closed.value:
+        raise HTTPException(409, "A closed class is read-only; an admin reopens it first")
     if entry.status != RollCallStatus.removed.value:
         with _lock_conflicts(db):
             freed = service.remove_from_roll_call(db, cls, entry, user)

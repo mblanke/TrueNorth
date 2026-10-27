@@ -147,7 +147,8 @@ describe('AppComponent', () => {
    * shown is one the route guard admits; everything else is absent.
    */
   const MENU: Record<UserRole, string[]> = {
-    student: ['/dashboard', '/learning', '/exercises', '/scoring', '/wiki', '/support'],
+    // Classes (ADR 0014): a Student's own classes and their range (attendance, #283).
+    student: ['/dashboard', '/learning', '/exercises', '/classes', '/scoring', '/wiki', '/support'],
     // The calendar's Events view (schedule:read, #285): observers too, read-only.
     observer: ['/dashboard', '/learning', '/exercises', '/ops-center/select', '/telemetry', '/schedule',
       '/calendar', '/classes', '/scoring', '/wiki'],

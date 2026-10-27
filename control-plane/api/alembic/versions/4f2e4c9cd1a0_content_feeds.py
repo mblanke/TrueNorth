@@ -1,7 +1,7 @@
 """content feeds: release, end-of-life and vulnerability entries, the flags they raised, source status
 
 Revision ID: 4f2e4c9cd1a0
-Revises: 57e2c4b65b98
+Revises: 0fdeb8975b40
 Create Date: 2026-10-27 12:00:00.000000
 
 ADR 0014 decision 25, issue #287 (``app/content_feeds``, ``worker/content_feeds``):
@@ -24,7 +24,7 @@ from alembic import op
 from app.models import GUID
 
 revision: str = "4f2e4c9cd1a0"
-down_revision: str | None = "57e2c4b65b98"
+down_revision: str | None = "0fdeb8975b40"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

@@ -19,7 +19,7 @@ import pytest
 import sqlalchemy as sa
 
 API = Path(__file__).resolve().parents[2] / "control-plane" / "api"
-PARENT, REVISION = "57e2c4b65b98", "4f2e4c9cd1a0"
+PARENT, REVISION = "0fdeb8975b40", "4f2e4c9cd1a0"
 TABLES = {"content_feed_entries", "content_feed_flags", "content_feed_sources"}
 
 
