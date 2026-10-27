@@ -27,10 +27,11 @@ export function whenLabel(start: string, end: string): string {
 }
 
 /**
- * The approver's queue on /schedule (ADR 0014 §14-17): class sessions awaiting approval,
+ * The approver's queue on /schedule and in the calendar's Events view side panel
+ * (/calendar/events, #285) (ADR 0014 §14-17): class sessions awaiting approval,
  * each with whether it fits and the next free slot, to Approve, Propose a time or Reject;
  * and roll-call additions that did not fit an approved session. Admins and range ops only
- * (schedule:approve); the full Events view is #285.
+ * (schedule:approve).
  */
 @Component({
   selector: 'tn-approval-queue',

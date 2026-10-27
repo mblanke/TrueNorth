@@ -148,11 +148,11 @@ describe('AppComponent', () => {
    */
   const MENU: Record<UserRole, string[]> = {
     student: ['/dashboard', '/learning', '/exercises', '/scoring', '/wiki', '/support'],
+    // The calendar's Events view (schedule:read, #285): observers too, read-only.
     observer: ['/dashboard', '/learning', '/exercises', '/ops-center/select', '/telemetry', '/schedule',
-      '/classes', '/scoring', '/wiki'],
+      '/calendar', '/classes', '/scoring', '/wiki'],
     range_ops: ['/dashboard', '/learning', '/authoring', '/exercises', '/ops-center/select', '/telemetry',
       '/schedule', '/calendar', '/wiki', '/support', '/infrastructure', '/ai-orchestrator'],
-    // The calendar's Content view (content_review:read): staff, never observers or Students.
     // Student progress (learning_record:read) and Teams (user:read): instructors and admins.
     instructor: ['/dashboard', '/learning', '/learning/admin/progress', '/authoring', '/exercises',
       '/ops-center/select', '/telemetry', '/schedule', '/calendar', '/classes', '/scoring', '/wiki', '/support',
