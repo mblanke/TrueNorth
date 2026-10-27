@@ -54,6 +54,11 @@ Use [tn-local-model-evaluation](../SKILLS/tn-local-model-evaluation/SKILL.md) an
 Compare correctness, tool-call success, patch scope, elapsed time, and honest reporting
 on identical isolated tasks. Keep context limits and harness tools comparable.
 
+The replay set for this is [tools/taz/bakeoff](../tools/taz/bakeoff/README.md): eight
+merged tickets, each replayed from its parent commit with the merged tests hidden until
+scoring. A run that claims success while those tests fail scores FALSE_DONE, an automatic
+fail. No model has been run through it yet.
+
 Retain Taz's existing model write gate. A model that produces valid text is not yet
 qualified to modify a repository, and an alias is not proof of the served model.
 Verify the selected harness can use the endpoint's tool protocol end to end.
