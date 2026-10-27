@@ -294,7 +294,7 @@ tn_range_cert_retention_months: 12
 # Release, end-of-life and vulnerability feeds for the content clock (ADR 0014 decision 25).
 # Off on a fresh install. online: worker-provision pulls endoflife.date, CISA KEV and the
 # NVD CVE API once a day (GET only; no site data is sent), through tn_feeds_http_proxy when
-# set. bundle (air-gapped): a platform admin imports signed feed bundles on the Content
+# set (optional; else the worker's HTTPS_PROXY, else direct). bundle (air-gapped): a platform admin imports signed feed bundles on the Content
 # view, verified against tn_feeds_bundle_public_key (scripts/build_feed_bundle.py makes the
 # key pair and the bundles). install/README.md "Content feeds".
 tn_feeds_mode: "off"

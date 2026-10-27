@@ -1,0 +1,3706 @@
+{
+"catalogVersion": "2026.10.27",
+"note": "vendorProject/product pairs and their entry counts in the live CISA KEV catalogue, recorded for tests/worker/test_content_feed_sources.py (the shipped product map must match each of its KEV pairs)",
+"pairs": [
+[
+"7-Zip",
+"7-Zip",
+1
+],
+[
+"AMI",
+"MegaRAC SPx",
+1
+],
+[
+"ASUS",
+"Live Update",
+1
+],
+[
+"ASUS",
+"RT-AX55 Routers",
+1
+],
+[
+"ASUS",
+"Routers",
+1
+],
+[
+"Accellion",
+"FTA",
+4
+],
+[
+"Acclaim Systems",
+"USAHERDS",
+1
+],
+[
+"Acronis",
+"Backup",
+1
+],
+[
+"Acronis",
+"Cyber Infrastructure (ACI)",
+1
+],
+[
+"Adminer",
+"Adminer",
+1
+],
+[
+"Adobe",
+"Acrobat",
+1
+],
+[
+"Adobe",
+"Acrobat and Reader",
+13
+],
+[
+"Adobe",
+"Acrobat and Reader, Flash Player",
+1
+],
+[
+"Adobe",
+"BlazeDS",
+1
+],
+[
+"Adobe",
+"ColdFusion",
+16
+],
+[
+"Adobe",
+"Commerce and Magento",
+2
+],
+[
+"Adobe",
+"Commerce and Magento ",
+1
+],
+[
+"Adobe",
+"Commerce and Magento Open Source",
+2
+],
+[
+"Adobe",
+"Commerce and\u202fMagento",
+1
+],
+[
+"Adobe",
+"Experience Manager (AEM) Forms",
+1
+],
+[
+"Adobe",
+"Flash Player",
+33
+],
+[
+"Adobe",
+"Flash Player and AIR",
+2
+],
+[
+"Adobe",
+"Reader",
+1
+],
+[
+"Adobe",
+"Reader and Acrobat",
+8
+],
+[
+"Advantive",
+"VeraCore",
+2
+],
+[
+"Ahsay",
+"AhsayCBS",
+2
+],
+[
+"Ajax.NET Professional",
+"Ajax.NET Professional",
+1
+],
+[
+"Alcatel",
+"OmniPCX Enterprise",
+1
+],
+[
+"Amcrest",
+"Cameras and Network Video Recorder (NVR)",
+1
+],
+[
+"Android",
+"Android Kernel",
+2
+],
+[
+"Android",
+"Android OS",
+1
+],
+[
+"Android",
+"Framework",
+6
+],
+[
+"Android",
+"Kernel",
+3
+],
+[
+"Android",
+"Pixel",
+4
+],
+[
+"Android",
+"Runtime",
+1
+],
+[
+"Apache",
+"APISIX",
+1
+],
+[
+"Apache",
+"ActiveMQ",
+3
+],
+[
+"Apache",
+"Airflow",
+1
+],
+[
+"Apache",
+"Airflow's Experimental API",
+1
+],
+[
+"Apache",
+"Apache",
+1
+],
+[
+"Apache",
+"CouchDB",
+1
+],
+[
+"Apache",
+"Flink",
+1
+],
+[
+"Apache",
+"HTTP Server",
+4
+],
+[
+"Apache",
+"HugeGraph-Server",
+1
+],
+[
+"Apache",
+"Kylin",
+1
+],
+[
+"Apache",
+"Log4j2",
+2
+],
+[
+"Apache",
+"OFBiz",
+3
+],
+[
+"Apache",
+"RocketMQ",
+1
+],
+[
+"Apache",
+"Shiro",
+1
+],
+[
+"Apache",
+"Solr",
+2
+],
+[
+"Apache",
+"Spark",
+1
+],
+[
+"Apache",
+"Struts",
+6
+],
+[
+"Apache",
+"Struts 1",
+2
+],
+[
+"Apache",
+"Struts 2",
+1
+],
+[
+"Apache",
+"Superset",
+1
+],
+[
+"Apache",
+"Tomcat",
+6
+],
+[
+"Apple",
+"Multiple Products",
+54
+],
+[
+"Apple",
+"OS X",
+2
+],
+[
+"Apple",
+"iOS",
+8
+],
+[
+"Apple",
+"iOS and iPadOS",
+5
+],
+[
+"Apple",
+"iOS and macOS",
+4
+],
+[
+"Apple",
+"iOS, iPadOS, and macOS",
+11
+],
+[
+"Apple",
+"iOS, iPadOS, and watchOS",
+4
+],
+[
+"Apple",
+"iOS, macOS, watchOS",
+1
+],
+[
+"Apple",
+"macOS",
+6
+],
+[
+"Aquasecurity",
+"Trivy",
+1
+],
+[
+"Arcadyan",
+"Buffalo Firmware",
+1
+],
+[
+"Arcserve",
+"Unified Data Protection (UDP)",
+1
+],
+[
+"Arista",
+"Extensible Operating System",
+1
+],
+[
+"Arista",
+"VeloCloud Orchestrator",
+3
+],
+[
+"Arm",
+"Mali GPU Kernel Driver",
+2
+],
+[
+"Arm",
+"Mali Graphics Processing Unit (GPU)",
+6
+],
+[
+"Arm",
+"Trusted Firmware",
+1
+],
+[
+"Array Networks ",
+"AG/vxAG ArrayOS",
+1
+],
+[
+"Array Networks ",
+"ArrayOS AG",
+1
+],
+[
+"Artifex",
+"Ghostscript",
+1
+],
+[
+"Atlassian",
+"Bitbucket Server and Data Center",
+1
+],
+[
+"Atlassian",
+"Confluence",
+1
+],
+[
+"Atlassian",
+"Confluence Data Center and Server",
+3
+],
+[
+"Atlassian",
+"Confluence Server",
+1
+],
+[
+"Atlassian",
+"Confluence Server and Data Center",
+2
+],
+[
+"Atlassian",
+"Confluence Server and Data Server",
+1
+],
+[
+"Atlassian",
+"Confluence Server/Data Center",
+1
+],
+[
+"Atlassian",
+"Crowd and Crowd Data Center",
+1
+],
+[
+"Atlassian",
+"Jira Server and Data Center",
+2
+],
+[
+"Atlassian",
+"Multiple Products",
+1
+],
+[
+"Audinate",
+"Dante Discovery",
+1
+],
+[
+"Aviatrix",
+"Aviatrix Controller",
+1
+],
+[
+"Aviatrix",
+"Controllers",
+1
+],
+[
+"BQE",
+"BillQuick Web Suite",
+1
+],
+[
+"Balbooa",
+"Forms",
+1
+],
+[
+"Barracuda Networks",
+"Email Security Gateway (ESG) Appliance",
+1
+],
+[
+"BerriAI",
+"LiteLLM",
+3
+],
+[
+"BeyondTrust",
+"Privileged Remote Access (PRA) and Remote Support (RS)",
+1
+],
+[
+"BeyondTrust",
+"Privileged Remote Access (PRA) and Remote Support (RS) ",
+1
+],
+[
+"BeyondTrust",
+"Remote Support",
+1
+],
+[
+"BeyondTrust",
+"Remote Support (RS) and Privileged Remote Access (PRA)",
+1
+],
+[
+"Broadcom",
+"Brocade Fabric OS",
+1
+],
+[
+"Broadcom",
+"VMware Aria Operations",
+1
+],
+[
+"Broadcom",
+"VMware Aria Operations and VMware Tools",
+1
+],
+[
+"Broadcom",
+"VMware vCenter",
+1
+],
+[
+"Broadcom",
+"VMware vCenter Server",
+1
+],
+[
+"CWP",
+"Control Web Panel",
+2
+],
+[
+"Cacti",
+"Cacti",
+1
+],
+[
+"ChakraCore",
+"ChakraCore scripting engine",
+1
+],
+[
+"Check Point",
+"Multiple Products",
+2
+],
+[
+"Check Point",
+"Quantum Security Gateways",
+1
+],
+[
+"Check Point",
+"Security Gateway",
+1
+],
+[
+"Check Point",
+"SmartConsole",
+1
+],
+[
+"Checkbox",
+"Checkbox Survey",
+1
+],
+[
+"Cisco",
+"Adaptive Security Appliance (ASA)",
+4
+],
+[
+"Cisco",
+"Adaptive Security Appliance (ASA) and Firepower Threat Defense (FTD)",
+6
+],
+[
+"Cisco",
+"Adaptive Security Appliance and Firepower Threat Defense",
+1
+],
+[
+"Cisco",
+"AnyConnect Secure",
+2
+],
+[
+"Cisco",
+"Catalyst 4500 Series Switches and Cisco Catalyst 4500-X Series Switches",
+1
+],
+[
+"Cisco",
+"Catalyst 6800 Series Switches",
+1
+],
+[
+"Cisco",
+"Catalyst SD-WAN",
+1
+],
+[
+"Cisco",
+"Catalyst SD-WAN Controller and Manager",
+1
+],
+[
+"Cisco",
+"Catalyst SD-WAN Manager",
+5
+],
+[
+"Cisco",
+"Catalyst SD-WAN Manger",
+1
+],
+[
+"Cisco",
+"Cisco IOS XE Web UI",
+1
+],
+[
+"Cisco",
+"Cisco IP Phones",
+1
+],
+[
+"Cisco",
+"HyperFlex HX",
+2
+],
+[
+"Cisco",
+"IOS",
+2
+],
+[
+"Cisco",
+"IOS Software",
+4
+],
+[
+"Cisco",
+"IOS Software and Cisco IOS XE Software",
+3
+],
+[
+"Cisco",
+"IOS XE Software",
+2
+],
+[
+"Cisco",
+"IOS XE Web UI",
+1
+],
+[
+"Cisco",
+"IOS XR",
+6
+],
+[
+"Cisco",
+"IOS and IOS XE",
+4
+],
+[
+"Cisco",
+"IOS and IOS XE Software",
+14
+],
+[
+"Cisco",
+"IOS software",
+6
+],
+[
+"Cisco",
+"IOS, IOS XR, and IOS XE",
+1
+],
+[
+"Cisco",
+"IOS, XR, and XE Software",
+2
+],
+[
+"Cisco",
+"Identity Services Engine",
+3
+],
+[
+"Cisco",
+"Multiple Products",
+1
+],
+[
+"Cisco",
+"NX-OS",
+1
+],
+[
+"Cisco",
+"Prime Data Center Network Manager (DCNM)",
+1
+],
+[
+"Cisco",
+"RV Series Routers",
+1
+],
+[
+"Cisco",
+"SD-WAN",
+1
+],
+[
+"Cisco",
+"Secure Access Control System (ACS)",
+1
+],
+[
+"Cisco",
+"Secure Email Gateway",
+2
+],
+[
+"Cisco",
+"Secure Firewall Adaptive Security Appliance (ASA) and Secure Firewall Threat Defense (FTD) ",
+1
+],
+[
+"Cisco",
+"Secure Firewall Adaptive Security Appliance and Secure Firewall Threat Defense",
+2
+],
+[
+"Cisco",
+"Secure Firewall Management Center (FMC)",
+2
+],
+[
+"Cisco",
+"Secure Firewall Management Center (FMC) and Security Cloud Control (SCC) Firewall Management",
+1
+],
+[
+"Cisco",
+"Small Business RV Series Routers",
+1
+],
+[
+"Cisco",
+"Small Business RV160, RV260, RV340, and RV345 Series Routers",
+5
+],
+[
+"Cisco",
+"Small Business RV320 and RV325 Dual Gigabit WAN VPN Routers",
+1
+],
+[
+"Cisco",
+"Small Business RV320 and RV325 Routers",
+1
+],
+[
+"Cisco",
+"Smart Licensing Utility",
+1
+],
+[
+"Cisco",
+"Unified Communications Manager",
+2
+],
+[
+"Cisco",
+"VPN Routers",
+1
+],
+[
+"Citrix",
+"Application Delivery Controller (ADC) and Gateway",
+1
+],
+[
+"Citrix",
+"Application Delivery Controller (ADC), Gateway, and SD-WAN WANOP Appliance",
+4
+],
+[
+"Citrix",
+"Content Collaboration",
+1
+],
+[
+"Citrix",
+"NetScaler",
+6
+],
+[
+"Citrix",
+"NetScaler ADC and Gateway",
+2
+],
+[
+"Citrix",
+"NetScaler ADC and NetScaler Gateway",
+5
+],
+[
+"Citrix",
+"NetScaler SD-WAN Enterprise, CloudBridge Virtual WAN, and XenMobile Server",
+1
+],
+[
+"Citrix",
+"SD-WAN and NetScaler",
+2
+],
+[
+"Citrix",
+"Session Recording",
+2
+],
+[
+"Citrix",
+"ShareFile",
+1
+],
+[
+"Citrix",
+"StoreFront Server",
+1
+],
+[
+"Citrix",
+"Workspace Application and Receiver for Windows",
+1
+],
+[
+"Cleo",
+"Multiple Products",
+2
+],
+[
+"Code Aurora",
+"ACDB Audio Driver",
+1
+],
+[
+"Collabora",
+"Collabora Online \u2013 Built-in CODE Server",
+1
+],
+[
+"Commvault",
+"Command Center",
+1
+],
+[
+"Commvault",
+"Web Server",
+1
+],
+[
+"ConnectWise",
+"ScreenConnect",
+4
+],
+[
+"Craft CMS",
+"Craft CMS",
+4
+],
+[
+"Crestron",
+"Multiple Products",
+1
+],
+[
+"CrushFTP",
+"CrushFTP",
+3
+],
+[
+"CyberPersons",
+"CyberPanel",
+2
+],
+[
+"D-Link",
+"DCS-2530L and DCS-2670L Devices",
+2
+],
+[
+"D-Link",
+"DCS-930L Devices",
+1
+],
+[
+"D-Link",
+"DIR-300 Router",
+1
+],
+[
+"D-Link",
+"DIR-600 Router",
+1
+],
+[
+"D-Link",
+"DIR-605 Router",
+1
+],
+[
+"D-Link",
+"DIR-610 Devices",
+1
+],
+[
+"D-Link",
+"DIR-645 Router",
+1
+],
+[
+"D-Link",
+"DIR-820 Router",
+1
+],
+[
+"D-Link",
+"DIR-820L",
+1
+],
+[
+"D-Link",
+"DIR-823X",
+1
+],
+[
+"D-Link",
+"DIR-825 R1 Devices",
+1
+],
+[
+"D-Link",
+"DIR-859 Router",
+2
+],
+[
+"D-Link",
+"DNR-322L",
+1
+],
+[
+"D-Link",
+"DNS-320 Device",
+1
+],
+[
+"D-Link",
+"DNS-320 Storage Device",
+1
+],
+[
+"D-Link",
+"DSL-2750B Devices",
+1
+],
+[
+"D-Link",
+"DSL-2760U",
+1
+],
+[
+"D-Link",
+"DWL-2600AP Access Point",
+1
+],
+[
+"D-Link",
+"Multiple NAS Devices",
+2
+],
+[
+"D-Link",
+"Multiple Routers",
+3
+],
+[
+"D-Link",
+"Routers",
+1
+],
+[
+"D-Link and TRENDnet",
+"Multiple Devices",
+1
+],
+[
+"DD-WRT",
+"DD-WRT",
+1
+],
+[
+"Daemon",
+"Daemon Tools Lite",
+1
+],
+[
+"Dahua",
+"IP Camera Firmware",
+2
+],
+[
+"Dasan",
+"Gigabit Passive Optical Network (GPON) Routers",
+2
+],
+[
+"Dassault Syst\u00e8mes",
+"DELMIA Apriso",
+3
+],
+[
+"Dell",
+"RecoverPoint for Virtual Machines (RP4VMs)",
+1
+],
+[
+"Dell",
+"dbutil Driver",
+1
+],
+[
+"Delta Electronics",
+"DOPSoft 2",
+1
+],
+[
+"Digiever",
+"DS-2105 Pro",
+1
+],
+[
+"Docker",
+"Desktop Community Edition",
+1
+],
+[
+"DotNetNuke (DNN)",
+"DotNetNuke (DNN)",
+3
+],
+[
+"DrayTek",
+"Multiple Vigor Routers",
+2
+],
+[
+"DrayTek",
+"Vigor Routers",
+1
+],
+[
+"DrayTek",
+"VigorConnect",
+2
+],
+[
+"Drupal",
+"Core",
+3
+],
+[
+"Drupal",
+"Drupal Core",
+1
+],
+[
+"Drupal",
+"Drupal core",
+1
+],
+[
+"EG Secure Solutions",
+"SiteGuard Server Edition",
+1
+],
+[
+"Edimax",
+"IC-7100 IP Camera",
+1
+],
+[
+"Elastic",
+"Elasticsearch",
+2
+],
+[
+"Elastic",
+"Kibana",
+1
+],
+[
+"Embedthis",
+"GoAhead",
+1
+],
+[
+"Erlang",
+"Erlang/OTP",
+1
+],
+[
+"Exim",
+"Exim",
+3
+],
+[
+"Exim",
+"Exim Internet Mailer",
+1
+],
+[
+"Exim",
+"Mail Transfer Agent (MTA)",
+1
+],
+[
+"EyesOfNetwork",
+"EyesOfNetwork",
+2
+],
+[
+"F5",
+"BIG-IP",
+3
+],
+[
+"F5",
+"BIG-IP APM",
+1
+],
+[
+"F5",
+"BIG-IP Configuration Utility",
+2
+],
+[
+"F5",
+"BIG-IP Traffic Management Microkernel",
+1
+],
+[
+"F5",
+"BIG-IP and BIG-IQ Centralized Management",
+1
+],
+[
+"FXC",
+"AE1021, AE1021PE",
+1
+],
+[
+"FatPipe",
+"WARP, IPVPN, and MPVPN software",
+1
+],
+[
+"ForgeRock",
+"Access Management (AM)",
+1
+],
+[
+"Fortinet",
+"FortiClient EMS",
+3
+],
+[
+"Fortinet",
+"FortiMail",
+1
+],
+[
+"Fortinet",
+"FortiManager",
+1
+],
+[
+"Fortinet",
+"FortiOS",
+9
+],
+[
+"Fortinet",
+"FortiOS and FortiADC",
+1
+],
+[
+"Fortinet",
+"FortiOS and FortiProxy",
+4
+],
+[
+"Fortinet",
+"FortiOS and FortiProxy SSL-VPN",
+1
+],
+[
+"Fortinet",
+"FortiSandbox",
+2
+],
+[
+"Fortinet",
+"FortiWeb",
+3
+],
+[
+"Fortinet",
+"Multiple Products",
+7
+],
+[
+"Fortra",
+"Cobalt Strike",
+2
+],
+[
+"Fortra",
+"GoAnywhere MFT",
+2
+],
+[
+"FreeType",
+"FreeType",
+1
+],
+[
+"Fuel CMS",
+"Fuel CMS",
+1
+],
+[
+"GIGABYTE",
+"Multiple Products",
+4
+],
+[
+"GNU",
+"Bourne-Again Shell (Bash)",
+2
+],
+[
+"GNU",
+"GNU Bash",
+1
+],
+[
+"GNU",
+"GNU C Library",
+1
+],
+[
+"GNU",
+"InetUtils",
+1
+],
+[
+"GeoVision",
+"Multiple Devices",
+2
+],
+[
+"Git",
+"Git",
+1
+],
+[
+"GitLab",
+"Community Edition and Enterprise Edition",
+1
+],
+[
+"GitLab",
+"Community and Enterprise Editions",
+2
+],
+[
+"GitLab",
+"GitLab",
+1
+],
+[
+"GitLab",
+"GitLab CE/EE",
+1
+],
+[
+"Gitea",
+"Gitea",
+1
+],
+[
+"Gladinet",
+"CentreStack",
+1
+],
+[
+"Gladinet",
+"CentreStack and Triofox",
+2
+],
+[
+"Gladinet",
+"Triofox",
+1
+],
+[
+"Gogs",
+"Gogs",
+1
+],
+[
+"Google",
+"Brotli",
+1
+],
+[
+"Google",
+"Chrome",
+1
+],
+[
+"Google",
+"Chrome Blink",
+1
+],
+[
+"Google",
+"Chrome FreeType",
+1
+],
+[
+"Google",
+"Chrome Media",
+1
+],
+[
+"Google",
+"Chrome WebAudio",
+1
+],
+[
+"Google",
+"Chrome for Android UI",
+1
+],
+[
+"Google",
+"Chromium",
+6
+],
+[
+"Google",
+"Chromium Animation",
+1
+],
+[
+"Google",
+"Chromium Blink",
+2
+],
+[
+"Google",
+"Chromium GPU",
+1
+],
+[
+"Google",
+"Chromium Indexed DB API",
+1
+],
+[
+"Google",
+"Chromium Intents",
+2
+],
+[
+"Google",
+"Chromium Mojo",
+2
+],
+[
+"Google",
+"Chromium Network Service",
+1
+],
+[
+"Google",
+"Chromium PopupBlocker",
+1
+],
+[
+"Google",
+"Chromium Portals",
+1
+],
+[
+"Google",
+"Chromium Skia",
+2
+],
+[
+"Google",
+"Chromium V8",
+41
+],
+[
+"Google",
+"Chromium WebGL",
+1
+],
+[
+"Google",
+"Chromium WebP",
+1
+],
+[
+"Google",
+"Chromium WebRTC",
+1
+],
+[
+"Google",
+"Chromium libvpx",
+1
+],
+[
+"Google",
+"Dawn",
+1
+],
+[
+"Google",
+"Pixel",
+2
+],
+[
+"Google",
+"Skia",
+1
+],
+[
+"Grafana Labs",
+"Grafana",
+2
+],
+[
+"Grandstream",
+"UCM6200",
+1
+],
+[
+"Hewlett Packard (HP)",
+"OpenView Network Node Manager",
+1
+],
+[
+"Hewlett Packard (HP)",
+"ProCurve Manager (PCM), PCM+, Identity Driven Manager (IDM), and Application Lifecycle Management",
+1
+],
+[
+"Hewlett Packard Enterprise (HPE)",
+"OneView",
+1
+],
+[
+"Hikvision",
+"Multiple Products",
+1
+],
+[
+"Hikvision",
+"Security cameras web server",
+1
+],
+[
+"Hitachi Vantara",
+"Pentaho Business Analytics (BA) Server",
+2
+],
+[
+"IBM",
+"Aspera Faspex",
+1
+],
+[
+"IBM",
+"Data Risk Manager",
+3
+],
+[
+"IBM",
+"InfoSphere BigInsights",
+1
+],
+[
+"IBM",
+"Langflow",
+1
+],
+[
+"IBM",
+"Planning Analytics",
+1
+],
+[
+"IBM",
+"WebSphere Application Server and Server Hypervisor Edition",
+1
+],
+[
+"IETF",
+"HTTP/2",
+1
+],
+[
+"IETF",
+"Service Location Protocol (SLP)",
+1
+],
+[
+"IGEL",
+"IGEL OS",
+1
+],
+[
+"ISC",
+"BIND",
+1
+],
+[
+"Ignite Realtime",
+"Openfire",
+1
+],
+[
+"ImageMagick",
+"ImageMagick",
+3
+],
+[
+"InduSoft",
+"Web Studio",
+1
+],
+[
+"Intel",
+"Active Management Technology (AMT), Small Business Technology (SBT), and Standard Manageability",
+1
+],
+[
+"Intel",
+"Ethernet Diagnostics Driver for Windows",
+1
+],
+[
+"Ivanti",
+" Endpoint Manager (EPM)",
+1
+],
+[
+"Ivanti",
+"Cloud Services Appliance",
+1
+],
+[
+"Ivanti",
+"Cloud Services Appliance (CSA)",
+3
+],
+[
+"Ivanti",
+"Connect Secure",
+1
+],
+[
+"Ivanti",
+"Connect Secure and Policy Secure",
+2
+],
+[
+"Ivanti",
+"Connect Secure, Policy Secure, and Neurons",
+1
+],
+[
+"Ivanti",
+"Connect Secure, Policy Secure, and ZTA Gateways",
+2
+],
+[
+"Ivanti",
+"Endpoint Manager (EPM)",
+4
+],
+[
+"Ivanti",
+"Endpoint Manager Cloud Service Appliance (EPM CSA)",
+1
+],
+[
+"Ivanti",
+"Endpoint Manager Mobile (EPMM)",
+7
+],
+[
+"Ivanti",
+"Endpoint Manager Mobile (EPMM) and MobileIron Core",
+1
+],
+[
+"Ivanti",
+"MobileIron Multiple Products",
+1
+],
+[
+"Ivanti",
+"Pulse Connect Secure",
+7
+],
+[
+"Ivanti",
+"Pulse Connect Secure and Pulse Policy Secure",
+1
+],
+[
+"Ivanti",
+"Sentry",
+2
+],
+[
+"Ivanti",
+"Virtual Traffic Manager",
+1
+],
+[
+"JFrog",
+"Artifactory",
+4
+],
+[
+"JQuery",
+"JQuery",
+1
+],
+[
+"Jenkins",
+"Jenkins",
+1
+],
+[
+"Jenkins",
+"Jenkins Command Line Interface (CLI)",
+1
+],
+[
+"Jenkins",
+"Jenkins Stapler Web Framework",
+1
+],
+[
+"Jenkins",
+"Jenkins User Interface (UI)",
+1
+],
+[
+"Jenkins",
+"Matrix Project Plugin",
+1
+],
+[
+"Jenkins",
+"Script Security Plugin",
+1
+],
+[
+"JetBrains",
+"TeamCity",
+4
+],
+[
+"JoomShaper",
+"SP Page Builder",
+1
+],
+[
+"Joomla!",
+"Joomla!",
+1
+],
+[
+"Joomlack",
+"Page Builder",
+1
+],
+[
+"Juniper",
+"Junos OS",
+7
+],
+[
+"Juniper",
+"ScreenOS",
+1
+],
+[
+"Justice AV Solutions",
+"Viewer ",
+1
+],
+[
+"KNX Association",
+"KNX Protocol Connection Authorization Option 1",
+1
+],
+[
+"Kaseya",
+"Virtual System/Server Administrator (VSA)",
+3
+],
+[
+"Kentico",
+"Kentico Xperience",
+1
+],
+[
+"Kentico",
+"Xperience",
+1
+],
+[
+"Kentico",
+"Xperience CMS",
+2
+],
+[
+"Kestra",
+"Kestra OSS",
+1
+],
+[
+"Kingsoft",
+"WPS Office",
+1
+],
+[
+"Kludex",
+"Starlette",
+1
+],
+[
+"LG",
+"N1A1 NAS",
+1
+],
+[
+"Langflow",
+"Langflow",
+5
+],
+[
+"Lantronix",
+"EDS5000",
+1
+],
+[
+"Laravel",
+"Ignition",
+1
+],
+[
+"Laravel",
+"Laravel Framework",
+1
+],
+[
+"Laravel",
+"Livewire",
+1
+],
+[
+"Libraesva",
+"Email Security Gateway",
+1
+],
+[
+"Liferay",
+"Liferay Portal",
+1
+],
+[
+"Linux",
+"Kernel",
+31
+],
+[
+"LiteSpeed",
+"cPanel Plugin",
+2
+],
+[
+"Looking Glass",
+"Multi-Router Looking Glass (MRLG)",
+1
+],
+[
+"MDaemon",
+"Email Server",
+1
+],
+[
+"MLflow",
+"MLflow",
+1
+],
+[
+"Marimo",
+"Marimo",
+1
+],
+[
+"McAfee",
+"McAfee Total Protection (MTP)",
+1
+],
+[
+"MediaTek",
+"Multiple Chipsets",
+1
+],
+[
+"Meta",
+"React Server Components",
+1
+],
+[
+"Meta Platforms",
+"WhatsApp",
+3
+],
+[
+"Metabase",
+"Metabase",
+2
+],
+[
+"Micro Focus",
+"Micro Focus Access Manager",
+1
+],
+[
+"Micro Focus",
+"Operation Bridge Reporter (OBR)",
+1
+],
+[
+"Microsoft",
+".NET Core and Visual Studio",
+1
+],
+[
+"Microsoft",
+".NET Framework",
+3
+],
+[
+"Microsoft",
+".NET Framework, SharePoint, Visual Studio",
+1
+],
+[
+"Microsoft",
+"ATM Font Driver",
+1
+],
+[
+"Microsoft",
+"Active Directory",
+3
+],
+[
+"Microsoft",
+"Active Directory Federation Services",
+1
+],
+[
+"Microsoft",
+"Ancillary Function Driver (afd.sys)",
+1
+],
+[
+"Microsoft",
+"Client-Server Run-time Subsystem (CSRSS)",
+1
+],
+[
+"Microsoft",
+"Configuration Manager",
+1
+],
+[
+"Microsoft",
+"DWM Core Library",
+1
+],
+[
+"Microsoft",
+"Defender",
+5
+],
+[
+"Microsoft",
+"DirectX",
+1
+],
+[
+"Microsoft",
+"DirectX Graphics Kernel (DXGKRNL)",
+2
+],
+[
+"Microsoft",
+"Edge",
+2
+],
+[
+"Microsoft",
+"Edge and Internet Explorer",
+2
+],
+[
+"Microsoft",
+"Enhanced Cryptographic Provider",
+2
+],
+[
+"Microsoft",
+"Excel",
+3
+],
+[
+"Microsoft",
+"Exchange",
+1
+],
+[
+"Microsoft",
+"Exchange Server",
+17
+],
+[
+"Microsoft",
+"Forefront Threat Management Gateway (TMG)",
+1
+],
+[
+"Microsoft",
+"Graphics Component",
+1
+],
+[
+"Microsoft",
+"Graphics Device Interface (GDI)",
+2
+],
+[
+"Microsoft",
+"HTTP Protocol Stack",
+1
+],
+[
+"Microsoft",
+"HTTP.sys",
+1
+],
+[
+"Microsoft",
+"Hyper-V RemoteFX",
+1
+],
+[
+"Microsoft",
+"Input Method Editor (IME) Japanese",
+1
+],
+[
+"Microsoft",
+"Internet Explorer",
+36
+],
+[
+"Microsoft",
+"Internet Explorer Scripting Engine",
+1
+],
+[
+"Microsoft",
+"Internet Explorer and Edge",
+1
+],
+[
+"Microsoft",
+"Internet Information Services (IIS)",
+1
+],
+[
+"Microsoft",
+"Internet Key Exchange (IKE) Service Extensions",
+1
+],
+[
+"Microsoft",
+"Kerberos Key Distribution Center (KDC)",
+1
+],
+[
+"Microsoft",
+"MSCOMCTL.OCX",
+1
+],
+[
+"Microsoft",
+"MSHTML",
+2
+],
+[
+"Microsoft",
+"Malware Protection Engine",
+1
+],
+[
+"Microsoft",
+"Microsoft",
+1
+],
+[
+"Microsoft",
+"Netlogon",
+1
+],
+[
+"Microsoft",
+"Office",
+29
+],
+[
+"Microsoft",
+"Office Outlook",
+1
+],
+[
+"Microsoft",
+"Office and WordPad",
+1
+],
+[
+"Microsoft",
+"Open Management Infrastructure (OMI)",
+4
+],
+[
+"Microsoft",
+"Outlook",
+1
+],
+[
+"Microsoft",
+"Partner Center",
+1
+],
+[
+"Microsoft",
+"Power Pages",
+1
+],
+[
+"Microsoft",
+"PowerPoint",
+2
+],
+[
+"Microsoft",
+"Project",
+1
+],
+[
+"Microsoft",
+"Publisher",
+1
+],
+[
+"Microsoft",
+"Remote Desktop Services",
+1
+],
+[
+"Microsoft",
+"SMBv1",
+2
+],
+[
+"Microsoft",
+"SMBv1 server",
+2
+],
+[
+"Microsoft",
+"SMBv3",
+1
+],
+[
+"Microsoft",
+"SQL Server",
+2
+],
+[
+"Microsoft",
+"SharePoint",
+10
+],
+[
+"Microsoft",
+"SharePoint Server",
+5
+],
+[
+"Microsoft",
+"Silverlight",
+3
+],
+[
+"Microsoft",
+"Skype for Business",
+1
+],
+[
+"Microsoft",
+"SmartScreen Prompt",
+1
+],
+[
+"Microsoft",
+"Streaming Service",
+1
+],
+[
+"Microsoft",
+"Streaming Service Proxy",
+1
+],
+[
+"Microsoft",
+"Task Scheduler",
+1
+],
+[
+"Microsoft",
+"Update Notification Manager",
+1
+],
+[
+"Microsoft",
+"Visual Basic for Applications (VBA)",
+1
+],
+[
+"Microsoft",
+"Win32k",
+25
+],
+[
+"Microsoft",
+"WinVerifyTrust function",
+1
+],
+[
+"Microsoft",
+"Windows",
+173
+],
+[
+"Microsoft",
+"Windows ",
+2
+],
+[
+"Microsoft",
+"Windows Ancillary Function Driver for WinSock ",
+1
+],
+[
+"Microsoft",
+"Windows CNG Key Isolation Service",
+1
+],
+[
+"Microsoft",
+"Windows COM+ Event System Service",
+1
+],
+[
+"Microsoft",
+"Word",
+4
+],
+[
+"Microsoft",
+"WordPad",
+1
+],
+[
+"Microsoft",
+"XML Core Services",
+2
+],
+[
+"MikroTik",
+"RouterOS",
+5
+],
+[
+"MinIO",
+"MinIO",
+2
+],
+[
+"Mirasvit",
+"Mirasvit Full Page Cache Warmer",
+1
+],
+[
+"Mitel",
+"MiCollab",
+2
+],
+[
+"Mitel",
+"MiCollab, MiVoice Business Express",
+1
+],
+[
+"Mitel",
+"MiVoice Connect",
+3
+],
+[
+"Mitel",
+"SIP Phones",
+1
+],
+[
+"MongoDB",
+"MongoDB and MongoDB Server",
+1
+],
+[
+"MongoDB",
+"mongo-express",
+1
+],
+[
+"Motex",
+"LANSCOPE Endpoint Manager",
+1
+],
+[
+"Mozilla",
+"Firefox",
+5
+],
+[
+"Mozilla",
+"Firefox and Thunderbird",
+6
+],
+[
+"Mozilla",
+"Firefox, Firefox ESR, and Thunderbird",
+1
+],
+[
+"Mozilla",
+"Multiple Products",
+1
+],
+[
+"N-able",
+"N-Central",
+2
+],
+[
+"N-able",
+"N-central",
+3
+],
+[
+"NAKIVO",
+"Backup and Replication",
+1
+],
+[
+"NETGEAR",
+"DGN2200 Devices",
+1
+],
+[
+"NETGEAR",
+"JGS516PE Devices",
+1
+],
+[
+"NETGEAR",
+"Multiple Devices",
+2
+],
+[
+"NETGEAR",
+"Multiple Routers",
+1
+],
+[
+"NETGEAR",
+"WNR2000v5 Router",
+1
+],
+[
+"NETGEAR",
+"Wireless Access Point (WAP) Devices",
+1
+],
+[
+"NETGEAR",
+"Wireless Router DGN2200",
+1
+],
+[
+"NUUO",
+"NVRmini Devices",
+1
+],
+[
+"NUUO",
+"NVRmini2 Devices",
+1
+],
+[
+"Nagios",
+"Nagios XI",
+4
+],
+[
+"Netis",
+"WF2419 Devices",
+1
+],
+[
+"Netwrix",
+"Auditor",
+1
+],
+[
+"NextGen Healthcare",
+"Mirth Connect",
+1
+],
+[
+"Nice",
+"Linear eMerge E3-Series",
+1
+],
+[
+"North Grid",
+"Proself",
+1
+],
+[
+"Nostromo",
+"nhttpd",
+1
+],
+[
+"Notepad++",
+"Notepad++",
+1
+],
+[
+"Novi Survey",
+"Novi Survey",
+1
+],
+[
+"Npm package",
+"System Information Library for Node.JS",
+1
+],
+[
+"Nx",
+"Nx Console",
+1
+],
+[
+"ONLYOFFICE",
+"Docs",
+1
+],
+[
+"OSGeo",
+"GeoServer",
+2
+],
+[
+"OSGeo",
+"JAI-EXT",
+1
+],
+[
+"October CMS",
+"October CMS",
+1
+],
+[
+"Omnissa",
+"Workspace One UEM",
+1
+],
+[
+"OpenBSD",
+"OpenSMTPD",
+1
+],
+[
+"OpenPLC",
+"ScadaBR",
+2
+],
+[
+"OpenSSL",
+"OpenSSL",
+1
+],
+[
+"Oracle",
+" PeopleSoft Enterprise PeopleTools",
+1
+],
+[
+"Oracle",
+"ADF Faces",
+1
+],
+[
+"Oracle",
+"Agile Product Lifecycle Management (PLM)",
+2
+],
+[
+"Oracle",
+"BI Publisher (Formerly XML Publisher)",
+1
+],
+[
+"Oracle",
+"E-Business Suite",
+4
+],
+[
+"Oracle",
+"Fusion Middleware",
+6
+],
+[
+"Oracle",
+"HTTP Server and Oracle Weblogic Server Proxy Plug-in",
+1
+],
+[
+"Oracle",
+"Intelligence Enterprise Edition",
+1
+],
+[
+"Oracle",
+"Java Runtime Environment (JRE)",
+4
+],
+[
+"Oracle",
+"Java SE",
+7
+],
+[
+"Oracle",
+"Java SE JDK and JRE",
+1
+],
+[
+"Oracle",
+"Java SE and JRockit",
+1
+],
+[
+"Oracle",
+"Multiple Products",
+1
+],
+[
+"Oracle",
+"Solaris",
+1
+],
+[
+"Oracle",
+"Solaris and Zettabyte File System (ZFS)",
+1
+],
+[
+"Oracle",
+"VirtualBox",
+1
+],
+[
+"Oracle",
+"WebLogic Server",
+12
+],
+[
+"PEAR",
+"Archive_Tar",
+2
+],
+[
+"PHP",
+"FastCGI Process Manager (FPM)",
+1
+],
+[
+"PHP",
+"PHP",
+1
+],
+[
+"PHP",
+"PHPMailer",
+1
+],
+[
+"PHP Group",
+"PHP",
+3
+],
+[
+"PHPUnit",
+"PHPUnit",
+1
+],
+[
+"PTC",
+"Windchill and FlexPLM",
+1
+],
+[
+"PTZOptics",
+"PT30X-SDI/NDI Cameras",
+2
+],
+[
+"Paessler",
+"PRTG Network Monitor",
+2
+],
+[
+"Palo Alto Networks",
+"Expedition",
+3
+],
+[
+"Palo Alto Networks",
+"PAN-OS",
+13
+],
+[
+"PaperCut",
+"MF/NG",
+1
+],
+[
+"PaperCut",
+"NG/MF",
+4
+],
+[
+"Perl",
+"Exiftool",
+1
+],
+[
+"Pi-hole",
+"AdminLTE",
+1
+],
+[
+"PlaySMS",
+"PlaySMS",
+1
+],
+[
+"Plex",
+"Media Server",
+5
+],
+[
+"Prettier",
+"eslint-config-prettier",
+1
+],
+[
+"Primetek",
+"Primefaces Application",
+1
+],
+[
+"ProFTPD",
+"ProFTPD",
+1
+],
+[
+"Progress",
+"ASP.NET AJAX and Sitefinity",
+1
+],
+[
+"Progress",
+"Kemp LoadMaster",
+1
+],
+[
+"Progress",
+"LoadMaster",
+1
+],
+[
+"Progress",
+"MOVEit Transfer",
+1
+],
+[
+"Progress",
+"Telerik Report Server",
+1
+],
+[
+"Progress",
+"Telerik UI for ASP.NET AJAX",
+1
+],
+[
+"Progress",
+"WS_FTP Server",
+1
+],
+[
+"Progress",
+"WhatsUp Gold",
+2
+],
+[
+"ProjectSend",
+"ProjectSend",
+1
+],
+[
+"Pulse Secure",
+"Pulse Connect Secure",
+1
+],
+[
+"QNAP",
+"Network Attached Storage (NAS)",
+4
+],
+[
+"QNAP",
+"Photo Station",
+4
+],
+[
+"QNAP",
+"QNAP Network-Attached Storage (NAS)",
+1
+],
+[
+"QNAP",
+"QTS",
+1
+],
+[
+"QNAP",
+"VioStor NVR",
+1
+],
+[
+"QNAP Systems",
+"Helpdesk",
+1
+],
+[
+"Qlik",
+"Sense",
+3
+],
+[
+"Qualcomm",
+"Multiple Chipsets",
+10
+],
+[
+"Qualcomm",
+"Multiple Chipsets ",
+1
+],
+[
+"Qualcomm",
+"Snapdragon Auto, Snapdragon Compute, Snapdragon Connectivity, Snapdragon Consumer IOT, Snapdragon Industrial IOT, Snapdragon Mobile, Snapdragon Voice & Music, Snapdragon Wearables",
+1
+],
+[
+"Qualitia",
+"Active! Mail",
+1
+],
+[
+"Quest",
+"KACE System Management Appliance",
+1
+],
+[
+"Quest",
+"KACE Systems Management Appliance (SMA)",
+1
+],
+[
+"RARLAB",
+"UnRAR",
+1
+],
+[
+"RARLAB",
+"WinRAR",
+4
+],
+[
+"Rails",
+"Ruby on Rails",
+3
+],
+[
+"Ray-Project",
+"Ray",
+1
+],
+[
+"React Native Community",
+"CLI",
+1
+],
+[
+"Realtek",
+"AP-Router SDK",
+1
+],
+[
+"Realtek",
+"Jungle Software Development Kit (SDK)",
+1
+],
+[
+"Realtek",
+"SDK",
+1
+],
+[
+"Red Hat",
+"Automatic Bug Reporting Tool",
+1
+],
+[
+"Red Hat",
+"JBoss",
+2
+],
+[
+"Red Hat",
+"JBoss Application Server",
+1
+],
+[
+"Red Hat",
+"JBoss RichFaces Framework",
+1
+],
+[
+"Red Hat",
+"JBoss Seam 2",
+1
+],
+[
+"Red Hat",
+"Libuser",
+1
+],
+[
+"Red Hat",
+"Polkit",
+2
+],
+[
+"Redis",
+"Debian-specific Redis Servers",
+1
+],
+[
+"Rejetto",
+"HTTP File Server",
+1
+],
+[
+"Rejetto",
+"HTTP File Server (HFS)",
+1
+],
+[
+"Reolink",
+"Multiple IP Cameras",
+1
+],
+[
+"Reolink",
+"RLC-410W IP Camera",
+1
+],
+[
+"Rockwell",
+"Multiple Products",
+1
+],
+[
+"Roundcube",
+"Roundcube Webmail",
+4
+],
+[
+"Roundcube",
+"Webmail",
+7
+],
+[
+"Ruckus Wireless",
+"Multiple Products",
+1
+],
+[
+"SAP",
+"Commerce Cloud",
+1
+],
+[
+"SAP",
+"Customer Relationship Management (CRM)",
+1
+],
+[
+"SAP",
+"Multiple Products",
+1
+],
+[
+"SAP",
+"NetWeaver",
+10
+],
+[
+"SAP",
+"Solution Manager",
+1
+],
+[
+"SIMalliance",
+"Toolbox Browser",
+1
+],
+[
+"SKYSEA",
+"Client View",
+1
+],
+[
+"SaltStack",
+"Salt",
+3
+],
+[
+"Samba",
+"Samba",
+1
+],
+[
+"Samsung",
+"MagicINFO 9 Server",
+2
+],
+[
+"Samsung",
+"Mobile Devices",
+13
+],
+[
+"Sangoma",
+"FreePBX",
+2
+],
+[
+"Sangoma",
+"FreePBX ",
+1
+],
+[
+"Sangoma",
+"Switchvox",
+1
+],
+[
+"Schneider Electric",
+"U.motion Builder",
+1
+],
+[
+"ScienceLogic",
+"SL1",
+1
+],
+[
+"ServiceNow",
+"Utah, Vancouver, and Washington DC Now Platform",
+2
+],
+[
+"Siemens",
+"SIMATIC CP",
+1
+],
+[
+"Siemens",
+"Software Center",
+1
+],
+[
+"Sierra Wireless",
+"AirLink ALEOS",
+1
+],
+[
+"SimpleHelp ",
+"SimpleHelp",
+4
+],
+[
+"Sitecore",
+"CMS and Experience Platform (XP)",
+2
+],
+[
+"Sitecore",
+"Multiple Products",
+1
+],
+[
+"Sitecore",
+"XP",
+1
+],
+[
+"Smartbedded",
+"Meteobridge",
+1
+],
+[
+"SmarterTools",
+"SmarterMail",
+3
+],
+[
+"SolarView",
+"Compact",
+1
+],
+[
+"SolarWinds",
+"Orion",
+1
+],
+[
+"SolarWinds",
+"Serv-U",
+4
+],
+[
+"SolarWinds",
+"Virtualization Manager",
+1
+],
+[
+"SolarWinds",
+"Web Help Desk",
+5
+],
+[
+"Soliton Systems K.K",
+"FileZen",
+1
+],
+[
+"Sonatype",
+"Nexus Repository",
+1
+],
+[
+"Sonatype",
+"Nexus Repository Manager",
+1
+],
+[
+"SonicWall",
+"SMA 100 Appliances",
+1
+],
+[
+"SonicWall",
+"SMA100",
+2
+],
+[
+"SonicWall",
+"SMA100 Appliances",
+2
+],
+[
+"SonicWall",
+"SMA1000 Appliances",
+5
+],
+[
+"SonicWall",
+"SMA1000 appliance",
+1
+],
+[
+"SonicWall",
+"SSLVPN SMA100",
+1
+],
+[
+"SonicWall",
+"Secure Remote Access (SRA)",
+1
+],
+[
+"SonicWall",
+"SonicOS",
+3
+],
+[
+"SonicWall",
+"SonicWall Email Security",
+3
+],
+[
+"Sophos",
+"CyberoamOS",
+1
+],
+[
+"Sophos",
+"Firewall",
+2
+],
+[
+"Sophos",
+"SFOS",
+1
+],
+[
+"Sophos",
+"SG UTM",
+1
+],
+[
+"Sophos",
+"Web Appliance",
+1
+],
+[
+"Sophos",
+"XG Firewall",
+1
+],
+[
+"Splunk",
+"Enterprise",
+1
+],
+[
+"Spreadsheet::ParseExcel",
+"Spreadsheet::ParseExcel",
+1
+],
+[
+"Srimax",
+"Output Messenger",
+1
+],
+[
+"Strapi",
+"Strapi",
+1
+],
+[
+"Sudo",
+"Sudo",
+2
+],
+[
+"SugarCRM",
+"Multiple Products",
+1
+],
+[
+"Sumavision",
+"Enhanced Multimedia Router (EMR)",
+1
+],
+[
+"Sunhillo",
+"SureLine",
+1
+],
+[
+"Symantec",
+"Symantec Messaging Gateway",
+1
+],
+[
+"Synacor",
+" Zimbra Collaboration Suite (ZCS)",
+1
+],
+[
+"Synacor",
+"Zimbra Collaborate Suite (ZCS)",
+1
+],
+[
+"Synacor",
+"Zimbra Collaboration Suite",
+1
+],
+[
+"Synacor",
+"Zimbra Collaboration Suite (ZCS)",
+16
+],
+[
+"SysAid",
+"SysAid On-Prem",
+2
+],
+[
+"SysAid",
+"SysAid Server",
+1
+],
+[
+"TIBCO",
+"JasperReports",
+2
+],
+[
+"TP-Link",
+"Archer AX21",
+1
+],
+[
+"TP-Link",
+"Multiple Archer Devices",
+1
+],
+[
+"TP-Link",
+"Multiple Routers",
+2
+],
+[
+"TP-Link",
+"TL-WA855RE",
+1
+],
+[
+"TP-Link",
+"TL-WR841N",
+1
+],
+[
+"TVT",
+"NVMS-1000",
+1
+],
+[
+"TanStack",
+"TanStack",
+1
+],
+[
+"TeamT5",
+"ThreatSonar Anti-Ransomware",
+1
+],
+[
+"TeamViewer",
+"Desktop",
+1
+],
+[
+"Teclib",
+"GLPI",
+1
+],
+[
+"TeleMessage",
+"TM SGNL",
+3
+],
+[
+"Telerik",
+"User Interface (UI) for ASP.NET AJAX",
+2
+],
+[
+"Tenda",
+"AC11 Router",
+1
+],
+[
+"Tenda",
+"AC1900 Router AC15 Model",
+1
+],
+[
+"Tenda",
+"AC7, AC9, and AC10 Routers",
+1
+],
+[
+"TerraMaster",
+"TerraMaster OS",
+1
+],
+[
+"ThinkPHP",
+"ThinkPHP",
+1
+],
+[
+"ThinkPHP",
+"noneCms",
+1
+],
+[
+"Treck TCP/IP stack",
+"IPv6",
+1
+],
+[
+"Trend Micro",
+"Apex Central",
+1
+],
+[
+"Trend Micro",
+"Apex One",
+2
+],
+[
+"Trend Micro",
+"Apex One and Apex One as a Service",
+1
+],
+[
+"Trend Micro",
+"Apex One and OfficeScan",
+2
+],
+[
+"Trend Micro",
+"Apex One and Worry-Free Business Security",
+1
+],
+[
+"Trend Micro",
+"Apex One, Apex One as a Service, and Worry-Free Business Security",
+2
+],
+[
+"Trend Micro",
+"Apex One, OfficeScan and Worry-Free Business Security Agents",
+1
+],
+[
+"Trend Micro",
+"Apex One, OfficeScan, and Worry-Free Business Security",
+1
+],
+[
+"Trend Micro",
+"OfficeScan",
+1
+],
+[
+"Trihedral",
+"VTScada (formerly VTS)",
+1
+],
+[
+"Trimble",
+"Cityworks",
+1
+],
+[
+"TrueConf",
+"Client",
+1
+],
+[
+"TrueConf",
+"Server",
+2
+],
+[
+"Twilio",
+"Authy",
+1
+],
+[
+"Ubiquiti",
+"AirOS",
+1
+],
+[
+"Ubiquiti",
+"UniFi OS",
+3
+],
+[
+"Unitronics",
+"Vision PLC and HMI",
+1
+],
+[
+"Unraid",
+"Unraid",
+2
+],
+[
+"VMware",
+"Aria Operations for Networks",
+1
+],
+[
+"VMware",
+"ESXi",
+3
+],
+[
+"VMware",
+"ESXi and Workstation",
+1
+],
+[
+"VMware",
+"ESXi, Workstation, and Fusion",
+1
+],
+[
+"VMware",
+"Multiple Products",
+3
+],
+[
+"VMware",
+"SD-WAN Edge",
+1
+],
+[
+"VMware",
+"Spring Cloud Gateway",
+1
+],
+[
+"VMware",
+"Spring Framework",
+1
+],
+[
+"VMware",
+"Tools",
+1
+],
+[
+"VMware",
+"VMware ESXi and Horizon DaaS",
+1
+],
+[
+"VMware",
+"Workspace ONE Access and Identity Manager",
+1
+],
+[
+"VMware",
+"vCenter Server",
+9
+],
+[
+"VMware",
+"vCenter Server and Cloud Foundation",
+1
+],
+[
+"VMware",
+"vRealize Operations Manager API",
+1
+],
+[
+"VMware Tanzu",
+"Spring Cloud",
+1
+],
+[
+"VMware Tanzu",
+"Spring Cloud Configuration (Config) Server",
+1
+],
+[
+"VMware Tanzu",
+"Spring Data Commons",
+1
+],
+[
+"Veeam",
+"Backup & Replication",
+4
+],
+[
+"Veritas",
+"Backup Exec Agent",
+3
+],
+[
+"Versa",
+"Concerto",
+1
+],
+[
+"Versa",
+"Director",
+1
+],
+[
+"Vite",
+"Vitejs",
+1
+],
+[
+"WSO2",
+"Multiple Products",
+2
+],
+[
+"WatchGuard",
+"Firebox",
+2
+],
+[
+"WatchGuard",
+"Firebox and XTM",
+1
+],
+[
+"WatchGuard",
+"Firebox and XTM Appliances",
+1
+],
+[
+"Wazuh",
+"Wazuh Server",
+1
+],
+[
+"WebKitGTK",
+"WebKitGTK",
+1
+],
+[
+"WebPros",
+"cPanel & WHM and WP2 (WordPress Squared)",
+1
+],
+[
+"WebRTC",
+"WebRTC",
+1
+],
+[
+"Webmin",
+"Webmin",
+1
+],
+[
+"Widget Factory",
+"Joomla Content Editor ",
+1
+],
+[
+"Wing FTP Server",
+"Wing FTP Server",
+2
+],
+[
+"WordPress",
+"Core",
+3
+],
+[
+"WordPress",
+"File Manager Plugin",
+1
+],
+[
+"WordPress",
+"Snap Creek Duplicator Plugin",
+1
+],
+[
+"WordPress",
+"Social Warfare Plugin",
+1
+],
+[
+"XStream",
+"XStream",
+1
+],
+[
+"XWiki",
+"Platform",
+1
+],
+[
+"Yealink",
+"Device Management",
+1
+],
+[
+"Yiiframework",
+"Yii",
+1
+],
+[
+"ZK Framework",
+"AuUploader",
+1
+],
+[
+"ZKTeco",
+"BioTime",
+1
+],
+[
+"Zabbix",
+"Frontend",
+2
+],
+[
+"Zammad GmbH",
+"Zammad",
+2
+],
+[
+"Zoho",
+"Desktop Central",
+1
+],
+[
+"Zoho",
+"ManageEngine",
+6
+],
+[
+"Zoho",
+"ManageEngine ServiceDesk Plus (SDP)",
+1
+],
+[
+"Zoho",
+"ManageEngine ServiceDesk Plus (SDP) / SupportCenter Plus",
+1
+],
+[
+"Zyxel",
+"DSL CPE Devices",
+2
+],
+[
+"Zyxel",
+"EMG2926 Routers",
+1
+],
+[
+"Zyxel",
+"GS1900 Series Switches",
+1
+],
+[
+"Zyxel",
+"Multiple Firewalls",
+5
+],
+[
+"Zyxel",
+"Multiple Network-Attached Storage (NAS) Devices",
+2
+],
+[
+"Zyxel",
+"Multiple Products",
+1
+],
+[
+"Zyxel",
+"P660HN-T1A Routers",
+1
+],
+[
+"dotCMS",
+"dotCMS",
+1
+],
+[
+"iCagenda",
+"iCagenda",
+1
+],
+[
+"n8n",
+"n8n",
+1
+],
+[
+"ownCloud",
+"ownCloud",
+1
+],
+[
+"ownCloud",
+"ownCloud graphapi",
+1
+],
+[
+"phpMyAdmin",
+"phpMyAdmin",
+1
+],
+[
+"rConfig",
+"rConfig",
+1
+],
+[
+"reviewdog",
+"action-setup GitHub Action",
+1
+],
+[
+"tj-actions",
+"changed-files GitHub Action",
+1
+],
+[
+"vBulletin",
+"vBulletin",
+2
+]
+]
+}

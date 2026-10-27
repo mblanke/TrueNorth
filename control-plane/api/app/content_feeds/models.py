@@ -7,6 +7,7 @@ New tables go in their section, never into the shared ``app.models`` (ADR 0003).
   or a signed bundle brought it. Public data: no tenant.
 * ``content_feed_flags``: each (content review item, entry) the content clock's sync has
   flagged, so it is flagged once and Mark reviewed clears it for good.
+* ``content_feed_settings``: one row, when feeds were first turned on.
 * ``content_feed_sources``: per source (endoflife, cisa_kev, nvd, bundle) its last pull or
   import, when it last worked, its last error and its cursor: the feeds status panel.
 """
@@ -22,7 +23,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from ..db import Base
 from ..models import GUID
 
-__all__ = ["ContentFeedEntry", "ContentFeedFlag", "ContentFeedSource"]
+__all__ = ["ContentFeedEntry", "ContentFeedFlag", "ContentFeedSettings", "ContentFeedSource"]
 
 
 class ContentFeedEntry(Base):
@@ -64,3 +65,14 @@ class ContentFeedSource(Base):
     entries: Mapped[int] = mapped_column(Integer, nullable=False, default=0)  # entries the last run brought
     cursor: Mapped[str] = mapped_column(String(64), nullable=False, default="")  # NVD: end of the last window
     detail: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)  # bundle: key id, generated at, by
+
+
+class ContentFeedSettings(Base):
+    """One row (id 1) of feed-wide state. ``enabled_at``: when the content clock's sync first
+    ran with feeds on. Vulnerabilities older than it are never flagged (with the day an item
+    was first tracked, the later of the two is the item's anchor; worker/content_feeds/match.py)."""
+
+    __tablename__ = "content_feed_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
+    enabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

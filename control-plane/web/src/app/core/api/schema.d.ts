@@ -13424,6 +13424,11 @@ export interface components {
             key_id: string;
             /** New */
             new: number;
+            /**
+             * Removed
+             * @description Entries of the previous bundle this one no longer has
+             */
+            removed: number;
             /** Updated */
             updated: number;
         };

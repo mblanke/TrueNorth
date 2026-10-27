@@ -5,8 +5,9 @@ Run on a machine with internet access and a checkout of this repository. It read
 feeds the online pull reads (endoflife.date, CISA KEV, the NVD CVE API), with the same
 sources (control-plane/worker/worker/feed_backends) and product map
 (content/catalogue/feed_products.yaml), and signs the result with the site's feed key: an
-Ed25519 key, signed the way range certification exports are (canonical JSON without the
-``signature`` member; control-plane/api/app/range_certification/signing.py).
+Ed25519 key, signed as control-plane/api/app/content_feeds/bundle_signing.py says (a
+feed-bundle context, then the canonical JSON without the ``signature`` member). Each bundle
+replaces the last one imported, so a bad bundle is undone by importing a newer, correct one.
 
     # once: make the key pair. Keep the private key off the air-gapped site; give the site
     # the public key (installer setting tn_feeds_bundle_public_key).
@@ -24,7 +25,6 @@ from __future__ import annotations
 
 import argparse
 import base64
-import hashlib
 import json
 import os
 import sys
@@ -35,7 +35,8 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "control-plane/worker"))
 sys.path.insert(0, str(ROOT / "control-plane/api"))
 
-from app.range_certification.signing import canonical, key_id  # noqa: E402
+from app.content_feeds import bundle_signing  # noqa: E402
+from app.range_certification.signing import key_id  # noqa: E402
 from cryptography.hazmat.primitives import serialization  # noqa: E402
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey  # noqa: E402
 from worker.content_feeds import catalogue  # noqa: E402
@@ -70,10 +71,9 @@ def load_key(path: Path) -> Ed25519PrivateKey:
 
 
 def sign(doc: dict, key: Ed25519PrivateKey) -> dict:
-    body = canonical({k: v for k, v in doc.items() if k != "signature"})
-    return {**doc, "signature": {
-        "alg": "Ed25519", "key_id": key_id(key.public_key()), "public_key": base64.b64encode(_raw_public(key)).decode(),
-        "signed_sha256": hashlib.sha256(body).hexdigest(), "value": base64.b64encode(key.sign(body)).decode()}}
+    """Signed as the API verifies it: app/content_feeds/bundle_signing.py (a feed-bundle
+    context, then the canonical JSON), never the range certification construction."""
+    return bundle_signing.sign(doc, key)
 
 
 def build(*, proxy: str | None, since: datetime | None, now: datetime) -> tuple[dict, list[str], list[str]]:
@@ -100,8 +100,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--key", type=Path, help="the private key that signs the bundle")
     ap.add_argument("--out", type=Path, help="where to write the bundle")
     ap.add_argument("--proxy", help="HTTP proxy for the feed requests")
-    ap.add_argument("--since", help="NVD: CVEs modified since this date (default: 30 days ago; set it to the "
-                                    "last bundle's date so nothing is missed)")
+    ap.add_argument("--since", help="NVD: CVEs modified since this date (default: 120 days ago, the most "
+                                    "the NVD API allows; each bundle replaces the last, so keep it wide)")
     ap.add_argument("--allow-partial", action="store_true",
                     help="sign the bundle even when a source could not be read at all")
     args = ap.parse_args(argv)
@@ -111,7 +111,7 @@ def main(argv: list[str] | None = None) -> int:
         ap.error("--key and --out are required (or --new-key)")
     now = datetime.now(UTC)
     since = (datetime.fromisoformat(args.since).replace(tzinfo=UTC) if args.since
-             else now - timedelta(days=30))
+             else now - timedelta(days=120))
     doc, problems, failed = build(proxy=args.proxy, since=since, now=now)
     for p in problems:
         print("warning:", p, file=sys.stderr)

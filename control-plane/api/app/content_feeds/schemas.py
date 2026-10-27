@@ -11,8 +11,8 @@ A **signed feed bundle** is one JSON document::
                    "value": "..."}}
 
 ``entries`` are what the online pull stores (``worker/feed_backends/base.py`` ``FeedEntry``).
-The signature is the range certification export's construction (Ed25519 over the canonical
-JSON of the document without ``signature``; ``app/range_certification/signing.py``),
+The signature is Ed25519 over a feed-bundle context and the canonical JSON of the
+document without ``signature`` (``bundle_signing.py``, on the range certification helpers),
 verified against the site's configured public key, never the one the bundle carries.
 ``scripts/build_feed_bundle.py`` makes one on a connected machine.
 """
@@ -22,7 +22,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 BUNDLE_FORMAT = "truenorth-feed-bundle/1"
 MAX_ENTRIES = 100_000
@@ -33,6 +33,8 @@ PREFIXES: dict[str, tuple[str, ...]] = {"endoflife": ("eol:", "release:"), "cisa
 
 
 class FeedEntryIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     key: str = Field(min_length=5, max_length=200)
     source: SourceName
     kind: Literal["release", "vulnerability"]
@@ -58,6 +60,10 @@ class FeedEntryIn(BaseModel):
 
 
 class FeedBundleIn(BaseModel):
+    """Exactly a feed bundle: a signed field this does not know is refused, not ignored."""
+
+    model_config = ConfigDict(extra="forbid")
+
     format: Literal["truenorth-feed-bundle/1"]
     generated_at: datetime
     entries: list[FeedEntryIn] = Field(max_length=MAX_ENTRIES)
@@ -88,5 +94,6 @@ class FeedImportOut(BaseModel):
     entries: int
     new: int
     updated: int
+    removed: int = Field(description="Entries of the previous bundle this one no longer has")
     generated_at: datetime
     key_id: str

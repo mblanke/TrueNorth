@@ -2,8 +2,9 @@
 
 * ``TN_FEEDS_MODE``: ``off`` (the default on a fresh install), ``online`` (the daily pull),
   or ``bundle`` (air-gapped: signed bundles imported through the API).
-* ``TN_FEEDS_HTTP_PROXY``: the site's HTTP proxy for the pull (empty: direct). The pull
-  never uses a proxy the environment sets by itself.
+* ``TN_FEEDS_HTTP_PROXY``: the site's HTTP proxy for the pull. Optional: when it is empty,
+  the worker's ``HTTPS_PROXY`` (or ``https_proxy``) is used, and with neither the pull goes
+  direct. No other proxy variable is read (``FeedHttp`` turns httpx's ``trust_env`` off).
 * ``TN_FEEDS_NVD_API_KEY`` (optional, never logged) and ``TN_FEEDS_NVD_MIN_CVSS`` are read by
   the NVD source (``feed_backends/__init__.py``).
 """
@@ -22,4 +23,8 @@ def mode() -> str:
 
 
 def proxy() -> str | None:
-    return os.getenv("TN_FEEDS_HTTP_PROXY", "").strip() or None
+    for name in ("TN_FEEDS_HTTP_PROXY", "HTTPS_PROXY", "https_proxy"):
+        value = os.getenv(name, "").strip()
+        if value:
+            return value
+    return None

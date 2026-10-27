@@ -13,6 +13,7 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
+from app.content_feeds import bundle_signing
 from app.content_feeds.schemas import FeedBundleIn
 from app.range_certification import signing
 
@@ -63,9 +64,25 @@ def test_a_built_bundle_verifies_against_the_public_key_and_is_a_feed_bundle(tmp
     doc, problems, failed = bfb.build(proxy=None, since=None, now=NOW)
     assert failed == []
     signed = bfb.sign(doc, key)
-    assert signing.verify_with_public_key(signed, key.public_key())
+    assert bundle_signing.verify(signed, key.public_key())
+    # domain separation: not a range certification signature, and not verifiable as one
+    assert not signing.verify_with_public_key(signed, key.public_key())
     bundle = FeedBundleIn.model_validate({k: v for k, v in signed.items() if k != "signature"})
     keys = {e.key for e in bundle.entries}
     assert "eol:ubuntu:24.04" in keys and "kev:CVE-2026-21001" in keys
     tampered = {**signed, "entries": signed["entries"][1:]}
-    assert not signing.verify_with_public_key(tampered, key.public_key())
+    assert not bundle_signing.verify(tampered, key.public_key())
+
+
+def test_the_nvd_window_defaults_to_the_120_days_the_api_allows(tmp_path, monkeypatch):
+    seen = {}
+
+    def fake_build(*, proxy, since, now):
+        seen["days"] = (now - since).days
+        return {"format": "truenorth-feed-bundle/1", "generated_at": now.isoformat(), "entries": []}, [], []
+
+    key_path = tmp_path / "feed.key"
+    bfb.new_key(key_path)
+    monkeypatch.setattr(bfb, "build", fake_build)
+    assert bfb.main(["--key", str(key_path), "--out", str(tmp_path / "b.json")]) == 0
+    assert seen["days"] == 120

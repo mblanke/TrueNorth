@@ -10,10 +10,12 @@ ADR 0014 decision 25, issue #287 (``app/content_feeds``, ``worker/content_feeds`
   the golden templates are built from, from the daily pull or a signed feed bundle;
 * ``content_feed_flags``: each (content review item, entry) already flagged, so a flag is
   raised once and Mark reviewed clears it for good;
-* ``content_feed_sources``: each source's last pull or import, last success, error, cursor.
+* ``content_feed_sources``: each source's last pull or import, last success, error, cursor;
+* ``content_feed_settings``: one row, written when the sync first runs with feeds on: when
+  they were enabled (older vulnerabilities are never flagged).
 
 Additive; no rows are written (feeds are off until the installer turns them on). Downgrade
-drops the three tables; the stale reasons the feeds raised stay on the review rows until
+drops the four tables; the stale reasons the feeds raised stay on the review rows until
 they are reviewed.
 """
 
@@ -68,9 +70,16 @@ def upgrade() -> None:
             sa.Column("cursor", sa.String(64), nullable=False, server_default=""),
             sa.Column("detail", sa.JSON(), nullable=False),
         )
+    if "content_feed_settings" not in existing:
+        op.create_table(
+            "content_feed_settings",
+            sa.Column("id", sa.Integer(), primary_key=True),
+            sa.Column("enabled_at", sa.DateTime(timezone=True), nullable=True),
+        )
 
 
 def downgrade() -> None:
+    op.drop_table("content_feed_settings")
     op.drop_table("content_feed_sources")
     op.drop_table("content_feed_flags")
     op.drop_index("ix_content_feed_entries_source", table_name="content_feed_entries")

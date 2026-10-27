@@ -35,9 +35,16 @@ def _b64_public(key: Ed25519PrivateKey) -> str:
     return base64.b64encode(raw).decode()
 
 
-def sign(doc: dict, key: Ed25519PrivateKey = SITE_KEY) -> dict:
-    """What scripts/build_feed_bundle.py does: the certification export's construction."""
-    body = signing.canonical({k: v for k, v in doc.items() if k != "signature"})
+# What a feed bundle's signature covers: this context, then the canonical JSON of the
+# bundle without its signature (app/content_feeds/bundle_signing.py). Spelled out here so
+# a change to the construction fails these tests.
+FEED_CONTEXT = b"truenorth/content-feed-bundle/v1\n"
+
+
+def sign(doc: dict, key: Ed25519PrivateKey = SITE_KEY, *, context: bytes = FEED_CONTEXT) -> dict:
+    """What scripts/build_feed_bundle.py does. ``context=b""`` is the range certification
+    export's construction, which a feed bundle must not accept."""
+    body = context + signing.canonical({k: v for k, v in doc.items() if k != "signature"})
     pub = key.public_key()
     return {**doc, "signature": {"alg": "Ed25519", "key_id": signing.key_id(pub), "public_key": _b64_public(key),
                                  "signed_sha256": hashlib.sha256(body).hexdigest(),
@@ -215,16 +222,69 @@ class TestSignature:
         assert res.status_code == 409
         assert "nvd:CVE-2026-9" not in _entries(db_session)
 
-    def test_reimporting_updates_and_merges_products(self, client, db_session, bundle_mode):
+    def test_a_newer_bundle_replaces_the_last_ones_entries_outright(self, client, db_session, bundle_mode):
+        """The undo: a corrected bundle drops what the bad one said, products included."""
         first = bundle(NOW)
-        second = bundle(NOW + timedelta(days=1))
-        second["entries"][1]["products"] = ["kev:microsoft:windows"]
+        first["entries"][1]["products"] = ["kev:microsoft:exchange server", "kev:linux:kernel"]
+        second = bundle(NOW + timedelta(days=1), entries=[bundle()["entries"][1]])  # no EOL entry, no Linux
         with acting_as(db_session, UserRole.admin):
             upload(client, sign(first))
             res = upload(client, sign(second))
-        assert res.json()["new"] == 0 and res.json()["updated"] == 1
+        assert res.json() | {"generated_at": None} == {
+            "entries": 1, "new": 0, "updated": 1, "removed": 1, "generated_at": None,
+            "key_id": signing.key_id(SITE_KEY.public_key())}
+        assert _entries(db_session) == {"kev:CVE-2026-21001"}
         row = db_session.query(ContentFeedEntry).filter_by(entry_key="kev:CVE-2026-21001").one()
-        assert row.products == ["kev:microsoft:exchange server", "kev:microsoft:windows"]
+        assert row.products == ["kev:microsoft:exchange server"]
+
+    def test_a_bundle_never_removes_what_the_online_pull_stored(self, client, db_session, bundle_mode):
+        now = datetime.now(UTC)
+        db_session.add(ContentFeedEntry(id=uuid.uuid4(), entry_key="nvd:CVE-2026-1", source="nvd",
+                                        kind="vulnerability", products=["cpe:x"], at=now, title="", data={},
+                                        origin="online", first_seen_at=now, updated_at=now))
+        db_session.commit()
+        with acting_as(db_session, UserRole.admin):
+            assert upload(client, sign(bundle(entries=[]))).status_code == 200
+        assert _entries(db_session) == {"nvd:CVE-2026-1"}
+
+    def test_a_signature_without_the_feed_bundle_context_is_refused(self, client, db_session, bundle_mode):
+        """Domain separation: a document signed the range-certification way (no context) by
+        the same key is not a feed bundle."""
+        with acting_as(db_session, UserRole.admin):
+            res = upload(client, sign(bundle(), context=b""))
+        assert res.status_code == 422
+        assert _entries(db_session) == set()
+
+    @pytest.mark.parametrize("case", ["deep", "surrogate", "trailing"])
+    def test_a_file_that_breaks_the_parser_is_a_recorded_refusal(self, client, db_session, bundle_mode, case):
+        raw = {"deep": b"[" * 100_000 + b"]" * 100_000,
+               "surrogate": json.dumps({**sign(bundle()), "x": "\ud800"}).encode().replace(b"\\ud800", b"\ud800"),
+               "trailing": json.dumps(sign(bundle())).encode() + b" garbage"}[case]
+        with acting_as(db_session, UserRole.admin):
+            res = upload(client, raw)
+        assert res.status_code == 422, res.text
+        assert _entries(db_session) == set()
+        assert db_session.get(ContentFeedSource, "bundle").last_error
+
+    @pytest.mark.parametrize("where", ["bundle", "entry"])
+    def test_unknown_fields_are_refused_even_when_signed(self, client, db_session, bundle_mode, where):
+        doc = bundle()
+        if where == "bundle":
+            doc["applies_to"] = "everything"
+        else:
+            doc["entries"][0]["severity"] = "critical"
+        with acting_as(db_session, UserRole.admin):
+            res = upload(client, sign(doc))
+        assert res.status_code == 422 and "not a feed bundle" in res.json()["detail"]
+        assert _entries(db_session) == set()
+
+    def test_a_bundle_dated_more_than_a_day_ahead_is_refused(self, client, db_session, bundle_mode):
+        """Else it would lock out every honest bundle until that date."""
+        with acting_as(db_session, UserRole.admin):
+            res = upload(client, sign(bundle(datetime.now(UTC) + timedelta(days=2))))
+            assert res.status_code == 422 and "future" in res.json()["detail"]
+            assert upload(client, sign(bundle(datetime.now(UTC) + timedelta(hours=23)))).status_code == 200
+        assert db_session.query(AuditLog).filter_by(action="content_feeds.bundle_rejected").count() == 1
 
 
 # ── the status ───────────────────────────────────────────────────────────────

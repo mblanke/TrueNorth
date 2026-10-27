@@ -29,7 +29,8 @@ NOW = datetime(2026, 10, 27, 4, 10, tzinfo=UTC)
 TENANT = str(uuid.uuid4())
 TABLES = ("golden_images", "templates", "scenarios", "courses", "course_modules", "module_content",
           "scheduled_events", "content_review_items", "content_review_edges", "content_review_themes",
-          "content_review_cycles", "content_feed_entries", "content_feed_flags", "content_feed_sources")
+          "content_review_cycles", "content_feed_entries", "content_feed_flags", "content_feed_sources",
+          "content_feed_settings")
 PRODUCTS = catalogue.load(FIX / "products.yaml")
 NVD = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 
@@ -248,9 +249,9 @@ class TestFlags:
         assert focal == {"Ubuntu 20.04 reached EOL 2025-05-31"}
         assert noble == {"Ubuntu 24.04: 24.04.6 released (the template is built from 24.04.5)"}
         texts = {r["text"] for r in exchange}
-        assert "CVE-2026-21001 in CISA KEV (Exchange Server 2019): Microsoft Exchange Server Remote Code " \
-               "Execution Vulnerability" in texts
-        assert any(x.startswith("CVE-2026-20777 in CISA KEV (Windows Server 2022)") for x in texts)
+        # KEV names a product family, so the reason says "may affect", never "is in"
+        assert "CVE-2026-21001: a Microsoft Exchange Server KEV entry (may affect Exchange Server 2019)" in texts
+        assert "CVE-2026-20777: a Microsoft Windows KEV entry (may affect Windows Server 2022)" in texts
         assert "CVE-2026-30100 in NVD, CVSS 9.8 (Windows Server 2022)" in texts
         # older than the template's tracking, or not yet past: not flagged
         assert not any("CVE-2019-0708" in x for x in texts)
@@ -306,6 +307,43 @@ class TestFlags:
         do_pull(session, FakeHttp(feeds()))
         sync(engine)
         assert reasons(engine, ("golden_template", estate["focal"])) == []
+
+    def test_vulnerabilities_from_before_feeds_were_turned_on_are_not_flagged(self, engine, session, monkeypatch):
+        """Tracked on 1 October with feeds off; feeds on from 22 October. The KEV entry of
+        14 October predates feeds and is not flagged; the one of 23 October is."""
+        monkeypatch.setenv("TN_FEEDS_MODE", "off")
+        exchange = golden(engine, "srv2022-exchange2019")
+        sync(engine, now=TRACKED)
+        monkeypatch.setenv("TN_FEEDS_MODE", "online")
+        enabled = datetime(2026, 10, 22, 9, 0, tzinfo=UTC)
+        sync(engine, now=enabled)  # the first sync with feeds on records when
+        with engine.connect() as conn:
+            assert conn.execute(sa.select(t.content_feed_settings.c.enabled_at)).scalar_one().replace(
+                tzinfo=UTC) == enabled
+        do_pull(session, FakeHttp(feeds()))
+        sync(engine)
+        texts = {r["text"] for r in reasons(engine, ("golden_template", exchange))}
+        assert any(x.startswith("CVE-2026-21001:") for x in texts)
+        assert not any(x.startswith("CVE-2026-20777:") for x in texts)  # 14 Oct: before feeds were on
+        sync(engine, now=NOW + timedelta(days=1))
+        with engine.connect() as conn:  # recorded once, never moved
+            assert conn.execute(sa.select(t.content_feed_settings.c.enabled_at)).scalar_one().replace(
+                tzinfo=UTC) == enabled
+
+    def test_kev_product_patterns_reach_the_template(self, engine, session, estate):
+        kev = fixture("cisa_kev.json")
+        kev["vulnerabilities"].append({"cveID": "CVE-2026-20999", "vendorProject": "Microsoft", "product": "Win32k",
+                                       "vulnerabilityName": "Win32k EoP", "dateAdded": "2026-10-24"})
+        products = catalogue.parse({"golden_templates": {"srv2022-exchange2019": [
+            {"name": "Windows Server 2022", "kev": [{"vendor": "Microsoft", "products": ["Windows", "Win32k"]}]}]}})
+        pull.pull(now=NOW, http=FakeHttp(feeds(**{
+            "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json": kev})),
+            sources=("cisa_kev",), products=products, session=session, after=lambda: None)
+        with Session(engine) as db:
+            content_review_sync.sync(db, now=NOW, feed_products=products)
+            db.commit()
+        texts = {r["text"] for r in reasons(engine, ("golden_template", estate["exchange"]))}
+        assert "CVE-2026-20999: a Microsoft Win32k KEV entry (may affect Windows Server 2022)" in texts
 
     def test_no_entries_no_work(self, engine, estate):
         assert sync(engine)["feed_flags"] == 0

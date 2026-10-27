@@ -1047,29 +1047,41 @@ every launch answers 503. With `tn_cmi5_enabled` (the default):
 Release, end-of-life and vulnerability data make content due for review on the calendar's
 Content view (ADR 0014 decision 25). A feed entry that names something a golden template
 is built from (`content/catalogue/feed_products.yaml`) flags it stale, e.g. "Ubuntu 20.04
-reached EOL 2025-05-31" or "CVE-… in CISA KEV", and the flag flows down to the range
-templates, scenarios, modules and courses that use it. Each flag is raised once; Mark
-reviewed clears it. **Off on a fresh install.**
+reached EOL 2025-05-31" or "CVE-…: a Microsoft Windows KEV entry (may affect Windows Server
+2022)" (KEV names product families, so its flags say "may affect"), and the flag flows down
+to the range templates, scenarios, modules and courses that use it. Each flag is raised
+once; Mark reviewed clears it. **Off on a fresh install.**
 
 | Variable | Default | Effect |
 |---|---|---|
 | `tn_feeds_mode` | `off` | `off`; `online`: worker-provision pulls endoflife.date, CISA KEV and the NVD CVE API once a day (04:10 UTC); `bundle`: air-gapped, a platform admin imports signed feed bundles |
-| `tn_feeds_http_proxy` | `""` | The site's HTTP proxy for the daily pull (TN-MGMT01 or the depot); empty: direct. A proxy the environment sets is never used |
+| `tn_feeds_http_proxy` | `""` | Optional. The site's HTTP proxy for the daily pull (TN-MGMT01 or the depot). Empty: the worker's `HTTPS_PROXY`, if its environment has one, else direct. No other proxy variable is read |
 | `tn_feeds_bundle_public_key` | `""` | `bundle` mode: the Ed25519 public key (base64) bundles must be signed with. Without it none is accepted |
-| `tn_feeds_nvd_api_key` | `vault_feeds_nvd_api_key` | Optional; raises NVD's rate limit. Worker only, never logged |
+| `tn_feeds_nvd_api_key` | `vault_feeds_nvd_api_key` | Optional; raises NVD's rate limit. Given to worker-provision only (the worker that pulls), never logged |
 | `tn_feeds_nvd_min_cvss` | `9.0` | NVD CVEs below this CVSS base score are not flagged |
 
 - **What leaves the site:** GET requests naming the product map's public products (e.g.
   `ubuntu.json`, a CPE string). No tenant data, no content names.
 - **Air-gapped:** on a connected machine, `python scripts/build_feed_bundle.py --new-key
   <file>` once (it prints the public key for `tn_feeds_bundle_public_key`), then
-  `--key <file> --out feeds.json --since <the last bundle's date>` per bundle (it writes
-  nothing if a feed could not be read). The Content view's Feeds panel imports it; an
-  unsigned bundle, one signed by another key, one changed after signing, or one older than
-  the last import is refused and recorded.
-- **Status:** the Feeds panel (admins) shows each source's last pull or import and error.
-  Vulnerabilities published before a template was first tracked are not flagged, so
-  turning feeds on does not flag years of history at once.
+  `--key <file> --out feeds.json` per bundle (NVD looks back 120 days by default; it writes
+  nothing if a feed could not be read). The Content view's Feeds panel imports it. Refused
+  and recorded: an unsigned bundle, one signed by another key, one changed after signing,
+  one with fields a bundle does not have, one dated more than a day ahead, one older than
+  the last import, and a file that is not readable JSON.
+- **Undoing a bad bundle:** each bundle replaces the last one outright: entries the new one
+  lacks are removed and every entry's products are the new bundle's. So build a corrected
+  bundle (newer, from fixed feeds or a fixed product map) and import it. Flags the bad
+  bundle already raised stay on their items: review them (Mark reviewed); a removed entry
+  never raises them again. Entries the online pull stored are never touched by a bundle.
+- **Status:** the Feeds panel (admins) shows each source's last pull or import and its
+  error. A product map entry that matched nothing in a pull (a KEV name or endoflife.date
+  cycle the feed does not use) shows as a warning there, so a dead mapping is not green.
+- **What is flagged:** vulnerabilities published on or after the later of the day a
+  template was first tracked and the day feeds were first turned on. Turning feeds on does
+  not flag years of history at once, and a template added later is not flagged for
+  vulnerabilities older than it: review a new template against current advisories when
+  you add it.
 
 ## Range credentials
 

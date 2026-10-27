@@ -59,4 +59,16 @@ def test_the_api_gets_the_mode_and_key_and_the_workers_the_pull_settings():
     assert s["beat"]["environment"]["TN_FEEDS_MODE"] == "${TN_FEEDS_MODE:-off}"
     # the pull runs on worker-provision (queue destroy), the worker that can leave the host
     assert "tn-egress" in s["worker-provision"]["networks"]
+
+
+def test_the_nvd_key_reaches_only_the_worker_that_pulls():
+    s = _services()
+    holders = {name for name, svc in s.items()
+               if isinstance(svc.get("environment"), dict) and "TN_FEEDS_NVD_API_KEY" in svc["environment"]}
+    assert holders == {"worker-provision"}
+    assert s["worker-provision"]["environment"]["TN_FEEDS_NVD_API_KEY"] == "${TN_FEEDS_NVD_API_KEY:-}"
+    # the other workers and beat still get the shared worker environment
+    for name in ("worker-scenario", "worker-telemetry", "beat"):
+        assert s[name]["environment"]["DATABASE_URL"] == s["worker-provision"]["environment"]["DATABASE_URL"]
+        assert s[name]["environment"]["TN_FEEDS_MODE"] == "${TN_FEEDS_MODE:-off}"
     assert "destroy" in " ".join(s["worker-provision"]["command"].split())

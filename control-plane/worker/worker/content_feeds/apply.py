@@ -12,11 +12,11 @@ from __future__ import annotations
 import logging
 import uuid
 from collections.abc import Iterable
-from datetime import datetime
+from datetime import UTC, datetime
 
 import sqlalchemy as sa
 
-from ..tables import content_feed_entries, content_feed_flags, golden_images
+from ..tables import content_feed_entries, content_feed_flags, content_feed_settings, golden_images
 from . import catalogue, match, settings
 
 logger = logging.getLogger("truenorth.worker.content_feeds")
@@ -34,11 +34,34 @@ def _products(mapping):
         return {}
 
 
+def _utc(dt):
+    if dt is None:
+        return None
+    if isinstance(dt, str):
+        dt = datetime.fromisoformat(dt)
+    return dt.replace(tzinfo=UTC) if dt.tzinfo is None else dt
+
+
+def enabled_at(db, now: datetime) -> datetime:
+    """When feeds were first on (``content_feed_settings``, row 1), recorded now if never.
+    With the day an item was first tracked, the later of the two anchors which
+    vulnerabilities may flag it: turning feeds on never flags the history before."""
+    row = db.execute(sa.select(content_feed_settings.c.enabled_at).where(content_feed_settings.c.id == 1)).first()
+    if row is not None and row.enabled_at is not None:
+        return _utc(row.enabled_at)
+    if row is None:
+        db.execute(content_feed_settings.insert().values(id=1, enabled_at=now))
+    else:
+        db.execute(content_feed_settings.update().where(content_feed_settings.c.id == 1).values(enabled_at=now))
+    return now
+
+
 def flags(db, live: dict[str, dict], now: datetime, *, products=None) -> list[match.Flag]:
     """New flags for the live (not retired) golden templates. ``live``: review row id -> row.
     None once feeds are turned off: stored end-of-life dates still to come raise nothing."""
     if settings.mode() == "off":
         return []
+    enabled = enabled_at(db, now)
     golden = {str(r["item_id"]): rid for rid, r in live.items()
               if r["item_type"] == "golden_template" and not r["retired"]}
     if not golden or db.execute(sa.select(content_feed_entries.c.id).limit(1)).first() is None:
@@ -54,7 +77,8 @@ def flags(db, live: dict[str, dict], now: datetime, *, products=None) -> list[ma
             rid = golden.get(str(g.id))
             found = mapping.get(g.catalogue_id)
             if rid and found:
-                tracked[rid] = match.Tracked(products=tuple(found), since=live[rid]["created_at"] or now)
+                first = _utc(live[rid]["created_at"]) or now
+                tracked[rid] = match.Tracked(products=tuple(found), since=max(first, enabled))
     if not tracked:
         return []
     raised = set()

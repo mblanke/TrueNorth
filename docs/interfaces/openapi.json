@@ -8943,6 +8943,11 @@
             "title": "New",
             "type": "integer"
           },
+          "removed": {
+            "description": "Entries of the previous bundle this one no longer has",
+            "title": "Removed",
+            "type": "integer"
+          },
           "updated": {
             "title": "Updated",
             "type": "integer"
@@ -8952,6 +8957,7 @@
           "entries",
           "new",
           "updated",
+          "removed",
           "generated_at",
           "key_id"
         ],

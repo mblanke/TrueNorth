@@ -7,6 +7,6 @@ key, then store its entries) and the feeds status (``router.py``). The online pu
 matching run in the worker (``worker/content_feeds``, ``worker/content_review_sync.py``).
 """
 
-from .models import ContentFeedEntry, ContentFeedFlag, ContentFeedSource
+from .models import ContentFeedEntry, ContentFeedFlag, ContentFeedSettings, ContentFeedSource
 
-__all__ = ["ContentFeedEntry", "ContentFeedFlag", "ContentFeedSource"]
+__all__ = ["ContentFeedEntry", "ContentFeedFlag", "ContentFeedSettings", "ContentFeedSource"]

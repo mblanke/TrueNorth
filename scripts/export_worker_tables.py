@@ -34,6 +34,7 @@ WORKER_TABLES = (
     "competency_auto_assessments",
     "content_feed_entries",  # ADR 0014 §25: the feeds' pull stores them; the content clock's sync reads them
     "content_feed_flags",
+    "content_feed_settings",
     "content_feed_sources",
     "content_review_cycles",  # ADR 0014 §22-24: the content clock's sync (worker/content_review_sync.py)
     "content_review_edges",

@@ -70,7 +70,8 @@ describe('ContentFeedsPanelComponent', () => {
 
   it('imports a bundle and reloads the status', () => {
     make(BUNDLE);
-    api.importFeedBundle.and.returnValue(of({ entries: 5, new: 5, updated: 0, generated_at: '2026-10-27T04:00:00Z',
+    api.importFeedBundle.and.returnValue(of({ entries: 5, new: 5, updated: 0, removed: 2,
+      generated_at: '2026-10-27T04:00:00Z',
       key_id: 'ab12cd34ef56ab12' }));
     const input = el.querySelector('input[type="file"]') as HTMLInputElement;
     const file = new File(['{}'], 'feeds.json', { type: 'application/json' });

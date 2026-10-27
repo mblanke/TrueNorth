@@ -9,22 +9,29 @@ Settings (the installer's ``tn_feeds_*``):
   this site's feed bundles. Without it no bundle is accepted.
 
 A bundle is applied only when its signature verifies against that key
-(``range_certification.signing.verify_with_public_key``: the canonical-JSON Ed25519
-construction the certification exports use). An unsigned bundle, one signed by any other
-key, or one changed after signing is refused, recorded on the status panel and in the
-audit log, and nothing of it is stored. A bundle older than the last one imported is
-refused too. The entries land where the online pull puts them; the worker's content clock
-sync turns them into stale flags within the hour.
+(``bundle_signing``: Ed25519 over a feed-bundle context and the canonical JSON, built on the
+range certification helpers). An unsigned bundle, one signed by any other key or the
+range-certification way, one changed after signing, one that is not exactly a feed bundle
+(unknown fields included), one dated more than a day ahead, one older than the last import,
+or a file the parser cannot read is refused, recorded on the status panel and in the audit
+log, and nothing of it is stored.
+
+**Each bundle replaces the last.** Its entries are the bundle-origin entries from then on:
+an entry the previous bundle had and this one lacks is removed, and an entry's products are
+the new bundle's, not a union. So a bad bundle is undone by importing a newer, correct one
+(docs: install/README.md "Content feeds"). Entries the online pull stored are not touched.
+Flags a bad entry already raised stay on their items until reviewed; Mark reviewed clears
+them, and a removed entry never raises them again. The worker's content clock sync turns
+entries into stale flags within the hour.
 """
 
 from __future__ import annotations
 
 import base64
-import hashlib
 import json
 import os
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from pydantic import ValidationError
 from sqlalchemy import func, or_
@@ -35,6 +42,7 @@ from ..models import AuditLog
 from ..range_certification import signing
 from ..rbac import Permission, is_platform_admin, user_has_permission
 from ..tenancy import tenant_uuid
+from . import bundle_signing
 from .models import ContentFeedEntry, ContentFeedFlag, ContentFeedSource
 from .schemas import FeedBundleIn, FeedImportOut, FeedSourceOut, FeedStatusOut
 
@@ -48,6 +56,7 @@ LABELS = {
     BUNDLE: "Signed feed bundle",
 }
 MAX_BUNDLE_BYTES = 50 * 1024 * 1024  # the edge's upload limit for this route (nginx 50M)
+MAX_FUTURE = timedelta(hours=24)  # clock skew allowed between the bundle builder and the site
 
 
 class BundleRejectedError(Exception):
@@ -171,40 +180,48 @@ def import_bundle(db: Session, user: CurrentUser, raw: bytes) -> FeedImportOut:
         raise _reject(db, user, at, 413, f"The bundle is larger than {MAX_BUNDLE_BYTES // (1024 * 1024)} MB")
     try:
         doc = json.loads(raw)
-    except (ValueError, UnicodeDecodeError):
-        raise _reject(db, user, at, 422, "The file is not a feed bundle (not JSON)") from None
+    except (ValueError, RecursionError, MemoryError):  # not JSON, not UTF-8, nested too deep
+        raise _reject(db, user, at, 422, "The file is not a feed bundle (not readable JSON)") from None
     if not isinstance(doc, dict) or not isinstance(doc.get("signature"), dict):
         raise _reject(db, user, at, 422, "The bundle is not signed; nothing was imported")
-    if not signing.verify_with_public_key(doc, key):
+    if not bundle_signing.verify(doc, key):
         raise _reject(db, user, at, 422, "The bundle's signature does not verify against this site's feed key; "
                                          "nothing was imported")
     try:
         bundle = FeedBundleIn.model_validate({k: v for k, v in doc.items() if k != "signature"})
+    except RecursionError:
+        raise _reject(db, user, at, 422, "The signed bundle is not a feed bundle (nested too deep)") from None
     except ValidationError as exc:
         first = exc.errors()[0]
         where = ".".join(str(p) for p in first.get("loc", ()))
         raise _reject(db, user, at, 422, f"The signed bundle is not a feed bundle ({where}: {first.get('msg')})") \
             from None
     generated = bundle.generated_at if bundle.generated_at.tzinfo else bundle.generated_at.replace(tzinfo=UTC)
+    if generated > at + MAX_FUTURE:
+        # Accepted, it would refuse every honest bundle until that date as "older".
+        raise _reject(db, user, at, 422, f"This bundle is dated {generated.isoformat()}, more than a day in the "
+                                         f"future; check the clock of the machine that built it")
     last = db.get(ContentFeedSource, BUNDLE)
     last_generated = _dt((last.detail or {}).get("generated_at")) if last is not None and last.detail else None
     if last_generated is not None and generated < last_generated:
         raise _reject(db, user, at, 409, f"This bundle (made {generated.isoformat()}) is older than the one last "
                                          f"imported (made {last_generated.isoformat()}); nothing was imported")
-    new, updated = _store(db, bundle, at)
+    new, updated, removed = _store(db, bundle, at)
     kid = signing.key_id(key)
-    # Of the bytes the signature covers, computed here: the bundle's own signed_sha256 is not signed.
-    sha = hashlib.sha256(signing.canonical({k: v for k, v in doc.items() if k != "signature"})).hexdigest()
+    sha = bundle_signing.sha256(doc)  # of what the signature covers; the bundle's own signed_sha256 is not signed
     _record(db, BUNDLE, at=at, ok=True, entries=len(bundle.entries),
             detail={"generated_at": generated.isoformat(), "key_id": kid, "signed_sha256": sha,
                     "imported_by": str(user.id)})
     _audit(db, user, "content_feeds.bundle_import",
-           f"{len(bundle.entries)} entries ({new} new, {updated} updated); made {generated.isoformat()}; "
-           f"key {kid}; sha256 {sha}")
-    return FeedImportOut(entries=len(bundle.entries), new=new, updated=updated, generated_at=generated, key_id=kid)
+           f"{len(bundle.entries)} entries ({new} new, {updated} updated, {removed} removed); made "
+           f"{generated.isoformat()}; key {kid}; sha256 {sha}")
+    return FeedImportOut(entries=len(bundle.entries), new=new, updated=updated, removed=removed,
+                         generated_at=generated, key_id=kid)
 
 
-def _store(db: Session, bundle: FeedBundleIn, at: datetime) -> tuple[int, int]:
+def _store(db: Session, bundle: FeedBundleIn, at: datetime) -> tuple[int, int, int]:
+    """The bundle's entries become the bundle-origin entries: new ones added, changed ones
+    replaced (products too), and those the last bundle had and this one lacks removed."""
     wanted = {e.key: e for e in bundle.entries}
     existing: dict[str, ContentFeedEntry] = {}
     keys = sorted(wanted)
@@ -220,10 +237,17 @@ def _store(db: Session, bundle: FeedBundleIn, at: datetime) -> tuple[int, int]:
                                     origin=BUNDLE, first_seen_at=at, updated_at=at))
             new += 1
             continue
-        products = sorted({*(row.products or []), *e.products})
+        products = sorted(set(e.products))
         at_old = row.at if row.at.tzinfo else row.at.replace(tzinfo=UTC)
-        if products != sorted(row.products or []) or at_old != e.at or row.title != e.title or row.data != e.data:
-            row.products, row.at, row.title, row.data, row.updated_at = products, e.at, e.title, e.data, at
+        if (products != sorted(row.products or []) or at_old != e.at or row.title != e.title or row.data != e.data
+                or row.kind != e.kind or row.origin != BUNDLE):
+            row.products, row.at, row.title, row.data, row.kind = products, e.at, e.title, e.data, e.kind
+            row.origin, row.updated_at = BUNDLE, at
             updated += 1
+    removed = 0
+    for row in db.query(ContentFeedEntry).filter(ContentFeedEntry.origin == BUNDLE).all():
+        if row.entry_key not in wanted:
+            db.delete(row)
+            removed += 1
     db.flush()
-    return new, updated
+    return new, updated, removed

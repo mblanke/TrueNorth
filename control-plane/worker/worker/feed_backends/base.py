@@ -62,7 +62,10 @@ class FeedProduct:
     are endoflife.date's product and release cycle; ``release`` the point release the
     template's ISO is (a newer one in the same cycle raises a release flag). ``cpe`` is the
     NVD CPE match string (vendor, product, version). ``kev`` pairs are CISA KEV's
-    ``vendorProject`` and ``product``.
+    ``vendorProject`` and a ``product`` pattern: the product's name (case and spacing do
+    not matter), or a prefix ending in ``*`` ("Windows *" is every "Windows <component>"
+    entry, not "Windows" itself). KEV names products loosely (Windows, Win32k, "Windows CNG
+    Key Isolation Service"), so a product usually needs several.
     """
 
     name: str
@@ -73,13 +76,35 @@ class FeedProduct:
     kev: tuple[tuple[str, str], ...] = ()
 
     def product_keys(self) -> set[str]:
+        """The exact keys it is known by (KEV prefix patterns are in ``kev_prefixes``)."""
         out = set()
         if self.eol_product and self.eol_cycle:
             out.add(eol_key(self.eol_product, self.eol_cycle))
         if self.cpe:
             out.add(cpe_key(self.cpe))
-        out.update(kev_key(v, p) for v, p in self.kev)
+        out.update(kev_key(v, p) for v, p in self.kev if not p.endswith("*"))
         return out
+
+    def kev_prefixes(self) -> tuple[str, ...]:
+        return tuple(kev_pattern(v, p)[0] for v, p in self.kev if p.endswith("*"))
+
+    def covers(self, key: str) -> bool:
+        """Whether an entry's product key names this product."""
+        return key in self.product_keys() or any(key.startswith(pre) for pre in self.kev_prefixes())
+
+
+def kev_pattern(vendor: str, pattern: str) -> tuple[str, bool]:
+    """(the key, or the key prefix, a KEV pattern matches; whether it is a prefix). A space
+    before the ``*`` is kept, so "Windows *" does not match "WindowsXYZ"."""
+    if not pattern.endswith("*"):
+        return kev_key(vendor, pattern), False
+    stem = pattern[:-1]
+    return kev_key(vendor, stem) + (" " if stem.endswith(" ") else ""), True
+
+
+def kev_pattern_matches(vendor: str, pattern: str, key: str) -> bool:
+    target, prefix = kev_pattern(vendor, pattern)
+    return key.startswith(target) if prefix else key == target
 
 
 @dataclass(frozen=True)

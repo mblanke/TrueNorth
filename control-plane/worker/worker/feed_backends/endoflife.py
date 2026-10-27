@@ -53,6 +53,10 @@ class EndOfLifeSource(BaseFeedSource):
                 out.errors.append(f"{product}: {exc}")
                 continue
             out.entries.extend(self.entries(product, cycles, wanted[product], now))
+            known = {str(c.get("cycle", "")).strip().lower() for c in cycles if isinstance(c, dict)}
+            # A mapped cycle the feed does not have would otherwise pass silently (no entries, no error).
+            out.errors += [f"{product} {cycle}: endoflife.date has no such release cycle"
+                           for cycle in sorted(wanted[product] - known)]
         if wanted and failed == len(wanted):
             raise FeedError("; ".join(out.errors))
         return out

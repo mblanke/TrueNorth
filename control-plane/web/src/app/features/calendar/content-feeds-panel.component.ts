@@ -122,7 +122,8 @@ export class ContentFeedsPanelComponent implements OnInit {
     this.api.importFeedBundle(file).subscribe({
       next: res => {
         this.busy.set(false);
-        this.notify.success(`${res.entries} feed entries imported (${res.new} new); flags follow within the hour`);
+        this.notify.success(`${res.entries} feed entries imported (${res.new} new, ${res.removed} removed); `
+          + 'flags follow within the hour');
         this.load();
       },
       error: e => {

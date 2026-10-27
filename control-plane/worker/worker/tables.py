@@ -170,6 +170,13 @@ content_feed_flags = sa.Table(
     sa.Column("raised_at", sa.DateTime(timezone=True), nullable=False),
 )
 
+content_feed_settings = sa.Table(
+    "content_feed_settings",
+    metadata,
+    sa.Column("id", sa.Integer(), primary_key=True),
+    sa.Column("enabled_at", sa.DateTime(timezone=True)),
+)
+
 content_feed_sources = sa.Table(
     "content_feed_sources",
     metadata,
@@ -858,6 +865,7 @@ __all__ = [
     "competency_auto_assessments",
     "content_feed_entries",
     "content_feed_flags",
+    "content_feed_settings",
     "content_feed_sources",
     "content_review_cycles",
     "content_review_edges",

@@ -251,3 +251,97 @@ class TestCatalogue:
             catalogue.parse({"golden_templates": {"x": [{"eol": {"product": "u"}}]}})
         with pytest.raises(catalogue.CatalogueError):
             catalogue.parse({"nope": {}})
+
+
+# ── review of #312: KEV patterns, dead mappings, the proxy ───────────────────
+def kev_vuln(cve, vendor, product, added="2026-10-20"):
+    return {"cveID": cve, "vendorProject": vendor, "product": product, "vulnerabilityName": f"{vendor} {product} bug",
+            "dateAdded": added}
+
+
+WINDOWS = FeedProduct(name="Windows Server 2022", kev=(("Microsoft", "Windows"), ("Microsoft", "Windows *"),
+                                                       ("Microsoft", "Win32k")))
+
+
+class TestKevPatterns:
+    def test_aliases_and_prefixes_catch_windows_component_entries(self):
+        doc = {"vulnerabilities": [
+            kev_vuln("CVE-1", "Microsoft", "Win32k"), kev_vuln("CVE-2", "Microsoft", "Windows CNG Key Isolation Service"),
+            kev_vuln("CVE-3", "Microsoft", "Windows"), kev_vuln("CVE-4", "Microsoft", "Windows "),
+            kev_vuln("CVE-5", "Microsoft", "WindowsXYZ"), kev_vuln("CVE-6", "Microsoft", "Office")]}
+        out = CisaKevSource().fetch(FakeHttp({KEV_URL: doc}), [WINDOWS], since=None, now=NOW)
+        assert {e.key for e in out.entries} == {"kev:CVE-1", "kev:CVE-2", "kev:CVE-3", "kev:CVE-4"}
+        assert out.errors == []
+        assert WINDOWS.covers("kev:microsoft:windows cng key isolation service")
+        assert not WINDOWS.covers("kev:microsoft:windowsxyz")
+
+    def test_a_configured_pair_no_entry_matches_is_a_warning(self):
+        dead = FeedProduct(name="Windows Server 2022", kev=(("Microsoft", "Windows Server"), ("Microsoft", "Windows")))
+        doc = {"vulnerabilities": [kev_vuln("CVE-1", "Microsoft", "Windows")]}
+        out = CisaKevSource().fetch(FakeHttp({KEV_URL: doc}), [dead], since=None, now=NOW)
+        assert [e.key for e in out.entries] == ["kev:CVE-1"]
+        assert out.errors == ["Windows Server 2022: no CISA KEV entry matches Microsoft / Windows Server"]
+
+    def test_the_map_takes_a_vendor_with_a_list_of_products(self):
+        mapping = catalogue.parse({"golden_templates": {"srv2022": [
+            {"name": "Windows Server 2022", "kev": [{"vendor": "Microsoft", "products": ["Windows", "Windows *"]},
+                                                   {"vendor": "Microsoft", "product": "Win32k"}]}]}})
+        assert mapping["srv2022"][0].kev == (("Microsoft", "Windows"), ("Microsoft", "Windows *"),
+                                             ("Microsoft", "Win32k"))
+
+
+class TestEndOfLifeDeadCycle:
+    def test_a_mapped_cycle_the_feed_does_not_have_is_a_warning(self):
+        typo = FeedProduct(name="Ubuntu 24.4", eol_product="ubuntu", eol_cycle="24.4")
+        out = EndOfLifeSource().fetch(FakeHttp({"https://endoflife.date/api/ubuntu.json":
+                                                fixture("endoflife_ubuntu.json")}), [UBUNTU, typo], since=None, now=NOW)
+        assert out.errors == ["ubuntu 24.4: endoflife.date has no such release cycle"]
+        assert out.entries
+
+
+class TestShippedMapAgainstLiveFeeds:
+    """The shipped map against the live feeds as recorded on 2026-10-27 (no network)."""
+
+    def test_every_kev_pair_matches_an_entry_of_the_live_catalogue(self):
+        pairs = fixture("cisa_kev_pairs_live.json")["pairs"]
+        keys = [f"kev:{' '.join(v.lower().split())}:{' '.join(p.lower().split())}" for v, p, _n in pairs]
+        dead = set()
+        for products in catalogue.load().values():
+            for p in products:
+                for vendor, pattern in p.kev:
+                    if not any(FeedProduct(name="x", kev=((vendor, pattern),)).covers(k) for k in keys):
+                        dead.add(f"{vendor} / {pattern}")
+        assert dead == set()
+
+    def test_the_relevant_live_kev_products_are_mapped(self):
+        mapping = catalogue.load()
+        srv = mapping["srv2022"][0]
+        for product in ("Windows", "Win32k", "Windows CNG Key Isolation Service"):
+            assert srv.covers(f"kev:microsoft:{product.lower()}"), product
+        sharepoint = next(p for p in mapping["srv2022-sharepoint2019"] if "SharePoint" in p.name)
+        for product in ("SharePoint", "SharePoint Server"):
+            assert sharepoint.covers(f"kev:microsoft:{product.lower()}"), product
+        exchange = next(p for p in mapping["srv2022-exchange2019"] if "Exchange" in p.name)
+        assert exchange.covers("kev:microsoft:exchange server") and exchange.covers("kev:microsoft:exchange")
+
+    def test_every_eol_cycle_exists_on_endoflife_date(self):
+        cycles = fixture("endoflife_cycles_live.json")["cycles"]
+        for cid, products in catalogue.load().items():
+            for p in products:
+                if p.eol_product:
+                    assert p.eol_cycle in cycles[p.eol_product], f"{cid}: {p.eol_product} {p.eol_cycle}"
+
+
+class TestProxyFallback:
+    def test_the_environments_https_proxy_is_used_when_no_feeds_proxy_is_set(self, monkeypatch):
+        from worker.content_feeds import settings
+
+        monkeypatch.delenv("TN_FEEDS_HTTP_PROXY", raising=False)
+        monkeypatch.delenv("https_proxy", raising=False)
+        monkeypatch.setenv("HTTPS_PROXY", "http://depot.site:3128")
+        assert settings.proxy() == "http://depot.site:3128"
+        monkeypatch.setenv("TN_FEEDS_HTTP_PROXY", "http://tn-mgmt01.site:3128")
+        assert settings.proxy() == "http://tn-mgmt01.site:3128"
+        monkeypatch.delenv("TN_FEEDS_HTTP_PROXY")
+        monkeypatch.delenv("HTTPS_PROXY")
+        assert settings.proxy() is None

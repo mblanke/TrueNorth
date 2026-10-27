@@ -40,9 +40,13 @@ def _product(raw) -> FeedProduct:
         raise CatalogueError(f"{raw['name']}: eol is {{product, cycle}}")
     kev = []
     for pair in raw.get("kev") or []:
-        if not isinstance(pair, dict) or not pair.get("vendor") or not pair.get("product"):
-            raise CatalogueError(f"{raw['name']}: each kev entry is {{vendor, product}}")
-        kev.append((str(pair["vendor"]), str(pair["product"])))
+        names = pair.get("products") if isinstance(pair, dict) else None
+        if isinstance(pair, dict) and pair.get("product"):
+            names = [pair["product"], *(names or [])]
+        if (not isinstance(pair, dict) or not pair.get("vendor") or not isinstance(names, list) or not names
+                or not all(isinstance(n, str) and n.strip() for n in names)):
+            raise CatalogueError(f"{raw['name']}: each kev entry is {{vendor, product}} or {{vendor, products: [...]}}")
+        kev.extend((str(pair["vendor"]), n.strip()) for n in names)
     return FeedProduct(
         name=str(raw["name"]).strip(),
         eol_product=str(eol["product"]).strip() if eol.get("product") else None,
