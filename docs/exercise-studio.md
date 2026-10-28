@@ -41,7 +41,9 @@ proves it runs, and an admin decides. It never touches courses or individual lab
   tenant before Promote, and Promote itself books and starts nothing.
 - **Live attacks need a second person.** If an exercise contains live inject scripts, a
   different admin with the live-approval permission must approve those exact scripts on their
-  own screen. Live injects run only on a range certified isolated, with a kill switch in the
+  own screen. Live attacks are built only from a reviewed library of pre-approved building
+  blocks, in a declared order; there are no free-form attack scripts, and a new technique
+  enters by a reviewed addition to the library, not by the generator. Live injects run only on a range certified isolated, with a kill switch in the
   Ops Center, and only where the site has turned live on. Live is off by default.
 - **Drafted ranges.** If the request needed a range that does not exist yet, the Studio drafts
   one and lists the golden images it needs and which ones exist. The draft is unusable until

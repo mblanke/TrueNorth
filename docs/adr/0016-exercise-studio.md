@@ -51,6 +51,8 @@ Recorded verbatim from the owner's brief of 2026-10-28.
 
 9. **Participant sizing (added 2026-10-28, owner requirement relayed by the coordinator).** The studio asks the instructor or event planner how many people are taking part, and in which roles: for example analysts, red team, blue team, intel team, and other roles the exercise needs. That sizing decides how many VMs get created and of what kind. It covers intake (counts per role plus free text, with follow-up questions when sizing is missing or does not fit the idea), sizing rules (each role maps to a seat pattern from the exercise template's role definition, with a per-role VM profile; shared infrastructure scales with team size), range output (the chosen or generated range is scaled to the sizing), a capacity check before the dry run and before promotion (needs N VMs, X vCPU, Y GB; the site can or cannot fit it, and the biggest team size that fits), re-sizing (a later headcount change scales the range again, and approved bookings go back to approval), and the link from role counts to the class roll call and the team split (#299).
 
+10. **Live attacks come from a reviewed library (owner answer to former Q3, 2026-10-28).** Live attacks are assembled from a reviewed library of pre-approved building blocks: declarative registry actions in a declared order. There are no free-form attack scripts. A cleared admin still approves each live exercise separately (Live approval). The live substrate (S10, #338) builds and reviews the action registry; live generation (S11, #339) composes only from it.
+
 ## Decision
 
 ### 1. One module, its own engine, shared sandbox
@@ -138,7 +140,7 @@ Every cyber serial in the MESL maps to an inject on the timeline. There are two 
 - `max_rate`, `max_duration`, `max_targets`, and the abort condition it honours;
 - `cleanup`: what a revert-to-baseline must restore, and a dry-run check that proves it did.
 
-The generator picks actions and parameters; it writes no executable text. Where an objective needs behaviour the registry lacks, the stage records an `AUTHOR-REQUIRED` human action for a cleared author to add a registry action by pull request, exactly as ARC² asks a cleared author to supply real sanitised telemetry. This is a deliberate narrowing of decision 5 ("live scripted attacks"): the script is declarative, and the vocabulary is reviewed code. See open question Q3.
+The generator picks actions and parameters; it writes no executable text. Where an objective needs behaviour the registry lacks, the stage records an `AUTHOR-REQUIRED` human action for a cleared author to add a registry action by pull request, exactly as ARC² asks a cleared author to supply real sanitised telemetry. This is how decision 10 narrows decision 5 ("live scripted attacks"): the script is declarative, and the vocabulary is reviewed code. New techniques enter by a reviewed registry addition, never by the generator.
 
 **Run-time conditions for any live inject.** All must hold when the executor is about to fire it, checked every time, not once:
 
@@ -428,7 +430,6 @@ Each has a resolution I would adopt if forced to answer today.
 |---|---|---|
 | Q1 | What does "cleared admin" mean in TrueNorth? RBAC has no clearance. | A named list of admins holding `exercise_studio:approve_live`, granted by the platform admin, with a signed attestation on each approval and MFA step-up. Revisit if the programme has a formal clearance register. |
 | Q2 | Must the live approver differ from the preview approver and the requester? | Yes, both. Two-person for live is cheap and the downside of one person approving everything is the whole risk. Relax later by ADR, not silently. |
-| Q3 | Are live "scripted attacks" declarative sequences of reviewed registry actions, or may the generator write free-form guest scripts? | Declarative only in v1 (section 6). Free-form is `AUTHOR-REQUIRED` for a cleared human to add to the registry by PR. This narrows decision 5; the owner confirms. |
 | Q4 | The models rule: "no Chinese models except GLM". The owner's standing rule elsewhere also excludes GLM pending a decision, and `CLAUDE.md` lists glm-5.2 and Qwen as write-capable. | Follow the brief for the Studio: GLM allowed, Qwen and the rest denied, deny list in the repository. Confirm the exception in the D0 ticket and align `CLAUDE.md`. |
 | Q5 | Does a dry-run pass alone make an exercise Proven, or is it a weaker tier than a closed class? | It counts as the owner decided, shown as a distinct tier, **Proven by dry run**, with the export bundle carrying the tier so the destination can require use. |
 | Q6 | Does the dry run use time compression, and is compressed-time scoring honest? | Yes, default whole timeline in 20 minutes, recorded; the dry run proves machinery only. Add real-time soak for live exercises only if the owner asks. |
