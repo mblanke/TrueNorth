@@ -1919,6 +1919,126 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/content-port/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Export proven content as a signed bundle
+         * @description The selected items and every item they need (a course's range templates and
+         *     scenarios), each with its content, its proof summary and the golden-image builds it
+         *     depends on. No Student data, credentials or tenant data. Audit-logged.
+         */
+        post: operations["export_proven_content"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/content-port/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import a verified bundle; every item lands not yet proven here
+         * @description A bundle is imported once. A conflict (changed here, a same-named item here, an older
+         *     export, or a change between private and shared) is left as it is unless its key is in
+         *     ``overwrite``. Audit-logged.
+         */
+        post: operations["import_content_port_bundle"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/content-port/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every course, range template and scenario that could be ported, with its proven status */
+        get: operations["list_portable_content"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/content-port/items/{item_type}/{item_id}/proven": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Whether a course, range template or scenario is proven, with reasons and evidence
+         * @description Computed now: a range built from it reached Certified, a class or exercise using it
+         *     finished with passing evidence, and the content clock does not call it stale. Another
+         *     tenant's private content is not found (404).
+         */
+        get: operations["get_content_proven_status"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/content-port/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Verify a bundle and show what importing it would do
+         * @description Nothing is stored except an audit row when the bundle is refused.
+         */
+        post: operations["preview_content_port_bundle"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/content-port/signing-key": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** This site's content-port public key (for the importing site's trusted keys) */
+        get: operations["get_content_port_signing_key"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/content-review/cycles": {
         parameters: {
             query?: never;
@@ -10907,6 +11027,31 @@ export interface components {
              */
             file: string;
         };
+        /** Body_import_content_port_bundle */
+        Body_import_content_port_bundle: {
+            /**
+             * File
+             * @description The signed content-port bundle (JSON)
+             */
+            file: string;
+            /**
+             * Overwrite
+             * @description Keys of conflicting items to overwrite
+             * @default []
+             */
+            overwrite?: string[];
+            /**
+             * Shared
+             * @description Land as shared content every tenant reads
+             * @default false
+             */
+            shared?: boolean;
+            /**
+             * Target Tenant Id
+             * @description Where it lands (default: your tenant)
+             */
+            target_tenant_id?: string | null;
+        };
         /** Body_import_course_content_courses_import_course_content_post */
         Body_import_course_content_courses_import_course_content_post: {
             /** File */
@@ -10948,6 +11093,25 @@ export interface components {
             id_token: string;
             /** State */
             state: string;
+        };
+        /** Body_preview_content_port_bundle */
+        Body_preview_content_port_bundle: {
+            /**
+             * File
+             * @description The signed content-port bundle (JSON)
+             */
+            file: string;
+            /**
+             * Shared
+             * @description Land as shared content every tenant reads
+             * @default false
+             */
+            shared?: boolean;
+            /**
+             * Target Tenant Id
+             * @description Where it lands (default: your tenant)
+             */
+            target_tenant_id?: string | null;
         };
         /** Body_upload_attachments_tickets__ticket_id__attachments_post */
         Body_upload_attachments_tickets__ticket_id__attachments_post: {
@@ -16568,6 +16732,192 @@ export interface components {
             can_change?: boolean;
             overcapacity: components["schemas"]["OvercapacityPolicy"];
         };
+        /** PortExportIn */
+        PortExportIn: {
+            /** Items */
+            items: components["schemas"]["PortItemRef"][];
+        };
+        /** PortGoldenBuild */
+        PortGoldenBuild: {
+            /** Build Id */
+            build_id: string;
+            /** Catalogue Id */
+            catalogue_id: string;
+            /**
+             * Checksum
+             * @default
+             */
+            checksum?: string;
+        };
+        /** PortImportOut */
+        PortImportOut: {
+            /**
+             * Bundle Id
+             * Format: uuid
+             */
+            bundle_id: string;
+            /** Created */
+            created: number;
+            /**
+             * Import Id
+             * Format: uuid
+             */
+            import_id: string;
+            /** Items */
+            items: components["schemas"]["PortPreviewItemOut"][];
+            /**
+             * Missing Golden Builds
+             * @default []
+             */
+            missing_golden_builds?: components["schemas"]["PortMissingBuildOut"][];
+            /** Skipped */
+            skipped: number;
+            /** Unchanged */
+            unchanged: number;
+            /** Updated */
+            updated: number;
+        };
+        /** PortImportedFromOut */
+        PortImportedFromOut: {
+            /**
+             * Exported At
+             * Format: date-time
+             */
+            exported_at: string;
+            /**
+             * Golden Builds
+             * @default []
+             */
+            golden_builds?: components["schemas"]["PortGoldenBuild"][];
+            /**
+             * Imported At
+             * Format: date-time
+             */
+            imported_at: string;
+            /** Origin Key Id */
+            origin_key_id: string;
+            /** Proven At Origin */
+            proven_at_origin: boolean;
+        };
+        /** PortItemRef */
+        PortItemRef: {
+            /**
+             * Item Id
+             * Format: uuid
+             */
+            item_id: string;
+            /**
+             * Item Type
+             * @enum {string}
+             */
+            item_type: "course" | "range_template" | "scenario";
+        };
+        /** PortMissingBuildOut */
+        PortMissingBuildOut: {
+            /** Build Id */
+            build_id: string;
+            /** Catalogue Id */
+            catalogue_id: string;
+            /**
+             * Checksum
+             * @default
+             */
+            checksum?: string;
+            /** Needed By */
+            needed_by: string[];
+        };
+        /** PortPreviewItemOut */
+        PortPreviewItemOut: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "create" | "update" | "unchanged" | "conflict" | "refused" | "skipped";
+            /** Conflict */
+            conflict?: ("local_changed" | "local_name" | "older" | "visibility") | null;
+            /**
+             * Diff
+             * @description Unified diff, local to incoming (truncated)
+             * @default
+             */
+            diff?: string;
+            /**
+             * Item Type
+             * @enum {string}
+             */
+            item_type: "course" | "range_template" | "scenario";
+            /** Key */
+            key: string;
+            /** Local Id */
+            local_id?: string | null;
+            /** Name */
+            name: string;
+            /**
+             * Notes
+             * @description What the import changes or leaves for you to do
+             */
+            notes?: string[];
+            /**
+             * Proven At Origin
+             * @default true
+             */
+            proven_at_origin?: boolean;
+            /**
+             * Reasons
+             * @description Why it is a conflict, refused or skipped
+             */
+            reasons?: string[];
+        };
+        /** PortPreviewOut */
+        PortPreviewOut: {
+            /**
+             * Already Imported At
+             * @description This bundle was imported before: refused
+             */
+            already_imported_at?: string | null;
+            /**
+             * Bundle Id
+             * Format: uuid
+             */
+            bundle_id: string;
+            /** Can Import */
+            can_import: boolean;
+            /**
+             * Exported At
+             * Format: date-time
+             */
+            exported_at: string;
+            /** Items */
+            items: components["schemas"]["PortPreviewItemOut"][];
+            /** Key Id */
+            key_id: string;
+            /**
+             * Missing Golden Builds
+             * @description Port these templates first (OVF export plus build record, S2 promotion)
+             */
+            missing_golden_builds?: components["schemas"]["PortMissingBuildOut"][];
+            /** Shared */
+            shared: boolean;
+            /** Signed Sha256 */
+            signed_sha256: string;
+            /**
+             * Target Tenant Id
+             * Format: uuid
+             */
+            target_tenant_id: string;
+        };
+        /** PortSigningKeyOut */
+        PortSigningKeyOut: {
+            /** Alg */
+            alg: string;
+            /** Key Id */
+            key_id: string;
+            /**
+             * Public Key
+             * @description Base64 raw Ed25519 public key: put it in tn_content_port_trusted_keys on the importing site
+             */
+            public_key: string;
+        };
         /** ProfileIn */
         ProfileIn: {
             /** Enabled */
@@ -16625,6 +16975,108 @@ export interface components {
              * Format: date-time
              */
             start_time: string;
+        };
+        /** ProvenConditionOut */
+        ProvenConditionOut: {
+            /**
+             * Evidence
+             * @default []
+             */
+            evidence?: components["schemas"]["ProvenEvidenceOut"][];
+            /** Met */
+            met: boolean;
+            /**
+             * Name
+             * @enum {string}
+             */
+            name: "certified" | "used" | "fresh";
+            /**
+             * Not Applicable
+             * @default false
+             */
+            not_applicable?: boolean;
+            /**
+             * Reasons
+             * @default []
+             */
+            reasons?: string[];
+            /** Title */
+            title: string;
+        };
+        /** ProvenDependencyOut */
+        ProvenDependencyOut: {
+            /** Item Id */
+            item_id: string;
+            /**
+             * Item Type
+             * @enum {string}
+             */
+            item_type: "course" | "range_template" | "scenario";
+            /**
+             * Proven
+             * @description None when the dependency could not be read
+             */
+            proven?: boolean | null;
+            /**
+             * Title
+             * @description None: missing here, deleted, or outside the item's scope
+             */
+            title?: string | null;
+        };
+        /** ProvenEvidenceOut */
+        ProvenEvidenceOut: {
+            /** At */
+            at?: string | null;
+            /** Id */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "certification" | "class" | "exercise" | "review";
+            /** Label */
+            label: string;
+        };
+        /** ProvenStatusOut */
+        ProvenStatusOut: {
+            /** Conditions */
+            conditions: components["schemas"]["ProvenConditionOut"][];
+            /**
+             * Dependencies
+             * @default []
+             */
+            dependencies?: components["schemas"]["ProvenDependencyOut"][];
+            /**
+             * Golden Builds
+             * @default []
+             */
+            golden_builds?: components["schemas"]["PortGoldenBuild"][];
+            /** @description Ported here from another site; not proven here until this site's own evidence says so */
+            imported?: components["schemas"]["PortImportedFromOut"] | null;
+            /** Item Id */
+            item_id: string;
+            /**
+             * Item Type
+             * @enum {string}
+             */
+            item_type: "course" | "range_template" | "scenario";
+            /**
+             * Label
+             * @description "Proven", or "Not proven: <reasons>"
+             */
+            label: string;
+            /**
+             * Proven
+             * @description All three conditions hold on this site
+             */
+            proven: boolean;
+            /**
+             * Reasons
+             * @default []
+             */
+            reasons?: string[];
+            /** Title */
+            title: string;
         };
         /** PublishIn */
         PublishIn: {
@@ -23777,6 +24229,184 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FeedStatusOut"];
+                };
+            };
+        };
+    };
+    export_proven_content: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PortExportIn"];
+            };
+        };
+        responses: {
+            /** @description The signed bundle */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Something selected or needed is not proven */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_content_port_bundle: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_import_content_port_bundle"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortImportOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_portable_content: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProvenStatusOut"][];
+                };
+            };
+        };
+    };
+    get_content_proven_status: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_type: "course" | "range_template" | "scenario";
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProvenStatusOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_content_port_bundle: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_preview_content_port_bundle"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortPreviewOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_content_port_signing_key: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortSigningKeyOut"];
                 };
             };
         };

@@ -16,7 +16,9 @@ import {
 import { NotificationService } from '@core/services/notification.service';
 import type { User } from '@core/models';
 import { apiError } from '../ranges/range-capabilities';
+import { ProvenChipComponent } from '@shared/components/proven-chip/proven-chip.component';
 import { ContentFeedsPanelComponent } from './content-feeds-panel.component';
+import { ContentPortPanelComponent } from './content-port-panel.component';
 import {
   CalendarView, NO_THEME_COLOUR, addDays, clockText, dayKey, feedOf, gridDays, heading, kindLabel, listText,
   reasonIcon, shift, themeOf,
@@ -42,7 +44,7 @@ interface Day {
   selector: 'tn-content-calendar',
   imports: [
     DatePipe, FormsModule, RouterLink, MatButtonModule, MatButtonToggleModule, MatFormFieldModule, MatIconModule,
-    MatInputModule, MatSelectModule, ContentFeedsPanelComponent,
+    MatInputModule, MatSelectModule, ContentFeedsPanelComponent, ContentPortPanelComponent, ProvenChipComponent,
   ],
   template: `
     <div class="page-container content-cal">
@@ -136,6 +138,7 @@ interface Day {
               </div>
               <h2 class="sel-title">{{ sel.title }}</h2>
               <div class="clock-badge" [class]="'clock-badge ' + sel.clock.state">{{ clockText(sel) }}</div>
+              <tn-proven-chip [itemType]="sel.item_type" [itemId]="sel.item_id" />
               @if (sel.stale_reasons?.length) {
                 <ul class="reasons" aria-label="Why it is stale">
                   @for (r of sel.stale_reasons ?? []; track $index) {
@@ -200,6 +203,7 @@ interface Day {
           </section>
 
           @if (isAdmin()) { <tn-content-feeds-panel /> }
+          @if (isPlatformAdmin()) { <tn-content-port-panel /> }
         </aside>
       </div>
     </div>
@@ -303,6 +307,7 @@ export class ContentCalendarComponent implements OnInit {
   readonly reasonIcon = reasonIcon;
   readonly feedOf = feedOf;
   readonly isAdmin = computed(() => this.auth.isAdmin());
+  readonly isPlatformAdmin = computed(() => this.auth.isPlatformAdmin());
 
   readonly view = signal<CalendarView>('month');
   readonly anchor = signal(new Date());

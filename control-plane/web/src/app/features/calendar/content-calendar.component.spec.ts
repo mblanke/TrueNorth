@@ -10,7 +10,15 @@ import {
   ContentItem, ContentItemDetail, ContentReviewApiService, ContentTheme,
 } from '@core/services/content-review-api.service';
 import { NotificationService } from '@core/services/notification.service';
+import { ContentPortApiService, ProvenStatus } from '@core/services/content-port-api.service';
 import { ContentCalendarComponent } from './content-calendar.component';
+
+const NOT_PROVEN = {
+  item_type: 'course', item_id: 'c', title: 'C201 Network Defence', proven: false,
+  label: 'Not proven: No class of it has been closed with a passing Student yet',
+  reasons: ['No class of it has been closed with a passing Student yet'], conditions: [], dependencies: [],
+  golden_builds: [],
+} as unknown as ProvenStatus;
 
 const BLUE: ContentTheme = { id: 'blue', name: 'Blue team', colour: '#3B5BDB', ordinal: 0, platform_wide: true };
 const PLATFORM: ContentTheme = { id: 'plat', name: 'Platform', colour: '#6B7280', ordinal: 7, platform_wide: true };
@@ -54,6 +62,7 @@ describe('ContentCalendarComponent', () => {
   let api: jasmine.SpyObj<ContentReviewApiService>;
   let notify: jasmine.SpyObj<NotificationService>;
   let auth: ReturnType<typeof fakeAuth>;
+  let port: jasmine.SpyObj<ContentPortApiService>;
 
   beforeEach(async () => {
     api = jasmine.createSpyObj('ContentReviewApiService',
@@ -71,6 +80,9 @@ describe('ContentCalendarComponent', () => {
     api.retire.and.returnValue(of(detail({ ...COURSE, retired: true })));
     notify = jasmine.createSpyObj('NotificationService', ['success', 'error', 'info']);
     auth = fakeAuth('instructor');
+    port = jasmine.createSpyObj('ContentPortApiService', ['proven', 'items', 'signingKey', 'exportBundle', 'preview',
+      'importBundle']);
+    port.proven.and.returnValue(of(NOT_PROVEN));
     const core = jasmine.createSpyObj('ApiService', ['listUsers']);
     core.listUsers.and.returnValue(of([
       { id: 'u1', display_name: 'Ada', role: 'instructor' }, { id: 'u2', display_name: 'Sam', role: 'student' },
@@ -84,6 +96,7 @@ describe('ContentCalendarComponent', () => {
         { provide: ApiService, useValue: core },
         { provide: NotificationService, useValue: notify },
         { provide: AuthService, useValue: auth },
+        { provide: ContentPortApiService, useValue: port },
       ],
     }).compileComponents();
     fixture = TestBed.createComponent(ContentCalendarComponent);
@@ -199,5 +212,27 @@ describe('ContentCalendarComponent', () => {
     component.setView('week');
     fixture.detectChanges();
     expect(el.querySelectorAll('.cell').length).toBe(7);
+  });
+
+  it('shows the selected course its Proven chip, and none for a golden template', () => {
+    component.select('c');
+    fixture.detectChanges();
+    expect(port.proven).toHaveBeenCalledWith('course', 'c');
+    expect(el.querySelector('tn-proven-chip .chip')?.textContent).toContain('Not proven: No class of it');
+    port.proven.calls.reset();
+    component.select('g');
+    fixture.detectChanges();
+    expect(port.proven).not.toHaveBeenCalled();
+    expect(el.querySelector('tn-proven-chip .chip')).toBeNull();
+  });
+
+  it('shows the Port content panel to the platform administrator only', () => {
+    expect(el.querySelector('tn-content-port-panel')).toBeNull();
+    auth.role.set('admin');
+    fixture.detectChanges();
+    expect(el.querySelector('tn-content-port-panel')).toBeNull();  // a tenant's admin
+    auth.platformAdmin.set(true);
+    fixture.detectChanges();
+    expect(el.querySelector('tn-content-port-panel')).not.toBeNull();
   });
 });

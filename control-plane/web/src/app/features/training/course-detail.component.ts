@@ -8,6 +8,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { MoodleEnrolmentResults, MoodleResult, MoodleSyncStatus } from '@core/models';
 import { ApiService } from '@core/services/api.service';
 import { EnrolButtonComponent, EnrolmentsService } from './enrol-button.component';
+import { ProvenChipComponent } from '../../shared/components/proven-chip/proven-chip.component';
 
 interface ModuleQuiz {
   id: string;
@@ -75,7 +76,7 @@ interface Section {
 @Component({
   selector: 'tn-course-detail',
   imports: [RouterLink, MatButtonModule, MatCardModule, MatExpansionModule, MatIconModule, MatTooltipModule,
-    EnrolButtonComponent],
+    EnrolButtonComponent, ProvenChipComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="cd tn-quiet">
@@ -103,6 +104,7 @@ interface Section {
               @if (c.duration_hours) { · {{ c.duration_hours }} h }
               · {{ c.difficulty }}
             </p>
+            <tn-proven-chip itemType="course" [itemId]="c.id" />
           </div>
           <div class="head-actions">
             <!-- Self-enrolment (POST /courses/{id}/enroll): the server checks the course is

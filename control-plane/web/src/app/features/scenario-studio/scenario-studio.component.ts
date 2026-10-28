@@ -18,6 +18,7 @@ import { NotificationService } from '@core/services/notification.service';
 import { Scenario, ScenarioSummary, TemplateSummary } from '@core/models';
 import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog/confirm-dialog.component';
 import { EmptyStateComponent } from '../../shared/components/empty-state/empty-state.component';
+import { ProvenChipComponent } from '../../shared/components/proven-chip/proven-chip.component';
 import { EnterStaggerDirective } from '../../shared/motion';
 import {
   COMMON_VALIDATORS,
@@ -114,6 +115,7 @@ export class ScenarioDraftDialogComponent {
     MatCardModule,
     MatChipsModule,
     MatDialogModule,
+    ProvenChipComponent,
     MatFormFieldModule,
     MatIconModule,
     MatInputModule,
@@ -188,6 +190,7 @@ export class ScenarioDraftDialogComponent {
             <div>
               <h1>{{ model().name || 'Untitled scenario' }}</h1>
               <p class="subtitle">{{ editingId() ? 'Editing a saved scenario' : 'New scenario' }}</p>
+              @if (editingId(); as sid) { <tn-proven-chip itemType="scenario" [itemId]="sid" /> }
             </div>
           </div>
           <div class="header-actions">
