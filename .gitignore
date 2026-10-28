@@ -57,6 +57,7 @@ control-plane/web/devtools-shots/
 
 # ARC² staging: every /arc2 run writes here and only here; promotion is a human PR
 build/arc2/
+build/arc2-qa/
 
 # PDFs of the role guides (scripts/build_guides_pdf.sh)
 build/guides-pdf/
