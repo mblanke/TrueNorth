@@ -471,6 +471,13 @@ config:
     username: ""
     # Required with host, e.g. truenorth@corp.example.
     fromAddress: ""
+  # PLATFORM_TENANT_ID: the operator's tenant id (a UUID). Its admins are the platform
+  # administrators (create tenants, approve into any tenant, platform-wide settings).
+  # Empty: an admin is the platform administrator only while one tenant exists; once a
+  # second exists nobody is (the API fails closed and logs it). Set it before the second.
+  platformTenantId: ""
+  # SITE_TIMEZONE: the site's IANA time zone, e.g. America/Toronto. Empty: UTC.
+  siteTimezone: ""
   # Any other non-secret variable for the api, workers and beat (VSPHERE_*, LRS_URL,
   # LMS_BACKEND, LDAP_*, REGISTRATION_*, ...), as in compose.prod.yml.
   extraEnv: {}

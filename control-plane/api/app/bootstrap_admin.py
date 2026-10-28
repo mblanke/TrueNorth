@@ -92,6 +92,35 @@ def _find_keycloak_user(base: str, realm: str, token: str, upn: str) -> dict | N
 
 
 def ensure_tenant(db: Session, name: str, slug: str) -> Tenant:
+    """The bootstrap administrator's tenant.
+
+    With ``PLATFORM_TENANT_ID`` set (the installer records it after the first run, or the
+    operator names one) that tenant is the one, found by id: a slug can be renamed and
+    taken by another tenant, and the administrator of the wrong tenant would then become
+    the platform administrator (review of #322). Without it, by slug, as on a first install.
+    """
+    from .rbac import platform_tenant_id
+
+    wanted = platform_tenant_id()
+    if wanted:
+        try:
+            wanted_id = uuid.UUID(wanted)
+        except ValueError:
+            raise RuntimeError(f"PLATFORM_TENANT_ID={wanted!r} is not a tenant id (UUID)") from None
+        tenant = db.get(Tenant, wanted_id)
+        if tenant is not None:
+            return tenant
+        clash = db.query(Tenant).filter(Tenant.slug == slug).first()
+        if clash is not None:
+            raise RuntimeError(
+                f"PLATFORM_TENANT_ID is {wanted_id} but no such tenant exists, and tenant slug "
+                f"{slug!r} belongs to {clash.id}: set tn_platform_tenant_id to that id or choose "
+                "another tn_tenant_slug")
+        tenant = Tenant(id=wanted_id, name=name, slug=slug)
+        db.add(tenant)
+        db.flush()
+        logger.info("created platform tenant %s (%s)", name, slug)
+        return tenant
     tenant = db.query(Tenant).filter(Tenant.slug == slug).first()
     if tenant is not None:
         return tenant

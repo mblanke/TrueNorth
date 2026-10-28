@@ -16,12 +16,14 @@ import {
 } from '@core/services/classes-api.service';
 import { NotificationService } from '@core/services/notification.service';
 import { EmailStatusService } from '@core/services/email-status.service';
+import { SchedulerSettingsService } from '@core/services/scheduler-settings.service';
 import {
   CourseSummary, DirectoryUser, OperatorRecordsApiService,
 } from '@core/services/operator-records-api.service';
 import { roleCan } from '@core/auth/permissions';
 import { EmptyStateComponent } from '../../shared/components/empty-state/empty-state.component';
 import { ClassCloseoutComponent } from './class-closeout.component';
+import { RollCallDomainsCardComponent } from './roll-call-domains-card.component';
 import { apiError } from '../ranges/range-capabilities';
 
 export interface ClassForm {
@@ -101,6 +103,7 @@ export function addSummary(r: RollCallAddResult): string {
   imports: [
     DatePipe, FormsModule, RouterLink, MatButtonModule, MatCardModule, MatChipsModule, MatFormFieldModule,
     MatIconModule, MatInputModule, MatSelectModule, EmptyStateComponent, ClassCloseoutComponent,
+    RollCallDomainsCardComponent,
   ],
   template: `
     <div class="page-container">
@@ -116,6 +119,9 @@ export function addSummary(r: RollCallAddResult): string {
           <button mat-flat-button color="primary" (click)="startCreate()"><mat-icon>add</mat-icon> New class</button>
         }
       </div>
+
+      <!-- Where the roll-call refusal "(Classes, roll-call domains)" points (#318). -->
+      @if (canCreate()) { <tn-roll-call-domains-card [canEdit]="canSetDomains()" /> }
 
       @if (form(); as f) {
         <mat-card class="form-card">
@@ -260,7 +266,7 @@ export function addSummary(r: RollCallAddResult): string {
           <mat-card class="ranges">
             <mat-card-header>
               <mat-card-title>Sessions and ranges</mat-card-title>
-              <mat-card-subtitle>Built 30 minutes before the first session that needs them and kept until the last.</mat-card-subtitle>
+              <mat-card-subtitle>Built {{ schedSettings.leadPhrase() }} the first session that needs them and kept until the last.</mat-card-subtitle>
             </mat-card-header>
             <mat-card-content>
               @if (r.failed) { <p class="error" role="alert">{{ r.failed }} range(s) failed to build.</p> }
@@ -369,6 +375,8 @@ export class ClassesComponent implements OnInit {
   readonly auth = inject(AuthService);
   /** Whether added Students will be emailed (#306): the roll call warns when they will not. */
   readonly email = inject(EmailStatusService);
+  /** The site's provisioning lead, said in words (GET /schedule/settings; #318). */
+  readonly schedSettings = inject(SchedulerSettingsService);
   /** `?class=<id>` opens that class's roll call (the calendar's Roll call link, #285). */
   private readonly route = inject(ActivatedRoute, { optional: true });
 
@@ -384,6 +392,8 @@ export class ClassesComponent implements OnInit {
   readonly instructors = computed(() => this.users().filter(u => u.role === 'instructor' || u.role === 'admin'));
   readonly observers = computed(() => this.users().filter(u => u.role !== 'student' && u.role !== 'range_ops'));
   readonly canCreate = computed(() => roleCan(this.auth.user()?.role, 'class:create'));
+  /** PUT /classes/roll-call-domains: tenant:update (an admin). */
+  readonly canSetDomains = computed(() => roleCan(this.auth.user()?.role, 'tenant:update'));
   readonly classRanges = signal<ClassRanges | null>(null);
   readonly teams = signal<SessionTeams | null>(null);
   readonly teamsSession = signal<ClassSessionMode | null>(null);
@@ -393,6 +403,7 @@ export class ClassesComponent implements OnInit {
   ngOnInit(): void {
     this.load();
     this.email.load();
+    this.schedSettings.load();
   }
 
   load(): void {

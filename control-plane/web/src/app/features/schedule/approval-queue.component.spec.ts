@@ -4,6 +4,8 @@ import { of, throwError } from 'rxjs';
 import { ApprovalItem, SchedulerApiService } from '@core/services/scheduler-api.service';
 import { ClassesApiService, PendingAddition } from '@core/services/classes-api.service';
 import { ApprovalQueueComponent, approvalError } from './approval-queue.component';
+import { SchedulerSettingsService } from '@core/services/scheduler-settings.service';
+import { signal } from '@angular/core';
 
 const START = '2030-03-04T09:00:00Z';
 const END = '2030-03-04T12:00:00Z';
@@ -51,8 +53,15 @@ describe('ApprovalQueueComponent', () => {
       providers: [
         { provide: SchedulerApiService, useValue: scheduler },
         { provide: ClassesApiService, useValue: classes },
+        { provide: SchedulerSettingsService, useValue: { load: () => undefined, nextFreeHorizon: signal('in the next 7 days') } },
       ],
     }).compileComponents();
+  });
+
+  it("says how far ahead it looked, from the site's setting (#318)", () => {
+    render([item({ fit: { fits: false, reasons: ['vCPU: need 40, 20 free'], next_free: null, searched_until: START } as ApprovalItem['fit'] })]);
+    expect(text()).toContain('Next free: none in the next 7 days');
+    expect(text()).not.toContain('two weeks');
   });
 
   it('lists sessions awaiting approval and approves one', () => {

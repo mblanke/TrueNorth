@@ -102,6 +102,17 @@ data:
   {{- else if not $legacy }}
   SMTP_HOST: ""
   {{- end }}
+  {{- with .Values.config.platformTenantId }}
+  {{- if not (regexMatch "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$" (toString .)) }}
+  {{- fail "config.platformTenantId must be a tenant id (UUID)" }}
+  {{- end }}
+  # The platform tenant (app/rbac.py is_platform_admin).
+  PLATFORM_TENANT_ID: {{ . | quote }}
+  {{- end }}
+  {{- with .Values.config.siteTimezone }}
+  # The site's IANA time zone for times said in words.
+  SITE_TIMEZONE: {{ . | quote }}
+  {{- end }}
   # The api reads the scenario engine from here (app/engine_bridge.py); an init
   # container copies it out of the scenario-engine image (deployment-api.yaml).
   SCENARIO_ENGINE_DIR: /opt/scenario-engine

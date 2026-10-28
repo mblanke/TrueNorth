@@ -8773,6 +8773,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/schedule/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The site's scheduler settings
+         * @description Provisioning lead, teardown grace, the 'next free' search horizon and the site's time
+         *     zone, so pages say what this site does rather than the defaults.  **schedule:read**
+         */
+        get: operations["getSchedulerSettings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/schedule/tick": {
         parameters: {
             query?: never;
@@ -18922,6 +18943,32 @@ export interface components {
             version?: string;
             /** Yaml */
             yaml?: string;
+        };
+        /**
+         * SchedulerSettingsOut
+         * @description The site's scheduler settings that pages show in words (#318).
+         */
+        SchedulerSettingsOut: {
+            /**
+             * Grace Minutes
+             * @description Kept this long after it ends (SCHEDULER_TEARDOWN_GRACE_MIN)
+             */
+            grace_minutes: number;
+            /**
+             * Lead Minutes
+             * @description Ranges are built this long before a session starts (SCHEDULER_PROVISION_LEAD_MIN)
+             */
+            lead_minutes: number;
+            /**
+             * Next Free Days
+             * @description How far ahead 'next free' is searched (SCHEDULER_NEXT_FREE_DAYS)
+             */
+            next_free_days: number;
+            /**
+             * Site Timezone
+             * @description The site's IANA time zone (SITE_TIMEZONE); UTC when unset
+             */
+            site_timezone: string;
         };
         /** SecurityGroupIn */
         SecurityGroupIn: {
@@ -36985,6 +37032,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    getSchedulerSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SchedulerSettingsOut"];
                 };
             };
         };

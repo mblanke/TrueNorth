@@ -233,6 +233,19 @@ tn_mfa_demo_exempt_effective: >-
 tn_smoke_local_user: "tn-smoke@{{ tn_domain_fqdn }}"
 tn_tenant_name: "TrueNorth Range"
 tn_tenant_slug: default
+# The platform tenant (PLATFORM_TENANT_ID): its admins are the platform administrators, who
+# create tenants, approve into any tenant and change platform-wide settings. Admins are per
+# tenant. Empty (the default): the bootstrap tenant above. 80-seed looks it up by tn_tenant_slug
+# on the FIRST run only and records its id in state/platform_tenant_id, recorded once and
+# never re-picked by slug: a slug can be renamed, and the admin of whichever tenant held it
+# would otherwise become the platform administrator on the next upgrade. Later runs check the
+# recorded id is still a tenant and stop if the slug now names a different one. A tenant UUID
+# here always wins, to make another tenant the operator's. Without any, a second tenant leaves
+# nobody the platform administrator (the api fails closed and logs an error at startup).
+tn_platform_tenant_id: ""
+# The site's IANA time zone (SITE_TIMEZONE), e.g. America/Toronto: the times the app says in
+# words ("next free at 14:00"). Empty (the default): the host's own zone (timedatectl), else UTC.
+tn_site_timezone: ""
 # Developmental progression a newly approved trainee is enrolled on (DP1 -> DP2).
 tn_default_progression: DP1
 # The named AD account that becomes the first admin. Without this nobody can

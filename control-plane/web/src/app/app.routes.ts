@@ -395,6 +395,14 @@ export const routes: Routes = [
     title: 'Maintenance windows - TrueNorth Range',
   },
   {
+    // Before 'admin'. How to turn email on, bundled with the app (#318): the email banner links here.
+    path: 'admin/help/email',
+    canActivate: [authGuard, adminGuard],
+    loadComponent: () =>
+      import('./features/admin/email-help.component').then(m => m.EmailHelpComponent),
+    title: 'Set up email - TrueNorth Range',
+  },
+  {
     // Before 'admin'. Platform administrator: drafts and publishing; any admin: the export.
     path: 'admin/rules-of-use',
     canActivate: [authGuard, onboardingGuard, adminGuard],

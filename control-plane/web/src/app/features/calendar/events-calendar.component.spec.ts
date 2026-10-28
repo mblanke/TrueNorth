@@ -98,7 +98,9 @@ describe('EventsCalendarComponent', () => {
   beforeEach(async () => {
     scheduler = jasmine.createSpyObj('SchedulerApiService', [
       'list', 'timeline', 'update', 'approvals', 'approve', 'reject', 'propose', 'acceptProposal', 'declineProposal',
+      'settings',
     ]);
+    scheduler.settings.and.returnValue(of({ lead_minutes: 30, grace_minutes: 15, next_free_days: 14, site_timezone: 'UTC' }));
     scheduler.timeline.and.returnValue(of(timeline()));
     scheduler.approvals.and.returnValue(of({ items: [QUEUE_ITEM] }));
     scheduler.approve.and.returnValue(of({ ...PENDING, state: 'scheduled' }));

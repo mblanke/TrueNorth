@@ -13,6 +13,7 @@ import {
 import { NotificationService } from '@core/services/notification.service';
 import { OperatorRecordsApiService } from '@core/services/operator-records-api.service';
 import { EmailStatusService } from '@core/services/email-status.service';
+import { SchedulerSettingsService } from '@core/services/scheduler-settings.service';
 import { ClassForm, ClassesComponent, addSummary, rangeOwner, reinstateSummary, toClassBody } from './classes.component';
 
 const CLASS: ClassRecord = {
@@ -112,7 +113,9 @@ describe('ClassesComponent', () => {
 
   function setup(role: string, cls: ClassRecord = CLASS, emailOff = false, query: Record<string, string> = {}) {
     api = jasmine.createSpyObj('ClassesApiService', ['mine', 'list', 'create', 'rollCall', 'addPasted', 'addCsv', 'remove',
-      'reinstate', 'ranges', 'retryRange', 'sessionTeams', 'splitTeams', 'moveTeamMember', 'attendance', 'closeout']);
+      'reinstate', 'ranges', 'retryRange', 'sessionTeams', 'splitTeams', 'moveTeamMember', 'attendance', 'closeout',
+      'rollCallDomains', 'setRollCallDomains']);
+    api.rollCallDomains.and.returnValue(of({ email_domains: [], source: 'accounts' }));
     api.attendance.and.returnValue(of({ class_id: 'c1', class_status: 'open', can_edit: true, sessions: [], students: [] }));
     api.closeout.and.returnValue(of({ class_id: 'c1', class_status: 'open', numbers_shown: false, sessions_held: 0,
       students: [] }));
@@ -140,6 +143,7 @@ describe('ClassesComponent', () => {
         { provide: OperatorRecordsApiService, useValue: records },
         { provide: NotificationService, useValue: notify },
         { provide: EmailStatusService, useValue: email },
+        { provide: SchedulerSettingsService, useValue: { load: () => undefined, leadPhrase: signal('45 minutes before') } },
         { provide: AuthService, useValue: { user: signal({ role }), isAdmin: signal(role === 'admin') } },
         { provide: ActivatedRoute, useValue: { snapshot: { queryParamMap: convertToParamMap(query) } } },
       ],
@@ -307,5 +311,25 @@ describe('ClassesComponent', () => {
       status: 422, error: { detail: 'The lead instructor must be an active account of this organisation' } })));
     component.save();
     expect(component.formError()).toContain('lead instructor');
+  });
+
+  // #318: the roll-call refusal points to "Classes, roll-call domains".
+  it('shows the roll-call domains on the Classes page; only an admin may change them', () => {
+    setup('admin');
+    expect(el.textContent).toContain('Roll-call domains');
+    expect(buttons('Change').length).toBe(1);
+  });
+
+  it('shows an instructor the roll-call domains without Change', () => {
+    setup('instructor');
+    expect(el.textContent).toContain('Roll-call domains');
+    expect(buttons('Change').length).toBe(0);
+  });
+
+  it("says when ranges are built from the site's provisioning lead, not a hard-coded 30 minutes", () => {
+    setup('instructor');
+    buttons('Roll call')[0].click();
+    fixture.detectChanges();
+    expect(el.textContent).toContain('Built 45 minutes before the first session that needs them');
   });
 });

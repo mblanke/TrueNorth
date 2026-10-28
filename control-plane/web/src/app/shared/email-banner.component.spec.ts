@@ -5,6 +5,7 @@ import { AuthService, UserRole } from '@core/services/auth.service';
 import { fakeAuth } from '@core/auth/fake-auth';
 import { EMAIL_DOCS_URL } from '@core/services/email-status.service';
 import { EmailBannerComponent } from './email-banner.component';
+import { provideRouter } from '@angular/router';
 
 describe('EmailBannerComponent (#306)', () => {
   let http: HttpTestingController;
@@ -14,7 +15,7 @@ describe('EmailBannerComponent (#306)', () => {
     auth = fakeAuth(role);
     TestBed.configureTestingModule({
       imports: [EmailBannerComponent],
-      providers: [provideHttpClient(), provideHttpClientTesting(), { provide: AuthService, useValue: auth }],
+      providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([]), { provide: AuthService, useValue: auth }],
     });
     http = TestBed.inject(HttpTestingController);
     const fixture = TestBed.createComponent(EmailBannerComponent);
@@ -24,7 +25,7 @@ describe('EmailBannerComponent (#306)', () => {
 
   afterEach(() => http.verify());
 
-  it('tells an admin, persistently, that email is not configured, with a link to the install docs', () => {
+  it('tells an admin, persistently, that email is not configured, with a link to the bundled help', () => {
     const fixture = render('admin');
     http.expectOne('/api/email/status').flush({ configured: false, docs: 'x', relay: null, can_send_test: false });
     fixture.detectChanges();
@@ -35,7 +36,9 @@ describe('EmailBannerComponent (#306)', () => {
     expect(banner?.getAttribute('role')).toBe('alert');
     const link = banner?.querySelector('a') as HTMLAnchorElement;
     expect(link.getAttribute('href')).toBe(EMAIL_DOCS_URL);
-    expect(link.href).toContain('install/README.md#email-smtp');
+    // Inside the app: an air-gapped site cannot reach GitHub (#318).
+    expect(EMAIL_DOCS_URL).toBe('/admin/help/email');
+    expect(link.target).toBe('');
     // Persistent: nothing to dismiss it with.
     expect(banner?.querySelector('button')).toBeNull();
   });

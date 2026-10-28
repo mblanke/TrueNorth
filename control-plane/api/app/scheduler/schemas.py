@@ -151,6 +151,16 @@ class PolicyOut(BaseModel):
     can_change: bool = Field(False, description="Whether the caller may change it (platform administrators only)")
 
 
+class SchedulerSettingsOut(BaseModel):
+    """The site's scheduler settings that pages show in words (#318)."""
+
+    lead_minutes: int = Field(..., description="Ranges are built this long before a session starts "
+                                               "(SCHEDULER_PROVISION_LEAD_MIN)")
+    grace_minutes: int = Field(..., description="Kept this long after it ends (SCHEDULER_TEARDOWN_GRACE_MIN)")
+    next_free_days: int = Field(..., description="How far ahead 'next free' is searched (SCHEDULER_NEXT_FREE_DAYS)")
+    site_timezone: str = Field(..., description="The site's IANA time zone (SITE_TIMEZONE); UTC when unset")
+
+
 class FeedTokenStatus(BaseModel):
     active: bool
     issued_at: datetime | None = None

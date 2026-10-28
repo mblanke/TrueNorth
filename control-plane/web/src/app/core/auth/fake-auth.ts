@@ -29,5 +29,7 @@ export function fakeAuth(initial: UserRole | null) {
     canViewSchedule: computed(() => roleCan(role(), 'schedule:read')),
     can: (p: Permission) => roleCan(role(), p),
     canOpen: (page: PageKey) => roleHasAccess(role(), PAGE_ACCESS[page]),
+    /** Spy on it (`spyOn(auth, 'logout')`); it does nothing here. */
+    logout: (): void => undefined,
   };
 }

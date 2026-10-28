@@ -1,4 +1,4 @@
-﻿import { Component, OnInit, inject, signal } from '@angular/core';
+﻿import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatCardModule } from '@angular/material/card';
@@ -13,6 +13,8 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { ApiService } from '@core/services/api.service';
 import { adminServiceLinks, type ServiceLink } from '@core/config/runtime-config';
 import { NotificationService } from '@core/services/notification.service';
+import { AuthService } from '@core/services/auth.service';
+import { apiError } from '../ranges/range-capabilities';
 import { Tenant, HealthResponse } from '@core/models';
 import { EmptyStateComponent } from '../../shared/components/empty-state/empty-state.component';
 import { EnterStaggerDirective, HoverLiftDirective } from '../../shared/motion';
@@ -86,11 +88,18 @@ interface AuditEntry {
           <div class="tab-content">
             <div class="page-header mt-2">
               <h2>Tenants</h2>
-              <button mat-raised-button color="primary" (click)="showCreateTenant = !showCreateTenant">
-                <mat-icon>add</mat-icon> New Tenant
-              </button>
+              <!-- POST /tenants is the platform administrator's (GET /auth/me platform_admin). -->
+              @if (canCreateTenant()) {
+                <button mat-raised-button color="primary" (click)="showCreateTenant = !showCreateTenant">
+                  <mat-icon>add</mat-icon> New Tenant
+                </button>
+              }
             </div>
-            @if (showCreateTenant) {
+            @if (!canCreateTenant()) {
+              <p class="hint">Only the platform administrator creates tenants: an admin of the platform
+                tenant (the installer's tn_platform_tenant_id). You can rename your own.</p>
+            }
+            @if (showCreateTenant && canCreateTenant()) {
               <mat-card class="mt-1">
                 <mat-card-content>
                   <div class="form-row">
@@ -238,11 +247,15 @@ interface AuditEntry {
     table th, table td { color: var(--text-primary) !important; }
     table { background: transparent !important; }
     .form-actions { display: flex; gap: 8px; }
+    .hint { color: var(--text-secondary); font-size: 13px; margin: 0 0 8px; }
     .selected-row { background: var(--accent-muted); }`],
 })
 export class AdminComponent implements OnInit {
   private api = inject(ApiService);
   private notify = inject(NotificationService);
+  private auth = inject(AuthService);
+  /** Only the platform administrator may create tenants; anyone else gets a 403. */
+  readonly canCreateTenant = computed(() => this.auth.isPlatformAdmin());
 
   readonly serviceLinks: ServiceLink[] = adminServiceLinks();
   health = signal<HealthResponse | null>(null);
@@ -285,7 +298,7 @@ export class AdminComponent implements OnInit {
         this.showCreateTenant = false;
         this.tenantForm = { name: '', slug: '' };
       },
-      error: () => this.notify.error('Failed'),
+      error: (err: unknown) => this.notify.error(`Could not create the tenant: ${apiError(err)}`),
     });
   }
 
@@ -304,7 +317,7 @@ export class AdminComponent implements OnInit {
         this.loadTenants();
         this.cancelTenantEdit();
       },
-      error: () => { this.notify.error('Update failed'); this.tenantSaving = false; },
+      error: (err: unknown) => { this.notify.error(`Could not update the tenant: ${apiError(err)}`); this.tenantSaving = false; },
     });
   }
 
