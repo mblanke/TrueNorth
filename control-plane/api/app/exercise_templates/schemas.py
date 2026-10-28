@@ -9,6 +9,7 @@ API takes as ids and the bundle as item keys.
 
 from __future__ import annotations
 
+import math
 import os
 import uuid
 from datetime import datetime
@@ -235,19 +236,31 @@ class ExerciseTemplateCore(_Strict):
         site allows. An unlimited role (max 0) counts at its default."""
         max_people, max_per, max_vms = limit("MAX_PARTICIPANTS", 500), limit("MAX_VMS_PER_PARTICIPANT", 20), \
             limit("MAX_VMS", 1000)
-        people = vms = 0
+        segments = limit("MAX_SEGMENTS", 10)
+        people: dict[str, int] = {}
+        role_vms = 0
         for r in self.roles:
             each = sum(v.count for v in r.vm_profile)
             if each > max_per:
                 raise ValueError(f"role {r.name} gives each participant {each} VMs; the limit is {max_per} per "
                                  f"participant")
-            n = r.max_participants or r.default_count
-            people += n
-            vms += n * each
-        if people > max_people:
-            raise ValueError(f"the roles add up to {people} participants; the limit is {max_people}")
-        if vms > max_vms:
-            raise ValueError(f"the roles add up to {vms} VMs; the limit is {max_vms}")
+            people[r.name] = r.max_participants or r.default_count  # an unlimited role counts at its default
+            role_vms += people[r.name] * each
+        total_people = sum(people.values())
+        if total_people > max_people:
+            raise ValueError(f"the roles add up to {total_people} participants; the limit is {max_people}")
+        rule_vms = 0
+        for rule in self.scaling_rules:
+            if rule.kind == "fixed":
+                rule_vms += rule.count
+            elif rule.kind == "per_segment":  # conservatively, the most segments a range may have
+                rule_vms += rule.count * segments
+            else:  # per_participants: whole steps of ``per``, of the named role or of everyone
+                scope = people.get(rule.role, 0) if rule.role else total_people
+                rule_vms += rule.count * math.ceil(scope / rule.per)
+        if role_vms + rule_vms > max_vms:
+            raise ValueError(f"the roles ({role_vms}) and the scaling rules ({rule_vms}, worst case) add up to "
+                             f"{role_vms + rule_vms} VMs; the limit is {max_vms}")
 
     @model_validator(mode="after")
     def _shape(self) -> ExerciseTemplateCore:

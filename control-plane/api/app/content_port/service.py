@@ -83,7 +83,8 @@ def _label(st: proven.Status) -> str:
 def status_out(db: Session, item_type: str, row, scope: proven.Scope, *,
                with_dependencies: bool = True, viewer: uuid.UUID | None = None) -> ProvenStatusOut:
     """``viewer``: the reading tenant. A dependency that is another tenant's private content is not
-    named and its status is not shown (None for the platform administrator, who sees all)."""
+    named and its status is not shown, whoever reads (the platform administrator's evidence is
+    every tenant's, but not their private names)."""
     st = proven.status(db, item_type, row, scope, viewer)
     deps = []
     if with_dependencies:
@@ -119,8 +120,7 @@ def item_status(db: Session, user: CurrentUser, item_type: str, item_id) -> Prov
     row = proven.any_visible(db, user, item_type, item_id)
     if row is None:
         raise HTTPException(404, f"No {proven.LABELS.get(item_type, 'item')} {item_id} here")
-    scope = proven.scope_for(db, user)
-    return status_out(db, item_type, row, scope, viewer=None if scope is None else tenant_uuid(user))
+    return status_out(db, item_type, row, proven.scope_for(db, user), viewer=tenant_uuid(user))
 
 
 def portable(db: Session, user: CurrentUser) -> list[ProvenStatusOut]:
@@ -138,8 +138,7 @@ def portable(db: Session, user: CurrentUser) -> list[ProvenStatusOut]:
             q = q.filter(model.deleted_at.is_(None))
         for row in q.order_by(model.name, model.id).all():
             if proven.visible(row, tenant):
-                out.append(status_out(db, item_type, row, scope, with_dependencies=False,
-                                      viewer=None if scope is None else tenant))
+                out.append(status_out(db, item_type, row, scope, with_dependencies=False, viewer=tenant))
     return out
 
 
@@ -168,7 +167,7 @@ def export(db: Session, user: CurrentUser, refs: list[PortItemRef]) -> dict:
             problems.append({"item_type": item_type, "item_id": str(row.id), "title": None,
                              "reasons": ["Another tenant's content: it cannot be exported from here"]})
             continue
-        st = proven.status(db, item_type, row, scope)
+        st = proven.status(db, item_type, row, scope, tenant)  # no other tenant's private name in a refusal
         statuses[k] = st
         if not st.proven:
             problems.append({"item_type": item_type, "item_id": str(row.id), "title": row.name,

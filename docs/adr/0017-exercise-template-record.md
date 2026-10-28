@@ -86,11 +86,28 @@ collective training; courses are individual training.**
 11. **No leaks across tenants.** A shared template (or scenario) never names another tenant's
     private scenario or range template: not in the dependency list, nor in any reason, and the
     dependency's status is not shown. The export refusal does not name another tenant's content.
-12. **Concurrency and caps.** Delete, edit and create-exercise lock the template row. A template
-    is validated against operator-settable caps (`TN_EXERCISE_TEMPLATE_MAX_PARTICIPANTS`, default
-    500; `..._MAX_VMS_PER_PARTICIPANT`, default 20; `..._MAX_VMS`, default 1000 across all
-    roles; an unlimited role counts at its default). An import re-checks that the scenario and
-    range template it relinks to still agree, and skips the template with a reason if not.
+12. **Concurrency and caps.** Delete, edit, create-exercise and an import update lock the
+    template row (`SELECT ... FOR UPDATE`, read as it is now), so two writers never share a
+    revision number. A template is validated, on create, update and import, against
+    operator-settable caps. Exactly what is counted:
+    - a role's participants are its `max_participants`, or, **when it has no maximum (0), its
+      `default_count`**; the template's total participants is their sum
+      (`TN_EXERCISE_TEMPLATE_MAX_PARTICIPANTS`, default 500);
+    - each participant's VMs are the sum of its VM profile counts
+      (`..._MAX_VMS_PER_PARTICIPANT`, default 20);
+    - **total VMs** (`..._MAX_VMS`, default 1000) is the worst case of the roles plus the
+      scaling rules:
+      - roles: participants x VMs per participant, summed;
+      - `fixed` rule: its `count`;
+      - `per_participants` rule: `count x ceil(people / per)`, where people is the named
+        role's participants (as above) or, with no role, the template's total participants;
+      - `per_segment` rule: `count x MAX_SEGMENTS`, a conservative bound on the segments a
+        range may have (`TN_EXERCISE_TEMPLATE_MAX_SEGMENTS`, default 10).
+
+    An import re-checks that the scenario and range template it relinks to still agree, and
+    skips the template with a reason if not. The platform administrator reads no other tenant's
+    private names either (reasons, dependency list, export refusal); the redaction matches the
+    whole name, whatever its case.
 
 ## Consequences
 

@@ -42,6 +42,7 @@ is not this course's content.
 from __future__ import annotations
 
 import json
+import re
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -434,9 +435,12 @@ def _redact(db: Session, st: Status, viewer: uuid.UUID) -> Status:
             hidden.append(d.title)
             d.title = f"a {LABELS[d.item_type]} that is not shared with you"
     if hidden:
+        # Longest first (a name inside another hidden name), whatever the case, and only the whole
+        # name (not a word that merely contains it).
+        names = sorted({n for n in hidden if n}, key=len, reverse=True)
+        pattern = re.compile("|".join(rf"(?<!\w){re.escape(n)}(?!\w)" for n in names), re.IGNORECASE)
         for c in st.conditions:
-            for name in sorted(set(hidden), key=len, reverse=True):
-                c.reasons = [r.replace(name, "a private item") for r in c.reasons]
+            c.reasons = [pattern.sub("a private item", r) for r in c.reasons]
     return st
 
 

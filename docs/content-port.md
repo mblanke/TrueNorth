@@ -180,6 +180,13 @@ Format **v1** is the bundle of courses, range templates and scenarios. A bundle 
 exercise template is **v2** (otherwise identical); a v1 bundle carrying one is refused. A bundle
 without exercise templates stays v1, so older sites still read it.
 
+Size caps on an exercise template (checked on create, update and import): total participants at
+most 500 (`TN_EXERCISE_TEMPLATE_MAX_PARTICIPANTS`; a role with no maximum counts at its default
+count), at most 20 VMs per participant (`..._MAX_VMS_PER_PARTICIPANT`), and at most 1000 VMs in
+all (`..._MAX_VMS`), counted on the worst case: the roles' participants x their VMs, plus fixed
+rules at their count, per-participants rules at `count x ceil(people / per)` (people of the named
+role, else of the whole template), and per-segment rules at `count x 10` (`..._MAX_SEGMENTS`).
+
 ## The bundle and its signature
 
 ```json

@@ -86,7 +86,7 @@ def lock_visible(db: Session, user: CurrentUser, template_id: uuid.UUID, *, own:
     q = visible_query(db, user).filter(ExerciseTemplate.id == template_id)
     if own:
         q = q.filter(ExerciseTemplate.tenant_id == tenant_uuid(user))
-    row = q.with_for_update().first()
+    row = q.populate_existing().with_for_update().first()
     if row is None:
         raise HTTPException(404, "Exercise template not found")
     return row

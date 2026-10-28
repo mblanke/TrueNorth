@@ -427,6 +427,11 @@ def _write_exercise_template(db: Session, p: PlanItem, tenant: uuid.UUID | None,
                                scenario_id=scenario_id, range_template_id=template_id, **core)
         db.add(row)
     else:
+        # Lock the row and read it as it is now, so a concurrent edit and this import cannot both
+        # take the next revision number.
+        row = (db.query(ExerciseTemplate)
+               .filter(ExerciseTemplate.id == row.id, ExerciseTemplate.tenant_id == tenant).populate_existing()
+               .with_for_update().one())
         before = {f: copy.deepcopy(getattr(row, f)) for f in SIZING_FIELDS}
         for field, value in core.items():
             setattr(row, field, value)
