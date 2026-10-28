@@ -33,6 +33,7 @@ export type MyClasses = S['AttendingClassesOut'];
 export type MyClass = S['AttendingClassOut'];
 export type MyClassSession = S['AttendingSessionOut'];
 export type MyRangeStatus = S['AttendingRangeStatus'];
+export type RollCallDomains = S['RollCallDomainsOut'];
 
 /** `d` as local ISO 8601 with its UTC offset, e.g. 2026-11-02T00:00:00-05:00. */
 export function localIso(d: Date): string {
@@ -74,6 +75,14 @@ export class ClassesApiService {
   }
   create(body: ClassIn): Observable<ClassRecord> {
     return this.http.post<ClassRecord>(this.base, body);
+  }
+  /** The email domains this organisation's roll calls accept (class:create): an admin's setting, or its AD accounts'. */
+  rollCallDomains(): Observable<RollCallDomains> {
+    return this.http.get<RollCallDomains>(`${this.base}/roll-call-domains`);
+  }
+  /** Set them for the caller's own organisation (tenant:update; audited). An empty list allows any domain. */
+  setRollCallDomains(emailDomains: string[]): Observable<RollCallDomains> {
+    return this.http.put<RollCallDomains>(`${this.base}/roll-call-domains`, { email_domains: emailDomains });
   }
   update(id: string, body: ClassIn): Observable<ClassRecord> {
     return this.http.put<ClassRecord>(`${this.base}/${id}`, body);

@@ -10,8 +10,12 @@ type S = components['schemas'];
 export type EmailStatus = S['EmailStatusOut'];
 export type EmailTestResult = S['EmailTestOut'];
 
-/** Where an operator sets the relay: the installer's README, "Email (SMTP)". */
-export const EMAIL_DOCS_URL = 'https://github.com/mblanke/TrueNorth/blob/main/install/README.md#email-smtp';
+/**
+ * How an operator sets the relay: the app's own help page (features/admin/email-help), a
+ * summary of the installer's README, "Email (SMTP)". A route, never an external URL: an
+ * air-gapped site cannot reach GitHub (#318).
+ */
+export const EMAIL_DOCS_URL = '/admin/help/email';
 
 /**
  * Whether the API sends email (GET /email/status, control-plane/api/app/email_status; #306),

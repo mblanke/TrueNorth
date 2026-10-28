@@ -470,8 +470,20 @@ export class ApiService {
   getMe(): Observable<User> {
     return this.http.get<User>(`${this.base}/users/me`);
   }
+  /**
+   * PATCH /users/{id}. The API reads the fields from the query string (UserUpdateIn as a
+   * dependency) and ignores a body; a null or absent field is left as it is.
+   */
   updateUser(id: string, data: Partial<User>): Observable<User> {
-    return this.http.patch<User>(`${this.base}/users/${id}`, data);
+    let params = new HttpParams();
+    for (const [key, value] of Object.entries(data)) {
+      if (value !== null && value !== undefined && typeof value !== 'object') params = params.set(key, String(value));
+    }
+    return this.http.patch<User>(`${this.base}/users/${id}`, null, { params });
+  }
+  /** Re-enable (or deactivate) an account. The API refuses to deactivate a tenant's last active admin (409). */
+  setUserActive(id: string, active: boolean): Observable<User> {
+    return this.http.patch<User>(`${this.base}/users/${id}`, null, { params: new HttpParams().set('is_active', active) });
   }
   createUser(data: components['schemas']['UserCreateIn']): Observable<User> {
     return this.http.post<User>(`${this.base}/users`, data);

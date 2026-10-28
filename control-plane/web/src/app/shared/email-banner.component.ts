@@ -1,23 +1,25 @@
 import { Component, computed, effect, inject, untracked } from '@angular/core';
 import { MatIconModule } from '@angular/material/icon';
+import { RouterLink } from '@angular/router';
 import { AuthService } from '@core/services/auth.service';
 import { EMAIL_DOCS_URL, EmailStatusService } from '@core/services/email-status.service';
 
 /**
  * Persistent admin banner while the API cannot send email (#306). No dismiss: it stays
- * until the relay is set (install/README.md "Email (SMTP)") and the api restarted.
+ * until the relay is set (install/README.md "Email (SMTP)", summarised in the app at
+ * /admin/help/email) and the api restarted.
  * Admins only; asks the server once per session, once the signed-in user is known.
  */
 @Component({
   selector: 'tn-email-banner',
-  imports: [MatIconModule],
+  imports: [MatIconModule, RouterLink],
   template: `
     @if (show()) {
       <div class="email-banner" role="alert">
         <mat-icon>mail_lock</mat-icon>
         <span>
           Email is not configured: onboarding emails, reminders and calendar invites are not being sent.
-          <a [href]="docsUrl" target="_blank" rel="noopener">Set up email (install/README.md, "Email (SMTP)")</a>
+          <a [routerLink]="docsUrl">Set up email</a>
         </span>
       </div>
     }

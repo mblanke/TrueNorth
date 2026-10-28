@@ -120,6 +120,24 @@ describe('AppComponent', () => {
     toolbarButtons.forEach(button => expect(button.getAttribute('aria-label')).toBeTruthy());
   });
 
+  // ── Sign out (#318) ─────────────────────────────────────────────
+  it('offers Sign out in the toolbar, which ends the session', () => {
+    const logout = spyOn(auth, 'logout');
+    fixture.detectChanges();
+    const el: HTMLElement = fixture.nativeElement;
+    const button = el.querySelector('mat-toolbar button[aria-label="Sign out"]') as HTMLButtonElement;
+    expect(button).not.toBeNull();
+    expect(button.textContent).toContain('Sign out');
+    button.click();
+    expect(logout).toHaveBeenCalled();
+  });
+
+  it('shows no Sign out to someone not signed in', () => {
+    auth.role.set(null);
+    fixture.detectChanges();
+    expect((fixture.nativeElement as HTMLElement).querySelector('button[aria-label="Sign out"]')).toBeNull();
+  });
+
   // ── Sidenav ──────────────────────────────────────────────────────
   it('should have an opened sidenav by default', () => {
     fixture.detectChanges();

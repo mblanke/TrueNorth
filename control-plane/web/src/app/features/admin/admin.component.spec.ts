@@ -7,16 +7,20 @@ import { HealthResponse, Tenant } from '@core/models';
 import { AdminComponent } from './admin.component';
 import { EmailStatusService } from '@core/services/email-status.service';
 import { signal } from '@angular/core';
+import { HttpErrorResponse } from '@angular/common/http';
+import { AuthService } from '@core/services/auth.service';
 
 describe('AdminComponent', () => {
   let fixture: ComponentFixture<AdminComponent>;
   let component: AdminComponent;
   let api: jasmine.SpyObj<ApiService>;
   let notify: jasmine.SpyObj<NotificationService>;
+  const platformAdmin = signal(true);
 
   const tenant = { id: 't1', name: 'Default Org', slug: 'default' } as Tenant;
 
   beforeEach(async () => {
+    platformAdmin.set(true);
     api = jasmine.createSpyObj('ApiService', [
       'health', 'listTenants', 'listAuditLog', 'createTenant', 'updateTenant',
     ]);
@@ -33,6 +37,7 @@ describe('AdminComponent', () => {
         { provide: NotificationService, useValue: notify },
         // The card's own spec covers it (email-settings-card.component.spec.ts).
         { provide: EmailStatusService, useValue: { load: () => undefined, status: signal(null) } },
+        { provide: AuthService, useValue: { isPlatformAdmin: platformAdmin } },
       ],
     }).compileComponents();
 
@@ -70,14 +75,39 @@ describe('AdminComponent', () => {
     expect(component.tenantForm).toEqual({ name: '', slug: '' });
   });
 
-  it('keeps the form open and reports a failed create', () => {
-    api.createTenant.and.returnValue(throwError(() => new Error('409')));
+  it('keeps the form open and reports why a create failed', () => {
+    api.createTenant.and.returnValue(throwError(() => new HttpErrorResponse({
+      status: 409, error: { detail: "Tenant slug 'default' already exists" },
+    })));
     component.showCreateTenant = true;
     component.tenantForm = { name: 'Dup', slug: 'default' };
 
     component.createTenant();
 
-    expect(notify.error).toHaveBeenCalled();
+    expect(notify.error).toHaveBeenCalledWith("Could not create the tenant: Tenant slug 'default' already exists");
     expect(component.showCreateTenant).toBeTrue();
+  });
+
+  async function tenantsTab(): Promise<HTMLElement> {
+    const tabs = Array.from(fixture.nativeElement.querySelectorAll('[role="tab"]')) as HTMLElement[];
+    tabs.find(t => t.textContent?.includes('Tenants'))!.click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    return fixture.nativeElement as HTMLElement;
+  }
+
+  it('shows New Tenant to the platform administrator', async () => {
+    const el = await tenantsTab();
+    expect(component.canCreateTenant()).toBeTrue();
+    expect(el.textContent).toContain('New Tenant');
+  });
+
+  it('hides New Tenant from an admin who is not the platform administrator, and says why', async () => {
+    platformAdmin.set(false);
+    const el = await tenantsTab();
+    expect(component.canCreateTenant()).toBeFalse();
+    expect(el.textContent).not.toContain('New Tenant');
+    expect(el.textContent).toContain('Only the platform administrator creates tenants');
   });
 });

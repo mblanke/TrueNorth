@@ -23,6 +23,7 @@ import { MatDividerModule } from '@angular/material/divider';
 import { EmptyStateComponent } from '../../shared/components/empty-state/empty-state.component';
 import { ApprovalsPanelComponent } from './approvals-panel.component';
 import { AdStatusSyncPanelComponent } from './ad-status-sync-panel.component';
+import { DEFAULT_GROUP_TYPE, DEFAULT_OU_TYPE, GROUP_TYPES, OU_TYPES } from './directory-types';
 
 // Wire types are the contract's (core/models). OUTree is the OU tree node; AuthZone a policy.
 type OUTree = OrganizationalUnit;
@@ -159,6 +160,9 @@ type AuthZone = AuthZonePolicy;
                 <th mat-header-cell *matHeaderCellDef>Name</th>
                 <td mat-cell *matCellDef="let u">
                   <strong>{{ u.display_name }}</strong>
+                  @if (u.is_active === false) {
+                    <span class="deactivated-badge" matTooltip="Deactivated: cannot sign in until re-enabled">Deactivated</span>
+                  }
                   @if (u.rank) {
                     <span class="rank-badge">{{ u.rank }}</span>
                   }
@@ -207,9 +211,17 @@ type AuthZone = AuthZonePolicy;
                   <button mat-icon-button matTooltip="Edit" (click)="startEditUser(u)">
                     <mat-icon>edit</mat-icon>
                   </button>
-                  <button mat-icon-button color="warn" matTooltip="Delete" (click)="deleteUser(u)">
-                    <mat-icon>delete</mat-icon>
-                  </button>
+                  @if (u.is_active === false) {
+                    <!-- PATCH /users/{id}?is_active=true. Disabling is Delete; the API keeps the
+                         tenant's last active admin (409, #309), re-enabling needs no such guard. -->
+                    <button mat-icon-button matTooltip="Re-enable" aria-label="Re-enable" (click)="reEnableUser(u)">
+                      <mat-icon>how_to_reg</mat-icon>
+                    </button>
+                  } @else {
+                    <button mat-icon-button color="warn" matTooltip="Delete" aria-label="Delete" (click)="deleteUser(u)">
+                      <mat-icon>delete</mat-icon>
+                    </button>
+                  }
                 </td>
               </ng-container>
               <tr mat-header-row *matHeaderRowDef="userColumns"></tr>
@@ -398,10 +410,7 @@ type AuthZone = AuthZonePolicy;
                     <mat-form-field appearance="outline">
                       <mat-label>Type</mat-label>
                       <mat-select [(ngModel)]="newOU.ou_type" panelClass="tn-select-panel">
-                        <mat-option value="department">Department</mat-option>
-                        <mat-option value="division">Division</mat-option>
-                        <mat-option value="team">Team</mat-option>
-                        <mat-option value="custom">Custom</mat-option>
+                        @for (t of ouTypes; track t.value) { <mat-option [value]="t.value">{{ t.label }}</mat-option> }
                       </mat-select>
                     </mat-form-field>
                   </div>
@@ -464,9 +473,7 @@ type AuthZone = AuthZonePolicy;
                     <mat-form-field appearance="outline">
                       <mat-label>Type</mat-label>
                       <mat-select [(ngModel)]="newGroup.group_type" panelClass="tn-select-panel">
-                        <mat-option value="access">Access</mat-option>
-                        <mat-option value="role">Role</mat-option>
-                        <mat-option value="distribution">Distribution</mat-option>
+                        @for (t of groupTypes; track t.value) { <mat-option [value]="t.value">{{ t.label }}</mat-option> }
                       </mat-select>
                     </mat-form-field>
                   </div>
@@ -642,6 +649,7 @@ type AuthZone = AuthZonePolicy;
     .form-row { display: flex; gap: 16px; margin-bottom: 8px; }
     .form-row mat-form-field { flex: 1; }
     .rank-badge { background: var(--accent); color: #fff; padding: 2px 8px; border-radius: 3px; font-size: 11px; margin-left: 8px; }
+    .deactivated-badge { border: 1px solid var(--alert); color: var(--alert); padding: 1px 8px; border-radius: 3px; font-size: 11px; margin-left: 8px; }
     .callsign { color: var(--text-secondary); font-style: italic; margin-left: 8px; }
     .teams-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
     .team-card { background: var(--bg-card); border-left: 4px solid var(--accent); }
@@ -683,6 +691,8 @@ export class UsersComponent implements OnInit {
   authZones: AuthZone[] = [];
   userSearch = '';
   userColumns = ['name', 'email', 'role', 'onboarding', 'clearance', 'source', 'actions'];
+  readonly ouTypes = OU_TYPES;
+  readonly groupTypes = GROUP_TYPES;
 
   onboardingLabel(u: { onboarding_state?: string }): string {
     switch (u.onboarding_state) {
@@ -716,8 +726,8 @@ export class UsersComponent implements OnInit {
   // New entity form models
   newUser: any = this.emptyUser();
   newTeam: any = { name: '', team_type: 'blue', description: '', max_members: 10, color_hex: '#2196F3' };
-  newOU: any = { name: '', slug: '', ou_type: 'department' };
-  newGroup: any = { name: '', slug: '', group_type: 'access', description: '' };
+  newOU: any = { name: '', slug: '', ou_type: DEFAULT_OU_TYPE };
+  newGroup: any = { name: '', slug: '', group_type: DEFAULT_GROUP_TYPE, description: '' };
 
   // Edit mode state
   editingUserId: string | null = null;
@@ -844,6 +854,19 @@ export class UsersComponent implements OnInit {
     });
   }
 
+  /** Re-enable a deactivated account (by Delete, or by the AD status sync). */
+  reEnableUser(u: UserFull): void {
+    this.api.setUserActive(u.id, true).subscribe({
+      next: () => {
+        this.snack.open(`${u.display_name} re-enabled`, '', { duration: 2000, panelClass: 'snack-success' });
+        this.loadUsers();
+      },
+      error: (err: any) => {
+        this.snack.open(err.error?.detail || 'Failed to re-enable user', 'OK', { duration: 5000 });
+      },
+    });
+  }
+
   // -- Team CRUD --
   createTeam(): void {
     this.api.createTeam(this.newTeam).subscribe({
@@ -912,7 +935,7 @@ export class UsersComponent implements OnInit {
     this.directory.createOu(this.newOU).subscribe({
       next: () => {
         this.snack.open('OU created', '', { duration: 2000, panelClass: 'snack-success' });
-        this.newOU = { name: '', slug: '', ou_type: 'department' };
+        this.newOU = { name: '', slug: '', ou_type: DEFAULT_OU_TYPE };
         this.showOUForm = false;
         this.directory.ouTree().subscribe({ next: t => this.ouTree = t, error: () => {} });
       },
@@ -951,7 +974,7 @@ export class UsersComponent implements OnInit {
 
   cancelOuEdit(): void {
     this.editingOuId = null;
-    this.newOU = { name: '', slug: '', ou_type: 'department' };
+    this.newOU = { name: '', slug: '', ou_type: DEFAULT_OU_TYPE };
     this.showOUForm = false;
   }
 
@@ -960,7 +983,7 @@ export class UsersComponent implements OnInit {
     this.directory.createSecurityGroup(this.newGroup).subscribe({
       next: () => {
         this.snack.open('Security group created', '', { duration: 2000, panelClass: 'snack-success' });
-        this.newGroup = { name: '', slug: '', group_type: 'access', description: '' };
+        this.newGroup = { name: '', slug: '', group_type: DEFAULT_GROUP_TYPE, description: '' };
         this.showGroupForm = false;
         this.directory.securityGroups().subscribe({ next: g => this.securityGroups = g, error: () => {} });
       },
@@ -1000,7 +1023,7 @@ export class UsersComponent implements OnInit {
 
   cancelGroupEdit(): void {
     this.editingGroupId = null;
-    this.newGroup = { name: '', slug: '', group_type: 'access', description: '' };
+    this.newGroup = { name: '', slug: '', group_type: DEFAULT_GROUP_TYPE, description: '' };
     this.showGroupForm = false;
   }
 
