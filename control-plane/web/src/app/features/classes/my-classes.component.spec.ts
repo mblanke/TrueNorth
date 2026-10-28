@@ -87,8 +87,13 @@ describe('MyClassesComponent', () => {
   let creds: jasmine.SpyObj<RangeCredentialsApiService>;
 
   function make(data: MyClasses): void {
-    api = jasmine.createSpyObj<ClassesApiService>('ClassesApiService', ['attending']);
+    api = jasmine.createSpyObj<ClassesApiService>('ClassesApiService',
+      ['attending', 'myRangeConsoles', 'openMyRangeConsole']);
     api.attending.and.returnValue(of(data));
+    api.myRangeConsoles.and.returnValue(of({ range_id: 'rng-1', open: true, session_id: 'ev1',
+      machines: [{ machine: 'ws1', name: 'abc-ws1', power: 'running', student_machine: true }] }));
+    api.openMyRangeConsole.and.returnValue(of({ range_id: 'rng-1', machine: 'ws1', kind: 'webmks',
+      url: 'wss://esx/ticket/t', expires_in: 60, view_only: false, observed: false, vm: 'abc-ws1' }));
     creds = jasmine.createSpyObj<RangeCredentialsApiService>('RangeCredentialsApiService', ['list', 'reveal']);
     creds.list.and.returnValue(of({ range_id: 'rng-1', scope: 'student', accounts: [] }));
     TestBed.configureTestingModule({
@@ -168,6 +173,36 @@ describe('MyClassesComponent', () => {
     fixture.destroy();
     discardPeriodicTasks();
   }));
+
+  it('Console lists the Student\'s machines and opens a one-time ticket on one', () => {
+    make(page([BASE]));
+    const button = card('c1').querySelector('button.console') as HTMLButtonElement;
+    expect(button.disabled).toBeFalse();
+    button.click();
+    fixture.detectChanges();
+    expect(api.myRangeConsoles).toHaveBeenCalledWith('rng-1');
+    const machine = card('c1').querySelector('.my-consoles .machines button') as HTMLButtonElement;
+    expect(machine.textContent).toContain('abc-ws1');
+    machine.click();
+    fixture.detectChanges();
+    expect(api.openMyRangeConsole).toHaveBeenCalledWith('rng-1', 'abc-ws1');
+    expect(card('c1').querySelector('.ticket')?.textContent).toContain('wss://esx/ticket/t');
+  });
+
+  it('Console waits for the session: machines are listed but cannot be opened', () => {
+    make(page([BASE]));
+    api.myRangeConsoles.and.returnValue(of({ range_id: 'rng-1', open: false, session_id: null,
+      machines: [{ machine: 'ws1', name: 'abc-ws1', power: null, student_machine: true }] }));
+    (card('c1').querySelector('button.console') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    expect(card('c1').querySelector('.my-consoles')?.textContent).toContain('opens during your session');
+    expect((card('c1').querySelector('.my-consoles .machines button') as HTMLButtonElement).disabled).toBeTrue();
+  });
+
+  it('Console is disabled while Join is', () => {
+    make(page([BUILDING]));
+    expect((card('c3').querySelector('button.console') as HTMLButtonElement).disabled).toBeTrue();
+  });
 
   it('Join is disabled, with the reason, when the range is not ready', () => {
     make(page([BUILDING]));

@@ -475,6 +475,7 @@ describe('EventsCalendarComponent', () => {
       fixture.detectChanges();
       expect(button('Move')).toBeUndefined();
       expect(link('Roll call')).toBeUndefined();
+      expect(el.querySelector('a.class-live')).toBeNull();  // no class:read
     });
 
     it('observers read only: no queue, no Move, no Book, no Content tab', () => {
@@ -487,6 +488,8 @@ describe('EventsCalendarComponent', () => {
       expect(button('Move')).toBeUndefined();
       expect(link('Roll call')).toBeTruthy(); // class:read
       expect(link('Live Class')).toBeTruthy();
+      // The class session's own live view (ADR 0014 §19); the API decides whether this observer is on it.
+      expect(el.querySelector('a.class-live')?.getAttribute('href')).toBe('/classes/c1/sessions/cls/live');
     });
 
     it('admins move anyone\'s booking', () => {
