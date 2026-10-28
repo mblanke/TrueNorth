@@ -337,3 +337,16 @@ def test_readiness_and_a_lab_range_are_valid(readiness):
         )
 
     assert _errors(_mutate(proven)) == []
+
+
+# -- qsp_code is optional: courses outside a qualification omit it -----------------
+
+
+def test_a_course_without_qsp_code_is_valid():
+    assert _errors(_mutate(lambda d: d.pop("qsp_code"))) == []
+
+
+@pytest.mark.parametrize("bad", ["alj", "QSP-TODO", "A", "", None])
+def test_a_present_qsp_code_must_still_match_the_pattern(bad):
+    """Omit the key to say 'no qualification'; an empty or null value is refused, not coerced."""
+    assert _errors(_mutate(lambda d: d.update(qsp_code=bad)))

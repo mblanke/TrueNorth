@@ -421,3 +421,38 @@ def test_the_content_loader_does_not_reach_instructor_packs():
     loader = (ROOT / "scripts/load_content.py").read_text(encoding="utf-8")
     assert '(CONTENT / "courses").glob("*.yaml")' in loader
     assert not any(p.parent.name == "instructor" for p in COURSE_FILES)
+
+
+# -- qsp_code is optional ------------------------------------------------------
+
+
+def _without_qsp_code() -> str:
+    doc = _doc()
+    doc.pop("qsp_code", None)
+    return yaml.safe_dump(doc, sort_keys=False)
+
+
+def test_a_course_without_qsp_code_parses_as_none():
+    assert parse_course_content(_without_qsp_code())["qsp_code"] is None
+
+
+def test_a_course_without_qsp_code_imports_with_no_qualification(seeded):
+    stats = import_course_content(seeded, _without_qsp_code())
+    assert stats["bound_to_qualification"] is False
+    course = seeded.query(Course).filter(Course.name.like("C304%")).one()
+    assert course.qualification_id is None
+    assert stats["modules_created"] == 6
+
+
+def test_a_course_with_qsp_code_still_binds_its_qualification(seeded):
+    stats = import_course_content(seeded, _text())
+    assert stats["bound_to_qualification"] is True
+    assert seeded.query(Course).filter(Course.name.like("C304%")).one().qualification_id is not None
+
+
+@pytest.mark.parametrize("empty", ["", None])
+def test_an_empty_qsp_code_is_read_as_absent(empty):
+    """The schema refuses an empty value; the parser is lenient so a hand-fed file never binds ''."""
+    doc = _doc()
+    doc["qsp_code"] = empty
+    assert parse_course_content(yaml.safe_dump(doc, sort_keys=False))["qsp_code"] is None
