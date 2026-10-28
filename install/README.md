@@ -235,10 +235,18 @@ healthcheck is `/health/ready`.
 
 `PLATFORM_TENANT_ID` names the operator's own tenant; its admins are the platform
 administrators (create tenants, approve into any tenant, platform-wide settings). Admins
-are per tenant. Unset, an admin is the platform administrator only while one tenant
-exists; once a second tenant exists nobody is, and the api logs an error at startup,
-until it is set. Set, it must be a tenant UUID or production refuses to start. A
-single-tenant install needs nothing.
+are per tenant. The installer sets it from `tn_platform_tenant_id`; empty (the default)
+means the bootstrap tenant (`tn_tenant_slug`): `80-seed` records its id in
+`/srv/truenorth/state/platform_tenant_id` once it exists, puts it in the env file,
+recreates the api, and every later `30-config` renders it. Set `tn_platform_tenant_id`
+to a tenant UUID only to make another tenant the operator's (preflight refuses anything
+else). Unset, an admin is the platform administrator only while one tenant exists; once a
+second tenant exists nobody is (the API fails closed, never "every admin"), and the api
+logs an error at startup naming the variable. It logs one too when the id names no tenant.
+
+`SITE_TIMEZONE` is the site's IANA time zone, for times the app says in words ("next free
+at 14:00" when a self-serve lab is refused). The installer sets it from `tn_site_timezone`;
+empty (the default) means the host's own zone (`timedatectl`), else `UTC`.
 
 URLs someone else chose are fetched through `app/net_guard.py`: loopback, link-local and
 cloud-metadata addresses are always refused, and private (RFC 1918) addresses unless the
@@ -1189,6 +1197,8 @@ actually change:
 | `tn_alert_email_enabled` | `false` (staging too, until its SMTP details are set) | Alerts by email; with `tn_alert_email_to`, `tn_alert_email_from`, `tn_alert_smtp_host`, `tn_alert_smtp_port` (`587`), `tn_alert_smtp_require_tls` (`true`) and `vault_alert_smtp_username` / `vault_alert_smtp_password` ("Alerting"). Off: alerts go nowhere. |
 | `vault_alertmanager_webhook_url` | *(empty)* | A webhook receiver, alone or beside email ("Alerting"). |
 | `tn_bootstrap_admin_upn` | *(empty — required)* | The named AD account that admits everyone else. |
+| `tn_platform_tenant_id` | *(empty: the bootstrap tenant)* | `PLATFORM_TENANT_ID`: whose admins are the platform administrators. A tenant UUID to name another. |
+| `tn_site_timezone` | *(empty: the host's zone, else UTC)* | `SITE_TIMEZONE`, an IANA name such as `America/Toronto`. |
 | `tn_tls_mode` | `selfsigned` | `provided` once the AD CS certificate is in `files/tls/` |
 | `tn_opensearch_disable_security` | `false` | Lab/dev override only: OpenSearch without auth or TLS ("OpenSearch" above). |
 | `tn_provisioner_backend` | `vsphere_api` | **Not** `vsphere` — that is not a registry key; preflight refuses it. `mock` for a site without vCenter. |

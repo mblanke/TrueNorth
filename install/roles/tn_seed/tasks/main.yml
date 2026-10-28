@@ -90,6 +90,71 @@
   ansible.builtin.debug:
     msg: "{{ (tn_bootstrap.stdout_lines + tn_bootstrap.stderr_lines) | default(['(no output)'], true) }}"
 
+# ── The platform tenant (PLATFORM_TENANT_ID; #273, #318) ──────────────
+# tn_platform_tenant_id empty (the default): the tenant just made is the operator's. Its id
+# is recorded in the state directory, which roles/tn_config renders into the env file on
+# every run (so re-runs agree), and the api is recreated with it now. Without it a second
+# tenant would leave nobody the platform administrator.
+- name: Seed — the bootstrap tenant's id
+  ansible.builtin.command:
+    cmd: >-
+      docker compose -f {{ tn_compose_file }} --env-file {{ tn_env_file }}
+      exec -T postgres psql -U {{ vault_postgres_user | default('forge') }}
+      -d {{ vault_postgres_db | default('forge') }} -v ON_ERROR_STOP=1 -tAc
+      "SELECT id FROM tenants WHERE slug = '{{ tn_tenant_slug | regex_replace("'", "''") }}'"
+    chdir: "{{ tn_app_dir }}/infra/platform/docker"
+  register: tn_bootstrap_tenant
+  changed_when: false
+  when: tn_platform_tenant_id | default('') | string | trim | length == 0
+
+- name: Seed — the bootstrap tenant exists
+  ansible.builtin.assert:
+    that: tn_bootstrap_tenant.stdout | trim is match('^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')
+    fail_msg: >-
+      No tenant with slug {{ tn_tenant_slug }} after app.bootstrap_admin
+      ({{ tn_bootstrap_tenant.stdout | default('') | trim or tn_bootstrap_tenant.stderr | default('') | trim }}):
+      PLATFORM_TENANT_ID cannot default to it. Read the bootstrap output above.
+    quiet: true
+  when:
+    - tn_platform_tenant_id | default('') | string | trim | length == 0
+    - not ansible_check_mode
+
+- name: Seed — record it as the platform tenant
+  ansible.builtin.copy:
+    dest: "{{ tn_state_dir }}/platform_tenant_id"
+    content: "{{ tn_bootstrap_tenant.stdout | trim }}"
+    mode: "0644"
+  register: tn_platform_tenant_recorded
+  when:
+    - tn_platform_tenant_id | default('') | string | trim | length == 0
+    - not ansible_check_mode
+
+# Patched in for this run (as roles/tn_keycloak does the LDAP component id); 30-config
+# renders the same line from the state file from now on.
+- name: Seed — put the platform tenant in the environment
+  ansible.builtin.lineinfile:
+    path: "{{ tn_env_file }}"
+    regexp: "^PLATFORM_TENANT_ID="
+    line: "PLATFORM_TENANT_ID={{ tn_platform_tenant_id | default('') | string | trim or tn_bootstrap_tenant.stdout | trim }}"
+    mode: "0600"
+  when: not ansible_check_mode
+
+# Only the api reads PLATFORM_TENANT_ID. Always applied: compose recreates the api only when
+# its configuration differs, so a run that recorded the id but stopped before this step is
+# caught up by the next one.
+- name: Seed — the api runs with the platform tenant
+  community.docker.docker_compose_v2:
+    project_src: "{{ tn_app_dir }}/infra/platform/docker"
+    files: [compose.prod.yml]
+    env_files: ["{{ tn_env_file }}"]
+    services: [api]
+    dependencies: false
+    state: present
+    build: never
+    pull: never
+    wait: true
+    wait_timeout: 300
+
 # The shipped curriculum, VM catalogue, range templates, scenarios and detection rules
 # (content/), loaded through the API as the bootstrap administrator
 # (scripts/load_content_inprocess.py: no token or password, the API's own validation).
