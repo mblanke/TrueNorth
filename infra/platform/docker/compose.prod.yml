@@ -740,6 +740,8 @@ services:
       # The feeds status and the signed feed bundle import (app/content_feeds, ADR 0014 §25).
       TN_FEEDS_MODE: ${TN_FEEDS_MODE:-off}
       TN_FEEDS_BUNDLE_PUBLIC_KEY: ${TN_FEEDS_BUNDLE_PUBLIC_KEY:-}
+      # Signed content bundles from these origin sites only (app/content_port, docs/content-port.md).
+      TN_CONTENT_PORT_TRUSTED_KEYS: ${TN_CONTENT_PORT_TRUSTED_KEYS:-}
     volumes:
       # Matches SCENARIO_ENGINE_DIR above. The engine is not part of the api
       # build context, so without this mount it is simply absent at runtime.
