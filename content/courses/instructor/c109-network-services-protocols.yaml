@@ -1,0 +1,202 @@
+# C109 - Network Services & Protocols - INSTRUCTOR PACK (staff only).
+# Companion to content/courses/c109-network-services-protocols.yaml. Do not distribute to learners.
+# Timings match each module's duration_minutes; answer keys match the course quiz keys.
+course_code: C109
+audience: staff_only
+overview: >-
+  Network Services and Protocols is a beginner course of six 60-minute modules (360 minutes total) on
+  the medium-enterprise range. Each module follows the same split: 15 minutes teaching the module's
+  protocols, 35 minutes on a range lab in which Students record evidence and judge it, and 10 minutes
+  for the five-item quiz passed at 70 percent. Labs move from observing individual services (name
+  resolution, web, email, directory, time and logging) to reading the firewall and validating the whole
+  network's segmentation. Students hand in their recorded evidence lists and marked findings at the end
+  of each lab. Say 'student' throughout and keep every description defensive and observable.
+timings:
+- module: 1
+  minutes: 60
+  plan: '15 teach (resolution path, record types, recursive versus iterative, poisoning and tunnelling),
+    35 lab (direct query and trace against dc01 from siem01), 10 quiz'
+- module: 2
+  minutes: 60
+  plan: '15 teach (HTTP, TLS, cookies, security headers), 35 lab (HTTPS session to web01 and header
+    audit), 10 quiz'
+- module: 3
+  minutes: 60
+  plan: '15 teach (SMTP transfer, SPF, DKIM and DMARC, header reading), 35 lab (suspicious message
+    analysis against mail01), 10 quiz'
+- module: 4
+  minutes: 60
+  plan: '15 teach (directory structure, Kerberos, federation, anonymous binds), 35 lab (directory
+    exposure on dc01), 10 quiz'
+- module: 5
+  minutes: 60
+  plan: '15 teach (NTP stratum, syslog transport, SNMP versions), 35 lab (clock and log shipping review
+    across ws01, web01 and siem01), 10 quiz'
+- module: 6
+  minutes: 60
+  plan: '15 teach (least functionality, zones, zero trust, validation), 35 lab (read fw01 rules, matrix
+    and validation scan), 10 quiz'
+answer_key_notes:
+- module: 1
+  notes: 'Q1 C, M1-O02: The resolver worked the chain on the client''s behalf, which is recursive; contact
+    count alone does not make it iterative. Q2 A, M1-O01: The mail exchanger record names the host that
+    accepts the domain''s mail; name server and address records answer other questions. Q3 B, M1-O02:
+    DNSSEC signs the data, giving origin authentication and integrity; it does not encrypt queries.
+    Q4 C, M1-O02: An unsolicited matching record accepted by the resolver is cache poisoning; tunnelling
+    moves data, not redirections. Q5 A, M1-O03: Long, high-entropy labels under one domain carry encoded
+    data; a search list repeats the parent suffix and resolves fast.'
+- module: 2
+  notes: 'Q1 C, M2-O01: Strict-Transport-Security forces HTTPS-only connections to that host for the
+    stated period; it caches neither the page nor cookies. Q2 B, M2-O02: The same-origin policy compares
+    scheme, host and port; IP addresses and cookie names are not part of the comparison. Q3 A, M2-O02:
+    HttpOnly hides the cookie from client-side scripting; Secure, not HttpOnly, restricts transport.
+    Q4 D, M2-O01: 302 is a temporary redirect; 301 is permanent, 5xx is a server failure and 304 is the
+    unchanged-content response. Q5 B, M2-O03: A content security policy that allows only the
+    application''s own origin blocks script injection; it does not touch authentication or availability.'
+- module: 3
+  notes: 'Q1 B, M3-O02: SPF answers whether the connecting address is authorised to send for the envelope
+    sender domain; it neither inspects the body nor verifies signatures. Q2 D, M3-O02: The DKIM signature
+    covers selected headers and the body, so later alteration breaks it. Q3 A, M3-O02: A DMARC policy adds
+    alignment and tells receivers what to do with failures; the other options add no enforcement. Q4 C,
+    M3-O01: The envelope sender handles transfer and bounces and is invisible in the client, while the
+    From header is what the recipient sees; phishing exploits the gap. Q5 C, M3-O03: Each relay prepends
+    its Received header, so the earliest hop sits at the bottom; reading top to bottom reverses the path.'
+- module: 4
+  notes: 'Q1 A, M4-O02: The key distribution centre''s authentication service issues the initial ticket;
+    the ticket granting service issues later service tickets, and the client cache only stores them.
+    Q2 C, M4-O01: The distinguished name is the unique path in the directory tree; identifiers are not
+    names and a relative identifier is only a component. Q3 C, M4-O03: An anonymous bind that answers
+    searches lets a client enumerate directory contents without credentials; binds cannot change schema
+    or policy. Q4 B, M4-O02: Short ticket lifetimes with timestamp validation bound replay; certificates,
+    disk encryption and name publication do not invalidate a captured ticket. Q5 A, M4-O02: Federation
+    trusts assertions from the partner''s identity provider instead of copying accounts; shared passwords
+    and blanket network trust are not federation.'
+- module: 5
+  notes: 'Q1 C, M5-O01: Stratum 1 is directly attached to a reference clock; each step away from one
+    raises the stratum number. Q2 B, M5-O01: Correlation and ordering of events across systems is the
+    security purpose of accurate time; time neither shrinks logs nor extends retention. Q3 D, M5-O02:
+    Plain UDP syslog can lose, and an attacker can inject or alter, records with nothing detected;
+    reliability and integrity are the gaps. Q4 A, M5-O02: Version 2c carries community strings in clear,
+    so capture reveals them; polling and counters work fine in 2c. Q5 D, M5-O03: A listener the role does
+    not require expands the attack surface; performance and role logging are side issues.'
+- module: 6
+  notes: 'Q1 B, M6-O02: Zero trust removes implicit trust from network location, so an internal client
+    must authorise like any other; authorisation checks stay with the service. Q2 C, M6-O02: An
+    allowed-flow matrix records which source zones reach which destinations on which services; patch
+    levels and uptime live elsewhere. Q3 A, M6-O02: Per-workload policy is micro-segmentation, finer
+    than one rule set per zone; it is not address translation or a demilitarised zone. Q4 D, M6-O01:
+    Removing the unneeded service is least functionality and the dedicated account is least privilege,
+    both of which shrink the impact of compromise. Q5 C, M6-O03: Implemented policy diverges from
+    intended policy, so the scan is the evidence; a scan complements, never replaces, the matrix.'
+lab_setup:
+- module: 1
+  setup: >-
+    Revert the medium-enterprise range to baseline and confirm dc01 and siem01 are reachable (siem01
+    is student-visible with the analyst account). Create one test domain in DNS on dc01 with a mail
+    exchanger record, and publish the domain name to Students at the start of the lab. Also prepare one
+    benign high-query client and one tunnelling-style query pattern in the SIEM view for the final
+    marking step. Expected values to mark: the single final answer dc01 returns to the direct query
+    (recursive resolution, worked by dc01 on the client's behalf); the trace chain naming root, top-level
+    domain and authoritative servers in order (iterative resolution; dc01 appears only once, supplying
+    the initial root server list); the mail exchanger answer and its time to live; the name-has-no-address
+    response code for the missing name.
+- module: 2
+  setup: >-
+    Revert the range and confirm web01 in the demilitarised zone answers HTTPS from both siem01 and
+    ws01 (corporate to demilitarised zone allows 443). Supply Students with the one-page header baseline
+    (the headers a hardened server should return) at the start of the lab. Confirm the certificate web01
+    presents is the exercise certificate so subject, issuer and validity dates are stable. Expected values
+    to mark: certificate subject, issuer and validity dates; the negotiated protocol version; which
+    baseline headers web01 does not return.
+- module: 3
+  setup: >-
+    Revert the range and stage one suspicious exercise message in the assigned mailbox on ws01
+    (use a clearly marked exercise message, no real phishing content). Confirm the message carries a
+    complete Received chain and SPF, DKIM and DMARC result lines, and that its delivery line appears in
+    the mail transfer log on mail01. Give the instructor the message's true connecting address so the
+    header-versus-log comparison in step 3 can be marked. Expected values to mark: the hop chain in
+    delivery order; each authentication result marked pass, fail or missing; whether the log's connecting
+    address matches the header chain.
+- module: 4
+  setup: >-
+    Revert the range and confirm the directory on dc01 accepts anonymous binds and answers basic
+    searches before the change. Assign Students the standard directory user account. Have ready the
+    directory access change that removes anonymous read access, and apply it only when Students reach
+    step 4, so the before-and-after responses both get recorded. Expected values to mark: the verbatim
+    anonymous response before and after; the entry names and count the standard-user search returns;
+    which capabilities Students mark unacceptable and what control they propose for each.
+- module: 5
+  setup: >-
+    Revert the range and confirm siem01 receives log records from the demilitarised zone and server
+    networks (514 and 5044 open from all zones). Confirm ws01 and siem01 show synchronisation status with
+    named time sources, and that web01 ships its records to siem01 over the transport in its forwarding
+    configuration. If you want a finding, desynchronise ws01 from its time source before the lab starts.
+    Expected values to mark: both synchronisation statuses and sources; web01's log destination and
+    transport; the host list and per-host record counts siem01 received in the last hour.
+- module: 6
+  setup: >-
+    Revert the range and confirm the default rule set on fw01 (corporate to servers allows directory
+    traffic, corporate to demilitarised zone allows web and mail ports, demilitarised zone to servers
+    allows name and directory traffic, default deny otherwise). Confirm siem01 can reach fw01, web01 and
+    mail01 from the management network, and ws01 can reach web01. Confirm one port on web01 is closed so
+    the step 4 test connection fails as the rules say. Expected values to mark: the ordered rule list;
+    the matrix Students draw against it; the failed test connection result; the answering ports from the
+    scan of web01 and mail01.
+common_faults:
+- module: 1
+  fault: Students mark any busy or repeated query pattern as tunnelling without reasoning about label
+    length, entropy or volume.
+  remedy: Show a busy but low-entropy client beside the tunnelling pattern and require the reason sentence
+    to cite a specific indicator before the marking is accepted.
+- module: 1
+  fault: Students record the trace as a single answer from dc01, or call the trace recursive, instead
+    of recording the ordered server-by-server path it walks itself.
+  remedy: Have them read the trace output line by line and name the role (root, top-level domain,
+    authoritative) of each server, then contrast it with the direct query where dc01 returned one
+    answer.
+- module: 2
+  fault: Students conflate transport security with the Strict-Transport-Security header, or expect it to
+    validate the certificate.
+  remedy: Ask what the browser would do with a self-signed certificate on a host that sent the header,
+    then walk the certificate validation steps separately from the header.
+- module: 2
+  fault: Students list response headers without values, or copy a memorised baseline instead of comparing
+    against what web01 actually returns.
+  remedy: Require every header line to be copied with its value and mark the missing-header list only
+    against the recorded response.
+- module: 3
+  fault: Students read Received headers top to bottom and reverse the delivery path.
+  remedy: Have them state that each relay prepends its header, then re-read the chain bottom to top and
+    check the timestamps climb.
+- module: 3
+  fault: Students accept the From header alone as the verdict and skip the authentication result lines.
+  remedy: Ask which result line or log line carries the verdict before accepting the evidence sentence. A
+    verdict with no cited evidence is returned unmarked.
+- module: 4
+  fault: Students treat enumeration through a standard user bind as anonymous access, or mark standard-user
+    search results as an anonymous exposure.
+  remedy: Ask which credentials, if any, the bind used at each step before any capability is marked
+    acceptable or unacceptable.
+- module: 4
+  fault: Students record the after-change response without capturing the before-change response first.
+  remedy: Check step 2 before applying the access change; a Student who missed the first capture repeats
+    the lab on the next revert.
+- module: 5
+  fault: Students treat the time check as a performance tick-box and give no correlation reason in their
+    adequacy marking.
+  remedy: Ask what a four-minute timestamp skew would do to the module 3 email exercise they completed,
+    and require that consequence in the reason sentence.
+- module: 5
+  fault: Students report log shipping from memory of the design rather than from web01's forwarding
+    configuration and siem01's received-record counts.
+  remedy: Require the destination, transport and received counts as separate recorded values, each read
+    from the range, before the adequacy marking.
+- module: 6
+  fault: Students trust the documented rule set and skip testing, marking flows as blocked that the scan
+    or test connection proves open.
+  remedy: Insist the step 4 test connection and step 5 scan results are recorded before the matrix is
+    judged; the matrix is marked against observations, not against intent.
+- module: 6
+  fault: Students propose a segmentation change without naming the zone boundary where it applies.
+  remedy: Require each change to name the two zones and the boundary rule it modifies; a change without a
+    boundary is returned for one more pass.
