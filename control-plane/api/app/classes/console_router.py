@@ -27,7 +27,7 @@ from datetime import UTC, datetime
 from fastapi import APIRouter, Depends, Path
 from sqlalchemy.orm import Session
 
-from ..auth import CurrentUser, get_current_user
+from ..auth import CurrentUser
 from ..db import get_db
 from ..models import Range, TeamMembership
 from ..rbac import Permission, require_permission
@@ -111,7 +111,7 @@ def get_class_session_live(
     class_id: uuid.UUID,
     event_id: uuid.UUID,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(require_permission(Permission.CLASS_READ)),
 ) -> ClassLiveOut:
     """Its lead, assistants, observers and admins: every Student on the roll call with their
     seat's machines (individual) or team (collective, with the shared range), and when they
@@ -165,7 +165,7 @@ def open_class_session_console(
     class_id: uuid.UUID,
     event_id: uuid.UUID,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(require_permission(Permission.CLASS_READ)),
 ) -> ClassConsoleOut:
     """A one-time console ticket on a machine of one of the session's ranges (a Student's
     seat or the shared range), during the session's window: any machine for its lead,
