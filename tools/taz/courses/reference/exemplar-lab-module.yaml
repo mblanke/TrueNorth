@@ -1,0 +1,105 @@
+# EXEMPLAR - NOT FOR PUBLICATION. Reference for TAZ's course coder; do not edit.
+# One module in the shape a TAZ course delivers: the ARC2 voice (objectives, topics, quiz, refs
+# copied from module 3 of exemplar-arc2-c105.course.yaml) plus the two things a TAZ course adds,
+# a `lab:` brief and a `lab_range:` on a real template (content/ranges/small-enterprise).
+# Not a whole course: scripts/check_course.py needs six modules, so tests/tools/test_check_course.py
+# runs every module-level check on this file instead. Read ARC2-STYLE.md, section "Labs".
+#
+# What to copy from it:
+#   - `lab:` is one string: "Lab: <task>. Evidence: <what the Student records>. Pass: <P/F items>."
+#   - every step names its hosts as node ids of the template, in the order a Student works,
+#     and says what to do and what to record; no host is named that the template lacks.
+#   - the last step is the Student's judgement of what they recorded, not another command.
+#   - the quiz tests the module's objectives with short scenarios; the key is spread (B C D A B).
+ordinal: 3
+title: Access Control and Identity
+content_type: reading
+duration_minutes: 150
+is_required: true
+pass_threshold: 70
+objectives:
+- Select an access control model (DAC, MAC, RBAC or ABAC) for a given scenario and justify the choice
+- Classify the authentication factors in a login design and determine whether it meets multi-factor authentication
+- Design a role-based access model for a small organisation and identify one separation-of-duties conflict it must prevent
+topics:
+- Subjects, objects and operations; identification, authentication, authorisation and accountability.
+- Discretionary, mandatory, role-based and attribute-based access control.
+- Authentication factor categories, multi-factor rules and authenticator strength.
+- Designing roles and a role-permission matrix for a small organisation.
+- Static and dynamic separation of duties, compensating controls and access reviews.
+lab: >-
+  Lab: On the small-enterprise range, find out who holds administrative rights, what the domain password
+  policy allows and who can reach administration from the network, then judge each finding against
+  least privilege. Evidence: the names of the groups with administrative rights and the number of accounts
+  in each; the minimum password length, lockout threshold and lockout duration; the exact error shown when
+  a standard user opens an administrative share on dc-01; the source network of each fw-01 rule that
+  allows remote administration. Pass: all four items recorded exactly as the range shows them; each finding
+  marked "follows least privilege" or "does not" with a one-sentence reason; one change proposed for each
+  finding marked "does not".
+lab_range:
+  template: small-enterprise
+  steps:
+  - hosts: [jump-box]
+    action: Log on to jump-box over SSH, open a terminal and write the start time in your lab notes.
+  - hosts: [jump-box, dc-01]
+    action: From jump-box, query dc-01 for the groups that hold administrative rights on the domain, and record each
+      group name and how many accounts it holds.
+  - hosts: [dc-01]
+    action: Read the domain password policy on dc-01 and record the minimum length, the lockout threshold and the
+      lockout duration.
+  - hosts: [ws-01, dc-01]
+    action: Sign in to ws-01 as the standard user your instructor assigned, try to open the administrative share on
+      dc-01 and record the exact error shown.
+  - hosts: [fw-01]
+    action: List the rules on fw-01 that allow remote administration into the server network and record the source
+      network each rule allows.
+  - hosts: [jump-box]
+    action: For each of the four findings, write "follows least privilege" or "does not" with one sentence of
+      reason, and propose one change for every finding marked "does not".
+refs:
+- nist-sp-800-63-4
+- nist-sp-800-207
+quiz:
+  title: Quiz 3
+  pass_threshold: 70
+  questions:
+  - question: A system holds documents at several national classification levels, and no user may share a document
+      outside fixed clearance rules. Which access control model fits best?
+    options:
+    - A) Discretionary access control
+    - B) Mandatory access control
+    - C) Role-based access control
+    - D) Attribute-based access control
+    answer: B
+  - question: A hospital lets clinicians open a record only if they are on that patient's care team, on shift, and
+      using a hospital device. Which model expresses these conditions most directly?
+    options:
+    - A) Discretionary access control
+    - B) Mandatory access control
+    - C) Attribute-based access control
+    - D) Role-based access control with one role per clinician
+    answer: C
+  - question: A login asks for a password and then for the user's first school. Does this design meet multi-factor
+      authentication?
+    options:
+    - A) Yes, because there are two separate prompts
+    - B) Yes, if the school answer is at least 12 characters
+    - C) No, because security questions are only allowed for account recovery
+    - D) No, because both authenticators are knowledge factors
+    answer: D
+  - question: In a small bookshop's role-based design, which pair of roles should a static separation-of-duties rule
+      forbid one person from holding?
+    options:
+    - A) Buyer, who creates suppliers and purchase orders, and Bookkeeper, who pays suppliers
+    - B) Customer Service and Warehouse
+    - C) Manager and Customer Service
+    - D) IT Admin and Warehouse
+    answer: A
+  - question: 'An employee moves from Payroll to Marketing and keeps the Payroll permissions alongside the new ones.
+      This is an example of:'
+    options:
+    - A) A dynamic separation-of-duties check
+    - B) Privilege creep from an incomplete mover process
+    - C) Attribute-based access control
+    - D) A compensating control
+    answer: B
