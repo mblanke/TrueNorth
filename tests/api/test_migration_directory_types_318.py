@@ -14,7 +14,7 @@ from alembic.migration import MigrationContext
 from alembic.operations import Operations
 
 VERSIONS = Path(__file__).resolve().parents[2] / "control-plane/api/alembic/versions"
-REVISION, PARENT = "c3318a0d7e51", "3e8b1c7a9d42"
+REVISION, PARENT = "c3318a0d7e51", "7c1d2e9f4a60"
 
 
 def _module():

@@ -1,7 +1,7 @@
 """map legacy OU and security-group types onto the API's enums
 
 Revision ID: c3318a0d7e51
-Revises: 3e8b1c7a9d42
+Revises: 7c1d2e9f4a60
 Create Date: 2026-10-28 09:00:00.000000
 
 The Users page offered OU types "department" and "team" and the group type "role", which the
@@ -17,7 +17,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "c3318a0d7e51"
-down_revision: str | None = "3e8b1c7a9d42"
+down_revision: str | None = "7c1d2e9f4a60"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
