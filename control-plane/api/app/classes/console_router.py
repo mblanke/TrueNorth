@@ -6,10 +6,11 @@ Endpoint                                               Who
 GET  /classes/attending/ranges/{range_id}/consoles     class:attend: a Student's own class
                                                        range (``ranges.student_participation``)
 POST /classes/attending/ranges/{range_id}/consoles/    as above, during their session; one of
-     {machine}                                         their machines. Audited; attendance
+     {vm}                                              their machines. Audited; attendance
 GET  /classes/{id}/sessions/{event_id}/live            the class's lead, assistants, observers
                                                        and admins (``access.role_in``)
-POST /classes/{id}/sessions/{event_id}/live/console    as above, during the session. Audited
+POST /classes/{id}/sessions/{event_id}/live/console    as above, during the session; observers
+                                                       the Students' machines only. Audited
 =====================================================  ========================================
 
 The rules are ``consoles.py``'s docstring. Another tenant's class or range, another Student's
@@ -69,12 +70,12 @@ def list_my_range_consoles(
     return MyRangeConsolesOut(
         range_id=found.rng.id, open=found.session is not None,
         session_id=found.session.id if found.session is not None else None,
-        machines=[ConsoleMachineOut(**m) for m in consoles.machines(found.rng) if m["machine"] in mine],
+        machines=[ConsoleMachineOut(**m) for m in consoles.machines(found.rng, mine) if m["student_machine"]],
     )
 
 
 @router.post(
-    "/attending/ranges/{range_id}/consoles/{machine}", response_model=ClassConsoleOut,
+    "/attending/ranges/{range_id}/consoles/{vm}", response_model=ClassConsoleOut,
     operation_id="openMyRangeConsole", summary="My classes: open a console on one of my machines",
     responses={**_DENIED, 403: {"description": "Outside the session's window"},
                409: {"description": "The machine is not built or not running"},
@@ -82,7 +83,7 @@ def list_my_range_consoles(
 )
 def open_my_range_console(
     range_id: uuid.UUID,
-    machine: str = Path(..., pattern=MACHINE),
+    vm: str = Path(..., pattern=MACHINE, description="The VM's name, as the list gives it"),
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_permission(Permission.CLASS_ATTEND)),
 ) -> ClassConsoleOut:
@@ -90,15 +91,16 @@ def open_my_range_console(
     the class using that range is live or within its provisioning lead. Audited
     (``range_console_open``, as ``student``), and counted as attendance evidence like opening
     the accounts.  **class:attend**"""
-    return ClassConsoleOut(**consoles.student_console(db, user, range_id, machine))
+    return ClassConsoleOut(**consoles.student_console(db, user, range_id, vm))
 
 
 # ── The live view (ADR 0014 §19) ─────────────────────────────────────────────
 
 
-def _range_out(rng: Range) -> LiveRangeOut:
+def _range_out(db: Session, rng: Range) -> LiveRangeOut:
     return LiveRangeOut(range_id=rng.id, name=rng.name, state=getattr(rng.state, "value", str(rng.state)),
-                        machines=[ConsoleMachineOut(**m) for m in consoles.machines(rng)])
+                        machines=[ConsoleMachineOut(**m)
+                                  for m in consoles.machines(rng, consoles.student_machines(db, rng))])
 
 
 @router.get(
@@ -135,7 +137,7 @@ def get_class_session_live(
         students.append(LiveStudentOut(
             entry_id=e.id, user_id=e.user_id, display_name=names.get(e.user_id) or e.email,
             team=team_of.get(e.user_id) if e.user_id else None,
-            range=_range_out(seats[e.id]) if e.id in seats else None,
+            range=_range_out(db, seats[e.id]) if e.id in seats else None,
             last_seen_at=seen.get((e.user_id, str(rng.id))) if rng is not None and e.user_id else None,
         ))
     start, end = as_utc(evt.start_time), as_utc(evt.end_time)
@@ -145,7 +147,7 @@ def get_class_session_live(
         live=evt.state in consoles.HOLDING and start <= now < end,
         consoles_open=consoles.in_window(evt, now) and cls.status == "open",
         view_only_consoles=any(consoles.view_only_supported(r) for r in [*seats.values(), *filter(None, [shared])]),
-        shared_range=_range_out(shared) if shared is not None else None,
+        shared_range=_range_out(db, shared) if shared is not None else None,
         students=students, generated_at=now,
     )
 
@@ -165,9 +167,10 @@ def open_class_session_console(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ) -> ClassConsoleOut:
-    """A one-time console ticket on any machine of one of the session's ranges (a Student's
-    seat or the shared range), during the session's window. Observers get a view-only console
-    where the hypervisor enforces one, otherwise a normal console marked ``observed``.
+    """A one-time console ticket on a machine of one of the session's ranges (a Student's
+    seat or the shared range), during the session's window: any machine for its lead,
+    assistants and admins; the Students' machines only for observers, view-only where the
+    hypervisor enforces it, otherwise a normal console marked ``observed``.
     Audited (``range_console_open``, as ``observer`` or ``staff``)."""
     live = consoles.live_session(db, user, class_id, event_id)
-    return ClassConsoleOut(**consoles.staff_console(db, user, live, body.range_id, body.machine))
+    return ClassConsoleOut(**consoles.staff_console(db, user, live, body.range_id, body.vm))

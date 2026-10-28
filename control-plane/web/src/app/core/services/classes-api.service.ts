@@ -155,18 +155,18 @@ export class ClassesApiService {
     return this.http.get<MyRangeConsoles>(`${this.base}/attending/ranges/${rangeId}/consoles`);
   }
   /** A one-time console ticket on one of the Student's machines, during their session (audited). */
-  openMyRangeConsole(rangeId: string, machine: string): Observable<ClassConsole> {
+  openMyRangeConsole(rangeId: string, vm: string): Observable<ClassConsole> {
     return this.http.post<ClassConsole>(
-      `${this.base}/attending/ranges/${rangeId}/consoles/${encodeURIComponent(machine)}`, {});
+      `${this.base}/attending/ranges/${rangeId}/consoles/${encodeURIComponent(vm)}`, {});
   }
   /** A class session's live view: each Student's machines and status (its staff and observers). */
   sessionLive(id: string, eventId: string): Observable<ClassLive> {
     return this.http.get<ClassLive>(`${this.base}/${id}/sessions/${eventId}/live`);
   }
   /** A console on a machine of one of the session's ranges (audited; an observer's is marked observed). */
-  openSessionConsole(id: string, eventId: string, rangeId: string, machine: string): Observable<ClassConsole> {
+  openSessionConsole(id: string, eventId: string, rangeId: string, vm: string): Observable<ClassConsole> {
     return this.http.post<ClassConsole>(`${this.base}/${id}/sessions/${eventId}/live/console`,
-      { range_id: rangeId, machine });
+      { range_id: rangeId, vm });
   }
 
   // ── Attendance and close-out (ADR 0014 §12-13; #283) ──

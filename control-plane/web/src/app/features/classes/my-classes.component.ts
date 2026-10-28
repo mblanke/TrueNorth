@@ -170,14 +170,15 @@ export function forfeitMessage(c: MyClass): string {
                     <p class="hint">Your console opens during your session, from shortly before it starts.</p>
                   }
                   <div class="machines">
-                    @for (m of k.data.machines; track m.machine) {
-                      <button mat-stroked-button [disabled]="!k.data.open || opening()" (click)="openConsole(c, m.machine)">
-                        <mat-icon>desktop_windows</mat-icon> {{ m.machine }}
+                    @for (m of k.data.machines; track m.name) {
+                      <button mat-stroked-button [disabled]="!k.data.open || opening()" (click)="openConsole(c, m.name)"
+                              [attr.aria-label]="'Console on ' + m.name">
+                        <mat-icon>desktop_windows</mat-icon> {{ m.name }}
                       </button>
                     } @empty { <p class="hint">No machines of yours have a console on this range.</p> }
                   </div>
                   @if (ticket(); as t) {
-                    <p class="ticket">Console ticket for <b>{{ t.machine }}</b> (valid {{ t.expires_in }}s):
+                    <p class="ticket">Console ticket for <b>{{ t.vm }}</b> (valid {{ t.expires_in }}s):
                       <code>{{ t.url }}</code></p>
                   }
                   <p class="muted">Opening a console is recorded, and counts for your attendance like your accounts.</p>
@@ -298,11 +299,11 @@ export class MyClassesComponent implements OnInit {
   }
 
   /** A one-time console ticket; the API audits it and counts it as attendance. */
-  openConsole(c: MyClass, machine: string): void {
+  openConsole(c: MyClass, vm: string): void {
     const rangeId = c.join_range_id;
     if (!rangeId) return;
     this.opening.set(true);
-    this.api.openMyRangeConsole(rangeId, machine).subscribe({
+    this.api.openMyRangeConsole(rangeId, vm).subscribe({
       next: t => { this.ticket.set(t); this.opening.set(false); },
       error: err => { this.opening.set(false); this.notify.error(apiError(err)); },
     });

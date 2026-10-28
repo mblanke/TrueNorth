@@ -3781,20 +3781,21 @@
       },
       "ClassConsoleIn": {
         "properties": {
-          "machine": {
-            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,254}$",
-            "title": "Machine",
-            "type": "string"
-          },
           "range_id": {
             "format": "uuid",
             "title": "Range Id",
+            "type": "string"
+          },
+          "vm": {
+            "description": "The VM's name (``ConsoleMachineOut.name``)",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,254}$",
+            "title": "Vm",
             "type": "string"
           }
         },
         "required": [
           "range_id",
-          "machine"
+          "vm"
         ],
         "title": "ClassConsoleIn",
         "type": "object"
@@ -3812,6 +3813,7 @@
             "type": "string"
           },
           "machine": {
+            "description": "The template node id",
             "title": "Machine",
             "type": "string"
           },
@@ -3835,11 +3837,17 @@
             "description": "The hypervisor refuses input on this console",
             "title": "View Only",
             "type": "boolean"
+          },
+          "vm": {
+            "description": "The VM's name",
+            "title": "Vm",
+            "type": "string"
           }
         },
         "required": [
           "range_id",
           "machine",
+          "vm",
           "kind",
           "url",
           "expires_in"
@@ -5788,13 +5796,12 @@
       "ConsoleMachineOut": {
         "properties": {
           "machine": {
-            "description": "The template node id: what the range's accounts name the machine",
+            "description": "The template node id: what the range's accounts name the machine. Several VMs share it when the template node has a count above one",
             "title": "Machine",
             "type": "string"
           },
           "name": {
-            "default": "",
-            "description": "The VM's name on the hypervisor",
+            "description": "The VM's name, unique in its range: a console is opened by it",
             "title": "Name",
             "type": "string"
           },
@@ -5809,10 +5816,17 @@
             ],
             "description": "The VM's state as its last build or check recorded it",
             "title": "Power"
+          },
+          "student_machine": {
+            "default": false,
+            "description": "A Student is handed an account on it; observers open consoles on these only",
+            "title": "Student Machine",
+            "type": "boolean"
           }
         },
         "required": [
-          "machine"
+          "machine",
+          "name"
         ],
         "title": "ConsoleMachineOut",
         "type": "object"
@@ -28012,7 +28026,7 @@
         ]
       }
     },
-    "/classes/attending/ranges/{range_id}/consoles/{machine}": {
+    "/classes/attending/ranges/{range_id}/consoles/{vm}": {
       "post": {
         "description": "A one-time console ticket on one of the Student's own machines, while a session of\nthe class using that range is live or within its provisioning lead. Audited\n(``range_console_open``, as ``student``), and counted as attendance evidence like opening\nthe accounts.  **class:attend**",
         "operationId": "openMyRangeConsole",
@@ -28028,12 +28042,14 @@
             }
           },
           {
+            "description": "The VM's name, as the list gives it",
             "in": "path",
-            "name": "machine",
+            "name": "vm",
             "required": true,
             "schema": {
+              "description": "The VM's name, as the list gives it",
               "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,254}$",
-              "title": "Machine",
+              "title": "Vm",
               "type": "string"
             }
           }
@@ -29421,7 +29437,7 @@
     },
     "/classes/{class_id}/sessions/{event_id}/live/console": {
       "post": {
-        "description": "A one-time console ticket on any machine of one of the session's ranges (a Student's\nseat or the shared range), during the session's window. Observers get a view-only console\nwhere the hypervisor enforces one, otherwise a normal console marked ``observed``.\nAudited (``range_console_open``, as ``observer`` or ``staff``).",
+        "description": "A one-time console ticket on a machine of one of the session's ranges (a Student's\nseat or the shared range), during the session's window: any machine for its lead,\nassistants and admins; the Students' machines only for observers, view-only where the\nhypervisor enforces it, otherwise a normal console marked ``observed``.\nAudited (``range_console_open``, as ``observer`` or ``staff``).",
         "operationId": "openClassSessionConsole",
         "parameters": [
           {

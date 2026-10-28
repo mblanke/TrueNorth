@@ -14,9 +14,10 @@ a Student (``student``)    their own seat (an individual session), or    a sessi
                            are handed accounts on (``student_visible``   been reached (the
                            and set by the last build): the same          shared range: under
                            machines on every team                        way only)
-the class's observers      any machine of a range the session uses       the session's window
-(``observer``)             (every seat, or its shared range)             as above
-its lead, assistants and   as observers                                  as above
+the class's observers      the Students' machines (as above) of a range  the session's window
+(``observer``)             the session uses (every seat, or its shared   as above
+                           range)
+its lead, assistants and   any machine of those ranges                   as above
 admins (``staff``)
 =========================  ============================================  ====================
 
@@ -24,7 +25,11 @@ Everything else is refused: another Student's seat or another class's range is 4
 credentials; a team has no machines of its own (no template says which machine is whose), so
 a Student on a collective range reaches the same Student machines as every other Student
 there. A platform observer reaches only the classes they are an observer of (``ClassStaff``,
-``access.role_in``), never another class of their tenant, never another tenant's.
+``access.role_in``), never another class of their tenant, never another tenant's, and always
+watches as an observer, whatever part the class's staff list gives them.
+
+A console is asked for by the VM's name (unique in its range): a template node with ``count``
+> 1 gives several VMs one machine name, and each must open its own console.
 
 **The ticket** comes from the range's own console adapter (``console_backends``, ADR 0001):
 the vendor SDK is only there. An observer gets a view-only console where the adapter can
@@ -51,7 +56,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from ..auth import CurrentUser
-from ..models import AuditLog, Range, RangeState, User
+from ..models import AuditLog, Range, RangeState, User, UserRole
 from ..scheduler.capacity import PROVISION_LEAD
 from ..scheduler.lifecycle import HOLDING
 from ..scheduler.models import ScheduledEvent
@@ -105,12 +110,15 @@ def machine_of(vm: dict[str, Any], range_id: Any) -> str:
     return str(vm.get("node_id") or str(vm.get("name") or "").removeprefix(f"{str(range_id)[:8]}-"))
 
 
-def machines(rng: Range) -> list[dict[str, Any]]:
-    """``{machine, name, power}`` per VM of the range, in its recorded order."""
+def machines(rng: Range, students: set[str] | None = None) -> list[dict[str, Any]]:
+    """``{machine, name, power, student_machine}`` per VM of the range, in its recorded order.
+    ``name`` (the VM's, unique in the range) is what a console is asked for: a template node
+    with ``count`` > 1 gives several VMs one machine name (node id)."""
     return [
-        {"machine": machine_of(vm, rng.id), "name": str(vm.get("name") or ""), "power": vm.get("status") or None}
+        {"machine": machine_of(vm, rng.id), "name": str(vm.get("name") or ""), "power": vm.get("status") or None,
+         "student_machine": students is not None and machine_of(vm, rng.id) in students}
         for vm in vms_of(rng)
-        if machine_of(vm, rng.id)
+        if machine_of(vm, rng.id) and vm.get("name")
     ]
 
 
@@ -121,10 +129,13 @@ def student_machines(db: Session, rng: Range) -> set[str]:
     return {r.machine for r in credentials.visible_accounts(db, rng, credentials.STUDENT)}
 
 
-def _vm(rng: Range, machine: str) -> dict[str, Any]:
-    vm = next((v for v in vms_of(rng) if machine_of(v, rng.id) == machine), None)
-    if vm is None or not vm.get("vm_id"):
-        raise HTTPException(409, f"{machine} has no machine built yet")
+def _vm(rng: Range, name: str) -> dict[str, Any]:
+    """The range's VM of that name (unique in the range), or 404; 409 when not built yet."""
+    vm = next((v for v in vms_of(rng) if str(v.get("name") or "") == name), None)
+    if vm is None:
+        raise HTTPException(404, "No such machine on this range")
+    if not vm.get("vm_id"):
+        raise HTTPException(409, f"{name} is not built yet")
     return vm
 
 
@@ -150,10 +161,11 @@ def _open(db: Session, rng: Range, vm: dict[str, Any], *, view_only: bool) -> di
         raise HTTPException(502, str(exc)) from exc
 
 
-def _audit(db: Session, user: CurrentUser, rng: Range, why: str, vm: dict[str, Any], machine: str,
+def _audit(db: Session, user: CurrentUser, rng: Range, why: str, vm: dict[str, Any],
            context: dict[str, Any]) -> None:
     """One row per ticket issued: who, which VM, why. Never the ticket or its URL."""
-    detail = {"as": why, "range_id": str(rng.id), "machine": machine, "vm_id": str(vm.get("vm_id") or ""),
+    detail = {"as": why, "range_id": str(rng.id), "machine": machine_of(vm, rng.id),
+              "vm_id": str(vm.get("vm_id") or ""),
               "vm_name": str(vm.get("name") or ""), **{k: str(v) for k, v in context.items() if v is not None}}
     db.add(AuditLog(user_id=uuid.UUID(str(user.id)), tenant_id=rng.tenant_id, action=AUDIT_ACTION,
                     resource_type="range", resource_id=str(rng.id), detail=json.dumps(detail, sort_keys=True)[:2000]))
@@ -215,7 +227,13 @@ def student_range(db: Session, user: CurrentUser, range_id: uuid.UUID, now: date
         raise HTTPException(404, "Range not found")
     if ranges.observes_only(db, user, rng):
         raise HTTPException(403, "Observers of this range's class do not get a Student's console")
-    part = ranges.student_participation(db, uuid.UUID(str(user.id)), rng, now)
+    uid = uuid.UUID(str(user.id))
+    part = ranges.student_participation(db, uid, rng, now)
+    if part is None:
+        # A collective session run on an exercise's own range (no class range row): the
+        # credentials reach it through the exercise; so does attendance (``booked_class``).
+        booked = attendance.booked_class(db, uid, rng, now)
+        part = {"class_id": str(booked), "booked_range": "exercise"} if booked is not None else None
     if part is None:
         raise HTTPException(404, "Range not found")
     if "class_seat_id" in part:
@@ -233,22 +251,23 @@ def student_range(db: Session, user: CurrentUser, range_id: uuid.UUID, now: date
     return StudentRange(rng, part, class_id, session)
 
 
-def student_console(db: Session, user: CurrentUser, range_id: uuid.UUID, machine: str) -> dict[str, Any]:
-    """A console ticket on one of the Student's own machines, during their session. Audited,
-    and their attendance evidence. Commits."""
+def student_console(db: Session, user: CurrentUser, range_id: uuid.UUID, vm_name: str) -> dict[str, Any]:
+    """A console ticket on one of the Student's own machines (by VM name), during their
+    session. Audited, and their attendance evidence. Commits."""
     found = student_range(db, user, range_id)
     rng = found.rng
-    if machine not in student_machines(db, rng):
+    vm = next((v for v in vms_of(rng) if str(v.get("name") or "") == vm_name), None)
+    if vm is None or machine_of(vm, rng.id) not in student_machines(db, rng):
         raise HTTPException(404, "No console on that machine for you")
     if found.session is None:
         raise HTTPException(403, "Your console opens during your session (from shortly before it starts)")
-    vm = _vm(rng, machine)
+    vm = _vm(rng, vm_name)
     ticket = _open(db, rng, vm, view_only=False)
-    _audit(db, user, rng, AS_STUDENT, vm, machine,
-           {"class_id": found.class_id, "event_id": found.session.id, **found.participation})
+    _audit(db, user, rng, AS_STUDENT, vm, {"class_id": found.class_id, "event_id": found.session.id,
+                                           **found.participation})
     attendance.note_range_open(db, uuid.UUID(str(user.id)), rng, found.participation)
     db.commit()
-    return {"range_id": rng.id, "machine": machine, "observed": False, **ticket}
+    return {"range_id": rng.id, "machine": machine_of(vm, rng.id), "vm": vm_name, "observed": False, **ticket}
 
 
 # ── The live view of a class session (ADR 0014 §19) ──────────────────────────
@@ -267,6 +286,10 @@ def live_session(db: Session, user: CurrentUser, class_id: uuid.UUID, event_id: 
     tenant's class, or one the caller has no part in, is 404; its Students get 403."""
     cls, role = access.get_visible(db, class_id, user)
     access.require_staff(role)
+    if user.role == UserRole.observer:
+        # Whatever the class's staff list says (an assistant later made a platform observer):
+        # a platform observer watches as an observer, never with staff consoles.
+        role = ClassRole.observer
     link, evt = teams.session_of(db, cls, event_id)
     return LiveSession(cls, role, link, evt)
 
@@ -335,10 +358,11 @@ def names_of(db: Session, tenant_id: uuid.UUID, entries: list[RollCallEntry]) ->
 
 
 def staff_console(db: Session, user: CurrentUser, live: LiveSession, range_id: uuid.UUID,
-                  machine: str) -> dict[str, Any]:
-    """A console ticket on a machine of one of the session's ranges, for its observers (view
-    only where the adapter can enforce it, else marked observed) and its lead, assistants and
-    admins, while the session's window is open. Audited. Commits."""
+                  vm_name: str) -> dict[str, Any]:
+    """A console ticket on a machine (by VM name) of one of the session's ranges, while its
+    window is open: for its observers only the Students' machines (view only where the
+    adapter can enforce it, else marked observed); for its lead, assistants and admins any
+    machine. Audited. Commits."""
     if live.cls.status != ClassStatus.open.value:
         raise HTTPException(409, "The class is not open")
     if not in_window(live.evt, _now()):
@@ -348,11 +372,14 @@ def staff_console(db: Session, user: CurrentUser, live: LiveSession, range_id: u
         (r for r in seats.values() if r.id == range_id), None)
     if rng is None:
         raise HTTPException(404, "That range is not one of this session's")
-    vm = _vm(rng, machine)
+    vm = _vm(rng, vm_name)
     observer = live.role == ClassRole.observer
+    if observer and machine_of(vm, rng.id) not in student_machines(db, rng):
+        raise HTTPException(403, "Observers watch the Students' machines only")
     ticket = _open(db, rng, vm, view_only=observer)
-    _audit(db, user, rng, AS_OBSERVER if observer else AS_STAFF, vm, machine,
+    _audit(db, user, rng, AS_OBSERVER if observer else AS_STAFF, vm,
            {"class_id": live.cls.id, "class_role": live.role.value, "event_id": live.evt.id,
             "view_only": ticket["view_only"]})
     db.commit()
-    return {"range_id": rng.id, "machine": machine, "observed": observer and not ticket["view_only"], **ticket}
+    return {"range_id": rng.id, "machine": machine_of(vm, rng.id), "vm": vm_name,
+            "observed": observer and not ticket["view_only"], **ticket}

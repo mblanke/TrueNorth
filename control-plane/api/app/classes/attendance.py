@@ -134,7 +134,7 @@ def note_range_open(db: Session, user_id: uuid.UUID, rng, participation: dict | 
         return False
     now = now or db_now(db)
     if not ({"class_seat_id", "class_id"} & set(participation)):
-        booked = _booked_class(db, user_id, rng, now) if "exercise_id" in participation else None
+        booked = booked_class(db, user_id, rng, now) if "exercise_id" in participation else None
         if booked is None:
             return False
         participation = {**participation, "class_id": str(booked)}
@@ -159,7 +159,7 @@ def note_range_open(db: Session, user_id: uuid.UUID, rng, participation: dict | 
     return True
 
 
-def _booked_class(db: Session, user_id: uuid.UUID, rng, now: datetime) -> uuid.UUID | None:
+def booked_class(db: Session, user_id: uuid.UUID, rng, now: datetime) -> uuid.UUID | None:
     """The open class whose held session is booked on ``rng`` and under way now, with
     ``user_id`` on its roll call; None when there is none."""
     row = (

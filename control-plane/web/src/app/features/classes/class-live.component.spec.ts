@@ -9,7 +9,8 @@ import { ClassLiveComponent, LIVE_REFRESH_MS, observedNote } from './class-live.
 
 const SEAT = (id: string) => ({
   range_id: id, name: `seat ${id}`, state: 'ready',
-  machines: [{ machine: 'ws1', name: `${id}-ws1`, power: 'running' }, { machine: 'dc', name: `${id}-dc`, power: 'running' }],
+  machines: [{ machine: 'ws1', name: `${id}-ws1`, power: 'running', student_machine: true },
+    { machine: 'dc', name: `${id}-dc`, power: 'running', student_machine: false }],
 });
 
 const LIVE: ClassLive = {
@@ -39,7 +40,7 @@ describe('ClassLiveComponent', () => {
   function make(live: ClassLive | null, error?: HttpErrorResponse): void {
     api = jasmine.createSpyObj<ClassesApiService>('ClassesApiService', ['sessionLive', 'openSessionConsole']);
     api.sessionLive.and.returnValue(error ? throwError(() => error) : of(live as ClassLive));
-    api.openSessionConsole.and.returnValue(of({ range_id: 'g1', machine: 'dc', kind: 'webmks',
+    api.openSessionConsole.and.returnValue(of({ range_id: 'g1', machine: 'ws1', vm: 'g1-ws1', kind: 'webmks',
       url: 'wss://esx/ticket/t', expires_in: 60, view_only: false, observed: true }));
     notify = jasmine.createSpyObj('NotificationService', ['error', 'success']);
     TestBed.configureTestingModule({
@@ -69,13 +70,15 @@ describe('ClassLiveComponent', () => {
     expect(el().querySelector('.observed')?.textContent).toContain('marked observed');
   });
 
-  it('opens a console on a Student\'s machine and marks it observed', () => {
+  it('opens a console on a Student\'s machine and marks it observed; an observer cannot pick a staff machine', () => {
     make(LIVE);
-    const dc = Array.from(el().querySelectorAll('tbody tr')[0].querySelectorAll('button'))
-      .find(b => b.textContent?.includes('dc')) as HTMLButtonElement;
-    dc.click();
+    const row = Array.from(el().querySelectorAll('tbody tr')[0].querySelectorAll('button')) as HTMLButtonElement[];
+    const dc = row.find(b => b.textContent?.includes('dc'))!;
+    expect(dc.disabled).toBeTrue();
+    const ws = row.find(b => b.textContent?.includes('ws1'))!;
+    ws.click();
     fixture.detectChanges();
-    expect(api.openSessionConsole).toHaveBeenCalledWith('c1', 'ev1', 'g1', 'dc');
+    expect(api.openSessionConsole).toHaveBeenCalledWith('c1', 'ev1', 'g1', 'g1-ws1');
     expect(el().querySelector('.ticket')?.textContent).toContain('observed');
     expect(el().querySelector('.ticket')?.textContent).toContain('wss://esx/ticket/t');
   });

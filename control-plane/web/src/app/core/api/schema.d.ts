@@ -973,7 +973,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/classes/attending/ranges/{range_id}/consoles/{machine}": {
+    "/classes/attending/ranges/{range_id}/consoles/{vm}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1457,9 +1457,10 @@ export interface paths {
         put?: never;
         /**
          * Open a console on a machine of a class session's range
-         * @description A one-time console ticket on any machine of one of the session's ranges (a Student's
-         *     seat or the shared range), during the session's window. Observers get a view-only console
-         *     where the hypervisor enforces one, otherwise a normal console marked ``observed``.
+         * @description A one-time console ticket on a machine of one of the session's ranges (a Student's
+         *     seat or the shared range), during the session's window: any machine for its lead,
+         *     assistants and admins; the Students' machines only for observers, view-only where the
+         *     hypervisor enforces it, otherwise a normal console marked ``observed``.
          *     Audited (``range_console_open``, as ``observer`` or ``staff``).
          */
         post: operations["openClassSessionConsole"];
@@ -11484,13 +11485,16 @@ export interface components {
         };
         /** ClassConsoleIn */
         ClassConsoleIn: {
-            /** Machine */
-            machine: string;
             /**
              * Range Id
              * Format: uuid
              */
             range_id: string;
+            /**
+             * Vm
+             * @description The VM's name (``ConsoleMachineOut.name``)
+             */
+            vm: string;
         };
         /**
          * ClassConsoleOut
@@ -11504,7 +11508,10 @@ export interface components {
              * @description webmks (vSphere) or mock
              */
             kind: string;
-            /** Machine */
+            /**
+             * Machine
+             * @description The template node id
+             */
             machine: string;
             /**
              * Observed
@@ -11525,6 +11532,11 @@ export interface components {
              * @default false
              */
             view_only?: boolean;
+            /**
+             * Vm
+             * @description The VM's name
+             */
+            vm: string;
         };
         /** ClassIn */
         ClassIn: {
@@ -12415,20 +12427,25 @@ export interface components {
         ConsoleMachineOut: {
             /**
              * Machine
-             * @description The template node id: what the range's accounts name the machine
+             * @description The template node id: what the range's accounts name the machine. Several VMs share it when the template node has a count above one
              */
             machine: string;
             /**
              * Name
-             * @description The VM's name on the hypervisor
-             * @default
+             * @description The VM's name, unique in its range: a console is opened by it
              */
-            name?: string;
+            name: string;
             /**
              * Power
              * @description The VM's state as its last build or check recorded it
              */
             power?: string | null;
+            /**
+             * Student Machine
+             * @description A Student is handed an account on it; observers open consoles on these only
+             * @default false
+             */
+            student_machine?: boolean;
         };
         /** ConsoleOut */
         ConsoleOut: {
@@ -22340,7 +22357,8 @@ export interface operations {
             header?: never;
             path: {
                 range_id: string;
-                machine: string;
+                /** @description The VM's name, as the list gives it */
+                vm: string;
             };
             cookie?: never;
         };

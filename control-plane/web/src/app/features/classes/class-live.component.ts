@@ -7,6 +7,9 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
 import { ClassConsole, ClassLive, ClassesApiService, LiveRange } from '@core/services/classes-api.service';
+import type { components } from '@core/api/schema';
+
+type LiveMachine = components['schemas']['ConsoleMachineOut'];
 import { NotificationService } from '@core/services/notification.service';
 import { apiError } from '../ranges/range-capabilities';
 
@@ -54,9 +57,9 @@ export function observedNote(live: ClassLive): string {
               <mat-card-subtitle>{{ r.state }}</mat-card-subtitle></mat-card-header>
             <mat-card-content>
               <div class="machines">
-                @for (m of r.machines; track m.machine) {
-                  <button mat-stroked-button [disabled]="!l.consoles_open || busy()" (click)="open(r, m.machine)">
-                    <mat-icon>desktop_windows</mat-icon> {{ m.machine }}
+                @for (m of r.machines; track m.name) {
+                  <button mat-stroked-button [disabled]="!can(l, m) || busy()" (click)="open(r, m.name)">
+                    <mat-icon>desktop_windows</mat-icon> {{ m.name }}
                   </button>
                 }
               </div>
@@ -66,7 +69,7 @@ export function observedNote(live: ClassLive): string {
 
         @if (ticket(); as t) {
           <p class="ticket" role="status">
-            Console ticket for <b>{{ t.machine }}</b> (valid {{ t.expires_in }}s)
+            Console ticket for <b>{{ t.vm }}</b> (valid {{ t.expires_in }}s)
             @if (t.observed) { <span class="tag">observed</span> }
             @if (t.view_only) { <span class="tag">view only</span> }:
             <code>{{ t.url }}</code>
@@ -84,8 +87,9 @@ export function observedNote(live: ClassLive): string {
                 <td>{{ s.range ? s.range.state : (l.shared_range ? 'shared' : 'not built') }}</td>
                 <td class="machines">
                   @if (s.range; as r) {
-                    @for (m of r.machines; track m.machine) {
-                      <button mat-stroked-button [disabled]="!l.consoles_open || busy()" (click)="open(r, m.machine)">
+                    @for (m of r.machines; track m.name) {
+                      <button mat-stroked-button [disabled]="!can(l, m) || busy()" (click)="open(r, m.name)"
+                              [attr.aria-label]="'Console on ' + m.name">
                         {{ m.machine }}
                       </button>
                     }
@@ -143,10 +147,15 @@ export class ClassLiveComponent implements OnInit {
     this.load();
   }
 
-  /** A one-time console on one machine; the API audits it as observer or staff. */
-  open(range: LiveRange, machine: string): void {
+  /** Whether a console can be opened on it now: observers watch the Students' machines only. */
+  can(l: ClassLive, m: LiveMachine): boolean {
+    return l.consoles_open && (l.role !== 'observer' || !!m.student_machine);
+  }
+
+  /** A one-time console on one VM; the API audits it as observer or staff. */
+  open(range: LiveRange, vm: string): void {
     this.busy.set(true);
-    this.api.openSessionConsole(this.classId(), this.eventId(), range.range_id, machine).subscribe({
+    this.api.openSessionConsole(this.classId(), this.eventId(), range.range_id, vm).subscribe({
       next: t => { this.ticket.set(t); this.busy.set(false); },
       error: err => { this.busy.set(false); this.notify.error(apiError(err)); },
     });

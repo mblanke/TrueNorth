@@ -11,9 +11,12 @@ MACHINE = r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,254}$"
 
 
 class ConsoleMachineOut(BaseModel):
-    machine: str = Field(description="The template node id: what the range's accounts name the machine")
-    name: str = Field("", description="The VM's name on the hypervisor")
+    machine: str = Field(description="The template node id: what the range's accounts name the machine. Several "
+                                     "VMs share it when the template node has a count above one")
+    name: str = Field(description="The VM's name, unique in its range: a console is opened by it")
     power: str | None = Field(None, description="The VM's state as its last build or check recorded it")
+    student_machine: bool = Field(False, description="A Student is handed an account on it; observers open "
+                                                     "consoles on these only")
 
 
 class MyRangeConsolesOut(BaseModel):
@@ -31,7 +34,8 @@ class ClassConsoleOut(BaseModel):
     """A one-time console ticket. Short-lived and single-use; never a standing credential."""
 
     range_id: uuid.UUID
-    machine: str
+    machine: str = Field(description="The template node id")
+    vm: str = Field(description="The VM's name")
     kind: str = Field(description="webmks (vSphere) or mock")
     url: str
     expires_in: int
@@ -42,7 +46,7 @@ class ClassConsoleOut(BaseModel):
 
 class ClassConsoleIn(BaseModel):
     range_id: uuid.UUID
-    machine: str = Field(pattern=MACHINE)
+    vm: str = Field(pattern=MACHINE, description="The VM's name (``ConsoleMachineOut.name``)")
 
 
 class LiveRangeOut(BaseModel):

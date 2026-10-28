@@ -91,9 +91,9 @@ describe('MyClassesComponent', () => {
       ['attending', 'myRangeConsoles', 'openMyRangeConsole']);
     api.attending.and.returnValue(of(data));
     api.myRangeConsoles.and.returnValue(of({ range_id: 'rng-1', open: true, session_id: 'ev1',
-      machines: [{ machine: 'ws1', name: 'abc-ws1', power: 'running' }] }));
+      machines: [{ machine: 'ws1', name: 'abc-ws1', power: 'running', student_machine: true }] }));
     api.openMyRangeConsole.and.returnValue(of({ range_id: 'rng-1', machine: 'ws1', kind: 'webmks',
-      url: 'wss://esx/ticket/t', expires_in: 60, view_only: false, observed: false }));
+      url: 'wss://esx/ticket/t', expires_in: 60, view_only: false, observed: false, vm: 'abc-ws1' }));
     creds = jasmine.createSpyObj<RangeCredentialsApiService>('RangeCredentialsApiService', ['list', 'reveal']);
     creds.list.and.returnValue(of({ range_id: 'rng-1', scope: 'student', accounts: [] }));
     TestBed.configureTestingModule({
@@ -182,17 +182,17 @@ describe('MyClassesComponent', () => {
     fixture.detectChanges();
     expect(api.myRangeConsoles).toHaveBeenCalledWith('rng-1');
     const machine = card('c1').querySelector('.my-consoles .machines button') as HTMLButtonElement;
-    expect(machine.textContent).toContain('ws1');
+    expect(machine.textContent).toContain('abc-ws1');
     machine.click();
     fixture.detectChanges();
-    expect(api.openMyRangeConsole).toHaveBeenCalledWith('rng-1', 'ws1');
+    expect(api.openMyRangeConsole).toHaveBeenCalledWith('rng-1', 'abc-ws1');
     expect(card('c1').querySelector('.ticket')?.textContent).toContain('wss://esx/ticket/t');
   });
 
   it('Console waits for the session: machines are listed but cannot be opened', () => {
     make(page([BASE]));
     api.myRangeConsoles.and.returnValue(of({ range_id: 'rng-1', open: false, session_id: null,
-      machines: [{ machine: 'ws1', name: 'abc-ws1', power: null }] }));
+      machines: [{ machine: 'ws1', name: 'abc-ws1', power: null, student_machine: true }] }));
     (card('c1').querySelector('button.console') as HTMLButtonElement).click();
     fixture.detectChanges();
     expect(card('c1').querySelector('.my-consoles')?.textContent).toContain('opens during your session');

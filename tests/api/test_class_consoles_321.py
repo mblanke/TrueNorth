@@ -154,9 +154,14 @@ def _individual(db, w, start=None):
     return evt, ann, bob
 
 
-def _console(client, who, range_id, machine="ws1"):
+def _vm(range_id, node: str) -> str:
+    """The VM name the fixture records for a node (``<range8>-<node>``)."""
+    return f"{str(range_id)[:8]}-{node}"
+
+
+def _console(client, who, range_id, node="ws1"):
     act_as(who)
-    return client.post(f"/classes/attending/ranges/{range_id}/consoles/{machine}")
+    return client.post(f"/classes/attending/ranges/{range_id}/consoles/{_vm(range_id, node)}")
 
 
 def _audits(db, action=AUDIT):
@@ -173,6 +178,7 @@ def test_a_student_opens_a_console_on_their_own_seat_during_the_session(client, 
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["kind"] == "mock" and body["url"].startswith("mock://console/") and body["machine"] == "ws1"
+    assert body["vm"] == _vm(ann.range_id, "ws1")
     assert body["observed"] is False and body["view_only"] is False
 
 
@@ -319,10 +325,10 @@ def _live(client, who, cls, evt):
     return client.get(f"/classes/{cls.id}/sessions/{evt.id}/live")
 
 
-def _watch(client, who, cls, evt, range_id, machine="dc"):
+def _watch(client, who, cls, evt, range_id, node="ws1"):
     act_as(who)
     return client.post(f"/classes/{cls.id}/sessions/{evt.id}/live/console",
-                       json={"range_id": str(range_id), "machine": machine})
+                       json={"range_id": str(range_id), "vm": _vm(range_id, node)})
 
 
 def test_an_observer_of_the_class_sees_every_students_machines(client, world, db_session):
@@ -333,7 +339,8 @@ def test_an_observer_of_the_class_sees_every_students_machines(client, world, db
     assert body["role"] == "observer" and body["live"] is True and body["consoles_open"] is True
     seats = {s["display_name"]: s["range"]["range_id"] for s in body["students"]}
     assert seats == {"Ann": str(ann.range_id), "Bob": str(bob.range_id)}
-    assert {m["machine"] for m in body["students"][0]["range"]["machines"]} == {"ws1", "dc"}
+    machines = {m["machine"]: m["student_machine"] for m in body["students"][0]["range"]["machines"]}
+    assert machines == {"ws1": True, "dc": False}
     assert "password" not in r.text and "Administrator" not in r.text
 
 
@@ -357,10 +364,30 @@ def test_an_observers_console_is_marked_observed_and_audited(client, world, db_s
     assert r.status_code == 200, r.text
     assert r.json()["observed"] is True and r.json()["view_only"] is False
     (row,) = _audits(db_session)
-    assert row["as"] == "observer" and row["_user"] == world["observer"].id and row["machine"] == "dc"
+    assert row["as"] == "observer" and row["_user"] == world["observer"].id and row["machine"] == "ws1"
     assert row["event_id"] == str(evt.id) and row["class_role"] == "observer"
     # An observer's console is never anyone's attendance.
     assert db_session.query(AuditLog).filter(AuditLog.action == "class_range_open").count() == 0
+
+
+def test_an_observer_watches_only_the_students_machines(client, world, db_session):
+    evt, ann, _ = _individual(db_session, world)
+    assert _watch(client, world["observer"], world["cls"], evt, ann.range_id, "dc").status_code == 403
+    assert _watch(client, world["lead"], world["cls"], evt, ann.range_id, "dc").status_code == 200
+
+
+def test_a_platform_observer_on_the_staff_list_as_an_assistant_still_watches_as_an_observer(
+        client, world, db_session):
+    evt, ann, _ = _individual(db_session, world)
+    # An assistant later made a platform observer: the staff row still says assistant.
+    _staff(db_session, world["cls"], world["other_observer"], "assistant")
+    db_session.commit()
+    assert _live(client, world["other_observer"], world["cls"], evt).json()["role"] == "observer"
+    r = _watch(client, world["other_observer"], world["cls"], evt, ann.range_id)
+    assert r.status_code == 200 and r.json()["observed"] is True
+    assert _watch(client, world["other_observer"], world["cls"], evt, ann.range_id, "dc").status_code == 403
+    (row,) = _audits(db_session)
+    assert row["as"] == "observer"
 
 
 def test_an_observers_console_is_view_only_where_the_hypervisor_enforces_it(client, world, db_session):
@@ -392,7 +419,7 @@ def test_staff_consoles_only_during_the_window_and_only_on_the_sessions_ranges(c
     live = _session(db, world["cls"], world["tpl"], NOW - timedelta(hours=1))
     db.commit()
     assert _watch(client, world["lead"], world["cls"], live, other_shared.range_id).status_code == 404
-    assert _watch(client, world["lead"], world["cls"], live, ann.range_id, "nope").status_code == 409
+    assert _watch(client, world["lead"], world["cls"], live, ann.range_id, "nope").status_code == 404
     assert _audits(db) == []
 
 
@@ -408,6 +435,48 @@ def test_a_collective_sessions_live_view_shows_the_shared_range_and_teams(client
     seen = {s["display_name"]: s["last_seen_at"] for s in body["students"]}
     assert seen["Ann"] is not None and seen["Bob"] is None
     assert _watch(client, world["observer"], world["cls"], evt, shared.range_id).status_code == 200
+
+
+def test_several_vms_of_one_node_each_open_their_own_console(client, world, db_session):
+    db = db_session
+    shared = _range(db, world["cls"], world["tpl"])
+    rng = db.get(Range, shared.range_id)
+    r8 = str(rng.id)[:8]
+    # A template node with count 2: both VMs carry node_id "ws1".
+    rng.provisioner_output = json.dumps({"vms": [
+        {"vm_id": "vm-a", "name": f"{r8}-ws1-0", "node_id": "ws1"},
+        {"vm_id": "vm-b", "name": f"{r8}-ws1-1", "node_id": "ws1"},
+    ]})
+    _session(db, world["cls"], world["tpl"], NOW - timedelta(hours=1), mode="collective", range_id=rng.id)
+    db.commit()
+    act_as(world["ann"])
+    listed = client.get(f"/classes/attending/ranges/{rng.id}/consoles").json()["machines"]
+    assert [m["name"] for m in listed] == [f"{r8}-ws1-0", f"{r8}-ws1-1"]
+    r = client.post(f"/classes/attending/ranges/{rng.id}/consoles/{r8}-ws1-1")
+    assert r.status_code == 200 and r.json()["url"].startswith("mock://console/vm-b")
+    (row,) = _audits(db)
+    assert row["vm_id"] == "vm-b"
+
+
+def test_a_collective_session_on_an_exercises_own_range(client, world, db_session):
+    """No class range row: the session books an exercise's range. The Student reaches it
+    while the session is under way (as their credentials do), and it counts as attendance."""
+    db = db_session
+    ex = real_exercise(db, world["a"].id)
+    rng = db.get(Range, ex.range_id)
+    r8 = str(rng.id)[:8]
+    rng.state, rng.provisioner_backend = RangeState.ready, "mock"
+    rng.provisioner_output = json.dumps({"vms": [{"vm_id": "vm-x", "name": f"{r8}-ws1", "node_id": "ws1"}]})
+    db.add(RangeCredential(tenant_id=rng.tenant_id, range_id=rng.id, machine="ws1", username="analyst",
+                           sealed_password="x", student_visible=True, applied=True))
+    _session(db, world["cls"], world["tpl"], NOW - timedelta(hours=1), mode="collective", range_id=rng.id,
+             exercise_id=ex.id)
+    db.commit()
+    assert _console(client, world["ann"], rng.id).status_code == 200
+    assert _console(client, world["cid"], rng.id).status_code == 404  # another class's Student
+    (row,) = _audits(db)
+    assert row["class_id"] == str(world["cls"].id) and row["booked_range"] == "exercise"
+    assert db.query(AuditLog).filter(AuditLog.action == "class_range_open").count() == 1
 
 
 # ── Live Class follows the class's observer list ─────────────────────────────
