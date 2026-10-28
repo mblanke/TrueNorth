@@ -90,7 +90,7 @@ export function exportProblems(err: unknown): { message: string; items: ExportPr
       }
 
       <div class="sub">Import</div>
-      <label class="shared"><mat-checkbox [(ngModel)]="shared">Land as shared content</mat-checkbox></label>
+      <div class="shared"><mat-checkbox [(ngModel)]="shared">Land as shared content</mat-checkbox></div>
       <input #picker type="file" accept=".json,application/json" hidden (change)="pickedFile(picker)">
       <button mat-stroked-button (click)="picker.click()" [disabled]="busy()">
         <mat-icon>upload_file</mat-icon> Preview a bundle
