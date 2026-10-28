@@ -274,6 +274,15 @@ MUTATIONS = {
     "prerequisites not a list": lambda d: d.update(prerequisites="C101"),
     "prerequisite not a catalogue code": lambda d: d.update(prerequisites=["Intro to Networking"]),
     "repeated prerequisite": lambda d: d.update(prerequisites=["C101", "C101"]),
+    "readiness outside the three values": lambda d: d.update(readiness="published"),
+    "lab_range without steps": lambda d: _m0(d).update(lab_range={"template": "small-enterprise"}),
+    "lab_range step as free text": lambda d: _m0(d).update(
+        lab_range={"template": "small-enterprise", "steps": ["Log on to jump-box."]}
+    ),
+    "lab_range step naming no host": lambda d: _m0(d).update(
+        lab_range={"template": "small-enterprise", "steps": [{"hosts": [], "action": "Log on."}]}
+    ),
+    "instructor material in the course file": lambda d: d.update(instructor_pack={"overview": "x"}),
 }
 
 
@@ -313,3 +322,18 @@ def test_arc2_extension_keys_are_valid():
         )
 
     assert _errors(_mutate(arc2)) == []
+
+
+@pytest.mark.parametrize("readiness", ["draft", "technically_proven", "sme_signed"])
+def test_readiness_and_a_lab_range_are_valid(readiness):
+    def proven(d: dict) -> None:
+        d.update(readiness=readiness)
+        _m0(d).update(
+            lab_range={
+                "template": "small-enterprise",
+                "scenario": "ransomware-lite",
+                "steps": [{"hosts": ["jump-box", "dc-01"], "action": "From jump-box, query dc-01 for the domain policy."}],
+            }
+        )
+
+    assert _errors(_mutate(proven)) == []

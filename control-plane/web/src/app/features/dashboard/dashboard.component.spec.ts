@@ -218,6 +218,17 @@ describe('DashboardComponent', () => {
     expect(fixture.nativeElement.querySelector('.workspace-disclosure')).toBeNull();
   });
 
+  it('takes a Student to My classes; staff use Classes instead (ADR 0014 §20)', () => {
+    auth.role.set('student');
+    fixture.detectChanges();
+    expect(hrefs()).toContain('/my-classes');
+    for (const role of ['admin', 'instructor', 'observer', 'range_ops'] as const) {
+      auth.role.set(role);
+      fixture.detectChanges();
+      expect(hrefs()).withContext(role).not.toContain('/my-classes');
+    }
+  });
+
   it('gives an instructor the approvals queue but not the admin directory', () => {
     auth.role.set('instructor');
     fixture.detectChanges();

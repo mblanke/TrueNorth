@@ -144,12 +144,15 @@ class Permission(str, Enum):
     # tenant, as its lead. CLASS_READ: the staff Classes page. What you then see and change
     # is decided per class (app/classes/access.py): its lead (or an admin) changes it, its
     # assistants and observers read it; a Student sees only a class they are on.
+    # CLASS_ATTEND: take part in classes as a Student, the "My classes" page (ADR 0014 §20,
+    # app/classes/my_classes.py): only the caller's own roll-call entries, never anyone else's.
     CLASS_CREATE = "class:create"
     CLASS_READ = "class:read"
     # The unit readiness page (ADR 0014 decision 7, app/classes/readiness.py): every class of
     # the caller's own tenant, its enrolment, attendance, results and qualifications earned.
     # Read-only. Observers (the commander), instructors and admins; never Students.
     READINESS_READ = "readiness:read"
+    CLASS_ATTEND = "class:attend"
 
     # Tenant management
     TENANT_CREATE = "tenant:create"
@@ -223,6 +226,9 @@ ROLE_PERMISSIONS: dict[UserRole, set[Permission]] = {
         Permission.CLASS_CREATE,
         Permission.CLASS_READ,
         Permission.READINESS_READ,
+        # Held so an instructor may still grant the Student role (grant_refusal: never a role
+        # with permissions the granter lacks). The menu shows them Classes, not My classes.
+        Permission.CLASS_ATTEND,
         # Users
         Permission.USER_READ,
         # Trainee intake: instructors drain the approval queue for their cohort.
@@ -302,6 +308,7 @@ ROLE_PERMISSIONS: dict[UserRole, set[Permission]] = {
         Permission.EXERCISE_READ,
         Permission.DETECTION_SUBMIT,
         Permission.AAR_READ,
+        Permission.CLASS_ATTEND,
         Permission.WIKI_READ,
         Permission.TICKET_CREATE,
     },

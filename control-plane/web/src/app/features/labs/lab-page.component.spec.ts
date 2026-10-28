@@ -25,9 +25,10 @@ describe('LabPageComponent', () => {
 
   function setUp(fragment: string | null, authenticated: boolean, state = 'provisioning'): void {
     try { sessionStorage.removeItem('tn-lab-token:s1'); } catch { /* storage may be unavailable */ }
-    api = jasmine.createSpyObj('CourseStudioApiService', ['lab', 'labAction', 'labConsole']);
+    api = jasmine.createSpyObj('CourseStudioApiService', ['lab', 'labAction', 'labHeartbeat', 'labConsole']);
     api.lab.and.returnValue(of(lab(state)));
     api.labAction.and.returnValue(of(lab('active')));
+    api.labHeartbeat.and.returnValue(of(lab('active')));
     api.labConsole.and.returnValue(of({ node: 'host', kind: 'mock', url: 'mock://console/vm', expires_in: 60 }));
     router = jasmine.createSpyObj('Router', ['navigate']);
     router.navigate.and.returnValue(Promise.resolve(true));
@@ -54,6 +55,22 @@ describe('LabPageComponent', () => {
     setUp('token=abc', false);
     expect(api.lab).toHaveBeenCalledWith('s1', 'abc');
     expect(fixture.nativeElement.textContent).toContain('Building your lab');
+  });
+
+  it('says when a lab was closed for not being used', () => {
+    setUp('token=abc', false, 'destroyed');
+    api.lab.and.returnValue(of({ ...lab('destroyed'), end_reason: 'idle' }));
+    fixture.componentInstance.refresh();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('closed because it was not used');
+  });
+
+  it('shows why a queued lab waits, e.g. when labs are busy', () => {
+    setUp('token=abc', false, 'queued');
+    api.lab.and.returnValue(of({ ...lab('queued'), error: 'Labs are busy, next free at 14:30' }));
+    fixture.componentInstance.refresh();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('Labs are busy, next free at 14:30');
   });
 
   it('sends someone with neither token nor session to sign in', fakeAsync(() => {
@@ -84,13 +101,42 @@ describe('LabPageComponent', () => {
 
   it('reloads the lab when a heartbeat is refused, so an ended lab does not show as running', fakeAsync(() => {
     setUp('token=abc', false, 'active');
-    api.labAction.and.returnValue(throwError(() => ({ status: 403 })));
+    api.labHeartbeat.and.returnValue(throwError(() => ({ status: 403 })));
     api.lab.and.returnValue(of(lab('expired')));
     api.lab.calls.reset();
     tick(60000);
     fixture.detectChanges();
     expect(api.lab).toHaveBeenCalledWith('s1', 'abc');
     expect(fixture.componentInstance.session()?.state).toBe('expired');
+    fixture.destroy();
+  }));
+
+  it('says when a class lab ends with the class', () => {
+    setUp('token=abc', false, 'active');
+    api.lab.and.returnValue(of({ ...lab('active'), ends_with_class: true, max_expires_at: '2026-10-27T17:15:00Z' }));
+    fixture.componentInstance.refresh();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('Ends with your class at');
+  });
+
+  it('counts a visible page as use', fakeAsync(() => {
+    setUp('token=abc', false, 'active');
+    spyOnProperty(document, 'visibilityState').and.returnValue('visible');
+    tick(60000);
+    expect(api.labHeartbeat).toHaveBeenCalledWith('s1', true, 'abc');
+    fixture.destroy();
+  }));
+
+  it('reports the Student active only after real use of the page, so a forgotten tab lets the lab close', fakeAsync(() => {
+    setUp('token=abc', false, 'active');
+    spyOnProperty(document, 'visibilityState').and.returnValue('hidden');
+    tick(60000);
+    expect(api.labHeartbeat).toHaveBeenCalledWith('s1', false, 'abc');
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'a' }));
+    tick(60000);
+    expect(api.labHeartbeat.calls.mostRecent().args).toEqual(['s1', true, 'abc']);
+    tick(60000);
+    expect(api.labHeartbeat.calls.mostRecent().args).toEqual(['s1', false, 'abc']);
     fixture.destroy();
   }));
 

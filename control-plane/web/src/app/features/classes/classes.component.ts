@@ -1,7 +1,7 @@
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute } from '@angular/router';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatChipsModule } from '@angular/material/chips';
@@ -15,12 +15,12 @@ import {
   ReinstateResult, RollCallAddResult, RollCallEntry, RollCallStatus, SessionTeams,
 } from '@core/services/classes-api.service';
 import { NotificationService } from '@core/services/notification.service';
+import { EmailStatusService } from '@core/services/email-status.service';
 import {
   CourseSummary, DirectoryUser, OperatorRecordsApiService,
 } from '@core/services/operator-records-api.service';
 import { roleCan } from '@core/auth/permissions';
 import { EmptyStateComponent } from '../../shared/components/empty-state/empty-state.component';
-import { RangeCredentialsComponent } from '../../shared/components/range-credentials/range-credentials.component';
 import { ClassCloseoutComponent } from './class-closeout.component';
 import { apiError } from '../ranges/range-capabilities';
 
@@ -99,9 +99,8 @@ export function addSummary(r: RollCallAddResult): string {
 @Component({
   selector: 'tn-classes',
   imports: [
-    DatePipe, FormsModule, MatButtonModule, MatCardModule, MatChipsModule, MatFormFieldModule,
+    DatePipe, FormsModule, RouterLink, MatButtonModule, MatCardModule, MatChipsModule, MatFormFieldModule,
     MatIconModule, MatInputModule, MatSelectModule, EmptyStateComponent, ClassCloseoutComponent,
-    RangeCredentialsComponent,
   ],
   template: `
     <div class="page-container">
@@ -188,32 +187,11 @@ export function addSummary(r: RollCallAddResult): string {
                 · On the roll call: {{ c.roll_call_count }}</p>
             </mat-card-content>
             <mat-card-actions>
-              @if (c.my_role === 'student') {
-                <button mat-button (click)="open(c)"><mat-icon>computer</mat-icon> Your range</button>
-              } @else {
-                <button mat-button (click)="open(c)"><mat-icon>fact_check</mat-icon> Roll call</button>
-              }
+              <button mat-button (click)="open(c)"><mat-icon>fact_check</mat-icon> Roll call</button>
             </mat-card-actions>
           </mat-card>
         }
       </div>
-
-      @if (selected(); as c) {
-        @if (c.my_role === 'student') {
-          <mat-card class="my-range">
-            <mat-card-header>
-              <mat-card-title>Your range: {{ c.name }}</mat-card-title>
-              <mat-card-subtitle>Open your accounts during each session: that is how your attendance is recorded.</mat-card-subtitle>
-            </mat-card-header>
-            <mat-card-content>
-              @for (x of myRanges(); track x.id) {
-                <h3 class="range-title">{{ owner(x) }} · {{ statusLabel(x) }}</h3>
-                @if (x.status === 'ready' && x.range_id) { <tn-range-credentials [rangeId]="x.range_id" /> }
-              } @empty { <p>Your range is built 30 minutes before your first session.</p> }
-            </mat-card-content>
-          </mat-card>
-        }
-      }
 
       @if (selected(); as c) {
         @if (c.my_role !== 'student') {
@@ -223,6 +201,13 @@ export function addSummary(r: RollCallAddResult): string {
           </mat-card-header>
           <mat-card-content>
             @if (c.can_edit) {
+              @if (email.notConfigured()) {
+                <p class="email-off" role="alert">
+                  <mat-icon>mail_lock</mat-icon>
+                  <span>Email is not configured on this server: no email will be sent to the Students you add.
+                    Tell them to sign in to TrueNorth themselves.</span>
+                </p>
+              }
               <mat-form-field appearance="outline" class="paste">
                 <mat-label>Paste Students' email addresses</mat-label>
                 <textarea matInput rows="4" [(ngModel)]="pasted"
@@ -289,7 +274,9 @@ export function addSummary(r: RollCallAddResult): string {
                       <td><mat-chip [class]="'mode-' + s.range_mode">{{ modeLabel(s) }}</mat-chip></td>
                       <td>{{ s.state }}</td>
                       <td>@if (s.range_mode === 'collective') {
-                        <button mat-button (click)="openTeams(c, s)"><mat-icon>diversity_3</mat-icon> Teams</button> }</td>
+                        <button mat-button (click)="openTeams(c, s)"><mat-icon>diversity_3</mat-icon> Teams</button> }
+                        <a mat-button class="live" [routerLink]="['/classes', c.id, 'sessions', s.event_id, 'live']">
+                          <mat-icon>visibility</mat-icon> Live</a></td>
                     </tr>
                   } @empty { <tr><td colspan="5">No sessions booked yet.</td></tr> }
                 </tbody>
@@ -363,13 +350,15 @@ export function addSummary(r: RollCallAddResult): string {
     .entries tr.forfeited td { color: var(--mat-sys-error); }
     .when { margin-left: 8px; font-size: 12px; }
     .error { color: var(--mat-sys-error); padding: 0 16px; }
+    .email-off {
+      display: flex; align-items: center; gap: 8px; margin: 0 0 12px; padding: 8px 12px; border-radius: 8px;
+      background: var(--mat-sys-error-container); color: var(--mat-sys-on-error-container);
+    }
     .ranges, .teams { margin-top: 16px; }
     .small { font-size: 12px; opacity: 0.8; }
     .count { width: 120px; }
     .team-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
     .team h3 { margin: 8px 0; font-size: 15px; }
-    .my-range { margin-top: 16px; }
-    .range-title { font-size: 15px; margin: 12px 0 4px; }
     .member { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 2px 0; }
   `],
 })
@@ -378,6 +367,8 @@ export class ClassesComponent implements OnInit {
   private readonly records = inject(OperatorRecordsApiService);
   private readonly notify = inject(NotificationService);
   readonly auth = inject(AuthService);
+  /** Whether added Students will be emailed (#306): the roll call warns when they will not. */
+  readonly email = inject(EmailStatusService);
   /** `?class=<id>` opens that class's roll call (the calendar's Roll call link, #285). */
   private readonly route = inject(ActivatedRoute, { optional: true });
 
@@ -394,8 +385,6 @@ export class ClassesComponent implements OnInit {
   readonly observers = computed(() => this.users().filter(u => u.role !== 'student' && u.role !== 'range_ops'));
   readonly canCreate = computed(() => roleCan(this.auth.user()?.role, 'class:create'));
   readonly classRanges = signal<ClassRanges | null>(null);
-  /** A Student's own seat and the class's shared ranges, as the API hands them out. */
-  readonly myRanges = computed(() => (this.classRanges()?.ranges ?? []).filter(r => r.status !== 'torn_down'));
   readonly teams = signal<SessionTeams | null>(null);
   readonly teamsSession = signal<ClassSessionMode | null>(null);
   pasted = '';
@@ -403,6 +392,7 @@ export class ClassesComponent implements OnInit {
 
   ngOnInit(): void {
     this.load();
+    this.email.load();
   }
 
   load(): void {
@@ -419,10 +409,9 @@ export class ClassesComponent implements OnInit {
   }
 
   /** Admins: every class of the organisation. Staff: those they lead, assist or observe.
-   *  Students: the classes whose roll call they are on. */
+   *  Students use My classes (ADR 0014 §20); this page is staff only. */
   private source() {
-    if (this.auth.isAdmin()) return this.api.list();
-    return roleCan(this.auth.user()?.role, 'class:read') ? this.api.mine() : this.api.list();
+    return this.auth.isAdmin() ? this.api.list() : this.api.mine();
   }
 
   /** After a close or a reopen: the list, and the selected class as the API now sees it. */

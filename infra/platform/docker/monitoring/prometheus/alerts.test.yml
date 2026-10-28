@@ -262,3 +262,23 @@ tests:
             exp_annotations:
               summary: "API P95 latency exceeds 1 second"
               description: "P95 latency: 2.425s"
+
+  # ── Identity ─────────────────────────────────────────────────────────
+  - name: the break-glass account signing in fires BreakGlassAccountUsed; no use stays quiet
+    interval: 1m
+    input_series:
+      - series: 'truenorth_break_glass_sign_ins_total{job="truenorth-api"}'
+        values: "0 0 0 1 1 1 1 1"
+      - series: 'truenorth_break_glass_sign_ins_total{job="truenorth-api-idle"}'
+        values: "0x7"
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: BreakGlassAccountUsed
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: BreakGlassAccountUsed
+        exp_alerts:
+          - exp_labels: { severity: critical, job: truenorth-api }
+            exp_annotations:
+              summary: "The break-glass account was used"
+              description: "The local recovery account signed in to TrueNorth within the last hour. Check it was planned: Admin > Audit log (break_glass_sign_in) and docs/runbooks/break-glass.md."

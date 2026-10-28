@@ -13,6 +13,9 @@ export type ContentItemList = S['ContentItemListOut'];
 export type ContentItemBrief = S['ContentItemBrief'];
 export type ContentTheme = S['ThemeOut'];
 export type ContentCycle = S['CycleOut'];
+export type FeedStatus = S['FeedStatusOut'];
+export type FeedSource = S['FeedSourceOut'];
+export type FeedImport = S['FeedImportOut'];
 
 /**
  * The content clock (ADR 0014 decisions 22-24): every course, module, scenario, range
@@ -50,5 +53,16 @@ export class ContentReviewApiService {
   }
   cycles(): Observable<ContentCycle[]> {
     return this.http.get<ContentCycle[]>(`${this.base}/cycles`);
+  }
+
+  // ── release and vulnerability feeds (ADR 0014 decision 25; admins) ──
+  feedStatus(): Observable<FeedStatus> {
+    return this.http.get<FeedStatus>(`${environment.apiUrl}/content-feeds/status`);
+  }
+  /** A signed feed bundle (air-gapped sites); refused unless it verifies against the site key. */
+  importFeedBundle(file: File): Observable<FeedImport> {
+    const body = new FormData();
+    body.append('file', file, file.name);
+    return this.http.post<FeedImport>(`${environment.apiUrl}/content-feeds/bundle`, body);
   }
 }

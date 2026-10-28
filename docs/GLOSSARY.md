@@ -204,6 +204,14 @@ that times its seats; capacity holds a class's ranges from its first session to 
 _Not to be confused with_: lab session (a self-serve range from a course release's lab
 profile, launched by the Student).
 
+**My classes** (ADR 0014 §20, #284):
+The Student's own page of their classes and sessions in a week or month, with their seat,
+onboarding, rules of use, their range for the current or next session and **Join**
+(`/my-classes`; `GET /classes/attending`, `app/classes/my_classes.py`; permission
+`class:attend`). Join opens their range's accounts only where the credentials endpoint would.
+_Not to be confused with_: `GET /classes/mine` (the classes a member of staff leads, assists
+or observes).
+
 **Approval** (of a class session, ADR 0014 §14-16):
 An admin or range ops (`schedule:approve`) approves a class session, rejects it with a reason,
 or proposes another time that its instructor accepts or declines
@@ -225,6 +233,15 @@ vulnerability has flagged, directly or through a golden image or range template 
 The rules are in `control-plane/api/app/content_review/staleness.py`: an overdue review marks
 only the item itself; a release or vulnerability flag also marks everything downstream.
 **Mark reviewed** clears the item's own reasons and what they caused downstream.
+
+**Content feeds** / **feed bundle** (ADR 0014 decision 25):
+The release, end-of-life and vulnerability data (endoflife.date, CISA KEV, the NVD) that flag
+golden templates stale through the product map (`content/catalogue/feed_products.yaml`).
+Pulled daily where the site has internet (`tn_feeds_mode: online`); on an air-gapped site a
+platform admin imports a **feed bundle**: the same entries, signed with Ed25519 and verified
+against the site's configured public key (`control-plane/api/app/content_feeds/`). Each
+(item, entry) is flagged once. Off on a fresh install.
+_Not to be confused with_: threat intel feeds (indicators for exercises, `threat_intel_backends`).
 
 **Exercise**:
 One run of training on a range: an `assessment` (individual practical) or a `collective`

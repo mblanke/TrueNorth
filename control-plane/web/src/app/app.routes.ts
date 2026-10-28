@@ -353,6 +353,14 @@ export const routes: Routes = [
     title: 'Registration approvals - TrueNorth Range',
   },
   {
+    // ADR 0014 §20 (#284): a Student's own classes, their status and Join (class:attend).
+    path: 'my-classes',
+    canActivate: [authGuard, onboardingGuard, pageGuard('myClasses')],
+    loadComponent: () =>
+      import('./features/classes/my-classes.component').then(m => m.MyClassesComponent),
+    title: 'My classes - TrueNorth Range',
+  },
+  {
     // ADR 0014: classes and their roll call, for the staff who lead, assist or observe them.
     path: 'classes',
     canActivate: [authGuard, onboardingGuard, pageGuard('classes')],
@@ -368,6 +376,15 @@ export const routes: Routes = [
     loadComponent: () =>
       import('./features/readiness/unit-readiness.component').then(m => m.UnitReadinessComponent),
     title: 'Unit readiness - TrueNorth Range',
+  },
+  {
+    // ADR 0014 §19 (#321): a class session's live view, for its lead, assistants, observers
+    // and admins (the API decides who; class:read to reach the page).
+    path: 'classes/:classId/sessions/:eventId/live',
+    canActivate: [authGuard, onboardingGuard, pageGuard('classes')],
+    loadComponent: () =>
+      import('./features/classes/class-live.component').then(m => m.ClassLiveComponent),
+    title: 'Live session - TrueNorth Range',
   },
   {
     // ADR 0013 §7: windows in which provision, reset and normal destroy are refused.

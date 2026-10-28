@@ -9,6 +9,69 @@ Everything switched on and working on staging: the full Moodle loop, cmi5 with c
 xAPI, Greyspace on vSphere (proven on vcsim and the T0 stack, not real vSphere), ARC² batch
 course production with a local-model fallback, and the cleanup of unsupported surfaces.
 
+### Classes, roll-call onboarding and the calendars (ADR 0014, #277)
+How to use all of this: [administrator](docs/guides/03-admin-first-day.md),
+[instructor](docs/guides/04-instructor-guide.md), [Student](docs/guides/05-student-quick-start.md).
+- **ADR 0014** (#277): the decision record for classes, roll-call onboarding, booking approval
+  and the two-view calendar.
+- **Invites stay in their tenant** (#291): calendar invites and reminders reach only the
+  booking tenant's Students, even on shared catalogue courses.
+- **Classes and roll call** (#294): a class has a name or serial, a course, dates, a lead,
+  assistants and observers. The lead adds Students by pasting emails or uploading a CSV.
+  A Student on a roll call signs in with AD and goes straight in, with no Request access.
+  Students with no account get an onboarding email, and one reminder the day before.
+- **Rules of use** (#296): everyone signs on first sign-in, whenever the platform
+  administrator publishes a new version, and every year. Signatures are audited and
+  exportable.
+- **Seat forfeit** (#298): a roll-call Student who hasn't signed in 2 hours after the first
+  session starts loses their seat. The instructors are emailed, and the lead reinstates them
+  in one click.
+- **Booking approval** (#297): every class session waits for an admin or range ops to
+  approve, reject or propose another time. Nothing is held, built, emailed or invited until
+  then. Moving or resizing an approved session sends it back for approval.
+- **Per-session ranges and teams** (#299): each session is individual (a range per Student)
+  or collective (one shared range). Ranges are built 30 minutes before the first session that
+  needs them and kept until the class's last day. The lead splits a collective session into
+  balanced teams and moves people before it starts.
+- **Attendance and close-out** (#303): a Student is present when they open their range
+  during a session, and the lead can correct it. Close-out pre-fills pass, fail or incomplete
+  from attendance and course work. The lead sets each result with a comment, then closes the
+  class. Pass completes the enrolment. An admin can reopen a class. Results export as CSV.
+- **My classes** (#307): the Student's own page of classes and sessions, with their seat,
+  Rules of use, range status (including *paused*) and **Join**, which shows their accounts
+  and records their attendance.
+- **Events calendar** (#302): week and month views. Classes are blue, exercises orange,
+  pending bookings dashed and maintenance windows grey-striped. Each day shows its load and
+  the extra load if pending bookings were approved. The side panel holds the approval queue.
+- **Content clock and Content calendar** (#295): every course, module, lab, scenario, range
+  template and golden image has a review date (90 days by default). Items go stale when
+  overdue or when something they depend on is flagged. Mark reviewed, assign a reviewer or
+  retire an item.
+- **Release and vulnerability feeds** (#312): endoflife.date, CISA KEV and the NVD flag
+  golden templates stale. They are pulled daily where the site has internet, or imported as
+  a signed bundle on air-gapped sites. Off by default (`tn_feeds_mode`).
+- **Self-serve lab gate** (#311): self-serve labs use only the capacity left after approved
+  classes. A launch that doesn't fit says "Labs are busy, next free at HH:MM". A lab idle for
+  4 hours closes, with an in-app warning 15 minutes before. A console that is open counts as
+  use.
+- **App email** (#308, fixes #306): the installer configures the SMTP relay. Admins see a
+  banner while email is off. See "App email (SMTP)" below.
+- **AD status sync** (#309): nightly, TrueNorth deactivates accounts whose AD account is
+  disabled or gone, and local accounts unused for 90 days (only when a break-glass account
+  is configured). It starts in dry run, never writes to AD, and never deletes anything.
+- **Coming in v1.2.0: Unit readiness for observers** (#315, in review): classes, enrolment,
+  attendance, results and qualifications earned, by unit and dates, with CSV and PDF export.
+- Known gaps in this release are listed at the end of each role guide.
+
+### Also merged (#291–#315)
+- **Cross-enclave result transfer foundation** (#300): a signed and encrypted envelope, a
+  controlled-media export and import, and a public-key trust registry (platform
+  administrator, API only). See `docs/result-transfer.md`.
+- **Dependency security updates** (#293, #305; #292): opentelemetry 1.45.1, dompurify
+  3.4.17, fpdf2 2.8.9.
+- **TAZ development tooling, not part of the product** (#301, #304, #314): bakeoff replay
+  kit, vendored write and stop gates with taz-guard CI, and the course kit.
+
 ### Learning records and LMS
 - **cmi5 and conformant xAPI** (#139): xAPI `account` actors (no email), configurable IRIs,
   `context.registration`, course-locale language maps, per-activity pass marks; reversible
@@ -671,6 +734,21 @@ course production with a local-model fallback, and the cleanup of unsupported su
   puts the course and quizzes back to draft, hides the Moodle course (`set_visible`), stops
   a stalled publication, re-checks both systems and audit-logs each change. Nothing is
   deleted; a second run changes nothing. Runbook: `docs/content-library.md`.
+
+### App email (SMTP) (#306)
+- Installer: `tn_smtp_host` / `_port` (587) / `_security` (`starttls` | `tls` | `none`) /
+  `_username` / `_from_address` and `vault_smtp_password` render the API's `SMTP_*` (env
+  file, `compose.prod.yml` api, Helm `config.smtp` + `secrets.smtpPassword`). Before this
+  nothing set them: roll-call onboarding emails, reminders, seat-forfeit notices and
+  calendar invites were only logged. Optional: empty host means email is off. Preflight
+  checks port, mode, sender and the credential pair when a host is set. Alert email
+  (`tn_alert_*`, `vault_alert_smtp_*`) defaults to the same relay, still overridable.
+- API: `GET /email/status` (configured or not for everyone; the relay for the platform
+  administrator; never the password) and `POST /email/test` (platform administrator, own
+  address only, once a minute, audited). The channel now speaks implicit TLS
+  (`SMTP_SECURITY=tls`); `SMTP_USE_TLS` still works when `SMTP_SECURITY` is unset.
+- Web: a persistent admin banner while email is off, a warning where Students are added to
+  a roll call, and an Email card with "Send test email" on Administration → System Health.
 
 ### Alert delivery by email
 - Installer: `tn_alert_email_enabled` (default off; staging off until its SMTP details are known) renders an

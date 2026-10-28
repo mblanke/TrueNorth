@@ -71,12 +71,30 @@ HOLDERS = "lab_lease_holders"  # db.info: session id -> this run's lease token
 MAX_EVIDENCE_BYTES = 64 * 1024
 MAX_EVIDENCE_ITEMS = 200
 LEASE_SECONDS = 120
+CLASS_RANGE = "this lab's range belongs to a class; it is left to the class"
+NOT_ASKED = object()  # advance outside the sweep: consoles were not asked, no idle close
 
 
 class LabRefusedError(ValueError):
     def __init__(self, message: str, status: int = 409):
         super().__init__(message)
         self.status = status
+
+
+class LabsBusyError(LabRefusedError):
+    """Start lab refused: approved classes and running ranges hold the capacity (ADR 0014
+    §18). Raised under the site-wide lock with no forecast; the caller rolls back, then asks
+    ``capacity_gate.explain`` for "Labs are busy, next free at HH:MM" (``message``)."""
+
+    def __init__(self, need: Any, length: timedelta):
+        super().__init__("Labs are busy")
+        self.need, self.length = need, length
+
+    def message(self, db: Session) -> str:
+        """The Student's message. Call after the refused launch rolled back (no lock held)."""
+        from . import capacity_gate
+
+        return capacity_gate.explain(db, self.need, self.length, _now())
 
 
 def _now() -> datetime:
@@ -95,6 +113,12 @@ def _int_env(name: str, default: int) -> int:
         return int(os.getenv(name, str(default)))
     except ValueError:
         return default
+
+
+def idle_minutes(profile: dict[str, Any]) -> int:
+    """Minutes without the Student before a lab closes: the profile's own, at most the
+    platform's limit (``LAB_IDLE_LIMIT_MINUTES``, default 4 hours; ADR 0014 §18)."""
+    return min(profile["lifetime"]["idle_minutes"], max(1, _int_env("LAB_IDLE_LIMIT_MINUTES", 240)))
 
 
 def backend() -> str:
@@ -434,6 +458,45 @@ def release_for_student(
     return release
 
 
+def live_session(
+    db: Session, *, tenant_id: uuid.UUID, user_id: uuid.UUID, course_id: uuid.UUID, activity_id: str
+) -> LabSession | None:
+    """The Student's live lab for this activity of a course, if there is one (read only):
+    a relaunch or a refresh returns it without taking any lock."""
+    releases = db.query(CourseRelease.id).filter(
+        CourseRelease.tenant_id == tenant_id, CourseRelease.course_id == course_id
+    )
+    return (
+        db.query(LabSession)
+        .filter(
+            LabSession.tenant_id == tenant_id,
+            LabSession.user_id == user_id,
+            LabSession.activity_id == activity_id,
+            LabSession.release_id.in_(releases),
+            LabSession.state.notin_(TERMINAL),
+        )
+        .order_by(LabSession.created_at.desc())
+        .first()
+    )
+
+
+def launch_for_course(
+    db: Session, *, tenant_id: uuid.UUID, user_id: uuid.UUID, course_id: uuid.UUID, activity_id: str,
+    auto_enroll: bool,
+) -> tuple[LabSession, bool]:
+    """Start lab for a course (the signed-in launch and Moodle's): the release the Student's
+    lab comes from, then their session. A new lab takes the site-wide booking lock before
+    anything writes (an enrolment, a pin, the Student's row), the order the classes section
+    uses; a relaunch or refresh of a live lab takes no lock."""
+    if live_session(db, tenant_id=tenant_id, user_id=user_id, course_id=course_id, activity_id=activity_id) is None:
+        from . import capacity_gate
+
+        capacity_gate.lock(db)
+    release = release_for_student(db, tenant_id=tenant_id, user_id=user_id, course_id=course_id,
+                                  auto_enroll=auto_enroll)
+    return launch(db, tenant_id=tenant_id, user_id=user_id, release_id=release.id, activity_id=activity_id)
+
+
 def launch(
     db: Session, *, tenant_id: uuid.UUID, user_id: uuid.UUID, release_id: uuid.UUID, activity_id: str
 ) -> tuple[LabSession, bool]:
@@ -450,14 +513,23 @@ def launch(
         raise LabRefusedError("release not found", 404)
     if release.state not in (ACCEPTED, SUPERSEDED):
         raise LabRefusedError("this release has not been accepted")
-    # One launch per student at a time: their own row is the lock.
-    db.query(User).filter(User.id == user_id).with_for_update().one_or_none()
     key = (
         LabSession.tenant_id == tenant_id,
         LabSession.user_id == user_id,
         LabSession.release_id == release_id,
         LabSession.activity_id == activity_id,
     )
+    # A relaunch or a refresh of a live lab: read only, no lock.
+    latest = db.query(LabSession).filter(*key).order_by(LabSession.attempt.desc()).first()
+    if latest is not None and latest.state not in TERMINAL:
+        return latest, False
+    # The site-wide booking lock first, as the classes section takes it before writing rows
+    # that reference the Student (a roll-call change): the reverse order deadlocks.
+    from . import capacity_gate
+
+    capacity_gate.lock(db)
+    # One launch per student at a time: their own row is the lock.
+    db.query(User).filter(User.id == user_id).with_for_update().one_or_none()
     latest = db.query(LabSession).filter(*key).order_by(LabSession.attempt.desc()).first()
     if latest is not None and latest.state not in TERMINAL:
         return latest, False
@@ -484,6 +556,7 @@ def launch(
         backend=backend(),
         vcpu=sum(n["vcpu"] for n in profile["nodes"]),
         ram_mb=sum(n["ram_mb"] for n in profile["nodes"]),
+        disk_gb=sum(n["disk_gb"] for n in profile["nodes"]),
         # Held by this launch until flush_outbox() has sent its tasks: a sweep must not
         # send them a second time in between.
         lease_until=now + timedelta(seconds=LEASE_SECONDS),
@@ -500,21 +573,31 @@ def launch(
         return existing, False
     db.info.setdefault(HOLDERS, {})[session.id] = session.lease_holder
     _hold(db, session)
-    _start(db, session, profile)
+    _start(db, session, profile, refuse_busy=True)
     db.flush()
     return session, True
 
 
 def _start(
-    db: Session, session: LabSession, profile: dict[str, Any], *, networks: dict[str, str] | None = None
+    db: Session,
+    session: LabSession,
+    profile: dict[str, Any],
+    *,
+    networks: dict[str, str] | None = None,
+    refuse_busy: bool = False,
 ) -> None:
     """queued -> provisioning when there is room (a rebuild passes the networks it keeps and
-    keeps its lifetime); stays queued, with why, otherwise."""
+    keeps its lifetime); stays queued, with why, otherwise. With no site capacity left after
+    approved classes, a launch (``refuse_busy``) is refused (LabsBusyError); a lab already
+    waiting in the queue keeps waiting, with the same message."""
     rebuild = networks is not None
     if not rebuild:
         if held := _window_holds(db, session):  # ADR 0013 §7: no new build; it starts after the window
             session.error = held
             return
+        from . import capacity_gate
+
+        capacity_gate.lock(db)  # before the tenant's row, the order launch and the classes section use
         # One quota decision per tenant at a time (CR1-12): without this lock two launches
         # by different students each counted the labs running before either was written,
         # and together went past the tenant's limits. The student's own row, which launch
@@ -527,6 +610,8 @@ def _start(
         problem = _quota_problem(db, session)
         if problem:
             session.error = problem
+            return
+        if _capacity_refused(db, session, profile, refuse_busy):
             return
         networks = _lease_networks(db, session, profile)
         if networks is None:
@@ -558,15 +643,48 @@ def _start(
     session.error = ""
     session.provisioning_at = now
     if not rebuild:
-        lifetime = profile["lifetime"]
-        session.max_expires_at = now + timedelta(minutes=lifetime["max_minutes"])
-        session.idle_expires_at = now + timedelta(minutes=lifetime["idle_minutes"])
+        from . import capacity_gate
+
+        # The lab's own end (its profile, at most LAB_MAX_LIFETIME_MINUTES); a class's own lab
+        # ends with the class sessions it draws on, if they end first (_follow_class).
+        session.latest_end_at = now + capacity_gate.lifetime(profile)
+        session.max_expires_at = session.latest_end_at
+        _follow_class(db, session, now)
+        session.idle_expires_at = min(now + timedelta(minutes=idle_minutes(profile)), session.max_expires_at)
     db.flush()
     from ..range_credentials import service as range_credentials
 
     # Its own generated logins (ADR 0013 §3), handed to the Student; never the template password.
     range_credentials.on_lab_range(db, rng)
     _send(db, session, "provision_range", str(rng.id))
+
+
+def _capacity_refused(db: Session, session: LabSession, profile: dict[str, Any], refuse_busy: bool) -> bool:
+    """ADR 0014 §18, under the booking lock: a booked class's own Student draws on its
+    booking's hold; anyone else's lab needs room left after approved classes. A launch with
+    no room is refused (LabsBusyError); a queued lab keeps waiting, re-decided at most every
+    ``capacity_gate.FORECAST_SECONDS``."""
+    from . import capacity_gate
+
+    now = _now()
+    need, length = capacity_gate.demand(profile), capacity_gate.lifetime(profile)
+    if not refuse_busy and capacity_gate.recently_refused(session.id, now):
+        session.error = capacity_gate.BUSY
+        return True
+    # tenant-safe: the session's own release, set at launch from its tenant's course.
+    course_id = db.get(CourseRelease, session.release_id).course_id
+    booking = capacity_gate.own_booking(db, session, course_id, need, now)
+    if booking is not None:
+        session.booking_id = booking.id
+        return False
+    session.booking_id = None
+    if capacity_gate.fits(db, need, length, now):
+        return False
+    if refuse_busy:
+        raise LabsBusyError(need, length)
+    capacity_gate.note_refused(session.id, now)
+    session.error = capacity_gate.BUSY
+    return True
 
 
 # ── advance ───────────────────────────────────────────────────────────
@@ -588,9 +706,12 @@ def _step_timeout() -> timedelta:
     return timedelta(seconds=_int_env("LAB_STEP_TIMEOUT", 3600))
 
 
-def advance(db: Session, session: LabSession) -> LabSession:
+def advance(db: Session, session: LabSession, *, consoles: Any = NOT_ASKED) -> LabSession:
     """One step forward from whatever the session is waiting on. Callers hold its lease
-    (claim) and send the queued tasks after commit (flush_outbox)."""
+    (claim) and send the queued tasks after commit (flush_outbox). ``consoles``: the open
+    console connections the sweep read for an idle-due lab before taking any lock
+    (``consoles.ask``; None: unknown). Outside the sweep it is not asked, and an idle lab is
+    left for the sweep to close."""
     now = _now()
     # tenant-safe: the session's own range, created by this module in its tenant.
     rng = db.get(Range, session.range_id) if session.range_id else None
@@ -614,12 +735,113 @@ def advance(db: Session, session: LabSession) -> LabSession:
     elif state == RESETTING:
         _advance_resetting(db, session, rng, now)
     elif state in (READY, ACTIVE):
-        if now >= _aware(session.max_expires_at) or now >= _aware(session.idle_expires_at):
-            end(db, session, reason="expired")
+        _follow_class(db, session, now)
+        _advance_running(db, session, now, consoles)
     elif state in ENDING:
         _advance_cleaning(db, session, rng, now)
     db.flush()
     return session
+
+
+def _follow_class(db: Session, session: LabSession, now: datetime) -> None:
+    """A class's own lab follows its class: it moves to the class's next contiguous session
+    when the one it draws on ends, and ends with the last contiguous session (re-read every
+    step, so an edited session end extends or shortens it, never past the lab's own end)."""
+    if session.booking_id is None or session.latest_end_at is None:
+        return
+    from ..scheduler.lifecycle import HOLDING
+    from ..scheduler.models import ScheduledEvent
+    from . import capacity_gate
+
+    # tenant-safe: the booking own_booking chose in the session's tenant.
+    evt = db.get(ScheduledEvent, session.booking_id)
+    if evt is None or evt.state not in HOLDING:
+        return  # called off: it draws on nothing now (holdings); its end stays as it was
+    from . import holdings
+
+    chain = capacity_gate.class_chain(db, evt)
+    if not holdings.is_drawing(db, session.id):
+        # Not drawing (taken off the roll call, or not running yet): its end may only come
+        # earlier with the class, never later, and it does not move to the next session.
+        session.max_expires_at = min(_aware(session.max_expires_at), capacity_gate.chain_end(chain))
+    else:
+        if _aware(evt.end_time) <= now and (nxt := capacity_gate.next_live(chain, now)) is not None:
+            session.booking_id = nxt.id
+        session.max_expires_at = min(_aware(session.latest_end_at), capacity_gate.chain_end(chain))
+    if session.idle_expires_at is not None:
+        session.idle_expires_at = min(_aware(session.idle_expires_at), session.max_expires_at)
+
+
+def _advance_running(db: Session, session: LabSession, now: datetime, consoles: Any = NOT_ASKED) -> None:
+    """A ready or active lab: closed at its maximum lifetime, or after the idle limit with no
+    Student activity (heartbeat, console), recorded as ``idle``. The Student is told in
+    TrueNorth (an in-app notification) once, ``LAB_IDLE_WARNING_MINUTES`` before an idle close."""
+    latest, idle_end = _aware(session.max_expires_at), _aware(session.idle_expires_at)
+    if now < latest and now < idle_end:
+        warn = timedelta(minutes=_int_env("LAB_IDLE_WARNING_MINUTES", 15))
+        if session.idle_warned_at is None and idle_end < latest and now >= idle_end - warn:
+            _warn_idle(db, session, idle_end)
+        return
+    from ..classes import ranges as class_ranges
+
+    if class_ranges.is_class_range(db, session.range_id):  # never ours to destroy (ADR 0014 §10)
+        # Ended without a teardown: the range is the class's. Terminal, so the Student's next
+        # launch is not blocked. Its lab networks stay leased: the class range's machines are
+        # on them, and returning them would hand live networks to another Student's lab. An
+        # operator clears them (the port groups are logged), as for any lab that could not
+        # be shut down cleanly.
+        port_groups = sorted(_session_networks(db, session).values())
+        logger.warning("lab session %s points at class range %s; ended, range left to the class; its lab "
+                       "networks %s stay leased for an operator", session.id, session.range_id, port_groups)
+        session.error = CLASS_RANGE
+        session.end_reason = "class_range"
+        session.ended_at = now
+        _set_state(session, FAILED)
+        return
+    if now < latest and not _console_idle(db, session, now, consoles):
+        return
+    end(db, session, reason="expired" if now >= latest else "idle")
+
+
+def _console_idle(db: Session, session: LabSession, now: datetime, open_now: Any) -> bool:
+    """Before an idle close: was anyone on the lab's consoles when the sweep asked
+    (``consoles.ask``)? Any connection: the Student is working, and the idle clock restarts.
+    Unknown (None): not idle; asked again after ``LAB_CONSOLE_RECHECK_MINUTES``, never past
+    the lab's maximum lifetime. Not asked (outside the sweep): left for the sweep."""
+    if open_now is NOT_ASKED:
+        return False
+    latest = _aware(session.max_expires_at)
+    if open_now is None:
+        recheck = timedelta(minutes=max(1, _int_env("LAB_CONSOLE_RECHECK_MINUTES", 15)))
+        session.idle_expires_at = min(now + recheck, latest)
+        return False
+    if open_now > 0:
+        idle = timedelta(minutes=idle_minutes(_profile(db, session)))
+        session.last_seen_at = now
+        session.idle_expires_at = min(now + idle, latest)
+        session.idle_warned_at = None
+        _set_state(session, ACTIVE)
+        return False
+    return True
+
+
+def _warn_idle(db: Session, session: LabSession, idle_end: datetime) -> None:
+    from ..notifications.inbox import notify
+    from . import capacity_gate
+
+    at = idle_end.astimezone(capacity_gate.site_timezone())
+    notify(
+        db,
+        tenant_id=session.tenant_id,
+        user_ids=[session.user_id],
+        actor_id=None,
+        title="Your lab closes soon",
+        message=f"Your lab has not been used and closes at {at:%H:%M}. Open it to keep it running; "
+        "work you submitted is kept either way.",
+        link=f"/labs/{session.id}",
+        kind="warning",
+    )
+    session.idle_warned_at = _now()
 
 
 def _advance_provisioning(db: Session, session: LabSession, rng: Range | None, now: datetime) -> None:
@@ -703,6 +925,11 @@ def _advance_resetting(db: Session, session: LabSession, rng: Range | None, now:
         if held := _window_holds(db, session):  # reset accepted before the window: rebuilt after it
             session.error = held
             return None
+        from . import capacity_gate
+
+        # The old range goes and the new one comes in this transaction: under the booking
+        # lock, so no capacity decision reads the lab as holding nothing in between.
+        capacity_gate.lock(db)
         session.retired_ranges = json.dumps(json.loads(session.retired_ranges or "[]") + [str(rng.id)])
         _send(db, session, "reconcile_lab_vms", [str(rng.id)], session.backend)
         _start(db, session, profile, networks=_session_networks(db, session))
@@ -774,9 +1001,10 @@ def touch(db: Session, session: LabSession) -> LabSession:
     if session.state not in (READY, ACTIVE):
         return session
     now = _now()
-    idle = timedelta(minutes=_profile(db, session)["lifetime"]["idle_minutes"])
+    idle = timedelta(minutes=idle_minutes(_profile(db, session)))
     session.last_seen_at = now
     session.idle_expires_at = min(now + idle, _aware(session.max_expires_at))
+    session.idle_warned_at = None
     _set_state(session, ACTIVE)
     db.flush()
     return session
@@ -808,7 +1036,11 @@ def reset(db: Session, session: LabSession) -> LabSession:
         _send(db, session, "restore_snapshot", str(rng.id), str(snap.id))
         return session
     # Rebuild: destroy this range; advance builds the new one on the same networks once the
-    # old machines are gone. The lab's end times do not move.
+    # old machines are gone. The lab's end times do not move. Under the booking lock: the
+    # lab's size moves from its range to its reset hold (holdings.resetting_loads).
+    from . import capacity_gate
+
+    capacity_gate.lock(db)
     rng.state = RangeState.destroying
     _set_state(session, RESETTING)
     db.flush()
@@ -843,7 +1075,7 @@ def end(db: Session, session: LabSession, *, reason: str = "completed") -> LabSe
         _release_networks(db, session)
         _set_state(session, DESTROYED)
     else:
-        _set_state(session, EXPIRED if reason == "expired" else COMPLETED)
+        _set_state(session, EXPIRED if reason in ("expired", "idle") else COMPLETED)
         if rng.state not in (RangeState.destroyed, RangeState.destroying):
             rng.state = RangeState.destroying
             _send(db, session, "destroy_range", str(rng.id))
@@ -890,6 +1122,16 @@ def run_locked(db: Session, session: LabSession, fn, *args: Any, busy_ok: bool =
 def sweep(db: Session) -> int:
     """Advance every session that holds resources, oldest first; returns how many changed
     state. Each session is advanced under its own lease and its own transaction."""
+    from . import consoles
+
+    # Before any lock: which idle-due labs have a console open, in one batch with a deadline
+    # (a vCenter that does not answer must not hold up the other labs' advance).
+    try:
+        answers = consoles.ask(db, consoles.idle_due(db, _now()))
+    except Exception:  # noqa: BLE001 — unknown for all: no idle close this pass
+        logger.exception("console check failed")
+        answers = {}
+    db.commit()  # end the read transaction before the per-lab ones
     changed = 0
     for session in (
         db.query(LabSession)
@@ -900,7 +1142,7 @@ def sweep(db: Session) -> int:
     ):
         before = session.state
         try:
-            run_locked(db, session, advance, busy_ok=True)
+            run_locked(db, session, advance, busy_ok=True, consoles=answers.get(session.id, NOT_ASKED))
         except Exception:  # noqa: BLE001 — one bad session must not stop the sweep
             logger.exception("lab session %s could not advance", session.id)
             continue

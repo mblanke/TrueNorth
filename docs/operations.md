@@ -1,112 +1,41 @@
-# TrueNorth Range — Operations Guide
+# TrueNorth Range — Operations reference
 
-> Day-to-day operations, monitoring, alerting, backup/restore, scaling, and disaster-recovery runbooks for production TrueNorth Range deployments.
+> Alerting, alert response, backup internals, range leases and recovery for an installed
+> TrueNorth. The day-to-day procedures (routine checks, upgrades, backup and restore with
+> the drill, porting golden templates, common failures) are in
+> [06 — Operations runbook](guides/06-operations-runbook.md); this page is the reference it
+> points into.
+
+Every command below runs on the TrueNorth VM, against the compose project the installer
+started. `dc` is:
+
+```bash
+dc() { docker compose -f /srv/truenorth/app/infra/platform/docker/compose.prod.yml \
+                      --env-file /srv/truenorth/config/.env.production "$@"; }
+```
 
 ---
 
 ## Table of Contents
 
-- [Daily Operations Checklist](#daily-operations-checklist)
-- [Monitoring Architecture](#monitoring-architecture)
-- [Dashboard Reference](#dashboard-reference)
+- [Monitoring](#monitoring)
 - [Alert Response Procedures](#alert-response-procedures)
 - [Backup and Restore](#backup-and-restore)
-- [Database Maintenance](#database-maintenance)
-- [Scaling Operations](#scaling-operations)
-- [Log Management](#log-management)
-- [Certificate Management](#certificate-management)
+- [Certificate renewal](#certificate-renewal)
 - [Disaster Recovery](#disaster-recovery)
 - [Runbook: Common Issues](#runbook-common-issues)
   - [Range leases, abandon and recovery](#range-leases-abandon-and-recovery)
-- [Capacity Planning](#capacity-planning)
-- [Change Management](#change-management)
+
+Routine checks, upgrades, certificate and disk checks: guide 06 §1–§2. Sizing: guide 01.
 
 ---
 
-## Daily Operations Checklist
+## Monitoring
 
-### Morning Health Check (~10 minutes)
-
-| # | Task | Command / Action | Expected Result |
-|---|------|-----------------|----------------|
-| 1 | Check API health | `curl https://api.truenorth.local/healthz` | `{"status": "healthy"}` |
-| 2 | Check Worker health | `celery -A celery_app inspect ping` | All workers respond |
-| 3 | Check PostgreSQL | `pg_isready -h db.truenorth.local` | `accepting connections` |
-| 4 | Check Redis | `redis-cli -h redis.truenorth.local ping` | `PONG` |
-| 5 | Check OpenSearch | `curl https://opensearch.truenorth.local:9200/_cluster/health` | `"status": "green"` |
-| 6 | Check MinIO | `mc admin info truenorth-minio` | All nodes online |
-| 7 | Check Keycloak | `curl https://auth.truenorth.local/health/ready` | `{"status": "UP"}` |
-| 8 | Check AI Orchestrator | `curl http://ai-orchestrator:6000/health` | `{"status": "ok"}` |
-| 9 | Review active ranges | Dashboard: Active Ranges panel | No stuck states |
-| 10 | Review error logs | Grafana Loki: `{app="truenorth"} |= "ERROR"` last 24h | No unexpected errors |
-
-### Weekly Maintenance (~30 minutes)
-
-| Task | When | Procedure |
-|------|------|-----------|
-| Database vacuum | Sunday 02:00 UTC | Automated via cron; verify completion |
-| Certificate expiry check | Monday | `openssl x509 -enddate -noout -in /etc/ssl/truenorth.crt` |
-| Disk usage review | Monday | `df -h` on all nodes; alert if >80% |
-| Backup verification | Tuesday | Restore latest backup to test environment |
-| Security scan | Wednesday | Run Trivy against container images |
-| Log rotation verify | Thursday | Check logrotate ran successfully |
-| Dependency update review | Friday | Check for CVEs in dependencies |
-
-### Monthly Tasks
-
-| Task | Procedure |
-|------|-----------|
-| Load test | Run k6 load test against staging |
-| DR drill | Execute disaster recovery runbook |
-| Access review | Audit Keycloak user accounts and role assignments |
-| Capacity review | Review Grafana trends for growth planning |
-| Packer image rebuild | Rebuild base images with latest OS patches |
-
----
-
-## Monitoring Architecture
-
-```mermaid
-flowchart LR
-    subgraph Applications
-        API[Control Plane API]
-        WRK[Celery Workers]
-        AI[AI Orchestrator]
-        SE[Scenario Engine]
-    end
-
-    subgraph Collection
-        PROM[Prometheus]
-        LOKI[Loki]
-        OTEL[OpenTelemetry Collector]
-    end
-
-    subgraph Visualization
-        GRAF[Grafana]
-        AM[Alertmanager]
-    end
-
-    subgraph Notification
-        PD[PagerDuty]
-        SLACK[Slack]
-        EMAIL[Email]
-    end
-
-    API --> |metrics| PROM
-    WRK --> |metrics| PROM
-    AI --> |metrics| PROM
-    API --> |logs| LOKI
-    WRK --> |logs| LOKI
-    SE --> |logs| LOKI
-    API --> |traces| OTEL
-    PROM --> GRAF
-    LOKI --> GRAF
-    OTEL --> GRAF
-    PROM --> AM
-    AM --> PD
-    AM --> SLACK
-    AM --> EMAIL
-```
+The stack monitors itself: Prometheus scrapes the services and exporters on the
+`tn-monitoring` network, Alertmanager routes what fires (email or a webhook, below), and
+Grafana and Flower show the figures. Logs are each container's own (`dc logs <service>`;
+the api and workers write JSON lines), rotated by Docker at 50 MB × 5.
 
 ### Metrics Endpoints
 
@@ -122,53 +51,11 @@ flowchart LR
 | MinIO | `/minio/v2/metrics/cluster` | 9000 |
 | Node Exporter | `/metrics` | 9100 |
 
----
+Firing alerts can always be read on the host, whether or not they are delivered:
 
-## Dashboard Reference
-
-### 1. Platform Overview Dashboard
-
-**Purpose:** High-level health and throughput.
-
-| Panel | Metric | Thresholds |
-|-------|--------|-----------|
-| API Request Rate | `rate(http_requests_total[5m])` | Warn: >500 rps |
-| API Latency P99 | `histogram_quantile(0.99, ...)` | Warn: >500ms, Crit: >2s |
-| Error Rate | `rate(http_requests_total{status=~"5.."}[5m])` | Warn: >1%, Crit: >5% |
-| Active Ranges | `truenorth_ranges_active` | Info only |
-| Active Exercises | `truenorth_exercises_active` | Info only |
-| Celery Queue Depth | `celery_queue_length` | Warn: >100, Crit: >500 |
-
-### 2. Infrastructure Dashboard
-
-| Panel | Metric | Thresholds |
-|-------|--------|-----------|
-| CPU Usage | `node_cpu_seconds_total` | Warn: >80%, Crit: >95% |
-| Memory Usage | `node_memory_MemAvailable_bytes` | Warn: <20%, Crit: <5% |
-| Disk Usage | `node_filesystem_avail_bytes` | Warn: >80%, Crit: >90% |
-| PostgreSQL Connections | `pg_stat_activity_count` | Warn: >80% of max |
-| Redis Memory | `redis_memory_used_bytes` | Warn: >80% of maxmemory |
-| OpenSearch Cluster Health | `truenorth_opensearch_cluster_status{color=...}` | Warn: yellow 15 min, Crit: red |
-
-### 3. Provisioning Dashboard
-
-| Panel | Metric | Thresholds |
-|-------|--------|-----------|
-| Provision Duration | `truenorth_provision_duration_seconds` | Warn: >10min, Crit: >30min |
-| Provision Success Rate | `truenorth_provision_total{status="success"}` | Crit: <95% |
-| Active Terraform Runs | `truenorth_terraform_active` | Warn: >10 concurrent |
-| VM Count by State | `truenorth_vms_by_state` | Info only |
-| Destroy Duration | `truenorth_destroy_duration_seconds` | Warn: >5min |
-
-### 4. AI Orchestrator Dashboard
-
-| Panel | Metric | Thresholds |
-|-------|--------|-----------|
-| AI Request Rate | `ai_requests_total` | Info only |
-| AI Latency P95 | `ai_request_duration_seconds` | Warn: >5s, Crit: >30s |
-| Backend Availability | `ai_backend_healthy` | Crit: any backend down |
-| Token Usage | `ai_tokens_total` | Info (cost tracking) |
-| Queue Depth | `ai_queue_depth` | Warn: >50 |
+```bash
+docker exec tn-alertmanager amtool --alertmanager.url=http://localhost:9093 alert query
+```
 
 ---
 
@@ -199,7 +86,7 @@ Delivery is by **email** (install/README.md "Alerting" has every variable):
 Alertmanager could not hand it to the relay.
 
 ```bash
-cd install && ansible-playbook -i inventory/staging.yml playbooks/alert-test.yml --ask-vault-pass
+cd ~/truenorth/install && ansible-playbook -i inventory/site.yml playbooks/alert-test.yml --ask-vault-pass
 ```
 
 `SENT` means the relay accepted the message, not that it arrived: delivery is proven
@@ -255,6 +142,7 @@ OpenSearch's `_cluster/health`, the Moodle node's container health (only with
 | `BackupIncomplete` | warning | the last backup kept the data but exited 3 (no escrow), 5 (telemetry snapshot failed) or 6 |
 | `AuditArchiveTampered` | critical | `truenorth_backup_audit_verified` is 0: the last backup found that the signed audit export archive does not verify (signature, hash, chain or recorded export). A security event: docs/runbooks/backup-restore.md |
 | `BackupStale` | critical | no good backup for more than 26 h (seeded at install, so a cron that never runs alerts too) |
+| `BreakGlassAccountUsed` | critical | the local break-glass account signed in to TrueNorth within the last hour (`truenorth_break_glass_sign_ins_total`; ADR 0014 §6). Check it was planned: docs/runbooks/break-glass.md |
 
 There is no WebSocket-connection alert: the API's `active_websocket_connections` gauge is
 not maintained, and each of the API's uvicorn workers keeps its own registry, so a scrape
@@ -270,13 +158,11 @@ Condition: rate(http_requests_total{status=~"5.."}[5m]) / rate(http_requests_tot
 ```
 
 **Response:**
-1. Check API logs: `kubectl logs -l app=truenorth-api --tail=100`
-2. Check database connectivity: `pg_isready`
-3. Check Redis: `redis-cli ping`
-4. If DB issue: Check connection pool: `SELECT count(*) FROM pg_stat_activity;`
-5. If Redis issue: Check memory: `redis-cli info memory`
-6. If code issue: Roll back to previous deployment
-7. Escalate if not resolved in 15 minutes
+1. API logs: `dc logs --tail 200 api`
+2. Readiness names the failing dependency: `curl -s https://<tn-fqdn>/api/health/ready`
+3. Database and Redis containers healthy: `dc ps postgres pgbouncer redis`
+4. If it started with an upgrade: roll back (guide 06 §2.4)
+5. Escalate if not resolved in 15 minutes ([runbooks/incident.md](runbooks/incident.md))
 
 #### CRIT: PostgreSQL Down
 
@@ -286,41 +172,49 @@ Condition: pg_up == 0
 ```
 
 **Response:**
-1. Check PostgreSQL service: `systemctl status postgresql`
-2. Check disk space: `df -h /var/lib/postgresql`
-3. Check logs: `journalctl -u postgresql --since "10 minutes ago"`
-4. If OOM: Increase `shared_buffers` or add memory
-5. If disk full: Emergency cleanup or expand volume
-6. If corruption: Initiate failover to replica
-7. Notify all teams — this affects all services
+1. `dc ps postgres` and `dc logs --tail 200 postgres`
+2. Disk: `df -h /srv/truenorth` (the database lives under it)
+3. If the disk is full: free space (old pre-upgrade backups under
+   `/srv/truenorth/backups/pre-upgrade/`, after copying them off) or grow the data disk; then
+   `dc up -d postgres`
+4. If the data is damaged: restore the last good backup (guide 06 §3.5 step 8)
+5. Tell instructors: every service depends on it
 
 #### CRIT: OpenSearch Cluster Red
 
 **Response:**
-1. Check cluster health: `curl localhost:9200/_cluster/health?pretty`
-2. Identify unassigned shards: `curl localhost:9200/_cat/shards?v&h=index,shard,state,unassigned.reason`
-3. Check node status: `curl localhost:9200/_cat/nodes?v`
-4. If node down: Restart node, wait for shard recovery
-5. If disk full: Clear old indices: `curl -X DELETE localhost:9200/tn-range-*-2024.01.*`
-6. If persistent: Enable shard allocation: `curl -X PUT localhost:9200/_cluster/settings -d '{"persistent":{"cluster.routing.allocation.enable":"all"}}'`
+1. Cluster health and unassigned shards, authenticated with the admin certificate:
+
+   ```bash
+   dc exec opensearch curl -s --cacert config/certs/ca.pem --cert config/certs/admin.pem \
+     --key config/certs/admin-key.pem 'https://localhost:9200/_cluster/health?pretty'
+   dc exec opensearch curl -s --cacert config/certs/ca.pem --cert config/certs/admin.pem \
+     --key config/certs/admin-key.pem 'https://localhost:9200/_cat/shards?v&h=index,shard,state,unassigned.reason'
+   ```
+
+2. Disk: `df -h /srv/truenorth`. The ISM policies delete telemetry after 90 days; if the
+   disk filled first, free space, then `dc restart opensearch`
+3. A damaged index: restore the telemetry snapshot of the last good backup
+   ([runbooks/backup-restore.md](runbooks/backup-restore.md#opensearch))
 
 ### Warning Alerts
 
 #### WARN: Celery Queue Depth > 100
 
 **Response:**
-1. Check worker status: `celery -A celery_app inspect active`
-2. Check for stuck tasks: `celery -A celery_app inspect reserved`
-3. If workers are healthy: Scale workers `kubectl scale deployment celery-worker --replicas=N`
-4. If tasks stuck: Purge and retry: `celery -A celery_app purge`
-5. Monitor queue depth returning to normal
+1. Workers alive and what they run:
+   `dc exec worker-provision celery -A worker.celery_app inspect active`
+2. Flower (`https://<tn-fqdn>/flower/`, management networks) shows queue depth per worker
+3. A stuck range operation: [Range leases, abandon and recovery](#range-leases-abandon-and-recovery).
+   Never purge the queues to "fix" a stuck range
 
 #### WARN: OpenSearch Cluster Yellow
 
 The platform's single node runs `cluster.default_number_of_replicas=0`, so yellow means an
-index asks for replicas a single node cannot place.
-1. Find it: `curl localhost:9200/_cat/indices?v&health=yellow`
-2. Set its replicas to 0: `curl -X PUT localhost:9200/<index>/_settings -d '{"index":{"number_of_replicas":0}}'`
+index asks for replicas a single node cannot place. Re-run
+`ansible-playbook -i inventory/site.yml playbooks/70-telemetry.yml --ask-vault-pass` (from
+`~/truenorth/install`): it sets every such index to 0 replicas. By hand:
+`install/README.md` "OpenSearch".
 
 #### WARN: ARC² Runner Down
 
@@ -348,12 +242,11 @@ index asks for replicas a single node cannot place.
 #### WARN: Disk Usage > 80%
 
 **Response:**
-1. Identify large directories: `du -sh /* | sort -rh | head -20`
-2. Clean Docker images: `docker system prune -a`
-3. Rotate/compress old logs: `logrotate -f /etc/logrotate.d/truenorth`
-4. Clean old OpenSearch indices (per retention policy)
-5. Clean old MinIO artifacts
-6. If persistent: Expand volume
+1. Which filesystem: `df -h / /srv/truenorth`; what grew: `sudo du -xsh /srv/truenorth/* | sort -rh | head`
+2. Backups: lower `tn_backup_max_total_gb` or copy old `pre-upgrade/` backups off and remove them
+3. Docker images of releases no longer installed: `docker image prune` (never `-a` with
+   the stack stopped: it would remove the running release's images)
+4. If persistent: grow the VM's disk, then the volume (`lvextend -r`)
 
 ---
 
@@ -402,8 +295,8 @@ keep it outside the host.
 ### Restore
 
 ```bash
-cd /opt/truenorth            # the app checkout
-set -a; . /etc/truenorth/backup.env; set +a      # COMPOSE_FILE, ENV_FILE, BACKUP_DIR
+cd /srv/truenorth/app                                       # the app checkout
+set -a; . /srv/truenorth/config/backup.env; set +a          # COMPOSE_FILE, ENV_FILE, BACKUP_DIR
 scripts/backup/restore.sh "$BACKUP_DIR/daily/truenorth-backup-20261008T021700Z"
 ```
 
@@ -432,282 +325,14 @@ are in PostgreSQL and MinIO either way). Details:
 
 ---
 
-## Database Maintenance
+## Certificate renewal
 
-### PostgreSQL Maintenance
-
-#### Automated VACUUM
-
-```sql
--- Check tables needing vacuum
-SELECT schemaname, relname, last_vacuum, last_autovacuum, n_dead_tup
-FROM pg_stat_user_tables
-ORDER BY n_dead_tup DESC;
-
--- Manual vacuum for large tables (run during low-traffic window)
-VACUUM (VERBOSE, ANALYZE) ranges;
-VACUUM (VERBOSE, ANALYZE) exercises;
-VACUUM (VERBOSE, ANALYZE) audit_logs;
-```
-
-#### Index Maintenance
-
-```sql
--- Check index usage
-SELECT
-  indexrelname,
-  idx_scan,
-  idx_tup_read,
-  idx_tup_fetch,
-  pg_size_pretty(pg_relation_size(indexrelid)) AS index_size
-FROM pg_stat_user_indexes
-ORDER BY idx_scan ASC;
-
--- Reindex bloated indexes (run during maintenance window)
-REINDEX INDEX CONCURRENTLY idx_ranges_tenant;
-REINDEX INDEX CONCURRENTLY idx_exercises_range;
-
--- Check for unused indexes (candidates for removal)
-SELECT indexrelname, idx_scan
-FROM pg_stat_user_indexes
-WHERE idx_scan = 0 AND indexrelname NOT LIKE 'pk_%';
-```
-
-#### Connection Pool Monitoring
-
-```sql
--- Current connections by state
-SELECT state, count(*)
-FROM pg_stat_activity
-WHERE datname = 'truenorth_db'
-GROUP BY state;
-
--- Kill long-running queries (> 5 minutes)
-SELECT pg_terminate_backend(pid)
-FROM pg_stat_activity
-WHERE state = 'active'
-  AND query_start < now() - interval '5 minutes'
-  AND query NOT LIKE '%pg_stat%';
-```
-
-### OpenSearch Maintenance
-
-#### Index Lifecycle Management
-
-```bash
-# Create ILM policy
-curl -X PUT "localhost:9200/_plugins/_ism/policies/truenorth-ilm" -d '{
-  "policy": {
-    "description": "TrueNorth Range index lifecycle",
-    "default_state": "hot",
-    "states": [
-      {
-        "name": "hot",
-        "actions": [],
-        "transitions": [
-          {"state_name": "warm", "conditions": {"min_index_age": "7d"}}
-        ]
-      },
-      {
-        "name": "warm",
-        "actions": [{"force_merge": {"max_num_segments": 1}}],
-        "transitions": [
-          {"state_name": "delete", "conditions": {"min_index_age": "30d"}}
-        ]
-      },
-      {
-        "name": "delete",
-        "actions": [{"delete": {}}],
-        "transitions": []
-      }
-    ]
-  }
-}'
-```
-
----
-
-## Scaling Operations
-
-### Horizontal Scaling Guide
-
-| Component | Scale Trigger | Scale Action | Max Recommended |
-|-----------|--------------|-------------|-----------------|
-| API Replicas | CPU >70% or P99 >500ms | Add replica | 10 replicas |
-| Celery Workers | Queue >100 for 5 min | Add worker | 20 workers |
-| OpenSearch | Disk >70% or CPU >80% | Add data node | 12 nodes |
-| PostgreSQL | Connection >80% | Add PgBouncer | 1 primary + 3 read replicas |
-| Redis | Memory >80% | Scale vertically | 64GB RAM |
-| AI Orchestrator | Queue >50 | Add replica | 5 replicas |
-
-### Kubernetes Autoscaling
-
-```yaml
-# HPA for Control Plane API
-apiVersion: autoscaling/v2
-kind: HorizontalPodAutoscaler
-metadata:
-  name: truenorth-api
-spec:
-  scaleTargetRef:
-    apiVersion: apps/v1
-    kind: Deployment
-    name: truenorth-api
-  minReplicas: 3
-  maxReplicas: 10
-  metrics:
-    - type: Resource
-      resource:
-        name: cpu
-        target:
-          type: Utilization
-          averageUtilization: 70
-    - type: Pods
-      pods:
-        metric:
-          name: http_request_duration_seconds_p99
-        target:
-          type: AverageValue
-          averageValue: "500m"
-
----
-# HPA for Celery Workers
-apiVersion: autoscaling/v2
-kind: HorizontalPodAutoscaler
-metadata:
-  name: celery-worker
-spec:
-  scaleTargetRef:
-    apiVersion: apps/v1
-    kind: Deployment
-    name: celery-worker
-  minReplicas: 2
-  maxReplicas: 20
-  metrics:
-    - type: External
-      external:
-        metric:
-          name: celery_queue_length
-        target:
-          type: Value
-          value: "100"
-```
-
-### Manual Scaling Commands
-
-```bash
-# Scale API replicas
-kubectl scale deployment truenorth-api --replicas=5
-
-# Scale Celery workers
-kubectl scale deployment celery-worker --replicas=8
-
-# Scale AI Orchestrator
-kubectl scale deployment ai-orchestrator --replicas=3
-
-# Add OpenSearch data node
-helm upgrade opensearch opensearch/opensearch \
-  --set replicas=5
-
-# Verify scaling
-kubectl get pods -l app.kubernetes.io/part-of=truenorth
-```
-
----
-
-## Log Management
-
-### Log Locations
-
-| Component | Location | Format |
-|-----------|----------|--------|
-| API | stdout → Loki | JSON structured |
-| Celery Workers | stdout → Loki | JSON structured |
-| AI Orchestrator | stdout → Loki | JSON structured |
-| Scenario Engine | stdout → Loki | JSON structured |
-| PostgreSQL | `/var/log/postgresql/` | PostgreSQL log format |
-| Nginx | `/var/log/nginx/` | Combined log format |
-| Keycloak | stdout → Loki | JSON structured |
-
-### Log Query Examples (Loki/LogQL)
-
-```logql
-# All errors in last hour
-{app="truenorth"} |= "ERROR" | json | line_format "{{.timestamp}} {{.message}}"
-
-# Provisioning failures
-{app="truenorth", component="worker"} |= "provision" |= "failed"
-
-# Slow API requests (> 1s)
-{app="truenorth", component="api"} | json | duration > 1s
-
-# WebSocket disconnections
-{app="truenorth", component="api"} |= "websocket" |= "disconnect"
-
-# AI Orchestrator errors by backend
-{app="truenorth", component="ai-orchestrator"} |= "ERROR" | json | line_format "{{.backend}}: {{.message}}"
-
-# Audit log entries for a specific tenant
-{app="truenorth"} | json | component="audit" | tenant_id="<uuid>"
-```
-
-### Log Retention Policy
-
-| Log Type | Hot (Loki) | Warm (S3) | Total Retention |
-|----------|-----------|-----------|-----------------|
-| Application | 7 days | 90 days | 90 days |
-| Audit | 30 days | 365 days | 365 days |
-| Security | 30 days | 365 days | 365 days |
-| Access | 7 days | 30 days | 30 days |
-| Debug | 3 days | -- | 3 days |
-
----
-
-## Certificate Management
-
-### Certificate Inventory
-
-| Service | Certificate | Expiry Check |
-|---------|------------|-------------|
-| API (TLS) | `/etc/ssl/truenorth/api.crt` | `openssl x509 -enddate -noout -in /etc/ssl/truenorth/api.crt` |
-| Keycloak (TLS) | `/etc/ssl/truenorth/keycloak.crt` | Same |
-| OpenSearch (TLS) | `/etc/ssl/truenorth/opensearch.crt` | Same |
-| MinIO (TLS) | `/etc/ssl/truenorth/minio.crt` | Same |
-| Internal CA | `/etc/ssl/truenorth/ca.crt` | Same |
-
-### Automated Renewal (cert-manager)
-
-```yaml
-apiVersion: cert-manager.io/v1
-kind: Certificate
-metadata:
-  name: truenorth-api-tls
-spec:
-  secretName: truenorth-api-tls
-  issuerRef:
-    name: letsencrypt-prod
-    kind: ClusterIssuer
-  dnsNames:
-    - api.truenorth.local
-    - "*.truenorth.local"
-  renewBefore: 720h   # Renew 30 days before expiry
-```
-
-### Manual Renewal
-
-```bash
-# Generate CSR
-openssl req -new -key /etc/ssl/truenorth/api.key \
-  -out /etc/ssl/truenorth/api.csr \
-  -subj "/CN=api.truenorth.local/O=TrueNorth Range"
-
-# After receiving signed certificate
-cp new-cert.crt /etc/ssl/truenorth/api.crt
-
-# Restart services
-kubectl rollout restart deployment truenorth-api
-kubectl rollout restart deployment keycloak
-```
+TrueNorth serves one certificate, issued by the site CA for `<tn-fqdn>`
+(`/srv/truenorth/tls/truenorth.crt`; guide 01 §5.3). Before it expires: put the new pair in
+`~/truenorth/install/files/tls/` as `truenorth.crt` and `truenorth.key` and run
+`ansible-playbook -i inventory/site.yml playbooks/40-tls.yml -K --ask-vault-pass`, which
+installs it and reloads nginx. OpenSearch's internal CA and certificates are the installer's
+own (`install/README.md` "OpenSearch").
 
 ---
 
@@ -715,7 +340,10 @@ kubectl rollout restart deployment keycloak
 
 Scope: the supported install, a single host running `compose.prod.yml` from the installer
 and backed up nightly by `scripts/backup/cron-backup.sh`. There is no WAL archiving,
-replication, multi-site or HA, and no Kubernetes DR path. Terraform was removed (#131).
+replication, multi-site or HA, and no Kubernetes DR path. Without shared storage, recovery
+from a host loss is a rebuild of the VM on the second management host and a restore:
+[guide 06 §3.5](guides/06-operations-runbook.md#35-disaster-recovery-rebuild-on-management-host-2)
+is the step-by-step procedure, and §3.6 the quarterly drill; what follows is the summary.
 
 ### Recovery targets
 
@@ -740,7 +368,8 @@ The full procedure is [runbooks/backup-restore.md](runbooks/backup-restore.md). 
 2. **Rebuilt host only: secrets first.** With the escrow private key on the host:
    `scripts/backup/restore-secrets.sh <backup> /path/to/backup-escrow.key --secrets-dir /srv/truenorth/config/secrets`.
    Then remove the private key.
-3. **Rebuilt host only: run the installer** (`ansible-playbook site.yml -K --ask-vault-pass`).
+3. **Rebuilt host only: run the installer**
+   (`ansible-playbook -i inventory/site.yml site.yml -K --ask-vault-pass -e @smoke.yml`).
    It renders the env file from the restored secrets and starts the stack.
 4. **Stop the ARC² runner** if ARC² is enabled: `sudo systemctl stop truenorth-arc2-runner`.
    The restore refuses while it is active. To restore without the ARC² runs, pass
@@ -767,8 +396,11 @@ The full procedure is [runbooks/backup-restore.md](runbooks/backup-restore.md). 
 - **Automated:** `scripts/backup/drill.sh` in CI, nightly and on every change to the backup
   scripts. It seeds data, backs up, wipes, restores and checks row counts, buckets and
   escrow decryption, including the rebuilt-host secrets path.
-- **On a real host:** quarterly, restore the latest backup onto a spare host with the
-  steps above. Time it against the 4-hour RTO and record the result here.
+- **On the real hardware:** quarterly, in a maintenance window, as
+  [guide 06 §3.6](guides/06-operations-runbook.md#36-the-restore-drill-quarterly) says
+  (production powered off, rebuilt on the second management host, then failed back; never
+  two copies running against one vCenter). Time it against the 4-hour RTO and record the
+  result here.
 
 ---
 
@@ -780,15 +412,15 @@ The full procedure is [runbooks/backup-restore.md](runbooks/backup-restore.md). 
 
 **Diagnosis:**
 ```bash
-# Check Celery task status
-celery -A celery_app inspect active | grep provision
+# What the provisioning worker is running
+dc exec worker-provision celery -A worker.celery_app inspect active
 
-# Check Terraform logs
-kubectl logs -l job-name=provision-<range-id> --tail=50
-
-# Check range state in database
-psql -c "SELECT id, state, updated_at FROM ranges WHERE state = 'provisioning';"
+# Its log for this range
+dc logs --since 2h worker-provision | grep <range-id>
 ```
+
+The range's operations (`GET /api/ranges/{id}/operations`) say which one is in flight and
+whether the worker reported anything (below).
 
 **Resolution:**
 1. If the task is still running: wait, or check vCenter for resource limits.
@@ -919,92 +551,79 @@ after is refused, and one is accepted within `RANGE_LEASE_SECONDS`. In a local r
 
 **Diagnosis:**
 ```bash
-# Check Scenario Engine logs
-kubectl logs -l app=scenario-engine --tail=50
+# The scenario and telemetry workers
+dc logs --since 1h worker-scenario | grep <exercise-id>
+dc logs --since 1h worker-telemetry | tail -n 100
 
-# Check OpenSearch index exists
-curl "localhost:9200/_cat/indices/tn-range-<range-id>-*"
-
-# Check Redis for scenario events
-redis-cli LRANGE scenario:<exercise-id>:events 0 -1
+# OpenSearch is up and green (readiness includes it)
+curl -s https://<tn-fqdn>/api/health/ready
 ```
 
 **Resolution:**
-1. If index missing: Check OpenSearch connectivity
-2. If Scenario Engine not running: Restart the engine pod
-3. If events in Redis but not OpenSearch: Check the event pipeline
+1. OpenSearch not ready: [CRIT: OpenSearch Cluster Red](#crit-opensearch-cluster-red)
+2. A worker not running: `dc up -d worker-scenario worker-telemetry`
+3. Nothing reaches the telemetry pipeline from the range: check the range's sensors and
+   its Certification card (the range may not be ready)
 
 ---
 
 ### High API Latency
 
-**Symptoms:** P99 latency >2 seconds.
+**Symptoms:** `ApiHighLatencyP95` fires; pages are slow.
 
 **Diagnosis:**
 ```bash
-# Check slow queries
-psql -c "SELECT query, mean_exec_time FROM pg_stat_statements ORDER BY mean_exec_time DESC LIMIT 10;"
-
-# Check connection pool status
-psql -c "SELECT state, count(*) FROM pg_stat_activity GROUP BY state;"
-
-# Check if any endpoint is slow
-curl -w "%{time_total}\n" -o /dev/null -s https://api.truenorth.local/ranges
+dc logs --since 30m api | grep -i -E 'slow|timeout|error' | tail -n 50
+dc exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "select state, count(*) from pg_stat_activity group by state"'
+docker stats --no-stream
 ```
 
 **Resolution:**
-1. If DB slow: Analyze and optimize queries, add indexes
-2. If pool saturated: Increase PgBouncer pool size
-3. If CPU bound: Scale API replicas
-4. If specific endpoint: Profile the endpoint code
+1. The VM is short of CPU or memory (`docker stats`, `HighCpuUsage`, `HighMemoryUsage`):
+   grow the VM (guide 01 §1.2)
+2. Many connections waiting: `PgConnectionPoolExhaustion`, `PgHighLockWaits` above
+3. One slow page: report it with the time and the request path
 
 ---
 
 ### WebSocket Disconnections
 
-**Symptoms:** Users report frequent disconnections.
+**Symptoms:** Users report live views (consoles, exercise feeds) dropping.
 
 **Diagnosis:**
 ```bash
-# Check WebSocket connection count
-redis-cli SCARD ws:connections
-
-# Check user connection counts
-redis-cli KEYS ws:user:* | head -20
-
-# Check heartbeat failures in logs
-kubectl logs -l app=truenorth-api | grep "heartbeat" | grep "missed"
+dc logs --since 1h api | grep -i websocket | tail -n 50
+dc logs --since 1h nginx | grep -i -E 'upgrade|ws/' | tail -n 50
 ```
 
 **Resolution:**
-1. If load balancer timeout: Increase WebSocket timeout to >60s
-2. If heartbeat misses: Check network latency
-3. If per-user limit (50): Client may have connection leak — check frontend
-4. If global limit (10K): Scale API replicas
+1. A proxy or firewall between users and TrueNorth closing idle connections: raise its
+   idle timeout above 60 s for `<tn-fqdn>`
+2. A Student inside an LTI hand-off session: WebSockets refuse that session (a known
+   v1.2.0 limitation, `docs/release-notes/v1.2.0.md`)
 
 ---
 
 ### Keycloak Authentication Failures
 
-**Symptoms:** Users cannot log in; 401 errors from API.
+**Symptoms:** Users cannot sign in; 401 errors from the API.
 
 **Diagnosis:**
 ```bash
-# Check Keycloak health
-curl https://auth.truenorth.local/health/ready
-
-# Check certificate validity
-openssl s_client -connect auth.truenorth.local:443 </dev/null 2>/dev/null | openssl x509 -noout -dates
-
-# Check realm configuration
-curl -s "https://auth.truenorth.local/realms/truenorth/.well-known/openid-configuration" | jq .
+dc ps keycloak
+dc logs --since 30m keycloak | tail -n 100
+curl -s "https://<tn-fqdn>/auth/realms/truenorth/.well-known/openid-configuration" | python3 -m json.tool | head
+timedatectl show -p NTPSynchronized --value
+openssl x509 -enddate -noout -in /srv/truenorth/tls/truenorth.crt
 ```
 
 **Resolution:**
-1. If Keycloak down: Restart service, check database
-2. If certificate expired: Renew and deploy
-3. If OIDC config wrong: Verify `issuer`, `jwks_uri` match API configuration
-4. If token expired: Check clock skew between services
+1. Keycloak down: `dc up -d keycloak`; check its database (`dc ps postgres`)
+2. AD users only: LDAPS or the bind account (`PKIX path building failed`, bind errors in the
+   Keycloak log): guide 06 §5. The local break-glass account still signs in
+3. Clock not synchronised: fix NTP; tokens fail on skew
+4. Certificate expired: [Certificate renewal](#certificate-renewal)
+5. Someone lost their authenticator: [runbooks/break-glass.md](runbooks/break-glass.md)
 
 ---
 
@@ -1026,73 +645,10 @@ more than 30 minutes, or *Failed*.
 | `configure`: step `health` failed | a stack service is down | on gs-core: `sudo docker compose -p greyspace -f /opt/greyspace/stack/compose.yaml ps` |
 
 Nothing re-runs the configure stage on its own (it is not retried); reprovision the
-range, or as an operator on the worker: `celery -A worker.celery_app call
+range, or as an operator on the host: `dc exec worker-provision celery -A worker.celery_app call
 worker.tasks.configure_range --args '["<range id>"]' --queue provision`.
 
 ---
 
-## Capacity Planning
-
-### Resource Estimation by User Count
-
-| Concurrent Users | API Replicas | Workers | PostgreSQL | Redis | OpenSearch |
-|-----------------|-------------|---------|-----------|-------|-----------|
-| 10 | 1 | 1 | 2 vCPU, 4 GB | 1 GB | 1 node, 8 GB |
-| 100 | 2 | 2 | 4 vCPU, 8 GB | 2 GB | 2 nodes, 16 GB |
-| 500 | 4 | 6 | 8 vCPU, 32 GB | 4 GB | 3 nodes, 32 GB |
-| 1,200 | 8 | 12 | 16 vCPU, 64 GB | 8 GB | 5 nodes, 64 GB |
-
-### Storage Growth Estimates
-
-| Data Source | Growth Rate | Est. Monthly |
-|------------|------------|-------------|
-| PostgreSQL | ~50 MB per 100 ranges/month | 50-500 MB |
-| OpenSearch (telemetry) | ~1 GB per range per exercise | 50-500 GB |
-| MinIO (artifacts) | ~100 MB per exercise | 10-100 GB |
-| Audit logs | ~10 MB per 1000 actions | 1-10 GB |
-
----
-
-## Change Management
-
-### Deployment Checklist
-
-Before deploying changes to production:
-
-1. **Pre-deployment:**
-   - [ ] Changes reviewed and approved (PR merged)
-   - [ ] All CI/CD checks passing
-   - [ ] Staging tested and validated
-   - [ ] Database migration tested on staging
-   - [ ] Rollback plan documented
-   - [ ] Maintenance window communicated (if needed)
-
-2. **Deployment:**
-   - [ ] Take database backup
-   - [ ] Apply database migrations
-   - [ ] Deploy new container images
-   - [ ] Verify health endpoints
-   - [ ] Run smoke tests
-
-3. **Post-deployment:**
-   - [ ] Monitor error rate for 30 minutes
-   - [ ] Verify key workflows (provision, exercise, AAR)
-   - [ ] Check no degradation in P99 latency
-   - [ ] Update deployment log
-
-### Rollback Procedure
-
-```bash
-# 1. Identify last known good version
-kubectl rollout history deployment truenorth-api
-
-# 2. Rollback deployment
-kubectl rollout undo deployment truenorth-api
-kubectl rollout undo deployment celery-worker
-
-# 3. If DB migration needs reversal
-alembic downgrade -1
-
-# 4. Verify
-curl https://api.truenorth.local/healthz
-```
+Capacity: guide 01 §1.3 (`scripts/range-capacity.py`). Changes and rollbacks: upgrades only,
+through the installer (guide 06 §2; [runbooks/upgrade.md](runbooks/upgrade.md)).

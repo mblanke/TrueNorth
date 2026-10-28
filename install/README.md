@@ -1,5 +1,9 @@
 # TrueNorth Range — installer
 
+> **Installing a site?** Follow the step-by-step guides in [`docs/guides/`](../docs/guides/README.md)
+> (01 prerequisites, 02 install, 06 operations). This README is the installer's reference:
+> every stage and variable.
+
 Takes the platform host from *"bare Ubuntu 24.04, `/srv/truenorth` empty"* (Docker is
 installed by `00-docker`) to a running, AD-federated TrueNorth with a working trainee registration path. AD is optional
 (`tn_ldap_enabled`): a site without a domain controller gets local Keycloak groups and a
@@ -97,8 +101,9 @@ ansible-vault encrypt inventory/group_vars/all/vault.yml
 #    can drain. Pin the release to install (docs/release.md): tn_release_version: v1.2.3.
 #    The AI endpoint (tn_ai_base_url) has no default (no AI server yet: tn_ai_enabled:
 #    false, "AI (optional)"). The backup escrow is REQUIRED
-#    ("Backups"). Turn on alert email (tn_alert_email_enabled) or alerts go nowhere
-#    ("Alerting").
+#    ("Backups"). Set the SMTP relay (tn_smtp_*) or no onboarding email, reminder or
+#    invite is sent ("Email (SMTP)"). Turn on alert email (tn_alert_email_enabled) or
+#    alerts go nowhere ("Alerting").
 $EDITOR inventory/group_vars/all/main.yml        # or inventory/hosts.yml host vars
 
 # 3. TLS: drop truenorth.crt / truenorth.key into files/tls/
@@ -631,6 +636,61 @@ Docker's apt repository. Without a mirror of it, set `tn_install_docker: false` 
 preinstall Docker with the store enabled ("Prerequisites"). `50-stack-up` copies the tarballs, `docker
 load`s the ones that changed, and runs the same digest check instead of pulling.
 
+## Email (SMTP)
+
+The API emails people: a Student added to a roll call who has no account yet gets an
+onboarding email, instructors and Students get class reminders, a Student who forfeits a
+seat is told, and booked sessions go out as calendar invites. All of it goes through one
+SMTP relay, set once with `tn_smtp_*`. **Email is optional.** With `tn_smtp_host` empty
+(the default) nothing is sent: each message is only logged, preflight says so, every admin
+sees a persistent *"Email is not configured"* banner, and the Classes page warns, when
+Students are added, that they will not be emailed (tell them to sign in themselves).
+
+Any relay works: an internal Exchange or Postfix, the site's smarthost, a hosted service.
+Set, in `inventory/group_vars/all/main.yml` (or the host's inventory) and the vault:
+
+| Variable | Default | Note |
+|---|---|---|
+| `tn_smtp_host` | *(empty: email off)* | The relay's name or address, no scheme. |
+| `tn_smtp_port` | `587` | `587` submission with `starttls`; `465` with `tls`; `25` with `starttls` or `none`. |
+| `tn_smtp_security` | `starttls` | `starttls`: connect, then STARTTLS (refused if the relay does not offer it). `tls`: implicit TLS from the first byte. `none`: no encryption, for an internal relay only and never with a sign-in. |
+| `tn_smtp_username` | *(empty: no sign-in)* | The relay account. Empty for a relay that accepts mail from this host by address. |
+| `vault_smtp_password` | *(empty)* in `vault.yml.example` | Its password. Both or neither. |
+| `tn_smtp_from_address` | *(empty; required with a host)* | The sender on every message, e.g. `truenorth@corp.example`. The relay must let this host send as it. |
+
+Then run `00-preflight`, `30-config` and `50-stack-up` (or the whole `site.yml`). With a
+host set, preflight refuses a port outside 1–65535, a security mode other than the three
+above, a sender that is not a plain address (`name@domain`, no display name), a username
+without a password or the reverse, a sign-in with `none` (the password would cross the
+wire in clear), a `CHANGE_ME`, and a password containing a `'` or a line break (the env
+file single-quotes it). It never prints the password.
+
+`30-config` renders them into the env file as `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURITY`,
+`SMTP_USER`, `SMTP_PASSWORD` and `SMTP_FROM`, which `compose.prod.yml` passes to the `api`
+service (its class and scheduler clocks send the mail). The Helm chart takes the same
+settings as `config.smtp.{host,port,security,username,fromAddress}` and
+`secrets.smtpPassword`, and at render time refuses an unknown mode, a port outside
+1–65535, a sender that is not a plain address, a credential without its pair and a
+sign-in with `none`. A release that set `SMTP_*` through `config.extraEnv` /
+`secrets.extraEnv` keeps working; mixing that with `config.smtp` is refused.
+
+**Alert email uses the same relay.** `tn_alert_smtp_host`, `tn_alert_smtp_port`,
+`tn_alert_email_from`, `tn_alert_smtp_require_tls` (`true` unless `tn_smtp_security` is
+`none`) and the alert credentials default to the values above, so turning on alert email
+needs only `tn_alert_email_enabled: true` and `tn_alert_email_to` ("Alerting"). Set any of
+them, or both `vault_alert_smtp_username` and `vault_alert_smtp_password` in the vault, to
+send alerts through a different relay or account. Alertmanager speaks implicit TLS only on
+port 465: with `tn_smtp_security: tls` on another port, set `tn_alert_smtp_port` (or the
+whole alert relay) explicitly.
+
+**Check it in the app.** `GET /api/email/status` answers whether email is configured to
+every signed-in user (nothing else); the platform administrator also sees the relay, port,
+security mode, sender and account name. No one is ever shown the password. On **Admin →
+System Health**, the platform administrator can **Send test email**: one message to their
+own address, at most once a minute, recorded in the audit log (`email.test`) with the
+outcome. A message the relay accepted can still be filtered; delivery is proven when it is
+in the inbox.
+
 ## Alerting
 
 Prometheus evaluates the rules in `monitoring/prometheus/alerts.yml` and sends what fires
@@ -647,11 +707,11 @@ Set, in the inventory and the vault, then run `00-preflight`, `30-config` and
 |---|---|---|
 | `tn_alert_email_enabled` | `false` (staging too, until its SMTP details are set) | Off: the null receiver (or the webhook, below). |
 | `tn_alert_email_to` | *(empty — required when on)* | One address, or several separated by commas. |
-| `tn_alert_email_from` | *(empty — required when on)* | An address the relay lets this host send as. |
-| `tn_alert_smtp_host` | *(empty — required when on)* | The SMTP relay, reached over `tn-egress`. |
-| `tn_alert_smtp_port` | `587` | `465` is implicit TLS (Alertmanager detects it). |
-| `tn_alert_smtp_require_tls` | `true` | STARTTLS required; `false` only for a relay on a trusted network. |
-| `vault_alert_smtp_username` / `vault_alert_smtp_password` | `CHANGE_ME` in `vault.yml.example` | Both set, or both empty for a relay that accepts unauthenticated mail from this host. |
+| `tn_alert_email_from` | `tn_smtp_from_address` | An address the relay lets this host send as. |
+| `tn_alert_smtp_host` | `tn_smtp_host` | The SMTP relay, reached over `tn-egress`. |
+| `tn_alert_smtp_port` | `tn_smtp_port` (`587`) | `465` is implicit TLS (Alertmanager detects it). |
+| `tn_alert_smtp_require_tls` | `true` unless `tn_smtp_security` is `none` | STARTTLS required; `false` only for a relay on a trusted network. |
+| `vault_alert_smtp_username` / `vault_alert_smtp_password` | `tn_smtp_username` / `vault_smtp_password` | Override in the vault for another account. Both set, or both empty for a relay that accepts unauthenticated mail from this host. |
 
 Preflight refuses an empty recipient, sender or relay, a `CHANGE_ME` in either credential,
 or one credential without the other; it ignores them while alert email is off.
@@ -1042,6 +1102,47 @@ every launch answers 503. With `tn_cmi5_enabled` (the default):
 
 `tn_cmi5_enabled: false` renders no credential: launches answer 503 (fail closed).
 
+## Content feeds
+
+Release, end-of-life and vulnerability data make content due for review on the calendar's
+Content view (ADR 0014 decision 25). A feed entry that names something a golden template
+is built from (`content/catalogue/feed_products.yaml`) flags it stale, e.g. "Ubuntu 20.04
+reached EOL 2025-05-31" or "CVE-…: a Microsoft Windows KEV entry (may affect Windows Server
+2022)" (KEV names product families, so its flags say "may affect"), and the flag flows down
+to the range templates, scenarios, modules and courses that use it. Each flag is raised
+once; Mark reviewed clears it. **Off on a fresh install.**
+
+| Variable | Default | Effect |
+|---|---|---|
+| `tn_feeds_mode` | `off` | `off`; `online`: worker-provision pulls endoflife.date, CISA KEV and the NVD CVE API once a day (04:10 UTC); `bundle`: air-gapped, a platform admin imports signed feed bundles |
+| `tn_feeds_http_proxy` | `""` | Optional. The site's HTTP proxy for the daily pull (TN-MGMT01 or the depot). Empty: the worker's `HTTPS_PROXY`, if its environment has one, else direct. No other proxy variable is read |
+| `tn_feeds_bundle_public_key` | `""` | `bundle` mode: the Ed25519 public key (base64) bundles must be signed with. Without it none is accepted |
+| `tn_feeds_nvd_api_key` | `vault_feeds_nvd_api_key` | Optional; raises NVD's rate limit. Given to worker-provision only (the worker that pulls), never logged |
+| `tn_feeds_nvd_min_cvss` | `9.0` | NVD CVEs below this CVSS base score are not flagged |
+
+- **What leaves the site:** GET requests naming the product map's public products (e.g.
+  `ubuntu.json`, a CPE string). No tenant data, no content names.
+- **Air-gapped:** on a connected machine, `python scripts/build_feed_bundle.py --new-key
+  <file>` once (it prints the public key for `tn_feeds_bundle_public_key`), then
+  `--key <file> --out feeds.json` per bundle (NVD looks back 120 days by default; it writes
+  nothing if a feed could not be read). The Content view's Feeds panel imports it. Refused
+  and recorded: an unsigned bundle, one signed by another key, one changed after signing,
+  one with fields a bundle does not have, one dated more than a day ahead, one older than
+  the last import, and a file that is not readable JSON.
+- **Undoing a bad bundle:** each bundle replaces the last one outright: entries the new one
+  lacks are removed and every entry's products are the new bundle's. So build a corrected
+  bundle (newer, from fixed feeds or a fixed product map) and import it. Flags the bad
+  bundle already raised stay on their items: review them (Mark reviewed); a removed entry
+  never raises them again. Entries the online pull stored are never touched by a bundle.
+- **Status:** the Feeds panel (admins) shows each source's last pull or import and its
+  error. A product map entry that matched nothing in a pull (a KEV name or endoflife.date
+  cycle the feed does not use) shows as a warning there, so a dead mapping is not green.
+- **What is flagged:** vulnerabilities published on or after the later of the day a
+  template was first tracked and the day feeds were first turned on. Turning feeds on does
+  not flag years of history at once, and a template added later is not flagged for
+  vulnerabilities older than it: review a new template against current advisories when
+  you add it.
+
 ## Range credentials
 
 Range templates declare their machines' accounts (ADR 0012); TrueNorth sets them at deploy.
@@ -1088,6 +1189,7 @@ actually change:
 | `tn_image_source` | `release` | `build` only for a lab ("Images") |
 | `tn_release_version` | *(empty — required in release mode)* | The release tag to install, e.g. `v1.2.3` |
 | `tn_release_dir` / `tn_image_archive_dir` | *(empty)* | Air-gapped: the release files, and `docker save` tarballs |
+| `tn_smtp_host` | *(empty: email off)* | The app's relay, with `tn_smtp_port` (`587`), `tn_smtp_security` (`starttls`), `tn_smtp_username`, `tn_smtp_from_address` and `vault_smtp_password` ("Email (SMTP)"). Off: onboarding emails, reminders and invites are not sent. |
 | `tn_alert_email_enabled` | `false` (staging too, until its SMTP details are set) | Alerts by email; with `tn_alert_email_to`, `tn_alert_email_from`, `tn_alert_smtp_host`, `tn_alert_smtp_port` (`587`), `tn_alert_smtp_require_tls` (`true`) and `vault_alert_smtp_username` / `vault_alert_smtp_password` ("Alerting"). Off: alerts go nowhere. |
 | `vault_alertmanager_webhook_url` | *(empty)* | A webhook receiver, alone or beside email ("Alerting"). |
 | `tn_bootstrap_admin_upn` | *(empty — required)* | The named AD account that admits everyone else. |

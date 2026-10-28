@@ -154,6 +154,10 @@ async def lifespan(app: FastAPI):
     from .classes import forfeit as class_forfeit
 
     seat_forfeit = asyncio.create_task(class_forfeit.run_forever()) if _env_flag("SCHEDULER_CLOCK_ENABLED") else None
+    # Nightly: deactivate accounts AD disabled or removed, and unused local ones (ADR 0014 §6).
+    from .ad_status_sync import clock as ad_status_clock
+
+    ad_status_sync = asyncio.create_task(ad_status_clock.run_forever()) if _env_flag("AD_STATUS_SYNC_ENABLED") else None
     # Attendance of each class session, recorded after it ends (ADR 0014 §12).
     from .classes import attendance as class_attendance
 
@@ -169,8 +173,7 @@ async def lifespan(app: FastAPI):
     yield
 
     for sweep in (range_resend, lab_sweep, exercise_clock, clock_task, class_reminders, seat_forfeit, attendance_clock,
-                  results_pull,
-                  cmi5_ags, infra_discovery_task, cert_retention):
+                  results_pull, cmi5_ags, infra_discovery_task, cert_retention, ad_status_sync):
         if sweep is not None:
             sweep.cancel()
 
@@ -368,13 +371,19 @@ app.state.ws_manager = ws_manager
 
 # -- Routers (fine-grained RBAC via require_permission) --------------------
 from .acknowledgement.router import router as acknowledgement_router  # noqa: E402 (ADR 0014 §3; + its tables)
+from .ad_status_sync.router import router as ad_status_sync_router  # noqa: E402 (ADR 0014 §6; + its tables)
 from .class_setup.router import router as class_setup_router  # noqa: E402 (#200)
 from .classes.closeout_router import router as class_closeout_router  # noqa: E402 (#283)
+from .classes.console_router import router as class_consoles_router  # noqa: E402 (#313, #321)
+from .classes.my_classes import router as my_classes_router  # noqa: E402 (#284)
 from .classes.range_router import router as class_ranges_router  # noqa: E402 (#282)
 from .classes.readiness_router import router as readiness_router  # noqa: E402 (#289)
 from .classes.router import router as classes_router  # noqa: E402 (ADR 0014, + its tables)
 from .cmi5.router import router as cmi5_router  # noqa: E402 (also registers the cmi5 tables)
+from .content_feeds.router import router as content_feeds_router  # noqa: E402 (ADR 0014 §25; + tables)
+from .content_port.router import router as content_port_router  # noqa: E402 (proven content port; + tables)
 from .content_review.router import router as content_review_router  # noqa: E402 (ADR 0014 §22-24; + tables)
+from .email_status.router import router as email_status_router  # noqa: E402 (#306)
 from .golden_image_builds.router import router as golden_image_builds_router  # noqa: E402 (ADR 0013; + its table)
 from .live_class.router import router as live_class_router  # noqa: E402 (issue #199)
 from .maintenance_windows.router import emergency_router as emergency_teardown_router  # noqa: E402 (ADR 0013 §7)
@@ -472,16 +481,22 @@ app.include_router(scheduling_feed_router)  # token-authenticated .ics feed
 app.include_router(scheduling_me_router)  # your own sessions and feed link
 app.include_router(maintenance_windows_router)  # app/maintenance_windows (ADR 0013 §7)
 app.include_router(content_review_router)  # the content clock, app/content_review (ADR 0014 §22-24)
+app.include_router(content_feeds_router)  # release and vulnerability feeds, app/content_feeds (ADR 0014 §25)
+app.include_router(content_port_router)  # proven content between sites, app/content_port (docs/content-port.md)
 # LMS & Integration routers
 app.include_router(courses_router)
 app.include_router(course_releases_router)
 app.include_router(course_publications_router)
 app.include_router(class_setup_router)  # an instructor's own class (#200)
+app.include_router(my_classes_router)  # app/classes: a Student's My classes (#284); before /{class_id}
 app.include_router(class_closeout_router)  # app/classes: attendance and close-out (#283)
 app.include_router(class_ranges_router)  # app/classes: ranges, modes and teams (#282); before /{class_id}
+app.include_router(class_consoles_router)  # app/classes: consoles and the live view (#313, #321); before /{class_id}
 app.include_router(classes_router)  # app/classes: Class records and roll call (ADR 0014)
 app.include_router(readiness_router)  # app/classes: the unit readiness page (ADR 0014 decision 7, #289)
 app.include_router(acknowledgement_router)  # app/acknowledgement: the rules of use (ADR 0014 §3)
+app.include_router(ad_status_sync_router)  # app/ad_status_sync: nightly AD status sync (ADR 0014 §6)
+app.include_router(email_status_router)  # GET /email/status, POST /email/test (app/email_status, #306)
 app.include_router(cmi5_router)  # app/cmi5 (docs/cmi5.md)
 app.include_router(lab_sessions_router)
 app.include_router(learning_paths_router)

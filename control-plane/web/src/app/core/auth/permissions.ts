@@ -30,7 +30,7 @@ export type Permission =
   | 'course:author' | 'course:release'
   | 'schedule:read' | 'schedule:write' | 'schedule:admin' | 'schedule:approve'
   | 'content_review:read' | 'content_review:review_own' | 'content_review:admin'
-  | 'class:create' | 'class:read' | 'readiness:read'
+  | 'class:create' | 'class:read' | 'class:attend' | 'readiness:read'
   | 'tenant:create' | 'tenant:read' | 'tenant:update'
   | 'audit:read' | 'telemetry:read' | 'telemetry:write' | 'stats:read' | 'aar:generate' | 'aar:read'
   | 'noise:read' | 'noise:control'
@@ -57,7 +57,7 @@ export const ALL_PERMISSIONS: readonly Permission[] = [
   'course:author', 'course:release',
   'schedule:read', 'schedule:write', 'schedule:admin', 'schedule:approve',
   'content_review:read', 'content_review:review_own', 'content_review:admin',
-  'class:create', 'class:read', 'readiness:read',
+  'class:create', 'class:read', 'class:attend', 'readiness:read',
   'tenant:create', 'tenant:read', 'tenant:update',
   'audit:read', 'telemetry:read', 'telemetry:write', 'stats:read', 'aar:generate', 'aar:read',
   'noise:read', 'noise:control',
@@ -77,7 +77,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     'detection:submit', 'objective:ack',
     'schedule:read', 'schedule:write',
     'content_review:read', 'content_review:review_own',
-    'class:create', 'class:read', 'readiness:read',
+    'class:create', 'class:read', 'class:attend', 'readiness:read',
     'user:read',
     'registration:read', 'registration:approve',
     'infra:read', 'ai_config:read', 'integration:read',
@@ -99,7 +99,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
   ],
   student: [
     'range:read', 'template:read', 'scenario:read', 'exercise:read', 'detection:submit',
-    'aar:read', 'wiki:read', 'ticket:create',
+    'aar:read', 'class:attend', 'wiki:read', 'ticket:create',
   ],
   observer: [
     'range:read', 'template:read', 'scenario:read', 'exercise:read', 'aar:read',
@@ -171,10 +171,12 @@ export const PAGE_ACCESS = {
   schedule: { all: ['schedule:read'] },
   /** The calendar's Content view: the content clock (ADR 0014 §22-24). Never observers or Students. */
   contentCalendar: { all: ['content_review:read'] },
-  /** The Classes page (ADR 0014): staff through GET /classes/mine (class:read; creating one needs
-   *  class:create); Students through GET /classes, their own classes and their range there
-   *  (ADR 0014 §12: opening it is their attendance). detection:submit stands for "a Student". */
-  classes: { any: ['class:read', 'detection:submit'] },
+  /** GET /classes/mine: the staff Classes page (ADR 0014). Creating one needs class:create. */
+  classes: { all: ['class:read'] },
+  /** GET /classes/attending: a Student's own classes, their status and Join (ADR 0014 §20).
+   *  Instructors and admins hold class:attend too (to grant the Student role), so the menu
+   *  and the dashboard show it only to roles that cannot open `classes` (NavItem.notWith). */
+  myClasses: { all: ['class:attend'] },
   /** The unit readiness page (ADR 0014 decision 7): GET /readiness, the caller's own tenant.
    *  Commander = observer + this page; instructors and admins too. Never Students. */
   readiness: { all: ['readiness:read'] },

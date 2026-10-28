@@ -19,6 +19,7 @@ import { NotificationService } from '@core/services/notification.service';
 import { TemplateSummary } from '@core/models';
 import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog/confirm-dialog.component';
 import { EmptyStateComponent } from '../../shared/components/empty-state/empty-state.component';
+import { ProvenChipComponent } from '../../shared/components/proven-chip/proven-chip.component';
 import { EnterStaggerDirective, HoverLiftDirective } from '../../shared/motion';
 
 /**
@@ -219,7 +220,7 @@ export class TemplateEditorDialogComponent {
   imports: [
     RouterLink, MatButtonModule, MatCardModule,
     MatIconModule, MatTooltipModule, EmptyStateComponent,
-    EnterStaggerDirective, HoverLiftDirective,
+    EnterStaggerDirective, HoverLiftDirective, ProvenChipComponent,
   ],
   template: `
     <div class="page-container">
@@ -273,6 +274,7 @@ export class TemplateEditorDialogComponent {
                     </span>
                   }
                 </div>
+                <tn-proven-chip itemType="range_template" [itemId]="t.id" />
               </mat-card-content>
 
               <mat-card-actions>

@@ -238,6 +238,13 @@ tn_default_progression: DP1
 # The named AD account that becomes the first admin. Without this nobody can
 # drain the approval queue and the install completes into a dead end.
 tn_bootstrap_admin_upn: ""
+# Nightly AD status sync (ADR 0014 §6): deactivates accounts AD disabled or removed, and, with
+# AD and tn_keycloak_local_admin, local accounts unused for 90 days (never the break-glass
+# account, the local tn_bootstrap_admin_upn). Dry run records and changes nothing: leave it on until a
+# few nights' results on Users > AD Sync look right, then set false and re-run 30-config.
+# The next night is then the first applied one: it deactivates what the last dry-run night
+# also found, for the same reason.
+tn_ad_status_sync_dry_run: true
 
 # ── vSphere ───────────────────────────────────────────────────────────
 # NOTE: vsphere_api, NOT "vsphere" — the registry keys in
@@ -291,6 +298,21 @@ tn_infra_discovery_seconds: 300
 # (archived; a range's current record is never purged) are deleted this many months after
 # they were opened, each with an audit row; export them first. 0 keeps them forever.
 tn_range_cert_retention_months: 12
+# Release, end-of-life and vulnerability feeds for the content clock (ADR 0014 decision 25).
+# Off on a fresh install. online: worker-provision pulls endoflife.date, CISA KEV and the
+# NVD CVE API once a day (GET only; no site data is sent), through tn_feeds_http_proxy when
+# set (optional; else the worker's HTTPS_PROXY, else direct). bundle (air-gapped): a platform admin imports signed feed bundles on the Content
+# view, verified against tn_feeds_bundle_public_key (scripts/build_feed_bundle.py makes the
+# key pair and the bundles). install/README.md "Content feeds".
+tn_feeds_mode: "off"
+tn_feeds_http_proxy: ""
+tn_feeds_bundle_public_key: ""
+tn_feeds_nvd_api_key: "{{ vault_feeds_nvd_api_key | default('') }}"
+tn_feeds_nvd_min_cvss: 9.0
+# Content port (docs/content-port.md): the base64 Ed25519 public keys of the sites whose
+# signed content bundles this site imports, comma-separated (an origin site shows its key on
+# the Content view's Port content panel). Empty: nothing is imported (fail closed).
+tn_content_port_trusted_keys: ""
 # Empty: clone the inventory VM templates (tmpl-*). Set once a Content Library exists.
 tn_vsphere_content_library: ""
 tn_vsphere_concurrency: 4
@@ -566,6 +588,29 @@ tn_backup_max_total_gb: 200
 tn_pre_upgrade_backup: true
 tn_upgrade_inflight: drain # drain | abandon
 
+# ── Email (SMTP; install/README.md "Email (SMTP)") ─────────────────────
+# The relay the API sends its mail through: roll-call onboarding emails, class reminders,
+# seat-forfeit notices and calendar invites (control-plane/api/app/notifications/smtp.py).
+# Rendered into the env file as SMTP_*. Optional: with tn_smtp_host empty nothing is sent,
+# the mail is only logged, and admins see an "Email is not configured" banner. Any relay
+# works: an internal Exchange or Postfix, a smarthost, a hosted service.
+# Set once: alert email (tn_alert_*, below) defaults to these same settings.
+tn_smtp_host: "" # e.g. smtp.corp.example; empty: email off
+# 587 with starttls is the usual submission port; 465 with tls; 25 with starttls or none.
+tn_smtp_port: 587
+# starttls: plain connect, then STARTTLS (refused if the relay does not offer it).
+# tls: TLS from the first byte (implicit TLS, usually port 465).
+# none: no encryption (an internal relay that offers neither; credentials then cross the
+# wire in clear, so use it only without tn_smtp_username).
+tn_smtp_security: starttls # starttls | tls | none
+# The account to sign in as. Empty: no authentication (a relay that accepts mail from
+# this host by address). Its password is vault_smtp_password (vault.yml); set both or
+# neither. Preflight checks it.
+tn_smtp_username: ""
+# The sender every message carries. Required with tn_smtp_host; the relay must let this
+# host send as it. Preflight checks it looks like an address.
+tn_smtp_from_address: "" # e.g. truenorth@corp.example
+
 # ── Alert delivery by email (install/README.md "Alerting"; docs/operations.md) ──
 # false (the default): Alertmanager routes every alert to a null receiver, or to the
 # webhook if vault_alertmanager_webhook_url is set, and 99-validate warns that alerts are
@@ -573,17 +618,29 @@ tn_upgrade_inflight: drain # drain | abandon
 # ({{ tn_config_dir }}/alertmanager/alertmanager.email.yml). Criticals are mailed at once
 # and hourly while firing; warnings are batched; resolutions are mailed too. Preflight
 # refuses an empty recipient, sender or relay, and a CHANGE_ME in the SMTP credentials
-# (vault_alert_smtp_username / vault_alert_smtp_password; leave both empty for a relay
-# that takes unauthenticated mail from this host). Prove delivery with
+# (vault_alert_smtp_username / vault_alert_smtp_password, by default the app's
+# tn_smtp_username / vault_smtp_password; leave both empty for a relay that takes
+# unauthenticated mail from this host). Prove delivery with
 # playbooks/alert-test.yml (tag tn-alert-test).
 tn_alert_email_enabled: false
 tn_alert_email_to: "" # one address, or several separated by commas
-tn_alert_email_from: ""
-tn_alert_smtp_host: ""
-tn_alert_smtp_port: 587
-# STARTTLS is required (Alertmanager refuses to send if the relay does not offer it). On
-# port 465 Alertmanager speaks implicit TLS instead.
-tn_alert_smtp_require_tls: true
+# The sender, relay and credentials default to the app's tn_smtp_* above, so a site sets
+# them once. Override any of them here (or in the host's inventory) to send alerts
+# through another relay.
+tn_alert_email_from: "{{ tn_smtp_from_address }}"
+tn_alert_smtp_host: "{{ tn_smtp_host }}"
+tn_alert_smtp_port: "{{ tn_smtp_port }}"
+# STARTTLS is required unless tn_smtp_security is none (Alertmanager refuses to send if
+# the relay does not offer it). On port 465 Alertmanager speaks implicit TLS instead.
+tn_alert_smtp_require_tls: "{{ tn_smtp_security | default('starttls') != 'none' }}"
+# The credentials Alertmanager signs in with: vault_alert_smtp_username /
+# vault_alert_smtp_password when the vault sets them (an override, whatever the vault
+# file is called), else the app's tn_smtp_username / vault_smtp_password. The password
+# falls back only with the username, so a half-set override is caught by preflight.
+tn_alert_smtp_username: "{{ vault_alert_smtp_username | default(tn_smtp_username | default('')) }}"
+tn_alert_smtp_password: >-
+  {{ vault_alert_smtp_password | default(vault_smtp_password | default('')
+     if vault_alert_smtp_username is not defined else '') }}
 
 # ── Moodle (optional; install/README.md "Moodle (optional)") ──────────
 # true: 85-moodle runs TrueNorth's Moodle for tn_tenant_slug at

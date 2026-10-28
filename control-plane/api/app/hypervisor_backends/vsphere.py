@@ -145,6 +145,7 @@ class VSphereBackend(BaseHypervisorBackend):
     kind = "vsphere"
     requires_password = True
     provisioner_backends = frozenset({"vsphere_api"})
+    has_consoles = True  # WebMKS / VMRC
 
     def check_connection(self, conn, db):
         return check_connection(conn, db)

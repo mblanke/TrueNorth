@@ -2,7 +2,7 @@
 
 - **Status:** accepted 2026-10-22 (owner decisions, grilling session). **Amends ADR 0004** (see "What this changes in ADR 0004").
 - **Date:** 2026-10-22
-- **Code:** sliced into GitHub issues, one PR each, listed under "Delivery". Slices that touch auth, tenancy or provisioning get an adversarial review. Built so far: Class and roll call (#278, `app/classes/`), the content clock (#286, `app/content_review/`), booking approval (#281: `app/scheduler/approval.py`, `app/classes/sessions.py`), per-session ranges and teams (#282: `app/classes/ranges.py`, `app/classes/teams.py`), attendance and close-out (#283: `app/classes/attendance.py`, `app/classes/closeout.py`).
+- **Code:** sliced into GitHub issues, one PR each, listed under "Delivery". Slices that touch auth, tenancy or provisioning get an adversarial review. Built so far: Class and roll call (#278, `app/classes/`), the content clock (#286, `app/content_review/`), booking approval (#281: `app/scheduler/approval.py`, `app/classes/sessions.py`), per-session ranges and teams (#282: `app/classes/ranges.py`, `app/classes/teams.py`), attendance and close-out (#283: `app/classes/attendance.py`, `app/classes/closeout.py`), the feeds (#287: `app/content_feeds/`, `worker/content_feeds/`, `worker/feed_backends/`; product map `content/catalogue/feed_products.yaml`).
 - **Design reference:** the calendar mockups "TrueNorth Calendars" (Events and Content views, week and month), approved by the owner on 2026-10-22.
 
 ## Context
@@ -98,6 +98,27 @@ Content (courses, modules, labs, scenarios, range templates, golden images) has 
 ### People on a class
 
 19. **Observers on a class** see what instructors see, read-only: the schedule, roll call, Live Class, results, the after-action review, and **live screens and consoles**. They never see range login details.
+
+    As built (#321): "observers" are the class's own observer list (`class_staff`, role
+    observer), never everyone with the observer role in the tenant. A class session's **Live**
+    view (`GET /classes/{id}/sessions/{event_id}/live`, reached from Calendar → Events and the
+    Classes page) shows its lead, assistants, observers and admins every Student on the roll
+    call with their seat's machines (or their team and the shared range) and when they last
+    opened their range; it is a status grid, not screenshots. A console from it
+    (`POST .../live/console`, by VM name) is on a machine of one of that session's ranges, only
+    during its window (live, or the provisioning lead before it); observers only on the
+    Students' machines (those Students are handed accounts on), and a platform observer always
+    as an observer whatever the staff list says. **Observers get no console tickets by
+    default** (`CLASS_OBSERVER_CONSOLES`, off; owner decision 2026-10-28): §19 says read-only,
+    and a vSphere WebMKS ticket has no read-only mode, so an observer could type into a
+    Student's machine. They see the status grid only (403 on the console route); the lead,
+    assistants and admins keep consoles. A site whose backend can enforce view-only
+    (`BaseConsoleBackend.supports_view_only`) sets the variable on: an observer's console is
+    then view-only, and where the backend cannot enforce it, a normal console marked
+    *observed*. Every
+    ticket is audited as `observer` or `staff`, and is never attendance. Live Class
+    (`/ops/exercises/{id}/class`) of a class session's exercise follows the same list for
+    observers; an exercise that is no class's session keeps the tenant-wide rule.
 20. **Students get a "My classes" page.** It covers all their classes and sessions across the week or month. It shows their status (onboarding, acknowledgement, range ready) and a **Join** button when their range is up. Email calendar invites continue as today.
 
 ### The two-view calendar (admin and instructor)
@@ -220,7 +241,8 @@ Content (courses, modules, labs, scenarios, range templates, golden images) has 
    range during the session, from its start to its end (exclusive): `class_range_open`,
    written when a Student loads that range's credentials (at most every 10 minutes), or
    `range_credential_reveal`. That one request proves both a signed-in session and the range
-   opened; class ranges have no console, and a reveal alone misses later days of a week-long
+   opened (a Student's console on their class range writes the same row since #313), and a
+   reveal alone misses later days of a week-long
    class. The lead or an admin sets present, absent or excused (audited). Close-out
    (`class_results`, `class_closeouts`) pre-fills attendance, course module progress (where quiz
    results land) and detections credited in the class's exercises, suggests incomplete with no
@@ -231,19 +253,115 @@ Content (courses, modules, labs, scenarios, range templates, golden images) has 
    `complete_enrollment` (on Unclassified the status alone, no number written), fail marks it failed,
    incomplete leaves it open; a close-out never fails, reopens or re-grades an enrolment
    completed some other way, and undoes only its own. Closing is refused while a session is
-   provisioning or under way. Students reach their range (and so their attendance) from the
-   Classes page, which now lists a Student's own classes with a "Your range" panel; the full
-   "My classes" page is still slice 7. On Unclassified nothing numeric is shown, exported or kept on the
+   provisioning or under way. Students reach their range (and so their attendance) through
+   **Join** on My classes (slice 7, #284), which opens the credentials panel; the Classes page
+   is staff only (`class:read`). On Unclassified nothing numeric is shown, exported or kept on the
    enrolment. A closed class (`classes.status = closed`) is read-only, its unstarted sessions are
    cancelled and its ranges torn down by the clock (`class_closed`); an admin reopens it with a
    reason. CSV export defuses formula cells.
 7. **My classes** (Student).
+
+   As built (#284): `/my-classes`, from the menu and the dashboard, for roles holding the new
+   permission `class:attend` (Students; instructors hold it too, because granting the Student
+   role needs every Student permission, and admins hold everything; both use Classes, so the
+   menu and dashboard hide My classes from anyone who may open Classes). One Student-scoped read,
+   `GET /classes/attending` (`app/classes/my_classes.py`): the caller's own roll-call entries
+   in their own tenant, including a seat they lost (which `/classes` no longer shows, so the
+   page can say to ask the lead to reinstate them), for the week or month asked for (at most
+   45 days). Per class: course, the lead's name (no email), dates, sessions (approved or over),
+   onboarding, rules of use, seat, and the Student's range for the current or next session
+   (not built, building, ready, paused, failed; never why). *Paused* is My classes' own word
+   for a built range whose machines are stopping, stopped or starting (`ranges.status`, which
+   staff see, still says ready); Join waits while it is paused. `join_range_id` is set only where
+   `/ranges/{id}/credentials` would answer (`ranges.student_participation`): their own seat,
+   ready (a deleted range never); or the shared range, ready, while a collective session
+   booking it is under way, which wins over a day-long lab around it. A session's range not
+   created yet reads "not built"; a session with no range is skipped; a collective session on
+   a range the class does not own (an exercise's) reports that range's state, with no Join.
+   Join opens the shared credentials panel and fetches the accounts at once, again on every
+   press and again when a later session becomes the current one while the panel is open:
+   that read is the Student's attendance evidence (#283), and the endpoint still decides on
+   every call. The page asks again every minute. The window's times carry the viewer's UTC
+   offset, so class dates are read in their calendar days; its end is exclusive. The read
+   takes a fixed number of queries whatever the number of classes.
+   Consoles (#313, #321; `app/classes/consoles.py`, `console_router.py`): **Console** beside
+   Join opens a one-time console ticket (the range's own console adapter, as labs use) on the
+   Student's own machines: their seat, or the shared range while a collective session on it is
+   under way, by the credentials' rule (`student_participation`), and only on machines they are
+   handed accounts on; a team has no machines of its own (no template says which is whose), so
+   every Student on a shared range reaches the same Student machines. Only while a session of
+   the class using that range is live or within its provisioning lead. Each ticket is audited
+   (`range_console_open`: who, range, machine, VM, why) and is attendance evidence like the
+   accounts read.
+   Known limits: an instructor on someone else's roll call reaches My classes only by its URL;
+   Join follows the current or next session's range, not every range the Student could open.
 8. **Events view:** week and month, colours, the approval queue, following the mockups.
 9. **Content clock:** review dates, theme tags, dependency edges, and the Content view.
 10. **Feeds:**
     - release and end-of-life data, KEV and NVD;
     - online pull plus signed bundle import.
 11. **Self-serve lab capacity gate.**
+
+   As built (#288):
+   - **A class's own labs.** A Student on the roll call of a class whose approved session of
+     the lab's course holds now (a session with no range or template of its own) launches a
+     lab that draws on that session's hold (`lab_sessions.booking_id`): not gated, counted
+     through the session never twice (the session counts as the larger of its hold and what
+     its labs hold), and ended with the class: the live session (else one starting within the
+     provisioning lead; never one that has ended) and the sessions of the class that follow it
+     back to back, plus the teardown grace; the lab moves to the next of them when one ends,
+     and an edited session end moves its labs' end (never past the lab's own). The lab page
+     says so. Course enrolment never draws (a Moodle launch enrols); a booking with no class
+     has no drawing. Labs beyond the session's size are self-serve, and a Student taken off
+     the roll call stops drawing at once. **Only a collective session with no template and no
+     range can be drawn on, so a lab class must be booked that way.**
+   - **Self-serve labs.** Before a lab's machines are built, `app/lab_sessions/capacity_gate.py`
+     asks the scheduler's capacity provider what is committed in every 15-minute slice from
+     now to the lab's maximum lifetime: approved bookings over their held windows, approved
+     classes over their whole span (`classes.holds`), every range running now. A booking
+     awaiting approval holds nothing. A launch that does not fit is refused (409, and on the
+     Moodle Start lab page) with "Labs are busy, next free at HH:MM" in the site's time zone
+     (`SITE_TIMEZONE`, IANA, default UTC; the date is added when it is not today). The
+     message carries a time only. A lab queued behind a quota keeps waiting and its page shows
+     the same message.
+   - **What labs hold** (`app/lab_sessions/holdings.py`). A running lab is counted until its
+     maximum lifetime, not forever, so a site full of labs today does not block next week's
+     class. A lab being reset holds its size while its range is down for the rebuild.
+   - **Locks.** The decision is taken under the scheduler's booking lock, which a launch takes
+     before the Student's and the tenant's rows (the classes section's order); the lab's range
+     is written in the same transaction. The next free time is a forecast (running labs until
+     they would close unused) and is never computed under the lock: a refused launch rolls
+     back first, and a queued lab's page reads it at most every 30 seconds per lab.
+
+   An idle lab closes after `LAB_IDLE_LIMIT_MINUTES` (default 240) with no Student activity:
+   a lab page heartbeat sent while the page is visible or after input, focus or a console
+   opened since the last one, or a console ticket. A hidden tab nobody uses does not count.
+   Console input goes straight to the hypervisor, so before an idle close the sweep asks the
+   console adapters for open console connections (`app/lab_sessions/consoles.py`,
+   `BaseConsoleBackend.console_reader`; on vSphere the VMs' `runtime.numMksConnections`). It
+   asks before taking any lock, for all idle-due labs in one batch: one login per vCenter
+   with an explicit API version (no version probe) and a 10 s connection timeout, one
+   PropertyCollector read, on daemon threads that get plain data only, at most two thirds of
+   `LAB_CONSOLE_BATCH_SECONDS` (30) per vCenter so healthy vCenters' answers are kept when
+   one is slow, and no new check on a vCenter whose last one has not come back (its labs are
+   unknown meanwhile), so a vCenter that does not answer holds up no other lab. Any connection is activity and restarts the idle clock; unknown (no answer in
+   time, or a console-capable family with no adapter) keeps the lab and asks again after
+   `LAB_CONSOLE_RECHECK_MINUTES` (15); a family with no console concept (Proxmox, Hyper-V)
+   closes idle labs on heartbeats alone. **An open console tab, including a staff vSphere
+   client or VMRC console on one of the lab's VMs, keeps the lab alive until its maximum
+   lifetime.** No lab runs longer than `LAB_MAX_LIFETIME_MINUTES` (7 days), whatever its
+   profile says. A profile's shorter idle time
+   still applies. The Student gets one in-app notification `LAB_IDLE_WARNING_MINUTES`
+   (default 15) before, and the session records `end_reason = idle` (`expired` stays the
+   maximum lifetime). Only lab sessions are closed by this rule; a lab session found pointing
+   at a class's range is ended without a teardown (`failed`, `end_reason = class_range`),
+   logged once, so the Student can launch again. Its lab networks stay leased (the class
+   range's machines are on them; releasing them would hand live networks to another lab);
+   the port groups are logged for an operator to clear.
+
+   Known limits: the idle warning is in-app only (a Student who only uses Moodle does not see
+   it); labs ignore the scheduler's `warn` over-capacity policy; resources in one 15-minute
+   slice are summed even when they do not overlap inside it, which errs toward refusal.
 12. **Unit readiness page** (observer).
 
     As built (#289): `GET /readiness` (and `/readiness/export.csv`, `/readiness/export.pdf`),

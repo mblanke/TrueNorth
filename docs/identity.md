@@ -1,7 +1,9 @@
 # Identity
 
 > How authentication, the AD claim contract and account creation fit together.
-> For the human-facing journey, see [onboarding.md](onboarding.md).
+> For the human-facing journey, see the role guides:
+> [administrator](guides/03-admin-first-day.md), [instructor](guides/04-instructor-guide.md),
+> [Student](guides/05-student-quick-start.md).
 
 ---
 
@@ -167,7 +169,9 @@ The other direction follows: **removing someone from an AD group does not change
 TrueNorth role.** Their `groups` claim drops (within Keycloak's changed-users sync, 300 s),
 but the role was granted by an approval and stays until someone changes it here. To
 revoke TrueNorth access, disable or re-role the TrueNorth account, or disable the AD
-account (sign-in then stops).
+account (sign-in then stops). Disabling or deleting their AD account also deactivates
+the TrueNorth account, after two nightly
+[AD status sync](#ad-status-sync-nightly) runs. Leaving the TN-* groups does not.
 
 **Nested groups are not expanded.** The federation reads direct membership
 (`LOAD_GROUPS_BY_MEMBER_ATTRIBUTE`): a user in a group that is a member of `TN-Students`
@@ -181,6 +185,111 @@ row (the nominated administrator after a realm rebuild), never an `instructor` o
 `range_ops` row (it stops with an error). Keycloak itself refuses to import an AD user
 whose email a local account already has. All of this is measured against a directory by the CI `ad` lane
 (`tools/ad-test-dc/README.md`).
+
+---
+
+## AD status sync (nightly)
+
+ADR 0014 decision 6, `app/ad_status_sync`. TrueNorth **reads** the directory and never
+writes to it: only an AD administrator disables or removes an AD account (AD itself
+disables one after 90 days unused).
+
+**What it reads.** Keycloak's view of AD, through the Admin API with the same
+`KEYCLOAK_ADMIN_CLIENT_ID` client as `/ad-sync`, GET only: every realm user (`enabled`,
+`federationLink`), paged. AD's disabled flag reaches Keycloak's `enabled` through the
+`msad-user-account-control` mapper that vendor `ad` adds; deleted AD users leave Keycloak at
+its full sync (hourly). Group membership is not read. No LDAP connection, and no Keycloak
+write: the tests assert on the HTTP transport.
+
+**Who is deactivated** (`users.is_active = false`, the same as `DELETE /admin/users/{id}`):
+
+| Keycloak says | Reason |
+|---|---|
+| AD account (`federationLink`) disabled | `ad_disabled` |
+| No user with the account's id, nor exactly one AD user with its address (a rebuilt realm), for a known AD account (`users.ad_object_guid` set from the directory's claims) | `ad_removed` |
+| Local account (no `federationLink`) unused for 90 days, when a break-glass account exists | `local_unused` |
+
+Never: anyone still enabled in AD (TN-* groups or not: roll-call Students are admitted
+without one, `classes/onboarding.py`); the **break-glass** account (below); the tenant's
+last active admin; result-transfer subjects (`source = subject`, never judged by any rule
+nor counted as eligible); accounts Keycloak does not know that are not known AD accounts
+(CSV roster rows, LTI Students, and local accounts after a realm rebuild: registration marks
+every account `source = ad`, so `source` proves nothing).
+
+**What deactivating does.** In one transaction per account: the guarded update (so any
+number of replicas, or a "run now" overlapping the night's run, deactivate it once); each
+of their places on the roll call of an open, unfinished class is removed with the classes'
+own removal (seat freed in every approved session, teams of sessions not started, their
+ranges at the next range tick, a CANCEL of sessions to come); an `ad_status_deactivate`
+audit row. After the commit, each class's lead and assistants (the tenant's admins when it
+has none) get one email per class. **Nothing is deleted**: the account row, enrolments,
+results, roll-call entries (marked removed) and audit history stay. An administrator
+re-enables the account with `PATCH /users/{id}?is_active=true` (a query parameter; v1.2.0 has no
+button for it in Users); the next runs deactivate it again only if the directory
+still says so. Re-enabling restarts a local account's 90 days.
+
+**Last use** of a local account is TrueNorth's own record, `user_last_seen`, written by
+`auth.get_signed_in_user` (every authenticated request, after the disabled and MFA checks)
+at most once an hour per account and process. Not Keycloak's LOGIN events: they are kept
+exactly 90 days (`eventsExpiration`), so 89 days unused and never used look alike; reading
+them needs `view-events`; and an SSO refresh is not a LOGIN. An account with no row counts
+from the later of its creation and the **first sync run**, so the time before the record
+existed never counts.
+
+**Break-glass** is a *local* Keycloak account (no `federationLink`) whose username is in
+`AD_STATUS_SYNC_BREAK_GLASS` (comma-separated). The installer renders the bootstrap
+administrator's UPN there only with AD **and** `tn_keycloak_local_admin` (the local recovery
+account `install/roles/tn_keycloak/tasks/local_identity.yml` keeps beside AD); otherwise it
+is empty. A configured name that is not a local Keycloak user (the local administrator
+turned off, the name now an AD account's) is no break-glass. It is never disabled; its use
+is announced instead, at most once an hour per API process: the Prometheus alert
+`BreakGlassAccountUsed` (critical; `truenorth_break_glass_sign_ins_total`), a
+`break_glass_sign_in` audit row and a WARNING log. **With no break-glass account the 90-day
+rule does not run** (so not on an install without AD): disabling local accounts without
+knowing which one is the recovery account could lock everyone out. When a name is
+configured but no local Keycloak user has it, the panel says so ("Break-glass account not
+found ... the 90-day rule for local accounts is off") rather than switching off silently.
+
+**When and where.** Every API replica ticks (`AD_STATUS_SYNC_TICK_SECONDS`, 300); from
+`AD_STATUS_SYNC_HOUR_UTC` (2) the night's run is claimed by inserting the unique slot
+`nightly:<UTC date>` into `ad_status_sync_runs`, so one replica runs it, with or without
+Redis. `AD_STATUS_SYNC_ENABLED=false` turns the clock off; it idles while the Admin API
+client is not configured.
+
+**Safety**, per tenant:
+- `AD_STATUS_SYNC_DRY_RUN` (default **true**; installer `tn_ad_status_sync_dry_run`): runs
+  record who they would deactivate and change nothing, and the API refuses (409) a request
+  for a real run. Turn it off once a few nights look right. **Turning it off acts on the
+  next night**: that night's run is the first applied one, and it deactivates the accounts
+  the last dry-run night also found, for the same reason (below). Nobody is deactivated the
+  moment the setting changes.
+- **Confirmed by an earlier run**: an account is deactivated only when a good run covering
+  its tenant (dry, held or applied) that **finished 12 to 36 hours before this one** found the
+  same account **for the same reason**. That earlier run is usually the previous night's,
+  but **a manual "run now" counts too**, dry or not: an administrator's run of their tenant
+  12-36 hours before tonight confirms tonight's findings, and a "run now" can apply what last
+  night found. A dry "run now" followed by a real one minutes later confirms nothing (too
+  close), a finding from months ago confirms nothing (too old), and a user missing from one
+  page of Keycloak's answer one night keeps their account. The panel counts the rest as
+  "found once". Each finding is saved as soon as it is made, so one account's failed
+  deactivation never loses another's.
+- **Held, per tenant and rule family**: the AD rules (`ad_disabled`, `ad_removed`) are judged
+  against the tenant's AD accounts, the 90-day rule against its local accounts under that
+  rule, so neither dilutes the other (nor do roster rows, LTI Students or subjects). A family
+  that would deactivate more than max(`AD_STATUS_SYNC_MAX_FLOOR` (3),
+  `AD_STATUS_SYNC_MAX_FRACTION` (0.25) x its accounts) changes nothing that run; other
+  families and tenants go on. The held message shows that tenant's numbers only. "Run now,
+  over the limit" releases the caller's tenant.
+- **Last admin**: never the tenant's last active admin. The check locks the tenant's active
+  admin rows (`SELECT ... FOR UPDATE`) and counts inside the same transaction, so two
+  deactivations at once cannot both pass; `DELETE /users/{id}` has the same guard (409).
+- Keycloak unreadable: the run **fails** and changes nothing.
+
+**The panel.** Users > AD Sync (`GET /ad-status-sync`, admin): the mode, the break-glass
+account and its last use, the last run with this tenant's counts and accounts, and "Dry
+run now" / "Run now" (`POST /ad-status-sync/runs`, the caller's tenant only, audited
+`ad_status_sync_run`; "Run now, over the limit" after a held run). A nightly run covers
+every tenant; each tenant's administrators see only their own accounts.
 
 ---
 

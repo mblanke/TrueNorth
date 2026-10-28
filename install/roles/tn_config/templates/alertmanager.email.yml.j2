@@ -15,8 +15,8 @@ global:
   smtp_from: {{ tn_alert_email_from | trim | to_json }}
   smtp_hello: {{ tn_domain_fqdn | to_json }}
   smtp_require_tls: {{ tn_alert_smtp_require_tls | bool | to_json }}
-{% if vault_alert_smtp_username | default('') | string | trim | length > 0 %}
-  smtp_auth_username: {{ vault_alert_smtp_username | string | trim | to_json }}
+{% if tn_alert_smtp_username | default('') | string | trim | length > 0 %}
+  smtp_auth_username: {{ tn_alert_smtp_username | string | trim | to_json }}
   smtp_auth_password_file: /etc/alertmanager/secrets/smtp_password
 {% endif %}
 

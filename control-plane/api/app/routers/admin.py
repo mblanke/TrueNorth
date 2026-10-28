@@ -200,6 +200,20 @@ def update_user(
     update_data = body.model_dump(exclude_none=True)
     if "role" in update_data:
         update_data["role"] = UserRole(update_data["role"])
+    disables = update_data.get("is_active") is False
+    demotes = "role" in update_data and update_data["role"] != UserRole.admin
+    if target.is_active and target.deleted_at is None and (disables or demotes):
+        # The same locked check as DELETE and the AD status sync: never the last active admin.
+        from ..ad_status_sync.service import is_last_admin
+
+        if is_last_admin(db, target):
+            raise HTTPException(409, "This is the tenant's last active administrator; make someone else an "
+                                     "administrator first")
+    if update_data.get("is_active") and not target.is_active:
+        # Re-enabled: the 90-day clock for a local account starts again (app/ad_status_sync).
+        from ..ad_status_sync.last_seen import touch
+
+        touch(db, target.id)
     for key, val in update_data.items():
         setattr(target, key, val)
     db.commit()
@@ -215,8 +229,17 @@ def delete_user(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_permission(Permission.USER_DELETE)),
 ):
-    """Delete (deactivate) a user.  **Permission: user:delete**"""
+    """Delete (deactivate) a user.  **Permission: user:delete**
+
+    409 for the tenant's last active admin: nobody would be left to re-enable anyone. The check
+    locks the tenant's admin rows (app/ad_status_sync ``is_last_admin``), so two deletions at
+    once, or one beside the nightly AD status sync, cannot both pass."""
+    from ..ad_status_sync.service import is_last_admin
+
     target = get_owned(db, User, user_id, user, not_found="User not found")
+    if target.is_active and is_last_admin(db, target):
+        raise HTTPException(409, "This is the tenant's last active administrator; make someone else an "
+                                 "administrator first")
     target.is_active = False
     db.commit()
     _audit(db, user, "delete", "user", str(user_id))
@@ -535,6 +558,11 @@ async def import_roster_csv(
     tenant_id = uuid.UUID(user.tenant_id)
     created = updated = skipped = 0
     errors: list[dict] = []
+    # The tenant's active admins, locked once before any row is written (the same lock, in the
+    # same order, as PATCH/DELETE /users and the AD status sync): no row may demote the last.
+    from ..ad_status_sync.service import lock_active_admins
+
+    active_admins = lock_active_admins(db, tenant_id)
 
     for line_no, row in enumerate(reader, start=2):
         email = (row.get("email") or "").strip().lower()
@@ -570,6 +598,18 @@ async def import_roster_csv(
             skipped += 1
             errors.append({"line": line_no, "email": email, "error": "email is in use by another account — not modified"})
             continue
+
+        # Never the tenant's last active admin: a row may not demote them (moving them to another
+        # tenant cannot happen here: rows of other tenants are skipped above, and every row lands
+        # in the caller's tenant). Counted against the admins locked before the loop, less those
+        # earlier rows of this file demoted.
+        if existing is not None and existing.id in active_admins and role != UserRole.admin:
+            if not (active_admins - {existing.id}):
+                skipped += 1
+                errors.append({"line": line_no, "email": email,
+                               "error": "the tenant's last active administrator — role not changed"})
+                continue
+            active_admins.discard(existing.id)
 
         fields = {
             "display_name": (row.get("display_name") or "").strip() or email.split("@")[0],
