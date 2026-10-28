@@ -47,7 +47,8 @@ Content (courses, modules, labs, scenarios, range templates, golden images) has 
    - Accounts that aren't in AD are disabled after 90 days unused, **except break-glass**.
    - TrueNorth never writes to AD.
 7. **Commander = observer + unit readiness page.** There is no new role.
-   - Observers get a readiness page for their tenant: classes, enrolment, attendance, results and qualifications earned.
+   - Observers, instructors and admins can view a readiness page for their tenant: classes, enrolment, attendance, results and qualifications earned. Students and range ops cannot.
+   - Instructors see the whole tenant here, not only their own classes. The owner widened decision 7 on purpose (2026-10-28, PR #315).
    - It can be filtered by unit and date, and exported.
    - The five roles stay as they are.
 
@@ -248,7 +249,8 @@ Content (courses, modules, labs, scenarios, range templates, golden images) has 
     As built (#289): `GET /readiness` (and `/readiness/export.csv`, `/readiness/export.pdf`),
     `app/classes/readiness.py`, page `/readiness`. A new permission, `readiness:read`, for
     observers, instructors and admins; never Students or range ops. Always the caller's own
-    tenant. Classes overlapping the date range (cancelled ones left out), each Student's
+    tenant. An instructor sees every class of the tenant, not only their own: the owner
+    widened decision 7 to observers, instructors and admins on purpose (2026-10-28). Classes overlapping the date range (cancelled ones left out), each Student's
     roll-call and enrolment status, recorded attendance (`class_attendance`), close-out result
     and comment (`class_results`), and the course's qualification (its NQual) when the result
     reached the Student's record: a pass on a closed class whose enrolment is completed. There
