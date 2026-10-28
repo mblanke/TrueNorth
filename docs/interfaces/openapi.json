@@ -18453,6 +18453,341 @@
         "title": "RangeUpdate",
         "type": "object"
       },
+      "ReadinessClassOut": {
+        "properties": {
+          "awaiting_result": {
+            "title": "Awaiting Result",
+            "type": "integer"
+          },
+          "class_id": {
+            "format": "uuid",
+            "title": "Class Id",
+            "type": "string"
+          },
+          "closed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed At"
+          },
+          "course_id": {
+            "format": "uuid",
+            "title": "Course Id",
+            "type": "string"
+          },
+          "course_name": {
+            "title": "Course Name",
+            "type": "string"
+          },
+          "end_date": {
+            "format": "date",
+            "title": "End Date",
+            "type": "string"
+          },
+          "enrolled": {
+            "description": "Students on the roll call shown (forfeited seats included)",
+            "title": "Enrolled",
+            "type": "integer"
+          },
+          "failed": {
+            "title": "Failed",
+            "type": "integer"
+          },
+          "incomplete": {
+            "title": "Incomplete",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "passed": {
+            "title": "Passed",
+            "type": "integer"
+          },
+          "qualification": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The NQual the course delivers, if any",
+            "title": "Qualification"
+          },
+          "sessions_held": {
+            "description": "Approved sessions that have ended",
+            "title": "Sessions Held",
+            "type": "integer"
+          },
+          "start_date": {
+            "format": "date",
+            "title": "Start Date",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "students": {
+            "items": {
+              "$ref": "#/components/schemas/ReadinessStudentOut"
+            },
+            "title": "Students",
+            "type": "array"
+          }
+        },
+        "required": [
+          "class_id",
+          "name",
+          "course_id",
+          "course_name",
+          "start_date",
+          "end_date",
+          "status",
+          "sessions_held",
+          "enrolled",
+          "passed",
+          "failed",
+          "incomplete",
+          "awaiting_result",
+          "students"
+        ],
+        "title": "ReadinessClassOut",
+        "type": "object"
+      },
+      "ReadinessQualificationOut": {
+        "properties": {
+          "code": {
+            "description": "The NQual granted",
+            "title": "Code",
+            "type": "string"
+          },
+          "earned": {
+            "description": "Passes, in the classes shown, on courses that deliver it",
+            "title": "Earned",
+            "type": "integer"
+          },
+          "qualification_id": {
+            "format": "uuid",
+            "title": "Qualification Id",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "qualification_id",
+          "code",
+          "title",
+          "earned"
+        ],
+        "title": "ReadinessQualificationOut",
+        "type": "object"
+      },
+      "ReadinessStudentOut": {
+        "properties": {
+          "absent": {
+            "title": "Absent",
+            "type": "integer"
+          },
+          "comment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The instructor's comment on the result",
+            "title": "Comment"
+          },
+          "decided_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided At"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "None: on the roll call, never signed in",
+            "title": "Display Name"
+          },
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "enrolment_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Their enrolment on the class's course, if any",
+            "title": "Enrolment Status"
+          },
+          "entry_id": {
+            "format": "uuid",
+            "title": "Entry Id",
+            "type": "string"
+          },
+          "excused": {
+            "title": "Excused",
+            "type": "integer"
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResultOutcomeOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The close-out result; None: not decided yet"
+          },
+          "present": {
+            "description": "Sessions recorded present",
+            "title": "Present",
+            "type": "integer"
+          },
+          "qualification_earned": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The course's qualification (NQual), when the result is a pass",
+            "title": "Qualification Earned"
+          },
+          "roll_call_status": {
+            "title": "Roll Call Status",
+            "type": "string"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The Student's unit (users.unit); None when unknown",
+            "title": "Unit"
+          }
+        },
+        "required": [
+          "entry_id",
+          "email",
+          "roll_call_status",
+          "present",
+          "excused",
+          "absent"
+        ],
+        "title": "ReadinessStudentOut",
+        "type": "object"
+      },
+      "ReadinessSummaryOut": {
+        "properties": {
+          "absent": {
+            "title": "Absent",
+            "type": "integer"
+          },
+          "awaiting_result": {
+            "title": "Awaiting Result",
+            "type": "integer"
+          },
+          "classes": {
+            "title": "Classes",
+            "type": "integer"
+          },
+          "enrolments": {
+            "description": "Places on the classes shown: one per Student per class",
+            "title": "Enrolments",
+            "type": "integer"
+          },
+          "excused": {
+            "title": "Excused",
+            "type": "integer"
+          },
+          "failed": {
+            "title": "Failed",
+            "type": "integer"
+          },
+          "incomplete": {
+            "title": "Incomplete",
+            "type": "integer"
+          },
+          "passed": {
+            "title": "Passed",
+            "type": "integer"
+          },
+          "present": {
+            "title": "Present",
+            "type": "integer"
+          },
+          "qualifications_earned": {
+            "title": "Qualifications Earned",
+            "type": "integer"
+          },
+          "sessions_held": {
+            "title": "Sessions Held",
+            "type": "integer"
+          },
+          "students": {
+            "description": "Different people",
+            "title": "Students",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "classes",
+          "enrolments",
+          "students",
+          "sessions_held",
+          "present",
+          "excused",
+          "absent",
+          "passed",
+          "failed",
+          "incomplete",
+          "awaiting_result",
+          "qualifications_earned"
+        ],
+        "title": "ReadinessSummaryOut",
+        "type": "object"
+      },
       "RegistrationApproveIn": {
         "description": "The approval decision. Role and tenant are assigned HERE, not inferred.",
         "properties": {
@@ -24205,6 +24540,67 @@
           "email"
         ],
         "title": "UnassignedOut",
+        "type": "object"
+      },
+      "UnitReadinessOut": {
+        "properties": {
+          "classes": {
+            "items": {
+              "$ref": "#/components/schemas/ReadinessClassOut"
+            },
+            "title": "Classes",
+            "type": "array"
+          },
+          "date_from": {
+            "format": "date",
+            "title": "Date From",
+            "type": "string"
+          },
+          "date_to": {
+            "format": "date",
+            "title": "Date To",
+            "type": "string"
+          },
+          "qualifications": {
+            "items": {
+              "$ref": "#/components/schemas/ReadinessQualificationOut"
+            },
+            "title": "Qualifications",
+            "type": "array"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/ReadinessSummaryOut"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The unit filter applied; None: every unit",
+            "title": "Unit"
+          },
+          "units": {
+            "description": "The units of the Students on the classes in the date range",
+            "items": {
+              "type": "string"
+            },
+            "title": "Units",
+            "type": "array"
+          }
+        },
+        "required": [
+          "date_from",
+          "date_to",
+          "units",
+          "summary",
+          "classes",
+          "qualifications"
+        ],
+        "title": "UnitReadinessOut",
         "type": "object"
       },
       "UrlIngestIn": {
@@ -48862,6 +49258,295 @@
         "summary": "Save Range Topology",
         "tags": [
           "ranges"
+        ]
+      }
+    },
+    "/readiness": {
+      "get": {
+        "description": "The caller's own tenant only. Pass, fail or incomplete with the instructor's comment;\nnever a score.  **readiness:read**",
+        "operationId": "getUnitReadiness",
+        "parameters": [
+          {
+            "description": "Classes ending on or after this day (default: a year ago)",
+            "in": "query",
+            "name": "date_from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Classes ending on or after this day (default: a year ago)",
+              "title": "Date From"
+            }
+          },
+          {
+            "description": "Classes starting on or before this day (default: 90 days ahead)",
+            "in": "query",
+            "name": "date_to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Classes starting on or before this day (default: 90 days ahead)",
+              "title": "Date To"
+            }
+          },
+          {
+            "description": "Only Students of this unit (case and spaces ignored)",
+            "in": "query",
+            "name": "unit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 255,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only Students of this unit (case and spaces ignored)",
+              "title": "Unit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnitReadinessOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "The unit readiness page: classes, enrolment, attendance, results and qualifications",
+        "tags": [
+          "readiness"
+        ]
+      }
+    },
+    "/readiness/export.csv": {
+      "get": {
+        "description": "One row per Student per class; cells a spreadsheet would run as a formula are\ndefused. Audited (``readiness_export``).  **readiness:read**",
+        "operationId": "exportUnitReadinessCsv",
+        "parameters": [
+          {
+            "description": "Classes ending on or after this day (default: a year ago)",
+            "in": "query",
+            "name": "date_from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Classes ending on or after this day (default: a year ago)",
+              "title": "Date From"
+            }
+          },
+          {
+            "description": "Classes starting on or before this day (default: 90 days ahead)",
+            "in": "query",
+            "name": "date_to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Classes starting on or before this day (default: 90 days ahead)",
+              "title": "Date To"
+            }
+          },
+          {
+            "description": "Only Students of this unit (case and spaces ignored)",
+            "in": "query",
+            "name": "unit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 255,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only Students of this unit (case and spaces ignored)",
+              "title": "Unit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "The unit readiness page as CSV",
+        "tags": [
+          "readiness"
+        ]
+      }
+    },
+    "/readiness/export.pdf": {
+      "get": {
+        "description": "Rendered with the AAR's PDF machinery (fpdf2). Audited (``readiness_export``).\n**readiness:read**",
+        "operationId": "exportUnitReadinessPdf",
+        "parameters": [
+          {
+            "description": "Classes ending on or after this day (default: a year ago)",
+            "in": "query",
+            "name": "date_from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Classes ending on or after this day (default: a year ago)",
+              "title": "Date From"
+            }
+          },
+          {
+            "description": "Classes starting on or before this day (default: 90 days ahead)",
+            "in": "query",
+            "name": "date_to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Classes starting on or before this day (default: 90 days ahead)",
+              "title": "Date To"
+            }
+          },
+          {
+            "description": "Only Students of this unit (case and spaces ignored)",
+            "in": "query",
+            "name": "unit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 255,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only Students of this unit (case and spaces ignored)",
+              "title": "Unit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/pdf": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "The unit readiness page as PDF",
+        "tags": [
+          "readiness"
         ]
       }
     },

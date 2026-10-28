@@ -405,7 +405,11 @@ export class AppComponent implements OnDestroy {
     },
     {
       name: 'Review',
-      items: [{ label: 'Scoring & AAR', icon: 'assessment', route: '/scoring', access: 'scoring' }],
+      items: [
+        { label: 'Scoring & AAR', icon: 'assessment', route: '/scoring', access: 'scoring' },
+        // ADR 0014 decision 7: commander = observer + this page (#289).
+        { label: 'Unit readiness', icon: 'military_tech', route: '/readiness', access: 'readiness' },
+      ],
     },
     {
       name: 'Help',

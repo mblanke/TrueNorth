@@ -369,6 +369,15 @@ export const routes: Routes = [
     title: 'Classes - TrueNorth Range',
   },
   {
+    // ADR 0014 decision 7 (#289): commander = observer + the unit readiness page. Read-only,
+    // the caller's own organisation; observers, instructors and admins (readiness:read).
+    path: 'readiness',
+    canActivate: [authGuard, onboardingGuard, pageGuard('readiness')],
+    loadComponent: () =>
+      import('./features/readiness/unit-readiness.component').then(m => m.UnitReadinessComponent),
+    title: 'Unit readiness - TrueNorth Range',
+  },
+  {
     // ADR 0014 §19 (#321): a class session's live view, for its lead, assistants, observers
     // and admins (the API decides who; class:read to reach the page).
     path: 'classes/:classId/sessions/:eventId/live',

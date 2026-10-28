@@ -377,6 +377,7 @@ from .classes.closeout_router import router as class_closeout_router  # noqa: E4
 from .classes.console_router import router as class_consoles_router  # noqa: E402 (#313, #321)
 from .classes.my_classes import router as my_classes_router  # noqa: E402 (#284)
 from .classes.range_router import router as class_ranges_router  # noqa: E402 (#282)
+from .classes.readiness_router import router as readiness_router  # noqa: E402 (#289)
 from .classes.router import router as classes_router  # noqa: E402 (ADR 0014, + its tables)
 from .cmi5.router import router as cmi5_router  # noqa: E402 (also registers the cmi5 tables)
 from .content_feeds.router import router as content_feeds_router  # noqa: E402 (ADR 0014 §25; + tables)
@@ -492,6 +493,7 @@ app.include_router(class_closeout_router)  # app/classes: attendance and close-o
 app.include_router(class_ranges_router)  # app/classes: ranges, modes and teams (#282); before /{class_id}
 app.include_router(class_consoles_router)  # app/classes: consoles and the live view (#313, #321); before /{class_id}
 app.include_router(classes_router)  # app/classes: Class records and roll call (ADR 0014)
+app.include_router(readiness_router)  # app/classes: the unit readiness page (ADR 0014 decision 7, #289)
 app.include_router(acknowledgement_router)  # app/acknowledgement: the rules of use (ADR 0014 §3)
 app.include_router(ad_status_sync_router)  # app/ad_status_sync: nightly AD status sync (ADR 0014 §6)
 app.include_router(email_status_router)  # GET /email/status, POST /email/test (app/email_status, #306)

@@ -30,7 +30,7 @@ export type Permission =
   | 'course:author' | 'course:release'
   | 'schedule:read' | 'schedule:write' | 'schedule:admin' | 'schedule:approve'
   | 'content_review:read' | 'content_review:review_own' | 'content_review:admin'
-  | 'class:create' | 'class:read' | 'class:attend'
+  | 'class:create' | 'class:read' | 'class:attend' | 'readiness:read'
   | 'tenant:create' | 'tenant:read' | 'tenant:update'
   | 'audit:read' | 'telemetry:read' | 'telemetry:write' | 'stats:read' | 'aar:generate' | 'aar:read'
   | 'noise:read' | 'noise:control'
@@ -57,7 +57,7 @@ export const ALL_PERMISSIONS: readonly Permission[] = [
   'course:author', 'course:release',
   'schedule:read', 'schedule:write', 'schedule:admin', 'schedule:approve',
   'content_review:read', 'content_review:review_own', 'content_review:admin',
-  'class:create', 'class:read', 'class:attend',
+  'class:create', 'class:read', 'class:attend', 'readiness:read',
   'tenant:create', 'tenant:read', 'tenant:update',
   'audit:read', 'telemetry:read', 'telemetry:write', 'stats:read', 'aar:generate', 'aar:read',
   'noise:read', 'noise:control',
@@ -77,7 +77,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     'detection:submit', 'objective:ack',
     'schedule:read', 'schedule:write',
     'content_review:read', 'content_review:review_own',
-    'class:create', 'class:read', 'class:attend',
+    'class:create', 'class:read', 'class:attend', 'readiness:read',
     'user:read',
     'registration:read', 'registration:approve',
     'infra:read', 'ai_config:read', 'integration:read',
@@ -103,7 +103,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
   ],
   observer: [
     'range:read', 'template:read', 'scenario:read', 'exercise:read', 'aar:read',
-    'schedule:read', 'class:read', 'telemetry:read', 'wiki:read',
+    'schedule:read', 'class:read', 'readiness:read', 'telemetry:read', 'wiki:read',
   ],
 };
 // mirror:end
@@ -177,6 +177,9 @@ export const PAGE_ACCESS = {
    *  Instructors and admins hold class:attend too (to grant the Student role), so the menu
    *  and the dashboard show it only to roles that cannot open `classes` (NavItem.notWith). */
   myClasses: { all: ['class:attend'] },
+  /** The unit readiness page (ADR 0014 decision 7): GET /readiness, the caller's own tenant.
+   *  Commander = observer + this page; instructors and admins too. Never Students. */
+  readiness: { all: ['readiness:read'] },
   /** GET /maintenance-windows (schedule:read); changing them needs range:admin (admins). */
   maintenanceWindows: { all: ['schedule:read', 'range:admin'] },
   approvals: { all: ['registration:read'] },

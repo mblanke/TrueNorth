@@ -47,7 +47,8 @@ Content (courses, modules, labs, scenarios, range templates, golden images) has 
    - Accounts that aren't in AD are disabled after 90 days unused, **except break-glass**.
    - TrueNorth never writes to AD.
 7. **Commander = observer + unit readiness page.** There is no new role.
-   - Observers get a readiness page for their tenant: classes, enrolment, attendance, results and qualifications earned.
+   - Observers, instructors and admins can view a readiness page for their tenant: classes, enrolment, attendance, results and qualifications earned. Students and range ops cannot.
+   - Instructors see the whole tenant here, not only their own classes. The owner widened decision 7 on purpose (2026-10-28, PR #315).
    - It can be filtered by unit and date, and exported.
    - The five roles stay as they are.
 
@@ -362,4 +363,16 @@ Content (courses, modules, labs, scenarios, range templates, golden images) has 
    it); labs ignore the scheduler's `warn` over-capacity policy; resources in one 15-minute
    slice are summed even when they do not overlap inside it, which errs toward refusal.
 12. **Unit readiness page** (observer).
+
+    As built (#289): `GET /readiness` (and `/readiness/export.csv`, `/readiness/export.pdf`),
+    `app/classes/readiness.py`, page `/readiness`. A new permission, `readiness:read`, for
+    observers, instructors and admins; never Students or range ops. Always the caller's own
+    tenant. An instructor sees every class of the tenant, not only their own: the owner
+    widened decision 7 to observers, instructors and admins on purpose (2026-10-28). Classes overlapping the date range (cancelled ones left out), each Student's
+    roll-call and enrolment status, recorded attendance (`class_attendance`), close-out result
+    and comment (`class_results`), and the course's qualification (its NQual) when the result
+    reached the Student's record: a pass on a closed class whose enrolment is completed. There
+    is no unit record: the unit is `users.unit`, filled by the directory sync and registration,
+    matched ignoring case and spaces; a Student who never signed in has none. Reads only; an
+    export writes one audit row (`readiness_export`). The PDF uses the AAR's fpdf2 machinery.
 13. **AD status sync,** plus the 90-day disable for local accounts.
