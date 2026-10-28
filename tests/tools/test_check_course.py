@@ -337,3 +337,13 @@ def test_make_card_scopes_one_course_and_its_pack(tmp_path):
 def test_make_card_refuses_held_courses_and_odd_paths(bad, capsys):
     assert _make_card().main([bad]) == 1
     assert "make_card:" in capsys.readouterr().err
+
+
+def test_a_course_without_qsp_code_passes(tree):
+    """Courses outside a qualification (the upskilling courses) omit qsp_code."""
+    assert _failed(tree, _write(tree, _mutated(lambda d: d.pop("qsp_code")))) == set()
+
+
+@pytest.mark.parametrize("bad", ["alj", "", None])
+def test_a_malformed_qsp_code_still_fails_the_schema(tree, bad):
+    assert "schema" in _failed(tree, _write(tree, _mutated(lambda d: d.update(qsp_code=bad))))

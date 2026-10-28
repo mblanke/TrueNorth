@@ -14,7 +14,6 @@
     "provenance",
     "status",
     "is_published",
-    "qsp_code",
     "source",
     "modules"
   ],
@@ -39,7 +38,7 @@
       "enum": ["draft", "technically_proven", "sme_signed"]
     },
     "qsp_code": {
-      "description": "A qualification in the ingested spine. QSP-TODO belongs to the catalogue row only.",
+      "description": "Optional; omit for courses outside a qualification. When present, a qualification in the ingested spine (an empty or null value is refused; omit the key instead). QSP-TODO belongs to the catalogue row only.",
       "type": "string",
       "pattern": "^[A-Z][A-Z0-9]{2,15}$"
     },
