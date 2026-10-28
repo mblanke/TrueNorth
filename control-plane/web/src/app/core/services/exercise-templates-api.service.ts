@@ -26,7 +26,7 @@ export const SCALING_KINDS: readonly NonNullable<TemplateScalingRule['kind']>[] 
 export const TEAM_SIDES: readonly NonNullable<TemplateTeam['side']>[] = ['blue', 'red', 'white', 'green', 'other'];
 
 /**
- * Exercise templates (ADR 0016): the reusable part of an exercise, and creating an exercise
+ * Exercise templates (ADR 0017): the reusable part of an exercise, and creating an exercise
  * from one. Staff only (exercise:create). Every call goes through this client so the auth
  * interceptor and base URL apply.
  */

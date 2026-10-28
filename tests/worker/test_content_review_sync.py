@@ -278,7 +278,7 @@ def _flag(engine, key, text="New Ubuntu 24.04 point release"):
 
 
 class TestExerciseTemplates:
-    """ADR 0016: an exercise template is on the content clock and depends on what it names."""
+    """ADR 0017: an exercise template is on the content clock and depends on what it names."""
 
     def test_it_gets_a_row_and_depends_on_its_scenario_and_range_template(self, engine, chain):
         et = exercise_template(engine, "IR drill", scenario_id=chain["scenario"], template_id=chain["template"])

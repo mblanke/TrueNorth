@@ -255,7 +255,7 @@ The reusable part of a collective exercise: its objectives, MESL, teams, the sce
 range template it runs on, the participant roles (min/max/default, and the VM profile each
 participant gets) with the rules by which shared infrastructure scales, and the instructor's
 notes (`ExerciseTemplate` in
-`control-plane/api/app/exercise_templates/`, ADR 0016). An exercise is created from it,
+`control-plane/api/app/exercise_templates/`, ADR 0017). An exercise is created from it,
 copies the objectives and MESL, and keeps a reference to the template and its revision;
 editing the template never changes exercises already made. Exercises are collective training
 and courses are individual training, so a template has teams and no individual shape, is

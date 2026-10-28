@@ -1,4 +1,4 @@
-"""The exercise template's API (ADR 0016).
+"""The exercise template's API (ADR 0017).
 
 ==========================================================  ==========================
 Endpoint                                                    Permission

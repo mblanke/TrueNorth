@@ -1,5 +1,5 @@
 """The exercise template's rules: who sees what, what a template may name, and making an
-exercise from one (ADR 0016).
+exercise from one (ADR 0017).
 
 * **Tenancy.** A template belongs to its tenant. A platform administrator may share it
   (``is_public``), as scenarios and range templates are shared: every tenant's staff then

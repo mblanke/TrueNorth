@@ -343,7 +343,7 @@ describe('ExercisesComponent', () => {
     expect(el.textContent).not.toContain('No exercises yet');
   });
 
-  // ── Save as template (ADR 0016) ───────────────────────────────────
+  // ── Save as template (ADR 0017) ───────────────────────────────────
   it('saves an exercise as a template and notifies', () => {
     mockTemplates.saveExercise.and.returnValue(of({ id: 't1' } as any));
     fixture.detectChanges();

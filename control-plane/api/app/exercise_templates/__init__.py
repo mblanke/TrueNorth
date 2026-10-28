@@ -1,4 +1,4 @@
-"""The exercise template: a reusable exercise (ADR 0016, docs/GLOSSARY.md).
+"""The exercise template: a reusable exercise (ADR 0017, docs/GLOSSARY.md).
 
 Objectives, MESL, scenario, range template, teams and the instructor's notes live here once;
 an exercise is created from it and keeps its own copy. Proven and portable through the

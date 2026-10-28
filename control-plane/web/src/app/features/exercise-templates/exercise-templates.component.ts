@@ -13,7 +13,7 @@ import { ProvenChipComponent } from '../../shared/components/proven-chip/proven-
 import { CreateFromTemplateComponent } from './create-from-template.component';
 
 /**
- * Exercise templates (ADR 0016), under Exercises: the reusable part of an exercise, its
+ * Exercise templates (ADR 0017), under Exercises: the reusable part of an exercise, its
  * Proven chip, and "Create exercise from template". Staff only (exercise:create): the MESL
  * and the notes are the exercise-control plan.
  */

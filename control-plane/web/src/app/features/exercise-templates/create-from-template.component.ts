@@ -12,7 +12,7 @@ import { RangeSummary } from '@core/models';
 import { apiErrorMessage } from '../../shared/kb-errors';
 
 /**
- * "Create exercise from template" (ADR 0016): a name and the range it runs on. The API copies
+ * "Create exercise from template" (ADR 0017): a name and the range it runs on. The API copies
  * the template's objectives and MESL into the new exercise and refuses a range that was not
  * built from the template's range template, with the reason, which is shown here.
  */

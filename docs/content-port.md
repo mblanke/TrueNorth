@@ -9,7 +9,7 @@ Golden templates are not ported this way. They have their own procedure (OVF exp
 build record, then S2 promotion on the new site; `infra/vsphere/packer/README.md`, "Build
 records and promotion"). A bundle only names the golden-template builds its content needs.
 
-Exercise templates are ported (ADR 0016): the reusable part of a collective exercise
+Exercise templates are ported (ADR 0017): the reusable part of a collective exercise
 (objectives, MESL, teams, instructor notes, the scenario and range template it runs on).
 Exercises themselves are one-offs and are not ported. Courses are individual training and a
 template is never attached to one.

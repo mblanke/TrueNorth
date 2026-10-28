@@ -1,4 +1,4 @@
-"""The exercise template's tables (ADR 0016).
+"""The exercise template's tables (ADR 0017).
 
 New tables go in their section, never into the shared ``app.models`` (ADR 0003).
 
@@ -40,7 +40,7 @@ class ExerciseTemplate(SoftDeleteMixin, TimestampMixin, Base):
     range_template_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("templates.id"), nullable=True)
     teams: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
     # Participant roles (min/max/default, VM profile per participant) and the rules by which
-    # shared infrastructure scales; the sizing itself is the Exercise Studio's (ADR 0016).
+    # shared infrastructure scales; the sizing itself is the Exercise Studio's (ADR 0017).
     roles: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
     scaling_rules: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
     objectives: Mapped[list] = mapped_column(JSON, nullable=False, default=list)

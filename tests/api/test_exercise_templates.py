@@ -1,4 +1,4 @@
-"""The exercise template record (ADR 0016; app/exercise_templates).
+"""The exercise template record (ADR 0017; app/exercise_templates).
 
 A reusable exercise: objectives, MESL, scenario, range template, teams, instructor notes. A
 concrete exercise is created from it and keeps a reference to the template and the revision

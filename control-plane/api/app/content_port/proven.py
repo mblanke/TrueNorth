@@ -22,7 +22,7 @@ three conditions hold:
     The content clock (ADR 0014 §22-25, #295, #312) tracks it, and it is neither stale (a
     review overdue, a release or vulnerability feed flag, or either upstream) nor retired.
 
-An **exercise template** (ADR 0016) is proven the same way: its range template (or, failing
+An **exercise template** (ADR 0017) is proven the same way: its range template (or, failing
 that, its scenario's) must be certified, and the exercises that count as use are those *made
 from the template* (``exercise_template_uses``) that completed with a passing score; a
 completed exercise on the same range that was not made from it proves nothing about it.
@@ -365,7 +365,7 @@ def node_types(templates: list[Template]) -> set[str]:
 
 
 def sizing_problems(et: ExerciseTemplate, templates: list[Template]) -> list[str]:
-    """Roles and scaling rules must name node types the range template builds (ADR 0016): a VM
+    """Roles and scaling rules must name node types the range template builds (ADR 0017): a VM
     profile that points at nothing sizes nothing. Missing evidence never passes."""
     known = node_types(templates)
     wanted = [(f"Role {r.get('name')}", v.get("node_type")) for r in et.roles or [] for v in r.get("vm_profile") or []]

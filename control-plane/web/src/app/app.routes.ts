@@ -288,7 +288,7 @@ export const routes: Routes = [
   { path: 'my-progress', redirectTo: 'learning/progress', pathMatch: 'full' },
   { path: 'competency', redirectTo: 'learning/competency', pathMatch: 'full' },
   {
-    // Exercise templates (ADR 0016): staff who create exercises. Before exercises/:id.
+    // Exercise templates (ADR 0017): staff who create exercises. Before exercises/:id.
     path: 'exercises/templates',
     canActivate: [authGuard, onboardingGuard, pageGuard('authoringExercises')],
     loadComponent: () =>
@@ -304,7 +304,7 @@ export const routes: Routes = [
     title: 'Exercise template - TrueNorth Range',
   },
   {
-    // Exercise templates (ADR 0016): staff who create exercises. Before exercises/:id.
+    // Exercise templates (ADR 0017): staff who create exercises. Before exercises/:id.
     path: 'exercises/templates',
     canActivate: [authGuard, onboardingGuard, pageGuard('authoringExercises')],
     loadComponent: () =>

@@ -1,4 +1,4 @@
-"""9d4e7a2b5c18 adds the exercise template's two tables, and only those (ADR 0016).
+"""9d4e7a2b5c18 adds the exercise template's two tables, and only those (ADR 0017).
 
 Upgrade from its parent onto a database holding a template, a scenario and an exercise: the
 tables appear with their keys, nothing is written, and the ORM's models are the migration's

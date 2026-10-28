@@ -1,4 +1,4 @@
-"""An exercise template is proven, and ported, like the content it builds on (ADR 0016).
+"""An exercise template is proven, and ported, like the content it builds on (ADR 0017).
 
 Proven: a range built from its range template reached Certified, an exercise MADE FROM THE
 TEMPLATE completed with a passing score, and the content clock does not call it stale.

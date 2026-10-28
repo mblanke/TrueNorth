@@ -4,7 +4,7 @@ Revision ID: 9d4e7a2b5c18
 Revises: 7c1d2e9f4a60
 Create Date: 2026-10-28 09:00:00.000000
 
-ADR 0016 (``app/exercise_templates``): an exercise template holds what is reusable about an
+ADR 0017 (``app/exercise_templates``): an exercise template holds what is reusable about an
 exercise (objectives, the MESL, the scenario and range template, the teams, the participant
 roles with their VM profiles and the shared-infrastructure scaling rules, the instructor's
 notes), proven and portable through the content port.

@@ -64,7 +64,7 @@ class ScenarioContent(_Name):
 
 
 class ExerciseTemplateContent(ExerciseTemplateCore):
-    """An exercise template (ADR 0016): the same model the API validates, plus the keys of the
+    """An exercise template (ADR 0017): the same model the API validates, plus the keys of the
     scenario and the range template it names. No tenant, owner, sharing or revision: the new
     site decides those."""
 

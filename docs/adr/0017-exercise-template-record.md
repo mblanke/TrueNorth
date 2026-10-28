@@ -1,4 +1,4 @@
-# ADR 0016: the exercise template record
+# ADR 0017: the exercise template record
 
 **Status:** Accepted (owner approved "add the exercise-template record", 2026-10-28)
 **Date:** 2026-10-28

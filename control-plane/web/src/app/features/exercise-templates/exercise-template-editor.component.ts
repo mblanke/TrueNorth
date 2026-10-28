@@ -40,7 +40,7 @@ interface SerialRow {
 }
 
 /**
- * The exercise template editor (ADR 0016): name, scenario and range template, teams,
+ * The exercise template editor (ADR 0017): name, scenario and range template, teams,
  * objectives, the MESL and the instructor's notes; the Proven chip; "Create exercise" and the
  * exercises already made from it. Exercises are collective training, so there are teams and
  * no individual shape. A shared template of another tenant is read-only here.
