@@ -485,13 +485,33 @@ def is_platform_admin(user: CurrentUser, db: Session) -> bool:
 
 
 def platform_tenant_problem(db: Session) -> str | None:
-    """Why the platform administrator is unassigned, or None. Logged at startup."""
-    if platform_tenant_id() or is_single_tenant(db):
+    """Why the platform administrator is unassigned, or None. Logged at startup.
+
+    Unset with several tenants, or set to an id that is no tenant: either way nobody is the
+    platform administrator (``is_platform_admin`` fails closed), so say which and what to set.
+    """
+    refused = (
+        "no administrator is the platform administrator (creating tenants, cross-tenant "
+        "approval and platform-wide settings are refused)"
+    )
+    platform = platform_tenant_id()
+    if platform:
+        try:
+            exists = db.query(Tenant.id).filter(Tenant.id == uuid.UUID(platform)).first() is not None
+        except ValueError:
+            exists = False  # production refuses a non-UUID at startup (app/settings.py)
+        if exists:
+            return None
+        return (
+            f"PLATFORM_TENANT_ID={platform} names no tenant: {refused}. Set it to the operator's "
+            "tenant id (installer: tn_platform_tenant_id, empty for the bootstrap tenant)."
+        )
+    if is_single_tenant(db):
         return None
     return (
-        "PLATFORM_TENANT_ID is not set and more than one tenant exists: no administrator is the "
-        "platform administrator (creating tenants, cross-tenant approval and platform-wide "
-        "settings are refused). Set it to the operator's tenant id."
+        f"PLATFORM_TENANT_ID is not set and more than one tenant exists: {refused}. Set it to "
+        "the operator's tenant id (installer: tn_platform_tenant_id, which defaults to the "
+        "bootstrap tenant; re-run playbooks/30-config.yml and 50-stack-up.yml)."
     )
 
 

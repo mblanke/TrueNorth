@@ -15269,6 +15269,7 @@
             "type": "string"
           },
           "ou_type": {
+            "pattern": "^(country|branch|division|unit|section|custom)$",
             "title": "Ou Type",
             "type": "string"
           },
@@ -19462,6 +19463,39 @@
         "title": "ScenarioUpdate",
         "type": "object"
       },
+      "SchedulerSettingsOut": {
+        "description": "The site's scheduler settings that pages show in words (#318).",
+        "properties": {
+          "grace_minutes": {
+            "description": "Kept this long after it ends (SCHEDULER_TEARDOWN_GRACE_MIN)",
+            "title": "Grace Minutes",
+            "type": "integer"
+          },
+          "lead_minutes": {
+            "description": "Ranges are built this long before a session starts (SCHEDULER_PROVISION_LEAD_MIN)",
+            "title": "Lead Minutes",
+            "type": "integer"
+          },
+          "next_free_days": {
+            "description": "How far ahead 'next free' is searched (SCHEDULER_NEXT_FREE_DAYS)",
+            "title": "Next Free Days",
+            "type": "integer"
+          },
+          "site_timezone": {
+            "description": "The site's IANA time zone (SITE_TIMEZONE); UTC when unset",
+            "title": "Site Timezone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "lead_minutes",
+          "grace_minutes",
+          "next_free_days",
+          "site_timezone"
+        ],
+        "title": "SchedulerSettingsOut",
+        "type": "object"
+      },
       "SecurityGroupIn": {
         "properties": {
           "description": {
@@ -19628,6 +19662,7 @@
             "title": "Description"
           },
           "group_type": {
+            "pattern": "^(access|distribution|training|role_based)$",
             "title": "Group Type",
             "type": "string"
           },
@@ -49514,6 +49549,33 @@
           }
         ],
         "summary": "Set the over-capacity policy (platform admin)",
+        "tags": [
+          "scheduling"
+        ]
+      }
+    },
+    "/schedule/settings": {
+      "get": {
+        "description": "Provisioning lead, teardown grace, the 'next free' search horizon and the site's time\nzone, so pages say what this site does rather than the defaults.  **schedule:read**",
+        "operationId": "getSchedulerSettings",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SchedulerSettingsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "The site's scheduler settings",
         "tags": [
           "scheduling"
         ]

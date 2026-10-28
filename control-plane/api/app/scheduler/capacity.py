@@ -16,12 +16,14 @@ with the scheduler's own bookings:
 
 from __future__ import annotations
 
+import logging
 import os
 import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Protocol
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sqlalchemy.orm import Session
 
@@ -32,6 +34,19 @@ from .models import ScheduledEvent
 # teardown grace after the end (ADR 0004, "Lead time").
 PROVISION_LEAD = timedelta(minutes=int(os.getenv("SCHEDULER_PROVISION_LEAD_MIN", "30")))
 TEARDOWN_GRACE = timedelta(minutes=int(os.getenv("SCHEDULER_TEARDOWN_GRACE_MIN", "15")))
+
+logger = logging.getLogger("truenorth.api.scheduler.capacity")
+
+
+def site_timezone() -> ZoneInfo:
+    """The site's time zone (``SITE_TIMEZONE``, IANA; installer ``tn_site_timezone``), for
+    times shown in words such as "next free at 14:00". UTC when unset or unknown."""
+    name = os.getenv("SITE_TIMEZONE", "UTC").strip() or "UTC"
+    try:
+        return ZoneInfo(name)
+    except (ZoneInfoNotFoundError, ValueError):
+        logger.warning("SITE_TIMEZONE=%r is not a time zone; using UTC", name)
+        return ZoneInfo("UTC")
 
 # Events in these states hold capacity.
 COMMITTING_STATES = HOLDING
