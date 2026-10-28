@@ -61,6 +61,9 @@ def vcenter_seconds() -> float:
 class VsphereWebMKSConsole(BaseConsoleBackend):
     kind: ClassVar[str] = "vsphere_api"
     hypervisor_type: ClassVar[str] = "vsphere"  # hypervisor_connections.hypervisor_type
+    # A WebMKS ticket has no read-only mode: whoever holds it can type. An observer's console
+    # is a normal one, marked observed (app/classes/consoles.py).
+    supports_view_only: ClassVar[bool] = False
 
     def console_reader(self, db, targets: list[ConsoleTarget]) -> ConsoleReader:
         """Open WebMKS/VMRC connections (``runtime.numMksConnections``) on every target's VMs:

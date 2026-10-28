@@ -27,8 +27,10 @@ Why this and not another signal:
   would add nothing the range read does not already prove.
 - *It is written in the same transaction as the read it records,* by the API, keyed by user,
   range and time, on the append-only audit log (``tests/api/test_audit_append_only_postgres``).
-- *The alternatives are weaker.* Class ranges have no browser console (only lab sessions do,
-  ``console_backends``), so no console URL is issued for them. The password reveal alone
+- *A console counts the same way.* A Student's console ticket on their class range
+  (``consoles.student_console``, #313) writes ``class_range_open`` through ``note_range_open``
+  under the same rule and the same 10-minute dedupe. Observers' and staff consoles never do.
+- *The alternatives are weaker.* The password reveal alone
   misses the second day of a week-long class, when the Student still has the password from
   Monday. Telemetry from the range's machines needs OpenSearch, says nothing about which
   Student on a shared range was at the keyboard, and is not in the database the clock reads.
